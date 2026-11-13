@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTheater · App</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --panel-2:#f1f3f6; --line:#e2e5ea; --line-2:#d3d8df;
+  --text:#1b1f24; --muted:#5d6672; --faint:#8a929c;
+  --accent:#4a5bd4; --accent-soft:#e8ebfb;
+  --ok:#1f8a5b; --ok-soft:#e3f4ec; --warn:#b26a00; --warn-soft:#fbf0dc;
+  --err:#c23b3b; --err-soft:#fbe6e6; --info:#2a78b8; --info-soft:#e2eff9;
+  --sys:#6b5bd4;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --pop:0 8px 28px rgba(16,24,40,.16);
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+  --sans:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --side-w:268px; --chat-w:480px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115; --panel:#161920; --panel-2:#1c2029; --line:#262b35; --line-2:#323845;
+    --text:#e6e8ec; --muted:#9aa3af; --faint:#6b7380;
+    --accent:#8190ff; --accent-soft:#232848;
+    --ok:#3fbf86; --ok-soft:#12291f; --warn:#e0a03a; --warn-soft:#2c2212;
+    --err:#ef6b6b; --err-soft:#2e1616; --info:#5aa8e6; --info-soft:#132433; --sys:#a596ff;
+    --shadow:none; --pop:0 8px 28px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --panel:#161920; --panel-2:#1c2029; --line:#262b35; --line-2:#323845;
+  --text:#e6e8ec; --muted:#9aa3af; --faint:#6b7380;
+  --accent:#8190ff; --accent-soft:#232848;
+  --ok:#3fbf86; --ok-soft:#12291f; --warn:#e0a03a; --warn-soft:#2c2212;
+  --err:#ef6b6b; --err-soft:#2e1616; --info:#5aa8e6; --info-soft:#132433; --sys:#a596ff;
+  --shadow:none; --pop:0 8px 28px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--sans);overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:var(--mono)} .muted{color:var(--muted)} .faint{color:var(--faint)}
+
+/* ============ LAYOUT ============ */
+.app{display:grid;grid-template-columns:var(--side-w) var(--chat-w) 6px minmax(0,1fr);height:100vh}
+.app.side-off{--side-w:56px}
+.app.work-off{grid-template-columns:var(--side-w) minmax(0,1fr) 0 0}
+.app.work-off .resizer,.app.work-off .work{display:none}
+
+/* ============ LATERAL ============ */
+.side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.side-top{display:flex;align-items:center;gap:8px;padding:12px 10px 10px 12px}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+.brand{font-weight:650;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.ib{border:1px solid transparent;background:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted);flex:none;font-size:15px}
+.ib:hover{background:var(--panel-2);color:var(--text)}
+.ib.on{background:var(--accent-soft);color:var(--accent)}
+.ib svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.side-scroll{overflow:auto;flex:1;padding:0 10px 10px}
+.sec{margin-top:10px}
+.sec-h{display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;cursor:pointer;border-radius:6px;user-select:none}
+.sec-h:hover{background:var(--panel-2)}
+.sec-h .chev{transition:transform .15s;font-size:10px}
+.sec.closed .chev{transform:rotate(-90deg)}
+.sec.closed .sec-b{display:none}
+.sec-h .add{margin-left:auto;border:0;background:none;color:var(--muted);font-size:16px;line-height:1;padding:0 4px;border-radius:4px}
+.sec-h .add:hover{background:var(--line)}
+.filters{display:flex;gap:4px;padding:4px 6px 8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--muted);cursor:pointer}
+.chip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+.item{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer}
+.item:hover{background:var(--panel-2)} .item.on{background:var(--accent-soft)}
+.ic{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.ic.p{background:var(--info-soft);color:var(--info)} .ic.t{background:var(--warn-soft);color:var(--warn)} .ic.c{background:var(--ok-soft);color:var(--ok)}
+.item .nm{flex:1;min-width:0}
+.item .nm div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .nm small{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--faint)}
+.dot.run{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)} .dot.wait{background:var(--warn)} .dot.ok{background:var(--ok)} .dot.err{background:var(--err)}
+.sub{padding:6px 8px;border-radius:8px}
+.sub .row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+.sub .row span:last-child{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar{height:5px;background:var(--panel-2);border-radius:3px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:3px}
+.bar i.w{background:var(--warn)} .bar i.e{background:var(--err)} .bar i.a{background:var(--accent)}
+.side-foot{border-top:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:2px}
+.nav{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;border:0;background:none;text-align:left;width:100%;white-space:nowrap}
+.nav:hover{background:var(--panel-2)} .nav.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav .gl{width:22px;text-align:center;flex:none}
+.nav .cnt{margin-left:auto;font-size:11px;background:var(--panel-2);color:var(--muted);padding:0 6px;border-radius:999px}
+.daemon{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:6px 8px;white-space:nowrap}
+/* trilho recolhido */
+.rail{display:none;flex-direction:column;align-items:center;gap:6px;padding:4px 0 10px;overflow:auto;flex:1}
+.rail .item{padding:5px;justify-content:center;position:relative}
+.rail .item .dot{position:absolute;right:2px;top:2px;width:7px;height:7px;box-shadow:0 0 0 2px var(--panel)}
+.rail hr{width:28px;border:0;border-top:1px solid var(--line);margin:4px 0}
+.rail .q{width:30px;padding:2px 0}
+.rail .q .bar{height:7px;margin:0;border:1px solid var(--line-2)}
+.app.side-off .side-scroll,.app.side-off .brand,.app.side-off .side-foot .lbl,.app.side-off .side-foot .cnt,.app.side-off .daemon .lbl{display:none}
+.app.side-off .rail{display:flex}
+.app.side-off .side-top{flex-direction:column;padding:12px 0 6px}
+.app.side-off .side-foot{align-items:center}
+.app.side-off .nav{justify-content:center;padding:7px 0;width:40px}
+.app.side-off .daemon{justify-content:center;padding:6px 0}
+
+/* ============ CHAT ============ */
+.chat{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel);border-right:1px solid var(--line)}
+.app.work-off .chat{border-right:0}
+.ctx{padding:12px 16px 10px;border-bottom:1px solid var(--line)}
+.ctx-top{display:flex;align-items:flex-start;gap:8px}
+.crumb{font-size:12px;color:var(--muted)}
+.ctx h1{font-size:16px;margin:2px 0 8px;font-weight:650;line-height:1.3}
+.ctx-acts{margin-left:auto;display:flex;gap:4px;flex:none}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.pill.run{background:var(--accent-soft);color:var(--accent);font-weight:600} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.who{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--sys));color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.who b{font-size:13px} .who small{color:var(--muted);font-size:12px;margin-left:6px}
+.msgs{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msgs-in{max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.m{max-width:85%;padding:9px 12px;border-radius:12px;line-height:1.5}
+.m.you{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.m.orq{align-self:flex-start;background:var(--panel-2);border-bottom-left-radius:4px}
+.m .meta{font-size:11px;color:var(--faint);margin-top:4px}
+.sys{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--muted);padding:2px 4px}
+.sys .tag{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--panel-2);color:var(--sys);flex:none;margin-top:1px}
+.sys.warn .tag{color:var(--warn);background:var(--warn-soft)} .sys.ok .tag{color:var(--ok);background:var(--ok-soft)}
+.sys time{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);flex:none}
+.decision{border:1px solid var(--warn);background:var(--warn-soft);border-radius:12px;padding:12px 14px}
+.decision h4{margin:0 0 4px;font-size:13px;color:var(--warn)}
+.decision p{margin:0 0 10px}
+.decision .opts{display:flex;gap:8px;flex-wrap:wrap}
+.decision.done{border-color:var(--line);background:var(--panel-2)} .decision.done h4{color:var(--muted)}
+.composer{border-top:1px solid var(--line);padding:12px 16px}
+.composer .box{max-width:860px;margin:0 auto;border:1px solid var(--line-2);border-radius:12px;background:var(--panel);padding:8px 10px}
+.composer .box:focus-within{border-color:var(--accent)}
+.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;color:var(--text);font:inherit;height:52px}
+.composer .tools{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.composer .tools .btn{margin-left:auto}
+
+/* ============ REDIMENSIONADOR ============ */
+.resizer{cursor:col-resize;background:transparent;position:relative;z-index:2}
+.resizer::after{content:"";position:absolute;inset:0 2px;border-radius:2px;transition:background .15s}
+.resizer:hover::after,.resizer.drag::after{background:var(--accent)}
+body.dragging{cursor:col-resize;user-select:none}
+
+/* ============ ÁREA DE TRABALHO ============ */
+.work{display:flex;flex-direction:column;min-width:0;min-height:0;container-type:inline-size}
+.wtabs{display:flex;align-items:stretch;background:var(--panel);border-bottom:1px solid var(--line);padding:0 6px;gap:2px;min-height:42px}
+.wtab{display:flex;align-items:center;gap:6px;border:0;background:none;padding:0 6px 0 12px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.wtab.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.wtab .x{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;font-size:13px;color:var(--faint);opacity:.0}
+.wtab:hover .x,.wtab.on .x{opacity:1}
+.wtab .x:hover{background:var(--panel-2);color:var(--text)}
+.wtl{display:flex;flex:1;min-width:0;overflow:hidden;gap:2px}
+.wtl .wtab{flex:0 1 auto;min-width:56px}
+.wtl .wtab > span:first-child{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.wtl .wtab .x{flex:none}
+.wtl::-webkit-scrollbar{display:none}
+.wtabs .ib{align-self:center}
+.menu{position:relative;align-self:center}
+.menu-pop{display:none;position:absolute;right:0;top:34px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--pop);padding:6px;min-width:190px;z-index:10}
+.menu.open .menu-pop{display:block}
+.menu-pop button{display:flex;width:100%;gap:8px;align-items:center;border:0;background:none;padding:7px 10px;border-radius:7px;text-align:left;font-size:13px}
+.menu-pop button:hover{background:var(--panel-2)}
+.menu-pop button[disabled]{opacity:.4;cursor:default}
+.menu-pop .hd{font-size:11px;color:var(--faint);padding:4px 10px;text-transform:uppercase;letter-spacing:.05em}
+.wbody{flex:1;min-height:0;position:relative}
+.pane{display:none;position:absolute;inset:0;overflow:auto;padding:16px}
+.pane.on{display:block}
+.empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--muted)}
+.empty.on{display:grid}
+.empty .opts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+
+/* cartões recolhíveis */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:0;margin-bottom:14px}
+.card > h3{margin:0;padding:12px 14px;font-size:13px;font-weight:650;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;border-radius:12px}
+.card > h3:hover{background:var(--panel-2)}
+.card > h3 .r{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card > h3 .chev{font-size:10px;color:var(--faint);transition:transform .15s;flex:none}
+.card.closed > h3 .chev{transform:rotate(-90deg)}
+.card .cb{padding:0 14px 14px}
+.card.closed .cb{display:none}
+.toolbar{display:flex;gap:6px;justify-content:flex-end;margin:-4px 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+@container (max-width:780px){ .grid2{grid-template-columns:1fr} }
+
+.btn{border:1px solid var(--line-2);background:var(--panel);padding:6px 12px;border-radius:8px;font-size:13px;white-space:nowrap}
+.btn:hover{background:var(--panel-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--err)} .btn.sm{padding:3px 9px;font-size:12px}
+.btn.ghost{border-color:transparent;background:none;color:var(--muted)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--text)}
+
+/* pipeline */
+.pipe{display:flex;align-items:flex-start;overflow-x:auto;padding:4px 0}
+.st{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:76px}
+.st .c{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--panel-2);color:var(--faint);border:2px solid var(--line-2)}
+.st.done .c{background:var(--ok);border-color:var(--ok);color:#fff}
+.st.cur .c{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft)}
+.st span{font-size:11.5px;color:var(--muted);white-space:nowrap} .st.cur span{color:var(--text);font-weight:600}
+.st small{font-size:10.5px;color:var(--faint)}
+.link{flex:1;min-width:10px;height:2px;background:var(--line-2);margin-top:13px} .link.done{background:var(--ok)}
+/* dag */
+.dag svg{width:100%;height:auto;display:block}
+.dag .node rect{rx:9;stroke-width:1.5}
+.n-ok rect{fill:var(--ok-soft);stroke:var(--ok)} .n-run rect{fill:var(--accent-soft);stroke:var(--accent)}
+.n-wait rect{fill:var(--panel-2);stroke:var(--line-2);stroke-dasharray:4 3} .n-q rect{fill:var(--panel);stroke:var(--line-2)}
+.dag text{fill:var(--text);font:12px var(--sans)} .dag text.s{fill:var(--muted);font-size:10.5px}
+.dag path{stroke:var(--line-2);stroke-width:1.5;fill:none}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+/* tabelas */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td .bar{width:80px;display:inline-block;vertical-align:middle;margin:0 6px 0 0}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.badge.run{background:var(--accent-soft);color:var(--accent)} .badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)} .badge.err{background:var(--err-soft);color:var(--err)} .badge.info{background:var(--info-soft);color:var(--info)}
+.ev{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.ev:last-child{border-bottom:0}
+.ev time{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;width:58px}
+.ev code{font-family:var(--mono);font-size:11px;color:var(--sys)}
+.quotas{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.q{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.q .h{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.q .h .badge{margin-left:auto;font-weight:400}
+.q .w{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;margin-top:8px}
+/* trajetória */
+.traj{display:grid;grid-template-columns:220px 1fr;gap:14px}
+@container (max-width:640px){ .traj{grid-template-columns:1fr} }
+.att{display:flex;flex-direction:column;gap:6px}
+.att button{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:9px 10px;text-align:left}
+.att button.on{border-color:var(--accent);background:var(--accent-soft)}
+.att button b{display:block;font-size:12.5px} .att button small{color:var(--muted);font-size:11.5px}
+.steps{display:flex;flex-direction:column;gap:8px;min-width:0}
+.step{border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.step summary{list-style:none;display:flex;gap:10px;align-items:center;padding:9px 12px;cursor:pointer;font-size:12.5px}
+.step summary::-webkit-details-marker{display:none}
+.step .k{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:4px;flex:none}
+.k.msg{background:var(--panel-2);color:var(--muted)} .k.tool{background:var(--info-soft);color:var(--info)}
+.k.edit{background:var(--accent-soft);color:var(--accent)} .k.fw{background:var(--ok-soft);color:var(--ok)} .k.fail{background:var(--err-soft);color:var(--err)}
+.step summary .t{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);flex:none}
+.step pre{margin:0;padding:10px 12px;border-top:1px solid var(--line);font:12px/1.5 var(--mono);white-space:pre-wrap;color:var(--muted);background:var(--panel-2);border-radius:0 0 10px 10px}
+.step pre .add{color:var(--ok)}
+/* configuração */
+.subnav{display:inline-flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;margin-bottom:14px;flex-wrap:wrap}
+.subnav button{border:0;background:var(--panel);padding:6px 14px;font-size:13px;color:var(--muted)}
+.subnav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.cfg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cfg-head .sp{flex:1}
+.sub-pane{display:none} .sub-pane.on{display:block}
+.prof{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.prof .card{margin:0}
+.prof .card .row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;margin-top:6px}
+.prof .card .act{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.addcard{border:1.5px dashed var(--line-2);border-radius:12px;display:grid;place-items:center;color:var(--muted);min-height:170px;background:transparent}
+select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel);border:1px solid var(--line-2);border-radius:7px;padding:4px 8px}
+.roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.roles .card{margin:0}
+.ord{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ord li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--panel);font-size:12.5px}
+.ord li .grip{color:var(--faint);cursor:grab;letter-spacing:-2px}
+.ord li .n{font-family:var(--mono);font-size:11px;color:var(--faint);width:14px}
+.ord li .badge{margin-left:auto} .ord li.off{opacity:.55}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;margin-top:10px}
+.seg button{border:0;background:var(--panel);padding:4px 10px;font-size:12px;color:var(--muted)}
+.seg button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.form label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:600}
+.form label small{font-weight:400;color:var(--muted)}
+.plugins{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.plugins .card{margin:0}
+.plugins p{margin:0 0 10px;color:var(--muted);font-size:12.5px}
+.tools-l{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.tools-l div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tools-l code{font-family:var(--mono);font-size:11.5px}
+.tools-l .badge{margin-left:auto}
+.switch{width:34px;height:20px;border-radius:999px;background:var(--line-2);position:relative;border:0;flex:none}
+.switch::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.15s}
+.switch.on{background:var(--ok)} .switch.on::after{left:16px}
+
+/* celular */
+@media (max-width:760px){
+  .app,.app.side-off{grid-template-columns:56px minmax(0,1fr) 0 0}
+  .app .side-scroll,.app .brand,.app .side-foot .lbl,.app .side-foot .cnt,.app .daemon .lbl{display:none}
+  .app .rail{display:flex}
+  .app .side-top{flex-direction:column;padding:12px 0 6px}
+  .app .side-foot{align-items:center}
+  .app .nav{justify-content:center;padding:7px 0;width:40px}
+  .resizer{display:none}
+  .app:not(.work-off) .work{display:flex;position:fixed;inset:0 0 0 56px;z-index:20;background:var(--bg)}
+  .app:not(.work-off) .chat{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===================== LATERAL ===================== -->
+  <aside class="side">
+    <div class="side-top">
+      <div class="logo">OT</div>
+      <div class="brand">OTheater</div>
+      <button class="ib" id="side-toggle" title="Recolher barra lateral (Ctrl+B)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></button>
+    </div>
+
+    <!-- expandida -->
+    <div class="side-scroll">
+      <div class="sec" data-sec="cen">
+        <div class="sec-h"><span class="chev">▾</span>Cenários<button class="add" title="Novo cenário">+</button></div>
+        <div class="sec-b">
+          <div class="filters"><span class="chip on">Todos</span><span class="chip">Projetos</span><span class="chip">Tarefas</span><span class="chip">Chats</span></div>
+          <div class="item on"><span class="ic p">P</span><div class="nm"><div>loja-api</div><small>Peça #14 · Execução</small></div><span class="dot run"></span></div>
+          <div class="item"><span class="ic t">T</span><div class="nm"><div>relatorio-mensal</div><small>Aguardando você</small></div><span class="dot wait"></span></div>
+          <div class="item"><span class="ic p">P</span><div class="nm"><div>app-mobile</div><small>Crítico reprovou 2/3</small></div><span class="dot err"></span></div>
+          <div class="item"><span class="ic c">C</span><div class="nm"><div>pesquisa-acp</div><small>Chat · ocioso</small></div><span class="dot"></span></div>
+          <div class="item"><span class="ic p">P</span><div class="nm"><div>migracao-db</div><small>Peça #9 · concluída</small></div><span class="dot ok"></span></div>
+        </div>
+      </div>
+      <div class="sec" data-sec="ass">
+        <div class="sec-h"><span class="chev">▾</span>Assinaturas<button class="add" title="Adicionar assinatura" data-open="config" data-sub="assin">+</button></div>
+        <div class="sec-b">
+          <div class="sub"><div class="row"><span>claude-empresa</span><span>5h 62%</span></div><div class="bar"><i style="width:62%"></i></div></div>
+          <div class="sub"><div class="row"><span>claude-pessoal</span><span>5h 91%</span></div><div class="bar"><i class="w" style="width:91%"></i></div></div>
+          <div class="sub"><div class="row"><span>codex-1</span><span>5h 34%</span></div><div class="bar"><i style="width:34%"></i></div></div>
+          <div class="sub"><div class="row"><span>minimax-api</span><span>US$ 3,20 hoje</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
+          <div class="sub"><div class="row"><span>gemma4-local</span><span>1/2 slots</span></div><div class="bar"><i class="a" style="width:50%"></i></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- recolhida -->
+    <div class="rail">
+      <div class="item on" title="loja-api · Peça #14 · Execução"><span class="ic p">L</span><span class="dot run"></span></div>
+      <div class="item" title="relatorio-mensal · Aguardando você"><span class="ic t">R</span><span class="dot wait"></span></div>
+      <div class="item" title="app-mobile · Crítico reprovou 2/3"><span class="ic p">A</span><span class="dot err"></span></div>
+      <div class="item" title="pesquisa-acp · Chat"><span class="ic c">P</span><span class="dot"></span></div>
+      <div class="item" title="migracao-db · concluída"><span class="ic p">M</span><span class="dot ok"></span></div>
+      <button class="ib" title="Novo cenário">+</button>
+      <hr>
+      <div class="q" title="claude-empresa · 5h 62%"><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="q" title="claude-pessoal · 5h 91%"><div class="bar"><i class="w" style="width:91%"></i></div></div>
+      <div class="q" title="codex-1 · 5h 34%"><div class="bar"><i style="width:34%"></i></div></div>
+      <div class="q" title="minimax-api · US$ 3,20"><div class="bar"><i class="a" style="width:16%"></i></div></div>
+      <div class="q" title="gemma4-local · 1/2 slots"><div class="bar"><i class="a" style="width:50%"></i></div></div>
+    </div>
+
+    <div class="side-foot">
+      <button class="nav" data-open="plugins" title="Plugins"><span class="gl">◫</span><span class="lbl">Plugins</span><span class="cnt">3</span></button>
+      <button class="nav" data-open="config" title="Configurações"><span class="gl">⚙</span><span class="lbl">Configurações</span></button>
+      <div class="daemon" title="Daemon local · 127.0.0.1:7420"><span class="dot ok"></span><span class="lbl">Daemon · 127.0.0.1:7420</span></div>
+      <button class="nav" id="theme" title="Alternar tema"><span class="gl">◐</span><span class="lbl">Tema</span></button>
+    </div>
+  </aside>
+
+  <!-- ===================== CHAT (altura total) ===================== -->
+  <section class="chat">
+    <div class="ctx">
+      <div class="ctx-top">
+        <div style="min-width:0">
+          <div class="crumb">Projetos / loja-api · <span class="mono">peca/14</span> ← main</div>
+          <h1>Peça #14 · Login OAuth (Google e GitHub) na API</h1>
+        </div>
+        <div class="ctx-acts">
+          <button class="ib" title="Pausar a peça">⏸</button>
+          <button class="ib" title="Cancelar a peça" style="color:var(--err)">■</button>
+          <button class="ib on" id="work-toggle" title="Mostrar/ocultar painel (Ctrl+J)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg></button>
+        </div>
+      </div>
+      <div class="pills">
+        <span class="pill run">● Execução</span><span class="pill">Crítico 0/3</span><span class="pill">Plano 1/3</span><span class="pill">38 min</span>
+        <span class="pill warn" id="pend">1 decisão pendente</span>
+      </div>
+    </div>
+    <div class="who"><div class="avatar">D</div><b>Orquestrador (Diretor)</b><small>Haiku 5.5 · claude-empresa · fila 0</small><span class="badge ok" style="margin-left:auto">conectado</span></div>
+
+    <div class="msgs" id="msgs"><div class="msgs-in" id="msgs-in">
+      <div class="m you">Quero login OAuth com Google e GitHub na API, com testes de ponta a ponta. Pode abrir PR no final.</div>
+      <div class="m orq">Entendido. Abri a <b>peça #14</b> no projeto loja-api e mandei a necessidade para o Autor. Aviso por aqui quando o plano passar pelo Revisor.<div class="meta">09:12</div></div>
+      <div class="sys ok"><span class="tag">autor</span>Opus 5.5 · alto entregou o plano (7 passos)<time>09:19</time></div>
+      <div class="sys ok"><span class="tag">revisor</span>Codex · alto aprovou o plano na 1ª tentativa<time>09:23</time></div>
+      <div class="sys ok"><span class="tag">roteiro</span>5 demandas · D2 e D3 em paralelo · contratos validados<time>09:27</time></div>
+      <div class="sys"><span class="tag">ator</span>D1 Modelo de usuário e migração concluída por codex-alto<time>09:41</time></div>
+      <div class="sys warn"><span class="tag">seleção</span>D3: codex-alto sem vaga no pool → sonnet-medio (claude-empresa)<time>09:42</time></div>
+      <div class="m orq">D1 está pronta. D2 (fluxo OAuth) e D3 (middleware de sessão) estão rodando em worktrees separadas. D4 (testes e2e) começa quando as duas terminarem.<div class="meta">09:42</div></div>
+      <div class="decision" id="decision">
+        <h4>⚑ Decisão do Produtor · D2</h4>
+        <p>O Ator da D2 precisa de credenciais de teste do Google para validar o callback. Uso um mock do provedor agora e deixo o teste real para quando você configurar, ou espero você configurar?</p>
+        <div class="opts"><button class="btn pri" data-decide="Usar mock do provedor">Usar mock agora</button><button class="btn" data-decide="Esperar credenciais">Vou configurar</button></div>
+      </div>
+    </div></div>
+
+    <div class="composer"><div class="box">
+      <textarea placeholder="Fale com o Orquestrador… (Enter envia, Shift+Enter quebra linha)"></textarea>
+      <div class="tools"><span>↳ peça #14</span><span>·</span><span>@ arquivo</span><span>·</span><span>/ comandos</span><button class="btn pri sm">Enviar</button></div>
+    </div></div>
+  </section>
+
+  <div class="resizer" id="resizer" title="Arraste para ajustar a largura do chat · duplo clique restaura"></div>
+
+  <!-- ===================== ÁREA DE TRABALHO (abas) ===================== -->
+  <section class="work">
+    <nav class="wtabs" id="wtabs">
+      <!-- abas: estas são o estado inicial sem JavaScript; o script as recria -->
+      <div class="wtl" id="wtl">
+      <button class="wtab on" data-tab="geral"><span>Visão geral</span><span class="x">×</span></button>
+      <button class="wtab" data-tab="traj"><span>Trajetórias</span><span class="x">×</span></button>
+      <button class="wtab" data-tab="consumo"><span>Consumo</span><span class="x">×</span></button>
+      </div>
+      <div class="menu" id="menu-add">
+        <button class="ib" title="Abrir aba"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+        <div class="menu-pop" id="menu-pop"></div>
+      </div>
+      <button class="ib" id="work-close" title="Fechar painel (Ctrl+J)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>
+    </nav>
+
+    <div class="wbody">
+      <div class="empty" id="empty"><div><b>Nenhuma aba aberta</b><div class="faint" style="font-size:12.5px">O chat continua ativo. Abra o que precisar:</div><div class="opts" id="empty-opts"></div></div></div>
+
+      <!-- VISÃO GERAL -->
+      <div class="pane on" data-pane="geral">
+        <div class="toolbar"><button class="btn ghost sm" data-cards="open">Expandir tudo</button><button class="btn ghost sm" data-cards="close">Recolher tudo</button></div>
+        <div class="card"><h3><span class="chev">▾</span>Pipeline <span class="r">peça #14 · iniciada 09:12</span></h3><div class="cb">
+          <div class="pipe">
+            <div class="st done"><div class="c">✓</div><span>Produtor</span><small>09:12</small></div><div class="link done"></div>
+            <div class="st done"><div class="c">✓</div><span>Autor</span><small>7 min</small></div><div class="link done"></div>
+            <div class="st done"><div class="c">✓</div><span>Revisor</span><small>1/3</small></div><div class="link done"></div>
+            <div class="st done"><div class="c">✓</div><span>Roteirista</span><small>5 demandas</small></div><div class="link done"></div>
+            <div class="st cur"><div class="c">5</div><span>Execução</span><small>1/5 prontas</small></div><div class="link"></div>
+            <div class="st"><div class="c">6</div><span>Integração</span><small>—</small></div><div class="link"></div>
+            <div class="st"><div class="c">7</div><span>Crítico</span><small>0/3</small></div><div class="link"></div>
+            <div class="st"><div class="c">8</div><span>Entrega</span><small>PR</small></div>
+          </div>
+        </div></div>
+
+        <div class="grid2">
+          <div class="card dag"><h3><span class="chev">▾</span>Demandas (DAG) <span class="r">validado · sem conflito</span></h3><div class="cb">
+            <svg viewBox="0 0 520 230" role="img" aria-label="Grafo de demandas">
+              <path d="M150 115 C175 115 175 55 200 55"/><path d="M150 115 C175 115 175 175 200 175"/>
+              <path d="M340 55 C365 55 365 115 390 115"/><path d="M340 175 C365 175 365 115 390 115"/>
+              <path d="M455 140 L455 172"/>
+              <g class="node n-ok"><rect x="10" y="90" width="140" height="50"/><text x="22" y="111">D1 · Usuário e migração</text><text class="s" x="22" y="128">concluída · codex-alto</text></g>
+              <g class="node n-run"><rect x="200" y="30" width="140" height="50"/><text x="212" y="51">D2 · Fluxo OAuth</text><text class="s" x="212" y="68">executando · 18/30 min</text></g>
+              <g class="node n-run"><rect x="200" y="150" width="140" height="50"/><text x="212" y="171">D3 · Middleware sessão</text><text class="s" x="212" y="188">executando · 7/20 min</text></g>
+              <g class="node n-wait"><rect x="390" y="90" width="125" height="50"/><text x="402" y="111">D4 · Testes e2e</text><text class="s" x="402" y="128">aguarda D2, D3</text></g>
+              <g class="node n-q"><rect x="390" y="172" width="125" height="46"/><text x="402" y="191">D5 · Documentação</text><text class="s" x="402" y="207">na fila</text></g>
+            </svg>
+            <div class="legend"><span><i style="background:var(--ok)"></i>concluída</span><span><i style="background:var(--accent)"></i>executando</span><span><i style="background:var(--line-2)"></i>aguardando / fila</span></div>
+          </div></div>
+
+          <div class="card"><h3><span class="chev">▾</span>Eventos <span class="r">ao vivo</span></h3><div class="cb">
+            <div class="ev"><time>09:44:10</time><div><code>ferramenta.chamada</code> D2 · <span class="mono">run_tests(auth)</span> → 11 ok, 1 falha</div></div>
+            <div class="ev"><time>09:43:52</time><div><code>decisao.pendente</code> D2 · credenciais de teste do Google</div></div>
+            <div class="ev"><time>09:42:31</time><div><code>executor.selecionado</code> D3 · codex-alto pulado (pool cheio) → sonnet-medio</div></div>
+            <div class="ev"><time>09:42:30</time><div><code>executor.selecionado</code> D2 · codex-alto (1º da lista)</div></div>
+            <div class="ev"><time>09:41:05</time><div><code>tentativa.concluida</code> D1 · 4 arquivos · testes ok</div></div>
+          </div></div>
+        </div>
+
+        <div class="card"><h3><span class="chev">▾</span>Atores ativos <span class="r">2 de 4 vagas · RAM 6,1/16 GB</span></h3><div class="cb tw">
+          <table>
+            <thead><tr><th>Demanda</th><th>Executor</th><th>Perfil</th><th>Tempo</th><th>Worktree</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td><b>D2</b> Fluxo OAuth</td><td>codex · alto</td><td>codex-1</td><td><span class="bar"><i class="a" style="width:60%"></i></span>18/30 min</td><td class="mono faint">peca/14/D2/1</td><td><span class="badge warn">aguarda decisão</span></td></tr>
+              <tr><td><b>D3</b> Middleware</td><td>sonnet · médio</td><td>claude-empresa</td><td><span class="bar"><i class="a" style="width:35%"></i></span>7/20 min</td><td class="mono faint">peca/14/D3/1</td><td><span class="badge run">editando</span></td></tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <div class="card"><h3><span class="chev">▾</span>Cota por assinatura <span class="r">atualizado há 40 s</span></h3><div class="cb">
+          <div class="quotas">
+            <div class="q"><div class="h">claude-empresa <span class="badge ok">ok</span></div><div class="w"><span>5 h</span><span>62% · reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="w"><span>7 dias</span><span>31%</span></div><div class="bar"><i style="width:31%"></i></div></div>
+            <div class="q"><div class="h">claude-pessoal <span class="badge warn">perto</span></div><div class="w"><span>5 h</span><span>91% · reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="w"><span>7 dias</span><span>58%</span></div><div class="bar"><i style="width:58%"></i></div></div>
+            <div class="q"><div class="h">codex-1 <span class="badge ok">ok</span></div><div class="w"><span>Primária</span><span>34% · reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div><div class="w"><span>Semanal</span><span>22%</span></div><div class="bar"><i style="width:22%"></i></div></div>
+            <div class="q"><div class="h">minimax-api <span class="badge info">API</span></div><div class="w"><span>Hoje</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div><div class="w"><span>Teto diário</span><span>US$ 20</span></div></div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- TRAJETÓRIAS -->
+      <div class="pane" data-pane="traj">
+        <div class="traj">
+          <div class="att">
+            <button class="on"><b>D2 · tentativa 1</b><small>codex-alto · em curso · 46 passos</small></button>
+            <button><b>D3 · tentativa 1</b><small>sonnet-medio · em curso · 21 passos</small></button>
+            <button><b>D1 · tentativa 1</b><small>codex-alto · concluída · 33 passos</small></button>
+            <button><b>Roteirista</b><small>opus-alto · concluída</small></button>
+            <button><b>Revisor</b><small>codex-alto · concluída</small></button>
+            <button><b>Autor</b><small>opus-alto · concluída</small></button>
+            <button class="btn sm" style="text-align:center">Exportar ATIF v1.8</button>
+          </div>
+          <div class="steps">
+            <div class="card" style="margin:0;padding:10px 12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px"><b>D2 · Fluxo OAuth</b><span class="muted">182k entrada (71% cache) · 9,4k saída</span><span class="muted">12 ferramentas</span></div>
+            <details class="step"><summary><span class="k msg">contexto</span>Demanda + contrato C-2<span class="t">09:42:30</span></summary><pre>regras do projeto → papel ator → contrato C-2 → demanda D2
+prefixo estável: 14,2k tokens (cache)</pre></details>
+            <details class="step"><summary><span class="k tool">read</span><span class="mono">src/models/user.ts</span><span class="t">09:42:41</span></summary><pre>86 linhas · nativo do cliente · dentro da worktree</pre></details>
+            <details class="step"><summary><span class="k tool">mcp</span><span class="mono">ler_contrato("C-2")</span><span class="t">09:42:44</span></summary><pre>{ "saidas": ["OAuthService.authorize()", "OAuthService.callback()"], "entradas": ["User.findOrCreateByProvider()"] }</pre></details>
+            <details class="step" open><summary><span class="k edit">edit</span><span class="mono">src/auth/oauth.ts</span> +118 −0<span class="t">09:43:02</span></summary><pre><span class="add">+ export class OAuthService {</span>
+<span class="add">+   constructor(private providers: ProviderRegistry, private users: UserRepo) {}</span>
+<span class="add">+   authorize(provider: 'google' | 'github', state: string): URL { … }</span>
+<span class="add">+   async callback(provider, code, state): Promise&lt;Session&gt; { … }</span>
+<span class="add">+ }</span></pre></details>
+            <details class="step"><summary><span class="k fw">casca</span><span class="mono">install_deps()</span> · fila de pesados (2º)<span class="t">09:43:20</span></summary><pre>pnpm install --frozen-lockfile · 14 s · ok</pre></details>
+            <details class="step" open><summary><span class="k fail">casca</span><span class="mono">run_tests("auth")</span> → 11 ok, 1 falha<span class="t">09:44:10</span></summary><pre>✗ oauth.callback › google › troca código por token
+  GOOGLE_CLIENT_ID ausente no ambiente de teste
+saída truncada pela casca: 1.204 → 40 linhas</pre></details>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONSUMO -->
+      <div class="pane" data-pane="consumo">
+        <div class="toolbar"><button class="btn ghost sm" data-cards="open">Expandir tudo</button><button class="btn ghost sm" data-cards="close">Recolher tudo</button></div>
+        <div class="card"><h3><span class="chev">▾</span>Por papel · peça #14</h3><div class="cb tw">
+          <table><thead><tr><th>Papel</th><th>Executor</th><th>Tokens</th><th>Cache</th><th>Tempo</th></tr></thead><tbody>
+            <tr><td>Diretor</td><td>haiku</td><td>38k</td><td>82%</td><td>—</td></tr>
+            <tr><td>Autor</td><td>opus-alto</td><td>96k</td><td>40%</td><td>7 min</td></tr>
+            <tr><td>Revisor</td><td>codex-alto</td><td>51k</td><td>55%</td><td>4 min</td></tr>
+            <tr><td>Roteirista</td><td>opus-alto</td><td>63k</td><td>61%</td><td>4 min</td></tr>
+            <tr><td>Atores (3)</td><td>codex / sonnet</td><td>402k</td><td>69%</td><td>40 min</td></tr>
+          </tbody></table>
+        </div></div>
+        <div class="card"><h3><span class="chev">▾</span>Por assinatura · hoje</h3><div class="cb tw">
+          <table><thead><tr><th>Perfil</th><th>Tipo</th><th>Sessões</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>claude-empresa</td><td><span class="badge">token plan</span></td><td>9</td><td>5 h 62% · 7 d 31%</td></tr>
+            <tr><td>claude-pessoal</td><td><span class="badge">token plan</span></td><td>6</td><td>5 h 91% · 7 d 58%</td></tr>
+            <tr><td>codex-1</td><td><span class="badge">token plan</span></td><td>7</td><td>34% · semanal 22%</td></tr>
+            <tr><td>minimax-api</td><td><span class="badge info">API</span></td><td>3</td><td>US$ 3,20</td></tr>
+            <tr><td>gemma4-local</td><td><span class="badge">local</span></td><td>14</td><td>sem custo</td></tr>
+          </tbody></table>
+        </div></div>
+        <div class="card closed"><h3><span class="chev">▾</span>Fontes do sinal de cota</h3><div class="cb tw">
+          <table><thead><tr><th>Perfil</th><th>Fonte</th><th>Última leitura</th><th>Confiança</th></tr></thead><tbody>
+            <tr><td>claude-*</td><td>statusline <span class="mono">rate_limits</span></td><td>09:43:58</td><td><span class="badge ok">alta</span></td></tr>
+            <tr><td>codex-1</td><td>app-server <span class="mono">account/rateLimits</span></td><td>09:44:01</td><td><span class="badge ok">alta</span></td></tr>
+            <tr><td>minimax-api</td><td><span class="mono">/v1/token_plan/remains</span></td><td>09:30:00</td><td><span class="badge warn">schema não documentado</span></td></tr>
+          </tbody></table>
+        </div></div>
+      </div>
+
+      <!-- CONFIGURAÇÕES -->
+      <div class="pane" data-pane="config">
+        <div class="cfg-head">
+          <div class="subnav" id="subnav">
+            <button class="on" data-sub="assin">Assinaturas</button><button data-sub="exec">Executores</button><button data-sub="papeis">Papéis</button><button data-sub="limites">Limites</button>
+          </div>
+          <span class="sp"></span>
+          <select title="Escopo"><option>Escopo: global</option><option>Override: loja-api</option><option>Override: app-mobile</option></select>
+          <button class="btn pri sm">Salvar</button>
+        </div>
+
+        <div class="sub-pane on" data-subpane="assin">
+          <div class="prof">
+            <div class="card"><h3><span class="chev">▾</span>claude-empresa <span class="r"><span class="badge ok">ativo</span></span></h3><div class="cb">
+              <div class="row"><span class="muted">Cliente</span><span>Claude Code</span></div>
+              <div class="row"><span class="muted">Tipo</span><span>Token plan (Max)</span></div>
+              <div class="row"><span class="muted">Diretório</span><span class="mono faint">profiles/claude-empresa</span></div>
+              <div class="row"><span class="muted">5 h · 7 d</span><span>62% · 31%</span></div>
+              <div class="act"><button class="btn sm">Refazer login</button><button class="btn sm">Drenar</button><button class="btn sm danger">Remover</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>claude-pessoal <span class="r"><span class="badge warn">perto do limite</span></span></h3><div class="cb">
+              <div class="row"><span class="muted">Cliente</span><span>Claude Code</span></div>
+              <div class="row"><span class="muted">Tipo</span><span>Token plan (Pro)</span></div>
+              <div class="row"><span class="muted">Diretório</span><span class="mono faint">profiles/claude-pessoal</span></div>
+              <div class="row"><span class="muted">5 h · 7 d</span><span>91% · 58%</span></div>
+              <div class="act"><button class="btn sm">Refazer login</button><button class="btn sm">Drenar</button><button class="btn sm danger">Remover</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>codex-1 <span class="r"><span class="badge ok">ativo</span></span></h3><div class="cb">
+              <div class="row"><span class="muted">Cliente</span><span>Codex</span></div>
+              <div class="row"><span class="muted">Tipo</span><span>Token plan (ChatGPT Pro)</span></div>
+              <div class="row"><span class="muted">Credencial</span><span class="mono faint">arquivo no perfil</span></div>
+              <div class="row"><span class="muted">Primária · semanal</span><span>34% · 22%</span></div>
+              <div class="act"><button class="btn sm">Refazer login</button><button class="btn sm">Drenar</button><button class="btn sm danger">Remover</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>minimax-api <span class="r"><span class="badge info">API</span></span></h3><div class="cb">
+              <div class="row"><span class="muted">Cliente</span><span>OpenCode</span></div>
+              <div class="row"><span class="muted">Provedor</span><span>MiniMax</span></div>
+              <div class="row"><span class="muted">Chave</span><span class="mono faint">cofre do Windows ••••</span></div>
+              <div class="row"><span class="muted">Teto diário</span><span>US$ 20</span></div>
+              <div class="act"><button class="btn sm">Trocar chave</button><button class="btn sm danger">Remover</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>gemma4-local <span class="r"><span class="badge">local</span></span></h3><div class="cb">
+              <div class="row"><span class="muted">Cliente</span><span>OpenCode</span></div>
+              <div class="row"><span class="muted">Servidor</span><span class="mono faint">llama.cpp :8080 --jinja</span></div>
+              <div class="row"><span class="muted">Modelo</span><span>Gemma 4 26B-A4B</span></div>
+              <div class="row"><span class="muted">Slots</span><span>2</span></div>
+              <div class="act"><button class="btn sm">Testar</button><button class="btn sm danger">Remover</button></div></div></div>
+            <button class="addcard">+ Adicionar assinatura<br><small class="faint">Token plan (login oficial) ou chave de API</small></button>
+          </div>
+        </div>
+
+        <div class="sub-pane" data-subpane="exec">
+          <div class="card"><h3><span class="chev">▾</span>Executores <span class="r">modelo e esforço vêm das opções de cada adaptador ACP</span></h3><div class="cb tw">
+            <table><thead><tr><th>Id</th><th>Cliente</th><th>Perfil</th><th>Modelo</th><th>Esforço</th><th>Estado</th></tr></thead><tbody>
+              <tr><td><b>opus-alto</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>opus-5.5</option><option>sonnet-5.5</option><option>haiku-5.5</option></select></td><td><select><option>alto</option><option>médio</option><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>sonnet-medio</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>sonnet-5.5</option></select></td><td><select><option>médio</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>haiku</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>haiku-5.5</option></select></td><td><select><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>codex-alto</b></td><td>Codex</td><td>codex-1</td><td><select><option>gpt-5-codex</option></select></td><td><select><option>alto</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>minimax</b></td><td>OpenCode</td><td>minimax-api</td><td><select><option>MiniMax-M2</option></select></td><td class="faint">—</td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>gemma4-local</b></td><td>OpenCode</td><td>gemma4-local</td><td><select><option>gemma-4-26b-a4b</option></select></td><td class="faint">—</td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>codex-pessoal</b></td><td>Codex</td><td class="faint">removido</td><td>—</td><td>—</td><td><span class="badge err">inválido</span></td></tr>
+            </tbody></table>
+            <div style="margin-top:12px"><button class="btn sm">+ Novo executor</button></div>
+          </div></div>
+        </div>
+
+        <div class="sub-pane" data-subpane="papeis">
+          <div class="roles">
+            <div class="card"><h3><span class="chev">▾</span>Diretor (Orquestrador)</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>haiku<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>gemma4-local<span class="badge ok">ok</span></li></ul>
+              <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>Autor</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>Revisor</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-alto<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>opus-alto<span class="badge ok">ok</span></li></ul>
+              <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>Roteirista</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>Ator</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-alto<span class="badge run">pool cheio</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>sonnet-medio<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">3</span>minimax<span class="badge ok">ok</span></li>
+              <li class="off"><span class="grip">⋮⋮</span><span class="n">4</span>codex-pessoal<span class="badge err">inválido</span></li></ul>
+              <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
+            <div class="card"><h3><span class="chev">▾</span>Crítico</h3><div class="cb"><ul class="ord">
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <div class="seg"><button>Próximo</button><button class="on">Esperar</button></div>
+              <p class="faint" style="font-size:11.5px;margin:8px 0 0">Esperar: aguarda o reset da cota sem rebaixar o modelo.</p></div></div>
+          </div>
+        </div>
+
+        <div class="sub-pane" data-subpane="limites">
+          <div class="card"><h3><span class="chev">▾</span>Limites do pipeline e de recursos</h3><div class="cb"><div class="form">
+            <label>Reprovações do plano (Np)<input type="number" value="3"><small>Acima disso, consulta o Produtor.</small></label>
+            <label>Reprovações do Crítico (Nc)<input type="number" value="3"><small>Acima disso, vira falha estrutural.</small></label>
+            <label>Tentativas por demanda<input type="number" value="3"><small>Cada nova tentativa começa no executor seguinte.</small></label>
+            <label>Timeout padrão do Ator (min)<input type="number" value="30"><small>No estouro: commit WIP e avaliação do Diretor.</small></label>
+            <label>Atores em paralelo (máx.)<input type="number" value="4"><small>Também limitado por RAM livre e cota.</small></label>
+            <label>Comandos pesados em paralelo<input type="number" value="1"><small>Build, testes, instalação de dependências.</small></label>
+            <label>Memória por Ator (GB)<input type="number" value="3"><small>Limite do Job Object.</small></label>
+            <label>Entrega<select><option>Abrir PR</option><option>Merge direto</option></select><small>Padrão; projetos podem sobrescrever.</small></label>
+          </div></div></div>
+        </div>
+      </div>
+
+      <!-- PLUGINS -->
+      <div class="pane" data-pane="plugins">
+        <div class="cfg-head"><b>3 plugins instalados</b><span class="sp"></span><button class="btn pri sm">+ Instalar plugin</button></div>
+        <div class="plugins">
+          <div class="card"><h3><span class="chev">▾</span>banco-postgres <span class="r">v1.0.0</span></h3><div class="cb">
+            <p>Consulta e migração de banco. Ativo em loja-api e migracao-db. Segredo <span class="mono">PG_URL</span> no cofre. <button class="switch on" aria-label="ativo" style="vertical-align:middle"></button></p>
+            <div class="tools-l">
+              <div><code>consultar_sql</code><span class="faint">ator, crítico</span><span class="badge ok">leitura</span></div>
+              <div><code>migrar</code><span class="faint">ator</span><span class="badge err">escrita externa · pede Produtor</span></div>
+            </div></div></div>
+          <div class="card"><h3><span class="chev">▾</span>navegador-web <span class="r">v0.3.1</span></h3><div class="cb">
+            <p>Abre páginas e tira capturas para conferir interfaces. Domínios: localhost, *.test. <button class="switch on" aria-label="ativo" style="vertical-align:middle"></button></p>
+            <div class="tools-l">
+              <div><code>abrir_pagina</code><span class="faint">ator, crítico</span><span class="badge warn">rede</span></div>
+              <div><code>captura</code><span class="faint">crítico</span><span class="badge ok">leitura</span></div>
+            </div></div></div>
+          <div class="card"><h3><span class="chev">▾</span>jira <span class="r">v2.1.0</span></h3><div class="cb">
+            <p>Lê tickets para virar necessidade do Produtor. Inativo. <button class="switch" aria-label="inativo" style="vertical-align:middle"></button></p>
+            <div class="tools-l"><div><code>ler_ticket</code><span class="faint">diretor, autor</span><span class="badge warn">rede</span></div></div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const app=document.getElementById('app'), root=document.documentElement;
+  const store={get(k,d){try{const v=localStorage.getItem('fa-'+k);return v===null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('fa-'+k,JSON.stringify(v));}catch(e){}}};
+
+  /* ---------- barra lateral retrátil ---------- */
+  const sideBtn=document.getElementById('side-toggle');
+  const ICON_CLOSE='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg>', ICON_OPEN='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>';
+  function setSide(off){app.classList.toggle('side-off',off);sideBtn.innerHTML=off?ICON_OPEN:ICON_CLOSE;sideBtn.title=off?'Expandir barra lateral (Ctrl+B)':'Recolher barra lateral (Ctrl+B)';store.set('side-off',off);clampChat();}
+  sideBtn.addEventListener('click',()=>setSide(!app.classList.contains('side-off')));
+  document.querySelectorAll('.sec-h').forEach(h=>h.addEventListener('click',e=>{if(e.target.closest('.add'))return;h.parentElement.classList.toggle('closed');}));
+
+  /* ---------- largura do chat ---------- */
+  const resizer=document.getElementById('resizer');
+  const DEF=480, MIN=340, WORK_MIN=320;
+  function sideW(){return app.querySelector('.side').getBoundingClientRect().width;}
+  function maxChat(){return Math.max(MIN,innerWidth-sideW()-WORK_MIN-6);}
+  function setChat(w,save){w=Math.round(Math.min(Math.max(w,MIN),maxChat()));root.style.setProperty('--chat-w',w+'px');if(save)store.set('chat-w',w);}
+  function clampChat(){const cur=parseInt(getComputedStyle(root).getPropertyValue('--chat-w'))||DEF;setChat(cur,false);}
+  resizer.addEventListener('pointerdown',e=>{
+    e.preventDefault();resizer.setPointerCapture(e.pointerId);resizer.classList.add('drag');document.body.classList.add('dragging');
+    const start=e.clientX, w0=document.querySelector('.chat').getBoundingClientRect().width;
+    const move=ev=>setChat(w0+ev.clientX-start,false);
+    const up=ev=>{resizer.releasePointerCapture(e.pointerId);resizer.removeEventListener('pointermove',move);resizer.removeEventListener('pointerup',up);resizer.classList.remove('drag');document.body.classList.remove('dragging');setChat(w0+ev.clientX-start,true);};
+    resizer.addEventListener('pointermove',move);resizer.addEventListener('pointerup',up);
+  });
+  resizer.addEventListener('dblclick',()=>setChat(DEF,true));
+  window.addEventListener('resize',clampChat);
+
+  /* ---------- painel de trabalho (abas que abrem e fecham) ---------- */
+  const TABS={geral:'Visão geral',traj:'Trajetórias',consumo:'Consumo',config:'Configurações',plugins:'Plugins'};
+  let open=store.get('tabs',['geral','traj','consumo']).filter(t=>TABS[t]);
+  let active=store.get('tab',open[0]||null);
+  const wtl=document.getElementById('wtl');
+  const workBtn=document.getElementById('work-toggle');
+  function setWork(on){app.classList.toggle('work-off',!on);workBtn.classList.toggle('on',on);store.set('work-on',on);if(on)clampChat();}
+  workBtn.addEventListener('click',()=>setWork(app.classList.contains('work-off')));
+  document.getElementById('work-close').addEventListener('click',()=>setWork(false));
+
+  function renderTabs(){
+    wtl.innerHTML='';
+    open.forEach(id=>{
+      const b=document.createElement('button');b.className='wtab'+(id===active?' on':'');b.dataset.tab=id;
+      b.innerHTML='<span>'+TABS[id]+'</span><span class="x" title="Fechar aba">×</span>';
+      b.addEventListener('click',e=>{if(e.target.classList.contains('x')){closeTab(id);}else{activate(id);}});
+      b.addEventListener('auxclick',e=>{if(e.button===1)closeTab(id);});
+      wtl.appendChild(b);
+    });
+    document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.dataset.pane===active));
+    const closed=Object.keys(TABS).filter(t=>!open.includes(t));
+    document.getElementById('empty').classList.toggle('on',open.length===0);
+    document.getElementById('empty-opts').innerHTML=Object.keys(TABS).map(t=>'<button class="btn sm" data-open="'+t+'">'+TABS[t]+'</button>').join('');
+    document.getElementById('menu-pop').innerHTML='<div class="hd">Abrir aba</div>'+Object.keys(TABS).map(t=>'<button data-open="'+t+'"'+(open.includes(t)?' disabled':'')+'>'+TABS[t]+(open.includes(t)?' <span class="faint" style="margin-left:auto">aberta</span>':'')+'</button>').join('')
+      +'<div class="hd">Painel</div><button data-reset>Restaurar abas padrão</button>';
+    store.set('tabs',open);store.set('tab',active);
+  }
+  function activate(id){active=id;renderTabs();}
+  function openTab(id,sub){if(!open.includes(id))open.push(id);active=id;setWork(true);renderTabs();if(sub)subnav(sub);}
+  function closeTab(id){const i=open.indexOf(id);open=open.filter(t=>t!==id);if(active===id)active=open[Math.min(i,open.length-1)]||null;renderTabs();}
+  document.addEventListener('click',e=>{
+    const o=e.target.closest('[data-open]');
+    if(o&&!o.disabled){e.stopPropagation();openTab(o.dataset.open,o.dataset.sub);document.getElementById('menu-add').classList.remove('open');return;}
+    if(e.target.closest('[data-reset]')){open=['geral','traj','consumo'];active='geral';renderTabs();document.getElementById('menu-add').classList.remove('open');return;}
+    const m=document.getElementById('menu-add');
+    if(e.target.closest('#menu-add > .ib'))m.classList.toggle('open');else if(!e.target.closest('.menu-pop'))m.classList.remove('open');
+  });
+
+  /* ---------- cartões recolhíveis ---------- */
+  document.querySelectorAll('.card > h3').forEach(h=>h.addEventListener('click',e=>{if(e.target.closest('button,select,.switch'))return;h.parentElement.classList.toggle('closed');}));
+  document.querySelectorAll('[data-cards]').forEach(b=>b.addEventListener('click',()=>{b.closest('.pane').querySelectorAll('.card').forEach(c=>c.classList.toggle('closed',b.dataset.cards==='close'));}));
+
+  /* ---------- subnavegação da configuração ---------- */
+  function subnav(s){document.querySelectorAll('#subnav button').forEach(b=>b.classList.toggle('on',b.dataset.sub===s));document.querySelectorAll('.sub-pane').forEach(p=>p.classList.toggle('on',p.dataset.subpane===s));}
+  document.querySelectorAll('#subnav button').forEach(b=>b.addEventListener('click',()=>subnav(b.dataset.sub)));
+
+  /* ---------- pequenos controles ---------- */
+  document.querySelectorAll('.filters').forEach(f=>f.addEventListener('click',e=>{if(e.target.classList.contains('chip'))f.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===e.target));}));
+  document.querySelectorAll('.seg').forEach(s=>s.addEventListener('click',e=>{if(e.target.tagName==='BUTTON')s.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===e.target));}));
+  document.querySelectorAll('.switch').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('on')));
+  document.querySelectorAll('.att button:not(.btn)').forEach(b=>b.addEventListener('click',()=>document.querySelectorAll('.att button').forEach(x=>x.classList.toggle('on',x===b))));
+  document.querySelectorAll('.side .item').forEach(i=>i.addEventListener('click',()=>{i.parentElement.querySelectorAll('.item').forEach(x=>x.classList.toggle('on',x===i));}));
+
+  /* ---------- decisão do produtor ---------- */
+  document.querySelectorAll('[data-decide]').forEach(b=>b.addEventListener('click',()=>{
+    const d=document.getElementById('decision');d.classList.add('done');
+    d.querySelector('h4').textContent='✓ Decisão respondida · D2';
+    d.querySelector('.opts').innerHTML='<span class="muted">Você escolheu: <b>'+b.dataset.decide+'</b></span>';
+    const s=document.createElement('div');s.className='sys ok';s.innerHTML='<span class="tag">decisão</span>D2 retomada com "'+b.dataset.decide+'"<time>09:45</time>';
+    document.getElementById('msgs-in').appendChild(s);const m=document.getElementById('msgs');m.scrollTop=m.scrollHeight;
+    document.getElementById('pend')?.remove();
+  }));
+
+  /* ---------- atalhos e tema ---------- */
+  document.addEventListener('keydown',e=>{
+    if(e.ctrlKey&&e.key.toLowerCase()==='b'){e.preventDefault();sideBtn.click();}
+    if(e.ctrlKey&&e.key.toLowerCase()==='j'){e.preventDefault();workBtn.click();}
+  });
+  const t=store.get('theme',null);if(t)root.dataset.theme=t;
+  document.getElementById('theme').addEventListener('click',()=>{const dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;root.dataset.theme=dark?'light':'dark';store.set('theme',root.dataset.theme);});
+
+  /* ---------- estado inicial ---------- */
+  setSide(store.get('side-off',false));
+  setWork(store.get('work-on',true));
+  setChat(store.get('chat-w',DEF),false);
+  renderTabs();
+  const m=document.getElementById('msgs');m.scrollTop=m.scrollHeight;
+})();
+</script>
+</body>
+</html>
