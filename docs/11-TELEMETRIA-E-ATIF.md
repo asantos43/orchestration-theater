@@ -27,7 +27,7 @@ O log é a tabela `events` do SQLite, com id crescente. Tudo é evento (P6). A U
 | `navegador.*` | Ações do agente no navegador compartilhado (URL e print de cada uma), troca de quem controla a sessão e indicações `I<n>` enviadas pelo Produtor (§5.19, v0.13) |
 | `cenario.*` | Criação, importação, promoção, anexos e Diretor adormecido ou acordado (§5.20, v0.14) |
 | `tarefa.*` | Definição (versão, ensaio, aprovação) e execuções da tarefa, passo a passo, até a entrega (§5.20, v0.14) |
-| `daemon.*` | Reconciliação na subida (`daemon.recuperado`, com sessões retomadas, efeitos resolvidos e pendências) e backup (`daemon.backup`) (§5.21, v0.15) |
+| `daemon.*` | Reconciliação na subida (`daemon.recovered`, com sessões retomadas, efeitos resolvidos e pendências) e backup (`daemon.backup`) (§5.21, v0.15) |
 | `erro.*` | Erros classificados |
 
 O **tipo de falha** alimenta o roteamento do pipeline (execução, roteiro, estrutural, exceção crítica). O **motivo da interrupção** alimenta a retomada (cota, rede, queda, reinício, timeout, agente travado; §5.16). Os dois servem também para medir a qualidade por Executor, um desejo anterior do dono.

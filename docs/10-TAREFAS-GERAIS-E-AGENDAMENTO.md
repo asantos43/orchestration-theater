@@ -32,12 +32,15 @@ A biblioteca é o **croner** (licença MIT **[a confirmar]**). O próximo dispar
 
 | Situação | Padrão |
 |---|---|
-| Execução perdida (máquina desligada ou daemon parado) | Rodar uma vez, se o atraso for menor que a janela configurada (ex.: 12 h); senão, pular e registrar |
+| Execução perdida (máquina desligada ou daemon parado) | Rodar uma vez, se o atraso for menor que a janela configurada (padrão 12 h); senão, pular e registrar |
 | Sobreposição com a execução anterior | Pular e registrar |
 | Cota esgotada nos Executores do papel | Adiar até o reset, dentro de um prazo máximo |
 | Decisão do Produtor sem ninguém olhando | Pausar e notificar |
 
-Os valores padrão (janela, prazo de adiamento, espera, orçamento) são a decisão **N13** em [13](13-DECISOES-EM-ABERTO.md).
+Os valores padrão foram decididos em 2026-11-14 (**N13** em [13](13-DECISOES-EM-ABERTO.md)). São chaves de configuração `schedule.*`, com override por tarefa e três predefinições:
+- `balanced`, o padrão: roda a execução perdida se o atraso for até 12 h; adia por cota até 6 h e depois pula e notifica; espera a decisão 24 h e depois cancela e registra; orçamento de 1 h e, em API, US$ 5;
+- `conservative`: 2 h, 2 h, 4 h, 30 min e US$ 2;
+- `relaxed`: 24 h, até o reset, sem prazo, 2 h e US$ 10.
 
 ### Notificações
 

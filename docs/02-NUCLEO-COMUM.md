@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.17, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.18, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -97,6 +97,11 @@ NEED → PLANNING → REVIEWING_PLAN → SCRIPTING → EXECUTING
 - O roteiro é um **DAG de `Demand`**. Cada demanda traz contrato de entradas e saídas, `expectedFiles`, complexidade, timeout e critérios de aceite.
 - Antes de executar, o roteiro é validado em código: o DAG não pode ter ciclos, os contratos citados precisam existir e duas demandas em paralelo não podem prever o mesmo arquivo.
 - Os limites `Np`, `Nc` e o número de tentativas por demanda ficam em código e configuração, nunca no prompt.
+- **Padrões** (decididos em 2026-11-14, N4, N5, N13 e N14): todos são chaves de configuração, com três predefinições por grupo e chaves individuais.
+  - `limits.preset: moderate`: `Np` 2, `Nc` 2, 3 tentativas por demanda, timeout de 30 min (teto de 2 h).
+  - `delivery.mode: pr`: `direct_merge` só se o projeto permitir e a peça ou tarefa pedir; `ask` pergunta ao Produtor.
+  - `schedule.preset: balanced`: execução perdida até 12 h de atraso, adiamento por cota até 6 h, espera por decisão de 24 h, orçamento de 1 h e US$ 5 em API.
+  - `resume.preset: balanced`: 5 retomadas, espera pelo reset até 30 min, checkpoint a cada 10 min, travado com 10 min sem evento ou o mesmo erro 3 vezes.
 
 ## Workspace (arquitetura §5.5)
 

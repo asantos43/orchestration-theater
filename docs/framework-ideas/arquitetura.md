@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.17 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13).
+> Versão 0.18 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16).
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -217,6 +217,27 @@ NEED
   - com a peça em AWAITING_PRODUCER depois de uma reprovação ("aceito assim"): a peça vai a DELIVERING.
   - Nos dois casos, o PR informa que o Crítico foi dispensado, por quem e por quê. Nenhuma ordem dispensa o Crítico.
 
+**Limites do pipeline** (decidido em 2026-11-14, N4). Os limites são chaves de configuração, com valor global e override por projeto e por tarefa agendada. O padrão é a predefinição `moderate`.
+
+```yaml
+limits:
+  preset: moderate             # moderate | economical | persistent
+  plan_reviews: 2              # Np: reprovações do plano antes de AWAITING_PRODUCER
+  critic_rejections: 2         # Nc: reprovações do Crítico antes da falha estrutural
+  attempts_per_demand: 3
+  demand_timeout: 30m          # quando o Roteirista não define o timeoutMin da demanda
+  demand_timeout_max: 2h       # teto do que o Roteirista pode pedir
+```
+
+| Predefinição | `Np` | `Nc` | Tentativas | Timeout | Teto |
+|---|---|---|---|---|---|
+| `moderate` (padrão) | 2 | 2 | 3 | 30 min | 2 h |
+| `economical` | 1 | 1 | 2 | 20 min | 1 h |
+| `persistent` | 3 | 3 | 4 | 45 min | 3 h |
+
+- A predefinição (`preset`) preenche todos os valores de uma vez. Uma chave individual sobrepõe só o valor dela **[proposta]**.
+- O schema zod vem do módulo dono das chaves e é validado na subida (5.18). A aba Configurações › Limites e `ot config` mostram e mudam as chaves.
+
 **Pontos de julgamento.** São os únicos lugares onde o modelo do Diretor decide, cada um com schema:
 1. classificar a crítica negativa (execução / roteiro / estrutural / exceção) e listar as demandas afetadas;
 2. Ator estourou o tempo: o trabalho parcial (já commitado, ver 5.5) segue para o Crítico ou para outro Ator continuar;
@@ -277,6 +298,19 @@ Wrapper fino em TS sobre `git worktree` e `gh`. Padrões emprestados do **ccmana
 - conflito de merge = falha de roteiro.
 
 **`DELIVERING`:** PR de `play/<id>/integration` para a base (`gh pr create`), ou merge direto se a política do projeto permitir.
+
+**Política de entrega** (decidido em 2026-11-14, N5). É a chave `delivery.mode`, com valor global e override por projeto, por peça e por tarefa agendada. O padrão é `pr`.
+
+```yaml
+delivery:
+  mode: pr                     # pr | direct_merge | ask
+  allow_direct_merge: false    # só no projeto; sem ela, direct_merge e ask viram pr
+```
+
+- `pr`: abre o PR e para ali. É o padrão.
+- `direct_merge`: faz o merge na base. Só vale se o projeto tiver `allow_direct_merge: true` **e** a peça ou a tarefa pedir.
+- `ask`: o Diretor pergunta ao Produtor, em DELIVERING, se abre PR ou faz merge. Sem ninguém olhando (tarefa agendada), vira `pr`.
+- O PR e o evento de entrega registram o modo usado e quem o pediu.
 
 **Limpeza:** worktrees de tentativas descartadas são removidas; as aprovadas, depois da entrega.
 
@@ -678,7 +712,7 @@ Biblioteca: **croner** (TypeScript, cron com fuso horário e sem dependências; 
 
 | Situação | Opções | Padrão |
 |---|---|---|
-| **Execução perdida** (máquina desligada ou daemon parado no horário) | rodar uma vez ao voltar / pular | rodar uma vez, se o atraso for menor que a janela configurada (ex.: 12 h); senão, pular e registrar |
+| **Execução perdida** (máquina desligada ou daemon parado no horário) | rodar uma vez ao voltar / pular | rodar uma vez, se o atraso for menor que a janela configurada (padrão 12 h); senão, pular e registrar |
 | **Sobreposição** (a execução anterior ainda roda) | pular / enfileirar / cancelar a anterior | pular e registrar |
 | **Cota** (assinaturas do papel esgotadas) | adiar até o reset / usar a regra do papel (`next`/`wait`) / pular | adiar até o reset, dentro de um prazo máximo |
 | **Decisão do Produtor sem ninguém olhando** | pausar e notificar / resposta padrão definida na tarefa / esperar até um prazo e cancelar | pausar e notificar |
@@ -711,6 +745,35 @@ Biblioteca: **croner** (TypeScript, cron com fuso horário e sem dependências; 
   - `ot run <task>`, que também é o comando chamado pelo gatilho do sistema operacional.
 
 **Repetição até uma condição** ("rodar até os testes passarem") **não** é agendamento: já é o ciclo de correção do próprio pipeline (Crítico → correção, com os limites `Nc` e de tentativas).
+
+**Padrões do agendador** (decidido em 2026-11-14, N13). As regras acima são chaves de configuração, com valor global e override por tarefa. O padrão é a predefinição `balanced`. Valem também para os cenários do tipo tarefa (5.20).
+
+```yaml
+schedule:
+  preset: balanced             # balanced | conservative | relaxed
+  missed_run:
+    mode: run_once             # run_once | skip
+    window: 12h                # atraso máximo para rodar; 0 = sem limite
+  overlap: skip                # skip | queue | cancel_previous
+  quota_exhausted:
+    mode: postpone             # postpone | role_rule | skip
+    max_postpone: 6h           # 0 = até o reset, sem prazo; estourou, pula e notifica
+  unattended_decision:
+    mode: pause_notify         # pause_notify | default_answer
+    timeout: 24h               # 0 = espera sem prazo; estourou, cancela e registra
+  budget:
+    max_time: 1h
+    max_api_cost_usd: 5        # só perfis de API
+```
+
+| Predefinição | Janela da perdida | Adiamento por cota | Espera por decisão | Tempo | Custo (API) |
+|---|---|---|---|---|---|
+| `balanced` (padrão) | 12 h | 6 h | 24 h | 1 h | US$ 5 |
+| `conservative` | 2 h | 2 h | 4 h | 30 min | US$ 2 |
+| `relaxed` | 24 h | até o reset | sem prazo | 2 h | US$ 10 |
+
+- A predefinição (`preset`) preenche todos os valores de uma vez. Uma chave individual sobrepõe só o valor dela **[proposta]**.
+- O schema zod vem do módulo dono das chaves e é validado na subida (5.18). A aba Configurações › Limites e `ot config` mostram e mudam as chaves.
 
 ### 5.16 Interrupção e retomada de sessões
 
@@ -766,7 +829,7 @@ O daemon classifica a causa pelos sinais disponíveis:
 | **Agente travado ou em laço** | Passagem de bastão para **outro** Executor (diversidade) | Sim |
 | **Recusa do modelo** ou erro de permissão | Ponto de julgamento do Diretor: reformular, trocar de Executor ou perguntar ao Produtor | Sim |
 
-**Interrupções de causa externa** (cota, rede, queda, reinício) **não** consomem as tentativas da demanda. Só contam as falhas atribuíveis ao agente. Um limite próprio de retomadas por tentativa (ex.: 5) evita laço infinito: passou disso, o caso vai para o Diretor.
+**Interrupções de causa externa** (cota, rede, queda, reinício) **não** consomem as tentativas da demanda. Só contam as falhas atribuíveis ao agente. Um limite próprio de retomadas por tentativa (padrão 5) evita laço infinito: passou disso, o caso vai para o Diretor.
 
 #### Checkpoints
 
@@ -800,7 +863,33 @@ RESUMING(native) ──falhou──→ RESUMING(handoff)
 retomadas > limite → DECIDING (ponto de julgamento do Diretor)
 ```
 
-Tudo vira evento (`session.interrupted`, `session.resumed`, com causa, forma e Executor de origem e destino) e aparece no chat como mensagem de sistema. Exemplo: "D2 interrompida: cota de codex-1 esgotada; retomada em sonnet-medio por passagem de bastão".
+Tudo vira evento (`session.interrupted`, `session.resumed`, com causa, forma e Executor de origem e destino) e aparece no chat como mensagem de sistema. Exemplo: "D2 interrompida: cota de codex-1 esgotada; retomada em sonnet-medium por passagem de bastão".
+
+#### Padrões da retomada
+
+Decidido em 2026-11-14 (N14). Os valores são chaves de configuração, com valor global e override por projeto. O padrão é a predefinição `balanced`.
+
+```yaml
+resume:
+  preset: balanced             # balanced | patient | agile
+  max_resumes: 5               # por tentativa; passou, vai ao ponto de julgamento do Diretor
+  quota_wait_max: 30m          # reset mais perto que isso, com regra wait: espera; senão, passa o bastão
+  checkpoint_every: 10m        # só se houver mudança; além do lote de edições e da interrupção
+  stuck:                       # agente travado: o que vier primeiro
+    no_event_for: 10m
+    same_error_times: 3
+  transient_backoff: [30s, 2m, 10m]   # erro transitório; esgotou, passa o bastão
+```
+
+| Predefinição | Retomadas | Espera pelo reset | Checkpoint | Sem evento | Mesmo erro |
+|---|---|---|---|---|---|
+| `balanced` (padrão) | 5 | 30 min | 10 min | 10 min | 3 vezes |
+| `patient` | 8 | 2 h | 15 min | 20 min | 5 vezes |
+| `agile` | 3 | 10 min | 5 min | 5 min | 2 vezes |
+
+- A predefinição (`preset`) preenche todos os valores de uma vez. Uma chave individual sobrepõe só o valor dela **[proposta]**.
+- O schema zod vem do módulo dono das chaves e é validado na subida (5.18). A aba Configurações › Limites e `ot config` mostram e mudam as chaves.
+- O recuo do erro transitório (`transient_backoff`) não muda com a predefinição **[proposta]**.
 
 ### 5.17 Ordens do Produtor (globais e locais)
 
@@ -2152,8 +2241,8 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 1. Fork (Emdash como principal candidato; Orca, AionUi, Paradev ou Happier) ou projeto próprio com trechos reaproveitados (Fase 0).
 2. Modo de distribuição: pessoal (assinaturas) ou produto (API para Claude), depois da resposta sobre R1.
 3. *(Decidida em 2026-11-13: tipos de cenário, ver "Decididas" e a seção 5.20.)*
-4. Valores padrão de `Np`, `Nc`, tentativas por demanda e timeouts.
-5. Política de entrega por projeto: PR sempre, ou merge direto permitido.
+4. *(Decidida em 2026-11-14: limites do pipeline como chaves de configuração, ver "Decididas" e a seção 5.4.)*
+5. *(Decidida em 2026-11-14: política de entrega como chave de configuração, ver "Decididas" e a seção 5.5.)*
 6. Daemon como serviço de logon ou processo do app desktop (ou os dois). O comportamento sem login foi decidido à parte (5.21): na v1 o daemon espera o login.
 7. Electron ou Tauri (só se a Fase 13 for feita).
 8. Executores padrão de cada papel na primeira execução.
@@ -2161,8 +2250,8 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 10. Custo em moeda para assinaturas (só o uso relativo da cota) versus API (custo real).
 11. Framework da TUI: Ink (padrão) ou OpenTUI, pelo teste comparativo da Fase 0 (obrigatório).
 12. Se e quando fazer a web (Fase 12) e o app desktop (Fase 13).
-13. Padrões do agendador: janela para rodar execução perdida, prazo máximo de adiamento por cota, prazo de espera por decisão sem ninguém olhando, orçamento padrão por execução.
-14. Padrões da retomada: limite de retomadas por tentativa, prazo máximo para esperar o reset antes de passar o bastão, intervalo dos checkpoints, critério de "agente travado" (minutos sem evento, repetições do mesmo erro).
+13. *(Decidida em 2026-11-14: padrões do agendador como chaves de configuração, ver "Decididas" e a seção 5.15.)*
+14. *(Decidida em 2026-11-14: padrões da retomada como chaves de configuração, ver "Decididas" e a seção 5.16.)*
 15. Detalhes dos níveis de plugin com comportamento de mod, para depois da v1 (5.14): quais pontos de interceptação existem, o prazo padrão de um gancho, o que acontece quando ele falha ou estoura o prazo (bloquear ou deixar passar) e se uma sonda de cota ou um notificador de um provedor novo podem vir de plugin, sem virar pacote oficial (5.18).
 16. *(Decidida em 2026-11-14: padrões dos cenários como chaves de configuração, ver "Decididas" e a seção 5.20.)*
 17. Como destrancar os segredos no modo sem login (5.21): mecanismo nativo da máquina (DPAPI, TPM, `systemd-creds`) ou arquivo cifrado com chave protegida. Decide-se ao abrir a Fase 10b, depois da medição. O resto do item foi decidido em 2026-11-14, ver "Decididas".
@@ -2179,6 +2268,7 @@ Decididas:
 - durabilidade e recuperação (2026-11-13, seção 5.21): store com `synchronous=FULL` sempre; reconciliação explícita na subida, com efeito ambíguo resolvido pelo verificador da ferramenta ou pelo Produtor; na v1 a máquina religada sem login espera o login, e a meta depois da v1 é o daemon completo sem login; backup automático diário, guardando 7.
 - padrões dos cenários e da durabilidade (2026-11-14, seções 5.20 e 5.21; eram os itens 16 e 17): todos são chaves de configuração, com várias opções de escolha. Os padrões são estes: o Diretor adormece depois de 15 min; um anexo copiado tem até 50 MB; ficam as 30 últimas execuções inteiras; todas as versões da definição são guardadas; o backup roda uma vez por dia a partir das 3h (ou na primeira subida depois), na pasta `backups/` dos dados do daemon, com o store e as pastas de tarefa e chat, menos as execuções. O daemon sem login vira a Fase 10b, logo depois da v1. O mecanismo dos segredos sem login é escolhido ao abrir a fase, depois da medição.
 - idioma (2026-11-14, seção 5.22): código, dados, configuração, eventos, ferramentas MCP, comandos, logs, commits do próprio OTheater e prompts em inglês; respostas ao Produtor no idioma dele, por ordem global; interface com catálogo `en` e `pt-BR` desde a primeira tela, idioma do sistema e chave `ui.locale`; nomes canônicos em inglês, com o glossário da seção 13, aprovado pelo dono no mesmo dia; detalhes aprovados no mesmo dia: a primeira subida oferece a ordem de idioma, catálogos em `locales/` carregados pelo `packages/client`, biblioteca escolhida na Fase 1, `auto` leva `pt-*` a `pt-BR` e o resto a `en`, plugin com catálogo próprio e `en` obrigatório, CI que verifica os catálogos; este repositório continua em português, com os identificadores em inglês.
+- padrões do pipeline, da entrega, do agendador e da retomada (2026-11-14, seções 5.4, 5.5, 5.15 e 5.16; eram os itens 4, 5, 13 e 14): todos são chaves de configuração, com predefinições que o Produtor escolhe e chaves individuais. Os padrões são estes: `limits.preset: moderate` (`Np` 2, `Nc` 2, 3 tentativas por demanda, timeout de 30 min com teto de 2 h); `delivery.mode: pr`, com `direct_merge` só se o projeto permitir e a peça ou tarefa pedir, e `ask`; `schedule.preset: balanced` (execução perdida roda se o atraso for até 12 h, adiamento por cota até 6 h, espera por decisão de 24 h, orçamento de 1 h e US$ 5 em API); `resume.preset: balanced` (5 retomadas, espera pelo reset até 30 min, checkpoint a cada 10 min, travado com 10 min sem evento ou o mesmo erro 3 vezes).
 
 ## 13. Glossário
 
@@ -2286,6 +2376,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Cenários (v0.14) | Projeto, tarefa e chat citados, sem definição; tarefa geral sem formato (N3) | Seção 5.20: base comum (Diretor e chat próprios, pasta, anexos `A<n>`, Diretor adormecido); registro de tipos de cenário; projeto com perfil (`software`: changelog, commits, PRs, publicação, CI) e importação que respeita as convenções; tarefa com definição versionada desenhada pelos papéis e ensaiada, motor de passos tipados e gatilhos; chat com Diretor barato e papel `consultant`; promoção para cenário novo ligado; tabelas `scenario_repos`, `task_definitions`, `task_runs` e `attachments`; R18; Fases 3, 4 e 9b crescem | Definições do dono para os três tipos; escolhas decididas por ele no mesmo dia, incluindo usar os papéis para desenhar a tarefa e deixar o Diretor leve |
 | Durabilidade (v0.15) | Snapshot por transição, retomada (5.16) e regra da janela (5.15), sem modo de gravação definido, sem rotina de reconciliação, sem backup e sem resposta para a máquina religada sem login | Seção 5.21: `synchronous=FULL`; gravar antes de agir; reconciliação na subida com verificadores de efeito; na v1 espera o login, depois daemon completo sem login; backup diário com 7 cópias; R19; Fase 3 cresce 0,5 semana | Pergunta do dono sobre fechar a interface, reiniciar e faltar luz; escolhas decididas por ele no mesmo dia |
 | Idioma (v0.17) | Identificadores em português, sem regra de idioma; interface só em português nos mockups | Seção 5.22: código, dados, configuração, eventos, ferramentas, comandos, logs e prompts em inglês; respostas ao Produtor no idioma dele, por ordem; catálogo `en` e `pt-BR` desde a primeira tela, com `ui.locale`; glossário com o nome em inglês de cada termo; identificadores deste documento renomeados (os antigos estão no histórico do git, e o glossário faz a ponte) | Pergunta do dono; escolhas decididas por ele no mesmo dia |
+| Padrões do pipeline (v0.18) | `Np`, `Nc`, tentativas, timeouts, política de entrega, regras do agendador e da retomada sem valor (itens 4, 5, 13 e 14) | Chaves `limits.*`, `delivery.*`, `schedule.*` e `resume.*`, cada grupo com três predefinições e chaves individuais; padrões `moderate`, `pr`, `balanced` e `balanced` | Decisões do dono, que pediu que cada padrão seja chave de configuração com várias opções |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |
