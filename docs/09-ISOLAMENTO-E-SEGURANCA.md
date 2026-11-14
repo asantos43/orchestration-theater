@@ -107,7 +107,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 |---|---|---|
 | R4 | Sandbox fraco no Windows | Bash nativo removido; cascas; usuário de baixo privilégio; Job Object; testes de fuga |
 | R6 | RAM com muitos Atores (um `claude` por sessão) | Admissão por sessão; plugins agregados; semáforo de comandos pesados |
-| R13 | Tarefa agendada faz algo indesejado sem ninguém olhando | Entrega por PR; orçamento por execução; decisão sem ninguém olhando pausa por padrão |
+| R13 | Tarefa agendada faz algo indesejado sem ninguém olhando | Entrega por PR; orçamento por execução; decisão sem ninguém olhando segue com a recomendada depois de um prazo, e numa decisão irreversível só com a opção segura (v0.26) |
 | R15 | Retomada repete efeito colateral | Chaves de idempotência; checkpoints; pacote de continuação |
 | — | Injeção de prompt por conteúdo da web | Separar leitura e envio; `http_get` com domínios; `effects` declarados nos plugins |
 | — | Contas sinalizadas por uso automatizado | [07](07-ASSINATURAS-E-TERMOS.md); troca de Executor sem reescrever o núcleo |

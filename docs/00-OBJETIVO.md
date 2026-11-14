@@ -60,7 +60,7 @@ A máquina de estados está na §5.4 da arquitetura.
 2. Um Executor roda a suíte de testes e a compilação do projeto **sem falha de permissão ou sandbox**: zero `EPERM` causado pela ferramenta (ver o caso do D151 em [01](01-CONTEXTO-E-PROBLEMAS.md)).
 3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao próximo Executor elegível** (`next`) ou **espera o reset com aviso** (`wait`), sem laço nem espera cega (§5.7, §5.16).
 4. A trajetória de cada agente pode ser **vista ao vivo** e **exportada em ATIF-v1.8**, validada pelo `TrajectoryValidator` do Harbor (§5.11).
-5. Uma tarefa agendada roda sem ninguém olhando, **entrega por PR** e **pausa e notifica** quando precisa de decisão do Produtor (§5.15).
+5. Uma tarefa agendada roda sem ninguém olhando, **entrega por PR** e, quando precisa de decisão do Produtor, espera um prazo e segue com a opção recomendada, que numa decisão irreversível é sempre a segura (§5.15, v0.26).
 6. O mesmo daemon atende **dois projetos ao mesmo tempo** sem misturar worktrees, perfis ou estado.
 7. Daemon e TUI instalam e rodam em **Windows**, **macOS** e **Linux**, com o Windows como primeira plataforma.
 8. Custo da orquestração: o consumo de cota do Orquestrador por demanda é pequeno e **medido**. A meta numérica é uma decisão em aberto (Q14 em [13](13-DECISOES-EM-ABERTO.md)).

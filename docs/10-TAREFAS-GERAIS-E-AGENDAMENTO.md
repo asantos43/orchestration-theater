@@ -35,12 +35,14 @@ A biblioteca é o **croner** (licença MIT **[a confirmar]**). O próximo dispar
 | Execução perdida (máquina desligada ou daemon parado) | Rodar uma vez, se o atraso for menor que a janela configurada (padrão 12 h); senão, pular e registrar |
 | Sobreposição com a execução anterior | Pular e registrar |
 | Cota esgotada nos Executores do papel | Adiar até o reset, dentro de um prazo máximo |
-| Decisão do Produtor sem ninguém olhando | Pausar e notificar |
+| Decisão do Produtor sem ninguém olhando | Esperar o prazo da predefinição e seguir com a opção recomendada; numa decisão irreversível, só com a opção segura (v0.26; era pausar e notificar) |
 
 Os valores padrão foram decididos em 2026-11-14 (**N13** em [13](13-DECISOES-EM-ABERTO.md)). São chaves de configuração `schedule.*`, com override por tarefa e três predefinições:
-- `balanced`, o padrão: roda a execução perdida se o atraso for até 12 h; adia por cota até 6 h e depois pula e notifica; espera a decisão 24 h e depois cancela e registra; orçamento de 1 h e, em API, US$ 5;
-- `conservative`: 2 h, 2 h, 4 h, 30 min e US$ 2;
-- `relaxed`: 24 h, até o reset, sem prazo, 2 h e US$ 10.
+- `balanced`, o padrão: roda a execução perdida se o atraso for até 12 h; adia por cota até 6 h e depois pula e notifica; segue com a recomendada depois de 1 h sem resposta (no modo `pause_notify`, espera a decisão 24 h e depois cancela e registra); orçamento de 1 h e, em API, US$ 5;
+- `conservative`: 2 h, 2 h, 2 h (4 h em `pause_notify`), 30 min e US$ 2;
+- `relaxed`: 24 h, até o reset, 30 min (sem prazo em `pause_notify`), 2 h e US$ 10.
+
+O padrão da decisão sem ninguém olhando foi revisto em 2026-11-14 (**N30**): os prazos padrão de 1 h, 2 h e 30 min foram escolhidos pelo dono e mudam na chave `schedule.unattended_decision.wait_for`, globalmente ou por tarefa.
 
 ### Notificações
 
