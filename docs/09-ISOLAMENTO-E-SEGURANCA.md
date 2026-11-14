@@ -99,7 +99,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 - Escuta em `127.0.0.1` por padrão.
 - O **token é obrigatório mesmo no acesso local**, com CORS fechado, para que nenhuma página de outra origem comande o daemon.
 - Acesso remoto só com TLS, via reverse proxy. É tratado como acesso administrativo. Se ele é necessário é a decisão N9.
-- Plugins rodam como **processos externos** (servidores MCP), agregados pelo daemon. Nenhum código de plugin roda dentro do processo do daemon.
+- Plugins rodam como **processos externos** (servidores MCP), agregados pelo daemon. Nenhum código de plugin roda dentro do processo do daemon nem na interface: o painel do plugin é declarativo (arquitetura §5.14 e §5.18, v0.12).
 
 ## Riscos (arquitetura §11)
 

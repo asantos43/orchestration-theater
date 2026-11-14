@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.11 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`.
+> Versão 0.12 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -35,6 +35,7 @@ O OTheater é um sistema de agentes de código que:
 | P9 | Recursos sob controle de admissão | O paralelismo é limitado por RAM, cota e pool, não só pelo que o Roteirista permite |
 | P10 | Versões fixadas | ACP, adaptadores e CLIs mudam toda semana: tudo fixado, atualizado de propósito, com testes de contrato |
 | P11 | Só licenças permissivas | Código próprio em MIT; código copiado e dependências empacotadas em MIT, Apache-2.0, ISC ou BSD; copyleft proibido (seção 6.0) |
+| P12 | Contratos antes de implementações | Toda fronteira com o mundo de fora e todo ponto que varia por cliente, provedor ou sistema é uma **porta** (interface TypeScript + schema zod) em `@otheater/core`; as implementações são **adaptadores** trocáveis, montados num único ponto; fluxos, papéis, ferramentas e chaves de `regra` ficam em **registros** tipados (seção 5.18) |
 
 ## 3. Premissas e restrições
 
@@ -50,7 +51,7 @@ O OTheater é um sistema de agentes de código que:
 - **OpenAI:** a documentação recomenda chave de API para automação e pede tratar `auth.json` como senha. O uso do login ChatGPT em ferramentas de terceiros tem relatos de ser permitido por parceria **[a confirmar]**.
 - **Várias contas pessoais** para somar limites: conferir os termos de cada provedor. Planos de time/empresa com vários assentos são o caminho limpo.
 - **ACP (Agent Client Protocol)** é o protocolo entre o daemon e os Executores. **MCP** é o protocolo das ferramentas do framework e dos plugins.
-- **Windows primeiro**, sem impedir macOS/Linux. O que é específico do sistema operacional fica atrás de `platform/`.
+- **Windows primeiro**, sem impedir macOS/Linux. O que é específico do sistema operacional fica atrás de portas (5.18), com adaptadores por sistema (`platform-windows`, `platform-posix`).
 - **Segredos:** chaves de API ficam no cofre do sistema operacional; nunca em arquivo de configuração, log ou evento.
 - **Operação local por padrão:** o daemon escuta em `127.0.0.1`; acesso remoto exige token + TLS.
 
@@ -85,6 +86,8 @@ O OTheater é um sistema de agentes de código que:
            │                                       │
            └──── MCP do framework (HTTP) ──────────┘  + plugins MCP do papel (HTTP)
 ```
+
+**Portas e adaptadores (5.18):** cada módulo acima depende só das portas de `@otheater/core`. As bibliotecas entre parênteses são os **adaptadores padrão**, montados no ponto de montagem do daemon e trocáveis pela configuração.
 
 **ACP em dois níveis:** o daemon é cliente ACP da sessão do Orquestrador (com quem você conversa pelo chat) e também de todos os Executores. O Orquestrador **não** abre Executores: ele chama ferramentas MCP do framework, e é o daemon que abre as sessões.
 
@@ -141,6 +144,8 @@ interface ClientAdapter {
 }
 ```
 
+`ClientAdapter` é uma porta de `@otheater/core` (5.18), e cada cliente é um pacote `@otheater/adapter-<cliente>` que passa na suíte de conformidade da porta. A conversa com o Executor fica numa porta separada, `AgentSession`, cujo adaptador padrão é o ACP.
+
 **Pools por `(cliente, perfil)`:**
 - até `K` sessões por processo do adaptador; acima disso, abre outro processo;
 - processo ocioso por `idleMs` é encerrado;
@@ -151,7 +156,7 @@ interface ClientAdapter {
 
 **Ciclo curto:** sessão termina → resultado estruturado gravado → sessão fechada.
 
-**Saída de emergência:** se um adaptador se mostrar instável, a interface permite trocá-lo pelo modo headless do próprio cliente sem mexer no resto:
+**Saída de emergência:** se um adaptador se mostrar instável, a porta `AgentSession` (5.18) permite trocá-lo pelo modo headless do próprio cliente sem mexer no resto:
 - `claude -p --output-format stream-json`;
 - `codex exec --json`, ou o `@openai/codex-sdk`.
 
@@ -175,7 +180,7 @@ interface ClientAdapter {
 
 ### 5.4 Máquina de estados do pipeline
 
-**XState v5** modela a peça. O snapshot (`getPersistedSnapshot()`) é gravado no SQLite a cada transição e reidratado no reinício.
+**XState v5** modela a peça. A peça teatral é o **fluxo padrão** do registro de fluxos (5.18): uma máquina montada com etapas reutilizáveis, registrada por nome e versão. Outros fluxos dependem da decisão N3. O snapshot (`getPersistedSnapshot()`) é gravado no SQLite a cada transição e reidratado no reinício.
 
 Cuidados conhecidos:
 - restaurar só na mesma versão da máquina (o snapshot guarda a versão, e há migração explícita quando ela mudar);
@@ -516,6 +521,8 @@ O que o Ink não traz e escrevemos (`packages/tui/src/components/`):
 
 Componentes básicos (campos, listas, seletores) vêm do `@inkjs/ui` (MIT).
 
+Abas, comandos da paleta e ações do mapa de teclas ficam num registro do `packages/client` (5.18). Uma aba nova é uma entrada no registro, não uma mudança no layout. Plugins entram pelo painel declarativo (5.14), desenhado pela TUI e pela web.
+
 Adaptações do terminal em relação à web:
 - **DAG:** vira lista com dependências (`D4 ← D2, D3`), sem desenho gráfico;
 - **papéis:** reordenados com Shift+↑↓, sem arrastar;
@@ -591,7 +598,7 @@ Os mockups mostram os padrões de Windows/Linux.
 
 ### 5.14 Plugins
 
-Plugin = **servidor MCP + manifesto** (+ painel opcional no dashboard).
+Plugin = **servidor MCP + manifesto** (+ painel declarativo opcional). É a camada **externa** de extensão (5.18): roda fora do processo do daemon.
 
 ```yaml
 # plugin.yaml
@@ -609,12 +616,27 @@ ferramentas:
     papeis: [ator]
     efeitos: escrita_externa
     exige_aprovacao_produtor: true
+  - nome: listar_migracoes
+    papeis: []            # só o painel usa
+    efeitos: leitura
 segredos: [PG_URL]       # resolvidos do cofre, injetados só no servidor do plugin
-painel: dist/panel.js     # opcional
+eventos: [migracao_aplicada]   # publicados como plugin.banco-postgres.migracao_aplicada
+painel:                   # opcional e declarativo: a TUI e a web desenham
+  - tipo: tabela
+    titulo: Migrações pendentes
+    fonte: listar_migracoes   # ferramenta do próprio plugin, com efeitos: leitura
+  - tipo: acao
+    rotulo: Migrar
+    ferramenta: migrar        # segue exige_aprovacao_produtor
 ```
 
 - O daemon lê os manifestos, monta o conjunto de ferramentas de cada papel e gera as camadas 1 e 2 de permissão automaticamente.
 - Ativação por projeto.
+- **Painel declarativo** (decidido em 2026-11-13): o plugin descreve o painel em dados, validados por schema, e **nenhum código do plugin roda na interface**.
+  - Tipos de bloco na v1: `tabela`, `lista`, `metricas` e `acao`. O schema do painel tem versão própria (5.18), e um tipo novo entra nele.
+  - A `fonte` de um bloco só pode ser uma ferramenta do próprio plugin com `efeitos: leitura`.
+  - Uma `acao` chama uma ferramenta do plugin em nome do Produtor, pela API, com as mesmas permissões, aprovação e evento de qualquer chamada.
+- **Eventos próprios:** o plugin só publica tipos com o prefixo `plugin.<id>.*`, declarados no manifesto.
 
 ### 5.15 Agendador (tarefas agendadas e repetidas)
 
@@ -870,6 +892,133 @@ Revogar encerra a ordem antes do fim da vigência. Regras:
 - revogadas e expiradas entram como histórico;
 - textos que tinham efeito em código no kit não são importados como texto: vão para uma lista que o Produtor decide.
 
+### 5.18 Portas, adaptadores e registros (extensibilidade)
+
+Decidido em 2026-11-13 (v0.12), a pedido do dono: como tudo é TypeScript, a arquitetura usa ao máximo as abstrações da linguagem. O objetivo é que trocar ou acrescentar um cliente, um provedor, um sistema operacional, um armazenamento ou um fluxo não exija mexer no núcleo. O desenho é de **portas e adaptadores** (P12):
+- **porta:** interface TypeScript + schemas zod em `@otheater/core`, com versão própria;
+- **adaptador:** implementação de uma porta, num pacote `@otheater/adapter-*`;
+- **registro:** lista tipada em que os módulos oficiais contribuem entradas (fluxos, papéis, ferramentas, chaves de `regra`, tipos de evento...).
+
+#### Regras
+
+1. **Porta em toda fronteira e em todo ponto de variação.** Isso vale para tudo que fala com o mundo de fora (processos, rede, disco, git, cofre, sistema operacional, relógio) e para tudo que muda por cliente, provedor ou sistema. A lógica interna pura **não** tem porta: validação do roteiro, precedência e conflito de ordens, algoritmo de seleção e cálculo de vigência são funções puras em `@otheater/core`, testadas sem fakes.
+2. **O núcleo não conhece implementações.** Fora do adaptador não há `if (cliente === 'codex')` nem `if (process.platform === 'win32')`. O núcleo pergunta as **capacidades** do adaptador, como o ACP faz no `initialize` (ex.: `loadSession`, multissessão, MCP HTTP, config options).
+3. **Regra de dependência:**
+   - `core` depende só do zod;
+   - cada adaptador depende de `core` e das bibliotecas dele;
+   - o daemon depende de `core` e só importa adaptadores no ponto de montagem.
+
+   A CI verifica a regra. A ferramenta é escolhida na Fase 1 (ex.: `dependency-cruiser`, licença MIT **[a confirmar]**).
+4. **Erros tipados fazem parte do contrato** (`CotaEsgotada`, `AdaptadorIndisponivel`, `PermissaoNegada`, `Transitorio`...). A seleção (5.7) e a política de retomada por causa (5.16) decidem pelo tipo do erro, nunca pelo texto da mensagem.
+5. **Toda porta nasce com três coisas:** um adaptador real, um adaptador falso para os testes e uma suíte de conformidade. Porta sem uso real não entra, para evitar abstração especulativa (R16).
+
+#### Duas camadas de extensão
+
+Decidido em 2026-11-13.
+
+| Camada | Quem escreve | Onde roda | Como entra |
+|---|---|---|---|
+| **Interna** | o projeto (pacotes `@otheater/*`) | no processo do daemon | adaptador escolhido por id na configuração e montado no ponto de montagem |
+| **Externa** | qualquer um | fora do processo | plugins MCP (5.14): ferramentas, painel declarativo e tipos de evento `plugin.<id>.*` |
+
+- Código de terceiros **nunca** roda no processo do daemon nem na interface (P5).
+- Um adaptador novo escrito por terceiros (ex.: outro cliente de agente) entra no projeto por PR, como pacote oficial, depois de passar na suíte de conformidade da porta.
+
+#### Portas
+
+| Porta | O que abstrai | Adaptador padrão | Outros previstos |
+|---|---|---|---|
+| `ClientAdapter` | cliente de agente: comando, ambiente, perfil, login (5.2) | `claude-code`, `codex`, `opencode` | `gemini` |
+| `AgentSession` | conversa com o Executor: abrir, enviar prompt, receber o stream, cancelar, carregar (5.2) | ACP (`@agentclientprotocol/sdk`) | modo headless (`claude -p`, `codex exec --json`), que é a saída de emergência |
+| `QuotaProbe` | sinal de cota de um provedor (5.6) | statusline (Claude), `app-server` (Codex), `token_plan/remains` (MiniMax), erro de limite | provedores novos |
+| `UsageSource` | histórico de consumo (5.6) | ccusage | contabilidade local |
+| `SecretVault` | cofre de segredos (5.6) | `@napi-rs/keyring` | arquivo criptografado com senha mestra; variável de ambiente do serviço |
+| `Store` | persistência por agregado (peças, demandas, ordens, agenda...) e transações (seção 7) | SQLite WAL + Kysely sobre `better-sqlite3` | `node:sqlite`; em memória, para os testes |
+| `EventLog` | log de eventos de id crescente (P6, 5.11) | tabela `events` do `Store` | — |
+| `EventSink` | saída do log de eventos para fora | SSE, OTel, exportador ATIF | arquivo NDJSON; outros formatos de trajetória |
+| `TelemetryIngest` | entrada da telemetria dos clientes (5.11) | receptor OTLP | — |
+| `Vcs` | worktree, branch, commit, merge e push (5.5) | CLI `git` | — |
+| `CodeHost` | PR e entrega (5.5) | `gh` (GitHub) | GitLab (`glab`), Gitea, só merge local **[hipótese]** |
+| `Sandbox` | camada 3 de permissão (5.8) | `sandbox-runtime` (macOS/Linux) | usuário de baixo privilégio (Windows); nulo, só nos testes |
+| `ProcessLauncher` | criar, limitar e matar a árvore de processos (5.9) | lançador Rust com Job Object (Windows); grupo de processos (posix) | `koffi`; `execa` com `killDescendants` |
+| `ResourceMonitor` | RAM livre e carga, para a admissão (5.9) | leitura do sistema operacional | — |
+| `OsScheduler` | gatilho que acorda a máquina e pedido de manter acordada (5.15) | Agendador de Tarefas, launchd + `pmset`, timer do systemd | — |
+| `Notifier` | notificações (5.15) | chat do cenário; notificação do sistema operacional | e-mail, webhook ou chat corporativo por ferramenta de plugin (5.14) |
+| `Clock` | hora atual e espera (vigência das ordens, agenda, timeouts) | relógio do sistema | relógio falso, nos testes |
+| `PromptSource` | prompts dos papéis (5.10) | pasta `prompts/` versionada | prompts por projeto **[hipótese]** |
+
+A tabela é o ponto de partida. Uma porta nova entra pela regra 5.
+
+#### Registros
+
+Decidido em 2026-11-13: as listas viram registros tipados, com schema zod por entrada, e só os módulos oficiais registram entradas que mudam o comportamento do daemon.
+
+| Registro | Entradas | Quem registra |
+|---|---|---|
+| Fluxos | máquinas XState por nome e versão, montadas com etapas reutilizáveis (planejar, revisar, roteirizar, executar o DAG, integrar, criticar, decidir, entregar). A peça teatral (5.4) é o fluxo padrão | módulos oficiais |
+| Papéis | schema de entrega, conjunto de ferramentas, prompt e pontos de julgamento de cada papel | módulos oficiais |
+| Ferramentas do framework | ferramentas MCP do Diretor e dos papéis, e as cascas (5.3, 5.8), cada uma com schema, `efeitos` e chave de idempotência | módulos oficiais; plugins pelo manifesto, fora do processo |
+| Chaves de `regra` | chave, schema do valor e ponto onde se aplica (5.17). **Lista fechada:** quatro chaves na v1; chave nova entra uma a uma, com teste | só módulos oficiais |
+| Tipos de evento | nome e schema do payload (5.11) | módulos oficiais; plugins só com o prefixo `plugin.<id>.*` |
+| Estratégias | `se_esgotado` (`proximo`, `esperar`; 5.7), política de retomada por causa (5.16), tipos de agendamento (5.15) | módulos oficiais |
+| Interface | abas, comandos da paleta e ações do mapa de teclas (5.13), em `packages/client` | módulos oficiais; plugins pelo painel declarativo (5.14) |
+
+- O registro recusa entrada duplicada ou com schema inválido **na subida do daemon**, nunca no meio de uma peça.
+- **Fluxos e a N3.** O registro de fluxos (decidido em 2026-11-13) comporta um fluxo mais curto para "tarefa" ou "chat" sem mexer na peça teatral. **Quais fluxos existem continua sendo a decisão N3.**
+  - O cenário guarda o id do fluxo.
+  - O snapshot da peça guarda o id e a versão do fluxo, e a migração de snapshot (5.4) é feita por fluxo.
+  - As etapas reutilizáveis são atores XState com entrada e saída tipadas. Os efeitos longos (sessões ACP) continuam fora da máquina e voltam como eventos (5.4).
+
+#### Montagem, sem container
+
+Decidido em 2026-11-13: composição manual.
+- Um **ponto de montagem** único (`packages/daemon/src/compose.ts`) lê a configuração, escolhe o adaptador de cada porta pelo id e passa tudo por construtor.
+- Não há biblioteca de injeção de dependências, decorators nem resolução por nome em tempo de execução.
+- Cada módulo de domínio (`pipeline/`, `selection/`, `orders/`, `scheduler/`...) recebe só as portas de que precisa.
+- Os testes montam o mesmo daemon com fakes: `fake-agent`, `Store` em memória, `Clock` falso, `Sandbox` nulo.
+
+```ts
+// @otheater/core
+export interface Adapter {
+  readonly id: string;                                      // 'claude-statusline', 'sqlite', 'keyring'...
+  readonly implements: { port: string; range: string };     // ex.: { port: 'QuotaProbe', range: '^1.0.0' }
+}
+
+export interface QuotaProbe extends Adapter {
+  capabilities(): QuotaCapabilities;                        // janelas, push ou polling, precisão
+  read(profile: ProfileRef): Promise<QuotaReading>;         // QuotaReading validado por zod
+  watch?(profile: ProfileRef, onChange: (r: QuotaReading) => void): Disposable;
+}
+
+// packages/daemon/src/compose.ts
+const clock = new SystemClock();
+const store = new SqliteStore(config.store, clock);
+const quota = new QuotaService([claudeStatuslineProbe, codexAppServerProbe, rateLimitErrorProbe]);
+const selection = new SelectionService({ store, quota, admission, clock });
+```
+
+A escolha dos adaptadores fica na configuração. Cada adaptador contribui o schema zod da própria configuração, validado na subida:
+
+```yaml
+adaptadores:
+  store: sqlite              # ou node-sqlite
+  cofre: keyring             # ou arquivo-criptografado | env
+  vcs: git
+  code_host: github
+  sandbox: auto              # escolhe pelo sistema operacional
+  notificacao: [chat, sistema]
+```
+
+A aba Configurações e a API mostram qual adaptador está em cada porta e com qual versão, como já acontece com o backend do cofre (5.6).
+
+#### Versão dos contratos
+
+Decidido em 2026-11-13: semver por porta + suítes de conformidade.
+- Cada porta tem versão semver própria em `@otheater/core`.
+- O adaptador declara a faixa que implementa (`implements.range`). Na subida, o ponto de montagem recusa um adaptador fora da faixa, com uma mensagem que diz a porta, a versão esperada e a recebida.
+- Mudança que quebra o contrato = versão maior. Durante uma transição, o núcleo pode aceitar duas versões maiores **[proposta]**.
+- **Suítes de conformidade** ficam em `@otheater/sdk`: uma por porta, em Vitest, que qualquer adaptador roda na própria CI. As de `ClientAdapter` e `AgentSession` incluem os testes de contrato contra os adaptadores reais fixados (seção 8, P10).
+
 ## 6. Reaproveitamento: o que usar pronto
 
 Levantamento de 2026-11-13, filtrado pela política de licenças abaixo.
@@ -1008,8 +1157,8 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `profiles` | id, cliente, tipo (`token_plan`/`api`), provedor, estado (`ativo`/`drenando`/`removido`), diretório, referência do segredo |
 | `executors` | id, profile_id, modelo, esforço, estado de validade |
 | `roles` | papel, escopo (global/projeto), lista ordenada de executores, regra de esgotamento |
-| `scenarios` | id, tipo (projeto/tarefa/chat), nome, repositório, branch base, override de configuração |
-| `plays` (peças) | id, scenario_id, necessidade, snapshot XState + versão da máquina, contadores, timestamps |
+| `scenarios` | id, tipo (projeto/tarefa/chat), fluxo padrão (id do registro de fluxos, 5.18), nome, repositório, branch base, override de configuração |
+| `plays` (peças) | id, scenario_id, necessidade, id e versão do fluxo (5.18), snapshot XState, contadores, timestamps |
 | `stages` | etapas executadas de cada peça (papel, tentativa, resultado) |
 | `demands` | demandas do roteiro (campos de `Demanda`), estado |
 | `attempts` | tentativa por demanda: executor, worktree, branch, sessão ACP, início/fim, commit WIP, resultado estruturado; contador de retomadas; último checkpoint; último evento processado |
@@ -1022,12 +1171,12 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `events` | id crescente, timestamp, scenario/play/attempt, tipo, payload JSON |
 | `quota_snapshots` | perfil, janela, uso, reset, fonte do sinal |
 | `usage` | consumo por sessão/perfil/janela (tokens; custo quando for API) |
-| `plugins` | manifesto, versão, estado, projetos ativos |
+| `plugins` | manifesto (com o painel declarativo e os tipos de evento), versão, estado, projetos ativos |
 | `schedules` | tarefa agendada: cenário, necessidade, tipo (uma vez/cron/intervalo/após reset), expressão e fuso, overrides, política de entrega, orçamento, regras (perdida, sobreposição, cota, decisão), próximo disparo, estado, id do gatilho no sistema operacional |
 | `orders` | ordem do Produtor (5.17): id `O<n>`, escopo (global/cenário), scenario_id, tipo (`instrucao`/`regra`/`suspensao`), texto, chave e valor (para `regra`), ordem suspensa (para `suspensao`), papéis, início, fim, fuso, janela (cron + duração; depois da v1), estado (`agendada`/`ativa`/`expirada`/`revogada`), criada em, origem (chat/TUI/terminal/importação), substitui, revogada em, motivo. As mudanças de vigência ficam nos eventos `ordem.vigencia_alterada` |
 | `schedule_runs` | execução de uma tarefa: horário previsto e real, motivo (horário, atraso, rodar agora), peça gerada, resultado, notificações enviadas |
 
-Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Electron, o `better-sqlite3` exige rebuild do módulo nativo; `node:sqlite` do Node 24 é alternativa sem binário nativo, a avaliar na Fase 1. Migrations versionadas com o migrator do próprio Kysely.
+Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro do adaptador padrão da porta `Store` (5.18). O resto do daemon não vê SQL. No Electron, o `better-sqlite3` exige rebuild do módulo nativo; `node:sqlite` do Node 24 é alternativa sem binário nativo, a avaliar na Fase 1. Migrations versionadas com o migrator do próprio Kysely.
 
 ## 8. Stack
 
@@ -1035,6 +1184,8 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Ele
 |---|---|
 | Runtime | Node 24 LTS |
 | Linguagem | TypeScript strict |
+| Contratos | `@otheater/core`: portas (interfaces) + schemas zod, semver por porta; suítes de conformidade em `@otheater/sdk` (5.18) |
+| Montagem | Composição manual num ponto de montagem (`compose.ts`), sem container de injeção nem decorators |
 | Monorepo | pnpm workspaces |
 | ACP | `@agentclientprotocol/sdk` 2.x + adaptadores como processos externos |
 | MCP | `@modelcontextprotocol/server` / `client` (SDK v2) |
@@ -1058,7 +1209,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Ele
 
 **Agente simulado para testes** (`packages/fake-agent`), construído com o lado `agent()` do próprio SDK do ACP. Responde roteiros determinísticos: edita arquivo, chama ferramenta, falha, estoura tempo, pede permissão, emite sinal de cota. A máquina de estados, os pools e a UI são testados sem gastar cota.
 
-**Testes de contrato dos adaptadores:** uma suíte curta roda contra cada adaptador real fixado (`initialize`, config options, MCP HTTP, cancelamento) e é executada a cada atualização de versão (P10).
+**Testes de contrato dos adaptadores:** fazem parte das suítes de conformidade de `ClientAdapter` e `AgentSession` (5.18). Uma suíte curta roda contra cada adaptador real fixado (`initialize`, config options, MCP HTTP, cancelamento) e é executada a cada atualização de versão (P10).
 
 ## 9. Estrutura do repositório
 
@@ -1077,28 +1228,37 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Ele
 ```
 /
 ├─ packages/
-│  ├─ protocol/        tipos e schemas zod compartilhados (eventos, API, saídas dos papéis, ATIF)
+│  ├─ core/            portas (interfaces), schemas zod do domínio, erros tipados, lógica pura; só depende do zod (5.18)
+│  ├─ sdk/             para escrever adaptadores e plugins: tipos, utilitários e suítes de conformidade (antigo plugin-kit)
+│  ├─ protocol/        contrato da API com as interfaces: REST, SSE, WS, eventos, ATIF (usa os schemas do core)
+│  ├─ adapters/        um pacote @otheater/adapter-* por adaptador
+│  │  ├─ client-claude-code/  client-codex/  client-opencode/  client-gemini/
+│  │  ├─ session-acp/  session-headless/
+│  │  ├─ quota-claude/  quota-codex/  quota-minimax/  quota-rate-limit/
+│  │  ├─ store-sqlite/  vault-keyring/  vault-file/
+│  │  ├─ vcs-git/  codehost-github/
+│  │  ├─ sandbox-runtime/  telemetry-otel/  export-atif/
+│  │  └─ platform-windows/  platform-posix/   (lançador, gatilho do SO, manter acordado, monitor de RAM)
 │  ├─ daemon/
+│  │  ├─ src/compose.ts      (ponto de montagem: escolhe e liga os adaptadores)
 │  │  ├─ src/api/
-│  │  ├─ src/pipeline/       (máquinas XState, validação de roteiro)
+│  │  ├─ src/pipeline/       (registro de fluxos, etapas reutilizáveis, peça teatral)
 │  │  ├─ src/selection/
 │  │  ├─ src/accounts/       (perfis, cofre, sondas de cota)
-│  │  ├─ src/executors/      (cliente ACP, pools, adapters/claude|codex|opencode|gemini)
+│  │  ├─ src/executors/      (pools, admissão; os clientes vêm de adapters/)
 │  │  ├─ src/mcp/            (servidor do framework, agregador de plugins)
 │  │  ├─ src/tools/
 │  │  ├─ src/resources/
 │  │  ├─ src/workspace/
 │  │  ├─ src/orders/         (ordens globais e locais, aplicação das regras)
 │  │  ├─ src/scheduler/      (agenda, croner, gatilhos do sistema operacional, pedido de manter acordado)
-│  │  ├─ src/store/          (schema Kysely, migrations)
-│  │  ├─ src/telemetry/      (receptor OTLP, spans, exportador ATIF)
-│  │  └─ src/platform/       (windows, posix)
+│  │  ├─ src/store/          (serviços sobre a porta Store; o SQL fica em adapters/store-sqlite)
+│  │  └─ src/telemetry/      (spans; receptor e exportadores vêm de adapters/)
 │  ├─ fake-agent/      agente ACP simulado
 │  ├─ client/          cliente da API (REST, SSE, WS) + stores de estado e preferências, sem interface
 │  ├─ tui/             TUI, interface principal (Ink; ou OpenTUI, conforme a Fase 0)
 │  ├─ web/             web (opcional, Fase 12)
 │  ├─ desktop/         Electron ou Tauri (opcional, Fase 13)
-│  └─ plugin-kit/      utilitários para escrever plugins
 ├─ native/
 │  └─ job-launcher/    lançador Rust com Job Object (Windows)
 ├─ prompts/            prompts de cada papel (versionados, prefixo estável)
@@ -1157,8 +1317,11 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 
 - Monorepo, lint, testes, CI, `THIRD_PARTY_NOTICES`.
 - Automação de licenças da seção 6.0 na CI: verificador da árvore de dependências contra a lista permitida, geração do `THIRD_PARTY_NOTICES` (com os `NOTICE` dos pacotes Apache) e verificação de cabeçalho nos arquivos copiados.
-- `packages/protocol` com os primeiros schemas.
+- `packages/core` com as primeiras portas (`Store`, `EventLog`, `Clock`, `SecretVault`), os erros tipados e as funções puras iniciais; `packages/protocol` com os primeiros schemas da API.
+- `packages/sdk` com o esqueleto das suítes de conformidade.
+- Regra de dependência na CI (5.18): `core` sem infraestrutura; o daemon só importa adaptadores no ponto de montagem.
 - Daemon esqueleto:
+  - ponto de montagem (`compose.ts`);
   - configuração;
   - lock de instância;
   - store SQLite + migrations;
@@ -1166,8 +1329,8 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
   - pino.
 - `fake-agent` mínimo sobre o SDK do ACP.
 
-**Critério de aceite:** o daemon sobe, grava e lê eventos, testes verdes na CI.
-**Estimativa:** 1 semana.
+**Critério de aceite:** o daemon sobe, grava e lê eventos, testes verdes na CI; o mesmo daemon sobe montado com fakes (`Store` em memória, `Clock` falso), e a CI reprova um import que fure a regra de dependência.
+**Estimativa:** 1,5 semana (era 1 na v0.11: entram `core`, `sdk`, ponto de montagem e regra de dependência).
 
 ### Fase 2 — Camada de Executores
 
@@ -1180,7 +1343,7 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 - Checkpoints automáticos (por lote de edições, a cada N minutos e em toda interrupção) e registro por tentativa: referência da sessão ACP, perfil, worktree, último checkpoint, último evento.
 - **Retomada nativa** (`session/load`) para queda do processo e reinício do daemon, com recuo exponencial para erros transitórios.
 - `session/update` → eventos.
-- Testes de contrato dos adaptadores.
+- Testes de contrato dos adaptadores, dentro das suítes de conformidade de `ClientAdapter` e `AgentSession` (5.18). Cada cliente num pacote `@otheater/adapter-client-*`.
 
 **Critério de aceite:** N Executores reais e simulados em worktrees diferentes, stream como eventos, cancelamento por timeout sem processo órfão e com WIP commitado.
 **Estimativa:** 2 semanas (era 1,5 na v0.9: entram checkpoints e retomada nativa).
@@ -1189,7 +1352,8 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 
 - Servidor MCP v2 com fábrica por papel e token por sessão.
 - Schemas de saída + `entregar*` com revalidação.
-- Máquina XState completa (seção 5.4), com persistência, contadores, escalonamento e `AGUARDANDO_PRODUTOR`.
+- Registro de fluxos e etapas reutilizáveis (5.18); a peça teatral como fluxo padrão: máquina XState completa (seção 5.4), com persistência, contadores, escalonamento e `AGUARDANDO_PRODUTOR`.
+- Registros de papéis, ferramentas, chaves de `regra` e tipos de evento, validados na subida.
 - Validação do roteiro (ciclos, contratos, arquivos).
 - DAG em ordem topológica.
 - Integração antes do Crítico; entrega por PR.
@@ -1318,10 +1482,10 @@ Também faz parte do aceite:
 - Manifesto, validação, registro, ativação por projeto.
 - Agregador MCP (ou 1MCP como sidecar).
 - Permissões geradas dos manifestos; segredos no cofre.
-- `plugin-kit` + plugin de exemplo.
-- Aba Plugins na TUI. O painel próprio de plugin fica para a web (Fase 12).
+- `@otheater/sdk` para plugins + plugin de exemplo.
+- Painel declarativo (5.14) desenhado na aba Plugins da TUI; tipos de evento `plugin.<id>.*`.
 
-**Critério de aceite:** a ferramenta do plugin aparece só nos papéis declarados e fica bloqueada nos demais.
+**Critério de aceite:** a ferramenta do plugin aparece só nos papéis declarados e fica bloqueada nos demais; o painel do plugin de exemplo aparece na TUI sem nenhum código do plugin na interface.
 **Estimativa:** 1–1,5 semana.
 
 ### Fase 9b — Agendador
@@ -1380,7 +1544,8 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
   - atualização de adaptador.
 - Idempotência de integração e PR.
 - Revisão de segurança da API e das cascas.
-- Documentação.
+- Revisão das portas (5.18): porta que continua com um só adaptador e sem segundo previsto é candidata a ser simplificada (R16).
+- Documentação, incluindo o guia para escrever adaptadores e plugins.
 
 **Critério de aceite:** roteiro de caos sem perda de estado nem processo órfão.
 **Estimativa:** 1,5–2 semanas.
@@ -1396,7 +1561,7 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
   - painel de abas;
   - cartões recolhíveis.
 - Componentes prontos: assistant-ui (chat), @xyflow/react (DAG gráfico), shadcn/ui, AgentPrism ou viewer próprio (trajetórias).
-- O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, painéis próprios de plugins, mouse.
+- O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, desenho gráfico dos painéis declarativos dos plugins, mouse.
 - Testes e2e com Playwright sobre o `fake-agent`.
 
 **Critério de aceite:** o mesmo da Fase 7, feito só pela interface web.
@@ -1416,7 +1581,7 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | Fase | Sem agentes | Com agentes de código* | v0.1 (sem agentes) |
 |---|---|---|---|
 | 0 Validações e base (teste da TUI obrigatório) | 2–3 sem | 2–3 sem | 1–1,5 |
-| 1 Fundação | 1 sem | 0,5 sem | 1 |
+| 1 Fundação | 1,5 sem | 1 sem | 1 |
 | 2 Executores | 2 sem | 1,5 sem | 2 |
 | 3 Pipeline + MCP | 2,5 sem | 1,5–2 sem | 2,5–3 |
 | 4 Permissões | 1,5 sem | 1 sem | 1,5–2 |
@@ -1428,7 +1593,7 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | 9b Agendador | 1–1,5 sem | 0,5–1 sem | — |
 | 10 Distribuição (daemon + TUI) | 1 sem | 0,5–1 sem | 1–1,5 |
 | 11 Endurecimento | 1,5–2 sem | 1–1,5 sem | 1,5–2 |
-| **Total (produto na TUI)** | **≈ 21–24 semanas** | **≈ 13–17,5 semanas** | 19–24 |
+| **Total (produto na TUI)** | **≈ 21,5–24,5 semanas** | **≈ 13,5–18 semanas** | 19–24 |
 | 12 Interface web (opcional) | 2–2,5 sem | 1–1,5 sem | 3–4 |
 | 13 App desktop (opcional) | 1 sem | 0,5–1 sem | — |
 
@@ -1439,16 +1604,16 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 As estimativas já consideram a política de licenças da seção 6.0 (Apache-2.0 aceita, sem reimplementar o SDK do ACP nem o OpenTelemetry).
 
 **Marcos:**
-- **MVP sem UI** (Fases 0–3): ≈ 7,5–8,5 semanas sem agentes, ≈ 5,5–7 com. Conversa com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
-- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 11,5–12,5 / ≈ 8,5–10,5.
-- **Produto na TUI** (+ Fases 6–7): ≈ 15,5–17 / ≈ 10,5–13.
-- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 21–24 / ≈ 13–17,5.
+- **MVP sem UI** (Fases 0–3): ≈ 8–9 semanas sem agentes, ≈ 6–7,5 com. Conversa com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
+- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 12–13 / ≈ 9–11.
+- **Produto na TUI** (+ Fases 6–7): ≈ 16–17,5 / ≈ 11–13,5.
+- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 21,5–24,5 / ≈ 13,5–18.
 - **Web e desktop** (+ Fases 12–13, opcionais): + 3–3,5 / + 1,5–2,5.
 
 **Paralelização com uma segunda pessoa:**
 - depois da Fase 3, a Fase 6 (API + `packages/client`) anda em paralelo com as Fases 4–5;
 - depois da Fase 6, a TUI (7) anda em paralelo com as Fases 8, 9 e 9b (agendador); a web (12) pode correr junto com a TUI, já que as duas usam o mesmo `packages/client`;
-- o contrato está em `packages/protocol`, e o `fake-agent` cobre o back.
+- o contrato da API está em `packages/protocol`, o das portas em `packages/core`, e o `fake-agent` cobre o back.
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 
@@ -1471,6 +1636,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R13 | Tarefa agendada roda sem ninguém olhando e faz algo indesejado, ou gasta a cota | Mudança não revisada, cota esgotada para o uso interativo | Entrega por PR por padrão; orçamento por execução; criação pelo chat só com confirmação; decisão sem ninguém olhando pausa por padrão; adiar quando a cota está esgotada |
 | R14 | Máquina dormindo no horário (Modern Standby, tampa fechada) | Tarefa não roda ou atrasa horas | Gatilho do agendador do sistema operacional que acorda a máquina; pedido de manter acordada durante a execução; regra de execução perdida; histórico mostra atraso real |
 | R15 | Retomada repete efeito colateral, ou a passagem de bastão perde contexto e o novo Executor refaz ou desfaz trabalho | Commits duplicados, chamadas externas repetidas, retrabalho | Chaves de idempotência nas cascas e plugins; checkpoints frequentes; pacote de continuação com efeitos já executados; preferir retomada nativa quando possível; teste de qualidade da passagem de bastão na Fase 0 |
+| R16 | Excesso de abstração: portas especulativas, indireção demais, contratos que mudam a toda hora | Código mais difícil de ler e de mudar; o custo de trocar uma implementação deixa de compensar | Porta só em fronteira e em ponto de variação (5.18, regra 1); porta nasce com adaptador real, fake e conformidade (regra 5); composição manual, sem container; regra de dependência na CI; revisão das portas na Fase 11 |
 
 ## 12. Decisões em aberto
 
@@ -1488,12 +1654,14 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 12. Se e quando fazer a web (Fase 12) e o app desktop (Fase 13).
 13. Padrões do agendador: janela para rodar execução perdida, prazo máximo de adiamento por cota, prazo de espera por decisão sem ninguém olhando, orçamento padrão por execução.
 14. Padrões da retomada: limite de retomadas por tentativa, prazo máximo para esperar o reset antes de passar o bastão, intervalo dos checkpoints, critério de "agente travado" (minutos sem evento, repetições do mesmo erro).
+15. Abrir mais pontos de extensão a terceiros, fora do processo, depois da v1: por exemplo, uma sonda de cota ou um notificador de um provedor novo fornecidos por plugin, sem precisar virar pacote oficial (5.18).
 
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (2026-11-13, seção 6.0);
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
 - ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com quatro chaves na v1 (perfis de um papel, `proximo`/`esperar`, exigir PR e `git.push_apos_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
+- portas, adaptadores e registros (2026-11-13, P12 e seção 5.18): porta em toda fronteira e ponto de variação, sem porta para a lógica interna pura; duas camadas de extensão (adaptadores oficiais no processo, terceiros só fora dele, como plugins MCP); registro de fluxos em TypeScript, com a peça teatral como padrão (quais fluxos existem continua na N3); composição manual, sem container; pacotes `core`, `sdk` e `adapter-*`; semver por porta com suítes de conformidade; painel declarativo de plugin, sem código do plugin na interface; registros tipados, com chaves de `regra` só de módulos oficiais e eventos de plugin com prefixo `plugin.<id>.*`.
 
 ## 13. Glossário
 
@@ -1510,6 +1678,11 @@ Decididas:
 | Casca | Ferramenta do framework que envolve uma ferramenta existente com política e telemetria |
 | Ponto de julgamento | Decisão do Diretor tomada por modelo, com saída validada por schema |
 | Config option | Opção de sessão anunciada pelo adaptador ACP (modelo, esforço, modo) |
+| Porta | Interface TypeScript + schemas zod em `@otheater/core`, com versão própria, para uma fronteira ou um ponto de variação (5.18) |
+| Adaptador | Implementação de uma porta, num pacote `@otheater/adapter-*`, escolhida pela configuração (5.18) |
+| Registro | Lista tipada de entradas (fluxos, papéis, ferramentas, chaves de `regra`, tipos de evento), validada na subida do daemon (5.18) |
+| Fluxo | Máquina de estados registrada por nome e versão; a peça teatral é o fluxo padrão (5.4, 5.18) |
+| Ponto de montagem | O único lugar do daemon que escolhe e liga os adaptadores às portas (`compose.ts`, 5.18) |
 
 ## 14. Fontes principais (consultadas em 2026-11-13)
 
@@ -1565,5 +1738,6 @@ Decididas:
 | Agendador (v0.9) | Inexistente | Seção 5.15 e Fase 9b: tarefas únicas, cron, intervalo e após reset da cota; regras de execução perdida, sobreposição, cota e decisão sem ninguém olhando; gatilho do sistema operacional para acordar a máquina; aba Agenda | Pedido do produto; o daemon já tinha o estado e o pipeline necessários |
 | Retomada de sessões (v0.10) | Só devolução à fila no reinício, WIP no timeout e failover do Orquestrador | Seção 5.16: retomada nativa (`session/load`) ou passagem de bastão com pacote de continuação, política por causa, checkpoints periódicos, idempotência de efeitos colaterais, interrupções externas fora da contagem de tentativas | Sessões de qualquer papel podem parar por cota, rede, queda ou reinício e precisam continuar sem perda nem repetição |
 | Ordens do Produtor (v0.11) | Inexistentes | Seção 5.17: ordens globais (um registro para todos os cenários) e locais (um projeto, tarefa ou chat), dos tipos `instrucao`, `regra` e `suspensao`; vigência com início, fim, duração e janela recorrente, calculada pelo relógio; prorrogação; revogação com motivo, em lote e definitiva; criação só pelo Produtor; entrada no prefixo, no Crítico e na retomada. Estimativas das fases não revistas | Conceito do `okit` trazido para o OTheater, redesenhado para evitar cópias por projeto e texto com efeito em código; vigência por período e revogação refinadas a pedido do dono; pontos em aberto decididos pelo dono no mesmo dia, incluindo a dispensa do Crítico (5.4) |
+| Abstrações (v0.12) | Uma interface própria (`ClientAdapter`) e o resto ligado direto às bibliotecas | P12 e seção 5.18: portas em `@otheater/core` para toda fronteira e ponto de variação, adaptadores trocáveis em `@otheater/adapter-*`, registros tipados (fluxos, papéis, ferramentas, chaves de `regra`, eventos, interface), composição manual, semver por porta com suítes de conformidade em `@otheater/sdk`, painel declarativo de plugin; Fase 1 cresce 0,5 semana | Pedido do dono: com tudo em TypeScript, abstrair ao máximo para ganhar flexibilidade e facilidade de expansão; as escolhas de desenho foram decididas pelo dono no mesmo dia |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

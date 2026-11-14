@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.11, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.12, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -23,7 +23,7 @@ O glossário completo está na arquitetura §13.
 
 ## Princípios (arquitetura §2)
 
-P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em código, julgamento no modelo · P4 estado fora do modelo · P5 bloquear tudo, liberar o necessário · P6 tudo é evento · P7 daemon separado da interface · P8 contexto mínimo por Executor · P9 controle de admissão · P10 versões fixadas · P11 só licenças permissivas.
+P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em código, julgamento no modelo · P4 estado fora do modelo · P5 bloquear tudo, liberar o necessário · P6 tudo é evento · P7 daemon separado da interface · P8 contexto mínimo por Executor · P9 controle de admissão · P10 versões fixadas · P11 só licenças permissivas · P12 contratos antes de implementações (portas e adaptadores).
 
 ## Módulos do daemon (arquitetura §4 e §5)
 
@@ -129,6 +129,16 @@ Conceito trazido do `okit` (`kit orders`) e redesenhado, sem reaproveitar códig
 - **Quem cria:** só o Produtor, pelo chat (o Diretor propõe um rascunho com as datas calculadas, e o Produtor confirma), pela aba Ordens ou por `ot ordens`. Executores não têm ferramenta de ordens.
 - **Registro:** ids `O<n>`, estados `agendada`/`ativa`/`expirada`/`revogada`, nada é apagado; eventos `ordem.*`; tabela `orders`.
 
+## Portas, adaptadores e registros (arquitetura §5.18)
+
+Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
+- **Porta** = interface TypeScript + schemas zod em `@otheater/core`, com semver própria. Há porta em toda fronteira com o mundo de fora (processos, rede, disco, git, cofre, sistema operacional, relógio) e em todo ponto que varia por cliente, provedor ou sistema. A lógica interna pura (validação do roteiro, precedência de ordens, algoritmo de seleção) fica em funções puras, sem porta.
+- **Adaptador** = implementação de uma porta num pacote `@otheater/adapter-*`, escolhida por id na configuração. Toda porta nasce com um adaptador real, um falso e uma suíte de conformidade (em `@otheater/sdk`).
+- Portas principais: `ClientAdapter`, `AgentSession` (ACP ou headless), `QuotaProbe`, `UsageSource`, `SecretVault`, `Store`, `EventLog`, `EventSink`, `TelemetryIngest`, `Vcs`, `CodeHost`, `Sandbox`, `ProcessLauncher`, `ResourceMonitor`, `OsScheduler`, `Notifier`, `Clock`, `PromptSource`.
+- **Registros** tipados: fluxos (a peça teatral é o padrão; quais outros existem é a N3), papéis, ferramentas, chaves de `regra` (lista fechada, só módulos oficiais), tipos de evento (plugins só com `plugin.<id>.*`), estratégias e itens da interface. Entrada inválida é recusada na subida do daemon.
+- **Montagem manual** num ponto único (`compose.ts`), sem container de injeção. A CI verifica a regra de dependência: `core` só depende do zod, e o daemon só importa adaptadores no ponto de montagem.
+- **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface.
+
 ## Retomada de sessões (arquitetura §5.16)
 
 - A interrupção é classificada por causa (cota, rede, queda, reinício, timeout, agente travado).
@@ -150,7 +160,7 @@ Conceito trazido do `okit` (`kit orders`) e redesenhado, sem reaproveitar códig
 | Fase | Conteúdo | Sem agentes | Com agentes |
 |---|---|---|---|
 | 0 | Validações e escolha da base (teste da TUI obrigatório) | 2–3 sem | 2–3 sem |
-| 1 | Fundação | 1 | 0,5 |
+| 1 | Fundação (com `core`, `sdk` e ponto de montagem) | 1,5 | 1 |
 | 2 | Camada de Executores | 2 | 1,5 |
 | 3 | Pipeline, MCP do framework e blackboard | 2,5 | 1,5–2 |
 | 4 | Permissões e ferramentas de trabalho | 1,5 | 1 |
@@ -161,11 +171,11 @@ Conceito trazido do `okit` (`kit orders`) e redesenhado, sem reaproveitar códig
 | 9 / 9b | Plugins / Agendador | 1–1,5 cada | 0,5–1 cada |
 | 10 | Distribuição (daemon + TUI) | 1 | 0,5–1 |
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
-| **Total** | **Produto na TUI** | **≈ 21–24 sem** | **≈ 13–17,5 sem** |
+| **Total** | **Produto na TUI** | **≈ 21,5–24,5 sem** | **≈ 13,5–18 sem** |
 | 12 / 13 | Web / Desktop (opcionais) | + 3–3,5 | + 1,5–2,5 |
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.
 
 ## Estrutura do repositório de código (arquitetura §9)
 
-`packages/{protocol, daemon, fake-agent, client, tui, web, desktop, plugin-kit}`, `native/job-launcher`, `prompts/`, `docs/`, `spikes/`. O `fake-agent` é um agente ACP simulado: com ele, a máquina de estados, os pools e a UI são testados sem gastar cota.
+`packages/{core, sdk, protocol, adapters/*, daemon, fake-agent, client, tui, web, desktop}`, `native/job-launcher`, `prompts/`, `docs/`, `spikes/`. O `core` guarda as portas, o `sdk` serve a quem escreve adaptadores e plugins, e cada adaptador é um pacote em `adapters/`. O `fake-agent` é um agente ACP simulado: com ele, a máquina de estados, os pools e a UI são testados sem gastar cota.

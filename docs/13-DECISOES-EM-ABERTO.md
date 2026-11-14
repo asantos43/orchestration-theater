@@ -28,7 +28,7 @@ Em **2026-11-13** a arquitetura do **OTheater** ([framework-ideas/arquitetura.md
 | Q18 | Plugins | **Decidida** | 2026-11-13 | **Servidores MCP com manifesto de permissões.** Cada plugin roda uma vez e o daemon agrega todos, com filtro por papel. Motivo: arquitetura §5.9 e §5.14. |
 | Q19 | Nome definitivo do produto | **Decidida** | 2026-11-13 | **OTheater** (*Orchestration Theater*). Pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater`. Motivo: arquitetura §9 e §12. |
 
-## Perguntas da arquitetura (seção 12, v0.10 e v0.11)
+## Perguntas da arquitetura (seção 12, v0.10 a v0.12)
 
 Copiadas da seção 12 da arquitetura em 2026-11-13. A arquitetura é a referência. Ao decidir, atualize as duas.
 
@@ -49,11 +49,14 @@ Copiadas da seção 12 da arquitetura em 2026-11-13. A arquitetura é a referên
 | N13 | Padrões do agendador: janela para execução perdida, prazo máximo de adiamento por cota, espera por decisão sem ninguém olhando, orçamento por execução | Aberta | Ver [10](10-TAREFAS-GERAIS-E-AGENDAMENTO.md). |
 | N14 | Padrões da retomada: limite de retomadas por tentativa, espera máxima pelo reset antes de passar o bastão, intervalo dos checkpoints, critério de "agente travado" | Aberta | Arquitetura §5.16. |
 | N15 | Ordens do Produtor (arquitetura §5.17, incluída na v0.11) | **Decidida** | 2026-11-13. Decisões do dono, todas iguais às propostas: (1) no mesmo cenário, a local prevalece sobre a global; (2) uma ordem vale para um cenário ou para todos, sem lista nem tag; (3) sessões em curso não mudam, e o Diretor decide se relança o Ator; (4) `regra` com quatro chaves na v1: perfis de um papel, `proximo`/`esperar`, exigir PR e `git.push_apos_commit` (push da branch da demanda após cada commit, sem force push nem push na base). A quarta chave foi acrescentada no mesmo dia, quando o dono deu "fazer push sempre que commitar" como exemplo de ordem; (5) a dispensa do Crítico é uma decisão registrada do Produtor, não uma ordem. Ela vale para a peça inteira e pode ser tomada ao abrir a peça ou depois de uma reprovação (§5.4); (6) a janela recorrente fica para depois da v1; (7) o aviso de prazo é 24 h antes, configurável; (8) a suspensão local de uma global fica. Na arquitetura, a pergunta saiu da lista numerada da §12 e foi para "Decididas". |
+| N16 | Portas, adaptadores e registros (arquitetura P12 e §5.18, incluídos na v0.12) | **Decidida** | 2026-11-13. Pedido do dono: como o projeto é em TypeScript, abstrair ao máximo para ganhar flexibilidade e facilidade de expansão. Decisões do dono, todas iguais às recomendações: (1) porta em toda fronteira com o mundo de fora e em todo ponto de variação; a lógica interna pura não tem porta; (2) duas camadas de extensão: adaptadores oficiais `@otheater/*` no processo do daemon, código de terceiros só fora dele, como plugins MCP (P5 mantido); (3) registro de fluxos em TypeScript, com etapas reutilizáveis e a peça teatral como fluxo padrão; quais fluxos existem continua na N3; (4) composição manual num ponto de montagem, sem container de injeção; (5) pacotes `@otheater/core` (portas + zod, só depende do zod), `@otheater/sdk` (substitui o `plugin-kit`, com as suítes de conformidade) e um `@otheater/adapter-*` por adaptador; (6) semver por porta, o adaptador declara a faixa, verificação na subida e suítes de conformidade no `sdk`; (7) painel de plugin declarativo (tabela, lista, métricas, ação), desenhado pela TUI e pela web, sem código do plugin na interface; (8) registros tipados com zod; só módulos oficiais registram chaves de `regra` (lista fechada); plugins registram eventos só com o prefixo `plugin.<id>.*`. Efeito no prazo: a Fase 1 passa de 1 para 1,5 semana (0,5 → 1 com agentes). |
+| N17 | Abrir mais pontos de extensão a terceiros, fora do processo, depois da v1 (ex.: sonda de cota ou notificador de um provedor novo fornecidos por plugin) | Aberta | Arquitetura §12, item 15, e §5.18. Na v1, adaptador novo de terceiros só entra por PR, como pacote oficial. |
 
 **Já decididas na arquitetura** (2026-11-13):
 - nome do produto: OTheater (§9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (§6.0);
-- Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (§6.2).
+- Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (§6.2);
+- portas, adaptadores e registros (P12, §5.18), ver N16.
 
 ## Ideias registradas, sem prioridade
 

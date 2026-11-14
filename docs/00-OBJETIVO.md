@@ -37,7 +37,7 @@ A máquina de estados está na §5.4 da arquitetura.
 | R6 | **Controle total** de ferramentas, permissões, autenticação, assinaturas e cotas. | Pedido do dono | §5.6, §5.7, §5.8 |
 | R7 | **Cliente fino** que encapsula Claude Code, Codex e OpenCode. | Pedido do dono | §5.2: adaptadores ACP prontos + `ClientAdapter` fino |
 | R8 | **Interface própria** para chat com o Orquestrador, dashboard, configuração, plugins e acompanhamento em tempo real, sem o Claude como "prompt de controle". *Até 2026-11-13 o pedido era um app de desktop. A arquitetura faz da **TUI** a interface principal e deixa web e desktop como opcionais.* | Pedido do dono; ajustado pela arquitetura | §5.13, Fases 7, 12 e 13 |
-| R9 | **Portabilidade**: Windows primeiro, sem impedir macOS e Linux. **Sem contêineres** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). | Pedido do dono | §3, `platform/` (§9), §5.8 |
+| R9 | **Portabilidade**: Windows primeiro, sem impedir macOS e Linux. **Sem contêineres** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). | Pedido do dono | §3, portas e adaptadores `platform-*` (§5.18, §9), §5.8 |
 | R10 | Agentes com **acesso à internet** e **tarefas agendadas e repetidas**. | Pedido do dono | §5.8 (`http_get` com domínios permitidos), §5.15 (agendador) |
 | R11 | **Telemetria completa** e **trajetórias em ATIF**, acompanháveis **em tempo real**. | Pedido do dono | §5.11 |
 | R12 | **Relogin controlado** quando a assinatura precisar ser renovada. | Pedido do dono | §5.6: login e logout oficiais no diretório de cada perfil; o perfil passa por `drenando` antes de ser removido |
