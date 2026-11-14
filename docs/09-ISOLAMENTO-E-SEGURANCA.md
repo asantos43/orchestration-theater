@@ -71,7 +71,7 @@ Testes, build e mutações rodam **pelo daemon**, não pelo shell do cliente. Is
 Os agentes precisam de internet (R10 em [00](00-OBJETIVO.md)). O risco é a **injeção de prompt**: uma página lida pelo agente pode tentar dirigi-lo. O perigo real aparece quando o mesmo agente junta **dados privados, conteúdo não confiável e um canal de saída**.
 
 Na arquitetura:
-- a web entra pela casca **`http_get`**, com domínios permitidos, ou por plugins MCP;
+- a web entra pela casca **`http_get`**, com domínios permitidos, por plugins MCP ou pelo **navegador compartilhado** (arquitetura §5.19, v0.13). O navegador tem perfil isolado por cenário, domínios permitidos e aprovação para clicar e preencher;
 - as ferramentas web nativas do cliente ficam fora do conjunto do papel;
 - cada ferramenta de plugin declara seus `efeitos` (`leitura | escrita_local | rede | escrita_externa`). Uma ferramenta pode exigir aprovação do Produtor (`exige_aprovacao_produtor`).
 

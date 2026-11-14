@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.12 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome.
+> Versão 0.13 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -168,9 +168,9 @@ interface ClientAdapter {
 | Conjunto | Ferramentas |
 |---|---|
 | Diretor (Orquestrador) | `proxima_acao`, `status(peca?)`, `decidir(decisaoId, payload)`, `abrir_peca(necessidade)`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar` (rascunho, confirmado pelo Produtor), `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem` e `revogar_ordem` (rascunhos, confirmados pelo Produtor; 5.17) |
-| Comum (todos os Executores) | `ler_blackboard(chave)`, `ler_contrato(id)`, `ler_decisao(id)`, `entregar(resultado)` |
+| Comum (todos os Executores) | `ler_blackboard(chave)`, `ler_contrato(id)`, `ler_decisao(id)`, `ler_indicacao(id)` (5.19), `entregar(resultado)` |
 | Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` (cada um com schema próprio) |
-| Ator | `run_tests(alvo)`, `install_deps()`, `git_commit(mensagem)`, `shell_restrito(argv)`, `http_get(url)` + plugins do papel |
+| Ator | `run_tests(alvo)`, `install_deps()`, `git_commit(mensagem)`, `shell_restrito(argv)`, `http_get(url)`, `navegador_*` se a política do papel liberar (5.19) + plugins do papel |
 | Crítico | `run_tests(alvo)`, `ver_diff(demanda?)`, `entregar_critica` |
 
 `entregar*` é a única forma de um Executor terminar:
@@ -637,6 +637,11 @@ painel:                   # opcional e declarativo: a TUI e a web desenham
   - A `fonte` de um bloco só pode ser uma ferramenta do próprio plugin com `efeitos: leitura`.
   - Uma `acao` chama uma ferramenta do plugin em nome do Produtor, pela API, com as mesmas permissões, aprovação e evento de qualquer chamada.
 - **Eventos próprios:** o plugin só publica tipos com o prefixo `plugin.<id>.*`, declarados no manifesto.
+- **Comportamento de mod, depois da v1** (decidido em 2026-11-13): não haverá um mecanismo de mods separado. O próprio plugin ganha **níveis opcionais**, declarados no manifesto e aprovados pelo Produtor na ativação, sempre fora do processo do daemon (P5):
+  - **assinar eventos:** recebe os tipos de evento que declarou, só para leitura e em segundo plano (ex.: avisar quando uma peça termina);
+  - **ganchos de interceptação:** o daemon chama o plugin em pontos fixos do fluxo (ex.: antes de uma ferramenta rodar, antes da entrega), com prazo. O gancho pode **vetar** ou **anotar**, nunca liberar permissão nem trocar o resultado de uma ferramenta;
+  - **contribuições declarativas:** fluxos montados só com as etapas já registradas (depende da N3), fragmentos de prompt e atalhos, validados pelos schemas dos registros (5.18).
+  - Os detalhes (pontos de interceptação, prazo, falha do gancho) são o item 15 da seção 12. Na v1, o plugin fica como descrito acima.
 
 ### 5.15 Agendador (tarefas agendadas e repetidas)
 
@@ -923,6 +928,7 @@ Decidido em 2026-11-13.
 
 - Código de terceiros **nunca** roda no processo do daemon nem na interface (P5).
 - Um adaptador novo escrito por terceiros (ex.: outro cliente de agente) entra no projeto por PR, como pacote oficial, depois de passar na suíte de conformidade da porta.
+- Não existe "mod" em processo. O que um mod faria (reagir a eventos, interceptar o fluxo, contribuir fluxos e prompts) vira nível opcional do plugin depois da v1, na camada externa (5.14).
 
 #### Portas
 
@@ -946,6 +952,7 @@ Decidido em 2026-11-13.
 | `Notifier` | notificações (5.15) | chat do cenário; notificação do sistema operacional | e-mail, webhook ou chat corporativo por ferramenta de plugin (5.14) |
 | `Clock` | hora atual e espera (vigência das ordens, agenda, timeouts) | relógio do sistema | relógio falso, nos testes |
 | `PromptSource` | prompts dos papéis (5.10) | pasta `prompts/` versionada | prompts por projeto **[hipótese]** |
+| `BrowserSession` | navegador compartilhado entre o agente e o Produtor: sessão, ferramentas, transmissão da tela, indicar elemento (5.19) | Playwright sobre CDP (Chromium) | outros motores do Playwright **[hipótese]** |
 
 A tabela é o ponto de partida. Uma porta nova entra pela regra 5.
 
@@ -962,6 +969,7 @@ Decidido em 2026-11-13: as listas viram registros tipados, com schema zod por en
 | Tipos de evento | nome e schema do payload (5.11) | módulos oficiais; plugins só com o prefixo `plugin.<id>.*` |
 | Estratégias | `se_esgotado` (`proximo`, `esperar`; 5.7), política de retomada por causa (5.16), tipos de agendamento (5.15) | módulos oficiais |
 | Interface | abas, comandos da paleta e ações do mapa de teclas (5.13), em `packages/client` | módulos oficiais; plugins pelo painel declarativo (5.14) |
+| Tipos de indicação | nome, versão, schema do conteúdo, texto para o prompt, leitura do detalhe e checagem de validade (5.19); o primeiro é `elemento_web` | só módulos oficiais |
 
 - O registro recusa entrada duplicada ou com schema inválido **na subida do daemon**, nunca no meio de uma peça.
 - **Fluxos e a N3.** O registro de fluxos (decidido em 2026-11-13) comporta um fluxo mais curto para "tarefa" ou "chat" sem mexer na peça teatral. **Quais fluxos existem continua sendo a decisão N3.**
@@ -1018,6 +1026,86 @@ Decidido em 2026-11-13: semver por porta + suítes de conformidade.
 - O adaptador declara a faixa que implementa (`implements.range`). Na subida, o ponto de montagem recusa um adaptador fora da faixa, com uma mensagem que diz a porta, a versão esperada e a recebida.
 - Mudança que quebra o contrato = versão maior. Durante uma transição, o núcleo pode aceitar duas versões maiores **[proposta]**.
 - **Suítes de conformidade** ficam em `@otheater/sdk`: uma por porta, em Vitest, que qualquer adaptador roda na própria CI. As de `ClientAdapter` e `AgentSession` incluem os testes de contrato contra os adaptadores reais fixados (seção 8, P10).
+
+### 5.19 Navegador compartilhado
+
+Decidido em 2026-11-13 (v0.13), a pedido do dono. É um navegador que o Produtor vê na web e no desktop e em que **indica elementos da página para o agente trabalhar**, como "este botão está desalinhado" ou "preencha este formulário". O Produtor e o agente usam **a mesma sessão**: o que o Produtor indica é o que o agente vê e controla.
+
+#### Dono da sessão
+
+O dono da sessão é a **porta oficial `BrowserSession`** (5.18), no daemon.
+- O adaptador padrão é o **Playwright** (Apache-2.0, já na stack de testes) sobre CDP, com Chromium.
+- O navegador roda como processo filho do daemon, sob o lançador (5.9) e com a admissão de RAM.
+- Não fica num plugin nem numa webview da interface. Assim funciona igual na web e no desktop, e a escolha Electron × Tauri (N7) não depende dele.
+
+#### Uma sessão, duas pontas
+
+**Agente.** As ferramentas vêm do MCP do framework (5.3), com filtro por papel. Elas só entram no conjunto do papel se a política dele liberar (5.8).
+
+| Ferramenta | `efeitos` | Observação |
+|---|---|---|
+| `navegador_abrir(url)` | `rede` | Só nos domínios permitidos do cenário, como o `http_get` |
+| `navegador_ler(ref?)` | `rede` | Texto e árvore de acessibilidade da página ou de um elemento, truncados |
+| `navegador_print(ref?)` | `rede` | Print da página ou de um elemento |
+| `navegador_clicar(ref)`, `navegador_preencher(ref, valor)`, `navegador_tecla(tecla)` | `escrita_externa` | Por padrão, exigem aprovação do Produtor. O projeto pode liberar por domínio **[proposta]** |
+
+**Interface.**
+- A API (5.12) transmite a tela da sessão por WebSocket. A fonte é o screencast do CDP, e o desempenho em telas grandes está **[a confirmar]** na Fase 12.
+- O Produtor também usa a sessão com mouse, teclado e rolagem, e pode assumir o controle a qualquer momento.
+- Enquanto o Produtor controla, as ferramentas de escrita do agente ficam em espera.
+
+#### Indicar elemento
+
+1. O Produtor liga o modo **indicar elemento**.
+2. Ao passar o mouse, o daemon destaca o elemento sob o cursor. Para isso, injeta um script oficial de sobreposição na página, só enquanto o modo estiver ligado.
+3. O Produtor clica no elemento e escreve um comentário. Pode indicar vários elementos antes de enviar.
+4. As indicações vão anexadas à mensagem do chat do cenário. O Diretor decide o que fazer e pode repassá-las ao Ator dentro da demanda.
+
+Cada indicação vira um artefato por referência (5.10), a **indicação** (id `I<n>`), do tipo `elemento_web`. Esse tipo guarda:
+- a URL e o título da página;
+- um **seletor estável**: primeiro o papel com o nome acessível, depois o `data-testid`, e por último o CSS;
+- um trecho do HTML (truncado);
+- a caixa do elemento (posição e tamanho no viewport);
+- um recorte do print;
+- o comentário do Produtor e o momento da indicação.
+
+O prompt leva só o id e o comentário. O resto é lido com `ler_indicacao(id)` quando o agente precisar (P8). Se a página mudou e o seletor não acha mais o elemento, a ferramenta avisa em vez de adivinhar.
+
+#### Indicações de outros tipos
+
+Decidido em 2026-11-13, a pedido do dono: o mecanismo de indicar não fica preso a elementos de página.
+- **Tipos de indicação** são um registro (5.18). Cada tipo traz:
+  - nome e versão;
+  - o schema zod do conteúdo;
+  - como o conteúdo vira texto curto para o prompt;
+  - como `ler_indicacao` devolve o detalhe;
+  - se ainda é válido: a página ou o arquivo pode ter mudado desde a indicação.
+- **Campos comuns** a todo tipo: id `I<n>`, tipo, superfície de origem, cenário, mensagem do chat, comentário do Produtor, recorte de imagem opcional, momento. O resto fica no conteúdo do tipo.
+- **Superfície** é qualquer parte que oferece o modo indicar: o navegador compartilhado é a primeira. Cada superfície declara os tipos que produz. Na interface, o modo indicar é um só: a mesma tecla, o mesmo destaque e a mesma bandeja de indicações a enviar.
+- **Na v1 (Fase 12) só existe `elemento_web`.** Tipos e superfícies futuros, todos **[hipótese]**, entram um a um, com teste:
+  - `trecho_codigo`: arquivo, faixa de linhas e commit, no diff ou no visualizador de arquivos;
+  - `regiao_imagem`: retângulo num print ou numa imagem;
+  - `no_dag` e `demanda`: um nó do DAG da peça;
+  - `trecho_terminal` e `evento`: saída de uma sessão ou um evento do log;
+  - `elemento_app`: tela de um emulador ou de um app de desktop, por uma porta nova com outro adaptador.
+- O mecanismo segue as regras das abstrações (5.18): só módulos oficiais registram tipos de indicação. Abrir isso a plugins é parte do item 15 da seção 12.
+
+#### Perfil e segurança
+
+- **Perfil isolado por cenário.** É persistente, numa pasta própria nos dados do daemon. Nada dos navegadores do Produtor é importado.
+- **Login.** O Produtor entra nos sites pela tela transmitida. O agente nunca vê senha nem cookie.
+- **Proteções.** O perfil guarda sessões logadas, então valem três proteções:
+  - os domínios permitidos do cenário;
+  - a aprovação das ações de escrita;
+  - o conteúdo da página tratado como dado, nunca como instrução, com a separação entre leitura e envio (5.8).
+- **Registro.** Cada ação do agente no navegador vira evento `navegador.*`, com a URL e um print. Uma ação de escrita é efeito colateral, com chave de idempotência (5.16).
+
+#### Fases
+
+- **v1, na Fase 4:** a porta, o adaptador, o perfil isolado e as ferramentas do agente, sem a tela. O agente já trabalha com o navegador.
+- **Na TUI:** a TUI não mostra a página. Ela mostra a URL atual e as indicações, e pode abrir uma janela visível do navegador ao lado **[proposta]**.
+- **Fase 12:** a transmissão da tela, o controle pelo Produtor e o modo indicar elemento, na web.
+- **Fase 13:** o desktop aproveita a mesma tela da web.
 
 ## 6. Reaproveitamento: o que usar pronto
 
@@ -1172,6 +1260,8 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `quota_snapshots` | perfil, janela, uso, reset, fonte do sinal |
 | `usage` | consumo por sessão/perfil/janela (tokens; custo quando for API) |
 | `plugins` | manifesto (com o painel declarativo e os tipos de evento), versão, estado, projetos ativos |
+| `browser_sessions` | sessão do navegador compartilhado (5.19): cenário, pasta do perfil, domínios permitidos, URL atual, quem controla (agente/Produtor), estado |
+| `indications` | indicação `I<n>` (5.19): tipo e versão do tipo, superfície de origem, cenário, mensagem do chat, conteúdo JSON (validado pelo schema do tipo; para `elemento_web`: URL, título, seletor, trecho do HTML, caixa), caminho do recorte, comentário, criada em |
 | `schedules` | tarefa agendada: cenário, necessidade, tipo (uma vez/cron/intervalo/após reset), expressão e fuso, overrides, política de entrega, orçamento, regras (perdida, sobreposição, cota, decisão), próximo disparo, estado, id do gatilho no sistema operacional |
 | `orders` | ordem do Produtor (5.17): id `O<n>`, escopo (global/cenário), scenario_id, tipo (`instrucao`/`regra`/`suspensao`), texto, chave e valor (para `regra`), ordem suspensa (para `suspensao`), papéis, início, fim, fuso, janela (cron + duração; depois da v1), estado (`agendada`/`ativa`/`expirada`/`revogada`), criada em, origem (chat/TUI/terminal/importação), substitui, revogada em, motivo. As mudanças de vigência ficam nos eventos `ordem.vigencia_alterada` |
 | `schedule_runs` | execução de uma tarefa: horário previsto e real, motivo (horário, atraso, rodar agora), peça gerada, resultado, notificações enviadas |
@@ -1205,6 +1295,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 | Cliente e estado compartilhados | `packages/client`: cliente REST/SSE/WS + stores zustand (vanilla) |
 | Web (opcional) | React + Vite + shadcn/ui + assistant-ui + @xyflow/react |
 | Desktop (opcional) | Electron (ou Tauri v2) |
+| Navegador compartilhado | Playwright (Apache-2.0) sobre CDP, Chromium com perfil isolado por cenário (5.19) |
 | Testes | Vitest + Playwright + `ink-testing-library` (TUI) |
 
 **Agente simulado para testes** (`packages/fake-agent`), construído com o lado `agent()` do próprio SDK do ACP. Responde roteiros determinísticos: edita arquivo, chama ferramenta, falha, estoura tempo, pede permissão, emite sinal de cota. A máquina de estados, os pools e a UI são testados sem gastar cota.
@@ -1237,7 +1328,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 │  │  ├─ quota-claude/  quota-codex/  quota-minimax/  quota-rate-limit/
 │  │  ├─ store-sqlite/  vault-keyring/  vault-file/
 │  │  ├─ vcs-git/  codehost-github/
-│  │  ├─ sandbox-runtime/  telemetry-otel/  export-atif/
+│  │  ├─ sandbox-runtime/  telemetry-otel/  export-atif/  browser-playwright/
 │  │  └─ platform-windows/  platform-posix/   (lançador, gatilho do SO, manter acordado, monitor de RAM)
 │  ├─ daemon/
 │  │  ├─ src/compose.ts      (ponto de montagem: escolhe e liga os adaptadores)
@@ -1381,9 +1472,10 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
   - encadeamento de comandos;
   - programa chamado por caminho ou dentro de `sh -c`;
   - ferramenta nativa bloqueada.
+- Navegador compartilhado sem a tela (5.19): porta `BrowserSession`, adaptador Playwright, perfil isolado por cenário, domínios permitidos e ferramentas `navegador_*` com aprovação das ações de escrita.
 
-**Critério de aceite:** suíte de fuga verde nos três clientes.
-**Estimativa:** 1,5 semana.
+**Critério de aceite:** suíte de fuga verde nos três clientes; o Ator abre uma página de teste, lê, tira print e só clica depois da aprovação, e um domínio fora da lista é recusado.
+**Estimativa:** 2 semanas (era 1,5 na v0.12: entra o navegador compartilhado).
 
 ### Fase 5 — Assinaturas, cotas e seleção
 
@@ -1562,10 +1654,11 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
   - cartões recolhíveis.
 - Componentes prontos: assistant-ui (chat), @xyflow/react (DAG gráfico), shadcn/ui, AgentPrism ou viewer próprio (trajetórias).
 - O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, desenho gráfico dos painéis declarativos dos plugins, mouse.
+- Navegador compartilhado na tela (5.19): transmissão da sessão, controle pelo Produtor e modo **indicar**, genérico, com as indicações `elemento_web` anexadas à mensagem do chat.
 - Testes e2e com Playwright sobre o `fake-agent`.
 
-**Critério de aceite:** o mesmo da Fase 7, feito só pela interface web.
-**Estimativa:** 2–2,5 semanas sem agentes; 1–1,5 com (era 2,5–3 como interface principal: estado e cliente vêm do `packages/client`).
+**Critério de aceite:** o mesmo da Fase 7, feito só pela interface web; e o Produtor indica dois elementos numa página, e o Ator corrige os dois a partir das indicações.
+**Estimativa:** 2,5–3 semanas sem agentes; 1,5–2 com (era 2–2,5 na v0.12; +0,5 do navegador compartilhado).
 
 ### Fase 13 — App desktop (opcional, depende da Fase 12)
 
@@ -1584,7 +1677,7 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | 1 Fundação | 1,5 sem | 1 sem | 1 |
 | 2 Executores | 2 sem | 1,5 sem | 2 |
 | 3 Pipeline + MCP | 2,5 sem | 1,5–2 sem | 2,5–3 |
-| 4 Permissões | 1,5 sem | 1 sem | 1,5–2 |
+| 4 Permissões e navegador | 2 sem | 1,5 sem | 1,5–2 |
 | 5 Assinaturas, seleção e retomada | 2,5 sem | 1,5–2 sem | 2 |
 | 6 API + `packages/client` | 1,5 sem | 0,5–1 sem | 1 |
 | 7 TUI (interface principal) | 2,5–3 sem | 1,5 sem | — |
@@ -1593,8 +1686,8 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | 9b Agendador | 1–1,5 sem | 0,5–1 sem | — |
 | 10 Distribuição (daemon + TUI) | 1 sem | 0,5–1 sem | 1–1,5 |
 | 11 Endurecimento | 1,5–2 sem | 1–1,5 sem | 1,5–2 |
-| **Total (produto na TUI)** | **≈ 21,5–24,5 semanas** | **≈ 13,5–18 semanas** | 19–24 |
-| 12 Interface web (opcional) | 2–2,5 sem | 1–1,5 sem | 3–4 |
+| **Total (produto na TUI)** | **≈ 22–25 semanas** | **≈ 14–18,5 semanas** | 19–24 |
+| 12 Interface web (opcional) | 2,5–3 sem | 1,5–2 sem | 3–4 |
 | 13 App desktop (opcional) | 1 sem | 0,5–1 sem | — |
 
 \* Com Claude Code/Codex como apoio desde o início e, a partir da Fase 5, com o próprio framework. Supõe revisão humana de tudo o que for gerado. A Fase 0 não acelera com agentes: é medição.
@@ -1605,9 +1698,9 @@ As estimativas já consideram a política de licenças da seção 6.0 (Apache-2.
 
 **Marcos:**
 - **MVP sem UI** (Fases 0–3): ≈ 8–9 semanas sem agentes, ≈ 6–7,5 com. Conversa com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
-- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 12–13 / ≈ 9–11.
-- **Produto na TUI** (+ Fases 6–7): ≈ 16–17,5 / ≈ 11–13,5.
-- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 21,5–24,5 / ≈ 13,5–18.
+- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 12,5–13,5 / ≈ 9,5–11,5.
+- **Produto na TUI** (+ Fases 6–7): ≈ 16,5–18 / ≈ 11,5–14.
+- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 22–25 / ≈ 14–18,5.
 - **Web e desktop** (+ Fases 12–13, opcionais): + 3–3,5 / + 1,5–2,5.
 
 **Paralelização com uma segunda pessoa:**
@@ -1637,6 +1730,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R14 | Máquina dormindo no horário (Modern Standby, tampa fechada) | Tarefa não roda ou atrasa horas | Gatilho do agendador do sistema operacional que acorda a máquina; pedido de manter acordada durante a execução; regra de execução perdida; histórico mostra atraso real |
 | R15 | Retomada repete efeito colateral, ou a passagem de bastão perde contexto e o novo Executor refaz ou desfaz trabalho | Commits duplicados, chamadas externas repetidas, retrabalho | Chaves de idempotência nas cascas e plugins; checkpoints frequentes; pacote de continuação com efeitos já executados; preferir retomada nativa quando possível; teste de qualidade da passagem de bastão na Fase 0 |
 | R16 | Excesso de abstração: portas especulativas, indireção demais, contratos que mudam a toda hora | Código mais difícil de ler e de mudar; o custo de trocar uma implementação deixa de compensar | Porta só em fronteira e em ponto de variação (5.18, regra 1); porta nasce com adaptador real, fake e conformidade (regra 5); composição manual, sem container; regra de dependência na CI; revisão das portas na Fase 11 |
+| R17 | Navegador compartilhado: uma página dirige o agente por injeção de prompt, ou o agente age com uma conta logada no perfil do cenário | Ação indesejada num site real (envio, compra, exclusão) ou vazamento do que a página mostra | Perfil isolado por cenário, sem importar cookies; domínios permitidos; ações de escrita com aprovação por padrão; página tratada como dado (5.8); evento com print de cada ação (5.19) |
 
 ## 12. Decisões em aberto
 
@@ -1654,7 +1748,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 12. Se e quando fazer a web (Fase 12) e o app desktop (Fase 13).
 13. Padrões do agendador: janela para rodar execução perdida, prazo máximo de adiamento por cota, prazo de espera por decisão sem ninguém olhando, orçamento padrão por execução.
 14. Padrões da retomada: limite de retomadas por tentativa, prazo máximo para esperar o reset antes de passar o bastão, intervalo dos checkpoints, critério de "agente travado" (minutos sem evento, repetições do mesmo erro).
-15. Abrir mais pontos de extensão a terceiros, fora do processo, depois da v1: por exemplo, uma sonda de cota ou um notificador de um provedor novo fornecidos por plugin, sem precisar virar pacote oficial (5.18).
+15. Detalhes dos níveis de plugin com comportamento de mod, para depois da v1 (5.14): quais pontos de interceptação existem, o prazo padrão de um gancho, o que acontece quando ele falha ou estoura o prazo (bloquear ou deixar passar) e se uma sonda de cota ou um notificador de um provedor novo podem vir de plugin, sem virar pacote oficial (5.18).
 
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
@@ -1662,6 +1756,8 @@ Decididas:
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
 - ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com quatro chaves na v1 (perfis de um papel, `proximo`/`esperar`, exigir PR e `git.push_apos_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
 - portas, adaptadores e registros (2026-11-13, P12 e seção 5.18): porta em toda fronteira e ponto de variação, sem porta para a lógica interna pura; duas camadas de extensão (adaptadores oficiais no processo, terceiros só fora dele, como plugins MCP); registro de fluxos em TypeScript, com a peça teatral como padrão (quais fluxos existem continua na N3); composição manual, sem container; pacotes `core`, `sdk` e `adapter-*`; semver por porta com suítes de conformidade; painel declarativo de plugin, sem código do plugin na interface; registros tipados, com chaves de `regra` só de módulos oficiais e eventos de plugin com prefixo `plugin.<id>.*`.
+- plugin com comportamento de mod (2026-11-13, seção 5.14): um mecanismo só, sem mods em processo; depois da v1 o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), sempre fora do processo.
+- navegador compartilhado (2026-11-13, seção 5.19): porta oficial `BrowserSession` no daemon (Playwright sobre CDP), usada pelo agente e pela interface; indicação completa anexada ao chat, num mecanismo genérico com tipos de indicação registrados (o primeiro é `elemento_web`); perfil isolado por cenário; ferramentas do agente na v1 (Fase 4) e a tela com o modo indicar elemento na Fase 12.
 
 ## 13. Glossário
 
@@ -1682,6 +1778,9 @@ Decididas:
 | Adaptador | Implementação de uma porta, num pacote `@otheater/adapter-*`, escolhida pela configuração (5.18) |
 | Registro | Lista tipada de entradas (fluxos, papéis, ferramentas, chaves de `regra`, tipos de evento), validada na subida do daemon (5.18) |
 | Fluxo | Máquina de estados registrada por nome e versão; a peça teatral é o fluxo padrão (5.4, 5.18) |
+| Navegador compartilhado | Sessão de navegador do cenário, usada pelo agente e pelo Produtor ao mesmo tempo (5.19) |
+| Indicação | Artefato `I<n>` que aponta algo para o agente (5.19): um tipo registrado (o primeiro é `elemento_web`), o conteúdo validado pelo schema do tipo e o comentário do Produtor |
+| Superfície | Parte do sistema que oferece o modo indicar e declara os tipos de indicação que produz; a primeira é o navegador compartilhado (5.19) |
 | Ponto de montagem | O único lugar do daemon que escolhe e liga os adaptadores às portas (`compose.ts`, 5.18) |
 
 ## 14. Fontes principais (consultadas em 2026-11-13)
@@ -1738,6 +1837,7 @@ Decididas:
 | Agendador (v0.9) | Inexistente | Seção 5.15 e Fase 9b: tarefas únicas, cron, intervalo e após reset da cota; regras de execução perdida, sobreposição, cota e decisão sem ninguém olhando; gatilho do sistema operacional para acordar a máquina; aba Agenda | Pedido do produto; o daemon já tinha o estado e o pipeline necessários |
 | Retomada de sessões (v0.10) | Só devolução à fila no reinício, WIP no timeout e failover do Orquestrador | Seção 5.16: retomada nativa (`session/load`) ou passagem de bastão com pacote de continuação, política por causa, checkpoints periódicos, idempotência de efeitos colaterais, interrupções externas fora da contagem de tentativas | Sessões de qualquer papel podem parar por cota, rede, queda ou reinício e precisam continuar sem perda nem repetição |
 | Ordens do Produtor (v0.11) | Inexistentes | Seção 5.17: ordens globais (um registro para todos os cenários) e locais (um projeto, tarefa ou chat), dos tipos `instrucao`, `regra` e `suspensao`; vigência com início, fim, duração e janela recorrente, calculada pelo relógio; prorrogação; revogação com motivo, em lote e definitiva; criação só pelo Produtor; entrada no prefixo, no Crítico e na retomada. Estimativas das fases não revistas | Conceito do `okit` trazido para o OTheater, redesenhado para evitar cópias por projeto e texto com efeito em código; vigência por período e revogação refinadas a pedido do dono; pontos em aberto decididos pelo dono no mesmo dia, incluindo a dispensa do Crítico (5.4) |
-| Abstrações (v0.12) | Uma interface própria (`ClientAdapter`) e o resto ligado direto às bibliotecas | P12 e seção 5.18: portas em `@otheater/core` para toda fronteira e ponto de variação, adaptadores trocáveis em `@otheater/adapter-*`, registros tipados (fluxos, papéis, ferramentas, chaves de `regra`, eventos, interface), composição manual, semver por porta com suítes de conformidade em `@otheater/sdk`, painel declarativo de plugin; Fase 1 cresce 0,5 semana | Pedido do dono: com tudo em TypeScript, abstrair ao máximo para ganhar flexibilidade e facilidade de expansão; as escolhas de desenho foram decididas pelo dono no mesmo dia |
+| Abstrações (v0.12) | Uma interface própria (`ClientAdapter`) e o resto ligado direto às bibliotecas | P12 e seção 5.18: portas em `@otheater/core` para toda fronteira e ponto de variação, adaptadores trocáveis em `@otheater/adapter-*`, registros tipados (fluxos, papéis, ferramentas, chaves de `regra`, eventos, interface), composição manual, semver por porta com suítes de conformidade em `@otheater/sdk`, painel declarativo de plugin; Fase 1 cresce 0,5 semana | Pedido do dono: com tudo em TypeScript, abstrair ao máximo para ganhar flexibilidade e facilidade de expansão; as escolhas de desenho foram decididas pelo dono no mesmo dia; no mesmo dia, o dono decidiu que o comportamento de mod vira nível opcional do plugin depois da v1, sem mecanismo separado (5.14) |
+| Navegador compartilhado (v0.13) | Só `http_get` e plugins MCP para a web | Seção 5.19: porta `BrowserSession` (Playwright sobre CDP) no daemon, uma sessão para o agente e para o Produtor, ferramentas `navegador_*` com aprovação das ações de escrita, modo indicar genérico, com indicações `I<n>` de tipos registrados (o primeiro é `elemento_web`) anexadas ao chat, perfil isolado por cenário; tabelas `browser_sessions` e `indications`; R17; Fase 4 e Fase 12 crescem 0,5 semana cada | Pedido do dono: um navegador na web e no desktop em que ele indica elementos da página para o agente trabalhar; escolhas decididas pelo dono no mesmo dia, e a generalização para outros tipos foi pedida por ele em seguida |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

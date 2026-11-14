@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.12, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.13, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -137,7 +137,17 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 - Portas principais: `ClientAdapter`, `AgentSession` (ACP ou headless), `QuotaProbe`, `UsageSource`, `SecretVault`, `Store`, `EventLog`, `EventSink`, `TelemetryIngest`, `Vcs`, `CodeHost`, `Sandbox`, `ProcessLauncher`, `ResourceMonitor`, `OsScheduler`, `Notifier`, `Clock`, `PromptSource`.
 - **Registros** tipados: fluxos (a peça teatral é o padrão; quais outros existem é a N3), papéis, ferramentas, chaves de `regra` (lista fechada, só módulos oficiais), tipos de evento (plugins só com `plugin.<id>.*`), estratégias e itens da interface. Entrada inválida é recusada na subida do daemon.
 - **Montagem manual** num ponto único (`compose.ts`), sem container de injeção. A CI verifica a regra de dependência: `core` só depende do zod, e o daemon só importa adaptadores no ponto de montagem.
-- **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface.
+- **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface. Não há mods em processo: depois da v1, o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), decididos na N17.
+
+## Navegador compartilhado (arquitetura §5.19)
+
+Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)).
+- Uma sessão de navegador por cenário, da porta oficial `BrowserSession` no daemon (Playwright sobre CDP). O agente e o Produtor usam a mesma sessão.
+- O agente usa as ferramentas `navegador_*` (abrir, ler, print, clicar, preencher). As de escrita exigem aprovação por padrão, e só os domínios permitidos são abertos.
+- Na web e no desktop, o Produtor vê a tela transmitida, assume o controle e **indica elementos**. Cada indicação vira um artefato `I<n>` (URL, seletor, trecho do HTML, caixa, recorte, comentário), anexado à mensagem do chat.
+- O mecanismo de indicar é genérico: **tipos de indicação** num registro, produzidos por superfícies. O primeiro tipo é `elemento_web`. Outros tipos, como trecho de código, região de imagem, nó do DAG ou tela de app, entram depois, um a um.
+- O perfil é isolado por cenário e persistente. O login é feito pelo Produtor, e o agente nunca vê senha.
+- As ferramentas entram na v1 (Fase 4); a tela e o modo indicar elemento, na Fase 12.
 
 ## Retomada de sessões (arquitetura §5.16)
 
@@ -163,7 +173,7 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 | 1 | Fundação (com `core`, `sdk` e ponto de montagem) | 1,5 | 1 |
 | 2 | Camada de Executores | 2 | 1,5 |
 | 3 | Pipeline, MCP do framework e blackboard | 2,5 | 1,5–2 |
-| 4 | Permissões e ferramentas de trabalho | 1,5 | 1 |
+| 4 | Permissões, ferramentas de trabalho e navegador | 2 | 1,5 |
 | 5 | Assinaturas, cotas, seleção e retomada | 2,5 | 1,5–2 |
 | 6 | API do daemon e `packages/client` | 1,5 | 0,5–1 |
 | 7 | TUI (interface principal) | 2,5–3 | 1,5 |
@@ -171,8 +181,8 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 | 9 / 9b | Plugins / Agendador | 1–1,5 cada | 0,5–1 cada |
 | 10 | Distribuição (daemon + TUI) | 1 | 0,5–1 |
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
-| **Total** | **Produto na TUI** | **≈ 21,5–24,5 sem** | **≈ 13,5–18 sem** |
-| 12 / 13 | Web / Desktop (opcionais) | + 3–3,5 | + 1,5–2,5 |
+| **Total** | **Produto na TUI** | **≈ 22–25 sem** | **≈ 14–18,5 sem** |
+| 12 / 13 | Web (com a tela do navegador) / Desktop (opcionais) | + 3,5–4 | + 2–3 |
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.
 
