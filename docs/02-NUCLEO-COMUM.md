@@ -1,100 +1,158 @@
-# 02. Núcleo comum às duas arquiteturas
+# 02. Núcleo do OTheater (resumo da arquitetura)
 
-As duas arquiteturas em comparação são **com contêiner** ([03](03-ARQUITETURA-1-COM-CONTEINERES.md)) e **sem contêiner** ([04](04-ARQUITETURA-2-SEM-CONTEINERES.md)). Elas diferem **só no runner** (onde e como o agente executor e as verificações rodam). Todo o resto é este núcleo, que é um **cliente fino próprio** sobre os CLIs oficiais.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.10, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
 
-A opção de **não** construir o núcleo e continuar com o Claude Code como Diretor mais o `okit` é outro eixo de decisão e está em [06](06-ALTERNATIVA-HARNESS-EXISTENTE.md).
+> **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
-## Ideia
+## Entidades
 
-Um **núcleo seu** (daemon local com API, estado durável, política, agendador, dashboards e app de desktop) que **encapsula os CLIs oficiais** (Claude Code, Codex, OpenCode) de duas maneiras:
-
-1. **Como pontos de modelo "só decisão"** para o orquestrador: o núcleo chama `claude -p` ou `codex exec` com as ferramentas desligadas e saída JSON estruturada; o núcleo valida a resposta e é ele quem executa a ação. O orquestrador **não sai do papel porque não tem nenhuma ferramenta**.
-2. **Como executores**: o núcleo lança o CLI numa worktree isolada, com ferramentas e permissões definidas por ele, e acompanha os eventos.
-
-Nada de chave de API: cada CLI usa o login da assinatura da sua conta (diretório de configuração separado por conta).
-
-## Módulos
-
-| Módulo | Responsabilidade |
+| Termo | Significado |
 |---|---|
-| **Núcleo (daemon)** | Estado durável (SQLite), máquina de estados do fluxo (Produtor, Autor, Revisor, Roteirista, Diretor, Atores, Crítico), fila, política, API local (HTTP e WebSocket ou SSE, com token, no mesmo padrão do `okit-plugin config ui`) |
-| **Adaptadores de cliente** | Um por CLI. Lançam, leem eventos, retomam sessões e convertem para o **formato interno de eventos**. Claude: `-p` com stream-json, `--permission-prompts host`, `--bg`. Codex: `exec --json` (primeiro) e `app-server` (depois). OpenCode: o CLI dele |
-| **Broker de contas** | Por conta: cliente, estado de login (`ok`, `expira-em`, `precisa-login`), cota, tokens no cofre do sistema. Escolhe a conta a cada lançamento, nunca cruza sessão entre clientes, dispara o relogin |
-| **Orquestradores** | Um por projeto. Cada chamada é uma decisão estruturada com o modelo e esforço mais baratos que passem na verificação |
-| **Runner** | **A única peça que muda entre as arquiteturas.** Cria o ambiente do agente, roda o executor e roda **testes, compilação e mutações fora do sandbox do cliente**. Ver a interface abaixo |
-| **Ferramentas próprias (MCP)** | Web (com lista de domínios, taxa e registro), e-mail (envio só pelo núcleo), arquivos e outras. Valem para qualquer cliente |
-| **Agendador** | Tarefas recorrentes e agendadas, política de execução perdida, janela de cota |
-| **Telemetria** | Log de eventos que só cresce, custo e cota por conta, e geração de **ATIF** |
-| **Clientes** | Dashboard web, app de desktop (Electron ou Tauri), CLI. Todos sobre a mesma API |
-| **Plugins** | Processos externos com manifesto; MCP como protocolo de ferramentas |
+| **Executor** | Cliente + perfil (assinatura ou chave de API) + modelo + esforço |
+| **Orquestrador (Diretor)** | Uma sessão ACP como qualquer outra, mas que só recebe as ferramentas MCP do papel Diretor |
+| **Perfil** | Uma assinatura ou chave de API de um cliente, com diretório isolado |
+| **Cenário** | Projeto, tarefa ou chat. Tem chat, Orquestrador, dashboard e configuração |
+| **Peça** | Uma execução do pipeline para uma necessidade |
+| **Demanda** | Unidade de trabalho do roteiro, executada por um Ator |
+| **Tentativa** | Uma execução de uma demanda por um Executor, numa worktree própria |
+| **Blackboard** | Memória compartilhada da peça: plano, roteiro, contratos e decisões |
+| **Casca** | Ferramenta do framework que envolve uma ferramenta existente com política e telemetria |
 
-## Interface do runner (proposta)
+O glossário completo está na arquitetura §13.
 
-O núcleo só conhece esta interface; cada arquitetura a implementa de um jeito.
+## Princípios (arquitetura §2)
 
-| Operação | O que faz |
+P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em código, julgamento no modelo · P4 estado fora do modelo · P5 bloquear tudo, liberar o necessário · P6 tudo é evento · P7 daemon separado da interface · P8 contexto mínimo por Executor · P9 controle de admissão · P10 versões fixadas · P11 só licenças permissivas.
+
+## Módulos do daemon (arquitetura §4 e §5)
+
+| Módulo | Função | Base |
+|---|---|---|
+| `api/` | REST, SSE, WebSocket e autenticação | Hono |
+| `pipeline/` | Máquina de estados da peça e DAG de demandas | XState v5, com snapshot no SQLite |
+| `selection/` | Escolha do Executor por prioridade × disponibilidade | próprio |
+| `accounts/` | Perfis, cofre, sondas de cota | `@napi-rs/keyring` |
+| `executors/` | Cliente ACP, pools por (cliente, perfil), adaptadores | `@agentclientprotocol/sdk` v2 |
+| `mcp/` | Servidor MCP do framework, com filtro por papel numa fábrica por requisição | MCP SDK v2 |
+| `plugins/` | Agregador dos servidores MCP de plugins | próprio, sobre o SDK |
+| `tools/` | Cascas: `run_tests`, `git_*`, `http_get`, shell restrito | próprio |
+| `resources/` | Semáforos e lançador com Job Object | lançador Rust (`win32job`) |
+| `workspace/` | Worktrees, branches, integração, PR | `git` + `gh` |
+| `scheduler/` | Agenda, gatilhos do sistema operacional | croner |
+| `store/` | SQLite (WAL): eventos, estado, blackboard | `better-sqlite3` + Kysely |
+| `telemetry/` | Receptor OTLP, spans, exportador ATIF | OpenTelemetry JS |
+
+O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Ele sobrevive ao fechamento da UI. Ao reiniciar, reidrata as peças e devolve à fila as demandas interrompidas, preservando o que já foi commitado (§5.1).
+
+## Executores (arquitetura §5.2)
+
+- Os adaptadores ACP vêm prontos e não são escritos por nós:
+  - `@agentclientprotocol/claude-agent-acp`;
+  - `@agentclientprotocol/codex-acp`;
+  - `opencode acp`;
+  - `gemini --acp` (opcional).
+- Modelo, esforço e modo são definidos pelas **Session Config Options** do ACP (`session/set_config_option`).
+- Uma interface fina, `ClientAdapter`, cobre o que o ACP não cobre: o comando do adaptador, o ambiente do perfil, `prepareProfile` (permissões, statusline, OTel), login, logout, a sonda de cota e o `processModel`.
+- Pools por `(cliente, perfil)`. No Claude Code, cada sessão sobe um processo `claude`, então a admissão conta sessões.
+- Saída de emergência pelo modo headless: `claude -p --output-format stream-json`, `codex exec --json`.
+
+Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CLI-REFERENCIA.md).
+
+## Orquestrador e ferramentas MCP (arquitetura §5.3 e §5.4)
+
+- O Orquestrador **não abre Executores**: ele chama ferramentas MCP do framework, e o daemon abre as sessões.
+- Conjuntos de ferramentas por papel:
+
+| Papel | Ferramentas |
 |---|---|
-| `preparar(tarefa)` | Cria a worktree, o ambiente (variáveis mínimas, `HOME` e diretórios temporários próprios, configuração da conta) e os limites (tempo, memória, processos) |
-| `executar(comando, opções)` | Roda um comando ou o CLI do agente no ambiente, devolvendo fluxo de saída, código de saída e uso de recursos |
-| `rede(política)` | Aplica a política de rede (liberada, só lista de domínios, sem rede) |
-| `capacidades()` | Diz o que o runner garante: isolamento de arquivos, de rede, de portas, limite de recursos, reprodutibilidade |
-| `encerrar()` | Mata a árvore de processos, recolhe artefatos e limpa |
+| Diretor | `proxima_acao`, `status`, `decidir`, `abrir_peca`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar`, `listar_agenda`, `pausar_agenda` |
+| Todos | `ler_blackboard`, `ler_contrato`, `ler_decisao`, `entregar` |
+| Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` |
+| Ator | `run_tests`, `install_deps`, `git_commit`, `shell_restrito`, `http_get` + plugins do papel |
+| Crítico | `run_tests`, `ver_diff`, `entregar_critica` |
 
-`capacidades()` deixa a **política do núcleo** escolher o runner por tarefa (por exemplo: leitura da web e código não confiável pedem isolamento forte; um build do macOS só roda em runner nativo).
+- `entregar*` é a única forma de um Executor terminar. A saída é validada com zod e devolvida com o erro até `N` vezes.
+- O modelo do Diretor decide só em **três pontos de julgamento**:
+  1. classificar a crítica negativa;
+  2. decidir o destino do trabalho parcial de um Ator que estourou o tempo;
+  3. decidir quando e o que perguntar ao Produtor.
+- Há uma **fila única de prompts** do Orquestrador, com prioridade para o Produtor, e **failover** para o próximo Executor do papel com um resumo gerado do store.
 
-## Desenho
+## Pipeline (arquitetura §5.4)
 
 ```
- Dashboard web · App desktop (Win/macOS/Linux) · CLI
-                      │  API local (token)
-                      ▼
-   ┌────────────────────── NÚCLEO (daemon, serviço do sistema) ──────────────────────┐
-   │  estado (SQLite) · fluxo · política · fila · agendador · broker de contas         │
-   │  log de eventos ─► telemetria ─► ATIF                                             │
-   └──────┬──────────────────────┬──────────────────────────┬─────────────────────────┘
-          │ decisões (sem ferram.)│ lança executores        │ ferramentas próprias (MCP)
-          ▼                       ▼                         ▼
-   Orquestrador (por projeto)  Adaptadores ──► claude · codex · opencode      web · e-mail · ...
-   claude -p / codex exec              │
-   modelo barato, sem tools            ▼
-                                  RUNNER  ◄── arquitetura 1: contêiner · arquitetura 2: nativo
-                              (worktree, testes, mutações)
+NECESSIDADE → PLANEJANDO → REVISANDO_PLANO → ROTEIRIZANDO → EXECUTANDO
+  → INTEGRANDO_TESTE → CRITICANDO → DECIDINDO
+      ├─ aprovado            → ENTREGANDO → CONCLUIDA
+      ├─ falha de execução   → EXECUTANDO (só as demandas afetadas)
+      ├─ falha de roteiro    → ROTEIRIZANDO → REVISANDO_ROTEIRO → EXECUTANDO
+      ├─ falha estrutural    → PLANEJANDO
+      └─ exceção crítica     → AGUARDANDO_PRODUTOR
 ```
 
-## O orquestrador "só decisão"
+- O roteiro é um **DAG de `Demanda`**. Cada demanda traz contrato de entradas e saídas, `arquivosEsperados`, complexidade, timeout e critérios de aceite.
+- Antes de executar, o roteiro é validado em código: o DAG não pode ter ciclos, os contratos citados precisam existir e duas demandas em paralelo não podem prever o mesmo arquivo.
+- Os limites `Np`, `Nc` e o número de tentativas por demanda ficam em código e configuração, nunca no prompt.
 
-1. O núcleo monta o estado (resumo curto, handoff, o que falta) e chama o CLI barato com um prompt fixo.
-2. As ferramentas do cliente ficam desligadas (`--disallowedTools` no Claude; política do Codex) e a resposta é JSON validado por esquema (`--json-schema` no Claude, `--output-schema` no Codex).
-3. O núcleo valida a decisão (por exemplo: lançar executor X no passo Y, aprovar, escalar) e a executa.
-4. A caixa de conversa do dashboard funciona igual: cada mensagem vira uma chamada de decisão com o estado do projeto anexado.
+## Workspace (arquitetura §5.5)
 
-**Limites do modelo**: cada chamada carrega o prompt de sistema do cliente (mais cota que uma chamada enxuta de API), não há streaming contínuo entre turnos e o formato de saída muda com a versão dos CLIs (fixar versões e ter testes de contrato).
+- Branches: `peca/<id>`, `peca/<id>/<demanda>/<tentativa>` e `peca/<id>/integracao`.
+- Commit WIP automático no timeout, no cancelamento e na interrupção, mais checkpoints periódicos.
+- O Crítico avalia a branch **integrada**. Conflito de merge conta como falha de roteiro.
+- A entrega é por PR (`gh pr create`) por padrão.
 
-## Opção de processo vivo
+## Contas, cotas e seleção (arquitetura §5.6 e §5.7)
 
-- **Claude**: `claude -p --input-format stream-json --output-format stream-json --session-id <uuid>` mantido aberto; mensagens como linhas JSON no stdin. `--permission-prompts host` ou `--permission-prompt-tool` mandam cada pedido de permissão ao núcleo, que decide pela política.
-- **Codex**: `codex app-server` (experimental) com daemon, socket de controle e esquema do protocolo gerável; processo vivo e aprovações por requisição. O caminho estável é `codex exec --json` com `resume`, um processo por turno.
-- Recomendação: começar pelo `exec --json` e deixar o `app-server` como segunda implementação da mesma interface.
+- Cada perfil é um diretório isolado:
+  - Claude: `CLAUDE_CONFIG_DIR`;
+  - Codex: `CODEX_HOME`, com `cli_auth_credentials_store = "file"`;
+  - OpenCode: XDG + `OPENCODE_DB`.
+- O login é sempre o login oficial, feito no diretório do perfil.
+- Chaves de API ficam no cofre do sistema. No Linux sem Secret Service, há fallback criptografado.
+- Cada perfil tem um estado: `ok | perto_do_limite | esgotado(ateReset) | desconhecido`. O ccusage guarda o histórico de consumo.
+- Cada papel tem uma lista ordenada de Executores e uma regra para quando todos estão esgotados (`proximo` ou `esperar`). A nova tentativa de uma demanda começa por um Executor diferente do anterior, e o motivo de cada escolha vira evento.
 
-## Contas e relogin
+## Permissões, recursos e contexto
 
-- Uma conta por diretório (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`).
-- `claude auth status` e `codex login status` alimentam o estado de login; falha de autenticação põe a conta em `precisa-login` e pausa a fila dela, enquanto o broker passa o trabalho a outra conta elegível.
-- `claude setup-token` gera um token de longa duração (o dono cita 1 ano; **não confirmado**), passado por `CLAUDE_CODE_OAUTH_TOKEN` ao `claude` oficial; serve para executores sem navegador. O Codex tem `--with-access-token` (duração desconhecida).
-- Tokens ficam no cofre do sistema (Keychain, Credential Manager, libsecret) e são redigidos em logs.
+Ver [09](09-ISOLAMENTO-E-SEGURANCA.md) (arquitetura §5.8 e §5.9) e a arquitetura §5.10, sobre o Ator enxuto, o blackboard, os artefatos por referência e o prefixo estável para cache.
 
-## Prós e contras do núcleo próprio (valem para as duas arquiteturas)
+## Retomada de sessões (arquitetura §5.16)
 
-**Prós**: papel do orquestrador garantido por construção; controle total de permissões, contas, cota e ferramentas (resolve P3, P4, P5 de [01](01-CONTEXTO-E-PROBLEMAS.md)); verificações sob controle do Runner (resolve P2); interface própria (P10); estado durável em banco e chamadas curtas (P9); multi-projeto com um plano de controle; neutro quanto ao fornecedor; telemetria e ATIF nativos; tarefas gerais e agendadas como cidadãs de primeira classe.
+- A interrupção é classificada por causa (cota, rede, queda, reinício, timeout, agente travado).
+- A sessão é retomada de duas formas:
+  - **nativa**, por `session/load`, no mesmo cliente e perfil;
+  - por **passagem de bastão**, com um pacote de continuação, para outro Executor.
+- Há checkpoints periódicos e uma tabela `side_effects` com chaves de idempotência, para não repetir efeitos colaterais.
+- Interrupções externas não contam como tentativa.
 
-**Contras**: esforço alto (é um produto); risco de termos de uso, sobretudo do Claude em automação contínua ([07](07-ASSINATURAS-E-TERMOS.md)); formatos dos CLIs que mudam entre versões (fixar versões, testes de contrato); peso do prompt de sistema por chamada; `exec` do Codex é um processo por turno e o `app-server` é experimental; superfície de segurança maior (internet, e-mail, tokens, API local, plugins); duplica parte do que o `okit` já faz; custo de oportunidade frente aos produtos em andamento.
+## Interfaces (arquitetura §5.13)
 
-## Fases sugeridas (independentes do runner até a Fase 3)
+- A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI na Fase 0 é obrigatório.
+- O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12) e o desktop (Fase 13), ambos opcionais.
+- O mapa de teclas é configurável.
+- Mockups: [mockup/tui.html](framework-ideas/mockup/tui.html) e [mockup/app.html](framework-ideas/mockup/app.html).
 
-1. **Fase 0, validação barata** (dias): script que chama `codex exec --output-schema` e `claude -p --json-schema` como "decisão sem ferramentas", mede o consumo de cota por chamada e confirma o formato dos eventos. Ler os termos atuais da Anthropic e da OpenAI. **Aqui também testar o runner**: rodar a suíte de um projeto real (okit-plugin) no cenário nativo e no de contêiner, e comparar.
-2. **Fase 1, núcleo mínimo**: daemon com SQLite, log de eventos, adaptador do Codex (`exec --json`), orquestrador sem ferramentas, interface do runner com **uma** implementação, CLI como único cliente.
-3. **Fase 2, contas e cota**: broker de contas, leitura de cota, relogin, adaptador do Claude (`-p`, `--permission-prompts host`), cofre de segredos.
-4. **Fase 3, verificação**: testes e mutações pelo runner, crítico, fluxo completo com PR e merge, absorvendo o que o `okit` faz.
-5. **Fase 4, interface**: API estável, dashboard web com trajetória ao vivo, geração de ATIF.
-6. **Fase 5, tarefas gerais**: agendador, ferramentas web e e-mail próprias, fluxos paralelos, o exemplo das manchetes.
-7. **Fase 6, desktop e plugins**: app Electron ou Tauri, serviço do sistema nos três sistemas, plugins por manifesto, OpenCode como terceiro adaptador, e a **segunda implementação do runner**, se a decisão for oferecer as duas.
+## Fases (arquitetura §10)
+
+| Fase | Conteúdo | Sem agentes | Com agentes |
+|---|---|---|---|
+| 0 | Validações e escolha da base (teste da TUI obrigatório) | 2–3 sem | 2–3 sem |
+| 1 | Fundação | 1 | 0,5 |
+| 2 | Camada de Executores | 2 | 1,5 |
+| 3 | Pipeline, MCP do framework e blackboard | 2,5 | 1,5–2 |
+| 4 | Permissões e ferramentas de trabalho | 1,5 | 1 |
+| 5 | Assinaturas, cotas, seleção e retomada | 2,5 | 1,5–2 |
+| 6 | API do daemon e `packages/client` | 1,5 | 0,5–1 |
+| 7 | TUI (interface principal) | 2,5–3 | 1,5 |
+| 8 | Observabilidade | 1 | 0,5 |
+| 9 / 9b | Plugins / Agendador | 1–1,5 cada | 0,5–1 cada |
+| 10 | Distribuição (daemon + TUI) | 1 | 0,5–1 |
+| 11 | Endurecimento | 1,5–2 | 1–1,5 |
+| **Total** | **Produto na TUI** | **≈ 21–24 sem** | **≈ 13–17,5 sem** |
+| 12 / 13 | Web / Desktop (opcionais) | + 3–3,5 | + 1,5–2,5 |
+
+Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.
+
+## Estrutura do repositório de código (arquitetura §9)
+
+`packages/{protocol, daemon, fake-agent, client, tui, web, desktop, plugin-kit}`, `native/job-launcher`, `prompts/`, `docs/`, `spikes/`. O `fake-agent` é um agente ACP simulado: com ele, a máquina de estados, os pools e a UI são testados sem gastar cota.

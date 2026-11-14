@@ -1,39 +1,90 @@
-# 12. Harnesses open source avaliados como base
+# 12. Projetos open source avaliados
 
-Pergunta do dono (2026-11-08): como não quer construir do zero, qual destes seria a melhor base? Lista colada por ele: **mini-SWE-agent, SWE-agent, Aider, OpenHands, Cline, OpenCode, Eigent e Mistral Vibe**.
+O documento tem duas partes:
+- os **agentes** que o dono listou em 2026-11-08, avaliados como base;
+- os projetos que a arquitetura v0.10 (§6.3 a §6.5) avaliou em 2026-11-13 como **base de fork** ou como **referência**.
 
-## Conclusão da conversa
+Nenhum repositório foi lido nesta revisão. As licenças e descrições vêm da arquitetura, ou da conversa de 2026-11-08, e devem ser confirmadas antes de decidir.
 
-**Nenhum deles é uma base de orquestrador.** São **agentes executores** (ou ambientes de agente): cada um traz o próprio laço de agente, o que o dono não quer controlar de dentro, mas de fora. O que servem a este projeto:
+## Parte 1. Agentes listados pelo dono (2026-11-08)
 
-- Como **executores** atrás de adaptadores (o OpenCode já é usado assim, pelo kit, com a MiniMax).
-- Como **referência** de padrões (laço de agente, ferramentas, trajetórias, avaliação).
+Pergunta do dono: como não quer construir do zero, qual destes seria a melhor base? A lista: **mini-SWE-agent, SWE-agent, Aider, OpenHands, Cline, OpenCode, Eigent e Mistral Vibe**.
 
-## Observações por item
+### Conclusão (mantida pela arquitetura)
 
-Estas notas vêm da conversa e de conhecimento geral, **não de leitura dos repositórios agora**. Confirme antes de decidir.
+**Nenhum deles é base de orquestrador.** São **agentes executores**, cada um com o próprio laço de agente, e o dono quer controlar o laço de fora. No OTheater, um agente entra como **Executor por ACP** (§5.2): basta ter um adaptador ACP.
 
-| Agente | Papel provável neste projeto | Observação |
+| Agente | Papel no OTheater | Observação |
 |---|---|---|
-| **OpenCode** | Executor (já em uso) | Aceita login do ChatGPT segundo a documentação; não aceita assinatura do Claude (removeu o suporte); roda MiniMax e outros por chave ou plano |
-| **mini-SWE-agent** | Executor leve ou referência | Laço de agente mínimo, pensado para benchmarks de engenharia de software |
-| **SWE-agent** | Referência | Origem de ideias de interface agente-computador para tarefas de código |
-| **OpenHands** | Executor ou referência de plataforma | Plataforma de agentes com ambiente de execução; a documentação dele trata de assinaturas de LLM (ver [FONTES](FONTES.md)) |
-| **Aider** | Executor de edição de código | Foco em pair programming com git |
-| **Cline** | Executor dentro de editor | Voltado ao uso em IDE |
-| **Eigent** | Referência multiagente de desktop | Aplicativo de desktop multiagente |
-| **Mistral Vibe** | Executor (CLI de outro provedor) | CLI do ecossistema Mistral |
+| **OpenCode** | Executor (`opencode acp`, nativo) | Usado hoje pelo kit com a MiniMax. Segundo fontes secundárias de 2026-11-08, aceita login do ChatGPT e não aceita a assinatura do Claude. A arquitetura o recomenda como harness para modelo local (Gemma 4), em vez do Claude Code (§5.7). |
+| **mini-SWE-agent** | Referência | Laço de agente mínimo, pensado para benchmarks |
+| **SWE-agent** | Referência | Ideias de interface agente-computador |
+| **OpenHands** | Referência | Plataforma com ambiente de execução próprio |
+| **Aider** | Possível Executor, se houver adaptador ACP **[não verificado]** | Pair programming com git |
+| **Cline** | Fora do escopo | Voltado ao uso em IDE |
+| **Eigent** | Referência | App de desktop multiagente |
+| **Mistral Vibe** | Possível Executor, se houver adaptador ACP **[não verificado]** | CLI do ecossistema Mistral |
 
-## O que um agente existente não resolve
+O Gemini CLI, que não estava na lista, entra como Executor opcional (`gemini --acp`).
 
-1. **Controle do papel do orquestrador**: todos têm o próprio laço e ferramentas.
-2. **Multi-conta com cota e relogin** por assinatura.
-3. **Plano de controle comum** com dashboards, multi-projeto, agendador e plugins.
-4. **Isolamento e verificações** em runner próprio.
-5. **ATIF em tempo real** a partir de um log de eventos próprio.
+### O que um agente existente não resolve
 
-Por isso o núcleo ([02](02-NUCLEO-COMUM.md)), com o runner de contêiner ([03](03-ARQUITETURA-1-COM-CONTEINERES.md)) ou o nativo ([04](04-ARQUITETURA-2-SEM-CONTEINERES.md)), trata esses agentes como executores. Partir de um deles como base do núcleo ficou registrado em [05](05-COMPARACAO-E-CRITERIOS.md) como considerado e não recomendado.
+São os diferenciais do OTheater, que a arquitetura (§6.4) também diz que nenhum candidato a fork tem:
+1. o **pipeline teatral** com papéis, Crítico e escalonamento;
+2. a **seleção** por prioridade × cota com várias assinaturas;
+3. as **permissões por papel**;
+4. o **ATIF** a partir de um log de eventos próprio.
 
-## Se algum dia valer a pena um spike
+## Parte 2. Base de fork (arquitetura §6.4, decisão N1)
 
-O dono disse "ainda não" a um spike. Se vier a querer: instalar OpenCode, mini-SWE-agent e OpenHands, rodar a mesma tarefa pequena em cada um e comparar (1) como o laço pode ser controlado de fora, (2) formato dos eventos e das trajetórias, (3) suporte a assinaturas, (4) uso nos três sistemas operacionais.
+Candidatos, em ordem:
+
+| # | Projeto | Licença | Por quê |
+|---|---|---|---|
+| 1 | **Emdash** (`generalaction/emdash`) | Apache-2.0 | Melhor encaixe: runtime ACP em TS, adaptadores claude/codex, agentes paralelos em worktrees |
+| 2 | **Orca** (`stablyai/orca`) | MIT | Daemon + CLI, DAG de tarefas |
+| 3 | **AionUi** | Apache-2.0 | Orquestração líder/equipe sobre ACP |
+| 4 | **Paradev**, **Happier** | MIT | Sessões paralelas em worktrees; interface para vários agentes ACP |
+
+Critérios da Fase 0:
+1. licença do projeto e de todas as dependências que ele arrasta dentro da lista permitida, sem copyleft;
+2. núcleo como daemon separado da UI;
+3. aceitar a máquina de estados por cima;
+4. qualidade de código e testes;
+5. ritmo do upstream.
+
+**Padrão até a avaliação:** projeto próprio, com trechos copiados com atribuição. O risco R8 é o fork divergir e a manutenção dobrar.
+
+## Parte 3. Referências para copiar ou adaptar (arquitetura §6.3)
+
+| Projeto | Licença | O que aproveitar |
+|---|---|---|
+| acpx | MIT | Cliente ACP headless com sessões persistentes e NDJSON |
+| ccmanager | MIT | Gestão de worktrees, detecção de estado do agente |
+| rivet-dev/agents | Apache-2.0 | Agentes de código atrás de uma API HTTP |
+| Nimbalyst (sucessor do Crystal) | MIT **[a confirmar]** | Sessões paralelas |
+| Vibe Kanban | Apache-2.0 (Rust) | Executores ACP e worktree por tarefa (só o desenho) |
+| CodexBar | MIT (Swift) | Como obter a cota de cada provedor |
+| Harbor | Apache-2.0 (Python) | Modelos do ATIF, a portar para zod |
+| 1MCP | **[licença a confirmar]** | Agregação de MCPs com filtro por tags |
+| AgentPrism | **[licença a confirmar]** | Visualizador de trajetórias |
+
+## Parte 4. Avaliados e descartados (arquitetura §6.5)
+
+| Projeto | Motivo |
+|---|---|
+| Claude Squad, coder/mux, Toad | AGPL |
+| Mastra workflows | Partes com licença enterprise; dependência grande demais |
+| Drizzle ORM | O Kysely já atende |
+| DBOS TS, Absurd | Só Postgres |
+| Temporal, Inngest, Restate | Servidor separado, desproporcional para um daemon local |
+| Ruflo (ex-claude-flow) | App opinativo, não biblioteca |
+| LangGraph.js | Não acrescenta nada sobre o XState para um fluxo determinístico |
+| Vercel AI Elements | Será descontinuado no fim de novembro de 2026 |
+| MetaMCP, Docker MCP Gateway | Pesados para embutir |
+| coder/agentapi | Arquivado |
+| Crystal | Descontinuado |
+
+## Se valer a pena um spike
+
+Em 2026-11-08, o dono disse "ainda não" a um spike com os agentes da Parte 1. A Fase 0 da arquitetura agora inclui a avaliação dos candidatos a fork da Parte 2 (N1). Rodar os agentes da Parte 1 só faria sentido para os que têm adaptador ACP.

@@ -2,52 +2,66 @@
 
 ## Visão
 
-Ter um sistema próprio que coordene vários agentes de IA como uma equipe: um **orquestrador barato e disciplinado** que decide, e **executores** que fazem o trabalho (código, testes, compilação, pesquisa, redação), cada um com o modelo e o esforço certos para o papel, em contas e projetos diferentes, com controle total de permissões, cotas e telemetria. O diferencial é **usar as assinaturas dos clientes oficiais** e não chaves de API.
+Ter um sistema próprio, o **OTheater**, que coordene vários agentes de IA como uma equipe. A equipe tem duas partes:
+- um **orquestrador barato e disciplinado**, que decide;
+- **Executores**, que fazem o trabalho (código, testes, compilação, pesquisa, redação), cada um com o modelo e o esforço certos para o papel.
 
-## O fluxo que o sistema deve implementar (o "desenho")
+O sistema trabalha com contas e projetos diferentes e controla permissões, cotas e telemetria. O diferencial é **usar as assinaturas pelos clientes oficiais**. Chaves de API também são aceitas, e são o caminho para o modo produto enquanto o risco R1 estiver aberto (ver [07](07-ASSINATURAS-E-TERMOS.md)).
 
-O dono tem um diagrama (imagem anexada na conversa de 2026-11-08, não copiada para cá). Os papéis e o encadeamento, como descritos:
+A arquitetura de construção está em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.10, 2026-11-13). Os objetivos dela estão na §1.
 
-1. **Produtor**: entrega a demanda.
-2. **Autor**, **Revisor** e **Roteirista**: transformam a demanda em plano e em roteiro de passos.
-3. **Diretor + Atores**: o Diretor lança os Atores (executores). Cada Ator roda em **ambiente isolado com worktree própria**, com **MCPs** definidos e **timeout**.
-4. **Crítico**: avalia o resultado.
-5. **Limite de tentativas** e **roteamento por tipo de erro**: o tipo da falha decide para onde o trabalho volta (autor, roteirista, outro ator, escalonar).
-6. **PR e merge**, e então **um novo ciclo**.
+## O fluxo que o sistema deve implementar (o "pipeline teatral")
+
+O fluxo está descrito em [framework-ideas/framework_multiagentes.md](framework-ideas/framework_multiagentes.md) e no [diagrama do dono](<framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>). Os papéis estão em [framework-ideas/principais-papeis.md](framework-ideas/principais-papeis.md). Em resumo:
+
+1. **Produtor**: entrega a necessidade.
+2. **Autor** e **Revisor**: transformam a necessidade num plano. O Revisor pode reprovar o plano até um limite `Np`.
+3. **Roteirista**: transforma o plano num **roteiro**, que é um DAG de demandas com contratos entre elas. O roteiro é validado em código antes de executar.
+4. **Diretor + Atores**: o Diretor (o Orquestrador) libera as demandas. Cada Ator roda numa **worktree própria**, com as ferramentas MCP do seu papel e **timeout**.
+5. **Integração**: as demandas concluídas são mescladas numa branch de integração.
+6. **Crítico**: avalia o trabalho **integrado**.
+7. **Decisão e roteamento por tipo de falha**: falha de execução volta aos Atores; falha de roteiro, ao Roteirista; falha estrutural, ao Autor. Uma exceção crítica volta ao Produtor. Os limites são `Np` e `Nc`.
+8. **Entrega por PR** (ou merge direto, se o projeto permitir) e então **um novo ciclo**.
+
+A máquina de estados está na §5.4 da arquitetura.
 
 ## Requisitos
 
-| # | Requisito | Origem |
-|---|---|---|
-| R1 | **Sem chave de API.** Usar as assinaturas (Claude, ChatGPT, e planos de outros provedores) pelos clientes oficiais. "O diferencial precisa ser usar as assinaturas." | Pedido do dono |
-| R2 | **Multi-conta, multi-agente e multi-projeto**, com vários orquestradores (um por projeto). | Pedido do dono |
-| R3 | O **orquestrador não sai do papel**: não edita código, não roda testes, não compila. | Pedido do dono |
-| R4 | O orquestrador roda em **modelo pequeno e barato** (por exemplo Haiku ou Luna) em esforço baixo ou médio, com contexto de 200 a 250 mil tokens. | Pedido do dono |
-| R5 | Os executores são chamados com **modelo e esforço específicos por papel** e **rodam testes, compilam e rodam mutações sem problemas de permissão ou sandbox**. | Pedido do dono |
-| R6 | **Controle total** de ferramentas, permissões, autenticação, assinaturas e cotas. | Pedido do dono |
-| R7 | **Cliente fino** que encapsula Claude Code, Codex e OpenCode (OpenCode não aceita a assinatura do Claude; aceita login do ChatGPT segundo a documentação dele e outros provedores por chave ou plano). | Pedido do dono |
-| R8 | **Interface própria**: dashboards, controle de projetos, plugins e **app de desktop** para Windows, macOS e Linux. Sem o Claude como "prompt de controle". | Pedido do dono |
-| R9 | **Portabilidade entre Windows, macOS e Linux** para o app e para os agentes. Se o isolamento usa contêiner ou não é a decisão em comparação (Q1 em [13](13-DECISOES-EM-ABERTO.md)); o runner é trocável. | Pedido do dono |
-| R10 | Agentes com **acesso à internet** e **tarefas gerais, recorrentes e agendadas** (exemplo: consultar vários portais de notícias em paralelo, compilar manchetes e enviar o resumo em HTML por e-mail). | Pedido do dono |
-| R11 | **Telemetria completa** e **trajetórias em formato ATIF**, acompanháveis **em tempo real**. | Pedido do dono |
-| R12 | **Relogin** controlado quando a assinatura precisar ser renovada, e uso do `claude setup-token` quando fizer sentido. | Pedido do dono |
-| R13 | **Economia de cota**: ferramenta primeiro, modelo por último; modelo mais barato que cumpra a verificação. | Princípio já adotado pelo dono |
-| R14 | **Resolver de uma vez os erros que aparecem hoje** (ver [01](01-CONTEXTO-E-PROBLEMAS.md)). | Pedido do dono |
+| # | Requisito | Origem | Como a arquitetura atende |
+|---|---|---|---|
+| R1 | **Assinaturas como diferencial.** Usar as assinaturas (Claude, ChatGPT, MiniMax e outras) **pelos clientes oficiais**, sem nunca tocar nos tokens. Chaves de API são aceitas como alternativa. *Até 2026-11-13 o requisito era "sem chave de API"; a arquitetura passou a aceitar as duas formas.* | Pedido do dono; ajustado pela arquitetura | §1 (item 3), §3, §5.6 |
+| R2 | **Multi-conta, multi-agente e multi-projeto.** Cada cenário (projeto, tarefa ou chat) tem o seu Orquestrador. | Pedido do dono | §4, §5.6, §7 (`scenarios`, `profiles`) |
+| R3 | O **orquestrador não sai do papel**: não edita código, não roda testes, não compila. | Pedido do dono | §5.3: o Diretor só tem as ferramentas MCP do papel e não abre Executores; quem os abre é o daemon |
+| R4 | O orquestrador roda em **modelo pequeno e barato**, em esforço baixo ou médio. | Pedido do dono | §5.7: lista do papel (por exemplo Haiku ou Gemma 4 local); §5.10: Orquestrador sem memória própria |
+| R5 | Os Executores usam **modelo e esforço específicos por papel** e **rodam testes, compilam e rodam mutações sem problemas de permissão ou sandbox**. | Pedido do dono | §5.2 (config options do ACP); §5.8: `run_tests` e `install_deps` são cascas executadas pelo daemon, não pelo sandbox do cliente |
+| R6 | **Controle total** de ferramentas, permissões, autenticação, assinaturas e cotas. | Pedido do dono | §5.6, §5.7, §5.8 |
+| R7 | **Cliente fino** que encapsula Claude Code, Codex e OpenCode. | Pedido do dono | §5.2: adaptadores ACP prontos + `ClientAdapter` fino |
+| R8 | **Interface própria** para chat com o Orquestrador, dashboard, configuração, plugins e acompanhamento em tempo real, sem o Claude como "prompt de controle". *Até 2026-11-13 o pedido era um app de desktop. A arquitetura faz da **TUI** a interface principal e deixa web e desktop como opcionais.* | Pedido do dono; ajustado pela arquitetura | §5.13, Fases 7, 12 e 13 |
+| R9 | **Portabilidade**: Windows primeiro, sem impedir macOS e Linux. **Sem contêineres** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). | Pedido do dono | §3, `platform/` (§9), §5.8 |
+| R10 | Agentes com **acesso à internet** e **tarefas agendadas e repetidas**. | Pedido do dono | §5.8 (`http_get` com domínios permitidos), §5.15 (agendador) |
+| R11 | **Telemetria completa** e **trajetórias em ATIF**, acompanháveis **em tempo real**. | Pedido do dono | §5.11 |
+| R12 | **Relogin controlado** quando a assinatura precisar ser renovada. | Pedido do dono | §5.6: login e logout oficiais no diretório de cada perfil; o perfil passa por `drenando` antes de ser removido |
+| R13 | **Economia de cota**: ferramenta primeiro, modelo por último; o modelo mais barato que cumpra a verificação. | Princípio já adotado pelo dono | P3, P8, §5.10; mensagens de andamento sem custo de modelo (§5.4) |
+| R14 | **Resolver de uma vez os erros que aparecem hoje** (ver [01](01-CONTEXTO-E-PROBLEMAS.md)). | Pedido do dono | Tabela "Como a arquitetura responde" em [01](01-CONTEXTO-E-PROBLEMAS.md) |
+| R15 | **Retomar sessões interrompidas** (cota, rede, queda, reinício, timeout, agente travado) sem perder trabalho nem repetir efeitos colaterais. | Arquitetura v0.10 | §5.16 |
+| R16 | **Só licenças permissivas** no código copiado e nas dependências empacotadas. | Arquitetura v0.3/v0.4 | §6.0 |
 
 ## Fora de escopo (por enquanto)
 
-- Usar chaves de API (pode existir como opção futura, mas não é o objetivo).
 - Treinar ou ajustar modelos.
-- Reescrever os clientes de agente (Claude Code, Codex, OpenCode): eles são encapsulados, não substituídos.
-- Hospedar o sistema para terceiros (é uma ferramenta pessoal, local, do dono).
+- Reescrever os clientes de agente (Claude Code, Codex, OpenCode) ou os adaptadores ACP. Eles são reaproveitados, não substituídos (P1, P2).
+- Contêineres como mecanismo de isolamento (Q1).
+- Ler, copiar ou reaproveitar tokens OAuth de assinatura (§3).
+- Distribuir para terceiros com assinatura Claude antes da confirmação da Anthropic (R1, decisão N2).
 
 ## Critérios de sucesso (propostos, a validar com o dono)
 
-1. Uma demanda de código percorre o fluxo completo (plano, execução isolada, testes, mutações, crítico, PR) **sem que o orquestrador execute nenhuma ferramenta de código**. Isso é verificado pela lista de ferramentas do orquestrador (vazia ou restrita), não pela leitura do comportamento.
-2. Um executor roda a suíte de testes e a compilação do projeto **sem falha de permissão ou sandbox** (zero `EPERM` causado pela ferramenta; ver o caso do D151 em [01](01-CONTEXTO-E-PROBLEMAS.md)).
-3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa a outra conta elegível** ou **pausa com aviso claro**, sem laço nem espera cega.
-4. A trajetória de cada agente pode ser **vista ao vivo** e **exportada em ATIF** (versão a fixar; ver [11](11-TELEMETRIA-E-ATIF.md)).
-5. Uma tarefa geral agendada (o exemplo das manchetes) roda sem supervisão, **sem que o agente que lê a web tenha a credencial de envio** do e-mail.
-6. O mesmo núcleo atende **dois projetos ao mesmo tempo** sem misturar worktrees, contas ou estado.
-7. Instala e roda em **Windows, macOS e Linux**.
-8. Custo da orquestração: o consumo de cota do orquestrador por demanda é pequeno e **medido** (a meta numérica é uma decisão em aberto; ver [13](13-DECISOES-EM-ABERTO.md)).
+1. Uma demanda de código percorre o pipeline completo (plano, roteiro, execução isolada, integração, testes, crítico, PR) **sem que o Orquestrador execute nenhuma ferramenta de código**. A verificação é feita pelo conjunto de ferramentas MCP do papel Diretor (§5.3), não pela leitura do comportamento.
+2. Um Executor roda a suíte de testes e a compilação do projeto **sem falha de permissão ou sandbox**: zero `EPERM` causado pela ferramenta (ver o caso do D151 em [01](01-CONTEXTO-E-PROBLEMAS.md)).
+3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao próximo Executor elegível** (`proximo`) ou **espera o reset com aviso** (`esperar`), sem laço nem espera cega (§5.7, §5.16).
+4. A trajetória de cada agente pode ser **vista ao vivo** e **exportada em ATIF-v1.8**, validada pelo `TrajectoryValidator` do Harbor (§5.11).
+5. Uma tarefa agendada roda sem ninguém olhando, **entrega por PR** e **pausa e notifica** quando precisa de decisão do Produtor (§5.15).
+6. O mesmo daemon atende **dois projetos ao mesmo tempo** sem misturar worktrees, perfis ou estado.
+7. Daemon e TUI instalam e rodam em **Windows**, **macOS** e **Linux**, com o Windows como primeira plataforma.
+8. Custo da orquestração: o consumo de cota do Orquestrador por demanda é pequeno e **medido**. A meta numérica é uma decisão em aberto (Q14 em [13](13-DECISOES-EM-ABERTO.md)).
+9. Uma sessão interrompida no meio do trabalho é retomada (nativa ou por passagem de bastão) **sem commits duplicados nem efeitos colaterais repetidos** (§5.16).

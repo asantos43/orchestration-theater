@@ -1,58 +1,113 @@
 # 10. Tarefas gerais, recorrentes e agendadas
 
-O sistema não é só para desenvolvimento de software. Exemplo-guia do dono: **consultar vários portais de notícias em paralelo, compilar um resumo de manchetes e enviar o resumo em HTML por e-mail**, de forma recorrente.
+Este documento tem duas partes:
+- o **agendador** como a arquitetura v0.10 o descreve (§5.15, Fase 9b, riscos R13 e R14), de 2026-11-13, **não verificado localmente**;
+- as **tarefas gerais**, que não são desenvolvimento de software, e o exemplo-guia do dono. Como elas se encaixam na arquitetura ainda depende da decisão **N3** (tipos de cenário além de projeto).
 
-## Princípio: ferramenta primeiro, modelo por último
+## Agendador (arquitetura §5.15)
 
-Cada agente em paralelo gasta cota de assinatura. Para o resumo de manchetes, a maior parte do trabalho **não precisa de agente**:
+O daemon dispara peças sozinho, no horário: o agendador age como se o Produtor tivesse escrito a necessidade no chat. **Não há pipeline novo.** A peça agendada passa pela mesma máquina de estados, seleção de Executores, permissões e eventos de qualquer outra.
 
-1. O núcleo busca os RSS ou as páginas por HTTP, **em paralelo, sem gastar cota**.
-2. Extrai e normaliza (título, link, hora, portal) com código.
-3. O **modelo barato** só resume e agrupa (um passo, ou poucos).
-4. O núcleo gera o HTML, valida e higieniza.
-5. O núcleo envia o e-mail com destinatário e remetente fixos.
+### Tarefa agendada = modelo de peça
 
-Fan-out de **agentes** só existe quando o passo exige julgamento (por exemplo, páginas sem RSS que pedem leitura inteligente).
+Fica guardada na tabela `schedules` e tem:
+- cenário, com o projeto e a branch base;
+- o texto da necessidade;
+- overrides opcionais de Executores por papel, limites e timeout;
+- **política de entrega:** PR por padrão. Merge direto só se o projeto permitir **e** a tarefa pedir;
+- **orçamento por execução:** teto de tempo e, para perfis de API, de custo. Se estourar, a peça para e notifica.
 
-## Fluxo declarativo (proposta)
+### Tipos de agendamento
 
-Uma tarefa é uma definição com passos, dependências e política:
+| Tipo | Exemplo | Observação |
+|---|---|---|
+| Uma vez | 20/11 às 22h | Sai da lista depois de rodar e fica no histórico |
+| Por calendário | cron `0 7 * * 1-5`, fuso `America/Sao_Paulo` | O fuso é sempre explícito |
+| Por intervalo | a cada 6 h | Conta a partir do fim da execução anterior |
+| Logo após o reset da cota | "depois do próximo reset de claude-empresa" | Usa o `resetsAt` das sondas de cota ([08](08-CLIENTES-CLI-REFERENCIA.md)) |
+
+A biblioteca é o **croner** (licença MIT **[a confirmar]**). O próximo disparo de cada tarefa fica gravado no SQLite e sobrevive a reinícios.
+
+### Regras por tarefa
+
+| Situação | Padrão |
+|---|---|
+| Execução perdida (máquina desligada ou daemon parado) | Rodar uma vez, se o atraso for menor que a janela configurada (ex.: 12 h); senão, pular e registrar |
+| Sobreposição com a execução anterior | Pular e registrar |
+| Cota esgotada nos Executores do papel | Adiar até o reset, dentro de um prazo máximo |
+| Decisão do Produtor sem ninguém olhando | Pausar e notificar |
+
+Os valores padrão (janela, prazo de adiamento, espera, orçamento) são a decisão **N13** em [13](13-DECISOES-EM-ABERTO.md).
+
+### Notificações
+
+O agendador notifica quando a tarefa termina, falha, pausa ou pede decisão:
+- sempre no chat do cenário e como evento `agenda.*`;
+- como notificação do sistema operacional, quando houver sessão gráfica;
+- por e-mail, webhook ou chat corporativo, via plugin ([09](09-ISOLAMENTO-E-SEGURANCA.md), §5.14).
+
+### Máquina dormindo (risco R14)
+
+O daemon sozinho não acorda a máquina. Além disso, o Modern Standby do Windows estrangula processos em segundo plano. A arquitetura toma duas medidas:
+
+1. **Acordar no horário.** Ao salvar a tarefa, o daemon registra um gatilho no agendador do sistema operacional, que chama `ot run <tarefa>`:
+   - Windows: Agendador de Tarefas, com "despertar o computador";
+   - macOS: launchd + `pmset`;
+   - Linux: timer do systemd com `WakeSystem=`.
+2. **Manter acordada durante a execução.** O pedido de energia é liberado ao fim da peça:
+   - Windows: `SetThreadExecutionState` + Power Request;
+   - macOS: `caffeinate`/IOPMAssertion;
+   - Linux: inibidor do systemd-logind.
+
+### Criação e controle
+
+- **Aba Agenda** na TUI (e na web, se existir).
+- **Pelo chat.** O Diretor chama `agendar(...)`, que **não salva direto**: devolve um rascunho para o Produtor confirmar, editar ou cancelar. `listar_agenda` e `pausar_agenda` completam o conjunto.
+- **Pelo terminal:** `ot agenda list|add|pause|resume|rm` e `ot run <tarefa>`.
+
+**"Rodar até os testes passarem" não é agendamento.** Isso já é o ciclo de correção do pipeline (Crítico → correção, com os limites `Nc` e de tentativas).
+
+## Tarefas gerais: o exemplo das manchetes
+
+O sistema não é só para desenvolvimento de software. O exemplo-guia do dono, registrado em 2026-11-08, é **consultar vários portais de notícias em paralelo, compilar um resumo das manchetes e enviar o resumo em HTML por e-mail**, de forma recorrente.
+
+### Ferramenta primeiro, modelo por último
+
+Esse princípio, que é o R13 em [00](00-OBJETIVO.md), corresponde aos P3 e P8 da arquitetura. Para as manchetes, a maior parte do trabalho **não precisa de agente**:
+1. buscar os RSS ou as páginas por HTTP (casca `http_get` com domínios permitidos, ou um plugin de feeds), em paralelo e sem gastar cota;
+2. extrair e normalizar título, link, hora e portal com código;
+3. o **modelo barato** só resume e agrupa;
+4. gerar, validar e higienizar o HTML com código;
+5. enviar o e-mail por um **plugin** com destinatário fixo. A credencial fica no plugin (`segredos` do manifesto), nunca com o agente.
+
+### Como encaixar na arquitetura (lacuna)
+
+A arquitetura modela toda tarefa agendada como uma **peça**: Autor → Revisor → Roteirista → Atores → Crítico. Para um resumo diário de manchetes, isso é pesado.
+
+A proposta de 2026-11-08 era um **fluxo declarativo** com passos de código e passos de modelo:
 
 ```
 tarefa: manchetes-diarias
 agenda: todos os dias 07:30 (America/Sao_Paulo)
-política:
-  execução perdida: rodar ao voltar (no máximo 1 por dia)
-  janela de cota: não rodar com a conta abaixo de 20 por cento
-  tempo máximo: 10 min
-passos:
-  - buscar: paralelo, ferramenta web própria, fontes = [portal1, portal2, ...]   # sem modelo
-  - normalizar: código
-  - resumir: modelo barato, ferramentas = nenhuma, entrada = itens normalizados
-  - montar_html: código (modelo opcional para o texto)
-  - validar_e_higienizar: código
-  - enviar_email: ferramenta própria do núcleo, destinatário fixo
+passos: buscar (código) → normalizar (código) → resumir (modelo barato)
+        → montar_html (código) → validar (código) → enviar_email (plugin)
 ```
 
-O mesmo formato descreve os fluxos de desenvolvimento do diagrama (Autor, Revisor, Roteirista, Diretor, Atores, Crítico), com passos de agente, retentativas e roteamento por tipo de erro.
+A arquitetura **não tem** esse formato. Caminhos possíveis, a decidir na **N3**. Nenhum foi escolhido; são hipóteses:
+- um cenário do tipo "tarefa", com um fluxo mais curto que o de projeto;
+- uma peça cujo roteiro já vem pronto no modelo da tarefa, pulando o planejamento;
+- um plugin que faz a parte de código, com o modelo só no passo de resumo.
 
-## Agendador
+### Outros usos mencionados
 
-- Mora no **daemon**, que precisa rodar como **serviço do sistema** mesmo com o app fechado: launchd (macOS), Agendador de Tarefas ou serviço (Windows), systemd (Linux). O app de desktop é só um cliente.
-- **Execução perdida** (computador dormindo ou desligado): políticas `rodar ao voltar`, `pular` e `juntar`.
-- **Concorrência**: limite de execuções simultâneas por conta, por projeto e global.
-- **Janela de cota**: cada tarefa declara quando pode rodar e em que conta; o broker respeita.
-- **Retentativas e backoff** por tipo de erro; falha de autenticação pausa e avisa em vez de insistir.
-- Histórico de execuções, duração, custo de cota e resultado, no dashboard.
-
-## Outros usos já mencionados ou naturais
-
-- Relatórios periódicos de um projeto (estado das demandas, cotas, falhas).
+- Relatórios periódicos de um projeto (estado das peças, cotas, falhas).
 - Monitorar um site ou repositório e avisar de mudanças.
-- Rotinas de manutenção do próprio sistema (rotacionar logs, checar logins, avisar renovação de token).
+- Rotinas de manutenção do próprio sistema (checar logins, avisar renovação).
+- Na arquitetura: "atualizar dependências e corrigir o que quebrar", como tarefa de projeto entregue por PR.
 
 ## Pontos de atenção
 
-- **Segurança**: ver [09](09-ISOLAMENTO-E-SEGURANCA.md): leitura da web e envio ficam em passos e identidades separados.
-- **Termos**: automação recorrente sobre assinatura é o ponto mais sensível ([07](07-ASSINATURAS-E-TERMOS.md)). Quanto mais passos forem código e não modelo, menor o consumo e o risco.
-- **Alternativa já existente**: o Claude Code tem rotinas e agendas próprias (`CronCreate`, `RemoteTrigger`, a skill `schedule`). Elas servem à alternativa de continuar com o harness existente ([06](06-ALTERNATIVA-HARNESS-EXISTENTE.md)), mas não têm política de cota, segredos por tarefa nem a separação leitura e envio.
+- **Segurança:** a leitura da web e o envio ficam separados ([09](09-ISOLAMENTO-E-SEGURANCA.md)).
+- **Termos:** automação recorrente sobre assinatura é o ponto mais sensível ([07](07-ASSINATURAS-E-TERMOS.md), pergunta 2). Quanto mais passos forem código e não modelo, menor o consumo e o risco.
+- **Cota interativa:** uma tarefa agendada pode gastar a cota que o dono usaria de dia (R13). Agendar para logo após o reset e adiar quando esgotado são as mitigações.
+- **Alternativa já existente:** o Claude Code tem rotinas e agendas próprias (`CronCreate`, `RemoteTrigger`, a skill `schedule`). Elas servem à alternativa de [06](06-ALTERNATIVA-HARNESS-EXISTENTE.md), mas não têm política de cota, segredos por tarefa nem a separação entre leitura e envio.

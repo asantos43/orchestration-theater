@@ -35,4 +35,27 @@ Fonte: o trabalho no `okit-plugin` (assistente de instalação, demandas D149 a 
 - A regra de mutação para provar que cada correção é coberta por teste.
 - As ordens permanentes (`orders`) e a trilha de decisões.
 
-Qualquer das duas arquiteturas precisa **absorver** isso, não jogar fora.
+A arquitetura do OTheater precisa **absorver** isso, não jogar fora. Correspondências na arquitetura v0.10:
+- o relatório do executor corresponde à saída estruturada `entregar`, validada por schema (§5.3);
+- o crítico corresponde ao papel Crítico sobre a branch integrada (§5.4 e §5.5);
+- os papéis correspondem aos prompts versionados em `prompts/` (§9);
+- a trilha de decisões corresponde à tabela `decisions` e ao log de eventos (§7).
+
+A regra de mutação e as ordens permanentes **não aparecem explicitamente** na arquitetura. Elas precisam ser encaixadas como critério de aceite das demandas, ferramenta do Crítico ou política do projeto (a decidir).
+
+## Como a arquitetura responde a cada problema
+
+Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) v0.10. É um mapeamento do desenho, não uma medição: as respostas só valem depois de verificadas na Fase 0 e nas fases seguintes.
+
+| # | Resposta da arquitetura | Seção |
+|---|---|---|
+| P1 | O Diretor é uma sessão ACP que só enxerga as ferramentas MCP do papel (`proxima_acao`, `decidir`, `abrir_peca`…). Quem abre Executores é o daemon. O fluxo é uma máquina de estados em código. | §5.3, §5.4 |
+| P2 | Shell, testes, build e git passam pelas **cascas** do daemon (`run_tests`, `install_deps`, `git_commit`, `shell_restrito`), fora do sandbox do cliente. O isolamento real vem do sistema operacional (Job Object, `sandbox-runtime`). | §5.8, §5.9 |
+| P3 | Sondas de cota por provedor (statusline do Claude, `account/rateLimits` do Codex, `token_plan/remains` da MiniMax, erro 429), estado por perfil e seleção por prioridade × disponibilidade. | §5.6, §5.7 |
+| P4 | Não há portão de cota no cliente: a admissão é decidida pelo daemon, com regra explícita `proximo`/`esperar` por papel. | §5.7, §5.9 |
+| P5 | A retomada nativa (`session/load`) só acontece no mesmo cliente e perfil. A troca de cliente é uma **passagem de bastão** com pacote de continuação, nunca o id de sessão de outro cliente. | §5.16 |
+| P6 | Critério de "agente travado" (minutos sem evento, repetição do mesmo erro), timeout com commit WIP e limites de tentativas em código. | §5.4, §5.5, §5.16 |
+| P7 | O plano passa pelo Revisor antes do roteiro. O roteiro é validado em código (ciclos, contratos, arquivos), e cada demanda tem contrato explícito. | §5.4 |
+| P8 | Os defeitos do kit deixam de existir se o fluxo sair do `okit`. A relação com o `okit` ainda é decisão em aberto (Q12). | [13](13-DECISOES-EM-ABERTO.md) |
+| P9 | O estado fica no daemon (SQLite + blackboard). O Orquestrador consulta `proxima_acao`/`status` e, em caso de failover, recebe um resumo gerado do store. | P4, §5.4, §5.10 |
+| P10 | TUI como interface principal (chat, dashboard, trajetórias, agenda), com web e desktop opcionais sobre o `packages/client`. | §5.13, Fases 7, 12 e 13 |

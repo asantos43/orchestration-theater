@@ -1,5 +1,11 @@
 # 06. Alternativa: continuar com um harness existente (Claude Code + okit)
 
+> **Alternativa registrada, fora do rumo escolhido** (decisão Q3 em [13](13-DECISOES-EM-ABERTO.md), 2026-11-13). O rumo é construir o **OTheater** ([framework-ideas/arquitetura.md](framework-ideas/arquitetura.md)). Este documento continua útil por dois motivos:
+> - descreve o fluxo que segue em uso até o OTheater servir no dia a dia (marco "uso diário", Fases 0–5);
+> - lista melhorias pequenas que ainda valem para o `okit` nesse intervalo.
+>
+> O que acontece com o `okit` é a pergunta Q12. Abaixo, "A" é esta alternativa e "B" é o núcleo próprio, hoje o OTheater.
+
 ## Ideia
 
 Continuar usando um cliente de agente pronto (Claude Code, ou Codex) como o **Diretor**, e **endurecer** esse cliente para que ele fique no papel, apoiado no kit (`okit`) que já executa o trabalho em segundo plano. Nada de núcleo próprio: a melhoria vem de configuração, permissões, hooks, agentes definidos e de evolução do kit.

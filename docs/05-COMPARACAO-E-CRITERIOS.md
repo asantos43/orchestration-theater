@@ -1,5 +1,7 @@
 # 05. Comparação e critérios de decisão
 
+> **Histórico. Comparação encerrada em 2026-11-13** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). A arquitetura do OTheater ([framework-ideas/arquitetura.md](framework-ideas/arquitetura.md), v0.10) não tem contêiner nem runner trocável. O caminho híbrido proposto aqui não foi adotado. As medições que continuam valendo foram para a **Fase 0** da arquitetura (§10): concorrência dos adaptadores, perfis isolados, sandbox no Windows e lançador com Job Object. O texto abaixo foi mantido como registro da análise de 2026-11-08 e não foi atualizado.
+
 Duas arquiteturas, **com contêiner** ([03](03-ARQUITETURA-1-COM-CONTEINERES.md)) e **sem contêiner** ([04](04-ARQUITETURA-2-SEM-CONTEINERES.md)), sobre o mesmo núcleo ([02](02-NUCLEO-COMUM.md)). A diferença está só no runner.
 
 ## Lado a lado

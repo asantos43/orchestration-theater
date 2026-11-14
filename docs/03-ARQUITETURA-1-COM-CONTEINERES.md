@@ -1,5 +1,7 @@
 # 03. Arquitetura 1: com contêineres
 
+> **Histórico. Opção descartada em 2026-11-13** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). A arquitetura do OTheater ([framework-ideas/arquitetura.md](framework-ideas/arquitetura.md), v0.10) roda os Executores como processos nativos e põe o isolamento no sistema operacional: Job Object, `sandbox-runtime` e usuário de baixo privilégio (§5.8 e §5.9). Os motivos que pesaram contra o contêiner foram a prioridade do Windows, a instalação simples e as builds de outros sistemas. O texto abaixo foi mantido como registro da análise de 2026-11-08 e não foi atualizado.
+
 Núcleo comum em [02](02-NUCLEO-COMUM.md). Aqui, o **runner roda cada agente (e as verificações) dentro de um contêiner**, com a worktree montada como volume.
 
 ## Desenho do runner

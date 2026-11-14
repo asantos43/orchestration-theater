@@ -1,5 +1,13 @@
 # 04. Arquitetura 2: sem contêineres
 
+> **Histórico. Origem da opção escolhida em 2026-11-13** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). A arquitetura do OTheater ([framework-ideas/arquitetura.md](framework-ideas/arquitetura.md), v0.10) segue o caminho nativo deste documento, com mudanças:
+> - os Executores são acionados por **ACP**, não por uma interface de runner própria;
+> - as verificações rodam pelas **cascas** do daemon (`run_tests`, `install_deps`, `shell_restrito`);
+> - o Bash nativo do Claude é removido;
+> - a fronteira de segurança é o sistema operacional: Job Object por um lançador Rust no Windows e `@anthropic-ai/sandbox-runtime` no macOS e no Linux, em alpha no Windows (§5.8 e §5.9).
+>
+> O desenho atual está no resumo [02](02-NUCLEO-COMUM.md) e em [09](09-ISOLAMENTO-E-SEGURANCA.md). O texto abaixo foi mantido como registro da análise de 2026-11-08 e não foi atualizado.
+
 Núcleo comum em [02](02-NUCLEO-COMUM.md). Aqui, o **runner é nativo**: cada agente roda como processo do sistema do usuário, numa worktree própria, e a proteção vem de **política aplicada pelo núcleo** e não de uma fronteira do sistema.
 
 ## Desenho do runner
