@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.20, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.21, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -57,6 +57,7 @@ O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Ele so
 - Uma interface fina, `ClientAdapter`, cobre o que o ACP não cobre: o comando do adaptador, o ambiente do perfil, `prepareProfile` (permissões, statusline, OTel), login, logout, a sonda de cota e o `processModel`.
 - Pools por `(client, profile)`. No Claude Code, cada sessão sobe um processo `claude`, então a admissão conta sessões.
 - Saída de emergência pelo modo headless: `claude -p --output-format stream-json`, `codex exec --json`.
+- **Seleção (§5.7):** cada papel tem uma lista ordenada de Executores, que é a cadeia de fallback. O nome é sempre `<modelo>-<esforço>@<perfil>` (`claude-opus-high@claude-empresa`, `codex-sol-high@codex-1`). A primeira execução (`ot init`) detecta clientes, logins e chaves de API e aplica `roles.preset` (`quality` por padrão, `balanced`, `economical`). O Revisor e o Crítico preferem outro provedor (`selection.cross_check`).
 
 Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CLI-REFERENCIA.md).
 

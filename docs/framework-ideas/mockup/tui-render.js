@@ -102,12 +102,12 @@ const MSGS = [
   ['sys', '09:19', 'autor', 'Opus · alto entregou o plano (7 passos)', 'ok'],
   ['sys', '09:23', 'revisor', 'Codex · alto aprovou na 1ª tentativa', 'ok'],
   ['sys', '09:27', 'roteiro', '5 demandas · D2 e D3 em paralelo', 'ok'],
-  ['sys', '09:41', 'ator', 'D1 concluída por codex-alto', 'sys'],
-  ['sys', '09:42', 'seleção', 'D3: codex-alto sem vaga → sonnet-medio', 'warn'],
+  ['sys', '09:41', 'ator', 'D1 concluída por codex-sol-high@codex-1', 'sys'],
+  ['sys', '09:42', 'seleção', 'D3: codex-sol-high@codex-1 sem vaga → claude-sonnet-medium@claude-empresa', 'warn'],
   ['orq', 'diretor', '09:42', 'D1 pronta. D2 (fluxo OAuth) e D3 (middleware de sessão) estão rodando em worktrees separadas. D4 (testes e2e) começa quando as duas terminarem.'],
 ];
 function chat(x, w) {
-  box(x, 1, w, 40, 'Chat · Orquestrador (haiku · claude-empresa)', true);
+  box(x, 1, w, 40, 'Chat · Orquestrador (claude-haiku-low@claude-empresa)', true);
   const ix = x + 2, iw = w - 4;
   put(ix, 2, pad('Peça #14 · Login OAuth (Google e GitHub) na API', iw), 'bold');
   if (iw >= 62) seg(ix, 3, [['● Execução', 'acc'], [' · Crítico 0/3 · Plano 1/3 · 38 min · ', 'dim'], ['! 1 decisão', 'warn']]);
@@ -185,7 +185,7 @@ function tabGeral(x, y, w) {
   seg(x + 2, y++, [['▶ Execução 1/5', 'acc'], ['  ○ Integração  ○ Crítico  ○ PR', 'dim']]);
   y++;
   y = sec(x, y, w, 'Demandas (DAG)', true, 'sem conflito');
-  const dem = [['✓', 'ok', 'D1 Usuário e migração', 'codex-alto'], ['▶', 'acc', 'D2 Fluxo OAuth · 18/30m', 'codex-alto !'], ['▶', 'acc', 'D3 Middleware · 7/20m', 'sonnet-medio'], ['○', 'dim', 'D4 Testes e2e ← D2, D3', ''], ['○', 'dim', 'D5 Documentação · fila', '']];
+  const dem = [['✓', 'ok', 'D1 Usuário e migração', 'codex-sol-high@codex-1'], ['▶', 'acc', 'D2 Fluxo OAuth · 18/30m', 'codex-sol-high@codex-1 !'], ['▶', 'acc', 'D3 Middleware · 7/20m', 'claude-sonnet-medium@claude-empresa'], ['○', 'dim', 'D4 Testes e2e ← D2, D3', ''], ['○', 'dim', 'D5 Documentação · fila', '']];
   for (const [m, k, n, e] of dem) seg(x + 2, y++, [[m + ' ', k], [pad(n, w - 17), k === 'dim' ? 'dim' : ''], [rpad(e, 13), e.includes('!') ? 'warn' : 'dim']]);
   y++;
   y = sec(x, y, w, 'Atores ativos · 2/4', true, 'RAM 6,1/16 GB');
@@ -209,7 +209,7 @@ function tabGeral(x, y, w) {
 
 function tabTraj(x, y, w) {
   const lw = 26;
-  const at = [['D2 · tentativa 1', 'codex-alto · 46 passos', true], ['D3 · tentativa 1', 'sonnet-medio · 21'], ['D1 · tentativa 1', 'concluída'], ['Roteirista', 'concluída'], ['Revisor', 'concluída'], ['Autor', 'concluída']];
+  const at = [['D2 · tentativa 1', 'codex-sol-high@codex-1 · 46 passos', true], ['D3 · tentativa 1', 'claude-sonnet-medium@claude-empresa · 21'], ['D1 · tentativa 1', 'concluída'], ['Roteirista', 'concluída'], ['Revisor', 'concluída'], ['Autor', 'concluída']];
   at.forEach(([a, b, sel], i) => {
     const yy = y + i * 3;
     if (sel) { fill(x, yy, lw - 1, 'sel'); fill(x, yy + 1, lw - 1, 'sel'); }
@@ -244,24 +244,25 @@ function tabConfig(x, y, w) {
   if (X + 16 <= x + w) put(x + w - 14, y, 'escopo: global', 'dim');
   y += 2;
   const R = [
-    ['Diretor (Orquestrador)', [['haiku', 'ok'], ['gemma4-local', 'ok']], 'próximo'],
-    ['Autor', [['opus-alto', 'ok'], ['codex-alto', 'ok']], 'próximo'],
-    ['Revisor', [['codex-alto', 'ok'], ['opus-alto', 'ok']], 'próximo'],
-    ['Roteirista', [['opus-alto', 'ok'], ['codex-alto', 'ok']], 'próximo', true],
-    ['Ator', [['codex-alto', 'pool cheio'], ['sonnet-medio', 'ok'], ['minimax', 'ok'], ['codex-pessoal', 'inválido']], 'próximo'],
-    ['Crítico', [['opus-alto', 'ok'], ['codex-alto', 'ok']], 'esperar'],
+    ['Diretor (Orquestrador)', [['claude-haiku-low@claude-empresa', 'ok'], ['codex-luna-low@codex-1', 'ok'], ['gemma4-low@gemma4-local', 'ok']], 'próximo'],
+    ['Autor', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'próximo'],
+    ['Revisor', [['codex-sol-high@codex-1', 'ok'], ['claude-opus-high@claude-empresa', 'ok']], 'próximo'],
+    ['Roteirista', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'próximo', true],
+    ['Ator', [['codex-sol-high@codex-1', 'pool cheio'], ['claude-sonnet-medium@claude-empresa', 'ok'], ['minimax-m2-medium@minimax-api', 'ok'], ['codex-luna-medium@codex-pessoal', 'inválido']], 'próximo'],
+    ['Crítico', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'esperar'],
   ];
-  const cw = Math.floor((w - 2) / 2);
-  const ys = [y, y];
+  const cw = w - 2;
+  const ys = [y];
   R.forEach(([t, ex, rule, closed], i) => {
-    const c = i % 2, cx = x + c * (cw + 2);
+    const c = 0, cx = x + 1;
     let yy = ys[c];
     seg(cx, yy++, [[closed ? '▸ ' : '▾ ', 'acc'], [pad(t, cw - 14), 'bold'], [closed ? rpad(ex.length + ' executores', 12) : '', 'dim']]);
     if (!closed) {
       ex.forEach(([n, s], j) => {
         const sel = t === 'Ator' && j === 1, k = s === 'ok' ? 'ok' : s === 'inválido' ? 'err' : 'warn';
         if (sel) fill(cx, yy, cw, 'sel');
-        seg(cx, yy++, [[' :: ', sel ? 'sel' : 'dim'], [(j + 1) + ' ', sel ? 'sel' : 'dim'], [pad(n, cw - 18), sel ? 'sel' : (s === 'inválido' ? 'dim' : '')], [rpad(s, 11), sel ? 'sel-acc' : k]]);
+        const st = s === 'ok' ? '✓' : s === 'inválido' ? '✗' : s === 'pool cheio' ? 'cheio' : s;
+        seg(cx, yy++, [[' ⋮', sel ? 'sel' : 'dim'], [(j + 1) + ' ', sel ? 'sel' : 'dim'], [pad(n, cw - 9), sel ? 'sel' : (s === 'inválido' ? 'dim' : '')], [rpad(st, 5), sel ? 'sel-acc' : k]]);
       });
       seg(cx, yy++, [['   se esgotado: ', 'dim'], [rule === 'próximo' ? '[● próximo]' : '[● esperar]', 'acc']]);
     }

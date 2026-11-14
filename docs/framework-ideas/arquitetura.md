@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.20 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional.
+> Versão 0.21 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -354,17 +354,64 @@ Executores que usavam o perfil ficam `invalid`, sem quebrar as listas dos papéi
 
 ### 5.7 Seleção de Executor
 
-Configuração por papel: lista ordenada de Executores + regra quando ninguém está disponível.
+Configuração por papel: lista ordenada de Executores + regra quando ninguém está disponível. **Todos os papéis** têm a lista (Diretor, Consultor, Autor, Revisor, Roteirista, Crítico e Atores), e ela é a cadeia de fallback: quando o primeiro não tem assinatura com cota nem chave de API disponível, vale o seguinte. Tudo é ajustável na configuração (decidido em 2026-11-14).
+
+**Nome do Executor** (decidido em 2026-11-14): sempre `<modelo>-<esforço>@<perfil>`. O `<modelo>-<esforço>` vem primeiro porque o papel é desempenhado pelo conjunto modelo + esforço. Os modelos do Claude levam o prefixo `claude-`, como os do Codex levam `codex-`, para os nomes ficarem consistentes: `claude-opus-high`, `claude-sonnet-medium`, `claude-haiku-low`, `codex-sol-high`, `codex-luna-low`, `minimax-m2-medium`, `gemma4-low`. O sufixo `@<perfil>` (a conta) vai em todos os Executores, mesmo com uma conta só, para o mesmo modelo e esforço em contas diferentes não colidir (decisão do dono; era o item 22 da seção 12): `claude-opus-high@claude-empresa`, `claude-opus-high@claude-pessoal`, `codex-sol-high@codex-1`, `gemma4-low@gemma4-local`. O cliente fica no campo do Executor. Os nomes `gpt-6-sol` e `gpt-6-luna` vêm do cache de modelos do Codex citado na documentação do `okit` (fonte secundária) e o nome atual do modelo da MiniMax também está **[a confirmar]** na Fase 0.
+
+```yaml
+executors:
+  claude-haiku-low@claude-empresa: { client: claude-code, profile: claude-empresa, model: haiku,           effort: low }
+  codex-luna-low@codex-1:          { client: codex,       profile: codex-1,        model: gpt-6-luna,      effort: low }  # [a confirmar]
+  gemma4-low@gemma4-local:         { client: opencode,    profile: gemma4-local,   model: gemma-4-26b-a4b, effort: low }
+```
+
+- **Interfaces:** onde faltar espaço (a TUI, o celular), a tela pode encurtar o sufixo ou mostrá-lo numa coluna à parte, mas o nome guardado e o dos eventos é sempre o completo **[proposta]**.
+- **Esforço que o adaptador não expõe:** o nome guarda o esforço pedido, e vale o fallback do adaptador (abaixo). Se o OpenCode expõe esforço para o Gemma 4 e o MiniMax está **[a confirmar]**.
+
+**Primeira execução** (decidida em 2026-11-14, item 8 da seção 12): a primeira execução guiada (Fase 10; na CLI, `ot init`):
+1. detecta os clientes instalados, os logins e as chaves de API;
+2. aplica a predefinição da chave `roles.preset` e tira da lista os Executores que não existem. A predefinição é escrita em `<modelo>-<esforço>`, sem conta; o `ot init` troca cada item pelos Executores das contas encontradas que têm aquele modelo, um por conta, na ordem das contas que o Produtor confirmar (ex.: `claude-opus-high` vira `claude-opus-high@claude-empresa, claude-opus-high@claude-pessoal`) **[proposta]**;
+3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@minimax-api`), dentro do orçamento de API. Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
+4. mostra o resultado, e o Produtor confirma ou ajusta.
+
+Predefinição padrão, `quality`, depois do `ot init` numa máquina com as contas `claude-empresa`, `codex-1`, `minimax-api` e `gemma4-local`:
 
 ```yaml
 roles:
-  director:   { executors: [haiku, gemma4-local] }
-  consultant: { executors: [opus-high, codex-high] }   # Ator forte do chat (5.20)
-  author:     { executors: [opus-high, codex-high] }
-  reviewer:   { executors: [codex-high, opus-high] }
-  critic:     { executors: [opus-high, codex-high], when_exhausted: wait }
-  actor:      { executors: [codex-high, sonnet-medium, minimax], when_exhausted: next }
+  preset: quality              # quality | balanced | economical
+  director:     { executors: [claude-haiku-low@claude-empresa, codex-luna-low@codex-1, gemma4-low@gemma4-local, minimax-m2-medium@minimax-api] }
+  consultant:   { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }   # Ator forte do chat (5.20)
+  author:       { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }
+  reviewer:     { executors: [codex-sol-high@codex-1, claude-opus-high@claude-empresa, minimax-m2-medium@minimax-api] }
+  scriptwriter: { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }
+  critic:       { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api], when_exhausted: wait }
+  actor:        { executors: [codex-sol-high@codex-1, claude-sonnet-medium@claude-empresa, minimax-m2-medium@minimax-api], when_exhausted: next }
+
+selection:
+  cross_check: prefer_other_provider   # prefer_other_provider | require_other_provider | other_model | off
 ```
+
+A tabela das predefinições usa os nomes sem conta, como elas são escritas:
+
+| Papel | `quality` (padrão) | `balanced` | `economical` |
+|---|---|---|---|
+| Diretor | `claude-haiku-low`, `codex-luna-low`, `gemma4-low` | igual | igual |
+| Consultor | `claude-opus-high`, `codex-sol-high` | igual **[proposta]** | `claude-sonnet-high`, `codex-sol-medium` **[proposta]** |
+| Autor | `claude-opus-high`, `codex-sol-high` | `claude-sonnet-high`, `codex-sol-medium` | `claude-sonnet-medium`, `codex-sol-medium` |
+| Revisor | `codex-sol-high`, `claude-opus-high` | `codex-sol-medium`, `claude-sonnet-high` | `codex-sol-medium`, `claude-sonnet-medium` |
+| Roteirista | igual ao Autor | igual ao Autor | igual ao Autor |
+| Crítico (`wait`) | `claude-opus-high`, `codex-sol-high` | `claude-opus-high`, `codex-sol-high` | `claude-sonnet-high`, `codex-sol-medium` |
+| Atores (`next`) | `codex-sol-high`, `claude-sonnet-medium`, `minimax-m2-medium` | `claude-sonnet-medium`, `codex-sol-medium`, `minimax-m2-medium` | `minimax-m2-medium`, `gemma4-medium`, `claude-sonnet-medium` |
+
+- A `balanced` deixa o Opus só onde decide a qualidade; a `economical` poupa as assinaturas e usa API barata e modelo local. O primeiro item de cada lista de `balanced` e `economical` veio da pergunta ao dono; os seguintes, que dão a troca de provedor, são **[proposta]**.
+- O Diretor usa esforço `low` nas três: ele só encaminha e chama ferramentas MCP. Pode ser mudado na configuração.
+- A chave individual de um papel (`roles.author.executors`, ...) prevalece sobre a predefinição.
+
+**Revisão cruzada** (`selection.cross_check`, decidida em 2026-11-14): o Revisor e o Crítico pulam os Executores do mesmo provedor de quem fez o trabalho (o Autor, no plano; o Ator, no código) e voltam a ele se não houver outro disponível (`prefer_other_provider`, padrão). Os outros modos:
+- `require_other_provider`: sem outro provedor, esperam;
+- `other_model`: basta outro modelo, mesmo do mesmo provedor;
+- `off`: só a ordem da lista.
+O pulo entra no evento `executor.selected`, como os outros.
 
 Algoritmo, para cada demanda ou etapa:
 1. percorre a lista na ordem. Um Executor é **disponível** quando:
@@ -2319,7 +2366,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 5. *(Decidida em 2026-11-14: política de entrega como chave de configuração, ver "Decididas" e a seção 5.5.)*
 6. Daemon como serviço de logon ou processo do app desktop (ou os dois). O comportamento sem login foi decidido à parte (5.21): na v1 o daemon espera o login.
 7. Electron ou Tauri (só se a Fase 13 for feita).
-8. Executores padrão de cada papel na primeira execução.
+8. *(Decidida em 2026-11-14: Executores padrão de cada papel, ver "Decididas" e a seção 5.7.)*
 9. *(Decidida em 2026-11-14: acesso remoto pela VPN do usuário, para o app Android, ver "Decididas" e as seções 5.12 e 5.13.)*
 10. Custo em moeda para assinaturas (só o uso relativo da cota) versus API (custo real).
 11. Framework da TUI: Ink (padrão) ou OpenTUI, pelo teste comparativo da Fase 0 (obrigatório).
@@ -2332,8 +2379,11 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 18. Contribuições externas (6.0): exigir um acordo de contribuição (CLA), que dá ao dono o direito de relicenciar o código recebido e mantém aberta uma licença dupla ou uma versão comercial, ou só a certificação de origem (DCO, com `Signed-off-by`), em que cada contribuição fica só sob MPL-2.0. Decide-se antes de o repositório aceitar contribuições.
 19. Notificações do app Android (5.13): push pelo Firebase Cloud Messaging (exige conta Google e alguém que envie o push, o que pede um serviço fora da máquina); UnifiedPush ou ntfy (sem Google, com servidor próprio ou público); ou só com o app aberto ou num serviço em primeiro plano ligado ao SSE, que gasta bateria. Decide-se na Fase 14.
 20. Distribuição do app Android: Google Play, APK direto (com atualização pelo próprio app) ou F-Droid. Liga-se ao item 2 (uso pessoal ou produto).
+21. Teto de gasto em API por perfil ou por Executor (5.7), além do orçamento por execução das tarefas agendadas (5.15): período (dia, mês ou os dois), o que fazer ao estourar (pular para o próximo da lista, esperar ou perguntar) e aviso antes do teto. Liga-se ao item 10. A proposta é uma chave no perfil de API, por exemplo `budget: { daily_usd: 20, monthly_usd: 200, on_exceeded: skip }` **[proposta]**.
+22. *(Decidida em 2026-11-14: sufixo `@<perfil>` em todos os Executores, ver "Decididas" e a seção 5.7.)*
 
 Decididas:
+- Executores padrão de cada papel (2026-11-14, seção 5.7; eram os itens 8 e 22): nome sempre `<modelo>-<esforço>@<perfil>`, com o prefixo `claude-` nos modelos do Claude e o sufixo da conta em todos, e o cliente no campo; todos os papéis com lista de fallback ajustável; a primeira execução (`ot init`) detecta clientes, logins e chaves, aplica `roles.preset: quality` (opções `balanced` e `economical`), tira o que não existe, acrescenta ao fim o Executor por API que houver e pede confirmação; Diretor com `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; Roteirista com a lista do Autor; revisão cruzada com `selection.cross_check: prefer_other_provider`. O teto de gasto por perfil de API segue em aberto (item 21);
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause, 0BSD e MPL-2.0; GPL, AGPL e LGPL proibidas (2026-11-13; MPL-2.0 aceita em 2026-11-14, seção 6.0);
 - app Android (2026-11-14, seções 5.12 e 5.13 e Fase 14; era o item 9): versões para celular e tablet, só como cliente do daemon; Capacitor sobre a web da Fase 12; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho; Fase 14, depois da web, fora da v1. Com isso, a web deixa de ser opcional. Notificações e distribuição seguem em aberto (itens 19 e 20);
@@ -2458,6 +2508,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Padrões do pipeline (v0.18) | `Np`, `Nc`, tentativas, timeouts, política de entrega, regras do agendador e da retomada sem valor (itens 4, 5, 13 e 14) | Chaves `limits.*`, `delivery.*`, `schedule.*` e `resume.*`, cada grupo com três predefinições e chaves individuais; padrões `moderate`, `pr`, `balanced` e `balanced` | Decisões do dono, que pediu que cada padrão seja chave de configuração com várias opções |
 | Licença do código próprio (v0.19) | Código próprio em MIT; MPL proibida em código copiado e dependências | Código próprio em MPL-2.0; MPL-2.0 permitida em código copiado e dependências, com obrigações; GPL, AGPL e LGPL seguem proibidas; CLA ou DCO em aberto (item 18) | Decisão do dono, depois de uma pergunta sobre uso comercial |
 | App Android (v0.20) | Interfaces só no computador (TUI, web e desktop opcionais); acesso remoto em aberto (item 9) | App Android para celular e tablet na Fase 14, com Capacitor sobre a web; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho (`api.remote`); a web deixa de ser opcional; notificações e distribuição em aberto (itens 19 e 20); mockup `mockup/mobile.html`, com os comandos pelo celular como proposta | Decisão do dono |
+| Executores padrão (v0.21) | Exemplo de lista por papel, sem Roteirista, com nomes sem regra (`haiku`, `codex-high`, `minimax`); padrões da primeira execução em aberto (item 8) | Nome `<modelo>-<esforço>@<perfil>`, com prefixo `claude-` e o sufixo da conta em todos; todos os papéis com lista de fallback; `ot init` detecta e aplica `roles.preset` (`quality` padrão, `balanced`, `economical`), acrescenta o Executor por API; Diretor `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; `selection.cross_check: prefer_other_provider`; teto de gasto em API em aberto (item 21) | Decisão do dono |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

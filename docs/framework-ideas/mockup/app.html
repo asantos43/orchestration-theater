@@ -394,8 +394,8 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
       <div class="sys ok"><span class="tag">autor</span>Opus 5.5 · alto entregou o plano (7 passos)<time>09:19</time></div>
       <div class="sys ok"><span class="tag">revisor</span>Codex · alto aprovou o plano na 1ª tentativa<time>09:23</time></div>
       <div class="sys ok"><span class="tag">roteiro</span>5 demandas · D2 e D3 em paralelo · contratos validados<time>09:27</time></div>
-      <div class="sys"><span class="tag">ator</span>D1 Modelo de usuário e migração concluída por codex-alto<time>09:41</time></div>
-      <div class="sys warn"><span class="tag">seleção</span>D3: codex-alto sem vaga no pool → sonnet-medio (claude-empresa)<time>09:42</time></div>
+      <div class="sys"><span class="tag">ator</span>D1 Modelo de usuário e migração concluída por codex-sol-high@codex-1<time>09:41</time></div>
+      <div class="sys warn"><span class="tag">seleção</span>D3: codex-sol-high@codex-1 sem vaga no pool → claude-sonnet-medium@claude-empresa<time>09:42</time></div>
       <div class="m orq">D1 está pronta. D2 (fluxo OAuth) e D3 (middleware de sessão) estão rodando em worktrees separadas. D4 (testes e2e) começa quando as duas terminarem.<div class="meta">09:42</div></div>
       <div class="decision" id="decision">
         <h4>⚑ Decisão do Produtor · D2</h4>
@@ -453,7 +453,7 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
               <path d="M150 115 C175 115 175 55 200 55"/><path d="M150 115 C175 115 175 175 200 175"/>
               <path d="M340 55 C365 55 365 115 390 115"/><path d="M340 175 C365 175 365 115 390 115"/>
               <path d="M455 140 L455 172"/>
-              <g class="node n-ok"><rect x="10" y="90" width="140" height="50"/><text x="22" y="111">D1 · Usuário e migração</text><text class="s" x="22" y="128">concluída · codex-alto</text></g>
+              <g class="node n-ok"><rect x="10" y="90" width="140" height="50"/><text x="22" y="111">D1 · Usuário e migração</text><text class="s" x="22" y="128">ok · codex-sol-high</text></g>
               <g class="node n-run"><rect x="200" y="30" width="140" height="50"/><text x="212" y="51">D2 · Fluxo OAuth</text><text class="s" x="212" y="68">executando · 18/30 min</text></g>
               <g class="node n-run"><rect x="200" y="150" width="140" height="50"/><text x="212" y="171">D3 · Middleware sessão</text><text class="s" x="212" y="188">executando · 7/20 min</text></g>
               <g class="node n-wait"><rect x="390" y="90" width="125" height="50"/><text x="402" y="111">D4 · Testes e2e</text><text class="s" x="402" y="128">aguarda D2, D3</text></g>
@@ -465,8 +465,8 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
           <div class="card"><h3><span class="chev">▾</span>Eventos <span class="r">ao vivo</span></h3><div class="cb">
             <div class="ev"><time>09:44:10</time><div><code>ferramenta.chamada</code> D2 · <span class="mono">run_tests(auth)</span> → 11 ok, 1 falha</div></div>
             <div class="ev"><time>09:43:52</time><div><code>decisao.pendente</code> D2 · credenciais de teste do Google</div></div>
-            <div class="ev"><time>09:42:31</time><div><code>executor.selecionado</code> D3 · codex-alto pulado (pool cheio) → sonnet-medio</div></div>
-            <div class="ev"><time>09:42:30</time><div><code>executor.selecionado</code> D2 · codex-alto (1º da lista)</div></div>
+            <div class="ev"><time>09:42:31</time><div><code>executor.selecionado</code> D3 · codex-sol-high@codex-1 pulado (pool cheio) → claude-sonnet-medium@claude-empresa</div></div>
+            <div class="ev"><time>09:42:30</time><div><code>executor.selecionado</code> D2 · codex-sol-high@codex-1 (1º da lista)</div></div>
             <div class="ev"><time>09:41:05</time><div><code>tentativa.concluida</code> D1 · 4 arquivos · testes ok</div></div>
           </div></div>
         </div>
@@ -495,12 +495,12 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
       <div class="pane" data-pane="traj">
         <div class="traj">
           <div class="att">
-            <button class="on"><b>D2 · tentativa 1</b><small>codex-alto · em curso · 46 passos</small></button>
-            <button><b>D3 · tentativa 1</b><small>sonnet-medio · em curso · 21 passos</small></button>
-            <button><b>D1 · tentativa 1</b><small>codex-alto · concluída · 33 passos</small></button>
-            <button><b>Roteirista</b><small>opus-alto · concluída</small></button>
-            <button><b>Revisor</b><small>codex-alto · concluída</small></button>
-            <button><b>Autor</b><small>opus-alto · concluída</small></button>
+            <button class="on"><b>D2 · tentativa 1</b><small>codex-sol-high@codex-1 · em curso · 46 passos</small></button>
+            <button><b>D3 · tentativa 1</b><small>claude-sonnet-medium@claude-empresa · em curso · 21 passos</small></button>
+            <button><b>D1 · tentativa 1</b><small>codex-sol-high@codex-1 · concluída · 33 passos</small></button>
+            <button><b>Roteirista</b><small>claude-opus-high@claude-empresa · concluída</small></button>
+            <button><b>Revisor</b><small>codex-sol-high@codex-1 · concluída</small></button>
+            <button><b>Autor</b><small>claude-opus-high@claude-empresa · concluída</small></button>
             <button class="btn sm" style="text-align:center">Exportar ATIF v1.8</button>
           </div>
           <div class="steps">
@@ -527,10 +527,10 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
         <div class="toolbar"><button class="btn ghost sm" data-cards="open">Expandir tudo</button><button class="btn ghost sm" data-cards="close">Recolher tudo</button></div>
         <div class="card"><h3><span class="chev">▾</span>Por papel · peça #14</h3><div class="cb tw">
           <table><thead><tr><th>Papel</th><th>Executor</th><th>Tokens</th><th>Cache</th><th>Tempo</th></tr></thead><tbody>
-            <tr><td>Diretor</td><td>haiku</td><td>38k</td><td>82%</td><td>—</td></tr>
-            <tr><td>Autor</td><td>opus-alto</td><td>96k</td><td>40%</td><td>7 min</td></tr>
-            <tr><td>Revisor</td><td>codex-alto</td><td>51k</td><td>55%</td><td>4 min</td></tr>
-            <tr><td>Roteirista</td><td>opus-alto</td><td>63k</td><td>61%</td><td>4 min</td></tr>
+            <tr><td>Diretor</td><td>claude-haiku-low@claude-empresa</td><td>38k</td><td>82%</td><td>—</td></tr>
+            <tr><td>Autor</td><td>claude-opus-high@claude-empresa</td><td>96k</td><td>40%</td><td>7 min</td></tr>
+            <tr><td>Revisor</td><td>codex-sol-high@codex-1</td><td>51k</td><td>55%</td><td>4 min</td></tr>
+            <tr><td>Roteirista</td><td>claude-opus-high@claude-empresa</td><td>63k</td><td>61%</td><td>4 min</td></tr>
             <tr><td>Atores (3)</td><td>codex / sonnet</td><td>402k</td><td>69%</td><td>40 min</td></tr>
           </tbody></table>
         </div></div>
@@ -602,13 +602,14 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
         <div class="sub-pane" data-subpane="exec">
           <div class="card"><h3><span class="chev">▾</span>Executores <span class="r">modelo e esforço vêm das opções de cada adaptador ACP</span></h3><div class="cb tw">
             <table><thead><tr><th>Id</th><th>Cliente</th><th>Perfil</th><th>Modelo</th><th>Esforço</th><th>Estado</th></tr></thead><tbody>
-              <tr><td><b>opus-alto</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>opus-5.5</option><option>sonnet-5.5</option><option>haiku-5.5</option></select></td><td><select><option>alto</option><option>médio</option><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>sonnet-medio</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>sonnet-5.5</option></select></td><td><select><option>médio</option></select></td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>haiku</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>haiku-5.5</option></select></td><td><select><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>codex-alto</b></td><td>Codex</td><td>codex-1</td><td><select><option>gpt-5-codex</option></select></td><td><select><option>alto</option></select></td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>minimax</b></td><td>OpenCode</td><td>minimax-api</td><td><select><option>MiniMax-M2</option></select></td><td class="faint">—</td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>gemma4-local</b></td><td>OpenCode</td><td>gemma4-local</td><td><select><option>gemma-4-26b-a4b</option></select></td><td class="faint">—</td><td><span class="badge ok">válido</span></td></tr>
-              <tr><td><b>codex-pessoal</b></td><td>Codex</td><td class="faint">removido</td><td>—</td><td>—</td><td><span class="badge err">inválido</span></td></tr>
+              <tr><td><b>claude-opus-high@claude-empresa</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>opus-5.5</option><option>sonnet-5.5</option><option>haiku-5.5</option></select></td><td><select><option>alto</option><option>médio</option><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>claude-sonnet-medium@claude-empresa</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>sonnet-5.5</option></select></td><td><select><option>médio</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>claude-haiku-low@claude-empresa</b></td><td>Claude Code</td><td>claude-empresa</td><td><select><option>haiku-5.5</option></select></td><td><select><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>codex-sol-high@codex-1</b></td><td>Codex</td><td>codex-1</td><td><select><option>gpt-6-sol</option></select></td><td><select><option>alto</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>codex-luna-low@codex-1</b></td><td>Codex</td><td>codex-1</td><td><select><option>gpt-6-luna</option></select></td><td><select><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>minimax-m2-medium@minimax-api</b></td><td>OpenCode</td><td>minimax-api</td><td><select><option>MiniMax-M2</option></select></td><td><select><option>médio</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>gemma4-low@gemma4-local</b></td><td>OpenCode</td><td>gemma4-local</td><td><select><option>gemma-4-26b-a4b</option></select></td><td><select><option>baixo</option></select></td><td><span class="badge ok">válido</span></td></tr>
+              <tr><td><b>codex-luna-medium@codex-pessoal</b></td><td>Codex</td><td class="faint">removido</td><td>—</td><td>—</td><td><span class="badge err">inválido</span></td></tr>
             </tbody></table>
             <div style="margin-top:12px"><button class="btn sm">+ Novo executor</button></div>
           </div></div>
@@ -617,30 +618,31 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
         <div class="sub-pane" data-subpane="papeis">
           <div class="roles">
             <div class="card"><h3><span class="chev">▾</span>Diretor (Orquestrador)</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>haiku<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>gemma4-local<span class="badge ok">ok</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>claude-haiku-low@claude-empresa<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-luna-low@codex-1<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">3</span>gemma4-low@gemma4-local<span class="badge ok">ok</span></li></ul>
               <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>Autor</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>claude-opus-high@claude-empresa<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-sol-high@codex-1<span class="badge ok">ok</span></li></ul>
               <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>Revisor</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-alto<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>opus-alto<span class="badge ok">ok</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-sol-high@codex-1<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>claude-opus-high@claude-empresa<span class="badge ok">ok</span></li></ul>
               <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>Roteirista</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>claude-opus-high@claude-empresa<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-sol-high@codex-1<span class="badge ok">ok</span></li></ul>
               <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>Ator</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-alto<span class="badge run">pool cheio</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>sonnet-medio<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">3</span>minimax<span class="badge ok">ok</span></li>
-              <li class="off"><span class="grip">⋮⋮</span><span class="n">4</span>codex-pessoal<span class="badge err">inválido</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>codex-sol-high@codex-1<span class="badge run">pool cheio</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>claude-sonnet-medium@claude-empresa<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">3</span>minimax-m2-medium@minimax-api<span class="badge ok">ok</span></li>
+              <li class="off"><span class="grip">⋮⋮</span><span class="n">4</span>codex-luna-medium@codex-pessoal<span class="badge err">inválido</span></li></ul>
               <div class="seg"><button class="on">Próximo</button><button>Esperar</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>Crítico</h3><div class="cb"><ul class="ord">
-              <li><span class="grip">⋮⋮</span><span class="n">1</span>opus-alto<span class="badge ok">ok</span></li>
-              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-alto<span class="badge ok">ok</span></li></ul>
+              <li><span class="grip">⋮⋮</span><span class="n">1</span>claude-opus-high@claude-empresa<span class="badge ok">ok</span></li>
+              <li><span class="grip">⋮⋮</span><span class="n">2</span>codex-sol-high@codex-1<span class="badge ok">ok</span></li></ul>
               <div class="seg"><button>Próximo</button><button class="on">Esperar</button></div>
               <p class="faint" style="font-size:11.5px;margin:8px 0 0">Esperar: aguarda o reset da cota sem rebaixar o modelo.</p></div></div>
           </div>
