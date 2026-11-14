@@ -84,6 +84,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .bar{height:5px;background:var(--panel-2);border-radius:3px;overflow:hidden;margin-top:4px}
 .bar i{display:block;height:100%;background:var(--ok);border-radius:3px}
 .bar i.w{background:var(--warn)} .bar i.e{background:var(--err)} .bar i.a{background:var(--accent)}
+/* cota dupla: 5 h (grossa) + 7 dias (fina, logo abaixo) */
+.bar.wk{height:2px;margin-top:2px;background:transparent}
+.bar.wk i{opacity:.55}
+.sub .row .wv{color:var(--faint)}
+.sec-h .leg{margin-left:auto;font-size:9.5px;letter-spacing:.04em;font-weight:500;text-transform:none;display:flex;align-items:center;gap:5px}
+.sec-h .leg i{display:inline-block;width:10px;background:var(--faint);border-radius:2px;vertical-align:middle}
+.sec-h .leg + .add{margin-left:2px}
+.rail .q .bar.wk{height:3px;border:0;margin-top:2px;background:var(--panel-2)}
 .side-foot{border-top:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:2px}
 .nav{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;border:0;background:none;text-align:left;width:100%;white-space:nowrap}
 .nav:hover{background:var(--panel-2)} .nav.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
@@ -324,11 +332,11 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
         </div>
       </div>
       <div class="sec" data-sec="ass">
-        <div class="sec-h"><span class="chev">▾</span>Assinaturas<button class="add" title="Adicionar assinatura" data-open="config" data-sub="assin">+</button></div>
+        <div class="sec-h"><span class="chev">▾</span>Assinaturas<span class="leg" title="Barra grossa: janela de 5 h · barra fina: janela de 7 dias"><i style="height:4px"></i>5h <i style="height:2px"></i>7d</span><button class="add" title="Adicionar assinatura" data-open="config" data-sub="assin">+</button></div>
         <div class="sec-b">
-          <div class="sub"><div class="row"><span>claude-empresa</span><span>5h 62%</span></div><div class="bar"><i style="width:62%"></i></div></div>
-          <div class="sub"><div class="row"><span>claude-pessoal</span><span>5h 91%</span></div><div class="bar"><i class="w" style="width:91%"></i></div></div>
-          <div class="sub"><div class="row"><span>codex-1</span><span>5h 34%</span></div><div class="bar"><i style="width:34%"></i></div></div>
+          <div class="sub" title="claude-empresa · 5 h: 62% (reset 11:30) · 7 dias: 31% (reset ter 09:00)"><div class="row"><span>claude-empresa</span><span>62% <span class="wv">· 31%</span></span></div><div class="bar"><i style="width:62%"></i></div><div class="bar wk"><i style="width:31%"></i></div></div>
+          <div class="sub" title="claude-pessoal · 5 h: 91% (reset 10:05) · 7 dias: 58% (reset seg 14:20)"><div class="row"><span>claude-pessoal</span><span>91% <span class="wv">· 58%</span></span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="bar wk"><i style="width:58%"></i></div></div>
+          <div class="sub" title="codex-1 · 5 h: 34% (reset 12:10) · 7 dias: 22% (reset qui 21:00)"><div class="row"><span>codex-1</span><span>34% <span class="wv">· 22%</span></span></div><div class="bar"><i style="width:34%"></i></div><div class="bar wk"><i style="width:22%"></i></div></div>
           <div class="sub"><div class="row"><span>minimax-api</span><span>US$ 3,20 hoje</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
           <div class="sub"><div class="row"><span>gemma4-local</span><span>1/2 slots</span></div><div class="bar"><i class="a" style="width:50%"></i></div></div>
         </div>
@@ -344,9 +352,9 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
       <div class="item" title="migracao-db · concluída"><span class="ic p">M</span><span class="dot ok"></span></div>
       <button class="ib" title="Novo cenário">+</button>
       <hr>
-      <div class="q" title="claude-empresa · 5h 62%"><div class="bar"><i style="width:62%"></i></div></div>
-      <div class="q" title="claude-pessoal · 5h 91%"><div class="bar"><i class="w" style="width:91%"></i></div></div>
-      <div class="q" title="codex-1 · 5h 34%"><div class="bar"><i style="width:34%"></i></div></div>
+      <div class="q" title="claude-empresa · 5 h 62% · 7 dias 31%"><div class="bar"><i style="width:62%"></i></div><div class="bar wk"><i style="width:31%"></i></div></div>
+      <div class="q" title="claude-pessoal · 5 h 91% · 7 dias 58%"><div class="bar"><i class="w" style="width:91%"></i></div><div class="bar wk"><i style="width:58%"></i></div></div>
+      <div class="q" title="codex-1 · 5 h 34% · 7 dias 22%"><div class="bar"><i style="width:34%"></i></div><div class="bar wk"><i style="width:22%"></i></div></div>
       <div class="q" title="minimax-api · US$ 3,20"><div class="bar"><i class="a" style="width:16%"></i></div></div>
       <div class="q" title="gemma4-local · 1/2 slots"><div class="bar"><i class="a" style="width:50%"></i></div></div>
     </div>
@@ -475,9 +483,9 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
 
         <div class="card"><h3><span class="chev">▾</span>Cota por assinatura <span class="r">atualizado há 40 s</span></h3><div class="cb">
           <div class="quotas">
-            <div class="q"><div class="h">claude-empresa <span class="badge ok">ok</span></div><div class="w"><span>5 h</span><span>62% · reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="w"><span>7 dias</span><span>31%</span></div><div class="bar"><i style="width:31%"></i></div></div>
-            <div class="q"><div class="h">claude-pessoal <span class="badge warn">perto</span></div><div class="w"><span>5 h</span><span>91% · reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="w"><span>7 dias</span><span>58%</span></div><div class="bar"><i style="width:58%"></i></div></div>
-            <div class="q"><div class="h">codex-1 <span class="badge ok">ok</span></div><div class="w"><span>Primária</span><span>34% · reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div><div class="w"><span>Semanal</span><span>22%</span></div><div class="bar"><i style="width:22%"></i></div></div>
+            <div class="q"><div class="h">claude-empresa <span class="badge ok">ok</span></div><div class="w"><span>5 h</span><span>62% · reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="w"><span>7 dias</span><span>31% · reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
+            <div class="q"><div class="h">claude-pessoal <span class="badge warn">perto</span></div><div class="w"><span>5 h</span><span>91% · reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="w"><span>7 dias</span><span>58% · reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
+            <div class="q"><div class="h">codex-1 <span class="badge ok">ok</span></div><div class="w"><span>Primária</span><span>34% · reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div><div class="w"><span>Semanal</span><span>22% · reset qui 21:00</span></div><div class="bar"><i style="width:22%"></i></div></div>
             <div class="q"><div class="h">minimax-api <span class="badge info">API</span></div><div class="w"><span>Hoje</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div><div class="w"><span>Teto diário</span><span>US$ 20</span></div></div>
           </div>
         </div></div>

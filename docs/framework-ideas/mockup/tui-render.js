@@ -49,7 +49,10 @@ const CEN = [
   ['○', 'dim', 'pesquisa-acp', 'ocioso', 'P'],
   ['✓', 'ok', 'migracao-db', '#9 ok', 'M'],
 ];
-const SUBS = [['claude-empresa', '5h 62%', 62, 'ok'], ['claude-pessoal', '5h 91% !', 91, 'warn'], ['codex-1', '5h 34%', 34, 'ok'], ['minimax-api', 'US$ 3,20', 16, 'acc'], ['gemma4-local', '1/2 slots', 50, 'acc']];
+// [nome, rótulo, % da janela de 5 h, cor, % da janela de 7 dias (null = sem cota semanal), reset de 5 h, reset de 7 dias]
+const SUBS = [['claude-empresa', '5h 62%', 62, 'ok', 31, '11:30', 'ter 09:00'], ['claude-pessoal', '5h 91% !', 91, 'warn', 58, '10:05', 'seg 14:20'], ['codex-1', '5h 34%', 34, 'ok', 22, '12:10', 'qui 21:00'], ['minimax-api', 'US$ 3,20', 16, 'acc', null], ['gemma4-local', '1/2 slots', 50, 'acc', null]];
+// barra fina da semana: traço cheio na cor da assinatura (esmaecida) e trilho escuro
+function wbar(x, y, w, p, k) { const f = Math.round(w * p / 100); put(x, y, '━'.repeat(f), k + ' wk'); put(x + f, y, '─'.repeat(w - f), 'b'); }
 
 function sideExpanded() {
   box(0, 1, 30, 40, 'Navegação', false);
@@ -62,8 +65,12 @@ function sideExpanded() {
     y++;
   }
   y++;
-  seg(2, y, [['▾ ', 'acc'], ['ASSINATURAS', 'dim']]); put(27, y, '+', 'acc'); y++;
-  for (const [n, v, p, k] of SUBS) { put(2, y, pad(n, 15), ''); put(17, y, rpad(v, 11), k === 'warn' ? 'warn' : 'dim'); bar(2, y + 1, 26, p, k); y += 2; }
+  seg(2, y, [['▾ ', 'acc'], ['ASSINATURAS', 'dim']]); seg(17, y, [['█', 'dim'], ['5h ', 'dim'], ['━', 'dim'], ['7d', 'dim']]); put(27, y, '+', 'acc'); y++;
+  for (const [n, v, p, k, wk] of SUBS) {
+    const val = wk == null ? v : `${p}% · ${wk}%` + (k === 'warn' ? ' !' : '');
+    put(2, y, pad(n, 15), ''); put(17, y, rpad(val, 11), k === 'warn' ? 'warn' : 'dim'); bar(2, y + 1, 26, p, k); y += 2;
+    if (wk != null) { wbar(2, y, 26, wk, k); y++; }
+  }
   y++;
   seg(2, y, [['▸ ', 'acc'], ['PLUGINS (3)', 'dim']]); y++;
   put(1, 36, '─'.repeat(28), 'b');
@@ -81,7 +88,7 @@ function sideRail() {
   });
   put(1, 10, ' + ', 'acc');
   put(1, 12, '───', 'b');
-  SUBS.forEach(([, , p, k], i) => bar(1, 13 + i, 3, p, k));
+  { let ry = 13; for (const [, , p, k, wk] of SUBS) { bar(1, ry++, 3, p, k); if (wk != null) wbar(1, ry++, 3, wk, k); } }
   put(1, 36, '───', 'b');
   put(1, 37, ' ⚙ ', 'acc');
   put(1, 38, ' ◫ ', 'acc');
@@ -189,8 +196,13 @@ function tabGeral(x, y, w) {
   y++;
   y = sec(x, y, w, 'Eventos', false, '6 novos');
   y++;
-  y = sec(x, y, w, 'Cota por assinatura', true, 'há 40 s');
-  for (const [n, v, p, k] of SUBS.slice(0, 4)) { put(x + 2, y, pad(n, 15), ''); bar(x + 17, y, w - 29, p, k); put(x + w - 11, y++, rpad(v, 11), k === 'warn' ? 'warn' : 'dim'); }
+  y = sec(x, y, w, 'Cota por assinatura', true, '↻ reset · há 40 s');
+  // coluna de valores com 18 posições: "7d 31% ↻ ter 09:00"
+  for (const [n, v, p, k, wk, r5, r7] of SUBS.slice(0, 4)) {
+    const v5 = r5 ? `5h ${p}% ↻ ${r5}` + (k === 'warn' ? ' !' : '') : v;
+    put(x + 2, y, pad(n, 15), ''); bar(x + 17, y, w - 36, p, k); put(x + w - 18, y++, pad(v5, 18), k === 'warn' ? 'warn' : 'dim');
+    if (wk != null) { wbar(x + 17, y, w - 36, wk, k); put(x + w - 18, y++, pad(`7d ${wk}% ↻ ${r7}`, 18), 'dim'); }
+  }
   y++;
   y = sec(x, y, w, 'Fontes do sinal de cota', false, '3');
 }
@@ -339,7 +351,7 @@ html.js .screen .desc{display:block}
 .chrome span{color:#aeb4bf;font:12px "Segoe UI",sans-serif;margin-left:10px}
 pre.term{margin:0;background:#11141a;color:#c9ced6;font:12.5px/1.32 "Cascadia Mono","Cascadia Code","JetBrains Mono",Consolas,ui-monospace,monospace;padding:10px 12px;min-width:max-content;border-radius:0 0 10px 10px}
 .b{color:#3a4150}.b-on{color:#7d8cff}.ti{color:#e6e8ec;font-weight:700}.ti-on{color:#aab4ff;font-weight:700}
-.dim{color:#6b7380}.acc{color:#8f9cff}.ok{color:#4fc98f}.warn{color:#e8a948}.err{color:#ef6b6b}.sys{color:#b4a6ff}
+.dim{color:#6b7380}.wk{opacity:.6}.acc{color:#8f9cff}.ok{color:#4fc98f}.warn{color:#e8a948}.err{color:#ef6b6b}.sys{color:#b4a6ff}
 .you{color:#7cc4ff;font-weight:700}.bold{color:#e6e8ec;font-weight:700}
 .hdr{background:#3a46a8;color:#fff}.hdr-k{background:#3a46a8;color:#ffd479;font-weight:700}
 .sel{background:#232a44;color:#fff}.sel-acc{background:#232a44;color:#8f9cff}
