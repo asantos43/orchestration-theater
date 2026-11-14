@@ -59,4 +59,4 @@ Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ide
 | P7 | O plano passa pelo Revisor antes do roteiro. O roteiro é validado em código (ciclos, contratos, arquivos), e cada demanda tem contrato explícito. | §5.4 |
 | P8 | Os defeitos do kit não passam para o OTheater: ele é uma arquitetura nova e não reaproveita código do `okit`, só os conceitos (Q12, decidida em 2026-11-13). | [13](13-DECISOES-EM-ABERTO.md) |
 | P9 | O estado fica no daemon (SQLite + blackboard). O Orquestrador consulta `next_action`/`status` e, em caso de failover, recebe um resumo gerado do store. | P4, §5.4, §5.10 |
-| P10 | TUI como interface principal (chat, dashboard, trajetórias, agenda), com web e app Android de celular e tablet depois da v1 e desktop opcional, todos sobre o `packages/client`. | §5.13, Fases 7, 12, 13 e 14 |
+| P10 | TUI como interface principal (chat, dashboard, trajetórias, agenda), com web, desktop e app Android de celular e tablet depois da v1 e da Fase 10b, nessa ordem (v0.29), todos sobre o `packages/client`. | §5.13, Fases 7, 12, 13 e 14 |

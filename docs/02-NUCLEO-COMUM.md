@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.28, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.29, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -44,7 +44,7 @@ P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em códi
 | `store/` | SQLite (WAL): eventos, estado, blackboard | `better-sqlite3` + Kysely |
 | `telemetry/` | Receptor OTLP, spans, exportador ATIF (bloco `extra.otheater`, peça inteira como unidade, §5.11) | OpenTelemetry JS |
 
-O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Roda sempre como serviço de logon do usuário, instalado pelo `ot init`; nenhuma interface o hospeda, e o app desktop, se for feito, é só mais um cliente (v0.25). Ele sobrevive ao fechamento da UI. Ao reiniciar, reidrata as peças e devolve à fila as demandas interrompidas, preservando o que já foi commitado (§5.1).
+O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Roda sempre como serviço de logon do usuário, instalado pelo `ot init`; nenhuma interface o hospeda, e o app desktop é só mais um cliente (v0.25). Ele sobrevive ao fechamento da UI. Ao reiniciar, reidrata as peças e devolve à fila as demandas interrompidas, preservando o que já foi commitado (§5.1).
 
 ## Executores (arquitetura §5.2)
 
@@ -204,7 +204,7 @@ Decidido em 2026-11-13 (N20).
 ## Interfaces (arquitetura §5.13)
 
 - A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI na Fase 0 é obrigatório.
-- O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12), o desktop (Fase 13, opcional) e o app Android de celular e tablet (Fase 14). O app Android é Capacitor sobre a web e chega ao daemon pela VPN do usuário (arquitetura §5.12 e §5.13); por isso, a web deixou de ser opcional (2026-11-14).
+- O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12), o desktop (Fase 13) e o app Android de celular e tablet (Fase 14). O app Android é Capacitor sobre a web e chega ao daemon pela VPN do usuário (arquitetura §5.12 e §5.13); por isso, a web deixou de ser opcional (2026-11-14). A ordem depois da v1 é Fase 10b, web, desktop e Android, e nenhuma delas é opcional (N12, v0.29).
 - O mapa de teclas é configurável.
 - Todas as telas existem em inglês e em português do Brasil desde a primeira, por um catálogo de textos; o idioma vem do sistema e a chave `ui.locale` troca (§5.22).
 - Mockups: [mockup/tui.html](framework-ideas/mockup/tui.html), [mockup/app.html](framework-ideas/mockup/app.html) e [mockup/mobile.html](framework-ideas/mockup/mobile.html) (Android, celular e tablet).

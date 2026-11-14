@@ -23,7 +23,7 @@ Detalhes em [docs/01-CONTEXTO-E-PROBLEMAS.md](docs/01-CONTEXTO-E-PROBLEMAS.md).
 ## A arquitetura em resumo
 
 ```
-Interfaces: TUI Ink (principal) · web e Android, celular e tablet (depois da v1) · desktop (opcional)
+Interfaces: TUI Ink (principal) · web, desktop e Android, celular e tablet (depois da v1, nessa ordem)
         │ REST + WebSocket (chat) · SSE (eventos)
         ▼
 Daemon (Node 24 + TypeScript)
@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.28): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.29): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
