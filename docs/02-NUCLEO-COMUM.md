@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.13, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.15, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -11,7 +11,7 @@ Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](fra
 | **Executor** | Cliente + perfil (assinatura ou chave de API) + modelo + esforço |
 | **Orquestrador (Diretor)** | Uma sessão ACP como qualquer outra, mas que só recebe as ferramentas MCP do papel Diretor |
 | **Perfil** | Uma assinatura ou chave de API de um cliente, com diretório isolado |
-| **Cenário** | Projeto, tarefa ou chat. Tem chat, Orquestrador, dashboard e configuração |
+| **Cenário** | Projeto, tarefa ou chat genérico. Tem Diretor e chat próprios, pasta, anexos, ordens locais, dashboard e configuração (arquitetura §5.20) |
 | **Peça** | Uma execução do pipeline para uma necessidade |
 | **Demanda** | Unidade de trabalho do roteiro, executada por um Ator |
 | **Tentativa** | Uma execução de uma demanda por um Executor, numa worktree própria |
@@ -67,17 +67,19 @@ Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CL
 
 | Papel | Ferramentas |
 |---|---|
-| Diretor | `proxima_acao`, `status`, `decidir`, `abrir_peca`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar`, `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem`, `revogar_ordem` |
-| Todos | `ler_blackboard`, `ler_contrato`, `ler_decisao`, `entregar` |
+| Diretor | `proxima_acao`, `status`, `decidir`, `abrir_peca`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar`, `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem`, `revogar_ordem`, `consultar`, `promover`, `rodar_tarefa` |
+| Todos | `ler_blackboard`, `ler_contrato`, `ler_decisao`, `ler_indicacao`, `ler_anexo`, `entregar` |
 | Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` |
 | Ator | `run_tests`, `install_deps`, `git_commit`, `shell_restrito`, `http_get` + plugins do papel |
 | Crítico | `run_tests`, `ver_diff`, `entregar_critica` |
 
 - `entregar*` é a única forma de um Executor terminar. A saída é validada com zod e devolvida com o erro até `N` vezes.
-- O modelo do Diretor decide só em **três pontos de julgamento**:
+- O modelo do Diretor decide só em **cinco pontos de julgamento**:
   1. classificar a crítica negativa;
   2. decidir o destino do trabalho parcial de um Ator que estourou o tempo;
-  3. decidir quando e o que perguntar ao Produtor.
+  3. decidir quando e o que perguntar ao Produtor;
+  4. no chat, responder sozinho ou consultar um Ator forte;
+  5. numa execução de tarefa com passo falho, corrigir a definição, repetir, pular ou parar.
 - Há uma **fila única de prompts** do Orquestrador, com prioridade para o Produtor, e **failover** para o próximo Executor do papel com um resumo gerado do store.
 
 ## Pipeline (arquitetura §5.4)
@@ -135,7 +137,7 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 - **Porta** = interface TypeScript + schemas zod em `@otheater/core`, com semver própria. Há porta em toda fronteira com o mundo de fora (processos, rede, disco, git, cofre, sistema operacional, relógio) e em todo ponto que varia por cliente, provedor ou sistema. A lógica interna pura (validação do roteiro, precedência de ordens, algoritmo de seleção) fica em funções puras, sem porta.
 - **Adaptador** = implementação de uma porta num pacote `@otheater/adapter-*`, escolhida por id na configuração. Toda porta nasce com um adaptador real, um falso e uma suíte de conformidade (em `@otheater/sdk`).
 - Portas principais: `ClientAdapter`, `AgentSession` (ACP ou headless), `QuotaProbe`, `UsageSource`, `SecretVault`, `Store`, `EventLog`, `EventSink`, `TelemetryIngest`, `Vcs`, `CodeHost`, `Sandbox`, `ProcessLauncher`, `ResourceMonitor`, `OsScheduler`, `Notifier`, `Clock`, `PromptSource`.
-- **Registros** tipados: fluxos (a peça teatral é o padrão; quais outros existem é a N3), papéis, ferramentas, chaves de `regra` (lista fechada, só módulos oficiais), tipos de evento (plugins só com `plugin.<id>.*`), estratégias e itens da interface. Entrada inválida é recusada na subida do daemon.
+- **Registros** tipados: fluxos (a peça teatral é o padrão; `tarefa.definir`, `tarefa.executar` e `chat` vêm da §5.20), tipos de cenário, perfis de projeto, tipos de passo, gatilhos, papéis, ferramentas, chaves de `regra` (lista fechada, só módulos oficiais), tipos de evento (plugins só com `plugin.<id>.*`), estratégias e itens da interface. Entrada inválida é recusada na subida do daemon.
 - **Montagem manual** num ponto único (`compose.ts`), sem container de injeção. A CI verifica a regra de dependência: `core` só depende do zod, e o daemon só importa adaptadores no ponto de montagem.
 - **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface. Não há mods em processo: depois da v1, o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), decididos na N17.
 
@@ -149,6 +151,20 @@ Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)).
 - O perfil é isolado por cenário e persistente. O login é feito pelo Produtor, e o agente nunca vê senha.
 - As ferramentas entram na v1 (Fase 4); a tela e o modo indicar elemento, na Fase 12.
 
+## Cenários (arquitetura §5.20)
+
+Decidido em 2026-11-13 (N3). Todo cenário é um Diretor que conversa com o Produtor, com chat próprio, pasta própria, anexos, ordens locais e navegador isolado. Há três tipos, num registro:
+
+| Tipo | O que é | Fluxo |
+|---|---|---|
+| **Projeto** | Pasta versionada por git com um **perfil de projeto**. O padrão é `software`, em que o OTheater gera e controla changelog, commits, PRs, publicação e CI. Um repositório importado mantém as convenções detectadas, confirmadas pelo Produtor. Um repositório por projeto na v1 | Peça teatral |
+| **Tarefa** | Workflow que gera um artefato final, uma vez ou recorrente. Tem uma **definição** versionada de passos tipados (`codigo`, `modelo`, `agente`, `aprovacao`, `entrega`), desenhada pelos papéis e ensaiada pelo Crítico antes da aprovação, e as **execuções** dela, cada uma com pasta própria. Gatilhos de horário e manual na v1, de evento depois | `tarefa.definir` e `tarefa.executar` |
+| **Chat genérico** | Prototipação. O Diretor barato responde o simples e abre um Ator `consultor` forte quando precisa. Pode virar tarefa ou projeto: a **promoção** cria um cenário novo ligado ao chat | `chat` |
+
+- **Anexos** `A<n>` de qualquer tipo, por referência, lidos com `ler_anexo`. A seleção respeita os tipos de entrada que cada Executor aceita.
+- **Diretor adormecido:** sem atividade, a sessão do Diretor fecha e reabre pelo resumo do store, como no failover.
+- O Diretor continua leve: os papéis fazem o trabalho, e a seleção escolhe o melhor Executor para cada um.
+
 ## Retomada de sessões (arquitetura §5.16)
 
 - A interrupção é classificada por causa (cota, rede, queda, reinício, timeout, agente travado).
@@ -157,6 +173,15 @@ Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)).
   - por **passagem de bastão**, com um pacote de continuação, para outro Executor.
 - Há checkpoints periódicos e uma tabela `side_effects` com chaves de idempotência, para não repetir efeitos colaterais.
 - Interrupções externas não contam como tentativa.
+
+## Durabilidade e recuperação (arquitetura §5.21)
+
+Decidido em 2026-11-13 (N20).
+- **Fechar a interface** não para nada: o daemon é outro processo (P7).
+- **Gravação durável:** o store usa WAL com `synchronous=FULL`, e toda mudança de estado é gravada antes do efeito que dispara. Uma queda de energia não desfaz transação confirmada.
+- **Reconciliação na subida:** integridade do store, processos órfãos, sessões marcadas como interrompidas, commit do que ficou sem commit nas worktrees e efeitos ambíguos resolvidos pelo verificador da ferramenta ou pelo Produtor. Só então vêm a retomada (§5.16), a agenda (regra da janela, §5.15) e as ordens.
+- **Sem login:** na v1, a máquina religada espera o login para rodar qualquer coisa. Depois da v1, a meta é o daemon completo sem login.
+- **Backup** automático diário, com 7 cópias, mais `ot backup` e `ot restore`.
 
 ## Interfaces (arquitetura §5.13)
 
@@ -172,16 +197,17 @@ Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)).
 | 0 | Validações e escolha da base (teste da TUI obrigatório) | 2–3 sem | 2–3 sem |
 | 1 | Fundação (com `core`, `sdk` e ponto de montagem) | 1,5 | 1 |
 | 2 | Camada de Executores | 2 | 1,5 |
-| 3 | Pipeline, MCP do framework e blackboard | 2,5 | 1,5–2 |
-| 4 | Permissões, ferramentas de trabalho e navegador | 2 | 1,5 |
+| 3 | Pipeline, MCP do framework, blackboard, base dos cenários (com o chat) e reconciliação | 3,5 | 2,5–3 |
+| 4 | Permissões, ferramentas de trabalho, navegador e perfil `software` | 2,5 | 1,5–2 |
 | 5 | Assinaturas, cotas, seleção e retomada | 2,5 | 1,5–2 |
 | 6 | API do daemon e `packages/client` | 1,5 | 0,5–1 |
 | 7 | TUI (interface principal) | 2,5–3 | 1,5 |
 | 8 | Observabilidade | 1 | 0,5 |
-| 9 / 9b | Plugins / Agendador | 1–1,5 cada | 0,5–1 cada |
+| 9 | Plugins | 1–1,5 | 0,5–1 |
+| 9b | Agendador e tarefas | 2,5–3 | 1,5–2 |
 | 10 | Distribuição (daemon + TUI) | 1 | 0,5–1 |
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
-| **Total** | **Produto na TUI** | **≈ 22–25 sem** | **≈ 14–18,5 sem** |
+| **Total** | **Produto na TUI** | **≈ 25–28 sem** | **≈ 16–20,5 sem** |
 | 12 / 13 | Web (com a tela do navegador) / Desktop (opcionais) | + 3,5–4 | + 2–3 |
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.

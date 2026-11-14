@@ -1,8 +1,8 @@
 # 10. Tarefas gerais, recorrentes e agendadas
 
 Este documento tem duas partes:
-- o **agendador** como a arquitetura v0.10 o descreve (§5.15, Fase 9b, riscos R13 e R14), de 2026-11-13, **não verificado localmente**;
-- as **tarefas gerais**, que não são desenvolvimento de software, e o exemplo-guia do dono. Como elas se encaixam na arquitetura ainda depende da decisão **N3** (tipos de cenário além de projeto).
+- o **agendador** como a arquitetura o descreve (§5.15, Fase 9b, riscos R13 e R14), de 2026-11-13, **não verificado localmente**;
+- as **tarefas gerais**, que não são desenvolvimento de software, e os exemplos-guia do dono. Desde a v0.14 (2026-11-13), elas são cenários do tipo **tarefa** (arquitetura §5.20, decisão N3).
 
 ## Agendador (arquitetura §5.15)
 
@@ -59,6 +59,8 @@ O daemon sozinho não acorda a máquina. Além disso, o Modern Standby do Window
    - macOS: `caffeinate`/IOPMAssertion;
    - Linux: inibidor do systemd-logind.
 
+**Máquina desligada ou religada sem login** (arquitetura §5.21, decidido em 2026-11-13): o gatilho acorda a máquina suspensa, mas não liga uma máquina desligada. Na v1, depois de uma queda de energia, nada roda até o usuário fazer login. No login, o daemon faz a reconciliação e a regra da execução perdida decide o que roda. O daemon completo sem login fica para depois da v1.
+
 ### Criação e controle
 
 - **Aba Agenda** na TUI (e na web, se existir).
@@ -80,23 +82,44 @@ Esse princípio, que é o R13 em [00](00-OBJETIVO.md), corresponde aos P3 e P8 d
 4. gerar, validar e higienizar o HTML com código;
 5. enviar o e-mail por um **plugin** com destinatário fixo. A credencial fica no plugin (`segredos` do manifesto), nunca com o agente.
 
-### Como encaixar na arquitetura (lacuna)
+### Como se encaixa na arquitetura (§5.20, decidido em 2026-11-13)
 
-A arquitetura modela toda tarefa agendada como uma **peça**: Autor → Revisor → Roteirista → Atores → Crítico. Para um resumo diário de manchetes, isso é pesado.
+Até a v0.13, a arquitetura modelava toda tarefa agendada como uma **peça** completa (Autor → Revisor → Roteirista → Atores → Crítico), o que era pesado para um resumo diário. A N3 resolveu isso com o cenário do tipo **tarefa**, que separa a definição da execução:
+- **Definição versionada**, desenhada uma vez pelos papéis no fluxo `tarefa.definir`:
+  1. o Autor escreve o plano a partir da conversa;
+  2. o Revisor revisa;
+  3. o Roteirista transforma o plano em passos;
+  4. os Atores escrevem os scripts dos passos de código;
+  5. o Crítico faz o **ensaio** com dados de exemplo.
 
-A proposta de 2026-11-08 era um **fluxo declarativo** com passos de código e passos de modelo:
+  Depois, o Produtor aprova. O Diretor fica leve e só coordena, como o dono pediu. A seleção escolhe o melhor Executor para cada papel.
+- **Execução** pelo motor de passos (`tarefa.executar`), sem planejamento a cada vez. O Diretor só é chamado se um passo falhar ou pedir decisão.
+- **Passos tipados:**
+  - `codigo`: sem modelo;
+  - `modelo`: chamada com schema;
+  - `agente`: demanda para um Ator;
+  - `aprovacao`;
+  - `entrega`: por plugin ou notificação.
+- **Gatilhos:** manual e os tipos do agendador na v1; eventos (arquivo novo, webhook, e-mail recebido, mudança de página) depois.
+
+O fluxo declarativo proposto em 2026-11-08 virou a definição da tarefa:
 
 ```
 tarefa: manchetes-diarias
-agenda: todos os dias 07:30 (America/Sao_Paulo)
-passos: buscar (código) → normalizar (código) → resumir (modelo barato)
-        → montar_html (código) → validar (código) → enviar_email (plugin)
+gatilho: todos os dias 07:30 (America/Sao_Paulo)
+passos: buscar (codigo) → normalizar (codigo) → resumir (modelo, barato)
+        → montar_html (codigo) → validar (codigo) → enviar_email (entrega, plugin)
 ```
 
-A arquitetura **não tem** esse formato. Caminhos possíveis, a decidir na **N3**. Nenhum foi escolhido; são hipóteses:
-- um cenário do tipo "tarefa", com um fluxo mais curto que o de projeto;
-- uma peça cujo roteiro já vem pronto no modelo da tarefa, pulando o planejamento;
-- um plugin que faz a parte de código, com o modelo só no passo de resumo.
+O segundo exemplo do dono, de 2026-11-13, segue o mesmo formato:
+
+```
+tarefa: consolidado-diario
+passos: baixar (codigo) → descomprimir (codigo) → extrair (codigo; agente se o formato mudar)
+        → consolidar_planilha (codigo) → empacotar (codigo) → enviar (entrega: e-mail ou Telegram, plugin)
+```
+
+Um trabalho recorrente que pertence a um repositório continua sendo uma peça agendada do projeto (§5.15). Um chat de prototipação pode ser **promovido** a tarefa quando o Produtor decide repeti-lo.
 
 ### Outros usos mencionados
 

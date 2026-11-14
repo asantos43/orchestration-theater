@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.13 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar.
+> Versão 0.15 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -98,11 +98,16 @@ O OTheater é um sistema de agentes de código que:
 - Processo Node de longa duração, iniciado como serviço de logon do usuário ou pelo app desktop.
 - Um único daemon por usuário/máquina, garantido por lock de arquivo sobre o store.
 - Responsável pelo estado global, pelo ciclo de vida dos Executores, pela execução das ferramentas homologadas e pela API das interfaces.
-- **Recuperação ao reiniciar:**
-  1. relê o store;
-  2. reidrata a máquina de estados de cada peça a partir do snapshot XState persistido;
-  3. marca as sessões ACP que estavam em curso como `interrompida`;
-  4. devolve as demandas correspondentes à fila, preservando o trabalho já commitado nas worktrees (ver 5.5).
+- **Recuperação ao reiniciar:** a reconciliação da seção 5.21, que roda antes de retomar qualquer coisa:
+  - integridade do store;
+  - processos órfãos;
+  - sessões em curso marcadas como `interrompida`;
+  - commit do que ficou sem commit nas worktrees;
+  - efeitos colaterais ambíguos;
+  - reidratação das máquinas XState;
+  - agenda e ordens.
+
+  Desde a v0.15, ela substitui os quatro passos que esta lista tinha.
 
 ### 5.2 Camada de Executores
 
@@ -167,8 +172,8 @@ interface ClientAdapter {
 
 | Conjunto | Ferramentas |
 |---|---|
-| Diretor (Orquestrador) | `proxima_acao`, `status(peca?)`, `decidir(decisaoId, payload)`, `abrir_peca(necessidade)`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar` (rascunho, confirmado pelo Produtor), `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem` e `revogar_ordem` (rascunhos, confirmados pelo Produtor; 5.17) |
-| Comum (todos os Executores) | `ler_blackboard(chave)`, `ler_contrato(id)`, `ler_decisao(id)`, `ler_indicacao(id)` (5.19), `entregar(resultado)` |
+| Diretor (Orquestrador) | `proxima_acao`, `status(peca?)`, `decidir(decisaoId, payload)`, `abrir_peca(necessidade)`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar` (rascunho, confirmado pelo Produtor), `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem` e `revogar_ordem` (rascunhos, confirmados pelo Produtor; 5.17), `consultar` (chat), `promover` (rascunho), `rodar_tarefa` (5.20) |
+| Comum (todos os Executores) | `ler_blackboard(chave)`, `ler_contrato(id)`, `ler_decisao(id)`, `ler_indicacao(id)` (5.19), `ler_anexo(id)` (5.20), `entregar(resultado)` |
 | Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` (cada um com schema próprio) |
 | Ator | `run_tests(alvo)`, `install_deps()`, `git_commit(mensagem)`, `shell_restrito(argv)`, `http_get(url)`, `navegador_*` se a política do papel liberar (5.19) + plugins do papel |
 | Crítico | `run_tests(alvo)`, `ver_diff(demanda?)`, `entregar_critica` |
@@ -180,7 +185,7 @@ interface ClientAdapter {
 
 ### 5.4 Máquina de estados do pipeline
 
-**XState v5** modela a peça. A peça teatral é o **fluxo padrão** do registro de fluxos (5.18): uma máquina montada com etapas reutilizáveis, registrada por nome e versão. Outros fluxos dependem da decisão N3. O snapshot (`getPersistedSnapshot()`) é gravado no SQLite a cada transição e reidratado no reinício.
+**XState v5** modela a peça. A peça teatral é o **fluxo padrão** do registro de fluxos (5.18): uma máquina montada com etapas reutilizáveis, registrada por nome e versão. Os fluxos da tarefa e do chat estão na seção 5.20. O snapshot (`getPersistedSnapshot()`) é gravado no SQLite a cada transição e reidratado no reinício.
 
 Cuidados conhecidos:
 - restaurar só na mesma versão da máquina (o snapshot guarda a versão, e há migração explícita quando ela mudar);
@@ -215,7 +220,9 @@ NECESSIDADE
 **Pontos de julgamento.** São os únicos lugares onde o modelo do Diretor decide, cada um com schema:
 1. classificar a crítica negativa (execução / roteiro / estrutural / exceção) e listar as demandas afetadas;
 2. Ator estourou o tempo: o trabalho parcial (já commitado, ver 5.5) segue para o Crítico ou para outro Ator continuar;
-3. quando consultar o Produtor, e o que perguntar.
+3. quando consultar o Produtor, e o que perguntar;
+4. no chat, responder sozinho ou consultar um Ator forte (5.20);
+5. numa execução de tarefa com passo falho: corrigir a definição, repetir, pular ou parar (5.20).
 
 **Fila única de prompts do Orquestrador.** Mensagens suas no chat e avisos do daemon ("decisão pendente D-17; chame `proxima_acao`") entram numa fila e são enviados à sessão do Orquestrador um de cada vez. Nunca dois `session/prompt` concorrentes. Mensagem do Produtor tem prioridade sobre aviso do daemon.
 
@@ -318,6 +325,7 @@ Configuração por papel: lista ordenada de Executores + regra quando ninguém e
 ```yaml
 papeis:
   diretor:  { executores: [haiku, gemma4-local] }
+  consultor: { executores: [opus-alto, codex-alto] }   # Ator forte do chat (5.20)
   autor:    { executores: [opus-alto, codex-alto] }
   revisor:  { executores: [codex-alto, opus-alto] }
   critico:  { executores: [opus-alto, codex-alto], se_esgotado: esperar }
@@ -581,8 +589,9 @@ Os mockups mostram os padrões de Windows/Linux.
 
 **Conteúdo das telas** (o mesmo nas duas interfaces):
 - **Lateral:** Assinaturas, Projetos, Tarefas, Chats, Plugins, Configuração.
-- **Cenário** (projeto, tarefa ou chat genérico: o mesmo objeto, com modelo de fluxo diferente):
-  - chat com o Orquestrador;
+- **Cenário** (projeto, tarefa ou chat genérico: o mesmo objeto, com tipo e fluxo diferentes; 5.20):
+  - chat com o Orquestrador, com anexos e o estado do Diretor (ativo ou adormecido);
+  - na tarefa: a definição (versão ativa, passos, ensaio) e a lista de execuções com o artefato final de cada uma;
   - dashboard: etapa, DAG, Atores ativos e tempo restante, worktrees/branches, reprovações, consumo e cota por assinatura, motivos de seleção;
   - visualizador de trajetórias, ao vivo e histórico.
 - **Configuração:**
@@ -640,14 +649,14 @@ painel:                   # opcional e declarativo: a TUI e a web desenham
 - **Comportamento de mod, depois da v1** (decidido em 2026-11-13): não haverá um mecanismo de mods separado. O próprio plugin ganha **níveis opcionais**, declarados no manifesto e aprovados pelo Produtor na ativação, sempre fora do processo do daemon (P5):
   - **assinar eventos:** recebe os tipos de evento que declarou, só para leitura e em segundo plano (ex.: avisar quando uma peça termina);
   - **ganchos de interceptação:** o daemon chama o plugin em pontos fixos do fluxo (ex.: antes de uma ferramenta rodar, antes da entrega), com prazo. O gancho pode **vetar** ou **anotar**, nunca liberar permissão nem trocar o resultado de uma ferramenta;
-  - **contribuições declarativas:** fluxos montados só com as etapas já registradas (depende da N3), fragmentos de prompt e atalhos, validados pelos schemas dos registros (5.18).
+  - **contribuições declarativas:** fluxos montados só com as etapas já registradas (5.20), fragmentos de prompt e atalhos, validados pelos schemas dos registros (5.18).
   - Os detalhes (pontos de interceptação, prazo, falha do gancho) são o item 15 da seção 12. Na v1, o plugin fica como descrito acima.
 
 ### 5.15 Agendador (tarefas agendadas e repetidas)
 
 O daemon dispara peças sozinho, no horário: o agendador age como se você tivesse escrito a necessidade no chat. Não há pipeline novo. A peça agendada passa pela mesma máquina de estados, seleção de Executores, permissões e eventos de qualquer outra.
 
-**Tarefa agendada = modelo de peça**, guardado no store (tabela `schedules`, seção 7):
+**Tarefa agendada = modelo de peça**, guardado no store (tabela `schedules`, seção 7). Desde a v0.14, o mesmo agendamento também dispara a execução de um cenário do tipo tarefa (5.20). Nesse caso, ele aponta para a tarefa e a versão da definição, em vez de uma necessidade, e os campos abaixo de projeto não se aplicam. O agendamento de um projeto tem:
 - cenário: projeto e branch base;
 - texto da necessidade (ex.: "atualizar dependências e corrigir o que quebrar");
 - overrides opcionais: executores por papel, limites, timeout;
@@ -779,6 +788,7 @@ Retomar não pode repetir o que já mudou o mundo fora da worktree:
 - toda chamada de casca ou plugin com efeito (`git_commit`, `install_deps`, ferramentas de plugin marcadas `escrita_local`, `rede` ou `escrita_externa`) recebe uma **chave de idempotência** (`tentativa + passo`) e é registrada como evento antes e depois da execução;
 - se a mesma chave chegar de novo após uma retomada, a casca devolve o resultado gravado em vez de executar outra vez;
 - plugins com `escrita_externa` precisam declarar no manifesto se aceitam chave de idempotência. Os que não aceitam exigem confirmação do Produtor antes de serem repetidos numa retomada.
+- um efeito com "antes" e sem "depois" (reinício ou queda no meio da chamada) é **ambíguo**. A reconciliação (5.21) o resolve pelo verificador da ferramenta ou pergunta ao Produtor; nunca o repete às cegas.
 
 #### Máquina de estados da tentativa
 
@@ -968,11 +978,12 @@ Decidido em 2026-11-13: as listas viram registros tipados, com schema zod por en
 | Chaves de `regra` | chave, schema do valor e ponto onde se aplica (5.17). **Lista fechada:** quatro chaves na v1; chave nova entra uma a uma, com teste | só módulos oficiais |
 | Tipos de evento | nome e schema do payload (5.11) | módulos oficiais; plugins só com o prefixo `plugin.<id>.*` |
 | Estratégias | `se_esgotado` (`proximo`, `esperar`; 5.7), política de retomada por causa (5.16), tipos de agendamento (5.15) | módulos oficiais |
+| Cenários | tipos de cenário (projeto, tarefa, chat), perfis de projeto (`software` na v1), tipos de passo de tarefa, gatilhos (5.20) | módulos oficiais |
 | Interface | abas, comandos da paleta e ações do mapa de teclas (5.13), em `packages/client` | módulos oficiais; plugins pelo painel declarativo (5.14) |
 | Tipos de indicação | nome, versão, schema do conteúdo, texto para o prompt, leitura do detalhe e checagem de validade (5.19); o primeiro é `elemento_web` | só módulos oficiais |
 
 - O registro recusa entrada duplicada ou com schema inválido **na subida do daemon**, nunca no meio de uma peça.
-- **Fluxos e a N3.** O registro de fluxos (decidido em 2026-11-13) comporta um fluxo mais curto para "tarefa" ou "chat" sem mexer na peça teatral. **Quais fluxos existem continua sendo a decisão N3.**
+- **Fluxos.** O registro de fluxos (decidido em 2026-11-13) tem a peça teatral como padrão. Os fluxos `tarefa.definir`, `tarefa.executar` e `chat` (5.20, decididos na N3) são registrados ao lado dela, sem mexer na peça.
   - O cenário guarda o id do fluxo.
   - O snapshot da peça guarda o id e a versão do fluxo, e a migração de snapshot (5.4) é feita por fluxo.
   - As etapas reutilizáveis são atores XState com entrada e saída tipadas. Os efeitos longos (sessões ACP) continuam fora da máquina e voltam como eventos (5.4).
@@ -1106,6 +1117,288 @@ Decidido em 2026-11-13, a pedido do dono: o mecanismo de indicar não fica preso
 - **Na TUI:** a TUI não mostra a página. Ela mostra a URL atual e as indicações, e pode abrir uma janela visível do navegador ao lado **[proposta]**.
 - **Fase 12:** a transmissão da tela, o controle pelo Produtor e o modo indicar elemento, na web.
 - **Fase 13:** o desktop aproveita a mesma tela da web.
+
+### 5.20 Cenários: projeto, tarefa e chat
+
+Decidido em 2026-11-13 (v0.14), a pedido do dono, e fecha a N3. As definições de cada tipo são do dono. As escolhas das subseções foram decididas por ele no mesmo dia. O que está marcado **[proposta]** é detalhe deste documento, ainda sem decisão.
+
+#### O que todo cenário tem
+
+Um cenário é sempre um **Diretor (Orquestrador) que conversa com o Produtor**. Todo cenário tem:
+- **chat próprio**, separado dos outros cenários, com Diretor próprio;
+- **pasta própria:**
+  - no projeto, é o repositório;
+  - na tarefa e no chat, é uma pasta nos dados do daemon (`cenarios/<id>/`);
+- **anexos** de qualquer tipo;
+- configuração com override da global, ordens locais (5.17) e navegador com perfil isolado (5.19);
+- dashboard e trajetórias (5.13);
+- um **fluxo** do registro de fluxos (5.18).
+
+**Tipos de cenário** são um registro (5.18), e só módulos oficiais registram entradas. Cada tipo traz:
+- os fluxos que aceita;
+- o conjunto de ferramentas e a política de permissão padrão (5.8);
+- o Diretor padrão;
+- o que a tela do cenário mostra.
+
+A v1 tem **três tipos**: projeto, tarefa e chat. As variações não viram tipo novo:
+- um projeto de documentação ou de dados é um **perfil de projeto**;
+- monitorar um site é uma **tarefa com gatilho**;
+- pesquisar e fazer um relatório é um **chat**, ou uma **tarefa** se for repetir.
+
+| | Projeto | Tarefa | Chat genérico |
+|---|---|---|---|
+| Para quê | Desenvolver software (ou outro perfil) num repositório | Um workflow de vários passos que gera um artefato final, uma vez ou recorrente | Prototipar e perguntar |
+| Pasta | Repositório git | `cenarios/<id>/`, com a definição versionada e uma subpasta por execução | `cenarios/<id>/` |
+| Fluxo | Peça teatral (5.4) | `tarefa.definir` (peça curta que desenha e ensaia a definição) e `tarefa.executar` (motor de passos) | `chat` (Diretor + consultor) |
+| Entrega | PR, changelog, release | Artefato final entregue por plugin (e-mail, Telegram...) ou na pasta | Resposta e artefatos no chat |
+| Recorrência | Peça agendada (5.15) | Gatilhos | — |
+
+#### Projeto
+
+Um projeto é uma pasta no disco versionada por git, com um **perfil de projeto** registrado. Não confundir com o perfil de assinatura (5.6).
+
+- **Perfil.** O perfil padrão é **`software`**. Ele define:
+  - a estrutura inicial;
+  - as ferramentas e as permissões pré-definidas;
+  - os artefatos que o OTheater gera e controla conforme o projeto avança:
+    - changelog;
+    - mensagens de commit;
+    - PRs;
+    - publicação no code host (`CodeHost`, 5.18; `gh` no GitHub);
+    - CI (GitHub Actions ou similar);
+    - releases e versões **[proposta]**.
+
+  Outros perfis (documentação, dados) entram depois sem mudar o conceito.
+- **Artefatos do perfil, gerados a partir do store [proposta].**
+  - A etapa ENTREGANDO (5.4) monta a entrada do changelog, a mensagem do commit de merge e a descrição do PR com código, a partir das demandas, dos resultados e das decisões da peça.
+  - O modelo só redige o texto livre dentro de um schema.
+  - A CI é criada na estrutura inicial e, depois, como demanda comum de uma peça.
+- **Criação:**
+  - **projeto novo:** nasce do modelo do perfil e segue as convenções dele;
+  - **repositório que já existe** (decidido em 2026-11-13): na importação, o OTheater detecta as convenções do repositório:
+    - o formato do changelog;
+    - o padrão de commit;
+    - a CI;
+    - a branch principal.
+
+    Ele mostra ao Produtor o que achou. O Produtor confirma ou corrige, e o OTheater passa a gerar seguindo isso. As convenções ficam no cenário (`scenarios.convencoes`).
+- **Um repositório por projeto na v1** (decidido em 2026-11-13).
+  - O modelo de dados já guarda uma lista (`scenario_repos`, seção 7).
+  - Um projeto com vários repositórios (front e back, por exemplo), com worktrees e PRs coordenados, fica para depois da v1.
+- **Recorrência.** Um trabalho recorrente que pertence ao repositório continua sendo uma peça agendada do projeto (5.15). Exemplo: atualizar as dependências toda semana.
+
+#### Tarefa
+
+Uma tarefa é um **workflow de trabalho** em que vários agentes executam passos e geram um **artefato final**. Ela pode rodar uma vez ou ser recorrente, começar num horário e ter várias etapas. Tem um Diretor associado, como todo cenário.
+
+Exemplo do dono:
+1. baixar todo dia arquivos comprimidos;
+2. descomprimi-los e extrair uma informação;
+3. consolidar a informação numa planilha;
+4. empacotar e enviar por e-mail ou para um chat do Telegram.
+
+O resumo diário de manchetes ([docs/10](../10-TAREFAS-GERAIS-E-AGENDAMENTO.md)) é o outro exemplo-guia.
+
+A tarefa separa a **definição** da **execução** (decidido em 2026-11-13).
+
+**Definição.** É versionada, fica na pasta da tarefa e é validada por schema. Contém:
+- objetivo;
+- entradas;
+- passos;
+- artefato final;
+- entrega;
+- gatilhos;
+- orçamento por execução.
+
+**Os papéis desenham a definição** (decidido em 2026-11-13, a pedido do dono). O Diretor fica leve e só coordena. O trabalho de desenhar vai para os papéis, e a seleção (5.7) escolhe o melhor Executor para cada um. O fluxo `tarefa.definir` é uma peça curta montada com as etapas reutilizáveis (5.18):
+1. o **Autor** escreve o plano da tarefa a partir da conversa com o Produtor: objetivo, entradas, artefato final, entrega e restrições;
+2. o **Revisor** revisa o plano;
+3. o **Roteirista** transforma o plano em passos tipados, como faz com o DAG de demandas;
+4. os **Atores** escrevem o código dos passos de código (scripts na pasta da tarefa);
+5. o **Crítico** faz o **ensaio**: roda a definição inteira com dados de exemplo, sem entregar de verdade, e avalia o artefato final;
+6. o Produtor aprova. Só então a definição fica ativa e pode ser agendada.
+
+Pedir pelo chat uma mudança na tarefa abre uma nova peça `tarefa.definir` sobre a versão atual. Cada mudança gera uma versão nova, que passa por ensaio e aprovação.
+
+**Passos tipados.** Os tipos de passo são um registro (5.18):
+
+| Tipo | O que faz | Quem executa |
+|---|---|---|
+| `codigo` | Roda um script da pasta da tarefa (baixar, descomprimir, extrair, montar a planilha) | Ninguém: o motor roda o script sob o lançador (5.9) e o sandbox (5.8), sem modelo |
+| `modelo` | Uma chamada com entrada e saída validadas por schema (resumir, classificar) | Um papel, e a seleção escolhe o Executor (ex.: modelo barato para resumir) |
+| `agente` | Uma demanda com ferramentas (pesquisar na web, usar o navegador, lidar com um formato inesperado) | Um Ator, com papel, `especialidade` e `complexidade` como na `Demanda` (5.4) |
+| `aprovacao` | Pede uma decisão ao Produtor antes de seguir | O Produtor, com as regras de "decisão sem ninguém olhando" (5.15) |
+| `entrega` | Envia o artefato final | Uma ferramenta de plugin (e-mail, Telegram; 5.14) ou o `Notifier` (5.18), com destinatário fixo na definição |
+
+Segue o "ferramenta primeiro, modelo por último" (P3, P8): o que dá para fazer com código é passo `codigo`. O papel e o Executor entram só onde há julgamento.
+
+**Execução.** O fluxo `tarefa.executar` é um **motor de passos**:
+- ele roda os passos da versão ativa em ordem topológica, com paralelismo limitado pela admissão (5.9);
+- cada execução tem pasta própria (`cenarios/<id>/execucoes/<n>/`), com entradas, saídas intermediárias e o artefato final;
+- cada passo de código é um efeito colateral com chave de idempotência, e a retomada (5.16) continua do último passo concluído;
+- o **Diretor não acompanha a execução.** Ele só é chamado quando um passo falha depois das tentativas ou quando surge uma decisão. Nesse caso, há um ponto de julgamento com schema:
+  - corrigir a definição, o que abre `tarefa.definir`;
+  - repetir;
+  - pular o passo;
+  - parar e avisar o Produtor.
+
+**Gatilhos** (decidido em 2026-11-13). Os gatilhos são um registro (5.18).
+- Na v1:
+  - rodar agora (manual);
+  - uma vez;
+  - cron;
+  - intervalo;
+  - após o reset da cota.
+
+  São os tipos do agendador (5.15), e as regras dele (execução perdida, sobreposição, cota, decisão sem ninguém olhando, orçamento) valem igual.
+- Depois da v1, entram sem mudar a tarefa:
+  - arquivo novo numa pasta;
+  - webhook;
+  - e-mail recebido (por plugin);
+  - mudança numa página.
+
+#### Chat genérico
+
+O chat é um **espaço de prototipação**. O Produtor conversa com o Diretor, que pode gerar artefatos, acessar páginas web para responder e trabalhar com os anexos.
+
+- **Diretor barato que consulta um forte** (decidido em 2026-11-13):
+  - o Diretor responde sozinho o que é simples;
+  - quando precisa, chama `consultar(pergunta, anexos?)`. Isso abre um **Ator consultor**, um papel `consultor` com modelo forte e ferramentas de pesquisa (`http_get`, `navegador_*`) e de escrita na pasta do chat;
+  - o chat mostra que houve consulta, com o Executor escolhido e o motivo;
+  - o Produtor pode pedir o forte numa mensagem ("use o forte"), e aí a consulta é obrigatória.
+
+  O chat, portanto, não fica limitado a um modelo de baixa capacidade.
+- **Ponto de julgamento novo:** responder sozinho ou consultar, com schema e motivo registrado.
+- **Fluxo `chat` [proposta].** A conversa é uma peça de vida longa, com os estados OCIOSO, CONSULTANDO e AGUARDANDO_PRODUTOR. Cada consulta é uma tentativa, com sessão, consumo e trajetória como as outras.
+- **Promoção** (decidida em 2026-11-13). O chat pode virar tarefa ou projeto a qualquer momento, por decisão do Produtor.
+  - O Diretor chama `promover(tipo)`, que devolve um rascunho para o Produtor confirmar.
+  - Nasce um **cenário novo, ligado ao chat de origem** (`scenarios.origem_id`), que recebe:
+    - os anexos;
+    - os artefatos escolhidos;
+    - cópias das ordens locais;
+    - um resumo da conversa.
+
+    O resumo é a entrada do Autor (a necessidade da primeira peça do projeto ou do `tarefa.definir`).
+  - O chat continua existindo como protótipo, com um link para o cenário novo.
+  - Uma tarefa também pode virar projeto do mesmo jeito, quando passa a precisar de código versionado com PRs.
+
+#### Anexos
+
+Em todos os cenários, o Produtor pode enviar:
+- documentos de qualquer tipo;
+- caminhos de arquivo ou de pasta;
+- imagens;
+- texto colado;
+- URLs.
+
+Ou seja, tudo o que um cliente de agente de código aceita.
+
+- Cada anexo é um **artefato por referência** (5.10) com id `A<n>`.
+- Ele é **copiado para a pasta do cenário** ou, se for um caminho, **referenciado só para leitura**. Um caminho fora das pastas liberadas pede a liberação do Produtor (5.8).
+- O daemon detecta o tipo (MIME), o tamanho e o hash. O limite de tamanho é configurável.
+- O prompt leva só o id, o nome, o tipo e o tamanho. O conteúdo é lido com `ler_anexo(id)` (P8).
+- **Capacidade de entrada.** O `ClientAdapter` declara os tipos de entrada que aceita: imagem, PDF, áudio... O tipo de anexo da demanda entra como restrição na seleção (5.7): um Executor que não aceita imagem não recebe demanda com imagem. Quando nenhum aceita, o daemon converte o que der: texto do PDF, transcrição **[proposta]**.
+
+#### Diretor adormecido
+
+Decidido em 2026-11-13.
+- Depois de um tempo sem atividade, a sessão do Diretor do cenário é encerrada para poupar cota e RAM. O tempo é configurável, e o padrão vai para o item 16 da seção 12.
+- Ela reabre na próxima mensagem do Produtor, no próximo gatilho ou quando surgir uma decisão. Volta com o resumo gerado a partir do store, pelo mesmo mecanismo do failover (5.4). Nada se perde, porque o estado nunca esteve só no modelo.
+- O cenário mostra o estado do Diretor (ativo ou adormecido). A primeira resposta depois de acordar é mais lenta e paga o prefixo do cache de novo.
+- Uma execução de tarefa não acorda o Diretor, a menos que falhe ou peça decisão.
+
+#### Eventos
+
+- `cenario.*`: criação, importação (com as convenções detectadas), promoção, anexo recebido, Diretor adormecido ou acordado.
+- `tarefa.*`: versão da definição criada, ensaio, aprovação, execução iniciada, passo concluído ou falho, artefato final, entrega.
+
+### 5.21 Durabilidade e recuperação
+
+Decidido em 2026-11-13 (v0.15), a partir de uma pergunta do dono: o que acontece ao fechar a interface, ao reiniciar a máquina ou numa queda de energia, já que há tarefas recorrentes, agendamentos e eventos. Esta seção junta o que já estava espalhado (5.1, 5.4, 5.5, 5.15, 5.16, 5.17 e 5.20) e acrescenta quatro decisões: gravação durável, reconciliação na subida, comportamento sem login e backup. O que está marcado **[proposta]** é detalhe deste documento, ainda sem decisão.
+
+#### O que sobrevive a quê
+
+| Situação | O que acontece | Onde |
+|---|---|---|
+| Fechar o app, a TUI ou a web | Nada para: o daemon é outro processo. Ao reabrir, a interface lê o estado e o log de eventos pela API | P7 |
+| Daemon cai ou é reiniciado | Sobe, faz a reconciliação (abaixo) e retoma cada peça, tarefa e chat | 5.1, 5.16 |
+| Máquina reinicia com login | O serviço de logon sobe o daemon; reconciliação; agendamentos perdidos seguem a regra da janela | 5.15 |
+| Queda de energia | Igual ao reinício. Nenhuma transação confirmada no store se perde (gravação durável, abaixo); o que estava em memória se perde e é refeito | esta seção |
+| Máquina religada sem ninguém fazer login | Na v1, nada roda até o login (abaixo) | esta seção |
+| Arquivo do store perdido ou corrompido | `ot restore` do backup mais recente | esta seção |
+
+Tudo o que importa fica no store (P4): cenários, peças e snapshots XState, demandas, tentativas, sessões, ordens, agenda, definições e execuções de tarefa, anexos (o registro; o arquivo fica na pasta do cenário), decisões, fila de prompts e o log de eventos.
+
+#### Gravação durável
+
+Decidido em 2026-11-13: **`synchronous=FULL` sempre**.
+- O store abre com `journal_mode=WAL` e `synchronous=FULL`. No macOS, também `fullfsync=ON`, porque lá o `fsync` comum não esvazia o cache do disco **[a confirmar na Fase 1]**.
+- Segundo a documentação do SQLite (pragma `synchronous`), em WAL com `NORMAL` o banco não corrompe, mas uma transação confirmada pode ser desfeita depois de uma queda de energia; com `FULL`, cada commit fica no disco **[fonte secundária; conferir na Fase 1]**.
+- O daemon grava pouco (eventos, transições, filas), então o custo extra deve ser pequeno **[hipótese]**. A Fase 1 mede.
+- **Gravar antes de agir:** toda mudança de estado é gravada, numa transação, antes do efeito que ela dispara. Exemplos:
+  - a mensagem do Produtor entra no store (e na `prompt_queue`) antes de ir para o Diretor, então um prompt na fila não se perde;
+  - a transição da máquina XState é gravada antes de abrir a sessão ACP correspondente;
+  - o "antes" de um efeito colateral (5.16) é gravado antes da chamada.
+
+#### Reconciliação na subida
+
+Decidido em 2026-11-13: uma **rotina explícita**, que roda antes de retomar qualquer coisa. Ela substitui os quatro passos que a 5.1 listava até a v0.14. Durante a rotina, a API responde e a interface mostra "recuperando", mas os comandos que mudam estado esperam.
+
+1. **Lock e integridade.** Pega o lock de instância (5.1) e roda `PRAGMA quick_check` **[proposta]**. Se falhar, o daemon não sobe sozinho: avisa e oferece `ot restore`.
+2. **Processos órfãos.** A tabela `sessions` guarda o pid e o instante de início de cada processo (para não confundir com um pid reaproveitado). O daemon mata pelo `ProcessLauncher` as árvores que ainda estiverem vivas e fecha o navegador do cenário que ficou sem dono (5.19).
+3. **Sessões.** Toda sessão `ativa` vira `interrompida`, com causa `reinicio`.
+4. **Worktrees.** O que ficou sem commit desde o último checkpoint vira um commit `wip(recuperacao)` na branch da tentativa, em vez de ser descartado **[proposta]**.
+5. **Efeitos ambíguos.** Um efeito com "antes" e sem "depois" em `side_effects` não é repetido às cegas:
+   - se a ferramenta tem **verificador**, o daemon consulta o mundo de fora e marca o efeito como `feito` ou `nao_feito`. Exemplos: o commit com a chave de idempotência no trailer existe na branch? A ref chegou ao remoto? Existe PR aberto para a branch? **[proposta]**;
+   - sem verificador, a demanda pausa e o Produtor decide no chat (feito, refazer ou cancelar).
+
+   Cascas oficiais com efeito fora da worktree trazem verificador. Plugins com `escrita_externa` podem declarar uma ferramenta de verificação no manifesto (5.14).
+6. **Retomada.** Reidrata as máquinas XState; cada sessão interrompida segue a política da 5.16; cada execução de tarefa volta do último passo concluído (5.20); o Diretor de cada cenário volta adormecido e acorda pelo resumo quando houver o que fazer.
+7. **Agenda e ordens.** Recalcula os disparos perdidos pela regra da janela (5.15) e a vigência das ordens (5.17).
+8. **Relato.** Evento `daemon.recuperado` com o resumo (sessões retomadas, efeitos resolvidos, pendências) e uma mensagem de sistema no chat de cada cenário afetado.
+
+#### Máquina religada sem login
+
+Decidido em 2026-11-13: **na v1, espera o login**; a meta, depois da v1, é o **daemon completo sem login**. Pedido do dono: começar pelo simples e migrar depois.
+
+**v1:**
+- O daemon continua sendo serviço de logon (Fase 10). Sem login, nada roda.
+- No login, o daemon sobe, faz a reconciliação, e a regra da janela (5.15) decide o que roda dos disparos perdidos.
+- O gatilho do sistema operacional (5.15) é registrado para rodar só com o usuário conectado. Ele continua acordando a máquina **suspensa**, que tem a sessão aberta. Uma máquina **desligada** não é ligada por ele. Os nomes da opção em cada sistema (Agendador de Tarefas, LaunchAgent do launchd, timer do systemd de usuário sem `linger`) **[a confirmar na Fase 0]**.
+- Motivo: o cofre de chaves do sistema costuma ficar trancado até o login **[hipótese]**, e sem ele as assinaturas e chaves não estão disponíveis.
+
+**Depois da v1, o daemon completo sem login** **[proposta]**:
+- o daemon passa a ser serviço que roda sem sessão: systemd de usuário com `loginctl enable-linger`, tarefa do Windows "executar estando o usuário conectado ou não", LaunchDaemon com `UserName` no macOS **[a confirmar]**;
+- os segredos passam a vir de um adaptador de `SecretVault` que destranca sem ninguém digitar nada. Qual (DPAPI, TPM, arquivo protegido por permissão) é o ponto a resolver (seção 12, item 17);
+- os próprios clientes (Claude Code, Codex, OpenCode) guardam o login deles. Se dependerem do cofre da sessão, também falham sem login **[hipótese; medir antes da migração]**.
+
+**Regras da v1 para a migração sair barata:**
+- nada essencial do daemon depende de sessão gráfica. A notificação do sistema operacional é opcional, e o navegador do cenário roda sem janela quando ninguém está olhando;
+- todo segredo passa pela porta `SecretVault` (5.18), nunca por variável de ambiente lida direto;
+- o modo de instalação é assunto do instalador (Fase 10), não do núcleo. Passar a rodar sem login muda o instalador e o adaptador do cofre, não o daemon **[hipótese]**.
+
+#### Backup
+
+Decidido em 2026-11-13: **automático e diário, guardando 7**.
+- Uma cópia consistente do store é feita com o daemon no ar, pela API de backup online do SQLite (`backup()` do `better-sqlite3`) ou por `VACUUM INTO` **[a escolher na Fase 1]**.
+- Há rotação de 7 cópias, numa pasta configurável, de preferência noutro disco.
+- `ot backup` faz uma cópia na hora; `ot restore <arquivo>` só roda com o daemon parado e guarda o store atual antes de trocar.
+- Cada cópia passa por `PRAGMA integrity_check` antes de entrar na rotação. Uma cópia que falha gera aviso no chat global **[proposta]**.
+- O backup cobre só o store. As worktrees já estão no git. As pastas dos cenários (arquivos de anexo, pastas das execuções de tarefa) ficam fora na v1, e se elas entram é o item 17 da seção 12.
+- Evento `daemon.backup` com o resultado.
+
+#### O que se perde (aceito)
+
+- A resposta que o modelo estava gerando no momento da queda. A sessão é retomada (5.16) e a resposta é refeita.
+- O estado das páginas abertas no navegador do cenário. O perfil (cookies, logins) fica, e o agente reabre a última URL de `browser_sessions`.
+- Arquivos que o Executor gravou logo antes de uma queda de energia e que o sistema ainda não tinha levado ao disco. O passo 4 da reconciliação salva o que estiver no disco.
+- Disparos agendados fora da janela (5.15): são pulados e registrados, não executados.
+
+#### Testes
+
+- **Fase 1:** um backup feito com o daemon no ar abre e passa no `integrity_check`; `ot restore` devolve o estado; mede o custo do `FULL`.
+- **Fase 3:** `kill -9` do daemon no meio de um efeito colateral. Na subida, a reconciliação mata o processo órfão do cliente, resolve o efeito pelo verificador (ou pergunta ao Produtor), e nada se repete.
+- **Fase 11:** queda de energia simulada (VM desligada à força) com uma peça, uma tarefa agendada e um chat em curso. O store abre íntegro, nenhuma transação confirmada se perde, e tudo retoma pela reconciliação.
 
 ## 6. Reaproveitamento: o que usar pronto
 
@@ -1245,14 +1538,18 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `profiles` | id, cliente, tipo (`token_plan`/`api`), provedor, estado (`ativo`/`drenando`/`removido`), diretório, referência do segredo |
 | `executors` | id, profile_id, modelo, esforço, estado de validade |
 | `roles` | papel, escopo (global/projeto), lista ordenada de executores, regra de esgotamento |
-| `scenarios` | id, tipo (projeto/tarefa/chat), fluxo padrão (id do registro de fluxos, 5.18), nome, repositório, branch base, override de configuração |
+| `scenarios` | id, tipo (projeto/tarefa/chat), fluxo padrão (id do registro de fluxos, 5.18), nome, pasta, perfil de projeto e convenções detectadas (JSON, só projeto; 5.20), branch base, override de configuração, cenário de origem (promoção), estado do Diretor (ativo/adormecido), estado (ativo/arquivado) |
+| `scenario_repos` | repositórios de um projeto (5.20): caminho, remoto, branch principal. Um por projeto na v1 |
+| `task_definitions` | versão da definição de uma tarefa (5.20): objetivo, entradas, passos (JSON validado pelo registro de tipos de passo), artefato final, entrega, gatilhos, orçamento, estado (`rascunho`/`ensaiada`/`ativa`/`substituida`), peça `tarefa.definir` que a gerou, resultado do ensaio |
+| `task_runs` | execução de uma tarefa (5.20): versão da definição, gatilho, pasta, estado de cada passo, artefato final, entrega, consumo, resultado |
+| `attachments` | anexo `A<n>` (5.20): cenário, mensagem do chat, nome, tipo MIME, tamanho, hash, cópia na pasta ou caminho referenciado (só leitura) |
 | `plays` (peças) | id, scenario_id, necessidade, id e versão do fluxo (5.18), snapshot XState, contadores, timestamps |
 | `stages` | etapas executadas de cada peça (papel, tentativa, resultado) |
 | `demands` | demandas do roteiro (campos de `Demanda`), estado |
 | `attempts` | tentativa por demanda: executor, worktree, branch, sessão ACP, início/fim, commit WIP, resultado estruturado; contador de retomadas; último checkpoint; último evento processado |
-| `sessions` | sessões ACP: processo, perfil, papel, worktree, id da sessão no cliente (para `session/load`), estado (`ativa`/`interrompida`/`aguardando_retomada`/`retomando`/`encerrada`) |
+| `sessions` | sessões ACP: processo (pid e instante de início, para achar órfãos na subida; 5.21), perfil, papel, worktree, id da sessão no cliente (para `session/load`), estado (`ativa`/`interrompida`/`aguardando_retomada`/`retomando`/`encerrada`) |
 | `interruptions` | interrupção de uma sessão: causa classificada, sinais que a indicaram, forma de retomada (nativa/bastão), Executor de origem e destino, se contou como tentativa |
-| `side_effects` | efeitos colaterais por chave de idempotência (`tentativa + passo`): ferramenta, parâmetros resumidos, resultado gravado, momento antes/depois |
+| `side_effects` | efeitos colaterais por chave de idempotência (`tentativa + passo`): ferramenta, parâmetros resumidos, resultado gravado, momento antes/depois, estado (`pendente`/`feito`/`nao_feito`/`ambiguo`) e como a ambiguidade foi resolvida (verificador ou Produtor; 5.21) |
 | `prompt_queue` | fila única de prompts do Orquestrador (origem, prioridade, estado) |
 | `decisions` | pontos de julgamento: tipo, entrada, resposta, quem decidiu |
 | `blackboard` | chave, versão, conteúdo (plano, roteiro, contratos, decisões) |
@@ -1262,11 +1559,11 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `plugins` | manifesto (com o painel declarativo e os tipos de evento), versão, estado, projetos ativos |
 | `browser_sessions` | sessão do navegador compartilhado (5.19): cenário, pasta do perfil, domínios permitidos, URL atual, quem controla (agente/Produtor), estado |
 | `indications` | indicação `I<n>` (5.19): tipo e versão do tipo, superfície de origem, cenário, mensagem do chat, conteúdo JSON (validado pelo schema do tipo; para `elemento_web`: URL, título, seletor, trecho do HTML, caixa), caminho do recorte, comentário, criada em |
-| `schedules` | tarefa agendada: cenário, necessidade, tipo (uma vez/cron/intervalo/após reset), expressão e fuso, overrides, política de entrega, orçamento, regras (perdida, sobreposição, cota, decisão), próximo disparo, estado, id do gatilho no sistema operacional |
+| `schedules` | tarefa agendada: cenário, necessidade (projeto) ou tarefa e versão da definição (5.20), tipo (uma vez/cron/intervalo/após reset), expressão e fuso, overrides, política de entrega, orçamento, regras (perdida, sobreposição, cota, decisão), próximo disparo, estado, id do gatilho no sistema operacional |
 | `orders` | ordem do Produtor (5.17): id `O<n>`, escopo (global/cenário), scenario_id, tipo (`instrucao`/`regra`/`suspensao`), texto, chave e valor (para `regra`), ordem suspensa (para `suspensao`), papéis, início, fim, fuso, janela (cron + duração; depois da v1), estado (`agendada`/`ativa`/`expirada`/`revogada`), criada em, origem (chat/TUI/terminal/importação), substitui, revogada em, motivo. As mudanças de vigência ficam nos eventos `ordem.vigencia_alterada` |
 | `schedule_runs` | execução de uma tarefa: horário previsto e real, motivo (horário, atraso, rodar agora), peça gerada, resultado, notificações enviadas |
 
-Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro do adaptador padrão da porta `Store` (5.18). O resto do daemon não vê SQL. No Electron, o `better-sqlite3` exige rebuild do módulo nativo; `node:sqlite` do Node 24 é alternativa sem binário nativo, a avaliar na Fase 1. Migrations versionadas com o migrator do próprio Kysely.
+Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro do adaptador padrão da porta `Store` (5.18). O resto do daemon não vê SQL. No Electron, o `better-sqlite3` exige rebuild do módulo nativo; `node:sqlite` do Node 24 é alternativa sem binário nativo, a avaliar na Fase 1. Migrations versionadas com o migrator do próprio Kysely. O store abre com `journal_mode=WAL` e `synchronous=FULL` (e `fullfsync` no macOS) e tem backup diário (5.21).
 
 ## 8. Stack
 
@@ -1343,6 +1640,9 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 │  │  ├─ src/workspace/
 │  │  ├─ src/orders/         (ordens globais e locais, aplicação das regras)
 │  │  ├─ src/scheduler/      (agenda, croner, gatilhos do sistema operacional, pedido de manter acordado)
+│  │  ├─ src/scenarios/      (tipos de cenário, perfis de projeto, anexos, promoção, Diretor adormecido)
+│  │  ├─ src/tasks/          (definição, ensaio e motor de passos das tarefas)
+│  │  ├─ src/recovery/       (reconciliação na subida, verificadores de efeito, backup)
 │  │  ├─ src/store/          (serviços sobre a porta Store; o SQL fica em adapters/store-sqlite)
 │  │  └─ src/telemetry/      (spans; receptor e exportadores vêm de adapters/)
 │  ├─ fake-agent/      agente ACP simulado
@@ -1415,12 +1715,12 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
   - ponto de montagem (`compose.ts`);
   - configuração;
   - lock de instância;
-  - store SQLite + migrations;
+  - store SQLite + migrations, com `synchronous=FULL` e backup diário (`ot backup`, `ot restore`; 5.21);
   - log de eventos;
   - pino.
 - `fake-agent` mínimo sobre o SDK do ACP.
 
-**Critério de aceite:** o daemon sobe, grava e lê eventos, testes verdes na CI; o mesmo daemon sobe montado com fakes (`Store` em memória, `Clock` falso), e a CI reprova um import que fure a regra de dependência.
+**Critério de aceite:** o daemon sobe, grava e lê eventos, testes verdes na CI; um backup feito com o daemon no ar passa no `integrity_check` e o `ot restore` devolve o estado, com o custo do `FULL` medido; o mesmo daemon sobe montado com fakes (`Store` em memória, `Clock` falso), e a CI reprova um import que fure a regra de dependência.
 **Estimativa:** 1,5 semana (era 1 na v0.11: entram `core`, `sdk`, ponto de montagem e regra de dependência).
 
 ### Fase 2 — Camada de Executores
@@ -1451,15 +1751,19 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 - Blackboard; fila única de prompts do Orquestrador.
 - Ordens globais e locais (seção 5.17), sem a janela recorrente: tabela, ferramentas do Diretor, entrada no prefixo dos Executores e no pacote de continuação, `ot ordens`.
 - Prompts iniciais dos papéis.
+- Cenários (5.20): registro de tipos, pasta por cenário, anexos com `ler_anexo`, Diretor adormecido e fluxo `chat` com o papel `consultor`.
+- Reconciliação na subida (5.21), com os verificadores das cascas oficiais.
 
 **Critério de aceite:**
 - peça ponta a ponta com o `fake-agent` cobrindo os quatro desfechos e o critério de parada;
 - reinício do daemon no meio da peça, retomando do snapshot;
+- `kill -9` do daemon no meio de um efeito colateral: na subida, a reconciliação mata o processo órfão, resolve o efeito pelo verificador (ou pergunta ao Produtor) e nada se repete;
 - uma ordem global e uma local chegam ao prompt do Orquestrador e dos Executores e sobrevivem ao reinício; uma ordem com início futuro só entra no prompt depois do início; uma ordem que vence com o daemon parado não entra em sessões abertas depois do reinício; uma suspensão tira a global de um cenário só; uma `regra` revogada devolve o valor da configuração;
-- uma peça real pequena concluída com o Orquestrador em `claude-agent-acp` + Haiku.
+- uma peça real pequena concluída com o Orquestrador em `claude-agent-acp` + Haiku;
+- no chat, uma pergunta simples é respondida pelo Diretor, uma pergunta difícil abre o consultor, e um anexo de imagem só vai para um Executor que aceita imagem; o Diretor adormece e acorda pelo resumo sem perder o estado.
 
 **Marco: MVP utilizável sem UI**, conversando com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
-**Estimativa:** 2,5 semanas.
+**Estimativa:** 3,5 semanas (era 2,5 na v0.13; a v0.14 acrescentou a base dos cenários e o chat, e a v0.15 a reconciliação) **[proposta]**.
 
 ### Fase 4 — Permissões e ferramentas de trabalho
 
@@ -1473,9 +1777,10 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
   - programa chamado por caminho ou dentro de `sh -c`;
   - ferramenta nativa bloqueada.
 - Navegador compartilhado sem a tela (5.19): porta `BrowserSession`, adaptador Playwright, perfil isolado por cenário, domínios permitidos e ferramentas `navegador_*` com aprovação das ações de escrita.
+- Perfil de projeto `software` (5.20): estrutura inicial, changelog, mensagens de commit e PR gerados na entrega, criação da CI; importação de repositório existente com detecção das convenções e confirmação do Produtor.
 
-**Critério de aceite:** suíte de fuga verde nos três clientes; o Ator abre uma página de teste, lê, tira print e só clica depois da aprovação, e um domínio fora da lista é recusado.
-**Estimativa:** 2 semanas (era 1,5 na v0.12: entra o navegador compartilhado).
+**Critério de aceite:** suíte de fuga verde nos três clientes; o Ator abre uma página de teste, lê, tira print e só clica depois da aprovação, e um domínio fora da lista é recusado; um repositório importado mantém o formato do próprio changelog e o padrão de commit depois de uma peça.
+**Estimativa:** 2,5 semanas (era 1,5 na v0.12; a v0.13 acrescentou o navegador e a v0.14 o perfil `software`) **[proposta]**.
 
 ### Fase 5 — Assinaturas, cotas e seleção
 
@@ -1580,7 +1885,7 @@ Também faz parte do aceite:
 **Critério de aceite:** a ferramenta do plugin aparece só nos papéis declarados e fica bloqueada nos demais; o painel do plugin de exemplo aparece na TUI sem nenhum código do plugin na interface.
 **Estimativa:** 1–1,5 semana.
 
-### Fase 9b — Agendador
+### Fase 9b — Agendador e tarefas
 
 Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em paralelo com as Fases 7–9.
 
@@ -1597,6 +1902,7 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
 - Aba Agenda na TUI.
 - Notificações: chat, sistema operacional, plugin.
 - Testes com relógio simulado sobre o `fake-agent`.
+- Tarefas (5.20): definição versionada, fluxo `tarefa.definir` com os papéis e o ensaio, motor de passos `tarefa.executar` (tipos `codigo`, `modelo`, `agente`, `aprovacao`, `entrega`), pasta por execução, gatilhos da v1, `rodar_tarefa`, promoção de chat para tarefa ou projeto. A entrega por plugin depende da Fase 9.
 
 **Critério de aceite:**
 - tarefa diária dispara no horário com a tela bloqueada (Windows com Modern Standby incluído) e abre o PR;
@@ -1604,9 +1910,11 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
 - execução sobreposta é pulada;
 - com a cota esgotada, a tarefa é adiada até o reset;
 - decisão do Produtor sem ninguém olhando pausa e notifica;
-- tarefa criada pelo chat só é salva depois da confirmação.
+- tarefa criada pelo chat só é salva depois da confirmação;
+- o exemplo das manchetes e o do dono (baixar, descomprimir, extrair, montar a planilha, enviar) passam no ensaio, rodam pelo agendador e entregam o artefato, com o Diretor adormecido durante a execução;
+- um passo de código que falha acorda o Diretor, que abre a correção da definição.
 
-**Estimativa:** 1–1,5 semana sem agentes; 0,5–1 com.
+**Estimativa:** 2,5–3 semanas sem agentes; 1,5–2 com (era 1–1,5 e 0,5–1 na v0.13: entram as tarefas) **[proposta]**.
 
 ### Fase 10 — Distribuição (daemon + TUI)
 
@@ -1616,6 +1924,7 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
   - macOS/Linux: pacote ou script;
   - alternativa para desenvolvedores: `npm i -g`.
 - Daemon como serviço de logon; o comando da TUI sobe o daemon se ele não estiver no ar.
+- Gatilhos do sistema operacional registrados para rodar só com o usuário conectado (5.21).
 - Atualização automática e primeira execução guiada dentro da TUI (criar a primeira assinatura, escolher os papéis padrão).
 
 **Critério de aceite:**
@@ -1629,6 +1938,7 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
 
 - Testes de caos:
   - daemon morto no meio da peça;
+  - queda de energia simulada (VM desligada à força) com uma peça, uma tarefa agendada e um chat em curso (5.21);
   - Executor travado;
   - perfil expirado;
   - disco cheio;
@@ -1676,17 +1986,17 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | 0 Validações e base (teste da TUI obrigatório) | 2–3 sem | 2–3 sem | 1–1,5 |
 | 1 Fundação | 1,5 sem | 1 sem | 1 |
 | 2 Executores | 2 sem | 1,5 sem | 2 |
-| 3 Pipeline + MCP | 2,5 sem | 1,5–2 sem | 2,5–3 |
-| 4 Permissões e navegador | 2 sem | 1,5 sem | 1,5–2 |
+| 3 Pipeline + MCP + base dos cenários + reconciliação | 3,5 sem | 2,5–3 sem | 2,5–3 |
+| 4 Permissões, navegador e perfil `software` | 2,5 sem | 1,5–2 sem | 1,5–2 |
 | 5 Assinaturas, seleção e retomada | 2,5 sem | 1,5–2 sem | 2 |
 | 6 API + `packages/client` | 1,5 sem | 0,5–1 sem | 1 |
 | 7 TUI (interface principal) | 2,5–3 sem | 1,5 sem | — |
 | 8 Observabilidade | 1 sem | 0,5 sem | 1 |
 | 9 Plugins | 1–1,5 sem | 0,5–1 sem | 1,5 |
-| 9b Agendador | 1–1,5 sem | 0,5–1 sem | — |
+| 9b Agendador e tarefas | 2,5–3 sem | 1,5–2 sem | — |
 | 10 Distribuição (daemon + TUI) | 1 sem | 0,5–1 sem | 1–1,5 |
 | 11 Endurecimento | 1,5–2 sem | 1–1,5 sem | 1,5–2 |
-| **Total (produto na TUI)** | **≈ 22–25 semanas** | **≈ 14–18,5 semanas** | 19–24 |
+| **Total (produto na TUI)** | **≈ 25–28 semanas** | **≈ 16–20,5 semanas** | 19–24 |
 | 12 Interface web (opcional) | 2,5–3 sem | 1,5–2 sem | 3–4 |
 | 13 App desktop (opcional) | 1 sem | 0,5–1 sem | — |
 
@@ -1697,10 +2007,10 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 As estimativas já consideram a política de licenças da seção 6.0 (Apache-2.0 aceita, sem reimplementar o SDK do ACP nem o OpenTelemetry).
 
 **Marcos:**
-- **MVP sem UI** (Fases 0–3): ≈ 8–9 semanas sem agentes, ≈ 6–7,5 com. Conversa com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
-- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 12,5–13,5 / ≈ 9,5–11,5.
-- **Produto na TUI** (+ Fases 6–7): ≈ 16,5–18 / ≈ 11,5–14.
-- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 22–25 / ≈ 14–18,5.
+- **MVP sem UI** (Fases 0–3): ≈ 9–10 semanas sem agentes, ≈ 7–8,5 com. Conversa com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
+- **Uso diário com várias assinaturas** (+ Fases 4–5): ≈ 14–15 / ≈ 10,5–13.
+- **Produto na TUI** (+ Fases 6–7): ≈ 18–19,5 / ≈ 12,5–15,5.
+- **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 25–28 / ≈ 16–20,5.
 - **Web e desktop** (+ Fases 12–13, opcionais): + 3–3,5 / + 1,5–2,5.
 
 **Paralelização com uma segunda pessoa:**
@@ -1731,15 +2041,17 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R15 | Retomada repete efeito colateral, ou a passagem de bastão perde contexto e o novo Executor refaz ou desfaz trabalho | Commits duplicados, chamadas externas repetidas, retrabalho | Chaves de idempotência nas cascas e plugins; checkpoints frequentes; pacote de continuação com efeitos já executados; preferir retomada nativa quando possível; teste de qualidade da passagem de bastão na Fase 0 |
 | R16 | Excesso de abstração: portas especulativas, indireção demais, contratos que mudam a toda hora | Código mais difícil de ler e de mudar; o custo de trocar uma implementação deixa de compensar | Porta só em fronteira e em ponto de variação (5.18, regra 1); porta nasce com adaptador real, fake e conformidade (regra 5); composição manual, sem container; regra de dependência na CI; revisão das portas na Fase 11 |
 | R17 | Navegador compartilhado: uma página dirige o agente por injeção de prompt, ou o agente age com uma conta logada no perfil do cenário | Ação indesejada num site real (envio, compra, exclusão) ou vazamento do que a página mostra | Perfil isolado por cenário, sem importar cookies; domínios permitidos; ações de escrita com aprovação por padrão; página tratada como dado (5.8); evento com print de cada ação (5.19) |
+| R18 | Tarefa recorrente roda sem supervisão um script escrito por agente | Script errado ou malicioso roda todo dia, apaga dados ou envia o que não devia | Passos de código no sandbox, com a política da tarefa (5.8); definição só ativa depois do ensaio e da aprovação do Produtor; toda mudança gera versão nova, com diff, ensaio e aprovação; destinatário da entrega fixo na definição; orçamento por execução (5.20) |
+| R19 | Queda de energia ou reinício no meio do trabalho | Transação confirmada perdida, store corrompido, efeito externo feito duas vezes ou esquecido, processo órfão consumindo cota | `synchronous=FULL`; gravar antes de agir; reconciliação na subida com verificadores de efeito; backup diário com `integrity_check`; teste de queda forçada na Fase 11 (5.21) |
 
 ## 12. Decisões em aberto
 
 1. Fork (Emdash como principal candidato; Orca, AionUi, Paradev ou Happier) ou projeto próprio com trechos reaproveitados (Fase 0).
 2. Modo de distribuição: pessoal (assinaturas) ou produto (API para Claude), depois da resposta sobre R1.
-3. Tipos de cenário além de projeto: o que muda no fluxo de "tarefa" e "chat genérico".
+3. *(Decidida em 2026-11-13: tipos de cenário, ver "Decididas" e a seção 5.20.)*
 4. Valores padrão de `Np`, `Nc`, tentativas por demanda e timeouts.
 5. Política de entrega por projeto: PR sempre, ou merge direto permitido.
-6. Daemon como serviço de logon ou processo do app desktop (ou os dois).
+6. Daemon como serviço de logon ou processo do app desktop (ou os dois). O comportamento sem login foi decidido à parte (5.21): na v1 o daemon espera o login.
 7. Electron ou Tauri (só se a Fase 13 for feita).
 8. Executores padrão de cada papel na primeira execução.
 9. Necessidade de acesso remoto ao dashboard (define cedo ou tarde o TLS/reverse proxy).
@@ -1749,22 +2061,32 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 13. Padrões do agendador: janela para rodar execução perdida, prazo máximo de adiamento por cota, prazo de espera por decisão sem ninguém olhando, orçamento padrão por execução.
 14. Padrões da retomada: limite de retomadas por tentativa, prazo máximo para esperar o reset antes de passar o bastão, intervalo dos checkpoints, critério de "agente travado" (minutos sem evento, repetições do mesmo erro).
 15. Detalhes dos níveis de plugin com comportamento de mod, para depois da v1 (5.14): quais pontos de interceptação existem, o prazo padrão de um gancho, o que acontece quando ele falha ou estoura o prazo (bloquear ou deixar passar) e se uma sonda de cota ou um notificador de um provedor novo podem vir de plugin, sem virar pacote oficial (5.18).
+16. Padrões dos cenários (5.20): tempo sem atividade até o Diretor adormecer, limite de tamanho dos anexos, retenção das pastas de execução das tarefas e quantas versões da definição guardar.
+17. Padrões de durabilidade (5.21): horário e pasta do backup; se as pastas dos cenários (anexos, execuções de tarefa) entram no backup; quando migrar para o daemon completo sem login, depois da v1, e como destrancar os segredos nesse modo (DPAPI, TPM, arquivo protegido por permissão).
 
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (2026-11-13, seção 6.0);
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
 - ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com quatro chaves na v1 (perfis de um papel, `proximo`/`esperar`, exigir PR e `git.push_apos_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
-- portas, adaptadores e registros (2026-11-13, P12 e seção 5.18): porta em toda fronteira e ponto de variação, sem porta para a lógica interna pura; duas camadas de extensão (adaptadores oficiais no processo, terceiros só fora dele, como plugins MCP); registro de fluxos em TypeScript, com a peça teatral como padrão (quais fluxos existem continua na N3); composição manual, sem container; pacotes `core`, `sdk` e `adapter-*`; semver por porta com suítes de conformidade; painel declarativo de plugin, sem código do plugin na interface; registros tipados, com chaves de `regra` só de módulos oficiais e eventos de plugin com prefixo `plugin.<id>.*`.
+- portas, adaptadores e registros (2026-11-13, P12 e seção 5.18): porta em toda fronteira e ponto de variação, sem porta para a lógica interna pura; duas camadas de extensão (adaptadores oficiais no processo, terceiros só fora dele, como plugins MCP); registro de fluxos em TypeScript, com a peça teatral como padrão (os outros fluxos foram decididos depois, na seção 5.20); composição manual, sem container; pacotes `core`, `sdk` e `adapter-*`; semver por porta com suítes de conformidade; painel declarativo de plugin, sem código do plugin na interface; registros tipados, com chaves de `regra` só de módulos oficiais e eventos de plugin com prefixo `plugin.<id>.*`.
 - plugin com comportamento de mod (2026-11-13, seção 5.14): um mecanismo só, sem mods em processo; depois da v1 o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), sempre fora do processo.
 - navegador compartilhado (2026-11-13, seção 5.19): porta oficial `BrowserSession` no daemon (Playwright sobre CDP), usada pelo agente e pela interface; indicação completa anexada ao chat, num mecanismo genérico com tipos de indicação registrados (o primeiro é `elemento_web`); perfil isolado por cenário; ferramentas do agente na v1 (Fase 4) e a tela com o modo indicar elemento na Fase 12.
+- cenários (2026-11-13, seção 5.20; era o item 3): três tipos (projeto, tarefa e chat genérico), num registro, com as variações como perfis de projeto (`software` na v1) e gatilhos de tarefa; projeto importado mantém as convenções detectadas, confirmadas pelo Produtor; um repositório por projeto na v1, vários depois; tarefa com definição versionada e execuções, desenhada pelos papéis (Autor, Revisor, Roteirista, Atores e Crítico no ensaio), com o Diretor leve só coordenando; gatilhos de horário e manual na v1, de evento depois; no chat, Diretor barato que consulta um Ator forte; promoção cria um cenário novo ligado ao chat; Diretor adormece sem atividade e acorda pelo resumo.
+- durabilidade e recuperação (2026-11-13, seção 5.21): store com `synchronous=FULL` sempre; reconciliação explícita na subida, com efeito ambíguo resolvido pelo verificador da ferramenta ou pelo Produtor; na v1 a máquina religada sem login espera o login, e a meta depois da v1 é o daemon completo sem login; backup automático diário, guardando 7.
 
 ## 13. Glossário
 
 | Termo | Significado aqui |
 |---|---|
 | Peça | Uma execução do pipeline para uma necessidade |
-| Cenário | Projeto, tarefa ou chat: tem chat, Orquestrador, dashboard e configuração |
+| Cenário | Projeto, tarefa ou chat genérico: tem Diretor e chat próprios, pasta, anexos, ordens locais, dashboard e configuração (5.20) |
+| Perfil de projeto | Tipo registrado de projeto que define estrutura inicial, ferramentas, permissões e artefatos gerados; o padrão é `software` (5.20). Não confundir com o perfil de assinatura |
+| Tarefa | Cenário de workflow com artefato final: uma definição versionada de passos tipados e as execuções dela (5.20) |
+| Ensaio | Execução da definição de uma tarefa com dados de exemplo, sem entrega real, avaliada pelo Crítico antes da aprovação (5.20) |
+| Consultor | Papel com modelo forte que o Diretor do chat abre quando a pergunta pede (5.20) |
+| Anexo | Artefato `A<n>` enviado pelo Produtor ao chat: arquivo, caminho, imagem, texto ou URL, lido com `ler_anexo` (5.20) |
+| Promoção | Criação de uma tarefa ou de um projeto a partir de um chat (ou de uma tarefa), ligado ao cenário de origem (5.20) |
 | Executor | Cliente + perfil + modelo + esforço |
 | Perfil | Uma assinatura ou chave de API de um cliente, com diretório isolado |
 | Demanda | Unidade de trabalho do roteiro, executada por um Ator |
@@ -1781,6 +2103,8 @@ Decididas:
 | Navegador compartilhado | Sessão de navegador do cenário, usada pelo agente e pelo Produtor ao mesmo tempo (5.19) |
 | Indicação | Artefato `I<n>` que aponta algo para o agente (5.19): um tipo registrado (o primeiro é `elemento_web`), o conteúdo validado pelo schema do tipo e o comentário do Produtor |
 | Superfície | Parte do sistema que oferece o modo indicar e declara os tipos de indicação que produz; a primeira é o navegador compartilhado (5.19) |
+| Reconciliação | Rotina da subida do daemon que acha e resolve o que ficou pela metade (órfãos, sessões, worktrees, efeitos ambíguos) antes de retomar (5.21) |
+| Efeito ambíguo | Efeito colateral com "antes" e sem "depois" gravados: não se sabe se aconteceu. É resolvido pelo verificador da ferramenta ou pelo Produtor (5.21) |
 | Ponto de montagem | O único lugar do daemon que escolhe e liga os adaptadores às portas (`compose.ts`, 5.18) |
 
 ## 14. Fontes principais (consultadas em 2026-11-13)
@@ -1839,5 +2163,7 @@ Decididas:
 | Ordens do Produtor (v0.11) | Inexistentes | Seção 5.17: ordens globais (um registro para todos os cenários) e locais (um projeto, tarefa ou chat), dos tipos `instrucao`, `regra` e `suspensao`; vigência com início, fim, duração e janela recorrente, calculada pelo relógio; prorrogação; revogação com motivo, em lote e definitiva; criação só pelo Produtor; entrada no prefixo, no Crítico e na retomada. Estimativas das fases não revistas | Conceito do `okit` trazido para o OTheater, redesenhado para evitar cópias por projeto e texto com efeito em código; vigência por período e revogação refinadas a pedido do dono; pontos em aberto decididos pelo dono no mesmo dia, incluindo a dispensa do Crítico (5.4) |
 | Abstrações (v0.12) | Uma interface própria (`ClientAdapter`) e o resto ligado direto às bibliotecas | P12 e seção 5.18: portas em `@otheater/core` para toda fronteira e ponto de variação, adaptadores trocáveis em `@otheater/adapter-*`, registros tipados (fluxos, papéis, ferramentas, chaves de `regra`, eventos, interface), composição manual, semver por porta com suítes de conformidade em `@otheater/sdk`, painel declarativo de plugin; Fase 1 cresce 0,5 semana | Pedido do dono: com tudo em TypeScript, abstrair ao máximo para ganhar flexibilidade e facilidade de expansão; as escolhas de desenho foram decididas pelo dono no mesmo dia; no mesmo dia, o dono decidiu que o comportamento de mod vira nível opcional do plugin depois da v1, sem mecanismo separado (5.14) |
 | Navegador compartilhado (v0.13) | Só `http_get` e plugins MCP para a web | Seção 5.19: porta `BrowserSession` (Playwright sobre CDP) no daemon, uma sessão para o agente e para o Produtor, ferramentas `navegador_*` com aprovação das ações de escrita, modo indicar genérico, com indicações `I<n>` de tipos registrados (o primeiro é `elemento_web`) anexadas ao chat, perfil isolado por cenário; tabelas `browser_sessions` e `indications`; R17; Fase 4 e Fase 12 crescem 0,5 semana cada | Pedido do dono: um navegador na web e no desktop em que ele indica elementos da página para o agente trabalhar; escolhas decididas pelo dono no mesmo dia, e a generalização para outros tipos foi pedida por ele em seguida |
+| Cenários (v0.14) | Projeto, tarefa e chat citados, sem definição; tarefa geral sem formato (N3) | Seção 5.20: base comum (Diretor e chat próprios, pasta, anexos `A<n>`, Diretor adormecido); registro de tipos de cenário; projeto com perfil (`software`: changelog, commits, PRs, publicação, CI) e importação que respeita as convenções; tarefa com definição versionada desenhada pelos papéis e ensaiada, motor de passos tipados e gatilhos; chat com Diretor barato e papel `consultor`; promoção para cenário novo ligado; tabelas `scenario_repos`, `task_definitions`, `task_runs` e `attachments`; R18; Fases 3, 4 e 9b crescem | Definições do dono para os três tipos; escolhas decididas por ele no mesmo dia, incluindo usar os papéis para desenhar a tarefa e deixar o Diretor leve |
+| Durabilidade (v0.15) | Snapshot por transição, retomada (5.16) e regra da janela (5.15), sem modo de gravação definido, sem rotina de reconciliação, sem backup e sem resposta para a máquina religada sem login | Seção 5.21: `synchronous=FULL`; gravar antes de agir; reconciliação na subida com verificadores de efeito; na v1 espera o login, depois daemon completo sem login; backup diário com 7 cópias; R19; Fase 3 cresce 0,5 semana | Pergunta do dono sobre fechar a interface, reiniciar e faltar luz; escolhas decididas por ele no mesmo dia |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |
