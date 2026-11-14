@@ -1,6 +1,6 @@
 # 11. Telemetria e trajetórias (ATIF)
 
-Este documento resume a observabilidade do OTheater, a partir da arquitetura v0.10 (§5.11, §5.12, §7 e Fase 8), de 2026-11-13. **Nada aqui foi verificado localmente.** A RFC do ATIF não foi aberta nesta revisão.
+Este documento resume a observabilidade do OTheater, a partir da arquitetura v0.10 (§5.11, §5.12, §7 e Fase 8), de 2026-11-13. **Nada aqui foi verificado localmente.** Em 2026-11-14 (v0.27), a RFC do ATIF e os modelos Pydantic do Harbor foram lidos no GitHub (ramo `main`) para decidir a Q11; ver a seção "Campos próprios".
 
 ## O que se quer
 
@@ -51,13 +51,21 @@ Segundo a arquitetura (§5.11, fontes consultadas em 2026-11-13):
 - Não há biblioteca TS. O OTheater escreve o próprio **schema zod** a partir da RFC e um exportador `sessao.update` → ATIF.
 - A conformidade é validada nos testes pelo **`TrajectoryValidator`** (Python) do Harbor. O Harbor é Apache-2.0, nível D (só desenvolvimento).
 
-> **Correção em relação a 2026-11-08.** A versão anterior deste documento, baseada em fonte secundária, dizia ATIF **1.7** no repositório `laude-institute/harbor`. A arquitetura cita a **1.8** em `harbor-framework/harbor`. Vale a arquitetura, mas a RFC continua sem ser aberta por nós.
+> **Correção em relação a 2026-11-08.** A versão anterior deste documento, baseada em fonte secundária, dizia ATIF **1.7** no repositório `laude-institute/harbor`. A arquitetura cita a **1.8** em `harbor-framework/harbor`. Vale a arquitetura. Em 2026-11-14, a RFC foi aberta e a versão 1.8 consta como a atual no histórico dela, embora o texto ainda cite 1.7 e 1.5 em alguns trechos.
 
-Notas de 2026-11-08 que continuam úteis, **não confirmadas**:
-- os modelos do Harbor (Pydantic, `harbor.models.trajectories`) rejeitam campos não declarados, então metadados próprios precisam ir nos campos de extensão do esquema;
-- os ids de passo são sequenciais a partir de 1, e passos do agente trazem chamadas de ferramenta, observações e métricas.
+Notas de 2026-11-08 que continuam úteis:
+- os modelos do Harbor (Pydantic, `harbor.models.trajectories`) rejeitam campos não declarados, então metadados próprios precisam ir nos campos de extensão do esquema (**confirmado em 2026-11-14** no código: `extra="forbid"` em todos os modelos);
+- **não confirmado:** os ids de passo são sequenciais a partir de 1, e passos do agente trazem chamadas de ferramenta, observações e métricas.
 
-**Em aberto** (Q11 em [13](13-DECISOES-EM-ABERTO.md)): onde ficam os campos próprios (perfil, cota, papel, worktree, peça, demanda) dentro do ATIF-v1.8. A arquitetura não detalha.
+## Campos próprios (Q11, decidida em 2026-11-14, v0.27)
+
+Resumo da arquitetura §5.11 (decisões do dono, iguais às recomendações):
+- tudo o que é do OTheater fica num objeto `otheater` dentro dos `extra` do ATIF (raiz, `agent`, `step`, `tool_calls`, resultados de `observation`, `metrics`, `final_metrics`), com `schema: 1` na raiz;
+- a unidade padrão é a **peça inteira**: a trajetória do Diretor na raiz e cada tentativa em `subagent_trajectories` (`atif.export.unit: play`, ou `attempt`, `play_files`);
+- `cost_usd` só leva custo real; nas assinaturas fica nulo, e o equivalente em API e a cota vão no bloco próprio;
+- o conteúdo sai **completo**, com os segredos sempre mascarados (`atif.export.content: full`, ou `redacted`).
+
+O que vai em cada nível e o jeito de ligar as tentativas lançadas pelo daemon são **[proposta]** e fecham na Fase 8, contra o validador.
 
 ## Tempo real versus arquivo
 

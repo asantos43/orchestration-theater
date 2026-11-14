@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.26, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.27, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -42,7 +42,7 @@ P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em códi
 | `directives/` | Ordens globais e locais; aplicação das ordens do tipo `rule` | próprio |
 | `scheduler/` | Agenda, gatilhos do sistema operacional | croner |
 | `store/` | SQLite (WAL): eventos, estado, blackboard | `better-sqlite3` + Kysely |
-| `telemetry/` | Receptor OTLP, spans, exportador ATIF | OpenTelemetry JS |
+| `telemetry/` | Receptor OTLP, spans, exportador ATIF (bloco `extra.otheater`, peça inteira como unidade, §5.11) | OpenTelemetry JS |
 
 O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Roda sempre como serviço de logon do usuário, instalado pelo `ot init`; nenhuma interface o hospeda, e o app desktop, se for feito, é só mais um cliente (v0.25). Ele sobrevive ao fechamento da UI. Ao reiniciar, reidrata as peças e devolve à fila as demandas interrompidas, preservando o que já foi commitado (§5.1).
 
