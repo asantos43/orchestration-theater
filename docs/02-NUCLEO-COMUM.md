@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.21, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.22, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -119,7 +119,9 @@ NEED → PLANNING → REVIEWING_PLAN → SCRIPTING → EXECUTING
   - OpenCode: XDG + `OPENCODE_DB`.
 - O login é sempre o login oficial, feito no diretório do perfil.
 - Chaves de API ficam no cofre do sistema. No Linux sem Secret Service, há fallback criptografado.
-- Cada perfil tem um estado: `ok | near_limit | exhausted(untilReset) | unknown`. O ccusage guarda o histórico de consumo.
+- Cada perfil tem um estado: `ok | near_limit | exhausted(untilReset, cause) | unknown`, com a causa `quota` ou `budget`. O ccusage guarda o histórico de consumo.
+- **Custo (§5.6):** assinatura mostra a cota e o equivalente em API; conta de API mostra o custo real. O valor vem do cliente, senão da tabela de preços `pricing`.
+- **Teto de gasto em API (§5.6):** `budget` por dia e por mês no perfil (o `ot init` sugere US$ 20 e US$ 200), aviso em 80%, `on_exceeded: skip` e `in_flight: handoff`. Despertares no store retomam o trabalho e as tarefas adiadas quando a cota ou o teto voltam.
 - Cada papel tem uma lista ordenada de Executores e uma regra para quando todos estão esgotados (`next` ou `wait`). A nova tentativa de uma demanda começa por um Executor diferente do anterior, e o motivo de cada escolha vira evento.
 
 ## Permissões, recursos e contexto

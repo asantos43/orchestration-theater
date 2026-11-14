@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.21 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor.
+> Versão 0.22 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -350,7 +350,81 @@ Executores que usavam o perfil ficam `invalid`, sem quebrar as listas dos papéi
 
 - **Histórico de consumo (tokens e custo):** usar o **ccusage** (MIT, TS; cobre Claude, Codex, OpenCode e Gemini a partir dos logs locais, aceita vários `CLAUDE_CONFIG_DIR`) como biblioteca ou CLI. Ele não informa a cota restante, por isso as sondas acima continuam necessárias.
 - **Referência de implementação:** o **CodexBar** (MIT, Swift, só macOS/Linux) já lê cota de dezenas de provedores. Serve para consultar como ele obtém cada sinal, não para usar direto no Windows.
-- **Estado por perfil:** `ok | near_limit | exhausted(untilReset) | unknown`.
+- **Estado por perfil:** `ok | near_limit | exhausted(untilReset, cause) | unknown`. A causa é `quota` (cota da assinatura) ou `budget` (teto de gasto em API, abaixo).
+
+#### Custo em moeda
+
+Decidido em 2026-11-14 (era o item 10 da seção 12). Assinatura e API são medidas de jeitos diferentes, e as telas mostram as duas:
+- **perfil de API:** custo real em US$, por sessão, peça, Executor, perfil e período;
+- **perfil de assinatura:** uso da cota (janelas de 5 h e 7 dias, com o reset) e, ao lado, o **equivalente em API**: quanto o mesmo consumo custaria pelos preços de API, calculado dos tokens. É uma estimativa para comparar contas, não uma cobrança.
+
+**Fonte do valor:** o custo que o próprio cliente informa, quando existe (no Claude Code, a métrica `claude_code.cost.usage` do OTel, 5.11); senão, tokens × a tabela de preços `pricing`, que vem com cada versão do OTheater e pode ser sobrescrita na configuração. O evento de consumo (`usage.*`) grava a fonte (`client` ou `pricing_table`) e a versão da tabela.
+
+```yaml
+usage:
+  subscription_display: quota_and_equivalent   # quota_and_equivalent | quota | prorated
+  cost_source: client_then_pricing              # client_then_pricing | pricing_table | provider_billing
+pricing:                       # sobrescreve a tabela da versão; US$ por milhão de tokens
+  minimax-m2: { input_per_mtok: <US$>, output_per_mtok: <US$> }
+```
+
+- `quota` mostra só a cota; `prorated` divide a mensalidade do plano, informada no perfil (`monthly_price_usd`), pelo uso do mês.
+- `pricing_table` usa sempre a tabela; `provider_billing` consulta a API de uso ou faturamento do provedor, que chega com atraso e não existe em todos **[a confirmar por provedor]**.
+- A tabela de preços precisa de revisão a cada versão, porque os preços mudam. Se um modelo não tem preço na tabela, o custo fica `unknown` e a tela avisa.
+
+#### Teto de gasto em API
+
+Decidido em 2026-11-14 (era o item 21 da seção 12). Cada comportamento é uma chave de configuração.
+
+```yaml
+profiles:
+  minimax-api:
+    budget:
+      daily_usd: 20            # opcional; sugerido pelo ot init
+      monthly_usd: 200         # opcional; sugerido pelo ot init
+      warn_at: [0.8]           # avisos, em fração do teto
+      on_exceeded: skip        # skip | wait | ask
+      in_flight: handoff       # handoff | finish | stop
+```
+
+- **Onde fica:** no perfil de API, com teto por dia e por mês, os dois opcionais. Um Executor pode ter um teto menor (`executors.<nome>.budget`), dentro do teto do perfil. O orçamento por execução das tarefas agendadas (5.15) continua valendo; vale sempre o mais restritivo.
+- **Primeira execução:** ao encontrar uma chave de API, o `ot init` sugere US$ 20 por dia e US$ 200 por mês, e o Produtor confirma ou muda antes de a chave entrar nas listas (5.7).
+- **Aviso:** em 80% do teto do dia ou do mês, mensagem de sistema no chat e notificação nas interfaces. `warn_at` aceita uma lista, como `[0.5, 0.8]`.
+- **Sessões novas ao estourar** (`on_exceeded`):
+  - `skip` (padrão): o perfil fica `exhausted` com causa `budget` até virar o período, e a seleção segue para o próximo Executor da lista. Sem nenhum disponível, vale o `when_exhausted` do papel;
+  - `wait`: o papel espera virar o período, sem usar outro Executor;
+  - `ask`: o Diretor pergunta se aumenta o teto, pula ou espera. Sem ninguém olhando, vira `skip`.
+- **Sessão em curso ao estourar** (`in_flight`):
+  - `handoff` (padrão): igual a cota esgotada (5.16). A sessão é interrompida e passa o bastão para o próximo Executor, sem contar como tentativa;
+  - `finish`: termina a sessão atual, e o teto só barra as novas. Pode passar um pouco do teto;
+  - `stop`: para e pergunta ao Produtor. Sem ninguém olhando, passa o bastão.
+- **Período:** o dia e o mês seguem o fuso do daemon e viram à meia-noite e no dia 1 (aprovado pelo dono em 2026-11-14).
+- **Medição:** o gasto é somado a cada evento de consumo. Como o custo de uma chamada só se conhece depois dela, o teto pode passar pelo custo da última chamada.
+
+#### Retomada quando a cota ou o teto voltam
+
+Decidido em 2026-11-14, a pedido do dono: o trabalho e as tarefas recorrentes continuam até o fim, sem o Produtor precisar relançar nada. Quando a cota de um perfil esgota ou o teto estoura, o daemon grava no store um **despertar** (tabela `wakeups`, seção 7) com o horário em que o perfil volta: o `resetsAt` da sonda de cota ou a virada do dia ou do mês do teto. Sem horário conhecido, o daemon volta a consultar o perfil de tempos em tempos.
+
+**Consulta sem horário de reset** (decidida em 2026-11-14, com a ressalva do dono de que não gaste tokens e seja ajustável):
+- a consulta só usa sinais que não chamam o modelo: a sonda de cota do provedor (`account/rateLimits/read` do Codex, `token_plan/remains` da MiniMax) ou a leitura do último JSON da statusline do Claude. Nunca manda prompt de teste;
+- o intervalo é a chave `quota.recheck_every`, com padrão `15m`; `off` desliga a consulta;
+- o provedor que não tem sinal sem custo (o Claude, cuja statusline só se atualiza depois de uma resposta, e o OpenCode) não é consultado. Passado o intervalo, o perfil vai de `exhausted` para `unknown`, e a próxima sessão real que a seleção mandar para ele serve de teste: se der erro de limite, ele volta a `exhausted` com o reset informado no erro **[proposta]**.
+
+```yaml
+quota:
+  recheck_every: 15m           # só sinais sem custo de tokens; off desliga
+```
+
+
+No horário do despertar:
+1. o perfil volta a `ok`, com o evento `quota.restored` ou `budget.restored`;
+2. as tentativas em `AWAITING_RESUME` que esperavam aquele perfil retomam (5.16);
+3. as demandas na fila sem Executor disponível passam de novo pela seleção (5.7);
+4. as tarefas agendadas adiadas por cota (`quota_exhausted: postpone`, 5.15) rodam.
+
+- Os despertares ficam no SQLite e sobrevivem a reinício e queda (5.21). Com a máquina desligada ou o daemon parado no horário, rodam na subida, pela reconciliação.
+- Se a máquina puder estar dormindo no horário, o daemon usa o mesmo gatilho do sistema operacional que o agendador usa para acordá-la (5.15).
+- Uma sessão que já passou o bastão para outro Executor não volta ao anterior quando ele se recupera, como as ordens não mudam sessões em curso (5.17).
 
 ### 5.7 Seleção de Executor
 
@@ -371,7 +445,7 @@ executors:
 **Primeira execução** (decidida em 2026-11-14, item 8 da seção 12): a primeira execução guiada (Fase 10; na CLI, `ot init`):
 1. detecta os clientes instalados, os logins e as chaves de API;
 2. aplica a predefinição da chave `roles.preset` e tira da lista os Executores que não existem. A predefinição é escrita em `<modelo>-<esforço>`, sem conta; o `ot init` troca cada item pelos Executores das contas encontradas que têm aquele modelo, um por conta, na ordem das contas que o Produtor confirmar (ex.: `claude-opus-high` vira `claude-opus-high@claude-empresa, claude-opus-high@claude-pessoal`) **[proposta]**;
-3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@minimax-api`), dentro do orçamento de API. Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
+3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@minimax-api`), com o teto de gasto que o Produtor confirmar (5.6). Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
 4. mostra o resultado, e o Produtor confirma ou ajusta.
 
 Predefinição padrão, `quality`, depois do `ot init` numa máquina com as contas `claude-empresa`, `codex-1`, `minimax-api` e `gemma4-local`:
@@ -416,7 +490,7 @@ O pulo entra no evento `executor.selected`, como os outros.
 Algoritmo, para cada demanda ou etapa:
 1. percorre a lista na ordem. Um Executor é **disponível** quando:
    - o perfil está saudável;
-   - a cota não está esgotada;
+   - a cota não está esgotada nem o teto de gasto em API estourou (5.6);
    - há vaga no pool;
    - o controle de admissão permite;
 2. pega o primeiro disponível;
@@ -907,6 +981,7 @@ O daemon classifica a causa pelos sinais disponíveis:
 |---|---|---|
 | **Cota esgotada**, reset próximo (dentro do limite configurado) e regra do papel `wait` | Aguardar o reset e retomar **nativa** no mesmo perfil | Não |
 | **Cota esgotada**, reset distante ou regra `next` | **Passagem de bastão** para o próximo Executor disponível do papel (5.7) | Não |
+| **Teto de gasto em API estourado** (5.6) | Pela chave `in_flight` do perfil: passagem de bastão (padrão), terminar a sessão ou parar e perguntar | Não |
 | **Erro transitório** (rede, 5xx do provedor, sobrecarga) | Retomar **nativa** com recuo exponencial (ex.: 30 s, 2 min, 10 min); se esgotar, passagem de bastão | Não |
 | **Queda do processo do cliente** | Retomar **nativa**; se o `session/load` falhar, passagem de bastão | Não, na primeira vez; sim, se repetir |
 | **Reinício do daemon ou da máquina** | Para cada sessão `interrupted`: nativa se os arquivos do cliente existirem; senão, passagem de bastão | Não |
@@ -942,7 +1017,7 @@ Retomar não pode repetir o que já mudou o mundo fora da worktree:
 
 ```
 EXECUTING ──(interrupção)──→ INTERRUPTED(cause)
-INTERRUPTED → AWAITING_RESUME (reset de cota, recuo, vaga no pool)
+INTERRUPTED → AWAITING_RESUME (reset de cota, virada do período do teto, recuo, vaga no pool)
 AWAITING_RESUME → RESUMING(native | handoff) → EXECUTING
 RESUMING(native) ──falhou──→ RESUMING(handoff)
 retomadas > limite → DECIDING (ponto de julgamento do Diretor)
@@ -1833,7 +1908,8 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `blackboard` | chave, versão, conteúdo (plano, roteiro, contratos, decisões) |
 | `events` | id crescente, timestamp, scenario/play/attempt, tipo, payload JSON |
 | `quota_snapshots` | perfil, janela, uso, reset, fonte do sinal |
-| `usage` | consumo por sessão/perfil/janela (tokens; custo quando for API) |
+| `usage` | consumo por sessão/perfil/janela: tokens, custo real (API) ou equivalente em API (assinatura), fonte do valor (`client`/`pricing_table`) e versão da tabela de preços (5.6) |
+| `wakeups` | despertar interno (5.6): perfil, causa (`quota`/`budget`), horário, estado, id do gatilho no sistema operacional |
 | `plugins` | manifesto (com o painel declarativo e os tipos de evento), versão, estado, projetos ativos |
 | `browser_sessions` | sessão do navegador compartilhado (5.19): cenário, pasta do perfil, domínios permitidos, URL atual, quem controla (agente/Produtor), estado |
 | `indications` | indicação `I<n>` (5.19): tipo e versão do tipo, superfície de origem, cenário, mensagem do chat, conteúdo JSON (validado pelo schema do tipo; para `web_element`: URL, título, seletor, trecho do HTML, caixa), caminho do recorte, comentário, criada em |
@@ -2368,7 +2444,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 7. Electron ou Tauri (só se a Fase 13 for feita).
 8. *(Decidida em 2026-11-14: Executores padrão de cada papel, ver "Decididas" e a seção 5.7.)*
 9. *(Decidida em 2026-11-14: acesso remoto pela VPN do usuário, para o app Android, ver "Decididas" e as seções 5.12 e 5.13.)*
-10. Custo em moeda para assinaturas (só o uso relativo da cota) versus API (custo real).
+10. *(Decidida em 2026-11-14: custo em moeda, ver "Decididas" e a seção 5.6.)*
 11. Framework da TUI: Ink (padrão) ou OpenTUI, pelo teste comparativo da Fase 0 (obrigatório).
 12. Quando fazer a web (Fase 12), que desde 2026-11-14 é a base do app Android (Fase 14) e deixou de ser opcional, e se fazer o app desktop (Fase 13).
 13. *(Decidida em 2026-11-14: padrões do agendador como chaves de configuração, ver "Decididas" e a seção 5.15.)*
@@ -2379,11 +2455,12 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 18. Contribuições externas (6.0): exigir um acordo de contribuição (CLA), que dá ao dono o direito de relicenciar o código recebido e mantém aberta uma licença dupla ou uma versão comercial, ou só a certificação de origem (DCO, com `Signed-off-by`), em que cada contribuição fica só sob MPL-2.0. Decide-se antes de o repositório aceitar contribuições.
 19. Notificações do app Android (5.13): push pelo Firebase Cloud Messaging (exige conta Google e alguém que envie o push, o que pede um serviço fora da máquina); UnifiedPush ou ntfy (sem Google, com servidor próprio ou público); ou só com o app aberto ou num serviço em primeiro plano ligado ao SSE, que gasta bateria. Decide-se na Fase 14.
 20. Distribuição do app Android: Google Play, APK direto (com atualização pelo próprio app) ou F-Droid. Liga-se ao item 2 (uso pessoal ou produto).
-21. Teto de gasto em API por perfil ou por Executor (5.7), além do orçamento por execução das tarefas agendadas (5.15): período (dia, mês ou os dois), o que fazer ao estourar (pular para o próximo da lista, esperar ou perguntar) e aviso antes do teto. Liga-se ao item 10. A proposta é uma chave no perfil de API, por exemplo `budget: { daily_usd: 20, monthly_usd: 200, on_exceeded: skip }` **[proposta]**.
+21. *(Decidida em 2026-11-14: teto de gasto em API, ver "Decididas" e a seção 5.6.)*
 22. *(Decidida em 2026-11-14: sufixo `@<perfil>` em todos os Executores, ver "Decididas" e a seção 5.7.)*
 
 Decididas:
-- Executores padrão de cada papel (2026-11-14, seção 5.7; eram os itens 8 e 22): nome sempre `<modelo>-<esforço>@<perfil>`, com o prefixo `claude-` nos modelos do Claude e o sufixo da conta em todos, e o cliente no campo; todos os papéis com lista de fallback ajustável; a primeira execução (`ot init`) detecta clientes, logins e chaves, aplica `roles.preset: quality` (opções `balanced` e `economical`), tira o que não existe, acrescenta ao fim o Executor por API que houver e pede confirmação; Diretor com `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; Roteirista com a lista do Autor; revisão cruzada com `selection.cross_check: prefer_other_provider`. O teto de gasto por perfil de API segue em aberto (item 21);
+- Executores padrão de cada papel (2026-11-14, seção 5.7; eram os itens 8 e 22): nome sempre `<modelo>-<esforço>@<perfil>`, com o prefixo `claude-` nos modelos do Claude e o sufixo da conta em todos, e o cliente no campo; todos os papéis com lista de fallback ajustável; a primeira execução (`ot init`) detecta clientes, logins e chaves, aplica `roles.preset: quality` (opções `balanced` e `economical`), tira o que não existe, acrescenta ao fim o Executor por API que houver e pede confirmação; Diretor com `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; Roteirista com a lista do Autor; revisão cruzada com `selection.cross_check: prefer_other_provider`;
+- custo e teto de gasto em API (2026-11-14, seção 5.6; eram os itens 10 e 21): assinatura mostra a cota e o equivalente em API, e conta de API mostra o custo real (`usage.subscription_display: quota_and_equivalent`); o valor vem do cliente, senão da tabela de preços (`usage.cost_source: client_then_pricing`); teto por dia e por mês no perfil de API (`budget`), sugerido pelo `ot init` em US$ 20 e US$ 200 e confirmado pelo Produtor; aviso em 80%; ao estourar, `on_exceeded: skip` para sessões novas e `in_flight: handoff` para a sessão em curso; despertar agendado no store retoma o trabalho e as tarefas adiadas quando a cota ou o teto voltam;
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause, 0BSD e MPL-2.0; GPL, AGPL e LGPL proibidas (2026-11-13; MPL-2.0 aceita em 2026-11-14, seção 6.0);
 - app Android (2026-11-14, seções 5.12 e 5.13 e Fase 14; era o item 9): versões para celular e tablet, só como cliente do daemon; Capacitor sobre a web da Fase 12; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho; Fase 14, depois da web, fora da v1. Com isso, a web deixa de ser opcional. Notificações e distribuição seguem em aberto (itens 19 e 20);
@@ -2509,6 +2586,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Licença do código próprio (v0.19) | Código próprio em MIT; MPL proibida em código copiado e dependências | Código próprio em MPL-2.0; MPL-2.0 permitida em código copiado e dependências, com obrigações; GPL, AGPL e LGPL seguem proibidas; CLA ou DCO em aberto (item 18) | Decisão do dono, depois de uma pergunta sobre uso comercial |
 | App Android (v0.20) | Interfaces só no computador (TUI, web e desktop opcionais); acesso remoto em aberto (item 9) | App Android para celular e tablet na Fase 14, com Capacitor sobre a web; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho (`api.remote`); a web deixa de ser opcional; notificações e distribuição em aberto (itens 19 e 20); mockup `mockup/mobile.html`, com os comandos pelo celular como proposta | Decisão do dono |
 | Executores padrão (v0.21) | Exemplo de lista por papel, sem Roteirista, com nomes sem regra (`haiku`, `codex-high`, `minimax`); padrões da primeira execução em aberto (item 8) | Nome `<modelo>-<esforço>@<perfil>`, com prefixo `claude-` e o sufixo da conta em todos; todos os papéis com lista de fallback; `ot init` detecta e aplica `roles.preset` (`quality` padrão, `balanced`, `economical`), acrescenta o Executor por API; Diretor `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; `selection.cross_check: prefer_other_provider`; teto de gasto em API em aberto (item 21) | Decisão do dono |
+| Custo e teto de gasto (v0.22) | Custo em moeda e teto de gasto em API em aberto (itens 10 e 21); só o orçamento por execução das tarefas agendadas | Assinatura com cota e equivalente em API, API com custo real, valor do cliente ou da tabela `pricing`; `budget` por dia e mês no perfil de API, aviso em 80%, `on_exceeded: skip`, `in_flight: handoff`; despertares no store (`wakeups`) retomam o trabalho quando a cota ou o teto voltam | Decisão do dono |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

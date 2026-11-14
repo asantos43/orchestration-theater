@@ -486,7 +486,7 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
             <div class="q"><div class="h">claude-empresa <span class="badge ok">ok</span></div><div class="w"><span>5 h</span><span>62% · reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="w"><span>7 dias</span><span>31% · reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
             <div class="q"><div class="h">claude-pessoal <span class="badge warn">perto</span></div><div class="w"><span>5 h</span><span>91% · reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="w"><span>7 dias</span><span>58% · reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
             <div class="q"><div class="h">codex-1 <span class="badge ok">ok</span></div><div class="w"><span>Primária</span><span>34% · reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div><div class="w"><span>Semanal</span><span>22% · reset qui 21:00</span></div><div class="bar"><i style="width:22%"></i></div></div>
-            <div class="q"><div class="h">minimax-api <span class="badge info">API</span></div><div class="w"><span>Hoje</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div><div class="w"><span>Teto diário</span><span>US$ 20</span></div></div>
+            <div class="q"><div class="h">minimax-api <span class="badge info">API</span></div><div class="w"><span>Hoje</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div><div class="w"><span>Teto diário · mensal</span><span>US$ 20 · US$ 200</span></div></div>
           </div>
         </div></div>
       </div>
@@ -535,12 +535,12 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
           </tbody></table>
         </div></div>
         <div class="card"><h3><span class="chev">▾</span>Por assinatura · hoje</h3><div class="cb tw">
-          <table><thead><tr><th>Perfil</th><th>Tipo</th><th>Sessões</th><th>Uso</th></tr></thead><tbody>
-            <tr><td>claude-empresa</td><td><span class="badge">token plan</span></td><td>9</td><td>5 h 62% · 7 d 31%</td></tr>
-            <tr><td>claude-pessoal</td><td><span class="badge">token plan</span></td><td>6</td><td>5 h 91% · 7 d 58%</td></tr>
-            <tr><td>codex-1</td><td><span class="badge">token plan</span></td><td>7</td><td>34% · semanal 22%</td></tr>
-            <tr><td>minimax-api</td><td><span class="badge info">API</span></td><td>3</td><td>US$ 3,20</td></tr>
-            <tr><td>gemma4-local</td><td><span class="badge">local</span></td><td>14</td><td>sem custo</td></tr>
+          <table><thead><tr><th>Perfil</th><th>Tipo</th><th>Sessões</th><th>Uso</th><th title="Assinatura: quanto o consumo custaria por API (estimativa). API: custo real.">Custo</th></tr></thead><tbody>
+            <tr><td>claude-empresa</td><td><span class="badge">token plan</span></td><td>9</td><td>5 h 62% · 7 d 31%</td><td class="muted">≈ US$ 38 em API</td></tr>
+            <tr><td>claude-pessoal</td><td><span class="badge">token plan</span></td><td>6</td><td>5 h 91% · 7 d 58%</td><td class="muted">≈ US$ 24 em API</td></tr>
+            <tr><td>codex-1</td><td><span class="badge">token plan</span></td><td>7</td><td>34% · semanal 22%</td><td class="muted">≈ US$ 17 em API</td></tr>
+            <tr><td>minimax-api</td><td><span class="badge info">API</span></td><td>3</td><td>16% do teto diário</td><td>US$ 3,20</td></tr>
+            <tr><td>gemma4-local</td><td><span class="badge">local</span></td><td>14</td><td>1/2 slots</td><td class="muted">sem custo</td></tr>
           </tbody></table>
         </div></div>
         <div class="card closed"><h3><span class="chev">▾</span>Fontes do sinal de cota</h3><div class="cb tw">
@@ -587,7 +587,11 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
               <div class="row"><span class="muted">Cliente</span><span>OpenCode</span></div>
               <div class="row"><span class="muted">Provedor</span><span>MiniMax</span></div>
               <div class="row"><span class="muted">Chave</span><span class="mono faint">cofre do Windows ••••</span></div>
-              <div class="row"><span class="muted">Teto diário</span><span>US$ 20</span></div>
+              <div class="row"><span class="muted">Teto diário · mensal</span><span>US$ 20 · US$ 200</span></div>
+              <div class="row"><span class="muted">Gasto hoje · no mês</span><span>US$ 3,20 · US$ 41,70</span></div>
+              <div class="row"><span class="muted">Aviso</span><span>80% do teto</span></div>
+              <div class="row"><span class="muted">Ao estourar</span><span><select><option>pular para o próximo</option><option>esperar o período</option><option>perguntar</option></select></span></div>
+              <div class="row"><span class="muted">Sessão em curso</span><span><select><option>passar o bastão</option><option>terminar a sessão</option><option>parar e perguntar</option></select></span></div>
               <div class="act"><button class="btn sm">Trocar chave</button><button class="btn sm danger">Remover</button></div></div></div>
             <div class="card"><h3><span class="chev">▾</span>gemma4-local <span class="r"><span class="badge">local</span></span></h3><div class="cb">
               <div class="row"><span class="muted">Cliente</span><span>OpenCode</span></div>
