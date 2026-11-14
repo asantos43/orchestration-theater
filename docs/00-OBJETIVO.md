@@ -40,7 +40,7 @@ A máquina de estados está na §5.4 da arquitetura.
 | R9 | **Portabilidade**: Windows primeiro, sem impedir macOS e Linux. **Sem contêineres** (decisão Q1 em [13](13-DECISOES-EM-ABERTO.md)). | Pedido do dono | §3, portas e adaptadores `platform-*` (§5.18, §9), §5.8 |
 | R10 | Agentes com **acesso à internet** e **tarefas agendadas e repetidas**. | Pedido do dono | §5.8 (`http_get` com domínios permitidos), §5.15 (agendador) |
 | R11 | **Telemetria completa** e **trajetórias em ATIF**, acompanháveis **em tempo real**. | Pedido do dono | §5.11 |
-| R12 | **Relogin controlado** quando a assinatura precisar ser renovada. | Pedido do dono | §5.6: login e logout oficiais no diretório de cada perfil; o perfil passa por `drenando` antes de ser removido |
+| R12 | **Relogin controlado** quando a assinatura precisar ser renovada. | Pedido do dono | §5.6: login e logout oficiais no diretório de cada perfil; o perfil passa por `draining` antes de ser removido |
 | R13 | **Economia de cota**: ferramenta primeiro, modelo por último; o modelo mais barato que cumpra a verificação. | Princípio já adotado pelo dono | P3, P8, §5.10; mensagens de andamento sem custo de modelo (§5.4) |
 | R14 | **Resolver de uma vez os erros que aparecem hoje** (ver [01](01-CONTEXTO-E-PROBLEMAS.md)). | Pedido do dono | Tabela "Como a arquitetura responde" em [01](01-CONTEXTO-E-PROBLEMAS.md) |
 | R15 | **Retomar sessões interrompidas** (cota, rede, queda, reinício, timeout, agente travado) sem perder trabalho nem repetir efeitos colaterais. | Arquitetura v0.10 | §5.16 |
@@ -58,7 +58,7 @@ A máquina de estados está na §5.4 da arquitetura.
 
 1. Uma demanda de código percorre o pipeline completo (plano, roteiro, execução isolada, integração, testes, crítico, PR) **sem que o Orquestrador execute nenhuma ferramenta de código**. A verificação é feita pelo conjunto de ferramentas MCP do papel Diretor (§5.3), não pela leitura do comportamento.
 2. Um Executor roda a suíte de testes e a compilação do projeto **sem falha de permissão ou sandbox**: zero `EPERM` causado pela ferramenta (ver o caso do D151 em [01](01-CONTEXTO-E-PROBLEMAS.md)).
-3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao próximo Executor elegível** (`proximo`) ou **espera o reset com aviso** (`esperar`), sem laço nem espera cega (§5.7, §5.16).
+3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao próximo Executor elegível** (`next`) ou **espera o reset com aviso** (`wait`), sem laço nem espera cega (§5.7, §5.16).
 4. A trajetória de cada agente pode ser **vista ao vivo** e **exportada em ATIF-v1.8**, validada pelo `TrajectoryValidator` do Harbor (§5.11).
 5. Uma tarefa agendada roda sem ninguém olhando, **entrega por PR** e **pausa e notifica** quando precisa de decisão do Produtor (§5.15).
 6. O mesmo daemon atende **dois projetos ao mesmo tempo** sem misturar worktrees, perfis ou estado.

@@ -42,7 +42,7 @@ Os valores padrão (janela, prazo de adiamento, espera, orçamento) são a decis
 ### Notificações
 
 O agendador notifica quando a tarefa termina, falha, pausa ou pede decisão:
-- sempre no chat do cenário e como evento `agenda.*`;
+- sempre no chat do cenário e como evento `schedule.*`;
 - como notificação do sistema operacional, quando houver sessão gráfica;
 - por e-mail, webhook ou chat corporativo, via plugin ([09](09-ISOLAMENTO-E-SEGURANCA.md), §5.14).
 
@@ -50,7 +50,7 @@ O agendador notifica quando a tarefa termina, falha, pausa ou pede decisão:
 
 O daemon sozinho não acorda a máquina. Além disso, o Modern Standby do Windows estrangula processos em segundo plano. A arquitetura toma duas medidas:
 
-1. **Acordar no horário.** Ao salvar a tarefa, o daemon registra um gatilho no agendador do sistema operacional, que chama `ot run <tarefa>`:
+1. **Acordar no horário.** Ao salvar a tarefa, o daemon registra um gatilho no agendador do sistema operacional, que chama `ot run <task>`:
    - Windows: Agendador de Tarefas, com "despertar o computador";
    - macOS: launchd + `pmset`;
    - Linux: timer do systemd com `WakeSystem=`.
@@ -59,13 +59,13 @@ O daemon sozinho não acorda a máquina. Além disso, o Modern Standby do Window
    - macOS: `caffeinate`/IOPMAssertion;
    - Linux: inibidor do systemd-logind.
 
-**Máquina desligada ou religada sem login** (arquitetura §5.21, decidido em 2026-11-13): o gatilho acorda a máquina suspensa, mas não liga uma máquina desligada. Na v1, depois de uma queda de energia, nada roda até o usuário fazer login. No login, o daemon faz a reconciliação e a regra da execução perdida decide o que roda. O daemon completo sem login fica para depois da v1.
+**Máquina desligada ou religada sem login** (arquitetura §5.21, decidido em 2026-11-13): o gatilho acorda a máquina suspensa, mas não liga uma máquina desligada. Na v1, depois de uma queda de energia, nada roda até o usuário fazer login. No login, o daemon faz a reconciliação e a regra da execução perdida decide o que roda. O daemon completo sem login é a Fase 10b, logo depois da v1 (decidido em 2026-11-14, N21), e começa por medir se os clientes fazem login sem sessão aberta.
 
 ### Criação e controle
 
 - **Aba Agenda** na TUI (e na web, se existir).
-- **Pelo chat.** O Diretor chama `agendar(...)`, que **não salva direto**: devolve um rascunho para o Produtor confirmar, editar ou cancelar. `listar_agenda` e `pausar_agenda` completam o conjunto.
-- **Pelo terminal:** `ot agenda list|add|pause|resume|rm` e `ot run <tarefa>`.
+- **Pelo chat.** O Diretor chama `schedule(...)`, que **não salva direto**: devolve um rascunho para o Produtor confirmar, editar ou cancelar. `list_schedules` e `pause_schedule` completam o conjunto.
+- **Pelo terminal:** `ot schedule list|add|pause|resume|rm` e `ot run <task>`.
 
 **"Rodar até os testes passarem" não é agendamento.** Isso já é o ciclo de correção do pipeline (Crítico → correção, com os limites `Nc` e de tentativas).
 
@@ -80,12 +80,12 @@ Esse princípio, que é o R13 em [00](00-OBJETIVO.md), corresponde aos P3 e P8 d
 2. extrair e normalizar título, link, hora e portal com código;
 3. o **modelo barato** só resume e agrupa;
 4. gerar, validar e higienizar o HTML com código;
-5. enviar o e-mail por um **plugin** com destinatário fixo. A credencial fica no plugin (`segredos` do manifesto), nunca com o agente.
+5. enviar o e-mail por um **plugin** com destinatário fixo. A credencial fica no plugin (`secrets` do manifesto), nunca com o agente.
 
 ### Como se encaixa na arquitetura (§5.20, decidido em 2026-11-13)
 
 Até a v0.13, a arquitetura modelava toda tarefa agendada como uma **peça** completa (Autor → Revisor → Roteirista → Atores → Crítico), o que era pesado para um resumo diário. A N3 resolveu isso com o cenário do tipo **tarefa**, que separa a definição da execução:
-- **Definição versionada**, desenhada uma vez pelos papéis no fluxo `tarefa.definir`:
+- **Definição versionada**, desenhada uma vez pelos papéis no fluxo `task.define`:
   1. o Autor escreve o plano a partir da conversa;
   2. o Revisor revisa;
   3. o Roteirista transforma o plano em passos;
@@ -93,30 +93,30 @@ Até a v0.13, a arquitetura modelava toda tarefa agendada como uma **peça** com
   5. o Crítico faz o **ensaio** com dados de exemplo.
 
   Depois, o Produtor aprova. O Diretor fica leve e só coordena, como o dono pediu. A seleção escolhe o melhor Executor para cada papel.
-- **Execução** pelo motor de passos (`tarefa.executar`), sem planejamento a cada vez. O Diretor só é chamado se um passo falhar ou pedir decisão.
+- **Execução** pelo motor de passos (`task.run`), sem planejamento a cada vez. O Diretor só é chamado se um passo falhar ou pedir decisão.
 - **Passos tipados:**
-  - `codigo`: sem modelo;
-  - `modelo`: chamada com schema;
-  - `agente`: demanda para um Ator;
-  - `aprovacao`;
-  - `entrega`: por plugin ou notificação.
+  - `code`: sem modelo;
+  - `model`: chamada com schema;
+  - `agent`: demanda para um Ator;
+  - `approval`;
+  - `delivery`: por plugin ou notificação.
 - **Gatilhos:** manual e os tipos do agendador na v1; eventos (arquivo novo, webhook, e-mail recebido, mudança de página) depois.
 
 O fluxo declarativo proposto em 2026-11-08 virou a definição da tarefa:
 
 ```
-tarefa: manchetes-diarias
-gatilho: todos os dias 07:30 (America/Sao_Paulo)
-passos: buscar (codigo) → normalizar (codigo) → resumir (modelo, barato)
-        → montar_html (codigo) → validar (codigo) → enviar_email (entrega, plugin)
+task: daily-headlines
+trigger: todos os dias 07:30 (America/Sao_Paulo)
+steps: fetch (code) → normalize (code) → summarize (model, barato)
+       → build_html (code) → validate (code) → send_email (delivery, plugin)
 ```
 
 O segundo exemplo do dono, de 2026-11-13, segue o mesmo formato:
 
 ```
-tarefa: consolidado-diario
-passos: baixar (codigo) → descomprimir (codigo) → extrair (codigo; agente se o formato mudar)
-        → consolidar_planilha (codigo) → empacotar (codigo) → enviar (entrega: e-mail ou Telegram, plugin)
+task: daily-consolidation
+steps: download (code) → unzip (code) → extract (code; agent se o formato mudar)
+       → build_spreadsheet (code) → package (code) → send (delivery: e-mail ou Telegram, plugin)
 ```
 
 Um trabalho recorrente que pertence a um repositório continua sendo uma peça agendada do projeto (§5.15). Um chat de prototipação pode ser **promovido** a tarefa quando o Produtor decide repeti-lo.

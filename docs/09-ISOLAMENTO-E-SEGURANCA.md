@@ -58,7 +58,7 @@ Assim nenhum processo neto escapa (§5.9).
 ## Cascas (`tools/`)
 
 Testes, build e mutações rodam **pelo daemon**, não pelo shell do cliente. Isso resolve o `EPERM` do sandbox visto no D151 ([01](01-CONTEXTO-E-PROBLEMAS.md)). Regras das cascas:
-- são estreitas e tipadas (`run_tests`, `install_deps`, `git_commit`, `shell_restrito`, `http_get`, `ver_diff`);
+- são estreitas e tipadas (`run_tests`, `install_deps`, `git_commit`, `restricted_shell`, `http_get`, `view_diff`);
 - o shell é só por `argv`, com lista de comandos permitidos e sem `;`, `|` ou `&&`;
 - os caminhos são normalizados e presos à worktree: `..` e symlinks que saem dela são rejeitados;
 - `http_get` só acessa domínios permitidos;
@@ -73,7 +73,7 @@ Os agentes precisam de internet (R10 em [00](00-OBJETIVO.md)). O risco é a **in
 Na arquitetura:
 - a web entra pela casca **`http_get`**, com domínios permitidos, por plugins MCP ou pelo **navegador compartilhado** (arquitetura §5.19, v0.13). O navegador tem perfil isolado por cenário, domínios permitidos e aprovação para clicar e preencher;
 - as ferramentas web nativas do cliente ficam fora do conjunto do papel;
-- cada ferramenta de plugin declara seus `efeitos` (`leitura | escrita_local | rede | escrita_externa`). Uma ferramenta pode exigir aprovação do Produtor (`exige_aprovacao_produtor`).
+- cada ferramenta de plugin declara seus `effects` (`read | local_write | network | external_write`). Uma ferramenta pode exigir aprovação do Produtor (`requires_producer_approval`).
 
 Regras de uso, registradas na conversa de 2026-11-08 e compatíveis com a arquitetura:
 1. **Quem lê a web não envia nada.** No exemplo das manchetes ([10](10-TAREFAS-GERAIS-E-AGENDAMENTO.md)), o agente produz o HTML como artefato. O envio é feito por uma ferramenta de plugin com **destinatário fixo** configurado pelo dono, e a credencial do e-mail fica no plugin, nunca com o agente.
@@ -89,7 +89,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
   - Keychain no macOS;
   - Secret Service no Linux.
 - **Linux sem Secret Service:** arquivo criptografado com senha mestra, ou chave só em variável de ambiente do serviço. O daemon informa qual backend está em uso e nunca grava a chave em texto puro.
-- A chave é injetada só no processo do Executor ou no servidor do plugin que precisa dela (`segredos` do manifesto).
+- A chave é injetada só no processo do Executor ou no servidor do plugin que precisa dela (`secrets` do manifesto).
 - Nunca há segredo em arquivo de configuração, log ou evento (§3). Os prompts ficam redigidos por padrão no OTel (§5.11).
 - **Tokens OAuth de assinatura não são tocados**: ficam no diretório do perfil, geridos pelo cliente oficial (§3). Para o Codex, a OpenAI pede tratar o `auth.json` como senha ([07](07-ASSINATURAS-E-TERMOS.md)).
 - A redação de tokens do `okit-plugin` serve de referência.
@@ -109,7 +109,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 | R6 | RAM com muitos Atores (um `claude` por sessão) | Admissão por sessão; plugins agregados; semáforo de comandos pesados |
 | R13 | Tarefa agendada faz algo indesejado sem ninguém olhando | Entrega por PR; orçamento por execução; decisão sem ninguém olhando pausa por padrão |
 | R15 | Retomada repete efeito colateral | Chaves de idempotência; checkpoints; pacote de continuação |
-| — | Injeção de prompt por conteúdo da web | Separar leitura e envio; `http_get` com domínios; `efeitos` declarados nos plugins |
+| — | Injeção de prompt por conteúdo da web | Separar leitura e envio; `http_get` com domínios; `effects` declarados nos plugins |
 | — | Contas sinalizadas por uso automatizado | [07](07-ASSINATURAS-E-TERMOS.md); troca de Executor sem reescrever o núcleo |
 
 Os dois últimos riscos vêm da conversa de 2026-11-08 e não estão na tabela da arquitetura.

@@ -1,6 +1,6 @@
 # OTheater (Orchestration Theater)
 
-**Status: fase de desenho. Não há código.** O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.15). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
+**Status: fase de desenho. Não há código.** O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.17). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
 
 ## Em uma frase
 
@@ -36,7 +36,7 @@ Orquestrador (Diretor) e Executores: claude-agent-acp · codex-acp · opencode a
 ```
 
 - **Fluxo em código, julgamento no modelo.** A peça é uma máquina de estados. O Diretor decide só em pontos estreitos, com saída validada por schema.
-- **Estado fora do modelo.** Tudo persiste no daemon. O Orquestrador consulta `proxima_acao` e sobrevive a compactação de contexto e a reinícios.
+- **Estado fora do modelo.** Tudo persiste no daemon. O Orquestrador consulta `next_action` e sobrevive a compactação de contexto e a reinícios.
 - **Sem contêineres.** Cada Executor é um processo nativo numa worktree própria. As permissões ficam em três camadas: configuração do cliente, ACP e sistema operacional.
 - **Windows primeiro**, sem impedir macOS e Linux.
 
@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.15): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.17): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
