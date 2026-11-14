@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.10, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.11, 2026-11-13). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -16,6 +16,7 @@ Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](fra
 | **Demanda** | Unidade de trabalho do roteiro, executada por um Ator |
 | **Tentativa** | Uma execução de uma demanda por um Executor, numa worktree própria |
 | **Blackboard** | Memória compartilhada da peça: plano, roteiro, contratos e decisões |
+| **Ordem** | Instrução do Produtor que vale além de uma peça: global (todos os cenários) ou local (um cenário), durante a sua vigência e até ser revogada |
 | **Casca** | Ferramenta do framework que envolve uma ferramenta existente com política e telemetria |
 
 O glossário completo está na arquitetura §13.
@@ -38,6 +39,7 @@ P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em códi
 | `tools/` | Cascas: `run_tests`, `git_*`, `http_get`, shell restrito | próprio |
 | `resources/` | Semáforos e lançador com Job Object | lançador Rust (`win32job`) |
 | `workspace/` | Worktrees, branches, integração, PR | `git` + `gh` |
+| `orders/` | Ordens globais e locais; aplicação das ordens do tipo `regra` | próprio |
 | `scheduler/` | Agenda, gatilhos do sistema operacional | croner |
 | `store/` | SQLite (WAL): eventos, estado, blackboard | `better-sqlite3` + Kysely |
 | `telemetry/` | Receptor OTLP, spans, exportador ATIF | OpenTelemetry JS |
@@ -65,7 +67,7 @@ Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CL
 
 | Papel | Ferramentas |
 |---|---|
-| Diretor | `proxima_acao`, `status`, `decidir`, `abrir_peca`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar`, `listar_agenda`, `pausar_agenda` |
+| Diretor | `proxima_acao`, `status`, `decidir`, `abrir_peca`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar`, `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem`, `revogar_ordem` |
 | Todos | `ler_blackboard`, `ler_contrato`, `ler_decisao`, `entregar` |
 | Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` |
 | Ator | `run_tests`, `install_deps`, `git_commit`, `shell_restrito`, `http_get` + plugins do papel |
@@ -115,6 +117,17 @@ NECESSIDADE → PLANEJANDO → REVISANDO_PLANO → ROTEIRIZANDO → EXECUTANDO
 ## Permissões, recursos e contexto
 
 Ver [09](09-ISOLAMENTO-E-SEGURANCA.md) (arquitetura §5.8 e §5.9) e a arquitetura §5.10, sobre o Ator enxuto, o blackboard, os artefatos por referência e o prefixo estável para cache.
+
+## Ordens do Produtor (arquitetura §5.17)
+
+Conceito trazido do `okit` (`kit orders`) e redesenhado, sem reaproveitar código (Q12).
+- **Escopo:** global (um único registro, vale para todos os cenários, inclusive os novos) ou local (um projeto, uma tarefa ou um chat). No mesmo cenário, a local prevalece. Não há ordem para uma lista de cenários (N15, decidida). Uma global pode ser **suspensa** num cenário só.
+- **Tipos:** `instrucao` (texto para os modelos; o daemon não interpreta), `regra` (override de uma chave de configuração de uma lista fechada, aplicado em código; nunca de permissão; três chaves na v1) e `suspensao`. A dispensa do Crítico não é ordem: é decisão registrada do Produtor, para a peça inteira, ao abrir a peça ou depois de uma reprovação.
+- **Vigência:** início e fim opcionais, com fuso explícito. Aceita "até sexta 18h", "por 3 dias", "de 20/11 a 27/11"; a janela recorrente ("dias úteis, 9h às 18h") fica para depois da v1. Tudo vira data absoluta na confirmação. Se a ordem vale agora é calculado pelo relógio a cada uso, então uma ordem vencida nunca é aplicada, mesmo depois de a máquina dormir. A vigência pode ser prorrogada ou antecipada, com registro.
+- **Revogação:** só pelo Produtor, com motivo obrigatório, imediata, em lote se preciso, e definitiva (reativar é criar outra ligada à antiga). Sessões em curso não mudam; o Diretor é avisado e decide se relança o Ator. Uma `regra` revogada devolve o valor da configuração.
+- **Onde entram:** sessão do Orquestrador, prefixo estável dos Executores (regras → ordens → papel → contratos), critérios do Crítico, resumo do failover e pacote de continuação (com as ordens vigentes na retomada).
+- **Quem cria:** só o Produtor, pelo chat (o Diretor propõe um rascunho com as datas calculadas, e o Produtor confirma), pela aba Ordens ou por `ot ordens`. Executores não têm ferramenta de ordens.
+- **Registro:** ids `O<n>`, estados `agendada`/`ativa`/`expirada`/`revogada`, nada é apagado; eventos `ordem.*`; tabela `orders`.
 
 ## Retomada de sessões (arquitetura §5.16)
 

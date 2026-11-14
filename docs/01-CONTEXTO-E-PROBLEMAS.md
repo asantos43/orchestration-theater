@@ -39,9 +39,10 @@ A arquitetura do OTheater precisa **absorver** isso, não jogar fora. Correspond
 - o relatório do executor corresponde à saída estruturada `entregar`, validada por schema (§5.3);
 - o crítico corresponde ao papel Crítico sobre a branch integrada (§5.4 e §5.5);
 - os papéis correspondem aos prompts versionados em `prompts/` (§9);
-- a trilha de decisões corresponde à tabela `decisions` e ao log de eventos (§7).
+- a trilha de decisões corresponde à tabela `decisions` e ao log de eventos (§7);
+- as ordens permanentes correspondem às **ordens do Produtor**, globais ou locais a um cenário (§5.17, incluída na v0.11 em 2026-11-13).
 
-A regra de mutação e as ordens permanentes **não aparecem explicitamente** na arquitetura. Elas precisam ser encaixadas como critério de aceite das demandas, ferramenta do Crítico ou política do projeto (a decidir).
+A regra de mutação **não aparece explicitamente** na arquitetura. Ela precisa ser encaixada como critério de aceite das demandas, ferramenta do Crítico ou política do projeto (a decidir).
 
 ## Como a arquitetura responde a cada problema
 
@@ -56,6 +57,6 @@ Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ide
 | P5 | A retomada nativa (`session/load`) só acontece no mesmo cliente e perfil. A troca de cliente é uma **passagem de bastão** com pacote de continuação, nunca o id de sessão de outro cliente. | §5.16 |
 | P6 | Critério de "agente travado" (minutos sem evento, repetição do mesmo erro), timeout com commit WIP e limites de tentativas em código. | §5.4, §5.5, §5.16 |
 | P7 | O plano passa pelo Revisor antes do roteiro. O roteiro é validado em código (ciclos, contratos, arquivos), e cada demanda tem contrato explícito. | §5.4 |
-| P8 | Os defeitos do kit deixam de existir se o fluxo sair do `okit`. A relação com o `okit` ainda é decisão em aberto (Q12). | [13](13-DECISOES-EM-ABERTO.md) |
+| P8 | Os defeitos do kit não passam para o OTheater: ele é uma arquitetura nova e não reaproveita código do `okit`, só os conceitos (Q12, decidida em 2026-11-13). | [13](13-DECISOES-EM-ABERTO.md) |
 | P9 | O estado fica no daemon (SQLite + blackboard). O Orquestrador consulta `proxima_acao`/`status` e, em caso de failover, recebe um resumo gerado do store. | P4, §5.4, §5.10 |
 | P10 | TUI como interface principal (chat, dashboard, trajetórias, agenda), com web e desktop opcionais sobre o `packages/client`. | §5.13, Fases 7, 12 e 13 |

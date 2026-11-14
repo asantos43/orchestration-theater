@@ -110,4 +110,4 @@ A arquitetura **não tem** esse formato. Caminhos possíveis, a decidir na **N3*
 - **Segurança:** a leitura da web e o envio ficam separados ([09](09-ISOLAMENTO-E-SEGURANCA.md)).
 - **Termos:** automação recorrente sobre assinatura é o ponto mais sensível ([07](07-ASSINATURAS-E-TERMOS.md), pergunta 2). Quanto mais passos forem código e não modelo, menor o consumo e o risco.
 - **Cota interativa:** uma tarefa agendada pode gastar a cota que o dono usaria de dia (R13). Agendar para logo após o reset e adiar quando esgotado são as mitigações.
-- **Alternativa já existente:** o Claude Code tem rotinas e agendas próprias (`CronCreate`, `RemoteTrigger`, a skill `schedule`). Elas servem à alternativa de [06](06-ALTERNATIVA-HARNESS-EXISTENTE.md), mas não têm política de cota, segredos por tarefa nem a separação entre leitura e envio.
+- **Alternativa já existente:** o Claude Code tem rotinas e agendas próprias (`CronCreate`, `RemoteTrigger`, a skill `schedule`). Elas serviriam à alternativa de continuar com o Claude Code + `okit` (antigo documento 06, apagado em 2026-11-13), mas não têm política de cota, segredos por tarefa nem a separação entre leitura e envio.

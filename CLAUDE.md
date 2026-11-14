@@ -6,7 +6,7 @@ Este arquivo orienta o Claude Code neste repositório.
 
 Repositório de **desenho** do **OTheater** (*Orchestration Theater*). O OTheater é um sistema de orquestração multi-agente e multi-conta que usa os clientes oficiais (Claude Code, Codex, OpenCode) como Executores, por ACP, e aceita tanto assinaturas quanto chaves de API. **Não há código ainda.**
 
-A arquitetura de construção é [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.10, 2026-11-13). Ela é a referência: quando um documento de `docs/` divergir dela, ajuste o documento de `docs/`. Não mude a arquitetura nem tome as decisões que ela deixa em aberto (seção 12 e [docs/13](docs/13-DECISOES-EM-ABERTO.md)) por conta própria; elas são do dono (Anderson).
+A arquitetura de construção é [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.11, 2026-11-13). Ela é a referência: quando um documento de `docs/` divergir dela, ajuste o documento de `docs/`. Não mude a arquitetura nem tome as decisões que ela deixa em aberto (seção 12 e [docs/13](docs/13-DECISOES-EM-ABERTO.md)) por conta própria; elas são do dono (Anderson).
 
 Por onde começar:
 - [README.md](README.md), que é o índice;
@@ -14,7 +14,7 @@ Por onde começar:
 - [docs/00-OBJETIVO.md](docs/00-OBJETIVO.md);
 - [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.md), o resumo do núcleo.
 
-Os documentos 03, 04 e 05 (com e sem contêineres) são **histórico**: a opção com contêineres foi descartada em 2026-11-13. O documento 06 registra a alternativa de continuar com o Claude Code + `okit`.
+Os antigos documentos 03 a 06 foram apagados em 2026-11-13. Eram a comparação entre as opções com e sem contêineres (descartada em favor da arquitetura) e a alternativa de continuar com o Claude Code + `okit`. A última versão deles está no commit `cb05e35`.
 
 ## Regras
 

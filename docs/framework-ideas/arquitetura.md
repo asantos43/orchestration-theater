@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.10 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH.
+> Versão 0.11 — 2026-11-13. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -162,7 +162,7 @@ interface ClientAdapter {
 
 | Conjunto | Ferramentas |
 |---|---|
-| Diretor (Orquestrador) | `proxima_acao`, `status(peca?)`, `decidir(decisaoId, payload)`, `abrir_peca(necessidade)`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar` (rascunho, confirmado pelo Produtor), `listar_agenda`, `pausar_agenda` |
+| Diretor (Orquestrador) | `proxima_acao`, `status(peca?)`, `decidir(decisaoId, payload)`, `abrir_peca(necessidade)`, `pausar`, `retomar`, `cancelar_ator`, `perguntar_produtor`, `abrir_pr`, `agendar` (rascunho, confirmado pelo Produtor), `listar_agenda`, `pausar_agenda`, `listar_ordens`, `propor_ordem`, `prorrogar_ordem` e `revogar_ordem` (rascunhos, confirmados pelo Produtor; 5.17) |
 | Comum (todos os Executores) | `ler_blackboard(chave)`, `ler_contrato(id)`, `ler_decisao(id)`, `entregar(resultado)` |
 | Autor / Revisor / Roteirista | `entregar_plano`, `entregar_parecer_plano`, `entregar_roteiro` (cada um com schema próprio) |
 | Ator | `run_tests(alvo)`, `install_deps()`, `git_commit(mensagem)`, `shell_restrito(argv)`, `http_get(url)` + plugins do papel |
@@ -202,6 +202,10 @@ NECESSIDADE
 ```
 
 - Transições, contadores e limites (`Np`, `Nc`, tentativas por demanda) ficam em código e configuração, nunca no prompt.
+- **Dispensa do Crítico** (decidida em 2026-11-13; ver 5.17): é uma decisão registrada do Produtor, com motivo, e vale sempre para a **peça inteira**. Pode ser tomada em dois momentos:
+  - ao abrir a peça: a máquina pula CRITICANDO e DECIDINDO, e vai de INTEGRANDO_TESTE a ENTREGANDO. Os testes da integração continuam rodando;
+  - com a peça em AGUARDANDO_PRODUTOR depois de uma reprovação ("aceito assim"): a peça vai a ENTREGANDO.
+  - Nos dois casos, o PR informa que o Crítico foi dispensado, por quem e por quê. Nenhuma ordem dispensa o Crítico.
 
 **Pontos de julgamento.** São os únicos lugares onde o modelo do Diretor decide, cada um com schema:
 1. classificar a crítica negativa (execução / roteiro / estrutural / exceção) e listar as demandas afetadas;
@@ -212,7 +216,7 @@ NECESSIDADE
 
 **Andamento sem custo de modelo.** "Ator 2 concluiu", "Crítico reprovou (1/3)" e semelhantes são mensagens de sistema que o daemon envia direto ao chat da UI, sem passar pelo modelo.
 
-**Failover do Orquestrador.** Se o perfil do Diretor esgotar a cota ou falhar, o daemon abre uma sessão nova com o próximo Executor da lista do papel. Ela recebe um resumo gerado a partir do store (estado da peça, decisões pendentes, últimas mensagens do chat). Nada se perde, porque o estado nunca esteve só no modelo.
+**Failover do Orquestrador.** Se o perfil do Diretor esgotar a cota ou falhar, o daemon abre uma sessão nova com o próximo Executor da lista do papel. Ela recebe um resumo gerado a partir do store (estado da peça, decisões pendentes, ordens vigentes, últimas mensagens do chat). Nada se perde, porque o estado nunca esteve só no modelo.
 
 **Roteiro = DAG de demandas.** Cada demanda:
 
@@ -419,12 +423,12 @@ O daemon guarda o handle. Alternativa sem Rust: `koffi` (FFI), aceitando a janel
 
 ### 5.10 Contexto (tokens)
 
-- **Ator enxuto:** o prompt inicial tem regras do projeto + papel + contrato da demanda + caminho da worktree. Usar `systemPrompt` do `session/new` quando o adaptador anunciar suporte.
+- **Ator enxuto:** o prompt inicial tem regras do projeto + ordens vigentes (5.17) + papel + contrato da demanda + caminho da worktree. Usar `systemPrompt` do `session/new` quando o adaptador anunciar suporte.
 - **Blackboard** no store: plano, roteiro, contratos e decisões. Lido sob demanda (`ler_blackboard`, `ler_contrato`), nunca colado inteiro.
 - **Artefatos por referência:** caminho, id, hash.
 - **Saída estruturada:** o Executor termina com `entregar(resultado)` (o que fez, arquivos tocados, testes, pendências). O Crítico lê diff integrado + resultados, não trajetórias.
 - **Prompt caching:**
-  - prefixo estável igual para todos os Executores do mesmo papel e projeto, nesta ordem: regras → papel → contratos;
+  - prefixo estável igual para todos os Executores do mesmo papel e projeto, nesta ordem: regras → ordens → papel → contratos. O início, o fim, a revogação ou a suspensão de uma ordem mudam o prefixo das sessões seguintes, não o das sessões em curso;
   - a parte variável vai no fim;
   - opcional: aquecer o cache com o primeiro Ator antes de liberar os demais.
 - **Orquestrador sem memória própria:** sempre `proxima_acao` / `status`.
@@ -435,7 +439,7 @@ O daemon guarda o handle. Alternativa sem Rust: `koffi` (FFI), aceitando a janel
 - `peca.*`, `etapa.*`, `demanda.*`, `tentativa.*`;
 - `sessao.update` (mensagens, tool calls, diffs, plano);
 - `executor.selecionado`, `permissao.*`, `ferramenta.chamada`;
-- `cota.*`, `consumo.*`, `decisao.*`, `chat.*`, `erro.*`.
+- `cota.*`, `consumo.*`, `decisao.*`, `chat.*`, `ordem.*`, `erro.*`.
 
 **OTel nativo dos clientes** (reaproveitado, sem instrumentar nada):
 - **Claude Code:** `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `OTEL_*`. Envia métricas (`claude_code.token.usage`, `cost.usage`, ...) e eventos (`api_request`, `tool_result`, `tool_decision`, ...). Traces em beta.
@@ -462,7 +466,7 @@ O dashboard próprio continua lendo o store.
 - **Framework HTTP:** Hono + `@hono/node-server`, validação com zod, contrato compartilhado com o front (`packages/protocol`).
 - **REST:**
   - cenários (projetos, tarefas, chats), peças, demandas;
-  - assinaturas, executores, papéis, plugins, configuração;
+  - assinaturas, executores, papéis, plugins, configuração, ordens (globais e por cenário);
   - comandos: pausar, retomar, cancelar Ator, aprovar decisão, responder ao Produtor.
 - **SSE:** `/events?cenario=&desde=` segue a tabela de eventos, com reconexão por `Last-Event-ID` (histórico, depois ao vivo).
 - **WebSocket:** chat com o Orquestrador. A ponte vai para a fila única de prompts (5.4), mais as mensagens de sistema do daemon.
@@ -483,7 +487,7 @@ O dashboard próprio continua lendo o store.
 **Layout comum ao app e à TUI** (decisão de 2026-11-13):
 - **Chat em altura total**, sempre visível, com **largura ajustável** (arrastar a borda no app; Ctrl+←/→ na TUI), lembrada entre sessões. Os dados da peça (título, etapa, decisão pendente) ficam no topo do chat.
 - **Lateral retrátil** (Ctrl+B) com cenários, assinaturas e a entrada de **Configurações**. Recolhida, vira um trilho com os cenários e as barrinhas de cota.
-- **Painel de trabalho em abas que abrem e fecham:** Visão geral, Trajetórias, Consumo, Agenda, Configurações e Plugins. Configuração é uma aba, não uma tela que substitui o chat. O painel inteiro fecha com Ctrl+J, e o chat passa a ocupar a largura toda.
+- **Painel de trabalho em abas que abrem e fecham:** Visão geral, Trajetórias, Consumo, Agenda, Ordens, Configurações e Plugins. Configuração é uma aba, não uma tela que substitui o chat. O painel inteiro fecha com Ctrl+J, e o chat passa a ocupar a largura toda.
 - **Tudo recolhe, menos o chat:** seções da lateral e cartões das abas abrem e fecham com um clique (Enter na TUI).
 - **Estado de layout persistido por usuário:** lateral, largura do chat, abas abertas.
 
@@ -692,7 +696,7 @@ O daemon precisa saber **por que** parou, **o que já foi feito** e **como conti
 | **Passagem de bastão** (*handoff*) | Sessão **nova**, em qualquer Executor, com um **pacote de continuação** montado pelo daemon | Sempre | Funciona entre modelos, clientes e assinaturas; é o que permite trocar de conta quando a cota acaba | Perde o raciocínio interno; depende da qualidade do pacote |
 
 **Pacote de continuação**, montado a partir do store, nunca da memória de um modelo:
-1. demanda, contrato e critérios de aceite (o mesmo prefixo estável de qualquer Executor do papel);
+1. demanda, contrato, critérios de aceite e ordens vigentes no momento da retomada (o mesmo prefixo estável de qualquer Executor do papel);
 2. **estado da worktree**: commit de checkpoint mais recente e diff em relação à base da tentativa;
 3. **resumo da trajetória**, gerado de forma determinística a partir dos eventos:
    - arquivos lidos e editados;
@@ -760,6 +764,110 @@ retomadas > limite → DECIDINDO (ponto de julgamento do Diretor)
 ```
 
 Tudo vira evento (`sessao.interrompida`, `sessao.retomada`, com causa, forma e Executor de origem e destino) e aparece no chat como mensagem de sistema. Exemplo: "D2 interrompida: cota de codex-1 esgotada; retomada em sonnet-medio por passagem de bastão".
+
+### 5.17 Ordens do Produtor (globais e locais)
+
+Conceito trazido do `okit` (ordens permanentes, `kit orders`) e redesenhado aqui. Nenhum código do kit é reaproveitado (decisão Q12 de `docs/13-DECISOES-EM-ABERTO.md`). No `okit`, a ordem tinha só um prazo final opcional (`validaAte`) e a revogação com motivo. Aqui ela ganha período de vigência, duração, janela recorrente, prorrogação, revogação programada e suspensão local de uma global.
+
+**Ordem** é uma instrução do Produtor que vale além de uma peça. Ela continua em vigor entre peças, sessões, compressões de contexto, failover e reinícios, durante a sua vigência e até ser revogada. Exemplos:
+- "mensagens de commit em português" (permanente);
+- "sempre me apresente as dúvidas como múltiplas escolhas, para eu decidir" (global, `instrucao`, com `papeis` = Diretor, que é quem pergunta ao Produtor por `perguntar_produtor`; exemplo dado pelo dono em 2026-11-13);
+- "não alterar `infra/` sem perguntar" (local a um projeto);
+- "não usar o perfil claude-empresa para Atores até sexta 18h" (com prazo).
+
+#### Escopo
+
+| Escopo | Vale para | Exemplo |
+|---|---|---|
+| **Global** | Todos os cenários (projetos, tarefas e chats), inclusive os criados depois | "Respostas em português do Brasil" |
+| **Local** | Um cenário: um projeto, uma tarefa ou um chat | "No loja-api, toda mudança de schema vem com migration" |
+
+- **Uma ordem global é um único registro**, não uma cópia por cenário. Cenários novos a herdam sem passo extra, e não há cópias para divergir. No `okit`, a ordem "para todos" era copiada em cada projeto, com grupo e aviso de divergência.
+- **Precedência (decidida em 2026-11-13):** no mesmo cenário, a local prevalece sobre a global. O prompt mostra as duas listas separadas e diz isso explicitamente. Para `regra`, o daemon aplica a local.
+- **Um cenário ou todos (decidido em 2026-11-13):** não há ordem para uma lista de cenários nem por tag. Para valer em alguns cenários, cria-se uma ordem local em cada um.
+- **Suspensão local de uma global** (mantida por decisão de 2026-11-13): para que uma global não valha num cenário, o Produtor cria uma ordem local do tipo `suspensao`, que aponta para a global (ex.: "suspender O3 no loja-api até 30/11"). A global some do prompt daquele cenário enquanto a suspensão vigora. A global não é editada, e os outros cenários não mudam.
+- **`papeis` (opcional):** limita a quais papéis a ordem chega (ex.: só Atores e Crítico). Sem o campo, chega a todos. Mantém o contexto mínimo (P8).
+
+#### Tipos, sem texto mágico
+
+| Tipo | O que é | Quem aplica |
+|---|---|---|
+| `instrucao` | Texto livre para os modelos | Os modelos, pelo prompt; o Crítico confere |
+| `regra` | Override de uma chave de configuração que já existe, dentro do escopo e da vigência da ordem. Ex.: tirar um perfil da lista de um papel (5.7), trocar a regra `proximo`/`esperar`, exigir PR na entrega | O daemon, em código (P3) |
+| `suspensao` | Tira uma ordem global de um cenário, durante a vigência da suspensão | O daemon, ao montar o prompt e ao aplicar as `regra` |
+
+- O daemon **não interpreta o texto** de uma `instrucao`: ela nunca muda o fluxo nem a permissão. No `okit`, um texto como `critic-waiver passo-N` tinha efeito em código; aqui, o que precisa ter efeito garantido é `regra`.
+- Uma `regra` só aceita chaves de uma lista fechada, validada por schema zod. **Na v1 (decidido em 2026-11-13), a lista tem três chaves:** os perfis da lista de um papel (tirar ou reordenar, 5.7), a regra `proximo`/`esperar` da cota e a exigência de PR na entrega. Chaves novas entram uma a uma, cada uma com teste. **Chaves de permissão (5.8) ficam fora**: permissão se muda na configuração do papel, não por ordem.
+- **Conflito de `regra`:** duas `regra` sobre a mesma chave, no mesmo escopo e com vigências que se sobrepõem, são recusadas na criação. O rascunho mostra a ordem conflitante, e o Produtor revoga uma delas ou ajusta a vigência. Entre global e local, vale a precedência.
+- Quando uma `regra` muda uma decisão do daemon, o evento cita o id da ordem (ex.: `executor.selecionado` com motivo "ordem O7"). A descrição do PR lista as `regra` que afetaram a peça.
+- **Dispensa do Crítico não é ordem** (decidido em 2026-11-13). No `okit`, uma ordem com o texto `critic-waiver passo-N` dispensava o crítico. Aqui, o Produtor dispensa o Crítico por uma **decisão registrada** (`decidir`, tabela `decisions`), com motivo, para a peça inteira, ao abrir a peça ou depois de uma reprovação (5.4). Nenhuma ordem, nem `regra`, dispensa o Crítico.
+
+#### Vigência (período de validade)
+
+Toda ordem tem uma vigência: **início** e **fim**, os dois opcionais, com fuso explícito (padrão `America/Sao_Paulo`, configurável). Sem início, vale a partir da confirmação. Sem fim, vale até ser revogada.
+
+| Forma | Exemplo | Como é gravada |
+|---|---|---|
+| Permanente | "a partir de agora, commits em português" | início = confirmação; sem fim |
+| Até uma data | "até sexta 18h" | fim = sexta 18:00 |
+| Por uma duração | "pelas próximas 2 h", "por 3 dias" | fim = confirmação + duração |
+| Período futuro | "de 20/11 a 27/11" | início e fim; fica `agendada` até o início |
+| Janela recorrente (**depois da v1**, decidido em 2026-11-13) | "em dias úteis, das 9h às 18h" | expressão cron de abertura + duração da janela, com fuso (croner, 5.15), dentro do início e do fim |
+
+- **Tudo vira data absoluta na confirmação.** O rascunho mostra o início e o fim já calculados ("vale de 13/11 14:32 a 16/11 14:32"), para o Produtor ver o que vai valer. A duração conta da confirmação, não do pedido.
+- **Data sem hora:** o início vale às 00:00 e o fim às 23:59:59 do dia, ou seja, o dia inteiro conta.
+- **Estados:** `agendada` → `ativa` → `expirada`; `agendada` ou `ativa` → `revogada`. `expirada` e `revogada` são finais. Uma ordem com janela fica `ativa` durante toda a vigência, mas só entra no prompt e só aplica a `regra` com a janela aberta.
+- **O relógio decide, não o timer.** Se a ordem vale agora é uma função pura de (agora, início, fim, janela), calculada a cada uso: ao montar um prompt, ao aplicar uma `regra`, ao listar. O croner só dispara os eventos e avisos nas fronteiras. Com a máquina dormindo ou o daemon parado, nenhuma ordem vencida é aplicada. Ao reiniciar, o daemon emite as transições que perdeu, com o horário real da fronteira (`efetivo_em`).
+- **Prorrogar e antecipar:** a vigência é o único campo que muda depois da criação, por `prorrogar_ordem` (chat, aba ou terminal), e só enquanto a ordem não é final. Cada mudança gera o evento `ordem.vigencia_alterada` com os valores antigo e novo. Texto, escopo, tipo e papéis não mudam: para mudá-los, revoga-se e cria-se outra (ver Revogação, abaixo).
+- **Avisos:** no chat do cenário e na aba Ordens, 24 h antes do fim (configurável; padrão decidido em 2026-11-13), no início de uma ordem `agendada`, e quando ela expira.
+
+#### Revogação
+
+Revogar encerra a ordem antes do fim da vigência. Regras:
+- **Só o Produtor revoga**, pelos mesmos canais da criação. O Diretor pode **sugerir** uma revogação (ex.: duas ordens em contradição), mas `revogar_ordem` só devolve um rascunho que o Produtor confirma.
+- **Motivo obrigatório**, numa linha. No chat, o rascunho já vem com o motivo tirado das palavras do Produtor.
+- **Imediata ou programada:** "revogar agora" vale na confirmação. "Revogar a partir de sexta" não é revogação: é antecipar o fim para sexta (prorrogar), e a ordem termina `expirada`.
+- **Em lote:** por escopo ou filtro ("todas as ordens do chat X", "todas as `regra` sobre o perfil claude-empresa"). O rascunho lista cada ordem afetada, e cada uma gera o próprio evento.
+- **É definitiva.** Uma ordem revogada não volta. Para reativar, cria-se uma ordem nova a partir dela; o campo `substitui` liga as duas, e o histórico mostra a cadeia.
+- **Revogar uma global num só cenário** é suspensão (tipo `suspensao`), não revogação.
+
+**Efeitos da revogação, da expiração e do início de uma ordem no meio do trabalho:**
+1. **Sessões novas** já nascem com o conjunto de ordens vigente.
+2. **Sessões em curso** (decidido em 2026-11-13) não são alteradas, porque o prefixo é estável (5.10). O Diretor recebe um aviso pela fila única (5.4) e decide se cancela e relança o Ator (`cancelar_ator`). O padrão é não relançar.
+3. **`regra`:** passa a valer, ou deixa de valer, na próxima decisão do daemon. Ao deixar de valer, volta o valor que a configuração tem.
+4. **Nada é desfeito.** O que foi feito sob a ordem fica, e o histórico mostra qual ordem estava vigente em cada peça.
+
+#### Onde as ordens entram
+
+1. **Orquestrador:** sempre recebe as ordens vigentes (globais e do cenário, já descontadas as suspensas). Avisos de criação, início, prorrogação, revogação e expiração entram pela fila única de prompts (5.4).
+2. **Executores:** as ordens vigentes, filtradas por `papeis`, entram no prefixo estável (5.10), logo depois das regras do projeto. Cada uma traz o id e, se tiver, o fim ("O7, até 16/11 18:00").
+3. **Crítico:** recebe as `instrucao` vigentes durante a tentativa como critérios adicionais. Violação é crítica negativa, como qualquer outra.
+4. **Retomada e failover:** o resumo do failover (5.4) e o pacote de continuação (5.16) levam as ordens vigentes **no momento da retomada**, não as do início da sessão interrompida.
+5. **Peças agendadas** (5.15) usam as ordens vigentes no horário do disparo.
+
+#### Criação e controle
+
+- **Só o Produtor cria.** Pelo chat ("a partir de agora, commits em português"), o Orquestrador chama `propor_ordem(...)`, que **não salva direto**: devolve um rascunho que aparece no chat como decisão do Produtor (confirmar / editar / cancelar), como o `agendar` (5.15). O rascunho mostra escopo, tipo, papéis e a vigência em datas absolutas. `prorrogar_ordem` e `revogar_ordem` seguem o mesmo caminho.
+- **Executores não têm ferramenta de ordens.** Um texto lido na web ou num arquivo nunca vira ordem (injeção de prompt).
+- **Aba Ordens** no painel (TUI e web): ordens vigentes, agendadas e encerradas, por escopo, com a linha do tempo da vigência; criar, prorrogar, suspender e revogar.
+- **Pelo terminal:**
+  - `ot ordens list [--global | --cenario <nome>] [--estado ...]` e `ot ordens show O<n>`;
+  - `ot ordens add "<texto>" (--global | --cenario <nome>) [--tipo ...] [--papeis ...] [--de <data>] [--ate <data> | --por <duração>] [--janela "<cron>" --duracao <duração>]` (`--janela` depois da v1);
+  - `ot ordens prorrogar O<n> (--ate <data> | --por <duração>)`;
+  - `ot ordens suspend O<n> --cenario <nome> [--ate <data>]`;
+  - `ot ordens revoke O<n>... --motivo "<texto>"`.
+
+#### Registro e histórico
+
+- ids `O<n>` sequenciais, únicos no daemon e nunca reaproveitados;
+- **nada é apagado**; revogadas e expiradas ficam no histórico;
+- eventos `ordem.criada`, `ordem.ativada`, `ordem.vigencia_alterada`, `ordem.prazo`, `ordem.expirada`, `ordem.revogada` e `ordem.suspensa`. A abertura e o fechamento de janelas recorrentes não geram evento, para não encher o log; o estado é calculado pelo relógio.
+
+**Importação do `okit`** (Q12, proposta a detalhar com o importador):
+- as ordens ativas de cada projeto viram ordens locais do tipo `instrucao`, com o `validaAte` como fim;
+- cópias do mesmo grupo presentes em todos os projetos viram uma única ordem global;
+- revogadas e expiradas entram como histórico;
+- textos que tinham efeito em código no kit não são importados como texto: vão para uma lista que o Produtor decide.
 
 ## 6. Reaproveitamento: o que usar pronto
 
@@ -915,6 +1023,7 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | `usage` | consumo por sessão/perfil/janela (tokens; custo quando for API) |
 | `plugins` | manifesto, versão, estado, projetos ativos |
 | `schedules` | tarefa agendada: cenário, necessidade, tipo (uma vez/cron/intervalo/após reset), expressão e fuso, overrides, política de entrega, orçamento, regras (perdida, sobreposição, cota, decisão), próximo disparo, estado, id do gatilho no sistema operacional |
+| `orders` | ordem do Produtor (5.17): id `O<n>`, escopo (global/cenário), scenario_id, tipo (`instrucao`/`regra`/`suspensao`), texto, chave e valor (para `regra`), ordem suspensa (para `suspensao`), papéis, início, fim, fuso, janela (cron + duração; depois da v1), estado (`agendada`/`ativa`/`expirada`/`revogada`), criada em, origem (chat/TUI/terminal/importação), substitui, revogada em, motivo. As mudanças de vigência ficam nos eventos `ordem.vigencia_alterada` |
 | `schedule_runs` | execução de uma tarefa: horário previsto e real, motivo (horário, atraso, rodar agora), peça gerada, resultado, notificações enviadas |
 
 Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Electron, o `better-sqlite3` exige rebuild do módulo nativo; `node:sqlite` do Node 24 é alternativa sem binário nativo, a avaliar na Fase 1. Migrations versionadas com o migrator do próprio Kysely.
@@ -978,6 +1087,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`. No Ele
 │  │  ├─ src/tools/
 │  │  ├─ src/resources/
 │  │  ├─ src/workspace/
+│  │  ├─ src/orders/         (ordens globais e locais, aplicação das regras)
 │  │  ├─ src/scheduler/      (agenda, croner, gatilhos do sistema operacional, pedido de manter acordado)
 │  │  ├─ src/store/          (schema Kysely, migrations)
 │  │  ├─ src/telemetry/      (receptor OTLP, spans, exportador ATIF)
@@ -1083,11 +1193,13 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 - DAG em ordem topológica.
 - Integração antes do Crítico; entrega por PR.
 - Blackboard; fila única de prompts do Orquestrador.
+- Ordens globais e locais (seção 5.17), sem a janela recorrente: tabela, ferramentas do Diretor, entrada no prefixo dos Executores e no pacote de continuação, `ot ordens`.
 - Prompts iniciais dos papéis.
 
 **Critério de aceite:**
 - peça ponta a ponta com o `fake-agent` cobrindo os quatro desfechos e o critério de parada;
 - reinício do daemon no meio da peça, retomando do snapshot;
+- uma ordem global e uma local chegam ao prompt do Orquestrador e dos Executores e sobrevivem ao reinício; uma ordem com início futuro só entra no prompt depois do início; uma ordem que vence com o daemon parado não entra em sessões abertas depois do reinício; uma suspensão tira a global de um cenário só; uma `regra` revogada devolve o valor da configuração;
 - uma peça real pequena concluída com o Orquestrador em `claude-agent-acp` + Haiku.
 
 **Marco: MVP utilizável sem UI**, conversando com o Orquestrador pelo próprio cliente apontado para o MCP do framework.
@@ -1169,6 +1281,7 @@ Também faz parte do aceite:
   - Atores, eventos e cota.
 - **Trajetórias:** passos expansíveis e diffs.
 - **Consumo.**
+- **Ordens:** vigentes, agendadas e encerradas por escopo, linha do tempo da vigência e prazos; criar, prorrogar, suspender e revogar.
 - **Configurações:**
   - **Assinaturas:** o login oficial do CLI roda num painel da própria TUI, porque esses logins já são interativos no terminal;
   - **Executores:** modelo e esforço vindos das config options;
@@ -1378,7 +1491,8 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (2026-11-13, seção 6.0);
-- Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2).
+- Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
+- ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com três chaves na v1; dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
 
 ## 13. Glossário
 
@@ -1390,6 +1504,7 @@ Decididas:
 | Perfil | Uma assinatura ou chave de API de um cliente, com diretório isolado |
 | Demanda | Unidade de trabalho do roteiro, executada por um Ator |
 | Tentativa | Uma execução de uma demanda por um Executor, numa worktree própria |
+| Ordem | Instrução do Produtor que vale além de uma peça, global ou local a um cenário, durante a sua vigência e até ser revogada (5.17) |
 | Blackboard | Memória compartilhada da peça (plano, roteiro, contratos, decisões) |
 | Casca | Ferramenta do framework que envolve uma ferramenta existente com política e telemetria |
 | Ponto de julgamento | Decisão do Diretor tomada por modelo, com saída validada por schema |
@@ -1448,5 +1563,6 @@ Decididas:
 | Nome (v0.8) | "Framework Multiagente" | **OTheater** (*Orchestration Theater*), comando `ot` | Escolha do produto; nomes conferidos no npm e no GitHub |
 | Agendador (v0.9) | Inexistente | Seção 5.15 e Fase 9b: tarefas únicas, cron, intervalo e após reset da cota; regras de execução perdida, sobreposição, cota e decisão sem ninguém olhando; gatilho do sistema operacional para acordar a máquina; aba Agenda | Pedido do produto; o daemon já tinha o estado e o pipeline necessários |
 | Retomada de sessões (v0.10) | Só devolução à fila no reinício, WIP no timeout e failover do Orquestrador | Seção 5.16: retomada nativa (`session/load`) ou passagem de bastão com pacote de continuação, política por causa, checkpoints periódicos, idempotência de efeitos colaterais, interrupções externas fora da contagem de tentativas | Sessões de qualquer papel podem parar por cota, rede, queda ou reinício e precisam continuar sem perda nem repetição |
+| Ordens do Produtor (v0.11) | Inexistentes | Seção 5.17: ordens globais (um registro para todos os cenários) e locais (um projeto, tarefa ou chat), dos tipos `instrucao`, `regra` e `suspensao`; vigência com início, fim, duração e janela recorrente, calculada pelo relógio; prorrogação; revogação com motivo, em lote e definitiva; criação só pelo Produtor; entrada no prefixo, no Crítico e na retomada. Estimativas das fases não revistas | Conceito do `okit` trazido para o OTheater, redesenhado para evitar cópias por projeto e texto com efeito em código; vigência por período e revogação refinadas a pedido do dono; pontos em aberto decididos pelo dono no mesmo dia, incluindo a dispensa do Crítico (5.4) |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

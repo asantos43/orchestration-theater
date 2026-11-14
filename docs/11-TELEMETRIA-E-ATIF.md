@@ -23,6 +23,7 @@ O log é a tabela `events` do SQLite, com id crescente. Tudo é evento (P6). A U
 | `decisao.*` | Pontos de julgamento do Diretor e decisões do Produtor |
 | `chat.*` | Mensagens do chat do cenário |
 | `agenda.*` | Disparos e resultados do agendador ([10](10-TAREFAS-GERAIS-E-AGENDAMENTO.md)) |
+| `ordem.*` | Criação, início, mudança de vigência, prazo, expiração, suspensão e revogação das ordens do Produtor (§5.17, v0.11) |
 | `erro.*` | Erros classificados |
 
 O **tipo de falha** alimenta o roteamento do pipeline (execução, roteiro, estrutural, exceção crítica). O **motivo da interrupção** alimenta a retomada (cota, rede, queda, reinício, timeout, agente travado; §5.16). Os dois servem também para medir a qualidade por Executor, um desejo anterior do dono.

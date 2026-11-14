@@ -8,8 +8,8 @@ Este documento resume como o OTheater isola os Executores e protege o código, o
 - O dono levantou dois problemas:
   - isso limitaria o produto ao Linux, e ele quer Windows e macOS;
   - os agentes precisam de **internet** para tarefas além de código.
-- A partir daí, os dois cenários foram comparados lado a lado em [03](03-ARQUITETURA-1-COM-CONTEINERES.md), [04](04-ARQUITETURA-2-SEM-CONTEINERES.md) e [05](05-COMPARACAO-E-CRITERIOS.md).
-- Em **2026-11-13**, a arquitetura decidiu pelo cenário **sem contêiner**, com permissões em três camadas (decisões Q1 e Q9 em [13](13-DECISOES-EM-ABERTO.md)). A comparação fica como histórico.
+- A partir daí, os dois cenários foram comparados lado a lado nos antigos documentos 03 a 05, apagados em 2026-11-13 (última versão no commit `cb05e35`).
+- Em **2026-11-13**, a arquitetura decidiu pelo cenário **sem contêiner**, com permissões em três camadas (decisões Q1 e Q9 em [13](13-DECISOES-EM-ABERTO.md)). A comparação fica no histórico do git.
 
 ## Princípio: bloquear tudo, liberar o necessário (P5)
 
