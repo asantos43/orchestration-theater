@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.18 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MIT**.
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16).
+> Versão 0.19 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0).
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -34,7 +34,7 @@ O OTheater é um sistema de agentes de código que:
 | P8 | Contexto mínimo por Executor | O Ator nasce com demanda + contrato; artefatos circulam por referência |
 | P9 | Recursos sob controle de admissão | O paralelismo é limitado por RAM, cota e pool, não só pelo que o Roteirista permite |
 | P10 | Versões fixadas | ACP, adaptadores e CLIs mudam toda semana: tudo fixado, atualizado de propósito, com testes de contrato |
-| P11 | Só licenças permissivas | Código próprio em MIT; código copiado e dependências empacotadas em MIT, Apache-2.0, ISC ou BSD; copyleft proibido (seção 6.0) |
+| P11 | Licenças permissivas e MPL-2.0 | Código próprio em MPL-2.0; código copiado e dependências empacotadas em MIT, Apache-2.0, ISC, BSD ou MPL-2.0; GPL, AGPL e LGPL proibidas (seção 6.0) |
 | P12 | Contratos antes de implementações | Toda fronteira com o mundo de fora e todo ponto que varia por cliente, provedor ou sistema é uma **porta** (interface TypeScript + schema zod) em `@otheater/core`; as implementações são **adaptadores** trocáveis, montados num único ponto; fluxos, papéis, ferramentas e chaves de `rule` ficam em **registros** tipados (seção 5.18) |
 
 ## 3. Premissas e restrições
@@ -1581,15 +1581,27 @@ Levantamento de 2026-11-13, filtrado pela política de licenças abaixo.
 
 ### 6.0 Política de licenças
 
-O código próprio do projeto é **MIT**. Decisão de 2026-11-13: **MIT e Apache-2.0 são igualmente aceitas**, junto com as demais licenças permissivas comuns no ecossistema.
+O código próprio do projeto é **MPL-2.0**. Decidido em 2026-11-14 (N23), pelo dono, no lugar da MIT, depois de uma pergunta sobre uso comercial. Decisão de 2026-11-13, mantida: **MIT e Apache-2.0 são igualmente aceitas**, junto com as demais licenças permissivas comuns no ecossistema. Desde 2026-11-14, a **MPL-2.0** também é aceita em código copiado e em dependências.
+
+**O que a MPL-2.0 significa aqui.** Leitura deste documento, a conferir no texto oficial da licença (mozilla.org/MPL/2.0) antes de publicar **[a confirmar]**:
+- o copyleft vale **por arquivo**: quem altera um arquivo do OTheater e distribui o programa precisa oferecer o código-fonte daquele arquivo, sob MPL-2.0;
+- arquivos novos, separados, podem ter outra licença, inclusive fechada. Um produto comercial pode juntar o núcleo MPL-2.0 com módulos próprios fechados (a "obra maior" da licença);
+- vender é permitido, para o dono e para qualquer outra pessoa que distribua o código;
+- a licença traz concessão de patentes pelos contribuidores, como a Apache-2.0;
+- o dono, como autor, pode licenciar o próprio código também de outra forma. O código de terceiros que entrar por contribuição fica só sob MPL-2.0, a menos que haja um acordo (seção 12, item 18).
+
+**Obrigações do código próprio** **[proposta]**:
+- `LICENSE` na raiz com o texto da MPL-2.0, a partir da Fase 1;
+- cabeçalho do Anexo A da MPL-2.0 (ou a linha `SPDX-License-Identifier: MPL-2.0`) em todo arquivo de código, conferido pelo verificador de cabeçalho da CI;
+- sem o aviso do Anexo B ("Incompatible With Secondary Licenses"), para o código continuar compatível com a GPL de quem quiser combiná-lo.
 
 **Lista de licenças:**
 
 | Situação | Licenças | Onde valem |
 |---|---|---|
-| **Permitidas** | MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD | Em todos os níveis: código copiado, fork, dependências empacotadas |
-| **Proibidas** | GPL, AGPL, LGPL, MPL (copyleft) | Em código copiado e em dependências empacotadas. Também não se lê código AGPL para reproduzir desenho, para evitar contaminação por semelhança |
-| **Caso a caso** | Qualquer outra (ELv2, BSL, source-available, sem licença) | Precisa de decisão registrada nesta seção |
+| **Permitidas** | MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, MPL-2.0 | Em todos os níveis: código copiado, fork, dependências empacotadas |
+| **Proibidas** | GPL, AGPL, LGPL (copyleft forte ou de biblioteca) | Em código copiado e em dependências empacotadas. Também não se lê código AGPL para reproduzir desenho, para evitar contaminação por semelhança |
+| **Caso a caso** | Qualquer outra (ELv2, BSL, MPL-1.1, source-available, sem licença) | Precisa de decisão registrada nesta seção |
 
 **Níveis de uso.** A lista acima vale para os níveis A e B. Os níveis C e D são mais flexíveis:
 
@@ -1601,17 +1613,22 @@ O código próprio do projeto é **MIT**. Decisão de 2026-11-13: **MIT e Apache
 | **D. Só desenvolvimento** | Compilador, testes, validadores que não vão no instalador | Licenças permitidas ou caso a caso |
 
 **Obrigações de Apache-2.0 (níveis A e B):**
-1. **Licença e cabeçalhos:** arquivos copiados mantêm o cabeçalho e continuam sob Apache-2.0. Eles não são relicenciados como MIT. O repositório fica MIT, com arquivos Apache identificados.
+1. **Licença e cabeçalhos:** arquivos copiados mantêm o cabeçalho e continuam sob Apache-2.0. Eles não são relicenciados como MPL-2.0. O repositório fica MPL-2.0, com arquivos Apache identificados.
 2. **NOTICE:** o conteúdo do arquivo `NOTICE` de cada projeto Apache usado vai para o `THIRD_PARTY_NOTICES` e para o instalador.
 3. **Modificações:** arquivo Apache alterado ganha no cabeçalho a indicação de que foi modificado.
-4. **Fork:** o código original do fork segue Apache-2.0 e o que escrevermos pode ser MIT. A distribuição cumpre os termos da Apache.
+4. **Fork:** o código original do fork segue Apache-2.0 e o que escrevermos é MPL-2.0. A distribuição cumpre os termos da Apache.
+
+**Obrigações da MPL-2.0 de terceiros (níveis A e B)** **[proposta]**:
+1. arquivos copiados de projeto MPL-2.0 mantêm o cabeçalho e continuam sob MPL-2.0;
+2. um pacote MPL-2.0 alterado por nós tem as alterações publicadas sob MPL-2.0, e o instalador aponta onde está o código-fonte de cada arquivo MPL distribuído;
+3. o `THIRD_PARTY_NOTICES` lista os pacotes MPL-2.0 e onde obter o código-fonte deles.
 
 A Apache-2.0 traz ainda **concessão explícita de patentes** pelos contribuidores, com cláusula de retaliação contra quem processar por patente. Isso não afeta o nosso uso.
 
 **Automação na CI:**
-- verificador de licenças sobre toda a árvore de dependências empacotadas, comparando com a lista de permitidas; licença proibida ou caso a caso não registrada falha o build;
+- verificador de licenças sobre toda a árvore de dependências empacotadas, comparando com a lista de permitidas (com MPL-2.0); licença proibida ou caso a caso não registrada falha o build;
 - o `THIRD_PARTY_NOTICES` é gerado automaticamente, com as licenças e os `NOTICE` dos pacotes Apache;
-- um verificador de cabeçalho confere que arquivos copiados de projetos Apache mantêm o aviso.
+- um verificador de cabeçalho confere que arquivos copiados de projetos Apache ou MPL mantêm o aviso e que os arquivos próprios têm o cabeçalho MPL-2.0.
 
 ### 6.1 Dependências (nível B)
 
@@ -1682,7 +1699,7 @@ Candidatos, em ordem:
 O que **nenhum** deles tem é o nosso diferencial: pipeline teatral com papéis, Crítico e escalonamento; seleção por prioridade × cota com várias assinaturas; permissões por papel; ATIF.
 
 Critérios da avaliação:
-1. licença do projeto e de **todas** as dependências que o fork arrasta dentro da lista permitida (qualquer copyleft reprova);
+1. licença do projeto e de **todas** as dependências que o fork arrasta dentro da lista permitida (GPL, AGPL ou LGPL reprova);
 2. o núcleo roda como daemon separado da UI, com API (ou pode ser separado sem reescrever);
 3. a arquitetura aceita a máquina de estados por cima sem brigar com o modelo deles;
 4. qualidade de código e testes;
@@ -2224,7 +2241,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R6 | RAM com muitos Atores (um `claude` por sessão) | Máquina travando | Admissão por sessão; plugins agregados; semáforo de comandos pesados; Codex/OpenCode para Atores simples |
 | R7 | Conflitos de merge frequentes | Retrabalho | `expectedFiles` validado antes da execução; conflito vira falha de roteiro |
 | R8 | Fork que diverge do upstream | Manutenção dobrada | Critérios explícitos na Fase 0; preferir copiar trechos com atribuição a manter um fork |
-| R9 | Licença proibida entrando sem perceber (dependência transitiva copyleft, componente não confirmado, fork que arrasta AGPL) ou obrigação da Apache-2.0 esquecida (NOTICE, cabeçalho, marca de modificação) | Violação de licença; bloqueio jurídico tardio | Política da seção 6.0; verificador de licenças e de cabeçalhos na CI; `THIRD_PARTY_NOTICES` gerado; alternativa própria para cada componente a confirmar |
+| R9 | Licença proibida entrando sem perceber (dependência transitiva GPL, AGPL ou LGPL, componente não confirmado, fork que arrasta AGPL) ou obrigação da Apache-2.0 ou da MPL-2.0 esquecida (NOTICE, cabeçalho, marca de modificação, código-fonte de arquivo MPL alterado) | Violação de licença; bloqueio jurídico tardio | Política da seção 6.0; verificador de licenças e de cabeçalhos na CI; `THIRD_PARTY_NOTICES` gerado; alternativa própria para cada componente a confirmar |
 | R10 | Custo de contexto alto | Cota esgota rápido | Blackboard, saída estruturada, prefixo estável para cache |
 | R11 | Ink lento ou tremulando com streaming intenso, ou rolagem ruim em conversas longas | A TUI é a interface principal: sem ela confortável, o produto todo sofre | Teste comparativo Ink × OpenTUI na Fase 0; rolagem virtualizada; TUI isolada atrás da API, então trocar de framework não afeta o resto |
 | R12 | Sem interface gráfica até a Fase 12 | Quem não usa terminal fica sem acesso; DAG e trajetórias longas são menos legíveis no terminal | Web e desktop como fases opcionais prontas para começar depois da Fase 6 sobre o `packages/client`; Phoenix como visualizador gráfico de traces no meio-tempo |
@@ -2255,10 +2272,12 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 15. Detalhes dos níveis de plugin com comportamento de mod, para depois da v1 (5.14): quais pontos de interceptação existem, o prazo padrão de um gancho, o que acontece quando ele falha ou estoura o prazo (bloquear ou deixar passar) e se uma sonda de cota ou um notificador de um provedor novo podem vir de plugin, sem virar pacote oficial (5.18).
 16. *(Decidida em 2026-11-14: padrões dos cenários como chaves de configuração, ver "Decididas" e a seção 5.20.)*
 17. Como destrancar os segredos no modo sem login (5.21): mecanismo nativo da máquina (DPAPI, TPM, `systemd-creds`) ou arquivo cifrado com chave protegida. Decide-se ao abrir a Fase 10b, depois da medição. O resto do item foi decidido em 2026-11-14, ver "Decididas".
+18. Contribuições externas (6.0): exigir um acordo de contribuição (CLA), que dá ao dono o direito de relicenciar o código recebido e mantém aberta uma licença dupla ou uma versão comercial, ou só a certificação de origem (DCO, com `Signed-off-by`), em que cada contribuição fica só sob MPL-2.0. Decide-se antes de o repositório aceitar contribuições.
 
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
-- licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (2026-11-13, seção 6.0);
+- licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause, 0BSD e MPL-2.0; GPL, AGPL e LGPL proibidas (2026-11-13; MPL-2.0 aceita em 2026-11-14, seção 6.0);
+- licença do código próprio: **MPL-2.0**, no lugar da MIT (2026-11-14, seção 6.0). Permite produto comercial e módulos fechados em arquivos separados; quem distribuir um arquivo do OTheater alterado publica aquele arquivo. Contribuições externas (CLA ou DCO) seguem em aberto (item 18);
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
 - ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `rule` com quatro chaves na v1 (perfis de um papel, `next`/`wait`, exigir PR e `git.push_after_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
 - portas, adaptadores e registros (2026-11-13, P12 e seção 5.18): porta em toda fronteira e ponto de variação, sem porta para a lógica interna pura; duas camadas de extensão (adaptadores oficiais no processo, terceiros só fora dele, como plugins MCP); registro de fluxos em TypeScript, com a peça teatral como padrão (os outros fluxos foram decididos depois, na seção 5.20); composição manual, sem container; pacotes `core`, `sdk` e `adapter-*`; semver por porta com suítes de conformidade; painel declarativo de plugin, sem código do plugin na interface; registros tipados, com chaves de `rule` só de módulos oficiais e eventos de plugin com prefixo `plugin.<id>.*`.
@@ -2377,6 +2396,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Durabilidade (v0.15) | Snapshot por transição, retomada (5.16) e regra da janela (5.15), sem modo de gravação definido, sem rotina de reconciliação, sem backup e sem resposta para a máquina religada sem login | Seção 5.21: `synchronous=FULL`; gravar antes de agir; reconciliação na subida com verificadores de efeito; na v1 espera o login, depois daemon completo sem login; backup diário com 7 cópias; R19; Fase 3 cresce 0,5 semana | Pergunta do dono sobre fechar a interface, reiniciar e faltar luz; escolhas decididas por ele no mesmo dia |
 | Idioma (v0.17) | Identificadores em português, sem regra de idioma; interface só em português nos mockups | Seção 5.22: código, dados, configuração, eventos, ferramentas, comandos, logs e prompts em inglês; respostas ao Produtor no idioma dele, por ordem; catálogo `en` e `pt-BR` desde a primeira tela, com `ui.locale`; glossário com o nome em inglês de cada termo; identificadores deste documento renomeados (os antigos estão no histórico do git, e o glossário faz a ponte) | Pergunta do dono; escolhas decididas por ele no mesmo dia |
 | Padrões do pipeline (v0.18) | `Np`, `Nc`, tentativas, timeouts, política de entrega, regras do agendador e da retomada sem valor (itens 4, 5, 13 e 14) | Chaves `limits.*`, `delivery.*`, `schedule.*` e `resume.*`, cada grupo com três predefinições e chaves individuais; padrões `moderate`, `pr`, `balanced` e `balanced` | Decisões do dono, que pediu que cada padrão seja chave de configuração com várias opções |
+| Licença do código próprio (v0.19) | Código próprio em MIT; MPL proibida em código copiado e dependências | Código próprio em MPL-2.0; MPL-2.0 permitida em código copiado e dependências, com obrigações; GPL, AGPL e LGPL seguem proibidas; CLA ou DCO em aberto (item 18) | Decisão do dono, depois de uma pergunta sobre uso comercial |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

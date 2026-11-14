@@ -47,7 +47,7 @@ Candidatos, em ordem:
 | 4 | **Paradev**, **Happier** | MIT | Sessões paralelas em worktrees; interface para vários agentes ACP |
 
 Critérios da Fase 0:
-1. licença do projeto e de todas as dependências que ele arrasta dentro da lista permitida, sem copyleft;
+1. licença do projeto e de todas as dependências que ele arrasta dentro da lista permitida, sem GPL, AGPL ou LGPL;
 2. núcleo como daemon separado da UI;
 3. aceitar a máquina de estados por cima;
 4. qualidade de código e testes;

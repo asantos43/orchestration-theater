@@ -44,7 +44,7 @@ A máquina de estados está na §5.4 da arquitetura.
 | R13 | **Economia de cota**: ferramenta primeiro, modelo por último; o modelo mais barato que cumpra a verificação. | Princípio já adotado pelo dono | P3, P8, §5.10; mensagens de andamento sem custo de modelo (§5.4) |
 | R14 | **Resolver de uma vez os erros que aparecem hoje** (ver [01](01-CONTEXTO-E-PROBLEMAS.md)). | Pedido do dono | Tabela "Como a arquitetura responde" em [01](01-CONTEXTO-E-PROBLEMAS.md) |
 | R15 | **Retomar sessões interrompidas** (cota, rede, queda, reinício, timeout, agente travado) sem perder trabalho nem repetir efeitos colaterais. | Arquitetura v0.10 | §5.16 |
-| R16 | **Só licenças permissivas** no código copiado e nas dependências empacotadas. | Arquitetura v0.3/v0.4 | §6.0 |
+| R16 | **Licenças permissivas ou MPL-2.0** no código copiado e nas dependências empacotadas; código próprio em **MPL-2.0**. | Arquitetura v0.3/v0.4; dono, 2026-11-14 (N23) | §6.0 |
 
 ## Fora de escopo (por enquanto)
 

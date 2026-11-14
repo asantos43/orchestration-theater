@@ -1,6 +1,6 @@
 # OTheater (Orchestration Theater)
 
-**Status: fase de desenho. Não há código.** O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.18). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
+**Status: fase de desenho. Não há código.** O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.19). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
 
 ## Em uma frase
 
@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.18): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.19): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
@@ -81,7 +81,7 @@ Os números 03 a 06 estão vagos: esses documentos (comparação com e sem cont�
 - **Comando:** `ot` ou `otheater`.
 - **Organização no GitHub:** `orchestration-theater`.
 
-Os nomes foram conferidos em 2026-11-13, segundo a arquitetura §9; repetir a conferência antes de publicar. O código próprio será MIT, com licenças permitidas restritas a permissivas (arquitetura §6.0).
+Os nomes foram conferidos em 2026-11-13, segundo a arquitetura §9; repetir a conferência antes de publicar. O código próprio será **MPL-2.0** (decidido em 2026-11-14, no lugar da MIT), e o código de terceiros fica restrito a licenças permissivas e à MPL-2.0 (arquitetura §6.0).
 
 ## Convenções deste repositório
 
