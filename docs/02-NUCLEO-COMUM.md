@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.27, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.28, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -152,7 +152,7 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 - Portas principais: `ClientAdapter`, `AgentSession` (ACP ou headless), `QuotaProbe`, `UsageSource`, `SecretVault`, `Store`, `EventLog`, `EventSink`, `TelemetryIngest`, `Vcs`, `CodeHost`, `Sandbox`, `ProcessLauncher`, `ResourceMonitor`, `OsScheduler`, `Notifier`, `Clock`, `PromptSource`.
 - **Registros** tipados: fluxos (a peça teatral é o padrão; `task.define`, `task.run` e `chat` vêm da §5.20), tipos de cenário, perfis de projeto, tipos de passo, gatilhos, papéis, ferramentas, chaves de `rule` (lista fechada, só módulos oficiais), tipos de evento (plugins só com `plugin.<id>.*`), estratégias e itens da interface. Entrada inválida é recusada na subida do daemon.
 - **Montagem manual** num ponto único (`compose.ts`), sem container de injeção. A CI verifica a regra de dependência: `core` só depende do zod, e o daemon só importa adaptadores no ponto de montagem.
-- **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface. Não há mods em processo: depois da v1, o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), decididos na N17.
+- **Duas camadas de extensão:** a interna (adaptadores oficiais, no processo) e a externa (plugins MCP, fora do processo, com painel declarativo). Código de terceiros nunca roda no daemon nem na interface. Não há mods em processo: depois da v1, o plugin ganha níveis opcionais (assinar eventos, ganchos de interceptação que vetam ou anotam, contribuições declarativas), decididos na N17. Os ganchos têm quatro pontos (antes de lançar a tentativa, antes da ferramenta, antes de aceitar o `submit` e antes da entrega), prazo de 5 s (30 s na entrega) e, na falha, o que o plugin declarar, com deixar passar como padrão; sondas de cota e notificadores também podem vir de plugin (§5.14, v0.28).
 
 ## Navegador compartilhado (arquitetura §5.19)
 
