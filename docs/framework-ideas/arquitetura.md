@@ -772,6 +772,7 @@ Conceito trazido do `okit` (ordens permanentes, `kit orders`) e redesenhado aqui
 **Ordem** é uma instrução do Produtor que vale além de uma peça. Ela continua em vigor entre peças, sessões, compressões de contexto, failover e reinícios, durante a sua vigência e até ser revogada. Exemplos:
 - "mensagens de commit em português" (permanente);
 - "sempre me apresente as dúvidas como múltiplas escolhas, para eu decidir" (global, `instrucao`, com `papeis` = Diretor, que é quem pergunta ao Produtor por `perguntar_produtor`; exemplo dado pelo dono em 2026-11-13);
+- "fazer push sempre que commitar" (global, `regra` com a chave `git.push_apos_commit`, porque quem faz commit e push é o daemon e um texto não mudaria isso; exemplo dado pelo dono em 2026-11-13);
 - "não alterar `infra/` sem perguntar" (local a um projeto);
 - "não usar o perfil claude-empresa para Atores até sexta 18h" (com prazo).
 
@@ -797,7 +798,7 @@ Conceito trazido do `okit` (ordens permanentes, `kit orders`) e redesenhado aqui
 | `suspensao` | Tira uma ordem global de um cenário, durante a vigência da suspensão | O daemon, ao montar o prompt e ao aplicar as `regra` |
 
 - O daemon **não interpreta o texto** de uma `instrucao`: ela nunca muda o fluxo nem a permissão. No `okit`, um texto como `critic-waiver passo-N` tinha efeito em código; aqui, o que precisa ter efeito garantido é `regra`.
-- Uma `regra` só aceita chaves de uma lista fechada, validada por schema zod. **Na v1 (decidido em 2026-11-13), a lista tem três chaves:** os perfis da lista de um papel (tirar ou reordenar, 5.7), a regra `proximo`/`esperar` da cota e a exigência de PR na entrega. Chaves novas entram uma a uma, cada uma com teste. **Chaves de permissão (5.8) ficam fora**: permissão se muda na configuração do papel, não por ordem.
+- Uma `regra` só aceita chaves de uma lista fechada, validada por schema zod. **Na v1 (decidido em 2026-11-13), a lista tem quatro chaves:** os perfis da lista de um papel (tirar ou reordenar, 5.7), a regra `proximo`/`esperar` da cota, a exigência de PR na entrega e `git.push_apos_commit`. Com esta última, depois de cada `git_commit` o daemon faz push da branch da demanda. Ele nunca faz force push nem push na branch base, que só recebe pela entrega (5.5). Chaves novas entram uma a uma, cada uma com teste. **Chaves de permissão (5.8) ficam fora**: permissão se muda na configuração do papel, não por ordem.
 - **Conflito de `regra`:** duas `regra` sobre a mesma chave, no mesmo escopo e com vigências que se sobrepõem, são recusadas na criação. O rascunho mostra a ordem conflitante, e o Produtor revoga uma delas ou ajusta a vigência. Entre global e local, vale a precedência.
 - Quando uma `regra` muda uma decisão do daemon, o evento cita o id da ordem (ex.: `executor.selecionado` com motivo "ordem O7"). A descrição do PR lista as `regra` que afetaram a peça.
 - **Dispensa do Crítico não é ordem** (decidido em 2026-11-13). No `okit`, uma ordem com o texto `critic-waiver passo-N` dispensava o crítico. Aqui, o Produtor dispensa o Crítico por uma **decisão registrada** (`decidir`, tabela `decisions`), com motivo, para a peça inteira, ao abrir a peça ou depois de uma reprovação (5.4). Nenhuma ordem, nem `regra`, dispensa o Crítico.
@@ -1492,7 +1493,7 @@ Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause e 0BSD; copyleft proibido (2026-11-13, seção 6.0);
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
-- ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com três chaves na v1; dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
+- ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `regra` com quatro chaves na v1 (perfis de um papel, `proximo`/`esperar`, exigir PR e `git.push_apos_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
 
 ## 13. Glossário
 

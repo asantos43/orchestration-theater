@@ -21,6 +21,6 @@ Os antigos documentos 03 a 06 foram apagados em 2026-11-13. Eram a comparação 
 - Responda em português do Brasil e use o horário de São Paulo (UTC-3).
 - Ao acrescentar informação, diga se foi verificada localmente, vem de fonte secundária ou não foi confirmada. Não apresente hipótese como fato.
 - Os termos de uso dos provedores mudam: não afirme o que é permitido sem citar a fonte e a data.
-- Não faça push, não crie repositório remoto e não faça commit sem o dono pedir.
+- Commit só quando o dono pedir. Todo commit é seguido de push (ordem do dono, 2026-11-13). Não crie repositório remoto nem faça force push.
 - Mantenha as decisões em `docs/13-DECISOES-EM-ABERTO.md`: mude o estado da pergunta e registre a data e o motivo. Decisões da seção 12 da arquitetura são atualizadas nos dois lugares.
 - Projetos relacionados na mesma pasta pai: `orchestration-kit` (o kit `okit` atual), `okit-plugin`, `folder-browser`.
