@@ -53,7 +53,8 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
 | [proposta-de-fluxo-de-trabalho-adaptado.md](docs/framework-ideas/proposta-de-fluxo-de-trabalho-adaptado.md) | Proposta de fluxo adaptado |
-| [Diagrama do fluxo (PNG)](<docs/framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>) | Diagrama do dono, de 2026-10-30 |
+| [fluxo-da-peca.md](docs/framework-ideas/fluxo-da-peca.md) | Diagrama do fluxo da peça em Mermaid (2026-11-14, arquitetura v0.31, §5.4) |
+| [Diagrama do fluxo (PNG)](<docs/framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>) | Diagrama do dono, de 2026-10-30; substituído pelo fluxo-da-peca.md e mantido como registro |
 | [mockup/tui.html](docs/framework-ideas/mockup/tui.html), [mockup/app.html](docs/framework-ideas/mockup/app.html), [mockup/mobile.html](docs/framework-ideas/mockup/mobile.html) | Mockups da TUI, do app (web e desktop) e do Android (celular e tablet) |
 
 **Documentos de apoio** (em [docs/](docs/)):

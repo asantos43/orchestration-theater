@@ -12,7 +12,7 @@ A arquitetura de construção está em [framework-ideas/arquitetura.md](framewor
 
 ## O fluxo que o sistema deve implementar (o "pipeline teatral")
 
-O fluxo está descrito em [framework-ideas/framework_multiagentes.md](framework-ideas/framework_multiagentes.md) e no [diagrama do dono](<framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>). Os papéis estão em [framework-ideas/principais-papeis.md](framework-ideas/principais-papeis.md). Em resumo:
+O fluxo está descrito em [framework-ideas/framework_multiagentes.md](framework-ideas/framework_multiagentes.md) e no [diagrama do dono](<framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>), de 2026-10-30. A versão atual do fluxo, revista em 2026-11-14, está na §5.4 da arquitetura e em [framework-ideas/fluxo-da-peca.md](framework-ideas/fluxo-da-peca.md). Os papéis estão em [framework-ideas/principais-papeis.md](framework-ideas/principais-papeis.md). Em resumo:
 
 1. **Produtor**: entrega a necessidade.
 2. **Autor** e **Revisor**: transformam a necessidade num plano. O Revisor pode reprovar o plano até um limite `Np`.

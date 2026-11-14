@@ -245,6 +245,8 @@ NEED
   [qualquer contador esgotado]  → AWAITING_PRODUCER (menu fixo)
 ```
 
+O mesmo fluxo, desenhado em Mermaid, está em [fluxo-da-peca.md](fluxo-da-peca.md) (2026-11-14).
+
 **Esforço antes da execução** (decidido em 2026-11-14, v0.31, P13, a partir da experiência do dono com o `okit`, em que o Diretor planejava sozinho e as instruções incompletas geravam muitas rodadas do Crítico): corrigir um plano ou um roteiro custa uma sessão curta, sem worktree; uma rodada do Crítico custa Atores, integração, testes, crítica e decisão. Por isso, o pipeline concentra a verificação antes de EXECUTING, e as voltas para trás são raras e simples. As regras abaixo vêm da revisão do fluxo `Produtor-Roteirista Merge Workflow` (imagem de 2026-10-30), que a §5.4 substitui.
 
 **Fronteira de cada papel** (P13). Cada papel faz uma coisa, e o que não é dele fica fora do seu schema e das suas ferramentas:
