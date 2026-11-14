@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.22 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam.
+> Versão 0.23 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam. A v0.23 resolve duas contradições sobre o **modelo local** (seções 5.7 e 5.9): ele pode ser Ator, limitado pelos slots da instância, com slots reservados ao Diretor, e o provedor de um Executor na revisão cruzada é a família do modelo, não o cliente. Os Executores do OpenCode entram por um assistente de cadastro com sugestões, e o daemon só valida. A abstração passa a ter dois eixos (seção 5.18): o **cliente** de agente (`ClientAdapter`, agora com o catálogo de modelos `ModelCatalog`) e o **servidor de modelo local** (nova porta `LocalModelServer`, com llama.cpp na v1 e Ollama depois). O nome do Executor passa a incluir o cliente, `<modelo>-<esforço>@<cliente>/<perfil>`, porque o OpenCode também pode chamar modelos do Claude e do GPT por API; com assinatura, cada família só roda pelo seu cliente oficial (`executors.cross_client: api_only`). A configuração dos papéis passa a ter override por papel em cada cenário e tarefa agendada, e não só a restrição de perfis por projeto. A primeira execução vira um `ot init` mínimo que abre a TUI num assistente de configuração cuja lógica fica no daemon.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -145,9 +145,19 @@ interface ClientAdapter {
   login(profile: Profile): Promise<LoginFlow>;                         // login oficial no diretório do perfil
   logout(profile: Profile): Promise<void>;
   quota: QuotaProbe;                                                   // seção 5.6
+  models: ModelCatalog;                                                // catálogo e validação dos modelos (5.7), v0.23
   processModel: 'process-per-session' | 'multi-session';                // medido na Fase 0
 }
+
+interface ModelCatalog {
+  discovery: 'automatic' | 'assisted';                                 // Claude Code e Codex: automatic; OpenCode: assisted
+  list(profile: Profile): Promise<ModelInfo[]>;                         // OpenCode: opencode models --verbose
+  suggest(model: ModelInfo): Partial<ExecutorDraft>;                   // esforço, provider (família), local, custo
+  validate(executor: Executor): Promise<ValidationResult>;             // existe, esforço aceito, toolcall
+}
 ```
+
+A interface acima é **[proposta]** (v0.23); a forma final sai da Fase 1.
 
 `ClientAdapter` é uma porta de `@otheater/core` (5.18), e cada cliente é um pacote `@otheater/adapter-<cliente>` que passa na suíte de conformidade da porta. A conversa com o Executor fica numa porta separada, `AgentSession`, cujo adaptador padrão é o ACP.
 
@@ -318,7 +328,7 @@ delivery:
 
 ### 5.6 Assinaturas e cotas
 
-**Perfil** = diretório isolado (`<data>/profiles/<id>/`):
+**Perfil** = diretório isolado (`<data>/profiles/<cliente>/<perfil>/`). O nome do perfil é único dentro do cliente, e o id completo, usado nas chaves de configuração e no nome do Executor (5.7), é `<cliente>/<perfil>` (ex.: `claude-code/empresa`, `opencode/local`; v0.23):
 
 | Cliente | Isolamento | Observações |
 |---|---|---|
@@ -378,17 +388,17 @@ Decidido em 2026-11-14 (era o item 21 da seção 12). Cada comportamento é uma 
 
 ```yaml
 profiles:
-  minimax-api:
+  opencode/minimax-api:
     budget:
-      daily_usd: 20            # opcional; sugerido pelo ot init
-      monthly_usd: 200         # opcional; sugerido pelo ot init
+      daily_usd: 20            # opcional; sugerido pelo assistente
+      monthly_usd: 200         # opcional; sugerido pelo assistente
       warn_at: [0.8]           # avisos, em fração do teto
       on_exceeded: skip        # skip | wait | ask
       in_flight: handoff       # handoff | finish | stop
 ```
 
 - **Onde fica:** no perfil de API, com teto por dia e por mês, os dois opcionais. Um Executor pode ter um teto menor (`executors.<nome>.budget`), dentro do teto do perfil. O orçamento por execução das tarefas agendadas (5.15) continua valendo; vale sempre o mais restritivo.
-- **Primeira execução:** ao encontrar uma chave de API, o `ot init` sugere US$ 20 por dia e US$ 200 por mês, e o Produtor confirma ou muda antes de a chave entrar nas listas (5.7).
+- **Primeira execução:** ao encontrar uma chave de API, o assistente de configuração (5.7) sugere US$ 20 por dia e US$ 200 por mês, e o Produtor confirma ou muda antes de a chave entrar nas listas (5.7).
 - **Aviso:** em 80% do teto do dia ou do mês, mensagem de sistema no chat e notificação nas interfaces. `warn_at` aceita uma lista, como `[0.5, 0.8]`.
 - **Sessões novas ao estourar** (`on_exceeded`):
   - `skip` (padrão): o perfil fica `exhausted` com causa `budget` até virar o período, e a seleção segue para o próximo Executor da lista. Sem nenhum disponível, vale o `when_exhausted` do papel;
@@ -430,36 +440,53 @@ No horário do despertar:
 
 Configuração por papel: lista ordenada de Executores + regra quando ninguém está disponível. **Todos os papéis** têm a lista (Diretor, Consultor, Autor, Revisor, Roteirista, Crítico e Atores), e ela é a cadeia de fallback: quando o primeiro não tem assinatura com cota nem chave de API disponível, vale o seguinte. Tudo é ajustável na configuração (decidido em 2026-11-14).
 
-**Nome do Executor** (decidido em 2026-11-14): sempre `<modelo>-<esforço>@<perfil>`. O `<modelo>-<esforço>` vem primeiro porque o papel é desempenhado pelo conjunto modelo + esforço. Os modelos do Claude levam o prefixo `claude-`, como os do Codex levam `codex-`, para os nomes ficarem consistentes: `claude-opus-high`, `claude-sonnet-medium`, `claude-haiku-low`, `codex-sol-high`, `codex-luna-low`, `minimax-m2-medium`, `gemma4-low`. O sufixo `@<perfil>` (a conta) vai em todos os Executores, mesmo com uma conta só, para o mesmo modelo e esforço em contas diferentes não colidir (decisão do dono; era o item 22 da seção 12): `claude-opus-high@claude-empresa`, `claude-opus-high@claude-pessoal`, `codex-sol-high@codex-1`, `gemma4-low@gemma4-local`. O cliente fica no campo do Executor. Os nomes `gpt-6-sol` e `gpt-6-luna` vêm do cache de modelos do Codex citado na documentação do `okit` (fonte secundária) e o nome atual do modelo da MiniMax também está **[a confirmar]** na Fase 0.
+**Nome do Executor** (decidido em 2026-11-14, revisto no mesmo dia na v0.23): sempre `<modelo>-<esforço>@<cliente>/<perfil>`. O `<modelo>-<esforço>` vem primeiro porque o papel é desempenhado pelo conjunto modelo + esforço. O prefixo do modelo é a família: os modelos do Claude levam `claude-`, como os do Codex levam `codex-`, para os nomes ficarem consistentes: `claude-opus-high`, `claude-sonnet-medium`, `claude-haiku-low`, `codex-sol-high`, `codex-luna-low`, `minimax-m2-medium`, `gemma4-low`. O sufixo `@<cliente>/<perfil>` vai em todos os Executores, mesmo com uma conta só: o cliente diz quem executa e o perfil diz a conta, que é única dentro de cada cliente (decisão do dono; era o item 22 da seção 12). Assim o mesmo modelo e esforço não colide nem entre contas nem entre clientes: `claude-opus-high@claude-code/empresa`, `claude-opus-high@claude-code/pessoal`, `claude-opus-high@opencode/anthropic-api`, `codex-sol-high@codex/conta-1`, `gemma4-low@opencode/local`. O cliente entrou no nome na v0.23 porque o OpenCode também pode chamar modelos do Claude e do GPT por chave de API ou gateway (a lista local do `opencode models`, versão 1.19.5, traz `opencode/claude-opus-5-5`; verificado localmente), e o nome sem o cliente esconderia quem executa. Os nomes `gpt-6-sol` e `gpt-6-luna` vêm do cache de modelos do Codex citado na documentação do `okit` (fonte secundária) e o nome atual do modelo da MiniMax também está **[a confirmar]** na Fase 0.
 
 ```yaml
 executors:
-  claude-haiku-low@claude-empresa: { client: claude-code, profile: claude-empresa, model: haiku,           effort: low }
-  codex-luna-low@codex-1:          { client: codex,       profile: codex-1,        model: gpt-6-luna,      effort: low }  # [a confirmar]
-  gemma4-low@gemma4-local:         { client: opencode,    profile: gemma4-local,   model: gemma-4-26b-a4b, effort: low }
+  claude-haiku-low@claude-code/empresa:     { client: claude-code, profile: empresa,       model: haiku,                     effort: low }                       # provider: anthropic (fixo pelo cliente)
+  claude-opus-high@opencode/anthropic-api: { client: opencode,    profile: anthropic-api, model: anthropic/claude-opus-5-5, effort: high, provider: anthropic } # chave de API; id do modelo [a confirmar]
+  codex-luna-low@codex/conta-1:             { client: codex,       profile: conta-1,       model: gpt-6-luna,                effort: low }                       # [a confirmar]; provider: openai (fixo pelo cliente)
+  gemma4-low@opencode/local:                { client: opencode,    profile: local,         model: gemma-4-26b-a4b,           effort: low,  provider: google }    # cadastrado no assistente
 ```
 
-- **Interfaces:** onde faltar espaço (a TUI, o celular), a tela pode encurtar o sufixo ou mostrá-lo numa coluna à parte, mas o nome guardado e o dos eventos é sempre o completo **[proposta]**.
+- **Interfaces:** onde faltar espaço (a TUI, o celular), a tela pode mostrar só o `<perfil>`, pôr o cliente numa coluna à parte, como ícone ou abreviado (`cc/empresa`, `cx/conta-1`, `oc/local`, como no mockup da TUI), mas o nome guardado e o dos eventos é sempre o completo **[proposta]**.
+- **Cliente cruzado** (decidido em 2026-11-14, v0.23): com assinatura, cada família só roda pelo seu cliente oficial (Claude pelo Claude Code, GPT pelo Codex); com chave de API ou gateway, qualquer cliente que suporte o modelo pode executá-lo (ex.: `claude-opus-high@opencode/anthropic-api`). O que os termos de cada provedor permitem não é afirmado aqui: fica **[a confirmar]** na Fase 0, com fonte e data.
+
+```yaml
+executors:
+  cross_client: api_only   # api_only | off | any
+```
+
+  - `api_only` (padrão): o daemon aceita um modelo fora do cliente oficial só num perfil de chave de API ou gateway;
+  - `off`: cada família só pelo seu cliente oficial, com ou sem API;
+  - `any`: sem verificação; vale o que o cliente aceitar.
 - **Esforço que o adaptador não expõe:** o nome guarda o esforço pedido, e vale o fallback do adaptador (abaixo). Se o OpenCode expõe esforço para o Gemma 4 e o MiniMax está **[a confirmar]**.
 
-**Primeira execução** (decidida em 2026-11-14, item 8 da seção 12): a primeira execução guiada (Fase 10; na CLI, `ot init`):
-1. detecta os clientes instalados, os logins e as chaves de API;
-2. aplica a predefinição da chave `roles.preset` e tira da lista os Executores que não existem. A predefinição é escrita em `<modelo>-<esforço>`, sem conta; o `ot init` troca cada item pelos Executores das contas encontradas que têm aquele modelo, um por conta, na ordem das contas que o Produtor confirmar (ex.: `claude-opus-high` vira `claude-opus-high@claude-empresa, claude-opus-high@claude-pessoal`) **[proposta]**;
-3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@minimax-api`), com o teto de gasto que o Produtor confirmar (5.6). Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
-4. mostra o resultado, e o Produtor confirma ou ajusta.
+**Primeira execução e assistente de configuração** (decidida em 2026-11-14, item 8 da seção 12; forma revista no mesmo dia na v0.23, a pedido do dono):
+- **`ot init` mínimo:** instala o daemon como serviço de logon (Fase 10), sobe o daemon e abre a TUI direto no assistente, sem nenhuma pergunta no terminal. Motivo do dono, pela experiência no `okit-plugin`: setup por script é propenso a falhas e costuma ficar complexo, então a parte complexa vai para o assistente;
+- **lógica no daemon:** o assistente é um fluxo de passos do daemon, exposto pela API (5.12). Cada passo guarda o estado no store, é validado antes de seguir e pode ser retomado depois de fechar a TUI ou de o daemon reiniciar. Nada entra na configuração antes da confirmação final, que grava tudo de uma vez **[proposta]**;
+- **as interfaces só desenham:** na v1, a TUI (Fase 7); a web e o app (Fases 12 e 14) mostram o mesmo assistente pela mesma API, sem lógica própria;
+- **reuso:** o mesmo mecanismo serve, depois da primeira execução, para adicionar uma conta, cadastrar um Executor do OpenCode (abaixo) e trocar a predefinição **[proposta]**.
 
-Predefinição padrão, `quality`, depois do `ot init` numa máquina com as contas `claude-empresa`, `codex-1`, `minimax-api` e `gemma4-local`:
+Passos da primeira execução no assistente:
+1. detecta os clientes instalados, os logins e as chaves de API; os modelos do Claude Code e do Codex são descobertos sozinhos, e os do OpenCode passam pelo assistente de cadastro (abaixo, "Cadastro dos Executores do OpenCode");
+2. aplica a predefinição da chave `roles.preset` e tira da lista os Executores que não existem. A predefinição é escrita em `<modelo>-<esforço>`, sem conta; o assistente troca cada item pelos Executores das contas encontradas que têm aquele modelo, em qualquer cliente que o `executors.cross_client` permita, um por conta, primeiro os do cliente oficial e depois os outros, na ordem das contas que o Produtor confirmar (ex.: `claude-opus-high` vira `claude-opus-high@claude-code/empresa, claude-opus-high@claude-code/pessoal`, e `claude-opus-high@opencode/anthropic-api` se houver esse perfil) **[proposta]**;
+3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@opencode/minimax-api`), com o teto de gasto que o Produtor confirmar (5.6). Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
+4. mostra o resultado, e o Produtor confirma ou ajusta; só então a configuração é gravada.
+
+Predefinição padrão, `quality`, depois da primeira execução numa máquina com as contas `claude-code/empresa`, `codex/conta-1`, `opencode/minimax-api` e `opencode/local`:
 
 ```yaml
 roles:
   preset: quality              # quality | balanced | economical
-  director:     { executors: [claude-haiku-low@claude-empresa, codex-luna-low@codex-1, gemma4-low@gemma4-local, minimax-m2-medium@minimax-api] }
-  consultant:   { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }   # Ator forte do chat (5.20)
-  author:       { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }
-  reviewer:     { executors: [codex-sol-high@codex-1, claude-opus-high@claude-empresa, minimax-m2-medium@minimax-api] }
-  scriptwriter: { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api] }
-  critic:       { executors: [claude-opus-high@claude-empresa, codex-sol-high@codex-1, minimax-m2-medium@minimax-api], when_exhausted: wait }
-  actor:        { executors: [codex-sol-high@codex-1, claude-sonnet-medium@claude-empresa, minimax-m2-medium@minimax-api], when_exhausted: next }
+  director:     { executors: [claude-haiku-low@claude-code/empresa, codex-luna-low@codex/conta-1, gemma4-low@opencode/local, minimax-m2-medium@opencode/minimax-api] }
+  consultant:   { executors: [claude-opus-high@claude-code/empresa, codex-sol-high@codex/conta-1, minimax-m2-medium@opencode/minimax-api] }   # Ator forte do chat (5.20)
+  author:       { executors: [claude-opus-high@claude-code/empresa, codex-sol-high@codex/conta-1, minimax-m2-medium@opencode/minimax-api] }
+  reviewer:     { executors: [codex-sol-high@codex/conta-1, claude-opus-high@claude-code/empresa, minimax-m2-medium@opencode/minimax-api] }
+  scriptwriter: { executors: [claude-opus-high@claude-code/empresa, codex-sol-high@codex/conta-1, minimax-m2-medium@opencode/minimax-api] }
+  critic:       { executors: [claude-opus-high@claude-code/empresa, codex-sol-high@codex/conta-1, minimax-m2-medium@opencode/minimax-api], when_exhausted: wait }
+  actor:        { executors: [codex-sol-high@codex/conta-1, claude-sonnet-medium@claude-code/empresa, minimax-m2-medium@opencode/minimax-api], when_exhausted: next }
 
 selection:
   cross_check: prefer_other_provider   # prefer_other_provider | require_other_provider | other_model | off
@@ -477,7 +504,7 @@ A tabela das predefinições usa os nomes sem conta, como elas são escritas:
 | Crítico (`wait`) | `claude-opus-high`, `codex-sol-high` | `claude-opus-high`, `codex-sol-high` | `claude-sonnet-high`, `codex-sol-medium` |
 | Atores (`next`) | `codex-sol-high`, `claude-sonnet-medium`, `minimax-m2-medium` | `claude-sonnet-medium`, `codex-sol-medium`, `minimax-m2-medium` | `minimax-m2-medium`, `gemma4-medium`, `claude-sonnet-medium` |
 
-- A `balanced` deixa o Opus só onde decide a qualidade; a `economical` poupa as assinaturas e usa API barata e modelo local. O primeiro item de cada lista de `balanced` e `economical` veio da pergunta ao dono; os seguintes, que dão a troca de provedor, são **[proposta]**.
+- A `balanced` deixa o Opus só onde decide a qualidade; a `economical` poupa as assinaturas e usa API barata e modelo local. O modelo local entra como Ator limitado pelos slots da instância (5.9, decidido em 2026-11-14, v0.23). O primeiro item de cada lista de `balanced` e `economical` veio da pergunta ao dono; os seguintes, que dão a troca de provedor, são **[proposta]**.
 - O Diretor usa esforço `low` nas três: ele só encaminha e chama ferramentas MCP. Pode ser mudado na configuração.
 - A chave individual de um papel (`roles.author.executors`, ...) prevalece sobre a predefinição.
 
@@ -486,6 +513,33 @@ A tabela das predefinições usa os nomes sem conta, como elas são escritas:
 - `other_model`: basta outro modelo, mesmo do mesmo provedor;
 - `off`: só a ordem da lista.
 O pulo entra no evento `executor.selected`, como os outros.
+
+**Provedor de um Executor** (decidido em 2026-11-14, v0.23): na revisão cruzada, o provedor é a **família do modelo**, quem o treinou, e não o cliente nem a conta. O Gemma 4 conta como `google` mesmo servido pelo OpenCode numa instância local; o `minimax-m2` conta como `minimax`; o Haiku e o Sonnet contam como `anthropic`. Assim, um Revisor Gemma 4 local é de outro provedor em relação a um Autor Opus, e um Gemma 4 local e um Gemini na nuvem são do mesmo provedor.
+- o campo `provider` do Executor define o provedor. No Claude Code e no Codex, ele é fixo pelo cliente (`anthropic`, `openai`) e entra sozinho na descoberta automática dos modelos;
+- no OpenCode, o prefixo do modelo é a conta ou o gateway por onde ele é chamado, não quem o fez: `opencode/claude-opus-5-5` é da Anthropic pelo gateway do OpenCode, e um Gemma 4 pode vir de `google/`, de `openrouter/` ou de uma instância local (verificado localmente em 2026-11-14 com o `opencode models`, versão 1.19.5). Por isso o `provider` não é inferido pelo nome: ele vem do cadastro abaixo;
+- sem `provider`, o Executor fica com `unknown`, que a revisão cruzada trata como diferente de todos, e a interface pede ao Produtor que o preencha **[proposta]**;
+- o provedor da conta (coluna `provedor` de `profiles`, seção 7) continua servindo para a cota e o custo; ele pode ser diferente do provedor do modelo (ex.: um perfil OpenCode com chave da OpenRouter que serve um modelo da Anthropic).
+
+**Cadastro dos Executores do OpenCode** (decidido em 2026-11-14, v0.23, a pedido do dono; contrato no `ModelCatalog` do `ClientAdapter`, 5.2): a descoberta automática fica para o Claude Code e o Codex, cujos modelos são bem documentados. Como o OpenCode chama muitos provedores e modelos, locais ou não, o Produtor cadastra os Executores dele num **assistente**, na primeira execução e depois na área de configuração (o mesmo mecanismo de assistente do daemon, acima), e o daemon só valida:
+1. o assistente lê `opencode models --verbose` no diretório do perfil. A saída traz, por modelo, `providerID`, `family`, `api.url`, `cost`, `capabilities` (`toolcall`, `attachment`, `reasoning`) e `variants` (os esforços `low`, `medium`, `high`) (verificado localmente em 2026-11-14, versão 1.19.5);
+2. o Produtor escolhe o modelo, e o assistente pré-preenche: o esforço (entre as variantes), a família do modelo (`provider`, a partir de `family`), se é local (pela `api.url` em `localhost` ou `127.0.0.1`, o que cria o bloco `local` do perfil, 5.9) e o custo (para a tabela `pricing`, 5.6);
+3. o Produtor confirma ou corrige cada campo. Em modelo local configurado à mão no OpenCode, a `family` pode vir vazia ou pouco confiável **[a confirmar na Fase 0]**, e o campo fica para ele;
+4. o daemon valida: o modelo existe na lista, o esforço está entre as variantes e o modelo chama ferramentas (`toolcall`). A capacidade `attachment` alimenta o filtro de anexos (5.20). Um Executor que deixa de passar na validação (modelo retirado, perfil sem login) muda o estado de validade (seção 7) e sai da seleção.
+
+O que foi cadastrado vai para a chave `executors`, editável à mão; o assistente é só a forma guiada de preenchê-la.
+
+**Depois do cadastro** (decidido em 2026-11-14, v0.23): o Executor fica disponível para **qualquer papel**. O catálogo não tem restrição por papel, e ele aparece como opção em todas as listas, na configuração e nas ordens do Produtor (5.17). Entrar na lista de um papel é outra coisa, e não acontece sem o Produtor ver:
+
+```yaml
+executors:
+  on_register: ask   # ask | preset_only | none
+```
+
+- `ask` (padrão): o assistente termina perguntando em quais papéis e em que posição colocar o Executor. Vêm marcados os papéis cuja predefinição atual (`roles.preset`) já cita aquele `<modelo>-<esforço>` (ex.: `gemma4-medium` nos Atores da `economical`), e os outros vêm desmarcados;
+- `preset_only`: entra sem perguntar, só onde a predefinição cita o modelo, na posição que ela dá;
+- `none`: fica só no catálogo, até o Produtor acrescentá-lo a uma lista.
+
+Vale para os Executores do OpenCode e também para os descobertos sozinhos no Claude Code e no Codex depois da primeira execução (um modelo novo, uma conta nova). Na seleção continuam os filtros de capacidade (anexos, 5.20; `toolcall`, na validação). A capacidade mínima de cada papel é a próxima pergunta. O OTheater não roda modelos locais por código próprio: eles passam pelo OpenCode, como os outros, por ACP (P1, decisão do dono no mesmo dia).
 
 Algoritmo, para cada demanda ou etapa:
 1. percorre a lista na ordem. Um Executor é **disponível** quando:
@@ -500,7 +554,22 @@ Algoritmo, para cada demanda ou etapa:
 4. **retry com diversidade:** a nova tentativa de uma demanda que falhou começa pelo Executor seguinte ao da tentativa anterior;
 5. o motivo da escolha vira evento (`executor.selected`, com os Executores pulados e por quê).
 
-**Override por projeto:** um projeto pode restringir perfis (ex.: só o plano da empresa).
+**Configuração dos papéis por cenário** (decidido em 2026-11-14, v0.23; antes só havia o override por projeto). A chave `roles` segue a regra geral da configuração (5.20): valor global, com override em cada cenário (projeto, tarefa ou chat) e em cada tarefa agendada (5.15). O override é **por papel**:
+
+```yaml
+# configuração de um cenário (ou de uma tarefa agendada); tudo é opcional
+roles:
+  preset: economical                     # troca a base de todos os papéis neste cenário
+  author: { executors: [claude-opus-high@claude-code/empresa], when_exhausted: wait }   # substitui só este papel
+  allowed_profiles: [claude-code/empresa, codex/conta-1]   # só restringe contas, como o antigo override por projeto [proposta]
+```
+
+- a lista de um papel dada no cenário **substitui** a global só para aquele papel; os papéis não citados continuam com a global e recebem as mudanças feitas nela depois;
+- `preset` no cenário troca a base de todos os papéis; o daemon expande a predefinição pelas contas existentes, como na primeira execução (passo 2 acima), e as listas dadas por papel no cenário prevalecem sobre ela **[proposta]**;
+- `allowed_profiles` tira da lista final as contas fora dela (ex.: só o plano da empresa num projeto da empresa) e vale depois da expansão **[proposta]**;
+- **precedência:** tarefa agendada > cenário > global. Uma ordem `rule` vigente (5.17) vale por cima da configuração do seu escopo, durante a vigência;
+- as sessões em curso não mudam com uma alteração da configuração, como acontece com as ordens (5.17);
+- a página de configuração do cenário mostra, por papel, se a lista é local ou herdada da global, com um atalho para voltar à herdada **[proposta]**.
 
 **Esforço:** abstrato na configuração (`low | medium | high`). Aplicado pela config option `thought_level`/`model_config` que o adaptador anuncia (5.2), com fallback por adaptador.
 
@@ -583,9 +652,28 @@ O daemon guarda o handle. Alternativa sem Rust: `koffi` (FFI), aceitando a janel
 
 **Fallback de kill:** `execa` 10 com `killDescendants` (no Windows, `taskkill /T /F` enquanto a árvore existe).
 
-**Modelo local:**
-- uma instância compartilhada (llama.cpp `--parallel` ou Ollama) com poucos slots;
-- usada para o Orquestrador e julgamentos curtos, não para Atores em paralelo.
+**Modelo local** (decidido em 2026-11-14, v0.23; antes dizia "não para Atores em paralelo", o que contradizia a predefinição `economical`):
+- uma instância compartilhada por perfil (llama.cpp com `--parallel` ou Ollama), com poucos slots;
+- serve ao Diretor, aos julgamentos curtos e também a Atores e outros papéis, desde que haja slot livre;
+- os slots são a vaga do pool desse perfil (5.7): com todos ocupados, o Executor fica indisponível e vale o `next` ou o `wait` do papel;
+- uma parte dos slots fica reservada ao Diretor, para ele não ficar sem resposta quando Atores locais ocupam a instância;
+- a memória do modelo é da instância, não de cada sessão: o semáforo de RAM conta o processo do cliente (`opencode acp`) por sessão e a instância uma vez só.
+
+```yaml
+profiles:
+  opencode/local:
+    local:
+      server: llama-cpp         # llama-cpp (v1) | ollama (depois) — adaptador de LocalModelServer
+      url: http://127.0.0.1:8080
+      slots: auto               # auto (lê da instância) | <número>
+      reserve_for_director: 1   # 0 | <número> | all (só o Diretor usa)
+      reserve_when: listed      # listed (só se o perfil estiver na lista do Diretor) | always | never
+```
+
+- a instância é vista pela porta `LocalModelServer` (5.18), com um adaptador por servidor: `llama-cpp` na v1 e `ollama` depois. O bloco `local` do perfil ganha a chave `server: llama-cpp` (ou `ollama`), que escolhe o adaptador **[proposta]**;
+- `slots: auto` lê o número de slots pelo adaptador: no llama.cpp, pelo `/props` ou `/slots` do servidor; no Ollama, pela variável `OLLAMA_NUM_PARALLEL` **[a confirmar na Fase 0]**. Sem leitura possível, vale 1 e o assistente de configuração pede o número ao Produtor **[proposta]**;
+- `reserve_for_director: all` volta ao comportamento antigo (só o Diretor e julgamentos curtos);
+- os valores padrão `1` e `listed` são **[proposta]**; a escolha das chaves foi do dono.
 
 **Daemon e UI:** eventos vão direto para o SQLite; a UI virtualiza listas e pagina trajetórias.
 
@@ -635,6 +723,7 @@ O dashboard próprio continua lendo o store.
 - **REST:**
   - cenários (projetos, tarefas, chats), peças, demandas;
   - assinaturas, executores, papéis, plugins, configuração, ordens (globais e por cenário);
+  - assistentes (5.7): iniciar, ler o passo atual, responder, voltar, retomar e confirmar; o estado de cada assistente fica no store **[proposta]**;
   - comandos: pausar, retomar, cancelar Ator, aprovar decisão, responder ao Produtor.
 - **SSE:** `/events?scenario=&since=` segue a tabela de eventos, com reconexão por `Last-Event-ID` (histórico, depois ao vivo).
 - **WebSocket:** chat com o Orquestrador. A ponte vai para a fila única de prompts (5.4), mais as mensagens de sistema do daemon.
@@ -852,7 +941,7 @@ O daemon dispara peças sozinho, no horário: o agendador age como se você tive
 **Tarefa agendada = modelo de peça**, guardado no store (tabela `schedules`, seção 7). Desde a v0.14, o mesmo agendamento também dispara a execução de um cenário do tipo tarefa (5.20). Nesse caso, ele aponta para a tarefa e a versão da definição, em vez de uma necessidade, e os campos abaixo de projeto não se aplicam. O agendamento de um projeto tem:
 - cenário: projeto e branch base;
 - texto da necessidade (ex.: "atualizar dependências e corrigir o que quebrar");
-- overrides opcionais: executores por papel, limites, timeout;
+- overrides opcionais: executores por papel (chave `roles`, com a mesma forma do override por cenário, 5.7), limites, timeout;
 - **política de entrega:** abrir PR por padrão. Merge direto só se o projeto permitir **e** a tarefa pedir explicitamente;
 - **orçamento por execução:** teto de tempo total e, para perfis de API, de custo. Estourou, a peça para e notifica.
 
@@ -863,7 +952,7 @@ O daemon dispara peças sozinho, no horário: o agendador age como se você tive
 | Uma vez | 20/11 às 22h | Some da lista depois de rodar (fica no histórico) |
 | Repetida por calendário | cron `0 7 * * 1-5` com fuso `America/Sao_Paulo` | Dias úteis às 7h; o fuso é sempre explícito |
 | Repetida por intervalo | a cada 6 h | Conta a partir do fim da execução anterior |
-| Logo após o reset da cota | "depois do próximo reset de claude-empresa" | Usa o `resetsAt` das sondas de cota (5.6) para aproveitar a janela cheia |
+| Logo após o reset da cota | "depois do próximo reset de claude-code/empresa" | Usa o `resetsAt` das sondas de cota (5.6) para aproveitar a janela cheia |
 
 Biblioteca: **croner** (TypeScript, cron com fuso horário e sem dependências; licença MIT **[a confirmar]**). O próximo disparo de cada tarefa é recalculado e gravado no SQLite, então sobrevive a reinícios do daemon.
 
@@ -1023,7 +1112,7 @@ RESUMING(native) ──falhou──→ RESUMING(handoff)
 retomadas > limite → DECIDING (ponto de julgamento do Diretor)
 ```
 
-Tudo vira evento (`session.interrupted`, `session.resumed`, com causa, forma e Executor de origem e destino) e aparece no chat como mensagem de sistema. Exemplo: "D2 interrompida: cota de codex-1 esgotada; retomada em sonnet-medium por passagem de bastão".
+Tudo vira evento (`session.interrupted`, `session.resumed`, com causa, forma e Executor de origem e destino) e aparece no chat como mensagem de sistema. Exemplo: "D2 interrompida: cota de codex/conta-1 esgotada; retomada em sonnet-medium por passagem de bastão".
 
 #### Padrões da retomada
 
@@ -1060,7 +1149,7 @@ Conceito trazido do `okit` (ordens permanentes, `kit orders`) e redesenhado aqui
 - "sempre me apresente as dúvidas como múltiplas escolhas, para eu decidir" (global, `instruction`, com `roles` = Diretor, que é quem pergunta ao Produtor por `ask_producer`; exemplo dado pelo dono em 2026-11-13);
 - "fazer push sempre que commitar" (global, `rule` com a chave `git.push_after_commit`, porque quem faz commit e push é o daemon e um texto não mudaria isso; exemplo dado pelo dono em 2026-11-13);
 - "não alterar `infra/` sem perguntar" (local a um projeto);
-- "não usar o perfil claude-empresa para Atores até sexta 18h" (com prazo).
+- "não usar o perfil claude-code/empresa para Atores até sexta 18h" (com prazo).
 
 #### Escopo
 
@@ -1114,7 +1203,7 @@ Revogar encerra a ordem antes do fim da vigência. Regras:
 - **Só o Produtor revoga**, pelos mesmos canais da criação. O Diretor pode **sugerir** uma revogação (ex.: duas ordens em contradição), mas `revoke_directive` só devolve um rascunho que o Produtor confirma.
 - **Motivo obrigatório**, numa linha. No chat, o rascunho já vem com o motivo tirado das palavras do Produtor.
 - **Imediata ou programada:** "revogar agora" vale na confirmação. "Revogar a partir de sexta" não é revogação: é antecipar o fim para sexta (prorrogar), e a ordem termina `expired`.
-- **Em lote:** por escopo ou filtro ("todas as ordens do chat X", "todas as `rule` sobre o perfil claude-empresa"). O rascunho lista cada ordem afetada, e cada uma gera o próprio evento.
+- **Em lote:** por escopo ou filtro ("todas as ordens do chat X", "todas as `rule` sobre o perfil claude-code/empresa"). O rascunho lista cada ordem afetada, e cada uma gera o próprio evento.
 - **É definitiva.** Uma ordem revogada não volta. Para reativar, cria-se uma ordem nova a partir dela; o campo `supersedes` liga as duas, e o histórico mostra a cadeia.
 - **Revogar uma global num só cenário** é suspensão (tipo `suspension`), não revogação.
 
@@ -1187,6 +1276,7 @@ Decidido em 2026-11-13.
 
 - Código de terceiros **nunca** roda no processo do daemon nem na interface (P5).
 - Um adaptador novo escrito por terceiros (ex.: outro cliente de agente) entra no projeto por PR, como pacote oficial, depois de passar na suíte de conformidade da porta.
+- **Dois eixos para clientes e modelos** (decidido em 2026-11-14, v0.23): o **cliente** é quem executa o agente (laço de ferramentas, sessão, login, ACP) e entra pelo `ClientAdapter` + `AgentSession`; o **servidor de modelo local** é onde o modelo roda e entra pelo `LocalModelServer`. Um servidor como o Ollama não é cliente de agente: suportá-lo é escrever um adaptador de `LocalModelServer`, não um `ClientAdapter`, que exigiria um laço de agente próprio. Qualquer cliente que fale com um modelo local usa essa porta. Na v1 é o OpenCode; o Codex (`codex --oss`) e o Claude Code (por um endpoint compatível com a API da Anthropic) podem usar o Ollama também, segundo fontes não verificadas nesta máquina **[a confirmar na Fase 0]**.
 - Não existe "mod" em processo. O que um mod faria (reagir a eventos, interceptar o fluxo, contribuir fluxos e prompts) vira nível opcional do plugin depois da v1, na camada externa (5.14).
 
 #### Portas
@@ -1195,6 +1285,8 @@ Decidido em 2026-11-13.
 |---|---|---|---|
 | `ClientAdapter` | cliente de agente: comando, ambiente, perfil, login (5.2) | `claude-code`, `codex`, `opencode` | `gemini` |
 | `AgentSession` | conversa com o Executor: abrir, enviar prompt, receber o stream, cancelar, carregar (5.2) | ACP (`@agentclientprotocol/sdk`) | modo headless (`claude -p`, `codex exec --json`), que é a saída de emergência |
+| `ModelCatalog` | modelos de um cliente: lista, sugestão de campos e validação dos Executores (5.7); faz parte do `ClientAdapter` | descoberta automática (Claude Code, Codex); assistida pelo `opencode models --verbose` (OpenCode) | clientes novos |
+| `LocalModelServer` | servidor de modelo local: saúde, modelos carregados, número de slots (5.9) | `llama-cpp` | `ollama`, LM Studio, vLLM **[hipótese]** |
 | `QuotaProbe` | sinal de cota de um provedor (5.6) | statusline (Claude), `app-server` (Codex), `token_plan/remains` (MiniMax), erro de limite | provedores novos |
 | `UsageSource` | histórico de consumo (5.6) | ccusage | contabilidade local |
 | `SecretVault` | cofre de segredos (5.6) | `@napi-rs/keyring` | arquivo criptografado com senha mestra; variável de ambiente do serviço |
@@ -1889,8 +1981,8 @@ Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e t
 | Tabela | Conteúdo |
 |---|---|
 | `profiles` | id, cliente, tipo (`token_plan`/`api`), provedor, estado (`active`/`draining`/`removed`), diretório, referência do segredo |
-| `executors` | id, profile_id, modelo, esforço, estado de validade |
-| `roles` | papel, escopo (global/projeto), lista ordenada de executores, regra de esgotamento |
+| `executors` | id, profile_id, modelo, esforço, provedor do modelo (`provider`, 5.7), estado de validade |
+| `roles` | papel, escopo (global, cenário ou tarefa agendada), scenario_id ou schedule_id, lista ordenada de executores, regra de esgotamento; a predefinição e os perfis permitidos por escopo (5.7) |
 | `scenarios` | id, tipo (projeto/tarefa/chat), fluxo padrão (id do registro de fluxos, 5.18), nome, pasta, perfil de projeto e convenções detectadas (JSON, só projeto; 5.20), branch base, override de configuração, cenário de origem (promoção), estado do Diretor (ativo/adormecido), estado (ativo/arquivado) |
 | `scenario_repos` | repositórios de um projeto (5.20): caminho, remoto, branch principal. Um por projeto na v1 |
 | `task_definitions` | versão da definição de uma tarefa (5.20): objetivo, entradas, passos (JSON validado pelo registro de tipos de passo), artefato final, entrega, gatilhos, orçamento, estado (`draft`/`rehearsed`/`active`/`superseded`), peça `task.define` que a gerou, resultado do ensaio |
@@ -2093,6 +2185,7 @@ Termos: confirmação com a Anthropic sobre o uso de assinatura num orquestrador
 - **Retomada nativa** (`session/load`) para queda do processo e reinício do daemon, com recuo exponencial para erros transitórios.
 - `session/update` → eventos.
 - Testes de contrato dos adaptadores, dentro das suítes de conformidade de `ClientAdapter` e `AgentSession` (5.18). Cada cliente num pacote `@otheater/adapter-client-*`.
+- `ModelCatalog` de cada cliente (descoberta automática no Claude Code e no Codex, assistida no OpenCode) e o adaptador `llama-cpp` da porta `LocalModelServer`, cada um com a sua suíte de conformidade (5.18, v0.23).
 
 **Critério de aceite:** N Executores reais e simulados em worktrees diferentes, stream como eventos, cancelamento por timeout sem processo órfão e com WIP commitado.
 **Estimativa:** 2 semanas (era 1,5 na v0.9: entram checkpoints e retomada nativa).
@@ -2207,6 +2300,7 @@ Também faz parte do aceite:
   - **Executores:** modelo e esforço vindos das config options;
   - **Papéis:** reordenação com Shift+↑↓ e regra próximo/esperar;
   - **Limites.**
+- **Assistente de configuração** (5.7): desenha os passos que o daemon manda, com voltar e retomar; a primeira execução abre nele.
 - **Plugins:** ativação e permissões por papel.
 
 **Idioma** (5.22): todas as telas em `en` e `pt-BR`, pelo catálogo, com troca por `ui.locale`.
@@ -2285,7 +2379,8 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
   - alternativa para desenvolvedores: `npm i -g`.
 - Daemon como serviço de logon; o comando da TUI sobe o daemon se ele não estiver no ar.
 - Gatilhos do sistema operacional registrados para rodar só com o usuário conectado (5.21).
-- Atualização automática e primeira execução guiada dentro da TUI (criar a primeira assinatura, escolher os papéis padrão).
+- `ot init` mínimo: instala o serviço, sobe o daemon e abre a TUI no assistente de configuração, sem perguntas no terminal (5.7).
+- Atualização automática e primeira execução guiada dentro da TUI, pelo assistente do daemon (criar a primeira assinatura, escolher os papéis padrão).
 
 **Critério de aceite:**
 - instalar e desinstalar numa máquina limpa;
@@ -2456,10 +2551,11 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 19. Notificações do app Android (5.13): push pelo Firebase Cloud Messaging (exige conta Google e alguém que envie o push, o que pede um serviço fora da máquina); UnifiedPush ou ntfy (sem Google, com servidor próprio ou público); ou só com o app aberto ou num serviço em primeiro plano ligado ao SSE, que gasta bateria. Decide-se na Fase 14.
 20. Distribuição do app Android: Google Play, APK direto (com atualização pelo próprio app) ou F-Droid. Liga-se ao item 2 (uso pessoal ou produto).
 21. *(Decidida em 2026-11-14: teto de gasto em API, ver "Decididas" e a seção 5.6.)*
-22. *(Decidida em 2026-11-14: sufixo `@<perfil>` em todos os Executores, ver "Decididas" e a seção 5.7.)*
+22. *(Decidida em 2026-11-14: sufixo `@<perfil>` em todos os Executores; revista no mesmo dia na v0.23 para `@<cliente>/<perfil>`; ver "Decididas" e a seção 5.7.)*
 
 Decididas:
-- Executores padrão de cada papel (2026-11-14, seção 5.7; eram os itens 8 e 22): nome sempre `<modelo>-<esforço>@<perfil>`, com o prefixo `claude-` nos modelos do Claude e o sufixo da conta em todos, e o cliente no campo; todos os papéis com lista de fallback ajustável; a primeira execução (`ot init`) detecta clientes, logins e chaves, aplica `roles.preset: quality` (opções `balanced` e `economical`), tira o que não existe, acrescenta ao fim o Executor por API que houver e pede confirmação; Diretor com `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; Roteirista com a lista do Autor; revisão cruzada com `selection.cross_check: prefer_other_provider`;
+- modelo local e provedor na revisão cruzada (2026-11-14, seções 5.7 e 5.9; resolve contradições, sem item numerado): o modelo local pode ser Ator e servir aos outros papéis, limitado pelos slots da instância, com `local.reserve_for_director: 1` e `local.reserve_when: listed` **[proposta]** nos padrões; na revisão cruzada, o provedor é a família do modelo (campo `provider` do Executor); os Executores do OpenCode são cadastrados por um assistente que sugere os campos a partir do `opencode models --verbose` e o daemon só valida, sem código próprio para modelos locais; depois do cadastro, o Executor fica disponível para qualquer papel e entra nas listas pelo que o Produtor marcar (`executors.on_register: ask`, com `preset_only` e `none`); dois eixos na abstração: `ClientAdapter` (com `ModelCatalog`) para o cliente e a porta `LocalModelServer` para o servidor local (llama.cpp na v1, Ollama depois); nome do Executor `<modelo>-<esforço>@<cliente>/<perfil>`, com o perfil único dentro do cliente (revê o item 22); com assinatura, cada família só pelo seu cliente oficial, e com API ou gateway, qualquer cliente que suporte o modelo (`executors.cross_client: api_only`, com `off` e `any`); configuração dos papéis com valor global e override por papel em cada cenário (projeto, tarefa, chat) e em cada tarefa agendada, com `roles.preset` e `roles.allowed_profiles` também por escopo, e precedência tarefa agendada > cenário > global; `ot init` mínimo (instala o serviço, sobe o daemon e abre a TUI no assistente, sem perguntas no terminal) e assistente de configuração com a lógica no daemon, passos salvos, retomáveis e validados, gravados só na confirmação final; na v1 o assistente é desenhado pela TUI, e a web o mostra depois pela mesma API;
+- Executores padrão de cada papel (2026-11-14, seção 5.7; eram os itens 8 e 22): nome sempre `<modelo>-<esforço>@<perfil>`, com o prefixo `claude-` nos modelos do Claude e o sufixo da conta em todos, e o cliente no campo (revisto na v0.23: o cliente entrou no nome, `<modelo>-<esforço>@<cliente>/<perfil>`); todos os papéis com lista de fallback ajustável; a primeira execução (`ot init`) detecta clientes, logins e chaves, aplica `roles.preset: quality` (opções `balanced` e `economical`), tira o que não existe, acrescenta ao fim o Executor por API que houver e pede confirmação; Diretor com `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; Roteirista com a lista do Autor; revisão cruzada com `selection.cross_check: prefer_other_provider`;
 - custo e teto de gasto em API (2026-11-14, seção 5.6; eram os itens 10 e 21): assinatura mostra a cota e o equivalente em API, e conta de API mostra o custo real (`usage.subscription_display: quota_and_equivalent`); o valor vem do cliente, senão da tabela de preços (`usage.cost_source: client_then_pricing`); teto por dia e por mês no perfil de API (`budget`), sugerido pelo `ot init` em US$ 20 e US$ 200 e confirmado pelo Produtor; aviso em 80%; ao estourar, `on_exceeded: skip` para sessões novas e `in_flight: handoff` para a sessão em curso; despertar agendado no store retoma o trabalho e as tarefas adiadas quando a cota ou o teto voltam;
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause, 0BSD e MPL-2.0; GPL, AGPL e LGPL proibidas (2026-11-13; MPL-2.0 aceita em 2026-11-14, seção 6.0);
@@ -2587,6 +2683,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | App Android (v0.20) | Interfaces só no computador (TUI, web e desktop opcionais); acesso remoto em aberto (item 9) | App Android para celular e tablet na Fase 14, com Capacitor sobre a web; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho (`api.remote`); a web deixa de ser opcional; notificações e distribuição em aberto (itens 19 e 20); mockup `mockup/mobile.html`, com os comandos pelo celular como proposta | Decisão do dono |
 | Executores padrão (v0.21) | Exemplo de lista por papel, sem Roteirista, com nomes sem regra (`haiku`, `codex-high`, `minimax`); padrões da primeira execução em aberto (item 8) | Nome `<modelo>-<esforço>@<perfil>`, com prefixo `claude-` e o sufixo da conta em todos; todos os papéis com lista de fallback; `ot init` detecta e aplica `roles.preset` (`quality` padrão, `balanced`, `economical`), acrescenta o Executor por API; Diretor `claude-haiku-low`, `codex-luna-low`, `gemma4-low`; `selection.cross_check: prefer_other_provider`; teto de gasto em API em aberto (item 21) | Decisão do dono |
 | Custo e teto de gasto (v0.22) | Custo em moeda e teto de gasto em API em aberto (itens 10 e 21); só o orçamento por execução das tarefas agendadas | Assinatura com cota e equivalente em API, API com custo real, valor do cliente ou da tabela `pricing`; `budget` por dia e mês no perfil de API, aviso em 80%, `on_exceeded: skip`, `in_flight: handoff`; despertares no store (`wakeups`) retomam o trabalho quando a cota ou o teto voltam | Decisão do dono |
+| Modelo local e provedor (v0.23) | §5.9 restringia o modelo local ao Orquestrador e a julgamentos curtos, mas a predefinição `economical` o punha entre os Atores; o provedor de um modelo local na revisão cruzada não estava definido; o nome `@<perfil>` não mostrava o cliente, e o OpenCode pode chamar o mesmo modelo do Claude por API; a §5.20 dava override da configuração a todo cenário, mas a §5.7 e a tabela `roles` só falavam de projeto; o `ot init` concentrava a configuração inicial num script, propenso a falhas | Modelo local como Ator limitado pelos slots da instância, com reserva para o Diretor (`local.slots`, `local.reserve_for_director`, `local.reserve_when`); provedor = família do modelo, campo `provider` do Executor; assistente de cadastro para os Executores do OpenCode, com validação pelo daemon e entrada nas listas dos papéis por `executors.on_register: ask`; `ModelCatalog` no `ClientAdapter` e porta `LocalModelServer` (llama.cpp na v1, Ollama depois); nome `<modelo>-<esforço>@<cliente>/<perfil>` e `executors.cross_client: api_only`; configuração dos papéis global com override por papel em cada cenário e tarefa agendada; `ot init` mínimo e assistente de configuração no daemon, desenhado pela TUI na v1 | Decisões do dono antes de abrir a pergunta sobre modelos locais por papel |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

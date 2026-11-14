@@ -50,7 +50,7 @@ const CEN = [
   ['✓', 'ok', 'migracao-db', '#9 ok', 'M'],
 ];
 // [nome, rótulo, % da janela de 5 h, cor, % da janela de 7 dias (null = sem cota semanal), reset de 5 h, reset de 7 dias]
-const SUBS = [['claude-empresa', '5h 62%', 62, 'ok', 31, '11:30', 'ter 09:00'], ['claude-pessoal', '5h 91% !', 91, 'warn', 58, '10:05', 'seg 14:20'], ['codex-1', '5h 34%', 34, 'ok', 22, '12:10', 'qui 21:00'], ['minimax-api', 'US$ 3,20', 16, 'acc', null], ['gemma4-local', '1/2 slots', 50, 'acc', null]];
+const SUBS = [['cc/empresa', '5h 62%', 62, 'ok', 31, '11:30', 'ter 09:00'], ['cc/pessoal', '5h 91% !', 91, 'warn', 58, '10:05', 'seg 14:20'], ['cx/conta-1', '5h 34%', 34, 'ok', 22, '12:10', 'qui 21:00'], ['oc/minimax-api', 'US$ 3,20', 16, 'acc', null], ['oc/local', '1/2 slots', 50, 'acc', null]];
 // barra fina da semana: traço cheio na cor da assinatura (esmaecida) e trilho escuro
 function wbar(x, y, w, p, k) { const f = Math.round(w * p / 100); put(x, y, '━'.repeat(f), k + ' wk'); put(x + f, y, '─'.repeat(w - f), 'b'); }
 
@@ -102,12 +102,12 @@ const MSGS = [
   ['sys', '09:19', 'autor', 'Opus · alto entregou o plano (7 passos)', 'ok'],
   ['sys', '09:23', 'revisor', 'Codex · alto aprovou na 1ª tentativa', 'ok'],
   ['sys', '09:27', 'roteiro', '5 demandas · D2 e D3 em paralelo', 'ok'],
-  ['sys', '09:41', 'ator', 'D1 concluída por codex-sol-high@codex-1', 'sys'],
-  ['sys', '09:42', 'seleção', 'D3: codex-sol-high@codex-1 sem vaga → claude-sonnet-medium@claude-empresa', 'warn'],
+  ['sys', '09:41', 'ator', 'D1 concluída por codex-sol-high@codex/conta-1', 'sys'],
+  ['sys', '09:42', 'seleção', 'D3: codex-sol-high@codex/conta-1 sem vaga → claude-sonnet-medium@claude-code/empresa', 'warn'],
   ['orq', 'diretor', '09:42', 'D1 pronta. D2 (fluxo OAuth) e D3 (middleware de sessão) estão rodando em worktrees separadas. D4 (testes e2e) começa quando as duas terminarem.'],
 ];
 function chat(x, w) {
-  box(x, 1, w, 40, 'Chat · Orquestrador (claude-haiku-low@claude-empresa)', true);
+  box(x, 1, w, 40, 'Chat · Orquestrador (claude-haiku-low@claude-code/empresa)', true);
   const ix = x + 2, iw = w - 4;
   put(ix, 2, pad('Peça #14 · Login OAuth (Google e GitHub) na API', iw), 'bold');
   if (iw >= 62) seg(ix, 3, [['● Execução', 'acc'], [' · Crítico 0/3 · Plano 1/3 · 38 min · ', 'dim'], ['! 1 decisão', 'warn']]);
@@ -185,13 +185,13 @@ function tabGeral(x, y, w) {
   seg(x + 2, y++, [['▶ Execução 1/5', 'acc'], ['  ○ Integração  ○ Crítico  ○ PR', 'dim']]);
   y++;
   y = sec(x, y, w, 'Demandas (DAG)', true, 'sem conflito');
-  const dem = [['✓', 'ok', 'D1 Usuário e migração', 'codex-sol-high@codex-1'], ['▶', 'acc', 'D2 Fluxo OAuth · 18/30m', 'codex-sol-high@codex-1 !'], ['▶', 'acc', 'D3 Middleware · 7/20m', 'claude-sonnet-medium@claude-empresa'], ['○', 'dim', 'D4 Testes e2e ← D2, D3', ''], ['○', 'dim', 'D5 Documentação · fila', '']];
+  const dem = [['✓', 'ok', 'D1 Usuário e migração', 'codex-sol-high@codex/conta-1'], ['▶', 'acc', 'D2 Fluxo OAuth · 18/30m', 'codex-sol-high@codex/conta-1 !'], ['▶', 'acc', 'D3 Middleware · 7/20m', 'claude-sonnet-medium@claude-code/empresa'], ['○', 'dim', 'D4 Testes e2e ← D2, D3', ''], ['○', 'dim', 'D5 Documentação · fila', '']];
   for (const [m, k, n, e] of dem) seg(x + 2, y++, [[m + ' ', k], [pad(n, w - 17), k === 'dim' ? 'dim' : ''], [rpad(e, 13), e.includes('!') ? 'warn' : 'dim']]);
   y++;
   y = sec(x, y, w, 'Atores ativos · 2/4', true, 'RAM 6,1/16 GB');
-  seg(x + 2, y, [['D2 ', 'bold'], [pad('codex-1', 15), 'dim']]); bar(x + 20, y, w - 29, 60, 'acc'); put(x + w - 7, y++, '18/30m', 'dim');
+  seg(x + 2, y, [['D2 ', 'bold'], [pad('cx/conta-1', 15), 'dim']]); bar(x + 20, y, w - 29, 60, 'acc'); put(x + w - 7, y++, '18/30m', 'dim');
   seg(x + 2, y++, [['   peca/14/D2/1 · ', 'dim'], ['aguarda decisão', 'warn']]);
-  seg(x + 2, y, [['D3 ', 'bold'], [pad('claude-empresa', 15), 'dim']]); bar(x + 20, y, w - 29, 35, 'acc'); put(x + w - 7, y++, ' 7/20m', 'dim');
+  seg(x + 2, y, [['D3 ', 'bold'], [pad('cc/empresa', 15), 'dim']]); bar(x + 20, y, w - 29, 35, 'acc'); put(x + w - 7, y++, ' 7/20m', 'dim');
   seg(x + 2, y++, [['   peca/14/D3/1 · ', 'dim'], ['editando session.ts', 'acc']]);
   y++;
   y = sec(x, y, w, 'Eventos', false, '6 novos');
@@ -209,7 +209,7 @@ function tabGeral(x, y, w) {
 
 function tabTraj(x, y, w) {
   const lw = 26;
-  const at = [['D2 · tentativa 1', 'codex-sol-high@codex-1 · 46 passos', true], ['D3 · tentativa 1', 'claude-sonnet-medium@claude-empresa · 21'], ['D1 · tentativa 1', 'concluída'], ['Roteirista', 'concluída'], ['Revisor', 'concluída'], ['Autor', 'concluída']];
+  const at = [['D2 · tentativa 1', 'codex-sol-high@codex/conta-1 · 46 passos', true], ['D3 · tentativa 1', 'claude-sonnet-medium@claude-code/empresa · 21'], ['D1 · tentativa 1', 'concluída'], ['Roteirista', 'concluída'], ['Revisor', 'concluída'], ['Autor', 'concluída']];
   at.forEach(([a, b, sel], i) => {
     const yy = y + i * 3;
     if (sel) { fill(x, yy, lw - 1, 'sel'); fill(x, yy + 1, lw - 1, 'sel'); }
@@ -244,12 +244,12 @@ function tabConfig(x, y, w) {
   if (X + 16 <= x + w) put(x + w - 14, y, 'escopo: global', 'dim');
   y += 2;
   const R = [
-    ['Diretor (Orquestrador)', [['claude-haiku-low@claude-empresa', 'ok'], ['codex-luna-low@codex-1', 'ok'], ['gemma4-low@gemma4-local', 'ok']], 'próximo'],
-    ['Autor', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'próximo'],
-    ['Revisor', [['codex-sol-high@codex-1', 'ok'], ['claude-opus-high@claude-empresa', 'ok']], 'próximo'],
-    ['Roteirista', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'próximo', true],
-    ['Ator', [['codex-sol-high@codex-1', 'pool cheio'], ['claude-sonnet-medium@claude-empresa', 'ok'], ['minimax-m2-medium@minimax-api', 'ok'], ['codex-luna-medium@codex-pessoal', 'inválido']], 'próximo'],
-    ['Crítico', [['claude-opus-high@claude-empresa', 'ok'], ['codex-sol-high@codex-1', 'ok']], 'esperar'],
+    ['Diretor (Orquestrador)', [['claude-haiku-low@claude-code/empresa', 'ok'], ['codex-luna-low@codex/conta-1', 'ok'], ['gemma4-low@opencode/local', 'ok']], 'próximo'],
+    ['Autor', [['claude-opus-high@claude-code/empresa', 'ok'], ['codex-sol-high@codex/conta-1', 'ok']], 'próximo'],
+    ['Revisor', [['codex-sol-high@codex/conta-1', 'ok'], ['claude-opus-high@claude-code/empresa', 'ok']], 'próximo'],
+    ['Roteirista', [['claude-opus-high@claude-code/empresa', 'ok'], ['codex-sol-high@codex/conta-1', 'ok']], 'próximo', true],
+    ['Ator', [['codex-sol-high@codex/conta-1', 'pool cheio'], ['claude-sonnet-medium@claude-code/empresa', 'ok'], ['minimax-m2-medium@opencode/minimax-api', 'ok'], ['codex-luna-medium@codex-pessoal', 'inválido']], 'próximo'],
+    ['Crítico', [['claude-opus-high@claude-code/empresa', 'ok'], ['codex-sol-high@codex/conta-1', 'ok']], 'esperar'],
   ];
   const cw = w - 2;
   const ys = [y];

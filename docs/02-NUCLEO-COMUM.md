@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.22, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.23, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -57,7 +57,7 @@ O daemon é **um por usuário/máquina** (lock de arquivo sobre o store). Ele so
 - Uma interface fina, `ClientAdapter`, cobre o que o ACP não cobre: o comando do adaptador, o ambiente do perfil, `prepareProfile` (permissões, statusline, OTel), login, logout, a sonda de cota e o `processModel`.
 - Pools por `(client, profile)`. No Claude Code, cada sessão sobe um processo `claude`, então a admissão conta sessões.
 - Saída de emergência pelo modo headless: `claude -p --output-format stream-json`, `codex exec --json`.
-- **Seleção (§5.7):** cada papel tem uma lista ordenada de Executores, que é a cadeia de fallback. O nome é sempre `<modelo>-<esforço>@<perfil>` (`claude-opus-high@claude-empresa`, `codex-sol-high@codex-1`). A primeira execução (`ot init`) detecta clientes, logins e chaves de API e aplica `roles.preset` (`quality` por padrão, `balanced`, `economical`). O Revisor e o Crítico preferem outro provedor (`selection.cross_check`).
+- **Seleção (§5.7):** cada papel tem uma lista ordenada de Executores, que é a cadeia de fallback. O nome é sempre `<modelo>-<esforço>@<cliente>/<perfil>` (`claude-opus-high@claude-code/empresa`, `claude-opus-high@opencode/anthropic-api`, `codex-sol-high@codex/conta-1`). Com assinatura, cada família só roda pelo seu cliente oficial; com chave de API ou gateway, qualquer cliente que suporte o modelo (`executors.cross_client: api_only`, v0.23). A configuração dos papéis é global, com override por papel em cada cenário (projeto, tarefa, chat) e em cada tarefa agendada; vale a mais específica (v0.23). A primeira execução é um `ot init` mínimo, que instala o serviço, sobe o daemon e abre a TUI num assistente de configuração com a lógica no daemon (passos salvos, retomáveis e validados; v0.23). O assistente detecta clientes, logins e chaves de API e aplica `roles.preset` (`quality` por padrão, `balanced`, `economical`). O Revisor e o Crítico preferem outro provedor (`selection.cross_check`).
 
 Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CLI-REFERENCIA.md).
 
@@ -121,8 +121,12 @@ NEED → PLANNING → REVIEWING_PLAN → SCRIPTING → EXECUTING
 - Chaves de API ficam no cofre do sistema. No Linux sem Secret Service, há fallback criptografado.
 - Cada perfil tem um estado: `ok | near_limit | exhausted(untilReset, cause) | unknown`, com a causa `quota` ou `budget`. O ccusage guarda o histórico de consumo.
 - **Custo (§5.6):** assinatura mostra a cota e o equivalente em API; conta de API mostra o custo real. O valor vem do cliente, senão da tabela de preços `pricing`.
-- **Teto de gasto em API (§5.6):** `budget` por dia e por mês no perfil (o `ot init` sugere US$ 20 e US$ 200), aviso em 80%, `on_exceeded: skip` e `in_flight: handoff`. Despertares no store retomam o trabalho e as tarefas adiadas quando a cota ou o teto voltam.
+- **Teto de gasto em API (§5.6):** `budget` por dia e por mês no perfil (o assistente de configuração sugere US$ 20 e US$ 200), aviso em 80%, `on_exceeded: skip` e `in_flight: handoff`. Despertares no store retomam o trabalho e as tarefas adiadas quando a cota ou o teto voltam.
 - Cada papel tem uma lista ordenada de Executores e uma regra para quando todos estão esgotados (`next` ou `wait`). A nova tentativa de uma demanda começa por um Executor diferente do anterior, e o motivo de cada escolha vira evento.
+- **Modelo local (§5.9):** uma instância por perfil (llama.cpp ou Ollama) serve ao Diretor e também a Atores, até o número de slots; parte dos slots fica reservada ao Diretor (`local.reserve_for_director`).
+- **Revisão cruzada (§5.7):** o Revisor e o Crítico preferem outro provedor, e o provedor é a família do modelo (o Gemma 4 local conta como `google`), não o cliente.
+- **Executores do OpenCode (§5.7):** o Claude Code e o Codex têm descoberta automática dos modelos. Os do OpenCode são cadastrados num assistente que sugere os campos a partir do `opencode models --verbose`, e o daemon só valida. Depois do cadastro, o Executor vale para qualquer papel; o assistente pergunta em quais listas ele entra (`executors.on_register: ask`).
+- **Dois eixos (§5.18):** clientes de agente entram pelo `ClientAdapter` (com o catálogo `ModelCatalog`); servidores de modelo local, pela porta `LocalModelServer` (llama.cpp na v1, Ollama depois).
 
 ## Permissões, recursos e contexto
 

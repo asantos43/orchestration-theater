@@ -300,7 +300,7 @@ button{font:inherit;color:inherit;cursor:pointer}
           <div class="m orq">Abri a <b>peça #14</b> no loja-api e mandei a necessidade para o Autor.<div class="meta">09:12</div></div>
           <div class="sys ok"><span class="k">revisor</span>plano aprovado na 1ª tentativa<time>09:23</time></div>
           <div class="sys ok"><span class="k">roteiro</span>5 demandas · D2 e D3 em paralelo<time>09:27</time></div>
-          <div class="sys warn"><span class="k">seleção</span>D3: codex-sol-high@codex-1 sem vaga → claude-sonnet-medium@claude-empresa<time>09:42</time></div>
+          <div class="sys warn"><span class="k">seleção</span>D3: codex-sol-high@codex/conta-1 sem vaga → claude-sonnet-medium@claude-code/empresa<time>09:42</time></div>
           <div class="m orq">D1 pronta. D2 (fluxo OAuth) e D3 (middleware) rodando. D4 começa quando as duas terminarem.<div class="meta">09:42</div></div>
           <div class="decision" data-dec="d2">
             <h4>⚑ Decisão · D2</h4>
@@ -356,18 +356,18 @@ button{font:inherit;color:inherit;cursor:pointer}
       <div class="view" data-view="cota">
         <div class="vh"><h2>Cotas</h2><span class="r faint" style="font-size:12px">há 40 s</span></div>
         <div class="scroll">
-          <div class="card"><div class="h">claude-empresa<span class="badge ok">ok</span></div>
+          <div class="card"><div class="h">claude-code/empresa<span class="badge ok">ok</span></div>
             <div class="qw"><span>5 h · 62%</span><span>reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div>
             <div class="qw"><span>7 dias · 31%</span><span>reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
-          <div class="card"><div class="h">claude-pessoal<span class="badge warn">perto</span></div>
+          <div class="card"><div class="h">claude-code/pessoal<span class="badge warn">perto</span></div>
             <div class="qw"><span>5 h · 91%</span><span>reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div>
             <div class="qw"><span>7 dias · 58%</span><span>reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
-          <div class="card"><div class="h">codex-1<span class="badge ok">ok</span></div>
+          <div class="card"><div class="h">codex/conta-1<span class="badge ok">ok</span></div>
             <div class="qw"><span>Primária · 34%</span><span>reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div>
             <div class="qw"><span>Semanal · 22%</span><span>reset qui 21:00</span></div><div class="bar"><i style="width:22%"></i></div></div>
-          <div class="card"><div class="h">minimax-api<span class="badge info">API</span></div>
+          <div class="card"><div class="h">opencode/minimax-api<span class="badge info">API</span></div>
             <div class="qw"><span>Hoje · US$ 3,20</span><span>teto US$ 20</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
-          <div class="card"><div class="h">gemma4-local<span class="badge info">local</span></div>
+          <div class="card"><div class="h">opencode/local<span class="badge info">local</span></div>
             <div class="qw"><span>1 de 2 vagas</span><span>RAM 6,1/16 GB</span></div><div class="bar"><i class="a" style="width:50%"></i></div></div>
         </div>
       </div>
@@ -388,7 +388,7 @@ button{font:inherit;color:inherit;cursor:pointer}
           <div data-segp="ev" style="display:none">
             <div class="ev"><time>09:44</time><div><code>ferramenta.chamada</code> D2 · run_tests(auth) → 11 ok, 1 falha</div></div>
             <div class="ev"><time>09:43</time><div><code>decisao.pendente</code> D2 · credenciais do Google</div></div>
-            <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → claude-sonnet-medium@claude-empresa</div></div>
+            <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → claude-sonnet-medium@claude-code/empresa</div></div>
             <div class="ev"><time>09:41</time><div><code>tentativa.concluida</code> D1 · testes ok</div></div>
             <div class="ev"><time>07:31</time><div><code>schedule.concluido</code> daily-headlines · e-mail enviado</div></div>
             <div class="ro">Trajetórias completas: só leitura resumida aqui; detalhe no computador</div>
@@ -396,7 +396,7 @@ button{font:inherit;color:inherit;cursor:pointer}
           <div data-segp="ag" style="display:none">
             <div class="li"><span class="ic t">⏱</span><div class="nm"><div>daily-headlines</div><small>amanhã 07:30 · todos os dias</small></div><button class="btn" data-toast="Agenda pausada (exemplo)">Pausar</button></div>
             <div class="li"><span class="ic t">⏱</span><div class="nm"><div>daily-consolidation</div><small>hoje 18:00 · dias úteis</small></div><button class="btn" data-toast="Rodando agora (exemplo)">Rodar</button></div>
-            <div class="li"><span class="ic p">⏱</span><div class="nm"><div>loja-api · atualizar deps</div><small>após o reset de claude-empresa (11:30)</small></div><button class="btn" data-toast="Agenda pausada (exemplo)">Pausar</button></div>
+            <div class="li"><span class="ic p">⏱</span><div class="nm"><div>loja-api · atualizar deps</div><small>após o reset de claude-code/empresa (11:30)</small></div><button class="btn" data-toast="Agenda pausada (exemplo)">Pausar</button></div>
           </div>
         </div>
       </div>
@@ -413,7 +413,7 @@ button{font:inherit;color:inherit;cursor:pointer}
             <div class="sub" style="margin:6px 0 8px">Aparecem no / e nos comandos rápidos.</div>
             <div class="li"><div class="nm"><div>Roda os testes e me avisa</div></div><span class="faint">⋮</span></div>
             <div class="li"><div class="nm"><div>Abre PR quando o Crítico aprovar</div></div><span class="faint">⋮</span></div>
-            <div class="li"><div class="nm"><div>Para tudo que estiver gastando claude-pessoal</div></div><span class="faint">⋮</span></div></div>
+            <div class="li"><div class="nm"><div>Para tudo que estiver gastando claude-code/pessoal</div></div><span class="faint">⋮</span></div></div>
           <div class="card"><div class="h">Preferências do app</div>
             <div class="li"><div class="nm"><div>Bloquear com biometria</div><small>ao abrir e antes de cancelar</small></div><span class="badge ok">ligado</span></div>
             <div class="li"><div class="nm"><div>Notificações</div><small>decisões, falhas, fim de peça</small></div><span class="badge">item 19</span></div>
@@ -504,10 +504,10 @@ button{font:inherit;color:inherit;cursor:pointer}
           <div class="it"><span class="ic c">C</span><div class="nm"><div>pesquisa-acp</div><small>Chat · ocioso</small></div><span class="dot"></span></div>
           <div class="it"><span class="ic p">P</span><div class="nm"><div>migracao-db</div><small>Peça #9 · PR aberto</small></div><span class="dot ok"></span></div>
           <div class="sh">Assinaturas · 5 h / 7 d</div>
-          <div class="sub2"><div class="rw"><span>claude-empresa</span><span>62% · 31%</span></div><div class="bar"><i style="width:62%"></i></div><div class="bar wk"><i style="width:31%"></i></div></div>
-          <div class="sub2"><div class="rw"><span>claude-pessoal</span><span>91% · 58%</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="bar wk"><i style="width:58%"></i></div></div>
-          <div class="sub2"><div class="rw"><span>codex-1</span><span>34% · 22%</span></div><div class="bar"><i style="width:34%"></i></div><div class="bar wk"><i style="width:22%"></i></div></div>
-          <div class="sub2"><div class="rw"><span>minimax-api</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>claude-code/empresa</span><span>62% · 31%</span></div><div class="bar"><i style="width:62%"></i></div><div class="bar wk"><i style="width:31%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>claude-code/pessoal</span><span>91% · 58%</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="bar wk"><i style="width:58%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>codex/conta-1</span><span>34% · 22%</span></div><div class="bar"><i style="width:34%"></i></div><div class="bar wk"><i style="width:22%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>opencode/minimax-api</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
         </div>
         <div class="foot"><span class="dot ok"></span>Daemon pela VPN · 100.84.12.7</div>
       </aside>
@@ -529,7 +529,7 @@ button{font:inherit;color:inherit;cursor:pointer}
           <div class="sys ok"><span class="k">autor</span>Opus 5.5 · plano com 7 passos<time>09:19</time></div>
           <div class="sys ok"><span class="k">revisor</span>Codex · aprovado na 1ª tentativa<time>09:23</time></div>
           <div class="sys ok"><span class="k">roteiro</span>5 demandas · D2 e D3 em paralelo<time>09:27</time></div>
-          <div class="sys warn"><span class="k">seleção</span>D3: codex-sol-high@codex-1 sem vaga → claude-sonnet-medium@claude-empresa<time>09:42</time></div>
+          <div class="sys warn"><span class="k">seleção</span>D3: codex-sol-high@codex/conta-1 sem vaga → claude-sonnet-medium@claude-code/empresa<time>09:42</time></div>
           <div class="m orq">D1 pronta. D2 e D3 rodando em worktrees separadas. D4 começa quando as duas terminarem.<div class="meta">09:42</div></div>
           <div class="decision" data-dec="d2">
             <h4>⚑ Decisão do Produtor · D2</h4>
@@ -590,14 +590,14 @@ button{font:inherit;color:inherit;cursor:pointer}
               <div class="card"><div class="h">Eventos<span class="badge run">ao vivo</span></div>
                 <div class="ev"><time>09:44</time><div><code>ferramenta.chamada</code> D2 · run_tests → 1 falha</div></div>
                 <div class="ev"><time>09:43</time><div><code>decisao.pendente</code> D2 · credenciais</div></div>
-                <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → claude-sonnet-medium@claude-empresa</div></div>
+                <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → claude-sonnet-medium@claude-code/empresa</div></div>
                 <div class="ev"><time>09:41</time><div><code>tentativa.concluida</code> D1 · testes ok</div></div>
               </div>
             </div>
             <div class="card"><div class="h">Cota por assinatura<span class="badge">há 40 s</span></div>
               <div class="g2 q2" style="margin-top:4px">
-                <div><div class="qw"><span>claude-empresa · 5 h 62%</span><span>reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="qw"><span>7 dias 31%</span><span>reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
-                <div><div class="qw"><span>claude-pessoal · 5 h 91%</span><span>reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="qw"><span>7 dias 58%</span><span>reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
+                <div><div class="qw"><span>claude-code/empresa · 5 h 62%</span><span>reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="qw"><span>7 dias 31%</span><span>reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
+                <div><div class="qw"><span>claude-code/pessoal · 5 h 91%</span><span>reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="qw"><span>7 dias 58%</span><span>reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
               </div></div>
           </div>
           <div class="wpane" data-wp="traj">
@@ -700,7 +700,7 @@ const CMDS={
   pausar:['/pausar','Pausar a peça','Pausei a peça #14. D2 e D3 param no próximo checkpoint; nada se perde. Mande “retomar” quando quiser.',false],
   retomar:['/retomar','Retomar','Retomei a peça #14 do último checkpoint.',false],
   resumo:['/resumo','Resumo do dia','Hoje: <b>daily-headlines</b> enviado às 07:31; <b>loja-api</b> em execução; <b>app-mobile</b> com o Crítico reprovando 2/3 (nova tentativa com Opus); <b>relatorio-mensal</b> esperando você.',true],
-  cotas:['/cotas','Cotas','claude-pessoal está em 91% da janela de 5 h (reset 10:05); estou mandando o trabalho novo para claude-empresa (62%) e codex-1 (34%).',true],
+  cotas:['/cotas','Cotas','claude-code/pessoal está em 91% da janela de 5 h (reset 10:05); estou mandando o trabalho novo para claude-code/empresa (62%) e codex/conta-1 (34%).',true],
   cancelar:['/cancelar','Cancelar a peça','Cancelei a peça #14. O trabalho ficou nas branches das tentativas, sem PR.',false],
 };
 const TPLS={

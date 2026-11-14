@@ -24,7 +24,7 @@ Fica guardada na tabela `schedules` e tem:
 | Uma vez | 20/11 às 22h | Sai da lista depois de rodar e fica no histórico |
 | Por calendário | cron `0 7 * * 1-5`, fuso `America/Sao_Paulo` | O fuso é sempre explícito |
 | Por intervalo | a cada 6 h | Conta a partir do fim da execução anterior |
-| Logo após o reset da cota | "depois do próximo reset de claude-empresa" | Usa o `resetsAt` das sondas de cota ([08](08-CLIENTES-CLI-REFERENCIA.md)) |
+| Logo após o reset da cota | "depois do próximo reset de claude-code/empresa" | Usa o `resetsAt` das sondas de cota ([08](08-CLIENTES-CLI-REFERENCIA.md)) |
 
 A biblioteca é o **croner** (licença MIT **[a confirmar]**). O próximo disparo de cada tarefa fica gravado no SQLite e sobrevive a reinícios.
 
