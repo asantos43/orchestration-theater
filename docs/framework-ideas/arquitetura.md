@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.30 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam. A v0.23 resolve duas contradições sobre o **modelo local** (seções 5.7 e 5.9): ele pode ser Ator, limitado pelos slots da instância, com slots reservados ao Diretor, e o provedor de um Executor na revisão cruzada é a família do modelo, não o cliente. Os Executores do OpenCode entram por um assistente de cadastro com sugestões, e o daemon só valida. A abstração passa a ter dois eixos (seção 5.18): o **cliente** de agente (`ClientAdapter`, agora com o catálogo de modelos `ModelCatalog`) e o **servidor de modelo local** (nova porta `LocalModelServer`, com llama.cpp na v1 e Ollama depois). O nome do Executor passa a incluir o cliente, `<modelo>-<esforço>@<cliente>/<perfil>`, porque o OpenCode também pode chamar modelos do Claude e do GPT por API; com assinatura, cada família só roda pelo seu cliente oficial (`executors.cross_client: api_only`). A configuração dos papéis passa a ter override por papel em cada cenário e tarefa agendada, e não só a restrição de perfis por projeto. A primeira execução vira um `ot init` mínimo que abre a TUI num assistente de configuração cuja lógica fica no daemon. A v0.24 define a **capacidade mínima de cada papel** (seção 5.7): todos os papéis aceitam modelo local, e o que separa um Executor de um papel é a capacidade, igual para modelo local e na nuvem (janela de contexto, raciocínio nos papéis que decidem e uma sessão de teste no cadastro), com aviso em vez de bloqueio por padrão (`roles.capability_check: warn`). A v0.25 fixa o daemon como **serviço de logon** do usuário, sempre: o app desktop, se for feito, é só mais um cliente, como a TUI (item 6 da seção 12). A v0.26 faz das **perguntas ao Produtor listas de múltipla escolha** por padrão (seção 5.3, `chat.producer_questions: choices`), com a opção recomendada, que vale depois de um prazo sem resposta, menos nas decisões irreversíveis, em que a recomendada é sempre a segura; nas tarefas agendadas, o padrão passa a ser esperar um prazo e seguir com a recomendada (5.15). A v0.27 fecha os **campos próprios no ATIF** (seção 5.11): tudo o que é do OTheater fica num bloco `extra.otheater`, a unidade exportada é a peça inteira, com a trajetória do Diretor na raiz e cada tentativa como subtrajetória, `cost_usd` só leva custo real e o conteúdo sai completo, com os segredos mascarados. A v0.28 fecha os **ganchos de interceptação dos plugins** (seção 5.14, para depois da v1; item 15 da seção 12): quatro pontos (antes de lançar a tentativa, antes da ferramenta, antes de aceitar o `submit` e antes da entrega), prazo de 5 s e de 30 s na entrega, comportamento na falha declarado pelo plugin, com deixar passar como padrão, e sondas de cota e notificadores que podem vir de plugin. A v0.29 fixa a **ordem das interfaces depois da v1** (seção 5.13 e Fases 12 a 14; item 12 da seção 12): primeiro a Fase 10b, depois a web (Fase 12), o app desktop (Fase 13), que deixa de ser opcional, e o app Android (Fase 14); Electron ou Tauri é decidido ao abrir a Fase 13. A v0.30 decide as **várias contas do mesmo provedor** (seções 3 e 5.6; era a Q15 do docs/13): o OTheater as suporta como qualquer perfil, não as divulga, e cada usuário as usa por conta e risco.
+> Versão 0.31 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam. A v0.23 resolve duas contradições sobre o **modelo local** (seções 5.7 e 5.9): ele pode ser Ator, limitado pelos slots da instância, com slots reservados ao Diretor, e o provedor de um Executor na revisão cruzada é a família do modelo, não o cliente. Os Executores do OpenCode entram por um assistente de cadastro com sugestões, e o daemon só valida. A abstração passa a ter dois eixos (seção 5.18): o **cliente** de agente (`ClientAdapter`, agora com o catálogo de modelos `ModelCatalog`) e o **servidor de modelo local** (nova porta `LocalModelServer`, com llama.cpp na v1 e Ollama depois). O nome do Executor passa a incluir o cliente, `<modelo>-<esforço>@<cliente>/<perfil>`, porque o OpenCode também pode chamar modelos do Claude e do GPT por API; com assinatura, cada família só roda pelo seu cliente oficial (`executors.cross_client: api_only`). A configuração dos papéis passa a ter override por papel em cada cenário e tarefa agendada, e não só a restrição de perfis por projeto. A primeira execução vira um `ot init` mínimo que abre a TUI num assistente de configuração cuja lógica fica no daemon. A v0.24 define a **capacidade mínima de cada papel** (seção 5.7): todos os papéis aceitam modelo local, e o que separa um Executor de um papel é a capacidade, igual para modelo local e na nuvem (janela de contexto, raciocínio nos papéis que decidem e uma sessão de teste no cadastro), com aviso em vez de bloqueio por padrão (`roles.capability_check: warn`). A v0.25 fixa o daemon como **serviço de logon** do usuário, sempre: o app desktop, se for feito, é só mais um cliente, como a TUI (item 6 da seção 12). A v0.26 faz das **perguntas ao Produtor listas de múltipla escolha** por padrão (seção 5.3, `chat.producer_questions: choices`), com a opção recomendada, que vale depois de um prazo sem resposta, menos nas decisões irreversíveis, em que a recomendada é sempre a segura; nas tarefas agendadas, o padrão passa a ser esperar um prazo e seguir com a recomendada (5.15). A v0.27 fecha os **campos próprios no ATIF** (seção 5.11): tudo o que é do OTheater fica num bloco `extra.otheater`, a unidade exportada é a peça inteira, com a trajetória do Diretor na raiz e cada tentativa como subtrajetória, `cost_usd` só leva custo real e o conteúdo sai completo, com os segredos mascarados. A v0.28 fecha os **ganchos de interceptação dos plugins** (seção 5.14, para depois da v1; item 15 da seção 12): quatro pontos (antes de lançar a tentativa, antes da ferramenta, antes de aceitar o `submit` e antes da entrega), prazo de 5 s e de 30 s na entrega, comportamento na falha declarado pelo plugin, com deixar passar como padrão, e sondas de cota e notificadores que podem vir de plugin. A v0.29 fixa a **ordem das interfaces depois da v1** (seção 5.13 e Fases 12 a 14; item 12 da seção 12): primeiro a Fase 10b, depois a web (Fase 12), o app desktop (Fase 13), que deixa de ser opcional, e o app Android (Fase 14); Electron ou Tauri é decidido ao abrir a Fase 13. A v0.30 decide as **várias contas do mesmo provedor** (seções 3 e 5.6; era a Q15 do docs/13): o OTheater as suporta como qualquer perfil, não as divulga, e cada usuário as usa por conta e risco. A v0.31 revisa o **fluxo da peça** (P13 e seção 5.4; item 25 da seção 12): cada papel ganha uma fronteira estreita, para o Ator só escrever o código de uma demanda pronta; o plano traz dúvidas e suposições, e as dúvidas vão ao Produtor antes do Revisor; o Autor revisa todo roteiro; cada demanda tem verificação em código ao fim da tentativa; todo laço tem contador, e esgotado vai ao Produtor com um menu fixo; numa crítica mista vence a falha mais grave; e um pedido de mudança depois da entrega abre uma peça nova, ligada à anterior.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -35,6 +35,7 @@ O OTheater é um sistema de agentes de código que:
 | P9 | Recursos sob controle de admissão | O paralelismo é limitado por RAM, cota e pool, não só pelo que o Roteirista permite |
 | P10 | Versões fixadas | ACP, adaptadores e CLIs mudam toda semana: tudo fixado, atualizado de propósito, com testes de contrato |
 | P11 | Licenças permissivas e MPL-2.0 | Código próprio em MPL-2.0; código copiado e dependências empacotadas em MIT, Apache-2.0, ISC, BSD ou MPL-2.0; GPL, AGPL e LGPL proibidas (seção 6.0) |
+| P13 | Papéis com fronteira estreita e esforço antes da execução | Autor e Revisor fecham o plano, o Roteirista entrega demandas prontas, e o Ator só escreve o código que atende uma demanda; corrigir antes de executar é barato, e cada rodada do Crítico é cara (seção 5.4, v0.31) |
 | P12 | Contratos antes de implementações | Toda fronteira com o mundo de fora e todo ponto que varia por cliente, provedor ou sistema é uma **porta** (interface TypeScript + schema zod) em `@otheater/core`; as implementações são **adaptadores** trocáveis, montados num único ponto; fluxos, papéis, ferramentas e chaves de `rule` ficam em **registros** tipados (seção 5.18) |
 
 ## 3. Premissas e restrições
@@ -184,8 +185,8 @@ A interface acima é **[proposta]** (v0.23); a forma final sai da Fase 1.
 |---|---|
 | Diretor (Orquestrador) | `next_action`, `status(play?)`, `decide(decisionId, payload)`, `open_play(need)`, `pause`, `resume`, `cancel_actor`, `ask_producer`, `open_pr`, `schedule` (rascunho, confirmado pelo Produtor), `list_schedules`, `pause_schedule`, `list_directives`, `propose_directive`, `extend_directive` e `revoke_directive` (rascunhos, confirmados pelo Produtor; 5.17), `consult` (chat), `promote` (rascunho), `run_task` (5.20) |
 | Comum (todos os Executores) | `read_blackboard(key)`, `read_contract(id)`, `read_decision(id)`, `read_indication(id)` (5.19), `read_attachment(id)` (5.20), `submit(result)` |
-| Autor / Revisor / Roteirista | `submit_plan`, `submit_plan_review`, `submit_script` (cada um com schema próprio) |
-| Ator | `run_tests(target)`, `install_deps()`, `git_commit(message)`, `restricted_shell(argv)`, `http_get(url)`, `browser_*` se a política do papel liberar (5.19) + plugins do papel |
+| Autor / Revisor / Roteirista | `submit_plan` (com dúvidas e suposições, v0.31), `submit_plan_review`, `submit_script`, `submit_script_review` (o Autor, v0.31) (cada um com schema próprio) |
+| Ator | `run_tests(target)`, `install_deps()`, `git_commit(message)`, `restricted_shell(argv)`, `http_get(url)`, `browser_*` se a política do papel liberar (5.19) + plugins do papel; o `submit` final aceita o estado `blocked` com o motivo (5.4, v0.31) |
 | Crítico | `run_tests(target)`, `view_diff(demand?)`, `submit_critique` |
 
 `submit*` é a única forma de um Executor terminar:
@@ -224,20 +225,60 @@ Fluxo:
 
 ```
 NEED
-  → PLANNING (Autor)
-  → REVIEWING_PLAN (Revisor) ──reprovado──→ PLANNING        [contador plano ≤ Np]
-  → SCRIPTING (Roteirista)
-  → EXECUTING (Atores, DAG de demandas)
-  → INTEGRATING (merge das demandas na branch de integração; conflito = falha de roteiro)
+  → PLANNING (Autor; o plano traz dúvidas e suposições)
+  → CLARIFYING (Diretor pergunta as dúvidas ao Produtor; pulado sem dúvidas)
+  → REVIEWING_PLAN (Revisor) ──reprovado──→ PLANNING              [plan_reviews]
+  → SCRIPTING (Roteirista) ──validação em código falhou──→ SCRIPTING [script_validations]
+  → REVIEWING_SCRIPT (Autor) ──vetado──→ SCRIPTING                [script_vetoes]
+  → EXECUTING (Atores, DAG de demandas; verificação por demanda)  [attempts_per_demand]
+       └─ Ator bloqueado (demanda insuficiente) → falha de roteiro [script_returns]
+  → INTEGRATING (merge das demandas na branch de integração)
+       └─ conflito → falha de roteiro                              [script_returns]
   → CRITIQUING (Crítico, sobre a branch integrada)
-  → DECIDING (Diretor)
+  → DECIDING (Diretor; numa crítica mista, vence a falha mais grave)
        ├─ aprovado ──────────→ DELIVERING (PR/merge na base) → DONE
        ├─ falha de execução ─→ EXECUTING (só demandas afetadas)
        ├─ falha de roteiro ──→ SCRIPTING → REVIEWING_SCRIPT (Autor) → EXECUTING
-       ├─ falha estrutural ──→ PLANNING (recomeça Revisor → Roteirista → ...)
+       ├─ falha estrutural ──→ PLANNING (recomeça)                  [structural_restarts]
        └─ exceção crítica ───→ AWAITING_PRODUCER
-  [reprovações do Crítico > Nc] → falha estrutural; se já estrutural → AWAITING_PRODUCER
+  [reprovações do Crítico > Nc] → falha estrutural
+  [qualquer contador esgotado]  → AWAITING_PRODUCER (menu fixo)
 ```
+
+**Esforço antes da execução** (decidido em 2026-11-14, v0.31, P13, a partir da experiência do dono com o `okit`, em que o Diretor planejava sozinho e as instruções incompletas geravam muitas rodadas do Crítico): corrigir um plano ou um roteiro custa uma sessão curta, sem worktree; uma rodada do Crítico custa Atores, integração, testes, crítica e decisão. Por isso, o pipeline concentra a verificação antes de EXECUTING, e as voltas para trás são raras e simples. As regras abaixo vêm da revisão do fluxo `Produtor-Roteirista Merge Workflow` (imagem de 2026-10-30), que a §5.4 substitui.
+
+**Fronteira de cada papel** (P13). Cada papel faz uma coisa, e o que não é dele fica fora do seu schema e das suas ferramentas:
+
+| Papel | Faz | Não faz |
+|---|---|---|
+| Produtor | Define a necessidade; responde às dúvidas | — |
+| Autor | Transforma a necessidade em plano (o quê e por quê); declara dúvidas e suposições; revisa **todo** roteiro | Dividir em demandas; escrever código |
+| Revisor | Confere o plano contra a necessidade e as respostas do Produtor; julga as suposições | Reescrever o plano |
+| Roteirista | Divide o plano em **demandas prontas**, com contratos | Mudar o plano |
+| Diretor | Coordena, pergunta ao Produtor, classifica a crítica | Planejar, dividir ou escrever código |
+| Ator | Escreve o código que atende **uma** demanda pronta | Planejar, mudar escopo ou contrato, decidir pelo Produtor |
+| Crítico | Avalia o trabalho integrado contra o plano, o roteiro e os critérios | Corrigir |
+
+- **Demanda pronta:** descrição, critérios de aceite, contratos de entrada e saída, `expectedFiles` e pelo menos um passo de verificação (`verify`), ou o motivo de não haver (`verifyWaiver`), que o Autor julga. A validação em código confere os campos; o Autor confere o conteúdo em REVIEWING_SCRIPT.
+- **Dúvidas e suposições do plano:** o `submit_plan` traz dois campos, `open_questions` (o que só o Produtor sabe) e `assumptions` (o que o Autor decidiu sozinho). Com dúvidas, a peça passa por CLARIFYING: o Diretor faz as perguntas por múltipla escolha (5.3), e o Autor fecha o plano com as respostas antes do Revisor. O Revisor julga se as suposições restantes são aceitáveis; uma suposição inaceitável reprova o plano.
+- **O Autor revisa todo roteiro**, o inicial e os corrigidos: confere se a divisão preserva o plano e se cada demanda está pronta. O veto volta ao Roteirista com o motivo.
+- **Verificação por demanda, em código:** ao fim de cada tentativa, o daemon roda os passos `verify` da demanda na worktree dela. Se falham, a saída volta ao Ator como erro e conta em `attempts_per_demand`, sem gastar integração, Crítico e Diretor. Os critérios de aceite em texto continuam com o Crítico.
+- **Ator bloqueado:** se a demanda não basta para implementar (falta informação ou o contrato se contradiz), o Ator encerra com `submit` de estado `blocked` e o motivo, em vez de adivinhar. Isso conta como falha de roteiro, sem passar pelo Crítico.
+
+**Regras das voltas** (decididas em 2026-11-14, v0.31; os detalhes propostos na mesma revisão, como valores, nomes e listas, foram confirmados pelo dono no mesmo dia):
+- **Todo laço tem contador**, em `limits` (abaixo). Esgotado, a peça vai a AWAITING_PRODUCER, com o **menu fixo**.
+- **Crítica mista:** se a mesma crítica aponta falhas de tipos diferentes, vence a mais grave (estrutural, depois roteiro, depois execução). As falhas menores seguem como contexto do novo ciclo.
+- **Recomeço estrutural:** `structural_restarts` limita quantas vezes o plano recomeça; esgotado, vai ao Produtor. A cada recomeço, os outros contadores zeram.
+- **Depois da entrega**, um pedido de mudança no PR ou o PR fechado abre uma **peça nova**, ligada à anterior, com o pedido como necessidade e contadores novos. Se o PR ainda está aberto, a peça nova trabalha na branch dele e atualiza o mesmo PR; com o PR fechado, abre um PR novo.
+
+**Menu fixo de AWAITING_PRODUCER.** A lista de opções é fechada e fica no código; o Diretor só escolhe a recomendada (5.3):
+- **redefinir a necessidade:** volta a PLANNING com a necessidade nova e os contadores zerados;
+- **aumentar o limite e continuar:** o laço que esgotou ganha mais uma rodada; se esgotar de novo, o menu volta;
+- **entregar o que ficou pronto:** DELIVERING só com as demandas aprovadas; o PR diz o que faltou;
+- **aceitar assim** (só depois de uma reprovação do Crítico): DELIVERING, com a dispensa do Crítico registrada (abaixo);
+- **cancelar.**
+
+A **exceção crítica**, que leva ao Produtor sem esperar contador, é uma lista fechada: necessidade impossível ou contraditória, falta de acesso, credencial ou permissão, risco de segurança ou de perda de dados, e decisão fora do escopo do plano.
 
 - Transições, contadores e limites (`Np`, `Nc`, tentativas por demanda) ficam em código e configuração, nunca no prompt.
 - **Dispensa do Crítico** (decidida em 2026-11-13; ver 5.17): é uma decisão registrada do Produtor, com motivo, e vale sempre para a **peça inteira**. Pode ser tomada em dois momentos:
@@ -253,21 +294,27 @@ limits:
   plan_reviews: 2              # Np: reprovações do plano antes de AWAITING_PRODUCER
   critic_rejections: 2         # Nc: reprovações do Crítico antes da falha estrutural
   attempts_per_demand: 3
+  script_validations: 3        # validações do roteiro em código antes do Produtor (v0.31)
+  script_vetoes: 2             # vetos do Autor ao roteiro (v0.31)
+  script_returns: 2            # falhas de roteiro sem o Crítico: conflito na integração, Ator bloqueado (v0.31)
+  structural_restarts: 1       # recomeços do plano (v0.31)
   demand_timeout: 30m          # quando o Roteirista não define o timeoutMin da demanda
   demand_timeout_max: 2h       # teto do que o Roteirista pode pedir
 ```
 
-| Predefinição | `Np` | `Nc` | Tentativas | Timeout | Teto |
-|---|---|---|---|---|---|
-| `moderate` (padrão) | 2 | 2 | 3 | 30 min | 2 h |
-| `economical` | 1 | 1 | 2 | 20 min | 1 h |
-| `persistent` | 3 | 3 | 4 | 45 min | 3 h |
+| Predefinição | `Np` | `Nc` | Tentativas | Timeout | Teto | Validações | Vetos | Voltas | Recomeços |
+|---|---|---|---|---|---|---|---|---|---|
+| `moderate` (padrão) | 2 | 2 | 3 | 30 min | 2 h | 3 | 2 | 2 | 1 |
+| `economical` | 1 | 1 | 2 | 20 min | 1 h | 2 | 1 | 1 | 0 |
+| `persistent` | 3 | 3 | 4 | 45 min | 3 h | 4 | 3 | 3 | 2 |
+
+- As quatro últimas colunas entraram na v0.31, com valores confirmados pelo dono em 2026-11-14.
 
 - A predefinição (`preset`) preenche todos os valores de uma vez. Uma chave individual sobrepõe só o valor dela **[proposta]**.
 - O schema zod vem do módulo dono das chaves e é validado na subida (5.18). A aba Configurações › Limites e `ot config` mostram e mudam as chaves.
 
 **Pontos de julgamento.** São os únicos lugares onde o modelo do Diretor decide, cada um com schema:
-1. classificar a crítica negativa (execução / roteiro / estrutural / exceção) e listar as demandas afetadas;
+1. classificar a crítica negativa (execução / roteiro / estrutural / exceção) e listar as demandas afetadas; numa crítica mista, vence a falha mais grave (v0.31);
 2. Ator estourou o tempo: o trabalho parcial (já commitado, ver 5.5) segue para o Crítico ou para outro Ator continuar;
 3. quando consultar o Produtor, e o que perguntar;
 4. no chat, responder sozinho ou consultar um Ator forte (5.20);
@@ -296,6 +343,8 @@ interface Demand {
   specialty?: string;              // "python", "sql", "frontend"... escolhe plugins e Executor
   timeoutMin: number;
   acceptanceCriteria: string[];
+  verify: VerifyStep[];            // passos em código ao fim da tentativa (testes, lint); v0.31
+  verifyWaiver?: string;           // motivo, se não houver passo de verificação
 }
 ```
 
@@ -304,9 +353,10 @@ O Diretor executa o DAG em ordem topológica e libera em paralelo o que não tem
 **Validação do roteiro** antes de executar, em código:
 - DAG sem ciclos;
 - contratos referenciados existem;
-- duas demandas paralelas não declaram o mesmo arquivo em `expectedFiles`.
+- duas demandas paralelas não declaram o mesmo arquivo em `expectedFiles`;
+- toda demanda está pronta: critérios de aceite, contratos e `verify` (ou `verifyWaiver`) presentes (v0.31).
 
-Se falhar, o roteiro volta ao Roteirista sem gastar Atores.
+Se falhar, o roteiro volta ao Roteirista sem gastar Atores, até `script_validations` vezes. Passando, vai ao Autor (REVIEWING_SCRIPT).
 
 ### 5.5 Workspace (git)
 
@@ -2664,8 +2714,10 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 22. *(Decidida em 2026-11-14: sufixo `@<perfil>` em todos os Executores; revista no mesmo dia na v0.23 para `@<cliente>/<perfil>`; ver "Decididas" e a seção 5.7.)*
 23. *(Decidida em 2026-11-14: capacidade mínima por papel, ver "Decididas" e a seção 5.7.)*
 24. *(Decidida em 2026-11-14: perguntas ao Produtor por múltipla escolha, ver "Decididas" e as seções 5.3 e 5.15.)*
+25. *(Decidida em 2026-11-14: fluxo da peça, com a fronteira dos papéis e as regras das voltas, ver "Decididas", P13 e a seção 5.4.)*
 
 Decididas:
+- fluxo da peça (2026-11-14, P13 e seção 5.4, v0.31; item 25), a partir da revisão do fluxo da imagem de 2026-10-30 e da experiência do dono com o `okit`: cada papel com fronteira estreita, para o Ator só escrever o código de uma demanda pronta; o plano traz dúvidas e suposições, e as dúvidas vão ao Produtor (CLARIFYING) antes do Revisor; o Autor revisa todo roteiro, o inicial também; verificação em código de cada demanda ao fim da tentativa (`verify`); todo laço tem contador (`script_validations`, `script_vetoes`, `script_returns`, `structural_restarts`, além dos que já existiam), e esgotado vai a AWAITING_PRODUCER com um menu fixo; numa crítica mista vence a falha mais grave; pedido de mudança depois da entrega abre uma peça nova ligada à anterior. Ficaram de fora o caminho curto que pularia o Revisor e o Roteirista (vai contra o motivo da separação) e, para depois, o Crítico sugerir a classificação e o Crítico incremental;
 - várias contas do mesmo provedor (2026-11-14, seções 3 e 5.6, v0.30; era a Q15 do docs/13, sem item numerado): suportadas como qualquer perfil, sem divulgação do recurso e por conta e risco de cada usuário; o projeto não afirma que os termos permitem; aviso com aceite no cadastro da segunda conta de assinatura do mesmo provedor, de qualquer plano (`profiles.same_provider_notice: once`), aprovado pelo dono no mesmo dia; contas de API nunca disparam o aviso, porque são cobradas por uso;
 - ordem das interfaces depois da v1 (2026-11-14, seção 5.13 e Fases 12 a 14, v0.29; item 12): a web (Fase 12) começa depois da Fase 10b; o app desktop (Fase 13) deixa de ser opcional e vem depois da web e antes do app Android (Fase 14). A ordem v1 → 10b → 12 → 13 → 14 é escolha do dono: o Android só depende tecnicamente da web. Electron ou Tauri (item 7) segue aberto até a Fase 13 abrir;
 - ganchos de interceptação dos plugins (2026-11-14, seções 5.14 e 5.18, v0.28; item 15), para depois da v1: pontos `attempt.before_start`, `tool.before` (depois das três camadas de permissão), `submit.before_accept` e `delivery.before`, cada um com saída `allow`, `veto` ou `annotate`; prazo de 5 s e de 30 s na entrega (`plugins.hooks.timeout`, com override por ponto e por plugin); na falha, o plugin declara `on_failure: allow | block`, e o padrão é deixar passar, com evento e aviso; `QuotaProbe` e `Notifier` podem vir de plugin, com a suíte de conformidade na ativação; tipos de indicação seguem só oficiais;
@@ -2699,8 +2751,8 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 |---|---|---|
 | Produtor | `Producer` | O dono: pede, decide e aprova pelo chat |
 | Diretor | `director` | Papel que coordena um cenário; o nome antigo "Orquestrador" é o mesmo papel |
-| Autor | `author` | Papel que escreve o plano da peça ou da tarefa |
-| Revisor | `reviewer` | Papel que revisa o plano (e o roteiro) |
+| Autor | `author` | Papel que escreve o plano da peça ou da tarefa e revisa o roteiro |
+| Revisor | `reviewer` | Papel que revisa o plano; o roteiro é revisado pelo Autor (v0.31) |
 | Roteirista | `scriptwriter` | Papel que transforma o plano no roteiro de demandas; não é `playwright`, para não colidir com o Playwright (5.19) |
 | Ator | `actor` | Papel que executa uma demanda |
 | Crítico | `critic` | Papel que avalia a branch integrada e faz o ensaio das tarefas |
@@ -2810,6 +2862,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Ganchos dos plugins (v0.28) | Níveis de mod decididos sem os detalhes (item 15): pontos, prazo, falha do gancho e o que mais podia vir de plugin | Quatro pontos com `allow`/`veto`/`annotate`; 5 s, 30 s na entrega; `on_failure` declarado pelo plugin, com deixar passar como padrão; `QuotaProbe` e `Notifier` por plugin, com a suíte de conformidade; indicação só oficial | Escolhas do dono, iguais às recomendações, mais o ponto antes de lançar a tentativa |
 | Ordem das interfaces depois da v1 (v0.29) | Item 12: a web podia começar depois da Fase 6 e o desktop era opcional | Web (12) depois da 10b; desktop (13) obrigatório, antes do Android (14); Electron ou Tauri ao abrir a Fase 13 | Escolhas do dono: web depois da 10b (a recomendada) e desktop antes do Android |
 | Várias contas do mesmo provedor (v0.30) | Q15: conferir os termos e restringir o balanceamento até lá | Suportadas como qualquer perfil, sem divulgação, por conta e risco do usuário; aviso no cadastro da segunda assinatura, de qualquer plano; API nunca dispara | Decisões do dono; o aviso era proposta e foi aprovado |
+| Fluxo da peça (v0.31) | Fluxo da imagem de 2026-10-30 e §5.4 com laços sem saída ou sem limite (veto do Autor, validação do roteiro, tentativas esgotadas, conflito, recomeço estrutural), saídas de AWAITING_PRODUCER indefinidas e só o roteiro corrigido revisado pelo Autor | P13: fronteira estreita por papel e esforço antes da execução; CLARIFYING com as dúvidas do plano; Autor revisa todo roteiro; `verify` por demanda; contador em todo laço e menu fixo no Produtor; vence a falha mais grave; peça nova depois da entrega | Experiência do dono com o `okit`: instruções incompletas geravam muitas rodadas do Crítico, sem garantir qualidade |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

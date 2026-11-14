@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.30, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.31, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -86,20 +86,27 @@ Referência dos clientes e do que foi verificado localmente: [08](08-CLIENTES-CL
 ## Pipeline (arquitetura §5.4)
 
 ```
-NEED → PLANNING → REVIEWING_PLAN → SCRIPTING → EXECUTING
-  → INTEGRATING → CRITIQUING → DECIDING
+NEED → PLANNING → CLARIFYING → REVIEWING_PLAN → SCRIPTING → REVIEWING_SCRIPT
+  → EXECUTING → INTEGRATING → CRITIQUING → DECIDING
       ├─ aprovado            → DELIVERING → DONE
       ├─ falha de execução   → EXECUTING (só as demandas afetadas)
       ├─ falha de roteiro    → SCRIPTING → REVIEWING_SCRIPT → EXECUTING
       ├─ falha estrutural    → PLANNING
       └─ exceção crítica     → AWAITING_PRODUCER
+  [qualquer contador esgotado] → AWAITING_PRODUCER (menu fixo)
 ```
 
+- **Papéis com fronteira estreita (P13, v0.31):** Autor e Revisor fecham o plano, o Roteirista entrega **demandas prontas** e o Ator só escreve o código que atende uma delas. Corrigir antes de executar é barato; cada rodada do Crítico é cara.
+  - O plano traz dúvidas e suposições. As dúvidas vão ao Produtor por múltipla escolha (CLARIFYING, pulado sem dúvidas) antes do Revisor, que julga as suposições.
+  - O Autor revisa todo roteiro, o inicial também.
+  - Cada demanda tem passos `verify`, rodados em código ao fim da tentativa; a falha volta ao Ator sem gastar o Crítico. O Ator sem informação suficiente encerra como `blocked`, o que conta como falha de roteiro.
+  - Todo laço tem contador; esgotado, o Produtor escolhe num menu fixo: redefinir a necessidade, aumentar o limite, entregar o que ficou pronto, aceitar assim ou cancelar. Numa crítica mista, vence a falha mais grave. Pedido de mudança depois da entrega abre uma peça nova, ligada à anterior.
+
 - O roteiro é um **DAG de `Demand`**. Cada demanda traz contrato de entradas e saídas, `expectedFiles`, complexidade, timeout e critérios de aceite.
-- Antes de executar, o roteiro é validado em código: o DAG não pode ter ciclos, os contratos citados precisam existir e duas demandas em paralelo não podem prever o mesmo arquivo.
+- Antes de executar, o roteiro é validado em código: o DAG não pode ter ciclos, os contratos citados precisam existir, duas demandas em paralelo não podem prever o mesmo arquivo e toda demanda precisa estar pronta (critérios, contratos e `verify`).
 - Os limites `Np`, `Nc` e o número de tentativas por demanda ficam em código e configuração, nunca no prompt.
 - **Padrões** (decididos em 2026-11-14, N4, N5, N13 e N14): todos são chaves de configuração, com três predefinições por grupo e chaves individuais.
-  - `limits.preset: moderate`: `Np` 2, `Nc` 2, 3 tentativas por demanda, timeout de 30 min (teto de 2 h).
+  - `limits.preset: moderate`: `Np` 2, `Nc` 2, 3 tentativas por demanda, timeout de 30 min (teto de 2 h); na v0.31, 3 validações do roteiro, 2 vetos do Autor, 2 voltas ao roteiro sem o Crítico e 1 recomeço estrutural (`economical` 2/1/1/0, `persistent` 4/3/3/2).
   - `delivery.mode: pr`: `direct_merge` só se o projeto permitir e a peça ou tarefa pedir; `ask` pergunta ao Produtor.
   - `schedule.preset: balanced`: execução perdida até 12 h de atraso, adiamento por cota até 6 h, espera por decisão de 24 h, orçamento de 1 h e US$ 5 em API.
   - `resume.preset: balanced`: 5 retomadas, espera pelo reset até 30 min, checkpoint a cada 10 min, travado com 10 min sem evento ou o mesmo erro 3 vezes.
