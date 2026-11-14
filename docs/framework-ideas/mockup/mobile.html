@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTheater · Android</title>
+<style>
+:root{
+  --bg:#e9ecf1; --stage:#e9ecf1; --panel:#ffffff; --panel-2:#f1f3f6; --line:#e2e5ea; --line-2:#d3d8df;
+  --text:#1b1f24; --muted:#5d6672; --faint:#8a929c;
+  --accent:#4a5bd4; --accent-soft:#e8ebfb;
+  --ok:#1f8a5b; --ok-soft:#e3f4ec; --warn:#b26a00; --warn-soft:#fbf0dc;
+  --err:#c23b3b; --err-soft:#fbe6e6; --info:#2a78b8; --info-soft:#e2eff9; --sys:#6b5bd4;
+  --frame:#1d2026; --scrim:rgba(15,17,21,.42);
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --pop:0 -6px 28px rgba(16,24,40,.18);
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+  --sans:Roboto,"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0d10; --stage:#0b0d10; --panel:#161920; --panel-2:#1c2029; --line:#262b35; --line-2:#323845;
+    --text:#e6e8ec; --muted:#9aa3af; --faint:#6b7380;
+    --accent:#8190ff; --accent-soft:#232848;
+    --ok:#3fbf86; --ok-soft:#12291f; --warn:#e0a03a; --warn-soft:#2c2212;
+    --err:#ef6b6b; --err-soft:#2e1616; --info:#5aa8e6; --info-soft:#132433; --sys:#a596ff;
+    --frame:#000; --scrim:rgba(0,0,0,.6); --shadow:none; --pop:0 -6px 28px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0d10; --stage:#0b0d10; --panel:#161920; --panel-2:#1c2029; --line:#262b35; --line-2:#323845;
+  --text:#e6e8ec; --muted:#9aa3af; --faint:#6b7380;
+  --accent:#8190ff; --accent-soft:#232848;
+  --ok:#3fbf86; --ok-soft:#12291f; --warn:#e0a03a; --warn-soft:#2c2212;
+  --err:#ef6b6b; --err-soft:#2e1616; --info:#5aa8e6; --info-soft:#132433; --sys:#a596ff;
+  --frame:#000; --scrim:rgba(0,0,0,.6); --shadow:none; --pop:0 -6px 28px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--sans);display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:var(--mono)} .muted{color:var(--muted)} .faint{color:var(--faint)}
+
+/* ============ BARRA DO MOCKUP (fora do aparelho) ============ */
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top .logo{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.top b{font-size:14px}
+.seg{display:flex;background:var(--panel-2);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:5px 12px;border-radius:8px;font-size:13px;color:var(--muted);white-space:nowrap}
+.seg button.on{background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+.top .sp{flex:1}
+.tb{border:1px solid var(--line-2);background:var(--panel);border-radius:8px;padding:5px 10px;font-size:13px}
+.tb.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+.main{flex:1;display:flex;min-height:0}
+.stage{flex:1;min-width:0;position:relative;overflow:hidden;background:var(--stage)}
+.fit{position:absolute;left:50%;top:50%;width:max-content;transform-origin:center center;display:flex;gap:56px;align-items:center}
+.notes{width:320px;flex:none;background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:14px 16px 24px;font-size:13px}
+.notes.off{display:none}
+.notes h2{font-size:14px;margin:4px 0 8px}
+.notes h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:16px 0 6px}
+.notes ul{margin:0;padding-left:18px} .notes li{margin:3px 0}
+.tag{font-size:10.5px;padding:0 5px;border-radius:4px;background:var(--warn-soft);color:var(--warn);white-space:nowrap}
+.tag.c{background:var(--info-soft);color:var(--info)}
+
+/* ============ APARELHO ============ */
+.dev{position:relative;background:var(--frame);padding:12px;border-radius:44px;box-shadow:0 20px 60px rgba(0,0,0,.25);flex:none}
+.dev.tab{border-radius:32px;padding:16px}
+.dev .label{position:absolute;top:-30px;left:0;right:0;text-align:center;font-size:13px;color:var(--muted);font-weight:600}
+.scr{position:relative;width:390px;height:844px;background:var(--panel);border-radius:34px;overflow:hidden;display:flex;flex-direction:column}
+.dev.tab .scr{border-radius:18px;width:1180px;height:820px}
+.dev.tab.port .scr{width:820px;height:1180px}
+.sbar{height:34px;flex:none;display:flex;align-items:center;padding:0 22px;font-size:13px;font-weight:600;gap:6px;background:var(--panel)}
+.dev.tab .sbar{height:28px;padding:0 18px;font-size:12px}
+.sbar .r{margin-left:auto;display:flex;gap:8px;align-items:center;font-weight:500}
+.vpn{font-size:10.5px;padding:0 6px;border-radius:4px;background:var(--ok-soft);color:var(--ok);font-weight:600}
+.vpn.off{background:var(--err-soft);color:var(--err)}
+.gest{height:22px;flex:none;display:grid;place-items:center;background:var(--panel)}
+.gest i{width:120px;height:4px;border-radius:2px;background:var(--text);opacity:.35}
+
+.ib{border:0;background:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none;font-size:18px}
+.ib:active,.ib:hover{background:var(--panel-2);color:var(--text)}
+.ib svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.btn{border:1px solid var(--line-2);background:var(--panel);padding:8px 14px;border-radius:10px;font-size:14px;white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--err);border-color:var(--err)} .btn.big{padding:12px 16px;font-size:15px;border-radius:12px;flex:1}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.badge.run{background:var(--accent-soft);color:var(--accent)} .badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)} .badge.err{background:var(--err-soft);color:var(--err)} .badge.info{background:var(--info-soft);color:var(--info)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--faint);display:inline-block}
+.dot.run{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)} .dot.wait{background:var(--warn)} .dot.ok{background:var(--ok)} .dot.err{background:var(--err)}
+.ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.ic.p{background:var(--info-soft);color:var(--info)} .ic.t{background:var(--warn-soft);color:var(--warn)} .ic.c{background:var(--ok-soft);color:var(--ok)} .ic.g{background:var(--accent-soft);color:var(--accent)}
+.bar{height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:3px}
+.bar i.w{background:var(--warn)} .bar i.a{background:var(--accent)}
+
+/* ============ CHAT (compartilhado) ============ */
+.appbar{display:flex;align-items:center;gap:4px;padding:4px 8px 6px;border-bottom:1px solid var(--line);flex:none;background:var(--panel)}
+.target{flex:1;min-width:0;border:0;background:none;text-align:left;padding:4px 6px;border-radius:10px;display:flex;align-items:center;gap:8px}
+.target:hover{background:var(--panel-2)}
+.target .t1{font-weight:650;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.target .t2{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.target .cv{color:var(--faint);font-size:12px;margin-left:auto}
+.state{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex:none;border-bottom:1px solid var(--line);scrollbar-width:none}
+.state::-webkit-scrollbar{display:none}
+.pill{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.pill.run{background:var(--accent-soft);color:var(--accent);font-weight:600} .pill.warn{background:var(--warn-soft);color:var(--warn);font-weight:600}
+.msgs{flex:1;overflow:auto;padding:14px 12px;display:flex;flex-direction:column;gap:9px;min-height:0}
+.m{max-width:86%;padding:9px 12px;border-radius:16px;line-height:1.45;font-size:14.5px}
+.m.you{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+.m.orq{align-self:flex-start;background:var(--panel-2);border-bottom-left-radius:5px}
+.m .meta{font-size:11px;opacity:.7;margin-top:3px;text-align:right}
+.m.orq .meta{text-align:left}
+.m .cmd{font-family:var(--mono);font-size:12px;background:rgba(255,255,255,.18);padding:0 5px;border-radius:4px;margin-right:4px}
+.sys{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--muted);padding:0 2px}
+.sys .k{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--panel-2);color:var(--sys);flex:none;margin-top:1px}
+.sys.ok .k{color:var(--ok);background:var(--ok-soft)} .sys.warn .k{color:var(--warn);background:var(--warn-soft)}
+.sys time{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);flex:none}
+.decision{border:1px solid var(--warn);background:var(--warn-soft);border-radius:16px;padding:12px}
+.decision h4{margin:0 0 4px;font-size:13px;color:var(--warn)}
+.decision p{margin:0 0 10px;font-size:14px}
+.decision .opts{display:flex;gap:8px}
+.decision.done{border-color:var(--line);background:var(--panel-2)} .decision.done h4{color:var(--muted)}
+
+/* comandos rápidos e composer */
+.quick{display:flex;gap:8px;padding:8px 12px 2px;overflow-x:auto;flex:none;scrollbar-width:none}
+.quick::-webkit-scrollbar{display:none}
+.qc{border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:7px 13px;font-size:13.5px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.qc:hover{background:var(--panel-2)}
+.qc .g{font-size:14px}
+.qc.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-soft);font-weight:600}
+.qc.danger{color:var(--err)}
+.comp{padding:8px 10px 8px;flex:none;background:var(--panel)}
+.comp .row{display:flex;align-items:flex-end;gap:6px}
+.comp .box{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:24px;background:var(--panel-2);display:flex;align-items:flex-end;padding:4px 4px 4px 6px}
+.comp .box:focus-within{border-color:var(--accent);background:var(--panel)}
+.comp textarea{flex:1;min-width:0;border:0;outline:0;resize:none;background:transparent;color:var(--text);font:15px/1.4 var(--sans);padding:8px 4px;height:38px;max-height:120px}
+.comp .ib{width:36px;height:36px}
+.send{width:48px;height:48px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 2px 8px rgba(74,91,212,.35)}
+.send svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.send.rec{background:var(--err);animation:pulse 1.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(194,59,59,.5)}70%{box-shadow:0 0 0 14px rgba(194,59,59,0)}100%{box-shadow:0 0 0 0 rgba(194,59,59,0)}}
+.comp .to{font-size:11.5px;color:var(--muted);padding:0 8px 4px;display:flex;gap:6px;align-items:center}
+.comp .to b{color:var(--text);font-weight:600}
+.recbar{display:none;align-items:center;gap:10px;flex:1;padding:8px 10px;font-size:14px;color:var(--err)}
+.comp.recording .box{display:none} .comp.recording .recbar{display:flex}
+.wave{display:flex;gap:3px;align-items:center;height:20px}
+.wave i{width:3px;background:var(--err);border-radius:2px;animation:wv .9s ease-in-out infinite}
+.wave i:nth-child(2){animation-delay:.1s}.wave i:nth-child(3){animation-delay:.2s}.wave i:nth-child(4){animation-delay:.3s}.wave i:nth-child(5){animation-delay:.4s}
+@keyframes wv{0%,100%{height:4px}50%{height:18px}}
+
+/* ============ CELULAR ============ */
+.views{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+.bnav{display:flex;border-top:1px solid var(--line);background:var(--panel);flex:none;padding:4px 4px 0}
+.bnav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0 6px;font-size:11.5px;color:var(--muted);position:relative}
+.bnav button .gi{width:56px;height:30px;border-radius:15px;display:grid;place-items:center;font-size:17px}
+.bnav button.on{color:var(--text);font-weight:600}
+.bnav button.on .gi{background:var(--accent-soft);color:var(--accent)}
+.bnav .n{position:absolute;top:0;left:calc(50% + 8px);background:var(--err);color:#fff;font-size:10px;font-weight:700;border-radius:999px;min-width:17px;height:17px;display:grid;place-items:center;padding:0 4px}
+.vh{display:flex;align-items:center;gap:8px;padding:8px 16px 10px;flex:none}
+.vh h2{font-size:22px;margin:0;font-weight:600}
+.vh .r{margin-left:auto}
+.scroll{flex:1;overflow:auto;padding:0 12px 14px;min-height:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.card .h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.card .h .badge{margin-left:auto;font-weight:400}
+.card p{margin:6px 0 10px;font-size:14px}
+.card .sub{font-size:12px;color:var(--muted)}
+.card .opts{display:flex;gap:8px;flex-wrap:wrap}
+.qw{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:10px}
+.li{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li .nm{flex:1;min-width:0} .li .nm div{font-weight:500} .li .nm small{display:block;font-size:12.5px;color:var(--muted)}
+.ev{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.ev:last-child{border-bottom:0}
+.ev time{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;width:40px;padding-top:2px}
+.ev code{font-family:var(--mono);font-size:11px;color:var(--sys)}
+.segm{display:flex;gap:6px;padding:0 12px 10px;flex:none;overflow-x:auto}
+.segm .pill{cursor:pointer;font-size:13px;padding:5px 12px} .segm .pill.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.ro{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;background:var(--panel-2);border-radius:10px;padding:8px 10px;margin-top:8px}
+
+/* folhas inferiores (bottom sheets) */
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .18s;z-index:20}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:24px 24px 0 0;box-shadow:var(--pop);transform:translateY(105%);transition:transform .22s ease;z-index:21;max-height:82%;display:flex;flex-direction:column}
+.sheet.on{transform:none}
+.scr.sheet-on .scrim{opacity:1;pointer-events:auto}
+.sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--line-2);margin:10px auto 4px;flex:none}
+.sheet h3{margin:4px 18px 8px;font-size:17px;font-weight:600}
+.sheet .sb{overflow:auto;padding:0 10px 14px}
+.sheet .grp{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:12px 10px 4px}
+.cmd{display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;border:0;background:none;width:100%;text-align:left}
+.cmd:hover{background:var(--panel-2)}
+.cmd .gi{width:36px;height:36px;border-radius:10px;background:var(--panel-2);display:grid;place-items:center;font-size:16px;flex:none}
+.cmd .nm{flex:1;min-width:0} .cmd .nm div{font-size:14.5px} .cmd .nm small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmd code{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.cmd.on{background:var(--accent-soft)}
+.cmd.danger .gi{background:var(--err-soft);color:var(--err)}
+.sheet .search{margin:0 16px 6px;border:1px solid var(--line-2);border-radius:12px;padding:10px 12px;font:15px var(--sans);background:var(--panel-2);color:var(--text);outline:0}
+.confirm{padding:4px 18px 18px}
+.confirm p{margin:0 0 14px;color:var(--muted)}
+.confirm .opts{display:flex;gap:10px}
+.toast{position:absolute;left:12px;right:12px;bottom:150px;background:var(--text);color:var(--panel);border-radius:12px;padding:10px 14px;font-size:13.5px;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:30}
+.toast.on{opacity:1;transform:none}
+.offline{display:none;align-items:center;gap:8px;background:var(--err-soft);color:var(--err);font-size:12.5px;padding:7px 14px;flex:none}
+.scr.is-off .offline{display:flex}
+
+/* ============ TABLET ============ */
+.tl{flex:1;min-height:0;display:grid;grid-template-columns:240px 410px minmax(0,1fr)}
+.tl .side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.tl .side .hd{display:flex;align-items:center;gap:8px;padding:10px 12px}
+.tl .side .hd .logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.tl .side .hd b{flex:1}
+.tl .side .sc{flex:1;overflow:auto;padding:0 10px 10px}
+.tl .sh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:10px 6px 4px}
+.tl .it{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer}
+.tl .it:hover{background:var(--panel-2)} .tl .it.on{background:var(--accent-soft)}
+.tl .it .nm{flex:1;min-width:0} .tl .it .nm div{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .tl .it .nm small{display:block;font-size:12px;color:var(--muted)}
+.tl .sub2{padding:6px 8px;font-size:12.5px}
+.tl .sub2 .rw{display:flex;justify-content:space-between} .tl .sub2 .rw span:last-child{color:var(--muted)}
+.tl .bar.wk{height:3px;margin-top:2px} .tl .bar.wk i{opacity:.55}
+.tl .foot{border-top:1px solid var(--line);padding:8px 12px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.tl .chat{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel)}
+.tl .work{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.wtabs{display:flex;gap:4px;padding:8px 10px 0;border-bottom:1px solid var(--line);background:var(--panel);flex:none}
+.wtab{border:0;background:none;padding:9px 14px;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent}
+.wtab.on{color:var(--text);font-weight:600;border-bottom-color:var(--accent)}
+.wb{flex:1;overflow:auto;padding:14px;min-height:0}
+.wpane{display:none} .wpane.on{display:block}
+.pipe{display:flex;align-items:flex-start;padding:4px 0;overflow-x:auto}
+.st{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px}
+.st .c{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--panel-2);color:var(--faint);border:2px solid var(--line-2)}
+.st.done .c{background:var(--ok);border-color:var(--ok);color:#fff}
+.st.cur .c{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft)}
+.st span{font-size:10.5px;color:var(--muted)} .st.cur span{color:var(--text);font-weight:600}
+.link{flex:1;height:2px;background:var(--line-2);margin-top:14px;min-width:4px} .link.done{background:var(--ok)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g2.q2{grid-template-columns:1fr;gap:4px}
+.dq{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.dq:last-child{border-bottom:0} .dq b{width:28px} .dq .nm{flex:1} .dq .badge{margin-left:auto}
+.ro-hint{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+/* tablet em retrato: lateral e painel viram gavetas */
+.dev.port .tl{grid-template-columns:minmax(0,1fr)}
+.dev.port .tl .side,.dev.port .tl .work{position:absolute;top:0;bottom:0;z-index:22;box-shadow:var(--pop);transition:transform .22s ease}
+.dev.port .tl{position:relative}
+.dev.port .tl .side{left:0;width:300px;transform:translateX(-105%)}
+.dev.port .tl .work{right:0;width:560px;transform:translateX(105%)}
+.dev.port .tl.side-on .side,.dev.port .tl.work-on .work{transform:none}
+.dev.port .tl .chat{border-right:0}
+.tl .dscrim{display:none}
+.dev.port .tl .dscrim{display:block;position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .2s;z-index:21}
+.dev.port .tl.side-on .dscrim,.dev.port .tl.work-on .dscrim{opacity:1;pointer-events:auto}
+.dev:not(.port) .only-port{display:none}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">OT</div><b>OTheater · Android</b><span class="faint" style="font-size:12.5px">mockup da Fase 14 · [proposta]</span>
+  <div class="sp"></div>
+  <div class="seg" id="seg">
+    <button data-v="phone" class="on">Celular</button>
+    <button data-v="tab">Tablet paisagem</button>
+    <button data-v="port">Tablet retrato</button>
+    <button data-v="all">Lado a lado</button>
+  </div>
+  <button class="tb" id="net" title="Simula a queda da VPN">Simular sem VPN</button>
+  <button class="tb on" id="nt">Notas</button>
+  <button class="tb" id="theme">◐ Tema</button>
+</div>
+
+<div class="main">
+<div class="stage" id="stage"><div class="fit" id="fit">
+
+<!-- ======================= CELULAR ======================= -->
+<div class="dev" id="phone" data-dev="phone">
+  <div class="label">Celular · 390 × 844</div>
+  <div class="scr" id="pscr">
+    <div class="sbar">09:44 <span class="r"><span class="vpn">VPN</span>📶 🔋 82%</span></div>
+    <div class="offline">⚠ Sem conexão com o daemon pela VPN · o que você enviar fica na fila do aparelho</div>
+
+    <div class="views">
+      <!-- CHAT -->
+      <div class="view on" data-view="chat">
+        <div class="appbar">
+          <button class="target" data-sheet="dest">
+            <span class="ic p">P</span>
+            <span style="min-width:0"><div class="t1">loja-api · Peça #14</div><div class="t2">Diretor · Haiku 5.5 · conectado</div></span>
+            <span class="cv">▾</span>
+          </button>
+          <button class="ib" title="Pausar a peça" data-cmd="pausar">⏸</button>
+        </div>
+        <div class="state">
+          <span class="pill run">● Execução · 1/5</span><span class="pill warn" data-go="dec">1 decisão</span><span class="pill">Crítico 0/3</span><span class="pill">38 min</span>
+        </div>
+        <div class="msgs" id="pmsgs">
+          <div class="m you">Quero login OAuth com Google e GitHub na API, com testes de ponta a ponta. Pode abrir PR no final.<div class="meta">09:12 ✓✓</div></div>
+          <div class="m orq">Abri a <b>peça #14</b> no loja-api e mandei a necessidade para o Autor.<div class="meta">09:12</div></div>
+          <div class="sys ok"><span class="k">revisor</span>plano aprovado na 1ª tentativa<time>09:23</time></div>
+          <div class="sys ok"><span class="k">roteiro</span>5 demandas · D2 e D3 em paralelo<time>09:27</time></div>
+          <div class="sys warn"><span class="k">seleção</span>D3: codex-alto sem vaga → sonnet-medio<time>09:42</time></div>
+          <div class="m orq">D1 pronta. D2 (fluxo OAuth) e D3 (middleware) rodando. D4 começa quando as duas terminarem.<div class="meta">09:42</div></div>
+          <div class="decision" data-dec="d2">
+            <h4>⚑ Decisão · D2</h4>
+            <p>Uso um mock do provedor Google agora ou espero você configurar as credenciais de teste?</p>
+            <div class="opts"><button class="btn pri big" data-decide="Usar mock agora">Usar mock</button><button class="btn big" data-decide="Vou configurar">Vou configurar</button></div>
+          </div>
+        </div>
+        <div class="quick" id="pquick">
+          <button class="qc" data-cmd="status"><span class="g">◔</span>Como está?</button>
+          <button class="qc" data-cmd="pausar"><span class="g">⏸</span>Pausar</button>
+          <button class="qc" data-tpl="nova"><span class="g">＋</span>Nova peça…</button>
+          <button class="qc" data-cmd="resumo"><span class="g">≡</span>Resumo do dia</button>
+          <button class="qc" data-tpl="agendar"><span class="g">⏱</span>Agendar…</button>
+          <button class="qc" data-cmd="cotas"><span class="g">▥</span>Cotas</button>
+        </div>
+        <div class="comp" id="pcomp">
+          <div class="to">Para <b id="pto">Diretor · loja-api</b> · <span>/ comandos</span> · <span>segure 🎤 para falar</span></div>
+          <div class="row">
+            <div class="box">
+              <button class="ib" title="Comandos e frases salvas" data-sheet="cmds"><svg viewBox="0 0 24 24"><path d="M9 4 15 20"/></svg></button>
+              <textarea placeholder="Diga o que quer…" rows="1"></textarea>
+              <button class="ib" title="Anexar foto ou arquivo" data-sheet="anexo"><svg viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></svg></button>
+            </div>
+            <div class="recbar"><div class="wave"><i></i><i></i><i></i><i></i><i></i></div><span>Ouvindo… solte para parar</span><span class="mono" style="margin-left:auto">0:03</span></div>
+            <button class="send" data-send title="Enviar (sem texto: falar)"><svg viewBox="0 0 24 24" class="mic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DECISÕES -->
+      <div class="view" data-view="dec">
+        <div class="vh"><h2>Decisões</h2><span class="r badge warn" id="pdeccnt">2 pendentes</span></div>
+        <div class="scroll">
+          <div class="card" data-dec="d2">
+            <div class="h"><span class="ic p">P</span>loja-api · D2<span class="badge warn">há 1 min</span></div>
+            <p>Uso um mock do provedor Google agora ou espero você configurar as credenciais de teste?</p>
+            <div class="opts"><button class="btn pri big" data-decide="Usar mock agora">Usar mock</button><button class="btn big" data-decide="Vou configurar">Vou configurar</button></div>
+          </div>
+          <div class="card" data-dec="rel">
+            <div class="h"><span class="ic t">T</span>relatorio-mensal<span class="badge warn">há 22 min</span></div>
+            <p>A planilha de março tem 3 colunas novas. Incluo no consolidado ou ignoro?</p>
+            <div class="opts"><button class="btn pri big" data-decide="Incluir">Incluir</button><button class="btn big" data-decide="Ignorar">Ignorar</button></div>
+            <div class="sub" style="margin-top:8px">Ou responda com texto no chat da tarefa →</div>
+          </div>
+          <div class="card" style="opacity:.6">
+            <div class="h"><span class="ic p">P</span>app-mobile · Crítico<span class="badge">respondida 08:50</span></div>
+            <p style="margin-bottom:0">Reprovado 2/3 · você pediu “tenta de novo com o Opus”.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- COTAS -->
+      <div class="view" data-view="cota">
+        <div class="vh"><h2>Cotas</h2><span class="r faint" style="font-size:12px">há 40 s</span></div>
+        <div class="scroll">
+          <div class="card"><div class="h">claude-empresa<span class="badge ok">ok</span></div>
+            <div class="qw"><span>5 h · 62%</span><span>reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div>
+            <div class="qw"><span>7 dias · 31%</span><span>reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
+          <div class="card"><div class="h">claude-pessoal<span class="badge warn">perto</span></div>
+            <div class="qw"><span>5 h · 91%</span><span>reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div>
+            <div class="qw"><span>7 dias · 58%</span><span>reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
+          <div class="card"><div class="h">codex-1<span class="badge ok">ok</span></div>
+            <div class="qw"><span>Primária · 34%</span><span>reset 12:10</span></div><div class="bar"><i style="width:34%"></i></div>
+            <div class="qw"><span>Semanal · 22%</span><span>reset qui 21:00</span></div><div class="bar"><i style="width:22%"></i></div></div>
+          <div class="card"><div class="h">minimax-api<span class="badge info">API</span></div>
+            <div class="qw"><span>Hoje · US$ 3,20</span><span>teto US$ 20</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
+          <div class="card"><div class="h">gemma4-local<span class="badge info">local</span></div>
+            <div class="qw"><span>1 de 2 vagas</span><span>RAM 6,1/16 GB</span></div><div class="bar"><i class="a" style="width:50%"></i></div></div>
+        </div>
+      </div>
+
+      <!-- ATIVIDADE -->
+      <div class="view" data-view="ativ">
+        <div class="vh"><h2>Atividade</h2></div>
+        <div class="segm"><span class="pill on" data-seg="cen">Cenários</span><span class="pill" data-seg="ev">Eventos</span><span class="pill" data-seg="ag">Agenda</span></div>
+        <div class="scroll">
+          <div data-segp="cen">
+            <div class="li" data-open-chat="loja-api · Peça #14"><span class="ic p">P</span><div class="nm"><div>loja-api</div><small>Peça #14 · Execução · D2, D3 rodando</small></div><span class="dot run"></span></div>
+            <div class="li" data-open-chat="relatorio-mensal"><span class="ic t">T</span><div class="nm"><div>relatorio-mensal</div><small>Aguardando você</small></div><span class="dot wait"></span></div>
+            <div class="li" data-open-chat="app-mobile · Peça #3"><span class="ic p">P</span><div class="nm"><div>app-mobile</div><small>Crítico reprovou 2/3 · tentando de novo</small></div><span class="dot err"></span></div>
+            <div class="li" data-open-chat="pesquisa-acp"><span class="ic c">C</span><div class="nm"><div>pesquisa-acp</div><small>Chat · ocioso</small></div><span class="dot"></span></div>
+            <div class="li" data-open-chat="migracao-db · Peça #9"><span class="ic p">P</span><div class="nm"><div>migracao-db</div><small>Peça #9 · PR aberto</small></div><span class="dot ok"></span></div>
+            <div class="ro">🖥 Criar e editar cenários, Executores e papéis: no computador</div>
+          </div>
+          <div data-segp="ev" style="display:none">
+            <div class="ev"><time>09:44</time><div><code>ferramenta.chamada</code> D2 · run_tests(auth) → 11 ok, 1 falha</div></div>
+            <div class="ev"><time>09:43</time><div><code>decisao.pendente</code> D2 · credenciais do Google</div></div>
+            <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → sonnet-medio</div></div>
+            <div class="ev"><time>09:41</time><div><code>tentativa.concluida</code> D1 · testes ok</div></div>
+            <div class="ev"><time>07:31</time><div><code>schedule.concluido</code> daily-headlines · e-mail enviado</div></div>
+            <div class="ro">Trajetórias completas: só leitura resumida aqui; detalhe no computador</div>
+          </div>
+          <div data-segp="ag" style="display:none">
+            <div class="li"><span class="ic t">⏱</span><div class="nm"><div>daily-headlines</div><small>amanhã 07:30 · todos os dias</small></div><button class="btn" data-toast="Agenda pausada (exemplo)">Pausar</button></div>
+            <div class="li"><span class="ic t">⏱</span><div class="nm"><div>daily-consolidation</div><small>hoje 18:00 · dias úteis</small></div><button class="btn" data-toast="Rodando agora (exemplo)">Rodar</button></div>
+            <div class="li"><span class="ic p">⏱</span><div class="nm"><div>loja-api · atualizar deps</div><small>após o reset de claude-empresa (11:30)</small></div><button class="btn" data-toast="Agenda pausada (exemplo)">Pausar</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAIS -->
+      <div class="view" data-view="mais">
+        <div class="vh"><h2>Mais</h2></div>
+        <div class="scroll">
+          <div class="card"><div class="h">Este aparelho<span class="badge ok">pareado</span></div>
+            <div class="sub" style="margin-top:6px">Pixel · token próprio · pareado em 14/11 09:02</div>
+            <div class="sub">Daemon <span class="mono">100.84.12.7:7420</span> pela VPN · certificado fixado</div>
+            <div class="opts" style="margin-top:10px"><button class="btn" data-toast="Abre o leitor de QR (exemplo)">Parear outro daemon</button></div></div>
+          <div class="card"><div class="h">Minhas frases</div>
+            <div class="sub" style="margin:6px 0 8px">Aparecem no / e nos comandos rápidos.</div>
+            <div class="li"><div class="nm"><div>Roda os testes e me avisa</div></div><span class="faint">⋮</span></div>
+            <div class="li"><div class="nm"><div>Abre PR quando o Crítico aprovar</div></div><span class="faint">⋮</span></div>
+            <div class="li"><div class="nm"><div>Para tudo que estiver gastando claude-pessoal</div></div><span class="faint">⋮</span></div></div>
+          <div class="card"><div class="h">Preferências do app</div>
+            <div class="li"><div class="nm"><div>Bloquear com biometria</div><small>ao abrir e antes de cancelar</small></div><span class="badge ok">ligado</span></div>
+            <div class="li"><div class="nm"><div>Notificações</div><small>decisões, falhas, fim de peça</small></div><span class="badge">item 19</span></div>
+            <div class="li"><div class="nm"><div>Idioma</div><small>segue o daemon</small></div><span class="faint">pt-BR</span></div></div>
+          <div class="ro">🖥 Executores, papéis, perfis, plugins e ordens: editar no computador</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bnav" id="pnav">
+      <button class="on" data-go="chat"><span class="gi">💬</span>Chat</button>
+      <button data-go="dec"><span class="gi">⚑</span>Decisões<span class="n" id="pbadge">2</span></button>
+      <button data-go="cota"><span class="gi">▥</span>Cotas</button>
+      <button data-go="ativ"><span class="gi">◉</span>Atividade</button>
+      <button data-go="mais"><span class="gi">☰</span>Mais</button>
+    </nav>
+    <div class="gest"><i></i></div>
+
+    <!-- folhas -->
+    <div class="scrim" data-close></div>
+    <div class="sheet" data-sh="dest">
+      <div class="grab"></div><h3>Falar com</h3>
+      <div class="sb">
+        <button class="cmd" data-dest="Orquestrador · global" data-d2="todos os cenários"><span class="gi">◎</span><div class="nm"><div>Orquestrador global</div><small>cria cenários, vê tudo, responde sobre cotas</small></div></button>
+        <div class="grp">Cenários</div>
+        <button class="cmd on" data-dest="loja-api · Peça #14" data-d2="Diretor · Haiku 5.5 · conectado"><span class="ic p">P</span><div class="nm"><div>loja-api · Peça #14</div><small>Execução · 1 decisão</small></div><span class="dot run"></span></button>
+        <button class="cmd" data-dest="relatorio-mensal" data-d2="Diretor · tarefa · aguardando você"><span class="ic t">T</span><div class="nm"><div>relatorio-mensal</div><small>Aguardando você</small></div><span class="dot wait"></span></button>
+        <button class="cmd" data-dest="app-mobile · Peça #3" data-d2="Diretor · Crítico 2/3"><span class="ic p">P</span><div class="nm"><div>app-mobile · Peça #3</div><small>Crítico reprovou 2/3</small></div><span class="dot err"></span></button>
+        <button class="cmd" data-dest="pesquisa-acp" data-d2="Chat · ocioso"><span class="ic c">C</span><div class="nm"><div>pesquisa-acp</div><small>Chat · ocioso</small></div><span class="dot"></span></button>
+      </div>
+    </div>
+    <div class="sheet" data-sh="cmds">
+      <div class="grab"></div><h3>Comandos</h3>
+      <input class="search" placeholder="Buscar comando ou frase…">
+      <div class="sb">
+        <div class="grp">Peça atual</div>
+        <button class="cmd" data-cmd="status"><span class="gi">◔</span><div class="nm"><div>Como está?</div><small>resumo do estado, sem gastar o Diretor</small></div><code>/status</code></button>
+        <button class="cmd" data-cmd="pausar"><span class="gi">⏸</span><div class="nm"><div>Pausar a peça</div><small>os Atores param no próximo checkpoint</small></div><code>/pausar</code></button>
+        <button class="cmd" data-cmd="retomar"><span class="gi">▶</span><div class="nm"><div>Retomar</div><small>volta do último checkpoint</small></div><code>/retomar</code></button>
+        <button class="cmd danger" data-cmd="cancelar"><span class="gi">■</span><div class="nm"><div>Cancelar a peça</div><small>pede confirmação</small></div><code>/cancelar</code></button>
+        <div class="grp">Criar</div>
+        <button class="cmd" data-tpl="nova"><span class="gi">＋</span><div class="nm"><div>Nova peça…</div><small>no projeto deste cenário</small></div><code>/nova</code></button>
+        <button class="cmd" data-tpl="tarefa"><span class="gi">⚙</span><div class="nm"><div>Rodar tarefa agora…</div><small>daily-headlines, daily-consolidation</small></div><code>/rodar</code></button>
+        <button class="cmd" data-tpl="agendar"><span class="gi">⏱</span><div class="nm"><div>Agendar…</div><small>o Diretor devolve um rascunho para confirmar</small></div><code>/agendar</code></button>
+        <button class="cmd" data-tpl="ordem"><span class="gi">§</span><div class="nm"><div>Dar uma ordem…</div><small>regra que vale até você revogar</small></div><code>/ordem</code></button>
+        <div class="grp">Consultar</div>
+        <button class="cmd" data-cmd="cotas"><span class="gi">▥</span><div class="nm"><div>Cotas</div><small>5 h e 7 dias, com reset</small></div><code>/cotas</code></button>
+        <button class="cmd" data-cmd="resumo"><span class="gi">≡</span><div class="nm"><div>Resumo do dia</div><small>todas as peças e tarefas</small></div><code>/resumo</code></button>
+        <div class="grp">Minhas frases</div>
+        <button class="cmd" data-say="Roda os testes e me avisa"><span class="gi">❝</span><div class="nm"><div>Roda os testes e me avisa</div></div></button>
+        <button class="cmd" data-say="Abre PR quando o Crítico aprovar"><span class="gi">❝</span><div class="nm"><div>Abre PR quando o Crítico aprovar</div></div></button>
+      </div>
+    </div>
+    <div class="sheet" data-sh="anexo">
+      <div class="grab"></div><h3>Anexar</h3>
+      <div class="sb">
+        <button class="cmd" data-toast="Abre a câmera (exemplo)"><span class="gi">📷</span><div class="nm"><div>Foto</div><small>de uma tela, um quadro, um erro</small></div></button>
+        <button class="cmd" data-toast="Abre a galeria (exemplo)"><span class="gi">🖼</span><div class="nm"><div>Galeria</div></div></button>
+        <button class="cmd" data-toast="Abre o seletor de arquivos (exemplo)"><span class="gi">📄</span><div class="nm"><div>Arquivo</div><small>vai para a pasta do cenário</small></div></button>
+      </div>
+    </div>
+    <div class="sheet" data-sh="confirm">
+      <div class="grab"></div><h3>Cancelar a peça #14?</h3>
+      <div class="confirm">
+        <p>Os Atores de D2 e D3 param, e o trabalho fica nas branches das tentativas. Não abre PR. Pede a biometria.</p>
+        <div class="opts"><button class="btn big" data-close>Voltar</button><button class="btn big danger" data-confirm>Cancelar a peça</button></div>
+      </div>
+    </div>
+    <div class="toast" id="ptoast"></div>
+  </div>
+</div>
+
+<!-- ======================= TABLET ======================= -->
+<div class="dev tab" id="tablet" data-dev="tab">
+  <div class="label" id="tlabel">Tablet paisagem · 1180 × 820</div>
+  <div class="scr" id="tscr">
+    <div class="sbar">09:44 <span class="r"><span class="vpn">VPN</span>📶 🔋 64%</span></div>
+    <div class="offline">⚠ Sem conexão com o daemon pela VPN · o que você enviar fica na fila do aparelho</div>
+    <div class="tl" id="tl">
+      <div class="dscrim" data-dclose></div>
+      <aside class="side">
+        <div class="hd"><div class="logo">OT</div><b>OTheater</b><button class="ib" title="Novo cenário (no computador)">＋</button></div>
+        <div class="sc">
+          <div class="sh">Cenários</div>
+          <div class="it on"><span class="ic p">P</span><div class="nm"><div>loja-api</div><small>Peça #14 · Execução</small></div><span class="dot run"></span></div>
+          <div class="it"><span class="ic t">T</span><div class="nm"><div>relatorio-mensal</div><small>Aguardando você</small></div><span class="dot wait"></span></div>
+          <div class="it"><span class="ic p">P</span><div class="nm"><div>app-mobile</div><small>Crítico reprovou 2/3</small></div><span class="dot err"></span></div>
+          <div class="it"><span class="ic c">C</span><div class="nm"><div>pesquisa-acp</div><small>Chat · ocioso</small></div><span class="dot"></span></div>
+          <div class="it"><span class="ic p">P</span><div class="nm"><div>migracao-db</div><small>Peça #9 · PR aberto</small></div><span class="dot ok"></span></div>
+          <div class="sh">Assinaturas · 5 h / 7 d</div>
+          <div class="sub2"><div class="rw"><span>claude-empresa</span><span>62% · 31%</span></div><div class="bar"><i style="width:62%"></i></div><div class="bar wk"><i style="width:31%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>claude-pessoal</span><span>91% · 58%</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="bar wk"><i style="width:58%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>codex-1</span><span>34% · 22%</span></div><div class="bar"><i style="width:34%"></i></div><div class="bar wk"><i style="width:22%"></i></div></div>
+          <div class="sub2"><div class="rw"><span>minimax-api</span><span>US$ 3,20</span></div><div class="bar"><i class="a" style="width:16%"></i></div></div>
+        </div>
+        <div class="foot"><span class="dot ok"></span>Daemon pela VPN · 100.84.12.7</div>
+      </aside>
+
+      <section class="chat">
+        <div class="appbar">
+          <button class="ib only-port" data-drawer="side" title="Cenários">☰</button>
+          <button class="target" data-toast="No tablet, o cenário se troca pela lateral">
+            <span style="min-width:0"><div class="t1">loja-api · Peça #14</div><div class="t2">Diretor · Haiku 5.5 · conectado</div></span>
+          </button>
+          <button class="ib" title="Pausar" data-cmd="pausar">⏸</button>
+          <button class="ib" title="Cancelar" data-cmd="cancelar" style="color:var(--err)">■</button>
+          <button class="ib only-port" data-drawer="work" title="Painel">▤</button>
+        </div>
+        <div class="state"><span class="pill run">● Execução · 1/5</span><span class="pill warn">1 decisão</span><span class="pill">Crítico 0/3</span><span class="pill">38 min</span></div>
+        <div class="msgs" id="tmsgs">
+          <div class="m you">Quero login OAuth com Google e GitHub na API, com testes de ponta a ponta. Pode abrir PR no final.<div class="meta">09:12 ✓✓</div></div>
+          <div class="m orq">Abri a <b>peça #14</b> no loja-api e mandei a necessidade para o Autor. Aviso quando o plano passar pelo Revisor.<div class="meta">09:12</div></div>
+          <div class="sys ok"><span class="k">autor</span>Opus 5.5 · plano com 7 passos<time>09:19</time></div>
+          <div class="sys ok"><span class="k">revisor</span>Codex · aprovado na 1ª tentativa<time>09:23</time></div>
+          <div class="sys ok"><span class="k">roteiro</span>5 demandas · D2 e D3 em paralelo<time>09:27</time></div>
+          <div class="sys warn"><span class="k">seleção</span>D3: codex-alto sem vaga → sonnet-medio<time>09:42</time></div>
+          <div class="m orq">D1 pronta. D2 e D3 rodando em worktrees separadas. D4 começa quando as duas terminarem.<div class="meta">09:42</div></div>
+          <div class="decision" data-dec="d2">
+            <h4>⚑ Decisão do Produtor · D2</h4>
+            <p>O Ator da D2 precisa de credenciais de teste do Google. Uso um mock agora ou espero você configurar?</p>
+            <div class="opts"><button class="btn pri" data-decide="Usar mock agora">Usar mock agora</button><button class="btn" data-decide="Vou configurar">Vou configurar</button></div>
+          </div>
+        </div>
+        <div class="quick">
+          <button class="qc" data-cmd="status"><span class="g">◔</span>Como está?</button>
+          <button class="qc" data-cmd="pausar"><span class="g">⏸</span>Pausar</button>
+          <button class="qc" data-tpl="nova"><span class="g">＋</span>Nova peça…</button>
+          <button class="qc" data-cmd="resumo"><span class="g">≡</span>Resumo</button>
+          <button class="qc" data-tpl="agendar"><span class="g">⏱</span>Agendar…</button>
+        </div>
+        <div class="comp">
+          <div class="to">Para <b>Diretor · loja-api</b> · / comandos · @ arquivo · segure 🎤 para falar</div>
+          <div class="row">
+            <div class="box">
+              <button class="ib" title="Comandos" data-toast="No tablet, o / abre a mesma lista de comandos do celular"><svg viewBox="0 0 24 24"><path d="M9 4 15 20"/></svg></button>
+              <textarea placeholder="Fale com o Orquestrador…" rows="1"></textarea>
+              <button class="ib" title="Anexar" data-toast="Anexar foto ou arquivo (exemplo)"><svg viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></svg></button>
+            </div>
+            <div class="recbar"><div class="wave"><i></i><i></i><i></i><i></i><i></i></div><span>Ouvindo… solte para parar</span></div>
+            <button class="send" data-send title="Enviar (sem texto: falar)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="work">
+        <nav class="wtabs">
+          <button class="wtab on" data-wt="geral">Visão geral</button>
+          <button class="wtab" data-wt="traj">Trajetórias</button>
+          <button class="wtab" data-wt="cfg">Configuração</button>
+          <button class="ib only-port" data-dclose style="margin-left:auto" title="Fechar painel">✕</button>
+        </nav>
+        <div class="wb">
+          <div class="wpane on" data-wp="geral">
+            <div class="card"><div class="h">Pipeline<span class="badge">iniciada 09:12</span></div>
+              <div class="pipe" style="margin-top:10px">
+                <div class="st done"><div class="c">✓</div><span>Produtor</span></div><div class="link done"></div>
+                <div class="st done"><div class="c">✓</div><span>Autor</span></div><div class="link done"></div>
+                <div class="st done"><div class="c">✓</div><span>Revisor</span></div><div class="link done"></div>
+                <div class="st done"><div class="c">✓</div><span>Roteirista</span></div><div class="link done"></div>
+                <div class="st cur"><div class="c">5</div><span>Execução</span></div><div class="link"></div>
+                <div class="st"><div class="c">6</div><span>Integração</span></div><div class="link"></div>
+                <div class="st"><div class="c">7</div><span>Crítico</span></div><div class="link"></div>
+                <div class="st"><div class="c">8</div><span>Entrega</span></div>
+              </div></div>
+            <div class="g2">
+              <div class="card"><div class="h">Demandas</div>
+                <div class="dq"><b>D1</b><span class="nm">Usuário e migração</span><span class="badge ok">concluída</span></div>
+                <div class="dq"><b>D2</b><span class="nm">Fluxo OAuth</span><span class="badge warn">decisão</span></div>
+                <div class="dq"><b>D3</b><span class="nm">Middleware de sessão</span><span class="badge run">7/20 min</span></div>
+                <div class="dq"><b>D4</b><span class="nm">Testes e2e</span><span class="badge">aguarda D2, D3</span></div>
+                <div class="dq"><b>D5</b><span class="nm">Documentação</span><span class="badge">fila</span></div>
+                <div class="ro-hint" style="margin-top:8px">◇ O DAG desenhado abre no computador; aqui, a lista.</div>
+              </div>
+              <div class="card"><div class="h">Eventos<span class="badge run">ao vivo</span></div>
+                <div class="ev"><time>09:44</time><div><code>ferramenta.chamada</code> D2 · run_tests → 1 falha</div></div>
+                <div class="ev"><time>09:43</time><div><code>decisao.pendente</code> D2 · credenciais</div></div>
+                <div class="ev"><time>09:42</time><div><code>executor.selecionado</code> D3 → sonnet-medio</div></div>
+                <div class="ev"><time>09:41</time><div><code>tentativa.concluida</code> D1 · testes ok</div></div>
+              </div>
+            </div>
+            <div class="card"><div class="h">Cota por assinatura<span class="badge">há 40 s</span></div>
+              <div class="g2 q2" style="margin-top:4px">
+                <div><div class="qw"><span>claude-empresa · 5 h 62%</span><span>reset 11:30</span></div><div class="bar"><i style="width:62%"></i></div><div class="qw"><span>7 dias 31%</span><span>reset ter 09:00</span></div><div class="bar"><i style="width:31%"></i></div></div>
+                <div><div class="qw"><span>claude-pessoal · 5 h 91%</span><span>reset 10:05</span></div><div class="bar"><i class="w" style="width:91%"></i></div><div class="qw"><span>7 dias 58%</span><span>reset seg 14:20</span></div><div class="bar"><i style="width:58%"></i></div></div>
+              </div></div>
+          </div>
+          <div class="wpane" data-wp="traj">
+            <div class="card"><div class="h">D2 · tentativa 1<span class="badge run">46 passos</span></div>
+              <div class="ev"><time>09:43</time><div><code>edit</code> src/auth/oauth.ts +118 −0</div></div>
+              <div class="ev"><time>09:43</time><div><code>casca</code> install_deps() · ok</div></div>
+              <div class="ev"><time>09:44</time><div><code>casca</code> run_tests("auth") → 11 ok, 1 falha</div></div>
+              <div class="ro-hint" style="margin-top:8px">Toque num passo para ver o diff. Exportar ATIF fica no computador.</div></div>
+          </div>
+          <div class="wpane" data-wp="cfg">
+            <div class="card"><div class="h">Configuração<span class="badge">igual à web</span></div>
+              <p>No tablet, a configuração completa (Executores, papéis, perfis, plugins, ordens) fica disponível, como na web. Edições que mexem em segredos pedem a biometria.</p>
+              <div class="ro-hint">Proposta: o tablet edita; o celular só lê.</div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="gest"><i></i></div>
+    <div class="toast" id="ttoast"></div>
+  </div>
+</div>
+
+</div></div>
+
+<aside class="notes" id="notes">
+  <h2>O que este mockup propõe</h2>
+  <p class="muted" style="margin-top:0">Tudo aqui é <span class="tag">proposta</span> para a Fase 14 (arquitetura §5.13). Nada foi decidido além do que a v0.20 registra.</p>
+
+  <h3>Mandar comandos pelo celular</h3>
+  <ul>
+    <li><b>O chat abre direto</b>: é a primeira aba e o composer fica embaixo, ao alcance do polegar.</li>
+    <li><b>Para quem</b>: o topo e a linha “Para” mostram o destinatário. Um toque troca entre o Orquestrador global e o Diretor de cada cenário.</li>
+    <li><b>Comandos rápidos</b>: fichas acima do composer, que mudam com o estado do cenário (com peça rodando: Como está?, Pausar, Nova peça…).</li>
+    <li><b>/ comandos</b>: uma folha com busca, agrupada em Peça, Criar e Consultar, mais as <b>Minhas frases</b> salvas.</li>
+    <li><b>Voz</b>: sem texto, o botão grande é microfone; segure para falar. Com texto, vira enviar. O ditado do teclado do Android também funciona <span class="tag c">a confirmar</span>.</li>
+    <li><b>Modelos com “…”</b> preenchem o texto para você completar; os outros enviam na hora.</li>
+    <li><b>Ações destrutivas</b> (cancelar) pedem confirmação e biometria.</li>
+    <li><b>Sem VPN</b>: a mensagem fica na fila do aparelho e sai quando a conexão volta. Teste com “Simular sem VPN”.</li>
+    <li><b>Decisões com um toque</b>, no chat e na aba Decisões, com contador na navegação.</li>
+  </ul>
+
+  <h3>Celular: o que fica de fora</h3>
+  <ul>
+    <li>Editar Executores, papéis, perfis, plugins e ordens; o DAG desenhado; trajetórias longas; o navegador compartilhado. Aparecem só para leitura, com aviso de abrir no computador.</li>
+  </ul>
+
+  <h3>Tablet</h3>
+  <ul>
+    <li><b>Paisagem</b>: o layout do <span class="mono">app.html</span> (lateral, chat, painel em abas), com alvos de toque maiores.</li>
+    <li><b>Retrato</b>: o chat ocupa a tela; ☰ abre a lateral e ▤ abre o painel, como gavetas.</li>
+    <li>Edita a configuração completa, como a web.</li>
+  </ul>
+
+  <h3>Ideias para depois</h3>
+  <ul>
+    <li>Compartilhar com o OTheater a partir de outro app (texto, link, foto), indo para o chat escolhido.</li>
+    <li>Widget na tela inicial ou bloco nas configurações rápidas: “Falar com o Diretor”.</li>
+    <li>Notificação com ações: responder a uma decisão sem abrir o app (depende do item 19).</li>
+  </ul>
+</aside>
+</div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+/* relógio simulado: começa nas 09:44 da barra de status e anda com o tempo real */
+const T0=Date.now();
+const now=()=>{const m=9*60+44+Math.floor((Date.now()-T0)/60000);return String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+let offline=false;
+
+/* ---------- tema ---------- */
+$('#theme').onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=dark?'light':'dark'};
+
+/* ---------- escolha de aparelho e escala ---------- */
+const phone=$('#phone'), tablet=$('#tablet'), fit=$('#fit'), stage=$('#stage');
+let view='phone';
+function layout(){
+  phone.style.display=(view==='phone'||view==='all')?'':'none';
+  tablet.style.display=(view==='phone')?'none':'';
+  tablet.classList.toggle('port',view==='port'||view==='all');
+  $('#tlabel').textContent=tablet.classList.contains('port')?'Tablet retrato · 820 × 1180':'Tablet paisagem · 1180 × 820';
+  fit.style.transform='translate(-50%,-50%)';
+  const W=fit.offsetWidth, H=fit.offsetHeight+40;
+  const s=Math.min((stage.clientWidth-48)/W,(stage.clientHeight-48)/H,1);
+  fit.style.transform=`translate(-50%,-50%) translateY(14px) scale(${s})`;
+}
+$$('#seg button').forEach(b=>b.onclick=()=>{$$('#seg button').forEach(x=>x.classList.toggle('on',x===b));view=b.dataset.v;layout()});
+$('#nt').onclick=()=>{$('#notes').classList.toggle('off');$('#nt').classList.toggle('on');layout()};
+addEventListener('resize',layout);
+
+/* ---------- utilidades por tela ---------- */
+function scrOf(el){return el.closest('.scr')}
+function toast(scr,t){const el=$('.toast',scr);el.textContent=t;el.classList.add('on');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),1900)}
+function msgsOf(scr){return $('.msgs',scr)}
+function add(scr,html,cls){const m=document.createElement('div');m.className=cls;m.innerHTML=html;msgsOf(scr).appendChild(m);msgsOf(scr).scrollTop=1e6;return m}
+function goChat(scr){if(scr.id!=='pscr')return;go('chat')}
+
+/* comandos: texto mostrado e resposta simulada */
+const CMDS={
+  status:['/status','Como está?','<b>Peça #14</b> · Execução: D1 pronta, D2 esperando sua decisão (credenciais do Google), D3 em 7 de 20 min. Nada falhou além de 1 teste da D2, que depende da decisão.',true],
+  pausar:['/pausar','Pausar a peça','Pausei a peça #14. D2 e D3 param no próximo checkpoint; nada se perde. Mande “retomar” quando quiser.',false],
+  retomar:['/retomar','Retomar','Retomei a peça #14 do último checkpoint.',false],
+  resumo:['/resumo','Resumo do dia','Hoje: <b>daily-headlines</b> enviado às 07:31; <b>loja-api</b> em execução; <b>app-mobile</b> com o Crítico reprovando 2/3 (nova tentativa com Opus); <b>relatorio-mensal</b> esperando você.',true],
+  cotas:['/cotas','Cotas','claude-pessoal está em 91% da janela de 5 h (reset 10:05); estou mandando o trabalho novo para claude-empresa (62%) e codex-1 (34%).',true],
+  cancelar:['/cancelar','Cancelar a peça','Cancelei a peça #14. O trabalho ficou nas branches das tentativas, sem PR.',false],
+};
+const TPLS={
+  nova:'Nova peça: ',
+  agendar:'Agenda: todo dia útil às 7h, ',
+  tarefa:'Roda agora a tarefa daily-headlines',
+  ordem:'Ordem: a partir de agora, ',
+};
+function sendText(scr,text,cmd){
+  const t=now();
+  const label=cmd?`<span class="cmd">${CMDS[cmd][0]}</span>${CMDS[cmd][1]}`:text.replace(/</g,'&lt;');
+  const m=add(scr,`${label}<div class="meta">${t} ${offline?'⏳ na fila do aparelho':'✓'}</div>`,'m you');
+  if(offline){toast(scr,'Sem VPN: a mensagem sai quando a conexão voltar');m._pending=true;return}
+  respond(scr,m,text,cmd);
+}
+function respond(scr,m,text,cmd){
+  setTimeout(()=>{$('.meta',m).textContent=now()+' ✓✓'},350);
+  const typing=setTimeout(()=>{
+    const r=cmd?CMDS[cmd][2]:'Entendido. Vou encaminhar: “'+text.replace(/</g,'&lt;')+'”. Aviso por aqui quando tiver novidade.';
+    if(cmd&&!CMDS[cmd][3])add(scr,`<span class="k">peça</span>${CMDS[cmd][1].toLowerCase()} · pelo app Android<time>${now()}</time>`,'sys ok');
+    add(scr,r+`<div class="meta">${now()}${cmd&&CMDS[cmd][3]?' · sem chamar o modelo':''}</div>`,'m orq');
+  },900);
+}
+function runCmd(scr,cmd){
+  if(cmd==='cancelar'){if(scr.id==='pscr'){openSheet(scr,'confirm')}else{if(confirm('Cancelar a peça #14? (no app real, uma folha de confirmação com biometria)'))sendText(scr,'',cmd)}return}
+  closeSheets(scr);goChat(scr);sendText(scr,'',cmd);
+}
+function fillTpl(scr,key,txt){
+  closeSheets(scr);goChat(scr);
+  const ta=$('.comp textarea',scr);ta.value=txt??TPLS[key];ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);syncSend(scr);
+}
+
+/* ---------- composer: microfone ↔ enviar ---------- */
+const MIC='<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
+const SEND='<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
+function syncSend(scr){const b=$('[data-send]',scr),ta=$('.comp textarea',scr);const has=ta.value.trim().length>0;if(b._has!==has){b.innerHTML=has?SEND:MIC;b._has=has;b.title=has?'Enviar':'Segure para falar'}}
+$$('.scr').forEach(scr=>{
+  const ta=$('.comp textarea',scr), b=$('[data-send]',scr), comp=$('.comp',scr);
+  ta.addEventListener('input',()=>{ta.style.height='38px';ta.style.height=Math.min(ta.scrollHeight,120)+'px';syncSend(scr)});
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();b.click()}});
+  let rec=null;
+  const startRec=()=>{if(ta.value.trim())return;comp.classList.add('recording');b.classList.add('rec')};
+  const stopRec=()=>{if(!comp.classList.contains('recording'))return;comp.classList.remove('recording');b.classList.remove('rec');ta.value='Depois que a D2 passar, roda os testes de ponta a ponta e me avisa';ta.dispatchEvent(new Event('input'));toast(scr,'Transcrito: confira e toque em enviar')};
+  b.addEventListener('pointerdown',e=>{if(!ta.value.trim()){rec=setTimeout(startRec,180)}});
+  b.addEventListener('pointerup',e=>{clearTimeout(rec);if(comp.classList.contains('recording')){stopRec();b._skip=true}});
+  b.addEventListener('pointerleave',()=>{clearTimeout(rec);stopRec()});
+  b.addEventListener('click',()=>{
+    if(b._skip){b._skip=false;return}
+    const v=ta.value.trim();
+    if(!v){startRec();setTimeout(stopRec,1600);return}
+    sendText(scr,v);ta.value='';ta.dispatchEvent(new Event('input'));
+  });
+  syncSend(scr);
+});
+
+/* ---------- cliques ---------- */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-cmd],[data-tpl],[data-say],[data-sheet],[data-close],[data-confirm],[data-decide],[data-go],[data-dest],[data-toast],[data-open-chat],[data-seg],[data-drawer],[data-dclose],[data-wt]');
+  if(!el)return; const scr=scrOf(el);
+  const d=el.dataset;
+  if(d.cmd)return runCmd(scr,d.cmd);
+  if(d.tpl)return fillTpl(scr,d.tpl);
+  if(d.say)return fillTpl(scr,null,d.say);
+  if(d.sheet)return openSheet(scr,d.sheet);
+  if('close' in d)return closeSheets(scr);
+  if('confirm' in d){closeSheets(scr);goChat(scr);return sendText(scr,'','cancelar')}
+  if(d.decide)return decide(d.decide,el);
+  if(d.go)return go(d.go);
+  if(d.dest){setDest(d.dest,d.d2,el);return}
+  if(d.openChat){const c=$(`[data-dest="${d.openChat}"]`);if(c)setDest(d.openChat,c.dataset.d2,c);else{setDest(d.openChat,'Diretor');}return}
+  if(d.seg){$$('[data-seg]',scr).forEach(x=>x.classList.toggle('on',x===el));$$('[data-segp]',scr).forEach(p=>p.style.display=p.dataset.segp===d.seg?'':'none');return}
+  if(d.drawer){$('#tl').classList.add(d.drawer+'-on');return}
+  if('dclose' in d){$('#tl').classList.remove('side-on','work-on');return}
+  if(d.wt){$$('.wtab',scr).forEach(x=>x.classList.toggle('on',x===el));$$('.wpane',scr).forEach(p=>p.classList.toggle('on',p.dataset.wp===d.wt));return}
+  if(d.toast)return toast(scr,d.toast);
+});
+function openSheet(scr,name){closeSheets(scr,true);scr.classList.add('sheet-on');$(`.sheet[data-sh="${name}"]`,scr).classList.add('on');if(name==='cmds')setTimeout(()=>$('.search',scr).focus(),200)}
+function closeSheets(scr){scr.classList.remove('sheet-on');$$('.sheet',scr).forEach(s=>s.classList.remove('on'))}
+function go(v){const scr=$('#pscr');$$('#pnav button').forEach(b=>b.classList.toggle('on',b.dataset.go===v));$$('.view',scr).forEach(x=>x.classList.toggle('on',x.dataset.view===v))}
+function setDest(name,sub,el){
+  const scr=$('#pscr');$$('[data-dest]',scr).forEach(x=>x.classList.toggle('on',x===el));
+  $('.appbar .t1',scr).textContent=name==='Orquestrador · global'?'Orquestrador global':name;
+  $('.appbar .t2',scr).textContent=sub||'';
+  $('#pto').textContent=name==='Orquestrador · global'?'Orquestrador global':'Diretor · '+name.split(' · ')[0];
+  const ic=$('.appbar .ic',scr);ic.className='ic '+(name.startsWith('Orq')?'g':name.startsWith('relatorio')?'t':name.startsWith('pesquisa')?'c':'p');ic.textContent=name.startsWith('Orq')?'◎':ic.className.slice(-1).toUpperCase();
+  closeSheets(scr);go('chat');toast(scr,'Agora falando com '+$('#pto').textContent);
+}
+function decide(ans,el){
+  const key=el.closest('[data-dec]').dataset.dec, from=scrOf(el), onde=from.id==='pscr'?'pelo celular':'pelo tablet';
+  $$(`[data-dec="${key}"]`).forEach(c=>{
+    if(c.classList.contains('decision')){c.classList.add('done');$('.opts',c).innerHTML=`<span class="muted">Você respondeu: <b>${ans}</b> · ${now()}</span>`}
+    else c.remove();
+  });
+  const left=$$('#pscr .view[data-view="dec"] .card[data-dec]').length;
+  $('#pbadge').textContent=left;$('#pbadge').style.display=left?'':'none';$('#pdeccnt').textContent=left?left+(left>1?' pendentes':' pendente'):'nada pendente';
+  if(key==='d2'){$$('.pill.warn').forEach(p=>p.remove());$$('.scr').forEach(s=>add(s,`<span class="k">decisão</span>D2 · “${ans}” · respondida ${onde}<time>${now()}</time>`,'sys ok'))}
+  toast(from,'Resposta enviada: '+ans);
+}
+
+/* ---------- simular queda da VPN ---------- */
+$('#net').onclick=()=>{
+  offline=!offline;$('#net').classList.toggle('on',offline);$('#net').textContent=offline?'Religar VPN':'Simular sem VPN';
+  $$('.scr').forEach(scr=>{scr.classList.toggle('is-off',offline);$('.vpn',scr).classList.toggle('off',offline);$('.vpn',scr).textContent=offline?'sem VPN':'VPN';
+    if(!offline){const pend=$$('.m.you',scr).filter(m=>m._pending);pend.forEach(m=>{m._pending=false;respond(scr,m,m.childNodes[0].textContent||'',null)});if(pend.length)toast(scr,`Conexão de volta: ${pend.length} mensagem(ns) enviada(s)`)}});
+};
+
+layout();
+</script>
+</body>
+</html>

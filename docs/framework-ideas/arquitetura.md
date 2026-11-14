@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.19 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0).
+> Versão 0.20 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -30,7 +30,7 @@ O OTheater é um sistema de agentes de código que:
 | P4 | Estado fora do modelo | Tudo persiste no daemon; o Orquestrador consulta `next_action` e sobrevive a compressão de contexto ou reinício |
 | P5 | Bloquear tudo, liberar o necessário | Permissões por lista de permitidos, por papel, em três camadas; a configuração do cliente é política, não fronteira de segurança |
 | P6 | Tudo é evento | Um único log de eventos alimenta dashboard, SSE, OTel, ATIF e auditoria |
-| P7 | Daemon separado da interface | Fechar a UI não interrompe as peças; várias UIs (web, desktop, TUI) sobre a mesma API |
+| P7 | Daemon separado da interface | Fechar a UI não interrompe as peças; várias UIs (TUI, web, desktop, Android) sobre a mesma API |
 | P8 | Contexto mínimo por Executor | O Ator nasce com demanda + contrato; artefatos circulam por referência |
 | P9 | Recursos sob controle de admissão | O paralelismo é limitado por RAM, cota e pool, não só pelo que o Roteirista permite |
 | P10 | Versões fixadas | ACP, adaptadores e CLIs mudam toda semana: tudo fixado, atualizado de propósito, com testes de contrato |
@@ -53,12 +53,12 @@ O OTheater é um sistema de agentes de código que:
 - **ACP (Agent Client Protocol)** é o protocolo entre o daemon e os Executores. **MCP** é o protocolo das ferramentas do framework e dos plugins.
 - **Windows primeiro**, sem impedir macOS/Linux. O que é específico do sistema operacional fica atrás de portas (5.18), com adaptadores por sistema (`platform-windows`, `platform-posix`).
 - **Segredos:** chaves de API ficam no cofre do sistema operacional; nunca em arquivo de configuração, log ou evento.
-- **Operação local por padrão:** o daemon escuta em `127.0.0.1`; acesso remoto exige token + TLS.
+- **Operação local por padrão:** o daemon escuta em `127.0.0.1`; acesso remoto exige token + TLS. O app Android chega ao daemon pela VPN do usuário (5.12).
 
 ## 4. Visão geral
 
 ```
-┌──────── Interfaces: TUI Ink (principal) · web e desktop (opcionais) ─────────────────┐
+┌── Interfaces: TUI Ink (principal) · web e Android (pós-v1) · desktop (opcional) ─────┐
 │ Lateral: Assinaturas · Projetos · Tarefas · Chats · Plugins · Configuração           │
 │ Por cenário: [Chat com o Orquestrador]  [Dashboard]  [Trajetórias]                    │
 └──────────┬────────────────────────────────────────────────────────────┬──────────────┘
@@ -520,8 +520,20 @@ O dashboard próprio continua lendo o store.
 - **Segurança:**
   - `127.0.0.1` por padrão;
   - token obrigatório mesmo em acesso local, com CORS fechado, para que nenhuma página de outra origem comande o daemon;
-  - acesso remoto só com TLS via reverse proxy;
+  - acesso remoto (decidido em 2026-11-14, para o app Android, 5.13): pela **VPN do usuário** (Tailscale, WireGuard ou similar). O daemon nunca fica exposto na internet, e o OTheater não depende de serviço em nuvem próprio;
+  - no modo `vpn`, o daemon também escuta no endereço da interface da VPN, com TLS próprio: certificado autoassinado, cuja impressão digital o app fixa no pareamento **[proposta]**;
+  - **pareamento por QR:** `ot pair`, ou Configurações → Aparelhos, mostra um QR com o endereço do daemon na VPN, um token só daquele aparelho e a impressão digital do certificado. Cada aparelho pode ser revogado sozinho **[proposta]**;
   - tratar como acesso administrativo.
+
+```yaml
+api:
+  remote: off           # off | vpn | proxy  [proposta]
+  vpn_interface: auto   # auto | nome da interface (por exemplo tailscale0)
+```
+
+- `off` (padrão): só `127.0.0.1`;
+- `vpn`: também no endereço da VPN, com TLS do daemon e tokens por aparelho; é o modo do app Android;
+- `proxy`: só `127.0.0.1`, atrás de um reverse proxy com TLS, para quem já tem um.
 
 **Referências de desenho:** `acpx` (MIT, TS; cliente ACP headless com sessões persistentes e saída NDJSON) e `rivet-dev/agents` (Apache-2.0, TS; agentes de código atrás de uma API HTTP).
 
@@ -529,7 +541,8 @@ O dashboard próprio continua lendo o store.
 
 **Mockups de referência** (valores ilustrativos):
 - `mockup/tui.html`: TUI (interface principal), gerada por `mockup/tui-render.js` (`node tui-render.js`);
-- `mockup/app.html`: web/desktop (fases opcionais).
+- `mockup/app.html`: web e desktop (Fases 12 e 13);
+- `mockup/mobile.html`: app Android, celular e tablet em paisagem e retrato (Fase 14).
 
 **Layout comum ao app e à TUI** (decisão de 2026-11-13):
 - **Chat em altura total**, sempre visível, com **largura ajustável** (arrastar a borda no app; Ctrl+←/→ na TUI), lembrada entre sessões. Os dados da peça (título, etapa, decisão pendente) ficam no topo do chat.
@@ -538,7 +551,7 @@ O dashboard próprio continua lendo o store.
 - **Tudo recolhe, menos o chat:** seções da lateral e cartões das abas abrem e fecham com um clique (Enter na TUI).
 - **Estado de layout persistido por usuário:** lateral, largura do chat, abas abertas.
 
-**Ordem das interfaces** (decisão de 2026-11-13): **a TUI vem primeiro e é a interface principal** (Fase 7). A web (Fase 12) e o app desktop (Fase 13) são posteriores e opcionais.
+**Ordem das interfaces** (decisão de 2026-11-13): **a TUI vem primeiro e é a interface principal** (Fase 7). A web (Fase 12) e o app desktop (Fase 13) são posteriores. Desde 2026-11-14, o app Android (Fase 14) embrulha a web; por isso, a web deixou de ser opcional, e só o desktop continua opcional.
 
 **Camada compartilhada (`packages/client`, Fase 6).** O reaproveitamento entre TUI e web é de **lógica, não de tela**: componentes Ink não rodam no navegador, e componentes da web não rodam no terminal. O que se compartilha fica abaixo deles, num pacote que não depende de interface:
 - **cliente da API:** REST tipado (a partir de `packages/protocol`), SSE com retomada por `Last-Event-ID` e WebSocket do chat;
@@ -612,7 +625,7 @@ Os mockups mostram os padrões de Windows/Linux.
 
 **Decisão:** começar em Ink. O **teste comparativo da Fase 0** (Ink × OpenTUI), agora **obrigatório**, decide antes da Fase 7. Como a TUI só depende do `packages/client` e da API do daemon, trocar de framework não afeta o resto do sistema.
 
-**Web (Fase 12, opcional):** React + Vite sobre o mesmo `packages/client`, com SSE para tempo real. Acrescenta à TUI o DAG desenhado, arrastar para reordenar, painéis próprios de plugins e mouse. Componentes reaproveitados:
+**Web (Fase 12, depois da v1; base do app Android):** React + Vite sobre o mesmo `packages/client`, com SSE para tempo real. Nasce responsiva e preparada para toque, porque o app Android a reaproveita (Fase 14). Acrescenta à TUI o DAG desenhado, arrastar para reordenar, painéis próprios de plugins e mouse. Componentes reaproveitados:
 
 | Uso | Componente |
 |---|---|
@@ -638,6 +651,31 @@ Os mockups mostram os padrões de Windows/Linux.
 **Desktop (Fase 13, opcional, depende da web):** Electron envolvendo a web, com o daemon como `utilityProcess` ou o serviço de logon da Fase 10; instalador por usuário (electron-builder).
 - Tauri v2 tem guia oficial de sidecar Node e gera instalador menor, ao custo de toolchain Rust. Como o lançador de Job Object já traz Rust para o projeto, Tauri fica mais viável que na v0.1.
 - Decisão na Fase 13.
+
+**Android, celular e tablet (Fase 14, depois da web).** Decidido em 2026-11-14, a pedido do dono.
+- **Só cliente.** O daemon continua no computador, porque precisa dos CLIs oficiais, das worktrees e do cofre do sistema. O app fala com ele pela mesma API (REST, SSE e WebSocket), como a web.
+- **Tecnologia: Capacitor** (Ionic; MIT **[a confirmar]**) embrulhando a web da Fase 12. Reaproveita as telas, os componentes e o `packages/client`. O que é novo:
+  - o layout de celular;
+  - os plugins nativos do Capacitor: leitor de QR, notificações e armazenamento seguro do token **[proposta]**.
+- **Tablet: o app completo.** O layout de `mockup/app.html` (lateral, chat e painel em abas), com toque no lugar do mouse. Em retrato, a lateral e o painel viram gavetas sobre o chat **[proposta]**.
+- **Celular: versão enxuta**, com uma coluna por vez e navegação inferior **[proposta]**. Tem:
+  - o chat com o Diretor, com anexos (foto, arquivo);
+  - as decisões pendentes, respondidas com um toque;
+  - as cotas por assinatura (5 h e 7 dias, com o reset), os eventos e o estado das peças, tarefas e agenda;
+  - pausar, retomar e cancelar.
+
+  Fica de fora do celular: editar a configuração pesada (Executores, papéis, perfis, plugins), o DAG desenhado, as trajetórias longas e o navegador compartilhado. Essas telas aparecem só para leitura, ou o app indica abrir no computador **[proposta]**.
+- **Comandos pelo celular** (`mockup/mobile.html`) **[proposta]**. Mandar uma ordem ao Diretor tem de caber em um ou dois toques:
+  - o chat abre direto, com o composer embaixo, ao alcance do polegar; o topo mostra o destinatário, e um toque troca entre o Orquestrador global e o Diretor de cada cenário;
+  - comandos rápidos em fichas acima do composer, que mudam com o estado do cenário (com peça rodando: como está, pausar, nova peça, resumo, agendar);
+  - o botão `/` abre uma folha com busca e os comandos agrupados (peça atual, criar, consultar), mais as frases salvas do Produtor;
+  - sem texto, o botão de enviar vira microfone (segurar para falar); o ditado do teclado do Android serve de alternativa sem plugin **[a confirmar]**;
+  - comandos terminados em “…” preenchem um modelo para completar; os outros enviam na hora; consultas de estado (`/status`, `/cotas`) respondem pelo daemon, sem chamar o modelo;
+  - ações destrutivas (cancelar a peça) pedem confirmação e biometria;
+  - sem conexão com o daemon, a mensagem fica numa fila no aparelho e sai quando a VPN volta, além da `prompt_queue` do daemon.
+- **Acesso ao daemon:** pela VPN do usuário, com pareamento por QR e token por aparelho (5.12).
+- **Idioma:** o mesmo catálogo da web (5.22).
+- **Em aberto:** as notificações (seção 12, item 19) e a distribuição (item 20).
 
 ### 5.14 Plugins
 
@@ -1547,10 +1585,10 @@ Decidido em 2026-11-14 (v0.17), a partir de uma pergunta do dono: padronizar em 
 - **O que os agentes escrevem num projeto do Produtor** (commits, changelog, PRs, comentários): segue as convenções do projeto, detectadas na importação ou definidas pelo perfil (5.20), não a regra deste documento.
 - **Este repositório de desenho:** o texto continua em português do Brasil. Os identificadores citados passam a ser os nomes em inglês desde a v0.17, e os comentários dentro dos exemplos de configuração podem ficar em português.
 
-#### Interface (TUI, web, desktop)
+#### Interface (TUI, web, desktop e Android)
 
 - **Catálogo de textos desde a primeira tela**, com `en` e `pt-BR` completos. Nenhum texto de tela fica escrito direto no componente.
-- Os catálogos ficam em `locales/` e são carregados pelo `packages/client`, compartilhado pelas três interfaces.
+- Os catálogos ficam em `locales/` e são carregados pelo `packages/client`, compartilhado por todas as interfaces. O app Android usa o catálogo da web.
 - A biblioteca de i18n é escolhida na Fase 1.
 - O idioma vem do sistema operacional e a chave `ui.locale` troca:
 
@@ -1650,6 +1688,7 @@ A Apache-2.0 traz ainda **concessão explícita de patentes** pelos contribuidor
 | Histórico de consumo | ccusage (biblioteca, se exportar API; senão nível C, como CLI) | MIT |
 | Front | React, Vite, TanStack Query, shadcn/ui, assistant-ui, @xyflow/react | MIT |
 | Desktop (opcional, Fase 13) | Electron + electron-builder (ou Tauri v2, MIT/Apache) | MIT |
+| App Android (Fase 14) | Capacitor (`@capacitor/core`, `@capacitor/android`) e plugins oficiais | MIT **[a confirmar]** |
 | TUI | Ink + `@inkjs/ui` (alternativa: OpenTUI, decisão na Fase 0) | MIT |
 | Estado compartilhado TUI/web (`packages/client`) | zustand (modo vanilla) | MIT |
 | Job Object (lançador Rust) | crate `win32job` | MIT/Apache |
@@ -1705,7 +1744,7 @@ Critérios da avaliação:
 4. qualidade de código e testes;
 5. ritmo de mudanças upstream (fork que diverge cedo vira manutenção dobrada).
 
-Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e trechos de 6.3. Se um fork passar, ele reduz a Fase 2 (runtime ACP, worktrees) e, se a web for feita, parte da Fase 12. Com a TUI como interface principal (v0.6), a interface gráfica desses candidatos pesa pouco (ver seção 10).
+Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e trechos de 6.3. Se um fork passar, ele reduz a Fase 2 (runtime ACP, worktrees) e parte da Fase 12. Com a TUI como interface principal (v0.6), a interface gráfica desses candidatos pesa pouco (ver seção 10).
 
 ### 6.5 Avaliados e descartados
 
@@ -1782,8 +1821,9 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 | Agendamento | croner (cron com fuso) + gatilho do agendador do sistema operacional |
 | TUI (interface principal) | Ink + `@inkjs/ui` (ou OpenTUI, conforme o teste da Fase 0) |
 | Cliente e estado compartilhados | `packages/client`: cliente REST/SSE/WS + stores zustand (vanilla) |
-| Web (opcional) | React + Vite + shadcn/ui + assistant-ui + @xyflow/react |
+| Web (depois da v1; base do Android) | React + Vite + shadcn/ui + assistant-ui + @xyflow/react |
 | Desktop (opcional) | Electron (ou Tauri v2) |
+| Android (celular e tablet) | Capacitor sobre a web |
 | Navegador compartilhado | Playwright (Apache-2.0) sobre CDP, Chromium com perfil isolado por cenário (5.19) |
 | Testes | Vitest + Playwright + `ink-testing-library` (TUI) |
 
@@ -1840,8 +1880,9 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 │  ├─ fake-agent/      agente ACP simulado
 │  ├─ client/          cliente da API (REST, SSE, WS) + stores de estado e preferências, sem interface
 │  ├─ tui/             TUI, interface principal (Ink; ou OpenTUI, conforme a Fase 0)
-│  ├─ web/             web (opcional, Fase 12)
+│  ├─ web/             web (Fase 12; base do Android)
 │  ├─ desktop/         Electron ou Tauri (opcional, Fase 13)
+│  ├─ android/         Capacitor sobre a web: celular e tablet (Fase 14)
 ├─ native/
 │  └─ job-launcher/    lançador Rust com Job Object (Windows)
 ├─ prompts/            prompts de cada papel, em inglês (versionados, prefixo estável; 5.22)
@@ -2159,9 +2200,9 @@ Decidida em 2026-11-14 (N21): fase própria, logo depois da Fase 11 (5.21).
 **Critério de aceite:** a máquina religada depois de uma queda de luz, sem ninguém fazer login, roda a tarefa agendada que estava na janela, retoma as peças pela reconciliação e notifica pelo chat e pelo plugin de notificação.
 **Estimativa:** a definir ao abrir a fase, depois da medição.
 
-### Fase 12 — Interface web (opcional, posterior)
+### Fase 12 — Interface web (depois da v1; base do app Android)
 
-Fica fora do caminho crítico e do total. Pode começar a qualquer momento depois da Fase 6, inclusive em paralelo com a Fase 7 se houver uma segunda pessoa.
+Fica fora do caminho crítico e do total. Deixou de ser opcional em 2026-11-14, porque o app Android (Fase 14) a reaproveita. Pode começar a qualquer momento depois da Fase 6, inclusive em paralelo com a Fase 7 se houver uma segunda pessoa.
 
 - `packages/web` (React + Vite) sobre o **mesmo `packages/client`**: estado, API e preferências já existem; só a camada de desenho é nova.
 - Layout de `mockup/app.html`:
@@ -2169,6 +2210,7 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
   - lateral retrátil;
   - painel de abas;
   - cartões recolhíveis.
+- Layout responsivo e preparado para toque desde o início, para o tablet e o celular da Fase 14.
 - Componentes prontos: assistant-ui (chat), @xyflow/react (DAG gráfico), shadcn/ui, AgentPrism ou viewer próprio (trajetórias).
 - O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, desenho gráfico dos painéis declarativos dos plugins, mouse.
 - Navegador compartilhado na tela (5.19): transmissão da sessão, controle pelo Produtor e modo **indicar**, genérico, com as indicações `web_element` anexadas à mensagem do chat.
@@ -2185,6 +2227,19 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 
 **Critério de aceite:** instalar e desinstalar numa máquina limpa; fechar a janela sem interromper a peça.
 **Estimativa:** 1 semana sem agentes; 0,5–1 com.
+
+### Fase 14 — App Android, celular e tablet (depois da Fase 12)
+
+Fica fora do caminho crítico e do total, como a web. Não depende da Fase 13.
+
+- `packages/android`: Capacitor sobre o build da `packages/web`.
+- Tablet com o layout do app; celular com uma coluna por vez e navegação inferior (5.13).
+- No daemon: `api.remote: vpn`, TLS com certificado fixado, pareamento por QR (`ot pair`), tokens por aparelho e a tela Aparelhos (5.12).
+- Notificações, conforme o item 19 da seção 12.
+- Testes: emulador Android (celular e tablet) e um aparelho real pela VPN; queda de rede e retomada do SSE por `Last-Event-ID`.
+
+**Critério de aceite:** num tablet e num celular ligados à VPN, parear por QR, acompanhar uma peça ao vivo, responder a uma decisão do Produtor e conversar com o Diretor; revogar o aparelho e ver o acesso cair; fechar o app sem interromper a peça.
+**Estimativa:** 2–2,5 semanas sem agentes; 1–1,5 com **[hipótese]**.
 
 ### Resumo das estimativas
 
@@ -2205,12 +2260,13 @@ Fica fora do caminho crítico e do total. Pode começar a qualquer momento depoi
 | 11 Endurecimento | 1,5–2 sem | 1–1,5 sem | 1,5–2 |
 | **Total (produto na TUI)** | **≈ 25–28 semanas** | **≈ 16–20,5 semanas** | 19–24 |
 | 10b Daemon sem login (logo depois da v1) | a definir | a definir | — |
-| 12 Interface web (opcional) | 2,5–3 sem | 1,5–2 sem | 3–4 |
+| 12 Interface web (depois da v1) | 2,5–3 sem | 1,5–2 sem | 3–4 |
 | 13 App desktop (opcional) | 1 sem | 0,5–1 sem | — |
+| 14 App Android, celular e tablet (depois da web) | 2–2,5 sem | 1–1,5 sem | — |
 
 \* Com Claude Code/Codex como apoio desde o início e, a partir da Fase 5, com o próprio framework. Supõe revisão humana de tudo o que for gerado. A Fase 0 não acelera com agentes: é medição.
 
-**Fork, com a TUI primeiro:** os candidatos da seção 6.4 (Emdash, Orca, AionUi, Paradev, Happier) são apps gráficos. Com a TUI como interface principal, o fork perde a maior parte do valor. O que ainda se aproveita é o runtime ACP e a gestão de worktrees (Fase 2, ≈ 0,5–1 semana a menos) e, se a web for feita, parte da Fase 12. A avaliação da Fase 0 passa a olhar principalmente o núcleo deles (runtime ACP, worktrees), não a interface.
+**Fork, com a TUI primeiro:** os candidatos da seção 6.4 (Emdash, Orca, AionUi, Paradev, Happier) são apps gráficos. Com a TUI como interface principal, o fork perde a maior parte do valor. O que ainda se aproveita é o runtime ACP e a gestão de worktrees (Fase 2, ≈ 0,5–1 semana a menos) e parte da Fase 12. A avaliação da Fase 0 passa a olhar principalmente o núcleo deles (runtime ACP, worktrees), não a interface.
 
 As estimativas já consideram a política de licenças da seção 6.0 (Apache-2.0 aceita, sem reimplementar o SDK do ACP nem o OpenTelemetry).
 
@@ -2220,7 +2276,7 @@ As estimativas já consideram a política de licenças da seção 6.0 (Apache-2.
 - **Produto na TUI** (+ Fases 6–7): ≈ 18–19,5 / ≈ 12,5–15,5.
 - **Produto completo na TUI** (+ Fases 8–11, com 9b): ≈ 25–28 / ≈ 16–20,5.
 - **Daemon sem login** (+ Fase 10b, logo depois da v1): a estimar depois da medição.
-- **Web e desktop** (+ Fases 12–13, opcionais): + 3–3,5 / + 1,5–2,5.
+- **Web, desktop e Android** (+ Fases 12–14; só o desktop é opcional): + 5,5–6,5 / + 3–4,5. Sem o desktop: + 4,5–5,5 / + 2,5–3,5.
 
 **Paralelização com uma segunda pessoa:**
 - depois da Fase 3, a Fase 6 (API + `packages/client`) anda em paralelo com as Fases 4–5;
@@ -2244,7 +2300,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R9 | Licença proibida entrando sem perceber (dependência transitiva GPL, AGPL ou LGPL, componente não confirmado, fork que arrasta AGPL) ou obrigação da Apache-2.0 ou da MPL-2.0 esquecida (NOTICE, cabeçalho, marca de modificação, código-fonte de arquivo MPL alterado) | Violação de licença; bloqueio jurídico tardio | Política da seção 6.0; verificador de licenças e de cabeçalhos na CI; `THIRD_PARTY_NOTICES` gerado; alternativa própria para cada componente a confirmar |
 | R10 | Custo de contexto alto | Cota esgota rápido | Blackboard, saída estruturada, prefixo estável para cache |
 | R11 | Ink lento ou tremulando com streaming intenso, ou rolagem ruim em conversas longas | A TUI é a interface principal: sem ela confortável, o produto todo sofre | Teste comparativo Ink × OpenTUI na Fase 0; rolagem virtualizada; TUI isolada atrás da API, então trocar de framework não afeta o resto |
-| R12 | Sem interface gráfica até a Fase 12 | Quem não usa terminal fica sem acesso; DAG e trajetórias longas são menos legíveis no terminal | Web e desktop como fases opcionais prontas para começar depois da Fase 6 sobre o `packages/client`; Phoenix como visualizador gráfico de traces no meio-tempo |
+| R12 | Sem interface gráfica até a Fase 12 | Quem não usa terminal fica sem acesso; DAG e trajetórias longas são menos legíveis no terminal | Web (Fase 12) e Android (Fase 14) depois da v1, e desktop opcional, todos prontos para começar depois da Fase 6 sobre o `packages/client`; Phoenix como visualizador gráfico de traces no meio-tempo |
 | R13 | Tarefa agendada roda sem ninguém olhando e faz algo indesejado, ou gasta a cota | Mudança não revisada, cota esgotada para o uso interativo | Entrega por PR por padrão; orçamento por execução; criação pelo chat só com confirmação; decisão sem ninguém olhando pausa por padrão; adiar quando a cota está esgotada |
 | R14 | Máquina dormindo no horário (Modern Standby, tampa fechada) | Tarefa não roda ou atrasa horas | Gatilho do agendador do sistema operacional que acorda a máquina; pedido de manter acordada durante a execução; regra de execução perdida; histórico mostra atraso real |
 | R15 | Retomada repete efeito colateral, ou a passagem de bastão perde contexto e o novo Executor refaz ou desfaz trabalho | Commits duplicados, chamadas externas repetidas, retrabalho | Chaves de idempotência nas cascas e plugins; checkpoints frequentes; pacote de continuação com efeitos já executados; preferir retomada nativa quando possível; teste de qualidade da passagem de bastão na Fase 0 |
@@ -2252,6 +2308,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 | R17 | Navegador compartilhado: uma página dirige o agente por injeção de prompt, ou o agente age com uma conta logada no perfil do cenário | Ação indesejada num site real (envio, compra, exclusão) ou vazamento do que a página mostra | Perfil isolado por cenário, sem importar cookies; domínios permitidos; ações de escrita com aprovação por padrão; página tratada como dado (5.8); evento com print de cada ação (5.19) |
 | R18 | Tarefa recorrente roda sem supervisão um script escrito por agente | Script errado ou malicioso roda todo dia, apaga dados ou envia o que não devia | Passos de código no sandbox, com a política da tarefa (5.8); definição só ativa depois do ensaio e da aprovação do Produtor; toda mudança gera versão nova, com diff, ensaio e aprovação; destinatário da entrega fixo na definição; orçamento por execução (5.20) |
 | R19 | Queda de energia ou reinício no meio do trabalho | Transação confirmada perdida, store corrompido, efeito externo feito duas vezes ou esquecido, processo órfão consumindo cota | `synchronous=FULL`; gravar antes de agir; reconciliação na subida com verificadores de efeito; backup diário com `integrity_check`; teste de queda forçada na Fase 11 (5.21) |
+| R20 | Acesso remoto pelo app Android: aparelho perdido ou roubado, token vazado, VPN mal configurada | Quem tem o aparelho comanda o daemon, que é acesso administrativo | Só pela VPN, nunca exposto na internet; token por aparelho, revogável; token no armazenamento seguro do Android; certificado fixado no pareamento; ações destrutivas pedem confirmação; bloqueio do app por biometria **[proposta]** (5.12, 5.13) |
 
 ## 12. Decisões em aberto
 
@@ -2263,20 +2320,23 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 6. Daemon como serviço de logon ou processo do app desktop (ou os dois). O comportamento sem login foi decidido à parte (5.21): na v1 o daemon espera o login.
 7. Electron ou Tauri (só se a Fase 13 for feita).
 8. Executores padrão de cada papel na primeira execução.
-9. Necessidade de acesso remoto ao dashboard (define cedo ou tarde o TLS/reverse proxy).
+9. *(Decidida em 2026-11-14: acesso remoto pela VPN do usuário, para o app Android, ver "Decididas" e as seções 5.12 e 5.13.)*
 10. Custo em moeda para assinaturas (só o uso relativo da cota) versus API (custo real).
 11. Framework da TUI: Ink (padrão) ou OpenTUI, pelo teste comparativo da Fase 0 (obrigatório).
-12. Se e quando fazer a web (Fase 12) e o app desktop (Fase 13).
+12. Quando fazer a web (Fase 12), que desde 2026-11-14 é a base do app Android (Fase 14) e deixou de ser opcional, e se fazer o app desktop (Fase 13).
 13. *(Decidida em 2026-11-14: padrões do agendador como chaves de configuração, ver "Decididas" e a seção 5.15.)*
 14. *(Decidida em 2026-11-14: padrões da retomada como chaves de configuração, ver "Decididas" e a seção 5.16.)*
 15. Detalhes dos níveis de plugin com comportamento de mod, para depois da v1 (5.14): quais pontos de interceptação existem, o prazo padrão de um gancho, o que acontece quando ele falha ou estoura o prazo (bloquear ou deixar passar) e se uma sonda de cota ou um notificador de um provedor novo podem vir de plugin, sem virar pacote oficial (5.18).
 16. *(Decidida em 2026-11-14: padrões dos cenários como chaves de configuração, ver "Decididas" e a seção 5.20.)*
 17. Como destrancar os segredos no modo sem login (5.21): mecanismo nativo da máquina (DPAPI, TPM, `systemd-creds`) ou arquivo cifrado com chave protegida. Decide-se ao abrir a Fase 10b, depois da medição. O resto do item foi decidido em 2026-11-14, ver "Decididas".
 18. Contribuições externas (6.0): exigir um acordo de contribuição (CLA), que dá ao dono o direito de relicenciar o código recebido e mantém aberta uma licença dupla ou uma versão comercial, ou só a certificação de origem (DCO, com `Signed-off-by`), em que cada contribuição fica só sob MPL-2.0. Decide-se antes de o repositório aceitar contribuições.
+19. Notificações do app Android (5.13): push pelo Firebase Cloud Messaging (exige conta Google e alguém que envie o push, o que pede um serviço fora da máquina); UnifiedPush ou ntfy (sem Google, com servidor próprio ou público); ou só com o app aberto ou num serviço em primeiro plano ligado ao SSE, que gasta bateria. Decide-se na Fase 14.
+20. Distribuição do app Android: Google Play, APK direto (com atualização pelo próprio app) ou F-Droid. Liga-se ao item 2 (uso pessoal ou produto).
 
 Decididas:
 - nome do produto: **OTheater** (*Orchestration Theater*); pacote `otheater`, escopo `@otheater/*`, comando `ot`/`otheater`, organização GitHub `orchestration-theater` (2026-11-13, seção 9);
 - licenças permitidas: MIT, Apache-2.0, ISC, BSD-2/3-Clause, 0BSD e MPL-2.0; GPL, AGPL e LGPL proibidas (2026-11-13; MPL-2.0 aceita em 2026-11-14, seção 6.0);
+- app Android (2026-11-14, seções 5.12 e 5.13 e Fase 14; era o item 9): versões para celular e tablet, só como cliente do daemon; Capacitor sobre a web da Fase 12; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho; Fase 14, depois da web, fora da v1. Com isso, a web deixa de ser opcional. Notificações e distribuição seguem em aberto (itens 19 e 20);
 - licença do código próprio: **MPL-2.0**, no lugar da MIT (2026-11-14, seção 6.0). Permite produto comercial e módulos fechados em arquivos separados; quem distribuir um arquivo do OTheater alterado publica aquele arquivo. Contribuições externas (CLA ou DCO) seguem em aberto (item 18);
 - Arize Phoenix (ELv2) aceito só como ferramenta local opcional, nunca distribuído (2026-11-13, seção 6.2);
 - ordens do Produtor (2026-11-13, seção 5.17): a local prevalece sobre a global no mesmo cenário; uma ordem vale para um cenário ou para todos, sem lista nem tag; sessões em curso não mudam e o Diretor decide relançar; `rule` com quatro chaves na v1 (perfis de um papel, `next`/`wait`, exigir PR e `git.push_after_commit`); dispensa do Crítico por decisão registrada, não por ordem, para a peça inteira, ao abrir a peça ou depois de uma reprovação (seção 5.4); janela recorrente depois da v1; aviso de prazo 24 h antes, configurável; suspensão local de uma global mantida.
@@ -2397,6 +2457,7 @@ Os nomes em inglês são os do código, da configuração e dos prompts (5.22), 
 | Idioma (v0.17) | Identificadores em português, sem regra de idioma; interface só em português nos mockups | Seção 5.22: código, dados, configuração, eventos, ferramentas, comandos, logs e prompts em inglês; respostas ao Produtor no idioma dele, por ordem; catálogo `en` e `pt-BR` desde a primeira tela, com `ui.locale`; glossário com o nome em inglês de cada termo; identificadores deste documento renomeados (os antigos estão no histórico do git, e o glossário faz a ponte) | Pergunta do dono; escolhas decididas por ele no mesmo dia |
 | Padrões do pipeline (v0.18) | `Np`, `Nc`, tentativas, timeouts, política de entrega, regras do agendador e da retomada sem valor (itens 4, 5, 13 e 14) | Chaves `limits.*`, `delivery.*`, `schedule.*` e `resume.*`, cada grupo com três predefinições e chaves individuais; padrões `moderate`, `pr`, `balanced` e `balanced` | Decisões do dono, que pediu que cada padrão seja chave de configuração com várias opções |
 | Licença do código próprio (v0.19) | Código próprio em MIT; MPL proibida em código copiado e dependências | Código próprio em MPL-2.0; MPL-2.0 permitida em código copiado e dependências, com obrigações; GPL, AGPL e LGPL seguem proibidas; CLA ou DCO em aberto (item 18) | Decisão do dono, depois de uma pergunta sobre uso comercial |
+| App Android (v0.20) | Interfaces só no computador (TUI, web e desktop opcionais); acesso remoto em aberto (item 9) | App Android para celular e tablet na Fase 14, com Capacitor sobre a web; tablet com o app completo, celular enxuto; acesso pela VPN do usuário, com pareamento por QR e token por aparelho (`api.remote`); a web deixa de ser opcional; notificações e distribuição em aberto (itens 19 e 20); mockup `mockup/mobile.html`, com os comandos pelo celular como proposta | Decisão do dono |
 | Padrões (v0.16) | Padrões dos cenários e do backup sem valor (itens 16 e 17); migração sem login sem data | Chaves `scenarios.*`, `tasks.*` e `backup.*` com várias opções e padrões definidos; backup inclui as pastas de tarefa e chat, menos as execuções; Fase 10b do daemon sem login | Decisões do dono, que pediu que cada padrão seja chave de configuração |
 | Cofre no Linux (v0.7) | Só Secret Service | Fallback para arquivo criptografado ou variável de ambiente do serviço | Servidores sem interface gráfica e sessões SSH não têm Secret Service |
 | Teste de terminais da Fase 0 (v0.7) | Windows Terminal, VS Code e um de macOS/Linux | Inclui Terminal.app, iTerm2, GNOME Terminal/Konsole, tmux, SSH e todos os atalhos | Os padrões do mapa de teclas saem desse teste |

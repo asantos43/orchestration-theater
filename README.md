@@ -23,7 +23,7 @@ Detalhes em [docs/01-CONTEXTO-E-PROBLEMAS.md](docs/01-CONTEXTO-E-PROBLEMAS.md).
 ## A arquitetura em resumo
 
 ```
-Interfaces: TUI Ink (principal) · web e desktop (opcionais)
+Interfaces: TUI Ink (principal) · web e Android, celular e tablet (depois da v1) · desktop (opcional)
         │ REST + WebSocket (chat) · SSE (eventos)
         ▼
 Daemon (Node 24 + TypeScript)
@@ -54,7 +54,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
 | [proposta-de-fluxo-de-trabalho-adaptado.md](docs/framework-ideas/proposta-de-fluxo-de-trabalho-adaptado.md) | Proposta de fluxo adaptado |
 | [Diagrama do fluxo (PNG)](<docs/framework-ideas/Produtor-Roteirista Merge Workflow-2026-10-30-191336.png>) | Diagrama do dono, de 2026-10-30 |
-| [mockup/tui.html](docs/framework-ideas/mockup/tui.html), [mockup/app.html](docs/framework-ideas/mockup/app.html) | Mockups da TUI e do app |
+| [mockup/tui.html](docs/framework-ideas/mockup/tui.html), [mockup/app.html](docs/framework-ideas/mockup/app.html), [mockup/mobile.html](docs/framework-ideas/mockup/mobile.html) | Mockups da TUI, do app (web e desktop) e do Android (celular e tablet) |
 
 **Documentos de apoio** (em [docs/](docs/)):
 

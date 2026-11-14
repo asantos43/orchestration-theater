@@ -1,6 +1,6 @@
 # 02. Núcleo do OTheater (resumo da arquitetura)
 
-Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.19, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
+Este documento resume o núcleo descrito em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.20, 2026-11-14). Em caso de dúvida ou divergência, vale a arquitetura.
 
 > **Histórico.** Até 2026-11-13, este arquivo descrevia um "núcleo comum" às arquiteturas com e sem contêineres. Nesse desenho, o orquestrador era uma chamada só de decisão (`claude -p` ou `codex exec`, sem ferramentas), e os executores rodavam atrás de uma interface de runner trocável. A arquitetura v0.10 substituiu esse desenho por três peças: um daemon nativo, Executores por **ACP** e um Orquestrador que é uma sessão ACP com ferramentas MCP do framework. A versão anterior está no histórico do git (commit `35c5977`).
 
@@ -196,10 +196,10 @@ Decidido em 2026-11-13 (N20).
 ## Interfaces (arquitetura §5.13)
 
 - A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI na Fase 0 é obrigatório.
-- O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12) e o desktop (Fase 13), ambos opcionais.
+- O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12), o desktop (Fase 13, opcional) e o app Android de celular e tablet (Fase 14). O app Android é Capacitor sobre a web e chega ao daemon pela VPN do usuário (arquitetura §5.12 e §5.13); por isso, a web deixou de ser opcional (2026-11-14).
 - O mapa de teclas é configurável.
 - Todas as telas existem em inglês e em português do Brasil desde a primeira, por um catálogo de textos; o idioma vem do sistema e a chave `ui.locale` troca (§5.22).
-- Mockups: [mockup/tui.html](framework-ideas/mockup/tui.html) e [mockup/app.html](framework-ideas/mockup/app.html).
+- Mockups: [mockup/tui.html](framework-ideas/mockup/tui.html), [mockup/app.html](framework-ideas/mockup/app.html) e [mockup/mobile.html](framework-ideas/mockup/mobile.html) (Android, celular e tablet).
 
 ## Idioma (arquitetura §5.22)
 
@@ -229,10 +229,11 @@ Decidido em 2026-11-14 (N22).
 | 10 | Distribuição (daemon + TUI) | 1 | 0,5–1 |
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
 | **Total** | **Produto na TUI** | **≈ 25–28 sem** | **≈ 16–20,5 sem** |
-| 12 / 13 | Web (com a tela do navegador) / Desktop (opcionais) | + 3,5–4 | + 2–3 |
+| 12 / 13 | Web (com a tela do navegador) / Desktop (opcional) | + 3,5–4 | + 2–3 |
+| 14 | App Android, celular e tablet (depois da web) | + 2–2,5 | + 1–1,5 |
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.
 
 ## Estrutura do repositório de código (arquitetura §9)
 
-`packages/{core, sdk, protocol, adapters/*, daemon, fake-agent, client, tui, web, desktop}`, `native/job-launcher`, `prompts/`, `docs/`, `spikes/`. O `core` guarda as portas, o `sdk` serve a quem escreve adaptadores e plugins, e cada adaptador é um pacote em `adapters/`. O `fake-agent` é um agente ACP simulado: com ele, a máquina de estados, os pools e a UI são testados sem gastar cota.
+`packages/{core, sdk, protocol, adapters/*, daemon, fake-agent, client, tui, web, desktop, android}`, `native/job-launcher`, `prompts/`, `docs/`, `spikes/`. O `core` guarda as portas, o `sdk` serve a quem escreve adaptadores e plugins, e cada adaptador é um pacote em `adapters/`. O `fake-agent` é um agente ACP simulado: com ele, a máquina de estados, os pools e a UI são testados sem gastar cota.
