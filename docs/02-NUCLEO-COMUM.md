@@ -166,17 +166,19 @@ Decidido pelo dono em 2026-11-13 (N16 em [13](13-DECISOES-EM-ABERTO.md)).
 
 ## Navegador compartilhado (arquitetura §5.19)
 
-Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)).
-- Uma sessão de navegador por cenário, da porta oficial `BrowserSession` no daemon (Playwright sobre CDP). O agente e o Produtor usam a mesma sessão.
-- O agente usa as ferramentas `browser_*` (abrir, ler, print, clicar, preencher). As de escrita exigem aprovação por padrão, e só os domínios permitidos são abertos.
+Decidido pelo dono em 2026-11-13 (N18 em [13](13-DECISOES-EM-ABERTO.md)) e revisto em 2026-11-15 (N40), sem as restrições do navegador do Claude Desktop.
+- Uma sessão de navegador por cenário, da porta oficial `BrowserSession` no daemon. O agente e o Produtor usam a mesma sessão.
+  - Por padrão, é uma extensão no navegador do dia a dia do Produtor (o Opera primeiro), com os logins dele. A extensão entra na Fase 12; até lá, vale o perfil `shared` do Playwright.
+  - O Playwright sobre CDP fica para os outros modos de perfil e para os testes.
+- O agente usa as ferramentas `browser_*` (abrir, ler, print, clicar, preencher). Por padrão, abre qualquer domínio, `localhost` e `file://` (menos os caminhos de segredo), e a escrita não pede aprovação. As restrições antigas continuam como modos das chaves `browser.*`.
 - Na web e no desktop, o Produtor vê a tela transmitida, assume o controle e **indica elementos**. Cada indicação vira um artefato `I<n>` (URL, seletor, trecho do HTML, caixa, recorte, comentário), anexado à mensagem do chat.
 - O mecanismo de indicar é genérico: **tipos de indicação** num registro, produzidos por superfícies. O primeiro tipo é `web_element`. Outros tipos, como trecho de código, região de imagem, nó do DAG ou tela de app, entram depois, um a um.
-- O perfil é isolado por cenário e persistente. O login é feito pelo Produtor, e o agente nunca vê senha.
+- Nos modos do Playwright, o perfil é persistente, isolado por cenário ou compartilhado. O agente nunca vê senha nem cookie.
 - As ferramentas entram na v1 (Fase 4); a tela e o modo indicar elemento, na Fase 12.
 
 ## Cenários (arquitetura §5.20)
 
-Decidido em 2026-11-13 (N3). Todo cenário é um Diretor que conversa com o Produtor, com chat próprio, pasta própria, anexos, ordens locais e navegador isolado. Há três tipos, num registro:
+Decidido em 2026-11-13 (N3). Todo cenário é um Diretor que conversa com o Produtor, com chat próprio, pasta própria, anexos, ordens locais e navegador. Há três tipos, num registro:
 
 | Tipo | O que é | Fluxo |
 |---|---|---|
@@ -248,7 +250,7 @@ Decidido em 2026-11-14 (N22).
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
 | **Total** | **Produto na TUI** | **≈ 25–28 sem** | **≈ 16–20,5 sem** |
 | 10b | Daemon sem login (logo depois da v1) | a definir | a definir |
-| 12 | Web, com a tela do navegador e as capacidades do Claude Desktop (depois da 10b; N39) | + 4,5–5 | + 2,5–3 |
+| 12 | Web, com a tela do navegador, a extensão do Opera e as capacidades do Claude Desktop (depois da 10b; N39 e N40) | + 5,5–6 | + 3–3,5 |
 | 13 | App desktop, com o mapa de teclas do Claude Desktop (depois da web; N39) | + 1,5–2 | + 1–1,5 |
 | 14 | App Android, celular e tablet (depois do desktop) | + 2–2,5 | + 1–1,5 |
 

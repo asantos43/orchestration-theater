@@ -71,7 +71,7 @@ Testes, build e mutações rodam **pelo daemon**, não pelo shell do cliente. Is
 Os agentes precisam de internet (R10 em [00](00-OBJETIVO.md)). O risco é a **injeção de prompt**: uma página lida pelo agente pode tentar dirigi-lo. O perigo real aparece quando o mesmo agente junta **dados privados, conteúdo não confiável e um canal de saída**.
 
 Na arquitetura:
-- a web entra pela casca **`http_get`**, com domínios permitidos, por plugins MCP ou pelo **navegador compartilhado** (arquitetura §5.19, v0.13). O navegador tem perfil isolado por cenário, domínios permitidos e aprovação para clicar e preencher;
+- a web entra pela casca **`http_get`**, com domínios permitidos, por plugins MCP ou pelo **navegador compartilhado** (arquitetura §5.19, v0.13). Desde a N40 (2026-11-15), o padrão do navegador não tem restrições: ele usa os logins do Produtor por uma extensão, abre qualquer domínio, `localhost` e `file://` (menos os caminhos de segredo) e clica sem aprovação. O perfil isolado, os domínios permitidos e a aprovação continuam como modos;
 - as ferramentas web nativas do cliente ficam fora do conjunto do papel;
 - cada ferramenta de plugin declara seus `effects` (`read | local_write | network | external_write`). Uma ferramenta pode exigir aprovação do Produtor (`requires_producer_approval`).
 
@@ -109,7 +109,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 | R6 | RAM com muitos Atores (um `claude` por sessão) | Admissão por sessão; plugins agregados; semáforo de comandos pesados |
 | R13 | Tarefa agendada faz algo indesejado sem ninguém olhando | Entrega por PR; orçamento por execução; decisão sem ninguém olhando segue com a recomendada depois de um prazo, e numa decisão irreversível só com a opção segura (v0.26) |
 | R15 | Retomada repete efeito colateral | Chaves de idempotência; checkpoints; pacote de continuação |
-| R17 | Navegador compartilhado: injeção de prompt pela página, ou ação com conta logada no perfil do cenário | Perfil isolado por cenário, sem importar cookies; domínios permitidos; escrita com aprovação por padrão; página tratada como dado; evento com print de cada ação |
+| R17 | Navegador compartilhado: injeção de prompt pela página, ou ação com conta logada no perfil do cenário Desde a N40 (2026-11-15), o risco é maior e foi aceito pelo dono. Ficam: a página tratada como dado, os caminhos de segredo fora do `file://`, o botão de parar, o evento com print de cada ação e os modos antigos por projeto ou cenário |
 | R18 | Tarefa recorrente roda sem supervisão um script escrito por agente | Passos de código no sandbox; definição só ativa depois do ensaio e da aprovação; versão nova a cada mudança; destinatário fixo; orçamento por execução |
 | R20 | Acesso remoto pelo app Android: aparelho perdido, token vazado, VPN mal configurada | Só pela VPN; token por aparelho, revogável, no armazenamento seguro; certificado fixado no pareamento; ações destrutivas pedem confirmação |
 | — | Injeção de prompt por conteúdo da web via `http_get` e plugins | Separar leitura e envio; `http_get` com domínios; `effects` declarados nos plugins |
