@@ -378,7 +378,7 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
         <div class="ctx-acts">
           <button class="ib" title="Pausar a peça">⏸</button>
           <button class="ib" title="Cancelar a peça" style="color:var(--err)">■</button>
-          <button class="ib on" id="work-toggle" title="Mostrar/ocultar painel (Ctrl+J)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg></button>
+          <button class="ib on" id="work-toggle" title="Mostrar/ocultar painel (Ctrl+.)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg></button>
         </div>
       </div>
       <div class="pills">
@@ -425,7 +425,7 @@ select,input[type=number]{font:inherit;font-size:12.5px;color:var(--text);backgr
         <button class="ib" title="Abrir aba"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
         <div class="menu-pop" id="menu-pop"></div>
       </div>
-      <button class="ib" id="work-close" title="Fechar painel (Ctrl+J)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>
+      <button class="ib" id="work-close" title="Fechar painel (Ctrl+\)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>
     </nav>
 
     <div class="wbody">
@@ -786,9 +786,13 @@ saída truncada pela casca: 1.204 → 40 linhas</pre></details>
   }));
 
   /* ---------- atalhos e tema ---------- */
+  /* mapa do Claude Desktop (N39, v0.34): Ctrl+B lateral, Ctrl+. painel, Ctrl+\ fecha o painel; Cmd no macOS */
+  const isMac=/Mac|iPhone|iPad/.test(navigator.platform);
   document.addEventListener('keydown',e=>{
-    if(e.ctrlKey&&e.key.toLowerCase()==='b'){e.preventDefault();sideBtn.click();}
-    if(e.ctrlKey&&e.key.toLowerCase()==='j'){e.preventDefault();workBtn.click();}
+    const mod=isMac?e.metaKey:e.ctrlKey;if(!mod||e.altKey||e.shiftKey)return;
+    if(e.key.toLowerCase()==='b'){e.preventDefault();sideBtn.click();}
+    else if(e.key==='.'){e.preventDefault();workBtn.click();}
+    else if(e.key==='\\'&&!app.classList.contains('work-off')){e.preventDefault();document.getElementById('work-close').click();}
   });
   const t=store.get('theme',null);if(t)root.dataset.theme=t;
   document.getElementById('theme').addEventListener('click',()=>{const dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;root.dataset.theme=dark?'light':'dark';store.set('theme',root.dataset.theme);});

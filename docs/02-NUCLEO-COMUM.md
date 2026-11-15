@@ -215,7 +215,7 @@ Decidido em 2026-11-13 (N20).
 
 - A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI da Fase 0 confirmou o Ink (N11, 2026-11-15).
 - O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12), o desktop (Fase 13) e o app Android de celular e tablet (Fase 14). O app Android é Capacitor sobre a web e chega ao daemon pela VPN do usuário (arquitetura §5.12 e §5.13); por isso, a web deixou de ser opcional (2026-11-14). A ordem depois da v1 é Fase 10b, web, desktop e Android, e nenhuma delas é opcional (N12, v0.29).
-- O mapa de teclas é configurável.
+- O mapa de teclas é configurável. A TUI usa Alt + letra (N35). A web e o desktop usam o mapa do Claude Desktop e têm as mesmas capacidades dele, com a identidade do OTheater (N39, v0.34, 2026-11-15). Entram os painéis de Mudanças, Arquivos e Terminal (este sob a sandbox), a tela dividida, o chat lateral, o ditado e o chat rápido global.
 - Todas as telas existem em inglês e em português do Brasil desde a primeira, por um catálogo de textos; o idioma vem do sistema e a chave `ui.locale` troca (§5.22).
 - Mockups: [mockup/tui.html](framework-ideas/mockup/tui.html), [mockup/app.html](framework-ideas/mockup/app.html) e [mockup/mobile.html](framework-ideas/mockup/mobile.html) (Android, celular e tablet).
 
@@ -248,8 +248,8 @@ Decidido em 2026-11-14 (N22).
 | 11 | Endurecimento | 1,5–2 | 1–1,5 |
 | **Total** | **Produto na TUI** | **≈ 25–28 sem** | **≈ 16–20,5 sem** |
 | 10b | Daemon sem login (logo depois da v1) | a definir | a definir |
-| 12 | Web, com a tela do navegador (depois da 10b) | + 2,5–3 | + 1,5–2 |
-| 13 | App desktop (depois da web) | + 1 | + 0,5–1 |
+| 12 | Web, com a tela do navegador e as capacidades do Claude Desktop (depois da 10b; N39) | + 4,5–5 | + 2,5–3 |
+| 13 | App desktop, com o mapa de teclas do Claude Desktop (depois da web; N39) | + 1,5–2 | + 1–1,5 |
 | 14 | App Android, celular e tablet (depois do desktop) | + 2–2,5 | + 1–1,5 |
 
 Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11. As estimativas são faixas para uma pessoa em tempo integral, não prazos.
