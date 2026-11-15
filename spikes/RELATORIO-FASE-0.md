@@ -31,7 +31,7 @@ Estados: **Medido**, **Parcial**, **Pendente do dono**, **Não medível nesta m�
 | 5 | Retomada: local e retenção dos arquivos de sessão | Medido | Claude 422 arquivos em 38 dias (padrão documentado 30 [S]); Codex 1004 arquivos em 71 dias; OpenCode 428 sessões em banco de ~6,6 GB [V]. | [acp-handoff](acp-handoff/README.md) |
 | 6 | Retomada: passagem de bastão por outro cliente | Parcial | Retomada nativa ACP↔CLI funciona nos 3 clientes [V]; o pacote de continuação com a variante full acertou 4 de 4, com a min 2 de 4 [V], 1 execução por célula. | [acp-handoff](acp-handoff/README.md) |
 | 7 | Perfis isolados (dois logins lado a lado) | Parcial | Os três isolam por variável de ambiente e `session/new` funciona em perfil vazio no Claude [V]; o segundo login não foi feito em nenhum cliente. | os três acp-* |
-| 8 | Permissões pelo ACP | Parcial | Claude: `tools`/`disallowedTools`/`strictMcpConfig` removeu o Bash [V], efeito isolado de `dontAsk`/`deny` [N]; Codex: `read-only` e `workspace-write` exercitados [V]; OpenCode: `ask` gera `request_permission`, `deny` retira a ferramenta [V]. | os três acp-* |
+| 8 | Permissões pelo ACP | Parcial | Claude: `tools`, `disallowedTools` e `deny` removem o Bash cada um sozinho [V]; `dontAsk` não chega pelo ACP e o bypass só some do catálogo com `allowDangerouslySkipPermissions: false` [V]; Codex: `read-only` e `workspace-write` exercitados [V]; OpenCode: `ask` gera `request_permission`, `deny` retira a ferramenta [V]. | os três acp-* |
 | 9 | Sandbox do Codex (MXC) nesta máquina | Não medível nesta máquina | O MXC é o isolamento nativo do Windows 11 24H2+ (§5.8 da arquitetura), então não existe no Linux; o sandbox do Codex no Linux foi medido (`read-only` e `workspace-write`) [V]. | [acp-codex](acp-codex/README.md) |
 | 10 | Cota (Claude, Codex) | Parcial | Claude: statusline `rate_limits` com `used_percentage` inteiro e `_claude/rateLimit` em fração 0 a 1 [V], só com valores em 1%; Codex: `account/rateLimits/read` em 0,41 a 0,72 s [V]. | [quota-probes](quota-probes/README.md) |
 | 11 | Cota (MiniMax) | Pendente do dono | Chave falsa devolve HTTP 200 com `base_resp.status_code: 1004` [V]; o formato real não é documentado [S]; falta a chave do dono. | [quota-probes](quota-probes/README.md) |
@@ -86,7 +86,13 @@ Variáveis de isolamento: `CLAUDE_CONFIG_DIR`, `CODEX_HOME` com `cli_auth_creden
 
 ### 2.5 Permissões (itens 8 e 9)
 
-- **Claude:** `_meta.claudeCode.options` com `tools`, `disallowedTools`, `strictMcpConfig` e `settings` removeu o Bash [V]. O efeito isolado de `dontAsk`, `deny` e `tools` contra `disallowedTools` é [N]. O `permissionMode` continua `auto` (controlado pelo ACP).
+- **Claude:** `_meta.claudeCode.options` com `tools`, `disallowedTools`, `strictMcpConfig` e `settings` removeu o Bash [V]. Isolado caso a caso (item 8b do `acp-claude`, 2026-11-15) [V]:
+  - `tools` sem o Bash, `disallowedTools: [Bash]` e `deny: [Bash]` removem o Bash **cada um sozinho**;
+  - o `dontAsk` **não chega** pelo ACP: o adaptador 0.107.0 não o oferece no catálogo, `set_config_option` o recusa, o `defaultMode` do `_meta` é ignorado e o dos arquivos de settings cai para `default`;
+  - o `disableBypassPermissionsMode` do `_meta` não tira o `bypassPermissions` do catálogo, só faz a troca falhar (`-32603`); `allowDangerouslySkipPermissions: false` tira do catálogo;
+  - `settingSources: []` vale (o padrão vem antes do espalhamento do `_meta`) e corta plugins, skills e MCP do perfil do dono; os conectores claude.ai continuam listados.
+  - O modo começa em `auto`, exceto quando os arquivos de settings do cwd dizem outro modo do catálogo. A troca é por `session/set_config_option`.
+  - [proposta] O "nega tudo que pediria permissão" do Executor headless vira modo `default` mais o cliente do OTheater respondendo `reject`.
 - **Codex:** `read-only` recusa a escrita. `workspace-write` deixa `/tmp` gravável sem `request_permission`; fora de `/tmp` bloqueia e gera `request_permission` (allow executa fora do sandbox, reject cancela). Só esses dois modos foram exercitados; `agent` e `agent-full-access` não [V].
 - **OpenCode:** o padrão sem config permite tudo. `OPENCODE_PERMISSION` com `ask` gera `request_permission` (3 opções). `opencode.json` com `deny` retira a ferramenta (1 execução) [V].
 - **MXC:** é do Windows 11 24H2+ (§5.8 da arquitetura) e nenhum README o menciona. O sandbox do Codex foi medido só no Linux.
@@ -208,7 +214,7 @@ O README `licenses` registra o que as páginas públicas da Anthropic dizem (con
 - **Destino fraco e `cwd` diferente no bastão; cota real combinada; efeitos externos** (`acp-handoff`).
 - **Unidade de `utilization` com valor alto:** só foi medida em 1% (`quota-probes`).
 - **Sobrecarga do OTel** em runs longos e via ACP; causa de `CODEX_CONFIG` com `otel` não exportar; threads extras de `conversation.id`; span de modelo no OpenCode (`otel`).
-- **RAM do Claude com `strictMcpConfig`**; efeito isolado de `dontAsk`/`deny`/`tools` (`acp-claude`); modos `agent` e `agent-full-access` do Codex (`acp-codex`); `OPENCODE_CONFIG_CONTENT` (`acp-opencode`).
+- **RAM do Claude com `strictMcpConfig`** e com `settingSources: []`; `deny` com padrão contra Bash por caminho ou `sh -c` pelo ACP (`acp-claude`); modos `agent` e `agent-full-access` do Codex (`acp-codex`); `OPENCODE_CONFIG_CONTENT` (`acp-opencode`).
 - **Modelo local:** 26B-A4B e 31B que a arquitetura cita, outras quantizações, mais de um slot, raciocínio ligado contra desligado, `opencode run`, cancelamento com prompt longo (`local-model`).
 - **Árvore de dependências do Nimbalyst, `xclip`, texto da MPL-2.0, `THIRD_PARTY_NOTICES`** (`licenses`).
 - **Candidatos a fork não executados**, AionCore e árvore completa do Happier (ADR 0001).

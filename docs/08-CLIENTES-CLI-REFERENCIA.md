@@ -23,7 +23,7 @@ O daemon é cliente ACP (`@agentclientprotocol/sdk` v2). Ele sobe o processo do 
 | Gemini CLI | `gemini --acp` (nativo, opcional) | Parte do ACP ainda é `unstable`. |
 
 - Modelo, esforço e modo são definidos por `session/set_config_option`, nas categorias `model`, `thought_level`, `mode` e `model_config`. O adaptador anuncia o que aceita.
-- O que o ACP não cobre fica na interface `ClientAdapter`: comando, ambiente do perfil, `prepareProfile`, login, logout, sonda de cota, `processModel` e o catálogo de modelos `ModelCatalog` (lista, sugestão de campos e validação dos Executores; §5.7, v0.23).
+- O que o ACP não cobre fica na `ClientAdapter`, desde a v0.43 uma classe-base abstrata com um descendente por cliente (**[proposta]**, §5.2): comando, ambiente do perfil, `prepareProfile`, login, logout, sonda de cota, `processModel` e o catálogo de modelos `ModelCatalog` (lista, sugestão de campos e validação dos Executores; §5.7, v0.23).
   - Claude Code e Codex: descoberta automática dos modelos.
   - OpenCode: cadastro assistido a partir do `opencode models --verbose`; o daemon só valida.
 - **Saída de emergência:** trocar o adaptador pelo modo headless do cliente (Parte 2) sem mexer no resto:
@@ -62,7 +62,7 @@ Os dois enviam ao receptor OTLP do daemon. Ver [11](11-TELEMETRIA-E-ATIF.md).
 ### Permissões gravadas pelo `prepareProfile`
 
 Ver [09](09-ISOLAMENTO-E-SEGURANCA.md). Em resumo:
-- **Claude:** `tools` sem o Bash nativo, regras `deny`, `dontAsk`, `--strict-mcp-config` e `disableBypassPermissionsMode`. Ainda é preciso confirmar na Fase 0 como essas flags chegam pelo ACP.
+- **Claude:** `tools` sem o Bash nativo, regras `deny`, `--strict-mcp-config` e `allowDangerouslySkipPermissions: false`, todos em `_meta.claudeCode.options` do `session/new`. O Executor headless roda no modo `default`, e o daemon recusa cada `request_permission`: o `dontAsk` não chega pelo ACP (medido na Fase 0, arquitetura v0.42, §5.8).
 - **OpenCode V2:** `shell` e `external_directory` negados explicitamente.
 - **Codex:** `sandbox_mode` e `approval_policy`.
 
@@ -130,7 +130,7 @@ Itens da Fase 0 da arquitetura (§10) que dizem respeito aos clientes:
 - Estabilidade e concorrência de cada adaptador ACP; `processModel` de cada um (processo por sessão ou multissessão).
 - Se `session/load` funciona em cada adaptador (retomada nativa, §5.16).
 - Se `CLAUDE_CONFIG_DIR`, `CODEX_HOME` e XDG isolam de fato logins e credenciais entre perfis.
-- Como as flags de permissão do Claude (`tools`, `dontAsk`, `--strict-mcp-config`) chegam pelo `claude-agent-acp`.
+- Como as flags de permissão do Claude (`tools`, `dontAsk`, `--strict-mcp-config`) chegam pelo `claude-agent-acp`. Medido (item 8 do relatório da Fase 0): chegam por `_meta.claudeCode.options`, menos o `dontAsk`.
 - Se a statusline do Claude e o `account/rateLimits/read` do Codex dão a cota de forma confiável; se o `rate_limit_event` é repassado.
 - O que o `codex-acp` repassa do `app-server` (cotas, aprovações).
 - Sandbox no Windows: `sandbox-runtime` em alpha, MXC do Codex, plano B por usuário de baixo privilégio.

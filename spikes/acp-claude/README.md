@@ -49,7 +49,7 @@ Ainda sobre processos: o `SIGTERM` no adaptador **não** encerra o `claude` filh
 
 Código: `src/s8-permissions.ts`; resultado em `out/s8-summary.json` (local, não versionado).
 
-Fonte [S/V]: lendo o adaptador 0.107.0, `_meta.claudeCode.options` é espalhado nas opções do SDK (`tools`, `disallowedTools`, `strictMcpConfig`, `settings`, `env`, `extraArgs`, `allowDangerouslySkipPermissions`; `mcpServers` é mesclado), mas `permissionMode`, `cwd` e `canUseTool` são controlados pelo ACP. `settingSources` é fixo em `user`, `project`, `local`. [S]
+Fonte [S/V]: lendo o adaptador 0.107.0, `_meta.claudeCode.options` é espalhado nas opções do SDK (`tools`, `disallowedTools`, `strictMcpConfig`, `settings`, `env`, `extraArgs`, `allowDangerouslySkipPermissions`; `mcpServers` é mesclado), mas `permissionMode`, `cwd` e `canUseTool` são controlados pelo ACP. `settingSources` vem `user`, `project`, `local` por padrão, mas o cliente pode trocá-lo: o padrão é posto **antes** do espalhamento de `_meta.claudeCode.options` (correção de 2026-11-15, medida no item 8b). [S/V]
 
 Teste feito [V], sessão A (restrita) em wt2, com `_meta.claudeCode.options`:
 - `tools: ["Read","Glob","Grep","Edit","Write"]`
@@ -66,14 +66,46 @@ Resultado da sessão A:
 Controle, sessão B em wt3 (sem opções, com `.mcp.json` no cwd): lista com **Bash** e dezenas de ferramentas, MCP do projeto `projmcp` conectado (`source: project`), `context7` (plugin) e **conectores claude.ai (Gmail e Docs) do perfil do dono**. Ou seja, sem restrição o perfil do dono vaza para a sessão.
 
 Limites do que se mostrou:
-- `tools` e `disallowedTools` foram enviados juntos; **não** se separou qual dos dois removeu o Bash.
-- O `permissionMode` no init continuou `auto` nas duas sessões: o `defaultMode: "dontAsk"` das `settings` não apareceu no init (o adaptador controla o modo). `dontAsk` e `disableBypassPermissionsMode` ficaram **sem efeito observável isolado** neste teste. [N]
+- `tools` e `disallowedTools` foram enviados juntos; **não** se separou qual dos dois removeu o Bash. O item 8b separou.
+- O `permissionMode` no init continuou `auto` nas duas sessões: o `defaultMode: "dontAsk"` das `settings` não apareceu no init (o adaptador controla o modo). O item 8b explica por quê.
 - Na sessão A o init ainda listou 12 plugins, 46 skills, 88 slash commands e 22 agentes do perfil; se são usáveis não foi testado. [N]
 - Perfil isolado por `CLAUDE_CONFIG_DIR` (via `_meta.claudeCode.options.env` ou ambiente do adaptador): só testado vazio e **sem login**: `initialize` devolve `authMethods: []` e `session/new` **funciona** sem credencial (o erro de autenticação, se houver, viria no prompt, que não foi enviado). [V]
 
+## Item 8b: cada chave de permissão isolada (2026-11-15)
+
+Código: `src/s10-permissions-isolated.ts`; resultado em `out/s10-summary*.json` (local, não versionado). Cada caso sobe um adaptador novo e muda **uma** coisa. A prova é `touch bash-<caso>.txt` no worktree de teste: não é só leitura, então o modo `default` pergunta. 7 prompts, Haiku/low.
+
+Resultados [V]:
+
+| Caso (só isto muda) | Bash no init | Pedido de permissão | Arquivo criado | Leitura |
+|---|---|---|---|---|
+| Controle, modo `default` | sim | 1 (`execute`) | sim | O modo `default` pergunta antes do `touch`. |
+| `tools: [Read, Glob, Grep, Edit, Write]` | não | 0 | não | Remove o Bash. O modelo ainda tentou uma chamada; ela saiu `failed`. |
+| `disallowedTools: [Bash]` | não | 0 | não | Remove o Bash sozinho. |
+| `settings.permissions.deny: [Bash]` | não | 0 | não | Uma regra `deny` da ferramenta inteira também tira o Bash da lista. |
+| `settings.permissions.defaultMode: dontAsk` no `_meta`, depois modo `default` | sim | 1 | sim | **Sem efeito**: o modo do ACP vence, e o pedido chega ao cliente. |
+| `settings.permissions.disableBypassPermissionsMode: disable` no `_meta` | sim | 0 (modo `auto`) | sim | O catálogo **ainda oferece** `bypassPermissions`, mas `set_config_option` falha com `-32603`, *"Cannot set permission mode to bypassPermissions because it is disabled by settings or configuration"*. A sessão segue em `auto`, e o `touch` rodou sem pedido, porque o `auto` aprova. |
+| `allowDangerouslySkipPermissions: false` (0 prompts) | — | — | — | O catálogo **some** com `bypassPermissions`; pedir esse modo dá `Invalid value`. |
+| `settings.local.json` do cwd com `defaultMode: dontAsk` (0 prompts) | — | — | — | A sessão começa em `default`: `dontAsk` não está no catálogo do adaptador, que cai para `default`. |
+| `settings.local.json` do cwd com `defaultMode: acceptEdits` e `disableBypassPermissionsMode: disable` (0 prompts) | — | — | — | Começa em `acceptEdits` e o catálogo vem **sem** `bypassPermissions`. |
+| `settingSources: []` | sim | — | — | Prompt "ok". Ferramentas de 76 para 30, plugins de 12 para 5 (sobram só os `@builtin` do app), skills de 46 para 22, agentes de 22 para 7, slash commands de 88 para 58, e 0 ferramentas MCP. Os conectores claude.ai ainda aparecem em `mcp_servers`, `pending`. O total de tokens caiu de ~84 mil para ~30 mil no prompt trivial. |
+
+Pedir o modo `dontAsk` por `set_config_option` também dá `Invalid value`: o adaptador 0.107.0 não oferece `dontAsk` ao cliente ACP.
+
+Por quê (lendo `dist/v1/acp-agent.js` e `dist/session-mode.js` do 0.107.0) [S/V]:
+- O modo inicial sai de `resolveInitialPermissionMode`: um modo explícito interno, o do transcript retomado, ou o `permissions.defaultMode` dos **arquivos** de settings (usuário, `.claude/settings.json` e `.claude/settings.local.json` do cwd, e a política gerenciada). As `settings` do `_meta` chegam ao SDK (o `deny` funcionou por elas), mas não entram nessa conta. Depois o adaptador passa `permissionMode` explícito ao SDK, e isso vence o `defaultMode`.
+- O `allowBypass` do catálogo também vem dos arquivos e de `allowDangerouslySkipPermissions !== false`. Por isso o `disableBypassPermissionsMode` do `_meta` não tira o modo do catálogo. Quem recusa é o CLI, só na hora de trocar o modo.
+- O catálogo só tem `default`, `acceptEdits`, `plan`, `auto` (se permitido) e `bypassPermissions` (se permitido).
+
+O que isso sugere para o OTheater [proposta, não decidido]:
+- **Remover o Bash com `tools`**, como a arquitetura já diz. Usar `disallowedTools` ou `deny` como segunda camada.
+- O efeito do `dontAsk` ("nega tudo que pediria permissão") pelo ACP se obtém com o modo `default` mais o **cliente** do OTheater respondendo `reject` a todo `request_permission` do Executor headless. O `dontAsk` em si não chega.
+- **Bloquear o bypass com `allowDangerouslySkipPermissions: false`**, que tira o modo do catálogo. O `disableBypassPermissionsMode` no `_meta` só recusa na troca, e o catálogo continua mentindo.
+- **`settingSources: []`** (ou só `project`) corta o vazamento do perfil do dono e reduz o contexto. Os conectores claude.ai continuam listados; `strictMcpConfig` (item 8) os tirava.
+
 ## Prompts e tokens
 
-**16 prompts de 25** (contados em `out/prompts.log`), todos triviais, só nos worktrees de teste, Haiku/low. O adaptador informa tokens em `PromptResponse.usage`: de ~7 mil a ~165 mil `totalTokens` por prompt, quase tudo cache (leitura e escrita); `outputTokens` de 3 a 428 por prompt. Detalhe por prompt em `out/*-summary.json`.
+**23 prompts de 25** (contados em `out/prompts.log`; 16 até o item 8, 7 no item 8b), todos triviais, só nos worktrees de teste, Haiku/low. O adaptador informa tokens em `PromptResponse.usage`: de ~7 mil a ~165 mil `totalTokens` por prompt, quase tudo cache (leitura e escrita); `outputTokens` de 3 a 428 por prompt. Detalhe por prompt em `out/*-summary.json`.
 
 ## Como rodar
 
@@ -88,6 +120,7 @@ node src/s4-cancel.ts         # itens 3 e 4
 node src/s6-resume.ts a b c   # item 6 (estágios)
 node src/s7-concurrency.ts    # item 7
 node src/s8-permissions.ts    # item 8
+node src/s10-permissions-isolated.ts [caso ...]   # item 8b (7 prompts; sem argumento roda todos)
 node src/s9-nologin.ts <pasta-vazia>   # perfil vazio, 0 prompts
 ```
 
@@ -97,7 +130,8 @@ node src/s9-nologin.ts <pasta-vazia>   # perfil vazio, 0 prompts
 - Segundo login/segunda conta (`CLAUDE_CONFIG_DIR` com outro perfil logado); aqui só se viu o perfil vazio.
 - Windows (só foi medido em Linux).
 - Se o cancelamento mata o filho da ferramenta (`sleep`).
-- Efeito isolado de `disallowedTools`, `deny`, `dontAsk` e `disableBypassPermissionsMode`; como mudar o `permissionMode` real por ACP além dos modos de `session/set_config_option`.
+- `deny` com padrão (`Bash(rm:*)`) contra Bash por caminho ou `sh -c` pelo ACP (a arquitetura já avisa que não pega; não foi medido aqui).
+- Se os 5 plugins `@builtin` e os conectores `pending` que sobram com `settingSources: []` são usáveis.
 - Unidade de `utilization` no `_claude/rateLimit`.
 - RAM por sessão com `strictMcpConfig` e sem plugins.
 - Comportamento de `session/new` sem login quando se envia um prompt (erro de autenticação).

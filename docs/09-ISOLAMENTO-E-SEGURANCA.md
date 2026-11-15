@@ -27,8 +27,9 @@ O `prepareProfile` grava esta camada no diretório do perfil a cada mudança de 
 
 - **Claude Code:**
   - `tools` define quais ferramentas existem; o **Bash nativo é removido**. Regras de deny para Bash não pegam o mesmo programa chamado por caminho ou dentro de `sh -c`, então filtrar não basta.
-  - Também usa regras `deny`, o modo `dontAsk`, `--strict-mcp-config` só com os MCPs do papel e `disableBypassPermissionsMode`.
-  - Como essas flags chegam pelo ACP ainda precisa ser confirmado na Fase 0.
+  - Também usa regras `deny`, `--strict-mcp-config` só com os MCPs do papel e `allowDangerouslySkipPermissions: false` (tira o bypass do catálogo de modos).
+  - Headless, nega tudo que pediria permissão: modo `default`, com o daemon recusando cada `request_permission`. O `dontAsk` não chega pelo ACP.
+  - Pelo ACP, essas chaves vão em `_meta.claudeCode.options` do `session/new` (medido na Fase 0; arquitetura v0.42, §5.8).
 - **OpenCode:** allow/ask/deny com padrões. Na V2, `bash` virou `shell`, e `external_directory` vem liberado por padrão, então precisa ser negado explicitamente. Fixar a versão.
 - **Codex:** `sandbox_mode`, `approval_policy` e habilitação de ferramentas por servidor MCP. O shell faz parte do núcleo do Codex, então a contenção vem do sandbox dele:
   - **MXC** no Windows 11 24H2+;
