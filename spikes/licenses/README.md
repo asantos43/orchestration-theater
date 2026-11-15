@@ -10,6 +10,7 @@ Legenda: **[V]** verificado localmente (arquivo lido, comando rodado); **[S]** f
 
 **Método.**
 - Clones rasos de 1MCP, AgentPrism e Nimbalyst na scratchpad. Nada do código deles foi executado.
+- Árvore do Nimbalyst (§6.4): só metadados (`pnpm-lock.yaml`, `package.json`, `LICENSE`, 72 arquivos) e um GET de JSON por pacote ao registro npm. Sem `pnpm install`, sem tarball, sem script de instalação, sem código do repositório executado.
 - `npm pack` dos seis pacotes do item 2, para ler o `LICENSE` que vai no tarball.
 - Árvores instaladas com `npm install --ignore-scripts`, sempre fora do repositório (exceto as árvores dos spikes que já existiam).
 - Páginas de termos baixadas com `curl` e lidas como texto.
@@ -23,10 +24,10 @@ Legenda: **[V]** verificado localmente (arquivo lido, comando rodado); **[S]** f
 |---|---|---|
 | 1a. 1MCP (`@1mcp/agent`) | **Apache-2.0**: permitida pela §6.0. Árvore de produção: 199 pacotes, todos permitidos | [V] |
 | 1b. AgentPrism (Evil Martians) | **MIT** no repositório. Mas os pacotes npm `agent-prism-data` e `agent-prism-types` 1.0.0 **não têm campo `license`**; o verificador só infere MIT pelo arquivo. O pacote de UI não é publicado: o `readme` manda copiar os componentes | [V] |
-| 1c. Nimbalyst | **MIT** (LICENSE da raiz, `package.json` da raiz e API do GitHub). `LICENSING.md` diz que o servidor de sincronização é projeto separado e que as dependências de terceiros têm licença própria. Árvore de dependências **não medida** (monorepo pnpm grande; é referência, não dependência) | [V] / [N] a árvore |
+| 1c. Nimbalyst | **MIT** (LICENSE da raiz, `package.json` da raiz e API do GitHub). `LICENSING.md` diz que o servidor de sincronização é projeto separado e que as dependências de terceiros têm licença própria. Árvore medida na §6.4 (commit `dc5a0ef`): 1825 pacotes (1252 produção, 573 dev), **15 proibidas e 14 sem decisão em produção**, verificador sai com 1. É referência, não dependência | [V] a raiz; [S] a árvore (licença do registro) |
 | 1d. Outros [a confirmar] de licença | croner **MIT**, dependency-cruiser **MIT** (dev). `wl-paste` (pacote `wl-clipboard` 2.3.0) é **GPL-3.0-or-later** (rpm local). `xclip` **não está instalado**, licença não confirmada. **Divergência com a §6.1:** o MCP SDK v2 (`@modelcontextprotocol/server` e `client` 2.4.0) é **Apache-2.0**, não MIT | [V] / xclip [N] |
 | 2. Licenças e termos dos seis pacotes | Quatro são abertos (Apache-2.0 ou MIT). `@anthropic-ai/claude-agent-sdk` é "todos os direitos reservados", com uso regido pelos Termos Comerciais. Redistribuir o SDK dentro de um SEA **não tem permissão nem proibição no texto**: ambíguo (D1, D2) | [V] licenças; [S] termos |
-| 3. `check.mjs` + `policy.json` | Feitos. 16 testes sintéticos passam (`node test.mjs`). Sai com código 1 em licença proibida, sem decisão ou ferramenta de nível C empacotada. As decisões da N45 (2026-11-15) estão em `policy.json` | [V] |
+| 3. `check.mjs` + `policy.json` | Feitos. 16 testes sintéticos passam (`node test.mjs`), mais 4 do adaptador pnpm (`node test-pnpm.mjs`). Sai com código 1 em licença proibida, sem decisão ou ferramenta de nível C empacotada. As decisões da N45 (2026-11-15) estão em `policy.json` | [V] |
 | 4a. Árvore da stack da §8 | **Núcleo (192 pacotes): aprovado. Fases posteriores (138): aprovado.** Executores (154, só lockfile): 22 sem decisão, 0 proibidas | [V] |
 | 4b. Árvores dos spikes já instaladas | **2 proibidas** (`@opentui/core-linux-x64` e `-musl`, `MIT AND LGPL-2.1-or-later`). 10 sem decisão nas árvores com `claude-agent-acp`. 1 alerta de arquivo LGPL no `@openai/codex` | [V] |
 
@@ -36,7 +37,7 @@ Legenda: **[V]** verificado localmente (arquivo lido, comando rodado); **[S]** f
 |---|---|---|---|---|---|
 | 1MCP `@1mcp/agent` 0.39.9 | Apache-2.0 | `LICENSE` em `github.com/1mcp-app/agent`, commit `4b19190bef1e8abb7f4f0887608620e36c9a0cdc` (2026-11-13); API do GitHub: `Apache-2.0` | `Apache-2.0` | 199 pacotes: 199 permitidos | Permitida (nível B). Obrigação Apache-2.0: LICENSE e NOTICE no `THIRD_PARTY_NOTICES` |
 | AgentPrism (repo) | MIT | `LICENSE` em `github.com/evilmartians/agent-prism`, commit `4fd371b5e4f25acd04278e94a0d4b21e543eb42c` (2026-10-08); API: `MIT` | `@evilmartians/agent-prism-data` e `-types` 1.0.0: **vazio**. `-ui`: 404, não existe no npm | `data` + `types` + dependências do `readme`: 31 pacotes, 29 permitidos, **2 sem decisão** (`data` e `types`, sem campo `license`, lidos como "MIT*") | Repo permitida. Pacotes npm: **sem decisão** até haver exceção (D7). Copiar a UI = nível A, MIT exige manter o aviso de copyright |
-| Nimbalyst | MIT | `LICENSE` em `github.com/nimbalyst/nimbalyst`, commit `dc5a0ef938cf495a0667d797f871d09d0c44246f` (2026-11-14); API: `MIT` | (raiz privada, não publicada) | **Não medida** | Permitida para a raiz. Dependências de terceiros não verificadas |
+| Nimbalyst | MIT | `LICENSE` em `github.com/nimbalyst/nimbalyst`, commit `dc5a0ef938cf495a0667d797f871d09d0c44246f` (2026-11-14); API: `MIT` | (raiz privada, não publicada) | 1825 pacotes (1252 produção + 573 dev): 1197 permitidas, 18 decididas, **14 sem decisão**, **15 proibidas**, 8 nível C empacotado (produção) | Permitida para a raiz. Árvore: **reprovada** pelo verificador (§6.4); só os pacotes de terceiros, e licença do registro [S] |
 | croner 11.0.1 | MIT | — | `MIT` | dentro do núcleo | Permitida |
 | dependency-cruiser 18.7.2 | MIT | — | `MIT` | dev | Permitida (nível D) |
 | MCP SDK v2 `server`/`client` 2.4.0 | **Apache-2.0** | `LICENSE` instalado | `Apache-2.0` (o `@modelcontextprotocol/sdk` 1.32.2, antigo, é MIT) | dentro do núcleo | Permitida. **A §6.1 diz MIT: corrigir.** A API do GitHub devolve `NOASSERTION` para o repositório (transição de licença) **[S]** |
@@ -103,6 +104,7 @@ Todas **[S]** (texto de página, não contrato assinado).
 - **Desconhecidas:** `UNKNOWN`, `Custom`, `SEE LICENSE IN` e expressão inválida são "sem decisão". Licença inferida pelo verificador (marca `*`, sem campo `license` no pacote) também reprova por padrão (`--palpite=aviso` desliga).
 - **Escopo:** produção (padrão) ou `--tudo` (inclui dev). Dev só importa no nível D.
 - **Modo `--so-lockfile`:** lê o `license` do `package-lock.json`. Dá a árvore de plataformas que não foram instaladas, sem baixar binários.
+- **Adaptador pnpm (`lockfile-pnpm.mjs`):** converte um `pnpm-lock.yaml` (v9) em um `package-lock.json` sintético e a licença vem do registro npm (GET de JSON com cache). O `check.mjs` não mudou; roda com `--so-lockfile`. Detalhes na §6.4.
 - **Alerta de arquivo copyleft:** pacote que declara licença permitida mas leva `LGPL-*.txt`, `GPL*` ou `COPYING.LESSER` dentro. É o caso do `@openai/codex`. Vira falha com `--alertas=falha`.
 - **Decisões:** só entram em `policy.json` decisões registradas pelo dono. Desde 2026-11-15 (N45) ele tem as oito licenças da D6 (`decisoesPorLicenca`), a exceção do AgentPrism (`excecoes`, por pacote e versão) e os executores (`ferramentasExternas`). Uma exceção pode exigir o texto exato da licença; sem esse campo, vale para qualquer leitura. Nunca libera licença proibida, a menos que diga `permiteProibida: true`.
 - **Nível C (`--nivel-c=falha|instalacao`):** os pacotes de `ferramentasExternas` são programas que o usuário instala e que rodam em processo separado.
@@ -181,6 +183,69 @@ Rodado de novo com `policy.json` preenchido:
 
 Os spikes de ACP reprovam no modo padrão, e isso é o certo: eles instalam o adaptador como dependência. No produto, o adaptador fica fora do executável. O `fast-sha256` (Unlicense) agora é "decidida" no modo padrão, e "nível C" no modo instalação.
 
+### 6.4 Árvore do Nimbalyst (monorepo pnpm), commit `dc5a0ef938cf495a0667d797f871d09d0c44246f`
+
+Medida em 2026-11-15, com o `policy.json` como está (N45), sem mudar política. É referência, não dependência.
+
+**Método.**
+- Baixei só `pnpm-lock.yaml` (lockfileVersion 9.0), os `package.json` do monorepo e o `LICENSE` (72 arquivos), em pasta nova da scratchpad (`<tmpdir>/licenses/nimbalyst`). Nada foi instalado nem executado. [V]
+- `lockfile-pnpm.mjs` lê o YAML (parser mínimo próprio, sem dependência), calcula o alcance exato a partir dos importers e busca a licença de cada `nome@versão` no registro npm (1825 GET de JSON, com cache, concorrência 4, UA genérico). Gera `package.json`, `package-lock.json` sintético e `analise.json` em `out/nimbalyst-lock/`. [V]
+- Cada importer vira um nó sintético privado (`ws-<id>` para produção, `wsdev-<id>` para dev; 112 ao todo, ignorados pelo verificador). Cada `nome@versão` aparece em um lugar só, porque o verificador classifica prod/dev pela primeira cópia. Com isso o `check.mjs` bateu com o alcance exato: **1252 produção + 573 dev**. [V]
+- O documento extra do `pnpm-lock.yaml` (ambiente do próprio pnpm 11, 15 pacotes) foi ignorado. [V]
+- Os `package.json` do monorepo não declaram `license` (a maioria `null`); o `LICENSE` da raiz é MIT. [V]
+
+```bash
+node lockfile-pnpm.mjs --lock <pnpm-lock.yaml> --out out/nimbalyst-lock --cache <tmpdir>/licenses/cache-npm
+node check.mjs --dir out/nimbalyst-lock --so-lockfile            # produção
+node check.mjs --dir out/nimbalyst-lock --so-lockfile --tudo     # produção + dev
+```
+
+**Totais [S: licença do registro].**
+
+| Escopo | Pacotes | Permitidas | Decididas | Sem decisão | Proibidas | Nível C empacotado | Saída |
+|---|---|---|---|---|---|---|---|
+| Produção | 1252 | 1197 | 18 | 14 | 15 | 8 | **1** |
+| Produção + dev (`--tudo`) | 1825 | 1748 | 26 | 14 | 29 | 8 | **1** |
+
+- 56 importers; 0 pacotes sem metadado no registro. 3 variantes de peers divergem (`postcss-load-config@6.0.1` e `vite@7.3.6` com `jiti` 1.21.7 ou 2.7.0; `vitest@4.1.11` com `jsdom` 26.1.0 ou 27.4.0): a fusão é por união e só pode aumentar o alcance, mas o alcance exato calculado à parte é idêntico. [V]
+- Licenças em produção (contagem do verificador): MIT 988, ISC 73, BSD-3-Clause 67, Apache-2.0 61, BlueOak-1.0.0 12, LGPL-3.0-or-later 10, `SEE LICENSE IN LICENSE.md` 8, BSD-2-Clause 8, `Apache-2.0 AND LGPL-3.0-or-later` 3, UNKNOWN 2, Unlicense 2, CC0-1.0 2, `(MIT AND Zlib)` 2, `(MIT OR CC0-1.0)` 2, e 1 cada de `SEE LICENSE IN README.md`, `MIT OR Apache-2.0`, `Apache-2.0 AND LGPL-3.0-or-later AND MIT`, Python-2.0, CC-BY-4.0, `(MPL-2.0 OR Apache-2.0)`, EPL-2.0, `(MIT OR GPL-3.0-or-later)`, LGPL-3.0, `SEE LICENSE IN LICENSE`, 0BSD, `MIT AND ISC`. Com `--tudo` (1825): MIT 1437, Apache-2.0 108, ISC 98, BSD-3-Clause 76, BSD-2-Clause 23, LGPL-3.0-or-later 20, BlueOak-1.0.0 14, e a cauda longa em `out/nimbalyst.tudo.txt`.
+
+**Proibidas em produção (15).** Todas LGPL; o caminho de entrada é `ws-packages--electron` (o pacote Electron do monorepo).
+
+| Pacote@versão | Licença | Escopo | Caminho de entrada |
+|---|---|---|---|
+| `@img/sharp-libvips-<plataforma>@1.2.4` (10: darwin-arm64, darwin-x64, linux-arm64, linux-arm, linux-ppc64, linux-riscv64, linux-s390x, linux-x64, linuxmusl-arm64, linuxmusl-x64) | LGPL-3.0-or-later | produção | electron > `@huggingface/transformers@3.8.1` > `sharp@0.34.5` > pacote |
+| `@img/sharp-wasm32@0.34.5` | Apache-2.0 AND LGPL-3.0-or-later AND MIT | produção | idem |
+| `@img/sharp-win32-arm64`, `-ia32`, `-x64` `@0.34.5` (3) | Apache-2.0 AND LGPL-3.0-or-later | produção | idem |
+| `libheif-js@1.19.8` | LGPL-3.0 | produção | electron (dependência direta) |
+
+O `license-approvals.json` do Nimbalyst aprova o `libheif-js` **[V]**; isso é decisão deles, não minha nem do OTheater. Só em dev há mais 14 proibidas (`@img/sharp-libvips-*@1.3.1` x10, `@img/sharp-wasm32@0.35.2` e `@img/sharp-win32-arm64/ia32/x64@0.35.2`), por `wsdev-packages--marketplace` > `wrangler@4.125.0` > `miniflare@5.20260820.0-alpha` > `sharp@0.35.2`.
+
+**Sem decisão em produção (14).**
+
+| Pacote@versão | Licença | Escopo | Caminho de entrada |
+|---|---|---|---|
+| `@anthropic-ai/claude-agent-sdk-<plataforma>@0.3.321` (8) | `SEE LICENSE IN LICENSE.md` | produção | electron > `@anthropic-ai/claude-agent-sdk@0.3.321` > pacote (mesmo caso da D1) |
+| `elkjs@0.11.1` | EPL-2.0 | produção | `ws-packages--extensions--datamodellm` (o Nimbalyst a aprova) |
+| `exif-parser@0.1.12` | UNKNOWN | produção | electron > `jimp@1.6.1` > `@jimp/core@1.6.1` |
+| `khroma@2.1.0` | UNKNOWN | produção | electron > `mermaid@11.17.2` |
+| `pako@1.0.11` | MIT AND Zlib | produção | `ws-packages--extensions--playwright` > `jszip@3.10.1` |
+| `pako@2.0.3` | MIT AND Zlib | produção | electron > `@excalidraw/excalidraw@0.18.1` |
+| `posthog-js@1.380.0` | `SEE LICENSE IN LICENSE` | produção | electron (dependência direta) |
+
+Em dev não há nenhuma sem decisão.
+
+**Outros achados.**
+- Nível C empacotado (8): `@anthropic-ai/claude-agent-sdk@0.3.321` e `@openai/codex@0.167.0` com 6 pacotes de plataforma, via electron > `@openai/codex-sdk@0.167.0`. A política os trata como ferramentas externas (N45); aqui estão empacotados, então o verificador reprova.
+- Passam por `OR` (melhor ramo): `jszip@3.10.1` (`MIT OR GPL-3.0-or-later`), `dompurify@3.4.14` (`MPL-2.0 OR Apache-2.0`, via `monaco-editor`), `type-fest` (`MIT OR CC0-1.0`).
+- Decididas em produção (18): BlueOak-1.0.0 x12, Unlicense x2, CC0-1.0 x2, Python-2.0, CC-BY-4.0. Em dev (8): MIT-0 x3, CC0-1.0 x2, BlueOak-1.0.0 x2, WTFPL.
+
+**Limites.**
+- A licença é o campo `license` do registro [S]; não li o arquivo de licença dentro dos tarballs. Os `UNKNOWN` e `SEE LICENSE IN` acima só se resolvem lendo o arquivo [N].
+- O lockfile tem o SDK do Claude na 0.3.321; a §6.2 cita 0.3.323/0.3.325 (outra árvore). Não é contradição.
+- O pacote sintético raiz se chama `nimbalyst-medicao`; aparece como `(raiz)` nos caminhos.
+- Saídas em `out/nimbalyst.{prod,tudo}.{json,txt}` e `out/nimbalyst-lock/` (ignoradas pelo git).
+
 ## 7. Decisões do dono
 
 Decididas em 2026-11-15, registradas na N45 do [docs/13](../../docs/13-DECISOES-EM-ABERTO.md) e na arquitetura v0.41 (§6.0). Foram por múltipla escolha, e as respostas coincidiram com as recomendações:
@@ -203,7 +268,8 @@ Continuam abertas:
 ## 8. Pendências (não medido)
 
 - **Termos da OpenAI** (403): [N].
-- **Árvore de dependências do Nimbalyst**: monorepo pnpm de dezenas de pacotes. Não é dependência prevista. [N]
+- **Árvore do Nimbalyst, no HEAD atual**: medi o commit `dc5a0ef`; o HEAD de hoje (`c7d76d9`) não foi medido. [N]
+- **Árvore do Nimbalyst, arquivos de licença**: a licença vem do campo `license` do registro [S]. Os `UNKNOWN` e `SEE LICENSE IN` (`exif-parser`, `khroma`, `posthog-js`, SDK do Claude) precisam de leitura do arquivo no tarball. [N]
 - **`xclip`**: não instalado, licença não confirmada. [N]
 - **Contrato com a Anthropic**: só li páginas públicas. Nenhuma resposta da Anthropic existe. [N]
 - **Texto da MPL-2.0** (§6.0 marca "a conferir"): fora do escopo deste spike. [N]
@@ -218,6 +284,7 @@ cd spikes/licenses
 npm install --ignore-scripts
 
 node test.mjs                                            # 16 testes sintéticos, sem rede
+node test-pnpm.mjs                                       # 4 testes do adaptador pnpm, sem rede
 node check.mjs --dir ../acp-claude                       # produção, árvore instalada
 node check.mjs --dir ../acp-claude --tudo --json out/x.json
 node check.mjs --dir stacks/executors --so-lockfile --nivel-c=instalacao   # só o package-lock.json; lista de ferramentas externas
@@ -228,4 +295,4 @@ Opções: `--dir`, `--tudo`, `--com-propostas`, `--json <arquivo>`, `--palpite=f
 
 Para reproduzir as árvores da stack: `cd stacks/core && npm ci --ignore-scripts` (idem `later`) e rode o verificador na pasta. A árvore `core` precisou de `@opentelemetry/api` 1.10.0 para resolver os pares do OpenTelemetry; os `package-lock.json` guardam o resultado.
 
-**Arquivos:** `check.mjs`, `policy.json`, `proposals.json`, `test.mjs`, `package.json`, `stacks/{core,later,executors}/{package.json,package-lock.json}`. Saídas em `out/` (ignoradas pelo git).
+**Arquivos:** `check.mjs`, `lockfile-pnpm.mjs`, `policy.json`, `proposals.json`, `test.mjs`, `test-pnpm.mjs`, `package.json`, `stacks/{core,later,executors}/{package.json,package-lock.json}`. Saídas em `out/` (ignoradas pelo git).

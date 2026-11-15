@@ -105,6 +105,10 @@ export interface StartOpts {
   replaceEnv?: boolean;
   /** caminho do executavel do codex (ex.: wrapper); tem prioridade sobre pathCodex */
   codexPath?: string;
+  /** sobe outro agente ACP (ex.: `opencode acp`) em vez do codex-acp; ignora codexPath/pathCodex */
+  command?: string;
+  commandArgs?: string[];
+  cwd?: string;
 }
 
 export class Adapter {
@@ -135,10 +139,13 @@ export class Adapter {
   static start(opts: StartOpts): Adapter {
     const log = jsonl(`${opts.name}.jsonl`);
     const env: Record<string, string> = opts.replaceEnv ? { ...opts.env } : { ...(process.env as Record<string, string>), ...opts.env };
-    if (opts.codexPath) env.CODEX_PATH = opts.codexPath;
+    if (opts.command) delete env.CODEX_PATH;
+    else if (opts.codexPath) env.CODEX_PATH = opts.codexPath;
     else if (!opts.pathCodex) env.CODEX_PATH = BUNDLED_CODEX;
     else if (!env.CODEX_PATH) delete env.CODEX_PATH;
-    const child = spawn(process.execPath, [ADAPTER_JS, ...(opts.extraArgs ?? [])], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = opts.command
+      ? spawn(opts.command, opts.commandArgs ?? [], { env, cwd: opts.cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+      : spawn(process.execPath, [ADAPTER_JS, ...(opts.extraArgs ?? [])], { env, cwd: opts.cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     const a = new Adapter(opts.name, child, log);
     log({ dir: 'meta', event: 'spawn', pid: child.pid, codexPath: env.CODEX_PATH ?? 'PATH', codexHome: env.CODEX_HOME ?? '(padrao)' });
     child.stderr!.on('data', (d: Buffer) => {

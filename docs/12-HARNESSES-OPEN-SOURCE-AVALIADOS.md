@@ -62,7 +62,7 @@ Critérios da Fase 0:
 | acpx | MIT | Cliente ACP headless com sessões persistentes e NDJSON |
 | ccmanager | MIT | Gestão de worktrees, detecção de estado do agente |
 | rivet-dev/agents | Apache-2.0 | Agentes de código atrás de uma API HTTP |
-| Nimbalyst (sucessor do Crystal) | MIT **[a confirmar]** | Sessões paralelas |
+| Nimbalyst (sucessor do Crystal) | MIT na raiz **[V]** (commit `dc5a0ef`, 2026-11-14); a árvore de terceiros tem 15 LGPL e 14 sem decisão em produção [S] (`spikes/licenses`, §6.4) | Sessões paralelas |
 | Vibe Kanban | Apache-2.0 (Rust) | Executores ACP e worktree por tarefa (só o desenho) |
 | CodexBar | MIT (Swift) | Como obter a cota de cada provedor |
 | Harbor | Apache-2.0 (Python) | Modelos do ATIF, a portar para zod |
