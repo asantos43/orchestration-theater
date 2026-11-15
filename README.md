@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.32): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.33): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
@@ -72,6 +72,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [12-HARNESSES-OPEN-SOURCE-AVALIADOS.md](docs/12-HARNESSES-OPEN-SOURCE-AVALIADOS.md) | Agentes open source como Executores e projetos candidatos a base de fork |
 | [13-DECISOES-EM-ABERTO.md](docs/13-DECISOES-EM-ABERTO.md) | Estado de cada decisão, com data e motivo |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
+| [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
 
 Os números 03 a 06 estão vagos: esses documentos (comparação com e sem contêineres, alternativa Claude Code + `okit`) foram apagados em 2026-11-13. A última versão deles está no commit `cb05e35`.
 

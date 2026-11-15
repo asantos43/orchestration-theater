@@ -373,7 +373,7 @@ pre.term{margin:0;background:#11141a;color:#c9ced6;font:12.5px/1.32 "Cascadia Mo
   </div>
 </header>
 ${sections}
-<p class="note">Atalhos da TUI: <code>Ctrl+B</code> recolhe a lateral · <code>Ctrl+J</code> abre/fecha o painel · <code>Ctrl+←/→</code> ajusta a largura do chat (lembrada entre sessões) · <code>Ctrl+T</code>/<code>Ctrl+W</code> abrem e fecham abas · <code>Enter</code> no título recolhe uma seção · <code>F5</code> abre Configurações como aba. Telas pré-renderizadas (aparecem mesmo sem JavaScript); para alterá-las, edite <code>tui-render.js</code> e rode <code>node tui-render.js</code>. Valores ilustrativos, os mesmos do mockup do app. Baseado em <code>arquitetura.md</code> v0.4.</p>
+<p class="note">Atalhos da TUI: <code>Alt+S</code> recolhe a lateral · <code>Alt+J</code> abre/fecha o painel · <code>Ctrl+Shift+←/→</code> ajusta a largura do chat (lembrada entre sessões) · <code>Alt+A</code>/<code>Alt+W</code> abrem e fecham abas · <code>Alt+K</code> ou <code>F1</code> abre a paleta (atalhos da v0.33, N35) · <code>Enter</code> no título recolhe uma seção · <code>F5</code> abre Configurações como aba. Telas pré-renderizadas (aparecem mesmo sem JavaScript); para alterá-las, edite <code>tui-render.js</code> e rode <code>node tui-render.js</code>. Valores ilustrativos, os mesmos do mockup do app. Baseado em <code>arquitetura.md</code> v0.4.</p>
 <script>
 (function(){
   const root=document.documentElement;root.classList.add("js");

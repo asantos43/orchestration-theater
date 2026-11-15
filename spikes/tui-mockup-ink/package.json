@@ -1,0 +1,26 @@
+{
+  "name": "otheater-spike-tui-mockup-ink",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Spike Fase 0: as 4 telas do mockup da TUI desenhadas em Ink + @inkjs/ui (descartável)",
+  "scripts": {
+    "start": "tsx src/main.tsx",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/main.tsx --bundle --platform=node --format=esm --packages=external --outfile=dist/main.js",
+    "build:compare": "esbuild scripts/compare.tsx --bundle --platform=node --format=esm --packages=external --outfile=dist/compare.js",
+    "compare": "npm run build:compare && FORCE_COLOR=3 NODE_ENV=production node dist/compare.js"
+  },
+  "dependencies": {
+    "@inkjs/ui": "2.0.0",
+    "ink": "8.0.0",
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+# saídas pesadas das medições; o resultado resumido vai no README de cada spike
+**/out/
+# perfis, logins e sessões dos clientes nunca entram no repositório
+**/profiles/
+**/.claude/
+**/.codex/

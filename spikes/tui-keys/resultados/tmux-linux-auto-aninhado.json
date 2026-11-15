@@ -1,0 +1,263 @@
+{
+  "ferramenta": "otheater-spike-tui-keys",
+  "data": "2026-11-15T01:48:09.764Z",
+  "nome": "tmux no Linux (aninhado, cliente real)",
+  "maquina": {
+    "plataforma": "linux 7.3.3-300.fc45.x86_64",
+    "arch": "x64",
+    "node": "v24.18.0"
+  },
+  "terminal": {
+    "TERM": "tmux-256color",
+    "COLORTERM": "truecolor",
+    "TERM_PROGRAM": "tmux",
+    "TERM_PROGRAM_VERSION": "3.8",
+    "WT_SESSION": null,
+    "VTE_VERSION": null,
+    "KONSOLE_VERSION": null,
+    "TMUX": "dentro do tmux",
+    "SSH_TTY": null,
+    "LANG": "en_US.UTF-8",
+    "kitty": null,
+    "da1": "\u001b[?1;2;4c",
+    "xtversion": "tmux 3.8",
+    "colunas": 100,
+    "linhas": 31
+  },
+  "resumo": {
+    "ok": 28,
+    "não chegou": 1
+  },
+  "itens": [
+    {
+      "id": "enter",
+      "rotulo": "Enter",
+      "status": "ok",
+      "recebido": "Enter",
+      "bytes": "0d",
+      "bytesTexto": "\\r"
+    },
+    {
+      "id": "ctrl_j",
+      "rotulo": "Ctrl+J (tem de ser diferente do Enter)",
+      "status": "ok",
+      "recebido": "Ctrl+J",
+      "bytes": "0a",
+      "bytesTexto": "\\n"
+    },
+    {
+      "id": "ctrl_b",
+      "rotulo": "Ctrl+B",
+      "status": "não chegou",
+      "recebido": null
+    },
+    {
+      "id": "alt_b",
+      "rotulo": "Alt+B (macOS: Option+B)",
+      "status": "ok",
+      "recebido": "Alt+B",
+      "bytes": "1b 62",
+      "bytesTexto": "\\eb"
+    },
+    {
+      "id": "alt_j",
+      "rotulo": "Alt+J (macOS: Option+J)",
+      "status": "ok",
+      "recebido": "Alt+J",
+      "bytes": "1b 6a",
+      "bytesTexto": "\\ej"
+    },
+    {
+      "id": "ctrl_left",
+      "rotulo": "Ctrl+←",
+      "status": "ok",
+      "recebido": "Ctrl+←",
+      "bytes": "1b 5b 31 3b 35 44",
+      "bytesTexto": "\\e[1;5D"
+    },
+    {
+      "id": "ctrl_right",
+      "rotulo": "Ctrl+→",
+      "status": "ok",
+      "recebido": "Ctrl+→",
+      "bytes": "1b 5b 31 3b 35 43",
+      "bytesTexto": "\\e[1;5C"
+    },
+    {
+      "id": "ctrl_shift_left",
+      "rotulo": "Ctrl+Shift+←",
+      "status": "ok",
+      "recebido": "Ctrl+Shift+←",
+      "bytes": "1b 5b 31 3b 36 44",
+      "bytesTexto": "\\e[1;6D"
+    },
+    {
+      "id": "ctrl_shift_right",
+      "rotulo": "Ctrl+Shift+→",
+      "status": "ok",
+      "recebido": "Ctrl+Shift+→",
+      "bytes": "1b 5b 31 3b 36 43",
+      "bytesTexto": "\\e[1;6C"
+    },
+    {
+      "id": "ctrl_t",
+      "rotulo": "Ctrl+T",
+      "status": "ok",
+      "recebido": "Ctrl+T",
+      "bytes": "14",
+      "bytesTexto": "\\x14"
+    },
+    {
+      "id": "alt_t",
+      "rotulo": "Alt+T (macOS: Option+T)",
+      "status": "ok",
+      "recebido": "Alt+T",
+      "bytes": "1b 74",
+      "bytesTexto": "\\et"
+    },
+    {
+      "id": "ctrl_w",
+      "rotulo": "Ctrl+W",
+      "status": "ok",
+      "recebido": "Ctrl+W",
+      "bytes": "17",
+      "bytesTexto": "\\x17"
+    },
+    {
+      "id": "alt_w",
+      "rotulo": "Alt+W (macOS: Option+W)",
+      "status": "ok",
+      "recebido": "Alt+W",
+      "bytes": "1b 77",
+      "bytesTexto": "\\ew"
+    },
+    {
+      "id": "ctrl_k",
+      "rotulo": "Ctrl+K",
+      "status": "ok",
+      "recebido": "Ctrl+K",
+      "bytes": "0b",
+      "bytesTexto": "\\x0b"
+    },
+    {
+      "id": "f1",
+      "rotulo": "F1",
+      "status": "ok",
+      "recebido": "F1",
+      "bytes": "1b 4f 50",
+      "bytesTexto": "\\eOP"
+    },
+    {
+      "id": "f5",
+      "rotulo": "F5",
+      "status": "ok",
+      "recebido": "F5",
+      "bytes": "1b 5b 31 35 7e",
+      "bytesTexto": "\\e[15~"
+    },
+    {
+      "id": "f6",
+      "rotulo": "F6",
+      "status": "ok",
+      "recebido": "F6",
+      "bytes": "1b 5b 31 37 7e",
+      "bytesTexto": "\\e[17~"
+    },
+    {
+      "id": "ctrl_q",
+      "rotulo": "Ctrl+Q",
+      "status": "ok",
+      "recebido": "Ctrl+Q",
+      "bytes": "11",
+      "bytesTexto": "\\x11"
+    },
+    {
+      "id": "tab",
+      "rotulo": "Tab",
+      "status": "ok",
+      "recebido": "Tab",
+      "bytes": "09",
+      "bytesTexto": "\\t"
+    },
+    {
+      "id": "shift_tab",
+      "rotulo": "Shift+Tab",
+      "status": "ok",
+      "recebido": "Shift+Tab",
+      "bytes": "1b 5b 5a",
+      "bytesTexto": "\\e[Z"
+    },
+    {
+      "id": "pgup",
+      "rotulo": "PageUp",
+      "status": "ok",
+      "recebido": "PageUp",
+      "bytes": "1b 5b 35 7e",
+      "bytesTexto": "\\e[5~"
+    },
+    {
+      "id": "pgdn",
+      "rotulo": "PageDown",
+      "status": "ok",
+      "recebido": "PageDown",
+      "bytes": "1b 5b 36 7e",
+      "bytesTexto": "\\e[6~"
+    },
+    {
+      "id": "up",
+      "rotulo": "↑",
+      "status": "ok",
+      "recebido": "↑",
+      "bytes": "1b 5b 41",
+      "bytesTexto": "\\e[A"
+    },
+    {
+      "id": "down",
+      "rotulo": "↓",
+      "status": "ok",
+      "recebido": "↓",
+      "bytes": "1b 5b 42",
+      "bytesTexto": "\\e[B"
+    },
+    {
+      "id": "shift_up",
+      "rotulo": "Shift+↑",
+      "status": "ok",
+      "recebido": "Shift+↑",
+      "bytes": "1b 5b 31 3b 32 41",
+      "bytesTexto": "\\e[1;2A"
+    },
+    {
+      "id": "shift_down",
+      "rotulo": "Shift+↓",
+      "status": "ok",
+      "recebido": "Shift+↓",
+      "bytes": "1b 5b 31 3b 32 42",
+      "bytesTexto": "\\e[1;2B"
+    },
+    {
+      "id": "space",
+      "rotulo": "Espaço",
+      "status": "ok",
+      "recebido": "Espaço",
+      "bytes": "20",
+      "bytesTexto": " "
+    },
+    {
+      "id": "esc",
+      "rotulo": "Esc",
+      "status": "ok",
+      "recebido": "Esc",
+      "bytes": "1b",
+      "bytesTexto": "\\e"
+    },
+    {
+      "id": "ctrl_shift_p",
+      "rotulo": "Ctrl+Shift+P (a arquitetura diz que NÃO distingue de Ctrl+P)",
+      "status": "ok",
+      "recebido": "Ctrl+P",
+      "bytes": "10",
+      "bytesTexto": "\\x10"
+    }
+  ]
+}

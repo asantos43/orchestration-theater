@@ -35,7 +35,7 @@ São os diferenciais do OTheater, que a arquitetura (§6.4) também diz que nenh
 3. as **permissões por papel**;
 4. o **ATIF** a partir de um log de eventos próprio.
 
-## Parte 2. Base de fork (arquitetura §6.4, decisão N1)
+## Parte 2. Base de fork (arquitetura §6.4, decisão N1, decidida em 2026-11-14: projeto próprio, sem fork)
 
 Candidatos, em ordem:
 

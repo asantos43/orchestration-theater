@@ -1,0 +1,12 @@
+{
+  "name": "otheater-spike-tui-keys",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike da Fase 0: registrador de teclas (seção 5.13 da arquitetura). Node puro, sem dependências.",
+  "scripts": {
+    "keys": "node keys.mjs",
+    "auto": "node auto-tmux.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

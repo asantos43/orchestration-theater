@@ -1,0 +1,10 @@
+{
+  "name": "otheater-spike-tui-bench",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Spike Fase 0: bancada de medição de TUIs em tmux headless (descartável)",
+  "scripts": {
+    "bench:ink": "node bench.mjs run --name ink --cwd ../tui-ink --cmd \"node dist/main.js\""
+  }
+}

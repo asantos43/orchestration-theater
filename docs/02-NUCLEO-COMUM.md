@@ -213,7 +213,7 @@ Decidido em 2026-11-13 (N20).
 
 ## Interfaces (arquitetura §5.13)
 
-- A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI na Fase 0 é obrigatório.
+- A **TUI em Ink** é a interface principal (Fase 7). O teste comparativo Ink × OpenTUI da Fase 0 confirmou o Ink (N11, 2026-11-15).
 - O `packages/client` reúne o cliente da API e as stores zustand vanilla, e é compartilhado com a web (Fase 12), o desktop (Fase 13) e o app Android de celular e tablet (Fase 14). O app Android é Capacitor sobre a web e chega ao daemon pela VPN do usuário (arquitetura §5.12 e §5.13); por isso, a web deixou de ser opcional (2026-11-14). A ordem depois da v1 é Fase 10b, web, desktop e Android, e nenhuma delas é opcional (N12, v0.29).
 - O mapa de teclas é configurável.
 - Todas as telas existem em inglês e em português do Brasil desde a primeira, por um catálogo de textos; o idioma vem do sistema e a chave `ui.locale` troca (§5.22).

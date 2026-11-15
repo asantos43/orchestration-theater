@@ -2,8 +2,8 @@
 
 > Documento-base de construção. Complementa `framework_multiagentes.md` (pipeline teatral), `framework_multiagentes_orquestrador_e_executores.md` (entidades) e `principais-papeis.md`. Onde este documento detalha *como*, aqueles definem *o quê*.
 >
-> Versão 0.32 — 2026-11-14. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
-> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam. A v0.23 resolve duas contradições sobre o **modelo local** (seções 5.7 e 5.9): ele pode ser Ator, limitado pelos slots da instância, com slots reservados ao Diretor, e o provedor de um Executor na revisão cruzada é a família do modelo, não o cliente. Os Executores do OpenCode entram por um assistente de cadastro com sugestões, e o daemon só valida. A abstração passa a ter dois eixos (seção 5.18): o **cliente** de agente (`ClientAdapter`, agora com o catálogo de modelos `ModelCatalog`) e o **servidor de modelo local** (nova porta `LocalModelServer`, com llama.cpp na v1 e Ollama depois). O nome do Executor passa a incluir o cliente, `<modelo>-<esforço>@<cliente>/<perfil>`, porque o OpenCode também pode chamar modelos do Claude e do GPT por API; com assinatura, cada família só roda pelo seu cliente oficial (`executors.cross_client: api_only`). A configuração dos papéis passa a ter override por papel em cada cenário e tarefa agendada, e não só a restrição de perfis por projeto. A primeira execução vira um `ot init` mínimo que abre a TUI num assistente de configuração cuja lógica fica no daemon. A v0.24 define a **capacidade mínima de cada papel** (seção 5.7): todos os papéis aceitam modelo local, e o que separa um Executor de um papel é a capacidade, igual para modelo local e na nuvem (janela de contexto, raciocínio nos papéis que decidem e uma sessão de teste no cadastro), com aviso em vez de bloqueio por padrão (`roles.capability_check: warn`). A v0.25 fixa o daemon como **serviço de logon** do usuário, sempre: o app desktop, se for feito, é só mais um cliente, como a TUI (item 6 da seção 12). A v0.26 faz das **perguntas ao Produtor listas de múltipla escolha** por padrão (seção 5.3, `chat.producer_questions: choices`), com a opção recomendada, que vale depois de um prazo sem resposta, menos nas decisões irreversíveis, em que a recomendada é sempre a segura; nas tarefas agendadas, o padrão passa a ser esperar um prazo e seguir com a recomendada (5.15). A v0.27 fecha os **campos próprios no ATIF** (seção 5.11): tudo o que é do OTheater fica num bloco `extra.otheater`, a unidade exportada é a peça inteira, com a trajetória do Diretor na raiz e cada tentativa como subtrajetória, `cost_usd` só leva custo real e o conteúdo sai completo, com os segredos mascarados. A v0.28 fecha os **ganchos de interceptação dos plugins** (seção 5.14, para depois da v1; item 15 da seção 12): quatro pontos (antes de lançar a tentativa, antes da ferramenta, antes de aceitar o `submit` e antes da entrega), prazo de 5 s e de 30 s na entrega, comportamento na falha declarado pelo plugin, com deixar passar como padrão, e sondas de cota e notificadores que podem vir de plugin. A v0.29 fixa a **ordem das interfaces depois da v1** (seção 5.13 e Fases 12 a 14; item 12 da seção 12): primeiro a Fase 10b, depois a web (Fase 12), o app desktop (Fase 13), que deixa de ser opcional, e o app Android (Fase 14); Electron ou Tauri é decidido ao abrir a Fase 13. A v0.30 decide as **várias contas do mesmo provedor** (seções 3 e 5.6; era a Q15 do docs/13): o OTheater as suporta como qualquer perfil, não as divulga, e cada usuário as usa por conta e risco. A v0.31 revisa o **fluxo da peça** (P13 e seção 5.4; item 25 da seção 12): cada papel ganha uma fronteira estreita, para o Ator só escrever o código de uma demanda pronta; o plano traz dúvidas e suposições, e as dúvidas vão ao Produtor antes do Revisor; o Autor revisa todo roteiro; cada demanda tem verificação em código ao fim da tentativa; todo laço tem contador, e esgotado vai ao Produtor com um menu fixo; numa crítica mista vence a falha mais grave; e um pedido de mudança depois da entrega abre uma peça nova, ligada à anterior. A v0.32 fecha a **revisão de consistência** dos documentos antes da Fase 0 (seções 5.3, 5.4, 5.16 e 5.20; item 26 da seção 12): o menu fixo de AWAITING_PRODUCER é um tipo próprio, vindo do código, e não segue o limite de 2 a 4 opções do `ask_producer`; a lista de pontos de julgamento do Diretor passa a incluir os casos da seção 5.16 e o rebase na integração; e o `task.define` segue as regras da peça, com as dúvidas do plano ao Produtor e a revisão dos passos pelo Autor; na revisão do roteiro, o Autor também veta dependência sem motivo, para não perder paralelismo.
+> Versão 0.33 — 2026-11-15. Produto: **OTheater** (*Orchestration Theater*). Linguagem: **TypeScript** de ponta a ponta. Licença do código próprio: **MPL-2.0** (era MIT até a v0.18).
+> A v0.5 definiu a TUI em **Ink**, com teste do **OpenTUI** na Fase 0, e ligou as interfaces aos mockups em `mockup/`. A v0.6 faz da **TUI a interface principal** (Fase 7), cria o `packages/client` compartilhado e deixa web e desktop como fases opcionais (12 e 13). A v0.7 acrescenta o suporte multiplataforma da TUI: mapa de teclas configurável com padrões por sistema, fallback do cofre no Linux e uso por SSH. A v0.11 acrescenta as **ordens do Produtor**, globais e locais (seção 5.17), conceito trazido do `okit`. A v0.12 acrescenta **portas, adaptadores e registros** (P12, seção 5.18): contratos em `@otheater/core`, implementações trocáveis em pacotes `@otheater/adapter-*` e fluxos registrados por nome. A v0.13 acrescenta o **navegador compartilhado** (seção 5.19): o Produtor indica elementos da página para o agente trabalhar. A v0.14 define os **cenários** (seção 5.20): projeto com perfil, tarefa com definição e execuções, e chat genérico com Diretor que consulta um Ator forte. A v0.15 trata da **durabilidade e recuperação** (seção 5.21): gravação durável no SQLite, reconciliação na subida, comportamento com a máquina religada sem login e backup diário. A v0.16 fixa os **padrões** dos cenários e da durabilidade como chaves de configuração (seções 5.20 e 5.21) e cria a Fase 10b, do daemon sem login, logo depois da v1. A v0.17 define o **idioma** (seção 5.22): código, configuração, eventos, ferramentas, comandos e prompts em inglês, interface em inglês e português do Brasil desde a primeira tela, e os nomes canônicos em inglês no glossário (seção 13). A v0.18 fixa os **padrões do pipeline, da entrega, do agendador e da retomada** como chaves de configuração com predefinições (seções 5.4, 5.5, 5.15 e 5.16). A v0.19 troca a licença do código próprio de MIT para **MPL-2.0** e passa a aceitar MPL-2.0 em código copiado e dependências (seção 6.0). A v0.20 acrescenta as versões do app para **Android**, celular e tablet (seção 5.13, Fase 14): Capacitor sobre a web, acesso ao daemon pela VPN do usuário (seção 5.12) e, por consequência, a web deixa de ser opcional. A v0.21 fixa os **Executores padrão** de cada papel (seção 5.7): nome `<modelo>-<esforço>@<perfil>`, predefinições `roles.preset` aplicadas na primeira execução e revisão cruzada por provedor. A v0.22 define o **custo em moeda** e o **teto de gasto em API** (seção 5.6): cota e equivalente em API nas assinaturas, custo real nas contas de API, teto por dia e por mês no perfil e despertar agendado para retomar o trabalho quando a cota ou o teto voltam. A v0.23 resolve duas contradições sobre o **modelo local** (seções 5.7 e 5.9): ele pode ser Ator, limitado pelos slots da instância, com slots reservados ao Diretor, e o provedor de um Executor na revisão cruzada é a família do modelo, não o cliente. Os Executores do OpenCode entram por um assistente de cadastro com sugestões, e o daemon só valida. A abstração passa a ter dois eixos (seção 5.18): o **cliente** de agente (`ClientAdapter`, agora com o catálogo de modelos `ModelCatalog`) e o **servidor de modelo local** (nova porta `LocalModelServer`, com llama.cpp na v1 e Ollama depois). O nome do Executor passa a incluir o cliente, `<modelo>-<esforço>@<cliente>/<perfil>`, porque o OpenCode também pode chamar modelos do Claude e do GPT por API; com assinatura, cada família só roda pelo seu cliente oficial (`executors.cross_client: api_only`). A configuração dos papéis passa a ter override por papel em cada cenário e tarefa agendada, e não só a restrição de perfis por projeto. A primeira execução vira um `ot init` mínimo que abre a TUI num assistente de configuração cuja lógica fica no daemon. A v0.24 define a **capacidade mínima de cada papel** (seção 5.7): todos os papéis aceitam modelo local, e o que separa um Executor de um papel é a capacidade, igual para modelo local e na nuvem (janela de contexto, raciocínio nos papéis que decidem e uma sessão de teste no cadastro), com aviso em vez de bloqueio por padrão (`roles.capability_check: warn`). A v0.25 fixa o daemon como **serviço de logon** do usuário, sempre: o app desktop, se for feito, é só mais um cliente, como a TUI (item 6 da seção 12). A v0.26 faz das **perguntas ao Produtor listas de múltipla escolha** por padrão (seção 5.3, `chat.producer_questions: choices`), com a opção recomendada, que vale depois de um prazo sem resposta, menos nas decisões irreversíveis, em que a recomendada é sempre a segura; nas tarefas agendadas, o padrão passa a ser esperar um prazo e seguir com a recomendada (5.15). A v0.27 fecha os **campos próprios no ATIF** (seção 5.11): tudo o que é do OTheater fica num bloco `extra.otheater`, a unidade exportada é a peça inteira, com a trajetória do Diretor na raiz e cada tentativa como subtrajetória, `cost_usd` só leva custo real e o conteúdo sai completo, com os segredos mascarados. A v0.28 fecha os **ganchos de interceptação dos plugins** (seção 5.14, para depois da v1; item 15 da seção 12): quatro pontos (antes de lançar a tentativa, antes da ferramenta, antes de aceitar o `submit` e antes da entrega), prazo de 5 s e de 30 s na entrega, comportamento na falha declarado pelo plugin, com deixar passar como padrão, e sondas de cota e notificadores que podem vir de plugin. A v0.29 fixa a **ordem das interfaces depois da v1** (seção 5.13 e Fases 12 a 14; item 12 da seção 12): primeiro a Fase 10b, depois a web (Fase 12), o app desktop (Fase 13), que deixa de ser opcional, e o app Android (Fase 14); Electron ou Tauri é decidido ao abrir a Fase 13. A v0.30 decide as **várias contas do mesmo provedor** (seções 3 e 5.6; era a Q15 do docs/13): o OTheater as suporta como qualquer perfil, não as divulga, e cada usuário as usa por conta e risco. A v0.31 revisa o **fluxo da peça** (P13 e seção 5.4; item 25 da seção 12): cada papel ganha uma fronteira estreita, para o Ator só escrever o código de uma demanda pronta; o plano traz dúvidas e suposições, e as dúvidas vão ao Produtor antes do Revisor; o Autor revisa todo roteiro; cada demanda tem verificação em código ao fim da tentativa; todo laço tem contador, e esgotado vai ao Produtor com um menu fixo; numa crítica mista vence a falha mais grave; e um pedido de mudança depois da entrega abre uma peça nova, ligada à anterior. A v0.32 fecha a **revisão de consistência** dos documentos antes da Fase 0 (seções 5.3, 5.4, 5.16 e 5.20; item 26 da seção 12): o menu fixo de AWAITING_PRODUCER é um tipo próprio, vindo do código, e não segue o limite de 2 a 4 opções do `ask_producer`; a lista de pontos de julgamento do Diretor passa a incluir os casos da seção 5.16 e o rebase na integração; e o `task.define` segue as regras da peça, com as dúvidas do plano ao Produtor e a revisão dos passos pelo Autor; na revisão do roteiro, o Autor também veta dependência sem motivo, para não perder paralelismo. A v0.33 acrescenta o princípio **feito para evoluir** (P14, pedido do dono) e fecha três pontos da TUI (seção 5.13): a **caixa de texto do Produtor** se comporta como a dos agentes de código, e os atalhos do layout passam a Alt + letra livre (Alt+S, Alt+J, Alt+K, Alt+A, Alt+W; Ctrl+Shift+←/→ na largura); **copiar** usa a seleção nativa do terminal com Shift e uma seleção própria por OSC 52; e o **desempenho do Ink** vem da renderização imediata da tecla, da memoização, do limite do heap e de um patch travado na versão 8.0.0.
 > A v0.2 incorporou uma pesquisa de código reaproveitável (seção 6) e uma revisão do desenho (seção 15). A v0.3 criou a política de licenças; a v0.4 passa a aceitar Apache-2.0 e as demais licenças permissivas (seção 6.0). Os itens marcados **[a confirmar]** vieram de fontes secundárias ou não puderam ser verificados na fonte e entram na Fase 0.
 
 ---
@@ -37,6 +37,7 @@ O OTheater é um sistema de agentes de código que:
 | P11 | Licenças permissivas e MPL-2.0 | Código próprio em MPL-2.0; código copiado e dependências empacotadas em MIT, Apache-2.0, ISC, BSD ou MPL-2.0; GPL, AGPL e LGPL proibidas (seção 6.0) |
 | P13 | Papéis com fronteira estreita e esforço antes da execução | Autor e Revisor fecham o plano, o Roteirista entrega demandas prontas, e o Ator só escreve o código que atende uma demanda; corrigir antes de executar é barato, e cada rodada do Crítico é cara (seção 5.4, v0.31) |
 | P12 | Contratos antes de implementações | Toda fronteira com o mundo de fora e todo ponto que varia por cliente, provedor ou sistema é uma **porta** (interface TypeScript + schema zod) em `@otheater/core`; as implementações são **adaptadores** trocáveis, montados num único ponto; fluxos, papéis, ferramentas e chaves de `rule` ficam em **registros** tipados (seção 5.18) |
+| P14 | Feito para evoluir (decisão do dono, 2026-11-15, N38) | A interface e toda a implementação são desenhadas para simplificar upgrades e features futuras: dependências e frameworks ficam atrás de portas e camadas finas (P12), a TUI só desenha sobre o `packages/client`, abas, comandos e teclas entram por registro, versões são fixadas e atualizadas de propósito (P10), e qualquer patch em código de terceiros fica isolado, travado na versão e com volta ao original quando a versão muda |
 
 ## 3. Premissas e restrições
 
@@ -886,9 +887,9 @@ api:
 - `mockup/mobile.html`: app Android, celular e tablet em paisagem e retrato (Fase 14).
 
 **Layout comum ao app e à TUI** (decisão de 2026-11-13):
-- **Chat em altura total**, sempre visível, com **largura ajustável** (arrastar a borda no app; Ctrl+←/→ na TUI), lembrada entre sessões. Os dados da peça (título, etapa, decisão pendente) ficam no topo do chat.
-- **Lateral retrátil** (Ctrl+B) com cenários, assinaturas e a entrada de **Configurações**. Recolhida, vira um trilho com os cenários e as barrinhas de cota.
-- **Painel de trabalho em abas que abrem e fecham:** Visão geral, Trajetórias, Consumo, Agenda, Ordens, Configurações e Plugins. Configuração é uma aba, não uma tela que substitui o chat. O painel inteiro fecha com Ctrl+J, e o chat passa a ocupar a largura toda.
+- **Chat em altura total**, sempre visível, com **largura ajustável** (arrastar a borda no app; Ctrl+Shift+←/→ ou o mouse na TUI), lembrada entre sessões. Os dados da peça (título, etapa, decisão pendente) ficam no topo do chat.
+- **Lateral retrátil** (Alt+S) com cenários, assinaturas e a entrada de **Configurações**. Recolhida, vira um trilho com os cenários e as barrinhas de cota.
+- **Painel de trabalho em abas que abrem e fecham:** Visão geral, Trajetórias, Consumo, Agenda, Ordens, Configurações e Plugins. Configuração é uma aba, não uma tela que substitui o chat. O painel inteiro fecha com Alt+J, e o chat passa a ocupar a largura toda.
 - **Tudo recolhe, menos o chat:** seções da lateral e cartões das abas abrem e fecham com um clique (Enter na TUI).
 - **Estado de layout persistido por usuário:** lateral, largura do chat, abas abertas.
 
@@ -912,8 +913,17 @@ O que o Ink não traz e escrevemos (`packages/tui/src/components/`):
 - áreas com **rolagem própria** (histórico do chat, eventos, trajetória), com virtualização para conversas longas;
 - **tela cheia** no buffer alternativo do terminal, com redesenho correto ao redimensionar a janela;
 - barra de abas, seções recolhíveis e alça de largura do chat;
-- paleta de comandos (Ctrl+K);
-- **mouse** fica para depois (o Ink é focado em teclado; os mockups usam atalhos).
+- paleta de comandos (Alt+K e F1);
+- **caixa de texto do Produtor** (decisão do dono, 2026-11-15, N35), com o comportamento da caixa dos agentes de código. Conferido localmente no Claude Code 2.1.325: Ctrl+J nova linha, Ctrl+V cola imagem, Ctrl+G editor externo, Ctrl+R busca no histórico, marcadores `[Pasted text #…]` e `[Image #…]`. O Codex 0.169.0 também resume a colagem longa (`Pasted Content`) e lê imagens da área de transferência (`arboard`). Na caixa:
+  - Enter envia; Ctrl+J e Shift+Enter (onde o terminal distingue do Enter) inserem nova linha;
+  - edição no estilo do readline: Ctrl+A/E, Ctrl+B/F, Ctrl+K/U/W/Y, Alt+B/F/D e Ctrl+←/→ por palavra;
+  - ↑/↓ no histórico de mensagens, Ctrl+R para buscar nele e Ctrl+G para escrever no `$EDITOR`;
+  - **colar:** por bracketed paste (`usePaste` do Ink 8, que liga `?2004h`; verificado no código do Ink); colagem longa vira um marcador na caixa, com o texto inteiro guardado como anexo;
+  - **imagem:** Ctrl+V lê a imagem da área de transferência e cria um anexo `A<n>` (5.20). No Linux e no macOS o Claude Code chama `wl-paste`, `xclip` e `osascript` (nomes vistos no binário); o OTheater chama a ferramenta do sistema se estiver instalada, sem empacotá-la. Licenças dessas ferramentas e enquadramento na 6.2 **[a confirmar]**;
+  - **arrastar arquivo:** o terminal cola o caminho do arquivo como texto; um caminho de arquivo existente vira anexo. Comportamento de cada terminal **[a confirmar no teste de terminais]**;
+  - chave `ui.keymap.preset`: `agents` (padrão, a caixa fica com as teclas de edição) ou `classic` (os atalhos antigos com Ctrl, da v0.7);
+- **copiar texto** (decisão do dono, 2026-11-15, N36): com o mouse ligado, Shift+arrastar usa a seleção do próprio terminal (Option no macOS) **[a confirmar no teste de terminais]**; além disso, a TUI tem seleção própria com o mouse dentro de uma área (o chat, sem as bordas e as colunas vizinhas) e copia por OSC 52, que também aparece no binário do Claude Code e funciona por SSH (no tmux, com `set-clipboard on`). Chave `ui.clipboard.copy`: `osc52` (padrão), `system` (pbcopy, wl-copy ou clip.exe, para terminais sem OSC 52) ou `off`. Com `ui.mouse` em `wheel` ou `off`, a seleção normal do terminal volta;
+- **mouse** (decisão do dono, 2026-11-15, N34): entra na Fase 7, como no Claude Code, que é feito em Ink e liga o rastreamento de mouse do terminal (`?1000h` e `?1006h` no binário 2.1.325, verificado localmente). O Ink 8 não tem API de mouse, mas já descarta as sequências de mouse da entrada e dá a posição de cada caixa (`useBoxMetrics`) para saber o que foi clicado. A camada é nossa: liga o rastreamento, lê os eventos SGR e acha a caixa clicada, descontando a rolagem. Cobre a roda para rolar, o clique em abas, seções, lateral e opções da decisão e o arrasto da borda do chat. Chave `ui.mouse`: `full` (padrão), `wheel` (só a roda) ou `off`. O teclado continua cobrindo tudo. Com o mouse capturado, selecionar texto do terminal passa a exigir uma tecla extra, que depende do terminal **[a confirmar no teste de terminais]**; tmux e SSH também ficam para esse teste.
 
 Componentes básicos (campos, listas, seletores) vêm do `@inkjs/ui` (MIT).
 
@@ -945,12 +955,12 @@ Programas de terminal só recebem Ctrl e Alt/Option; o **Cmd do macOS nunca cheg
 
 | Ação | Padrão (Windows/Linux) | Padrão no macOS | Alternativa | Colisões conhecidas |
 |---|---|---|---|---|
-| Recolher/expandir lateral | Ctrl+B | Ctrl+B | Alt+B; paleta | **tmux** usa Ctrl+B como prefixo: dentro do tmux o padrão vira Alt+B |
-| Abrir/fechar painel | Ctrl+J | Ctrl+J | Alt+J; paleta | Ctrl+J é o código de "nova linha" (LF). Em modo bruto difere do Enter (CR) na maioria dos terminais, não em todos: o teste da Fase 0 confirma |
-| Largura do chat | Ctrl+←/→ | **Ctrl+Shift+←/→** | foco na borda do chat (Tab) e ←/→; paleta | No **macOS**, Ctrl+←/→ troca de área de trabalho (Mission Control) e não chega ao terminal |
-| Abrir aba | Ctrl+T | Ctrl+T | Alt+T; paleta | Terminais no navegador (SSH web) podem capturar Ctrl+T |
-| Fechar aba | Ctrl+W | Ctrl+W | Alt+W; paleta | Terminais no navegador fecham a aba do navegador com Ctrl+W |
-| Paleta de comandos | Ctrl+K | Ctrl+K | **F1** (paleta + ajuda) | O terminal do **VS Code** pode capturar Ctrl+K para os atalhos dele **[a confirmar no teste]**: ali o padrão vira F1 |
+| Recolher/expandir lateral | Alt+S | Alt+S | paleta; clique | Era Ctrl+B até a v0.32, que é "voltar um caractere" no readline e o prefixo do tmux |
+| Abrir/fechar painel | Alt+J | Alt+J | paleta; clique | Era Ctrl+J, que agora é "nova linha" na caixa de texto (N35) |
+| Largura do chat | Ctrl+Shift+←/→ | Ctrl+Shift+←/→ | foco na borda do chat (Tab) e ←/→; arrastar a alça; paleta | Ctrl+←/→ pula palavra na caixa de texto (`/etc/inputrc` do Fedora, verificado localmente); no macOS troca de área de trabalho |
+| Abrir aba | Alt+A | Alt+A | paleta; clique no `+` | Era Ctrl+T ("transpor caracteres" no readline) |
+| Fechar aba | Alt+W | Alt+W | paleta; clique no `✕` | Era Ctrl+W ("apagar palavra" no readline); terminais no navegador fecham a aba com Ctrl+W |
+| Paleta de comandos | Alt+K | Alt+K | **F1** (paleta + ajuda) | Era Ctrl+K ("apagar até o fim da linha" no readline) |
 | Configurações / Plugins | F5 / F6 | F5 / F6 | paleta | No macOS, as teclas F exigem Fn por padrão |
 | Responder decisão | ↑↓ ou número, Espaço, Enter | ↑↓ ou número, Espaço, Enter | paleta | — |
 | Sair | Ctrl+Q | Ctrl+Q | paleta | Ctrl+Q/Ctrl+S são controle de fluxo (XON/XOFF) fora do modo bruto; o modo bruto do Node os desativa |
@@ -958,13 +968,22 @@ Programas de terminal só recebem Ctrl e Alt/Option; o **Cmd do macOS nunca cheg
 Regras:
 - **Alt no macOS** depende do terminal: no Terminal.app, "Usar Option como Meta"; no iTerm2, "Option como Esc+". Se não estiver ativo, a TUI avisa na primeira execução e o caminho é a paleta.
 - **Ctrl+Shift+letra não serve:** sem o protocolo de teclado estendido (kitty), o terminal não distingue Ctrl+Shift+P de Ctrl+P. Setas com modificadores, ao contrário, são distinguíveis na maioria dos terminais.
+- **A caixa de texto tem prioridade** (N35): nenhum atalho do layout usa uma tecla de edição do readline ou dos agentes de código. Os atalhos do layout usam Alt com letras que o readline deixa livres (conferido localmente com `bind -p` no bash: ele usa Alt+B C D F G L N P R T U X Y). Os atalhos com Ctrl da v0.7 continuam disponíveis com `ui.keymap.preset: classic`.
 - **Conflito ao configurar:** a configuração rejeita atalhos repetidos e avisa quando o usuário escolhe uma combinação da lista de colisões.
 
 Os mockups mostram os padrões de Windows/Linux.
 
-**Alternativa: OpenTUI** (equipe do OpenCode; TypeScript com núcleo nativo, MIT **[a confirmar]**). Traz rolagem e mouse prontos e desempenho melhor com muitas atualizações por segundo. Até onde se sabe, roda principalmente sobre o **Bun** **[a confirmar]**. Não é impeditivo, porque a TUI é um processo separado do daemon, mas acrescenta um runtime ao projeto.
+**Alternativa: OpenTUI** (equipe do OpenCode; TypeScript com núcleo nativo). Traz rolagem e mouse prontos e desempenho melhor com muitas atualizações por segundo. Na Fase 0 (2026-11-14, verificado localmente na versão 0.9.0; `spikes/tui-opentui/`): só roda no **Bun**, porque no Node 24 falta a FFI nativa; os pacotes JS são MIT, mas os binários nativos `@opentui/core-<plataforma>` são `MIT AND LGPL-2.1-or-later`, o que a seção 6.0 proíbe.
 
 **Decisão:** começar em Ink. O **teste comparativo da Fase 0** (Ink × OpenTUI), agora **obrigatório**, decide antes da Fase 7. Como a TUI só depende do `packages/client` e da API do daemon, trocar de framework não afeta o resto do sistema.
+
+**Resultado (2026-11-15, decisão do dono; item 11 da seção 12): Ink.** Pelo critério da Fase 0, o Ink passou nos três itens na bancada (`spikes/tui-bench/README.md`; tmux 160x45, streams de 300 s, uma execução por caso): CPU e memória estáveis no streaming a 20 e 50 eventos/s, rolagem de 5.000 mensagens com p50 de 30 a 39 ms e layout 25/25. A digitação sob streaming ficou mais lenta que no OpenTUI (p50 de 41 a 47 ms, contra 3 a 9 ms); `maxFps` e a renderização incremental ficam como ajustes da Fase 7. Pesaram também contra o OpenTUI: só Bun, binários LGPL, memória crescendo durante o streaming (até 353 MB em 600 s, sem platô) e layout 21/25 no protótipo. Faltam os terminais gráficos reais, SSH, macOS e Windows, que a matriz de terminais da Fase 7 cobre.
+
+**Desempenho do Ink (decisão do dono, 2026-11-15, N37).** No spike de otimização (`spikes/tui-ink/README.md`, seção "Otimização"; tmux 160x45, uma execução por caso, verificado localmente), a digitação sob streaming a 50/s caiu de p50 de 41 a 48 ms para 10 a 11 ms, a CPU de 26 a 28% para 24% e o RSS de cerca de 290 para 110 a 140 MB. O ganho vem de duas partes:
+- **da aplicação**, com a API pública do Ink e flags do Node: cada tecla desenha um quadro na hora (`waitUntilRenderFlush`), componentes memoizados e o heap jovem do V8 limitado (`--max-semi-space-size=2`, a maior alavanca da memória);
+- **de um patch** no `output.js` do Ink 8.0.0 (cache dos trechos estilizados e reaproveitamento da grade), carregado por gancho de módulos sem alterar o `node_modules`. Ele baixa o quadro de cerca de 11,5 para 7 ms.
+
+O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch é recusado e o Ink original roda (a trava ainda não existe no spike; entra na Fase 7). Propor a mudança ao projeto Ink fica para depois, só com autorização do dono. Chaves em `ui.render`: `keyRender` (`flush`, padrão, ou `throttle`), `maxFps` (30, agora só para o fluxo), `coalesceMs` (16), `memo` (ligado), `inkPatches` (`[cache, grid]`, padrão, ou vazio) e `historyWindow` (0, desligado); e em `ui.runtime`: `maxSemiSpaceMB` (2) e `maxOldSpaceMB`. O `maxOldSpaceMB` é um teto duro (o processo morre se o heap vivo passar dele); 96 MB deu folga de 2x no spike, e o valor do cliente real precisa acompanhar o tamanho do histórico **[a definir na Fase 7]**. A variante otimizada ainda mostrou a borda quebrada em capturas do tmux (1 em 29 a 300 s; 1 em 5 numa repetição de 60 s), o mesmo fenômeno já visto sem `--incremental` **[a investigar]**.
 
 **Web (Fase 12, depois da v1; base do app Android):** React + Vite sobre o mesmo `packages/client`, com SSE para tempo real. Nasce responsiva e preparada para toque, porque o app Android a reaproveita (Fase 14). Acrescenta à TUI o DAG desenhado, arrastar para reordenar, painéis próprios de plugins e mouse. Componentes reaproveitados:
 
@@ -2069,7 +2088,7 @@ A Apache-2.0 traz ainda **concessão explícita de patentes** pelos contribuidor
 | Front | React, Vite, TanStack Query, shadcn/ui, assistant-ui, @xyflow/react | MIT |
 | Desktop (Fase 13) | Electron + electron-builder (ou Tauri v2, MIT/Apache) | MIT |
 | App Android (Fase 14) | Capacitor (`@capacitor/core`, `@capacitor/android`) e plugins oficiais | MIT **[a confirmar]** |
-| TUI | Ink + `@inkjs/ui` (alternativa: OpenTUI, decisão na Fase 0) | MIT |
+| TUI | Ink + `@inkjs/ui` (decidido na Fase 0, N11) | MIT |
 | Estado compartilhado TUI/web (`packages/client`) | zustand (modo vanilla) | MIT |
 | Job Object (lançador Rust) | crate `win32job` | MIT/Apache |
 
@@ -2123,6 +2142,8 @@ Critérios da avaliação:
 3. a arquitetura aceita a máquina de estados por cima sem brigar com o modelo deles;
 4. qualidade de código e testes;
 5. ritmo de mudanças upstream (fork que diverge cedo vira manutenção dobrada).
+
+**Resultado (2026-11-14, decisão do dono; item 1 da seção 12):** projeto próprio, sem fork. A avaliação está em `spikes/fork-evaluation/README.md`. Os trechos a reaproveitar vêm, nesta ordem, do Emdash (Apache-2.0) e do acpx (MIT); de Orca, Paradev e Happier, só ideias. Os binários libvips do `sharp` (`@img/sharp-libvips-*`) são LGPL-3.0-or-later e ficam de fora; o Happier os usa em produção.
 
 Padrão até a avaliação: **projeto próprio** com as dependências de 6.1 e trechos de 6.3. Se um fork passar, ele reduz a Fase 2 (runtime ACP, worktrees) e parte da Fase 12. Com a TUI como interface principal (v0.6), a interface gráfica desses candidatos pesa pouco (ver seção 10).
 
@@ -2200,7 +2221,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 | Telemetria | OpenTelemetry JS + receptor OTLP no daemon |
 | Logs técnicos | pino |
 | Agendamento | croner (cron com fuso) + gatilho do agendador do sistema operacional |
-| TUI (interface principal) | Ink + `@inkjs/ui` (ou OpenTUI, conforme o teste da Fase 0) |
+| TUI (interface principal) | Ink + `@inkjs/ui` (decidido na Fase 0, N11) |
 | Cliente e estado compartilhados | `packages/client`: cliente REST/SSE/WS + stores zustand (vanilla) |
 | Web (depois da v1; base do Android) | React + Vite + shadcn/ui + assistant-ui + @xyflow/react |
 | Desktop (Fase 13) | Electron (ou Tauri v2) |
@@ -2260,7 +2281,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 │  │  └─ src/telemetry/      (spans; receptor e exportadores vêm de adapters/)
 │  ├─ fake-agent/      agente ACP simulado
 │  ├─ client/          cliente da API (REST, SSE, WS) + stores de estado e preferências, sem interface
-│  ├─ tui/             TUI, interface principal (Ink; ou OpenTUI, conforme a Fase 0)
+│  ├─ tui/             TUI, interface principal (Ink)
 │  ├─ web/             web (Fase 12; base do Android)
 │  ├─ desktop/         Electron ou Tauri (Fase 13)
 │  ├─ android/         Capacitor sobre a web: celular e tablet (Fase 14)
@@ -2298,7 +2319,8 @@ Medições técnicas:
   - **terminais:** Windows Terminal, terminal do VS Code, Terminal.app e iTerm2 (macOS), um terminal de Linux (GNOME Terminal ou Konsole), dentro do tmux e por SSH; acentos, `█`/`░` e bordas arredondadas;
   - **atalhos:** cada linha do mapa de teclas da seção 5.13, nos terminais acima, registrando o que chega à TUI. Pontos a confirmar:
     - Ctrl+J distinguível do Enter;
-    - Ctrl+K no VS Code;
+    - Shift+Enter distinguível do Enter;
+    - Alt+J, Alt+S, Alt+K, Alt+A e Alt+W chegando à TUI (era Ctrl+K no VS Code; atalhos mudados pela N35);
     - Ctrl+Shift+←/→ no macOS;
     - Alt com e sem "Option como Meta".
 
@@ -2450,7 +2472,11 @@ Também faz parte do aceite:
 - tela cheia com redesenho ao redimensionar;
 - barra de abas e alça de largura;
 - formulários e seletores, sobre `@inkjs/ui`;
-- paleta de comandos (Ctrl+K).
+- paleta de comandos (Alt+K e F1);
+- caixa de texto do Produtor com o comportamento dos agentes de código (`ui.keymap.preset`, 5.13, N35): edição, histórico, colagem, imagem e arquivo arrastado viram anexo;
+- cópia de texto (`ui.clipboard.copy`, 5.13, N36): seleção própria e OSC 52;
+- desempenho (`ui.render` e `ui.runtime`, 5.13, N37): tecla desenhada na hora, memoização, limite do heap e o patch do Ink com a versão travada;
+- mouse (`ui.mouse`, 5.13): roda, clique e arrasto da borda do chat.
 
 **Telas e abas:**
 - **Chat:** decisões do Produtor respondidas por tecla.
@@ -2474,7 +2500,7 @@ Também faz parte do aceite:
 **Atalhos:** mapa de teclas configurável da seção 5.13:
 - padrões por sistema e ambiente (macOS, tmux, VS Code), definidos pelo teste da Fase 0;
 - alternativas com Alt;
-- paleta de comandos com dois atalhos (Ctrl+K e F1);
+- paleta de comandos com dois atalhos (Alt+K e F1);
 - aviso de Option-como-Meta no macOS;
 - validação de conflitos ao configurar.
 
@@ -2538,7 +2564,7 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
 
 ### Fase 10 — Distribuição (daemon + TUI)
 
-- Executável único do daemon e da TUI: Node SEA, ou `bun build --compile` se a Fase 0 escolher o OpenTUI. Lançador Rust de Job Object junto, no Windows.
+- Executável único do daemon e da TUI: Node SEA (a Fase 0 escolheu o Ink, N11). Lançador Rust de Job Object junto, no Windows.
 - Instalação por usuário:
   - Windows: instalador `.msi`/winget;
   - macOS/Linux: pacote ou script;
@@ -2596,7 +2622,7 @@ Fica fora do caminho crítico e do total. Deixou de ser opcional em 2026-11-14, 
   - cartões recolhíveis.
 - Layout responsivo e preparado para toque desde o início, para o tablet e o celular da Fase 14.
 - Componentes prontos: assistant-ui (chat), @xyflow/react (DAG gráfico), shadcn/ui, AgentPrism ou viewer próprio (trajetórias).
-- O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, desenho gráfico dos painéis declarativos dos plugins, mouse.
+- O que a web acrescenta à TUI: DAG desenhado, arrastar para reordenar papéis, desenho gráfico dos painéis declarativos dos plugins (o mouse a TUI já tem desde a Fase 7, N34).
 - Navegador compartilhado na tela (5.19): transmissão da sessão, controle pelo Produtor e modo **indicar**, genérico, com as indicações `web_element` anexadas à mensagem do chat.
 - Testes e2e com Playwright sobre o `fake-agent`.
 
@@ -2699,7 +2725,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 
 ## 12. Decisões em aberto
 
-1. Fork (Emdash como principal candidato; Orca, AionUi, Paradev ou Happier) ou projeto próprio com trechos reaproveitados (Fase 0).
+1. *(Decidida em 2026-11-14: projeto próprio, sem fork, com trechos reaproveitados, ver "Decididas" e a seção 6.4.)*
 2. Modo de distribuição: pessoal (assinaturas) ou produto (API para Claude), depois da resposta sobre R1.
 3. *(Decidida em 2026-11-13: tipos de cenário, ver "Decididas" e a seção 5.20.)*
 4. *(Decidida em 2026-11-14: limites do pipeline como chaves de configuração, ver "Decididas" e a seção 5.4.)*
@@ -2709,7 +2735,7 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 8. *(Decidida em 2026-11-14: Executores padrão de cada papel, ver "Decididas" e a seção 5.7.)*
 9. *(Decidida em 2026-11-14: acesso remoto pela VPN do usuário, para o app Android, ver "Decididas" e as seções 5.12 e 5.13.)*
 10. *(Decidida em 2026-11-14: custo em moeda, ver "Decididas" e a seção 5.6.)*
-11. Framework da TUI: Ink (padrão) ou OpenTUI, pelo teste comparativo da Fase 0 (obrigatório).
+11. *(Decidida em 2026-11-15: Ink, pelo teste comparativo da Fase 0, ver "Decididas" e a seção 5.13.)*
 12. *(Decidida em 2026-11-14: ordem das interfaces depois da v1, ver "Decididas" e a seção 5.13.)*
 13. *(Decidida em 2026-11-14: padrões do agendador como chaves de configuração, ver "Decididas" e a seção 5.15.)*
 14. *(Decidida em 2026-11-14: padrões da retomada como chaves de configuração, ver "Decididas" e a seção 5.16.)*
@@ -2727,6 +2753,13 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
 26. *(Decidida em 2026-11-14: revisão de consistência, com o menu fixo como tipo próprio, os pontos de julgamento da seção 5.16 e o `task.define` com as regras da peça, ver "Decididas" e as seções 5.3, 5.4, 5.16 e 5.20.)*
 
 Decididas:
+- feito para evoluir (2026-11-15, P14; N38 do docs/13): pedido do dono, "a interface precisa ser criada de forma que simplifique futuros upgrades e features. isso vale para toda a implementação"; dependências atrás de portas, registros, versões fixadas e patches de terceiros travados na versão, com volta ao original;
+- caixa de texto do Produtor e atalhos da TUI (2026-11-15, seção 5.13; N35 do docs/13): a caixa segue os agentes de código (Ctrl+J e Shift+Enter nova linha, edição do readline, histórico, Ctrl+R, Ctrl+G, colagem resumida, Ctrl+V com imagem, arquivo arrastado vira anexo); os atalhos do layout que colidiam passam a Alt + letra livre (Alt+S lateral, Alt+J painel, Alt+K e F1 paleta, Alt+A e Alt+W abas) e Ctrl+Shift+←/→ na largura; `ui.keymap.preset` (`agents`, padrão; `classic`, os atalhos da v0.7);
+- copiar texto na TUI (2026-11-15, seção 5.13; N36 do docs/13): Shift+arrastar usa a seleção do terminal, e a TUI tem seleção própria copiada por OSC 52; `ui.clipboard.copy` (`osc52`, padrão; `system`; `off`);
+- desempenho do Ink (2026-11-15, seção 5.13; N37 do docs/13): tecla desenhada na hora, memoização, heap jovem limitado e patch no `output.js` do Ink com a versão travada em 8.0.0 (versão diferente, patch recusado); chaves em `ui.render` e `ui.runtime`; propor a mudança ao Ink fica para depois, com autorização do dono;
+- mouse na TUI (2026-11-15, seção 5.13; N34 do docs/13): entra na Fase 7, com a chave `ui.mouse` (`full`, padrão; `wheel`; `off`), como no Claude Code, também feito em Ink; antes, ficava para depois da v1;
+- framework da TUI (2026-11-15, seção 5.13; item 11, N11 do docs/13): **Ink**, pelo critério da Fase 0 (o Ink fica se passar em streaming, rolagem e layout), medido em `spikes/tui-bench/`. O OpenTUI teve digitação mais rápida, mas só roda no Bun, tem binários nativos LGPL-2.1-or-later (proibidos pela seção 6.0), a memória cresceu durante o streaming sem platô e o layout do protótipo passou 21/25;
+- base do projeto (2026-11-14, seção 6.4; item 1, N1 do docs/13), pela avaliação de fork da Fase 0 (`spikes/fork-evaluation/README.md`): **projeto próprio, sem fork**, reaproveitando trechos com licença permitida, na ordem Emdash (Apache-2.0), acpx (MIT) e depois ideias de Orca, Paradev e Happier, sem os pacotes LGPL. Motivo: nenhum candidato tem um núcleo que rode como daemon com API separado da interface sem reescrita, nenhum usa XState e todos têm máquina própria de sessão ou de DAG que ocuparia o lugar do pipeline (5.4), e o Happier arrasta LGPL-3.0 (binários libvips do `sharp`). A avaliação só leu o código; nada dos candidatos foi executado;
 - revisão de consistência (2026-11-14, seções 5.3, 5.4, 5.16 e 5.20, v0.32; item 26), na conferência dos documentos antes da Fase 0: o menu fixo de AWAITING_PRODUCER é um tipo próprio, vindo do código, e não segue o limite de 2 a 4 opções do `ask_producer`, que vale só para as perguntas que o Diretor monta; a lista de pontos de julgamento do Diretor ganha a recusa do modelo ou erro de permissão, as retomadas acima do limite e o rebase ou refazer das dependentes, e as retomadas acima do limite não passam por DECIDING; o `task.define` segue as regras da peça, com as dúvidas do plano ao Produtor (CLARIFYING) e a revisão dos passos tipados pelo Autor antes dos Atores; o parcial de um Ator que estourou o tempo passa pelo `verify` e pela integração antes do Crítico; o paralelismo continua indicado pelo `dependsOn`, e o Autor, na revisão do roteiro, veta a dependência que não é justificada por um contrato ou pela ordem do plano;
 - fluxo da peça (2026-11-14, P13 e seção 5.4, v0.31; item 25), a partir da revisão do fluxo da imagem de 2026-10-30 e da experiência do dono com o `okit`: cada papel com fronteira estreita, para o Ator só escrever o código de uma demanda pronta; o plano traz dúvidas e suposições, e as dúvidas vão ao Produtor (CLARIFYING) antes do Revisor; o Autor revisa todo roteiro, o inicial também; verificação em código de cada demanda ao fim da tentativa (`verify`); todo laço tem contador (`script_validations`, `script_vetoes`, `script_returns`, `structural_restarts`, além dos que já existiam), e esgotado vai a AWAITING_PRODUCER com um menu fixo; numa crítica mista vence a falha mais grave; pedido de mudança depois da entrega abre uma peça nova ligada à anterior. Ficaram de fora o caminho curto que pularia o Revisor e o Roteirista (vai contra o motivo da separação) e, para depois, o Crítico sugerir a classificação e o Crítico incremental;
 - várias contas do mesmo provedor (2026-11-14, seções 3 e 5.6, v0.30; era a Q15 do docs/13, sem item numerado): suportadas como qualquer perfil, sem divulgação do recurso e por conta e risco de cada usuário; o projeto não afirma que os termos permitem; aviso com aceite no cadastro da segunda conta de assinatura do mesmo provedor, de qualquer plano (`profiles.same_provider_notice: once`), aprovado pelo dono no mesmo dia; contas de API nunca disparam o aviso, porque são cobradas por uso;

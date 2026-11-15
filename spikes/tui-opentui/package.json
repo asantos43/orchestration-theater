@@ -1,0 +1,23 @@
+{
+  "name": "otheater-spike-tui-opentui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike da Fase 0: protótipo da TUI em OpenTUI (descartável)",
+  "scripts": {
+    "start": "bun run src/main.tsx",
+    "start:node": "node src/main.tsx",
+    "build": "bun build --compile src/main.tsx --outfile dist/otheater-tui",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opentui/core": "0.9.0",
+    "@opentui/react": "0.9.0",
+    "react": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
