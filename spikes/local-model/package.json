@@ -1,0 +1,14 @@
+{
+  "name": "spike-local-model",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Spike da Fase 0: Gemma 4 local (llama.cpp --jinja) via OpenCode com chamadas MCP estruturadas (descartavel)",
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^2.7.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  }
+}
