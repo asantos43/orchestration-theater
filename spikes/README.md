@@ -9,3 +9,5 @@ Código **descartável** da Fase 0 ([arquitetura](../docs/framework-ideas/arquit
 - O repositório git de teste e as worktrees de cada spike ficam fora do repositório, em `$SPIKE_SCRATCH` ou, sem a variável, em `<tmpdir>/otheater-spikes/<spike>/`. Caminhos com o nome do usuário não entram no código (2026-11-15).
 
 O entregável da Fase 0 é o relatório dos spikes, os ADRs (inclusive fork sim ou não) e os ajustes na arquitetura.
+
+O relatório consolidado está em [RELATORIO-FASE-0.md](RELATORIO-FASE-0.md) (2026-11-15): a cobertura de cada item da §10, as pendências e o veredito do critério de aceite.
