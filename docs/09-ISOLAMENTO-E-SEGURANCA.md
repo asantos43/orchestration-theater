@@ -26,14 +26,15 @@ Este documento resume como o OTheater isola os Executores e protege o código, o
 O `prepareProfile` grava esta camada no diretório do perfil a cada mudança de política.
 
 - **Claude Code:**
-  - `tools` define quais ferramentas existem; o **Bash nativo é removido**. Regras de deny para Bash não pegam o mesmo programa chamado por caminho ou dentro de `sh -c`, então filtrar não basta.
+  - `tools` define quais ferramentas existem; o **Bash nativo é removido**. Regras de deny por padrão não bastam: na Fase 0 (`claude` 2.1.325), `deny: ["Bash(touch *)"]` pegou `touch`, `/usr/bin/touch` e `env touch`, mas `sh -c` e `bash -c` furaram. O `deny` fica como segunda camada, com o daemon recusando os pedidos (arquitetura v0.45, §5.8).
   - Também usa regras `deny`, `--strict-mcp-config` só com os MCPs do papel e `allowDangerouslySkipPermissions: false` (tira o bypass do catálogo de modos).
   - Headless, nega tudo que pediria permissão: modo `default`, com o daemon recusando cada `request_permission`. O `dontAsk` não chega pelo ACP.
   - Pelo ACP, essas chaves vão em `_meta.claudeCode.options` do `session/new` (medido na Fase 0; arquitetura v0.42, §5.8).
-- **OpenCode:** allow/ask/deny com padrões. Na V2, `bash` virou `shell`, e `external_directory` vem liberado por padrão, então precisa ser negado explicitamente. Fixar a versão.
+- **OpenCode:** allow/ask/deny com padrões. Na V2, `bash` virou `shell`, e `external_directory` vem liberado por padrão, então precisa ser negado explicitamente. Fixar a versão. Sem configuração, tudo é permitido, e não há bypass pelo ACP. O daemon fixa as permissões em `OPENCODE_PERMISSION`, que vence o `opencode.json` do cwd e o `OPENCODE_CONFIG_CONTENT`, e liga `OPENCODE_DISABLE_PROJECT_CONFIG=1`, porque o modelo pode editar a worktree (Fase 0, item 8; arquitetura v0.45).
 - **Codex:** `sandbox_mode`, `approval_policy` e habilitação de ferramentas por servidor MCP. O shell faz parte do núcleo do Codex, então a contenção vem do sandbox dele:
   - **MXC** no Windows 11 24H2+;
   - modo `elevated` nos demais, o que exige configuração com admin.
+  - Pelo ACP, o catálogo sempre traz `agent` e `agent-full-access`, e nenhuma opção de linha de comando os tira. No `agent`, a escalada é aprovada por um revisor automático do Codex sem pedido ao cliente; no `agent-full-access`, nada pede permissão. A sessão começa em `workspace-write` (ou `read-only`) e o daemon nunca pede os outros dois (Fase 0, item 8; arquitetura v0.45). O sandbox de `workspace-write` deixa `/tmp` gravável.
 
 ### 2. ACP
 

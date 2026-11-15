@@ -29,9 +29,9 @@ Estados: **Medido**, **Parcial**, **Pendente do dono**, **Não medível nesta m�
 | 3 | Retomada nativa: `session/load` e kill no meio da tarefa | Medido | `session/load` leva 3,7 s (Claude), 0,65 a 0,87 s (Codex) e 6,3 s (OpenCode); após `kill -9` o contexto volta, a tarefa não continua sozinha [V]. | os três acima; [acp-handoff](acp-handoff/README.md) |
 | 4 | Retomada: cota esgotada simulada | Parcial | Com provedor falso e chave falsa, a sessão sobrevive e o `session/load` funciona nos 3; com assinatura real, [N] [V]. | [quota-exhaustion](quota-exhaustion/README.md) |
 | 5 | Retomada: local e retenção dos arquivos de sessão | Medido | Claude 422 arquivos em 38 dias (padrão documentado 30 [S]); Codex 1004 arquivos em 71 dias; OpenCode 428 sessões em banco de ~6,6 GB [V]. | [acp-handoff](acp-handoff/README.md) |
-| 6 | Retomada: passagem de bastão por outro cliente | Parcial | Retomada nativa ACP↔CLI funciona nos 3 clientes [V]; o pacote de continuação com a variante full acertou 4 de 4, com a min 2 de 4 [V], 1 execução por célula. | [acp-handoff](acp-handoff/README.md) |
+| 6 | Retomada: passagem de bastão por outro cliente | Parcial | Retomada nativa ACP↔CLI funciona nos 3 clientes, também com `cwd` diferente, salvo o CLI do OpenCode, que trava [V]; nas 6 direções, o pacote full acertou 20 de 21 e o min 15 de 21, com 2 a 3 execuções por célula [V]. | [acp-handoff](acp-handoff/README.md) |
 | 7 | Perfis isolados (dois logins lado a lado) | Parcial | Os três isolam por variável de ambiente e `session/new` funciona em perfil vazio no Claude [V]; o segundo login não foi feito em nenhum cliente. | os três acp-* |
-| 8 | Permissões pelo ACP | Parcial | Claude: `tools`, `disallowedTools` e `deny` removem o Bash cada um sozinho [V]; `dontAsk` não chega pelo ACP e o bypass só some do catálogo com `allowDangerouslySkipPermissions: false` [V]; Codex: `read-only` e `workspace-write` exercitados [V]; OpenCode: `ask` gera `request_permission`, `deny` retira a ferramenta [V]. | os três acp-* |
+| 8 | Permissões pelo ACP | Medido | Claude: `tools`, `disallowedTools` e `deny` removem o Bash cada um sozinho, mas `deny` por padrão é furado por `sh -c` e `bash -c` (fecha com o cliente em `reject`) [V]; Codex: `agent-full-access` não sai do catálogo e o modo `agent` aprova a escalada sozinho, sem `request_permission` [V]; OpenCode: não há bypass pelo ACP, e `OPENCODE_PERMISSION` vence o `opencode.json` do cwd [V]. | os três acp-* |
 | 9 | Sandbox do Codex (MXC) nesta máquina | Não medível nesta máquina | O MXC é o isolamento nativo do Windows 11 24H2+ (§5.8 da arquitetura), então não existe no Linux; o sandbox do Codex no Linux foi medido (`read-only` e `workspace-write`) [V]. | [acp-codex](acp-codex/README.md) |
 | 10 | Cota (Claude, Codex) | Parcial | Claude: statusline `rate_limits` com `used_percentage` inteiro e `_claude/rateLimit` em fração 0 a 1 [V], só com valores em 1%; Codex: `account/rateLimits/read` em 0,41 a 0,72 s [V]. | [quota-probes](quota-probes/README.md) |
 | 11 | Cota (MiniMax) | Pendente do dono | Chave falsa devolve HTTP 200 com `base_resp.status_code: 1004` [V]; o formato real não é documentado [S]; falta a chave do dono. | [quota-probes](quota-probes/README.md) |
@@ -49,7 +49,7 @@ Estados: **Medido**, **Parcial**, **Pendente do dono**, **Não medível nesta m�
 | 23 | Licenças (1MCP, AgentPrism, Nimbalyst + verificador) | Parcial | 1MCP Apache-2.0, AgentPrism MIT (pacotes npm sem campo `license`, aceitos por exceção na N45), Nimbalyst MIT com árvore não medida; verificador com as decisões da N45 e o nível C, 16 testes passam [V]. | [licenses](licenses/README.md) |
 | 24 | Termos (R1, confirmação com a Anthropic) | Pendente do dono | O texto público foi lido [S]; não diz se um orquestrador pessoal multi-conta cabe; nenhuma resposta da Anthropic existe [N]. | [licenses](licenses/README.md) |
 
-Contagem: 10 Medido, 8 Parcial, 3 Pendente do dono, 3 Não medível nesta máquina (24 linhas).
+Contagem: 11 Medido, 7 Parcial, 3 Pendente do dono, 3 Não medível nesta máquina (24 linhas).
 
 ## 2. Resultado por item
 
@@ -75,7 +75,16 @@ Um crash derruba todas as sessões do processo no OpenCode. Para contas diferent
 - **Kill no meio da tarefa:** no Claude, o replay traz só a mensagem do usuário, mas o contexto estava completo (respondeu "400"). No Codex não há sobreviventes e a tarefa não é retomada sozinha. No OpenCode o texto parcial não é persistido [V].
 - **Retomada nativa ACP↔CLI** nos três clientes, com o mesmo id e o contexto voltando nos dois sentidos: Claude 11,2 s e 3,6 s; Codex 6,0 s e 1,6 s; OpenCode 31,2 s e 8,3 s [V].
 - **Retenção:** Claude `cleanupPeriodDays` padrão 30 [S], observado 38 dias com 422 arquivos, causa [N]. Codex 1.004 arquivos em 71 dias, sem retenção documentada. OpenCode 428 sessões, banco de ~6,6 GB [V].
-- **Pacote de continuação (bastão):** 1 execução por célula (2 no par B). Variante full: 4 de 4. Variante min: 2 de 4, as duas falhas no destino OpenCode/flash-lite. Claude→Codex ok (26,2 s e 25,4 s); Codex→OpenCode com min falhou nas duas e com full ok (179,6 s e 58,6 s); OpenCode→Claude ok. A full custa +34% a +37% de bytes sobre a min. Causa da falha (pacote ou modelo fraco): [N]. O formato do pacote é [proposta] [V].
+- **Pacote de continuação (bastão), rodada 1:** 1 execução por célula (2 no par B). Variante full: 4 de 4. Variante min: 2 de 4, as duas falhas no destino OpenCode/flash-lite. A full custa +34% a +37% de bytes sobre a min. O formato do pacote é [proposta] [V].
+- **Bastão, rodada 2** (`acp-handoff`, 2026-11-15): repetições, os 3 sentidos que faltavam, uma segunda origem por par e um modelo mais forte no destino OpenCode. De 2 a 3 execuções por célula, o que continua não sendo estatística [V]:
+  - Somando as duas rodadas (21 execuções por variante, sem o modelo mais forte): **full 20 de 21, min 15 de 21**. A leitura "full 4/4, min 2/4" da rodada 1 não se sustenta; a direção ainda é "full >= min", com diferença menor.
+  - Por destino: Claude min 7/7 e full 7/7; **Codex min 3/7 e full 7/7** (Fisher ≈ 0,07, execuções não independentes [N]); OpenCode/flash-lite min 5/7 e full 6/7. Duas das falhas do Codex com min foram recusa "workspace outside the writable roots" com pacote igual ao de execuções que funcionaram, o que parece estocástico [N].
+  - As 3 falhas do OpenCode/flash-lite são todas do mesmo par e origem (Codex→OpenCode, origem 1). Nas outras 8 com destino OpenCode, 0 falhas. Parte do "destino fraco" pode ser da origem difícil [N].
+  - Com `google/gemini-3.5-flash` no destino OpenCode, na mesma origem: 3 de 3 válidas corretas, com exatamente as 4 escritas que faltavam; com o flash-lite, 3 de 6 falharam. Compatível com "o modelo pesa mais que o pacote", com n=3 [N]. Duas execuções foram excluídas pela cota diária do tier grátis do Google (20 requisições por dia).
+  - Tempo: Claude e Codex como destino ficam em 16 a 28 s; o OpenCode varia de 16 a 233 s com o mesmo pacote.
+  - Todas as 6 direções entre os 3 clientes já têm ao menos uma execução correta com o full.
+  - O detector de interrupção por tipo `edit` não vê escritas por shell do Codex (heredoc); o README sugere medir o progresso pelo diff no produto [proposta].
+- **Retomada nativa com `cwd` diferente** (rodada 2, 1 execução por célula) [V]: Claude e Codex retomam nos dois sentidos (CLI e `session/load`) numa worktree irmã e numa pasta fora do git, o que corrige a dedução da rodada 1. No OpenCode o `session/load` funciona (~5 s), mas `opencode run -s <id> --dir <outro>` trava em 4 de 4 tentativas (com o mesmo cwd termina em 18 s); causa [N]. O README indica o `session/load` pelo ACP.
 - **Cota esgotada simulada** (mock local, chave falsa, sem assinatura real): a sessão continua viva e aceita novo prompt nos 3; o `session/load` em processo novo funciona (Claude 0,8 a 2,0 s; Codex 0,09 a 0,56 s; OpenCode 0,57 a 1,7 s). O texto parcial se repete (até 11 vezes no Claude), e o Claude grava "API Error:" como mensagem do agente. Sem a extensão tipada, Claude e OpenCode erram com JSON-RPC -32603, sem `stopReason`; o Codex dá `end_turn` sem erro, salvo no usage limit. Tempo até desistir: Claude ~3 min (11 requisições, ignora `retry-after`); Codex de 0,3 s (usage limit) a 11 s; OpenCode 70 a 75 s, e com `retry-after: 3600` espera sem limite (mais de 300 s). A extensão `_meta.jetbrains.air.sessionFailure` existe no Claude e no Codex [V]; no OpenCode não existe [S] [V].
 
 Estas respostas alimentam a §5.7 e a N42 do docs/13. As consequências para o failover são [proposta] no README de origem.
@@ -93,8 +102,22 @@ Variáveis de isolamento: `CLAUDE_CONFIG_DIR`, `CODEX_HOME` com `cli_auth_creden
   - `settingSources: []` vale (o padrão vem antes do espalhamento do `_meta`) e corta plugins, skills e MCP do perfil do dono; os conectores claude.ai continuam listados.
   - O modo começa em `auto`, exceto quando os arquivos de settings do cwd dizem outro modo do catálogo. A troca é por `session/set_config_option`.
   - [proposta] O "nega tudo que pediria permissão" do Executor headless vira modo `default` mais o cliente do OTheater respondendo `reject`.
-- **Codex:** `read-only` recusa a escrita. `workspace-write` deixa `/tmp` gravável sem `request_permission`; fora de `/tmp` bloqueia e gera `request_permission` (allow executa fora do sandbox, reject cancela). Só esses dois modos foram exercitados; `agent` e `agent-full-access` não [V].
+- **Claude, item 8c** (`acp-claude`, 2026-11-15, 17 prompts) [V]:
+  - `deny: ["Bash(touch *)"]` pelo `_meta`, com o cliente em `allow`, nega `touch`, `/usr/bin/touch` e `env touch` sem consultar o cliente. `sh -c` e `bash -c` **furam** a regra: geram `request_permission` e, com `allow`, o arquivo é criado. Com o cliente em `reject`, os dois furos fecham. A documentação (https://code.claude.com/docs/en/permissions, lida em 2026-11-15) avisa sobre `/bin/rm`, `bash -c` e `env` [S]. `deny` por padrão é segunda camada, não fronteira.
+  - RSS do `claude` por sessão: base 315 MB, `strictMcpConfig` 300 MB (perto do ruído de 2 MB), `settingSources: []` 254 MB, os dois 242 MB. O contexto do prompt cai de 41,8 mil para 30,0 mil tokens. Uma rodada por variante.
+  - `session/cancel` mata o filho de uma ferramenta Bash em primeiro plano (25 ms). Um filho lançado com `run_in_background` sobrevive ao cancelamento.
+- **Codex:** `read-only` recusa a escrita. `workspace-write` deixa `/tmp` gravável sem `request_permission`; fora de `/tmp` bloqueia e gera `request_permission` (allow executa fora do sandbox, reject cancela) [V].
+- **Codex, item 8** (`acp-codex`, 2026-11-15, 7 prompts) [V]:
+  - O catálogo tem sempre os 4 modos. `agent-full-access` não sai com `INITIAL_AGENT_MODE`, `CODEX_CONFIG` nem `-c allowed_sandbox_modes` (por um embrulhador em `CODEX_PATH`), e o `set_config_option` para ele funciona em todas as variantes. Só um `requirements.toml` gerenciado (`/etc`, nuvem ou MDM) poderia barrar; não testado [S/N].
+  - No modo `agent`, a escalada passa por um revisor automático ("Guardian Review") que aprovou sozinho; nenhum `session/request_permission` chegou ao cliente, nem com a política `reject`. Em `agent-full-access` nada pede permissão. Uma forma de pedido medida; outros comandos podem ter outro veredito [N].
+  - O sandbox de `agent` e `workspace-write` deixa `/tmp` gravável (`excludeSlashTmp: false`).
+  - Conclusão do README: o veto a `agent` e `agent-full-access` tem de ficar no cliente (negar o `set_config_option`); `workspace-write` ou `read-only` são os modos em que o gerente vê o pedido.
 - **OpenCode:** o padrão sem config permite tudo. `OPENCODE_PERMISSION` com `ask` gera `request_permission` (3 opções). `opencode.json` com `deny` retira a ferramenta (1 execução) [V].
+- **OpenCode, item 8** (`acp-opencode`, 2026-11-15, 5 prompts) [V]:
+  - O `opencode acp` só oferece `model`, `effort` e `mode` (`build` e `plan`). `set_mode` e `set_config_option` com nomes de bypass falham. O `--auto` existe só no `opencode run`, fora do ACP.
+  - Precedência medida em pares: `opencode.json` do cwd < `OPENCODE_CONFIG_CONTENT` < `OPENCODE_PERMISSION`. `deny` retira a ferramenta. `OPENCODE_DISABLE_PROJECT_CONFIG=1` faz o `opencode.json` do cwd ser ignorado. A config global do dono não foi lida e pode ter influído [N]. Os nomes das variáveis vêm das strings do binário, não da documentação [S/V].
+  - Inferência do README: como o modelo pode editar o `opencode.json` da worktree, o daemon deve fixar as permissões por `OPENCODE_PERMISSION` [N].
+- **Prompts:** o item 8 desta rodada gastou acima do limite de 25 do trabalho original: Claude 40, Codex 28 e OpenCode 29 prompts no total de cada spike.
 - **MXC:** é do Windows 11 24H2+ (§5.8 da arquitetura) e nenhum README o menciona. O sandbox do Codex foi medido só no Linux.
 
 ### 2.6 Cota (itens 10 e 11)
@@ -210,11 +233,11 @@ O README `licenses` registra o que as páginas públicas da Anthropic dizem (con
 
 ### 4.3 Abertas por falta de medição
 
-- **Repetição estatística:** o bastão (1 execução por célula), as 10 tarefas do modelo local (1 por configuração) e a TUI (menos de 3 repetições) têm n muito pequeno.
-- **Destino fraco e `cwd` diferente no bastão; cota real combinada; efeitos externos** (`acp-handoff`).
+- **Repetição estatística:** o bastão (2 a 3 execuções por célula), as 10 tarefas do modelo local (1 por configuração) e a TUI (menos de 3 repetições) têm n muito pequeno.
+- **Bastão** (`acp-handoff`): o full com `gemini-3.5-flash` só tem n=1 (cota diária); origem 3 e tarefas maiores; modelo mais forte nos destinos Claude e Codex; sessões depois da retenção; cota real combinada; efeitos externos; causa do travamento do `opencode run -s` com `--dir` diferente.
 - **Unidade de `utilization` com valor alto:** só foi medida em 1% (`quota-probes`).
 - **Sobrecarga do OTel** em runs longos e via ACP; causa de `CODEX_CONFIG` com `otel` não exportar; threads extras de `conversation.id`; span de modelo no OpenCode (`otel`).
-- **RAM do Claude com `strictMcpConfig`** e com `settingSources: []`; `deny` com padrão contra Bash por caminho ou `sh -c` pelo ACP (`acp-claude`); modos `agent` e `agent-full-access` do Codex (`acp-codex`); `OPENCODE_CONFIG_CONTENT` (`acp-opencode`).
+- **Permissões, resto do item 8:** mais rodadas da RAM do Claude por variante e outros embrulhos além de `sh -c` e `bash -c` (`acp-claude`); `requirements.toml` gerenciado contra `agent-full-access`, outras classes de comando (rede, remoção, `sudo`) no revisor do modo `agent` e a matriz no `read-only` (`acp-codex`); efeito da config global sobre a precedência do OpenCode (`acp-opencode`).
 - **Modelo local:** 26B-A4B e 31B que a arquitetura cita, outras quantizações, mais de um slot, raciocínio ligado contra desligado, `opencode run`, cancelamento com prompt longo (`local-model`).
 - **Árvore de dependências do Nimbalyst, `xclip`, texto da MPL-2.0, `THIRD_PARTY_NOTICES`** (`licenses`).
 - **Candidatos a fork não executados**, AionCore e árvore completa do Happier (ADR 0001).
@@ -256,6 +279,7 @@ Só entram as mudanças que alguma fonte já registra. A coluna "Onde está escr
 | Ollama como ferramenta de modelo local para desenvolvimento e testes; `serve.sh` obsoleto | `local-model/README.md` |
 | OpenTUI fora do produto por LGPL | `licenses/README.md`, seção 6.2; ADR 0002 |
 | Licenças da Fase 0: executores no nível C, oito licenças aceitas, `OR`/`AND` do SPDX, GPL só no nível C, exceção do AgentPrism | docs/13, N45; arquitetura v0.41 (§6.0) |
+| Tradução da `RolePolicy` ajustada ao item 8: `deny` do Claude como segunda camada; `OPENCODE_PERMISSION` fixado e `OPENCODE_DISABLE_PROJECT_CONFIG=1`; Codex começando em `workspace-write`, com veto do daemon a `agent` e `agent-full-access`; cancelar encerra a árvore de processos | arquitetura v0.45 (§5.2 e §5.8), docs/08 e docs/09 |
 
 Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos spikes em `spikes/`), N36 (copiar com o mouse), N43 (integração de terminal estilo Claude Desktop), N44 (comandos `/` e sessão direta) e N45 (licenças da Fase 0).
 
@@ -263,17 +287,17 @@ Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos 
 
 Critério da §10: "cada item com resposta medida, não suposta".
 
-**O critério não está cumprido.** 10 de 24 itens têm resposta medida em Linux. Os outros 14 não têm.
+**O critério não está cumprido.** 11 de 24 itens têm resposta medida em Linux. Os outros 13 não têm.
 
 Sem resposta medida, por grupo:
 
-- **Parcial (8):** cota esgotada com assinatura real (4), bastão com n muito pequeno (6), segundo login (7), permissões sem o efeito isolado de cada chave (8), cota em valor alto (10), modelo local sem o 26B-A4B ou 31B (14), mouse fora do tmux (20), licenças sem a árvore do Nimbalyst nem os termos da OpenAI (23).
+- **Parcial (7):** cota esgotada com assinatura real (4), bastão com 2 a 3 execuções por célula (6), segundo login (7), cota em valor alto (10), modelo local sem o 26B-A4B ou 31B (14), mouse fora do tmux (20), licenças sem a árvore do Nimbalyst nem os termos da OpenAI (23).
 - **Pendente do dono (3):** MiniMax (11), terminais e atalhos reais (19), R1 com a Anthropic (24).
 - **Não medível nesta máquina (3):** MXC do Codex (9), sandbox Windows (12) e lançador Rust com Job Object (13).
 
 Dois pontos de leitura que não mudam a contagem:
 
-- **Medido não quer dizer fechado.** Vários itens "Medido" têm uma execução por célula (TUI, bastão, modelo local) e marcam n pequeno no README. O item 2 está medido, mas o `processModel` do OpenCode continua do dono.
+- **Medido não quer dizer fechado.** Vários itens "Medido" têm uma execução por célula (TUI, modelo local, permissões) e marcam n pequeno no README. O item 2 está medido, mas o `processModel` do OpenCode continua do dono.
 - **O texto da §10 pede "Shift+Enter distinguível do Enter".** Em 2026-11-15, o `tui-keys` passou ao mapa da N35 e ganhou uma linha de Shift+Enter. No tmux, o Shift+Enter só se distingue do Enter com `extended-keys` ligado na partida, e o Ink só o lê no formato `CSI u` [V]. Nos terminais reais, a medição continua pendente do dono. Por isso, quem garante a nova linha (N35) é o Ctrl+J, que se distingue do Enter em toda a bancada.
 
 Estimativa da §10: 2 a 3 semanas. Os READMEs não medem o esforço real; nada aqui confirma ou contradiz o prazo.

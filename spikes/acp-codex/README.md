@@ -30,7 +30,7 @@ A worktree git, as três worktrees da concorrência e a pasta do sandbox ficaram
 
 ## Prompts e tokens
 
-- Envios `session/prompt` no total: **21** (limite do dono: 25). Conferido contando as mensagens no JSONL de cada execução.
+- Envios `session/prompt` no total: **21 antes do item 8** (limite do dono: 25) **e 28 depois**: o item 8 (2026-11-15) gastou 7 prompts a mais (a ordem dele era "poucas execuções"; o limite de 25 era do trabalho original). Conferido contando as mensagens no JSONL de cada execução.
   - 18 prompts de modelo, todos triviais, só dentro de worktrees de teste.
   - 3 envios de `/status`, que o adaptador resolve localmente, sem chamar o modelo [verificado: `token_count: null` na resposta].
 - O `out/prompts-count.jsonl` tem 22 linhas porque o `s4-resume.ts` registrou o follow-up do item 6A duas vezes; foi um erro de contagem do log, não um envio a mais.
@@ -68,12 +68,43 @@ Medido por `/proc` (árvore de filhos do adaptador, RSS em MB), com 3 worktrees,
 - Tempo dos 3 prompts em paralelo: ~10,9 s no mesmo processo contra ~4,2 s nos 3 processos. Causa não investigada (serialização no app-server, partida dos MCPs ou prompts diferentes): [não confirmado].
 - Os picos foram amostrados por intervalo, então o pico real pode ser maior (o instante final do mesmo processo mediu 27 proc. e 1402 MB).
 
+## Permissões pelo ACP: modos `agent` e `agent-full-access`, e tirar o bypass do catálogo (rodada de 2026-11-15, UTC-3)
+
+Script: `src/s8-agent-modes-and-catalog.ts` (`catalog`, `modes`, `variant`). Saídas em `out/results.jsonl` (nomes começando com `s8`) e `out/s8-*.jsonl`. Mesmo adaptador (2.6.0), `@openai/codex` 0.166.0 empacotado e modelo `gpt-6-luna` esforço `low`. Nada foi escrito em `~/.codex/config.toml`; nenhum login. Escrita "fora da worktree" em duas pastas: uma na scratchpad (`<tmpdir>/.../outside-tmp`, dentro de `/tmp`) e outra em `out/item8-outside/` do spike (fora de `/tmp` e da worktree, ignorada pelo git). A segunda existe porque o `/tmp` da scratchpad **não é fronteira** para o sandbox (ver abaixo). Quatro arquivos de prova ficaram nessa pasta (`real-*.txt`, 3 bytes cada, ignorados pelo git); foram apagados em 2026-11-15, por ordem do dono.
+
+**1. `agent-full-access` não sai do catálogo (fonte: código e medida)**
+
+- **[secundária]** No `dist/index.js` do adaptador, `AgentMode.all()` devolve **sempre** `read-only`, `workspace-write`, `agent` e `agent-full-access`; só **acrescenta** os "permission profiles" que o Codex informar (modos `permission-profile:<id>`). Não há filtro por configuração. O modo vale por turno: o adaptador manda `sandboxPolicy: {type: "dangerFullAccess"}` e `approvalPolicy: "never"` no `turn/start`.
+- **[secundária]** As variáveis do adaptador são `CODEX_PATH` (binário do Codex), `CODEX_CONFIG` (JSON mesclado na config da sessão; só a chave `hooks` vira argumento de linha de comando do `codex app-server`), `DEFAULT_AUTH_REQUEST`, `MODEL_PROVIDER` e `INITIAL_AGENT_MODE`. O adaptador **não** aceita `-c` por argumento próprio (o `--help` dele não existe: sem subcomando, ele sobe o servidor ACP e fica lendo o stdin).
+- **[verificado]** `codex --help` (0.166.0): `-c, --config <key=value>` existe no `codex`. Como o adaptador só aceita o caminho do binário, usei um **script embrulhador** na scratchpad, apontado por `CODEX_PATH`, que roda o `codex` empacotado com `-c ...` antes do subcomando.
+- **[verificado]** `session/new` + `set_config_option mode=agent-full-access` em 6 variantes: sem override; `INITIAL_AGENT_MODE=read-only`; `CODEX_CONFIG={"sandbox_mode":"read-only"}`; `CODEX_CONFIG={"allowed_sandbox_modes":[...]}`; `-c allowed_sandbox_modes=["read-only","workspace-write"]`; `-c sandbox_mode="read-only" -c approval_policy="on-request"`. **Em todas** o catálogo continuou com os 4 modos e o `set_config_option` para `agent-full-access` **funcionou**. Só o `INITIAL_AGENT_MODE=read-only` mudou algo: o modo inicial da sessão passou de `agent` para `read-only` (o catálogo não mudou).
+- **[verificado]** Teste de efeito (1 prompt): com `-c allowed_sandbox_modes=["read-only","workspace-write"]` e a sessão em `agent-full-access`, os 3 arquivos (worktree, `/tmp`, fora de `/tmp`) foram criados. O override **não bloqueou nada**.
+- **[secundária]** O binário do Codex tem uma camada de "requirements" (`allowed_sandbox_modes`, `allowed_approval_policies`, `allowed_permission_profiles`, em `requirements.toml`, na camada `<managed-requirements>`) e uma mensagem "requirements do not allow `sandbox_mode = "danger-full-access"`". Essa camada é a que **poderia** barrar o modo, mas vem de arquivo gerenciado (`/etc/codex/requirements.toml`, que não existe nesta máquina), de nuvem ou de MDM, não de `-c` nem de `CODEX_CONFIG`. **Não testei** porque exigiria escrever em `/etc` (sem sudo) ou mexer no `CODEX_HOME` (perderia o login). [não confirmado] que um `requirements.toml` faça o `set_config_option` falhar ou só rebaixe para read-only no turno.
+- **Conclusão**: sem tocar em `~/.codex/config.toml`, **não há como tirar `agent-full-access` do catálogo**. O OTheater precisa do **veto no lado cliente**: negar `session/set_config_option` com `mode=agent-full-access` (ele passa pelo cliente) e fixar o modo (o adaptador não trava a troca).
+
+**2. Modo `agent` ("Auto review") e `agent-full-access`**: 7 prompts (política do cliente `reject` e `allow`):
+
+| Modo | Prompt | worktree | `/tmp` (scratchpad) | fora de `/tmp` e da worktree | `request_permission` ao cliente |
+|---|---|---|---|---|---|
+| `agent` | 3 escritas, sem pedir escalada | criado | criado | **não criado** ("read-only file system"; o modelo nem tentou o 3º comando) | 0 |
+| `agent` | escrever só o arquivo de fora; "se o sandbox bloquear, peça aprovação"; cliente `reject` | (não pedido) | (não pedido) | **criado** | **0** |
+| `agent` | idem, cliente `allow` | (não pedido) | (não pedido) | **criado** | **0** |
+| `agent-full-access` | 3 escritas, cliente `reject` | criado | falhou (o modelo errou o caminho; sem relação com o sandbox) | **criado** | 0 |
+| `agent-full-access` + `-c allowed_sandbox_modes` | 3 escritas, cliente `reject` | criado | criado | **criado** | 0 |
+
+- Uma 1ª tentativa de escalada, com os 3 comandos e uma frase pedindo para pedir aprovação, também não escalou (o modelo não tentou o 3º comando); por isso troquei por um prompt de 1 arquivo, no texto do `s3b-perm.ts`. Os 7 prompts são: 3 de escrita simples (`agent` com `reject`, `agent` com `allow` e `agent-full-access`), essa tentativa, as duas de escalada e o teste do override.
+- **[verificado] No modo `agent` o pedido de escalada não chega ao cliente.** Quando o sandbox bloqueou a escrita fora do espaço, o modelo pediu para rodar fora do sandbox e o Codex chamou um **revisor automático**: o adaptador emitiu `tool_call` com título "Guardian Review" (`decisionSource: "agent"`), que terminou `Approved` (`Risk: low`, `Authorization: high`, justificativa citando que o usuário pediu a aprovação no prompt). Nenhum `session/request_permission` foi enviado, **nem com a política `reject`**: o `reject` do cliente não teve onde agir, e o arquivo fora da worktree foi criado nos dois casos.
+- **[verificado] Em `agent-full-access` nada pede permissão** (`approvalPolicy: "never"`, sem sandbox): a escrita fora da worktree passou sem pedido, com a política `reject`.
+- **[verificado] O sandbox do `agent` (e do `workspace-write`) deixa `/tmp` gravável**: o adaptador manda `excludeSlashTmp: false` e `excludeTmpdirEnvVar: false`. Uma pasta da scratchpad (em `/tmp`) é gravável sem aprovação. Para testar a fronteira do sandbox usei uma pasta fora de `/tmp`.
+- Só medi **uma** forma de pedido de escalada (um comando de escrita). O revisor é um modelo: outro comando, outro risco (rede, `rm -rf`, `sudo`) pode ter outro veredito [não confirmado]. Não consegui que o `agent` gerasse um `request_permission` ao cliente em nenhum caso; o `request_permission` já visto no spike (itens 2 e 5) é do `workspace-write`.
+- **Para o OTheater (`onAsk`)**: no `agent` o gerente **não** vê o pedido; a política `onAsk: deny` não é aplicável. Se o gerente precisa decidir (ou negar), o modo tem de ser `workspace-write` (que envia `request_permission`) ou `read-only`. `agent` e `agent-full-access` têm de ser vetados no `set_config_option`.
+
 ## Não coberto (pendente)
 
 - Passagem de bastão para outro cliente (retomar no Claude Code/OpenCode o que o Codex fez): não testado.
 - O segundo login (outra conta num `CODEX_HOME` isolado, com `chat-gpt` ou `api-key`): não feito, pela ordem de não fazer login. Só foi verificado que o perfil vazio exige autenticação (item 9).
 - Windows: tudo foi medido só no Linux.
-- Modos `agent` e `agent-full-access` com `request_permission`; só `read-only` e `workspace-write` foram exercitados.
+- (item 8, feito em 2026-11-15) Os modos `agent` e `agent-full-access` foram exercitados: ver a seção acima. Pendente: um `requirements.toml` real (`allowed_sandbox_modes`) para ver se barra `agent-full-access`; outras classes de comando no revisor do `agent` (rede, remoção, `sudo`); `read-only` com a mesma matriz.
 - Preço e custo relativo dos modelos; limites e termos da assinatura.
 
 ## Avisos
@@ -95,6 +126,9 @@ node src/s4-resume.ts       # item 6
 node src/s5-concurrency.ts  # item 7
 node src/s6-profile.ts      # item 9, sem prompt, sem login
 node src/s7-quota.ts        # item 8, consulta direta, sem prompt
+node src/s8-agent-modes-and-catalog.ts catalog   # permissões: catálogo de modos por override, sem prompt
+node src/s8-agent-modes-and-catalog.ts modes     # permissões: 5 prompts (modos agent e agent-full-access)
+node src/s8-agent-modes-and-catalog.ts variant dash-c-allowed   # permissões: 1 prompt
 ```
 
 Os scripts esperam o repositório de teste e as worktrees na scratchpad (`REPO`, `WT(n)` em `src/lib.ts`). As saídas ficam em `out/`: `results.jsonl` (resultados), `prompts-count.jsonl` e um `.jsonl` por execução com cada mensagem trocada.

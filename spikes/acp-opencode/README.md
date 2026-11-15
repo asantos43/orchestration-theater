@@ -65,12 +65,41 @@ Medido por `/proc` (árvore de filhos do `opencode acp`, RSS e PSS em MB, amostr
 - O custo por sessão em 1 processo é ~3 vezes menor que em 1 processo por sessão. O efeito do uso real (prompts longos, vários arquivos) [não confirmado]: o pico de 835 MB no cenário A mostra que a memória cresce durante o prompt e só parte volta.
 - **Conclusão do `processModel`**: o OpenCode aceita várias sessões em um só processo, cada uma com seu `cwd`. Para o OTheater, isso permite 1 processo por conta/perfil com N sessões. O preço é que um crash derruba todas as sessões do processo (o `kill -9` do item 6 mata a árvore toda). A decisão entre "1 processo por sessão" e "1 por perfil" fica com o dono; os números acima são o insumo. Para contas diferentes é preciso 1 processo por perfil de qualquer jeito, pois o isolamento é por variáveis de ambiente do processo (item 8).
 
+### Item 8 (permissões pelo ACP): bypass, `OPENCODE_CONFIG_CONTENT` e precedência (2026-11-15, UTC-3)
+
+Script: `src/s7-bypass-and-config-precedence.ts` (`catalog` e `prec`). Saídas em `out/s7.catalog.json`, `out/s7.prec.json` e `out/s7-*.jsonl`. Modelo `google/gemini-3.1-flash-lite`, `opencode` 1.19.5, worktrees de teste na scratchpad; os `opencode.json` de teste foram criados e apagados pelo próprio script. Nada foi tocado em `~/.config/opencode` nem no `opencode serve` do dono.
+
+**1. Catálogo de modos e opções do `opencode acp`** (`session/new`, sem prompt):
+
+- **[verificado]** O `session/new` não traz o campo `modes`; só `configOptions`, com 3 itens: `model` (532 opções), `effort` (`none`, `thinking`, `default` no modelo padrão do dono) e `mode` com **dois valores, `build` e `plan`**. Não há modo nem opção de bypass, "yolo" ou "permitir tudo".
+- **[verificado]** `session/set_mode` com `bypassPermissions`, `bypass`, `yolo`, `auto` e `allow-all` falhou com `Invalid params: mode not found`; `build` e `plan` funcionaram. `set_config_option` com `permission=allow` falhou com `unknown config option: permission`; `mode=bypass` falhou do mesmo jeito.
+- **[verificado]** `opencode acp --help` (1.19.5) não tem flag de permissão. O `opencode run --help` tem `--auto` ("auto-approve permissions that are not explicitly denied (dangerous!)"). Ou seja, existe um bypass na CLI `run`, mas não no `acp`. Não testei o `--auto` (é outro comando, fora do ACP).
+- **Conclusão para o `bypass: forbidden`**: pelo ACP, a sessão e o modelo **não têm como ligar "permitir tudo"**; o cliente também não. O único jeito de relaxar o que o daemon definiu é a configuração do processo (env, `opencode.json`), que o modelo pode tentar mexer **se tiver `edit` na worktree** (ver o item 3 abaixo). **[verificado]** o que existe; "isso basta para a RolePolicy `bypass: forbidden`" é inferência [não confirmado].
+
+**2. `OPENCODE_CONFIG_CONTENT` e precedência** (5 prompts, tarefa `touch <caso>.txt` pelo `bash`, política do cliente `allow`; resultado de 1 execução por caso, estado final do arquivo conferido no disco):
+
+| Caso | Configuração | Resultado |
+|---|---|---|
+| e1 | só `OPENCODE_CONFIG_CONTENT={"permission":{"bash":"deny","edit":"allow"}}` | `bash` sumiu: chamada virou "Invalid Tool", 0 `request_permission`, o modelo respondeu `NOBASH`, arquivo **não** criado. Igual ao `opencode.json` do cwd **[verificado]** |
+| e2 | `opencode.json` do cwd `bash: allow` + `OPENCODE_CONFIG_CONTENT` `bash: deny` | `deny` vence: `bash` sumiu, arquivo não criado **[verificado]** |
+| e3 | `opencode.json` do cwd `bash: allow` + `OPENCODE_PERMISSION` `{"bash":"deny"}` | `deny` vence: `bash` sumiu, arquivo não criado **[verificado]** |
+| e4 | `OPENCODE_PERMISSION` `bash: allow` + `OPENCODE_CONFIG_CONTENT` `bash: deny` (as duas por env) | **`allow` vence**: o `bash` rodou (`ls -F` e `touch`), arquivo criado, 0 `request_permission` **[verificado]**. O `OPENCODE_PERMISSION` tem precedência sobre o `OPENCODE_CONFIG_CONTENT` |
+| e5 | `opencode.json` do cwd `bash: deny` + `OPENCODE_DISABLE_PROJECT_CONFIG=1` | o `opencode.json` do cwd **foi ignorado**: o `bash` rodou, arquivo criado **[verificado]** |
+
+- Ordem observada, do mais fraco ao mais forte: `opencode.json` do cwd < `OPENCODE_CONFIG_CONTENT` < `OPENCODE_PERMISSION`. Cada elo foi medido em par (e2, e3 e e4); a ordem completa é composição dessas três medidas, e a config global do dono (`~/.config/opencode`, que não li por regra) também estava ativa nos casos; se tiver `permission` próprio, ele pode ter influenciado [não confirmado].
+- A documentação oficial de configuração (https://opencode.ai/docs/config/, lida em 2026-11-15) lista a precedência só entre arquivos (global, `opencode.json` da raiz, aninhados, `/etc/opencode/opencode.json` do sistema; "managed" acima de tudo) e **não cita** `OPENCODE_CONFIG_CONTENT`, `OPENCODE_PERMISSION` nem `OPENCODE_DISABLE_PROJECT_CONFIG` **[secundária: ausência na doc]**. Os nomes das três variáveis aparecem nas strings do binário **[secundária]**; o comportamento acima é o medido.
+- A doc de permissões (https://opencode.ai/docs/permissions/, 2026-11-15) diz que, sem regra, o padrão é `ask`, e que `external_directory` vem **permitido** por padrão **[secundária]**. Isso **contradiz** o que medi no item 5 (sem config, `edit` e `bash` rodaram sem pedido). Vale o medido nesta máquina, com o `~/.config/opencode` do dono possivelmente influenciando [não confirmado].
+- **Para o OTheater**: um `deny` posto pelo daemon só é firme se vier por `OPENCODE_PERMISSION` (vence as outras duas) e se `OPENCODE_DISABLE_PROJECT_CONFIG=1` impedir que um `opencode.json` plantado na worktree (por um agente com `edit`) o relaxe. O e2 mostra que o `OPENCODE_CONFIG_CONTENT` já vence o json do projeto, então o risco do json plantado só existe quando se usa só o json (e5 mostra que a variável o desliga). Um `allow` vindo de `OPENCODE_PERMISSION` num processo reaproveitado por outra role **vence** um `deny` em `OPENCODE_CONFIG_CONTENT` (e4): o env do processo precisa ser montado por role, nunca herdado.
+- Não testado: `opencode.json` do cwd com `deny` e `OPENCODE_PERMISSION` com `allow` (só e4 testou o par de envs); granularidade `{"bash":{"*":"deny","git *":"allow"}}`; `/etc/opencode` (exigiria root); a variável `OPENCODE_TEST_MANAGED_CONFIG_DIR` (nome só visto em strings).
+- Prompts: 5, com contador próprio (`out/prompt-count-item8.json`, 5 de 8). Somando os 24 anteriores, o spike passou de 25; o limite de 25 era do trabalho original e o item 8 tinha uma ordem própria de "poucas execuções".
+
 ## Pendências (não medidas neste spike)
 
 - **Baton hand-off para outro cliente**: passar uma sessão do OpenCode a outro cliente ACP (ou outro executor) não foi testado. O `session/load` e o replay (item 6) são o que existe; o que se perde no crash também.
 - **Segundo login**: não foi feito nenhum login (regra do spike). Como o OpenCode se comporta com duas contas do mesmo provedor num mesmo perfil, e o fluxo `opencode auth login` fora do ACP, ficam para depois.
 - **Windows**: nada foi testado fora do Linux. É nele que `XDG_DATA_HOME`, `XDG_CONFIG_HOME` e `OPENCODE_DB` são o caso que a arquitetura pede; o item 8 só vale para Linux.
-- `OPENCODE_CONFIG_CONTENT` (item 5), `session/cancel` no flash-lite (item 4) e o overhead de latência do adaptador (item 3) também não foram medidos.
+- `session/cancel` no flash-lite (item 4) e o overhead de latência do adaptador (item 3) também não foram medidos. O `OPENCODE_CONFIG_CONTENT` foi medido no item 8.
+- Do item 8: o par `opencode.json` `deny` contra `OPENCODE_PERMISSION` `allow`, permissões granulares por padrão de comando, o `opencode run --auto` e o diretório do sistema `/etc/opencode`.
 
 ## Como rodar
 
@@ -84,9 +113,12 @@ node src/s3-permissions.ts         # item 5 (4 prompts)
 node src/s4-resume.ts              # item 6 (4 prompts); s4e-kill-midtask.ts: kill -9 real (1 prompt)
 node src/s5-concurrency.ts         # item 7 (6 prompts)
 node src/s6-isolated.ts            # item 8 (1 prompt)
+# item 8 de permissões (contador próprio; exige as variáveis):
+OT_COUNTER=$PWD/out/prompt-count-item8.json OT_MAX_PROMPTS=8 node src/s7-bypass-and-config-precedence.ts catalog   # sem prompt
+OT_COUNTER=$PWD/out/prompt-count-item8.json OT_MAX_PROMPTS=8 node src/s7-bypass-and-config-precedence.ts prec      # 5 prompts
 ```
 
-`OT_MODEL` troca o modelo (padrão `google/gemini-3.1-flash-lite`). `src/lib/budget.ts` bloqueia além de 25 prompts (contador em `out/prompt-count.json`). Os caminhos da scratchpad ficam em `src/lib/paths.ts` e precisam ser ajustados em outra máquina; as worktrees são criadas à mão (`git worktree add`).
+`OT_MODEL` troca o modelo (padrão `google/gemini-3.1-flash-lite`). `src/lib/budget.ts` bloqueia além de 25 prompts (contador em `out/prompt-count.json`); `OT_COUNTER` e `OT_MAX_PROMPTS` trocam o arquivo e o limite. Os caminhos da scratchpad ficam em `src/lib/paths.ts` e precisam ser ajustados em outra máquina; as worktrees são criadas à mão (`git worktree add`).
 
 ## Ferramentas
 

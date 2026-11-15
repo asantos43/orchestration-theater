@@ -63,8 +63,9 @@ Os dois enviam ao receptor OTLP do daemon. Ver [11](11-TELEMETRIA-E-ATIF.md).
 
 Ver [09](09-ISOLAMENTO-E-SEGURANCA.md). Em resumo:
 - **Claude:** `tools` sem o Bash nativo, regras `deny`, `--strict-mcp-config` e `allowDangerouslySkipPermissions: false`, todos em `_meta.claudeCode.options` do `session/new`. O Executor headless roda no modo `default`, e o daemon recusa cada `request_permission`: o `dontAsk` não chega pelo ACP (medido na Fase 0, arquitetura v0.42, §5.8).
-- **OpenCode V2:** `shell` e `external_directory` negados explicitamente.
-- **Codex:** `sandbox_mode` e `approval_policy`.
+- **Claude, ressalva:** o `deny` por padrão é furado por `sh -c` e `bash -c` (medido na Fase 0, item 8c), então é segunda camada; quem remove o shell é `tools` (arquitetura v0.45, §5.8).
+- **OpenCode V2:** `shell` e `external_directory` negados explicitamente. Pelo ACP, o daemon fixa as permissões em `OPENCODE_PERMISSION`, que vence o `opencode.json` da worktree, e liga `OPENCODE_DISABLE_PROJECT_CONFIG=1` (medido na Fase 0, item 8; arquitetura v0.45).
+- **Codex:** `sandbox_mode` e `approval_policy`. Pelo ACP, a sessão começa em `workspace-write` e o daemon nunca pede `agent` nem `agent-full-access`: no `agent` a escalada é aprovada por um revisor automático sem chegar ao cliente (medido na Fase 0, item 8; arquitetura v0.45).
 
 ## Parte 2. Referência dos CLIs (verificado localmente em 2026-11-08)
 

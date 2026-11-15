@@ -131,7 +131,7 @@ export class Adapter {
   static start(opts: StartOpts): Adapter {
     const log = jsonl(`${opts.name}.jsonl`);
     const env: Record<string, string> = { ...(process.env as Record<string, string>), ...opts.env };
-    if (!opts.pathCodex) env.CODEX_PATH = BUNDLED_CODEX;
+    if (!opts.pathCodex && !opts.env?.CODEX_PATH) env.CODEX_PATH = BUNDLED_CODEX;
     const child = spawn(process.execPath, [ADAPTER_JS, ...(opts.extraArgs ?? [])], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     const a = new Adapter(opts.name, child, log);
     log({ dir: 'meta', event: 'spawn', pid: child.pid, codexPath: env.CODEX_PATH ?? 'PATH', codexHome: env.CODEX_HOME ?? '(padrao)' });

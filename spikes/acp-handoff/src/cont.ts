@@ -2,25 +2,32 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { AcpRun, isEdit, sleep, type ClientName } from "./acp.ts";
+import { AcpRun, SPEC, isEdit, killTree, sleep, type ClientName } from "./acp.ts";
 import { buildPackage, type Variant } from "./package.ts";
 import { OUT, addWorktree, diffAgainst, evaluate, numstat, progress } from "./task.ts";
 
 const [clientName, pair, variant] = process.argv.slice(2) as [ClientName, string, Variant];
-const o = JSON.parse(readFileSync(join(OUT, `origin-${pair}.json`), "utf8"));
-const dir = addWorktree(`cont-${pair}-${variant}`, o.checkpoint);
+// OT_ORIGIN: nome do registro de origem em out/ (origin-<OT_ORIGIN>.json); padrao = o proprio par. Permite reaproveitar
+//   a mesma origem para destinos diferentes (par "claude-opencode" usa a origem "claude-codex").
+// OT_TAG: sufixo da repeticao (ex. "r3"); vira cont-<par>-<variante>.<tag>.json. OT_MODEL: modelo do OpenCode (ver acp.ts).
+const originName = process.env.OT_ORIGIN ?? pair;
+const tag = process.env.OT_TAG ? `.${process.env.OT_TAG}` : "";
+const runName = `cont-${pair}-${variant}${tag}`;
+const o = JSON.parse(readFileSync(join(OUT, `origin-${originName}.json`), "utf8"));
+const dir = addWorktree(runName.replace(/\./g, "-"), o.checkpoint);
 const t0 = Date.now();
 const pkg = buildPackage(variant, o, dir);
 const buildMs = Date.now() - t0;
-writeFileSync(join(OUT, `package-${pair}-${variant}.md`), pkg);
+writeFileSync(join(OUT, `package-${pair}-${variant}${tag}.md`), pkg);
 
-const run = new AcpRun(clientName, `cont-${pair}-${variant}`);
+const run = new AcpRun(clientName, runName);
 await run.start(dir);
 const sessionId = await run.newSession(dir);
 // linhas que a origem acrescentou (para medir retrabalho)
 const originAdded = new Set(
   diffAgainst(dir, o.base).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).trim()).filter(Boolean),
 );
+const watchdog = setTimeout(() => killTree(run.pid), 600_000); // trava de seguranca: 10 min
 const snaps: unknown[] = [];
 let seen = 0;
 const res = await run.prompt(sessionId, pkg, (t) => {
@@ -31,6 +38,7 @@ const res = await run.prompt(sessionId, pkg, (t) => {
   }
   return false;
 });
+clearTimeout(watchdog);
 await sleep(300);
 await run.close();
 const ev = evaluate(dir);
@@ -40,7 +48,7 @@ const finalLines = new Set(
 const lost = [...originAdded].filter((l) => !finalLines.has(l));
 const tools = res.trace.tools;
 const rec = {
-  clientName, pair, variant, sessionId, dir,
+  clientName, pair, variant, tag: tag.slice(1) || undefined, originName, model: SPEC[clientName].model, sessionId, dir,
   package: { bytes: Buffer.byteLength(pkg), chars: pkg.length, estTokens: Math.round(pkg.length / 4), buildMs },
   stopReason: res.stopReason, error: res.error, ms: res.ms, usage: res.usage, permissions: run.perms,
   eval: ev, numstatVsCheckpoint: numstat(dir, o.checkpoint),
@@ -52,6 +60,6 @@ const rec = {
   },
   snaps, finalText: res.text.slice(0, 500), trace: res.trace,
 };
-writeFileSync(join(OUT, `cont-${pair}-${variant}.json`), JSON.stringify(rec, null, 2));
+writeFileSync(join(OUT, `${runName}.json`), JSON.stringify(rec, null, 2));
 console.log(JSON.stringify({ ...rec, trace: undefined }, null, 1));
 process.exit(0);
