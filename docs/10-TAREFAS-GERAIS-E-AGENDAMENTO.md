@@ -68,7 +68,7 @@ O daemon sozinho não acorda a máquina. Além disso, o Modern Standby do Window
 
 ### Criação e controle
 
-- **Aba Agenda** na TUI (e na web, se existir).
+- **Aba Agenda** na TUI (e na web, a partir da Fase 12).
 - **Pelo chat.** O Diretor chama `schedule(...)`, que **não salva direto**: devolve um rascunho para o Produtor confirmar, editar ou cancelar. `list_schedules` e `pause_schedule` completam o conjunto.
 - **Pelo terminal:** `ot schedule list|add|pause|resume|rm` e `ot run <task>`.
 

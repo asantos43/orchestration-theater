@@ -1,7 +1,7 @@
 # 07. Assinaturas e termos de uso
 
 **Aviso.** Termos de uso mudam. Este documento junta duas leituras:
-- **2026-11-13**: a arquitetura v0.10 (§3, §11 e §14) cita a documentação oficial do Claude Code (*legal-and-compliance*, *authentication*) e da OpenAI (*auth*), consultadas nessa data. **Nesta revisão do repositório, essas páginas não foram reabertas**: a informação é de segunda mão, a partir da arquitetura.
+- **2026-11-13**: a arquitetura v0.10 (§3, §11 e §14) cita a documentação oficial do Claude Code (*legal-and-compliance*, *authentication*) e da OpenAI (*auth*), consultadas nessa data. **Nesta revisão do repositório, essas páginas não foram reabertas**: a informação é de segunda mão, a partir da arquitetura. Depois dessa leitura, o §3 mudou na v0.30 (várias contas do mesmo provedor, abaixo); este documento não registra nova consulta aos termos.
 - **2026-11-08**: busca na web, só em fontes secundárias ([FONTES](FONTES.md)).
 
 Antes de distribuir o produto, ou de aumentar a automação, releia os termos atuais de cada provedor.

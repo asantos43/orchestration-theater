@@ -45,7 +45,7 @@ function header() {
 const CEN = [
   ['●', 'acc', 'loja-api', '#14 exec', 'L', true],
   ['!', 'warn', 'relatorio-mensal', 'você', 'R'],
-  ['✗', 'err', 'app-mobile', 'crít 2/3', 'A'],
+  ['✗', 'err', 'app-mobile', 'crít 2/2', 'A'],
   ['○', 'dim', 'pesquisa-acp', 'ocioso', 'P'],
   ['✓', 'ok', 'migracao-db', '#9 ok', 'M'],
 ];
@@ -110,7 +110,7 @@ function chat(x, w) {
   box(x, 1, w, 40, 'Chat · Orquestrador (claude-haiku-low@claude-code/empresa)', true);
   const ix = x + 2, iw = w - 4;
   put(ix, 2, pad('Peça #14 · Login OAuth (Google e GitHub) na API', iw), 'bold');
-  if (iw >= 62) seg(ix, 3, [['● Execução', 'acc'], [' · Crítico 0/3 · Plano 1/3 · 38 min · ', 'dim'], ['! 1 decisão', 'warn']]);
+  if (iw >= 62) seg(ix, 3, [['● Execução', 'acc'], [' · Crítico 0/2 · Plano 1/2 · 38 min · ', 'dim'], ['! 1 decisão', 'warn']]);
   else seg(ix, 3, [['● Execução', 'acc'], [' · 38 min · ', 'dim'], ['! 1 decisão', 'warn']]);
   put(x + 1, 4, '─'.repeat(w - 2), 'b');
 
@@ -181,8 +181,8 @@ function sec(x, y, w, title, open, right) {
 
 function tabGeral(x, y, w) {
   y = sec(x, y, w, 'Pipeline', true, 'iniciada 09:12');
-  put(x + 2, y++, '✓ Produtor  ✓ Autor  ✓ Revisor  ✓ Roteiro', 'ok');
-  seg(x + 2, y++, [['▶ Execução 1/5', 'acc'], ['  ○ Integração  ○ Crítico  ○ PR', 'dim']]);
+  put(x + 2, y++, '✓ Produtor ✓ Autor ✓ Dúvidas ✓ Revisor ✓ Roteiro', 'ok');
+  seg(x + 2, y++, [['✓ Autor ', 'ok'], ['▶ Execução 1/5', 'acc'], [' ○ Integr. ○ Crítico ○ PR', 'dim']]);
   y++;
   y = sec(x, y, w, 'Demandas (DAG)', true, 'sem conflito');
   const dem = [['✓', 'ok', 'D1 Usuário e migração', 'codex-sol-high@codex/conta-1'], ['▶', 'acc', 'D2 Fluxo OAuth · 18/30m', 'codex-sol-high@codex/conta-1 !'], ['▶', 'acc', 'D3 Middleware · 7/20m', 'claude-sonnet-medium@claude-code/empresa'], ['○', 'dim', 'D4 Testes e2e ← D2, D3', ''], ['○', 'dim', 'D5 Documentação · fila', '']];

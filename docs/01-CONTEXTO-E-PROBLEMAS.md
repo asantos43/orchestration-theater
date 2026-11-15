@@ -35,7 +35,7 @@ Fonte: o trabalho no `okit-plugin` (assistente de instalação, demandas D149 a 
 - A regra de mutação para provar que cada correção é coberta por teste.
 - As ordens permanentes (`orders`) e a trilha de decisões.
 
-A arquitetura do OTheater precisa **absorver** isso, não jogar fora. Correspondências na arquitetura v0.10:
+A arquitetura do OTheater precisa **absorver** isso, não jogar fora. Correspondências na arquitetura v0.32:
 - o relatório do executor corresponde à saída estruturada `submit`, validada por schema (§5.3);
 - o crítico corresponde ao papel Crítico sobre a branch integrada (§5.4 e §5.5);
 - os papéis correspondem aos prompts versionados em `prompts/` (§9);
@@ -46,7 +46,7 @@ A regra de mutação **não aparece explicitamente** na arquitetura. Ela precisa
 
 ## Como a arquitetura responde a cada problema
 
-Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) v0.10. É um mapeamento do desenho, não uma medição: as respostas só valem depois de verificadas na Fase 0 e nas fases seguintes.
+Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) v0.10 e atualizada em 2026-11-14 até a v0.32. É um mapeamento do desenho, não uma medição: as respostas só valem depois de verificadas na Fase 0 e nas fases seguintes.
 
 | # | Resposta da arquitetura | Seção |
 |---|---|---|
@@ -56,7 +56,7 @@ Leitura feita em 2026-11-13 sobre [framework-ideas/arquitetura.md](framework-ide
 | P4 | Não há portão de cota no cliente: a admissão é decidida pelo daemon, com regra explícita `next`/`wait` por papel. | §5.7, §5.9 |
 | P5 | A retomada nativa (`session/load`) só acontece no mesmo cliente e perfil. A troca de cliente é uma **passagem de bastão** com pacote de continuação, nunca o id de sessão de outro cliente. | §5.16 |
 | P6 | Critério de "agente travado" (minutos sem evento, repetição do mesmo erro), timeout com commit WIP e limites de tentativas em código. | §5.4, §5.5, §5.16 |
-| P7 | O plano passa pelo Revisor antes do roteiro. O roteiro é validado em código (ciclos, contratos, arquivos), e cada demanda tem contrato explícito. | §5.4 |
+| P7 | As dúvidas do plano vão ao Produtor (CLARIFYING), e o plano passa pelo Revisor antes do roteiro. O roteiro é validado em código (ciclos, contratos, arquivos) e revisado pelo Autor. Cada demanda sai pronta: contrato explícito e passo de verificação (`verify`) ou o motivo de não haver. Se a demanda não basta, o Ator encerra como `blocked` em vez de adivinhar (v0.31). | P13, §5.4 |
 | P8 | Os defeitos do kit não passam para o OTheater: ele é uma arquitetura nova e não reaproveita código do `okit`, só os conceitos (Q12, decidida em 2026-11-13). | [13](13-DECISOES-EM-ABERTO.md) |
 | P9 | O estado fica no daemon (SQLite + blackboard). O Orquestrador consulta `next_action`/`status` e, em caso de failover, recebe um resumo gerado do store. | P4, §5.4, §5.10 |
 | P10 | TUI como interface principal (chat, dashboard, trajetórias, agenda), com web, desktop e app Android de celular e tablet depois da v1 e da Fase 10b, nessa ordem (v0.29), todos sobre o `packages/client`. | §5.13, Fases 7, 12, 13 e 14 |

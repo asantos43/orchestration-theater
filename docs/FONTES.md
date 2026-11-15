@@ -1,7 +1,7 @@
 # Fontes
 
 O arquivo tem três blocos:
-1. **Fontes da arquitetura v0.10**, consultadas pelos autores da arquitetura em 2026-11-13 (§14). **Não foram reabertas nesta revisão do repositório.**
+1. **Fontes da arquitetura v0.10**, consultadas pelos autores da arquitetura em 2026-11-13 (§14). A lista foi conferida com a §14 da v0.32 em 2026-11-14. **As fontes não foram reabertas nesta revisão do repositório.**
 2. **Links de buscas na web de 2026-11-08.**
 3. **Verificação local** de 2026-11-08.
 

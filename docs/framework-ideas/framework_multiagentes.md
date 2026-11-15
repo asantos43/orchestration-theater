@@ -1,5 +1,19 @@
 # Framework de Controle Multiagentes: Metáfora Teatral Aplicada
 
+> **Nota (2026-11-14).** Este texto é o registro das ideias iniciais do dono e não foi reescrito. A referência é a [arquitetura](arquitetura.md) v0.32 e o [fluxo da peça](fluxo-da-peca.md). Quando divergirem, vale a arquitetura.
+>
+> O que mudou:
+> - O plano traz dúvidas e suposições. As dúvidas vão ao Produtor (CLARIFYING) antes do Revisor, que também julga as suposições (§5.3 e §5.4).
+> - O Roteirista entrega **demandas prontas**, com critérios de aceite, contratos, `expectedFiles` e `verify`, e o roteiro passa por validação em código (§5.4).
+> - O Autor revisa **todo** roteiro, inclusive o inicial, e não só a correção (REVIEWING_SCRIPT, §5.4).
+> - Os Atores não têm "toda permissão": usam as cascas e os plugins do papel, com o shell nativo bloqueado (P5, §5.3 e §5.8). Quem abre as sessões é o daemon (§4).
+> - Cada demanda roda o `verify` em código ao fim da tentativa. O Ator pode encerrar como `blocked`, o que conta como falha de roteiro (§5.4).
+> - No timeout, o daemon faz um commit WIP, e o Diretor decide num ponto de julgamento (§5.4 e §5.5).
+> - O Crítico avalia a branch integrada. Pode ser dispensado por decisão registrada do Produtor, nunca por ordem (§5.4).
+> - A entrega segue `delivery.mode`, com PR por padrão; o merge direto só se o projeto permitir (§5.5).
+> - Todo laço tem contador, e esgotado vai ao Produtor com um menu fixo. A exceção crítica é uma lista fechada. Numa crítica mista vence a falha mais grave, e o conflito na integração é falha de roteiro (§5.4).
+> - Um pedido de mudança depois da entrega abre uma peça nova, ligada à anterior. O `task.define` segue as mesmas regras da peça (§5.4 e §5.20, v0.32).
+
 Este documento define o pipeline de execução e retroalimentação de um sistema orquestrador de múltiplos agentes de Inteligência Artificial, mapeando conceitos de produção teatral para engenharia de software.
 
 ## 1. Definição de Escopo (Produtor)

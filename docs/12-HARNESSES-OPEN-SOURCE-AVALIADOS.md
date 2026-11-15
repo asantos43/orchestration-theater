@@ -2,7 +2,7 @@
 
 O documento tem duas partes:
 - os **agentes** que o dono listou em 2026-11-08, avaliados como base;
-- os projetos que a arquitetura v0.10 (§6.3 a §6.5) avaliou em 2026-11-13 como **base de fork** ou como **referência**.
+- os projetos que a arquitetura v0.10 (§6.3 a §6.5) avaliou em 2026-11-13 como **base de fork** ou como **referência**. A lista foi conferida com a v0.32 em 2026-11-14.
 
 Nenhum repositório foi lido nesta revisão. As licenças e descrições vêm da arquitetura, ou da conversa de 2026-11-08, e devem ser confirmadas antes de decidir.
 

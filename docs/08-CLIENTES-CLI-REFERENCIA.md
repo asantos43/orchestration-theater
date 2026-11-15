@@ -1,7 +1,7 @@
 # 08. Referência dos clientes
 
 O documento tem duas partes:
-1. **Como o OTheater usa os clientes**, por ACP. Vem da arquitetura v0.10 (§5.2, §5.6, §5.7 e §5.11), de 2026-11-13. **Não foi verificado localmente**: os itens marcados **[a confirmar]** na arquitetura continuam assim, e a Fase 0 mede o resto.
+1. **Como o OTheater usa os clientes**, por ACP. Vem da arquitetura v0.32 (§5.2, §5.6, §5.7 e §5.11), de 2026-11-14. **Não foi verificado localmente**, salvo onde a arquitetura registra verificação: os itens marcados **[a confirmar]** na arquitetura continuam assim, e a Fase 0 mede o resto.
 2. **Referência dos CLIs**, **verificada localmente** em 2026-11-08 com `--help`. Versões: **Claude Code 2.1.319** e **codex-cli 0.167.0**. Hoje ela serve para a **saída de emergência** (modo headless) e para o `prepareProfile`. As versões mudam; refaça a verificação antes de implementar.
 
 ## Parte 1. Como o OTheater usa os clientes (arquitetura, não verificado localmente)
@@ -23,7 +23,9 @@ O daemon é cliente ACP (`@agentclientprotocol/sdk` v2). Ele sobe o processo do 
 | Gemini CLI | `gemini --acp` (nativo, opcional) | Parte do ACP ainda é `unstable`. |
 
 - Modelo, esforço e modo são definidos por `session/set_config_option`, nas categorias `model`, `thought_level`, `mode` e `model_config`. O adaptador anuncia o que aceita.
-- O que o ACP não cobre fica na interface `ClientAdapter`: comando, ambiente do perfil, `prepareProfile`, login, logout, sonda de cota e `processModel`.
+- O que o ACP não cobre fica na interface `ClientAdapter`: comando, ambiente do perfil, `prepareProfile`, login, logout, sonda de cota, `processModel` e o catálogo de modelos `ModelCatalog` (lista, sugestão de campos e validação dos Executores; §5.7, v0.23).
+  - Claude Code e Codex: descoberta automática dos modelos.
+  - OpenCode: cadastro assistido a partir do `opencode models --verbose`; o daemon só valida.
 - **Saída de emergência:** trocar o adaptador pelo modo headless do cliente (Parte 2) sem mexer no resto:
   - `claude -p --output-format stream-json`;
   - `codex exec --json` ou `@openai/codex-sdk`.
@@ -116,7 +118,11 @@ Observado: o sandbox do Codex impediu `listen` em `127.0.0.1` e `spawnSync` dura
 
 ### OpenCode (`opencode`)
 
-Não verificado nesta conversa além do uso pelo kit (`opencode --model <modelo>` chamado por `kit run`). Pelas fontes secundárias: aceita login do ChatGPT, não aceita a assinatura do Claude, e funciona com outros provedores por chave ou plano (como a MiniMax, que o kit já usa). O OTheater usa o `opencode acp` nativo, então não há adaptador a escrever. Verifique `opencode acp --help` e a versão antes da Fase 0.
+A saída de `opencode models --verbose` foi **verificada localmente** em 2026-11-14, versão 1.19.5, segundo a arquitetura (§5.7): traz, por modelo, `providerID`, `family`, `api.url`, `cost`, `capabilities` e `variants`, e é a base do cadastro assistido dos Executores do OpenCode. O `opencode acp` **não foi verificado**, além do uso do OpenCode pelo kit (`opencode --model <modelo>` chamado por `kit run`).
+
+Pelas fontes secundárias: aceita login do ChatGPT, não aceita a assinatura do Claude, e funciona com outros provedores por chave ou plano (como a MiniMax, que o kit já usa). Por padrão, o OTheater **não usa a assinatura do ChatGPT pelo OpenCode**: com assinatura, cada família só roda pelo seu cliente oficial, e um modelo fora do cliente oficial só entra num perfil de chave de API ou gateway (`executors.cross_client: api_only`, §5.7, v0.23).
+
+O OTheater usa o `opencode acp` nativo, então não há adaptador a escrever. Verifique `opencode acp --help` e a versão antes da Fase 0.
 
 ## Não verificado (a testar antes de implementar)
 

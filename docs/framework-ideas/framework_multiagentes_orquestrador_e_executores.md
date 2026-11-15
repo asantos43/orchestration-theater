@@ -1,5 +1,19 @@
 # Definições de Entidades: Orquestrador e Executores
 
+> **Nota (2026-11-14).** Este texto é o registro das ideias iniciais do dono e não foi reescrito. A referência é a [arquitetura](arquitetura.md) v0.32 e o [fluxo da peça](fluxo-da-peca.md). Quando divergirem, vale a arquitetura.
+>
+> O que mudou:
+> - Executor é cliente + perfil + modelo + esforço, com nome `<modelo>-<esforço>@<cliente>/<perfil>` (§5.2, §5.7 e §13).
+> - Todos os papéis, inclusive o Diretor e o Consultor, têm uma lista de Executores com fallback. A seleção usa prioridade e cota, com assinaturas e chaves de API, estas com teto de gasto (§5.6 e §5.7).
+> - O estado fica no daemon, que roda como serviço de logon, e não na sessão principal do cliente (P4 e §5.1).
+> - O Orquestrador é o Diretor: uma sessão ACP que o daemon abre. Quem abre os Executores é o daemon. Há failover do Diretor quando a cota ou o perfil falham (§4 e §5.4).
+> - A interface com o Produtor é a TUI, depois a web, o desktop e o Android, todos sobre a API do daemon (P7 e §5.13).
+> - O framework é o daemon com o servidor MCP filtrado por papel e as cascas. As extensões são plugins MCP fora do processo (§5.3, §5.14 e §5.18).
+> - A contenção de escopo usa o filtro MCP e as permissões em três camadas (§5.8). Cada papel tem uma fronteira estreita (P13 e §5.4).
+> - Os clientes ficam atrás da porta `ClientAdapter`. O Gemini CLI é um cliente opcional (§5.18 e §6.2).
+> - As cotas incluem a contabilidade local do OpenCode e o fallback pelo erro de limite, pela porta `QuotaProbe` (§5.6 e §5.18).
+> - O ATIF é o *Agent Trajectory Interchange Format* v1.8, com o bloco `extra.otheater` e a peça inteira como unidade (§5.11).
+
 Este documento detalha as entidades responsáveis por operacionalizar o Framework de Controle Multiagentes, mapeando a arquitetura técnica aos papéis de produção teatral.
 
 ## 1. O Executor

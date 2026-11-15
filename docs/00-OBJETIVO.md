@@ -8,7 +8,7 @@ Ter um sistema próprio, o **OTheater**, que coordene vários agentes de IA como
 
 O sistema trabalha com contas e projetos diferentes e controla permissões, cotas e telemetria. O diferencial é **usar as assinaturas pelos clientes oficiais**. Chaves de API também são aceitas, e são o caminho para o modo produto enquanto o risco R1 estiver aberto (ver [07](07-ASSINATURAS-E-TERMOS.md)).
 
-A arquitetura de construção está em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.10, 2026-11-13). Os objetivos dela estão na §1.
+A arquitetura de construção está em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.32, 2026-11-14). Os objetivos dela estão na §1.
 
 ## O fluxo que o sistema deve implementar (o "pipeline teatral")
 
@@ -16,11 +16,11 @@ O fluxo está descrito em [framework-ideas/framework_multiagentes.md](framework-
 
 1. **Produtor**: entrega a necessidade.
 2. **Autor** e **Revisor**: transformam a necessidade num plano. O Revisor pode reprovar o plano até um limite `Np`.
-3. **Roteirista**: transforma o plano num **roteiro**, que é um DAG de demandas com contratos entre elas. O roteiro é validado em código antes de executar.
+3. **Roteirista**: transforma o plano num **roteiro**, que é um DAG de demandas com contratos entre elas. O roteiro é validado em código e revisado pelo Autor antes de executar.
 4. **Diretor + Atores**: o Diretor (o Orquestrador) libera as demandas. Cada Ator roda numa **worktree própria**, com as ferramentas MCP do seu papel e **timeout**.
 5. **Integração**: as demandas concluídas são mescladas numa branch de integração.
 6. **Crítico**: avalia o trabalho **integrado**.
-7. **Decisão e roteamento por tipo de falha**: falha de execução volta aos Atores; falha de roteiro, ao Roteirista; falha estrutural, ao Autor. Uma exceção crítica volta ao Produtor. Os limites são `Np` e `Nc`.
+7. **Decisão e roteamento por tipo de falha**: falha de execução volta aos Atores; falha de roteiro, ao Roteirista; falha estrutural, ao Autor. Uma exceção crítica volta ao Produtor. Todo laço tem contador, em `limits` (`Np`, `Nc` e os demais). Esgotado, a peça vai a AWAITING_PRODUCER, com o menu fixo.
 8. **Entrega por PR** (ou merge direto, se o projeto permitir) e então **um novo ciclo**.
 
 A máquina de estados está na §5.4 da arquitetura.
@@ -58,7 +58,7 @@ A máquina de estados está na §5.4 da arquitetura.
 
 1. Uma demanda de código percorre o pipeline completo (plano, roteiro, execução isolada, integração, testes, crítico, PR) **sem que o Orquestrador execute nenhuma ferramenta de código**. A verificação é feita pelo conjunto de ferramentas MCP do papel Diretor (§5.3), não pela leitura do comportamento.
 2. Um Executor roda a suíte de testes e a compilação do projeto **sem falha de permissão ou sandbox**: zero `EPERM` causado pela ferramenta (ver o caso do D151 em [01](01-CONTEXTO-E-PROBLEMAS.md)).
-3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao próximo Executor elegível** (`next`) ou **espera o reset com aviso** (`wait`), sem laço nem espera cega (§5.7, §5.16).
+3. Quando uma conta esgota a cota ou perde o login, o trabalho **passa ao primeiro Executor disponível** da lista do papel. Se nenhum estiver disponível, **espera o primeiro que liberar** (`next`) ou **espera o reset do primeiro da lista, com aviso** (`wait`), sem laço nem espera cega (§5.7, §5.16).
 4. A trajetória de cada agente pode ser **vista ao vivo** e **exportada em ATIF-v1.8**, validada pelo `TrajectoryValidator` do Harbor (§5.11).
 5. Uma tarefa agendada roda sem ninguém olhando, **entrega por PR** e, quando precisa de decisão do Produtor, espera um prazo e segue com a opção recomendada, que numa decisão irreversível é sempre a segura (§5.15, v0.26).
 6. O mesmo daemon atende **dois projetos ao mesmo tempo** sem misturar worktrees, perfis ou estado.

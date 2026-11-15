@@ -1,6 +1,6 @@
 # 09. Isolamento e segurança
 
-Este documento resume como o OTheater isola os Executores e protege o código, os segredos e a máquina. A base é a arquitetura v0.10 (§3, §5.8, §5.9, §5.12, §5.14 e §11), de 2026-11-13. **Nada aqui foi verificado localmente.** A Fase 0 mede o sandbox no Windows, as permissões pelo ACP e o lançador com Job Object.
+Este documento resume como o OTheater isola os Executores e protege o código, os segredos e a máquina. A base é a arquitetura v0.10 (§3, §5.8, §5.9, §5.12, §5.14 e §11), de 2026-11-13, e o texto foi conferido com a v0.32 em 2026-11-14. **Nada aqui foi verificado localmente.** A Fase 0 mede o sandbox no Windows, as permissões pelo ACP e o lançador com Job Object.
 
 ## Histórico da decisão
 
@@ -98,7 +98,7 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 
 - Escuta em `127.0.0.1` por padrão.
 - O **token é obrigatório mesmo no acesso local**, com CORS fechado, para que nenhuma página de outra origem comande o daemon.
-- Acesso remoto só com TLS, via reverse proxy. É tratado como acesso administrativo. Se ele é necessário é a decisão N9.
+- Acesso remoto pela **VPN do usuário** (`api.remote: vpn`), com TLS do daemon, pareamento por QR e token por aparelho. O daemon nunca fica exposto na internet. Quem já tem reverse proxy com TLS pode usar `api.remote: proxy`. É tratado como acesso administrativo. A N9 foi decidida em 2026-11-14, para o app Android (arquitetura §5.12 e §5.13).
 - Plugins rodam como **processos externos** (servidores MCP), agregados pelo daemon. Nenhum código de plugin roda dentro do processo do daemon nem na interface: o painel do plugin é declarativo (arquitetura §5.14 e §5.18, v0.12).
 
 ## Riscos (arquitetura §11)
@@ -109,7 +109,10 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 | R6 | RAM com muitos Atores (um `claude` por sessão) | Admissão por sessão; plugins agregados; semáforo de comandos pesados |
 | R13 | Tarefa agendada faz algo indesejado sem ninguém olhando | Entrega por PR; orçamento por execução; decisão sem ninguém olhando segue com a recomendada depois de um prazo, e numa decisão irreversível só com a opção segura (v0.26) |
 | R15 | Retomada repete efeito colateral | Chaves de idempotência; checkpoints; pacote de continuação |
-| — | Injeção de prompt por conteúdo da web | Separar leitura e envio; `http_get` com domínios; `effects` declarados nos plugins |
+| R17 | Navegador compartilhado: injeção de prompt pela página, ou ação com conta logada no perfil do cenário | Perfil isolado por cenário, sem importar cookies; domínios permitidos; escrita com aprovação por padrão; página tratada como dado; evento com print de cada ação |
+| R18 | Tarefa recorrente roda sem supervisão um script escrito por agente | Passos de código no sandbox; definição só ativa depois do ensaio e da aprovação; versão nova a cada mudança; destinatário fixo; orçamento por execução |
+| R20 | Acesso remoto pelo app Android: aparelho perdido, token vazado, VPN mal configurada | Só pela VPN; token por aparelho, revogável, no armazenamento seguro; certificado fixado no pareamento; ações destrutivas pedem confirmação |
+| — | Injeção de prompt por conteúdo da web via `http_get` e plugins | Separar leitura e envio; `http_get` com domínios; `effects` declarados nos plugins |
 | — | Contas sinalizadas por uso automatizado | [07](07-ASSINATURAS-E-TERMOS.md); troca de Executor sem reescrever o núcleo |
 
-Os dois últimos riscos vêm da conversa de 2026-11-08 e não estão na tabela da arquitetura.
+Os dois últimos riscos vêm da conversa de 2026-11-08 e não estão na tabela da arquitetura. A injeção pelo navegador compartilhado está no R17.

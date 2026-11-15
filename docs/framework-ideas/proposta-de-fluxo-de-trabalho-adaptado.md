@@ -1,5 +1,18 @@
 # Fluxo adaptado para uma estrutura de multi agentes
 
+> **Nota (2026-11-14).** Este texto é o registro das ideias iniciais do dono e não foi reescrito. A referência é a [arquitetura](arquitetura.md) v0.32 e o [fluxo da peça](fluxo-da-peca.md). Quando divergirem, vale a arquitetura.
+>
+> O que mudou:
+> - Passo 1: a necessidade abre uma peça num cenário (projeto, tarefa ou chat). A tarefa repetitiva vira cenário do tipo tarefa, com definição versionada pelo `task.define`, que segue as mesmas regras da peça (§5.20, v0.32).
+> - Passos 2 e 3: as dúvidas do plano vão ao Produtor (CLARIFYING) antes do Revisor, e a volta ao Autor tem contador (§5.4).
+> - Passo 4: o roteiro passa por validação em código, e o Autor revisa todo roteiro, não só a correção (§5.4).
+> - Passo 5: o elenco sai da seleção por prioridade e cota (§5.7), e o daemon abre as sessões (§4). Cada demanda tem `verify`, e o Ator pode encerrar como `blocked` (§5.4).
+> - Passo 6: o Crítico pode ser dispensado por decisão registrada do Produtor (§5.4).
+> - Passo 7: em vez de "total liberdade de PR e merge", vale `delivery.mode`, com PR por padrão (§5.5).
+> - Passo 8: numa crítica mista vence a falha mais grave, e o conflito na integração é falha de roteiro (§5.4).
+> - Todo laço tem contador, e esgotado vai ao Produtor com um menu fixo. A exceção crítica é uma lista fechada (§5.4).
+> - Passo 9: um pedido de mudança depois da entrega abre uma peça nova, ligada à anterior (§5.4).
+
 1. Produtor define uma necessidade qualquer. Pode ser uma nova feature, um novo projeto, bug fixing, uma analise de dados, uma pesquisa, resumo de varios documentos ou tarefa repetitiva que vai usar varios agentes.
 
 2. Autor recebe a necessidade do produtor e monta um plano de ação detalhado que atenda a necessidade do Produtor.
