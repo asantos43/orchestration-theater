@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url'
 import { verificar } from './check.mjs'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
-const BASE = JSON.parse(fs.readFileSync(path.join(AQUI, 'policy.json'), 'utf8'))
+// Os testes do mecanismo partem das listas da politica real, sem as decisoes; as decisoes da N45 tem testes proprios no fim.
+const BASE = { ...JSON.parse(fs.readFileSync(path.join(AQUI, 'policy.json'), 'utf8')), decisoesPorLicenca: [], excecoes: [], ferramentasExternas: [] }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'otheater-lic-'))
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }))
@@ -217,4 +218,53 @@ test('excecao por pacote so libera licenca proibida com permiteProibida explicit
   const com = await verificar({ dir, politica: politica('ep-com', { excecoes: [{ ...base, permiteProibida: true }] }) })
   assert.equal(com.falhas.length, 0)
   assert.equal(achar(com, 'g').situacao, 'decidida')
+})
+
+// ---------- decisoes da N45 (2026-11-15) ----------
+const externas = (pacotes) => ({ ferramentasExternas: pacotes.map((p) => ({ pacote: p, nivel: 'C', decididoPor: 'teste', data: '2026-11-15', motivo: 'teste', fonte: 'teste' })) })
+
+test('nivel C: ferramenta externa reprova na arvore de producao e passa com --nivel-c=instalacao', async () => {
+  // raiz -> cli (externa, MIT) -> sdk (proprietaria) e comum (MIT); raiz -> comum tambem; raiz -> app (MIT)
+  const dir = arvore(
+    'nivelc',
+    [
+      ['cli', '1.0.0', 'MIT', { dependencies: { sdk: '1.0.0', comum: '1.0.0' } }],
+      ['sdk', '1.0.0', 'SEE LICENSE IN README.md'],
+      ['comum', '1.0.0', 'Unknown-Custom-1.0'],
+      ['app', '1.0.0', 'MIT'],
+    ],
+    { cli: '1.0.0', comum: '1.0.0', app: '1.0.0' },
+  )
+  const pol = politica('nivelc', externas(['cli']))
+  const prod = await verificar({ dir, politica: pol })
+  assert.equal(achar(prod, 'cli').situacao, 'nivel-c-empacotada')
+  assert.equal(achar(prod, 'sdk').situacao, 'sem-decisao')
+  const inst = await verificar({ dir, politica: pol, nivelC: 'instalacao' })
+  assert.equal(achar(inst, 'cli').situacao, 'nivel-c')
+  assert.equal(achar(inst, 'sdk').situacao, 'nivel-c', 'so a ferramenta externa traz o sdk')
+  assert.equal(achar(inst, 'comum').situacao, 'sem-decisao', 'a raiz tambem traz: continua sendo verificado')
+  assert.equal(achar(inst, 'app').situacao, 'permitida')
+  assert.deepEqual(inst.falhas.map((f) => f.nome), ['comum'])
+})
+
+test('nivel C: CLI recusa valor desconhecido de --nivel-c', () => {
+  const r = spawnSync(process.execPath, [path.join(AQUI, 'check.mjs'), '--dir', path.join(tmp, 'ok'), '--nivel-c=talvez'], { encoding: 'utf8' })
+  assert.equal(r.status, 2)
+})
+
+test('politica real: as oito licencas da N45 sao aceitas e GPL continua proibida', async () => {
+  const ls = ['BlueOak-1.0.0', 'Unlicense', 'CC0-1.0', 'MIT-0', 'Python-2.0', 'WTFPL', 'CC-BY-3.0', 'CC-BY-4.0']
+  const dir = arvore('n45', [...ls.map((l, i) => [`l${i}`, '1.0.0', l]), ['g', '1.0.0', 'GPL-3.0-only']], Object.fromEntries([...ls.map((_, i) => [`l${i}`, '1.0.0']), ['g', '1.0.0']]))
+  const r = await verificar({ dir, politica: path.join(AQUI, 'policy.json') })
+  for (let i = 0; i < ls.length; i++) assert.equal(achar(r, `l${i}`).situacao, 'decidida', ls[i])
+  assert.deepEqual(r.falhas.map((f) => f.nome), ['g'])
+})
+
+test('politica real: excecao do AgentPrism vale para 1.0.0 sem campo license e nao para outra versao', async () => {
+  const mit = 'MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software\n'
+  const dir = arvore('prism', [['@evilmartians/agent-prism-data', '1.0.0', undefined], ['@evilmartians/agent-prism-types', '1.0.1', undefined]], { '@evilmartians/agent-prism-data': '1.0.0', '@evilmartians/agent-prism-types': '1.0.1' })
+  for (const n of ['agent-prism-data', 'agent-prism-types']) fs.writeFileSync(path.join(dir, 'node_modules', '@evilmartians', n, 'LICENSE'), mit)
+  const r = await verificar({ dir, politica: path.join(AQUI, 'policy.json') })
+  assert.equal(achar(r, '@evilmartians/agent-prism-data').situacao, 'decidida')
+  assert.equal(achar(r, '@evilmartians/agent-prism-types').situacao, 'sem-decisao', 'versao nova exige nova conferencia')
 })

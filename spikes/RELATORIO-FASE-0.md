@@ -42,11 +42,11 @@ Estados: **Medido**, **Parcial**, **Pendente do dono**, **Não medível nesta m�
 | 16 | TUI: rolagem | Medido | Histórico de 5.000 mensagens e 1.000 passos: PageUp p50 32,4 ms (Ink) contra 16,9 ms (OpenTUI); Ink otimizado 7,9 ms [V]. | os três tui acima |
 | 17 | TUI: layout | Medido | Ink 25 de 25; OpenTUI 21 de 25 [V]. | os três tui acima |
 | 18 | TUI: runtime e empacotamento | Medido | OpenTUI só roda no Bun (executável de 120.940.672 bytes) e traz FFmpeg estático LGPL; Ink roda no Node [V]. | [tui-opentui](tui-opentui/README.md) |
-| 19 | TUI: terminais e atalhos | Pendente do dono | Só tmux em Linux foi medido (29 teclas); as colunas dos terminais reais estão vazias [V]. | [tui-keys](tui-keys/README.md) |
+| 19 | TUI: terminais e atalhos | Pendente do dono | Só tmux em Linux foi medido (41 teclas do mapa da N35, 4 variantes, com Shift+Enter); as colunas dos terminais reais estão vazias [V]. | [tui-keys](tui-keys/README.md) |
 | 20 | TUI: mouse | Parcial | Roda, clique em aba e seção e arrasto da alça funcionam no mockup, só no tmux [V]. | [tui-mockup-ink](tui-mockup-ink/README.md) |
 | 21 | OTel | Medido | Claude, Codex e OpenCode exportam OTLP/HTTP com os atributos `otheater.*`; sobrecarga de ~0,4 a 0,5 s não distinguível do ruído [V]. | [otel](otel/README.md) |
 | 22 | Avaliação de base (fork sim ou não) | Medido | Projeto próprio, sem fork; nenhum candidato foi executado, a leitura do código e das árvores de licença é [V] [ADR 0001](../docs/adr/0001-projeto-proprio-sem-fork.md). | [fork-evaluation](fork-evaluation/README.md) |
-| 23 | Licenças (1MCP, AgentPrism, Nimbalyst + verificador) | Parcial | 1MCP Apache-2.0, AgentPrism MIT (pacotes npm sem campo `license`), Nimbalyst MIT com árvore não medida; verificador feito, 12 testes passam [V]. | [licenses](licenses/README.md) |
+| 23 | Licenças (1MCP, AgentPrism, Nimbalyst + verificador) | Parcial | 1MCP Apache-2.0, AgentPrism MIT (pacotes npm sem campo `license`, aceitos por exceção na N45), Nimbalyst MIT com árvore não medida; verificador com as decisões da N45 e o nível C, 16 testes passam [V]. | [licenses](licenses/README.md) |
 | 24 | Termos (R1, confirmação com a Anthropic) | Pendente do dono | O texto público foi lido [S]; não diz se um orquestrador pessoal multi-conta cabe; nenhuma resposta da Anthropic existe [N]. | [licenses](licenses/README.md) |
 
 Contagem: 10 Medido, 8 Parcial, 3 Pendente do dono, 3 Não medível nesta máquina (24 linhas).
@@ -136,7 +136,15 @@ Stream de 50 msg/s por 300 s:
 - **Licença:** os binários nativos do OpenTUI são `MIT AND LGPL-2.1-or-later` (FFmpeg estático); a §6.0 e o P11 proíbem LGPL. A decisão final do dono foi o Ink (ADR 0002).
 - **Ink otimizado (2026-11-15):** digitação p50/p95/máx 10,1/16,5/26,6 ms (a base da rodada 48,2/70,8/78,1), CPU 23,6%, RSS mediana 142,3 MB, histórico PageUp 7,9/14,8 ms. Piso da bancada ~2 ms. Inclui um patch do `output.js` do Ink 8.0.0, travado na versão. A adoção do patch, fork ou contribuição ao Ink é do dono. Borda quebrada: 1 em 29 sem `--incremental`, 0 em 58 com (hipótese de captura no meio do quadro [N]).
 - **Mouse e mockup:** as 4 telas (`main`, `traj`, `config`, `focus`) saem idênticas ao mockup, 5880 de 5880 células cada, em `renderToString` e no tmux real. Roda, clique em aba e seção e arrasto da alça funcionam, com `--mouse full|wheel|off`. O mouse exigiu caminho próprio no stdin (`filter` ou `tap`); o `tap` vaza sequência cortada e o `filter` também, exceto no `ESC` isolado. Ctrl+J chega como `\n`; F-keys não chegam ao `useInput`; `@inkjs/ui` não foi usado; 80x24 fica apertado. Sem medição de desempenho do mockup [V].
-- **Teclas (tmux Linux, 29 teclas):** Ctrl+J chega como `0a`, diferente do Enter `0d`. Ctrl+B não chega dentro do tmux com o prefixo padrão (modo aninhado). Alt+B chega (`1b 62`). Ctrl+Shift+←/→ chegam como `ESC[1;6D/C`. Ctrl+Shift+P chega como `10`, dado fraco: o byte foi gerado pelo tmux. O terminal sob o tmux não responde ao protocolo kitty. `send-keys` não passa por terminal real [V].
+- **Teclas (tmux Linux; mapa da N35, 41 teclas; refeito em 2026-11-15):** Ctrl+J chega como `0a`, diferente do Enter `0d`. Alt+S, Alt+J, Alt+A, Alt+W e Alt+K chegam como `ESC letra`. Ctrl+B não chega dentro do tmux com o prefixo padrão (modo aninhado); no preset `agents` ele só move o cursor na caixa de texto. Ctrl+Shift+←/→ chegam como `ESC[1;6D/C`. O terminal sob o tmux não responde ao protocolo kitty. `send-keys` não passa por terminal real [V].
+- **Shift+Enter no tmux [V]:**
+  - Sem `extended-keys`, chega `0d`, igual ao Enter.
+  - Com `extended-keys always` e `extended-keys-format csi-u` na partida do servidor, chega `ESC[13;2u`.
+  - Com `extended-keys on`, o programa que pede o modifyOtherKeys recebe `ESC[27;2;13~`. Nesse modo, Ctrl+letra, Alt+letra e Shift+Tab também mudam de forma.
+  - O aninhado deu o mesmo.
+  - O `extended-keys` ligado com `tmux set` depois de a sessão abrir não teve efeito.
+- **Ink 8.0.0 e teclas estendidas [V]:** o `parse-keypress` do Ink lê o `CSI u` (Shift+Enter vira `return` com `shift`) e não lê o modifyOtherKeys (nome vazio). Para o Ink, o caminho é o `CSI u`: o protocolo kitty ou o tmux com `extended-keys-format csi-u`.
+- **Ctrl+Shift+P:** chega como `10` sem `extended-keys` e com `csi-u`. Com o modifyOtherKeys pedido, chega distinto (`ESC[27;6;112~`). A §5.13 diz que só o protocolo kitty distingue; no tmux, o modifyOtherKeys também distingue [V]. Dado fraco: o byte foi gerado pelo tmux.
 - **Limites declarados:** só tmux; os geradores dos dois protótipos não são idênticos; vazamento contra retenção do OpenTUI [N]; sem terminal gráfico, SSH, macOS, Windows, IME; faltam as 3 repetições mínimas.
 
 ### 2.10 OTel (item 21)
@@ -154,10 +162,11 @@ Stream de 50 msg/s por 300 s:
 ### 2.12 Licenças (item 23)
 
 - **1MCP** Apache-2.0 (199 pacotes de produção, todos permitidos); **AgentPrism** MIT no repositório, mas os pacotes npm `agent-prism-data` e `agent-prism-types` 1.0.0 não têm campo `license`; **Nimbalyst** MIT, com árvore **não medida** [V].
-- **Verificador** `check.mjs` com `policy.json` vazio de propósito: 12 testes sintéticos passam [V].
+- **Verificador** `check.mjs`: 16 testes sintéticos passam [V]. Desde 2026-11-15, `policy.json` traz as decisões do dono (N45): oito licenças aceitas, a exceção do AgentPrism e os executores em `ferramentasExternas`. A chave `--nivel-c=falha|instalacao` reprova ferramenta de nível C dentro do produto (padrão), ou aceita a ferramenta e o que só ela traz quando a pasta é uma lista de ferramentas externas.
+- **Decisões do dono (N45, 2026-11-15):** os executores e os adaptadores ACP ficam no nível C (D1, D4 e D5). BlueOak-1.0.0, Unlicense, CC0-1.0, MIT-0, Python-2.0, WTFPL, CC-BY-3.0 e CC-BY-4.0 são aceitas em dependências (D6). AgentPrism 1.0.0 entra por exceção (D7). Confirmadas as regras `OR` e `AND` do SPDX (D9) e GPL só no nível C (D10). Com isso, `core` e `later` passam também com `--tudo`, e `executors` passa com `--nivel-c=instalacao` [V].
 - **Árvores da stack:** núcleo 192 de 192 permitidas; fases posteriores 138 de 138; executores (só lockfile) 154, com 22 sem decisão e 0 proibidas [V].
 - **Árvores dos spikes:** 2 proibidas, `@opentui/core-linux-x64` e `-musl` (`MIT AND LGPL-2.1-or-later`); 10 sem decisão nas árvores com `claude-agent-acp`; 1 alerta de arquivo LGPL em `@openai/codex@0.166.0-linux-x64` [V].
-- **`@anthropic-ai/claude-agent-sdk`:** "todos os direitos reservados". O texto não concede nem proíbe a redistribuição dentro de um SEA: ambíguo [N] (D1 do spike).
+- **`@anthropic-ai/claude-agent-sdk`:** "todos os direitos reservados". O texto não concede nem proíbe a redistribuição dentro de um SEA: ambíguo [N]. Por isso a D1 o deixou fora do executável, no nível C.
 - **Termos da OpenAI não foram lidos:** as páginas devolveram HTTP 403 ao `curl` em 2026-11-15 [N].
 - **Termos da Anthropic:** lidos como texto de página [S]. O spike não interpreta além do texto (ver D2).
 
@@ -180,11 +189,11 @@ O README `licenses` registra o que as páginas públicas da Anthropic dizem (con
 |---|---|
 | Tabela de terminais e atalhos: Windows Terminal, VS Code, Terminal.app (com e sem Option como Meta), iTerm2, GNOME Terminal/Konsole, SSH | [tui-keys](tui-keys/README.md) |
 | Chave da MiniMax para rodar `q4-minimax-remains.ts` | [quota-probes](quota-probes/README.md) |
-| Contato com a Anthropic sobre o R1 (orquestrador pessoal multi-conta; redistribuição do SDK dentro do executável) | [licenses](licenses/README.md), D1 e D2 |
+| Contato com a Anthropic sobre o R1 (orquestrador pessoal multi-conta). A redistribuição do SDK saiu da pergunta: pela D1 ele fica no nível C | [licenses](licenses/README.md), D2 |
 | Termos da OpenAI: ler ele mesmo, ou autorizar outro meio de leitura (o `curl` deu 403) | [licenses](licenses/README.md), D3 |
 | Segundo login de cada cliente (precisa de uma segunda conta) | os três acp-* |
 | Assinatura ou OAuth real para esgotar cota, `resetsAt` e failover entre contas | [quota-exhaustion](quota-exhaustion/README.md) |
-| Decisões já listadas como do dono nos READMEs: `processModel` do OpenCode (1 por sessão ou por perfil); patch, fork ou contribuição ao Ink; D4 a D10 do `licenses` (pacotes `opencode-<plataforma>` sem licença, LGPL no Codex, licenças "caso a caso", AgentPrism, `OR`/`AND` em SPDX, GPL em ferramenta externa) | READMEs de origem |
+| Decisões já listadas como do dono nos READMEs: `processModel` do OpenCode (1 por sessão ou por perfil); patch, fork ou contribuição ao Ink | READMEs de origem |
 
 ### 4.2 Exigem Windows ou macOS
 
@@ -240,8 +249,9 @@ Só entram as mudanças que alguma fonte já registra. A coluna "Onde está escr
 | §6.1 dizia MIT para o MCP SDK v2, mas é Apache-2.0 | `licenses/README.md`, D8; aplicado na arquitetura v0.40 (2026-11-15) |
 | Ollama como ferramenta de modelo local para desenvolvimento e testes; `serve.sh` obsoleto | `local-model/README.md` |
 | OpenTUI fora do produto por LGPL | `licenses/README.md`, seção 6.2; ADR 0002 |
+| Licenças da Fase 0: executores no nível C, oito licenças aceitas, `OR`/`AND` do SPDX, GPL só no nível C, exceção do AgentPrism | docs/13, N45; arquitetura v0.41 (§6.0) |
 
-Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos spikes em `spikes/`), N36 (copiar com o mouse), N43 (integração de terminal estilo Claude Desktop) e N44 (comandos `/` e sessão direta).
+Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos spikes em `spikes/`), N36 (copiar com o mouse), N43 (integração de terminal estilo Claude Desktop), N44 (comandos `/` e sessão direta) e N45 (licenças da Fase 0).
 
 ## 7. Veredito do critério de aceite
 
@@ -258,6 +268,6 @@ Sem resposta medida, por grupo:
 Dois pontos de leitura que não mudam a contagem:
 
 - **Medido não quer dizer fechado.** Vários itens "Medido" têm uma execução por célula (TUI, bastão, modelo local) e marcam n pequeno no README. O item 2 está medido, mas o `processModel` do OpenCode continua do dono.
-- **O texto da §10 pede "Shift+Enter distinguível do Enter".** O mapa do `tui-keys` não tem uma linha de Shift+Enter, então esse ponto não foi medido. O README do `tui-keys` ainda testa Ctrl+B, e o ADR 0002 registra que a N35 trocou os atalhos do layout por Alt+letra.
+- **O texto da §10 pede "Shift+Enter distinguível do Enter".** Em 2026-11-15, o `tui-keys` passou ao mapa da N35 e ganhou uma linha de Shift+Enter. No tmux, o Shift+Enter só se distingue do Enter com `extended-keys` ligado na partida, e o Ink só o lê no formato `CSI u` [V]. Nos terminais reais, a medição continua pendente do dono. Por isso, quem garante a nova linha (N35) é o Ctrl+J, que se distingue do Enter em toda a bancada.
 
 Estimativa da §10: 2 a 3 semanas. Os READMEs não medem o esforço real; nada aqui confirma ou contradiz o prazo.

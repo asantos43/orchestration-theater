@@ -1,13 +1,165 @@
 {
   "versao": 1,
-  "fonte": "docs/framework-ideas/arquitetura.md, secao 6.0 (v0.35, 2026-11-15)",
-  "permitidas": ["MIT", "Apache-2.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "MPL-2.0"],
-  "proibidas": ["GPL", "GPL-*", "AGPL", "AGPL-*", "LGPL", "LGPL-*"],
-  "decisoesPorLicenca": [],
-  "excecoes": [],
+  "fonte": "docs/framework-ideas/arquitetura.md, secao 6.0 (v0.41, 2026-11-15); decisoes da N45 em docs/13",
+  "permitidas": [
+    "MIT",
+    "Apache-2.0",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "MPL-2.0"
+  ],
+  "proibidas": [
+    "GPL",
+    "GPL-*",
+    "AGPL",
+    "AGPL-*",
+    "LGPL",
+    "LGPL-*"
+  ],
+  "decisoesPorLicenca": [
+    {
+      "licenca": "BlueOak-1.0.0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Permissiva moderna (familia isaacs: glob, minimatch, lru-cache...). Sem copyleft.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "Unlicense",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Dominio publico, sem copyleft.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "CC0-1.0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Dominio publico, sem copyleft.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "MIT-0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "MIT sem a exigencia de aviso.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "Python-2.0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Permissiva (PSF); argparse.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "CC-BY-4.0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Dados (caniuse-lite), atribuicao; nao e licenca de codigo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "WTFPL",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Permissiva sem restricao.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "licenca": "CC-BY-3.0",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Dados de SPDX (spdx-exceptions, spdx-ranges), so no verificador; atribuicao; nao e licenca de codigo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    }
+  ],
+  "excecoes": [
+    {
+      "pacote": "@evilmartians/agent-prism-data",
+      "versoes": "1.0.0",
+      "escopo": "qualquer",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "AgentPrism: o pacote npm nao tem campo license; o repositorio (commit 4fd371b5, 2026-10-08) e o LICENSE dentro do tarball sao MIT. Sem `licenca`: o verificador le \"MIT*\" instalado e \"UNKNOWN\" no lockfile. Versao nova exige nova conferencia.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "@evilmartians/agent-prism-types",
+      "versoes": "1.0.0",
+      "escopo": "qualquer",
+      "decisao": "aceita",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "AgentPrism: o pacote npm nao tem campo license; o repositorio (commit 4fd371b5, 2026-10-08) e o LICENSE dentro do tarball sao MIT. Sem `licenca`: o verificador le \"MIT*\" instalado e \"UNKNOWN\" no lockfile. Versao nova exige nova conferencia.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    }
+  ],
+  "ferramentasExternas": [
+    {
+      "pacote": "@agentclientprotocol/claude-agent-acp",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Adaptador ACP do Claude Code; traz o @anthropic-ai/claude-agent-sdk, proprietario (D1). O usuario instala; o executavel do OTheater nao carrega nem distribui.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "@anthropic-ai/claude-agent-sdk",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "SDK proprietario do Claude (D1); so como parte do executor instalado pelo usuario.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "@anthropic-ai/claude-code",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Cliente Claude Code, proprietario; executor externo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "@agentclientprotocol/codex-acp",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Adaptador ACP do Codex; executor externo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "@openai/codex",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Cliente Codex; o binario de plataforma traz LGPL (D5). Executor externo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    },
+    {
+      "pacote": "opencode-ai",
+      "nivel": "C",
+      "decididoPor": "Anderson (dono)",
+      "data": "2026-11-15",
+      "motivo": "Cliente OpenCode; pacotes de plataforma sem campo license (D4). Executor externo.",
+      "fonte": "docs/13 N45; arquitetura secao 6.0 (v0.41)"
+    }
+  ],
   "_comoDecidir": {
     "decisoesPorLicenca": "Cada item: { licenca, decisao: 'aceita', decididoPor, data, motivo, fonte }. Vale para toda a arvore (ex.: BlueOak-1.0.0).",
     "excecoes": "Cada item: { pacote, versoes (semver, opcional), licenca (texto exato que o verificador le; se mudar, a excecao deixa de valer), escopo ('producao' | 'dev' | 'qualquer'), permiteProibida (true so se o dono decidir abrir excecao para GPL/AGPL/LGPL; sem isso a excecao nao vale para proibida), decisao: 'aceita', decididoPor, data, motivo, fonte }.",
-    "regra": "So entra aqui o que o dono decidiu e registrou na secao 6.0 e no docs/13. Propostas ficam em proposals.json e so valem com --com-propostas."
+    "regra": "So entra aqui o que o dono decidiu e registrou na secao 6.0 e no docs/13. Propostas ficam em proposals.json e so valem com --com-propostas.",
+    "ferramentasExternas": "Cada item: { pacote, nivel: 'C', decididoPor, data, motivo, fonte }. Programa que roda em processo separado e que o usuario instala. Com --nivel-c=falha (padrao), aparecer na arvore de producao reprova ('nivel-c-empacotada'). Com --nivel-c=instalacao (a pasta e uma lista de ferramentas externas, como stacks/executors), o pacote e o que so ele traz ficam 'nivel-c' e nao reprovam."
   }
 }

@@ -26,7 +26,7 @@ Legenda: **[V]** verificado localmente (arquivo lido, comando rodado); **[S]** f
 | 1c. Nimbalyst | **MIT** (LICENSE da raiz, `package.json` da raiz e API do GitHub). `LICENSING.md` diz que o servidor de sincronização é projeto separado e que as dependências de terceiros têm licença própria. Árvore de dependências **não medida** (monorepo pnpm grande; é referência, não dependência) | [V] / [N] a árvore |
 | 1d. Outros [a confirmar] de licença | croner **MIT**, dependency-cruiser **MIT** (dev). `wl-paste` (pacote `wl-clipboard` 2.3.0) é **GPL-3.0-or-later** (rpm local). `xclip` **não está instalado**, licença não confirmada. **Divergência com a §6.1:** o MCP SDK v2 (`@modelcontextprotocol/server` e `client` 2.4.0) é **Apache-2.0**, não MIT | [V] / xclip [N] |
 | 2. Licenças e termos dos seis pacotes | Quatro são abertos (Apache-2.0 ou MIT). `@anthropic-ai/claude-agent-sdk` é "todos os direitos reservados", com uso regido pelos Termos Comerciais. Redistribuir o SDK dentro de um SEA **não tem permissão nem proibição no texto**: ambíguo (D1, D2) | [V] licenças; [S] termos |
-| 3. `check.mjs` + `policy.json` | Feitos. 12 testes sintéticos passam (`node test.mjs`). Sai com código 1 em licença proibida ou sem decisão | [V] |
+| 3. `check.mjs` + `policy.json` | Feitos. 16 testes sintéticos passam (`node test.mjs`). Sai com código 1 em licença proibida, sem decisão ou ferramenta de nível C empacotada. As decisões da N45 (2026-11-15) estão em `policy.json` | [V] |
 | 4a. Árvore da stack da §8 | **Núcleo (192 pacotes): aprovado. Fases posteriores (138): aprovado.** Executores (154, só lockfile): 22 sem decisão, 0 proibidas | [V] |
 | 4b. Árvores dos spikes já instaladas | **2 proibidas** (`@opentui/core-linux-x64` e `-musl`, `MIT AND LGPL-2.1-or-later`). 10 sem decisão nas árvores com `claude-agent-acp`. 1 alerta de arquivo LGPL no `@openai/codex` | [V] |
 
@@ -99,13 +99,16 @@ Todas **[S]** (texto de página, não contrato assinado).
 `check.mjs` lê a árvore, aplica a política de `policy.json` (dados, não código) e sai com **1** se achar licença proibida ou fora da lista sem decisão. Protótipo da automação de licenças da Fase 1.
 
 - **Motor:** `license-checker-rseidelsohn` lê as licenças instaladas; `@npmcli/arborist` monta o grafo e dá o caminho mais curto de quem trouxe cada pacote.
-- **SPDX:** `OR` vale o melhor ramo (o consumidor escolhe). `AND` vale o pior. Lista de licenças em um pacote vale como `OR`. É uma **leitura** minha da regra, ver D9.
+- **SPDX:** `OR` vale o melhor ramo (o consumidor escolhe). `AND` vale o pior. Lista de licenças em um pacote vale como `OR`. Era uma leitura minha (D9); o dono a confirmou em 2026-11-15 (N45).
 - **Desconhecidas:** `UNKNOWN`, `Custom`, `SEE LICENSE IN` e expressão inválida são "sem decisão". Licença inferida pelo verificador (marca `*`, sem campo `license` no pacote) também reprova por padrão (`--palpite=aviso` desliga).
 - **Escopo:** produção (padrão) ou `--tudo` (inclui dev). Dev só importa no nível D.
 - **Modo `--so-lockfile`:** lê o `license` do `package-lock.json`. Dá a árvore de plataformas que não foram instaladas, sem baixar binários.
 - **Alerta de arquivo copyleft:** pacote que declara licença permitida mas leva `LGPL-*.txt`, `GPL*` ou `COPYING.LESSER` dentro. É o caso do `@openai/codex`. Vira falha com `--alertas=falha`.
-- **Decisões:** `policy.json` está **vazio de decisões de propósito**. Só entram nele decisões registradas pelo dono (por licença, ou exceção por pacote, versão, texto exato da licença e escopo). Exceção nunca libera licença proibida, a menos que diga `permiteProibida: true`.
-- **Propostas:** `proposals.json` lista o que eu **proporia**, e só vale com `--com-propostas` (mostra quanto da lista "caso a caso" some). Não vale na CI.
+- **Decisões:** só entram em `policy.json` decisões registradas pelo dono. Desde 2026-11-15 (N45) ele tem as oito licenças da D6 (`decisoesPorLicenca`), a exceção do AgentPrism (`excecoes`, por pacote e versão) e os executores (`ferramentasExternas`). Uma exceção pode exigir o texto exato da licença; sem esse campo, vale para qualquer leitura. Nunca libera licença proibida, a menos que diga `permiteProibida: true`.
+- **Nível C (`--nivel-c=falha|instalacao`):** os pacotes de `ferramentasExternas` são programas que o usuário instala e que rodam em processo separado.
+  - `falha` (padrão): se aparecem na árvore de produção, reprovam como `nivel-c-empacotada`, porque o executável do OTheater não pode carregá-los.
+  - `instalacao`: a pasta é uma lista de ferramentas externas (`stacks/executors`, spikes de ACP). A ferramenta e o que **só ela** traz ficam `nivel-c` e não reprovam. O que a raiz também traz por outro caminho continua verificado.
+- **Propostas:** `proposals.json` guardou o que eu propus para a D6, e só vale com `--com-propostas`. As oito foram aceitas e estão em `policy.json`; o arquivo fica como histórico.
 - **Códigos de saída:** 0 aprovado; 1 reprovado; 2 erro de uso ou execução.
 
 Limites **[V]**: o `license-checker` não enxerga pacotes opcionais de plataforma que não foram instalados; o modo `--so-lockfile` cobre esse caso. O campo `license` do lockfile é o do registro; não confere o arquivo de licença dentro do tarball.
@@ -133,7 +136,7 @@ Manifestos em `stacks/<nome>/` (versões exatas e `package-lock.json`). `npm ins
 
 ### 6.2 Árvores dos spikes já instaladas (`spikes/*/node_modules`)
 
-Produção, modo instalado. Sem `node_modules` (não medidos): `tui-bench`, `tui-keys`.
+Medição de antes das decisões (política vazia). Para o resultado depois da N45, veja a seção 6.3. Produção, modo instalado. Sem `node_modules` (não medidos): `tui-bench`, `tui-keys`.
 
 | Spike | Pacotes | Situação |
 |---|---|---|
@@ -160,20 +163,42 @@ Produção, modo instalado. Sem `node_modules` (não medidos): `tui-bench`, `tui
 
 O OpenTUI já está fora do produto (a TUI é Ink, decidido em 2026-11-15, item 11 da §12). O verificador pegou o caso sem ajuda, como esperado. Esse código é descartável (spike), mas fica registrado.
 
-## 7. Decisões que o dono precisa tomar
+### 6.3 Depois das decisões da N45 (2026-11-15) **[V]**
 
-Nada abaixo foi decidido por mim. `policy.json` continua vazio.
+Rodado de novo com `policy.json` preenchido:
 
-- **D1. O SDK do Claude pode ir dentro do executável?** `@anthropic-ai/claude-agent-sdk` (e o binário nativo de cerca de 365 MB) é proprietário. O texto não concede redistribuição. Pela §6.0 seria nível B e, sem licença permitida, "caso a caso". Opções: tratar o `claude-agent-acp` como **ferramenta externa de nível C** (o usuário o instala; o SEA não o carrega) ou pedir confirmação por escrito à Anthropic. Isto também decide como o verificador trata as entradas "SEE LICENSE".
+| Árvore | `--nivel-c=falha` (padrão) | `--nivel-c=instalacao` |
+|---|---|---|
+| `stacks/core --tudo --so-lockfile` | aprovado (320 permitidas, 1 decidida: `graceful-fs`, BlueOak) | igual |
+| `stacks/later --tudo --so-lockfile` | aprovado (436 permitidas, 11 decididas) | igual |
+| `stacks/executors --so-lockfile` | reprovado: 18 de nível C empacotados e 20 sem decisão | **aprovado**: os 154 são nível C |
+| `licenses --tudo` (este spike) | aprovado (115 permitidas, 15 decididas) | igual |
+| `acp-claude` | reprovado: 2 de nível C e 8 pacotes de plataforma do SDK | **aprovado**: 116 permitidas, 20 nível C |
+| `acp-codex` | reprovado: 8 de nível C | **aprovado**: 93 permitidas, 23 nível C |
+| `otel`, `quota-exhaustion` | reprovados: 10 de nível C e 8 sem decisão | **aprovados** (132 e 133 nível C) |
+| `tui-ink`, `tui-mockup-ink` | aprovados | igual |
+| `tui-opentui` | **2 proibidas** (LGPL do FFmpeg) | igual: nível C não libera dependência empacotada |
+
+Os spikes de ACP reprovam no modo padrão, e isso é o certo: eles instalam o adaptador como dependência. No produto, o adaptador fica fora do executável. O `fast-sha256` (Unlicense) agora é "decidida" no modo padrão, e "nível C" no modo instalação.
+
+## 7. Decisões do dono
+
+Decididas em 2026-11-15, registradas na N45 do [docs/13](../../docs/13-DECISOES-EM-ABERTO.md) e na arquitetura v0.41 (§6.0). Foram por múltipla escolha, e as respostas coincidiram com as recomendações:
+
+| Ponto | Decisão |
+|---|---|
+| **D1.** O SDK proprietário do Claude dentro do executável | O `claude-agent-acp`, com o SDK, é **ferramenta externa de nível C**. O usuário a instala, e o executável não a carrega |
+| **D4.** Pacotes `opencode-<plataforma>` sem campo `license` | O OpenCode é **nível C** |
+| **D5.** LGPL dentro do `@openai/codex-linux-x64` | O Codex é **nível C** |
+| **D6.** Licenças "caso a caso" nas árvores | Aceitas as oito: BlueOak-1.0.0, Unlicense, CC0-1.0, MIT-0, Python-2.0, WTFPL, CC-BY-3.0, CC-BY-4.0. Valem em dependências (níveis B e D); código copiado (nível A) segue caso a caso |
+| **D7.** AgentPrism | Exceção por pacote e versão: `@evilmartians/agent-prism-data` e `-types` 1.0.0 |
+| **D8.** Licença do MCP SDK v2 | Fato, não decisão; corrigido na v0.40 (Apache-2.0) |
+| **D9.** `OR` e `AND` do SPDX | Confirmada a leitura: `OR` pelo melhor ramo, `AND` pelo pior |
+| **D10.** Ferramentas GPL em processo separado | Aceitas no nível C, instaladas pelo usuário, nunca embutidas nem distribuídas (`wl-paste`) |
+
+Continuam abertas:
 - **D2. Uso pessoal x produto (R1).** O texto diz que quem constrói produto "deve usar chave de API", que terceiros não podem rotear requisições por credenciais de plano, e que os limites dos planos assumem "uso comum e individual". Não diz se um orquestrador **pessoal e multi-conta** com o binário não modificado cabe nisso. Continua a pergunta à Anthropic da §10 ("Termos"). Também fica aberto o que "script ou bot" quer dizer nos Termos de Consumidor.
-- **D3. Termos da OpenAI.** Não consegui ler (403). Preciso que o dono confirme se leio por outro meio ou se ele mesmo lê, antes de afirmar algo sobre uso de assinatura ChatGPT no Codex.
-- **D4. Pacotes `opencode-<plataforma>` sem campo `license`.** O pacote principal e o repositório são MIT. Aceitar uma exceção por pacote (nome, versão, texto "UNKNOWN") ou tratar o OpenCode como nível C?
-- **D5. LGPL dentro do `@openai/codex-linux-x64`.** Se o Codex for ferramenta externa (nível C), não há problema para o nosso código. Se algum dia for empacotado, a §6.0 proíbe a LGPL em nível B. Confirmar que Codex fica em nível C.
-- **D6. Licenças "caso a caso" que aparecem nas árvores.** Proponho (em `proposals.json`, sem valor na CI): BlueOak-1.0.0, Unlicense, CC0-1.0, MIT-0, Python-2.0, WTFPL, CC-BY-3.0 e CC-BY-4.0 (as duas últimas são de dados). Todas permissivas, nenhuma é copyleft. Com todas aceitas, as árvores `later`, `core` e `licenses` passam com `--tudo`.
-- **D7. AgentPrism.** Os pacotes npm `data` e `types` não declaram licença. Opção 1: exceção por pacote e versão (a licença do repositório e o `LICENSE` do tarball são MIT). Opção 2: copiar o código (nível A, com aviso MIT). Opção 3: componente próprio.
-- **D8. Correção na §6.1 (não é decisão, é fato).** MCP SDK v2: Apache-2.0, não MIT. A Apache-2.0 traz obrigações (NOTICE, marca de modificação) que a §6.0 já lista. O orquestrador ajusta o texto.
-- **D9. `OR` e `AND` em expressões SPDX.** O verificador aceita `(BSD-3-Clause OR GPL-2.0)` porque o consumidor escolhe o ramo permissivo, e rejeita `MIT AND LGPL-2.1-or-later`. A §6.0 não diz isso. Confirmar a leitura.
-- **D10. Ferramentas externas copyleft (nível C).** `wl-paste` é GPL-3.0-or-later (`xclip` não confirmada). A §6.0 diz que no nível C a licença "não se propaga" e basta permitir o uso, mas a tabela proíbe GPL só nos níveis A e B. Confirmar que GPL em processo separado, instalado pelo usuário, é aceita.
+- **D3. Termos da OpenAI.** Não consegui ler (403). O dono decide se leio por outro meio ou se ele mesmo lê, antes de afirmar algo sobre uso de assinatura ChatGPT no Codex.
 
 ## 8. Pendências (não medido)
 
@@ -192,14 +217,14 @@ Nada abaixo foi decidido por mim. `policy.json` continua vazio.
 cd spikes/licenses
 npm install --ignore-scripts
 
-node test.mjs                                            # 12 testes sintéticos, sem rede
+node test.mjs                                            # 16 testes sintéticos, sem rede
 node check.mjs --dir ../acp-claude                       # produção, árvore instalada
 node check.mjs --dir ../acp-claude --tudo --json out/x.json
-node check.mjs --dir stacks/executors --so-lockfile      # só o package-lock.json
-node check.mjs --dir . --tudo --com-propostas            # mostra o efeito das propostas
+node check.mjs --dir stacks/executors --so-lockfile --nivel-c=instalacao   # só o package-lock.json; lista de ferramentas externas
+node check.mjs --dir ../acp-claude --nivel-c=instalacao  # spike que instala o adaptador
 ```
 
-Opções: `--dir`, `--tudo`, `--com-propostas`, `--json <arquivo>`, `--palpite=falha|aviso`, `--alertas=aviso|falha`, `--so-lockfile`, `--politica <arquivo>`, `--quiet`. Código de saída: 0 aprovado, 1 reprovado, 2 erro.
+Opções: `--dir`, `--tudo`, `--com-propostas`, `--json <arquivo>`, `--palpite=falha|aviso`, `--alertas=aviso|falha`, `--nivel-c=falha|instalacao`, `--so-lockfile`, `--politica <arquivo>`, `--quiet`. Código de saída: 0 aprovado, 1 reprovado, 2 erro.
 
 Para reproduzir as árvores da stack: `cd stacks/core && npm ci --ignore-scripts` (idem `later`) e rode o verificador na pasta. A árvore `core` precisou de `@opentelemetry/api` 1.10.0 para resolver os pares do OpenTelemetry; os `package-lock.json` guardam o resultado.
 

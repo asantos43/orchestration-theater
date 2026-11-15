@@ -3,7 +3,10 @@
 // Aplica a politica da arquitetura (secao 6.0) como dados (policy.json) sobre uma arvore npm instalada.
 //
 // Uso: node check.mjs --dir <pasta com node_modules> [--tudo] [--com-propostas] [--json <arquivo>]
-//                     [--palpite=falha|aviso] [--alertas=aviso|falha] [--so-lockfile] [--politica <arquivo>] [--quiet]
+//                     [--palpite=falha|aviso] [--alertas=aviso|falha] [--nivel-c=falha|instalacao] [--so-lockfile] [--politica <arquivo>] [--quiet]
+//   --nivel-c: o que fazer com as ferramentas externas (nivel C, `ferramentasExternas` do policy.json).
+//     falha (padrao): na arvore de producao, reprovam ('nivel-c-empacotada'), porque o executavel nao pode carrega-las.
+//     instalacao: a pasta e uma lista de ferramentas externas (stacks/executors); elas e o que so elas trazem ficam 'nivel-c'.
 //   --so-lockfile: sem node_modules (nada baixado); usa so o package-lock.json (campo `license` do registro).
 //   --alertas: arquivos de licenca GPL/LGPL/AGPL dentro de um pacote cuja licenca declarada e outra.
 // Saida: 0 = ok; 1 = ha licenca proibida ou sem decisao; 2 = erro de uso ou de leitura.
@@ -25,7 +28,7 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url))
 
 // ---------- argumentos ----------
 function lerArgs(argv) {
-  const a = { dir: null, tudo: false, comPropostas: false, json: null, palpite: 'falha', alertas: 'aviso', soLockfile: false, politica: path.join(AQUI, 'policy.json'), quiet: false }
+  const a = { dir: null, tudo: false, comPropostas: false, json: null, palpite: 'falha', alertas: 'aviso', nivelC: 'falha', soLockfile: false, politica: path.join(AQUI, 'policy.json'), quiet: false }
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i]
     if (v === '--dir') a.dir = argv[++i]
@@ -37,11 +40,13 @@ function lerArgs(argv) {
     else if (v === '--so-lockfile') a.soLockfile = true
     else if (v.startsWith('--alertas=')) a.alertas = v.slice('--alertas='.length)
     else if (v.startsWith('--palpite=')) a.palpite = v.slice('--palpite='.length)
+    else if (v.startsWith('--nivel-c=')) a.nivelC = v.slice('--nivel-c='.length)
     else if (v === '-h' || v === '--help') a.ajuda = true
     else throw new Error(`argumento desconhecido: ${v}`)
   }
   if (!['falha', 'aviso'].includes(a.palpite)) throw new Error('--palpite aceita "falha" ou "aviso"')
   if (!['falha', 'aviso'].includes(a.alertas)) throw new Error('--alertas aceita "falha" ou "aviso"')
+  if (!['falha', 'instalacao'].includes(a.nivelC)) throw new Error('--nivel-c aceita "falha" ou "instalacao"')
   return a
 }
 
@@ -64,6 +69,7 @@ function carregarPolitica(arquivo, comPropostas) {
     proibidas: (p.proibidas ?? []).map(globParaRegex),
     porLicenca: new Map(),
     excecoes: [...(p.excecoes ?? [])],
+    externas: new Map((p.ferramentasExternas ?? []).map((x) => [x.pacote, x])),
   }
   const listas = [p.decisoesPorLicenca ?? []]
   if (comPropostas) {
@@ -151,7 +157,8 @@ async function lerGrafo(dir) {
 }
 
 // Busca em largura a partir da raiz. Devolve, por no, o caminho mais curto. Com `soProd`, ignora arestas de dev da raiz.
-function alcancar(raiz, soProd) {
+// `parar(no)`: o no entra no resultado, mas a busca nao segue por ele (usado para separar o que so o nivel C traz).
+function alcancar(raiz, soProd, parar = null) {
   const pai = new Map([[raiz, null]])
   const fila = [raiz]
   while (fila.length) {
@@ -162,7 +169,7 @@ function alcancar(raiz, soProd) {
       if (e.dev && n !== raiz) continue // dependencias de desenvolvimento de pacotes nao sao instaladas
       if (pai.has(e.to)) continue
       pai.set(e.to, n)
-      fila.push(e.to)
+      if (!parar || !parar(e.to)) fila.push(e.to)
     }
   }
   return pai
@@ -211,7 +218,7 @@ function arquivosCopyleft(pasta, limite = 3000) {
   return achados
 }
 
-export async function verificar({ dir, tudo = false, comPropostas = false, palpite = 'falha', alertas = 'aviso', soLockfile = false, politica }) {
+export async function verificar({ dir, tudo = false, comPropostas = false, palpite = 'falha', alertas = 'aviso', nivelC = 'falha', soLockfile = false, politica }) {
   const pol = carregarPolitica(politica, comPropostas)
   const modoLock = soLockfile
   const arb = new Arborist({ path: dir })
@@ -219,6 +226,18 @@ export async function verificar({ dir, tudo = false, comPropostas = false, palpi
   const dados = modoLock ? {} : await rodarVerificador(dir)
   const paiProd = alcancar(raiz, true)
   const paiTodos = alcancar(raiz, false)
+  const ehExterna = (n) => pol.externas.has(n.packageName ?? n.name)
+  // Sem passar por ferramenta externa: o que o produto carrega de fato. O resto alcancavel so vem pelo nivel C.
+  const semExternas = alcancar(raiz, !tudo, ehExterna)
+  const nomesSoNivelC = new Set()
+  for (const n of paiTodos.keys()) if (n !== raiz && !ehExterna(n) && !semExternas.has(n)) nomesSoNivelC.add(n.packageName ?? n.name)
+  const situacaoNivelC = (nome, no, viaLockfile) => {
+    const x = pol.externas.get(nome)
+    if (x) return nivelC === 'instalacao' ? { situacao: 'nivel-c', motivo: `ferramenta externa (nivel C, ${x.data ?? 'sem data'})` } : { situacao: 'nivel-c-empacotada', motivo: `${nome} e ferramenta externa (nivel C): o executavel nao pode carrega-la nem distribui-la. Para uma lista de ferramentas, use --nivel-c=instalacao` }
+    if (nivelC !== 'instalacao') return null
+    const soC = no ? !semExternas.has(no) && paiTodos.has(no) : viaLockfile
+    return soC ? { situacao: 'nivel-c', motivo: 'trazido so por ferramenta externa (nivel C)' } : null
+  }
 
   // nome@versao -> no do Arborist (primeiro encontrado; a licenca e a mesma em toda copia da mesma versao)
   const nos = new Map()
@@ -249,6 +268,7 @@ export async function verificar({ dir, tudo = false, comPropostas = false, palpi
     if (!tudo && !emProd) continue
     vistos.add(`${nome}@${versao}`)
     const item = montarItem({ nome, versao, licenca: info.licenses, escopo, origem: modoLock ? 'lockfile' : 'instalado', caminho: alcancavel ? caminhoAte(no, tudo ? paiTodos : paiProd, raiz) : '(nao alcancavel a partir da raiz)', arquivo: info.licenseFile ? path.relative(dir, info.licenseFile) : null, noticia: info.noticeFile ? true : false, repositorio: info.repository ?? null }, pol, palpite)
+    aplicarNivelC(item, situacaoNivelC(nome, no, false))
     if (!modoLock && no.path && fs.existsSync(no.path)) {
       const cl = arquivosCopyleft(no.path)
       if (cl.length && !/gpl/i.test(item.licenca)) {
@@ -275,18 +295,30 @@ export async function verificar({ dir, tudo = false, comPropostas = false, palpi
       if (!tudo && escopo === 'dev') continue
       lockfileExtras++
       vistos.add(`${nome}@${versao}`)
-      itens.push(montarItem({ nome, versao, licenca: pk.license ?? 'UNKNOWN', escopo, origem: 'lockfile (nao instalado nesta maquina)', caminho: `package-lock.json: ${chave}${pk.os ? ` [os=${[].concat(pk.os).join(',')}]` : ''}${pk.cpu ? ` [cpu=${[].concat(pk.cpu).join(',')}]` : ''}`, arquivo: null, noticia: false, repositorio: null }, pol, palpite))
+      const it = montarItem({ nome, versao, licenca: pk.license ?? 'UNKNOWN', escopo, origem: 'lockfile (nao instalado nesta maquina)', caminho: `package-lock.json: ${chave}${pk.os ? ` [os=${[].concat(pk.os).join(',')}]` : ''}${pk.cpu ? ` [cpu=${[].concat(pk.cpu).join(',')}]` : ''}`, arquivo: null, noticia: false, repositorio: null }, pol, palpite)
+      // Nao instalado aqui: e "so do nivel C" se alguma ferramenta externa, ou algo que so ela traz, o declara.
+      const viaC = [...nos.values()].some((n) => (pol.externas.has(n.packageName ?? n.name) || nomesSoNivelC.has(n.packageName ?? n.name)) && [n.package.dependencies, n.package.optionalDependencies].some((d) => d && nome in d))
+      aplicarNivelC(it, situacaoNivelC(nome, null, viaC))
+      itens.push(it)
     }
   }
 
-  const resumo = { total: itens.length, privadosIgnorados: privados, lockfileExtras, alertas: alertasN, porNivel: { permitida: 0, decidida: 0, 'sem-decisao': 0, proibida: 0 }, porLicenca: {} }
+  const resumo = { total: itens.length, privadosIgnorados: privados, lockfileExtras, alertas: alertasN, porNivel: { permitida: 0, decidida: 0, 'sem-decisao': 0, proibida: 0, 'nivel-c': 0, 'nivel-c-empacotada': 0 }, porLicenca: {} }
   for (const it of itens) {
     resumo.porNivel[it.situacao]++
     resumo.porLicenca[it.licenca] = (resumo.porLicenca[it.licenca] ?? 0) + 1
   }
-  const falhas = itens.filter((i) => i.situacao === 'proibida' || i.situacao === 'sem-decisao' || (alertas === 'falha' && i.alertas))
+  const falhas = itens.filter((i) => i.situacao === 'proibida' || i.situacao === 'sem-decisao' || i.situacao === 'nivel-c-empacotada' || (alertas === 'falha' && i.alertas))
   const comAlertas = itens.filter((i) => i.alertas)
-  return { dir: path.basename(dir), modo: modoLock ? 'so-lockfile' : 'instalado', escopo: tudo ? 'tudo (producao + dev)' : 'producao', comPropostas, resumo, falhas, alertas: comAlertas, itens }
+  return { dir: path.basename(dir), modo: modoLock ? 'so-lockfile' : 'instalado', escopo: tudo ? 'tudo (producao + dev)' : 'producao', nivelC, comPropostas, resumo, falhas, alertas: comAlertas, itens }
+}
+
+// Nivel C substitui a leitura da licenca: a ferramenta roda em processo separado e o usuario a instala (secao 6.0, N45).
+function aplicarNivelC(item, c) {
+  if (!c) return
+  item.licencaLida = item.situacao
+  item.situacao = c.situacao
+  item.motivo = c.motivo
 }
 
 function montarItem(base, pol, palpite) {
@@ -316,7 +348,7 @@ function imprimir(r, quiet) {
   const { resumo } = r
   console.log(`Arvore: ${r.dir} | escopo: ${r.escopo}${r.comPropostas ? ' | COM PROPOSTAS (nao e decisao)' : ''}`)
   console.log(`Modo: ${r.modo}. Pacotes: ${resumo.total} (privados ignorados: ${resumo.privadosIgnorados}; so no lockfile: ${resumo.lockfileExtras}; com alerta de arquivo copyleft: ${resumo.alertas})`)
-  console.log(`  permitidas: ${resumo.porNivel.permitida} | decididas: ${resumo.porNivel.decidida} | sem decisao: ${resumo.porNivel['sem-decisao']} | proibidas: ${resumo.porNivel.proibida}`)
+  console.log(`  permitidas: ${resumo.porNivel.permitida} | decididas: ${resumo.porNivel.decidida} | sem decisao: ${resumo.porNivel['sem-decisao']} | proibidas: ${resumo.porNivel.proibida} | nivel C: ${resumo.porNivel['nivel-c']} | nivel C empacotado: ${resumo.porNivel['nivel-c-empacotada']}`)
   if (!quiet) {
     const ord = Object.entries(resumo.porLicenca).sort((a, b) => b[1] - a[1])
     console.log('  licencas: ' + ord.map(([l, n]) => `${l}=${n}`).join(', '))
@@ -332,7 +364,7 @@ function imprimir(r, quiet) {
     console.log(`  arquivo(s) de licenca copyleft dentro do pacote: ${f.alertas.join(', ')}`)
     console.log(`  trazido: ${f.caminho}`)
   }
-  console.log(r.falhas.length ? `\nREPROVADO: ${r.falhas.length} pacote(s) proibido(s) ou sem decisao.` : '\nAPROVADO: nenhuma licenca proibida ou sem decisao.')
+  console.log(r.falhas.length ? `\nREPROVADO: ${r.falhas.length} pacote(s) proibido(s), sem decisao ou de nivel C empacotado.` : '\nAPROVADO: nenhuma licenca proibida ou sem decisao.')
 }
 
 async function principal() {
@@ -344,7 +376,7 @@ async function principal() {
     process.exit(2)
   }
   if (a.ajuda || !a.dir) {
-    console.log('Uso: node check.mjs --dir <pasta com node_modules> [--tudo] [--com-propostas] [--palpite=falha|aviso] [--alertas=aviso|falha] [--so-lockfile] [--json <arquivo>] [--politica <arquivo>] [--quiet]')
+    console.log('Uso: node check.mjs --dir <pasta com node_modules> [--tudo] [--com-propostas] [--palpite=falha|aviso] [--alertas=aviso|falha] [--nivel-c=falha|instalacao] [--so-lockfile] [--json <arquivo>] [--politica <arquivo>] [--quiet]')
     process.exit(a.ajuda ? 0 : 2)
   }
   const dir = path.resolve(a.dir)
@@ -353,7 +385,7 @@ async function principal() {
     process.exit(2)
   }
   try {
-    const r = await verificar({ dir, tudo: a.tudo, comPropostas: a.comPropostas, palpite: a.palpite, alertas: a.alertas, soLockfile: a.soLockfile, politica: a.politica })
+    const r = await verificar({ dir, tudo: a.tudo, comPropostas: a.comPropostas, palpite: a.palpite, alertas: a.alertas, nivelC: a.nivelC, soLockfile: a.soLockfile, politica: a.politica })
     imprimir(r, a.quiet)
     if (a.json) fs.writeFileSync(a.json, JSON.stringify(r, null, 2))
     process.exit(r.falhas.length ? 1 : 0)

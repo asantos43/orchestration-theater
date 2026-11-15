@@ -46,11 +46,11 @@ export function decode(s) {
     if (rest[0] === '\x1b') return join(['Alt'], decode(rest)); // ESC ESC [ A = Alt+↑ em alguns terminais
     if (rest[0] === '[') {
       let m;
-      // kitty / CSI u:  ESC [ code ; mods u
+      // CSI u (protocolo kitty, ou tmux com extended-keys-format csi-u):  ESC [ code ; mods u
       if ((m = /^\[(\d+)(?::\d+)*(?:;(\d+)(?::\d+)?)?(?:;[\d:]+)?u$/.exec(rest))) {
         const code = Number(m[1]);
         const k = code === 13 ? 'Enter' : code === 9 ? 'Tab' : code === 27 ? 'Esc' : code === 127 ? 'Backspace' : code === 32 ? 'Espaço' : String.fromCodePoint(code).toUpperCase();
-        return join(mods(m[2]), k) + ' [kitty CSI u]';
+        return join(mods(m[2]), k) + ' [CSI u]';
       }
       // xterm modifyOtherKeys: ESC [ 27 ; mods ; code ~
       if ((m = /^\[27;(\d+);(\d+)~$/.exec(rest))) {

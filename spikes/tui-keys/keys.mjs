@@ -18,6 +18,8 @@ const arg = (n, d = null) => { const i = argv.indexOf(n); return i >= 0 ? (argv[
 const livre = argv.includes('--livre');
 const autoMs = Number(arg('--auto', 0)) || 0;
 const nome = String(arg('--nome', '') || '');
+// --pedir-mok: pede ao terminal o modifyOtherKeys nível 2 (CSI > 4 ; 2 m), como uma TUI que quer o Shift+Enter.
+const pedirMok = argv.includes('--pedir-mok');
 const GAP = 60; // ms sem bytes novos = fim da sequência
 
 if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -31,6 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 process.stdin.setRawMode(true);
 process.stdin.setEncoding('utf8');
 process.stdin.resume();
+if (pedirMok) process.stdout.write('\x1b[>4;2m');
 
 let pendingChunk = '';
 let gapTimer = null;
@@ -115,7 +118,7 @@ const env = {
 
 function sair(code = 0) {
   try { process.stdin.setRawMode(false); } catch { /* ok */ }
-  out('\x1b[?25h\x1b[0m\n');
+  out((pedirMok ? '\x1b[>4;0m' : '') + '\x1b[?25h\x1b[0m\n');
   process.exit(code);
 }
 
@@ -165,7 +168,7 @@ async function percurso() {
     const nm = decode(k);
     let status;
     if (it.esperado.includes(nm.replace(/ \[.*\]$/, ''))) status = 'ok';
-    else if (it.id === 'ctrl_j' && nm === 'Enter') status = 'indistinguível do Enter';
+    else if (it.indistinguivel && nm === it.indistinguivel) status = `indistinguível do ${it.indistinguivel}`;
     else status = 'diferente';
     itens.push({
       id: it.id, rotulo: it.rotulo, status, recebido: nm, bytes: hex(k), bytesTexto: repr(k),
@@ -189,6 +192,7 @@ const resultado = {
   ferramenta: 'otheater-spike-tui-keys',
   data: new Date().toISOString(),
   nome: nome || null,
+  pedidoModifyOtherKeys: pedirMok,
   maquina: { plataforma: `${os.platform()} ${os.release()}`, arch: os.arch(), node: process.version },
   terminal: { ...env, ...sondas, colunas: process.stdout.columns, linhas: process.stdout.rows },
   resumo,

@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "aviso": "PROPOSTAS, NAO DECISOES. Nada daqui vale na CI. Serve para --com-propostas mostrar quanto da lista 'caso a caso' some se o dono aceitar cada licenca. Decisao e do dono (arquitetura 6.0, docs/13).",
+  "aviso": "PROPOSTAS, NAO DECISOES. Nada daqui vale na CI. Serve para --com-propostas mostrar quanto da lista 'caso a caso' some se o dono aceitar cada licenca. Decisao e do dono (arquitetura 6.0, docs/13). Em 2026-11-15 (N45) o dono aceitou as oito; elas estao em policy.json, e este arquivo fica como historico.",
   "decisoesPorLicenca": [
     {
       "licenca": "BlueOak-1.0.0",
