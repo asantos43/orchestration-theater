@@ -1,6 +1,6 @@
 # OTheater (Orchestration Theater)
 
-**Status: fase de desenho. Não há código.** O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.32). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
+**Status: fim do desenho, início da Fase 0.** O código descartável dos testes da Fase 0 fica em [spikes/](spikes/) (N33); o código do produto começa na Fase 1. O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.32). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
 
 ## Em uma frase
 
