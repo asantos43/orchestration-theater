@@ -90,8 +90,57 @@ Script: `src/s7-bypass-and-config-precedence.ts` (`catalog` e `prec`). Saídas e
 - A documentação oficial de configuração (https://opencode.ai/docs/config/, lida em 2026-11-15) lista a precedência só entre arquivos (global, `opencode.json` da raiz, aninhados, `/etc/opencode/opencode.json` do sistema; "managed" acima de tudo) e **não cita** `OPENCODE_CONFIG_CONTENT`, `OPENCODE_PERMISSION` nem `OPENCODE_DISABLE_PROJECT_CONFIG` **[secundária: ausência na doc]**. Os nomes das três variáveis aparecem nas strings do binário **[secundária]**; o comportamento acima é o medido.
 - A doc de permissões (https://opencode.ai/docs/permissions/, 2026-11-15) diz que, sem regra, o padrão é `ask`, e que `external_directory` vem **permitido** por padrão **[secundária]**. Isso **contradiz** o que medi no item 5 (sem config, `edit` e `bash` rodaram sem pedido). Vale o medido nesta máquina, com o `~/.config/opencode` do dono possivelmente influenciando [não confirmado].
 - **Para o OTheater**: um `deny` posto pelo daemon só é firme se vier por `OPENCODE_PERMISSION` (vence as outras duas) e se `OPENCODE_DISABLE_PROJECT_CONFIG=1` impedir que um `opencode.json` plantado na worktree (por um agente com `edit`) o relaxe. O e2 mostra que o `OPENCODE_CONFIG_CONTENT` já vence o json do projeto, então o risco do json plantado só existe quando se usa só o json (e5 mostra que a variável o desliga). Um `allow` vindo de `OPENCODE_PERMISSION` num processo reaproveitado por outra role **vence** um `deny` em `OPENCODE_CONFIG_CONTENT` (e4): o env do processo precisa ser montado por role, nunca herdado.
-- Não testado: `opencode.json` do cwd com `deny` e `OPENCODE_PERMISSION` com `allow` (só e4 testou o par de envs); granularidade `{"bash":{"*":"deny","git *":"allow"}}`; `/etc/opencode` (exigiria root); a variável `OPENCODE_TEST_MANAGED_CONFIG_DIR` (nome só visto em strings).
+- Não testado aqui (o par e a granularidade foram medidos depois, no item 8d, que também repetiu e1 a e5 com a global isolada): `opencode.json` do cwd com `deny` e `OPENCODE_PERMISSION` com `allow`; granularidade `{"bash":{"*":"deny","git *":"allow"}}`; `/etc/opencode` (exigiria root); a variável `OPENCODE_TEST_MANAGED_CONFIG_DIR` (nome só visto em strings).
 - Prompts: 5, com contador próprio (`out/prompt-count-item8.json`, 5 de 8). Somando os 24 anteriores, o spike passou de 25; o limite de 25 era do trabalho original e o item 8 tinha uma ordem própria de "poucas execuções".
+
+### Item 8d: config global isolada, padrão de permissão e granularidade (2026-11-15, UTC-3)
+
+Script: `src/s8-global-config-and-granular.ts` (fases `iso`, `def`, `par`, `gran`). Saídas brutas em `out/s8-*.jsonl`, `out/s8-*.stderr.log` e `out/s8.{iso,def,par,gran}.json` (+ `out/s8.g2b-*.json`). Contador próprio: `out/prompt-count-item8d.json` (**12 de 15** prompts; lista em `out/prompt-count-item8d.json.prompts.jsonl`). Marcas desta seção: [V] medido aqui, [S] fonte secundária, [N] não confirmado. Modelo `google/gemini-3.1-flash-lite`, `opencode` 1.19.5, política do cliente `allow` (escolhe `allow_once`), tarefa `touch <caso>.txt` pelo `bash`, **n = 1 execução por caso**, arquivo conferido no disco. Worktrees, `XDG_CONFIG_HOME` e `opencode.json` de teste ficaram na scratchpad (`<scratchpad>/item8d-opencode/`); o `~/.config/opencode` do dono não foi lido nem alterado, e o `opencode serve` do dono não foi tocado. Cota do Google: não acabou, todos os casos rodaram.
+
+**Isolamento da global.** Cada `opencode acp` subiu com `XDG_CONFIG_HOME=<pasta vazia>`; `XDG_DATA_HOME` e o resto do ambiente ficaram como estavam.
+
+- [V] `opencode debug paths` com `XDG_CONFIG_HOME` trocado mostra `config` na pasta vazia e `data` ainda em `~/.local/share/opencode`. `opencode auth list` imprime o cabeçalho `Credentials ~/.local/share/opencode/auth.json` e dá a mesma contagem (5 credenciais) com e sem o isolamento. Então o login fica em `XDG_DATA_HOME`, não em `XDG_CONFIG_HOME`, e o isolamento não o perde (só nomes e tipos foram vistos; o `auth.json` não foi lido). Todos os 12 prompts rodaram autenticados no provedor Google.
+- [V] Com a global isolada, `opencode debug config` mostra um config resolvido **sem** `permission` e **sem** `mcp` (só `agent`, `mode`, `plugin`, `command`, `username`). Ou seja, os `permission` e os MCPs (`codebase-memory`, etc.) vistos nas medidas antigas, se existiam, vinham da global do dono, que não li [N: não sei o que havia nela].
+- [S] A doc de configuração (https://opencode.ai/docs/config/, lida em 2026-11-15) dá a global em `~/.config/opencode/opencode.json(c)` e não menciona `auth.json` nem variáveis XDG; a doc de provedores (https://opencode.ai/docs/providers/, 2026-11-15) também não diz onde a credencial fica. A localização acima vem só do binário/CLI (acima) [V], não da documentação.
+
+**1. e1 a e5 repetidos com a global isolada** (n = 1 cada): **todos os cinco deram o mesmo resultado do s7.**
+
+| Caso | Configuração | Resultado com a global isolada |
+|---|---|---|
+| e1 | só `OPENCODE_CONFIG_CONTENT` `bash: deny, edit: allow` | sem chamada de `bash`, 0 `request_permission`, resposta `NOBASH`, arquivo **não** criado [V] |
+| e2 | `opencode.json` do cwd `bash: allow` + `OPENCODE_CONFIG_CONTENT` `bash: deny` | `deny` vence: sem chamada, `NOBASH`, arquivo não criado [V] |
+| e3 | `opencode.json` do cwd `bash: allow` + `OPENCODE_PERMISSION` `bash: deny` | `deny` vence: uma chamada "Invalid Tool" (o modelo tentou uma ferramenta inexistente), `NOBASH`, arquivo não criado [V] |
+| e4 | `OPENCODE_PERMISSION` `bash: allow` + `OPENCODE_CONFIG_CONTENT` `bash: deny` | `allow` vence: `touch` rodou, 0 `request_permission`, arquivo criado [V] |
+| e5 | `opencode.json` do cwd `bash: deny` + `OPENCODE_DISABLE_PROJECT_CONFIG=1` | o json foi ignorado: `bash` rodou, arquivo criado [V] |
+
+- [V] Logo, a ordem do item 8 **se mantém sem a global**: `opencode.json` do cwd < `OPENCODE_CONFIG_CONTENT` < `OPENCODE_PERMISSION`, e `OPENCODE_DISABLE_PROJECT_CONFIG=1` desliga o json do cwd. Cada elo tem n = 1 (agora 2 execuções por caso no total, uma com e outra sem a global; os resultados coincidem). Não tenho como dizer se a global do dono tem `permission`; a conclusão é que, **para estes casos**, ela não mudou o resultado. Modelo não determinístico: n pequeno [N: repetibilidade].
+
+**2. Padrão sem nenhuma config de permissão** (global isolada, sem json, sem env):
+
+- [V] `bash` (d1): o modelo rodou `ls -d . && touch d1-default-bash.txt`, o arquivo foi criado, **0 `session/request_permission`**. Padrão = `allow`.
+- [V] `edit`/`write` (d2): a ferramenta de escrita (`kind: edit`) criou `d2-default-edit.txt`, **0 `session/request_permission`**. Padrão = `allow`.
+- [V] **Confirma o item 5 sem a global**: o padrão medido é `allow`, não `ask`. A doc de permissões (https://opencode.ai/docs/permissions/, 2026-11-15) diz o contrário (sem regra, `ask`) [S]; vale o medido em 1.19.5. n = 1 por ferramenta.
+- [V] Pista da causa, vinda do texto de erro do g2 (abaixo): o conjunto de regras que o OpenCode monta traz uma regra de base `{"permission":"*","action":"allow","pattern":"*"}` antes das regras do usuário. É coerente com o padrão `allow`, mas não li o código [N: é a causa].
+
+**3. O par que faltou** (p1, n = 1):
+
+- [V] `opencode.json` do cwd `bash: deny` contra `OPENCODE_PERMISSION` `bash: allow`: **`allow` vence**; o `touch` rodou, arquivo criado, 0 `request_permission`. Fecha o quarto par: `OPENCODE_PERMISSION` vence o `opencode.json` do cwd nos dois sentidos (e3 com `deny`, p1 com `allow`).
+
+**4. Granularidade por padrão de comando** (n = 1 cada):
+
+| Caso | `OPENCODE_PERMISSION` | Pedido | Resultado |
+|---|---|---|---|
+| g1 | `{"bash":{"*":"deny","git status*":"allow"}}` | `git status .` | rodou (`completed`), saída do git devolvida, 0 `request_permission` [V] |
+| g2 | o mesmo | `touch g2-....txt` (o modelo encadeou `ls . && touch ...`) | **`failed`**, arquivo **não** criado, 0 `request_permission`, resposta `NOBASH` [V] |
+| g2b | o mesmo | só `touch g2b-....txt` (repetição sem encadear, pedida porque o modelo juntou `ls .` no g2) | **`failed`**, arquivo **não** criado, 0 `request_permission` [V] |
+| g3 | `{"bash":{"*":"allow","touch *":"ask"}}` | `touch g3-....txt` | **chegou 1 `session/request_permission`** (`kind: execute`, `rawInput.command` = `touch g3-allow-star-ask-touch.txt`, opções `allow_once`, `allow_always`, `reject_once`); com `allow_once` o arquivo foi criado [V] |
+
+- [V] A ordem das chaves no objeto conta: `"*"` primeiro e o padrão específico depois, e o específico venceu (g1 `allow`, g3 `ask`). Isso é coerente com "a última regra que casa vence" da doc de permissões (https://opencode.ai/docs/permissions/, 2026-11-15) [S]; só testei essa ordem das chaves, não a inversa [N].
+- [V] **Diferença importante em relação a `bash: deny` sem padrão** (e1 a e3, item 5): no `deny` por padrão de comando a ferramenta **não some**; o `bash` foi chamado e a chamada terminou `failed` com a mensagem "The user has specified a rule which prevents you from using this specific tool call" mais a lista das regras (`*` allow, `bash` `*` deny, `bash` `git status*` allow). Com `bash` inteiro em `deny`, a ferramenta some e a chamada vira "Invalid Tool" ou nem é feita.
+- [V] `git status .` casou com `git status*`. Que `git status` sem argumento também case, e como `&&`/`;`/`|` são tratados (a doc diz que comandos compostos são divididos e cada parte é checada [S]), **não foi medido**: no g2 o `touch` encadeado com `ls .` falhou, mas o g2b mostra que o `touch` sozinho também cai no `deny`, então o g2 sozinho não prova a regra dos compostos [N].
+- [S] A doc de permissões chama a ferramenta de `shell` em alguns trechos (V2) em vez de `bash`; no 1.19.5 a chave `bash` funcionou e `shell` não foi testado [N].
+
+**Para o OTheater** (inferência, não medida diretamente) [N]: o `OPENCODE_PERMISSION` montado por role continua sendo a forma firme de pôr uma política; com ele dá para exigir confirmação por comando (`ask` em um padrão), o que chega ao cliente como `session/request_permission` e é decidido pelo daemon. O padrão sem regra é `allow`, então uma role "só leitura" precisa de `"*":"deny"` explícito e não pode confiar no padrão.
 
 ## Pendências (não medidas neste spike)
 
@@ -99,7 +148,7 @@ Script: `src/s7-bypass-and-config-precedence.ts` (`catalog` e `prec`). Saídas e
 - **Segundo login**: não foi feito nenhum login (regra do spike). Como o OpenCode se comporta com duas contas do mesmo provedor num mesmo perfil, e o fluxo `opencode auth login` fora do ACP, ficam para depois.
 - **Windows**: nada foi testado fora do Linux. É nele que `XDG_DATA_HOME`, `XDG_CONFIG_HOME` e `OPENCODE_DB` são o caso que a arquitetura pede; o item 8 só vale para Linux.
 - `session/cancel` no flash-lite (item 4) e o overhead de latência do adaptador (item 3) também não foram medidos. O `OPENCODE_CONFIG_CONTENT` foi medido no item 8.
-- Do item 8: o par `opencode.json` `deny` contra `OPENCODE_PERMISSION` `allow`, permissões granulares por padrão de comando, o `opencode run --auto` e o diretório do sistema `/etc/opencode`.
+- Do item 8 (resto, depois do 8d): o par `opencode.json` `deny` contra `OPENCODE_PERMISSION` `allow` e a granularidade `touch`/`git status` foram medidos no 8d. Seguem sem medir: o `opencode run --auto`, o diretório do sistema `/etc/opencode` (exige root) e a variável `OPENCODE_TEST_MANAGED_CONFIG_DIR`. Também sem medir: `git status` sem argumento e comandos compostos (`&&`, `;`, `|`) contra padrões, a ordem inversa das chaves (`"git status*"` antes de `"*"`), a chave `shell` em vez de `bash`, repetibilidade (n = 1 por caso) e o conteúdo da global do dono (que não foi lida, só isolada).
 
 ## Como rodar
 
@@ -116,6 +165,8 @@ node src/s6-isolated.ts            # item 8 (1 prompt)
 # item 8 de permissões (contador próprio; exige as variáveis):
 OT_COUNTER=$PWD/out/prompt-count-item8.json OT_MAX_PROMPTS=8 node src/s7-bypass-and-config-precedence.ts catalog   # sem prompt
 OT_COUNTER=$PWD/out/prompt-count-item8.json OT_MAX_PROMPTS=8 node src/s7-bypass-and-config-precedence.ts prec      # 5 prompts
+# item 8d (global isolada: OT_XDG_CONFIG = pasta vazia usada como XDG_CONFIG_HOME; worktrees em SPIKE_SCRATCH):
+OT_COUNTER=$PWD/out/prompt-count-item8d.json OT_MAX_PROMPTS=15 OT_XDG_CONFIG=<tmpdir>/xdg-config-empty SPIKE_SCRATCH=<tmpdir>/opencode node src/s8-global-config-and-granular.ts iso|def|par|gran   # 12 prompts no total
 ```
 
 `OT_MODEL` troca o modelo (padrão `google/gemini-3.1-flash-lite`). `src/lib/budget.ts` bloqueia além de 25 prompts (contador em `out/prompt-count.json`); `OT_COUNTER` e `OT_MAX_PROMPTS` trocam o arquivo e o limite. Os caminhos da scratchpad ficam em `src/lib/paths.ts` e precisam ser ajustados em outra máquina; as worktrees são criadas à mão (`git worktree add`).

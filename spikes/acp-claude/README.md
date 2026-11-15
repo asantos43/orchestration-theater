@@ -122,7 +122,7 @@ Regra enviada por `_meta.claudeCode.options.settings.permissions.deny: ["Bash(to
 
 - A regra `deny` é aplicada antes do `request_permission`: quando pega, o cliente nem é consultado. [V]
 - **Só `sh -c` e `bash -c` furam.** O comando interno de um shell embrulhado não é analisado. A documentação oficial diz que `Bash(rm *)` não cobre `/bin/rm`, `bash -c` nem `env` [S]; aqui só o `sh -c` e o `bash -c` divergiram a favor da documentação: caminho absoluto e `env` foram negados. [V para o `claude` 2.1.325; pode mudar de versão.]
-- Consequência: `deny` por padrão é segunda camada, não fronteira. Os dois furos geraram `request_permission`, então com política `reject` do cliente (a do OTheater) eles fecham; com `allow`, não. [V para o caso medido; outros comandos e embrulhos são [N]]
+- Consequência: `deny` por padrão é segunda camada, não fronteira. Os dois furos geraram `request_permission`, então com política `reject` do cliente (a do OTheater) eles fecham; com `allow`, não. [V para o caso medido; outros comandos e embrulhos: ver o item 8d]
 
 ### 2. RAM por sessão com `strictMcpConfig` e `settingSources: []` [V]
 
@@ -151,11 +151,73 @@ Comando: `timeout 117 tail -f /dev/null` (o `sleep` é bloqueado pelo Claude Cod
 | segundo plano (`run_in_background`) | `cancelled` | 1546 ms | **vivo** nas 5 amostras (até 9 s); matei os 3 PIDs ao fim (só os que o teste criou) |
 
 - O `session/cancel` não mata a tarefa em segundo plano do Claude Code. O OTheater precisa, ao cancelar, encerrar a árvore do `claude` e conferir que não sobrou filho, em vez de confiar no cancelamento do ACP. [V]
-- Se a tarefa em segundo plano também sobrevive ao fechamento do adaptador não foi isolado. [N]
+- Se a tarefa em segundo plano sobrevive ao fechamento do adaptador: ver o item 8d.
+
+## Item 8d: outros embrulhos do `deny`, variância da RAM e filho em segundo plano (2026-11-15, UTC-3)
+
+Script: `src/s12-deny-wrappers-ram-bg.ts` (fases `deny`, `reject`, `ram`, `bg`, `fg`, `bgk`, `bgt`). Haiku/low, **29 prompts**, só em worktree de teste em pasta temporária da scratchpad (`<tmpdir>`). Nada em `~/.claude`. Saídas brutas em `out/s12-*.json` e `out/s12-*.jsonl`. Mesmo `claude` 2.1.325 e adaptador 0.107.0 do 8c.
+
+### 1. `permissions.deny` com outros embrulhos [V, n=1 por variante]
+
+Mesmo arranjo do 8c: `_meta.claudeCode.options.settings.permissions.deny: ["Bash(touch *)"]`, modo `default`. Política do cliente `allow`, salvo as duas últimas linhas. Cada variante usa um nome de arquivo próprio.
+
+| Comando pedido ao modelo | Pedidos de permissão ao cliente | Arquivo criado | Resultado |
+|---|---|---|---|
+| `echo g.txt \| xargs touch` | 0 | não | negado pela regra (*"Permission to use Bash with command xargs touch has been denied"*) |
+| `find . -maxdepth 0 -exec touch h.txt \;` | 1 | **sim** | **a regra não pegou** |
+| `python3 -c "open('i.txt','w')"` (sem `touch`) | 1 | **sim** | cria; a regra nem se aplica (esperado) |
+| `python3 -c "import os; os.system('touch j.txt')"` | 1 | **sim** | **a regra não pegou** |
+| `command touch k.txt` | 0 | não | negado |
+| `eval "touch l.txt"` | 1 | **sim** | **a regra não pegou** |
+| `$(echo touch) m.txt` | 1 | **sim** | **a regra não pegou** |
+| `timeout 5 touch n.txt` | 0 | não | negado |
+| `nohup touch o.txt` | 0 | não | negado |
+| `sh -c "touch b.txt"`, política **`reject`** | 1 | não | fechou: o cliente recusou; mensagem do modelo: *"User refused permission to run tool"* |
+| `bash -c 'touch e.txt'`, política **`reject`** | 1 | não | fechou, idem |
+
+- Somando com o 8c (`env`, caminho absoluto): os embrulhos que a regra **enxerga** são `xargs`, `command`, `timeout`, `nohup`, `env` e o caminho absoluto. Os que ela **não enxerga** são `sh -c`, `bash -c`, `find -exec`, `python3 -c`, `eval` e `$(...)`: o comando de dentro não é analisado. [V para o `claude` 2.1.325; a lista de embrulhos que ele "descasca" pode mudar de versão e não foi lida na fonte: [N] quanto ao motivo.]
+- Todo caso que furou gerou **um** `request_permission` ao cliente (o modo `default` pergunta). Com política `allow` o comando roda; com `reject` fecha, o que foi confirmado só para `sh -c` e `bash -c` (n=1 cada). Para `find -exec`, `python3`, `eval` e `$(...)` com `reject`: [N], embora o mesmo mecanismo (pedido ao cliente) tenha aparecido. [V para o pedido]
+- Conclusão que repete a do 8c e vale para mais casos: `deny` por padrão de comando é segunda camada. Quem fecha o furo é a política do cliente OTheater (`reject` a tudo que chegar como `request_permission`) mais a ausência do Bash (`tools`, item 8b). Proposta, não decidido.
+
+### 2. Variância da RAM [V, n=3 por variante]
+
+Mesmo método do 8c (RSS e PSS de `/proc`, amostra 6 s depois do prompt trivial "Reply with the single word ok."), 3 rodadas **intercaladas** (todas as variantes na rodada 1, depois a 2, depois a 3), um adaptador novo por execução. Tabela: média (mínimo a máximo) em MB, e a rodada única do 8c.
+
+| Variante | `claude` RSS, n=3 | 8c (n=1) | Árvore RSS, n=3 | 8c | Adaptador (Node) RSS, n=3 | Ferramentas / tokens do prompt |
+|---|---|---|---|---|---|---|
+| base | 313 (312 a 314) | 315 e 313 | 442 (437 a 445) | 446 e 442 | 129 (124 a 132) | 76 / 41,8 mil |
+| `strictMcpConfig` | 301 (300 a 302) | 300 | 431 (430 a 433) | 397 | 131 (131 a 131) | 32 / 39,1 mil |
+| `settingSources: []` | 255 (254 a 255) | 254 | 375 (352 a 386) | 378 | 120 (97 a 132) | 69 / 32,4 mil |
+| os dois | 244 (243 a 244) | 242 | 366 (349 a 374) | 374 | 122 (105 a 131) | 30 / 30,1 mil |
+
+- **O RSS do processo `claude` é estável**: variação de 0 a 2 MB entre rodadas, e os números do 8c caem dentro (ou a 2 MB) da faixa. Ganho sobre a base: `strictMcpConfig` -12 MB, `settingSources: []` -58 MB, os dois -69 MB (o 8c dava -15, -61 e -73). O ganho do `strictMcpConfig` sozinho (12 MB) é pequeno mas maior que a variação (2 MB). [V]
+- **A árvore (RSS total) varia por causa do adaptador**: o Node ficou entre 97 e 132 MB, e em 2 das 6 execuções com `settingSources: []` ficou em 97 e 105 MB (as outras quatro, 130 a 132). No 8c, o `strictMcpConfig` apareceu com árvore de 397 MB, porque o adaptador estava em ~97 MB naquela rodada (por diferença entre a árvore e o `claude`); aqui as três rodadas dele ficaram em 430 a 433. Logo, o "-49 MB de árvore" do `strictMcpConfig` no 8c era variação do adaptador, não ganho do flag. [V]
+- Para planejar capacidade: `claude` ~245 a 315 MB por sessão conforme a variante, mais ~100 a 130 MB do adaptador (um adaptador por sessão no modelo de processos medido no item 7). Isto é [V] só para este prompt trivial e esta máquina; sessões com trabalho real crescem. [N] para sessões longas.
+- O RSS do `claude` com a sessão ociosa (2 s depois do `session/new`) foi 297, 284, 239 e 229 MB; o prompt acrescenta ~15 MB. [V]
+- Tokens do prompt: praticamente iguais entre rodadas (variação de ±3 tokens). [V]
+- O PSS total desta bateria (base: 407 a 415 MB) ficou **~60 MB acima** do 8c (349 MB) com o mesmo RSS. O PSS depende do que mais roda na máquina (páginas compartilhadas); a causa não foi investigada. Não usar PSS como número de planejamento. [N para a causa]
+
+### 3. O filho em segundo plano depois de fechar o adaptador [V, n pequeno, por caso]
+
+Comando inofensivo, o do 8c: `timeout 121 tail -f /dev/null` (o `sleep` isolado é bloqueado pelo `claude`; o marcador é o argumento `121`, que expira sozinho em 121 s). Árvore antes do fechamento: `claude` > `zsh` > `timeout` > `tail`. Amostras de `/proc` (estado e pai) a 0 (antes de fechar), 0,2, 1, 2, 3 e 5 s depois, depois a cada 2,5 s até todos morrerem. Só matei PIDs do teste, por PID, depois de conferir a cmdline; nenhum foi necessário.
+
+| Caso | n | Como o adaptador foi encerrado | Adaptador | Filhos (`zsh`, `timeout`, `tail`) | `claude` |
+|---|---|---|---|---|---|
+| segundo plano | 2 (*) | fechar o stdin | saiu em ≤200 ms, código 0 (o SIGTERM nem foi preciso) | **mortos** na amostra de 0,2 s | vivo aos 0,2 s (pai virou o `systemd --user`), morto em 1 s (bg2) |
+| segundo plano | 1 | só SIGTERM (sem fechar o stdin) | saiu em ≤200 ms | **mortos** em 0,2 s | vivo aos 0,2 s, morto em 1 s |
+| primeiro plano, com o prompt em andamento | 1 | fechar o stdin | saiu em ≤200 ms | **mortos** em 0,2 s | vivo até 2 s, morto aos 3 s; o `session/prompt` falhou com *"ACP connection closed"* |
+| segundo plano | 2 | **SIGKILL** (queda sem limpeza) | morto | **vivos** por 118,0 s e 117,7 s (o `timeout 121` expirando por conta própria) | **vivo, órfão** (pai virou o `systemd --user`); saiu sozinho depois: aos ~125 s numa execução, e na outra estava vivo ainda aos 118 s e já morto quando conferi minutos depois |
+
+(*) Uma das duas execuções (a primeira) vigiava só `zsh` e `timeout` por um erro do script (o `tail` não tem o marcador na cmdline); ambos morreram em ≤200 ms e, ~25 s depois, `ps` não mostrava nenhum `tail -f /dev/null`. A segunda vigiou os três. Os arquivos da primeira estão em `out/s12-bg*-primeira-vigia-incompleta.*`.
+
+- **Encerramento limpo (stdin ou SIGTERM) mata o filho em segundo plano** em ≤200 ms (a resolução da amostra), antes mesmo de o `claude` sumir. Quem mata (o adaptador ao sair, ou o `claude` ao receber o fim da entrada) não foi isolado: [N].
+- **Queda sem limpeza (SIGKILL no adaptador) deixa o `claude` órfão e o filho vivo** até a tarefa acabar. O `claude` órfão saiu sozinho só depois (~7 s depois do fim da tarefa, na execução em que medi). [V, n=2 para a sobrevivência do filho; n=1 para o instante de saída do `claude`]
+- Consequência para o OTheater [proposta, não decidido]: o `session/cancel` não mata o filho em segundo plano (8c), o fechamento limpo mata, a queda do adaptador não. O supervisor deve, ao detectar a morte do adaptador, procurar e encerrar o `claude` órfão e seus descendentes (por grupo de processos ou cgroup, a decidir), em vez de depender do `claude` terminar sozinho. Se os filhos estão no mesmo grupo de processos/sessão que o `claude` não foi medido. [N]
+- Observação do ambiente: no caso de primeiro plano, a árvore do `claude` mostrou também `bash libexec/kit-quota` e `codex app-server`, filhos do `claude` (provavelmente de um gancho do perfil do dono: [N]), que já tinham terminado sozinhos 1,5 s depois de listados, antes do fechamento. Não foram tocados. [V, visto em 1 execução]
 
 ## Prompts e tokens
 
-**40 prompts** no total (contados em `out/prompts.log`; 16 até o item 8, 7 no item 8b, 17 no item 8c; o item 8c passou do limite de 25 do item 8b, por pedido da tarefa da rodada de 2026-11-15), todos triviais, só nos worktrees de teste, Haiku/low. O adaptador informa tokens em `PromptResponse.usage`: de ~7 mil a ~165 mil `totalTokens` por prompt, quase tudo cache (leitura e escrita); `outputTokens` de 3 a 428 por prompt. Detalhe por prompt em `out/*-summary.json`.
+**69 prompts** no total (contados em `out/prompts.log`; 16 até o item 8, 7 no item 8b, 17 no item 8c, 29 no item 8d; os itens 8c e 8d passaram do limite de 25 do item 8b, por pedido das tarefas da rodada de 2026-11-15, com limite de cerca de 30 no 8d), todos triviais, só nos worktrees de teste, Haiku/low. O adaptador informa tokens em `PromptResponse.usage`: de ~7 mil a ~165 mil `totalTokens` por prompt, quase tudo cache (leitura e escrita); `outputTokens` de 3 a 428 por prompt. Detalhe por prompt em `out/*-summary.json`.
 
 ## Como rodar
 
@@ -173,6 +235,7 @@ node src/s8-permissions.ts    # item 8
 node src/s10-permissions-isolated.ts [caso ...]   # item 8b (7 prompts; sem argumento roda todos)
 node src/s9-nologin.ts <pasta-vazia>   # perfil vazio, 0 prompts
 SPIKE_SCRATCH=<tmpdir> node src/s11-permissions-deny-ram-cancel.ts deny|ram|cancel   # item 8c (17 prompts)
+SPIKE_SCRATCH=<tmpdir> node src/s12-deny-wrappers-ram-bg.ts deny|reject|ram|bg|fg|bgk|bgt [n]   # item 8d (29 prompts; ram = 12, bg/fg/bgk/bgt rodam 1 prompt e levam ~2 min)
 ```
 
 ## Pendências (não medido)
@@ -180,8 +243,9 @@ SPIKE_SCRATCH=<tmpdir> node src/s11-permissions-deny-ram-cancel.ts deny|ram|canc
 - Handoff da sessão para outro cliente (carregar no Claude Code interativo uma sessão criada pelo ACP, e o inverso).
 - Segundo login/segunda conta (`CLAUDE_CONFIG_DIR` com outro perfil logado); aqui só se viu o perfil vazio.
 - Windows (só foi medido em Linux).
-- Se o filho em segundo plano continua vivo quando o adaptador é fechado (o item 8c só mediu `session/cancel`), e se `deny` cobre outros embrulhos (`xargs`, `find -exec`, `python -c`).
-- Variância da RAM (uma rodada por variante, repetição só da base).
+- Outros embrulhos do `deny` (`perl -e`, `node -e`, `xargs sh -c`, `awk` com `system()`), e se a política `reject` fecha também `find -exec`, `python3 -c`, `eval` e `$(...)` (só `sh -c` e `bash -c` foram confirmados com `reject`). [N]
+- Variância da RAM em sessões com trabalho real (só prompt trivial, n=3), e a causa de o PSS ter ficado ~60 MB acima do 8c. [N]
+- O filho em segundo plano depois de uma queda do adaptador (SIGKILL): grupo de processos/sessão dos filhos, quem mata o filho no encerramento limpo, e a melhor forma de o supervisor limpar o `claude` órfão (grupo, cgroup, `PR_SET_PDEATHSIG`). [N]
 - Se os 5 plugins `@builtin` e os conectores `pending` que sobram com `settingSources: []` são usáveis.
 - Unidade de `utilization` no `_claude/rateLimit`.
 - Comportamento de `session/new` sem login quando se envia um prompt (erro de autenticação).
