@@ -1,4 +1,5 @@
 // Biblioteca do spike: sobe o codex-acp, registra cada mensagem em JSONL e mede processos/RSS.
+import { tmpdir } from "node:os";
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -9,7 +10,7 @@ import * as acp from '@agentclientprotocol/sdk';
 export const HERE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const OUT = join(HERE, 'out');
 export const SCRATCH =
-  '/tmp/claude-1000/-home-anderson-Dev-AI-projetos-github-orchestration-theater/7fae85d3-3bfb-4d0b-aaf1-48870b56d0b2/scratchpad/acp-codex';
+  process.env.SPIKE_SCRATCH ?? join(tmpdir(), "otheater-spikes", "acp-codex");
 export const REPO = join(SCRATCH, 'repo');
 export const WT = (n: number) => join(SCRATCH, `wt${n}`);
 export const ADAPTER_JS = join(HERE, 'node_modules/@agentclientprotocol/codex-acp/dist/index.js');

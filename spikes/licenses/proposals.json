@@ -1,0 +1,39 @@
+{
+  "versao": 1,
+  "aviso": "PROPOSTAS, NAO DECISOES. Nada daqui vale na CI. Serve para --com-propostas mostrar quanto da lista 'caso a caso' some se o dono aceitar cada licenca. Decisao e do dono (arquitetura 6.0, docs/13).",
+  "decisoesPorLicenca": [
+    {
+      "licenca": "BlueOak-1.0.0",
+      "motivo": "Permissiva moderna (familia isaacs: glob, minimatch, lru-cache...). Sem copyleft."
+    },
+    {
+      "licenca": "Unlicense",
+      "motivo": "Dominio publico, sem copyleft."
+    },
+    {
+      "licenca": "CC0-1.0",
+      "motivo": "Dominio publico, sem copyleft."
+    },
+    {
+      "licenca": "MIT-0",
+      "motivo": "MIT sem a exigencia de aviso."
+    },
+    {
+      "licenca": "Python-2.0",
+      "motivo": "Permissiva (PSF); argparse."
+    },
+    {
+      "licenca": "CC-BY-4.0",
+      "motivo": "Dados (caniuse-lite), atribuicao; nao e licenca de codigo."
+    },
+    {
+      "licenca": "WTFPL",
+      "motivo": "Permissiva sem restricao."
+    },
+    {
+      "licenca": "CC-BY-3.0",
+      "motivo": "Dados de SPDX (spdx-exceptions, spdx-ranges), so no verificador; atribuicao; nao e licenca de codigo."
+    }
+  ],
+  "excecoes": []
+}

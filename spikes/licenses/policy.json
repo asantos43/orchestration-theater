@@ -1,0 +1,13 @@
+{
+  "versao": 1,
+  "fonte": "docs/framework-ideas/arquitetura.md, secao 6.0 (v0.35, 2026-11-15)",
+  "permitidas": ["MIT", "Apache-2.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "MPL-2.0"],
+  "proibidas": ["GPL", "GPL-*", "AGPL", "AGPL-*", "LGPL", "LGPL-*"],
+  "decisoesPorLicenca": [],
+  "excecoes": [],
+  "_comoDecidir": {
+    "decisoesPorLicenca": "Cada item: { licenca, decisao: 'aceita', decididoPor, data, motivo, fonte }. Vale para toda a arvore (ex.: BlueOak-1.0.0).",
+    "excecoes": "Cada item: { pacote, versoes (semver, opcional), licenca (texto exato que o verificador le; se mudar, a excecao deixa de valer), escopo ('producao' | 'dev' | 'qualquer'), permiteProibida (true so se o dono decidir abrir excecao para GPL/AGPL/LGPL; sem isso a excecao nao vale para proibida), decisao: 'aceita', decididoPor, data, motivo, fonte }.",
+    "regra": "So entra aqui o que o dono decidiu e registrou na secao 6.0 e no docs/13. Propostas ficam em proposals.json e so valem com --com-propostas."
+  }
+}

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const OUT = join(ROOT, 'out');
 export const SCRATCH =
-  '/tmp/claude-1000/-home-anderson--claude-spares-spare-stJI7q/7fae85d3-3bfb-4d0b-aaf1-48870b56d0b2/scratchpad/acp-opencode';
+  process.env.SPIKE_SCRATCH ?? join(tmpdir(), "otheater-spikes", "acp-opencode");
 export const REPO = join(SCRATCH, 'repo');
 export const WT = [1, 2, 3].map((i) => join(SCRATCH, `wt${i}`));
 /**

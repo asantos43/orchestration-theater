@@ -4,7 +4,8 @@
 - **Data:** 2026-11-14 (horário de São Paulo, UTC-3)
 - **Decisão:** N1 do [docs/13](../13-DECISOES-EM-ABERTO.md); arquitetura §6.4 e §12, item 1
 - **Quem decidiu:** o dono (Anderson), igual à recomendação da avaliação da Fase 0
-- **Evidência:** [spikes/fork-evaluation/README.md](../../spikes/fork-evaluation/README.md)
+- **Evidência:** [spikes/fork-evaluation/README.md](../../spikes/fork-evaluation/README.md); para o Claudexor, [spikes/fork-evaluation/claudexor.md](../../spikes/fork-evaluation/claudexor.md)
+- **Atualizada:** 2026-11-15 (N41), com o Claudexor como referência; ver a seção "Atualização" no fim
 
 Marcadores: **[V]** verificado localmente; **[S]** fonte secundária (API do GitHub ou documentação do próprio projeto, sem confronto com o código); **[N]** não confirmado ou hipótese.
 
@@ -105,3 +106,50 @@ Os caminhos exatos estão na §4 da avaliação.
   - a árvore completa do Happier (`apps/ui` e os módulos nativos);
   - o pacote `@openai/codex` linux-x64 no Paradev.
 - Os números de commits vêm da API do GitHub, consultada em 2026-11-14. **[S]**
+
+## Atualização (2026-11-15, N41): Claudexor como referência
+
+**Contexto.** O Claudexor (`razzant/claudexor`, MIT, © Anton Razzhigaev, TypeScript) não entrou na avaliação de 2026-11-14. Ele é o projeto mais parecido com o OTheater:
+- é um plano de controle local, com daemon e API;
+- roda várias assinaturas do Claude e do Codex, lê a cota de cada uma e troca de conta quando a cota acaba;
+- faz revisão cruzada entre famílias de modelo.
+
+Ele foi avaliado pelos mesmos critérios em [spikes/fork-evaluation/claudexor.md](../../spikes/fork-evaluation/claudexor.md). A avaliação leu o código e as licenças e não executou nada.
+
+| Critério | Resultado |
+|---|---|
+| 1. Licença | MIT; 0 licenças proibidas em 196 pacotes; sem libvips **[V]** |
+| 2. Daemon com API | Sim: socket Unix e HTTP em loopback com token, 113 endpoints **[V]** |
+| 3. XState por cima | Não encaixa: os pipelines dele são código imperativo **[V]** |
+| 4. Qualidade | 1.117 arquivos de teste, com mais linhas de teste que de código **[V]**; a suíte não foi rodada **[N]** |
+| 5. Ritmo | 881 commits em 30 dias **[S]** |
+| Segurança (§3) | **Conflita**: lê o token OAuth do Claude e do Codex e chama a API do fornecedor com ele **[V]** |
+
+**Decisão do dono:** "vamos usá-lo como referência para não termos que reinventar código em áreas críticas".
+- **Continua sem fork**, pelos critérios 3 e 5, pela regra da §3 e porque ele não fala ACP com os clientes.
+- **O Claudexor entra na lista de reaproveitamento**, à frente do Emdash nestas áreas:
+  - sondas de cota;
+  - pool de contas;
+  - rotação na retomada;
+  - sonda de login e perfis isolados;
+  - store;
+  - API do daemon;
+  - orçamento.
+
+  O Emdash e o acpx continuam como fonte do runtime ACP, das sessões e dos worktrees. Os caminhos de cada área estão na §6.3 da arquitetura.
+- **Atribuição:**
+  - o aviso MIT vai para o `THIRD_PARTY_NOTICES`;
+  - cada arquivo adaptado ganha um cabeçalho com o projeto, o caminho e o commit de origem, mesmo quando a lógica é reescrita.
+- **Fica de fora** todo código dele que lê token OAuth ou arquivo de credencial, ou que chama a API do fornecedor por fora do cliente oficial. A lista de arquivos está na §6.3.
+- **Nenhum pacote `@claudexor/*` como dependência.**
+- **Referência fixada** na tag `v6.1.2`, commit `7a87c337b5b54f28f6038a4a7c5138da7cc87c4a` (2026-11-14). **[S]**, consultado na API do GitHub em 2026-11-15.
+- **[proposta]:**
+  - reler o arquivo de referência no commit mais novo ao abrir cada fase;
+  - uma trava na CI contra nomes de arquivo de credencial e endpoints proibidos em código próprio.
+
+**TeamClaude** (`KarpelesLab/teamclaude`, MIT): não entra nem como fonte de código. Ele guarda os tokens das contas em texto, abre o HTTPS com um certificado próprio e reescreve o identificador da conta nas requisições. **[V]** Dele ficam só ideias:
+- separar a cota esgotada do limite por minuto;
+- espaçar as requisições na conta recém-escolhida;
+- preferir a conta cuja janela reinicia primeiro.
+
+**Consequência para a Fase 1:** a avaliação achou um defeito no verificador de licenças do spike. Com pnpm em workspaces, ele aprova 0 pacotes em silêncio. **[V]** O verificador da Fase 1 precisa ler árvores pnpm e reprovar quando não achar nenhum pacote.

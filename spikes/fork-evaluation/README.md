@@ -164,3 +164,7 @@ Verificadas em 2026-11-14 lendo o arquivo `LICENSE` do clone raso do repositóri
 - **Libvips em Paradev e AionUi**: visto só no lockfile; o verificador não leu esses pacotes instalados com bun.
 - **Ritmo**: números vindos da API do GitHub em 2026-11-14 (commits dos últimos 90 e 30 dias no branch padrão); a causa do volume do Orca é hipótese.
 - Termos de uso dos provedores (Anthropic, OpenAI) não foram avaliados aqui.
+
+## 8. Complemento: Claudexor (2026-11-15)
+
+O Claudexor (`razzant/claudexor`, MIT) não entrou nesta avaliação. Ele foi avaliado depois, pelos mesmos critérios, em [claudexor.md](claudexor.md), junto com uma nota sobre o TeamClaude. Decisão do dono: N41 do [docs/13](../../docs/13-DECISOES-EM-ABERTO.md). O Claudexor vira referência e fonte de trechos nas áreas críticas, e continua sem fork.

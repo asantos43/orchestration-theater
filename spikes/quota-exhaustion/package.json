@@ -1,0 +1,18 @@
+{
+  "name": "spike-quota-exhaustion",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Spike da Fase 0: cota acabando no meio da tarefa, com mock local do provedor (descartavel)",
+  "engines": { "node": ">=24" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.107.0",
+    "@agentclientprotocol/codex-acp": "2.6.0",
+    "@agentclientprotocol/sdk": "2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
+}

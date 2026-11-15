@@ -1,0 +1,12 @@
+{
+  "name": "spike-acp-handoff",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Spike da Fase 0: passagem de bastao entre clientes ACP e retomada nativa (descartavel)",
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "2.7.0",
+    "@types/node": "26.6.6"
+  }
+}

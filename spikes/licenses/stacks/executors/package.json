@@ -1,0 +1,12 @@
+{
+  "name": "stack-executors",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Executores e adaptadores (nivel C da secao 6.0): processos externos. So lockfile, sem baixar os binarios nativos de centenas de MB.",
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.107.0",
+    "@agentclientprotocol/codex-acp": "2.6.0",
+    "@openai/codex": "0.169.0",
+    "opencode-ai": "1.19.5"
+  }
+}
