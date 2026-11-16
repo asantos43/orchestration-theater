@@ -308,6 +308,84 @@ describe('ClientAdapter multi-session', () => {
     expect(launcher.running).toEqual([]);
   });
 
+  describe('shared_cancel', () => {
+    const hang = [{ type: 'text' as const, text: '#script:hang\n' }];
+    const deaf = [{ type: 'text' as const, text: '#script:deaf\n' }];
+
+    async function trio(options: Partial<FakeClientAdapterOptions> = {}) {
+      const rig = multi(options);
+      const via = new FakeSessionTransport();
+      const a = await rig.adapter.openSession(profile, policy, '/work', via);
+      const b = await rig.adapter.openSession(profile, policy, '/work', via);
+      const c = await rig.adapter.openSession(profile, policy, '/work', via);
+      return { ...rig, a, b, c };
+    }
+
+    it('escalate (default): a cancel the client honours leaves the others alone', async () => {
+      const { launcher, a, b } = await trio();
+      const running = a.prompt(hang);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await a.cancel();
+      await expect(running).resolves.toMatchObject({ stopReason: 'cancelled' });
+      expect(launcher.running).toHaveLength(1);
+      await expect(b.prompt([{ type: 'text', text: 'ok' }])).resolves.toMatchObject({
+        stopReason: 'end_turn',
+      });
+    });
+
+    it('escalate: a cancel the client ignores kills the process; the others see AdapterUnavailable', async () => {
+      const told: { pid: number; siblings: number }[] = [];
+      const { launcher, a, b, c } = await trio({ onSharedCancel: (e) => told.push(e) });
+      const running = a.prompt(deaf);
+      const siblingTurn = b.prompt(deaf).catch((error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await a.cancel();
+      await expect(running).resolves.toMatchObject({ stopReason: 'cancelled' });
+      expect(launcher.running).toHaveLength(0);
+      expect(await siblingTurn).toBeInstanceOf(AdapterUnavailable);
+      await expect(c.prompt([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(
+        AdapterUnavailable,
+      );
+      expect(told).toEqual([{ pid: launcher.launched[0]?.pid, siblings: 2 }]);
+    });
+
+    it('always_kill: a cancel the client honours still ends the process', async () => {
+      const { launcher, a, b } = await trio({ sharedCancel: 'always_kill' });
+      await a.cancel();
+      expect(launcher.running).toHaveLength(0);
+      await expect(b.prompt([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(
+        AdapterUnavailable,
+      );
+    });
+
+    it('release: a cancel the client ignores leaves the process to the others', async () => {
+      const { launcher, a, b, c } = await trio({ sharedCancel: 'release' });
+      const running = a.prompt(deaf);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await a.cancel();
+      await expect(running).resolves.toMatchObject({ stopReason: 'cancelled' });
+      expect(launcher.running).toHaveLength(1);
+      await expect(b.prompt([{ type: 'text', text: 'x' }])).resolves.toMatchObject({
+        stopReason: 'end_turn',
+      });
+      await b.close();
+      await c.close();
+      expect(launcher.running).toHaveLength(0);
+    });
+
+    it('a process of its own is always ended by a cancel, in every mode', async () => {
+      for (const sharedCancel of ['escalate', 'always_kill', 'release'] as const) {
+        const { adapter, launcher } = multi({ sharedCancel, processReuse: 'own' });
+        const via = new FakeSessionTransport();
+        const a = await adapter.openSession(profile, policy, '/work', via);
+        const b = await adapter.openSession(profile, policy, '/work', via);
+        await a.cancel();
+        expect(launcher.running).toHaveLength(1);
+        await b.close();
+      }
+    });
+  });
+
   it('does not join a process that is already killed, and a new session starts another', async () => {
     const { adapter, launcher } = multi();
     const via = new FakeSessionTransport();

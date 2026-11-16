@@ -187,6 +187,21 @@ class FakeDriver implements SessionDriver {
         if (this.#disconnected.signal.aborted)
           throw new AdapterUnavailable('the connection to the client closed');
         return 'cancelled';
+      case 'deaf':
+        // A client that ignores `session/cancel`: only the end of the connection ends the turn.
+        this.#message('ignoring session/cancel');
+        await new Promise<void>((resolve) => {
+          if (this.#disconnected.signal.aborted) resolve();
+          else
+            this.#disconnected.signal.addEventListener(
+              'abort',
+              () => {
+                resolve();
+              },
+              { once: true },
+            );
+        });
+        throw new AdapterUnavailable('the connection to the client closed');
       case 'quota-signal':
         throw Object.assign(new Error('quota exhausted'), {
           code: -32001,
@@ -200,7 +215,7 @@ class FakeDriver implements SessionDriver {
 
 /**
  * A `SessionTransport` with no wire and no process: the session it returns plays the same scripts
- * as `@otheater/fake-agent` (`#script:echo|tool-call|edit-file|fail|hang|quota-signal`) in memory,
+ * as `@otheater/fake-agent` (`#script:echo|tool-call|edit-file|fail|hang|deaf|quota-signal`; `deaf` ignores `session/cancel`) in memory,
  * on the common `ManagedAgentSession`. It records what the `ClientAdapter` handed it, so a test of
  * the adapter (or of a session pool, P8) sees the process, the setup and the permission answers.
  */

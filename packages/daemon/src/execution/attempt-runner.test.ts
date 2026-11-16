@@ -12,12 +12,21 @@ import {
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { editsPrompt } from '../test-helpers.js';
-import { eventsOf, makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixture.js';
+import {
+  eventsOf,
+  makeRig,
+  QUIET_SETTINGS,
+  specOf,
+  until,
+  type Rig,
+  type RigParts,
+} from './attempt-fixture.js';
 import type { ExecutionSettings } from './settings.js';
+import type { SharedCancelMode } from '@otheater/core';
 
 const TEST_TIMEOUT_MS = 30_000;
 
-function fakes() {
+function fakes(shared = false) {
   const clock = new FakeClock();
   const launcher = new FakeProcessLauncher();
   return {
@@ -30,6 +39,7 @@ function fakes() {
       baseEnv: {},
       adapterVersion: '1.0.0',
       command: { cmd: 'fake-client', args: [] },
+      ...(shared ? { processModel: 'multi-session' as const } : {}),
     }),
   } satisfies RigParts;
 }
@@ -38,8 +48,8 @@ type TestRig = Rig<ReturnType<typeof fakes>>;
 
 const rigs: TestRig[] = [];
 
-async function rig(overrides: Partial<ExecutionSettings> = {}): Promise<TestRig> {
-  const made = await makeRig(fakes(), overrides);
+async function rig(overrides: Partial<ExecutionSettings> = {}, shared = false): Promise<TestRig> {
+  const made = await makeRig(fakes(shared), overrides);
   rigs.push(made);
   return made;
 }
@@ -451,6 +461,106 @@ describe('AttemptRunner, stop', () => {
       expect(await testGit(outcome.worktree, 'show', 'HEAD:a.txt')).toBe('a');
       expect(r.launcher.running).toHaveLength(0);
       await expect(r.runner.run(specOf(r, 'late', { attempt: 2 }))).rejects.toThrow(/stopped/);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('AttemptRunner, the cancel of a session on a shared process (pool.shared_cancel)', () => {
+  /** Two attempts on one shared process; `maxResumes: 0` so any charged resume would park. */
+  async function shared(mode: SharedCancelMode): Promise<TestRig> {
+    return rig({ maxResumes: 0, pool: { ...QUIET_SETTINGS.pool, sharedCancel: mode } }, true);
+  }
+
+  async function bothRunning(r: TestRig, first: string, second: string) {
+    const a = r.runner.run(specOf(r, first, { timeoutMs: 1000 }));
+    await until(() => r.pool.stats().sessions === 1, 'the first session');
+    const b = r.runner.run(specOf(r, second, { attempt: 2 }));
+    await until(() => r.pool.stats().sessions === 2, 'the second session');
+    expect(r.launcher.launched).toHaveLength(1);
+    return { a, b };
+  }
+
+  it(
+    'escalate: a timeout the client ignores ends the process, and the sibling resumes without cost',
+    async () => {
+      const r = await shared('escalate');
+      const { a, b } = await bothRunning(r, '#script:deaf', '#script:hang');
+      await r.clock.advance(1000);
+      const outcomeA = await a;
+      expect(outcomeA).toMatchObject({ state: 'timed_out' });
+
+      const escalated = await eventsOf(r, 'session.cancel_escalated');
+      expect(escalated).toHaveLength(1);
+      expect(escalated[0]?.payload).toMatchObject({
+        mode: 'escalate',
+        siblings: 1,
+        pid: r.launcher.launched[0]?.pid,
+        attemptId: outcomeA.attemptId,
+      });
+      expect(r.launcher.launched[0]?.killTreeCalls).toBeGreaterThan(0);
+
+      // The sibling saw the process fall and went on through session/load, for free.
+      const outcomeB = await b;
+      expect(outcomeB).toMatchObject({ state: 'completed', resumes: 0 });
+      expect(r.transport.loaded).toHaveLength(1);
+      expect(r.launcher.launched).toHaveLength(2);
+      const interrupted = (await eventsOf(r, 'session.interrupted')).filter(
+        (event) => (event.payload as { cause?: string }).cause === 'client_crash',
+      );
+      expect((interrupted[0]?.payload as { detail?: string }).detail).toContain('another session');
+      // Only the process of the resume is left, idle until the clock says otherwise.
+      expect(r.launcher.running).toHaveLength(1);
+      expect(r.pool.stats()).toEqual({ processes: 1, sessions: 0, queued: 0 });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'escalate: a timeout the client honours leaves the process and the sibling alone',
+    async () => {
+      const r = await shared('escalate');
+      const { a, b } = await bothRunning(r, '#script:hang', '#script:hang');
+      await r.clock.advance(1000);
+      expect(await a).toMatchObject({ state: 'timed_out' });
+      expect(await eventsOf(r, 'session.cancel_escalated')).toHaveLength(0);
+      expect(r.launcher.running).toHaveLength(1);
+      expect(r.pool.stats().sessions).toBe(1);
+      await r.runner.stop();
+      expect(await b).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'always_kill: a timeout the client honours still ends the process',
+    async () => {
+      const r = await shared('always_kill');
+      const { a, b } = await bothRunning(r, '#script:hang', '#script:hang');
+      await r.clock.advance(1000);
+      expect(await a).toMatchObject({ state: 'timed_out' });
+      const escalated = await eventsOf(r, 'session.cancel_escalated');
+      expect(escalated).toHaveLength(1);
+      expect(escalated[0]?.payload).toMatchObject({ mode: 'always_kill', siblings: 1 });
+      await until(() => r.launcher.launched.length === 2, 'the sibling to resume');
+      await r.runner.stop();
+      await b;
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'release: not even a timeout the client ignores ends the shared process',
+    async () => {
+      const r = await shared('release');
+      const { a, b } = await bothRunning(r, '#script:deaf', '#script:hang');
+      await r.clock.advance(1000);
+      expect(await a).toMatchObject({ state: 'timed_out' });
+      expect(await eventsOf(r, 'session.cancel_escalated')).toHaveLength(0);
+      expect(r.launcher.running).toHaveLength(1);
+      expect(r.launcher.launched).toHaveLength(1);
+      await r.runner.stop();
+      expect(await b).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
     },
     TEST_TIMEOUT_MS,
   );

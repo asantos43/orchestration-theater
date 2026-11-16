@@ -282,6 +282,29 @@ describe('fake agent in process', () => {
     });
   });
 
+  it('deaf ignores session/cancel and announces the child it leaves running', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      let settled = false;
+      // The turn never ends: it rejects when the connection closes at the end of the test.
+      void prompt(h, '#script:deaf {"child":true}').then(
+        () => {
+          settled = true;
+        },
+        () => undefined,
+      );
+      await waitFor(() => JSON.stringify(h.recorded.updates).includes('ignoring session/cancel'));
+      const text = JSON.stringify(h.recorded.updates);
+      const pid = Number(/child pid (\d+)/.exec(text)?.[1]);
+      expect(Number.isInteger(pid)).toBe(true);
+      await h.cx.notify(methods.agent.session.cancel, { sessionId: h.sessionId });
+      await new Promise((done) => setTimeout(done, 100));
+      expect(settled).toBe(false);
+      // The child is a real process of this test: the signal 0 only checks that it is there.
+      expect(() => process.kill(pid, 0)).not.toThrow();
+      process.kill(pid, 'SIGKILL');
+    });
+  });
+
   it('quota-signal emits the extension notification and then fails with QuotaExhausted', async () => {
     await withSession(createFakeAgent(), async (h) => {
       const error = await rejection(

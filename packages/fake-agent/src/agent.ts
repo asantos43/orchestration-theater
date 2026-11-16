@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { spawn } from 'node:child_process';
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
@@ -237,6 +238,26 @@ async function playHang(turn: TurnContext): Promise<PromptResponse> {
   return CANCELLED;
 }
 
+/**
+ * A client that does not honour `session/cancel`: the turn never ends by itself. With `child`, a
+ * tool of the turn is left running (a process that sleeps for a minute at most) and its pid is
+ * announced, so a test can prove that ending the process tree reaches it.
+ */
+async function playDeaf(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'deaf' }>,
+): Promise<PromptResponse> {
+  if (script.child) {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+      stdio: 'ignore',
+    });
+    child.unref();
+    await message(turn, `child pid ${String(child.pid)}`);
+  }
+  await message(turn, 'ignoring session/cancel');
+  return new Promise<PromptResponse>(() => undefined);
+}
+
 async function playQuotaSignal(
   turn: TurnContext,
   script: Extract<Script, { name: 'quota-signal' }>,
@@ -266,6 +287,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
     case 'hang':
       return playHang(turn);
+    case 'deaf':
+      return playDeaf(turn, script);
     case 'quota-signal':
       return playQuotaSignal(turn, script);
   }

@@ -50,9 +50,25 @@ export interface ProcessExit {
   readonly signal: string | null;
 }
 
+/**
+ * How the client answered a `session/cancel`: `honored` when the turn ended within the grace
+ * period, `ignored` when it did not.
+ */
+export type CancelOutcome = 'honored' | 'ignored';
+
 export interface KillOptions {
   /** Time to wait after the polite signal before SIGKILL. Default {@link DEFAULT_KILL_GRACE_MS}. */
   readonly graceMs?: number;
+  /**
+   * Set by a session that ends because of a `session/cancel` (and by nothing else: `close` leaves
+   * it out). A real launcher ignores it and kills the whole tree, as before. It matters to a
+   * LEASE of a process shared by several sessions (`SharedProcessRegistry`, the daemon's session
+   * pool): there `killTree` only gives the lease back, unless the sharing policy
+   * (`shared_cancel`, see `endsSharedProcess`) says that this outcome ends the process of every
+   * session on it. [proposta] Additive field: a one-field alternative to a new method on
+   * `LaunchedProcess`, so no launcher and no fake has to change.
+   */
+  readonly cancel?: CancelOutcome;
 }
 
 /** What `killTree` found and did. */

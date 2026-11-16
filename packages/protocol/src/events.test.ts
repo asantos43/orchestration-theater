@@ -30,6 +30,7 @@ describe('daemon event registry', () => {
       'session.prompt_finished',
       'session.interrupted',
       'session.resumed',
+      'session.cancel_escalated',
       'session.closed',
       'attempt.checkpoint',
     ]);

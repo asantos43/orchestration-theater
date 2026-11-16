@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
-import { InvalidInput } from '@otheater/core';
+import { InvalidInput, SHARED_CANCEL_MODES } from '@otheater/core';
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -256,6 +256,12 @@ export const DaemonConfigSchema = z.strictObject({
       max_sessions: z.int().min(1).default(4),
       /** A process with no session for this long is closed (`idleMs`). */
       idle: DurationSchema.prefault('2m'),
+      /**
+       * N64: what cancelling a session does to a process that runs other sessions too. `escalate`
+       * ends the process only when the client did not honour `session/cancel` within the grace;
+       * `always_kill` ends it on every cancel; `release` only gives the slot back.
+       */
+      shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
       /** N56 (5.2): how OpenCode shares its processes. The adapter wiring reads it; the pool follows the adapter's `processModel`. */
       opencode: z
         .strictObject({ process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile') })

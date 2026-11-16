@@ -14,6 +14,7 @@ import {
   type Profile,
   type ProcessModel,
   type RolePolicy,
+  type SharedCancelMode,
 } from '@otheater/core';
 import { FakeClientAdapter } from '@otheater/core/testing';
 import {
@@ -51,6 +52,7 @@ const script = (name: string, options = '', text = ''): readonly ContentBlock[] 
 const prompts = {
   echo: (text: string) => script('echo', '', text),
   hang: script('hang'),
+  deaf: script('deaf'),
   fail: script('fail'),
   quota: script('quota-signal'),
 };
@@ -67,7 +69,10 @@ interface Rig {
   readonly dispose: () => Promise<void>;
 }
 
-async function rig(processModel: ProcessModel = 'process-per-session'): Promise<Rig> {
+async function rig(
+  processModel: ProcessModel = 'process-per-session',
+  sharedCancel?: SharedCancelMode,
+): Promise<Rig> {
   const cwd = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-'));
   tempDirs.push(cwd);
   const launcher = new NodeProcessLauncher();
@@ -78,6 +83,7 @@ async function rig(processModel: ProcessModel = 'process-per-session'): Promise<
     adapterVersion: '1.0.0',
     command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
     processModel,
+    ...(sharedCancel === undefined ? {} : { sharedCancel }),
   });
   const via = new AcpTransport({ cancelGraceMs: 300, killGraceMs: 1000, startTimeoutMs: 10_000 });
   return {
@@ -183,30 +189,33 @@ describeAgentSessionConformance('AcpTransport + fake-agent, multi-session', asyn
   return harness;
 });
 
-describeClientAdapterConformance(
-  'FakeClientAdapter + AcpTransport + fake-agent, multi-session',
-  async () => {
-    const r = await rig('multi-session');
-    const edited = join(r.cwd, 'out.txt');
-    const harness: ClientAdapterHarness = {
-      adapter: r.adapter,
-      via: r.via,
-      profile,
-      policy,
-      cwd: r.cwd,
-      prompts,
-      permission: {
-        prompt: script('edit-file', '{"path":"out.txt"}'),
-        granted: () => existsSync(edited),
-      },
-      processesAlive: r.alive,
-      rootProcessesAlive: r.alive,
-      crash: () => r.launcher.killAll(),
-      dispose: r.dispose,
-    };
-    return harness;
-  },
-);
+for (const mode of ['escalate', 'always_kill', 'release'] as const) {
+  describeClientAdapterConformance(
+    `FakeClientAdapter + AcpTransport + fake-agent, multi-session, shared_cancel ${mode}`,
+    async () => {
+      const r = await rig('multi-session', mode);
+      const edited = join(r.cwd, 'out.txt');
+      const harness: ClientAdapterHarness = {
+        adapter: r.adapter,
+        via: r.via,
+        profile,
+        policy,
+        cwd: r.cwd,
+        prompts,
+        sharedCancel: mode,
+        permission: {
+          prompt: script('edit-file', '{"path":"out.txt"}'),
+          granted: () => existsSync(edited),
+        },
+        processesAlive: r.alive,
+        rootProcessesAlive: r.alive,
+        crash: () => r.launcher.killAll(),
+        dispose: r.dispose,
+      };
+      return harness;
+    },
+  );
+}
 
 describe('several sessions on one fake agent process, end to end', () => {
   const cleanup: Rig[] = [];
@@ -239,6 +248,68 @@ describe('several sessions on one fake agent process, end to end', () => {
     expect(seenB.join('')).toContain('b goes on');
     await b.close();
     expect(r.alive()).toBe(0);
+  });
+
+  describe('a cancel the client ignores (shared_cancel)', () => {
+    const alive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    /** Opens two sessions; the first runs a deaf turn whose tool child is left running. */
+    async function deafPair(mode: SharedCancelMode) {
+      const r = await rig('multi-session', mode);
+      cleanup.push(r);
+      const a = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+      const b = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+      let seen = '';
+      a.onUpdate((update) => {
+        seen += text(update);
+      });
+      const turnA = a.prompt(script('deaf', '{"child":true}'));
+      const turnB = b.prompt(prompts.hang).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      const until = Date.now() + 10_000;
+      while (!/child pid \d+/.test(seen) && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      const pid = Number(/child pid (\d+)/.exec(seen)?.[1]);
+      expect(Number.isInteger(pid)).toBe(true);
+      return { r, a, b, turnA, turnB, pid };
+    }
+
+    it('escalate: the tree of the shared process ends, the tool child with it, the sibling drops', async () => {
+      const { r, a, turnA, turnB, pid } = await deafPair('escalate');
+      expect(alive(pid)).toBe(true);
+      await a.cancel();
+      await expect(turnA).resolves.toMatchObject({ stopReason: 'cancelled' });
+      expect(alive(pid)).toBe(false);
+      expect(r.alive()).toBe(0);
+      expect(await turnB).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+    });
+
+    it('release: only the lease goes back, so the child and the process stay for the sibling', async () => {
+      const { r, a, b, turnA, turnB, pid } = await deafPair('release');
+      try {
+        await a.cancel();
+        await expect(turnA).resolves.toMatchObject({ stopReason: 'cancelled' });
+        expect(alive(pid)).toBe(true);
+        expect(r.alive()).toBe(1);
+        await b.cancel();
+        expect(await turnB).toBeUndefined();
+      } finally {
+        // The orphan the mode leaves behind is this test's own: end it by pid.
+        if (alive(pid)) process.kill(pid, 'SIGKILL');
+      }
+      await b.close();
+      expect(r.alive()).toBe(0);
+    });
   });
 
   it('K+1 sessions: the session over the limit gets a process of its own', async () => {

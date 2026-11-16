@@ -8,6 +8,7 @@ import {
   type Profile,
   type RolePolicy,
   type SandboxCapabilities,
+  type SharedCancelMode,
   type SessionTransport,
 } from '@otheater/core';
 import { describe, expect, it, type TestContext } from 'vitest';
@@ -27,7 +28,15 @@ export interface ClientAdapterHarness extends Disposable {
     readonly echo: (text: string) => readonly ContentBlock[];
     /** A turn that does not end by itself. */
     readonly hang?: readonly ContentBlock[];
+    /** A turn that does not end by itself and ignores `session/cancel` (a client that is deaf to it). */
+    readonly deaf?: readonly ContentBlock[];
   };
+  /**
+   * What cancelling a session does to a process that runs other sessions too (N64): the mode the
+   * adapter was built with. Default `escalate`. Only read for an adapter that declares
+   * `multi-session`.
+   */
+  readonly sharedCancel?: SharedCancelMode;
   /**
    * A prompt that makes the client ask permission to edit a file, and what happened to the file:
    * `granted()` is true when the edit went through. The policy rejects every request, so it must
@@ -283,7 +292,8 @@ export function describeClientAdapterConformance(
         promptTest('cancel of one session does not touch the other', async (ctx) => {
           const { h, a, b } = await pair(ctx);
           const hang = h.prompts.hang;
-          if (hang === undefined) ctx.skip();
+          // `always_kill` ends the shared process on every cancel; that mode has its own test below.
+          if (hang === undefined || h.sharedCancel === 'always_kill') ctx.skip();
           const runningA = a.prompt(hang ?? []);
           const runningB = b.prompt(hang ?? []);
           let otherEnded = false;
@@ -304,6 +314,72 @@ export function describeClientAdapterConformance(
           await b.cancel();
           await expect(runningB).resolves.toMatchObject({ stopReason: 'cancelled' });
           expect(await h.processesAlive()).toBe(0);
+        });
+
+        describe('cancel of a session on a shared process (shared_cancel)', () => {
+          const ended = (promise: Promise<unknown>): Promise<unknown> =>
+            promise.then(
+              () => undefined,
+              (error: unknown) => error,
+            );
+
+          promptTest(
+            'a cancel the client ignores ends the process in escalate and always_kill, not in release',
+            async (ctx) => {
+              const { h, a, b } = await pair(ctx);
+              const { deaf, hang } = h.prompts;
+              if (deaf === undefined || hang === undefined) ctx.skip();
+              const mode = h.sharedCancel ?? 'escalate';
+              const runningA = a.prompt(deaf ?? []);
+              const runningB = ended(b.prompt(hang ?? []));
+              await settle();
+              await a.cancel();
+              await expect(runningA).resolves.toMatchObject({ stopReason: 'cancelled' });
+              if (mode === 'release') {
+                await settle();
+                if (h.rootProcessesAlive !== undefined) {
+                  expect(await h.rootProcessesAlive()).toBe(1);
+                }
+                await b.cancel();
+                expect(await runningB).toBeUndefined();
+              } else {
+                expect(await runningB).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+                expect(await h.processesAlive()).toBe(0);
+              }
+              await a.close();
+              await b.close();
+              expect(await h.processesAlive()).toBe(0);
+            },
+          );
+
+          promptTest(
+            'a cancel the client honours ends the process only in always_kill',
+            async (ctx) => {
+              const { h, a, b } = await pair(ctx);
+              const hang = h.prompts.hang;
+              if (hang === undefined) ctx.skip();
+              const mode = h.sharedCancel ?? 'escalate';
+              const runningA = a.prompt(hang ?? []);
+              const runningB = ended(b.prompt(hang ?? []));
+              await settle();
+              await a.cancel();
+              await expect(runningA).resolves.toMatchObject({ stopReason: 'cancelled' });
+              if (mode === 'always_kill') {
+                expect(await runningB).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+                expect(await h.processesAlive()).toBe(0);
+              } else {
+                await settle();
+                if (h.rootProcessesAlive !== undefined) {
+                  expect(await h.rootProcessesAlive()).toBe(1);
+                }
+                await b.cancel();
+                expect(await runningB).toBeUndefined();
+              }
+              await a.close();
+              await b.close();
+              expect(await h.processesAlive()).toBe(0);
+            },
+          );
         });
 
         promptTest(

@@ -123,6 +123,24 @@ export const SessionResumedPayloadSchema = z.strictObject({
   ...correlation,
 });
 
+/**
+ * `session.cancel_escalated`: cancelling a session ended the shared adapter process it ran on
+ * (`pool.shared_cancel`, `escalate` or `always_kill`). The other sessions of that process lost
+ * their connection and come back through the resume path (`session.interrupted`, `client_crash`).
+ * [proposta] A new type instead of a new interruption cause, so the cause table of 5.16 stays as is.
+ */
+export const SessionCancelEscalatedPayloadSchema = z.strictObject({
+  /** The session whose cancel ended the process. */
+  sessionId: id,
+  /** The mode that decided it; `release` never ends a process. */
+  mode: z.enum(['escalate', 'always_kill']),
+  /** Pid of the adapter process that was ended. */
+  pid: z.int().min(0),
+  /** Other sessions that were on the process and fell with it. */
+  siblings: z.int().min(0),
+  ...correlation,
+});
+
 /** `session.closed`: the session ended and its process was released. */
 export const SessionClosedPayloadSchema = z.strictObject({
   sessionId: id,

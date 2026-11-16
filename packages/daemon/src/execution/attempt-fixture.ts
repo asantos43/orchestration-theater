@@ -23,7 +23,7 @@ export const HOUR = 3_600_000;
 
 /** Settings with nothing firing by itself; a test turns on what it exercises. */
 export const QUIET_SETTINGS: ExecutionSettings = {
-  pool: { sessionsPerProcess: 2, maxSessions: 10, idleMs: HOUR },
+  pool: { sessionsPerProcess: 2, maxSessions: 10, idleMs: HOUR, sharedCancel: 'escalate' },
   timeoutMs: HOUR,
   timeoutMaxMs: 24 * HOUR,
   checkpointEveryMs: 0,

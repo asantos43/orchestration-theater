@@ -23,6 +23,11 @@ export const scriptSchema = z.discriminatedUnion('name', [
   }),
   z.strictObject({ name: z.literal('hang') }),
   z.strictObject({
+    name: z.literal('deaf'),
+    /** Also starts a child process (a tool of the turn) and says its pid in a message chunk. */
+    child: z.boolean().default(false),
+  }),
+  z.strictObject({
     name: z.literal('quota-signal'),
     usedPercent: z.number().min(0).max(100).default(100),
     resetsAt: z.string().optional(),
@@ -38,6 +43,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'edit-file',
   'fail',
   'hang',
+  'deaf',
   'quota-signal',
 ];
 

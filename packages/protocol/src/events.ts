@@ -5,6 +5,7 @@ import { BACKUP_TRIGGERS } from './api.js';
 import {
   AttemptCheckpointPayloadSchema,
   SessionClosedPayloadSchema,
+  SessionCancelEscalatedPayloadSchema,
   SessionInterruptedPayloadSchema,
   SessionOpenedPayloadSchema,
   SessionPromptFinishedPayloadSchema,
@@ -75,6 +76,7 @@ export const DAEMON_EVENT_TYPES = {
   'session.prompt_finished': { schemaVersion: 1, payload: SessionPromptFinishedPayloadSchema },
   'session.interrupted': { schemaVersion: 1, payload: SessionInterruptedPayloadSchema },
   'session.resumed': { schemaVersion: 1, payload: SessionResumedPayloadSchema },
+  'session.cancel_escalated': { schemaVersion: 1, payload: SessionCancelEscalatedPayloadSchema },
   'session.closed': { schemaVersion: 1, payload: SessionClosedPayloadSchema },
   'attempt.checkpoint': { schemaVersion: 1, payload: AttemptCheckpointPayloadSchema },
 } as const;
@@ -93,6 +95,7 @@ export type SessionUpdatePayload = DaemonEventPayloads['session.update'];
 export type SessionPromptFinishedPayload = DaemonEventPayloads['session.prompt_finished'];
 export type SessionInterruptedPayload = DaemonEventPayloads['session.interrupted'];
 export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
+export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 

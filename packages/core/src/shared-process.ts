@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput } from './errors.js';
 import type {
+  CancelOutcome,
   KillOptions,
   KillReport,
   LaunchedProcess,
@@ -10,6 +11,51 @@ import type {
 
 /** Sessions per client process when nobody says otherwise. [proposta] The same default as `pool.sessions_per_process` of the daemon. */
 export const DEFAULT_SESSIONS_PER_PROCESS = 4;
+
+/**
+ * What cancelling a session does to a process that other sessions share (decision of 2026-11-16,
+ * `pool.shared_cancel`):
+ * - `escalate` (default): the cancel only gives the lease back if the client ended the turn within
+ *   the grace period; if it did not, the whole process tree is killed, the other sessions of the
+ *   process lose their connection and are reloaded by the resume path (`session/load`, 5.16);
+ * - `always_kill`: every cancel kills the whole tree, even when the turn ended;
+ * - `release`: the cancel only gives the lease back, whatever the client did (children of an
+ *   ignored cancel can stay alive until the last session leaves).
+ */
+export const SHARED_CANCEL_MODES = ['escalate', 'always_kill', 'release'] as const;
+export type SharedCancelMode = (typeof SHARED_CANCEL_MODES)[number];
+
+/** [proposta] Default of `shared_cancel`. */
+export const DEFAULT_SHARED_CANCEL: SharedCancelMode = 'escalate';
+
+/**
+ * Whether a kill that comes from a cancel ends the process of a SHARED process, with the other
+ * sessions on it. `cancel` is {@link KillOptions.cancel}; without it (a plain `close`) the answer
+ * is always no.
+ */
+export function endsSharedProcess(
+  mode: SharedCancelMode,
+  cancel: CancelOutcome | undefined,
+): boolean {
+  if (cancel === undefined || mode === 'release') return false;
+  return mode === 'always_kill' || cancel === 'ignored';
+}
+
+/** What a cancel that ended a shared process took with it. */
+export interface SharedCancelEscalation {
+  /** Pid of the process that was killed. */
+  readonly pid: number;
+  /** Sessions that were still on it and lost their connection. */
+  readonly siblings: number;
+}
+
+/** What the registry is told besides the launcher and the limit. */
+export interface SharedProcessRegistryOptions {
+  /** Default {@link DEFAULT_SHARED_CANCEL}. */
+  readonly sharedCancel?: SharedCancelMode;
+  /** Called when a cancel ended a process that other sessions were on. Must not throw. */
+  readonly onEscalation?: (escalation: SharedCancelEscalation) => void;
+}
 
 const NOT_KILLED: KillReport = { found: 0, forced: false, remaining: [] };
 
@@ -43,8 +89,11 @@ interface SharedEntry {
  * above the adapter owns the processes. Each session gets a lease: a {@link LaunchedProcess} view
  * of the same process (same streams, same `exited`) whose `killTree` only gives the lease back.
  * The real tree is killed when the LAST lease leaves, and its report is the one that lease gets;
- * a lease that leaves with others still holding the process gets an empty report. If the process
- * dies, `exited` settles for every lease, so every session sees the end at once.
+ * a lease that leaves with others still holding the process gets an empty report. The exception
+ * is a lease that leaves because of a cancel (`KillOptions.cancel`) when `sharedCancel` says so
+ * (see {@link endsSharedProcess}): then the tree is killed at once, that lease gets the real
+ * report and `onEscalation` is told how many sessions were still on it. If the process dies,
+ * `exited` settles for every lease, so every session sees the end at once.
  *
  * Processes are grouped by a key (see {@link sharedProcessKey}) and hold up to `sessionsPerProcess`
  * leases; another process starts above that, or when the caller asks for an `own` one. The class
@@ -55,16 +104,21 @@ export class SharedProcessRegistry {
   readonly #launcher: ProcessLauncher;
   readonly #limit: number;
   readonly #entries = new Map<string, SharedEntry[]>();
+  readonly #sharedCancel: SharedCancelMode;
+  readonly #onEscalation: ((escalation: SharedCancelEscalation) => void) | undefined;
 
   constructor(
     launcher: ProcessLauncher,
     sessionsPerProcess: number = DEFAULT_SESSIONS_PER_PROCESS,
+    options: SharedProcessRegistryOptions = {},
   ) {
     if (!Number.isSafeInteger(sessionsPerProcess) || sessionsPerProcess < 1) {
       throw new InvalidInput('sessionsPerProcess must be a positive integer');
     }
     this.#launcher = launcher;
     this.#limit = sessionsPerProcess;
+    this.#sharedCancel = options.sharedCancel ?? DEFAULT_SHARED_CANCEL;
+    this.#onEscalation = options.onEscalation;
   }
 
   /** Number of processes alive (or starting) that hold at least one lease. For tests and diagnostics. */
@@ -128,6 +182,14 @@ export class SharedProcessRegistry {
     else this.#entries.set(key, rest);
   }
 
+  #told(escalation: SharedCancelEscalation): void {
+    try {
+      this.#onEscalation?.(escalation);
+    } catch {
+      // A hook must not break the cancel.
+    }
+  }
+
   #lease(key: string, entry: SharedEntry, process: LaunchedProcess): LaunchedProcess {
     let released: Promise<KillReport> | undefined;
     return {
@@ -149,9 +211,12 @@ export class SharedProcessRegistry {
       killTree: (options?: KillOptions): Promise<KillReport> => {
         released ??= (() => {
           entry.count -= 1;
-          if (entry.count > 0) return Promise.resolve(NOT_KILLED);
-          // The last one out: nobody may join a process that is about to be killed.
+          const escalate = endsSharedProcess(this.#sharedCancel, options?.cancel);
+          if (entry.count > 0 && !escalate) return Promise.resolve(NOT_KILLED);
+          // The last one out, or a cancel that ends the process: nobody may join a process that
+          // is about to be killed.
           this.#drop(key, entry);
+          if (entry.count > 0) this.#told({ pid: process.pid, siblings: entry.count });
           return process.killTree(options);
         })();
         return released;
