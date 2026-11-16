@@ -1,0 +1,23 @@
+{
+  "name": "@otheater/adapter-client-claude-code",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@otheater/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@otheater/sdk": "workspace:*",
+    "vitest": "5.1.0"
+  }
+}
