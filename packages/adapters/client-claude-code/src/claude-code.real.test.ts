@@ -230,6 +230,22 @@ describe.skipIf(!flags.clients)('the real claude-agent-acp (no prompt)', () => {
     expect(snapshot?.efforts.length).toBeGreaterThan(0);
   });
 
+  it('answers set_config_option with the whole option list, the new value included [N: not run here]', async () => {
+    // `AgentSession.configOptions` follows this answer (and `config_option_update`): the daemon
+    // reads the catalog from it. The answer is typed as required in the ACP schema.
+    const acp = await start(join(scratch, 'profile'), scratch);
+    const created = await acp.request('session/new', sessionNewParams(scratch));
+    const set = await acp.request('session/set_config_option', {
+      sessionId: created.sessionId,
+      configId: 'mode',
+      value: SESSION_MODE,
+    });
+    expect(Array.isArray(created.configOptions)).toBe(true);
+    expect(Array.isArray(set.configOptions)).toBe(true);
+    const mode = (set.configOptions as Json[]).find((option) => option.id === 'mode');
+    expect(mode?.currentValue).toBe(SESSION_MODE);
+  });
+
   it('accepts the mode default and does not list bypassPermissions after the policy', async () => {
     const acp = await start(join(scratch, 'profile'), scratch);
     const created = await acp.request('session/new', sessionNewParams(scratch));

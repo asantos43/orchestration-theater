@@ -6,6 +6,7 @@ import {
   type ContentBlock,
   type Disposable,
   type PromptOutcome,
+  type SessionConfigOption,
   type SessionLoadParams,
   type SessionOpenParams,
   type SessionTransport,
@@ -29,6 +30,10 @@ class ModeGuardedSession implements AgentSession {
 
   get canLoad(): boolean {
     return this.#inner.canLoad;
+  }
+
+  get configOptions(): readonly SessionConfigOption[] {
+    return this.#inner.configOptions;
   }
 
   prompt(blocks: readonly ContentBlock[]): Promise<PromptOutcome> {

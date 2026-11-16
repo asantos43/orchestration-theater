@@ -8,8 +8,10 @@ import {
   type ClientConnection,
   type ContentBlock as AcpContentBlock,
   type McpServer,
+  type NewSessionResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
+  type SessionConfigOption as AcpConfigOption,
 } from '@agentclientprotocol/sdk';
 import {
   AdapterUnavailable,
@@ -23,6 +25,9 @@ import {
   type ContentBlock,
   type OTheaterError,
   type PermissionRequest,
+  type SessionConfigChoice,
+  type SessionConfigChoiceGroup,
+  type SessionConfigOption,
   type SessionDriver,
   type SessionExtensionHandler,
   type SessionLoadParams,
@@ -128,6 +133,62 @@ function acpContentOf(block: ContentBlock): AcpContentBlock {
   return Object.fromEntries(
     Object.entries(block).filter(([, value]) => value !== undefined),
   ) as unknown as AcpContentBlock;
+}
+
+function choiceOf(raw: unknown): SessionConfigChoice | undefined {
+  if (!isRecord(raw) || typeof raw.value !== 'string') return undefined;
+  return {
+    value: raw.value,
+    ...(typeof raw.name === 'string' ? { name: raw.name } : {}),
+    ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+  };
+}
+
+/** The values of a select option, flat or grouped; an entry the client got wrong is left out. */
+function choicesOf(raw: unknown): (SessionConfigChoice | SessionConfigChoiceGroup)[] {
+  if (!Array.isArray(raw)) return [];
+  const out: (SessionConfigChoice | SessionConfigChoiceGroup)[] = [];
+  for (const item of raw as unknown[]) {
+    if (isRecord(item) && Array.isArray(item.options)) {
+      out.push({
+        group: typeof item.group === 'string' ? item.group : '',
+        ...(typeof item.name === 'string' ? { name: item.name } : {}),
+        options: (item.options as unknown[]).flatMap((entry) => choiceOf(entry) ?? []),
+      });
+      continue;
+    }
+    const choice = choiceOf(item);
+    if (choice !== undefined) out.push(choice);
+  }
+  return out;
+}
+
+/**
+ * The config options of an ACP answer (`session/new`, `session/load`, `session/set_config_option`)
+ * or of a `config_option_update`, in the neutral form of the port. What is not an object with a
+ * string `id` is dropped: the list comes from a client, not from this code.
+ */
+function configOptionsOf(
+  raw: readonly AcpConfigOption[] | readonly unknown[] | null | undefined,
+): SessionConfigOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SessionConfigOption[] = [];
+  for (const item of raw as unknown[]) {
+    if (!isRecord(item) || typeof item.id !== 'string') continue;
+    const boolean = item.type === 'boolean';
+    const current = item.currentValue;
+    out.push({
+      id: item.id,
+      type: boolean ? 'boolean' : 'select',
+      ...(typeof item.name === 'string' ? { name: item.name } : {}),
+      ...(typeof item.category === 'string' ? { category: item.category } : {}),
+      ...(typeof current === 'string' || typeof current === 'boolean'
+        ? { currentValue: current }
+        : {}),
+      ...(boolean ? {} : { options: choicesOf(item.options) }),
+    });
+  }
+  return out;
 }
 
 const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
@@ -241,14 +302,18 @@ class AcpDriver implements SessionDriver {
     });
   }
 
-  async applyConfig(id: string, value: ConfigValue): Promise<void> {
+  async applyConfig(id: string, value: ConfigValue): Promise<SessionConfigOption[] | undefined> {
     try {
-      await this.#connection.agent.request(
+      const answer = await this.#connection.agent.request(
         methods.agent.session.setConfigOption,
         typeof value === 'boolean'
           ? { sessionId: this.#sessionId, configId: id, type: 'boolean', value }
           : { sessionId: this.#sessionId, configId: id, value },
       );
+      // An answer with no list (not what ACP says) leaves the snapshot as it was.
+      return Array.isArray(answer.configOptions)
+        ? configOptionsOf(answer.configOptions)
+        : undefined;
     } catch (error) {
       if (error instanceof RequestError && error.code === JSON_RPC_INVALID_PARAMS) {
         throw new InvalidInput(
@@ -486,9 +551,10 @@ export class AcpTransport implements SessionTransport {
     const metaField = meta === undefined ? {} : { _meta: meta as Record<string, unknown> };
 
     let sessionId: string;
+    let announced: SessionConfigOption[];
     if (loadId === undefined) {
       shared.starting += 1;
-      let created: { sessionId: string };
+      let created: NewSessionResponse;
       try {
         created = await connection.agent.request(methods.agent.session.new, {
           cwd: params.cwd,
@@ -499,6 +565,7 @@ export class AcpTransport implements SessionTransport {
         shared.starting -= 1;
       }
       sessionId = created.sessionId;
+      announced = configOptionsOf(created.configOptions);
       this.#register(shared, route, known, sessionId);
     } else {
       if (!canLoad) {
@@ -506,17 +573,19 @@ export class AcpTransport implements SessionTransport {
       }
       sessionId = loadId;
       this.#register(shared, route, known, sessionId);
-      await connection.agent.request(methods.agent.session.load, {
+      const loaded = await connection.agent.request(methods.agent.session.load, {
         sessionId,
         cwd: params.cwd,
         mcpServers,
         ...metaField,
       });
+      announced = configOptionsOf(loaded.configOptions);
     }
 
     const session = new ManagedAgentSession({
       sessionId,
       canLoad,
+      configOptions: announced,
       driver: new AcpDriver(shared, route, sessionId),
       process: params.process,
       normalizer: params.normalizer,
@@ -525,15 +594,25 @@ export class AcpTransport implements SessionTransport {
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
     });
     for (const [configId, value] of Object.entries(configOptions)) {
-      await connection.agent.request(methods.agent.session.setConfigOption, {
+      const answer = await connection.agent.request(methods.agent.session.setConfigOption, {
         sessionId,
         configId,
         value,
       });
+      if (Array.isArray(answer.configOptions)) {
+        session.updateConfigOptions(configOptionsOf(answer.configOptions));
+      }
     }
     if (route.abandoned) throw new AdapterUnavailable('the session start was given up');
     // From here on the updates reach the session (and, through it, the listeners).
     route.deliver = (raw) => {
+      // The client sends the full list again when an option changes by itself (a mode that
+      // moves the model, say): the snapshot of the session follows before the listeners hear.
+      if (isRecord(raw) && raw.sessionUpdate === 'config_option_update') {
+        if (Array.isArray(raw.configOptions)) {
+          session.updateConfigOptions(configOptionsOf(raw.configOptions));
+        }
+      }
       session.deliver(raw);
     };
     return session;

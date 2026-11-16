@@ -70,6 +70,12 @@ export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as con
 export const CLAUDE_ACCOUNT_ENV = ['strip', 'keep'] as const;
 export const CLAUDE_MODEL_CATALOG_SOURCES = ['session', 'reserve', 'session_or_reserve'] as const;
 export const CODEX_PROCESS_MODELS = ['multi-session', 'process-per-session'] as const;
+/**
+ * [proposta] Where the Codex model list comes from: `session` opens a session of the profile
+ * without a prompt and reads its config options; `none` reads nothing (`models.list` rejects).
+ */
+export const CODEX_MODEL_CATALOG_SOURCES = ['session', 'none'] as const;
+
 export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
 export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
 /** Modes the adapter never selects (`agent` hands the escalation to a reviewer, `agent-full-access` asks nothing). */
@@ -167,6 +173,7 @@ export const CodexClientSchema = z.strictObject({
   credentials_store: z.enum(CODEX_CREDENTIALS_STORES).default('file'),
   approval_policy: z.enum(CODEX_APPROVAL_POLICIES).default('on-request'),
   suggested_effort: z.string().min(1).default('high'),
+  model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
 });
 
 /** `clients.opencode` (keys of `OpenCodeAdapterOptions`; `pool.opencode.process_model` is under `pool`). */

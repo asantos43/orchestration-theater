@@ -322,6 +322,148 @@ describe('productionClients', () => {
   });
 });
 
+describe('the default catalog readers', () => {
+  const MODELS = ['fake-model', 'fake-model-2'];
+  const open = (extra = '') => parseConfig(`${OPEN}${extra}`);
+
+  it('is bound by security.unenforced: with the default `refuse` the session is not opened', async () => {
+    // A session without a prompt still goes through the guarantee check of `openSession`, and the
+    // policy of a reader is short of layers while there is no sandbox (architecture 5.8).
+    const t = await setup();
+    try {
+      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
+        t.parts,
+      );
+      const claude = byId(adapters, 'claude-code');
+      const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
+      expect(models.map((m) => m.id)).toContain('sonnet');
+      await expect(
+        byId(adapters, 'codex').models.list({ client: 'codex', profile: 'work' }),
+      ).rejects.toThrow(/security\.unenforced is refuse/);
+      expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('lists the Claude models from a session opened without a prompt, read-only, in <data>/catalog-probe', async () => {
+    const t = await setup();
+    try {
+      const claude = byId(
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'claude-code',
+      );
+      const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
+      expect(models.map((m) => m.id)).toEqual(MODELS);
+      expect(models[0]?.efforts).toEqual(['low', 'medium', 'high']);
+      expect(t.transport.opened).toHaveLength(1);
+      const [opened] = t.transport.opened;
+      expect(opened?.cwd).toBe(join(dataPaths(t.dir).dataDir, 'catalog-probe'));
+      // Nothing was asked of the client and nothing is left running.
+      expect(t.transport.configApplied).toEqual([]);
+      expect(t.launcher.launched.every((p) => !p.alive)).toBe(true);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('lists the Codex models and efforts the same way, through the guarded transport', async () => {
+    const t = await setup();
+    try {
+      const codexAdapter = byId(
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'codex',
+      );
+      const models = await codexAdapter.models.list({ client: 'codex', profile: 'work' });
+      expect(models.map((m) => m.id)).toEqual(MODELS);
+      expect(t.transport.opened).toHaveLength(1);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('keeps Claude on the reserve list with clients.claude-code.model_catalog: reserve, opening nothing', async () => {
+    const t = await setup();
+    try {
+      const claude = byId(
+        productionClients(open('clients:\n  claude-code:\n    model_catalog: reserve\n'), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+        })(t.parts),
+        'claude-code',
+      );
+      const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
+      expect(models.map((m) => m.id)).toContain('sonnet');
+      expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('turns the Codex reader off with clients.codex.model_catalog: none', async () => {
+    const t = await setup();
+    try {
+      const codexAdapter = byId(
+        productionClients(open('clients:\n  codex:\n    model_catalog: none\n'), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+        })(t.parts),
+        'codex',
+      );
+      await expect(
+        codexAdapter.models.list({ client: 'codex', profile: 'work' }),
+      ).rejects.toThrow();
+      expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('prefers a reader the caller injected', async () => {
+    const t = await setup();
+    try {
+      const claude = byId(
+        productionClients(open(), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+          claudeConfigOptions: () =>
+            Promise.resolve([
+              { id: 'model', type: 'select', options: [{ value: 'injected', name: 'Injected' }] },
+            ]),
+        })(t.parts),
+        'claude-code',
+      );
+      const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
+      expect(models.map((m) => m.id)).toEqual(['injected']);
+      expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('refuses a profile name that would leave the profiles directory, opening nothing', async () => {
+    const t = await setup();
+    try {
+      const claude = byId(
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'claude-code',
+      );
+      // `session_or_reserve` falls back to the reserve; the catalog of Codex has none and rejects.
+      const codexAdapter = byId(
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'codex',
+      );
+      await expect(codexAdapter.models.list({ client: 'codex', profile: '../x' })).rejects.toThrow(
+        /profile/,
+      );
+      await claude.models.list({ client: 'claude-code', profile: '../x' });
+      expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+});
+
 describe('transportFor', () => {
   it('wraps the transport of Codex once per adapter and leaves the others alone', async () => {
     const t = await setup();

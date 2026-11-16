@@ -73,6 +73,7 @@ import {
   type ClientFactoryParts,
   type FindExecutable,
 } from './clients.js';
+import { sessionConfigReader } from './catalog-reader.js';
 import { describeZodError, type ClientId, type DaemonConfig } from './config.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
@@ -400,12 +401,15 @@ export interface ProductionClientsOptions {
   /** Replaces the search of `PATH` for `enabled: auto` (tests say what is installed). */
   readonly findExecutable?: FindExecutable;
   /**
-   * How the Claude catalog reads the config options of a fresh session. The daemon has no way to
-   * read them yet (`AgentSession` does not carry `session/new` options), so without it
-   * `session_or_reserve` falls back to the reserve list.
+   * How the Claude catalog reads the config options of a fresh session. Without it the daemon
+   * wires {@link sessionConfigReader} (a session without a prompt, read-only role, in
+   * `<data>/catalog-probe`), unless `clients.claude-code.model_catalog` is `reserve`.
    */
   readonly claudeConfigOptions?: ConfigOptionsReader;
-  /** The same for the Codex catalog; without it `models.list` of Codex rejects. */
+  /**
+   * The same for the Codex catalog. Without it the daemon wires {@link sessionConfigReader},
+   * unless `clients.codex.model_catalog` is `none` (then `models.list` of Codex rejects).
+   */
   readonly codexConfigSource?: CodexConfigSource;
 }
 
@@ -438,6 +442,12 @@ function commonOptions(
   };
 }
 
+/** The adapter a reader was built for; a reader runs only after the factory returned it. */
+function built(adapter: ClientAdapter | undefined): ClientAdapter {
+  if (adapter === undefined) throw new AdapterUnavailable('the client adapter is not built yet');
+  return adapter;
+}
+
 function claudeCode(
   config: DaemonConfig,
   env: Env,
@@ -446,7 +456,18 @@ function claudeCode(
 ): ClientAdapter {
   const section = config.clients['claude-code'];
   const command = section.command;
-  return new ClaudeCodeAdapter({
+  // The reader needs the adapter that is built with it: it looks the adapter up when it runs.
+  const own: { adapter?: ClientAdapter } = {};
+  const reader: ConfigOptionsReader | undefined =
+    options.claudeConfigOptions ??
+    (section.model_catalog === 'reserve'
+      ? undefined
+      : sessionConfigReader({
+          adapter: () => built(own.adapter),
+          via: (target) => transportFor(target, parts.transport),
+          paths: parts.paths,
+        }));
+  const adapter = new ClaudeCodeAdapter({
     ...commonOptions(config, section, env, parts),
     adapterVersion: adapterVersionOf(
       CLAUDE_CODE_ADAPTER_VERSION,
@@ -462,9 +483,11 @@ function claudeCode(
     modelCatalog: {
       source: section.model_catalog,
       cacheMs: section.model_catalog_cache,
-      ...(options.claudeConfigOptions === undefined ? {} : { reader: options.claudeConfigOptions }),
+      ...(reader === undefined ? {} : { reader }),
     },
   });
+  own.adapter = adapter;
+  return adapter;
 }
 
 function codex(
@@ -475,7 +498,17 @@ function codex(
 ): ClientAdapter {
   const section = config.clients.codex;
   const command = section.command;
-  return new CodexAdapter({
+  const own: { adapter?: ClientAdapter } = {};
+  const source: CodexConfigSource | undefined =
+    options.codexConfigSource ??
+    (section.model_catalog === 'none'
+      ? undefined
+      : sessionConfigReader({
+          adapter: () => built(own.adapter),
+          via: (target) => transportFor(target, parts.transport),
+          paths: parts.paths,
+        }));
+  const adapter = new CodexAdapter({
     ...commonOptions(config, section, env, parts),
     adapterVersion: adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', section.client_version),
     ...(command === undefined
@@ -487,8 +520,10 @@ function codex(
     credentialsStore: section.credentials_store,
     approvalPolicy: section.approval_policy,
     suggestedEffort: section.suggested_effort,
-    ...(options.codexConfigSource === undefined ? {} : { modelSource: options.codexConfigSource }),
+    ...(source === undefined ? {} : { modelSource: source }),
   });
+  own.adapter = adapter;
+  return adapter;
 }
 
 function opencode(config: DaemonConfig, env: Env, parts: ClientFactoryParts): ClientAdapter {

@@ -21,6 +21,7 @@ import type {
   NormalizedError,
   PromptOutcome,
   RawUpdate,
+  SessionConfigOption,
   SessionNormalizer,
   UpdateListener,
 } from './ports/agent-session.js';
@@ -67,8 +68,12 @@ export interface SessionDriver {
   runTurn(blocks: readonly ContentBlock[]): Promise<StopReason>;
   /** Asks the client to stop the running turn (ACP `session/cancel`). Best effort: a rejection is ignored. */
   requestCancel(): Promise<void>;
-  /** Changes a session config option; rejects with `InvalidInput` for an id or value the client does not offer. */
-  applyConfig(id: string, value: ConfigValue): Promise<void>;
+  /**
+   * Changes a session config option; rejects with `InvalidInput` for an id or value the client
+   * does not offer. Resolves with the full list of options the client answered with, when it
+   * does (ACP `session/set_config_option` does); the session then keeps it as `configOptions`.
+   */
+  applyConfig(id: string, value: ConfigValue): Promise<readonly SessionConfigOption[] | undefined>;
   /** Drops the connection to the client without touching the process. Idempotent. */
   disconnect(): void;
 }
@@ -82,6 +87,8 @@ export interface SessionWarning {
 export interface ManagedSessionOptions {
   readonly sessionId: string;
   readonly canLoad: boolean;
+  /** The options the client announced when the session was created or loaded. Default none. */
+  readonly configOptions?: readonly SessionConfigOption[];
   readonly driver: SessionDriver;
   /** The client process behind the session (one session per process). */
   readonly process: LaunchedProcess;
@@ -133,6 +140,7 @@ function macrotask(): Promise<void> {
 export class ManagedAgentSession implements AgentSession {
   readonly sessionId: string;
   readonly canLoad: boolean;
+  #configOptions: readonly SessionConfigOption[];
   readonly #driver: SessionDriver;
   readonly #process: LaunchedProcess;
   readonly #normalizer: SessionNormalizer;
@@ -149,6 +157,7 @@ export class ManagedAgentSession implements AgentSession {
   constructor(options: ManagedSessionOptions) {
     this.sessionId = options.sessionId;
     this.canLoad = options.canLoad;
+    this.#configOptions = options.configOptions ?? [];
     this.#driver = options.driver;
     this.#process = options.process;
     this.#normalizer = options.normalizer;
@@ -161,6 +170,18 @@ export class ManagedAgentSession implements AgentSession {
         this.#driver.disconnect();
       }
     });
+  }
+
+  get configOptions(): readonly SessionConfigOption[] {
+    return this.#configOptions;
+  }
+
+  /**
+   * Replaces the snapshot of the config options: the client sent the full list again (a
+   * `config_option_update`). The transport calls it; it works after the end of the session too.
+   */
+  updateConfigOptions(options: readonly SessionConfigOption[]): void {
+    this.#configOptions = options;
   }
 
   /**
@@ -226,7 +247,8 @@ export class ManagedAgentSession implements AgentSession {
   async setConfig(id: string, value: ConfigValue): Promise<void> {
     this.#assertOpen();
     try {
-      await this.#driver.applyConfig(id, value);
+      const announced = await this.#driver.applyConfig(id, value);
+      if (announced !== undefined) this.#configOptions = announced;
     } catch (raw) {
       throw this.#typed(raw);
     }
