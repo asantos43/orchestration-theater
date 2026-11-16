@@ -39,6 +39,36 @@ export interface SecretVault {
   list(prefix?: string): Promise<readonly string[]>;
 }
 
+/**
+ * Optional capability of a `SecretVault` that guards its content with a master password (the
+ * encrypted-file vault, architecture 5.6). It is **not** part of the `SecretVault` port: adding
+ * it there would change the contract, and `SECRET_VAULT_PORT_VERSION` (`0.1.0`) would no longer
+ * satisfy the `^0.1.0` range the adapters declare. The daemon asks with
+ * {@link isLockableSecretVault} and prompts for the password only when this applies.
+ *
+ * - While locked, every `SecretVault` operation rejects with `VaultLocked`.
+ * - `unlock` with a wrong password rejects with `PermissionDenied` and leaves the vault locked.
+ * - `lock` drops the key and the secrets from memory. [proposta] It may be asynchronous (the file
+ *   vault queues it behind pending operations), so callers `await` the result.
+ */
+export interface LockableSecretVault {
+  readonly isLocked: boolean;
+  unlock(password: Secret): Promise<void>;
+  lock(): void | Promise<void>;
+}
+
+/** Type guard for the optional {@link LockableSecretVault} capability of a vault. */
+export function isLockableSecretVault(
+  vault: SecretVault,
+): vault is SecretVault & LockableSecretVault {
+  const candidate = vault as Partial<Record<keyof LockableSecretVault, unknown>>;
+  return (
+    typeof candidate.isLocked === 'boolean' &&
+    typeof candidate.unlock === 'function' &&
+    typeof candidate.lock === 'function'
+  );
+}
+
 /** Validates a key; throws `InvalidInput`. For adapter authors. */
 export function assertSecretKey(key: string): void {
   if (!SecretKeySchema.safeParse(key).success) {

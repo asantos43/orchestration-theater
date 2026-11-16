@@ -26,7 +26,7 @@ import {
   quotaExhaustedDataSchema,
   quotaSignalParamsSchema,
   type QuotaSignalParams,
-} from './quota.js';
+} from '@otheater/protocol';
 import { parsePrompt, parseScriptSpec, ScriptError } from './scripts.js';
 
 interface Recorded {

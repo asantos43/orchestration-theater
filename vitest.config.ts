@@ -7,6 +7,11 @@ const alias = {
   '@otheater/core/testing': `${import.meta.dirname}/packages/core/src/testing/index.ts`,
   '@otheater/core': `${import.meta.dirname}/packages/core/src/index.ts`,
   '@otheater/sdk': `${import.meta.dirname}/packages/sdk/src/index.ts`,
+  '@otheater/protocol': `${import.meta.dirname}/packages/protocol/src/index.ts`,
+  '@otheater/adapter-store-sqlite': `${import.meta.dirname}/packages/adapters/store-sqlite/src/index.ts`,
+  '@otheater/adapter-vault-file': `${import.meta.dirname}/packages/adapters/vault-file/src/index.ts`,
+  '@otheater/adapter-vault-keyring': `${import.meta.dirname}/packages/adapters/vault-keyring/src/index.ts`,
+  '@otheater/adapter-clock-system': `${import.meta.dirname}/packages/adapters/clock-system/src/index.ts`,
 };
 
 export default defineConfig({

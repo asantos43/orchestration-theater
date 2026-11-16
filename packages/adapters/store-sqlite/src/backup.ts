@@ -10,6 +10,17 @@ import { BackupFailed, toStoreError } from './errors.js';
 export const BACKUP_METHODS = ['online_api', 'vacuum_into'] as const;
 export type BackupMethod = (typeof BACKUP_METHODS)[number];
 
+/** Narrows a method name coming from config or a command line; unknown names are `InvalidInput`. */
+export function parseBackupMethod(name: string): BackupMethod {
+  const found = BACKUP_METHODS.find((method) => method === name);
+  if (found === undefined) {
+    throw new InvalidInput(
+      `Unknown backup method "${name}"; expected one of: ${BACKUP_METHODS.join(', ')}`,
+    );
+  }
+  return found;
+}
+
 /**
  * [proposta] `online_api` until step 7 measures both (architecture 5.21: "a escolher na Fase 1").
  * It copies page by page and lets other connections keep working between steps; `vacuum_into`
@@ -41,8 +52,12 @@ export const DEFAULT_BACKUP_TIMEOUT_MS = 60_000;
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 
 export interface BackupOptions {
-  /** Default {@link DEFAULT_BACKUP_METHOD}. */
-  readonly method?: BackupMethod;
+  /**
+   * One of {@link BACKUP_METHODS}; default {@link DEFAULT_BACKUP_METHOD}. Typed as a string
+   * because it comes from configuration (`StoreMaintenance`); an unknown name rejects with
+   * `InvalidInput`.
+   */
+  readonly method?: string;
   /**
    * `online_api` only: pages copied per step. Default {@link ALL_PAGES_IN_ONE_STEP} (always
    * finishes, blocks the event loop meanwhile). A smaller value lets the loop breathe but the copy
@@ -107,7 +122,7 @@ async function removeDatabaseFiles(path: string): Promise<void> {
  * `BackupFailed` when the copy cannot be made or does not pass the integrity check.
  */
 export async function backupDatabase(options: BackupDatabaseOptions): Promise<BackupResult> {
-  const method = options.method ?? DEFAULT_BACKUP_METHOD;
+  const method = parseBackupMethod(options.method ?? DEFAULT_BACKUP_METHOD);
   const busyTimeoutMs = options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
   const dest = resolve(options.destPath);
   const partial = `${dest}.partial`;

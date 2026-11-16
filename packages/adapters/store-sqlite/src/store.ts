@@ -10,6 +10,7 @@ import {
   type EventLog,
   type NewEvent,
   type Store,
+  type StoreMaintenance,
   type StoreTransaction,
 } from '@otheater/core';
 import { Kysely, SqliteDialect } from 'kysely';
@@ -22,7 +23,7 @@ import {
   type SqliteStoreConfigInput,
 } from './config.js';
 import { ImmediateSqliteDialect } from './dialect.js';
-import { openRawDatabase, readPragma, type RawDatabase } from './driver.js';
+import { openRawDatabase, quickCheck, readPragma, type RawDatabase } from './driver.js';
 import { toStoreError } from './errors.js';
 import { selectEvents, selectLastId, TransactionEventLog } from './events.js';
 import { migrateToLatest } from './migrations.js';
@@ -75,7 +76,7 @@ export interface SqliteStoreDiagnostics {
  *
  * Open it with {@link SqliteStore.open}.
  */
-export class SqliteStore implements Store {
+export class SqliteStore implements Store, StoreMaintenance {
   readonly events: EventLog;
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
@@ -224,6 +225,22 @@ export class SqliteStore implements Store {
         checkpointFullfsync: number('checkpoint_fullfsync') === 1,
       });
     });
+  }
+
+  /**
+   * `PRAGMA quick_check` (architecture 5.21: the cheap check of start-up). Resolves with the
+   * problems SQLite found; an empty array means the check passed. It reads through the read-only
+   * connection, so it sees committed data and does not queue behind transactions. Rejects with
+   * `AdapterUnavailable` after `close()`.
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- the check is synchronous; async maps a throw to a rejection
+  async quickCheck(): Promise<string[]> {
+    if (this.#closed) throw this.#closedError();
+    try {
+      return quickCheck(this.#readerRaw);
+    } catch (error) {
+      throw toStoreError(error);
+    }
   }
 
   /**

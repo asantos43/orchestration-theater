@@ -1,0 +1,37 @@
+{
+  "name": "@otheater/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "bin": {
+    "ot": "./dist/cli.js",
+    "otheater": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@otheater/adapter-clock-system": "workspace:*",
+    "@otheater/adapter-store-sqlite": "workspace:*",
+    "@otheater/adapter-vault-file": "workspace:*",
+    "@otheater/adapter-vault-keyring": "workspace:*",
+    "@otheater/core": "workspace:*",
+    "@otheater/protocol": "workspace:*",
+    "i18next": "26.6.0",
+    "pino": "10.4.0",
+    "semver": "7.8.5",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/semver": "7.8.0",
+    "vitest": "5.1.0"
+  }
+}

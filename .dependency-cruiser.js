@@ -20,6 +20,22 @@ export default {
       },
     },
     {
+      name: 'protocol-only-core-and-zod',
+      comment:
+        'packages/protocol/src is the wire contract: it may import only itself, @otheater/core (types and errors) and zod. No adapter, no daemon, no Node built-ins [proposta].',
+      severity: 'error',
+      from: { path: '^packages/protocol/src/', pathNot: '\\.test\\.ts$' },
+      to: {
+        pathNot: [
+          '^packages/protocol/src/',
+          '^packages/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/@otheater/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/zod/',
+          '^zod(/|$)',
+        ],
+      },
+    },
+    {
       name: 'testing-only-from-tests',
       comment:
         'The fakes of @otheater/core/testing are for tests: outside testing/ itself, only *.test.ts files may import them (decision N50).',

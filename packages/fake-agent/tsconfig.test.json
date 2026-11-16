@@ -7,5 +7,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.test.ts"],
-  "references": [{ "path": "tsconfig.src.json" }]
+  "references": [{ "path": "tsconfig.src.json" }, { "path": "../protocol/tsconfig.src.json" }]
 }
