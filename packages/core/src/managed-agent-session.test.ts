@@ -20,6 +20,7 @@ import type {
   SessionConfigOption,
   SessionNormalizer,
 } from './ports/agent-session.js';
+import type { KillOptions } from './ports/process-launcher.js';
 import { FakeLaunchedProcess } from './testing/fake-process-launcher.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -201,6 +202,49 @@ describe('ManagedAgentSession', () => {
     // The client never answered; the cancelled turn still resolves as cancelled, not as an error.
     driver.turns[0]?.reject(new Error('connection closed'));
     await expect(turn).resolves.toEqual({ stopReason: 'cancelled' });
+  });
+
+  it('a turn the client never answers still returns once the session let go of the process', async () => {
+    const { session, process } = setup();
+    // A process shared with other sessions stays up: nothing here ends the connection.
+    process.killTree = () => Promise.resolve({ found: 0, forced: false, remaining: [] });
+    const turn = session.prompt(text('hang'));
+    await session.cancel();
+    await expect(turn).resolves.toEqual({ stopReason: 'cancelled' });
+    const { session: closed, process: other } = setup();
+    other.killTree = () => Promise.resolve({ found: 0, forced: false, remaining: [] });
+    const open = closed.prompt(text('hang'));
+    await closed.close();
+    await expect(open).rejects.toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+  });
+
+  it('tells the process how the cancel went: honoured inside the grace, ignored after it', async () => {
+    const seen: (string | undefined)[] = [];
+    const watch = (process: FakeLaunchedProcess): void => {
+      const killTree = process.killTree.bind(process);
+      process.killTree = (options?: KillOptions) => {
+        seen.push(options?.cancel);
+        return killTree();
+      };
+    };
+    const honored = setup();
+    watch(honored.process);
+    const turn = honored.session.prompt(text('a'));
+    const cancelling = honored.session.cancel();
+    honored.driver.turns[0]?.resolve('cancelled');
+    await cancelling;
+    await turn;
+    const ignored = setup();
+    watch(ignored.process);
+    void ignored.session.prompt(text('a')).catch(() => undefined);
+    await ignored.session.cancel();
+    const idle = setup();
+    watch(idle.process);
+    await idle.session.cancel();
+    const closed = setup();
+    watch(closed.process);
+    await closed.session.close();
+    expect(seen).toEqual(['honored', 'ignored', 'honored', undefined]);
   });
 
   it('cancel is idempotent, also when called twice at once', async () => {

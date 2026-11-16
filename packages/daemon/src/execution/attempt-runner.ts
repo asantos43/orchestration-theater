@@ -103,6 +103,11 @@ type Ended =
       readonly native: boolean;
       /** The adapter process is gone or useless and must be ended. */
       readonly kill: boolean;
+      /**
+       * The loss was no failure of the client: the cancel of another session ended the shared
+       * process (`pool.shared_cancel`). The resume that follows does not use `resume.max_resumes`.
+       */
+      readonly free?: boolean;
       readonly sha: string | undefined;
     }
   | { readonly kind: 'timeout'; readonly sha: string | undefined }
@@ -365,19 +370,23 @@ export class AttemptRunner {
         case 'interrupted': {
           const { journal } = context;
           await this.#interrupted(context, ended);
-          const sameTimes = this.#repeated(context, `${ended.cause}:${ended.detail}`);
+          const free = ended.free === true;
+          const sameTimes = free ? 0 : this.#repeated(context, `${ended.cause}:${ended.detail}`);
           const resumes = journal.record.resumes;
-          if (!ended.native || resumes >= settings.maxResumes) {
+          if (!ended.native || (!free && resumes >= settings.maxResumes)) {
             return this.#parked(context, ended.cause);
           }
           if (sameTimes >= settings.stuckSameErrorTimes) {
             return this.#parked(context, 'stuck');
           }
           await journal.write(undefined, { state: 'awaiting_resume', cause: ended.cause });
-          const waited = await this.#backoff(context, ended.cause, resumes);
+          const waited = await this.#backoff(context, ended.cause, free ? 0 : resumes);
           if (waited === 'timeout') return this.#timedOut(context, ended.sha);
           if (waited === 'stopped') return this.#stopped(context, ended.sha);
-          await journal.write(undefined, { state: 'resuming', resumes: resumes + 1 });
+          await journal.write(undefined, {
+            state: 'resuming',
+            resumes: free ? resumes : resumes + 1,
+          });
           step = {
             resumeSessionId: context.sessionId,
             prompt: context.sessionId === undefined ? context.firstPrompt : settings.continuePrompt,
@@ -421,6 +430,7 @@ export class AttemptRunner {
       subscription.dispose();
     }
     await context.tracker.settled();
+    ended = this.#casualty(lease, ended);
     ended = await this.#beforeClosing(context, lease, ended);
     await lease.release().catch(() => undefined);
     context.lease = undefined;
@@ -440,13 +450,16 @@ export class AttemptRunner {
     } else if (ended.kind === 'failed') {
       await this.#checkpoint(context, 'failed');
     }
-    const kill =
-      ended.kind === 'timeout' ||
-      ended.kind === 'stopped' ||
-      (ended.kind === 'interrupted' && ended.kill);
-    if (ended.kind === 'timeout' || ended.kind === 'stopped') {
+    const cancelled = ended.kind === 'timeout' || ended.kind === 'stopped';
+    if (cancelled) {
       await lease.session.cancel().catch(() => undefined);
+      await this.#escalation(context, lease);
     }
+    // A shared process is not ours to end after a cancel: `pool.shared_cancel` decided already,
+    // and it is gone for the sessions that fell with another session's cancel.
+    const kill =
+      (cancelled && !lease.shared) ||
+      (ended.kind === 'interrupted' && ended.kill && !lease.casualty);
     if (kill) {
       const report = await lease.kill().catch(() => undefined);
       if (report !== undefined && report.remaining.length > 0) {
@@ -457,6 +470,40 @@ export class AttemptRunner {
       }
     }
     return result;
+  }
+
+  /**
+   * A session that lost its connection because another session's cancel ended the shared process
+   * did not meet a failure of the client: its resume is free (`Ended.free`).
+   */
+  #casualty(lease: SessionLease, ended: Ended): Ended {
+    if (ended.kind !== 'interrupted' || ended.cause !== 'client_crash' || !lease.casualty) {
+      return ended;
+    }
+    return {
+      ...ended,
+      free: true,
+      detail: 'the adapter process was ended by the cancel of another session (pool.shared_cancel)',
+    };
+  }
+
+  /** Tells the event log when the cancel of this session ended the shared process. */
+  async #escalation(context: AttemptContext, lease: SessionLease): Promise<void> {
+    const { escalation } = lease;
+    const mode = this.#options.settings.pool.sharedCancel;
+    const { sessionId } = context;
+    if (escalation === undefined || mode === 'release' || sessionId === undefined) return;
+    await context.journal
+      .write(
+        buildDaemonEvent('session.cancel_escalated', {
+          sessionId,
+          mode,
+          pid: escalation.pid,
+          siblings: escalation.siblings,
+          ...this.#correlation(context),
+        }),
+      )
+      .catch(() => undefined);
   }
 
   async #turn(

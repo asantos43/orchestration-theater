@@ -101,6 +101,7 @@ describe('parseConfig, execution keys', () => {
       sessions_per_process: 4,
       max_sessions: 4,
       idle: 120_000,
+      shared_cancel: 'escalate',
       opencode: { process_model: 'per_profile' },
     });
     expect(config.limits).toEqual({ demand_timeout: 1_800_000, demand_timeout_max: 7_200_000 });
@@ -140,6 +141,13 @@ describe('parseConfig, execution keys', () => {
       /process_model/,
     );
     expect(() => parseConfig('pool:\n  sessions_per_process: 0\n')).toThrow(/sessions_per_process/);
+  });
+
+  it('takes the three modes of pool.shared_cancel and rejects any other', () => {
+    for (const mode of ['escalate', 'always_kill', 'release']) {
+      expect(parseConfig(`pool:\n  shared_cancel: ${mode}\n`).pool.shared_cancel).toBe(mode);
+    }
+    expect(() => parseConfig('pool:\n  shared_cancel: kill\n')).toThrow(/shared_cancel/);
   });
 });
 

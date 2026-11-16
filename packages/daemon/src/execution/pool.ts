@@ -6,12 +6,15 @@ import {
   type AgentSession,
   type ClientAdapter,
   type Clock,
+  type KillOptions,
   type KillReport,
   type LaunchedProcess,
   type ProcessLauncher,
   type Profile,
   type RolePolicy,
   type SessionTransport,
+  endsSharedProcess,
+  sharedProcessKey,
 } from '@otheater/core';
 import type { PoolSettings } from './settings.js';
 
@@ -40,6 +43,16 @@ export interface SessionLease {
   readonly pid: number;
   /** The process runs other sessions too (`multi-session`). */
   readonly shared: boolean;
+  /**
+   * Set when the cancel of this session ended the shared process (`pool.shared_cancel`): the
+   * process id and how many other sessions fell with it. The caller tells the event log.
+   */
+  readonly escalation: PoolEscalation | undefined;
+  /**
+   * True when the process of this session was ended by the cancel of another session. Its loss of
+   * connection is not a failure of the client, so the caller does not charge the resume quota.
+   */
+  readonly casualty: boolean;
   /** Closes the session and frees its slot. A process left with no session starts its idle timer. */
   release(): Promise<void>;
   /**
@@ -47,6 +60,13 @@ export interface SessionLease {
    * lost connection and the caller puts them back in the queue. For a stuck process.
    */
   kill(): Promise<KillReport>;
+}
+
+/** A cancel that ended a shared process (`pool.shared_cancel`). */
+export interface PoolEscalation {
+  readonly pid: number;
+  /** Sessions of the same process that fell with it. */
+  readonly siblings: number;
 }
 
 export interface PoolStats {
@@ -76,14 +96,21 @@ interface PoolProcess {
   alive: boolean;
   /** Aborts the idle timer. */
   idle: AbortController | undefined;
+  /** Set when the cancel of one session ended the process on purpose. */
+  escalation: { readonly by: symbol; readonly info: PoolEscalation } | undefined;
 }
 
 /**
  * A view of a pooled process for one session: the same pipes, but `killTree` only detaches. The
  * session (`ManagedAgentSession`) ends the tree on `close` and `cancel`, which would take the other
- * sessions of a shared process down with it; the pool owns the real process instead.
+ * sessions of a shared process down with it; the pool owns the real process instead. `onKill`
+ * decides, from how the cancel went (`KillOptions.cancel`) and `pool.shared_cancel`, whether the
+ * whole process ends after all.
  */
-function lendProcess(process: LaunchedProcess, onDetach: () => void): LaunchedProcess {
+function lendProcess(
+  process: LaunchedProcess,
+  onKill: (options: KillOptions | undefined) => Promise<KillReport>,
+): LaunchedProcess {
   return {
     get pid() {
       return process.pid;
@@ -100,9 +127,8 @@ function lendProcess(process: LaunchedProcess, onDetach: () => void): LaunchedPr
     get exited() {
       return process.exited;
     },
-    killTree() {
-      onDetach();
-      return Promise.resolve(NO_KILL);
+    killTree(options) {
+      return onKill(options);
     },
   };
 }
@@ -117,9 +143,14 @@ function lendProcess(process: LaunchedProcess, onDetach: () => void): LaunchedPr
  *
  * A client whose `processModel` is `process-per-session` gets one process per session, started by
  * the adapter itself (`openSession`). A `multi-session` client gets the shared process, which the
- * pool starts with `launchSpec` and lends to the sessions (`openSessionOn`). [proposta] The ACP
- * transport of this version cannot multiplex sessions on one process, so a `multi-session` adapter
- * needs a transport that can (the fake transport can).
+ * pool starts with `launchSpec` and lends to the sessions (`openSessionOn`). Sessions share a
+ * process only when `adapter.id` and `sharedProcessKey(profile, launchSpec)` agree, so two policies
+ * that launch the client differently (OpenCode puts the permission in the environment) never meet.
+ * The ACP transport multiplexes the sessions of a process (since P9a).
+ *
+ * `pool.shared_cancel` says what cancelling a session does to a shared process: `escalate` ends it
+ * when the client did not honour `session/cancel` within the grace, `always_kill` on every cancel,
+ * `release` never. The sessions that fall with it are `casualty` leases.
  */
 export class SessionPool {
   readonly #adapters = new Map<string, ClientAdapter>();
@@ -234,9 +265,7 @@ export class SessionPool {
     entry.sessions.add(token);
     this.#stopIdle(entry);
     try {
-      const lent = lendProcess(entry.process, () => {
-        entry.sessions.delete(token);
-      });
+      const lent = lendProcess(entry.process, (options) => this.#detach(entry, token, options));
       const session =
         resumeSessionId === undefined
           ? await adapter.openSessionOn(lent, policy, cwd, via)
@@ -254,13 +283,13 @@ export class SessionPool {
     request: PoolRequest,
     via: SessionTransport,
   ): Promise<PoolProcess> {
-    const key = `${adapter.id}/${request.profile.id}`;
+    const spec = await adapter.launchSpec(request.profile, request.policy, request.cwd, via.id);
+    const key = `${adapter.id}|${sharedProcessKey(request.profile, spec)}`;
     const list = this.#processes.get(key) ?? [];
     const found = list.find(
       (entry) => entry.alive && entry.sessions.size < this.#settings.sessionsPerProcess,
     );
     if (found !== undefined) return found;
-    const spec = await adapter.launchSpec(request.profile, request.policy, request.cwd, via.id);
     const process = await this.#launcher.launch(spec);
     const entry: PoolProcess = {
       key,
@@ -269,6 +298,7 @@ export class SessionPool {
       sessions: new Set(),
       alive: true,
       idle: undefined,
+      escalation: undefined,
     };
     // A crash of the process: the entry leaves the pool, the sessions see the lost connection.
     void process.exited.then(() => {
@@ -302,6 +332,13 @@ export class SessionPool {
       via,
       pid,
       shared: entry !== undefined,
+      get escalation() {
+        const escalation = entry?.escalation;
+        return escalation !== undefined && escalation.by === token ? escalation.info : undefined;
+      },
+      get casualty() {
+        return entry?.escalation !== undefined && entry.escalation.by !== token;
+      },
       release: async () => {
         if (released) return;
         released = true;
@@ -329,6 +366,29 @@ export class SessionPool {
   }
 
   // ---- processes ----
+
+  /**
+   * A session gave its view of the process back, on `close` (no `cancel` in the options) or on
+   * `cancel` (how it went). The process goes down when `pool.shared_cancel` says so, with the
+   * sessions still on it; otherwise only the slot of this session on the process is dropped.
+   */
+  async #detach(
+    entry: PoolProcess,
+    token: symbol,
+    options: KillOptions | undefined,
+  ): Promise<KillReport> {
+    const had = entry.sessions.delete(token);
+    if (!had || !entry.alive || !endsSharedProcess(this.#settings.sharedCancel, options?.cancel)) {
+      return NO_KILL;
+    }
+    if (entry.sessions.size > 0) {
+      entry.escalation = {
+        by: token,
+        info: { pid: entry.process.pid, siblings: entry.sessions.size },
+      };
+    }
+    return this.#end(entry);
+  }
 
   #startIdleIfEmpty(entry: PoolProcess): void {
     if (!entry.alive || entry.sessions.size > 0 || entry.idle !== undefined) return;

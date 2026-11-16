@@ -25,7 +25,7 @@ import type {
   SessionNormalizer,
   UpdateListener,
 } from './ports/agent-session.js';
-import type { LaunchedProcess } from './ports/process-launcher.js';
+import type { CancelOutcome, LaunchedProcess } from './ports/process-launcher.js';
 
 /** Default wait for the client to end a cancelled turn by itself before its process tree is killed. [proposta] */
 export const DEFAULT_CANCEL_GRACE_MS = 2000;
@@ -102,14 +102,22 @@ export interface ManagedSessionOptions {
 
 type EndedBy = 'close' | 'cancel' | 'exit';
 
-/** Waits for `promise` to settle, at most `ms`; never rejects. */
-async function settledWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+/** Waits for `promise` to settle, at most `ms`; never rejects. Tells whether it settled in time. */
+async function settledWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, ms);
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(false);
+    }, ms);
   });
   try {
-    await Promise.race([promise.then(noop, noop), timeout]);
+    return await Promise.race([
+      promise.then(
+        () => true,
+        () => true,
+      ),
+      timeout,
+    ]);
   } finally {
     clearTimeout(timer);
   }
@@ -153,6 +161,15 @@ export class ManagedAgentSession implements AgentSession {
   #cancelRequested = false;
   #cancelling: Promise<void> | undefined;
   #closing: Promise<void> | undefined;
+  /**
+   * Settles when the session let go of its process. On a process shared with other sessions the
+   * client's pending `session/prompt` request is not ended by that (the connection stays up for the
+   * others), so a turn the client never answers would never return; `prompt` stops waiting for it.
+   */
+  #abandon: () => void = noop;
+  readonly #abandoned = new Promise<void>((resolve) => {
+    this.#abandon = resolve;
+  });
 
   constructor(options: ManagedSessionOptions) {
     this.sessionId = options.sessionId;
@@ -212,7 +229,12 @@ export class ManagedAgentSession implements AgentSession {
     const turn = this.#driver.runTurn(blocks);
     this.#turn = turn;
     try {
-      const stopReason = await turn;
+      const stopReason = await Promise.race([
+        turn,
+        this.#abandoned.then(() => {
+          throw this.#unavailable();
+        }),
+      ]);
       return { stopReason };
     } catch (raw) {
       // A cancelled turn is not a failure (AgentSession contract), even when the cancel ended the
@@ -264,23 +286,34 @@ export class ManagedAgentSession implements AgentSession {
     await this.#driver.requestCancel().catch(noop);
     // The client usually ends the turn by itself and quickly; a short wait lets it do so before
     // the tree goes (architecture 5.2: a cancel that only the client honours can leave children).
-    if (turn !== undefined) await settledWithin(turn, this.#cancelGraceMs);
+    const honored = turn === undefined || (await settledWithin(turn, this.#cancelGraceMs));
     this.#endedBy = 'cancel';
     this.#driver.disconnect();
-    await this.#reap();
+    // The outcome goes to the process: on a process shared with other sessions, a client that
+    // ignored the cancel may cost the whole process (`shared_cancel`, see `endsSharedProcess`).
+    try {
+      await this.#reap(honored ? 'honored' : 'ignored');
+    } finally {
+      this.#abandon();
+    }
   }
 
   async #runClose(): Promise<void> {
     this.#endedBy ??= 'close';
     this.#driver.disconnect();
-    await this.#reap();
+    try {
+      await this.#reap();
+    } finally {
+      this.#abandon();
+    }
   }
 
-  /** Ends the whole process tree and checks that nothing is left. */
-  async #reap(): Promise<void> {
-    const report = await this.#process.killTree(
-      this.#killGraceMs === undefined ? undefined : { graceMs: this.#killGraceMs },
-    );
+  /** Ends the whole process tree and checks that nothing is left. `cancel` only when a cancel is the reason. */
+  async #reap(cancel?: CancelOutcome): Promise<void> {
+    const report = await this.#process.killTree({
+      ...(this.#killGraceMs === undefined ? {} : { graceMs: this.#killGraceMs }),
+      ...(cancel === undefined ? {} : { cancel }),
+    });
     if (report.remaining.length > 0) {
       throw new AdapterUnavailable(
         `the client process tree was not ended: pids ${report.remaining.join(', ')} are still alive`,

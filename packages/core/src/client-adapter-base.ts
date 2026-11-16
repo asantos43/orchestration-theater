@@ -45,6 +45,8 @@ import {
   DEFAULT_SESSIONS_PER_PROCESS,
   SharedProcessRegistry,
   sharedProcessKey,
+  type SharedCancelEscalation,
+  type SharedCancelMode,
 } from './shared-process.js';
 
 /** Id of a {@link SessionTransport}: what the descendant sees where the architecture writes `SessionTransport`. */
@@ -169,6 +171,15 @@ export interface ClientAdapterOptions {
    * `process-per-session` client. [proposta] A per-call {@link SessionStartOptions.process} wins.
    */
   readonly processReuse?: ProcessReuse;
+  /**
+   * What cancelling a session does to the process it shares with others, when no pool above the
+   * adapter owns the processes (`SharedProcessRegistry`): `escalate` (default), `always_kill` or
+   * `release`; see {@link SharedCancelMode}. The daemon's pool has the same key,
+   * `pool.shared_cancel`. A process of one session is always ended by the cancel. [proposta]
+   */
+  readonly sharedCancel?: SharedCancelMode;
+  /** Called when a cancel ended a shared process; `siblings` sessions lost their connection. Must not throw. */
+  readonly onSharedCancel?: (escalation: SharedCancelEscalation) => void;
 }
 
 const DEFAULT_MIN_LAYERS: MinLayers = { default: 1 };
@@ -243,6 +254,10 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     this.#shared = new SharedProcessRegistry(
       options.launcher,
       options.sessionsPerProcess ?? DEFAULT_SESSIONS_PER_PROCESS,
+      {
+        ...(options.sharedCancel === undefined ? {} : { sharedCancel: options.sharedCancel }),
+        ...(options.onSharedCancel === undefined ? {} : { onEscalation: options.onSharedCancel }),
+      },
     );
   }
 
@@ -257,8 +272,10 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * `process-per-session` clients get a process of their own. `multi-session` clients share one
    * process per profile and environment, up to `sessionsPerProcess` sessions, and another process
    * starts above that or when the caller passes `{ process: 'own' }`. A session that leaves does
-   * not end a process others still use; the last one out ends the tree. The sessions of a shared
-   * process all fail with `AdapterUnavailable` when it dies. [proposta]
+   * not end a process others still use; the last one out ends the tree. The exception is a cancel
+   * the client ignored, which ends the process of every session on it (`sharedCancel`, default
+   * `escalate`). The sessions of a shared process all fail with `AdapterUnavailable` when it
+   * dies. [proposta]
    */
   openSession(
     profile: Profile,

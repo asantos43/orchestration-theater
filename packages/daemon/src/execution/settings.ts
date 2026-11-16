@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { SharedCancelMode } from '@otheater/core';
 import type { DaemonConfig } from '../config.js';
 
 /** Pool constants (architecture 5.2). */
@@ -9,6 +10,8 @@ export interface PoolSettings {
   readonly maxSessions: number;
   /** A process with no session for this long is closed (`idleMs`). */
   readonly idleMs: number;
+  /** `pool.shared_cancel`: what a cancel does to a process shared by several sessions. */
+  readonly sharedCancel: SharedCancelMode;
 }
 
 /** Everything the execution of attempts reads from the configuration, in milliseconds. */
@@ -41,6 +44,7 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
       sessionsPerProcess: config.pool.sessions_per_process,
       maxSessions: config.pool.max_sessions,
       idleMs: config.pool.idle,
+      sharedCancel: config.pool.shared_cancel,
     },
     timeoutMs: config.limits.demand_timeout,
     timeoutMaxMs: config.limits.demand_timeout_max,

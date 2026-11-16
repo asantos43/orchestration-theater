@@ -38,6 +38,13 @@ const good: Record<string, unknown> = {
     cause: 'quota_exhausted',
     ...correlation,
   },
+  'session.cancel_escalated': {
+    sessionId: 's1',
+    mode: 'escalate',
+    pid: 4242,
+    siblings: 2,
+    ...correlation,
+  },
   'session.closed': { sessionId: 's1', reason: 'completed' },
   'attempt.checkpoint': {
     sha: 'abc123',
@@ -91,6 +98,14 @@ describe('session and checkpoint events', () => {
       ['session.prompt_finished', { sessionId: 's1', stopReason: 'stop' }],
       ['session.interrupted', { sessionId: 's1', cause: 'cosmic_rays' }],
       ['session.resumed', { ...(good['session.resumed'] as object), form: 'restart' }],
+      [
+        'session.cancel_escalated',
+        { ...(good['session.cancel_escalated'] as object), mode: 'release' },
+      ],
+      [
+        'session.cancel_escalated',
+        { ...(good['session.cancel_escalated'] as object), siblings: -1 },
+      ],
       ['session.closed', { sessionId: 's1', reason: 'because' }],
       ['attempt.checkpoint', { sha: 'a', label: 'x', reason: 'whim' }],
       ['attempt.checkpoint', { sha: '', label: 'x', reason: 'interval' }],
