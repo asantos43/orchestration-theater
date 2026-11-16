@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { access, mkdir, readFile, realpath, statfs } from 'node:fs/promises';
-import { dirname, resolve, sep } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 /** One line of `/proc/mounts`. */
 export interface MountEntry {
@@ -43,9 +43,10 @@ export function parseMounts(text: string): MountEntry[] {
   return entries;
 }
 
+// `/proc/mounts` is a POSIX table, so its paths always use `/`, whatever the platform running this.
 function isInside(path: string, mountPoint: string): boolean {
-  if (mountPoint === sep) return true;
-  return path === mountPoint || path.startsWith(mountPoint + sep);
+  if (mountPoint === '/') return true;
+  return path === mountPoint || path.startsWith(`${mountPoint}/`);
 }
 
 /**

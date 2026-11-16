@@ -71,7 +71,9 @@ describe('collectCargoPackages', () => {
     writeTree(root, { 'native/a/Cargo.lock': '', 'native/b/Cargo.lock': '', 'native/c/x': '' });
     const calls: string[] = [];
     const exec: ExecFn = (file, args, options) => {
-      calls.push(`${file} ${args.join(' ')} @ ${path.relative(root, options.cwd)}`);
+      calls.push(
+        `${file} ${args.join(' ')} @ ${path.relative(root, options.cwd).split(path.sep).join('/')}`,
+      );
       return Promise.resolve(metadata(GOOD));
     };
     const packages = await collectCargoPackages(exec, root);

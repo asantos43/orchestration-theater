@@ -85,40 +85,45 @@ describe.skipIf(!built)('the compiled ot (dist/cli.js)', () => {
     }
   });
 
-  it('daemon runs until SIGTERM, then stops cleanly with exit 0', async () => {
-    const tmp = await makeTempDataDir();
-    try {
-      await writeFile(join(tmp.dir, 'config.yaml'), SAFE_CONFIG);
-      const child = spawn(process.execPath, [CLI, 'daemon', '--data-dir', tmp.dir], {
-        env: cleanEnv(tmp.dir),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      let stdout = '';
-      const exit = new Promise<number | null>((resolve) => {
-        child.once('close', (code) => {
-          resolve(code);
-        });
-      });
-      const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+  // On Windows child.kill('SIGTERM') is TerminateProcess: the daemon gets no chance to stop
+  // cleanly and the exit code is null. Graceful stop on Windows is an open decision (not built).
+  it.skipIf(process.platform === 'win32')(
+    'daemon runs until SIGTERM, then stops cleanly with exit 0',
+    async () => {
+      const tmp = await makeTempDataDir();
       try {
-        await new Promise<void>((resolve, reject) => {
-          child.stdout.on('data', (chunk: Buffer) => {
-            stdout += chunk.toString();
-            if (stdout.includes('daemon running')) resolve();
-          });
-          child.once('exit', () => {
-            reject(new Error(`the daemon exited early: ${stdout}`));
+        await writeFile(join(tmp.dir, 'config.yaml'), SAFE_CONFIG);
+        const child = spawn(process.execPath, [CLI, 'daemon', '--data-dir', tmp.dir], {
+          env: cleanEnv(tmp.dir),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        const exit = new Promise<number | null>((resolve) => {
+          child.once('close', (code) => {
+            resolve(code);
           });
         });
-        child.kill('SIGTERM');
-        expect(await exit).toBe(0);
-        expect(stdout).toMatch(/Stopping the daemon[\s\S]*Daemon stopped\./);
+        const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            child.stdout.on('data', (chunk: Buffer) => {
+              stdout += chunk.toString();
+              if (stdout.includes('daemon running')) resolve();
+            });
+            child.once('exit', () => {
+              reject(new Error(`the daemon exited early: ${stdout}`));
+            });
+          });
+          child.kill('SIGTERM');
+          expect(await exit).toBe(0);
+          expect(stdout).toMatch(/Stopping the daemon[\s\S]*Daemon stopped\./);
+        } finally {
+          clearTimeout(timer);
+          child.kill('SIGKILL');
+        }
       } finally {
-        clearTimeout(timer);
-        child.kill('SIGKILL');
+        await tmp.dispose();
       }
-    } finally {
-      await tmp.dispose();
-    }
-  });
+    },
+  );
 });
