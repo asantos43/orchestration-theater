@@ -38,8 +38,10 @@ describe('resolveDataDir', () => {
   const base = { platform: 'linux', homedir: '/home/u' } as const;
 
   it('prefers the flag, then OT_DATA_DIR, then the default', () => {
-    expect(resolveDataDir({ ...base, flag: '/a', env: { OT_DATA_DIR: '/b' } })).toBe('/a');
-    expect(resolveDataDir({ ...base, env: { OT_DATA_DIR: '/b' } })).toBe('/b');
+    // Explicit values go through the native resolve(), so '/a' is 'D:\\a' on Windows. The default
+    // is built by the injected platform's own path rules and is not resolved.
+    expect(resolveDataDir({ ...base, flag: '/a', env: { OT_DATA_DIR: '/b' } })).toBe(resolve('/a'));
+    expect(resolveDataDir({ ...base, env: { OT_DATA_DIR: '/b' } })).toBe(resolve('/b'));
     expect(resolveDataDir({ ...base, flag: '', env: { OT_DATA_DIR: '' } })).toBe(
       '/home/u/.local/share/otheater',
     );
@@ -52,17 +54,18 @@ describe('resolveDataDir', () => {
 
 describe('dataPaths', () => {
   it('puts every piece inside the data directory', () => {
+    const root = resolve('/data/ot');
     const paths = dataPaths('/data/ot');
     expect(paths).toEqual({
-      dataDir: '/data/ot',
-      config: '/data/ot/config.yaml',
-      store: '/data/ot/store.sqlite',
-      lock: '/data/ot/daemon.lock',
-      lockInfo: '/data/ot/daemon.lock.json',
-      backups: '/data/ot/backups',
-      logs: '/data/ot/logs',
-      logFile: '/data/ot/logs/daemon.log',
-      scenarios: '/data/ot/scenarios',
+      dataDir: root,
+      config: join(root, 'config.yaml'),
+      store: join(root, 'store.sqlite'),
+      lock: join(root, 'daemon.lock'),
+      lockInfo: join(root, 'daemon.lock.json'),
+      backups: join(root, 'backups'),
+      logs: join(root, 'logs'),
+      logFile: join(root, 'logs', 'daemon.log'),
+      scenarios: join(root, 'scenarios'),
     });
   });
 });
