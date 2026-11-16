@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
 import { MAX_PASSWORD_ATTEMPTS, startDaemon, type PasswordPrompt } from './daemon.js';
 import { createSilentLogger } from './logger.js';
-import { makeTempDataDir } from './test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 import { writeFile } from 'node:fs/promises';
 
 const AT = Date.UTC(2026, 10, 16, 15, 30, 5);
@@ -125,6 +125,7 @@ describe('startDaemon', () => {
       const store = new MaintainedStore(clock);
       const daemon = await startDaemon({
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         config: MANUAL,
         overrides: { clock, store, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
@@ -177,6 +178,7 @@ describe('startDaemon', () => {
       };
       const daemon = await startDaemon({
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         config: MANUAL,
         overrides: { clock, store, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
@@ -197,6 +199,7 @@ describe('startDaemon', () => {
       const open = (): ReturnType<typeof startDaemon> =>
         startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           overrides: {
             clock,
             store: new InMemoryStore({ clock }),
@@ -223,6 +226,7 @@ describe('startDaemon', () => {
       store.problems = ['row 7 missing from index'];
       const options = {
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         overrides: { clock, store, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
       };
@@ -234,6 +238,7 @@ describe('startDaemon', () => {
       const clock2 = new FakeClock(AT);
       const healthy = await startDaemon({
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         overrides: {
           clock: clock2,
           store: new InMemoryStore({ clock: clock2 }),
@@ -256,6 +261,7 @@ describe('startDaemon', () => {
       const clock = new FakeClock(AT);
       return startDaemon({
         dataDir,
+        clientSearch: NO_CLIENTS,
         overrides: { clock, store: new InMemoryStore({ clock }), vault },
         logger: createSilentLogger(),
         passwordPrompt: prompt,
@@ -333,6 +339,7 @@ describe('startDaemon', () => {
         const { prompt, asked } = scriptedPrompt([RIGHT]);
         const daemon = await startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           overrides: {
             clock,
             store: new InMemoryStore({ clock }),
@@ -358,6 +365,7 @@ describe('startDaemon', () => {
       const controller = new AbortController();
       const daemon = await startDaemon({
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         config: MANUAL,
         overrides: { clock, store, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
@@ -371,6 +379,7 @@ describe('startDaemon', () => {
       already.abort();
       const second = await startDaemon({
         dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
         overrides: { clock, store: new InMemoryStore({ clock }), vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
         signal: already.signal,
@@ -389,6 +398,7 @@ describe('startDaemon', () => {
         const store = new MaintainedStore(clock);
         const daemon = await startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           config: MANUAL,
           overrides: { clock, store, vault: new InMemorySecretVault() },
           logger: createSilentLogger(),
@@ -412,6 +422,7 @@ describe('startDaemon', () => {
         const clock = new FakeClock(AT);
         const daemon = await startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           overrides: {
             clock,
             store: new InMemoryStore({ clock }),
@@ -433,6 +444,7 @@ describe('startDaemon', () => {
         const store = new MaintainedStore(clock);
         const daemon = await startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           overrides: { clock, store, vault: new InMemorySecretVault() },
           logger: createSilentLogger(),
         });

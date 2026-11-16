@@ -9,7 +9,7 @@ import { main } from './cli.js';
 import { parseConfig } from './config.js';
 import { startDaemon } from './daemon.js';
 import { createSilentLogger } from './logger.js';
-import { makeTempDataDir } from './test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 
 /**
  * The Phase 1 acceptance criterion that fits step 5 (architecture 5.21): the daemon starts over
@@ -37,6 +37,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
       const open = (): ReturnType<typeof startDaemon> =>
         startDaemon({
           dataDir: tmp.dir,
+          clientSearch: NO_CLIENTS,
           config: CONFIG,
           overrides: { vault: new InMemorySecretVault() },
           logger: createSilentLogger(),
@@ -140,6 +141,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
         const clock = new FakeClock(Date.UTC(2026, 10, 16, 12, 0, 0));
         const fake = await startDaemon({
           dataDir: fakeDir.dir,
+          clientSearch: NO_CLIENTS,
           config: CONFIG,
           overrides: {
             clock,

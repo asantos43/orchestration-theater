@@ -5,9 +5,7 @@ import {
   hasStoreMaintenance,
   isLockableSecretVault,
   PermissionDenied,
-  type ClientAdapter,
   type Clock,
-  type ProcessLauncher,
   type LockableSecretVault,
   type Secret,
   type SecretVault,
@@ -20,7 +18,15 @@ import {
   type DaemonState,
   type DaemonStatus,
 } from '@otheater/protocol';
-import { compose, type Composition, type ComposeOverrides } from './compose.js';
+import type { ClientFactory, ClientFactoryParts } from './clients.js';
+import {
+  compose,
+  productionClients,
+  transportFor,
+  type ComposeOverrides,
+  type Composition,
+  type ProductionClientsOptions,
+} from './compose.js';
 import { loadConfig, type DaemonConfig } from './config.js';
 import { Execution } from './execution/service.js';
 import type { AttemptResolver } from './execution/reconcile.js';
@@ -50,18 +56,7 @@ export type PasswordPrompt = (request: PasswordRequest) => Promise<Secret | unde
 
 export type { ActivityProbe };
 
-/** What a factory of clients may need to build its adapters. */
-export interface ClientFactoryParts {
-  readonly launcher: ProcessLauncher;
-  readonly clock: Clock;
-}
-
-/**
- * Builds the `ClientAdapter`s the daemon executes attempts with. They are injected, not named
- * here: the daemon imports adapters only in `compose.ts` (architecture 5.18). The three real
- * clients are wired by the composition of the product; tests pass the fake.
- */
-export type ClientFactory = (parts: ClientFactoryParts) => readonly ClientAdapter[];
+export type { ClientFactory, ClientFactoryParts };
 
 export interface StartDaemonOptions {
   readonly dataDir: string;
@@ -75,8 +70,13 @@ export interface StartDaemonOptions {
   readonly logger?: Logger | undefined;
   readonly version?: string | undefined;
   readonly activityProbe?: ActivityProbe | undefined;
-  /** The clients that run attempts. Without them the daemon starts with the execution off. */
+  /**
+   * The clients that run attempts. Without it the daemon builds the ones `clients.*` of the config
+   * turns on (`productionClients`); when none is on, it starts with the execution off.
+   */
   readonly clients?: ClientFactory | undefined;
+  /** Environment and executable search of the default factory (tests: no real `PATH`). */
+  readonly clientSearch?: ProductionClientsOptions | undefined;
   /**
    * Tells the reconciliation what it needs to resume an attempt the daemon did not start (profile,
    * Executor, policy). Without it, the attempts that were running are parked as `interrupted`.
@@ -302,17 +302,29 @@ function buildExecution(
   worktreeRoot: string,
 ): Execution | undefined {
   const { logger } = composition;
-  if (options.clients === undefined) return undefined;
   const { launcher } = composition;
   if (launcher === undefined) {
     logger.warn('this platform has no process launcher yet; the execution of attempts is off');
     return undefined;
   }
-  const clients = options.clients({ launcher, clock: composition.clock });
+  const factory = options.clients ?? productionClients(config, options.clientSearch);
+  const clients = factory({
+    launcher,
+    clock: composition.clock,
+    transport: composition.transport,
+    paths: dataPaths(options.dataDir),
+    logger,
+  });
+  if (clients.length === 0) {
+    logger.warn(
+      'no client is enabled (none configured or found in PATH); the execution of attempts is off',
+    );
+    return undefined;
+  }
   return new Execution({
     clients,
     launcher,
-    transport: () => composition.transport,
+    transport: (adapter) => transportFor(adapter, composition.transport),
     store: composition.store,
     vcs: composition.vcs,
     clock: composition.clock,
