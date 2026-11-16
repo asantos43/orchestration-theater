@@ -2,7 +2,7 @@
 # Destino OpenCode com modelos free (Zen) e Gemma pelo Google (README, "Destino OpenCode com modelos free"). Par Codex->OpenCode, origem 1.
 # Requer SPIKE_SCRATCH com o repo restaurado por restore-origins.ts. Perfil padrao do OpenCode do dono; so OT_MODEL muda (sem OPENCODE_CONFIG_CONTENT).
 #   uso: SPIKE_SCRATCH=<pasta> ./src/rep6.sh <modelo> <rotulo> <min|full> <tag> [<min|full> <tag> ...]
-#   rotulo = sufixo do par: glm | deepseek | minimax | gemma26 | gemma31 (vira codex-opencode-<rotulo>; agg.ts rotula)
+#   rotulo = sufixo do par: glm | deepseek | minimax | gemma26 | gemma31 | gpt61sol (vira codex-opencode-<rotulo>; agg.ts rotula)
 #   ex.: ./src/rep6.sh opencode/glm-5.3-flash-free glm min r1 full r1
 set -u
 cd "$(dirname "$0")/.."

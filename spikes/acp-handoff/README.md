@@ -108,7 +108,7 @@ Objetivo: tirar o item 1 do n=1 e fechar o que a rodada 1 deixou em aberto. **Co
 - **Execuções excluídas**: 2 execuções do Codex→OpenCode com `gemini-3.5-flash` na variante full (r2 e r3) falharam por **cota da API do Google** (erro "free tier ... limit: 20 ... per day", `usage` 0). São falha de infraestrutura, aparecem na tabela por execução como "excluída (cota)" e **não entram** nos agregados. Detalhe: a mensagem de erro cita `gemini-3.6-flash`, embora o log de fio mostre `google/gemini-3.5-flash` aplicado na sessão; por que o provedor cita outro nome é **[N]**. Não deu para repor: o erro diz para tentar de novo em cerca de 15 horas.
 - Não foi aberto nenhum arquivo de sessão do dono, nenhuma credencial lida, e o `opencode serve` do dono (porta 4096) não foi tocado.
 
-Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = origem refeita; "(3.5-flash)" = destino OpenCode com `google/gemini-3.5-flash` em vez do padrão `google/gemini-3.1-flash-lite`; "(gemma local)" = destino OpenCode com o Gemma 4 E4B local no Ollama (seção própria, abaixo). "(glm-5.3-flash free)", "(deepseek-v4.1-flash free)" e "(minimax-m3.1-flash free)" = destino OpenCode com o modelo free do Zen (`opencode/...`); "(gemma 26b google)" e "(gemma 31b google)" = destino OpenCode com `google/gemma-4-26b-a4b-it` e `google/gemma-4-31b-it` (seção "Destino OpenCode com modelos free", abaixo). Os pares A, B e C da rodada 1 são Claude→Codex, Codex→OpenCode e OpenCode→Claude.
+Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = origem refeita; "(3.5-flash)" = destino OpenCode com `google/gemini-3.5-flash` em vez do padrão `google/gemini-3.1-flash-lite`; "(gemma local)" = destino OpenCode com o Gemma 4 E4B local no Ollama (seção própria, abaixo). "(glm-5.3-flash free)", "(deepseek-v4.1-flash free)" e "(minimax-m3.1-flash free)" = destino OpenCode com o modelo free do Zen (`opencode/...`); "(gemma 26b google)" e "(gemma 31b google)" = destino OpenCode com `google/gemma-4-26b-a4b-it` e `google/gemma-4-31b-it` (seção "Destino OpenCode com modelos free", abaixo). "(gpt-6.1-sol)" = destino OpenCode com `openai/gpt-6.1-sol` pelo login do ChatGPT (seção "Destino OpenCode com gpt-6.1-sol", abaixo). Os pares A, B e C da rodada 1 são Claude→Codex, Codex→OpenCode e OpenCode→Claude.
 
 ### Todas as execuções da continuação (rodada 1 e rodada 2)
 
@@ -173,6 +173,12 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 | Codex→OpenCode (minimax-m3.1-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
 | Codex→OpenCode (minimax-m3.1-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
 | Codex→OpenCode (minimax-m3.1-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (gpt-6.1-sol) | full | r1 | **não** | 3/3 | 0/5 | 2/6 | 600,2 s (vigia) | 0/11 | 0§ (4) | 0 ERRO: ACP connection closed |
+| Codex→OpenCode (gpt-6.1-sol) | full | r2 | sim | 10/10 | 5/5 | 6/6 | 119,7 s | 0/11 | 0§ (4) | 15993 |
+| Codex→OpenCode (gpt-6.1-sol) | full | r3 | sim | 11/11 | 5/5 | 6/6 | 123,4 s | 0/11 | 0§ (4) | 17134 |
+| Codex→OpenCode (gpt-6.1-sol) | min | r1 | sim | 10/10 | 5/5 | 6/6 | 72,6 s | 0/11 | 0§ (4) | 15676 |
+| Codex→OpenCode (gpt-6.1-sol) | min | r2 | sim | 11/11 | 5/5 | 6/6 | 79,3 s | 0/11 | 0§ (4) | 15427 |
+| Codex→OpenCode (gpt-6.1-sol) | min | r3 | sim | 11/11 | 5/5 | 6/6 | 81,3 s | 0/11 | 0§ (4) | 15631 |
 | Codex→OpenCode (origem 2) | full | r1 | sim | 9/9 | 5/5 | 6/6 | 17,0 s | 0/15 | 3 (3) | 21894 |
 | Codex→OpenCode (origem 2) | full | r2 | sim | 9/9 | 5/5 | 6/6 | 83,1 s | 0/15 | 3 (3) | 21331 |
 | Codex→OpenCode (origem 2) | min | r1 | sim | 8/8 | 5/5 | 6/6 | 197,5 s | 0/15 | 6 (3) | 26213 |
@@ -214,6 +220,8 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 | Codex→OpenCode (3.5-flash) | min | 2 | 2 de 2 | 39,3 s | 18,3 a 60,3 s | 0 | 0 (0, 0) | 3129 |
 | Codex→OpenCode (gemma local) | full | 2 | 0 de 2 | 313,9 s | 273,6 a 354,1 s | 0 | 0 (0, 0) | 4243 |
 | Codex→OpenCode (gemma local) | min | 2 | 0 de 2 | 1395,6 s | 1291,2 a 1500,1 s | 12 | 7‡ (5, 2) | 3129 |
+| Codex→OpenCode (gpt-6.1-sol) | full | 3 | 2 de 3 | 123,4 s | 119,7 a 600,2 s | 0 | 0§ (0, 0, 0) | 4243 |
+| Codex→OpenCode (gpt-6.1-sol) | min | 3 | 3 de 3 | 79,3 s | 72,6 a 81,3 s | 0 | 0§ (0, 0, 0) | 3129 |
 | Codex→OpenCode (origem 2) | full | 2 | 2 de 2 | 50,1 s | 17,0 a 83,1 s | 0 | 0 (0, 0) | 4654 |
 | Codex→OpenCode (origem 2) | min | 2 | 2 de 2 | 112,6 s | 27,6 a 197,5 s | 0 | 3 (3, 0) | 3415 |
 | Codex→OpenCode | full | 3 | 2 de 3 | 86,6 s | 58,6 a 179,6 s | 0 | 5 (2, 2, 1) | 4243 |
@@ -227,7 +235,7 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 
 As células "(deepseek-v4.1-flash free)", "(glm-5.3-flash free)", "(minimax-m3.1-flash free)", "(gemma 26b google)" e "(gemma 31b google)" **não têm linha neste agregado**: as 30 execuções foram todas excluídas por infraestrutura (seção "Destino OpenCode com modelos free"), então n válido = 0 em cada uma.
 
-"ok em n" exige testes do próprio agente verdes, aceitação 5/5 e 6 passos. O tempo é a mediana, com a faixa ao lado. As execuções "excluída (cota)" não entram. ‡ = nas linhas "gemma local", as escritas contam **tentativas** de edição (inclusive as que o OpenCode recusou); ver a seção do Gemma local.
+"ok em n" exige testes do próprio agente verdes, aceitação 5/5 e 6 passos. O tempo é a mediana, com a faixa ao lado. As execuções "excluída (cota)" não entram. ‡ = nas linhas "gemma local", as escritas contam **tentativas** de edição (inclusive as que o OpenCode recusou); ver a seção do Gemma local. § = nas linhas "gpt-6.1-sol", o modelo delegou o trabalho a um subagente do OpenCode e as edições do subagente **não aparecem** no fluxo ACP da sessão; o 0 não quer dizer que não houve escrita, quer dizer que a escrita não foi medida (ver a seção do gpt-6.1-sol).
 
 ### Leitura (item 1: repetições e sentidos novos)
 
@@ -256,7 +264,7 @@ Nas 3 execuções válidas com o 3.5-flash: todas corretas, 0 linhas perdidas e 
 
 **Decisão do dono, 2026-11-15:** a célula pendente do `google/gemini-3.5-flash` full (ficou com **n=1** válida; 2 excluídas por cota) **não será completada**. No lugar dela entra a célula do modelo local (próxima seção). A célula do 3.5-flash fica registrada como **exceção**: min n=2 e full n=1, ambas corretas, sem mais repetições; qualquer conclusão sobre o "modelo mais forte" com o Gemini fica com esse n.
 
-**Atualização, 2026-11-15:** o dono mandou rodar mais 5 modelos no mesmo par e origem (3 modelos free do Zen e 2 Gemma pelo Google); a seção "Destino OpenCode com modelos free" registra o que aconteceu. A decisão acima (não completar a célula do 3.5-flash) continua valendo.
+**Atualização, 2026-11-15:** o dono mandou rodar mais 5 modelos no mesmo par e origem (3 modelos free do Zen e 2 Gemma pelo Google); a seção "Destino OpenCode com modelos free" registra o que aconteceu. A decisão acima (não completar a célula do 3.5-flash) continua valendo. Depois, o dono mandou rodar também o `openai/gpt-6.1-sol` (o mesmo modelo do destino Codex) no destino OpenCode, como controle de harness; ver a seção "Destino OpenCode com gpt-6.1-sol". Isso não muda a exceção do 3.5-flash.
 
 ### Item 4: retomada nativa com `cwd` diferente
 
@@ -429,11 +437,60 @@ Medido em 2026-11-15, das 17:21 às 17:57 (UTC-3), a pedido do dono, que escolhe
 
 Dados brutos em `out/cont-codex-opencode-{glm,deepseek,minimax,gemma26,gemma31}-{min,full}.r{1,2,3}.json` e `*.wire.jsonl` (git-ignored).
 
+### Destino OpenCode com gpt-6.1-sol (controle de harness)
+
+Pergunta: com o **mesmo modelo** do destino Codex (`gpt-6.1-sol`, que é o `currentValue` nos logs de fio do Codex [V]), quanto da diferença entre os destinos Codex e OpenCode vem do modelo e quanto vem do harness (o cliente, o perfil e as ferramentas)? Mesmo par (Codex→OpenCode), mesma origem 1 (`codex-opencode.restored`), mesmos pacotes min e full, 3 execuções por variante.
+
+| Item | Valor |
+|---|---|
+| Modelo | `OT_MODEL=openai/gpt-6.1-sol`, da lista do `opencode models` [V] |
+| Conta | **login do ChatGPT do dono no OpenCode**. Autorização do dono em 2026-11-15: "Login ChatGPT, pode usar". O dono assumiu o uso **sem a leitura dos termos da OpenAI** sobre usar a assinatura por um cliente de terceiros (D3); o que esses termos permitem é **[N]**. Não li nem mexi em credencial |
+| Perfil | o padrão do OpenCode, com as skills e as instruções do dono, igual ao das células flash-lite e free |
+| Script | `src/rep6.sh openai/gpt-6.1-sol gpt61sol min r1 full r1 min r2 full r2 min r3 full r3`, vigia de 600 s. Em `agg.ts`, só o rótulo "(gpt-6.1-sol)" é novo |
+| Quando | 2026-11-15, de 22:19 a 22:38 (UTC-3), em sequência, sem outro fluxo em paralelo |
+
+**Resultado [V, a partir de `out/cont-codex-opencode-gpt61sol-*.json` e dos logs de fio]**
+
+| Variante | Válidas | ok | Tempo | Linhas perdidas | Testes próprios |
+|---|---|---|---|---|---|
+| min | 3 | **3 de 3** | 72,6 a 81,3 s (mediana 79,3) | 0 | 10, 11, 11 |
+| full | 3 | **2 de 3** | 119,7 e 123,4 s; a falha bateu no vigia de 600 s | 0 | 10, 11 (a falha ficou com os 3 da origem) |
+
+**O modelo delegou em todas as 6 execuções [V]**
+- Nas 6, o gpt-6.1-sol carregou a skill `delegate` do perfil do dono, que diz que o orquestrador não executa. Na full r2, em vez de carregar a skill, leu o arquivo `SKILL.md` dela. Na full r1 e na full r3, carregou também a skill `quota` e rodou `kit quota`.
+- Depois, abriu um subagente do OpenCode (ferramenta `task`, `subagent_type: "general"`) com um briefing reescrito por ele: os passos 3 a 7 em ordem estrita, "não reescreva o slugify", "só lib.mjs e lib.test.mjs".
+- O resultado da `task` traz `model: {providerID: "openai", modelID: "gpt-6.1-sol"}`, então o subagente usou o mesmo modelo [V].
+- A sessão principal fez 0 edições. As edições do subagente não aparecem no fluxo ACP da sessão principal. Por isso "Escritas" aparece como 0§: **o retrabalho por escrita não foi medido nestas 6**. As linhas perdidas e a avaliação vêm dos arquivos finais e continuam válidas.
+- O `usage` (15 a 17 mil tokens) é provavelmente só da sessão principal **[N]**.
+- A falha (full r1) foi a `task` do subagente aberta aos 25,9 s, que não voltou mais. Nenhum arquivo mudou (`numstat` vazio, 2 de 6 passos, os da origem), e o vigia matou a execução aos 600 s. Não dá para ver no ACP o que o subagente fazia: o id da sessão filha só aparece no resultado da `task`, que não chegou. A causa (subagente travado, espera do provedor, laço) é **[N]**.
+
+**Comparação (mesmo par e origem no OpenCode; destino Codex com o mesmo modelo)**
+
+| Destino e modelo | min | full | Tempo | Escritas (faltavam 4) |
+|---|---|---|---|---|
+| OpenCode, flash-lite (padrão) | 1 de 3 | 2 de 3 | 45 a 184 s | 5 a 8 |
+| OpenCode, 3.5-flash (exceção) | 2 de 2 | 1 de 1 | 18 a 60 s | 4 |
+| OpenCode, Gemma 4 E4B local | 0 de 2 | 0 de 2 | 274 a 1500 s | — |
+| **OpenCode, gpt-6.1-sol** | **3 de 3** | **2 de 3** | 73 a 123 s (mais 1 de 600 s) | não medido (§) |
+| Codex, gpt-6.1-sol (todas as origens: Claude→Codex e OpenCode→Codex) | 3 de 7 | 7 de 7 | 3 a 28 s | 0 a 1 a mais |
+
+**Leitura**
+- **Não é um controle limpo do harness [V]**. Com o perfil do dono, o gpt-6.1-sol no OpenCode não continuou a tarefa, e sim **reorquestrou**: leu o pacote, escreveu um briefing e passou a outro agente. O que foi medido é "gpt-6.1-sol + skill `delegate` + subagente `general`", um segundo bastão dentro do primeiro. O Codex com o mesmo modelo trabalhou direto (as escritas aparecem no ACP).
+- **Com essa ressalva, o modelo pesa [N: n=3 por variante]**. Com o min, deu 3 de 3 contra 1 de 3 do flash-lite, na mesma origem. O min também não falhou aqui como falhou no Codex (3 de 7). Uma explicação possível **[N]** é o briefing reescrito: ele transforma o min num pedido explícito de passos, o que faz a reescrita agir como um "full gerado pelo modelo".
+- **O custo da delegação é o tempo e a visibilidade [V]**. As execuções certas levaram de 73 a 123 s, contra 3 a 28 s do Codex com o mesmo modelo. A falha é do tipo que o harness do OTheater não enxerga: um subagente interno do cliente travou, o pai ficou esperando sem eventos e só o vigia encerrou.
+- **Para a arquitetura (dado, sem decisão nova)**:
+  - um Executor que delega internamente esconde as edições do fluxo ACP. A medição de progresso e de retrabalho tem que vir do diff da worktree (já é a pendência "o produto deve medir pelo diff"), não dos eventos de ferramenta;
+  - o perfil (skills e instruções do dono) muda o comportamento do destino tanto quanto o modelo. Perfil enxuto contra perfil do dono continua sem medir no bastão (no local-model foi medido com o modo authonly).
+- A exceção do 3.5-flash continua registrada. Esta célula é um dado a mais sobre o "modelo mais forte" no destino OpenCode, mas com o desvio da delegação.
+
+Dados brutos em `out/cont-codex-opencode-gpt61sol-{min,full}.r{1,2,3}.json` e `*.wire.jsonl` (git-ignored).
+
 ### O que NÃO foi rodado ou ficou incompleto na Rodada 2
 
 - `gemini-3.5-flash` full: só 1 execução válida (2 excluídas por cota diária do tier grátis). **Exceção registrada**: por decisão do dono (2026-11-15), a célula não será completada e foi substituída pela do Gemma 4 E4B local (seção acima).
 - Gemma local: n=2 por variante, só raciocínio ligado e só o perfil padrão do OpenCode; sem 3ª execução.
 - Modelos free do Zen (GLM-5.3-Flash, DeepSeek V4.1 Flash, MiniMax M3.1 Flash) e Gemma 4 26B/31B pelo Google: 30 execuções feitas, **0 válidas** (chave do Zen expirada; tier grátis do Google com limite de tokens de entrada por minuto e erros do provedor). Nenhum desses modelos tem resultado de qualidade.
+- `openai/gpt-6.1-sol` no OpenCode: n=3 por variante, só o perfil do dono (com a skill `delegate`, que o modelo seguiu nas 6 execuções); sem rodada com perfil enxuto (authonly) que deixasse o modelo trabalhar direto, e sem medir as escritas do subagente.
 - Origem 2 só tem n=2 por célula; origem 3 e tarefas maiores não foram feitas.
 - Nenhum modelo mais forte para os destinos Claude e Codex (usaram o modelo mais barato de sempre), então "destino fraco" só foi separado no OpenCode.
 - Retomada nativa com sessões antigas (pós-retenção): não testada.
@@ -468,6 +525,7 @@ Notas: os caminhos absolutos do cwd de origem devem ser normalizados para relati
 - Preço do `gemini-3.5-flash` frente ao flash-lite: não verificado [N].
 - Destino local (Gemma 4 E4B): separar a causa do 0 de 4 (raciocínio ligado ou desligado, perfil enxuto do OpenCode, modelo maior, parser de ferramentas do Ollama) e medir uma 3ª execução; o `usage` do OpenCode com o modelo local parece só do último passo [N].
 - **Modelos free (Zen) e Gemma pelo Google**: 0 execuções válidas de 30. Falta (ação do dono, **[N]** se resolve): renovar a chave do OpenCode Zen (a mensagem do provedor manda criar uma nova no console do OpenCode; não renovo por login) e decidir como rodar o Gemma pelo Google sem o limite de 16 000 tokens de entrada por minuto do tier grátis (o pacote com o perfil do OpenCode já passa disso na 1ª requisição). Depois, repetir `rep6.sh` (r1 a r3, min e full).
+- **gpt-6.1-sol no OpenCode sem delegação**: repetir com um perfil enxuto (sem as skills do dono, como o authonly do `local-model`), para ter o controle de harness limpo. Medir as escritas pelo diff da worktree, e não pelos eventos do ACP, quando o destino delegar. Descobrir por que o subagente da full r1 não voltou [N]. Termos da OpenAI para o login do ChatGPT em cliente de terceiros: não lidos (D3) [N].
 
 
 ## Como rodar
@@ -492,6 +550,8 @@ node src/agg.ts                                              # agrega out/cont-*
 SPIKE_SCRATCH=<pasta> ./src/rep5.sh min r1 full r1 min r2 full r2   # OPENCODE_CONFIG_CONTENT com o provedor local, OT_MODEL=local/gemma4-e4b, vigia de 1500 s
 # Modelos free (Zen) e Gemma pelo Google: perfil padrao do OpenCode, so OT_MODEL muda; rotulo = glm|deepseek|minimax|gemma26|gemma31
 SPIKE_SCRATCH=<pasta> ./src/rep6.sh opencode/glm-5.3-flash-free glm min r1 full r1 min r2 full r2 min r3 full r3
+# Controle de harness com o modelo do Codex (login do ChatGPT no OpenCode): rotulo gpt61sol
+SPIKE_SCRATCH=<pasta> ./src/rep6.sh openai/gpt-6.1-sol gpt61sol min r1 full r1 min r2 full r2 min r3 full r3
 ```
 
 Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o par), `OT_TAG` (sufixo `.rN` da execução), `OT_MODEL` (modelo do OpenCode, ex. `google/gemini-3.5-flash`), `OT_WATCHDOG_MS` (vigia da execução em ms, padrão 600000). Variáveis de `native.ts`: `OT_CWD2=wt|plain|same` (cwd novo da retomada: worktree irmã, pasta fora do git, ou o mesmo como controle), `OT_CLI_TIMEOUT` (ms, padrão 180000), `OT_NTAG` (sufixo para repetir sem colidir). O OpenCode usa `opencode acp`; o `opencode serve` do dono não é usado.
@@ -500,4 +560,4 @@ Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o
 
 ## Arquivos
 
-`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`). Destino local: `src/rep5.sh`, `OT_WATCHDOG_MS` em `cont.ts`, rótulo "(gemma local)" em `agg.ts`. Modelos free: `src/rep6.sh` (modelo, rótulo, lista variante/tag), rótulos dos 5 modelos e exclusão por provedor ("excluída (provedor)") em `agg.ts`.
+`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`). Destino local: `src/rep5.sh`, `OT_WATCHDOG_MS` em `cont.ts`, rótulo "(gemma local)" em `agg.ts`. Modelos free: `src/rep6.sh` (modelo, rótulo, lista variante/tag), rótulos dos 5 modelos e exclusão por provedor ("excluída (provedor)") em `agg.ts`. Controle com gpt-6.1-sol: rótulo "(gpt-6.1-sol)" em `agg.ts` e `gpt61sol` na lista de rótulos do `rep6.sh`.
