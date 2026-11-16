@@ -1,0 +1,7 @@
+{
+  "app": {
+    "name": "OTheater",
+    "tagline": "Orchestration Theater: vários agentes, um só palco",
+    "greeting": "Bem-vindo, {{name}}"
+  }
+}
