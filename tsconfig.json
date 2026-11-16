@@ -4,6 +4,7 @@
     { "path": "packages/core" },
     { "path": "packages/sdk" },
     { "path": "packages/fake-agent" },
+    { "path": "packages/adapters/store-sqlite" },
     { "path": "tools/verify" }
   ]
 }
