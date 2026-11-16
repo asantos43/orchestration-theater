@@ -34,6 +34,8 @@ export interface SessionLease {
   readonly session: AgentSession;
   readonly client: string;
   readonly profileId: string;
+  /** Id of the transport the session speaks (`acp`...), for the `session.opened` event. */
+  readonly via: string;
   /** Pid of the adapter process that runs the session. */
   readonly pid: number;
   /** The process runs other sessions too (`multi-session`). */
@@ -225,7 +227,7 @@ export class SessionPool {
         resumeSessionId === undefined
           ? await adapter.openSession(profile, policy, cwd, via)
           : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via);
-      return this.#lease(session, adapter.id, profileId, undefined, undefined);
+      return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined);
     }
     const entry = await this.#processFor(adapter, request, via);
     const token = Symbol(`${adapter.id}/${profileId}`);
@@ -239,7 +241,7 @@ export class SessionPool {
         resumeSessionId === undefined
           ? await adapter.openSessionOn(lent, policy, cwd, via)
           : await adapter.loadSessionOn(lent, policy, cwd, resumeSessionId, via);
-      return this.#lease(session, adapter.id, profileId, entry, token);
+      return this.#lease(session, adapter.id, profileId, via.id, entry, token);
     } catch (error) {
       entry.sessions.delete(token);
       this.#startIdleIfEmpty(entry);
@@ -287,6 +289,7 @@ export class SessionPool {
     session: AgentSession,
     client: string,
     profileId: string,
+    via: string,
     entry: PoolProcess | undefined,
     token: symbol | undefined,
   ): SessionLease {
@@ -296,6 +299,7 @@ export class SessionPool {
       session,
       client,
       profileId,
+      via,
       pid,
       shared: entry !== undefined,
       release: async () => {

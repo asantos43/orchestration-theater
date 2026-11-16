@@ -19,9 +19,12 @@
   ],
   "dependencies": {
     "@otheater/adapter-clock-system": "workspace:*",
+    "@otheater/adapter-platform-posix": "workspace:*",
+    "@otheater/adapter-session-acp": "workspace:*",
     "@otheater/adapter-store-sqlite": "workspace:*",
     "@otheater/adapter-vault-file": "workspace:*",
     "@otheater/adapter-vault-keyring": "workspace:*",
+    "@otheater/adapter-vcs-git": "workspace:*",
     "@otheater/core": "workspace:*",
     "@otheater/protocol": "workspace:*",
     "i18next": "26.6.0",
@@ -31,6 +34,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@otheater/sdk": "workspace:*",
     "@types/semver": "7.8.0",
     "vitest": "5.1.0"
   }

@@ -2,6 +2,11 @@
 import { resolve } from 'node:path';
 import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system';
 import {
+  POSIX_PROCESS_LAUNCHER_ADAPTER,
+  PosixProcessLauncher,
+} from '@otheater/adapter-platform-posix';
+import { AcpTransport } from '@otheater/adapter-session-acp';
+import {
   backupDatabase,
   parseBackupMethod,
   restoreDatabase,
@@ -20,19 +25,25 @@ import {
   KeyringVaultConfigSchema,
   keyringVaultAdapter,
 } from '@otheater/adapter-vault-keyring';
+import { GIT_VCS_ADAPTER, GitVcs } from '@otheater/adapter-vcs-git';
 import {
   AdapterUnavailable,
   CLOCK_PORT_VERSION,
   InvalidInput,
   isLockableSecretVault,
+  PROCESS_LAUNCHER_PORT_VERSION,
   SECRET_VAULT_PORT_VERSION,
   STORE_PORT_VERSION,
+  VCS_PORT_VERSION,
   type Adapter,
   type Clock,
+  type ProcessLauncher,
   type SecretVault,
+  type SessionTransport,
   type Store,
   type StoreBackupOptions,
   type StoreBackupResult,
+  type Vcs,
 } from '@otheater/core';
 import semver from 'semver';
 import { z } from 'zod';
@@ -41,7 +52,7 @@ import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, type DataPaths } from './paths.js';
 
 /** The ports the daemon composes. */
-export type PortName = 'Store' | 'SecretVault' | 'Clock';
+export type PortName = 'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -59,6 +70,12 @@ export interface ComposeOverrides {
   readonly clock?: Clock;
   readonly store?: Store;
   readonly vault?: SecretVault;
+  /** Version control for the worktrees of the attempts (`GitVcs` by default). */
+  readonly vcs?: Vcs;
+  /** Starts the adapter processes (`PosixProcessLauncher` by default; none on Windows yet). */
+  readonly launcher?: ProcessLauncher;
+  /** The wire the sessions speak (`AcpTransport` by default). */
+  readonly transport?: SessionTransport;
 }
 
 export interface ComposeOptions {
@@ -74,6 +91,14 @@ export interface Composition {
   readonly vault: SecretVault;
   readonly logger: Logger;
   readonly adapters: readonly AdapterRecord[];
+  /** Version control for the execution of attempts. */
+  readonly vcs: Vcs;
+  /**
+   * [proposta] `undefined` where the daemon has no launcher yet (Windows, until the launcher with
+   * the Job Object is wired): the execution of attempts is off there.
+   */
+  readonly launcher: ProcessLauncher | undefined;
+  readonly transport: SessionTransport;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -138,6 +163,23 @@ const SqliteSectionSchema = SqliteStoreConfigSchema.omit({ path: true });
 function storeSection(config: DaemonConfig, paths: DataPaths): SqliteStoreConfig {
   const section = parseSection('store', SqliteSectionSchema, config.store);
   return { ...section, path: paths.store };
+}
+
+/** The `Vcs` of the daemon: git, after the range check like every adapter. */
+export function defaultVcs(): Vcs {
+  checkAdapterRange(GIT_VCS_ADAPTER, 'Vcs', VCS_PORT_VERSION);
+  return new GitVcs();
+}
+
+/** The process launcher of this platform, or `undefined` where there is none yet. */
+export function defaultLauncher(): ProcessLauncher | undefined {
+  if (process.platform === 'win32') return undefined;
+  checkAdapterRange(
+    POSIX_PROCESS_LAUNCHER_ADAPTER,
+    'ProcessLauncher',
+    PROCESS_LAUNCHER_PORT_VERSION,
+  );
+  return new PosixProcessLauncher();
 }
 
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
@@ -212,6 +254,10 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       store = await SqliteStore.open(storeSection(config, paths), clock);
     }
 
+    const vcs = overrides.vcs ?? defaultVcs();
+    const launcher = overrides.launcher ?? defaultLauncher();
+    const transport = overrides.transport ?? new AcpTransport();
+
     const opened = { store, vault };
     let closing: Promise<void> | undefined;
     return {
@@ -220,6 +266,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       vault,
       logger,
       adapters,
+      vcs,
+      launcher,
+      transport,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
