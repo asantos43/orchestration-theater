@@ -22,7 +22,7 @@ export interface InstalledVersionQuery {
  * (N63). It never runs anything: the executable is looked up in `PATH` (`find`), the link is
  * followed to the real file (`realpath`), and the directories above it are searched for a
  * `package.json` whose `name` is one of `packages`. A wrapper script, `npx`, a standalone binary
- * or a package that is not where it is expected gives `undefined`, never an error. [proposta]
+ * or a package that is not where it is expected gives `undefined`, never an error.
  */
 export function readInstalledVersion(query: InstalledVersionQuery): string | undefined {
   const found = query.find(query.command);

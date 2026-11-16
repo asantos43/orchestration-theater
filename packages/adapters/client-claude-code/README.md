@@ -70,7 +70,7 @@ lacks is a warning, never an error. Ids ending in `[1m]` get a 1,000,000 token w
 [S]. The adapter never reads their values. The profile directory is passed as `CLAUDE_CONFIG_DIR`
 [V].
 
-## Client version (N63) [proposta]
+## Client version (N63)
 
 The conformance cache is keyed by the version of the client (`security.conformance:
 on_version_change`), so the daemon needs to know it. Three keys, read by the daemon and never by

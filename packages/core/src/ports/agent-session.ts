@@ -178,7 +178,7 @@ export interface SessionExtensionHandler {
 
 /**
  * What the client says about itself in the ACP `initialize` (`agentInfo`: name and version).
- * [proposta] For Claude Code and Codex it names the ACP adapter the daemon starts, not the client
+ * For Claude Code and Codex it names the ACP adapter the daemon starts, not the client
  * behind it (Phase 0: `claude-agent-acp` 0.107.0 and `@agentclientprotocol/codex-acp` 2.6.0 [V]);
  * for OpenCode it is the client itself (1.19.5 [V]).
  */

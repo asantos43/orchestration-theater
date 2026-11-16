@@ -66,7 +66,7 @@ export type ClientId = (typeof CLIENT_IDS)[number];
  */
 export const CLIENT_ENV_INHERIT = ['minimal', 'none', 'all'] as const;
 /**
- * [proposta] `clients.<id>.version_source` (N63): where the version of a client comes from.
+ * `clients.<id>.version_source` (N63): where the version of a client comes from.
  * `auto` reads the `package.json` of the installed package and lets the `initialize` confirm or
  * correct it; `package_json` only reads the file; `initialize` only takes what the client says;
  * `config` takes only `client_version`. A `client_version` that is written wins in every mode.
@@ -158,7 +158,7 @@ const ClientCommandSchema = z.strictObject({
  *   of the conformance cache). Left as `unknown`, `version_source` decides where it comes from.
  * - `version_source`: `auto` (default; the `package.json` of the installed package, then the
  *   `initialize` of the first session confirms or corrects it), `package_json`, `initialize` or
- *   `config` (only `client_version`). N63, [proposta].
+ *   `config` (only `client_version`). N63.
  * - `version_packages`: the names the `package.json` search accepts; default is the ACP adapter of
  *   the client (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`) or the
  *   client itself (`opencode-ai`), the program whose `initialize` gives the version.

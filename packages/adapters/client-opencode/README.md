@@ -96,7 +96,7 @@ names.
 `readOnlyMode` is `none` by default because whether the rules of `plan` mode win over the pinned
 permission was not measured [N]; the pinned permission is the measured mechanism.
 
-## Client version (N63) [proposta]
+## Client version (N63)
 
 The conformance cache is keyed by the version of the client (`security.conformance:
 on_version_change`), so the daemon needs to know it. Three keys, read by the daemon and never by

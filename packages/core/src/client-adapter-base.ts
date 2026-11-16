@@ -176,7 +176,7 @@ export type ClientAdapterWarning =
        * The version the client reported in the `initialize` is not the one the adapter had (read
        * from the `package.json`, or `unknown`): from now on the adapter version, and with it the
        * key of the conformance cache, follows the new one, so `on_version_change` probes run again
-       * for it. [proposta] Informational; carries no credential.
+       * for it. Informational; carries no credential.
        */
       readonly kind: 'client_version_corrected';
       readonly clientId: string;

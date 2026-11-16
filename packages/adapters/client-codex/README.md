@@ -67,7 +67,7 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 (`on-request`, `untrusted`), `clients.codex.suggested_effort`.
 `clients.codex.version_source` (`auto`, `package_json`, `initialize`, `config`; see Client version).
 
-## Client version (N63) [proposta]
+## Client version (N63)
 
 The conformance cache is keyed by the version of the client (`security.conformance:
 on_version_change`), so the daemon needs to know it. Three keys, read by the daemon and never by
