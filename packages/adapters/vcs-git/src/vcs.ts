@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { copyFile, lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, normalize } from 'node:path';
 import {
   Conflict,
   InvalidInput,
@@ -132,7 +132,8 @@ export class GitVcs implements Vcs {
   async listWorktrees(repo: string): Promise<readonly WorktreeInfo[]> {
     assertAbsolute('repo', repo);
     const output = await this.#git.run(repo, ['worktree', 'list', '--porcelain', '-z']);
-    return parseWorktreeList(output);
+    // Git prints `C:/dir` on Windows; the port speaks native paths, like the ones it was given.
+    return parseWorktreeList(output).map((entry) => ({ ...entry, path: normalize(entry.path) }));
   }
 
   async commitAll(

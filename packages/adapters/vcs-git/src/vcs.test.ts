@@ -3,6 +3,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -10,16 +11,18 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { testGit } from '@otheater/sdk';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_GIT_IDENTITY,
   GIT_VCS_ADAPTER,
   GitVcs,
   GitVcsConfigSchema,
+  disposeSharedGitIsolations,
   isolatedGitEnv,
+  sharedGitIsolation,
 } from './index.js';
 import { parseNumstat, parseWorktreeList } from './vcs.js';
 
@@ -38,6 +41,11 @@ beforeEach(async () => {
   await writeFile(join(repo, 'README.md'), 'hello\n');
   await testGit(repo, 'add', '-A');
   await testGit(repo, 'commit', '--quiet', '-m', 'initial commit');
+});
+
+afterAll(() => {
+  disposeSharedGitIsolations();
+  disposeTestGitIsolation();
 });
 
 afterEach(async () => {
@@ -66,6 +74,10 @@ describe('identity and configuration', () => {
       identity: DEFAULT_GIT_IDENTITY,
       worktreeInclude: true,
     });
+    expect(GitVcsConfigSchema.parse({ isolationRoot: '/data/tmp' }).isolationRoot).toBe(
+      '/data/tmp',
+    );
+    expect(GitVcsConfigSchema.safeParse({ isolationRoot: '' }).success).toBe(false);
     expect(GitVcsConfigSchema.safeParse({ timeout: 5 }).success).toBe(false);
     expect(GitVcsConfigSchema.safeParse({ timeoutMs: 0 }).success).toBe(false);
   });
@@ -78,7 +90,8 @@ describe('identity and configuration', () => {
 
 describe('isolation from the user environment', () => {
   it('drops every inherited variable but a short list, and pins the config', () => {
-    const env = isolatedGitEnv({
+    const isolation = sharedGitIsolation();
+    const env = isolatedGitEnv(isolation, {
       PATH: '/bin',
       GIT_DIR: '/elsewhere',
       GIT_INDEX_FILE: '/elsewhere/index',
@@ -90,10 +103,10 @@ describe('isolation from the user environment', () => {
     expect(env).toMatchObject({
       PATH: '/bin',
       GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: devNull,
+      GIT_CONFIG_GLOBAL: isolation.configFile,
       GIT_TERMINAL_PROMPT: '0',
-      HOME: devNull,
-      XDG_CONFIG_HOME: devNull,
+      HOME: isolation.homeDir,
+      XDG_CONFIG_HOME: isolation.homeDir,
       LC_ALL: 'C',
     });
     expect(
@@ -108,12 +121,14 @@ describe('isolation from the user environment', () => {
     await mkdir(home);
     const hook = join(root, 'global-hooks');
     await mkdir(hook);
+    // Forward slashes: a backslash is an escape in a git config file and means nothing in `sh`.
+    const slashes = (path: string): string => path.replaceAll('\\', '/');
     await writeFile(
       join(hook, 'pre-commit'),
-      `#!/bin/sh\ntouch '${join(root, 'global-hook-ran')}'\nexit 1\n`,
+      `#!/bin/sh\ntouch '${slashes(join(root, 'global-hook-ran'))}'\nexit 1\n`,
     );
     await chmod(join(hook, 'pre-commit'), 0o755);
-    const config = `[user]\n\tname = Someone Else\n\temail = someone@example.com\n[commit]\n\tgpgsign = true\n[core]\n\thooksPath = ${hook}\n\texcludesFile = ${join(home, 'ignore')}\n`;
+    const config = `[user]\n\tname = Someone Else\n\temail = someone@example.com\n[commit]\n\tgpgsign = true\n[core]\n\thooksPath = ${slashes(hook)}\n\texcludesFile = ${slashes(join(home, 'ignore'))}\n`;
     await writeFile(join(home, '.gitconfig'), config);
     await writeFile(join(home, 'ignore'), 'wanted.txt\n');
 
@@ -153,6 +168,11 @@ describe('isolation from the user environment', () => {
     }
     expect(await readFile(join(home, '.gitconfig'), 'utf8')).toBe(config);
     await expect(stat(join(root, 'global-hook-ran'))).rejects.toThrow();
+    // Nothing was written into the folder that stands for "no configuration" either.
+    const isolation = sharedGitIsolation();
+    expect(await readFile(isolation.configFile, 'utf8')).toBe('');
+    expect(await readdir(isolation.homeDir)).toEqual([]);
+    expect(await readdir(isolation.hooksDir)).toEqual([]);
   });
 
   it('uses the identity of the constructor', async () => {
@@ -172,15 +192,19 @@ describe('failures of the git executable', () => {
     expect(await rejection(vcs.listWorktrees(repo))).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
   });
 
-  it('a command past the ceiling is killed and fails Transient', async () => {
-    const slow = join(root, 'slow-git');
-    await writeFile(slow, '#!/bin/sh\nexec sleep 30\n');
-    await chmod(slow, 0o755);
-    const vcs = new GitVcs({ binary: slow, timeoutMs: 300 });
-    const started = Date.now();
-    expect(await rejection(vcs.listWorktrees(repo))).toMatchObject({ code: 'TRANSIENT' });
-    expect(Date.now() - started).toBeLessThan(10_000);
-  });
+  // The stand-in executable is a `#!/bin/sh` script: Windows cannot start it with `execFile`.
+  it.skipIf(process.platform === 'win32')(
+    'a command past the ceiling is killed and fails Transient',
+    async () => {
+      const slow = join(root, 'slow-git');
+      await writeFile(slow, '#!/bin/sh\nexec sleep 30\n');
+      await chmod(slow, 0o755);
+      const vcs = new GitVcs({ binary: slow, timeoutMs: 300 });
+      const started = Date.now();
+      expect(await rejection(vcs.listWorktrees(repo))).toMatchObject({ code: 'TRANSIENT' });
+      expect(Date.now() - started).toBeLessThan(10_000);
+    },
+  );
 
   it('a git error carries the stderr in the message', async () => {
     const vcs = new GitVcs();
@@ -349,13 +373,11 @@ describe('unusual file names', () => {
     const vcs = new GitVcs();
     const path = join(wt, 'names');
     await vcs.createWorktree({ repo, path, branch: 'play/1/base', base: 'main' });
-    const names = [
-      'with space.txt',
-      'tab\there.txt',
-      'quote"d.txt',
-      'açaí-日本.txt',
-      'new\nline.txt',
-    ];
+    // NTFS cannot hold a tab, a double quote or a line break in a file name.
+    const names =
+      process.platform === 'win32'
+        ? ['with space.txt', 'açaí-日本.txt']
+        : ['with space.txt', 'tab\there.txt', 'quote"d.txt', 'açaí-日本.txt', 'new\nline.txt'];
     for (const name of names) await writeFile(join(path, name), 'x\n');
     const stat = await vcs.diffStat(path, 'main');
     expect(stat.files.map((file) => file.path).sort()).toEqual([...names].sort());

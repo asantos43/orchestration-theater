@@ -12,7 +12,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   attemptBranch,
@@ -24,8 +24,9 @@ import {
   checkpointMessage,
   type Vcs,
 } from '@otheater/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useHarness, type AdapterFactory, type Disposable } from '../harness.js';
+import { disposeTestGitIsolation, testGitIsolation } from './git-isolation.js';
 import { rejectionOf } from './helpers.js';
 
 export interface VcsHarness extends Disposable {
@@ -35,18 +36,28 @@ export interface VcsHarness extends Disposable {
 /** Ceiling of each test; the suite runs many real `git` commands. */
 const TEST_TIMEOUT_MS = 30_000;
 
+function inheritedFromParent(keys: readonly string[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
 /**
  * Runs `git` for a test fixture, with the same isolation the adapter must have: no system or
  * global config, no hooks, no prompts, no signing, a fixed identity, messages in English.
  * Returns stdout without the final newline. Exported for the tests of the adapters.
  */
 export function testGit(cwd: string, ...args: string[]): Promise<string> {
+  const isolation = testGitIsolation();
   return new Promise((resolve, reject) => {
     execFile(
       'git',
       [
         '-c',
-        `core.hooksPath=${devNull}`,
+        `core.hooksPath=${isolation.hooksDir}`,
         '-c',
         'commit.gpgsign=false',
         '-c',
@@ -61,11 +72,13 @@ export function testGit(cwd: string, ...args: string[]): Promise<string> {
         timeout: 20_000,
         env: {
           PATH: process.env.PATH ?? '',
+          // Git for Windows needs these to start (sockets, temporary files); harmless elsewhere.
+          ...inheritedFromParent(['SystemRoot', 'SYSTEMROOT', 'windir', 'TEMP', 'TMP', 'TMPDIR']),
           GIT_CONFIG_NOSYSTEM: '1',
-          GIT_CONFIG_GLOBAL: devNull,
+          GIT_CONFIG_GLOBAL: isolation.configFile,
           GIT_TERMINAL_PROMPT: '0',
-          HOME: devNull,
-          XDG_CONFIG_HOME: devNull,
+          HOME: isolation.homeDir,
+          XDG_CONFIG_HOME: isolation.homeDir,
           LC_ALL: 'C',
         },
       },
@@ -136,6 +149,7 @@ export function describeVcsConformance(name: string, factory: AdapterFactory<Vcs
     { timeout: TEST_TIMEOUT_MS },
     () => {
       const harness = useHarness(factory);
+      afterAll(disposeTestGitIsolation);
       let box: Sandbox;
       beforeEach(async () => {
         box = await createSandbox();
@@ -347,7 +361,7 @@ export function describeVcsConformance(name: string, factory: AdapterFactory<Vcs
         await mkdir(hooks, { recursive: true });
         await writeFile(
           join(hooks, 'pre-commit'),
-          `#!/bin/sh\ntouch '${join(box.root, 'hook-ran')}'\nexit 1\n`,
+          `#!/bin/sh\ntouch '${join(box.root, 'hook-ran').replaceAll('\\', '/')}'\nexit 1\n`,
           {
             mode: 0o755,
           },

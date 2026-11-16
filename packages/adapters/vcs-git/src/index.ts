@@ -7,6 +7,13 @@ export {
   isolatedGitEnv,
   type GitIdentity,
 } from './git.js';
+export {
+  createGitIsolation,
+  disposeSharedGitIsolations,
+  removeGitIsolation,
+  sharedGitIsolation,
+  type GitIsolation,
+} from './isolation.js';
 export { GIT_VCS_ADAPTER, GitVcs, type GitVcsOptions } from './vcs.js';
 export {
   WORKTREE_INCLUDE_FILE,

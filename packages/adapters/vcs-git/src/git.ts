@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 import { execFile } from 'node:child_process';
-import { devNull } from 'node:os';
 import { stat } from 'node:fs/promises';
 import {
   AdapterUnavailable,
@@ -10,6 +9,7 @@ import {
   PermissionDenied,
   Transient,
 } from '@otheater/core';
+import { sharedGitIsolation, type GitIsolation } from './isolation.js';
 
 /** Identity written on the commits (`user.name` and `user.email`). */
 export interface GitIdentity {
@@ -38,6 +38,12 @@ export interface GitRunnerOptions {
   /** Ceiling for one command, in ms. Default {@link DEFAULT_GIT_TIMEOUT_MS}. */
   readonly timeoutMs?: number;
   readonly identity?: GitIdentity;
+  /**
+   * Directory under which the empty isolation folder (`GIT_CONFIG_GLOBAL`, `HOME`, hooks) is
+   * created, once per process. Default: the system temporary directory. The daemon can point it
+   * inside its data directory.
+   */
+  readonly isolationRoot?: string;
 }
 
 export interface GitRunOptions {
@@ -59,9 +65,14 @@ export interface GitResult {
  * The environment of every command (architecture 5.5): the user's configuration never changes
  * the behavior of the adapter and is never written. Only a short allow-list of variables is
  * inherited, so a `GIT_DIR`, `GIT_INDEX_FILE` or `GIT_CONFIG_*` of the parent cannot leak in.
- * `HOME` and `XDG_CONFIG_HOME` point at the null device: no global config, no global ignore file.
+ * `GIT_CONFIG_GLOBAL` is an empty file and `HOME` and `XDG_CONFIG_HOME` an empty directory (see
+ * {@link GitIsolation}; not the null device, which Git for Windows rejects): no global config, no
+ * global ignore file.
  */
-export function isolatedGitEnv(parent: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function isolatedGitEnv(
+  isolation: GitIsolation,
+  parent: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   const env: Record<string, string> = {};
   for (const key of INHERITED_ENV) {
     const value = parent[key];
@@ -70,24 +81,24 @@ export function isolatedGitEnv(parent: NodeJS.ProcessEnv = process.env): Record<
   return {
     ...env,
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: isolation.configFile,
     GIT_TERMINAL_PROMPT: '0',
     GIT_OPTIONAL_LOCKS: '0',
     GIT_ASKPASS: 'echo',
     GIT_EDITOR: 'true',
     GIT_PAGER: 'cat',
-    HOME: devNull,
-    XDG_CONFIG_HOME: devNull,
+    HOME: isolation.homeDir,
+    XDG_CONFIG_HOME: isolation.homeDir,
     LC_ALL: 'C',
     LANG: 'C',
   };
 }
 
 /** The `-c` options of every command: no user hooks, no signing, a fixed identity. */
-export function isolatedGitConfig(identity: GitIdentity): string[] {
+export function isolatedGitConfig(identity: GitIdentity, isolation: GitIsolation): string[] {
   return [
     '-c',
-    `core.hooksPath=${devNull}`,
+    `core.hooksPath=${isolation.hooksDir}`,
     '-c',
     'commit.gpgsign=false',
     '-c',
@@ -121,11 +132,13 @@ export class GitRunner {
   readonly binary: string;
   readonly timeoutMs: number;
   readonly identity: GitIdentity;
+  readonly isolationRoot: string | undefined;
 
   constructor(options: GitRunnerOptions = {}) {
     this.binary = options.binary ?? 'git';
     this.timeoutMs = options.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS;
     this.identity = options.identity ?? DEFAULT_GIT_IDENTITY;
+    this.isolationRoot = options.isolationRoot;
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1) {
       throw new InvalidInput(`timeoutMs must be a positive integer, got ${String(this.timeoutMs)}`);
     }
@@ -155,8 +168,9 @@ export class GitRunner {
     options: GitRunOptions,
   ): Promise<GitResult> {
     await assertDirectory(cwd);
-    const fullArgs = [...isolatedGitConfig(this.identity), ...args];
-    const env = { ...isolatedGitEnv(), ...options.env };
+    const isolation = sharedGitIsolation(this.isolationRoot);
+    const fullArgs = [...isolatedGitConfig(this.identity, isolation), ...args];
+    const env = { ...isolatedGitEnv(isolation), ...options.env };
     return new Promise<GitResult>((resolve, reject) => {
       const child = execFile(
         this.binary,
