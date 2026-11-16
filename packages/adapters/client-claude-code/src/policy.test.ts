@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: MPL-2.0
+import type { RolePolicy } from '@otheater/core';
+import { describe, expect, it } from 'vitest';
+import {
+  acpOptions,
+  allowedTools,
+  deniedTools,
+  headlessArgs,
+  isManagedToolName,
+  permissionSettings,
+  SESSION_MODE,
+  SETTING_SOURCES,
+  SETTING_SOURCES_MODES,
+} from './policy.js';
+
+const base: RolePolicy = {
+  nativeTools: ['read'],
+  nativeShell: 'none',
+  mcpServers: [],
+  onAsk: 'reject',
+  bypass: 'forbidden',
+  writeScope: 'worktree',
+  network: { allow: [] },
+};
+
+describe('allowedTools and deniedTools', () => {
+  it('grant only the categories of the policy, in a fixed order', () => {
+    expect(allowedTools({ ...base, nativeTools: ['write', 'read'] })).toEqual(['Read', 'Write']);
+    expect(allowedTools({ ...base, nativeTools: ['search', 'edit'] })).toEqual([
+      'Glob',
+      'Grep',
+      'Edit',
+    ]);
+  });
+
+  it('never grant the shell, and deny it first', () => {
+    for (const nativeTools of [[], ['read', 'search', 'edit', 'write']] as const) {
+      const policy: RolePolicy = { ...base, nativeTools };
+      expect(allowedTools(policy)).not.toContain('Bash');
+      expect(deniedTools(policy)[0]).toBe('Bash');
+    }
+  });
+
+  it('split the managed tools between them with no overlap and no gap', () => {
+    const policy: RolePolicy = { ...base, nativeTools: ['read', 'edit'] };
+    const allowed = allowedTools(policy);
+    const denied = deniedTools(policy);
+    expect(allowed.filter((name) => denied.includes(name))).toEqual([]);
+    expect([...allowed, ...denied].sort()).toEqual(
+      ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'].sort(),
+    );
+  });
+
+  it('with no tool at all, deny every managed tool', () => {
+    expect(allowedTools({ ...base, nativeTools: [] })).toEqual([]);
+    expect(deniedTools({ ...base, nativeTools: [] })).toHaveLength(6);
+  });
+});
+
+describe('isManagedToolName', () => {
+  it('knows the names of the policy and nothing else', () => {
+    expect(isManagedToolName('Bash')).toBe(true);
+    expect(isManagedToolName('Read')).toBe(true);
+    expect(isManagedToolName('Bash(touch:*)')).toBe(false);
+    expect(isManagedToolName('WebFetch')).toBe(false);
+    expect(isManagedToolName(42)).toBe(false);
+  });
+});
+
+describe('permissionSettings', () => {
+  it('disables the bypass mode and denies the tools of the policy', () => {
+    expect(permissionSettings(base)).toEqual({
+      disableBypassPermissionsMode: 'disable',
+      deny: deniedTools(base),
+    });
+  });
+});
+
+describe('acpOptions', () => {
+  it('carries the tools, the strict MCP flag and the closed bypass', () => {
+    const options = acpOptions(base, 'none');
+    expect(options.tools).toEqual(['Read']);
+    expect(options.disallowedTools).toEqual(deniedTools(base));
+    expect(options.strictMcpConfig).toBe(true);
+    expect(options.allowDangerouslySkipPermissions).toBe(false);
+    expect(options.settings.permissions.disableBypassPermissionsMode).toBe('disable');
+  });
+
+  it('maps each setting-sources mode to the SDK list', () => {
+    expect(acpOptions(base, 'none').settingSources).toEqual([]);
+    expect(acpOptions(base, 'project').settingSources).toEqual(['project']);
+    expect(acpOptions(base, 'user').settingSources).toEqual(['user', 'project', 'local']);
+    expect(Object.keys(SETTING_SOURCES)).toEqual([...SETTING_SOURCES_MODES]);
+  });
+
+  it('starts every session in the default mode', () => {
+    expect(SESSION_MODE).toBe('default');
+  });
+});
+
+describe('headlessArgs', () => {
+  it('lists the flags of the emergency exit with the same policy', () => {
+    const args = headlessArgs(base, 'none');
+    const after = (flag: string): string | undefined => args[args.indexOf(flag) + 1];
+    expect(args[0]).toBe('-p');
+    expect(after('--output-format')).toBe('stream-json');
+    expect(after('--tools')).toBe('Read');
+    expect(after('--disallowedTools')).toBe(deniedTools(base).join(','));
+    expect(after('--permission-mode')).toBe('default');
+    expect(after('--setting-sources')).toBe('');
+    expect(args).toContain('--strict-mcp-config');
+  });
+
+  it('never asks for a mode or a flag that skips permissions', () => {
+    const args = headlessArgs(base, 'user');
+    expect(args.join(' ')).not.toMatch(/bypass|dangerously|skip-permissions/iu);
+  });
+});
