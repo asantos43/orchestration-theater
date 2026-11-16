@@ -18,9 +18,12 @@ import {
 
 /**
  * A `ProcessLauncher` for the tests of this package only (it is not exported by the package, and
- * the real one is `adapter-launcher-*`, a later step): `node:child_process` with `detached`, so the
- * child leads a process group of its own, and a group kill (`kill(-pid)`) that reaches whatever the
- * child started. The child sees exactly `env`.
+ * the real one is `adapter-launcher-*`, a later step): `node:child_process`. On POSIX the child is
+ * `detached`, so it leads a process group of its own, and a group kill (`kill(-pid)`) reaches
+ * whatever it started. On Windows there are no process groups (a negative pid is not a group there):
+ * the tree is ended with the system `taskkill /PID <pid> /T /F`, which walks the descendants of a
+ * root that is still alive (a grandchild whose parent already died is out of its reach). The child
+ * sees exactly `env`.
  */
 export class NodeProcessLauncher implements ProcessLauncher {
   readonly id = 'node-test';
@@ -32,7 +35,11 @@ export class NodeProcessLauncher implements ProcessLauncher {
   readonly pids: number[] = [];
 
   capabilities(): LauncherCapabilities {
-    return { treeKill: 'process-group', memoryLimit: false, suspendedStart: false };
+    return {
+      treeKill: WINDOWS ? 'descendants' : 'process-group',
+      memoryLimit: false,
+      suspendedStart: false,
+    };
   }
 
   launch(opts: LaunchOptions): Promise<LaunchedProcess> {
@@ -45,7 +52,9 @@ export class NodeProcessLauncher implements ProcessLauncher {
       const child = spawn(opts.cmd, [...opts.args], {
         cwd: opts.cwd,
         env: { ...opts.env },
-        detached: true,
+        // Windows: `detached` would open a console of its own and gives no group to kill.
+        detached: !WINDOWS,
+        windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       child.once('error', (error) => {
@@ -73,7 +82,7 @@ export class NodeProcessLauncher implements ProcessLauncher {
           stdout: Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
           stderr: Readable.toWeb(child.stderr) as ReadableStream<Uint8Array>,
           exited,
-          killTree: (options) => killGroup(pid, options),
+          killTree: (options) => killTree(pid, options),
         });
       });
     });
@@ -81,14 +90,25 @@ export class NodeProcessLauncher implements ProcessLauncher {
 
   /** How many launched trees still have a live member (a zombie not yet reaped counts as live). */
   aliveGroups(): number {
-    return this.pids.filter(groupAlive).length;
+    return this.pids.filter(treeAlive).length;
+  }
+
+  /** Ends, at once and without grace, every tree this launcher started (a crash, or a cleanup). */
+  async killAll(): Promise<void> {
+    await Promise.all(this.pids.map((pid) => hardKill(pid)));
   }
 }
 
-/** True while any process of the group `pgid` exists. */
-export function groupAlive(pgid: number): boolean {
+const WINDOWS = process.platform === 'win32';
+
+/**
+ * True while the tree rooted at `pid` is alive. POSIX: any member of the process group `pid`.
+ * Windows: the root process only (there is no group to ask; the descendants die with the root
+ * through `taskkill /T`).
+ */
+export function treeAlive(pid: number): boolean {
   try {
-    process.kill(-pgid, 0);
+    process.kill(WINDOWS ? pid : -pid, 0);
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM';
@@ -101,13 +121,29 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-async function waitGone(pgid: number, ms: number): Promise<boolean> {
+async function waitGone(pid: number, ms: number): Promise<boolean> {
   const until = Date.now() + ms;
   while (Date.now() < until) {
-    if (!groupAlive(pgid)) return true;
+    if (!treeAlive(pid)) return true;
     await sleep(10);
   }
-  return !groupAlive(pgid);
+  return !treeAlive(pid);
+}
+
+/** `taskkill /PID <pid> /T /F`: resolves when it ends; an exit code of failure means "not found". */
+function taskkillTree(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    killer.once('error', () => {
+      resolve();
+    });
+    killer.once('close', () => {
+      resolve();
+    });
+  });
 }
 
 function signalGroup(pgid: number, signal: NodeJS.Signals): void {
@@ -118,13 +154,26 @@ function signalGroup(pgid: number, signal: NodeJS.Signals): void {
   }
 }
 
-async function killGroup(pgid: number, options?: KillOptions): Promise<KillReport> {
-  if (!groupAlive(pgid)) return { found: 0, forced: false, remaining: [] };
-  signalGroup(pgid, 'SIGTERM');
-  if (await waitGone(pgid, options?.graceMs ?? DEFAULT_KILL_GRACE_MS)) {
+/** Forced kill of the whole tree, no wait. */
+async function hardKill(pid: number): Promise<void> {
+  if (WINDOWS) await taskkillTree(pid);
+  else signalGroup(pid, 'SIGKILL');
+}
+
+async function killTree(pid: number, options?: KillOptions): Promise<KillReport> {
+  if (!treeAlive(pid)) return { found: 0, forced: false, remaining: [] };
+  if (WINDOWS) {
+    // No polite signal for a console process on Windows (`taskkill` without `/F` only asks windows
+    // to close), so the kill is forced from the start.
+    await taskkillTree(pid);
+    const gone = await waitGone(pid, 2000);
+    return { found: 1, forced: true, remaining: gone ? [] : [pid] };
+  }
+  signalGroup(pid, 'SIGTERM');
+  if (await waitGone(pid, options?.graceMs ?? DEFAULT_KILL_GRACE_MS)) {
     return { found: 1, forced: false, remaining: [] };
   }
-  signalGroup(pgid, 'SIGKILL');
-  const gone = await waitGone(pgid, 2000);
-  return { found: 1, forced: true, remaining: gone ? [] : [pgid] };
+  signalGroup(pid, 'SIGKILL');
+  const gone = await waitGone(pid, 2000);
+  return { found: 1, forced: true, remaining: gone ? [] : [pid] };
 }

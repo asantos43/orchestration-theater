@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,7 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AcpTransport } from './acp-transport.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
+import { removeDir } from './testing/remove-dir.js';
 
 // End to end: FakeClientAdapter + AcpTransport + the real fake agent (`@otheater/fake-agent`) as a
 // child process, over ACP on its stdio. The client is the compiled `dist/cli.js`, so `pnpm build`
@@ -85,14 +86,8 @@ async function rig(): Promise<Rig> {
     alive: () => launcher.aliveGroups(),
     dispose: async () => {
       // Whatever a test left running is ended by pid: the processes of this rig only.
-      for (const pid of launcher.pids) {
-        try {
-          process.kill(-pid, 'SIGKILL');
-        } catch {
-          // Already gone.
-        }
-      }
-      await rm(cwd, { recursive: true, force: true });
+      await launcher.killAll();
+      await removeDir(cwd);
     },
   };
 }
@@ -134,16 +129,7 @@ describeAgentSessionConformance('AcpTransport + fake-agent', async () => {
       current = await r.adapter.loadSession(profile, policy, r.cwd, current.sessionId, r.via);
       return current;
     },
-    crash: () => {
-      for (const pid of r.launcher.pids) {
-        try {
-          process.kill(-pid, 'SIGKILL');
-        } catch {
-          // Already gone.
-        }
-      }
-      return Promise.resolve();
-    },
+    crash: () => r.launcher.killAll(),
     dispose: r.dispose,
   };
   return harness;
