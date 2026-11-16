@@ -2,14 +2,24 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROLE_POLICY_FIELDS, type Profile, type RolePolicy } from '@otheater/core';
+import {
+  ROLE_POLICY_FIELDS,
+  type AgentSession,
+  type Profile,
+  type RolePolicy,
+} from '@otheater/core';
 import {
   describeClientAdapterConformance,
   realClientFlags,
+  realSessionsPerProcess,
   type ClientAdapterHarness,
 } from '@otheater/sdk';
 import { describe, expect, it } from 'vitest';
-import { opencodeAdapterVersion, OpenCodeAdapter } from './opencode-adapter.js';
+import {
+  opencodeAdapterVersion,
+  OpenCodeAdapter,
+  type OpenCodeAdapterOptions,
+} from './opencode-adapter.js';
 import { createPermissionProbe, PERMISSION_PROBE_ID } from './permission-probe.js';
 import { AcpTestTransport } from './testing/acp-test-transport.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
@@ -46,7 +56,7 @@ interface Rig {
   readonly dispose: () => Promise<void>;
 }
 
-async function rig(): Promise<Rig> {
+async function rig(extra: Partial<OpenCodeAdapterOptions> = {}): Promise<Rig> {
   const root = await mkdtemp(join(tmpdir(), 'otheater-opencode-real-'));
   const provided = process.env.OT_TEST_OPENCODE_PROFILE_DIR;
   const dir = provided === undefined || provided === '' ? join(root, 'profile') : provided;
@@ -60,10 +70,10 @@ async function rig(): Promise<Rig> {
     // Only what the client needs to be found and to run; the profile isolates its homes.
     baseEnv: { PATH: process.env.PATH ?? '' },
     adapterVersion: opencodeAdapterVersion(),
-    processModel: 'per_session',
     sandbox: { fields: ROLE_POLICY_FIELDS },
     profileDir: () => dir,
     permissionProbe: { via, scratchRoot: root },
+    ...extra,
   });
   return {
     adapter,
@@ -122,6 +132,39 @@ describe.skipIf(!flags.clients)('OpenCode (real): catalog', () => {
       await r.dispose();
     }
   }, 60_000);
+});
+
+describe.skipIf(!flags.clients)('OpenCode (real): sessions in one process', () => {
+  // K = OT_TEST_SESSIONS_PER_PROCESS (default 4). Only `session/new` and the config options, in an
+  // empty profile: no prompt. `per_profile` is the multi-session model (N56), so the adapter must
+  // start ONE `opencode acp` for the K sessions. The line it logs is the measurement the owner
+  // reads to decide `pool.sessions_per_process` for this client.
+  it('takes K sessions in one process (session/new only)', async () => {
+    const k = realSessionsPerProcess();
+    const r = await rig({ processModel: 'per_profile', sessionsPerProcess: k });
+    const opened: AgentSession[] = [];
+    const failures: string[] = [];
+    try {
+      for (let index = 0; index < k; index += 1) {
+        try {
+          opened.push(await r.adapter.openSession(r.profile, policy, r.cwd, r.via));
+        } catch (error) {
+          failures.push(`session ${String(index + 1)}: ${(error as Error).message.slice(0, 200)}`);
+        }
+      }
+      console.info(
+        `[sessions-per-process] client=opencode requested=${String(k)} accepted=${String(opened.length)} ` +
+          `processes=${String(r.launcher.aliveGroups())}` +
+          (failures.length === 0 ? '' : ` failures=${JSON.stringify(failures)}`),
+      );
+      expect(failures).toEqual([]);
+      expect(new Set(opened.map((session) => session.sessionId)).size).toBe(k);
+      expect(r.launcher.aliveGroups()).toBe(1);
+    } finally {
+      await Promise.all(opened.map((session) => session.close().catch(() => undefined)));
+      await r.dispose();
+    }
+  }, 180_000);
 });
 
 describe.skipIf(!flags.clients || !flags.prompts)('OpenCode (real): own probe', () => {
