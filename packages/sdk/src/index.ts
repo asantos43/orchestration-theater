@@ -21,3 +21,10 @@ export {
   describeSecretVaultConformance,
   type SecretVaultHarness,
 } from './conformance/secret-vault.js';
+
+// LocalModelServer
+export {
+  describeLocalModelServerConformance,
+  type LocalModelServerHarness,
+  type LocalServerBehavior,
+} from './conformance/local-model-server.js';
