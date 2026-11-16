@@ -26,3 +26,25 @@ export async function settle(): Promise<void> {
     setTimeout(resolve, 5);
   });
 }
+
+/**
+ * Switches of the suites that can talk to a real client (Claude Code, Codex, OpenCode). Both are
+ * off unless the environment says `1`, so a plain test run never starts a real client:
+ * - `OT_TEST_REAL_CLIENTS=1` lets a suite registered with `{ real: true }` run at all;
+ * - `OT_TEST_REAL_PROMPTS=1` also lets it send prompts, which spend quota of a real account.
+ */
+export function realClientFlags(): { readonly clients: boolean; readonly prompts: boolean } {
+  return {
+    clients: process.env.OT_TEST_REAL_CLIENTS === '1',
+    prompts: process.env.OT_TEST_REAL_PROMPTS === '1',
+  };
+}
+
+/** Options shared by the suites of the client layer. */
+export interface ClientConformanceOptions {
+  /**
+   * The factory starts a real client. The suite then runs only with `OT_TEST_REAL_CLIENTS=1`, and
+   * the tests that send a prompt only with `OT_TEST_REAL_PROMPTS=1` as well.
+   */
+  readonly real?: boolean;
+}

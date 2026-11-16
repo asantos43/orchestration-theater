@@ -13,6 +13,7 @@ import {
   type PermissionOption,
   type PromptResponse,
   type RequestPermissionResponse,
+  type SessionConfigOption,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
 import {
@@ -33,6 +34,8 @@ export interface FakeAgentOptions {
 
 interface Session {
   cwd: string;
+  /** Current value of each config option (id to value). */
+  config: Map<string, string>;
   /** Aborted by `session/cancel`; present only while a prompt is running. */
   turn: AbortController | undefined;
   toolCalls: number;
@@ -48,6 +51,23 @@ interface TurnContext {
 
 const ALLOW: PermissionOption = { optionId: 'allow', name: 'Allow', kind: 'allow_once' };
 const REJECT: PermissionOption = { optionId: 'reject', name: 'Reject', kind: 'reject_once' };
+
+/** Config options the fake agent offers: id, category, values (the first value is the default). */
+const CONFIG_OPTIONS = [
+  { id: 'model', name: 'Model', category: 'model', values: ['fake-model', 'fake-model-2'] },
+  { id: 'mode', name: 'Mode', category: 'mode', values: ['default', 'plan'] },
+] as const;
+
+function configOptionsOf(session: Session): SessionConfigOption[] {
+  return CONFIG_OPTIONS.map((option) => ({
+    type: 'select' as const,
+    id: option.id,
+    name: option.name,
+    category: option.category,
+    currentValue: session.config.get(option.id) ?? option.values[0],
+    options: option.values.map((value) => ({ value, name: value })),
+  }));
+}
 
 const CANCELLED: PromptResponse = { stopReason: 'cancelled' };
 const END_TURN: PromptResponse = { stopReason: 'end_turn' };
@@ -261,7 +281,7 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
   let created = 0;
 
   const open = (sessionId: string, cwd: string): void => {
-    sessions.set(sessionId, { cwd, turn: undefined, toolCalls: 0 });
+    sessions.set(sessionId, { cwd, config: new Map(), turn: undefined, toolCalls: 0 });
   };
   const find = (sessionId: string): Session => {
     const session = sessions.get(sessionId);
@@ -285,12 +305,28 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       created += 1;
       const sessionId = `fake-session-${String(created)}`;
       open(sessionId, params.cwd);
-      return { sessionId };
+      return { sessionId, configOptions: configOptionsOf(find(sessionId)) };
     })
     .onRequest(methods.agent.session.load, ({ params }) => {
       // No history to replay: the fake agent only recreates the session state.
       open(params.sessionId, params.cwd);
-      return {};
+      return { configOptions: configOptionsOf(find(params.sessionId)) };
+    })
+    .onRequest(methods.agent.session.setConfigOption, ({ params }) => {
+      const session = find(params.sessionId);
+      const option = CONFIG_OPTIONS.find((candidate) => candidate.id === params.configId);
+      if (option === undefined) {
+        throw RequestError.invalidParams(undefined, `unknown config option: ${params.configId}`);
+      }
+      const value = params.value;
+      if (typeof value !== 'string' || !(option.values as readonly string[]).includes(value)) {
+        throw RequestError.invalidParams(
+          undefined,
+          `invalid value for ${option.id}: ${String(value)}`,
+        );
+      }
+      session.config.set(option.id, value);
+      return { configOptions: configOptionsOf(session) };
     })
     .onRequest(methods.agent.session.prompt, async ({ params, signal, client }) => {
       const session = find(params.sessionId);

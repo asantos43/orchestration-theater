@@ -1,0 +1,463 @@
+// SPDX-License-Identifier: MPL-2.0
+import { describe, expect, it } from 'vitest';
+import type {
+  ClientAdapterWarning,
+  ConformanceCache,
+  ConformanceProbe,
+} from './client-adapter-base.js';
+import {
+  AdapterUnavailable,
+  InvalidInput,
+  NotFound,
+  PermissionDenied,
+  QuotaExhausted,
+} from './errors.js';
+import type { PermissionRequest } from './ports/agent-session.js';
+import {
+  ROLE_POLICY_FIELDS,
+  type ConformanceReport,
+  type Enforcement,
+  type RolePolicy,
+} from './ports/client-adapter.js';
+import type { Profile } from './ports/executor.js';
+import {
+  FakeClientAdapter,
+  FakeProcessLauncher,
+  FakeSessionTransport,
+  type FakeClientAdapterOptions,
+} from './testing/index.js';
+
+const profile: Profile = { client: 'fake', profile: 'p', id: 'fake/p', dir: '/profiles/fake/p' };
+const policy: RolePolicy = {
+  nativeTools: ['read'],
+  nativeShell: 'none',
+  mcpServers: [],
+  onAsk: 'reject',
+  bypass: 'forbidden',
+  writeScope: 'worktree',
+  network: { allow: [] },
+};
+
+function enforcementWith(layers: Partial<Enforcement>): Enforcement {
+  return {
+    ...Object.fromEntries(ROLE_POLICY_FIELDS.map((field) => [field, ['client']])),
+    ...layers,
+  } as unknown as Enforcement;
+}
+
+function setup(options: Partial<FakeClientAdapterOptions> = {}) {
+  const launcher = new FakeProcessLauncher();
+  const warnings: ClientAdapterWarning[] = [];
+  const adapter = new FakeClientAdapter({
+    launcher,
+    baseEnv: { PATH: '/bin', FROM_BASE: 'base' },
+    adapterVersion: '1.0.0',
+    command: { cmd: 'fake-client', args: ['--acp'] },
+    onWarning: (warning) => warnings.push(warning),
+    ...options,
+  });
+  return { adapter, launcher, warnings };
+}
+
+function permissionRequest(
+  ...kinds: PermissionRequest['options'][number]['kind'][]
+): PermissionRequest {
+  return {
+    toolCallId: 't',
+    title: 'x',
+    toolKind: 'edit',
+    options: kinds.map((kind) => ({ optionId: kind, name: kind, kind })),
+  };
+}
+
+/** The base's `answerPermission` is protected; a test reaches it through what the transport sees. */
+async function answerOf(request: PermissionRequest, p: RolePolicy = policy) {
+  const { adapter } = setup();
+  const via = new FakeSessionTransport();
+  await adapter.openSession(profile, p, '/work', via);
+  const opened = via.opened[0];
+  if (opened === undefined) throw new Error('not opened');
+  return opened.onPermission(request);
+}
+
+describe('ClientAdapter.answerPermission', () => {
+  it('prefers reject_once', async () => {
+    await expect(
+      answerOf(permissionRequest('allow_once', 'reject_always', 'reject_once')),
+    ).resolves.toEqual({ outcome: 'selected', optionId: 'reject_once' });
+  });
+
+  it('falls back to reject_always', async () => {
+    await expect(answerOf(permissionRequest('allow_always', 'reject_always'))).resolves.toEqual({
+      outcome: 'selected',
+      optionId: 'reject_always',
+    });
+  });
+
+  it('cancels when nothing refuses, and never selects an allow option', async () => {
+    await expect(answerOf(permissionRequest('allow_once', 'allow_always'))).resolves.toEqual({
+      outcome: 'cancelled',
+    });
+    await expect(answerOf(permissionRequest())).resolves.toEqual({ outcome: 'cancelled' });
+  });
+
+  it('cancels for an onAsk value it does not know', async () => {
+    const odd = { ...policy, onAsk: 'allow' } as unknown as RolePolicy;
+    await expect(answerOf(permissionRequest('reject_once'), odd)).resolves.toEqual({
+      outcome: 'cancelled',
+    });
+  });
+});
+
+describe('ClientAdapter.guarantee', () => {
+  it('counts the client layer and the OS layer per field', () => {
+    const { adapter } = setup({ minLayers: { default: 1, network: 2 } });
+    const report = adapter.guarantee(policy, { fields: ['network'] });
+    expect(report.fields.network).toEqual({ layers: ['client', 'os'], required: 2, ok: true });
+    expect(report.fields.nativeTools).toEqual({ layers: ['client'], required: 1, ok: true });
+    expect(report.ok).toBe(true);
+    expect(report.short).toEqual([]);
+  });
+
+  it('points at the fields short of layers', () => {
+    const { adapter } = setup({
+      enforcement: enforcementWith({ network: [] }),
+      minLayers: { default: 1 },
+    });
+    const report = adapter.guarantee(policy, { fields: [] });
+    expect(report.ok).toBe(false);
+    expect(report.short).toEqual(['network']);
+    const withOs = adapter.guarantee(policy, { fields: ['network'] });
+    expect(withOs.ok).toBe(true);
+  });
+
+  it('counts the daemon layer only for onAsk and bypass, and each layer once', () => {
+    const { adapter } = setup({
+      enforcement: enforcementWith({
+        onAsk: ['client', 'daemon', 'daemon'],
+        nativeTools: ['daemon'],
+        network: ['os'],
+      }),
+      minLayers: { default: 1, onAsk: 2 },
+    });
+    const report = adapter.guarantee(policy, { fields: ['network'] });
+    expect(report.fields.onAsk.layers).toEqual(['client', 'daemon']);
+    expect(report.fields.onAsk.ok).toBe(true);
+    expect(report.fields.nativeTools.layers).toEqual([]);
+    expect(report.short).toContain('nativeTools');
+    expect(report.fields.network.layers).toEqual(['os']);
+  });
+});
+
+describe('ClientAdapter.openSession', () => {
+  it('prepares the profile, launches with base + profile environment and hands everything to the transport', async () => {
+    const { adapter, launcher } = setup({ env: { PROFILE_VAR: 'p', FROM_BASE: 'override' } });
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via);
+    expect(adapter.prepared).toEqual([profile]);
+    const process = launcher.launched[0];
+    expect(process?.options).toMatchObject({
+      cmd: 'fake-client',
+      args: ['--acp'],
+      cwd: '/work',
+      env: { PATH: '/bin', FROM_BASE: 'override', PROFILE_VAR: 'p' },
+    });
+    expect(via.opened).toHaveLength(1);
+    expect(via.opened[0]).toMatchObject({ cwd: '/work', mcpServers: [] });
+    expect(via.opened[0]?.setup).toEqual({ via: 'acp', configOptions: {} });
+    expect(session.sessionId).toMatch(/^fake-session-/);
+    await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('asks the transport for the headless setup when it is the headless one', async () => {
+    const { adapter } = setup();
+    const via = new FakeSessionTransport({ id: 'headless' });
+    await (await adapter.openSession(profile, policy, '/work', via)).close();
+    expect(via.opened[0]?.setup.via).toBe('headless');
+  });
+
+  it('ends the process tree and rethrows a typed error when the transport fails', async () => {
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    via.failWith = new AdapterUnavailable('no answer');
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toBe(via.failWith);
+    expect(launcher.running).toEqual([]);
+    expect(launcher.launched[0]?.killTreeCalls).toBe(1);
+  });
+
+  it('wraps an untyped failure of the transport in AdapterUnavailable', async () => {
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    via.failWith = new Error('weird');
+    const error = await adapter.openSession(profile, policy, '/work', via).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AdapterUnavailable);
+    expect((error as AdapterUnavailable).cause).toBe(via.failWith);
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('rejects when the launcher fails, with nothing left behind', async () => {
+    const { adapter, launcher } = setup();
+    launcher.failWith = new Error('ENOENT');
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    expect(launcher.launched).toEqual([]);
+  });
+
+  it('refuses a process model it does not implement, before launching anything', async () => {
+    const { adapter, launcher } = setup({ processModel: 'multi-session' });
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    expect(launcher.launched).toEqual([]);
+  });
+
+  it('refuses named MCP servers without a resolver and resolves them with one', async () => {
+    const withNames: RolePolicy = { ...policy, mcpServers: ['docs'] };
+    const bare = setup();
+    await expect(
+      bare.adapter.openSession(profile, withNames, '/work', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    expect(bare.launcher.launched).toEqual([]);
+
+    const resolved = setup({
+      resolveMcpServers: (names) =>
+        names.map((name) => ({ name, url: `http://127.0.0.1/${name}` })),
+    });
+    const via = new FakeSessionTransport();
+    await (await resolved.adapter.openSession(profile, withNames, '/work', via)).close();
+    expect(via.opened[0]?.mcpServers).toEqual([{ name: 'docs', url: 'http://127.0.0.1/docs' }]);
+  });
+});
+
+describe('ClientAdapter security.unenforced', () => {
+  const short = { enforcement: enforcementWith({ network: [] }) };
+
+  it('refuses by default', async () => {
+    const { adapter, launcher } = setup(short);
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(PermissionDenied);
+    expect(launcher.launched).toEqual([]);
+    expect(adapter.prepared).toEqual([]);
+  });
+
+  it('warns and goes on with warn', async () => {
+    const { adapter, warnings } = setup({ ...short, unenforced: 'warn' });
+    await (await adapter.openSession(profile, policy, '/work', new FakeSessionTransport())).close();
+    expect(warnings).toEqual([{ kind: 'unenforced', clientId: 'fake', short: ['network'] }]);
+  });
+
+  it('goes on in silence with allow', async () => {
+    const { adapter, warnings } = setup({ ...short, unenforced: 'allow' });
+    await (await adapter.openSession(profile, policy, '/work', new FakeSessionTransport())).close();
+    expect(warnings).toEqual([]);
+  });
+
+  it('a throwing hook does not break the open', async () => {
+    const { adapter } = setup({
+      ...short,
+      unenforced: 'warn',
+      onWarning: () => {
+        throw new Error('hook');
+      },
+    });
+    await (await adapter.openSession(profile, policy, '/work', new FakeSessionTransport())).close();
+  });
+});
+
+describe('ClientAdapter.loadSession', () => {
+  it('reloads a conversation through the transport', async () => {
+    const { adapter } = setup();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    await first.close();
+    const again = await adapter.loadSession(profile, policy, '/work', first.sessionId, via);
+    expect(again.sessionId).toBe(first.sessionId);
+    expect(via.loaded[0]?.sessionId).toBe(first.sessionId);
+    await again.close();
+  });
+
+  it('rejects NotFound for a conversation the client does not have, and leaves no process', async () => {
+    const { adapter, launcher } = setup();
+    await expect(
+      adapter.loadSession(profile, policy, '/work', 'nope', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(NotFound);
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('rejects when the client cannot load, without launching', async () => {
+    const { adapter, launcher } = setup({ capabilities: { loadSession: false } });
+    await expect(
+      adapter.loadSession(profile, policy, '/work', 'fake-session-1', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    expect(launcher.launched).toEqual([]);
+  });
+});
+
+describe('ClientAdapter.checkConformance', () => {
+  function probe(id: string, ok: boolean, counter: { runs: number }): ConformanceProbe {
+    return {
+      id,
+      run: () => {
+        counter.runs += 1;
+        return Promise.resolve({ ok, detail: ok ? 'fine' : 'broken' });
+      },
+    };
+  }
+
+  it('runs the common probes and its own, and reports them in order', async () => {
+    const counter = { runs: 0 };
+    const { adapter } = setup({
+      commonProbes: [probe('common', true, counter)],
+      probes: [probe('own', false, counter)],
+    });
+    const report = await adapter.checkConformance(profile);
+    expect(report.adapterVersion).toBe('1.0.0');
+    expect(report.ok).toBe(false);
+    expect(report.probes.map((p) => [p.id, p.ok])).toEqual([
+      ['common', true],
+      ['own', false],
+    ]);
+  });
+
+  it('on_version_change: probes once per version, also through a shared cache', async () => {
+    const counter = { runs: 0 };
+    const store = new Map<string, ConformanceReport>();
+    const cache: ConformanceCache = {
+      get: (version) => store.get(version),
+      set: (version, report) => void store.set(version, report),
+    };
+    const options = { probes: [probe('p', true, counter)], conformanceCache: cache };
+    const first = setup(options);
+    await first.adapter.checkConformance(profile);
+    await first.adapter.checkConformance(profile);
+    expect(counter.runs).toBe(1);
+    const restarted = setup(options);
+    await restarted.adapter.checkConformance(profile);
+    expect(counter.runs).toBe(1);
+    const newVersion = setup({ ...options, adapterVersion: '2.0.0' });
+    await newVersion.adapter.checkConformance(profile);
+    expect(counter.runs).toBe(2);
+  });
+
+  it('every_start: once per instance, again on a new instance', async () => {
+    const counter = { runs: 0 };
+    const options = { probes: [probe('p', true, counter)], conformance: 'every_start' as const };
+    const first = setup(options);
+    await first.adapter.checkConformance(profile);
+    await first.adapter.checkConformance(profile);
+    expect(counter.runs).toBe(1);
+    await setup(options).adapter.checkConformance(profile);
+    expect(counter.runs).toBe(2);
+  });
+
+  it('off: runs nothing and reports success', async () => {
+    const counter = { runs: 0 };
+    const { adapter } = setup({ probes: [probe('p', false, counter)], conformance: 'off' });
+    await expect(adapter.checkConformance(profile)).resolves.toEqual({
+      adapterVersion: '1.0.0',
+      ok: true,
+      probes: [],
+    });
+    expect(counter.runs).toBe(0);
+  });
+
+  it('concurrent calls share one run', async () => {
+    const counter = { runs: 0 };
+    const { adapter } = setup({ probes: [probe('p', true, counter)] });
+    const [a, b] = await Promise.all([
+      adapter.checkConformance(profile),
+      adapter.checkConformance(profile),
+    ]);
+    expect(a).toBe(b);
+    expect(counter.runs).toBe(1);
+  });
+
+  it('a probe that throws fails the report, warns, and is tried again next time', async () => {
+    let attempts = 0;
+    const flaky: ConformanceProbe = {
+      id: 'flaky',
+      run: () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(new Error('transient'))
+          : Promise.resolve({ ok: true, detail: 'ok' });
+      },
+    };
+    const { adapter, warnings } = setup({ probes: [flaky] });
+    const first = await adapter.checkConformance(profile);
+    expect(first.ok).toBe(false);
+    expect(first.probes[0]?.detail).toContain('transient');
+    expect(warnings.map((w) => w.kind)).toEqual(['conformance_probe_threw']);
+    const second = await adapter.checkConformance(profile);
+    expect(second.ok).toBe(true);
+  });
+
+  it('rejects duplicate probe ids', async () => {
+    const counter = { runs: 0 };
+    const { adapter } = setup({
+      commonProbes: [probe('same', true, counter)],
+      probes: [probe('same', true, counter)],
+    });
+    await expect(adapter.checkConformance(profile)).rejects.toBeInstanceOf(InvalidInput);
+    expect(counter.runs).toBe(0);
+  });
+});
+
+describe('ClientAdapter.configOptionsFor', () => {
+  it('goes through the descendant mapConfig', () => {
+    const { adapter } = setup();
+    expect(adapter.configOptionsFor({ model: 'fake-model', mode: 'plan' })).toEqual({
+      model: 'fake-model',
+      mode: 'plan',
+    });
+  });
+});
+
+describe('FakeSessionTransport scripts', () => {
+  async function open() {
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via);
+    return { session, via, launcher };
+  }
+  const text = (value: string) => [{ type: 'text' as const, text: value }];
+
+  it('echoes, runs tool calls, refuses edits by the policy, and fails as scripted', async () => {
+    const { session, via, launcher } = await open();
+    const seen: string[] = [];
+    session.onUpdate((update) => seen.push(update.kind));
+    await expect(session.prompt(text('hello world'))).resolves.toEqual({ stopReason: 'end_turn' });
+    await session.prompt(text('#script:tool-call'));
+    await session.prompt(text('#script:edit-file {"path":"a.txt"}'));
+    expect(via.permissionAnswers).toEqual([{ outcome: 'selected', optionId: 'reject' }]);
+    expect(via.edits).toEqual([]);
+    expect(seen).toContain('tool_call');
+    await expect(session.prompt(text('#script:fail'))).rejects.toBeTruthy();
+    await expect(session.prompt(text('#script:quota-signal'))).rejects.toBeInstanceOf(
+      QuotaExhausted,
+    );
+    await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('hang ends with cancel and leaves no process', async () => {
+    const { session, launcher } = await open();
+    const turn = session.prompt(text('#script:hang'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await session.cancel();
+    await expect(turn).resolves.toEqual({ stopReason: 'cancelled' });
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('accepts only the config options the client offers', async () => {
+    const { session, via } = await open();
+    await session.setConfig('model', 'fake-model-2');
+    expect(via.configApplied).toEqual([{ id: 'model', value: 'fake-model-2' }]);
+    await expect(session.setConfig('model', 'nope')).rejects.toBeInstanceOf(InvalidInput);
+    await expect(session.setConfig('unknown', 'x')).rejects.toBeInstanceOf(InvalidInput);
+    await session.close();
+  });
+});

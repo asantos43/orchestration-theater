@@ -331,6 +331,44 @@ describe('fake agent in process', () => {
     expect(agentText(recorded.updates)).toBe('again');
   });
 
+  it('offers the model and mode config options and applies set_config_option', async () => {
+    const { app } = recordingClient('allow');
+    await app.connectWith(createFakeAgent(), async (cx) => {
+      await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+      const created = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+      const ids = (created.configOptions ?? []).map((option) => option.id);
+      expect(ids).toEqual(['model', 'mode']);
+      const changed = await cx.request(methods.agent.session.setConfigOption, {
+        sessionId: created.sessionId,
+        configId: 'model',
+        value: 'fake-model-2',
+      });
+      expect(changed.configOptions.find((option) => option.id === 'model')).toMatchObject({
+        currentValue: 'fake-model-2',
+      });
+    });
+  });
+
+  it('rejects set_config_option for an unknown option or value with invalid params', async () => {
+    const { app } = recordingClient('allow');
+    await app.connectWith(createFakeAgent(), async (cx) => {
+      await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+      const { sessionId } = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+      const unknownOption = cx.request(methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: 'nope',
+        value: 'x',
+      });
+      expect((await rejection(unknownOption)).code).toBe(-32602);
+      const unknownValue = cx.request(methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: 'model',
+        value: 'nope',
+      });
+      expect((await rejection(unknownValue)).code).toBe(-32602);
+    });
+  });
+
   it('runs over a pair of byte streams', async () => {
     const toAgent = new TransformStream<Uint8Array, Uint8Array>();
     const toClient = new TransformStream<Uint8Array, Uint8Array>();
