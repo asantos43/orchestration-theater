@@ -57,6 +57,11 @@ export class Execution {
     });
   }
 
+  /** What the last reconciliation found and started, once `reconcile()` ran. */
+  get reconciled(): ReconcileReport | undefined {
+    return this.#reconciled;
+  }
+
   /** Resumes what the previous daemon left running. Call once, before taking new attempts. */
   async reconcile(): Promise<ReconcileReport> {
     this.#reconciled = await reconcileAttempts({
