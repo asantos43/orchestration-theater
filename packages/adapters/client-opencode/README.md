@@ -91,9 +91,32 @@ names.
 | `catalog.effortPreference`      | `clients.opencode.suggest.effort_preference` | list; default `medium, low, high`                                |
 | `catalog.minContextWindow`      | from `roles.capability_check`        | number; severity `warning` or `error`                                     |
 | `slotTimeoutMs`                 | (internal)                           | default 30 s                                                              |
+| `versionSource`                 | `clients.opencode.version_source`    | `auto` (default), `package_json`, `initialize`, `config`; see Client version |
 
 `readOnlyMode` is `none` by default because whether the rules of `plan` mode win over the pinned
 permission was not measured [N]; the pinned permission is the measured mechanism.
+
+## Client version (N63)
+
+The conformance cache is keyed by the version of the client (`security.conformance:
+on_version_change`), so the daemon needs to know it. Three keys, read by the daemon and never by
+this package:
+
+| Key | Modes | Default |
+| --- | --- | --- |
+| `clients.<id>.version_source` | `auto` (the `package.json`, then the `initialize` confirms or corrects it), `package_json`, `initialize`, `config` | `auto` |
+| `clients.<id>.client_version` | a version string; a written value (not `unknown`) wins in every mode and nothing corrects it | `unknown` |
+| `clients.<id>.version_packages` | the npm package names that identify the install | `OPENCODE_PACKAGES` |
+
+- The `package.json` is found without running anything: the command is looked up in `PATH`, the link
+  is followed to the real file, and the folders above it are searched for a `package.json` whose
+  `name` is one of `version_packages` (this package exports `OPENCODE_PACKAGES`, the default: `opencode-ai`).
+  `npx`, a wrapper script, a standalone binary or a missing package leaves the version `unknown`,
+  without an error.
+- The `initialize` of every session may say `agentInfo` (optional in ACP). When its version differs
+  from the one known, the adapter takes it, the cache key changes (so the probes run again) and the
+  daemon logs one `info` line. A missing `agentInfo` keeps the version read. Phase 0 [V]: `opencode acp` reports "OpenCode" 1.19.5, the client itself. A standalone binary (not installed through npm) has no `package.json`: the `initialize` fills it in.
+- The headless output has no `initialize`: there only the `package.json` (or `client_version`) counts.
 
 ## Tests
 

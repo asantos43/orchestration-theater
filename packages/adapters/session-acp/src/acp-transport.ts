@@ -21,6 +21,7 @@ import {
   ManagedAgentSession,
   NotFound,
   typedErrorOf,
+  type AgentInfo,
   type ConfigValue,
   type ContentBlock,
   type OTheaterError,
@@ -75,6 +76,7 @@ export type AcpTransportWarning =
   | SessionWarning
   | { readonly kind: 'permission_handler_threw'; readonly error: unknown }
   | { readonly kind: 'extension_handler_threw'; readonly method: string; readonly error: unknown }
+  | { readonly kind: 'agent_info_handler_threw'; readonly error: unknown }
   /**
    * A `session/update` or `session/request_permission` named a session this connection never had
    * (not one it has closed, and not while a `session/new` is still answering). The message is
@@ -207,6 +209,20 @@ interface Route {
 interface Initialized {
   readonly canLoad: boolean;
   readonly mcpHttp: boolean | null | undefined;
+  /** What the client said about itself; `undefined` when it said nothing usable (it is optional in ACP). */
+  readonly agentInfo: AgentInfo | undefined;
+}
+
+/** `agentInfo` of the `initialize` response, when it carries a name and a version (both strings). */
+function agentInfoOf(raw: unknown): AgentInfo | undefined {
+  if (!isRecord(raw) || typeof raw.name !== 'string' || typeof raw.version !== 'string') {
+    return undefined;
+  }
+  return {
+    name: raw.name,
+    ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
+    version: raw.version,
+  };
 }
 
 /** How many closed session ids a connection remembers, to tell a late message from a stray one. */
@@ -525,6 +541,7 @@ export class AcpTransport implements SessionTransport {
         return {
           canLoad: initialized.agentCapabilities?.loadSession === true,
           mcpHttp: initialized.agentCapabilities?.mcpCapabilities?.http,
+          agentInfo: agentInfoOf(initialized.agentInfo),
         };
       })
       .catch((error: unknown) => {
@@ -546,7 +563,8 @@ export class AcpTransport implements SessionTransport {
   ): Promise<ManagedAgentSession> {
     const options = this.#options;
     const { connection } = shared;
-    const { canLoad, mcpHttp } = await this.#initialize(shared);
+    const { canLoad, mcpHttp, agentInfo } = await this.#initialize(shared);
+    if (agentInfo !== undefined) this.#announce(params, agentInfo);
     const mcpServers = this.#mcpServers(params, mcpHttp);
     const metaField = meta === undefined ? {} : { _meta: meta as Record<string, unknown> };
 
@@ -616,6 +634,15 @@ export class AcpTransport implements SessionTransport {
       session.deliver(raw);
     };
     return session;
+  }
+
+  /** Tells the caller who the client is (N63). A callback that throws must not fail the open. */
+  #announce(params: SessionOpenParams, agentInfo: AgentInfo): void {
+    try {
+      params.onAgentInfo?.(agentInfo);
+    } catch (error) {
+      this.#options.onWarning?.({ kind: 'agent_info_handler_threw', error });
+    }
   }
 
   /** Puts the session in the route table; two sessions of one connection never share an id. */

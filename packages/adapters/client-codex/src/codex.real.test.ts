@@ -91,4 +91,35 @@ describe.skipIf(!flags.clients)('the real codex-acp: sessions in one process', (
       await rm(scratch, { recursive: true, force: true });
     }
   }, 180_000);
+
+  // N63: only records what `codex-acp` says about itself in `initialize` (no session, no prompt).
+  // [S] The version it reports is the one of the ACP adapter, not of the Codex CLI.
+  it('records the agentInfo of initialize (N63)', async () => {
+    const { writeProfileConfig } = await import('./profile.js');
+    const scratch = await mkdtemp(join(tmpdir(), 'ot-codex-real-info-'));
+    try {
+      const dir = join(scratch, 'codex-home');
+      await writeProfileConfig(dir, {
+        credentialsStore: 'file',
+        sandboxMode: 'workspace-write',
+        approvalPolicy: 'on-request',
+      });
+      const override = process.env.OT_TEST_CODEX_ACP_COMMAND;
+      const command =
+        override === undefined || override === ''
+          ? DEFAULT_CODEX_COMMAND
+          : { cmd: override, args: [] as readonly string[] };
+      const report = await probeSessionsPerProcess({
+        cmd: command.cmd,
+        args: command.args,
+        cwd: scratch,
+        env: { PATH: process.env.PATH ?? '', HOME: scratch, CODEX_HOME: dir },
+        sessions: 0,
+      });
+      console.info(describeSessionsReport('codex', report));
+      expect(report.processAlive).toBe(true);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

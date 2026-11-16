@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type ClientAdapter, type Profile } from '@otheater/core';
 import { FakeClock, FakeProcessLauncher, FakeSessionTransport } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
-import type { ClientFactoryParts, FindExecutable } from './clients.js';
+import { pathFinder, type ClientFactoryParts, type FindExecutable } from './clients.js';
 import { DEFAULT_CLIENT_EXECUTABLES, productionClients } from './compose.js';
 import { parseConfig } from './config.js';
 import { dataPaths } from './paths.js';
@@ -561,6 +561,196 @@ describe('the veto of modes of the production clients', () => {
       }
       const applied = t.transport.configApplied.map((entry) => entry.value);
       for (const mode of Object.values(vetoed).flat()) expect(applied).not.toContain(mode);
+    } finally {
+      await t.dispose();
+    }
+  });
+});
+
+/** A fake install under `dir`: `bin/<command>` links to a file inside `<name>` with this version. */
+async function fakeInstall(
+  dir: string,
+  name: string,
+  version: string,
+  command: string,
+): Promise<FindExecutable> {
+  const pkg = join(dir, 'lib', 'node_modules', ...name.split('/'));
+  const bin = join(dir, 'bin');
+  await mkdir(join(pkg, 'dist'), { recursive: true });
+  await mkdir(bin, { recursive: true });
+  await writeFile(join(pkg, 'package.json'), JSON.stringify({ name, version }));
+  await writeFile(join(pkg, 'dist', 'cli.js'), '#!/bin/sh\n');
+  await symlink(join(pkg, 'dist', 'cli.js'), join(bin, command));
+  return pathFinder({ PATH: bin }, { isExecutable: () => true });
+}
+
+describe('the client version (N63)', () => {
+  const NAMES = {
+    'claude-code': ['@agentclientprotocol/claude-agent-acp', 'claude-agent-acp'],
+    codex: ['@agentclientprotocol/codex-acp', 'codex-acp'],
+    opencode: ['opencode-ai', 'opencode'],
+  } as const;
+
+  it('reads the package.json of each client, logs where it came from and keys the cache by it', async () => {
+    const t = await setup();
+    try {
+      for (const [id, [name, command]] of Object.entries(NAMES)) {
+        const find = await fakeInstall(join(t.dir, id), name, '4.5.6', command);
+        const adapter = byId(
+          productionClients(parseConfig(OPEN), { env: ENV, findExecutable: find })(t.parts),
+          id,
+        );
+        expect(adapter.clientVersion).toEqual({ version: '4.5.6', source: 'package_json' });
+        expect(adapter.adapterVersion).toContain('4.5.6');
+      }
+      const logged = t.lines.filter((l) => l.msg === 'client version');
+      expect(logged.map((l) => l.fields)).toEqual(
+        expect.arrayContaining([{ client: 'codex', version: '4.5.6', source: 'package_json' }]),
+      );
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('is unknown when the package is not found, with no error', async () => {
+    const t = await setup();
+    try {
+      const adapters = productionClients(parseConfig(OPEN), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+      })(t.parts);
+      for (const adapter of adapters) {
+        expect(adapter.clientVersion).toEqual({ version: 'unknown', source: 'unknown' });
+      }
+      expect(t.lines.filter((l) => l.level === 'warn' || l.level === 'error')).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('follows version_source: package_json reads, initialize and config do not', async () => {
+    const t = await setup();
+    try {
+      const find = await fakeInstall(t.dir, '@agentclientprotocol/codex-acp', '2.6.0', 'codex-acp');
+      const versionIn = (mode: string): string =>
+        byId(
+          productionClients(
+            parseConfig(`${OPEN}clients:\n  codex:\n    version_source: ${mode}\n`),
+            { env: ENV, findExecutable: find },
+          )(t.parts),
+          'codex',
+        ).clientVersion.version;
+      expect(versionIn('auto')).toBe('2.6.0');
+      expect(versionIn('package_json')).toBe('2.6.0');
+      expect(versionIn('initialize')).toBe('unknown');
+      expect(versionIn('config')).toBe('unknown');
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('a written client_version wins in every mode', async () => {
+    const t = await setup();
+    try {
+      const find = await fakeInstall(t.dir, '@agentclientprotocol/codex-acp', '2.6.0', 'codex-acp');
+      for (const mode of ['auto', 'package_json', 'initialize', 'config']) {
+        const config = parseConfig(
+          `${OPEN}clients:\n  codex:\n    version_source: ${mode}\n    client_version: '7.7.7'\n`,
+        );
+        const codex = byId(
+          productionClients(config, { env: ENV, findExecutable: find })(t.parts),
+          'codex',
+        );
+        expect(codex.clientVersion).toEqual({ version: '7.7.7', source: 'config' });
+        expect(codex.adapterVersion).toContain('7.7.7');
+        // Nothing that the client says in its initialize changes it.
+        t.transport.agentInfo = { name: 'codex-acp', version: '8.8.8' };
+        const session = await codex.openSession(
+          t.profile('codex'),
+          TEST_POLICY,
+          t.dir,
+          t.transport,
+        );
+        await session.close();
+        expect(codex.clientVersion.version).toBe('7.7.7');
+      }
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('version_packages names the package to look for', async () => {
+    const t = await setup();
+    try {
+      const find = await fakeInstall(t.dir, 'my-fork-of-codex-acp', '5.0.0', 'codex-acp');
+      const codexOf = (extra: string) =>
+        byId(
+          productionClients(parseConfig(`${OPEN}clients:\n  codex:\n${extra}`), {
+            env: ENV,
+            findExecutable: find,
+          })(t.parts),
+          'codex',
+        );
+      expect(codexOf('    enabled: true\n').clientVersion.version).toBe('unknown');
+      expect(codexOf('    version_packages: [my-fork-of-codex-acp]\n').clientVersion.version).toBe(
+        '5.0.0',
+      );
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('the initialize corrects the version read, the probes key changes and one info line says so', async () => {
+    const t = await setup();
+    try {
+      const find = await fakeInstall(t.dir, '@agentclientprotocol/codex-acp', '2.6.0', 'codex-acp');
+      const codex = byId(
+        productionClients(parseConfig(OPEN), { env: ENV, findExecutable: find })(t.parts),
+        'codex',
+      );
+      const before = codex.adapterVersion;
+      t.transport.agentInfo = { name: '@agentclientprotocol/codex-acp', version: '2.7.0' };
+      const session = await codex.openSession(t.profile('codex'), TEST_POLICY, t.dir, t.transport);
+      await session.close();
+      expect(codex.clientVersion).toEqual({ version: '2.7.0', source: 'initialize' });
+      expect(codex.adapterVersion).not.toBe(before);
+      expect(codex.adapterVersion).toContain('2.7.0');
+      const corrected = t.lines.filter(
+        (l) => l.msg === 'client version corrected by the initialize',
+      );
+      expect(corrected).toHaveLength(1);
+      expect(corrected[0]?.level).toBe('info');
+      expect(corrected[0]?.fields).toMatchObject({
+        client: 'codex',
+        from: { version: '2.6.0', source: 'package_json' },
+        to: { version: '2.7.0', source: 'initialize' },
+      });
+      // A second session with the same answer says nothing more.
+      const again = await codex.openSession(t.profile('codex'), TEST_POLICY, t.dir, t.transport);
+      await again.close();
+      expect(
+        t.lines.filter((l) => l.msg === 'client version corrected by the initialize'),
+      ).toHaveLength(1);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('with package_json only, the initialize is not listened to', async () => {
+    const t = await setup();
+    try {
+      const find = await fakeInstall(t.dir, '@agentclientprotocol/codex-acp', '2.6.0', 'codex-acp');
+      const codex = byId(
+        productionClients(
+          parseConfig(`${OPEN}clients:\n  codex:\n    version_source: package_json\n`),
+          { env: ENV, findExecutable: find },
+        )(t.parts),
+        'codex',
+      );
+      t.transport.agentInfo = { name: 'codex-acp', version: '2.7.0' };
+      const session = await codex.openSession(t.profile('codex'), TEST_POLICY, t.dir, t.transport);
+      await session.close();
+      expect(codex.clientVersion).toEqual({ version: '2.6.0', source: 'package_json' });
     } finally {
       await t.dispose();
     }

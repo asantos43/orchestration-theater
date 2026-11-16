@@ -65,6 +65,14 @@ export type ClientId = (typeof CLIENT_IDS)[number];
  * `compose.ts`, so the lists are repeated here; `compose.test.ts` checks them against the adapters.
  */
 export const CLIENT_ENV_INHERIT = ['minimal', 'none', 'all'] as const;
+/**
+ * `clients.<id>.version_source` (N63): where the version of a client comes from.
+ * `auto` reads the `package.json` of the installed package and lets the `initialize` confirm or
+ * correct it; `package_json` only reads the file; `initialize` only takes what the client says;
+ * `config` takes only `client_version`. A `client_version` that is written wins in every mode.
+ */
+export const CLIENT_VERSION_SOURCES = ['auto', 'package_json', 'initialize', 'config'] as const;
+export type ClientVersionSourceMode = (typeof CLIENT_VERSION_SOURCES)[number];
 export const CLAUDE_SETTING_SOURCES = ['none', 'project', 'user'] as const;
 export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as const;
 export const CLAUDE_ACCOUNT_ENV = ['strip', 'keep'] as const;
@@ -145,8 +153,15 @@ const ClientCommandSchema = z.strictObject({
  *
  * - `enabled`: `auto` turns the client on when its `command` is set or the default executable is
  *   found in `PATH` (a search in code that never runs the binary); `true` and `false` decide.
- * - `client_version`: the version of the client, written by the user. The daemon never runs the
- *   client to learn it; it only goes into the adapter version (the key of the conformance cache).
+ * - `client_version`: the version of the client, written by the user. It wins over every other
+ *   source. The daemon never runs the client to learn it; it goes into the adapter version (the key
+ *   of the conformance cache). Left as `unknown`, `version_source` decides where it comes from.
+ * - `version_source`: `auto` (default; the `package.json` of the installed package, then the
+ *   `initialize` of the first session confirms or corrects it), `package_json`, `initialize` or
+ *   `config` (only `client_version`). N63.
+ * - `version_packages`: the names the `package.json` search accepts; default is the ACP adapter of
+ *   the client (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`) or the
+ *   client itself (`opencode-ai`), the program whose `initialize` gives the version.
  * - `env_inherit`: what of the daemon's own environment reaches the client: `minimal` (the
  *   variables a program needs to run, plus proxy and certificate ones), `none` or `all`. `all`
  *   passes every variable of the daemon, secrets included; it is there for who wants it, not a default.
@@ -156,6 +171,8 @@ const ClientCommandSchema = z.strictObject({
 const clientCommon = {
   enabled: z.union([z.literal('auto'), z.boolean()]).default('auto'),
   client_version: z.string().min(1).default('unknown'),
+  version_source: z.enum(CLIENT_VERSION_SOURCES).default('auto'),
+  version_packages: z.array(z.string().min(1)).min(1).optional(),
   env_inherit: z.enum(CLIENT_ENV_INHERIT).default('minimal'),
   env_allow: z.array(z.string().regex(ENV_NAME, 'expected a variable name')).default([]),
   env: z.record(z.string().regex(ENV_NAME, 'expected a variable name'), z.string()).default({}),

@@ -10,6 +10,8 @@ import {
 } from '@otheater/core';
 import {
   describeClientAdapterConformance,
+  describeSessionsReport,
+  probeSessionsPerProcess,
   realClientFlags,
   realSessionsPerProcess,
   type ClientAdapterHarness,
@@ -165,6 +167,33 @@ describe.skipIf(!flags.clients)('OpenCode (real): sessions in one process', () =
       await r.dispose();
     }
   }, 180_000);
+});
+
+describe.skipIf(!flags.clients)('OpenCode (real): agentInfo', () => {
+  // N63: only records what `opencode acp` says about itself in `initialize`, in an empty scratch
+  // folder (every home of the client points into it; nothing of the owner's is read).
+  it('records the agentInfo of initialize (N63)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'otheater-opencode-info-'));
+    try {
+      const report = await probeSessionsPerProcess({
+        cmd: 'opencode',
+        args: ['acp'],
+        cwd: root,
+        env: {
+          PATH: process.env.PATH ?? '',
+          HOME: root,
+          XDG_DATA_HOME: join(root, 'data'),
+          XDG_CONFIG_HOME: join(root, 'config'),
+          OPENCODE_DISABLE_PROJECT_CONFIG: '1',
+        },
+        sessions: 0,
+      });
+      console.info(describeSessionsReport('opencode', report));
+      expect(report.processAlive).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    }
+  }, 60_000);
 });
 
 describe.skipIf(!flags.clients || !flags.prompts)('OpenCode (real): own probe', () => {

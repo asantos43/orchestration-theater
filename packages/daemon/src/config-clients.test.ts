@@ -9,6 +9,7 @@ describe('clients.* and security.* of the config', () => {
     const common = {
       enabled: 'auto',
       client_version: 'unknown',
+      version_source: 'auto',
       env_inherit: 'minimal',
       env_allow: [],
       env: {},
@@ -50,6 +51,24 @@ describe('clients.* and security.* of the config', () => {
       catalog_probe: 'allow',
       catalog_probe_log: 'once',
     });
+  });
+
+  it('reads version_source in its four modes and version_packages, and refuses the rest', () => {
+    for (const mode of ['auto', 'package_json', 'initialize', 'config']) {
+      const { clients } = parseConfig(`clients:\n  codex:\n    version_source: ${mode}\n`);
+      expect(clients.codex.version_source).toBe(mode);
+    }
+    const { clients } = parseConfig(
+      'clients:\n  opencode:\n    version_packages: [opencode-ai, other-pkg]\n',
+    );
+    expect(clients.opencode.version_packages).toEqual(['opencode-ai', 'other-pkg']);
+    expect(parseConfig('').clients.opencode.version_packages).toBeUndefined();
+    expect(() => parseConfig('clients:\n  codex:\n    version_source: guess\n')).toThrow(
+      InvalidInput,
+    );
+    expect(() => parseConfig('clients:\n  codex:\n    version_packages: []\n')).toThrow(
+      InvalidInput,
+    );
   });
 
   it('keeps `command` unset by default and reads cmd with or without args', () => {

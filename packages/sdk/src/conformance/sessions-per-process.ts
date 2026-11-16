@@ -36,6 +36,11 @@ export interface SessionsPerProcessReport {
   readonly rssKiB: number | undefined;
   /** The process was still alive after the last call. */
   readonly processAlive: boolean;
+  /**
+   * `agentInfo` of the `initialize` answer (N63): what the client says about itself. `undefined`
+   * when it sent none (it is optional in ACP) or when name and version are not strings.
+   */
+  readonly agentInfo: { readonly name: string; readonly version: string } | undefined;
 }
 
 type Json = Record<string, unknown>;
@@ -125,7 +130,8 @@ export async function probeSessionsPerProcess(
   let configOptionIds: readonly string[] = [];
   let rssKiB: number | undefined;
   try {
-    await request('initialize', { protocolVersion: 1, clientCapabilities: {} });
+    const initialized = await request('initialize', { protocolVersion: 1, clientCapabilities: {} });
+    const agentInfo = agentInfoOf(initialized.agentInfo);
     for (let index = 0; index < probe.sessions; index += 1) {
       try {
         const created = await request('session/new', {
@@ -151,6 +157,7 @@ export async function probeSessionsPerProcess(
       configOptionIds,
       rssKiB,
       processAlive: state.alive,
+      agentInfo,
     };
   } finally {
     const pid = child.pid;
@@ -163,6 +170,13 @@ export async function probeSessionsPerProcess(
     }
     await gone;
   }
+}
+
+function agentInfoOf(raw: unknown): SessionsPerProcessReport['agentInfo'] {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { name, version } = raw as { name?: unknown; version?: unknown };
+  if (typeof name !== 'string' || typeof version !== 'string') return undefined;
+  return { name: name.slice(0, 100), version: version.slice(0, 64) };
 }
 
 function optionIds(options: unknown): readonly string[] {
@@ -194,6 +208,9 @@ export function describeSessionsReport(client: string, report: SessionsPerProces
     `[sessions-per-process] client=${client} requested=${String(report.requested)} ` +
     `accepted=${String(report.accepted)} distinct_ids=${String(report.distinctSessionIds)} ` +
     `alive=${String(report.processAlive)} rss=${rss}` +
+    (report.agentInfo === undefined
+      ? ' agent_info=none'
+      : ` agent_info=${report.agentInfo.name}@${report.agentInfo.version}`) +
     (report.failures.length === 0 ? '' : ` failures=${JSON.stringify(report.failures)}`)
   );
 }

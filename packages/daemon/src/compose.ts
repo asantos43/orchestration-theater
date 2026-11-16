@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 import { resolve } from 'node:path';
 import {
+  CLAUDE_CODE_ACP_PACKAGES,
   CLAUDE_CODE_ADAPTER_VERSION,
   ClaudeCodeAdapter,
   DEFAULT_COMMAND as CLAUDE_DEFAULT_COMMAND,
   type ConfigOptionsReader,
 } from '@otheater/adapter-client-claude-code';
 import {
+  CODEX_ACP_PACKAGES,
   CodexAdapter,
   DEFAULT_CODEX_COMMAND,
   type CodexConfigSource,
 } from '@otheater/adapter-client-codex';
-import { OpenCodeAdapter, opencodeAdapterVersion } from '@otheater/adapter-client-opencode';
+import {
+  OPENCODE_PACKAGES,
+  OpenCodeAdapter,
+  opencodeAdapterVersion,
+} from '@otheater/adapter-client-opencode';
 import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system';
 import {
   POSIX_PROCESS_LAUNCHER_ADAPTER,
@@ -73,6 +79,7 @@ import {
   type ClientFactoryParts,
   type FindExecutable,
 } from './clients.js';
+import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
 import { describeZodError, type ClientId, type DaemonConfig } from './config.js';
@@ -390,6 +397,16 @@ export const DEFAULT_CLIENT_EXECUTABLES: Readonly<Record<ClientId, string>> = {
   opencode: 'opencode',
 };
 
+/**
+ * The npm packages `version_source` looks for next to each client's executable (N63):
+ * the ACP adapter for Claude Code and Codex, the client itself for OpenCode.
+ */
+const VERSION_PACKAGES: Readonly<Record<ClientId, readonly string[]>> = {
+  'claude-code': CLAUDE_CODE_ACP_PACKAGES,
+  codex: CODEX_ACP_PACKAGES,
+  opencode: OPENCODE_PACKAGES,
+};
+
 /** [proposta] Arguments `clients.opencode.command` takes when it names only `cmd`. */
 const OPENCODE_DEFAULT_ARGS: readonly string[] = ['acp'];
 
@@ -424,17 +441,25 @@ function minLayersOf(security: DaemonConfig['security']): MinLayers {
   return layers;
 }
 
-/** What the three adapters take alike (`ClientAdapterOptions`). */
+/**
+ * What the three adapters take alike (`ClientAdapterOptions`). The adapter version is built from
+ * the client version (`adapterVersionOf`), and follows it when the `initialize` of a session
+ * corrects it (N63); the warning log keys its "once per client and adapter version" by the version
+ * the adapter has at the time of the warning.
+ */
 function commonOptions(
   config: DaemonConfig,
   section: Parameters<typeof buildClientEnv>[0],
   env: Env,
   parts: ClientFactoryParts,
   warnings: ClientWarningLog,
-  adapterVersion: string,
+  versioning: ClientVersioning,
+  adapterVersionOf: (clientVersion: string) => string,
 ): ClientAdapterOptions {
+  let adapterVersion = adapterVersionOf(versioning.initial.version);
   return {
     adapterVersion,
+    clientVersion: { ...versioning, adapterVersionOf },
     launcher: parts.launcher,
     baseEnv: buildClientEnv(section, env),
     minLayers: minLayersOf(config.security),
@@ -442,6 +467,7 @@ function commonOptions(
     catalogProbe: config.security.catalog_probe,
     conformance: config.security.conformance,
     onWarning: (warning: ClientAdapterWarning) => {
+      if (warning.kind === 'client_version_corrected') adapterVersion = warning.adapterVersion;
       warnings(warning, adapterVersion);
     },
   };
@@ -458,6 +484,7 @@ function claudeCode(
   env: Env,
   parts: ClientFactoryParts,
   warnings: ClientWarningLog,
+  versioning: ClientVersioning,
   options: ProductionClientsOptions,
 ): ClientAdapter {
   const section = config.clients['claude-code'];
@@ -474,13 +501,8 @@ function claudeCode(
           paths: parts.paths,
         }));
   const adapter = new ClaudeCodeAdapter({
-    ...commonOptions(
-      config,
-      section,
-      env,
-      parts,
-      warnings,
-      adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', section.client_version),
+    ...commonOptions(config, section, env, parts, warnings, versioning, (clientVersion) =>
+      adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', clientVersion),
     ),
     ...(command === undefined
       ? {}
@@ -503,6 +525,7 @@ function codex(
   env: Env,
   parts: ClientFactoryParts,
   warnings: ClientWarningLog,
+  versioning: ClientVersioning,
   options: ProductionClientsOptions,
 ): ClientAdapter {
   const section = config.clients.codex;
@@ -518,13 +541,8 @@ function codex(
           paths: parts.paths,
         }));
   const adapter = new CodexAdapter({
-    ...commonOptions(
-      config,
-      section,
-      env,
-      parts,
-      warnings,
-      adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', section.client_version),
+    ...commonOptions(config, section, env, parts, warnings, versioning, (clientVersion) =>
+      adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', clientVersion),
     ),
     ...(command === undefined
       ? {}
@@ -546,18 +564,12 @@ function opencode(
   env: Env,
   parts: ClientFactoryParts,
   warnings: ClientWarningLog,
+  versioning: ClientVersioning,
 ): ClientAdapter {
   const section = config.clients.opencode;
   const command = section.command;
   return new OpenCodeAdapter({
-    ...commonOptions(
-      config,
-      section,
-      env,
-      parts,
-      warnings,
-      opencodeAdapterVersion(section.client_version),
-    ),
+    ...commonOptions(config, section, env, parts, warnings, versioning, opencodeAdapterVersion),
     ...(command === undefined
       ? {}
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
@@ -594,7 +606,9 @@ function opencode(
  * 5.18). A client is on when `enabled` says so, or, with `auto`, when its `command` is set or its
  * executable is in `PATH`; the search never runs the binary. The daemon depends on the three
  * adapter packages and never on the executables (level C, N45): a client that is not installed is
- * simply left out. The version of a client is never asked of it: it is `client_version` or `unknown`.
+ * simply left out. The version of a client is never asked of it: it is `client_version`, the
+ * `package.json` of the installed package, or what the client says in its `initialize` (N63,
+ * `version_source`).
  *
  * Each adapter gets the launcher of the daemon, an environment built from `env` by the client's
  * `env_*` keys, the `security.*` values and its own keys. Nothing here reads a token.
@@ -619,12 +633,24 @@ export function productionClients(
         parts.logger.info({ client: id, enabled: selection.enabled, reason, executable }, 'client');
       }
       if (!selection.enabled) continue;
+      const section = config.clients[id];
+      const versioning = resolveClientVersioning({
+        mode: section.version_source,
+        written: section.client_version,
+        command: executable,
+        packages: section.version_packages ?? VERSION_PACKAGES[id],
+        find,
+      });
+      parts.logger.info(
+        { client: id, version: versioning.initial.version, source: versioning.initial.source },
+        'client version',
+      );
       adapters.push(
         id === 'claude-code'
-          ? claudeCode(config, env, parts, warnings, options)
+          ? claudeCode(config, env, parts, warnings, versioning, options)
           : id === 'codex'
-            ? codex(config, env, parts, warnings, options)
-            : opencode(config, env, parts, warnings),
+            ? codex(config, env, parts, warnings, versioning, options)
+            : opencode(config, env, parts, warnings, versioning),
       );
     }
     return adapters;
