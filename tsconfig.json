@@ -10,6 +10,8 @@
     { "path": "packages/adapters/store-sqlite" },
     { "path": "packages/adapters/vault-file" },
     { "path": "packages/adapters/vault-keyring" },
+    { "path": "packages/adapters/platform-posix" },
+    { "path": "packages/adapters/vcs-git" },
     { "path": "packages/adapters/session-acp" },
     { "path": "tools/verify" },
     { "path": "tools/bench" }
