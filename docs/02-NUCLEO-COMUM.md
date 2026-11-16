@@ -37,7 +37,7 @@ P1 reutilizar os CLIs oficiais · P2 reutilizar bibliotecas · P3 fluxo em códi
 | `mcp/` | Servidor MCP do framework, com filtro por papel numa fábrica por requisição | MCP SDK v2 |
 | `plugins/` | Agregador dos servidores MCP de plugins | próprio, sobre o SDK |
 | `tools/` | Cascas: `run_tests`, `git_*`, `http_get`, shell restrito | próprio |
-| `resources/` | Semáforos e lançador com Job Object | lançador Rust (`win32job`) |
+| `resources/` | Semáforos e lançador com Job Object | lançador Rust (`windows-sys`) |
 | `workspace/` | Worktrees, branches, integração, PR | `git` + `gh` |
 | `directives/` | Ordens globais e locais; aplicação das ordens do tipo `rule` | próprio |
 | `scheduler/` | Agenda, gatilhos do sistema operacional | croner |
