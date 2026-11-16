@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { chmod, mkdir } from 'node:fs/promises';
 import { posix, resolve, win32 } from 'node:path';
+import { InvalidInput } from '@otheater/core';
 
 /** Environment as the path functions need it; tests pass a plain object, never `process.env`. */
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -65,6 +66,10 @@ export interface DataPaths {
   readonly scenarios: string;
   /** The worktrees of the attempts (`<worktrees>/<play>/<demand>-<n>`). */
   readonly worktrees: string;
+  /** The profiles of the clients (`<profiles>/<client>/<profile>`, architecture 5.18). */
+  readonly profiles: string;
+  /** Scratch worktrees of the probes (the OpenCode permission probe creates its own here). */
+  readonly scratch: string;
 }
 
 export function dataPaths(dataDir: string): DataPaths {
@@ -80,7 +85,34 @@ export function dataPaths(dataDir: string): DataPaths {
     logFile: resolve(root, 'logs', 'daemon.log'),
     scenarios: resolve(root, 'scenarios'),
     worktrees: resolve(root, 'worktrees'),
+    profiles: resolve(root, 'profiles'),
+    scratch: resolve(root, 'scratch'),
   };
+}
+
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Absolute directory of one profile: `<data>/profiles/<client>/<profile>`. Both names become one
+ * path segment each, so a name with a separator, `..` or a leading dot is refused (`InvalidInput`)
+ * instead of leading out of the data directory.
+ */
+export function profileDirOf(paths: Pick<DataPaths, 'profiles'>, ref: ProfileNames): string {
+  for (const [what, value] of [
+    ['client', ref.client],
+    ['profile', ref.profile],
+  ] as const) {
+    if (!SAFE_SEGMENT.test(value) || value === '.' || value === '..') {
+      throw new InvalidInput(`Profile ${what} "${value}" cannot be a directory name`);
+    }
+  }
+  return resolve(paths.profiles, ref.client, ref.profile);
+}
+
+/** The two names that locate a profile (a `ProfileRef` of the core). */
+export interface ProfileNames {
+  readonly client: string;
+  readonly profile: string;
 }
 
 /**

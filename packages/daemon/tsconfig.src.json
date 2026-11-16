@@ -9,6 +9,9 @@
   "references": [
     { "path": "../core/tsconfig.src.json" },
     { "path": "../protocol/tsconfig.src.json" },
+    { "path": "../adapters/client-claude-code/tsconfig.src.json" },
+    { "path": "../adapters/client-codex/tsconfig.src.json" },
+    { "path": "../adapters/client-opencode/tsconfig.src.json" },
     { "path": "../adapters/clock-system/tsconfig.src.json" },
     { "path": "../adapters/platform-posix/tsconfig.src.json" },
     { "path": "../adapters/session-acp/tsconfig.src.json" },

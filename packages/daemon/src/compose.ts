@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 import { resolve } from 'node:path';
+import {
+  CLAUDE_CODE_ADAPTER_VERSION,
+  ClaudeCodeAdapter,
+  DEFAULT_COMMAND as CLAUDE_DEFAULT_COMMAND,
+  type ConfigOptionsReader,
+} from '@otheater/adapter-client-claude-code';
+import {
+  CodexAdapter,
+  DEFAULT_CODEX_COMMAND,
+  type CodexConfigSource,
+} from '@otheater/adapter-client-codex';
+import { OpenCodeAdapter, opencodeAdapterVersion } from '@otheater/adapter-client-opencode';
 import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system';
 import {
   POSIX_PROCESS_LAUNCHER_ADAPTER,
@@ -32,11 +44,16 @@ import {
   InvalidInput,
   isLockableSecretVault,
   PROCESS_LAUNCHER_PORT_VERSION,
+  ROLE_POLICY_FIELDS,
   SECRET_VAULT_PORT_VERSION,
   STORE_PORT_VERSION,
   VCS_PORT_VERSION,
   type Adapter,
+  type ClientAdapter,
+  type ClientAdapterOptions,
+  type ClientAdapterWarning,
   type Clock,
+  type MinLayers,
   type ProcessLauncher,
   type SecretVault,
   type SessionTransport,
@@ -47,9 +64,18 @@ import {
 } from '@otheater/core';
 import semver from 'semver';
 import { z } from 'zod';
-import { describeZodError, type DaemonConfig } from './config.js';
+import {
+  adapterVersionOf,
+  buildClientEnv,
+  pathFinder,
+  selectClients,
+  type ClientFactory,
+  type ClientFactoryParts,
+  type FindExecutable,
+} from './clients.js';
+import { describeZodError, type ClientId, type DaemonConfig } from './config.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
-import { dataPaths, type DataPaths } from './paths.js';
+import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
 
 /** The ports the daemon composes. */
 export type PortName = 'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher';
@@ -350,4 +376,214 @@ export function composeClock(overrides: ComposeOverrides = {}): Clock {
   if (overrides.clock !== undefined) return overrides.clock;
   checkAdapterRange(systemClockAdapter, 'Clock', CLOCK_PORT_VERSION);
   return new SystemClock();
+}
+
+/**
+ * The executable each client starts when `clients.<id>.command` is not set, and what to search in
+ * `PATH` for `enabled: auto`. They come from the adapters; OpenCode exports no constant for it.
+ */
+export const DEFAULT_CLIENT_EXECUTABLES: Readonly<Record<ClientId, string>> = {
+  'claude-code': CLAUDE_DEFAULT_COMMAND.cmd,
+  codex: DEFAULT_CODEX_COMMAND.cmd,
+  opencode: 'opencode',
+};
+
+/** [proposta] Arguments `clients.opencode.command` takes when it names only `cmd`. */
+const OPENCODE_DEFAULT_ARGS: readonly string[] = ['acp'];
+
+/** [proposta] Version of the Codex adapter's translation; the adapter exports no constant for it yet. */
+const CODEX_ADAPTER_VERSION = '0.1.0';
+
+export interface ProductionClientsOptions {
+  /** The environment the clients' own is built from, and the `PATH` that is searched. Default `process.env`. */
+  readonly env?: Env;
+  /** Replaces the search of `PATH` for `enabled: auto` (tests say what is installed). */
+  readonly findExecutable?: FindExecutable;
+  /**
+   * How the Claude catalog reads the config options of a fresh session. The daemon has no way to
+   * read them yet (`AgentSession` does not carry `session/new` options), so without it
+   * `session_or_reserve` falls back to the reserve list.
+   */
+  readonly claudeConfigOptions?: ConfigOptionsReader;
+  /** The same for the Codex catalog; without it `models.list` of Codex rejects. */
+  readonly codexConfigSource?: CodexConfigSource;
+}
+
+function minLayersOf(security: DaemonConfig['security']): MinLayers {
+  const layers: { default: number } & Partial<Record<(typeof ROLE_POLICY_FIELDS)[number], number>> =
+    { default: security.min_layers.default };
+  for (const field of ROLE_POLICY_FIELDS) {
+    const value = security.min_layers[field];
+    if (value !== undefined) layers[field] = value;
+  }
+  return layers;
+}
+
+/** What the three adapters take alike (`ClientAdapterOptions`), minus `adapterVersion`. */
+function commonOptions(
+  config: DaemonConfig,
+  section: Parameters<typeof buildClientEnv>[0],
+  env: Env,
+  parts: ClientFactoryParts,
+): Omit<ClientAdapterOptions, 'adapterVersion'> {
+  return {
+    launcher: parts.launcher,
+    baseEnv: buildClientEnv(section, env),
+    minLayers: minLayersOf(config.security),
+    unenforced: config.security.unenforced,
+    conformance: config.security.conformance,
+    onWarning: (warning: ClientAdapterWarning) => {
+      parts.logger.warn({ client: warning.clientId, warning }, 'client adapter warning');
+    },
+  };
+}
+
+function claudeCode(
+  config: DaemonConfig,
+  env: Env,
+  parts: ClientFactoryParts,
+  options: ProductionClientsOptions,
+): ClientAdapter {
+  const section = config.clients['claude-code'];
+  const command = section.command;
+  return new ClaudeCodeAdapter({
+    ...commonOptions(config, section, env, parts),
+    adapterVersion: adapterVersionOf(
+      CLAUDE_CODE_ADAPTER_VERSION,
+      'claude-code',
+      section.client_version,
+    ),
+    ...(command === undefined
+      ? {}
+      : { command: { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args } }),
+    settingSources: section.setting_sources,
+    utilizationUnit: section.utilization_unit,
+    accountEnv: section.account_env,
+    modelCatalog: {
+      source: section.model_catalog,
+      cacheMs: section.model_catalog_cache,
+      ...(options.claudeConfigOptions === undefined ? {} : { reader: options.claudeConfigOptions }),
+    },
+  });
+}
+
+function codex(
+  config: DaemonConfig,
+  env: Env,
+  parts: ClientFactoryParts,
+  options: ProductionClientsOptions,
+): ClientAdapter {
+  const section = config.clients.codex;
+  const command = section.command;
+  return new CodexAdapter({
+    ...commonOptions(config, section, env, parts),
+    adapterVersion: adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', section.client_version),
+    ...(command === undefined
+      ? {}
+      : { command: { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args } }),
+    processModel: section.process_model,
+    initialMode: section.initial_mode,
+    allowedModes: section.modes,
+    credentialsStore: section.credentials_store,
+    approvalPolicy: section.approval_policy,
+    suggestedEffort: section.suggested_effort,
+    ...(options.codexConfigSource === undefined ? {} : { modelSource: options.codexConfigSource }),
+  });
+}
+
+function opencode(config: DaemonConfig, env: Env, parts: ClientFactoryParts): ClientAdapter {
+  const section = config.clients.opencode;
+  const command = section.command;
+  return new OpenCodeAdapter({
+    ...commonOptions(config, section, env, parts),
+    adapterVersion: opencodeAdapterVersion(section.client_version),
+    ...(command === undefined
+      ? {}
+      : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
+    // N56: the pool section decides how OpenCode shares its processes.
+    processModel: config.pool.opencode.process_model,
+    isolation: section.isolation,
+    ...(section.profile_config === undefined ? {} : { profileConfig: section.profile_config }),
+    shellKeys: section.shell_keys,
+    projectConfig: section.project_config,
+    readOnlyMode: section.read_only_mode,
+    profileDir: (ref) => profileDirOf(parts.paths, ref),
+    catalog: {
+      cacheMs: section.models_cache,
+      effortPreference: section.suggest.effort_preference,
+      contextSeverity: section.context_severity,
+      ...(section.min_context_window === undefined
+        ? {}
+        : { minContextWindow: section.min_context_window }),
+    },
+    permissionProbe: {
+      via: parts.transport,
+      scratchRoot: parts.paths.scratch,
+      timeoutMs: section.permission_probe.timeout,
+      ...(section.permission_probe.model === undefined
+        ? {}
+        : { model: section.permission_probe.model }),
+    },
+    slotTimeoutMs: section.slot_timeout,
+  });
+}
+
+/**
+ * The `ClientFactory` of the product: builds the clients `clients.*` turns on (architecture 5.2,
+ * 5.18). A client is on when `enabled` says so, or, with `auto`, when its `command` is set or its
+ * executable is in `PATH`; the search never runs the binary. The daemon depends on the three
+ * adapter packages and never on the executables (level C, N45): a client that is not installed is
+ * simply left out. The version of a client is never asked of it: it is `client_version` or `unknown`.
+ *
+ * Each adapter gets the launcher of the daemon, an environment built from `env` by the client's
+ * `env_*` keys, the `security.*` values and its own keys. Nothing here reads a token.
+ */
+export function productionClients(
+  config: DaemonConfig,
+  options: ProductionClientsOptions = {},
+): ClientFactory {
+  const env: Env = options.env ?? process.env;
+  const find = options.findExecutable ?? pathFinder(env);
+  return (parts) => {
+    const adapters: ClientAdapter[] = [];
+    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find)) {
+      const { id, reason, executable } = selection;
+      if (reason === 'forced_not_found') {
+        parts.logger.warn(
+          { client: id, executable },
+          'client is enabled but its executable is not in PATH; its sessions will fail to start',
+        );
+      } else {
+        parts.logger.info({ client: id, enabled: selection.enabled, reason, executable }, 'client');
+      }
+      if (!selection.enabled) continue;
+      adapters.push(
+        id === 'claude-code'
+          ? claudeCode(config, env, parts, options)
+          : id === 'codex'
+            ? codex(config, env, parts, options)
+            : opencode(config, env, parts),
+      );
+    }
+    return adapters;
+  };
+}
+
+const guardedTransports = new WeakMap<
+  ClientAdapter,
+  { readonly base: SessionTransport; readonly guarded: SessionTransport }
+>();
+
+/**
+ * The transport a client's sessions go through: the base one, except for Codex, whose adapter
+ * wraps it to veto the `agent` and `agent-full-access` modes (architecture 5.8). The wrapper is
+ * kept per adapter, so every session of a client shares one.
+ */
+export function transportFor(adapter: ClientAdapter, base: SessionTransport): SessionTransport {
+  if (!(adapter instanceof CodexAdapter)) return base;
+  const known = guardedTransports.get(adapter);
+  if (known?.base === base) return known.guarded;
+  const guarded = adapter.guardTransport(base);
+  guardedTransports.set(adapter, { base, guarded });
+  return guarded;
 }

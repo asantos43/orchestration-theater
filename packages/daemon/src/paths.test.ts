@@ -2,7 +2,7 @@
 import { mkdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dataPaths, defaultDataDir, ensureDataDir, resolveDataDir } from './paths.js';
+import { dataPaths, defaultDataDir, ensureDataDir, profileDirOf, resolveDataDir } from './paths.js';
 import { makeTempDataDir } from './test-helpers.js';
 
 describe('defaultDataDir (injected environment, no real HOME)', () => {
@@ -67,7 +67,26 @@ describe('dataPaths', () => {
       logFile: join(root, 'logs', 'daemon.log'),
       scenarios: join(root, 'scenarios'),
       worktrees: join(root, 'worktrees'),
+      profiles: join(root, 'profiles'),
+      scratch: join(root, 'scratch'),
     });
+  });
+});
+
+describe('profileDirOf', () => {
+  const paths = dataPaths('/data/ot');
+
+  it('puts a profile under <data>/profiles/<client>/<profile>', () => {
+    expect(profileDirOf(paths, { client: 'opencode', profile: 'work.1' })).toBe(
+      join(resolve('/data/ot'), 'profiles', 'opencode', 'work.1'),
+    );
+  });
+
+  it('refuses names that would leave the profiles directory', () => {
+    for (const bad of ['', '.', '..', '../x', 'a/b', 'a\\b', '.hidden', 'a b']) {
+      expect(() => profileDirOf(paths, { client: 'codex', profile: bad })).toThrow(/profile/);
+      expect(() => profileDirOf(paths, { client: bad, profile: 'p' })).toThrow(/client/);
+    }
   });
 });
 

@@ -218,5 +218,6 @@ describe('acceptance: sessions run by the daemon', () => {
     TEST_TIMEOUT_MS,
   );
 
-  it.todo('runs the three real clients (OT_TEST_REAL_CLIENTS=1; wired from step P9 on)');
+  // The three real clients (N57) are in `acceptance.real.test.ts`, behind OT_TEST_REAL_CLIENTS=1
+  // and OT_TEST_REAL_PROMPTS=1.
 });
