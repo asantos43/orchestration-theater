@@ -14,6 +14,7 @@ import {
   type SessionTransport,
   type UpdateListener,
 } from '@otheater/core';
+import pino, { type Logger } from 'pino';
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */
 export async function makeTempDataDir(): Promise<{ dir: string; dispose: () => Promise<void> }> {
@@ -116,4 +117,39 @@ export function editingTransport(inner: SessionTransport): SessionTransport {
 /** Files of an `#edits` directive, for the prompt of a test. */
 export function editsPrompt(files: Record<string, string>, rest = ''): string {
   return `#edits ${JSON.stringify({ files })}\n${rest}`;
+}
+
+/** A line the {@link captureLogger} logger wrote: the level name, the message and the fields. */
+export interface LoggedLine {
+  readonly level: string;
+  readonly msg: string;
+  readonly fields: Record<string, unknown>;
+}
+
+const LEVEL_NAMES: Record<number, string> = {
+  10: 'trace',
+  20: 'debug',
+  30: 'info',
+  40: 'warn',
+  50: 'error',
+  60: 'fatal',
+};
+
+/** A logger that keeps what it writes in memory, to test what the daemon says. Tests only. */
+export function captureLogger(): { logger: Logger; lines: LoggedLine[] } {
+  const lines: LoggedLine[] = [];
+  const logger = pino(
+    { level: 'debug', base: null, timestamp: false },
+    {
+      write: (chunk: string) => {
+        const { level, msg, ...fields } = JSON.parse(chunk) as Record<string, unknown>;
+        lines.push({
+          level: LEVEL_NAMES[Number(level)] ?? String(level),
+          msg: String(msg),
+          fields,
+        });
+      },
+    },
+  );
+  return { logger, lines };
 }

@@ -57,6 +57,29 @@ export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
 
+/** The clients the daemon can run attempts with (the keys of `clients`). */
+export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
+export type ClientId = (typeof CLIENT_IDS)[number];
+/**
+ * Values of the keys that mirror an adapter's own list. The daemon imports adapters only in
+ * `compose.ts`, so the lists are repeated here; `compose.test.ts` checks them against the adapters.
+ */
+export const CLIENT_ENV_INHERIT = ['minimal', 'none', 'all'] as const;
+export const CLAUDE_SETTING_SOURCES = ['none', 'project', 'user'] as const;
+export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as const;
+export const CLAUDE_ACCOUNT_ENV = ['strip', 'keep'] as const;
+export const CLAUDE_MODEL_CATALOG_SOURCES = ['session', 'reserve', 'session_or_reserve'] as const;
+export const CODEX_PROCESS_MODELS = ['multi-session', 'process-per-session'] as const;
+export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
+export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
+/** Modes the adapter never selects (`agent` hands the escalation to a reviewer, `agent-full-access` asks nothing). */
+export const CODEX_VETOED_MODES = ['agent', 'agent-full-access'] as const;
+export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as const;
+export const OPENCODE_PROJECT_CONFIG = ['disabled', 'enabled'] as const;
+export const OPENCODE_READ_ONLY_MODES = ['none', 'plan'] as const;
+export const UNENFORCED_MODES = ['refuse', 'warn', 'allow'] as const;
+export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
+
 /**
  * The `resume.preset` table of architecture 5.16 (decision N14): one row fills every value at once,
  * and an individual key overrides only its own value. `transient_backoff` does not change with the
@@ -88,6 +111,95 @@ export const RESUME_PRESETS = {
 
 /** `all` (one step for the whole database) or a page count per step, an integer >= 1. */
 export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * `command` of a client: the executable (a name looked up in `PATH`, or a path) and its arguments.
+ * Without `args` the client's own default applies (`acp` for OpenCode, none for the others).
+ */
+const ClientCommandSchema = z.strictObject({
+  cmd: z.string().min(1),
+  args: z.array(z.string()).optional(),
+});
+
+/**
+ * Keys every client has. [proposta] names, `clients.<id>.*` (architecture 5.2).
+ *
+ * - `enabled`: `auto` turns the client on when its `command` is set or the default executable is
+ *   found in `PATH` (a search in code that never runs the binary); `true` and `false` decide.
+ * - `client_version`: the version of the client, written by the user. The daemon never runs the
+ *   client to learn it; it only goes into the adapter version (the key of the conformance cache).
+ * - `env_inherit`: what of the daemon's own environment reaches the client: `minimal` (the
+ *   variables a program needs to run, plus proxy and certificate ones), `none` or `all`. `all`
+ *   passes every variable of the daemon, secrets included; it is there for who wants it, not a default.
+ * - `env_allow`: names to add from the daemon's environment on top of `env_inherit`.
+ * - `env`: literal variables, applied last. Not for secrets: the config file is plain text.
+ */
+const clientCommon = {
+  enabled: z.union([z.literal('auto'), z.boolean()]).default('auto'),
+  client_version: z.string().min(1).default('unknown'),
+  env_inherit: z.enum(CLIENT_ENV_INHERIT).default('minimal'),
+  env_allow: z.array(z.string().regex(ENV_NAME, 'expected a variable name')).default([]),
+  env: z.record(z.string().regex(ENV_NAME, 'expected a variable name'), z.string()).default({}),
+};
+
+/** `clients.claude-code` (keys of `ClaudeCodeAdapterOptions`). */
+export const ClaudeCodeClientSchema = z.strictObject({
+  ...clientCommon,
+  /** Default `claude-agent-acp`. */
+  command: ClientCommandSchema.optional(),
+  setting_sources: z.enum(CLAUDE_SETTING_SOURCES).default('none'),
+  utilization_unit: z.enum(CLAUDE_UTILIZATION_UNITS).default('ignore'),
+  account_env: z.enum(CLAUDE_ACCOUNT_ENV).default('strip'),
+  model_catalog: z.enum(CLAUDE_MODEL_CATALOG_SOURCES).default('session_or_reserve'),
+  model_catalog_cache: DurationSchema.or(z.literal(0)).prefault('5m'),
+});
+
+/** `clients.codex` (keys of `CodexAdapterOptions`). */
+export const CodexClientSchema = z.strictObject({
+  ...clientCommon,
+  /** Default `codex-acp`. */
+  command: ClientCommandSchema.optional(),
+  process_model: z.enum(CODEX_PROCESS_MODELS).default('multi-session'),
+  initial_mode: z.string().min(1).default('workspace-write'),
+  modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
+  credentials_store: z.enum(CODEX_CREDENTIALS_STORES).default('file'),
+  approval_policy: z.enum(CODEX_APPROVAL_POLICIES).default('on-request'),
+  suggested_effort: z.string().min(1).default('high'),
+});
+
+/** `clients.opencode` (keys of `OpenCodeAdapterOptions`; `pool.opencode.process_model` is under `pool`). */
+export const OpenCodeClientSchema = z.strictObject({
+  ...clientCommon,
+  /** Default `opencode acp`. */
+  command: ClientCommandSchema.optional(),
+  isolation: z.array(z.enum(OPENCODE_ISOLATED_HOMES)).default(['data', 'config']),
+  /** The `opencode.json` of the profile: an object, `null` for no file, absent for the adapter's default. */
+  profile_config: z.record(z.string(), z.unknown()).nullable().optional(),
+  shell_keys: z.array(z.string().min(1)).min(1).default(['bash']),
+  project_config: z.enum(OPENCODE_PROJECT_CONFIG).default('disabled'),
+  read_only_mode: z.enum(OPENCODE_READ_ONLY_MODES).default('none'),
+  /** How long `opencode models` is reused (`models_cache`); `0` reads every time. */
+  models_cache: DurationSchema.or(z.literal(0)).prefault('1m'),
+  suggest: z
+    .strictObject({
+      effort_preference: z.array(z.string().min(1)).min(1).default(['medium', 'low', 'high']),
+    })
+    .prefault({}),
+  /** A context window below this is reported by `validate`; absent: not checked. */
+  min_context_window: z.int().min(1).optional(),
+  context_severity: z.enum(['warning', 'error']).default('warning'),
+  /** The permission probe (architecture 5.2): the model it runs with (absent: the client's own) and how long it waits. */
+  permission_probe: z
+    .strictObject({
+      model: z.string().min(1).optional(),
+      timeout: DurationSchema.prefault('2m'),
+    })
+    .prefault({}),
+  /** Longest wait for a profile turn (the file of a session being written). */
+  slot_timeout: DurationSchema.prefault('30s'),
+});
 
 /** A section whose keys belong to an adapter: `compose.ts` validates it with the adapter's schema. */
 const AdapterSection = z.record(z.string(), z.unknown());
@@ -202,6 +314,40 @@ export const DaemonConfigSchema = z.strictObject({
         continue_prompt: resume.continue_prompt,
       };
     }),
+  /**
+   * The clients that run attempts (architecture 5.2). Each one is built from its section by the
+   * product's `ClientFactory`, in `compose.ts`.
+   */
+  clients: z
+    .strictObject({
+      'claude-code': ClaudeCodeClientSchema.prefault({}),
+      codex: CodexClientSchema.prefault({}),
+      opencode: OpenCodeClientSchema.prefault({}),
+    })
+    .prefault({}),
+  /**
+   * `security` (architecture 5.2): how many layers must guarantee each field of a policy, and what
+   * happens when they do not. Until the Sandbox exists (Phase 4), `writeScope` and `network` have
+   * no layer, so the defaults refuse sessions with those fields; `unenforced: warn` lets them run.
+   */
+  security: z
+    .strictObject({
+      min_layers: z
+        .strictObject({
+          default: z.int().min(0).default(1),
+          nativeTools: z.int().min(0).optional(),
+          nativeShell: z.int().min(0).optional(),
+          mcpServers: z.int().min(0).optional(),
+          onAsk: z.int().min(0).optional(),
+          bypass: z.int().min(0).optional(),
+          writeScope: z.int().min(0).optional(),
+          network: z.int().min(0).optional(),
+        })
+        .prefault({}),
+      unenforced: z.enum(UNENFORCED_MODES).default('refuse'),
+      conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
+    })
+    .prefault({}),
   ui: z
     .strictObject({
       locale: z.enum(LOCALE_SETTINGS).default('auto'),

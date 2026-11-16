@@ -232,6 +232,15 @@ importers:
 
   packages/daemon:
     dependencies:
+      '@otheater/adapter-client-claude-code':
+        specifier: workspace:*
+        version: link:../adapters/client-claude-code
+      '@otheater/adapter-client-codex':
+        specifier: workspace:*
+        version: link:../adapters/client-codex
+      '@otheater/adapter-client-opencode':
+        specifier: workspace:*
+        version: link:../adapters/client-opencode
       '@otheater/adapter-clock-system':
         specifier: workspace:*
         version: link:../adapters/clock-system
