@@ -8,7 +8,7 @@ Ter um sistema próprio, o **OTheater**, que coordene vários agentes de IA como
 
 O sistema trabalha com contas e projetos diferentes e controla permissões, cotas e telemetria. O diferencial é **usar as assinaturas pelos clientes oficiais**. Chaves de API também são aceitas, e são o caminho para o modo produto enquanto o risco R1 estiver aberto (ver [07](07-ASSINATURAS-E-TERMOS.md)).
 
-A arquitetura de construção está em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.47, 2026-11-15). Os objetivos dela estão na §1.
+A arquitetura de construção está em [framework-ideas/arquitetura.md](framework-ideas/arquitetura.md) (v0.48, 2026-11-15). Os objetivos dela estão na §1.
 
 ## O fluxo que o sistema deve implementar (o "pipeline teatral")
 

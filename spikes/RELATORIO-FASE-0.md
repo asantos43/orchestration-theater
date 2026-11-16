@@ -5,7 +5,7 @@ Relatório consolidado dos spikes da Fase 0 do OTheater. Ele junta o que cada RE
 - **Data:** 2026-11-15 (horário de São Paulo, UTC-3).
 - **Máquina de medição:** Linux, Fedora 45, kernel 7.3.3-300.fc45.x86_64, AMD Cezanne (12 threads, 30 GB de RAM, iGPU Vega, sem GPU dedicada). Tudo o que está aqui como medido foi medido nela. Windows e macOS não foram medidos.
 - **Versões medidas:** `@agentclientprotocol/claude-agent-acp` 0.107.0, `@agentclientprotocol/codex-acp` 2.6.0, `opencode acp` 1.19.5, SDK ACP 2.7.0, Claude Code 2.1.325, `codex-cli` 0.166.0 e 0.169.0.
-- **Critério de aceite da §10:** "cada item com resposta medida, não suposta". O veredito está na seção 7.
+- **Critério de aceite da §10:** "cada item com resposta medida, não suposta". O veredito está na seção 7: não cumprido, e a Fase 0 foi fechada com portões (N48, 2026-11-15).
 
 Marcas, copiadas do README de origem:
 
@@ -302,6 +302,7 @@ Só entram as mudanças que alguma fonte já registra. A coluna "Onde está escr
 | Tradução da `RolePolicy` ajustada ao item 8: `deny` do Claude como segunda camada; `OPENCODE_PERMISSION` fixado e `OPENCODE_DISABLE_PROJECT_CONFIG=1`; Codex começando em `workspace-write`, com veto do daemon a `agent` e `agent-full-access`; cancelar encerra a árvore de processos | arquitetura v0.45 (§5.2 e §5.8), docs/08 e docs/09 |
 | Dados do item 8d, sem decisão nova: mais furos no `deny` do Claude, `claude` órfão quando o adaptador morre por SIGKILL, `requirements.toml` do Codex só em `/etc`, regras por padrão de comando no OpenCode | arquitetura v0.46 (§5.2 e §5.8) |
 | Dados do OTel e do Nimbalyst, sem decisão nova: o exportador do Codex só na partida do `app-server`, a thread de título por sessão, o OpenCode só com `experimental.openTelemetry` (que vaza conteúdo), e o Nimbalyst MIT na raiz com a árvore medida | arquitetura v0.47 (§5.11 e tabela de referências) |
+| Fase 0 fechada com portões: os itens sem resposta medida são condição das Fases 2, 4, 5, 7 e da entrada do modelo local; a confirmação do R1 é portão da Fase 10 | docs/13, N48; arquitetura v0.48 (§10, §11 e §12) |
 
 Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos spikes em `spikes/`), N36 (copiar com o mouse), N43 (integração de terminal estilo Claude Desktop), N44 (comandos `/` e sessão direta) e N45 (licenças da Fase 0).
 
@@ -310,6 +311,19 @@ Outras entradas do docs/13 ligadas à Fase 0, todas Decididas: N33 (código dos 
 Critério da §10: "cada item com resposta medida, não suposta".
 
 **O critério não está cumprido.** 11 de 24 itens têm resposta medida em Linux. Os outros 13 não têm.
+
+**Fechamento com portões (decisão do dono, 2026-11-15, N48 do [docs/13](../docs/13-DECISOES-EM-ABERTO.md)).** A Fase 0 fica fechada assim mesmo, com estas exceções. Cada item sem resposta medida é condição da fase que precisa dele, e essa fase não fecha sem medi-lo:
+
+| Itens | Portão | Até lá |
+|---|---|---|
+| 13 | Fase 2 | `killDescendants` em Linux e macOS |
+| 9, 12 | Fase 4 (parte de Windows da camada 3) | camada 3 só em macOS e Linux |
+| 4, 6, 7, 10, 11 e os termos da OpenAI (D3, resto do 23) | Fase 5 | os dados parciais deste relatório |
+| 19, 20 | Fase 7 | medição só no tmux; Ctrl+J garante a nova linha |
+| 14 (26B-A4B e 31B nesta máquina: RAM e velocidade) | entrada do modelo local como Executor (N29) | qualidade medida pela API do Google |
+| 24 (R1) | Fase 10 | uso pessoal com os clientes oficiais e logins próprios |
+
+A Fase 1 pode começar. Nenhuma medição a mais foi feita antes dela; o que falta vai aos portões. A arquitetura registra o fechamento na v0.48 (§10, §11 e §12).
 
 Sem resposta medida, por grupo:
 
