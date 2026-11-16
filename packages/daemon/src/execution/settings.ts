@@ -27,6 +27,8 @@ export interface ExecutionSettings {
   readonly checkpointEditBatch: number;
   /** `resume.max_resumes`. */
   readonly maxResumes: number;
+  /** `resume.max_free_resumes`: resumes after another session's cancel that cost no `maxResumes`. */
+  readonly maxFreeResumes: number;
   /** `resume.transient_backoff`: the wait before each native resume after a transient error. */
   readonly transientBackoffMs: readonly number[];
   /** `resume.stuck.no_event_for`. */
@@ -51,6 +53,7 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     checkpointEveryMs: config.resume.checkpoint_every,
     checkpointEditBatch: config.resume.checkpoint_edit_batch,
     maxResumes: config.resume.max_resumes,
+    maxFreeResumes: config.resume.max_free_resumes,
     transientBackoffMs: config.resume.transient_backoff,
     stuckNoEventMs: config.resume.stuck.no_event_for,
     stuckSameErrorTimes: config.resume.stuck.same_error_times,

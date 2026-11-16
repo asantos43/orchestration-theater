@@ -6,6 +6,7 @@ import {
   PermissionDenied,
   type OTheaterError,
 } from './errors.js';
+import { CatalogProbeSession } from './catalog-probe-session.js';
 import type { NormalizedUpdate } from './normalized-update.js';
 import type { AdapterImplements } from './ports/adapter.js';
 import type {
@@ -91,6 +92,13 @@ export type MinLayers = { readonly default: number } & Partial<
 /** `security.unenforced`: what to do when a field has fewer layers than required. */
 export type UnenforcedMode = 'refuse' | 'warn' | 'allow';
 
+/**
+ * `security.catalog_probe`: whether the session that only reads a client's catalog is exempt from
+ * the `security.unenforced` check. `allow` (default): it is, and the base warns when it used the
+ * exemption; `refuse`: it goes through the check like any other session.
+ */
+export type CatalogProbeMode = 'allow' | 'refuse';
+
 /** `security.conformance`: when the probes run. */
 export type ConformanceMode = 'on_version_change' | 'every_start' | 'off';
 
@@ -112,6 +120,16 @@ export type ClientAdapterWarning =
       readonly clientId: string;
       readonly probeId: string;
       readonly error: unknown;
+    }
+  | {
+      /**
+       * A catalog-read session ({@link SessionStartOptions.purpose}) was opened although the
+       * policy is short of guarantee layers and `security.unenforced` is `refuse`:
+       * `security.catalog_probe: allow` exempted it.
+       */
+      readonly kind: 'catalog_probe_exempt';
+      readonly clientId: string;
+      readonly short: readonly RolePolicyField[];
     };
 
 /** `multi-session` reuse: `shared` puts sessions of one profile on one process, `own` gives each its own. */
@@ -128,7 +146,19 @@ export interface SessionStartOptions {
    * one. Ignored for a `process-per-session` client, which always gets its own.
    */
   readonly process?: ProcessReuse;
+  /**
+   * What the session is for. `work` (default): a session that runs prompts. `catalog-probe`: a
+   * session opened only to read the config options the client announces (model, effort, mode). It
+   * never runs a prompt: the session handed back rejects `prompt` and `setConfig` with
+   * `PermissionDenied` (see {@link CatalogProbeSession}). With
+   * {@link ClientAdapterOptions.catalogProbe} `allow` it is exempt from the `security.unenforced`
+   * check. [proposta]
+   */
+  readonly purpose?: SessionPurpose;
 }
+
+/** What a session is for; see {@link SessionStartOptions.purpose}. */
+export type SessionPurpose = 'work' | 'catalog-probe';
 
 /** Everything the base needs from the outside; the core reads no environment and no file (rule `core-only-zod`). */
 export interface ClientAdapterOptions {
@@ -147,6 +177,11 @@ export interface ClientAdapterOptions {
   readonly minLayers?: MinLayers;
   /** Default `refuse`. */
   readonly unenforced?: UnenforcedMode;
+  /**
+   * Default `allow`. Whether a session opened with `purpose: 'catalog-probe'` skips the
+   * `unenforced` check (`security.catalog_probe`). Work sessions are never affected. [proposta]
+   */
+  readonly catalogProbe?: CatalogProbeMode;
   /** Default `on_version_change`. */
   readonly conformance?: ConformanceMode;
   readonly conformanceCache?: ConformanceCache;
@@ -227,6 +262,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   readonly #sandbox: SandboxCapabilities;
   readonly #minLayers: MinLayers;
   readonly #unenforced: UnenforcedMode;
+  readonly #catalogProbe: CatalogProbeMode;
   readonly #conformance: ConformanceMode;
   readonly #cache: ConformanceCache;
   readonly #commonProbes: readonly ConformanceProbe[];
@@ -245,6 +281,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     this.#sandbox = options.sandbox ?? { fields: [] };
     this.#minLayers = options.minLayers ?? DEFAULT_MIN_LAYERS;
     this.#unenforced = options.unenforced ?? 'refuse';
+    this.#catalogProbe = options.catalogProbe ?? 'allow';
     this.#conformance = options.conformance ?? 'on_version_change';
     this.#cache = options.conformanceCache ?? new MemoryConformanceCache();
     this.#commonProbes = options.commonProbes ?? [];
@@ -311,15 +348,17 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * itself: refuses a policy that is short of layers, writes the profile files and returns the
    * launch options (command, working directory, environment built by the base). It starts nothing.
    * [proposta] Additive: it is the first half of {@link openSession}, so the pool can keep one
-   * process for several sessions (`processModel: 'multi-session'`).
+   * process for several sessions (`processModel: 'multi-session'`). `purpose` is the one of the
+   * session that will open on the process (see {@link SessionStartOptions.purpose}).
    */
   async launchSpec(
     profile: Profile,
     policy: RolePolicy,
     cwd: string,
     via: TransportId = 'acp',
+    purpose: SessionPurpose = 'work',
   ): Promise<LaunchOptions> {
-    this.#assertGuaranteed(policy, via);
+    this.#assertGuaranteed(policy, via, purpose);
     return this.#spec(profile, policy, cwd);
   }
 
@@ -333,8 +372,9 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     policy: RolePolicy,
     cwd: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession> {
-    return this.#attachOwned(process, policy, cwd, via, undefined);
+    return this.#attachOwned(process, policy, cwd, via, undefined, options);
   }
 
   /** Same as {@link openSessionOn} for an existing conversation (`session/load`). */
@@ -344,6 +384,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     cwd: string,
     sessionId: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession> {
     if (!this.capabilities.loadSession) {
       return Promise.reject(
@@ -352,7 +393,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
         ),
       );
     }
-    return this.#attachOwned(process, policy, cwd, via, sessionId);
+    return this.#attachOwned(process, policy, cwd, via, sessionId, options);
   }
 
   /**
@@ -475,7 +516,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     sessionId: string | undefined,
     options: SessionStartOptions | undefined,
   ): Promise<AgentSession> {
-    this.#assertGuaranteed(policy, via.id);
+    const purpose = options?.purpose ?? 'work';
+    this.#assertGuaranteed(policy, via.id, purpose);
     const mcpServers = this.#mcpServersOf(policy);
     // The spec is built on every open, shared process or not: the profile files and the slot the
     // descendant keeps for this policy are written per session, and the key needs the environment.
@@ -487,7 +529,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       ? await this.#shared.acquire(sharedProcessKey(profile, spec), spec)
       : await this.#launcher.launch(spec);
     try {
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers);
+      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose);
     } catch (error) {
       await this.#reap(process);
       throw isOTheaterError(error) ? error : this.#unavailable(error);
@@ -507,6 +549,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     via: SessionTransport,
     sessionId: string | undefined,
     mcpServers: readonly McpServerRef[],
+    purpose: SessionPurpose,
   ): Promise<AgentSession> {
     const params: SessionOpenParams = {
       process,
@@ -517,7 +560,10 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       onPermission: (request) => this.answerPermission(request, policy),
       extensions: this.extensions(),
     };
-    return sessionId === undefined ? via.open(params) : via.load({ ...params, sessionId });
+    const session = await (sessionId === undefined
+      ? via.open(params)
+      : via.load({ ...params, sessionId }));
+    return purpose === 'catalog-probe' ? new CatalogProbeSession(session) : session;
   }
 
   async #attachOwned(
@@ -526,22 +572,30 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     cwd: string,
     via: SessionTransport,
     sessionId: string | undefined,
+    options: SessionStartOptions | undefined,
   ): Promise<AgentSession> {
     try {
-      this.#assertGuaranteed(policy, via.id);
+      const purpose = options?.purpose ?? 'work';
+      this.#assertGuaranteed(policy, via.id, purpose);
       const mcpServers = this.#mcpServersOf(policy);
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers);
+      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose);
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }
   }
 
-  #assertGuaranteed(policy: RolePolicy, via: TransportId): void {
+  #assertGuaranteed(policy: RolePolicy, via: TransportId, purpose: SessionPurpose): void {
     if (this.#unenforced === 'allow') return;
     const report = this.guarantee(policy, this.#sandbox, via);
     if (report.ok) return;
     if (this.#unenforced === 'warn') {
       this.#warn({ kind: 'unenforced', clientId: this.id, short: report.short });
+      return;
+    }
+    if (purpose === 'catalog-probe' && this.#catalogProbe === 'allow') {
+      // The session handed back never runs a prompt (`CatalogProbeSession`), so it is safe to let
+      // it open; the daemon still hears of it.
+      this.#warn({ kind: 'catalog_probe_exempt', clientId: this.id, short: report.short });
       return;
     }
     const details = report.short

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   CLIENT_ADAPTER_PORT_VERSION,
+  ClientAdapter,
   ROLE_POLICY_FIELDS,
   type ClientAdapterContract,
   type ContentBlock,
@@ -70,9 +71,9 @@ const ALL_OS: SandboxCapabilities = { fields: ROLE_POLICY_FIELDS };
 /**
  * Registers the `ClientAdapter` conformance tests (port version
  * {@link CLIENT_ADAPTER_PORT_VERSION}) in the calling Vitest file: identity, `openSession` and
- * `loadSession`, the pure `guarantee`, `checkConformance`, the refusal of permission requests, and
- * the end of the process tree. Call it at the top level of a test file, once per adapter and
- * transport.
+ * `loadSession`, the pure `guarantee`, `checkConformance`, the refusal of permission requests, the
+ * catalog-probe session that never runs a prompt, and the end of the process tree. Call it at the
+ * top level of a test file, once per adapter and transport.
  *
  * With `{ real: true }` the suite is skipped unless `OT_TEST_REAL_CLIENTS=1`, and the tests that
  * send a prompt unless `OT_TEST_REAL_PROMPTS=1` too; nothing here starts a real client by itself.
@@ -206,6 +207,28 @@ export function describeClientAdapterConformance(
           });
         }
         await second.close();
+        expect(await h.processesAlive()).toBe(0);
+      });
+
+      it('a catalog-probe session reads its config options and refuses to run anything', async (ctx: TestContext) => {
+        const h = harness();
+        // `purpose` belongs to `SessionStartOptions` of the base class, not to the port signature.
+        if (!(h.adapter instanceof ClientAdapter)) ctx.skip();
+        const session = await h.adapter.openSession(h.profile, h.policy, h.cwd, h.via, {
+          purpose: 'catalog-probe',
+        });
+        const seen: string[] = [];
+        session.onUpdate((update) => seen.push(text(update)));
+        expect(session.sessionId).not.toBe('');
+        expect(Array.isArray(session.configOptions)).toBe(true);
+        expect(await rejectionOf(session.prompt(h.prompts.echo('must not run')))).toMatchObject({
+          code: 'PERMISSION_DENIED',
+        });
+        expect(await rejectionOf(session.setConfig('model', 'anything'))).toMatchObject({
+          code: 'PERMISSION_DENIED',
+        });
+        expect(seen).toEqual([]);
+        await session.close();
         expect(await h.processesAlive()).toBe(0);
       });
 

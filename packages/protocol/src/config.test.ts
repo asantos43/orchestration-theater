@@ -108,11 +108,20 @@ describe('ResumeConfigSchema', () => {
     expect(ResumeConfigSchema.parse({})).toEqual({
       preset: 'balanced',
       max_resumes: 5,
+      max_free_resumes: 3,
       quota_wait_max: 1_800_000,
       checkpoint_every: 600_000,
       stuck: { no_event_for: 600_000, same_error_times: 3 },
       transient_backoff: [30_000, 120_000, 600_000],
     });
+  });
+
+  it('takes max_free_resumes as 3 in every preset and lets a key override it, zero included', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(ResumeConfigSchema.parse({ preset }).max_free_resumes).toBe(3);
+    }
+    expect(ResumeConfigSchema.parse({ max_free_resumes: 0 }).max_free_resumes).toBe(0);
+    expect(ResumeConfigSchema.safeParse({ max_free_resumes: -1 }).success).toBe(false);
   });
 
   it('applies each preset', () => {
@@ -139,6 +148,7 @@ describe('ResumeConfigSchema', () => {
     expect(resume).toEqual({
       preset: 'agile',
       max_resumes: 3,
+      max_free_resumes: 3,
       quota_wait_max: 3_600_000,
       checkpoint_every: 300_000,
       stuck: { no_event_for: 300_000, same_error_times: 4 },

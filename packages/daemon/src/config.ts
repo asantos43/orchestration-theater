@@ -84,6 +84,8 @@ export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as c
 export const OPENCODE_PROJECT_CONFIG = ['disabled', 'enabled'] as const;
 export const OPENCODE_READ_ONLY_MODES = ['none', 'plan'] as const;
 export const UNENFORCED_MODES = ['refuse', 'warn', 'allow'] as const;
+/** `security.catalog_probe`: whether the session that only reads a catalog skips `unenforced`. */
+export const CATALOG_PROBE_MODES = ['allow', 'refuse'] as const;
 export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
 
 /**
@@ -94,6 +96,7 @@ export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as 
 export const RESUME_PRESETS = {
   balanced: {
     max_resumes: 5,
+    max_free_resumes: 3,
     quota_wait_max: 30 * 60_000,
     checkpoint_every: 10 * 60_000,
     no_event_for: 10 * 60_000,
@@ -101,6 +104,7 @@ export const RESUME_PRESETS = {
   },
   patient: {
     max_resumes: 8,
+    max_free_resumes: 3,
     quota_wait_max: 2 * 3_600_000,
     checkpoint_every: 15 * 60_000,
     no_event_for: 20 * 60_000,
@@ -108,6 +112,7 @@ export const RESUME_PRESETS = {
   },
   agile: {
     max_resumes: 3,
+    max_free_resumes: 3,
     quota_wait_max: 10 * 60_000,
     checkpoint_every: 5 * 60_000,
     no_event_for: 5 * 60_000,
@@ -293,6 +298,12 @@ export const DaemonConfigSchema = z.strictObject({
     .strictObject({
       preset: z.enum(RESUME_PRESET_NAMES).default('balanced'),
       max_resumes: z.int().min(0).optional(),
+      /**
+       * [proposta] Resumes of a session that fell with another session's cancel
+       * (`pool.shared_cancel`) that do not count in `max_resumes`, per attempt. Past this many, the
+       * resume counts like any other drop. `0`: none is free. Decided by the owner, 2026-11-16.
+       */
+      max_free_resumes: z.int().min(0).optional(),
       quota_wait_max: DurationSchema.optional(),
       checkpoint_every: DurationSchema.optional(),
       /** [proposta] Completed edit tool calls that make one batch (a checkpoint follows each batch). */
@@ -316,6 +327,7 @@ export const DaemonConfigSchema = z.strictObject({
       return {
         preset: resume.preset,
         max_resumes: resume.max_resumes ?? preset.max_resumes,
+        max_free_resumes: resume.max_free_resumes ?? preset.max_free_resumes,
         quota_wait_max: resume.quota_wait_max ?? preset.quota_wait_max,
         checkpoint_every: resume.checkpoint_every ?? preset.checkpoint_every,
         checkpoint_edit_batch: resume.checkpoint_edit_batch,
@@ -358,6 +370,12 @@ export const DaemonConfigSchema = z.strictObject({
         })
         .prefault({}),
       unenforced: z.enum(UNENFORCED_MODES).default('refuse'),
+      /**
+       * [proposta] `allow` (default): the session opened only to read a client's model catalog
+       * (no prompt, never runs a turn) is exempt from `unenforced`; `refuse`: it goes through the
+       * same check as a work session. Decided by the owner, 2026-11-16.
+       */
+      catalog_probe: z.enum(CATALOG_PROBE_MODES).default('allow'),
       conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
     })
     .prefault({}),

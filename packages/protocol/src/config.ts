@@ -115,6 +115,8 @@ export type ResumePresetName = (typeof RESUME_PRESET_NAMES)[number];
 /** Values of a resolved `resume` block; durations in milliseconds. */
 export interface ResumeSettings {
   readonly max_resumes: number;
+  /** Resumes of a session lost to another session's cancel that do not count in `max_resumes`. */
+  readonly max_free_resumes: number;
   readonly quota_wait_max: number;
   readonly checkpoint_every: number;
   readonly stuck: { readonly no_event_for: number; readonly same_error_times: number };
@@ -124,18 +126,21 @@ export interface ResumeSettings {
 export const RESUME_PRESETS: Readonly<Record<ResumePresetName, ResumeSettings>> = {
   balanced: {
     max_resumes: 5,
+    max_free_resumes: 3,
     quota_wait_max: 30 * 60_000,
     checkpoint_every: 10 * 60_000,
     stuck: { no_event_for: 10 * 60_000, same_error_times: 3 },
   },
   patient: {
     max_resumes: 8,
+    max_free_resumes: 3,
     quota_wait_max: 2 * 3_600_000,
     checkpoint_every: 15 * 60_000,
     stuck: { no_event_for: 20 * 60_000, same_error_times: 5 },
   },
   agile: {
     max_resumes: 3,
+    max_free_resumes: 3,
     quota_wait_max: 10 * 60_000,
     checkpoint_every: 5 * 60_000,
     stuck: { no_event_for: 5 * 60_000, same_error_times: 2 },
@@ -154,6 +159,7 @@ export const ResumeConfigSchema = z
   .strictObject({
     preset: z.enum(RESUME_PRESET_NAMES).default('balanced'),
     max_resumes: z.int().min(0).optional(),
+    max_free_resumes: z.int().min(0).optional(),
     quota_wait_max: DurationTextSchema.optional(),
     checkpoint_every: PositiveDurationTextSchema.optional(),
     stuck: z
@@ -169,6 +175,7 @@ export const ResumeConfigSchema = z
     return {
       preset: c.preset,
       max_resumes: c.max_resumes ?? base.max_resumes,
+      max_free_resumes: c.max_free_resumes ?? base.max_free_resumes,
       quota_wait_max: c.quota_wait_max ?? base.quota_wait_max,
       checkpoint_every: c.checkpoint_every ?? base.checkpoint_every,
       stuck: {

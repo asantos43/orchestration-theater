@@ -435,6 +435,7 @@ function commonOptions(
     baseEnv: buildClientEnv(section, env),
     minLayers: minLayersOf(config.security),
     unenforced: config.security.unenforced,
+    catalogProbe: config.security.catalog_probe,
     conformance: config.security.conformance,
     onWarning: (warning: ClientAdapterWarning) => {
       parts.logger.warn({ client: warning.clientId, warning }, 'client adapter warning');

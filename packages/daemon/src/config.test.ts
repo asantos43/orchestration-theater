@@ -108,6 +108,7 @@ describe('parseConfig, execution keys', () => {
     expect(config.resume).toMatchObject({
       preset: 'balanced',
       max_resumes: 5,
+      max_free_resumes: 3,
       quota_wait_max: 1_800_000,
       checkpoint_every: 600_000,
       stuck: { no_event_for: 600_000, same_error_times: 3 },
@@ -132,6 +133,22 @@ describe('parseConfig, execution keys', () => {
       stuck: { no_event_for: 1_200_000, same_error_times: 2 },
       transient_backoff: [1000, 2000],
     });
+  });
+
+  it('takes resume.max_free_resumes as 3 in every preset, and zero turns the free resumes off', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.max_free_resumes).toBe(3);
+    }
+    expect(parseConfig('resume:\n  max_free_resumes: 0\n').resume.max_free_resumes).toBe(0);
+    expect(() => parseConfig('resume:\n  max_free_resumes: -1\n')).toThrow(/max_free_resumes/);
+  });
+
+  it('defaults security.catalog_probe to allow and takes refuse', () => {
+    expect(parseConfig('').security.catalog_probe).toBe('allow');
+    expect(parseConfig('security:\n  catalog_probe: refuse\n').security.catalog_probe).toBe(
+      'refuse',
+    );
+    expect(() => parseConfig('security:\n  catalog_probe: maybe\n')).toThrow(/catalog_probe/);
   });
 
   it('rejects a timeout above the ceiling, a bad preset and a bad process model', () => {
