@@ -17,6 +17,7 @@ export {
   type EventLogHarness,
 } from './conformance/event-log.js';
 export { describeStoreConformance, type StoreHarness } from './conformance/store.js';
+export { sampleAttempt } from './conformance/attempt-registry.js';
 export {
   describeSecretVaultConformance,
   type SecretVaultHarness,

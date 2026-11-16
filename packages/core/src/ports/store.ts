@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { AttemptRegistry } from './attempt-registry.js';
 import type { EventLog } from './event-log.js';
 
 /** Semver of the `Store` port contract. */
-export const STORE_PORT_VERSION = '0.1.0';
+/** 0.2.0 added the attempt registry (`attempts`); a 0.x minor bump is a contract change. */
+export const STORE_PORT_VERSION = '0.2.0';
 
 /**
  * What a transaction body can touch. Aggregates (plays, demands, directives, ...) join it as the
- * phases that need them arrive; for now the only transactional resource is the event log, so the
- * domain can change state and record the event in one atomic step.
+ * phases that need them arrive; for now the transactional resources are the event log and the
+ * attempt registry, so the domain can change state and record the event in one atomic step.
  */
 export interface StoreTransaction {
   readonly events: EventLog;
+  readonly attempts: AttemptRegistry;
 }
 
 /**
@@ -26,12 +29,14 @@ export interface StoreTransaction {
  * - Read-your-writes inside `fn`; outside it, only committed data is visible, and a transaction
  *   becomes visible all at once (never half of its events).
  * - Using `tx` after `fn` settled is a programming error and rejects with `Conflict`.
- * - `events` is the same log outside a transaction: each call there is its own transaction.
+ * - `events` and `attempts` are the same resources outside a transaction: each call there is its
+ *   own transaction (reads see only committed data).
  * - After `close()` every operation rejects with `AdapterUnavailable`; `close()` is idempotent and
  *   waits for the transaction in flight.
  */
 export interface Store {
   readonly events: EventLog;
+  readonly attempts: AttemptRegistry;
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T>;
 

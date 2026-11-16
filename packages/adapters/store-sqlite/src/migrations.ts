@@ -57,6 +57,39 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
       }
     }),
   },
+  // [proposta] The attempt registry of Phase 2 (architecture 5.21: the ACP session, the worktree,
+  // the last checkpoint and the last event of every attempt, to resume after a restart).
+  '0002_attempts': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('attempts')
+        .ifNotExists()
+        .addColumn('attempt_id', 'text', (col) => col.primaryKey())
+        .addColumn('play_id', 'text', (col) => col.notNull())
+        .addColumn('demand_id', 'text', (col) => col.notNull())
+        .addColumn('attempt', 'integer', (col) => col.notNull())
+        .addColumn('client', 'text', (col) => col.notNull())
+        .addColumn('profile', 'text', (col) => col.notNull())
+        .addColumn('state', 'text', (col) => col.notNull())
+        .addColumn('cause', 'text')
+        .addColumn('session_id', 'text')
+        .addColumn('worktree', 'text', (col) => col.notNull())
+        .addColumn('branch', 'text', (col) => col.notNull())
+        .addColumn('last_checkpoint', 'text')
+        .addColumn('last_checkpoint_at', 'integer')
+        .addColumn('last_event_at', 'integer')
+        .addColumn('resumes', 'integer', (col) => col.notNull().defaultTo(0))
+        .addColumn('created_at', 'integer', (col) => col.notNull())
+        .addColumn('updated_at', 'integer', (col) => col.notNull())
+        .execute();
+      await db.schema
+        .createIndex('attempts_state')
+        .ifNotExists()
+        .on('attempts')
+        .columns(['state', 'created_at'])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */

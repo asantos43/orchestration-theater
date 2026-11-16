@@ -2,6 +2,7 @@
 import { QuotaExhausted, STORE_PORT_VERSION, type Clock, type Store } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { useHarness, type AdapterFactory, type Disposable } from '../harness.js';
+import { describeAttemptRegistryConformance } from './attempt-registry.js';
 import { describeEventLogConformance, sampleEvent } from './event-log.js';
 import { deferred, rejectionOf, settle } from './helpers.js';
 
@@ -13,7 +14,8 @@ export interface StoreHarness extends Disposable {
 
 /**
  * Registers the `Store` conformance tests (port version {@link STORE_PORT_VERSION}): transactions,
- * isolation, close, and the whole `EventLog` suite run against `store.events`.
+ * isolation, close, the whole `EventLog` suite against `store.events` and the `AttemptRegistry`
+ * suite against `store.attempts`.
  */
 export function describeStoreConformance(
   name: string,
@@ -23,6 +25,8 @@ export function describeStoreConformance(
     const { store, clock, dispose } = await factory();
     return { events: store.events, clock, ...(dispose === undefined ? {} : { dispose }) };
   });
+
+  describeAttemptRegistryConformance(`${name} (store.attempts)`, factory);
 
   describe(`Store conformance: ${name} (port ${STORE_PORT_VERSION})`, () => {
     const harness = useHarness(factory);

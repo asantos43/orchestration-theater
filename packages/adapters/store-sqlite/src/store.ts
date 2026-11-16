@@ -5,6 +5,10 @@ import {
   AdapterUnavailable,
   InvalidInput,
   isOTheaterError,
+  type AttemptListFilter,
+  type AttemptRecord,
+  type AttemptRecordInput,
+  type AttemptRegistry,
   type Clock,
   type EventEnvelope,
   type EventLog,
@@ -15,6 +19,7 @@ import {
 } from '@otheater/core';
 import { Kysely, SqliteDialect } from 'kysely';
 import { z } from 'zod';
+import { selectAttempt, selectAttempts, TransactionAttemptRegistry } from './attempts.js';
 import { backupDatabase, type BackupOptions, type BackupResult } from './backup.js';
 import {
   SqliteStoreConfigSchema,
@@ -78,6 +83,7 @@ export interface SqliteStoreDiagnostics {
  */
 export class SqliteStore implements Store, StoreMaintenance {
   readonly events: EventLog;
+  readonly attempts: AttemptRegistry;
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -106,6 +112,9 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.#writer = connections.writer;
     this.#reader = connections.reader;
     this.events = new StoreEventLog(this, (event) => this.#appendOutside(event));
+    this.attempts = new StoreAttempts(this, (record) =>
+      this.transaction((tx) => tx.attempts.put(record)),
+    );
   }
 
   /**
@@ -182,11 +191,13 @@ export class SqliteStore implements Store, StoreMaintenance {
       // very same error object (typed errors cross the port untouched).
       return await this.#writer.transaction().execute(async (trx) => {
         const events = new TransactionEventLog(trx, this.#clock);
+        const attempts = new TransactionAttemptRegistry(trx, this.#clock);
         try {
-          return await fn({ events });
+          return await fn({ events, attempts });
         } finally {
           // From here on a leaked handle is refused, even while the commit is still running.
           events.finish();
+          attempts.finish();
         }
       });
     } catch (error) {
@@ -311,5 +322,25 @@ class StoreEventLog implements EventLog {
 
   lastId(): Promise<number> {
     return this.store.readCommitted((db) => selectLastId(db));
+  }
+}
+
+/** `store.attempts` outside a transaction: writes are transactions of their own; reads see only committed data. */
+class StoreAttempts implements AttemptRegistry {
+  constructor(
+    private readonly store: SqliteStore,
+    private readonly putOutside: (record: AttemptRecordInput) => Promise<AttemptRecord>,
+  ) {}
+
+  get(attemptId: string): Promise<AttemptRecord | undefined> {
+    return this.store.readCommitted((db) => selectAttempt(db, attemptId));
+  }
+
+  put(record: AttemptRecordInput): Promise<AttemptRecord> {
+    return this.putOutside(record);
+  }
+
+  list(filter?: AttemptListFilter): Promise<readonly AttemptRecord[]> {
+    return this.store.readCommitted((db) => selectAttempts(db, filter));
   }
 }

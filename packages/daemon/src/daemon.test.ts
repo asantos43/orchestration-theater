@@ -70,6 +70,10 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.events;
   }
 
+  get attempts(): Store['attempts'] {
+    return this.inner.attempts;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }
