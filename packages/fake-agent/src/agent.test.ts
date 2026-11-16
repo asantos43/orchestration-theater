@@ -1,0 +1,412 @@
+// SPDX-License-Identifier: MPL-2.0
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, stat, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+import {
+  client,
+  methods,
+  ndJsonStream,
+  RequestError,
+  type AgentApp,
+  type ClientContext,
+  type PromptResponse,
+  type RequestPermissionRequest,
+  type SessionUpdate,
+  type Stream,
+} from '@agentclientprotocol/sdk';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { connectToStreams, createFakeAgent } from './agent.js';
+import {
+  QUOTA_EXHAUSTED_CODE,
+  QUOTA_SIGNAL_METHOD,
+  quotaExhaustedDataSchema,
+  quotaSignalParamsSchema,
+  type QuotaSignalParams,
+} from './quota.js';
+import { parsePrompt, parseScriptSpec, ScriptError } from './scripts.js';
+
+interface Recorded {
+  updates: SessionUpdate[];
+  permissions: RequestPermissionRequest[];
+  quota: QuotaSignalParams[];
+}
+
+interface Harness {
+  cx: ClientContext;
+  recorded: Recorded;
+  cwd: string;
+  sessionId: string;
+}
+
+let sandbox: string;
+let cwd: string;
+
+beforeEach(async () => {
+  sandbox = await mkdtemp(join(tmpdir(), 'fake-agent-test-'));
+  cwd = join(sandbox, 'session');
+  await mkdir(cwd);
+});
+
+afterEach(async () => {
+  await rm(sandbox, { recursive: true, force: true });
+});
+
+function recordingClient(permission: 'allow' | 'reject') {
+  const recorded: Recorded = { updates: [], permissions: [], quota: [] };
+  const app = client({ name: 'fake-agent-test' })
+    .onRequest(methods.client.session.requestPermission, ({ params }) => {
+      recorded.permissions.push(params);
+      const wanted = permission === 'allow' ? 'allow_once' : 'reject_once';
+      const option = params.options.find((candidate) => candidate.kind === wanted);
+      if (option === undefined) throw new Error(`no ${wanted} option offered`);
+      return { outcome: { outcome: 'selected' as const, optionId: option.optionId } };
+    })
+    .onNotification(methods.client.session.update, ({ params }) => {
+      recorded.updates.push(params.update);
+    })
+    .onNotification(QUOTA_SIGNAL_METHOD, quotaSignalParamsSchema, ({ params }) => {
+      recorded.quota.push(params);
+    });
+  return { app, recorded };
+}
+
+/** Connects a test client to `target` (an in-process agent or a stream) and opens a session. */
+async function withSession<T>(
+  target: AgentApp | Stream,
+  fn: (harness: Harness) => Promise<T>,
+  permission: 'allow' | 'reject' = 'allow',
+): Promise<T> {
+  const { app, recorded } = recordingClient(permission);
+  return app.connectWith(target, async (cx) => {
+    await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+    const { sessionId } = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+    return fn({ cx, recorded, cwd, sessionId });
+  });
+}
+
+function prompt(h: Harness, text: string): Promise<PromptResponse> {
+  return h.cx.request(methods.agent.session.prompt, {
+    sessionId: h.sessionId,
+    prompt: [{ type: 'text', text }],
+  });
+}
+
+async function rejection(promise: Promise<unknown>): Promise<RequestError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof RequestError) return error;
+    throw error;
+  }
+  throw new Error('expected the request to be rejected');
+}
+
+function agentText(updates: SessionUpdate[]): string {
+  return updates
+    .map((u) =>
+      u.sessionUpdate === 'agent_message_chunk' && u.content.type === 'text' ? u.content.text : '',
+    )
+    .join('');
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (condition()) return;
+    await new Promise((done) => setTimeout(done, 10));
+  }
+  throw new Error('timed out waiting for the condition');
+}
+
+const exists = (path: string) =>
+  stat(path).then(
+    () => true,
+    () => false,
+  );
+
+describe('script parsing', () => {
+  it('reads a bare name, name plus options and full JSON', () => {
+    expect(parseScriptSpec('echo')).toEqual({ name: 'echo' });
+    expect(parseScriptSpec('edit-file {"path":"a.txt"}')).toMatchObject({
+      name: 'edit-file',
+      path: 'a.txt',
+    });
+    expect(parseScriptSpec('{"name":"fail","message":"boom"}')).toEqual({
+      name: 'fail',
+      message: 'boom',
+    });
+  });
+
+  it('rejects unknown names, unknown options and malformed JSON', () => {
+    expect(() => parseScriptSpec('nope')).toThrow(ScriptError);
+    expect(() => parseScriptSpec('echo {"extra":1}')).toThrow(ScriptError);
+    expect(() => parseScriptSpec('echo {oops')).toThrow(ScriptError);
+    expect(() => parseScriptSpec('')).toThrow(ScriptError);
+  });
+
+  it('splits the directive line from the prompt text', () => {
+    expect(parsePrompt('#script:echo\nhello')).toEqual({ script: { name: 'echo' }, text: 'hello' });
+    expect(parsePrompt('hello')).toEqual({ script: undefined, text: 'hello' });
+  });
+});
+
+describe('fake agent in process', () => {
+  it('initializes with minimal capabilities', async () => {
+    await withSession(createFakeAgent(), async ({ cx }) => {
+      const response = await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+      expect(response.protocolVersion).toBe(1);
+      expect(response.agentCapabilities?.loadSession).toBe(true);
+      expect(response.agentInfo?.name).toBe('otheater-fake-agent');
+      await cx.request(methods.agent.authenticate, { methodId: 'none' });
+    });
+  });
+
+  it('echo streams the prompt text and ends the turn', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const response = await prompt(h, '#script:echo\nhello brave new world');
+      expect(response.stopReason).toBe('end_turn');
+      await waitFor(() => agentText(h.recorded.updates) === 'hello brave new world');
+      expect(h.recorded.updates.length).toBeGreaterThan(1);
+    });
+  });
+
+  it('plays echo when there is no directive', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      await prompt(h, 'just text');
+      await waitFor(() => agentText(h.recorded.updates) === 'just text');
+    });
+  });
+
+  it('uses the default script option for prompts without a directive', async () => {
+    const app = createFakeAgent({ defaultScript: parseScriptSpec('tool-call') });
+    await withSession(app, async (h) => {
+      await prompt(h, 'anything');
+      await waitFor(() => h.recorded.updates.some((u) => u.sessionUpdate === 'tool_call_update'));
+    });
+  });
+
+  it('tool-call emits a tool call and a completed update', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const response = await prompt(h, '#script:tool-call {"title":"Run it","output":"done"}');
+      expect(response.stopReason).toBe('end_turn');
+      await waitFor(() => h.recorded.updates.length === 2);
+      const [call, done] = h.recorded.updates;
+      expect(call).toMatchObject({ sessionUpdate: 'tool_call', title: 'Run it' });
+      expect(done).toMatchObject({
+        sessionUpdate: 'tool_call_update',
+        status: 'completed',
+        rawOutput: 'done',
+      });
+      expect(call && 'toolCallId' in call && call.toolCallId).toBe(
+        done && 'toolCallId' in done && done.toolCallId,
+      );
+    });
+  });
+
+  it('edit-file writes inside the cwd after permission is granted', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const response = await prompt(
+        h,
+        '#script:edit-file {"path":"nested/out.txt","content":"hello\\n"}',
+      );
+      expect(response.stopReason).toBe('end_turn');
+      expect(await readFile(join(cwd, 'nested', 'out.txt'), 'utf8')).toBe('hello\n');
+      expect(h.recorded.permissions).toHaveLength(1);
+      expect(h.recorded.permissions[0]?.toolCall.kind).toBe('edit');
+      await waitFor(() => h.recorded.updates.some((u) => u.sessionUpdate === 'tool_call_update'));
+      const last = h.recorded.updates.at(-1);
+      expect(last).toMatchObject({ sessionUpdate: 'tool_call_update', status: 'completed' });
+    });
+  });
+
+  it('edit-file writes nothing when permission is denied', async () => {
+    await withSession(
+      createFakeAgent(),
+      async (h) => {
+        const response = await prompt(h, '#script:edit-file {"path":"denied.txt"}');
+        expect(response.stopReason).toBe('end_turn');
+        expect(h.recorded.permissions).toHaveLength(1);
+        expect(await exists(join(cwd, 'denied.txt'))).toBe(false);
+        await waitFor(() => h.recorded.updates.at(-1)?.sessionUpdate === 'tool_call_update');
+        expect(h.recorded.updates.at(-1)).toMatchObject({ status: 'failed' });
+      },
+      'reject',
+    );
+  });
+
+  it('edit-file refuses paths outside the cwd without asking for permission', async () => {
+    const outside = join(sandbox, 'outside');
+    await mkdir(outside);
+    await symlink(outside, join(cwd, 'link'));
+    await withSession(createFakeAgent(), async (h) => {
+      for (const path of ['../escape.txt', join(sandbox, 'abs.txt'), 'link/escape.txt']) {
+        h.recorded.updates.length = 0;
+        const response = await prompt(h, `#script:edit-file ${JSON.stringify({ path })}`);
+        expect(response.stopReason).toBe('end_turn');
+        await waitFor(() => h.recorded.updates.length === 1);
+        expect(h.recorded.updates[0]).toMatchObject({
+          sessionUpdate: 'tool_call',
+          status: 'failed',
+        });
+      }
+      expect(h.recorded.permissions).toHaveLength(0);
+      expect(await exists(join(sandbox, 'escape.txt'))).toBe(false);
+      expect(await exists(join(sandbox, 'abs.txt'))).toBe(false);
+      expect(await exists(join(outside, 'escape.txt'))).toBe(false);
+    });
+  });
+
+  it('fail returns a JSON-RPC error', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const error = await rejection(prompt(h, '#script:fail {"message":"boom"}'));
+      expect(error.code).toBe(-32603);
+      expect(error.message).toContain('boom');
+    });
+  });
+
+  it('hang waits for session/cancel and then reports cancelled', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const pending = prompt(h, '#script:hang');
+      await waitFor(() => h.recorded.updates.length > 0);
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+      await new Promise((done) => setTimeout(done, 50));
+      expect(settled).toBe(false);
+      await h.cx.notify(methods.agent.session.cancel, { sessionId: h.sessionId });
+      expect((await pending).stopReason).toBe('cancelled');
+    });
+  });
+
+  it('quota-signal emits the extension notification and then fails with QuotaExhausted', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const error = await rejection(
+        prompt(h, '#script:quota-signal {"resetsAt":"2026-11-16T20:00:00Z"}'),
+      );
+      expect(error.code).toBe(QUOTA_EXHAUSTED_CODE);
+      expect(quotaExhaustedDataSchema.parse(error.data)).toEqual({
+        type: 'QuotaExhausted',
+        resetsAt: '2026-11-16T20:00:00Z',
+      });
+      await waitFor(() => h.recorded.quota.length === 2);
+      expect(h.recorded.quota.map((entry) => entry.signal)).toEqual([
+        { kind: 'window', window: '5h', usedPercent: 100, resetsAt: '2026-11-16T20:00:00Z' },
+        { kind: 'limit_hit', source: 'fake-agent', resetsAt: '2026-11-16T20:00:00Z' },
+      ]);
+      expect(h.recorded.quota.every((entry) => entry.sessionId === h.sessionId)).toBe(true);
+    });
+  });
+
+  it('rejects an invalid script and an unknown session', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      expect((await rejection(prompt(h, '#script:nope'))).code).toBe(-32602);
+      expect((await rejection(prompt(h, '#script:echo {"x":1}'))).code).toBe(-32602);
+      const unknown = h.cx.request(methods.agent.session.prompt, {
+        sessionId: 'missing',
+        prompt: [{ type: 'text', text: 'hi' }],
+      });
+      expect((await rejection(unknown)).code).toBe(-32002);
+    });
+  });
+
+  it('loads a session by id', async () => {
+    const { app, recorded } = recordingClient('allow');
+    await app.connectWith(createFakeAgent(), async (cx) => {
+      await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+      await cx.request(methods.agent.session.load, {
+        sessionId: 'old-session',
+        cwd,
+        mcpServers: [],
+      });
+      const response = await cx.request(methods.agent.session.prompt, {
+        sessionId: 'old-session',
+        prompt: [{ type: 'text', text: 'again' }],
+      });
+      expect(response.stopReason).toBe('end_turn');
+    });
+    expect(agentText(recorded.updates)).toBe('again');
+  });
+
+  it('runs over a pair of byte streams', async () => {
+    const toAgent = new TransformStream<Uint8Array, Uint8Array>();
+    const toClient = new TransformStream<Uint8Array, Uint8Array>();
+    const connection = connectToStreams(createFakeAgent(), toClient.writable, toAgent.readable);
+    await withSession(ndJsonStream(toAgent.writable, toClient.readable), async (h) => {
+      expect((await prompt(h, 'over streams')).stopReason).toBe('end_turn');
+      await waitFor(() => agentText(h.recorded.updates) === 'over streams');
+    });
+    connection.close();
+    await connection.closed;
+  });
+});
+
+describe('fake-agent binary over stdio', () => {
+  const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
+
+  async function withProcess<T>(
+    env: Record<string, string>,
+    fn: (h: Harness) => Promise<T>,
+  ): Promise<T> {
+    if (!existsSync(cli)) throw new Error('dist/cli.js not found: run `pnpm build` first');
+    const child = spawn(process.execPath, [cli], {
+      cwd,
+      env: { ...process.env, ...env },
+      stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    const exited = new Promise<void>((done) =>
+      child.once('exit', () => {
+        done();
+      }),
+    );
+    const stream = ndJsonStream(
+      Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
+      Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
+    );
+    try {
+      return await withSession(stream, fn);
+    } finally {
+      child.stdin.end();
+      const timer = setTimeout(() => {
+        child.kill();
+      }, 2000);
+      await exited;
+      clearTimeout(timer);
+    }
+  }
+
+  it('plays echo and edit-file through a subprocess', async () => {
+    await withProcess({}, async (h) => {
+      expect((await prompt(h, 'via stdio')).stopReason).toBe('end_turn');
+      await waitFor(() => agentText(h.recorded.updates) === 'via stdio');
+      const edit = await prompt(h, '#script:edit-file {"path":"cli.txt","content":"from cli"}');
+      expect(edit.stopReason).toBe('end_turn');
+      expect(await readFile(join(cwd, 'cli.txt'), 'utf8')).toBe('from cli');
+    });
+  });
+
+  it('takes the default script from FAKE_AGENT_SCRIPT', async () => {
+    await withProcess({ FAKE_AGENT_SCRIPT: 'fail {"message":"env failure"}' }, async (h) => {
+      const error = await rejection(prompt(h, 'anything'));
+      expect(error.message).toContain('env failure');
+    });
+  });
+
+  it('exits with an error for an invalid FAKE_AGENT_SCRIPT', async () => {
+    if (!existsSync(cli)) throw new Error('dist/cli.js not found: run `pnpm build` first');
+    const child = spawn(process.execPath, [cli], {
+      env: { ...process.env, FAKE_AGENT_SCRIPT: 'nope' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    const code = await new Promise<number | null>((done) => child.once('exit', done));
+    expect(code).toBe(1);
+    expect(stderr).toContain('invalid script');
+  });
+});
