@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+import type {
+  ClientAdapter,
+  Clock,
+  ProcessLauncher,
+  SessionTransport,
+  Store,
+  Vcs,
+} from '@otheater/core';
+import type { Logger } from '../logger.js';
+import { AttemptRunner } from './attempt-runner.js';
+import { SessionPool } from './pool.js';
+import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
+import type { ExecutionSettings } from './settings.js';
+
+export interface ExecutionOptions {
+  readonly clients: readonly ClientAdapter[];
+  readonly launcher: ProcessLauncher;
+  readonly transport: (adapter: ClientAdapter) => SessionTransport;
+  readonly store: Store;
+  readonly vcs: Vcs;
+  readonly clock: Clock;
+  readonly settings: ExecutionSettings;
+  readonly worktreeRoot: string;
+  readonly logger: Logger;
+  /** Who knows the roles: lets the reconciliation resume attempts it did not start. */
+  readonly resolver?: AttemptResolver;
+}
+
+/**
+ * The execution of attempts in the daemon: the session pool, the runner of attempts and the
+ * reconciliation at start. The daemon builds it when it has a process launcher and clients.
+ */
+export class Execution {
+  readonly pool: SessionPool;
+  readonly runner: AttemptRunner;
+  readonly #options: ExecutionOptions;
+  #reconciled: ReconcileReport | undefined;
+
+  constructor(options: ExecutionOptions) {
+    this.#options = options;
+    this.pool = new SessionPool({
+      clients: options.clients,
+      launcher: options.launcher,
+      transport: options.transport,
+      clock: options.clock,
+      settings: options.settings.pool,
+    });
+    this.runner = new AttemptRunner({
+      store: options.store,
+      vcs: options.vcs,
+      pool: this.pool,
+      clock: options.clock,
+      settings: options.settings,
+      worktreeRoot: options.worktreeRoot,
+      logger: options.logger,
+    });
+  }
+
+  /** Resumes what the previous daemon left running. Call once, before taking new attempts. */
+  async reconcile(): Promise<ReconcileReport> {
+    this.#reconciled = await reconcileAttempts({
+      store: this.#options.store,
+      runner: this.runner,
+      resolver: this.#options.resolver,
+      logger: this.#options.logger,
+    });
+    return this.#reconciled;
+  }
+
+  /** Stops the attempts the way a restart does, then ends every adapter process. */
+  async stop(): Promise<void> {
+    await this.runner.stop();
+    await this.#reconciled?.done;
+    await this.pool.shutdown();
+  }
+}

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   AdapterUnavailable,
   attemptBranch,
+  attemptInputOf,
   Cancelled,
   hasErrorCode,
   type AttemptRecord,
@@ -222,21 +223,9 @@ export class AttemptRunner {
   async resume(record: AttemptRecord, resolved: ResumeContext): Promise<AttemptOutcome> {
     this.#assertOpen();
     const input: AttemptRecordInput = {
-      attemptId: record.attemptId,
-      playId: record.playId,
-      demandId: record.demandId,
-      attempt: record.attempt,
-      client: record.client,
-      profile: record.profile,
+      ...attemptInputOf(record),
       state: 'resuming',
       cause: 'daemon_restart',
-      sessionId: record.sessionId,
-      worktree: record.worktree,
-      branch: record.branch,
-      lastCheckpoint: record.lastCheckpoint,
-      lastCheckpointAt: record.lastCheckpointAt,
-      lastEventAt: record.lastEventAt,
-      resumes: record.resumes,
     };
     const context = this.#context(input, { ...resolved, ...ids(record) }, '');
     const missing = await this.#missingToResume(record);

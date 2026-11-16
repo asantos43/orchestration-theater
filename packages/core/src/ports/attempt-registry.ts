@@ -64,6 +64,27 @@ export type AttemptRecord = z.infer<typeof AttemptRecordSchema>;
 /** What a caller writes: the registry stamps `createdAt` and `updatedAt` itself. */
 export type AttemptRecordInput = Omit<AttemptRecord, 'createdAt' | 'updatedAt'>;
 
+/** A stored record as the input of the next `put` (without the stamps the registry owns). */
+export function attemptInputOf(record: AttemptRecord): AttemptRecordInput {
+  return {
+    attemptId: record.attemptId,
+    playId: record.playId,
+    demandId: record.demandId,
+    attempt: record.attempt,
+    client: record.client,
+    profile: record.profile,
+    state: record.state,
+    cause: record.cause,
+    sessionId: record.sessionId,
+    worktree: record.worktree,
+    branch: record.branch,
+    lastCheckpoint: record.lastCheckpoint,
+    lastCheckpointAt: record.lastCheckpointAt,
+    lastEventAt: record.lastEventAt,
+    resumes: record.resumes,
+  };
+}
+
 export interface AttemptListFilter {
   /** Only attempts in one of these states. Omitted means all. */
   readonly states?: readonly AttemptState[];
