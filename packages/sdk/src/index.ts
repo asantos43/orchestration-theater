@@ -21,3 +21,5 @@ export {
   describeSecretVaultConformance,
   type SecretVaultHarness,
 } from './conformance/secret-vault.js';
+// Vcs
+export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
