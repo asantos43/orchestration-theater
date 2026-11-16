@@ -135,9 +135,9 @@
   "headers": {
     "ownLicense": "MPL-2.0",
     "headerLines": 5,
-    "extensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"],
+    "extensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".rs"],
     "excludedPrefixes": ["spikes/", "docs/"],
-    "excludedDirectories": ["node_modules", "dist", "dist-test"]
+    "excludedDirectories": ["node_modules", "dist", "dist-test", "target"]
   },
   "credentials": {
     "excludedPrefixes": ["spikes/", "docs/"]

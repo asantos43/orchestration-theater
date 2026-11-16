@@ -1,0 +1,28 @@
+[package]
+name = "ot-job-launcher"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Starts one Executor inside a Windows Job Object (OTheater, architecture 5.9)"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+name = "ot_job_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ot-job-launcher"
+path = "src/main.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Console",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
+[lints.rust]
+unsafe_code = "deny"
