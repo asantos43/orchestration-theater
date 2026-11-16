@@ -21,3 +21,8 @@ export {
   describeSecretVaultConformance,
   type SecretVaultHarness,
 } from './conformance/secret-vault.js';
+// ProcessLauncher
+export {
+  describeProcessLauncherConformance,
+  type ProcessLauncherHarness,
+} from './conformance/process-launcher.js';
