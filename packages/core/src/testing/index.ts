@@ -7,3 +7,6 @@ export * from './fake-clock.js';
 export * from './in-memory-event-log.js';
 export * from './in-memory-secret-vault.js';
 export * from './in-memory-store.js';
+export * from './fake-process-launcher.js';
+export * from './fake-session-transport.js';
+export * from './fake-client-adapter.js';
