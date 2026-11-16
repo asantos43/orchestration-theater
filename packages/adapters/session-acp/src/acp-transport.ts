@@ -13,6 +13,7 @@ import {
 } from '@agentclientprotocol/sdk';
 import {
   AdapterUnavailable,
+  Conflict,
   InvalidInput,
   isOTheaterError,
   ManagedAgentSession,
@@ -23,6 +24,7 @@ import {
   type OTheaterError,
   type PermissionRequest,
   type SessionDriver,
+  type SessionExtensionHandler,
   type SessionLoadParams,
   type SessionOpenParams,
   type SessionTransport,
@@ -47,12 +49,37 @@ export interface AcpTransportOptions {
   /** Wait after `session/cancel` before the process tree is killed anyway. See `ManagedSessionOptions`. */
   readonly cancelGraceMs?: number;
   readonly killGraceMs?: number;
+  /**
+   * How long the connection of a process lives, when several sessions share it. `last_session`
+   * (default): the connection closes when the last session of the process disconnects; closing it
+   * stops the reading of the client's output for good, so a process that stays alive cannot serve
+   * another session through this transport (a new open on it rejects with `AdapterUnavailable`).
+   * `process`: the connection stays until the process ends, for a pool that keeps an idle process
+   * for the next session.
+   * [proposta] One session per process behaves the same in both modes.
+   */
+  readonly connectionLifetime?: ConnectionLifetime;
   readonly onWarning?: (warning: AcpTransportWarning) => void;
 }
 
+/** See {@link AcpTransportOptions.connectionLifetime}. */
+export type ConnectionLifetime = 'last_session' | 'process';
+
 /** Something the transport noticed and did not fail on. */
 export type AcpTransportWarning =
-  SessionWarning | { readonly kind: 'permission_handler_threw'; readonly error: unknown };
+  | SessionWarning
+  | { readonly kind: 'permission_handler_threw'; readonly error: unknown }
+  | { readonly kind: 'extension_handler_threw'; readonly method: string; readonly error: unknown }
+  /**
+   * A `session/update` or `session/request_permission` named a session this connection never had
+   * (not one it has closed, and not while a `session/new` is still answering). The message is
+   * dropped, and a permission request is answered `cancelled`. [proposta]
+   */
+  | {
+      readonly kind: 'unknown_session';
+      readonly method: string;
+      readonly sessionId: string;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -105,21 +132,94 @@ function acpContentOf(block: ContentBlock): AcpContentBlock {
 
 const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
 
-/** What one connection needs to know once the session exists, and what it needs before. */
+/** A session of the connection: where its messages go and what it answers. */
 interface Route {
-  /** Known up front for `session/load`, learnt from the answer for `session/new`. */
-  sessionId: string | undefined;
   /** Set once the session exists; updates before that (a `session/load` replays history) are dropped. */
   deliver: ((raw: unknown) => void) | undefined;
+  readonly onPermission: SessionOpenParams['onPermission'];
+  readonly extensions: ReadonlyMap<string, SessionExtensionHandler>;
+  /** The open gave up (timeout, error): whatever the client still says about it is not delivered. */
+  abandoned: boolean;
+}
+
+/** What `initialize` told, reduced to what the sessions of the connection need. */
+interface Initialized {
+  readonly canLoad: boolean;
+  readonly mcpHttp: boolean | null | undefined;
+}
+
+/** How many closed session ids a connection remembers, to tell a late message from a stray one. */
+const REMEMBERED_CLOSED = 256;
+
+/**
+ * One connection to one client process, shared by every session on it. It owns the route table
+ * (`sessionId` to session), counts the sessions that hold it and closes the connection when the
+ * last one lets go (or never, in `process` lifetime). A process is recognised by its `stdin`.
+ */
+class SharedConnection {
+  connection!: ClientConnection;
+  readonly routes = new Map<string, Route>();
+  /** Ids of sessions that left, in order; their late messages are dropped without a warning. */
+  readonly #closed = new Set<string>();
+  /** Sessions that hold the connection: starting, or open and not yet disconnected. */
+  #refs = 0;
+  /** `session/new` requests in flight: an update for an id not yet routed is expected, not stray. */
+  starting = 0;
+  initialized: Promise<Initialized> | undefined;
+  readonly #lifetime: ConnectionLifetime;
+  readonly #onGone: () => void;
+
+  constructor(lifetime: ConnectionLifetime, onGone: () => void) {
+    this.#lifetime = lifetime;
+    this.#onGone = onGone;
+  }
+
+  retain(): void {
+    this.#refs += 1;
+  }
+
+  /** A session lets go: its route goes, and the connection closes if it was the last one. */
+  release(sessionId: string | undefined, route: Route): void {
+    if (route.abandoned) return;
+    route.abandoned = true;
+    if (sessionId !== undefined) this.forget(sessionId);
+    this.#refs -= 1;
+    if (this.#refs <= 0 && this.#lifetime === 'last_session') this.close();
+  }
+
+  forget(sessionId: string): void {
+    this.routes.delete(sessionId);
+    this.#closed.add(sessionId);
+    if (this.#closed.size > REMEMBERED_CLOSED) {
+      const oldest = this.#closed.values().next();
+      if (oldest.done !== true) this.#closed.delete(oldest.value);
+    }
+  }
+
+  wasClosed(sessionId: string): boolean {
+    return this.#closed.has(sessionId);
+  }
+
+  close(): void {
+    this.#onGone();
+    this.connection.close();
+  }
 }
 
 class AcpDriver implements SessionDriver {
-  readonly #connection: ClientConnection;
+  readonly #shared: SharedConnection;
+  readonly #route: Route;
   readonly #sessionId: string;
+  #released = false;
 
-  constructor(connection: ClientConnection, sessionId: string) {
-    this.#connection = connection;
+  constructor(shared: SharedConnection, route: Route, sessionId: string) {
+    this.#shared = shared;
+    this.#route = route;
     this.#sessionId = sessionId;
+  }
+
+  get #connection(): ClientConnection {
+    return this.#shared.connection;
   }
 
   async runTurn(blocks: readonly ContentBlock[]): Promise<StopReason> {
@@ -162,8 +262,11 @@ class AcpDriver implements SessionDriver {
     }
   }
 
+  /** Lets go of the connection; it closes only when no other session of the process holds it. Idempotent. */
   disconnect(): void {
-    this.#connection.close();
+    if (this.#released) return;
+    this.#released = true;
+    this.#shared.release(this.#sessionId, this.#route);
   }
 
   /** A closed connection is a client that is gone; an answer of the client goes up as it came, for the normalizer. */
@@ -178,12 +281,13 @@ class AcpDriver implements SessionDriver {
 
 /**
  * ACP over the standard streams of the client process: the `SessionTransport` with `id: 'acp'`
- * (architecture 5.2, "Casca de agente"). One connection per process, one session per connection.
+ * (architecture 5.2, "Casca de agente"). One connection per process, shared by the sessions on it.
  *
  * What it does, in order, for `open` and `load`:
- * 1. `initialize`, offering NO `fs` and NO `terminal` capability: the client does its own file work
- *    and runs its own shell, and the daemon answers neither (architecture 5.8, layers 1 and 3 hold
- *    the line, not a delegated tool). Any `fs/*` or `terminal/*` request gets `method not found`.
+ * 1. `initialize` (once per connection), offering NO `fs` and NO `terminal` capability: the client
+ *    does its own file work and runs its own shell, and the daemon answers neither (architecture
+ *    5.8, layers 1 and 3 hold the line, not a delegated tool). Any `fs/*` or `terminal/*` request
+ *    gets `method not found`.
  * 2. `session/new` with the worktree, the HTTP MCP servers and the `_meta` of the setup, or
  *    `session/load` when the client announced `loadSession`.
  * 3. `session/set_config_option` for each config option of the setup.
@@ -194,12 +298,25 @@ class AcpDriver implements SessionDriver {
  * `session/cancel` and, after a short grace period, ends the process tree. The contract of the
  * `AgentSession` itself lives in `ManagedAgentSession`, shared with every process-based transport.
  *
+ * Several sessions on one process (`processModel: 'multi-session'`): the transport recognises the
+ * process by its `stdin` stream object, so every session of a process must be opened with a
+ * `LaunchedProcess` that exposes the same streams (the lease views of `SharedProcessRegistry` and
+ * of the daemon pool do). `initialize` runs once; `session/update`, `session/request_permission`
+ * and the `_otheater/*` requests are routed by the `sessionId` they carry, each to its own
+ * session. [proposta] A message for a session this connection does not have is dropped (a
+ * permission request is answered `cancelled`) and reported once through `onWarning` as
+ * `unknown_session`; a late message of a session that already left is dropped without a warning.
+ * `disconnect()` of a session closes the connection only when it was the last one, unless
+ * `connectionLifetime` is `process`.
+ *
  * The transport never reads the environment and never starts a process: the `LaunchedProcess`
  * arrives already running, started by the `ClientAdapter` through the `ProcessLauncher`.
  */
 export class AcpTransport implements SessionTransport {
   readonly id = 'acp';
   readonly #options: AcpTransportOptions;
+  /** One connection per client process, found by the process's input stream. */
+  readonly #connections = new WeakMap<WritableStream<Uint8Array>, SharedConnection>();
 
   constructor(options: AcpTransportOptions = {}) {
     this.#options = options;
@@ -224,36 +341,67 @@ export class AcpTransport implements SessionTransport {
     if (meta !== undefined && !isRecord(meta)) {
       throw new InvalidInput('the _meta of the session setup must be an object');
     }
-    drain(params.process.stderr);
-    const route: Route = { sessionId: loadId, deliver: undefined };
-    const connection = this.#connect(params, route);
+    const shared = this.#sharedFor(params);
+    const route: Route = {
+      deliver: undefined,
+      onPermission: params.onPermission,
+      extensions: new Map((params.extensions ?? []).map((handler) => [handler.method, handler])),
+      abandoned: false,
+    };
+    shared.retain();
+    // The id the route is known by, once it is registered: only then does a failure have to forget it.
+    const known: { sessionId: string | undefined } = { sessionId: undefined };
     const timeout = timeoutAfter(
       this.#options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS,
       'the client did not finish starting the session in time',
     );
     try {
-      const session = await Promise.race([
-        this.#handshake(connection, params, route, loadId, meta, configOptions),
+      return await Promise.race([
+        this.#handshake(shared, params, route, known, loadId, meta, configOptions),
         timeout.promise,
       ]);
-      return session;
     } catch (error) {
-      connection.close();
-      throw this.#typedStartError(error, connection, params, loadId !== undefined);
+      shared.release(known.sessionId, route);
+      throw this.#typedStartError(error, shared.connection, params, loadId !== undefined);
     } finally {
       timeout.stop();
     }
   }
 
-  #connect(params: SessionOpenParams, route: Route): ClientConnection {
+  /** The connection of this process, created on its first session. */
+  #sharedFor(params: SessionOpenParams): SharedConnection {
+    const key = params.process.stdin;
+    const existing = this.#connections.get(key);
+    if (existing !== undefined && !existing.connection.signal.aborted) return existing;
+    drain(params.process.stderr);
+    const shared = new SharedConnection(this.#options.connectionLifetime ?? 'last_session', () => {
+      if (this.#connections.get(key) === shared) this.#connections.delete(key);
+    });
+    shared.connection = this.#connect(shared, params);
+    this.#connections.set(key, shared);
+    void shared.connection.closed.then(() => {
+      if (this.#connections.get(key) === shared) this.#connections.delete(key);
+    });
+    return shared;
+  }
+
+  #connect(shared: SharedConnection, params: SessionOpenParams): ClientConnection {
     const options = this.#options;
+    /** The route of a message, or `undefined` after saying (once, and only if it is stray) why not. */
+    const routeOf = (method: string, sessionId: string): Route | undefined => {
+      const route = shared.routes.get(sessionId);
+      if (route !== undefined) return route;
+      if (!shared.wasClosed(sessionId) && shared.starting === 0) {
+        options.onWarning?.({ kind: 'unknown_session', method, sessionId });
+      }
+      return undefined;
+    };
     const app = client({ name: options.clientName ?? 'otheater' })
       .onRequest(methods.client.session.requestPermission, ({ params: request }) => {
-        if (route.sessionId !== undefined && request.sessionId !== route.sessionId) {
-          return CANCELLED;
-        }
+        const route = routeOf(methods.client.session.requestPermission, request.sessionId);
+        if (route === undefined) return CANCELLED;
         try {
-          const answer = params.onPermission(permissionRequestOf(request));
+          const answer = route.onPermission(permissionRequestOf(request));
           return answer.outcome === 'selected'
             ? { outcome: { outcome: 'selected' as const, optionId: answer.optionId } }
             : CANCELLED;
@@ -264,56 +412,100 @@ export class AcpTransport implements SessionTransport {
         }
       })
       .onNotification(methods.client.session.update, ({ params: notification }) => {
-        if (route.sessionId !== undefined && notification.sessionId !== route.sessionId) return;
-        route.deliver?.(notification.update);
+        routeOf(methods.client.session.update, notification.sessionId)?.deliver?.(
+          notification.update,
+        );
+      })
+      // `_otheater/*` is the only extension space the shell answers; the request names the session.
+      .onRequest('*', async ({ method, params: request }) => {
+        const sessionId =
+          isRecord(request) && typeof request.sessionId === 'string'
+            ? request.sessionId
+            : undefined;
+        const handler =
+          sessionId === undefined
+            ? undefined
+            : shared.routes.get(sessionId)?.extensions.get(method);
+        if (handler === undefined) throw RequestError.methodNotFound(method);
+        try {
+          return (await handler.handle(request)) ?? null;
+        } catch (error) {
+          if (error instanceof RequestError) throw error;
+          options.onWarning?.({ kind: 'extension_handler_threw', method, error });
+          throw RequestError.internalError(undefined, 'the extension handler failed');
+        }
       });
     return app.connect(ndJsonStream(params.process.stdin, params.process.stdout));
   }
 
+  /** `initialize` once per connection; the sessions after the first reuse the answer. */
+  #initialize(shared: SharedConnection): Promise<Initialized> {
+    const options = this.#options;
+    shared.initialized ??= shared.connection.agent
+      .request(methods.agent.initialize, {
+        protocolVersion: PROTOCOL_VERSION,
+        // Explicitly nothing: no file system and no terminal for the client to call back into.
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientInfo: {
+          name: options.clientName ?? 'otheater',
+          version: options.clientVersion ?? '0.0.0',
+        },
+      })
+      .then((initialized) => {
+        if (initialized.protocolVersion !== PROTOCOL_VERSION) {
+          throw new AdapterUnavailable(
+            `the client speaks ACP version ${String(initialized.protocolVersion)}, this transport speaks ${String(PROTOCOL_VERSION)}`,
+          );
+        }
+        return {
+          canLoad: initialized.agentCapabilities?.loadSession === true,
+          mcpHttp: initialized.agentCapabilities?.mcpCapabilities?.http,
+        };
+      })
+      .catch((error: unknown) => {
+        // A failed `initialize` is not kept: the next session asks again.
+        shared.initialized = undefined;
+        throw error;
+      });
+    return shared.initialized;
+  }
+
   async #handshake(
-    connection: ClientConnection,
+    shared: SharedConnection,
     params: SessionOpenParams,
     route: Route,
+    known: { sessionId: string | undefined },
     loadId: string | undefined,
     meta: unknown,
     configOptions: Readonly<Record<string, string>>,
   ): Promise<ManagedAgentSession> {
     const options = this.#options;
-    const initialized = await connection.agent.request(methods.agent.initialize, {
-      protocolVersion: PROTOCOL_VERSION,
-      // Explicitly nothing: no file system and no terminal for the client to call back into.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-      clientInfo: {
-        name: options.clientName ?? 'otheater',
-        version: options.clientVersion ?? '0.0.0',
-      },
-    });
-    if (initialized.protocolVersion !== PROTOCOL_VERSION) {
-      throw new AdapterUnavailable(
-        `the client speaks ACP version ${String(initialized.protocolVersion)}, this transport speaks ${String(PROTOCOL_VERSION)}`,
-      );
-    }
-    const canLoad = initialized.agentCapabilities?.loadSession === true;
-    const mcpServers = this.#mcpServers(
-      params,
-      initialized.agentCapabilities?.mcpCapabilities?.http,
-    );
+    const { connection } = shared;
+    const { canLoad, mcpHttp } = await this.#initialize(shared);
+    const mcpServers = this.#mcpServers(params, mcpHttp);
     const metaField = meta === undefined ? {} : { _meta: meta as Record<string, unknown> };
 
     let sessionId: string;
     if (loadId === undefined) {
-      const created = await connection.agent.request(methods.agent.session.new, {
-        cwd: params.cwd,
-        mcpServers,
-        ...metaField,
-      });
+      shared.starting += 1;
+      let created: { sessionId: string };
+      try {
+        created = await connection.agent.request(methods.agent.session.new, {
+          cwd: params.cwd,
+          mcpServers,
+          ...metaField,
+        });
+      } finally {
+        shared.starting -= 1;
+      }
       sessionId = created.sessionId;
-      route.sessionId = sessionId;
+      this.#register(shared, route, known, sessionId);
     } else {
       if (!canLoad) {
         throw new AdapterUnavailable('the client did not announce loadSession');
       }
       sessionId = loadId;
+      this.#register(shared, route, known, sessionId);
       await connection.agent.request(methods.agent.session.load, {
         sessionId,
         cwd: params.cwd,
@@ -325,7 +517,7 @@ export class AcpTransport implements SessionTransport {
     const session = new ManagedAgentSession({
       sessionId,
       canLoad,
-      driver: new AcpDriver(connection, sessionId),
+      driver: new AcpDriver(shared, route, sessionId),
       process: params.process,
       normalizer: params.normalizer,
       ...(options.cancelGraceMs === undefined ? {} : { cancelGraceMs: options.cancelGraceMs }),
@@ -339,11 +531,27 @@ export class AcpTransport implements SessionTransport {
         value,
       });
     }
+    if (route.abandoned) throw new AdapterUnavailable('the session start was given up');
     // From here on the updates reach the session (and, through it, the listeners).
     route.deliver = (raw) => {
       session.deliver(raw);
     };
     return session;
+  }
+
+  /** Puts the session in the route table; two sessions of one connection never share an id. */
+  #register(
+    shared: SharedConnection,
+    route: Route,
+    known: { sessionId: string | undefined },
+    sessionId: string,
+  ): void {
+    if (route.abandoned) throw new AdapterUnavailable('the session start was given up');
+    if (shared.routes.has(sessionId)) {
+      throw new Conflict(`this connection already serves the session ${sessionId}`);
+    }
+    shared.routes.set(sessionId, route);
+    known.sessionId = sessionId;
   }
 
   /** The HTTP MCP servers of the role, in ACP form; refuses what the client said it cannot take. */

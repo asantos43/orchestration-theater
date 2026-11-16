@@ -47,3 +47,11 @@ export {
   type ClientAdapterHarness,
 } from './conformance/client-adapter.js';
 export { realClientFlags, type ClientConformanceOptions } from './conformance/helpers.js';
+// Real clients: how many sessions one process takes (N57; used by the `*.real.test.ts` files)
+export {
+  describeSessionsReport,
+  probeSessionsPerProcess,
+  realSessionsPerProcess,
+  type SessionsPerProcessProbe,
+  type SessionsPerProcessReport,
+} from './conformance/sessions-per-process.js';

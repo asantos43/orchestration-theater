@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ContentBlock, Profile, RolePolicy } from '@otheater/core';
+import type { ContentBlock, Profile, ProcessModel, RolePolicy } from '@otheater/core';
 import {
   FakeClientAdapter,
   FakeProcessLauncher,
@@ -41,7 +41,7 @@ const prompts = {
   quota: script('quota-signal'),
 };
 
-function build() {
+function build(processModel: ProcessModel = 'process-per-session') {
   const launcher = new FakeProcessLauncher();
   const via = new FakeSessionTransport();
   const adapter = new FakeClientAdapter({
@@ -49,6 +49,7 @@ function build() {
     baseEnv: {},
     adapterVersion: '1.0.0',
     command: { cmd: 'fake-client', args: [] },
+    processModel,
   });
   const alive = (): number => launcher.running.length;
   return { launcher, via, adapter, alive };
@@ -99,6 +100,65 @@ describeClientAdapterConformance('FakeClientAdapter + FakeSessionTransport', () 
       granted: () => via.edits.length > 0,
     },
     processesAlive: alive,
+    unknownSessionId: 'unknown',
+    dispose: async () => {
+      await Promise.all(launcher.running.map((process) => process.killTree()));
+    },
+  };
+  return harness;
+});
+
+describeAgentSessionConformance('FakeSessionTransport, multi-session', async () => {
+  const { adapter, via, launcher, alive } = build('multi-session');
+  let current = await adapter.openSession(profile, policy, '/work', via);
+  const harness: AgentSessionHarness = {
+    get session() {
+      return current;
+    },
+    prompts,
+    processesAlive: alive,
+    rootProcessesAlive: alive,
+    config: {
+      valid: { id: 'model', value: 'fake-model-2' },
+      invalidValue: { id: 'model', value: 'no-such-model' },
+      unknownId: 'no-such-option',
+    },
+    reload: async () => {
+      current = await adapter.loadSession(profile, policy, '/work', current.sessionId, via);
+      return current;
+    },
+    reloadUnknown: () => adapter.loadSession(profile, policy, '/work', 'unknown', via),
+    sibling: () => adapter.openSession(profile, policy, '/work', via),
+    crash: () => {
+      for (const process of launcher.running) process.exit(1, null);
+      return Promise.resolve();
+    },
+    dispose: async () => {
+      await Promise.all(launcher.running.map((process) => process.killTree()));
+    },
+  };
+  return harness;
+});
+
+describeClientAdapterConformance('FakeClientAdapter + FakeSessionTransport, multi-session', () => {
+  const { adapter, via, launcher, alive } = build('multi-session');
+  const harness: ClientAdapterHarness = {
+    adapter,
+    via,
+    profile,
+    policy,
+    cwd: '/work',
+    prompts,
+    permission: {
+      prompt: script('edit-file', '{"path":"out.txt"}'),
+      granted: () => via.edits.length > 0,
+    },
+    processesAlive: alive,
+    rootProcessesAlive: alive,
+    crash: () => {
+      for (const process of launcher.running) process.exit(1, null);
+      return Promise.resolve();
+    },
     unknownSessionId: 'unknown',
     dispose: async () => {
       await Promise.all(launcher.running.map((process) => process.killTree()));

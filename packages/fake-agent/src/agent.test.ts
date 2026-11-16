@@ -331,6 +331,112 @@ describe('fake agent in process', () => {
     expect(agentText(recorded.updates)).toBe('again');
   });
 
+  describe('several sessions in one agent', () => {
+    /** A client that keeps the updates and the permission requests by the session they name. */
+    function bySessionClient() {
+      const updates = new Map<string, string[]>();
+      const permissions: string[] = [];
+      const app = client({ name: 'fake-agent-multi' })
+        .onRequest(methods.client.session.requestPermission, ({ params }) => {
+          permissions.push(params.sessionId);
+          const option = params.options.find((candidate) => candidate.kind === 'allow_once');
+          if (option === undefined) throw new Error('no allow_once option offered');
+          return { outcome: { outcome: 'selected' as const, optionId: option.optionId } };
+        })
+        .onNotification(methods.client.session.update, ({ params }) => {
+          const { update } = params;
+          if (update.sessionUpdate !== 'agent_message_chunk') return;
+          if (update.content.type !== 'text') return;
+          updates.set(params.sessionId, [
+            ...(updates.get(params.sessionId) ?? []),
+            update.content.text,
+          ]);
+        });
+      return { app, updates, permissions };
+    }
+
+    const promptOf = (sessionId: string, text: string) => ({
+      sessionId,
+      prompt: [{ type: 'text' as const, text }],
+    });
+
+    it('keeps the streams apart: each update names the session it belongs to', async () => {
+      const { app, updates } = bySessionClient();
+      await app.connectWith(createFakeAgent(), async (cx) => {
+        await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+        const a = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        const b = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        expect(a.sessionId).not.toBe(b.sessionId);
+        await Promise.all([
+          cx.request(methods.agent.session.prompt, promptOf(a.sessionId, 'alpha alpha')),
+          cx.request(methods.agent.session.prompt, promptOf(b.sessionId, 'beta beta')),
+        ]);
+        expect((updates.get(a.sessionId) ?? []).join('')).toBe('alpha alpha');
+        expect((updates.get(b.sessionId) ?? []).join('')).toBe('beta beta');
+      });
+    });
+
+    it('a session cancelled while another keeps running leaves the other untouched', async () => {
+      const { app, updates } = bySessionClient();
+      await app.connectWith(createFakeAgent(), async (cx) => {
+        await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+        const a = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        const b = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        const hangA: Promise<PromptResponse> = cx.request(
+          methods.agent.session.prompt,
+          promptOf(a.sessionId, '#script:hang\n'),
+        );
+        const hangB: Promise<PromptResponse> = cx.request(
+          methods.agent.session.prompt,
+          promptOf(b.sessionId, '#script:hang\n'),
+        );
+        let bEnded = false;
+        void hangB.then(() => {
+          bEnded = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await cx.notify(methods.agent.session.cancel, { sessionId: a.sessionId });
+        expect((await hangA).stopReason).toBe('cancelled');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(bEnded).toBe(false);
+        // The session that went on still answers, and it is the one that ends next.
+        await cx.notify(methods.agent.session.cancel, { sessionId: b.sessionId });
+        expect((await hangB).stopReason).toBe('cancelled');
+        expect(updates.has(a.sessionId)).toBe(true);
+      });
+    });
+
+    it('a permission request names the session of its turn', async () => {
+      const { app, permissions } = bySessionClient();
+      await app.connectWith(createFakeAgent(), async (cx) => {
+        await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+        const a = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        const b = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        await cx.request(
+          methods.agent.session.prompt,
+          promptOf(b.sessionId, '#script:edit-file {"path":"from-b.txt"}\n'),
+        );
+        expect(permissions).toEqual([b.sessionId]);
+        expect(existsSync(join(cwd, 'from-b.txt'))).toBe(true);
+        expect(a.sessionId).not.toBe(b.sessionId);
+      });
+    });
+
+    it('a failed turn of one session does not end the agent or the other sessions', async () => {
+      const { app, updates } = bySessionClient();
+      await app.connectWith(createFakeAgent(), async (cx) => {
+        await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+        const a = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        const b = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
+        await rejection(
+          cx.request(methods.agent.session.prompt, promptOf(a.sessionId, '#script:fail\n')),
+        );
+        await cx.request(methods.agent.session.prompt, promptOf(b.sessionId, 'still fine'));
+        expect((updates.get(b.sessionId) ?? []).join('')).toBe('still fine');
+      });
+    });
+  });
+
   it('offers the model and mode config options and applies set_config_option', async () => {
     const { app } = recordingClient('allow');
     await app.connectWith(createFakeAgent(), async (cx) => {
