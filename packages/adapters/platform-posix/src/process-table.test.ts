@@ -70,7 +70,9 @@ describe('real process table', () => {
     expect(me?.zombie).toBe(false);
   });
 
-  it('systemProcessTable lists this process', async () => {
+  // Off Linux the table comes from `ps`; on Windows that would be Git for Windows' msys ps, whose
+  // pids are not the Windows pids of process.pid. The posix adapter does not run there.
+  it.skipIf(process.platform === 'win32')('systemProcessTable lists this process', async () => {
     const table = await systemProcessTable()();
     expect(table.has(process.pid)).toBe(true);
   });

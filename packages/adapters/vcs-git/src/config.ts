@@ -18,6 +18,12 @@ export const GitVcsConfigSchema = z.strictObject({
       email: z.string().min(1).default(DEFAULT_GIT_IDENTITY.email),
     })
     .default(DEFAULT_GIT_IDENTITY),
+  /**
+   * Directory under which the empty folder that replaces the user's git configuration (global
+   * config, home, hooks) is created, once per process and removed at exit. Default: the system
+   * temporary directory; the daemon can point it inside its data directory.
+   */
+  isolationRoot: z.string().min(1).optional(),
   /** Copy the files of `.worktreeinclude` into each new worktree. */
   worktreeInclude: z.boolean().default(true),
 });

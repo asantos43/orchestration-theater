@@ -123,4 +123,13 @@ describe('notices', () => {
     expect(hasErrors(checkNotices(expected, `${expected}x`, 'N.md'))).toBe(true);
     expect(hasErrors(checkNotices(expected, expected, 'N.md'))).toBe(false);
   });
+
+  it('--check: only warns about a difference off the generating platform, still fails when missing', () => {
+    const expected = renderNotices([], []);
+    const off = checkNotices(expected, `${expected}x`, 'N.md', 'win32');
+    expect(hasErrors(off)).toBe(false);
+    expect(off.findings.map((f) => f.severity)).toEqual(['warning']);
+    expect(hasErrors(checkNotices(expected, undefined, 'N.md', 'darwin'))).toBe(true);
+    expect(checkNotices(expected, expected, 'N.md', 'win32').findings).toEqual([]);
+  });
 });

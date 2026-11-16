@@ -28,6 +28,7 @@ export {
 } from './conformance/process-launcher.js';
 // Vcs
 export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
+export { disposeTestGitIsolation } from './conformance/git-isolation.js';
 // LocalModelServer
 export {
   describeLocalModelServerConformance,

@@ -2,12 +2,14 @@
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { disposeTestGitIsolation } from './git-isolation.js';
 import { testGit } from './vcs.js';
 
 // The fixture helper of the Vcs suite: it must isolate git from the machine it runs on.
 describe('testGit', () => {
   let dir: string;
+  afterAll(disposeTestGitIsolation);
   beforeEach(async () => {
     dir = await realpath(await mkdtemp(join(tmpdir(), 'otheater-vcs-helper-')));
   });

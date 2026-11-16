@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { tmpdir } from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from '@otheater/core';
 import { describeProcessLauncherConformance } from '@otheater/sdk';
 import { PosixProcessLauncher } from './index.js';
@@ -37,7 +37,8 @@ describe.skipIf(findSystemdRun() === undefined || process.platform !== 'linux')(
   },
 );
 
-describe('resolveExecutable', () => {
+// The PATH search is POSIX-only: it treats only `/` as a path separator.
+describe.skipIf(process.platform === 'win32')('resolveExecutable', () => {
   it('finds a command on the PATH of the requested env, not of this process', () => {
     expect(resolveExecutable('node', { PATH: '/nonexistent' }, '/')).toBeUndefined();
     expect(resolveExecutable(NODE, {}, '/')).toBe(NODE);
@@ -52,7 +53,12 @@ describe('resolveExecutable', () => {
 });
 
 describe.skipIf(!available)('PosixProcessLauncher with memoryLimit systemd-scope', () => {
-  const launcher = new PosixProcessLauncher({ memoryLimit: 'systemd-scope' });
+  // Built in beforeAll: Vitest still runs the body of a skipped describe, and the constructor
+  // throws AdapterUnavailable where there is no systemd-run (Windows, macOS).
+  let launcher: PosixProcessLauncher;
+  beforeAll(() => {
+    launcher = new PosixProcessLauncher({ memoryLimit: 'systemd-scope' });
+  });
 
   const run = async (
     extra: Partial<LaunchOptions>,
