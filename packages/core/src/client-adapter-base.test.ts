@@ -205,12 +205,16 @@ describe('ClientAdapter.openSession', () => {
     expect(launcher.launched).toEqual([]);
   });
 
-  it('refuses a process model it does not implement, before launching anything', async () => {
-    const { adapter, launcher } = setup({ processModel: 'multi-session' });
-    await expect(
-      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
-    ).rejects.toBeInstanceOf(AdapterUnavailable);
-    expect(launcher.launched).toEqual([]);
+  it('gives every session of a process-per-session client its own process', async () => {
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const second = await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched).toHaveLength(2);
+    await first.close();
+    expect(launcher.running).toHaveLength(1);
+    await second.close();
+    expect(launcher.running).toEqual([]);
   });
 
   it('refuses named MCP servers without a resolver and resolves them with one', async () => {
@@ -264,6 +268,223 @@ describe('ClientAdapter security.unenforced', () => {
       },
     });
     await (await adapter.openSession(profile, policy, '/work', new FakeSessionTransport())).close();
+  });
+});
+
+describe('ClientAdapter multi-session', () => {
+  function multi(options: Partial<FakeClientAdapterOptions> = {}) {
+    return setup({ processModel: 'multi-session', ...options });
+  }
+
+  it('puts the sessions of one profile on one process, and ends it when the last one leaves', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work/a', via);
+    const second = await adapter.openSession(profile, policy, '/work/b', via);
+    expect(launcher.launched).toHaveLength(1);
+    expect(via.opened[0]?.process.stdin).toBe(via.opened[1]?.process.stdin);
+    expect(via.opened.map((params) => params.cwd)).toEqual(['/work/a', '/work/b']);
+    await first.close();
+    expect(launcher.running).toHaveLength(1);
+    expect(launcher.launched[0]?.killTreeCalls).toBe(0);
+    await second.close();
+    expect(launcher.running).toEqual([]);
+    expect(launcher.launched[0]?.killTreeCalls).toBe(1);
+  });
+
+  it('cancel of one session does not end the process while another uses it', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const second = await adapter.openSession(profile, policy, '/work', via);
+    await first.cancel();
+    expect(launcher.running).toHaveLength(1);
+    await expect(first.prompt([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(
+      AdapterUnavailable,
+    );
+    const outcome = await second.prompt([{ type: 'text', text: 'still here' }]);
+    expect(outcome.stopReason).toBe('end_turn');
+    await second.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('does not join a process that is already killed, and a new session starts another', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    await (await adapter.openSession(profile, policy, '/work', via)).close();
+    const again = await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched).toHaveLength(2);
+    await again.close();
+  });
+
+  it('starts another process above sessionsPerProcess', async () => {
+    const { adapter, launcher } = multi({ sessionsPerProcess: 2 });
+    const via = new FakeSessionTransport();
+    const sessions = [];
+    for (let i = 0; i < 5; i += 1) {
+      sessions.push(await adapter.openSession(profile, policy, '/work', via));
+    }
+    expect(launcher.launched).toHaveLength(3);
+    for (const session of sessions) await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('shares nothing across profiles, and opens concurrently on one process', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const other: Profile = { ...profile, profile: 'q', id: 'fake/q', dir: '/profiles/fake/q' };
+    const opened = await Promise.all([
+      adapter.openSession(profile, policy, '/work', via),
+      adapter.openSession(profile, policy, '/work', via),
+      adapter.openSession(other, policy, '/work', via),
+    ]);
+    expect(launcher.launched).toHaveLength(2);
+    for (const session of opened) await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('[proposta] does not share a process between two environments (the key includes the env)', async () => {
+    let rules = 'deny';
+    const { adapter, launcher } = multi({ env: () => ({ PERMISSION_RULES: rules }) });
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const sameRules = await adapter.openSession(profile, policy, '/work', via);
+    rules = 'ask';
+    const otherRules = await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched.map((process) => process.options.env.PERMISSION_RULES)).toEqual([
+      'deny',
+      'ask',
+    ]);
+    expect(via.opened[0]?.process.stdin).toBe(via.opened[1]?.process.stdin);
+    expect(via.opened[2]?.process.stdin).not.toBe(via.opened[0]?.process.stdin);
+    for (const session of [first, sameRules, otherRules]) await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('prepares the profile on every open, shared process or not', async () => {
+    const { adapter } = multi();
+    const via = new FakeSessionTransport();
+    await adapter.openSession(profile, policy, '/work', via);
+    await adapter.openSession(profile, policy, '/work', via);
+    expect(adapter.prepared).toHaveLength(2);
+  });
+
+  it('{ process: "own" } and processReuse: "own" start a process for the session alone', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const shared = await adapter.openSession(profile, policy, '/work', via);
+    const own = await adapter.openSession(profile, policy, '/work', via, { process: 'own' });
+    const joined = await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched).toHaveLength(2);
+    expect(via.opened[2]?.process.stdin).toBe(via.opened[0]?.process.stdin);
+    await own.close();
+    expect(launcher.running).toHaveLength(1);
+    await shared.close();
+    await joined.close();
+    expect(launcher.running).toEqual([]);
+
+    const always = multi({ processReuse: 'own' });
+    const a = await always.adapter.openSession(profile, policy, '/work', via);
+    const b = await always.adapter.openSession(profile, policy, '/work', via);
+    expect(always.launcher.launched).toHaveLength(2);
+    const c = await always.adapter.openSession(profile, policy, '/work', via, {
+      process: 'shared',
+    });
+    const d = await always.adapter.openSession(profile, policy, '/work', via, {
+      process: 'shared',
+    });
+    expect(always.launcher.launched).toHaveLength(3);
+    for (const session of [a, b, c, d]) await session.close();
+    expect(always.launcher.running).toEqual([]);
+  });
+
+  it('a process-per-session client ignores { process: "shared" }', async () => {
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    const a = await adapter.openSession(profile, policy, '/work', via, { process: 'shared' });
+    const b = await adapter.openSession(profile, policy, '/work', via, { process: 'shared' });
+    expect(launcher.launched).toHaveLength(2);
+    await a.close();
+    await b.close();
+  });
+
+  it('the death of the process takes every session down with AdapterUnavailable', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const second = await adapter.openSession(profile, policy, '/work', via);
+    const hanging = [first, second].map((session) =>
+      session.prompt([{ type: 'text', text: '#script:hang' }]).catch((error: unknown) => error),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    launcher.launched[0]?.exit(137, 'SIGKILL');
+    const errors = await Promise.all(hanging);
+    for (const error of errors) expect(error).toBeInstanceOf(AdapterUnavailable);
+    for (const session of [first, second]) {
+      await expect(session.prompt([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(
+        AdapterUnavailable,
+      );
+    }
+    // A session opened after the death starts a fresh process.
+    const next = await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched).toHaveLength(2);
+    await next.close();
+  });
+
+  it('a failed open leaves the process to the sessions that use it', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    via.failWith = new AdapterUnavailable('no answer');
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toBe(via.failWith);
+    expect(launcher.running).toHaveLength(1);
+    via.failWith = undefined;
+    await first.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('a failed open on a process of its own ends it, and the launch failure leaves no entry', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    via.failWith = new Error('boom');
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toBeInstanceOf(
+      AdapterUnavailable,
+    );
+    expect(launcher.running).toEqual([]);
+    via.failWith = undefined;
+    launcher.failWith = new Error('ENOENT');
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toBeInstanceOf(
+      AdapterUnavailable,
+    );
+    launcher.failWith = undefined;
+    const ok = await adapter.openSession(profile, policy, '/work', via);
+    await ok.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('loads a conversation on the shared process too', async () => {
+    const { adapter, launcher } = multi();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const again = await adapter.loadSession(profile, policy, '/work', 'fake-session-1', via);
+    expect(launcher.launched).toHaveLength(1);
+    expect(again.sessionId).toBe('fake-session-1');
+    await first.close();
+    await again.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('hands the extension handlers of the client to the transport', async () => {
+    const handler = { method: '_otheater/fake/ping', handle: () => 'pong' };
+    const { adapter } = multi({ extensions: [handler] });
+    const via = new FakeSessionTransport();
+    await (await adapter.openSession(profile, policy, '/work', via)).close();
+    expect(via.opened[0]?.extensions).toEqual([handler]);
+  });
+
+  it('rejects a sessionsPerProcess that is not a positive integer', () => {
+    expect(() => multi({ sessionsPerProcess: 0 })).toThrow(InvalidInput);
+    expect(() => multi({ sessionsPerProcess: 1.5 })).toThrow(InvalidInput);
   });
 });
 

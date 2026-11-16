@@ -41,6 +41,13 @@ export interface ClientAdapterHarness extends Disposable {
   readonly processesAlive: () => number | Promise<number>;
   /** An id the client has no conversation for; `loadSession` must reject with `NotFound`. */
   readonly unknownSessionId?: string;
+  /**
+   * How many client processes (the roots, not their children) are alive. For an adapter that
+   * declares `multi-session` the suite checks that two sessions share one.
+   */
+  readonly rootProcessesAlive?: () => number | Promise<number>;
+  /** Kills every client process the way a crash does (no `close`, no `cancel`). */
+  readonly crash?: () => Promise<void>;
 }
 
 const text = (update: NormalizedUpdate): string =>
@@ -220,6 +227,107 @@ export function describeClientAdapterConformance(
           ),
         ).toMatchObject({ code: 'NOT_FOUND' });
         expect(await h.processesAlive()).toBe(0);
+      });
+
+      describe('multi-session (declared by the adapter)', () => {
+        /** Two sessions of the adapter; skips when the adapter runs one process per session. */
+        const pair = async (ctx: TestContext) => {
+          const h = harness();
+          if (h.adapter.processModel !== 'multi-session') ctx.skip();
+          const a = await h.adapter.openSession(h.profile, h.policy, h.cwd, h.via);
+          const b = await h.adapter.openSession(h.profile, h.policy, h.cwd, h.via);
+          return { h, a, b };
+        };
+
+        it('two sessions share one process and have ids of their own', async (ctx) => {
+          const { h, a, b } = await pair(ctx);
+          expect(b.sessionId).not.toBe(a.sessionId);
+          if (h.rootProcessesAlive !== undefined) expect(await h.rootProcessesAlive()).toBe(1);
+          await a.close();
+          await b.close();
+          expect(await h.processesAlive()).toBe(0);
+        });
+
+        promptTest('each session has a stream of its own', async (ctx) => {
+          const { h, a, b } = await pair(ctx);
+          const seenA: string[] = [];
+          const seenB: string[] = [];
+          a.onUpdate((update) => seenA.push(text(update)));
+          b.onUpdate((update) => seenB.push(text(update)));
+          await Promise.all([
+            a.prompt(h.prompts.echo('only-for-alpha')),
+            b.prompt(h.prompts.echo('only-for-beta')),
+          ]);
+          expect(seenA.join('')).toContain('only-for-alpha');
+          expect(seenA.join('')).not.toContain('only-for-beta');
+          expect(seenB.join('')).toContain('only-for-beta');
+          expect(seenB.join('')).not.toContain('only-for-alpha');
+          await a.close();
+          await b.close();
+          expect(await h.processesAlive()).toBe(0);
+        });
+
+        it('closing one session keeps the process for the other; the last close ends it', async (ctx) => {
+          const { h, a, b } = await pair(ctx);
+          await a.close();
+          if (h.rootProcessesAlive !== undefined) expect(await h.rootProcessesAlive()).toBe(1);
+          if (prompting) {
+            await expect(b.prompt(h.prompts.echo('still here'))).resolves.toMatchObject({
+              stopReason: 'end_turn',
+            });
+          }
+          await b.close();
+          expect(await h.processesAlive()).toBe(0);
+        });
+
+        promptTest('cancel of one session does not touch the other', async (ctx) => {
+          const { h, a, b } = await pair(ctx);
+          const hang = h.prompts.hang;
+          if (hang === undefined) ctx.skip();
+          const runningA = a.prompt(hang ?? []);
+          const runningB = b.prompt(hang ?? []);
+          let otherEnded = false;
+          void runningB.then(
+            () => {
+              otherEnded = true;
+            },
+            () => {
+              otherEnded = true;
+            },
+          );
+          await settle();
+          await a.cancel();
+          await expect(runningA).resolves.toMatchObject({ stopReason: 'cancelled' });
+          await settle();
+          expect(otherEnded).toBe(false);
+          if (h.rootProcessesAlive !== undefined) expect(await h.rootProcessesAlive()).toBe(1);
+          await b.cancel();
+          await expect(runningB).resolves.toMatchObject({ stopReason: 'cancelled' });
+          expect(await h.processesAlive()).toBe(0);
+        });
+
+        promptTest(
+          'the death of the process drops both sessions with a typed error',
+          async (ctx) => {
+            const { h, a, b } = await pair(ctx);
+            const hang = h.prompts.hang;
+            if (hang === undefined || h.crash === undefined) ctx.skip();
+            const ended = (promise: Promise<unknown>): Promise<unknown> =>
+              promise.then(
+                () => undefined,
+                (error: unknown) => error,
+              );
+            const runningA = ended(a.prompt(hang ?? []));
+            const runningB = ended(b.prompt(hang ?? []));
+            await settle();
+            await h.crash?.();
+            expect(await runningA).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+            expect(await runningB).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+            await a.close();
+            await b.close();
+            expect(await h.processesAlive()).toBe(0);
+          },
+        );
       });
 
       promptTest('a permission request of the client is refused by the policy', async (ctx) => {

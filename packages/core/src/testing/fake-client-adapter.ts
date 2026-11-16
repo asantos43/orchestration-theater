@@ -83,8 +83,15 @@ export interface FakeClientAdapterOptions extends ClientAdapterOptions {
   readonly command: { readonly cmd: string; readonly args: readonly string[] };
   /** Default `fake`. */
   readonly id?: string;
-  /** What `profileEnv` adds to the environment. Default: nothing. */
-  readonly env?: Readonly<Record<string, string>>;
+  /**
+   * What `profileEnv` adds to the environment. Default: nothing. A function is asked on every
+   * open, so a test can make the environment depend on something that changes (as OpenCode's
+   * permission rules do).
+   */
+  readonly env?:
+    Readonly<Record<string, string>> | ((profile: Profile) => Readonly<Record<string, string>>);
+  /** What `extensions()` answers. Default: none. */
+  readonly extensions?: readonly AcpExtensionHandler[];
   /** What the client guarantees by itself. Default: `client` for every field. */
   readonly enforcement?: Enforcement;
   /** Probes of this client, besides the common ones. Default: none. */
@@ -218,8 +225,9 @@ export class FakeClientAdapter extends ClientAdapter {
     return { cmd: this.#options.command.cmd, args: [...this.#options.command.args] };
   }
 
-  protected profileEnv(): Record<string, string> {
-    return { ...this.#options.env };
+  protected profileEnv(profile: Profile): Record<string, string> {
+    const env = this.#options.env;
+    return { ...(typeof env === 'function' ? env(profile) : env) };
   }
 
   protected prepareProfile(profile: Profile, policy: RolePolicy): Promise<void> {
@@ -254,7 +262,7 @@ export class FakeClientAdapter extends ClientAdapter {
   }
 
   protected extensions(): AcpExtensionHandler[] {
-    return [];
+    return [...(this.#options.extensions ?? [])];
   }
 
   protected probes(): ConformanceProbe[] {

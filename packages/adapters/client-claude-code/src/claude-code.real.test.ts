@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { NormalizedUpdateSchema, type Profile, type RolePolicy } from '@otheater/core';
-import { realClientFlags } from '@otheater/sdk';
+import {
+  describeSessionsReport,
+  probeSessionsPerProcess,
+  realClientFlags,
+  realSessionsPerProcess,
+} from '@otheater/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_COMMAND } from './claude-code-adapter.js';
 import { readConfigOptions } from './model-catalog.js';
@@ -181,6 +186,35 @@ function sessionNewParams(cwd: string): Json {
     _meta: { claudeCode: { options: acpOptions(policy, 'none') } },
   };
 }
+
+describe.skipIf(!flags.clients)('the real claude-agent-acp: sessions in one process', () => {
+  // K = OT_TEST_SESSIONS_PER_PROCESS (default 4). Only `session/new` and the config options, in an
+  // empty profile: no prompt, nothing billed. The line it logs is the measurement the owner reads
+  // to decide `pool.sessions_per_process` for this client.
+  it('takes K sessions in one process (session/new only)', async () => {
+    const profileDir = join(scratch, 'profile');
+    const profile: Profile = {
+      client: 'claude-code',
+      profile: 'real',
+      id: 'claude-code/real',
+      dir: profileDir,
+    };
+    await writeProfileSettings(profile, policy);
+    const { cmd, args } = command();
+    const report = await probeSessionsPerProcess({
+      cmd,
+      args,
+      cwd: scratch,
+      env: { PATH: process.env.PATH ?? '', HOME: scratch, CLAUDE_CONFIG_DIR: profileDir },
+      sessions: realSessionsPerProcess(),
+      newParams: () => ({ _meta: { claudeCode: { options: acpOptions(policy, 'none') } } }),
+    });
+    console.info(describeSessionsReport('claude-code', report));
+    expect(report.accepted).toBe(report.requested);
+    expect(report.distinctSessionIds).toBe(report.requested);
+    expect(report.processAlive).toBe(true);
+  }, 180_000);
+});
 
 describe.skipIf(!flags.clients)('the real claude-agent-acp (no prompt)', () => {
   it('answers initialize with the capabilities this adapter declares', async () => {

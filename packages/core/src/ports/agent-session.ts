@@ -124,9 +124,32 @@ export type SessionSetup =
       readonly env: Readonly<Record<string, string>>;
     };
 
+/**
+ * A handler of an ACP extension method `_otheater/<resource>` that the shell exposes to the client
+ * (architecture 5.2, "Recursos únicos também viram ACP"). Structurally the same as the
+ * `AcpExtensionHandler` of the `ClientAdapter` base, so what `extensions()` returns goes straight
+ * into {@link SessionOpenParams.extensions}. [proposta] Defined here because the port is where the
+ * transport reads it.
+ */
+export interface SessionExtensionHandler {
+  /** Method name, `_otheater/<resource>` or `_otheater/<client>/<resource>`. */
+  readonly method: string;
+  /** Answers the request; may return a promise. */
+  handle(params: unknown): unknown;
+}
+
 /** What a transport receives to open or load a session. */
 export interface SessionOpenParams {
-  /** The client process, already started by the launcher; the transport speaks to its streams. */
+  /**
+   * The client process, already started by the launcher; the transport speaks to its streams.
+   *
+   * [proposta] Several sessions on one process (`processModel: 'multi-session'`): the caller hands
+   * every session of that process the SAME stream objects (`stdin`, `stdout`), usually through a
+   * view of the process whose `killTree` only detaches the session (see `SharedProcessRegistry`).
+   * A transport that can serve several sessions on one connection recognises the process by its
+   * streams, shares the connection and routes by `sessionId`. A transport that cannot rejects the
+   * second `open` on a process it already serves; the one-session-per-process path is unchanged.
+   */
   readonly process: LaunchedProcess;
   /** Absolute path of the worktree. */
   readonly cwd: string;
@@ -135,6 +158,14 @@ export interface SessionOpenParams {
   readonly normalizer: SessionNormalizer;
   /** Layer 2 of the permissions (architecture 5.8): answers every `session/request_permission`. */
   readonly onPermission: (request: PermissionRequest) => PermissionAnswer;
+  /**
+   * Additive: the `_otheater/*` extension methods this session answers (`extensions()` of the
+   * client adapter). A request of the client for such a method carries the `sessionId` it comes
+   * from and goes to the handlers of that session only; with several sessions on one connection
+   * each one keeps its own handlers. Absent means none: every extension request is refused with
+   * `method not found`.
+   */
+  readonly extensions?: readonly SessionExtensionHandler[];
 }
 
 export interface SessionLoadParams extends SessionOpenParams {

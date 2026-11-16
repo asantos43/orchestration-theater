@@ -41,6 +41,11 @@ import type { ExecutorConfig, Profile } from './ports/executor.js';
 import type { ModelCatalog } from './ports/model-catalog.js';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from './ports/process-launcher.js';
 import type { QuotaProbe } from './ports/quota-probe.js';
+import {
+  DEFAULT_SESSIONS_PER_PROCESS,
+  SharedProcessRegistry,
+  sharedProcessKey,
+} from './shared-process.js';
 
 /** Id of a {@link SessionTransport}: what the descendant sees where the architecture writes `SessionTransport`. */
 export type TransportId = SessionTransport['id'];
@@ -107,6 +112,22 @@ export type ClientAdapterWarning =
       readonly error: unknown;
     };
 
+/** `multi-session` reuse: `shared` puts sessions of one profile on one process, `own` gives each its own. */
+export type ProcessReuse = 'shared' | 'own';
+
+/**
+ * What a caller can ask of one `openSession`/`loadSession`. [proposta] Additive: the port signature
+ * has no fifth parameter, and a call without it behaves as before.
+ */
+export interface SessionStartOptions {
+  /**
+   * `own` starts a process for this session alone, even when the client is `multi-session` and a
+   * shared one has room. `shared` (the default of {@link ClientAdapterOptions.processReuse}) joins
+   * one. Ignored for a `process-per-session` client, which always gets its own.
+   */
+  readonly process?: ProcessReuse;
+}
+
 /** Everything the base needs from the outside; the core reads no environment and no file (rule `core-only-zod`). */
 export interface ClientAdapterOptions {
   /** Starts the client process (architecture 5.9). */
@@ -136,6 +157,18 @@ export interface ClientAdapterOptions {
    */
   readonly resolveMcpServers?: (names: readonly string[]) => readonly McpServerRef[];
   readonly onWarning?: (warning: ClientAdapterWarning) => void;
+  /**
+   * `multi-session` clients, when no pool above the adapter owns the processes: how many sessions
+   * one process serves before another one starts. Default {@link DEFAULT_SESSIONS_PER_PROCESS}
+   * (4). [proposta] A positive integer; `1` is the same as `processReuse: 'own'`.
+   */
+  readonly sessionsPerProcess?: number;
+  /**
+   * `shared` (default): the base puts the sessions of a `multi-session` client on one process per
+   * profile and environment, up to `sessionsPerProcess`. `own`: one process per session, as for a
+   * `process-per-session` client. [proposta] A per-call {@link SessionStartOptions.process} wins.
+   */
+  readonly processReuse?: ProcessReuse;
 }
 
 const DEFAULT_MIN_LAYERS: MinLayers = { default: 1 };
@@ -188,6 +221,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   readonly #commonProbes: readonly ConformanceProbe[];
   readonly #resolveMcpServers: ((names: readonly string[]) => readonly McpServerRef[]) | undefined;
   readonly #onWarning: ((warning: ClientAdapterWarning) => void) | undefined;
+  readonly #processReuse: ProcessReuse;
+  readonly #shared: SharedProcessRegistry;
   /** `every_start` and in-flight runs: one run per adapter instance. */
   #running: Promise<ConformanceReport> | undefined;
   #startReport: ConformanceReport | undefined;
@@ -204,6 +239,11 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     this.#commonProbes = options.commonProbes ?? [];
     this.#resolveMcpServers = options.resolveMcpServers;
     this.#onWarning = options.onWarning;
+    this.#processReuse = options.processReuse ?? 'shared';
+    this.#shared = new SharedProcessRegistry(
+      options.launcher,
+      options.sessionsPerProcess ?? DEFAULT_SESSIONS_PER_PROCESS,
+    );
   }
 
   // ---- common, written once ----
@@ -213,14 +253,21 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * layers (`security.unenforced: refuse`), write the profile files, launch the process with the
    * environment the base built, hand it to the transport. If the transport fails, the whole
    * process tree is ended before the error goes up, so a failed open leaves nothing running.
+   *
+   * `process-per-session` clients get a process of their own. `multi-session` clients share one
+   * process per profile and environment, up to `sessionsPerProcess` sessions, and another process
+   * starts above that or when the caller passes `{ process: 'own' }`. A session that leaves does
+   * not end a process others still use; the last one out ends the tree. The sessions of a shared
+   * process all fail with `AdapterUnavailable` when it dies. [proposta]
    */
   openSession(
     profile: Profile,
     policy: RolePolicy,
     cwd: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession> {
-    return this.#start(profile, policy, cwd, via, undefined);
+    return this.#start(profile, policy, cwd, via, undefined, options);
   }
 
   /** Same as {@link openSession} for an existing conversation (`session/load`). */
@@ -230,6 +277,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     cwd: string,
     sessionId: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession> {
     if (!this.capabilities.loadSession) {
       return Promise.reject(
@@ -238,7 +286,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
         ),
       );
     }
-    return this.#start(profile, policy, cwd, via, sessionId);
+    return this.#start(profile, policy, cwd, via, sessionId, options);
   }
 
   /**
@@ -408,16 +456,19 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     cwd: string,
     via: SessionTransport,
     sessionId: string | undefined,
+    options: SessionStartOptions | undefined,
   ): Promise<AgentSession> {
-    if (this.processModel !== 'process-per-session') {
-      throw new AdapterUnavailable(
-        `${this.id}: process model ${this.processModel} is declared but not implemented; use process-per-session`,
-      );
-    }
     this.#assertGuaranteed(policy, via.id);
     const mcpServers = this.#mcpServersOf(policy);
+    // The spec is built on every open, shared process or not: the profile files and the slot the
+    // descendant keeps for this policy are written per session, and the key needs the environment.
     const spec = await this.#spec(profile, policy, cwd);
-    const process = await this.#launcher.launch(spec);
+    const sharing =
+      this.processModel === 'multi-session' &&
+      (options?.process ?? this.#processReuse) === 'shared';
+    const process = sharing
+      ? await this.#shared.acquire(sharedProcessKey(profile, spec), spec)
+      : await this.#launcher.launch(spec);
     try {
       return await this.#attach(process, policy, cwd, via, sessionId, mcpServers);
     } catch (error) {
@@ -447,6 +498,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       mcpServers,
       normalizer: this.#normalizer(via.id),
       onPermission: (request) => this.answerPermission(request, policy),
+      extensions: this.extensions(),
     };
     return sessionId === undefined ? via.open(params) : via.load({ ...params, sessionId });
   }

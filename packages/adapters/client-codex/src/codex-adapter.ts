@@ -56,8 +56,8 @@ export interface CodexAdapterOptions extends ClientAdapterOptions {
   readonly command?: { readonly cmd: string; readonly args: readonly string[] };
   /**
    * `clients.codex.process_model`. Default `multi-session`, what Phase 0 measured (one `codex-acp`,
-   * one app-server, N sessions: 3 in parallel worked). The base only opens `process-per-session`
-   * until the pools exist, so a caller that wants sessions today sets it.
+   * one app-server, N sessions: 3 in parallel worked). The base shares one process per profile up
+   * to `sessionsPerProcess` sessions, or leaves the processes to the pool above it.
    */
   readonly processModel?: ProcessModel;
   /** `clients.codex.initial_mode`: `workspace-write` (default) or `read-only`. Never `agent` or `agent-full-access`. */

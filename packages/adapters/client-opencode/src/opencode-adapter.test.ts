@@ -151,12 +151,37 @@ describe('OpenCodeAdapter', () => {
       ).toThrow(InvalidInput);
     });
 
-    it('the base cannot open a session in the multi-session model yet (P8): it says so', async () => {
+    it('per_profile: sessions with the same policy share one process', async () => {
       const adapter = make({ processModel: 'per_profile' });
-      await expect(
-        adapter.openSession(profile, reader, '/work', new FakeSessionTransport()),
-      ).rejects.toBeInstanceOf(AdapterUnavailable);
-      expect(launcher.launched).toHaveLength(0);
+      const via = new FakeSessionTransport();
+      const first = await adapter.openSession(profile, reader, '/work', via);
+      const second = await adapter.openSession(profile, reader, '/work', via);
+      expect(launcher.launched).toHaveLength(1);
+      await first.close();
+      expect(launcher.running).toHaveLength(1);
+      await second.close();
+      expect(launcher.running).toHaveLength(0);
+    });
+
+    it('per_profile: a session with another policy gets another process (the policy is in the environment)', async () => {
+      const adapter = make({ processModel: 'per_profile' });
+      const via = new FakeSessionTransport();
+      const a = await adapter.openSession(profile, reader, '/work', via);
+      const b = await adapter.openSession(profile, writer, '/work', via);
+      const c = await adapter.openSession(profile, reader, '/work', via);
+      expect(launcher.launched).toHaveLength(2);
+      expect(permissionOf(0)).not.toEqual(permissionOf(1));
+      await Promise.all([a.close(), b.close(), c.close()]);
+      expect(launcher.running).toHaveLength(0);
+    });
+
+    it('per_session: every session has its own process', async () => {
+      const adapter = make({ processModel: 'per_session' });
+      const via = new FakeSessionTransport();
+      const first = await adapter.openSession(profile, reader, '/work', via);
+      const second = await adapter.openSession(profile, reader, '/work', via);
+      expect(launcher.launched).toHaveLength(2);
+      await Promise.all([first.close(), second.close()]);
     });
   });
 

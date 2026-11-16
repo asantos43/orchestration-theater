@@ -20,4 +20,5 @@ export * from './ports/quota-probe.js';
 export * from './ports/agent-session.js';
 export * from './ports/client-adapter.js';
 export * from './managed-agent-session.js';
+export * from './shared-process.js';
 export * from './client-adapter-base.js';

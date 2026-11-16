@@ -12,6 +12,7 @@ import {
   type ContentBlock,
   type NormalizedUpdate,
   type Profile,
+  type ProcessModel,
   type RolePolicy,
 } from '@otheater/core';
 import { FakeClientAdapter } from '@otheater/core/testing';
@@ -66,7 +67,7 @@ interface Rig {
   readonly dispose: () => Promise<void>;
 }
 
-async function rig(): Promise<Rig> {
+async function rig(processModel: ProcessModel = 'process-per-session'): Promise<Rig> {
   const cwd = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-'));
   tempDirs.push(cwd);
   const launcher = new NodeProcessLauncher();
@@ -76,6 +77,7 @@ async function rig(): Promise<Rig> {
     baseEnv: {},
     adapterVersion: '1.0.0',
     command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
+    processModel,
   });
   const via = new AcpTransport({ cancelGraceMs: 300, killGraceMs: 1000, startTimeoutMs: 10_000 });
   return {
@@ -153,6 +155,143 @@ describeClientAdapterConformance('FakeClientAdapter + AcpTransport + fake-agent'
     dispose: r.dispose,
   };
   return harness;
+});
+
+describeAgentSessionConformance('AcpTransport + fake-agent, multi-session', async () => {
+  const r = await rig('multi-session');
+  let current: AgentSession = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+  const harness: AgentSessionHarness = {
+    get session() {
+      return current;
+    },
+    prompts,
+    processesAlive: r.alive,
+    rootProcessesAlive: r.alive,
+    config: {
+      valid: { id: 'model', value: 'fake-model-2' },
+      invalidValue: { id: 'model', value: 'no-such-model' },
+      unknownId: 'no-such-option',
+    },
+    reload: async () => {
+      current = await r.adapter.loadSession(profile, policy, r.cwd, current.sessionId, r.via);
+      return current;
+    },
+    sibling: () => r.adapter.openSession(profile, policy, r.cwd, r.via),
+    crash: () => r.launcher.killAll(),
+    dispose: r.dispose,
+  };
+  return harness;
+});
+
+describeClientAdapterConformance(
+  'FakeClientAdapter + AcpTransport + fake-agent, multi-session',
+  async () => {
+    const r = await rig('multi-session');
+    const edited = join(r.cwd, 'out.txt');
+    const harness: ClientAdapterHarness = {
+      adapter: r.adapter,
+      via: r.via,
+      profile,
+      policy,
+      cwd: r.cwd,
+      prompts,
+      permission: {
+        prompt: script('edit-file', '{"path":"out.txt"}'),
+        granted: () => existsSync(edited),
+      },
+      processesAlive: r.alive,
+      rootProcessesAlive: r.alive,
+      crash: () => r.launcher.killAll(),
+      dispose: r.dispose,
+    };
+    return harness;
+  },
+);
+
+describe('several sessions on one fake agent process, end to end', () => {
+  const cleanup: Rig[] = [];
+  afterEach(async () => {
+    for (const r of cleanup.splice(0)) await r.dispose();
+  });
+
+  async function started(): Promise<Rig> {
+    const r = await rig('multi-session');
+    cleanup.push(r);
+    return r;
+  }
+
+  it('one session ending while the other goes on, then the last one ends the process', async () => {
+    const r = await started();
+    const a = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+    const b = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+    expect(r.alive()).toBe(1);
+    const seenB: string[] = [];
+    b.onUpdate((update) => seenB.push(text(update)));
+    const hanging = a.prompt(prompts.hang);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await a.cancel();
+    await expect(hanging).resolves.toMatchObject({ stopReason: 'cancelled' });
+    // `a` is over; the process stays for `b`, which keeps working.
+    expect(r.alive()).toBe(1);
+    await expect(b.prompt(prompts.echo('b goes on'))).resolves.toMatchObject({
+      stopReason: 'end_turn',
+    });
+    expect(seenB.join('')).toContain('b goes on');
+    await b.close();
+    expect(r.alive()).toBe(0);
+  });
+
+  it('K+1 sessions: the session over the limit gets a process of its own', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-k-'));
+    tempDirs.push(cwd);
+    const launcher = new NodeProcessLauncher();
+    allLaunchers.push(launcher);
+    const adapter = new FakeClientAdapter({
+      launcher,
+      baseEnv: {},
+      adapterVersion: '1.0.0',
+      command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
+      processModel: 'multi-session',
+      sessionsPerProcess: 2,
+    });
+    const via = new AcpTransport({ cancelGraceMs: 300, killGraceMs: 1000, startTimeoutMs: 10_000 });
+    cleanup.push({
+      launcher,
+      adapter,
+      via,
+      cwd,
+      alive: () => launcher.aliveGroups(),
+      dispose: async () => {
+        await launcher.killAll();
+        await removeDir(cwd);
+      },
+    });
+    const sessions = [];
+    for (let i = 0; i < 3; i += 1) {
+      sessions.push(await adapter.openSession(profile, policy, cwd, via));
+    }
+    expect(launcher.aliveGroups()).toBe(2);
+    for (const session of sessions) {
+      await expect(session.prompt(prompts.echo('hi'))).resolves.toMatchObject({
+        stopReason: 'end_turn',
+      });
+    }
+    await Promise.all(sessions.map((session) => session.close()));
+    expect(launcher.aliveGroups()).toBe(0);
+  });
+
+  it('a session can ask to have a process of its own', async () => {
+    const r = await started();
+    const shared = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+    const own = await r.adapter.openSession(profile, policy, r.cwd, r.via, {
+      process: 'own',
+    });
+    expect(r.alive()).toBe(2);
+    await own.close();
+    expect(r.alive()).toBe(1);
+    await shared.close();
+    expect(r.alive()).toBe(0);
+  });
 });
 
 describe('the scripts of the fake agent, end to end', () => {

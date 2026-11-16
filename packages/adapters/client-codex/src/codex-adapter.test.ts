@@ -44,17 +44,14 @@ const SANDBOX = { fields: ['nativeTools', 'nativeShell', 'network'] } as const;
 interface BuildOptions extends Partial<CodexAdapterOptions> {
   /** No layer 3: the policy is short on the fields only a sandbox covers. */
   readonly bare?: boolean;
-  /** Keep the process model the adapter measured (`multi-session`), which the base cannot open yet. */
-  readonly measured?: boolean;
 }
 
-function build({ bare, measured, ...options }: BuildOptions = {}) {
+function build({ bare, ...options }: BuildOptions = {}) {
   const launcher = new FakeProcessLauncher();
   const adapter = new CodexAdapter({
     launcher,
     baseEnv: { PATH: '/usr/bin' },
     adapterVersion: '2.6.0',
-    ...(measured === true ? {} : { processModel: 'process-per-session' as const }),
     ...(bare === true ? {} : { sandbox: SANDBOX }),
     ...options,
   });
@@ -63,7 +60,7 @@ function build({ bare, measured, ...options }: BuildOptions = {}) {
 
 describe('CodexAdapter identity', () => {
   it('is the codex ClientAdapter, process model as Phase 0 measured it', () => {
-    const { adapter } = build({ measured: true });
+    const { adapter } = build();
     expect(adapter.id).toBe('codex');
     expect(adapter.implements.port).toBe('ClientAdapter');
     expect(adapter.processModel).toBe('multi-session');
@@ -77,12 +74,18 @@ describe('CodexAdapter identity', () => {
     expect(adapter.models.discovery).toBe('automatic');
   });
 
-  it('cannot open sessions with the measured process model until the pools exist', async () => {
-    const { adapter } = build({ measured: true });
+  it('opens sessions with the measured process model: several sessions of a profile share one codex-acp', async () => {
+    const { adapter, launcher } = build();
     const profile = await profileIn();
-    await expect(
-      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
-    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work', via);
+    const second = await adapter.openSession(profile, policy, '/other', via);
+    expect(launcher.launched).toHaveLength(1);
+    // Another profile is another CODEX_HOME, so another process.
+    await adapter.openSession(await profileIn(), policy, '/work', via);
+    expect(launcher.launched).toHaveLength(2);
+    await first.close();
+    await second.close();
   });
 
   it('refuses a vetoed initial mode at construction', () => {
