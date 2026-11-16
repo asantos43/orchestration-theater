@@ -50,7 +50,7 @@ O daemon responde automaticamente a cada `session/request_permission`, conforme 
 | macOS/Linux | `@anthropic-ai/sandbox-runtime` (Seatbelt/bubblewrap): rede negada por padrão com lista de domínios, escrita restrita |
 | Windows | `sandbox-runtime` em **alpha**, a pilotar na Fase 0. Sem ele, a base é um usuário de baixo privilégio com ACL só na worktree, mais o sandbox do Codex. **O Claude Code nativo no Windows roda comandos sem sandbox**: mais um motivo para remover o Bash dele. |
 
-O **lançador com Job Object** é um binário mínimo em Rust (`win32job`) que:
+O **lançador com Job Object** é um binário mínimo em Rust (`windows-sys`, N60) que:
 1. cria o job, com limite de memória e `KILL_ON_JOB_CLOSE`;
 2. inicia o Executor suspenso;
 3. associa o processo ao job e o retoma.
