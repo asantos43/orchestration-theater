@@ -97,7 +97,7 @@ async function runNotices(ctx: CommandContext, options: CommandOptions): Promise
     return finish(
       ctx,
       'notices: THIRD_PARTY_NOTICES check',
-      checkNotices(expected, onDisk, NOTICES_FILE),
+      checkNotices(expected, onDisk, NOTICES_FILE, process.platform),
     );
   }
   writeFileSync(file, expected);

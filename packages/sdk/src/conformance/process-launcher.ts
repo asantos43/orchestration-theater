@@ -23,6 +23,13 @@ const TEST_TIMEOUT_MS = 30_000;
 /** How long the suite waits for the OS to forget a process (zombies are reaped asynchronously). */
 const GONE_WAIT_MS = 3000;
 const NODE = process.execPath;
+/**
+ * Variables the OS sets in every child even with an empty env. macOS adds
+ * `__CF_USER_TEXT_ENCODING` (secondary source, not checked here; seen as one extra key on the
+ * macOS runner of run 43906063921).
+ */
+const OS_INJECTED_ENV: ReadonlySet<string> =
+  process.platform === 'darwin' ? new Set(['__CF_USER_TEXT_ENCODING']) : new Set();
 /** Words a shell or a unit-file parser would change: spaces, expansions, quotes, empty, non-ASCII. */
 const ARGS_SAMPLE = ['a b', '$HOME', '${HOME}', '$$', '%h', '*;|', '"q"', "it's", '', 'é\\n'];
 
@@ -167,8 +174,12 @@ export function describeProcessLauncherConformance(
             expect(seen.OT_CONFORMANCE_VISIBLE).toBe('yes');
             expect(seen[key]).toBeUndefined();
             if (usesSignals()) {
-              // Posix has no variables of its own to add: the env is exactly what was passed.
-              expect(Object.keys(seen)).toEqual(['OT_CONFORMANCE_VISIBLE']);
+              // Posix adds nothing of its own, except what macOS puts in every process.
+              const keys = Object.keys(seen);
+              expect(
+                keys.filter((k) => !OS_INJECTED_ENV.has(k)),
+                `env keys seen by the child: ${keys.join(', ')}`,
+              ).toEqual(['OT_CONFORMANCE_VISIBLE']);
             }
             await proc.exited;
           } finally {

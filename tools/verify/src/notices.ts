@@ -164,10 +164,18 @@ export function renderNotices(
   return `${out.join('\n').trimEnd()}\n`;
 }
 
+/**
+ * The platform the committed file is generated on. The bundled set includes the native binary
+ * package of the platform that ran the install (`@napi-rs/keyring-linux-x64-gnu` here), so the
+ * file rendered on Windows or macOS differs by design.
+ */
+export const NOTICES_PLATFORM: NodeJS.Platform = 'linux';
+
 export function checkNotices(
   expected: string,
   onDisk: string | undefined,
   fileName: string,
+  platform: NodeJS.Platform = NOTICES_PLATFORM,
 ): CheckResult {
   if (onDisk === undefined) {
     return {
@@ -177,6 +185,18 @@ export function checkNotices(
           severity: 'error',
           subject: fileName,
           message: 'file does not exist; run "pnpm notices" to generate it',
+        },
+      ],
+    };
+  }
+  if (onDisk !== expected && platform !== NOTICES_PLATFORM) {
+    return {
+      summary: [],
+      findings: [
+        {
+          severity: 'warning',
+          subject: fileName,
+          message: `differs from the one rendered on ${platform}; it is generated on ${NOTICES_PLATFORM}, whose native packages are the bundled ones`,
         },
       ],
     };
