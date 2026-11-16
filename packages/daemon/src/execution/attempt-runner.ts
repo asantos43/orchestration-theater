@@ -139,11 +139,6 @@ interface AttemptContext {
   readonly deadline: number;
   readonly firstPrompt: string;
   sessionId: string | undefined;
-  /**
-   * Free resumes granted so far (see `Ended.free`). [proposta] Kept in memory: a restart of the
-   * daemon starts the count again, because the attempt registry has no column for it.
-   */
-  freeResumes: number;
   /** `session.opened` was recorded and `session.closed` was not yet. */
   sessionOpen: boolean;
   lease: SessionLease | undefined;
@@ -216,6 +211,7 @@ export class AttemptRunner {
       lastCheckpointAt: null,
       lastEventAt: null,
       resumes: 0,
+      freeResumes: 0,
     };
     const context = this.#context(record, spec, spec.prompt);
     await context.journal.write();
@@ -315,7 +311,6 @@ export class AttemptRunner {
       deadline: clock.now() + timeoutMs,
       firstPrompt,
       sessionId: record.sessionId ?? undefined,
-      freeResumes: 0,
       sessionOpen: false,
       lease: undefined,
       lastEventAt: clock.now(),
@@ -379,7 +374,7 @@ export class AttemptRunner {
           await this.#interrupted(context, ended);
           // A casualty of another session's cancel resumes free of `max_resumes`, up to
           // `resume.max_free_resumes` times per attempt; past that it is a drop like any other.
-          const free = ended.free === true && context.freeResumes < settings.maxFreeResumes;
+          const free = ended.free === true && journal.record.freeResumes < settings.maxFreeResumes;
           const sameTimes = free ? 0 : this.#repeated(context, `${ended.cause}:${ended.detail}`);
           const resumes = journal.record.resumes;
           if (!ended.native || (!free && resumes >= settings.maxResumes)) {
@@ -388,8 +383,13 @@ export class AttemptRunner {
           if (sameTimes >= settings.stuckSameErrorTimes) {
             return this.#parked(context, 'stuck');
           }
-          if (free) context.freeResumes += 1;
-          await journal.write(undefined, { state: 'awaiting_resume', cause: ended.cause });
+          // The allowance is recorded in the same write that parks the attempt, so a restart
+          // from here on continues counting from what was granted (N67).
+          await journal.write(undefined, {
+            state: 'awaiting_resume',
+            cause: ended.cause,
+            ...(free ? { freeResumes: journal.record.freeResumes + 1 } : {}),
+          });
           const waited = await this.#backoff(context, ended.cause, free ? 0 : resumes);
           if (waited === 'timeout') return this.#timedOut(context, ended.sha);
           if (waited === 'stopped') return this.#stopped(context, ended.sha);

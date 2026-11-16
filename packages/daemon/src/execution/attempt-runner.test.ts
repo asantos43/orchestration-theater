@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isCheckpointMessage, NotFound } from '@otheater/core';
+import { attemptInputOf, isCheckpointMessage, NotFound } from '@otheater/core';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -11,7 +11,10 @@ import {
 } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { editsPrompt } from '../test-helpers.js';
+import pino from 'pino';
+import { defaultVcs } from '../compose.js';
+import { editsPrompt, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
+import { AttemptRunner } from './attempt-runner.js';
 import {
   eventsOf,
   makeRig,
@@ -602,6 +605,95 @@ describe('AttemptRunner, the cancel of a session on a shared process (pool.share
       expect((await r.store.attempts.get('play-1/demand-1/2'))?.resumes).toBe(1);
       await r.runner.stop();
       expect(await b).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'records each free resume in the registry (freeResumes), apart from resumes',
+    async () => {
+      const r = await rig(
+        {
+          maxResumes: 0,
+          maxFreeResumes: 3,
+          continuePrompt: '#script:hang',
+          pool: { ...QUIET_SETTINGS.pool, sharedCancel: 'escalate' },
+        },
+        true,
+      );
+      const { b } = await felledOnce(r);
+      expect(await r.store.attempts.get('play-1/demand-1/2')).toMatchObject({
+        freeResumes: 1,
+        resumes: 0,
+      });
+      await r.runner.stop();
+      await b;
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a restarted daemon continues from the free resumes recorded: 2 of 3 leaves one',
+    async () => {
+      const r = await rig(
+        {
+          maxResumes: 0,
+          maxFreeResumes: 3,
+          continuePrompt: '#script:hang',
+          pool: { ...QUIET_SETTINGS.pool, sharedCancel: 'escalate' },
+        },
+        true,
+      );
+      const { b } = await felledOnce(r);
+      // The daemon stops and "restarts": the registry says two free resumes were granted.
+      await r.runner.stop();
+      expect(await b).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
+      const stored = await r.store.attempts.get('play-1/demand-1/2');
+      if (stored === undefined) throw new Error('no record');
+      expect(stored.state).toBe('awaiting_resume');
+      await r.store.attempts.put({ ...attemptInputOf(stored), freeResumes: 2 });
+      const restarted = await r.store.attempts.get('play-1/demand-1/2');
+      if (restarted === undefined) throw new Error('no record');
+
+      const next = new AttemptRunner({
+        store: r.store,
+        vcs: defaultVcs(),
+        pool: r.pool,
+        clock: r.clock,
+        settings: r.settings,
+        worktreeRoot: r.worktreeRoot,
+        logger: pino({ level: 'silent' }),
+      });
+      const resumed = next.resume(restarted, {
+        profile: TEST_PROFILE,
+        executor: { model: 'fake-model' },
+        policy: TEST_POLICY,
+      });
+      await until(() => r.transport.loaded.length === 2, 'the reload after the restart');
+      const deaf = async (attempt: number): Promise<void> => {
+        const c = next.run(specOf(r, '#script:deaf', { attempt, timeoutMs: 1000 }));
+        await until(() => r.pool.stats().sessions === 2, 'the deaf attempt on the shared process');
+        await r.clock.advance(1000);
+        expect(await c).toMatchObject({ state: 'timed_out' });
+      };
+
+      // The third free resume is the last one granted.
+      await deaf(3);
+      await until(() => r.transport.loaded.length === 3, 'the last free resume');
+      expect(await r.store.attempts.get('play-1/demand-1/2')).toMatchObject({
+        freeResumes: 3,
+        resumes: 0,
+      });
+      // The next fall counts in max_resumes (0): the attempt parks.
+      await deaf(4);
+      expect(await resumed).toMatchObject({
+        state: 'interrupted',
+        cause: 'client_crash',
+        needsDecision: true,
+        resumes: 0,
+      });
+      expect(r.transport.loaded).toHaveLength(3);
+      expect(await r.store.attempts.get('play-1/demand-1/2')).toMatchObject({ freeResumes: 3 });
     },
     TEST_TIMEOUT_MS,
   );

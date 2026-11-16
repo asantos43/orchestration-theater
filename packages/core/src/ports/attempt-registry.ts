@@ -56,6 +56,13 @@ export const AttemptRecordSchema = z.strictObject({
   lastEventAt: z.number().int().nonnegative().nullable(),
   /** Resumes done so far (counted against `resume.max_resumes`). */
   resumes: z.number().int().nonnegative(),
+  /**
+   * Free resumes granted so far: the ones after another session's cancel (`pool.shared_cancel`),
+   * which do not count in `resumes` but are capped by `resume.max_free_resumes`. Kept here so a
+   * daemon restart does not give the attempt a fresh allowance. Records written before the field
+   * existed read as 0.
+   */
+  freeResumes: z.number().int().nonnegative(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
 });
@@ -82,6 +89,7 @@ export function attemptInputOf(record: AttemptRecord): AttemptRecordInput {
     lastCheckpointAt: record.lastCheckpointAt,
     lastEventAt: record.lastEventAt,
     resumes: record.resumes,
+    freeResumes: record.freeResumes,
   };
 }
 

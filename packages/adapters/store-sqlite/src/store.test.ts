@@ -3,6 +3,7 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AdapterUnavailable,
+  attemptInputOf,
   hasStoreMaintenance,
   InvalidInput,
   isOTheaterError,
@@ -144,6 +145,73 @@ describe.each(DRIVERS)('SqliteStore on %s', (driver) => {
     } finally {
       await dispose();
     }
+  });
+
+  describe('0003_attempts_free_resumes', () => {
+    const OLD_ROW = `INSERT INTO attempts (attempt_id, play_id, demand_id, attempt, client, profile,
+      state, worktree, branch, resumes, created_at, updated_at)
+      VALUES ('old/1', 'old', 'd', 1, 'fake', 'default', 'awaiting_resume', '/w', 'b', 2, 1, 1)`;
+
+    /** Puts the database back at the schema of 0002: no column, no bookkeeping row, one old row. */
+    async function downgrade(dbPath: string): Promise<void> {
+      await withRawDatabase(
+        driver,
+        dbPath,
+        (db) => {
+          db.exec('ALTER TABLE attempts DROP COLUMN free_resumes');
+          db.exec("DELETE FROM kysely_migration WHERE name = '0003_attempts_free_resumes'");
+          db.exec(OLD_ROW);
+        },
+        false,
+      );
+    }
+
+    it('adds the column to a database at the previous schema; old rows read as 0', async () => {
+      const { dbPath, store, dispose } = await openTempStore(driver);
+      try {
+        await store.close();
+        await downgrade(dbPath);
+        const again = await SqliteStore.open({ path: dbPath, driver }, new FakeClock());
+        try {
+          const old = await again.attempts.get('old/1');
+          expect(old).toMatchObject({ resumes: 2, freeResumes: 0 });
+          if (old === undefined) throw new Error('no record');
+          await again.attempts.put({ ...attemptInputOf(old), freeResumes: 2 });
+          expect(await again.attempts.get('old/1')).toMatchObject({ resumes: 2, freeResumes: 2 });
+        } finally {
+          await again.close();
+        }
+        const names = await withRawDatabase(driver, dbPath, (db) =>
+          (
+            db.prepare('SELECT name FROM kysely_migration ORDER BY name').all([]) as {
+              name: string;
+            }[]
+          ).map((row) => row.name),
+        );
+        expect(names).toEqual(Object.keys(MIGRATIONS));
+      } finally {
+        await dispose();
+      }
+    });
+
+    it('survives a column that is there without its bookkeeping row', async () => {
+      const { dbPath, store, dispose } = await openTempStore(driver);
+      try {
+        await store.close();
+        await withRawDatabase(
+          driver,
+          dbPath,
+          (db) => {
+            db.exec("DELETE FROM kysely_migration WHERE name = '0003_attempts_free_resumes'");
+          },
+          false,
+        );
+        const again = await SqliteStore.open({ path: dbPath, driver }, new FakeClock());
+        await again.close();
+      } finally {
+        await dispose();
+      }
+    });
   });
 
   it('refuses to open a database whose migrations are newer than this code', async () => {

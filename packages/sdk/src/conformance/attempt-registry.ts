@@ -30,6 +30,7 @@ export function sampleAttempt(
     lastCheckpointAt: null,
     lastEventAt: null,
     resumes: 0,
+    freeResumes: 0,
     ...extra,
   };
 }
@@ -56,6 +57,14 @@ export function describeAttemptRegistryConformance(
       expect(stored.createdAt).toBeGreaterThanOrEqual(0);
       expect(stored.updatedAt).toBeGreaterThanOrEqual(stored.createdAt);
       expect(await store.attempts.get('attempt-1')).toEqual(stored);
+    });
+
+    it('keeps the count of free resumes apart from resumes', async () => {
+      const { store } = harness();
+      await store.attempts.put(sampleAttempt(1, { resumes: 1, freeResumes: 2 }));
+      expect(await store.attempts.get('attempt-1')).toMatchObject({ resumes: 1, freeResumes: 2 });
+      await store.attempts.put(sampleAttempt(1, { resumes: 1, freeResumes: 3 }));
+      expect((await store.attempts.get('attempt-1'))?.freeResumes).toBe(3);
     });
 
     it('put on an existing id replaces it and keeps createdAt', async () => {
@@ -93,6 +102,10 @@ export function describeAttemptRegistryConformance(
       const { store } = harness();
       const bad = { ...sampleAttempt(1), state: 'bogus' } as unknown as AttemptRecordInput;
       expect(await rejectionOf(store.attempts.put(bad))).toMatchObject({ code: 'INVALID_INPUT' });
+      const negative = { ...sampleAttempt(1), freeResumes: -1 };
+      expect(await rejectionOf(store.attempts.put(negative))).toMatchObject({
+        code: 'INVALID_INPUT',
+      });
       const noKey = { ...sampleAttempt(1), attemptId: '' };
       expect(await rejectionOf(store.attempts.put(noKey))).toMatchObject({ code: 'INVALID_INPUT' });
       expect(await store.attempts.list()).toEqual([]);

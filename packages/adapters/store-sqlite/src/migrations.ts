@@ -90,6 +90,21 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  // [proposta] Free resumes (architecture 5.16, `resume.max_free_resumes`) survive a daemon
+  // restart. Additive: rows written before this migration read as 0.
+  '0003_attempts_free_resumes': {
+    up: transactional(async (db) => {
+      const columns = await db.introspection.getTables();
+      const attempts = columns.find((table) => table.name === 'attempts');
+      // `ALTER TABLE ... ADD COLUMN` has no `IF NOT EXISTS` in SQLite: look first, so a database
+      // that got the column but lost Kysely's bookkeeping row still migrates.
+      if (attempts?.columns.some((column) => column.name === 'free_resumes') === true) return;
+      await db.schema
+        .alterTable('attempts')
+        .addColumn('free_resumes', 'integer', (col) => col.notNull().defaultTo(0))
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */
