@@ -1,0 +1,8 @@
+# Line endings: LF in the repository and in every checkout, Windows included.
+# Without this, Git for Windows (core.autocrlf=true on the CI runners) checks
+# files out with CRLF and `prettier --check` fails on every file.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
