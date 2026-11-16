@@ -143,7 +143,8 @@ describe.each(DRIVERS)('backup on %s', (driver) => {
     });
   });
 
-  describe('online_api restarts (stepped copy)', () => {
+  // Filling takes 400 fsynced appends, which ran past 20 s on the Windows runner.
+  describe('online_api restarts (stepped copy)', { timeout: 120_000 }, () => {
     /** About 400 pages: enough steps for the writer to get in between. */
     const fill = async (store: SqliteStore): Promise<void> => {
       for (let n = 0; n < 400; n++) {

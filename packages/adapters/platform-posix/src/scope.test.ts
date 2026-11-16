@@ -37,7 +37,8 @@ describe.skipIf(findSystemdRun() === undefined || process.platform !== 'linux')(
   },
 );
 
-describe('resolveExecutable', () => {
+// The PATH search is POSIX-only: it treats only `/` as a path separator.
+describe.skipIf(process.platform === 'win32')('resolveExecutable', () => {
   it('finds a command on the PATH of the requested env, not of this process', () => {
     expect(resolveExecutable('node', { PATH: '/nonexistent' }, '/')).toBeUndefined();
     expect(resolveExecutable(NODE, {}, '/')).toBe(NODE);
