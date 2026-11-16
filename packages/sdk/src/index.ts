@@ -28,3 +28,9 @@ export {
 } from './conformance/process-launcher.js';
 // Vcs
 export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
+// LocalModelServer
+export {
+  describeLocalModelServerConformance,
+  type LocalModelServerHarness,
+  type LocalServerBehavior,
+} from './conformance/local-model-server.js';
