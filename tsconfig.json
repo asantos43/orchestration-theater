@@ -14,6 +14,7 @@
     { "path": "packages/adapters/vcs-git" },
     { "path": "packages/adapters/session-acp" },
     { "path": "tools/verify" },
-    { "path": "tools/bench" }
+    { "path": "tools/bench" },
+    { "path": "packages/adapters/local-llama-cpp" }
   ]
 }
