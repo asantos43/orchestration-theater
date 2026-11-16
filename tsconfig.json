@@ -13,6 +13,9 @@
     { "path": "packages/adapters/platform-posix" },
     { "path": "packages/adapters/vcs-git" },
     { "path": "packages/adapters/session-acp" },
+    { "path": "packages/adapters/client-opencode" },
+    { "path": "packages/adapters/client-codex" },
+    { "path": "packages/adapters/client-claude-code" },
     { "path": "tools/verify" },
     { "path": "tools/bench" },
     { "path": "packages/adapters/local-llama-cpp" }
