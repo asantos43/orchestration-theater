@@ -1,0 +1,16 @@
+{
+  "name": "@otheater/tools-verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "bin": {
+    "otheater-verify": "./dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/semver": "7.8.0",
+    "@types/spdx-expression-parse": "4.0.0",
+    "semver": "7.8.6",
+    "spdx-expression-parse": "5.0.0"
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "source": "docs/framework-ideas/arquitetura.md, section 6.0 (v0.49); decisions of N45 in docs/13. Ported from spikes/licenses/policy.json",
+  "allowed": ["MIT", "Apache-2.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "MPL-2.0"],
+  "forbidden": ["GPL", "GPL-*", "AGPL", "AGPL-*", "LGPL", "LGPL-*"],
+  "acceptedInDependencies": [
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Modern permissive license (isaacs family: glob, minimatch, lru-cache...). No copyleft.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "BlueOak-1.0.0"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Public domain, no copyleft.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "Unlicense"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Public domain, no copyleft.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "CC0-1.0"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "MIT without the notice requirement.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "MIT-0"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Permissive (PSF); argparse.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "Python-2.0"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Permissive, no restriction.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "WTFPL"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "SPDX data (spdx-exceptions, spdx-ranges), used only by the verifier; attribution; not a code license.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "CC-BY-3.0"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Data packages (caniuse-lite); attribution; not a code license.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "license": "CC-BY-4.0"
+    }
+  ],
+  "packageExceptions": [
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "AgentPrism: the npm package has no license field; the repository (commit 4fd371b5, 2026-10-08) and the LICENSE inside the tarball are MIT. A new version needs a new check.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@evilmartians/agent-prism-data",
+      "versions": "1.0.0",
+      "scope": "any"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "AgentPrism: the npm package has no license field; the repository (commit 4fd371b5, 2026-10-08) and the LICENSE inside the tarball are MIT. A new version needs a new check.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@evilmartians/agent-prism-types",
+      "versions": "1.0.0",
+      "scope": "any"
+    }
+  ],
+  "externalTools": [
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "ACP adapter for Claude Code; brings the proprietary @anthropic-ai/claude-agent-sdk (D1). The user installs it; the OTheater executable neither loads nor distributes it.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@agentclientprotocol/claude-agent-acp",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Proprietary Claude SDK (D1); only as part of the executor the user installs.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@anthropic-ai/claude-agent-sdk",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Claude Code client, proprietary; external executor.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@anthropic-ai/claude-code",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "ACP adapter for Codex; external executor.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@agentclientprotocol/codex-acp",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "Codex client; the platform binary ships LGPL (D5). External executor.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "@openai/codex",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-15",
+      "reason": "OpenCode client; platform packages have no license field (D4). External executor.",
+      "source": "docs/13 N45; architecture 6.0 (v0.41)",
+      "package": "opencode-ai",
+      "level": "C"
+    }
+  ],
+  "credentialAllowlist": [],
+  "headers": {
+    "ownLicense": "MPL-2.0",
+    "headerLines": 5,
+    "extensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"],
+    "excludedPrefixes": ["spikes/", "docs/"],
+    "excludedDirectories": ["node_modules", "dist", "dist-test"]
+  },
+  "credentials": {
+    "excludedPrefixes": ["spikes/", "docs/"]
+  },
+  "catalogs": {
+    "directory": "locales",
+    "requiredLanguages": ["en", "pt-BR"],
+    "referenceLanguage": "en"
+  },
+  "_notes": {
+    "acceptedInDependencies": "Each item: { license, decidedBy, date, reason, source }. Valid for levels B and D. Never opens a forbidden license.",
+    "packageExceptions": "Each item: { package, versions (semver range, optional), license (exact text the tool reads, optional), scope ('production' | 'development' | 'any'), allowForbidden (true only if the owner decides an exception for GPL/AGPL/LGPL), decidedBy, date, reason, source }.",
+    "externalTools": "Level C programs run as a separate process and installed by the user. One that shows up as a bundled dependency (level B) fails the check.",
+    "credentialAllowlist": "Each item: { path (repository-relative; a trailing '/' means a directory), decidedBy, date, reason, source }. Future home of browser.secret_paths. Only what the owner decided and recorded."
+  }
+}

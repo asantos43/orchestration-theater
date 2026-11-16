@@ -15,7 +15,7 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: 'packages',
-          include: ['packages/**/src/**/*.test.ts'],
+          include: ['packages/**/src/**/*.test.ts', 'tools/**/src/**/*.test.ts'],
           exclude: ['**/node_modules/**', '**/dist/**', 'spikes/**'],
         },
       },
