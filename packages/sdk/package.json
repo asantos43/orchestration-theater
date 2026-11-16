@@ -1,0 +1,25 @@
+{
+  "name": "@otheater/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@otheater/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "vitest": "^5.1.0"
+  },
+  "devDependencies": {
+    "vitest": "5.1.0"
+  }
+}

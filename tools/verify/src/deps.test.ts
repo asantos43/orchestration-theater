@@ -52,6 +52,18 @@ describe('dependency rule on a fixture tree', () => {
       'packages/daemon/src/cycle-b.ts': "import { x } from './cycle-a.js';\nexport const y = x;\n",
       'packages/daemon/src/missing.ts':
         "import { nope } from './does-not-exist.js';\nexport const m = nope;\n",
+      // an import by package name resolves to build output under dist/: the edge must stay.
+      'node_modules/@otheater/adapter-beta/package.json':
+        '{"name":"@otheater/adapter-beta","version":"0.0.0","type":"module","exports":{".":"./dist/index.js"}}',
+      'node_modules/@otheater/adapter-beta/dist/index.js': 'export const b = 1;\n',
+      'packages/adapters/alpha/src/by-name.ts':
+        "import { b } from '@otheater/adapter-beta';\nexport const n = b;\n",
+      // the fakes of core/src/testing/ are for tests only.
+      'packages/core/src/testing/fake.ts': OK,
+      'packages/daemon/src/uses-fake.ts':
+        "import { ok } from '../../core/src/testing/fake.js';\nexport const f = ok;\n",
+      'packages/daemon/src/uses-fake.test.ts':
+        "import { ok } from '../../core/src/testing/fake.js';\nexport const f = ok;\n",
     });
     const result = await runCruiser({
       root: REPOSITORY_ROOT,
@@ -87,6 +99,15 @@ describe('dependency rule on a fixture tree', () => {
   it('lets only compose.ts in the daemon import adapters', () => {
     expect(has('daemon-adapters-only-in-compose', 'packages/daemon/src/other.ts')).toBe(true);
     expect(has('daemon-adapters-only-in-compose', 'packages/daemon/src/compose.ts')).toBe(false);
+  });
+
+  it('keeps imports by package name that resolve under dist/', () => {
+    expect(has('adapter-isolation', 'packages/adapters/alpha/src/by-name.ts')).toBe(true);
+  });
+
+  it('lets only tests import the fakes of core/src/testing/', () => {
+    expect(has('testing-only-from-tests', 'packages/daemon/src/uses-fake.ts')).toBe(true);
+    expect(has('testing-only-from-tests', 'packages/daemon/src/uses-fake.test.ts')).toBe(false);
   });
 
   it('reports cycles and unresolvable imports', () => {

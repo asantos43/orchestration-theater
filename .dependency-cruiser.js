@@ -4,6 +4,7 @@
 //   adapter depends on core and its own libraries, never on the daemon or on another adapter;
 //   daemon  depends on core and imports adapters only at the composition point (compose.ts).
 // Test files (*.test.ts) are out of the "core only zod" rule because they import the test runner.
+// The fakes in core/src/testing/ may be imported only by tests (rule testing-only-from-tests).
 
 /** @type {import('dependency-cruiser').IConfiguration} */
 export default {
@@ -16,6 +17,19 @@ export default {
       from: { path: '^packages/core/src/', pathNot: '\\.test\\.ts$' },
       to: {
         pathNot: ['^packages/core/src/', '(^|/)node_modules/zod/', '^zod(/|$)'],
+      },
+    },
+    {
+      name: 'testing-only-from-tests',
+      comment:
+        'The fakes of @otheater/core/testing are for tests: outside testing/ itself, only *.test.ts files may import them (decision N50).',
+      severity: 'error',
+      from: { pathNot: ['^packages/core/src/testing/', '\\.test\\.ts$'] },
+      to: {
+        path: [
+          '^packages/core/(src|dist)/testing/',
+          '(^|/)node_modules/@otheater/core/(src|dist)/testing/',
+        ],
       },
     },
     {
@@ -55,8 +69,11 @@ export default {
     },
   ],
   options: {
-    doNotFollow: { path: '(^|/)node_modules/' },
-    exclude: { path: '(^|/)(dist|dist-test|coverage)/' },
+    // Imports by package name (`@otheater/core`, `vitest`) resolve to build output under `dist/`.
+    // Excluding `dist/` would drop those edges from the graph and hide them from every rule, so
+    // build output is kept as leaves (not followed) and only `coverage/` is excluded.
+    doNotFollow: { path: '(^|/)node_modules/|/dist(-test)?/' },
+    exclude: { path: '(^|/)coverage/' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {
