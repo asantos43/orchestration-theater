@@ -31,7 +31,7 @@ const entry = (license = 'Apache-2.0'): CopiedEntry => ({
 });
 
 describe('file selection', () => {
-  it('keeps source extensions and drops spikes, docs, node_modules, dist and dist-test', () => {
+  it('keeps source extensions and drops spikes, docs, node_modules, dist, dist-test and target (Rust)', () => {
     const selected = selectHeaderFiles(
       [
         'a.ts',
@@ -44,10 +44,17 @@ describe('file selection', () => {
         'packages/core/dist/i.js',
         'tools/verify/dist-test/t.ts',
         'packages/core/src/ok.cts',
+        'native/job-launcher/src/lib.rs',
+        'native/job-launcher/target/debug/build/generated.rs',
       ],
       policy,
     );
-    expect(selected).toEqual(['a.ts', 'b.mjs', 'packages/core/src/ok.cts']);
+    expect(selected).toEqual([
+      'a.ts',
+      'b.mjs',
+      'packages/core/src/ok.cts',
+      'native/job-launcher/src/lib.rs',
+    ]);
   });
 });
 

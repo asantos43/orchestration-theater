@@ -97,6 +97,30 @@ describe('commands', () => {
     expect(await runCommand('licenses', bad.ctx, NO_JSON)).toBe(1);
   });
 
+  it('licenses: reads the crates of native/*/Cargo.lock and fails on a forbidden one', async () => {
+    const root = fixtureRoot({ 'native/demo/Cargo.lock': '' });
+    const crate = (license: string): string =>
+      JSON.stringify({
+        workspace_members: ['own'],
+        packages: [
+          { id: 'own', name: 'demo', version: '0.0.0', license: 'MPL-2.0' },
+          { id: 'dep', name: 'dep', version: '1.0.0', license },
+        ],
+      });
+    const npm = pnpmOutput({ left: { license: 'MIT', dir: path.join(root, 'left') } }, 'prod');
+    const withCargo = (license: string): ExecFn => {
+      return (file, args, options) =>
+        file === 'cargo' ? Promise.resolve(crate(license)) : npm(file, args, options);
+    };
+    const ok = context(root, withCargo('MIT OR Apache-2.0'));
+    expect(await runCommand('licenses', ok.ctx, NO_JSON)).toBe(0);
+    expect(ok.output.join('\n')).toContain('packages: 2');
+    const bad = context(root, withCargo('GPL-3.0-only'));
+    expect(await runCommand('licenses', bad.ctx, NO_JSON)).toBe(1);
+    expect(bad.output.join('\n')).toContain('dep@1.0.0');
+    expect(bad.output.join('\n')).toContain('native/demo/Cargo.lock');
+  });
+
   it('licenses: a failing pnpm is a usage/environment error', async () => {
     const { ctx } = context(fixtureRoot(), () =>
       Promise.reject(new UsageError('pnpm is not installed')),

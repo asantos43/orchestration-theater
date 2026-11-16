@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { collectCargoPackages } from './cargo.js';
 import { checkCatalogs, readCatalogs } from './catalogs.js';
 import {
   defaultExec,
@@ -69,7 +70,11 @@ function finish(ctx: CommandContext, title: string, result: CheckResult): number
 async function runLicenses(ctx: CommandContext, options: CommandOptions): Promise<number> {
   const policy = loadPolicy(path.join(verifyDir(ctx.root), 'policy.json'));
   const command = resolvePnpmCommand(ctx.env, process.execPath);
-  const packages = await collectPackages(ctx.exec, ctx.root, command);
+  const packages = [
+    ...(await collectPackages(ctx.exec, ctx.root, command)),
+    // Rust crates of native/*, read from each Cargo.lock (none when there is no Cargo.lock).
+    ...(await collectCargoPackages(ctx.exec, ctx.root)),
+  ];
   const report = buildLicenseReport(packages, policy, ctx.root);
   const result = licenseResult(report);
   if (options.json !== undefined) {
