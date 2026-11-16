@@ -15,6 +15,11 @@ const alias = {
   '@otheater/adapter-vcs-git': `${import.meta.dirname}/packages/adapters/vcs-git/src/index.ts`,
   '@otheater/adapter-platform-posix': `${import.meta.dirname}/packages/adapters/platform-posix/src/index.ts`,
   '@otheater/adapter-session-acp': `${import.meta.dirname}/packages/adapters/session-acp/src/index.ts`,
+  '@otheater/adapter-client-claude-code': `${import.meta.dirname}/packages/adapters/client-claude-code/src/index.ts`,
+  '@otheater/adapter-client-codex': `${import.meta.dirname}/packages/adapters/client-codex/src/index.ts`,
+  '@otheater/adapter-client-opencode': `${import.meta.dirname}/packages/adapters/client-opencode/src/index.ts`,
+  '@otheater/adapter-local-ollama': `${import.meta.dirname}/packages/adapters/local-ollama/src/index.ts`,
+  '@otheater/adapter-local-llama-cpp': `${import.meta.dirname}/packages/adapters/local-llama-cpp/src/index.ts`,
 };
 
 export default defineConfig({
