@@ -20,11 +20,18 @@ const started = {
 };
 
 describe('daemon event registry', () => {
-  it('lists the three daemon event types, all at schemaVersion 1', () => {
+  it('lists the daemon and session event types, all at schemaVersion 1', () => {
     expect(Object.keys(DAEMON_EVENT_TYPES)).toEqual([
       'daemon.started',
       'daemon.stopped',
       'daemon.backup',
+      'session.opened',
+      'session.update',
+      'session.prompt_finished',
+      'session.interrupted',
+      'session.resumed',
+      'session.closed',
+      'attempt.checkpoint',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);
