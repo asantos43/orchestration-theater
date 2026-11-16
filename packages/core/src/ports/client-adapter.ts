@@ -6,8 +6,14 @@ import type { Profile } from './executor.js';
 import type { ModelCatalog } from './model-catalog.js';
 import type { QuotaProbe } from './quota-probe.js';
 
-/** Semver of the `ClientAdapter` port contract (architecture 5.18, "Versão dos contratos"). */
-export const CLIENT_ADAPTER_PORT_VERSION = '0.1.0';
+/**
+ * Semver of the `ClientAdapter` port contract (architecture 5.18, "Versão dos contratos").
+ * `0.2.0` (N68): `openSession` and `loadSession` take `options?: SessionStartOptions`. The
+ * parameter is optional, but a client adapter that ignores `purpose: 'catalog-probe'` would hand a
+ * working session to a caller that expects one that cannot run a prompt, so the range
+ * `^0.1.0` no longer vouches for it. [proposta]
+ */
+export const CLIENT_ADAPTER_PORT_VERSION = '0.2.0';
 
 /**
  * Neutral policy of a role: it names no key of any client (architecture 5.2). The descendant of
@@ -115,6 +121,37 @@ export interface LoginFlow {
   cancel(): Promise<void>;
 }
 
+/** `multi-session` reuse: `shared` puts sessions of one profile on one process, `own` gives each its own. */
+export type ProcessReuse = 'shared' | 'own';
+
+/** What a session is for; see {@link SessionStartOptions.purpose}. */
+export type SessionPurpose = 'work' | 'catalog-probe';
+
+/**
+ * What a caller can ask of one `openSession`/`loadSession` (N68). A call without it behaves as a
+ * `work` session on the adapter's default process reuse. [proposta]
+ */
+export interface SessionStartOptions {
+  /**
+   * `own` starts a process for this session alone, even when the client is `multi-session` and a
+   * shared one has room. `shared` joins one. Ignored for a `process-per-session` client, which
+   * always gets its own. Default: what the adapter is configured for.
+   */
+  readonly process?: ProcessReuse;
+  /**
+   * What the session is for. `work` (default): a session that runs prompts. `catalog-probe`: a
+   * session opened only to read the config options the client announces (model, effort, mode).
+   *
+   * Contract: an adapter that receives `catalog-probe` returns a session whose `prompt` and
+   * `setConfig` reject with `PermissionDenied` without sending anything to the client (the
+   * `CatalogProbeSession` of `@otheater/core` does it for any `AgentSession`). Only then may the
+   * adapter exempt the session from the guarantee-layer check (`security.unenforced`), and only
+   * when its configuration allows it (`security.catalog_probe`); a session that can run nothing
+   * needs no guarantee that the policy holds while it runs.
+   */
+  readonly purpose?: SessionPurpose;
+}
+
 /**
  * Public face of a client adapter (architecture 5.2). The abstract class `ClientAdapter`, with the
  * common methods written once (`openSession`, `answerPermission`, `guarantee`, `checkConformance`)
@@ -143,6 +180,7 @@ export interface ClientAdapterContract extends Adapter {
     policy: RolePolicy,
     cwd: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession>;
   loadSession(
     profile: Profile,
@@ -150,6 +188,7 @@ export interface ClientAdapterContract extends Adapter {
     cwd: string,
     sessionId: string,
     via: SessionTransport,
+    options?: SessionStartOptions,
   ): Promise<AgentSession>;
   guarantee(policy: RolePolicy, os: SandboxCapabilities): GuaranteeReport;
   checkConformance(profile: Profile): Promise<ConformanceReport>;

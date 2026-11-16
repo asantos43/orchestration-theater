@@ -376,6 +376,44 @@ describe('the default catalog readers', () => {
     }
   });
 
+  it.each([
+    ['once', 2],
+    ['every', 4],
+    ['off', 0],
+  ] as const)(
+    'with catalog_probe_log: %s two clients read the catalog twice each and the log gets %i warnings',
+    async (mode, expected) => {
+      const t = await setup();
+      try {
+        const adapters = productionClients(
+          parseConfig(`security:\n  catalog_probe_log: ${mode}\n`),
+          { env: ENV, findExecutable: ALL_FOUND },
+        )(t.parts);
+        for (const id of ['claude-code', 'codex']) {
+          const adapter = byId(adapters, id);
+          for (let i = 0; i < 2; i += 1) {
+            const session = await adapter.openSession(
+              t.profile(id),
+              TEST_POLICY,
+              t.dir,
+              transportFor(adapter, t.transport),
+              { purpose: 'catalog-probe' },
+            );
+            await session.close();
+          }
+        }
+        const warned = t.lines.filter(
+          (l) =>
+            (l.fields.warning as { kind?: string } | undefined)?.kind === 'catalog_probe_exempt',
+        );
+        expect(warned).toHaveLength(expected);
+        expect(t.transport.opened).toHaveLength(4);
+      } finally {
+        await t.dispose();
+      }
+    },
+  );
+
   it('lists the Claude models from a session opened without a prompt, read-only, in <data>/catalog-probe', async () => {
     const t = await setup();
     try {

@@ -33,12 +33,15 @@ describe('port versions', () => {
     expect(
       [
         AGENT_SESSION_PORT_VERSION,
-        CLIENT_ADAPTER_PORT_VERSION,
         LOCAL_MODEL_SERVER_PORT_VERSION,
         MODEL_CATALOG_PORT_VERSION,
         QUOTA_PROBE_PORT_VERSION,
       ].every((v) => v === '0.1.0'),
     ).toBe(true);
+  });
+
+  it('moves the ClientAdapter port to 0.2.0 with the session options (N68)', () => {
+    expect(CLIENT_ADAPTER_PORT_VERSION).toBe('0.2.0');
   });
 });
 

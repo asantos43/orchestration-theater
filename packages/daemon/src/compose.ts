@@ -74,6 +74,7 @@ import {
   type FindExecutable,
 } from './clients.js';
 import { sessionConfigReader } from './catalog-reader.js';
+import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
 import { describeZodError, type ClientId, type DaemonConfig } from './config.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
@@ -423,14 +424,17 @@ function minLayersOf(security: DaemonConfig['security']): MinLayers {
   return layers;
 }
 
-/** What the three adapters take alike (`ClientAdapterOptions`), minus `adapterVersion`. */
+/** What the three adapters take alike (`ClientAdapterOptions`). */
 function commonOptions(
   config: DaemonConfig,
   section: Parameters<typeof buildClientEnv>[0],
   env: Env,
   parts: ClientFactoryParts,
-): Omit<ClientAdapterOptions, 'adapterVersion'> {
+  warnings: ClientWarningLog,
+  adapterVersion: string,
+): ClientAdapterOptions {
   return {
+    adapterVersion,
     launcher: parts.launcher,
     baseEnv: buildClientEnv(section, env),
     minLayers: minLayersOf(config.security),
@@ -438,7 +442,7 @@ function commonOptions(
     catalogProbe: config.security.catalog_probe,
     conformance: config.security.conformance,
     onWarning: (warning: ClientAdapterWarning) => {
-      parts.logger.warn({ client: warning.clientId, warning }, 'client adapter warning');
+      warnings(warning, adapterVersion);
     },
   };
 }
@@ -453,6 +457,7 @@ function claudeCode(
   config: DaemonConfig,
   env: Env,
   parts: ClientFactoryParts,
+  warnings: ClientWarningLog,
   options: ProductionClientsOptions,
 ): ClientAdapter {
   const section = config.clients['claude-code'];
@@ -469,11 +474,13 @@ function claudeCode(
           paths: parts.paths,
         }));
   const adapter = new ClaudeCodeAdapter({
-    ...commonOptions(config, section, env, parts),
-    adapterVersion: adapterVersionOf(
-      CLAUDE_CODE_ADAPTER_VERSION,
-      'claude-code',
-      section.client_version,
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', section.client_version),
     ),
     ...(command === undefined
       ? {}
@@ -495,6 +502,7 @@ function codex(
   config: DaemonConfig,
   env: Env,
   parts: ClientFactoryParts,
+  warnings: ClientWarningLog,
   options: ProductionClientsOptions,
 ): ClientAdapter {
   const section = config.clients.codex;
@@ -510,8 +518,14 @@ function codex(
           paths: parts.paths,
         }));
   const adapter = new CodexAdapter({
-    ...commonOptions(config, section, env, parts),
-    adapterVersion: adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', section.client_version),
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', section.client_version),
+    ),
     ...(command === undefined
       ? {}
       : { command: { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args } }),
@@ -527,12 +541,23 @@ function codex(
   return adapter;
 }
 
-function opencode(config: DaemonConfig, env: Env, parts: ClientFactoryParts): ClientAdapter {
+function opencode(
+  config: DaemonConfig,
+  env: Env,
+  parts: ClientFactoryParts,
+  warnings: ClientWarningLog,
+): ClientAdapter {
   const section = config.clients.opencode;
   const command = section.command;
   return new OpenCodeAdapter({
-    ...commonOptions(config, section, env, parts),
-    adapterVersion: opencodeAdapterVersion(section.client_version),
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      opencodeAdapterVersion(section.client_version),
+    ),
     ...(command === undefined
       ? {}
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
@@ -582,6 +607,7 @@ export function productionClients(
   const find = options.findExecutable ?? pathFinder(env);
   return (parts) => {
     const adapters: ClientAdapter[] = [];
+    const warnings = clientWarningLog(config.security.catalog_probe_log, parts.logger);
     for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find)) {
       const { id, reason, executable } = selection;
       if (reason === 'forced_not_found') {
@@ -595,10 +621,10 @@ export function productionClients(
       if (!selection.enabled) continue;
       adapters.push(
         id === 'claude-code'
-          ? claudeCode(config, env, parts, options)
+          ? claudeCode(config, env, parts, warnings, options)
           : id === 'codex'
-            ? codex(config, env, parts, options)
-            : opencode(config, env, parts),
+            ? codex(config, env, parts, warnings, options)
+            : opencode(config, env, parts, warnings),
       );
     }
     return adapters;

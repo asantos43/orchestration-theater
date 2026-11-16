@@ -86,6 +86,12 @@ export const OPENCODE_READ_ONLY_MODES = ['none', 'plan'] as const;
 export const UNENFORCED_MODES = ['refuse', 'warn', 'allow'] as const;
 /** `security.catalog_probe`: whether the session that only reads a catalog skips `unenforced`. */
 export const CATALOG_PROBE_MODES = ['allow', 'refuse'] as const;
+/**
+ * `security.catalog_probe_log`: how often the daemon writes the `catalog_probe_exempt` warning.
+ * `once`: once per client and adapter version in each run of the daemon; `every`: at every
+ * catalog read; `off`: never.
+ */
+export const CATALOG_PROBE_LOG_MODES = ['once', 'every', 'off'] as const;
 export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
 
 /**
@@ -376,6 +382,12 @@ export const DaemonConfigSchema = z.strictObject({
        * same check as a work session. Decided by the owner, 2026-11-16.
        */
       catalog_probe: z.enum(CATALOG_PROBE_MODES).default('allow'),
+      /**
+       * [proposta] How the daemon logs the `catalog_probe_exempt` warning the adapters emit at
+       * every catalog read: `once` (default) per client and adapter version in each run, `every`
+       * or `off`. Other warnings are always logged. Decided by the owner, 2026-11-16 (N69).
+       */
+      catalog_probe_log: z.enum(CATALOG_PROBE_LOG_MODES).default('once'),
       conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
     })
     .prefault({}),

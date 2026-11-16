@@ -14,6 +14,9 @@ import type {
  * exemption from `security.unenforced` safe: a session that may skip the guarantee-layer check can
  * never run a turn.
  *
+ * Exported for client adapters that do not extend the `ClientAdapter` base: wrap the session of a
+ * `purpose: 'catalog-probe'` call in it to meet the contract of `SessionStartOptions.purpose`.
+ *
  * - `prompt` rejects with `PermissionDenied` and sends nothing to the client.
  * - `setConfig` rejects with `PermissionDenied` too: it changes how the client will behave on a
  *   turn that never comes, and the reader has no need of it (the options it reads are the ones
