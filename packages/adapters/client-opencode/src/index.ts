@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 export {
   OPENCODE_ADAPTER_BASE_VERSION,
+  OPENCODE_PACKAGES,
   OPENCODE_PINNED_VERSION,
   OpenCodeAdapter,
   opencodeAdapterVersion,

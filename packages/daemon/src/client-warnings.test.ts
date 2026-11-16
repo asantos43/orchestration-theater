@@ -63,4 +63,32 @@ describe('clientWarningLog', () => {
       expect(kinds(lines)).toEqual(['unenforced', 'unenforced']);
     },
   );
+
+  it.each(['once', 'every', 'off'] as const)(
+    '%s: client_version_corrected goes to the info level, every time, with no credential text',
+    (mode) => {
+      const { logger, lines } = captureLogger();
+      const log = clientWarningLog(mode, logger);
+      const corrected: ClientAdapterWarning = {
+        kind: 'client_version_corrected',
+        clientId: 'codex',
+        from: { version: '2.6.0', source: 'package_json' },
+        to: { version: '2.7.0', source: 'initialize' },
+        adapterVersion: '0.1.0+codex.2.7.0',
+        agentName: 'codex-acp',
+      };
+      log(corrected, '0.1.0+codex.2.7.0');
+      log(corrected, '0.1.0+codex.2.7.0');
+      expect(lines).toHaveLength(2);
+      expect(lines[0]?.level).toBe('info');
+      expect(lines[0]?.msg).toBe('client version corrected by the initialize');
+      expect(lines[0]?.fields).toEqual({
+        client: 'codex',
+        from: { version: '2.6.0', source: 'package_json' },
+        to: { version: '2.7.0', source: 'initialize' },
+        adapterVersion: '0.1.0+codex.2.7.0',
+        agentName: 'codex-acp',
+      });
+    },
+  );
 });

@@ -4,13 +4,13 @@ import { describeSessionsReport, probeSessionsPerProcess } from './sessions-per-
 
 // A tiny ACP agent as a Node script (no real client): `limit` sessions are accepted, the next
 // ones get an error; `die` ends the process at the Nth `session/new`.
-const agent = (limit: number, die = 0): string => `
+const agent = (limit: number, die = 0, info = ''): string => `
 const rl = require('node:readline').createInterface({ input: process.stdin });
 let n = 0;
 rl.on('line', (line) => {
   const m = JSON.parse(line);
   const reply = (r) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, ...r }) + '\\n');
-  if (m.method === 'initialize') return reply({ result: { protocolVersion: 1 } });
+  if (m.method === 'initialize') return reply({ result: { protocolVersion: 1${info} } });
   if (m.method === 'session/new') {
     n += 1;
     if (${String(die)} === n) process.exit(1);
@@ -56,5 +56,19 @@ describe('probeSessionsPerProcess', () => {
     expect(report.accepted).toBe(1);
     expect(report.processAlive).toBe(false);
     expect(report.failures.length).toBeGreaterThan(0);
+  });
+
+  it('reports the agentInfo of the initialize, and none when the client sent none', async () => {
+    const withInfo = agent(10, 0, ", agentInfo: { name: 'fake-acp', version: '1.2.3' }");
+    const report = await probeSessionsPerProcess(probe(withInfo, 1));
+    expect(report.agentInfo).toEqual({ name: 'fake-acp', version: '1.2.3' });
+    expect(describeSessionsReport('fake', report)).toContain('agent_info=fake-acp@1.2.3');
+
+    const none = await probeSessionsPerProcess(probe(agent(10), 1));
+    expect(none.agentInfo).toBeUndefined();
+    expect(describeSessionsReport('fake', none)).toContain('agent_info=none');
+
+    const bad = agent(10, 0, ", agentInfo: { name: 'x', version: 3 }");
+    expect((await probeSessionsPerProcess(probe(bad, 1))).agentInfo).toBeUndefined();
   });
 });

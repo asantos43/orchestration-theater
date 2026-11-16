@@ -217,6 +217,17 @@ describe.skipIf(!flags.clients)('the real claude-agent-acp: sessions in one proc
 });
 
 describe.skipIf(!flags.clients)('the real claude-agent-acp (no prompt)', () => {
+  // N63: only records what the client says about itself in `initialize`, to decide `version_source`
+  // from facts. The version of the ACP adapter is not the version of Claude Code itself [S].
+  it('records the agentInfo of initialize (N63)', async () => {
+    const acp = await start(join(scratch, 'profile'), scratch);
+    const info = acp.initialized.agentInfo as { name?: unknown; version?: unknown } | undefined;
+    console.info(
+      `[agent-info] client=claude-code name=${String(info?.name)} version=${String(info?.version)}`,
+    );
+    expect(info === undefined || typeof info === 'object').toBe(true);
+  });
+
   it('answers initialize with the capabilities this adapter declares', async () => {
     const acp = await start(join(scratch, 'profile'), scratch);
     expect(acp.initialized.agentCapabilities).toMatchObject({ loadSession: true });

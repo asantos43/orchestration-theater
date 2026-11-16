@@ -44,6 +44,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             loadSession: cfg.loadSession === true,
             mcpCapabilities: { http: cfg.http === true },
           },
+          ...(cfg.agentInfo === undefined ? {} : { agentInfo: cfg.agentInfo }),
           authMethods: [],
         },
       });
@@ -176,6 +177,71 @@ describe('AcpTransport against a stub agent', () => {
       clientInfo: { name: 'otheater', version: '9.9.9' },
     });
     await session.close();
+  });
+
+  describe('agentInfo of the initialize (N63)', () => {
+    const seen = async (config: Record<string, unknown>, name: string) => {
+      const { open } = await params(name, { config });
+      const infos: unknown[] = [];
+      const warnings: AcpTransportWarning[] = [];
+      const session = await new AcpTransport({
+        onWarning: (warning) => warnings.push(warning),
+      }).open({
+        ...open,
+        onAgentInfo: (info) => infos.push(info),
+      });
+      await session.close();
+      return { infos, warnings };
+    };
+
+    it('hands the name and version the client reported to the open', async () => {
+      const { infos } = await seen(
+        { agentInfo: { name: 'stub-acp', title: 'Stub', version: '1.2.3', extra: 1 } },
+        'info-open',
+      );
+      expect(infos).toEqual([{ name: 'stub-acp', title: 'Stub', version: '1.2.3' }]);
+    });
+
+    it('says nothing when the client sent no agentInfo', async () => {
+      expect((await seen({}, 'info-absent')).infos).toEqual([]);
+    });
+
+    it.each([
+      ['no version', { name: 'stub-acp' }],
+      ['a number as version', { name: 'stub-acp', version: 3 }],
+      ['no name', { version: '1.0.0' }],
+      ['a string', 'stub-acp 1.0.0'],
+    ])('ignores an agentInfo with %s', async (label, agentInfo) => {
+      expect((await seen({ agentInfo }, `info-bad-${label}`.replace(/ /g, '-'))).infos).toEqual([]);
+    });
+
+    it('hands it to load as well', async () => {
+      const { open } = await params('info-load', {
+        config: { loadSession: true, agentInfo: { name: 'stub-acp', version: '2.0.0' } },
+      });
+      const infos: unknown[] = [];
+      // The stub answers session/load with not-found, but the handshake (and the callback) comes first.
+      await expect(
+        new AcpTransport().load({ ...open, sessionId: 'x', onAgentInfo: (i) => infos.push(i) }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(infos).toEqual([{ name: 'stub-acp', version: '2.0.0' }]);
+    });
+
+    it('a callback that throws does not fail the open; it becomes a warning', async () => {
+      const { open } = await params('info-throws', {
+        config: { agentInfo: { name: 'stub-acp', version: '1.0.0' } },
+      });
+      const warnings: AcpTransportWarning[] = [];
+      const session = await new AcpTransport({ onWarning: (w) => warnings.push(w) }).open({
+        ...open,
+        onAgentInfo: () => {
+          throw new Error('boom');
+        },
+      });
+      expect(session.sessionId).toBe('stub-1');
+      expect(warnings.map((w) => w.kind)).toEqual(['agent_info_handler_threw']);
+      await session.close();
+    });
   });
 
   it('sends cwd, the MCP servers and _meta in session/new', async () => {

@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-export { CodexAdapter, DEFAULT_CODEX_COMMAND, type CodexAdapterOptions } from './codex-adapter.js';
+export {
+  CODEX_ACP_PACKAGES,
+  CodexAdapter,
+  DEFAULT_CODEX_COMMAND,
+  type CodexAdapterOptions,
+} from './codex-adapter.js';
 export {
   CODEX_FAMILY,
   CodexModelCatalog,

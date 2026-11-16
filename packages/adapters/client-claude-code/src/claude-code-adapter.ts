@@ -44,6 +44,16 @@ export const DEFAULT_COMMAND: { readonly cmd: string; readonly args: readonly st
   args: [],
 };
 
+/**
+ * Names of the npm package that holds the ACP adapter `command` starts: the one whose
+ * `package.json` gives the version of the client (N63), because it is also the program that
+ * answers the ACP `initialize` (Phase 0: `agentInfo` = `claude-agent-acp` 0.107.0 [V]). [proposta]
+ * Never a dependency of this package (level C, N45): only a name to look for in what the user installed.
+ */
+export const CLAUDE_CODE_ACP_PACKAGES: readonly string[] = [
+  '@agentclientprotocol/claude-agent-acp',
+];
+
 /** Version of the translation of this adapter: the key of the conformance cache. Change it with the translation. */
 export const CLAUDE_CODE_ADAPTER_VERSION = '0.1.0';
 

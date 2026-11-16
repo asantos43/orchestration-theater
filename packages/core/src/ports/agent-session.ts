@@ -176,6 +176,18 @@ export interface SessionExtensionHandler {
   handle(params: unknown): unknown;
 }
 
+/**
+ * What the client says about itself in the ACP `initialize` (`agentInfo`: name and version).
+ * [proposta] For Claude Code and Codex it names the ACP adapter the daemon starts, not the client
+ * behind it (Phase 0: `claude-agent-acp` 0.107.0 and `@agentclientprotocol/codex-acp` 2.6.0 [V]);
+ * for OpenCode it is the client itself (1.19.5 [V]).
+ */
+export interface AgentInfo {
+  readonly name: string;
+  readonly title?: string;
+  readonly version: string;
+}
+
 /** What a transport receives to open or load a session. */
 export interface SessionOpenParams {
   /**
@@ -204,6 +216,15 @@ export interface SessionOpenParams {
    * `method not found`.
    */
   readonly extensions?: readonly SessionExtensionHandler[];
+  /**
+   * Additive and optional (N63): a transport that learns who the client is during the handshake
+   * (the `agentInfo` of the ACP `initialize`) calls this with it, once for every session it opens
+   * or loads, before the session is handed back. It is not called when the client says nothing.
+   * The `ClientAdapter` base uses it to confirm or correct the client version it read from the
+   * `package.json` (architecture 5.2, "Versão do cliente"). A transport with no handshake (the
+   * headless one) never calls it; the callback must not throw.
+   */
+  readonly onAgentInfo?: (info: AgentInfo) => void;
 }
 
 export interface SessionLoadParams extends SessionOpenParams {

@@ -55,6 +55,14 @@ export const OPENCODE_PINNED_VERSION = '1.19.5';
 export const OPENCODE_ADAPTER_BASE_VERSION = '0.1.0';
 
 /**
+ * Names of the npm package of the client: its `package.json` gives the version (N63), and
+ * `opencode acp` reports that same version in the `initialize` (`agentInfo` = `OpenCode` 1.19.5
+ * [V]). Only an npm install has it; a standalone binary has no `package.json` and the version stays
+ * `unknown` until the `initialize`. [proposta] Never a dependency (level C, N45): only a name to look for.
+ */
+export const OPENCODE_PACKAGES: readonly string[] = ['opencode-ai'];
+
+/**
  * `adapterVersion` for the conformance cache. The base keys its cache by this string alone, and the
  * translation holds for the client version it was measured on (architecture 5.2), so the key joins
  * both: `0.1.0+opencode.1.19.5`. [proposta] The adapter cannot read the client version here (it

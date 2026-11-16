@@ -226,8 +226,9 @@ export function buildClientEnv(
 /**
  * [proposta] `adapterVersion` of a client: the adapter's own version, then the client's. The
  * conformance cache is keyed by it, so it changes when either does (architecture 5.2). The
- * client version is what the user wrote in `client_version`, or `unknown`: the daemon never runs
- * a client to ask.
+ * client version comes from `client_version`, the `package.json` of the installed package or the
+ * `initialize` of a session (`clients.<id>.version_source`, N63), or is `unknown`: the daemon
+ * never runs a client to ask.
  */
 export function adapterVersionOf(adapterBase: string, id: ClientId, clientVersion: string): string {
   return `${adapterBase}+${id}.${clientVersion}`;

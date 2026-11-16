@@ -65,6 +65,29 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 `clients.codex.command`, `clients.codex.initial_mode`, `clients.codex.modes`,
 `clients.codex.credentials_store` (`file`, `keyring`, `auto`), `clients.codex.approval_policy`
 (`on-request`, `untrusted`), `clients.codex.suggested_effort`.
+`clients.codex.version_source` (`auto`, `package_json`, `initialize`, `config`; see Client version).
+
+## Client version (N63) [proposta]
+
+The conformance cache is keyed by the version of the client (`security.conformance:
+on_version_change`), so the daemon needs to know it. Three keys, read by the daemon and never by
+this package:
+
+| Key | Modes | Default |
+| --- | --- | --- |
+| `clients.<id>.version_source` | `auto` (the `package.json`, then the `initialize` confirms or corrects it), `package_json`, `initialize`, `config` | `auto` |
+| `clients.<id>.client_version` | a version string; a written value (not `unknown`) wins in every mode and nothing corrects it | `unknown` |
+| `clients.<id>.version_packages` | the npm package names that identify the install | `CODEX_ACP_PACKAGES` |
+
+- The `package.json` is found without running anything: the command is looked up in `PATH`, the link
+  is followed to the real file, and the folders above it are searched for a `package.json` whose
+  `name` is one of `version_packages` (this package exports `CODEX_ACP_PACKAGES`, the default: `@agentclientprotocol/codex-acp`).
+  `npx`, a wrapper script, a standalone binary or a missing package leaves the version `unknown`,
+  without an error.
+- The `initialize` of every session may say `agentInfo` (optional in ACP). When its version differs
+  from the one known, the adapter takes it, the cache key changes (so the probes run again) and the
+  daemon logs one `info` line. A missing `agentInfo` keeps the version read. Phase 0 [V]: `codex-acp` reports its own version (2.6.0 then), not the one of the Codex CLI.
+- The headless output has no `initialize`: there only the `package.json` (or `client_version`) counts.
 
 ## Tests
 

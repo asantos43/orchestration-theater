@@ -3,6 +3,7 @@ import { AdapterUnavailable, InvalidInput, NotFound } from '../errors.js';
 import { ManagedAgentSession, type SessionDriver } from '../managed-agent-session.js';
 import type { ConfigValue, ContentBlock, StopReason } from '../normalized-update.js';
 import type {
+  AgentInfo,
   AgentSession,
   PermissionAnswer,
   PermissionRequest,
@@ -53,6 +54,8 @@ export interface FakeSessionTransportOptions {
   readonly id?: string;
   /** The sessions it opens can be reloaded. Default true. */
   readonly canLoad?: boolean;
+  /** What the fake client says about itself at `open` and `load` (the `agentInfo` of an ACP `initialize`). Default: nothing. */
+  readonly agentInfo?: AgentInfo;
 }
 
 /** The directive of a prompt: `#script:<name>[ <json>]` on the first line, as in `@otheater/fake-agent`. */
@@ -265,17 +268,21 @@ export class FakeSessionTransport implements SessionTransport {
   readonly configApplied: { id: string; value: ConfigValue }[] = [];
   /** When set, `open` and `load` reject with it. */
   failWith: Error | undefined;
+  /** What `open` and `load` report through `onAgentInfo`; a test may change it between sessions. `undefined` says nothing. */
+  agentInfo: AgentInfo | undefined;
   readonly #canLoad: boolean;
   #created = 0;
 
   constructor(options: FakeSessionTransportOptions = {}) {
     this.id = options.id ?? 'fake';
     this.#canLoad = options.canLoad ?? true;
+    this.agentInfo = options.agentInfo;
   }
 
   open(params: SessionOpenParams): Promise<AgentSession> {
     this.opened.push(params);
     if (this.failWith !== undefined) return Promise.reject(this.failWith);
+    if (this.agentInfo !== undefined) params.onAgentInfo?.(this.agentInfo);
     this.#created += 1;
     return Promise.resolve(this.#session(params, `fake-session-${String(this.#created)}`));
   }
@@ -289,6 +296,7 @@ export class FakeSessionTransport implements SessionTransport {
     if (!params.sessionId.startsWith('fake-session-')) {
       return Promise.reject(new NotFound(`the client has no conversation ${params.sessionId}`));
     }
+    if (this.agentInfo !== undefined) params.onAgentInfo?.(this.agentInfo);
     return Promise.resolve(this.#session(params, params.sessionId));
   }
 

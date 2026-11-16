@@ -11,6 +11,7 @@ import { ModeVetoSession } from './mode-veto-session.js';
 import type { NormalizedUpdate } from './normalized-update.js';
 import type { AdapterImplements } from './ports/adapter.js';
 import type {
+  AgentInfo,
   AgentSession,
   McpServerRef,
   NormalizedError,
@@ -122,8 +123,69 @@ export interface ConformanceCache {
   set(adapterVersion: string, report: ConformanceReport): void;
 }
 
+/**
+ * Where the version of a client came from (architecture 5.2, "Versão do cliente", N63):
+ * `config` is the `client_version` the user wrote, `package_json` the file of the installed
+ * package (read without running anything), `initialize` what the client said in the ACP
+ * `initialize`, `unknown` that nothing said.
+ */
+export type ClientVersionSource = 'config' | 'package_json' | 'initialize' | 'unknown';
+
+/** The version of a client and where it came from. */
+export interface ClientVersion {
+  readonly version: string;
+  readonly source: ClientVersionSource;
+}
+
+/** The version the base falls back to when no source knows it. */
+export const UNKNOWN_CLIENT_VERSION = 'unknown';
+
+/**
+ * The version of the client behind the adapter and how it may change (N63). Without it the
+ * adapter version is the fixed `adapterVersion` string.
+ */
+export interface ClientVersionOptions {
+  /** What is known before the first session, from `client_version` or the `package.json`. */
+  readonly initial: ClientVersion;
+  /**
+   * Whether the version the client reports in the ACP `initialize` confirms or corrects `initial`.
+   * Never when `initial.source` is `config`: a version the user wrote wins over the other sources.
+   * Off for `version_source: package_json | config`.
+   */
+  readonly confirmByInitialize: boolean;
+  /** Builds the key of the conformance cache from a client version (`<adapter>+<client>.<version>`). */
+  readonly adapterVersionOf: (clientVersion: string) => string;
+}
+
+/**
+ * `agentInfo.version` values the base trusts as a version: a short token of the characters a
+ * version uses. It becomes part of the cache key and of a log line, so anything else (empty, long,
+ * with spaces or control characters) is treated as if the client had said nothing.
+ */
+const CLIENT_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/;
+
+/** Is `value` a plausible client version (a short token of version characters)? What the base trusts from a client or a file. */
+export function isClientVersion(value: string): boolean {
+  return CLIENT_VERSION_PATTERN.test(value);
+}
+
 /** Something the base noticed and did not fail on. */
 export type ClientAdapterWarning =
+  | {
+      /**
+       * The version the client reported in the `initialize` is not the one the adapter had (read
+       * from the `package.json`, or `unknown`): from now on the adapter version, and with it the
+       * key of the conformance cache, follows the new one, so `on_version_change` probes run again
+       * for it. [proposta] Informational; carries no credential.
+       */
+      readonly kind: 'client_version_corrected';
+      readonly clientId: string;
+      readonly from: ClientVersion;
+      readonly to: ClientVersion;
+      readonly adapterVersion: string;
+      /** The `agentInfo.name` the client gave. */
+      readonly agentName: string;
+    }
   | {
       readonly kind: 'unenforced';
       readonly clientId: string;
@@ -161,6 +223,13 @@ export interface ClientAdapterOptions {
   readonly baseEnv: Readonly<Record<string, string>>;
   /** Version of this adapter, the key of the conformance cache. Change it when the translation changes. */
   readonly adapterVersion: string;
+  /**
+   * N63. When given, the key of the conformance cache is `clientVersion.adapterVersionOf(<current
+   * client version>)` and follows the version the client reports in the `initialize`;
+   * `adapterVersion` is then only what the key was built from at the start (the caller passes the
+   * same value). Absent: the key is `adapterVersion` and never changes.
+   */
+  readonly clientVersion?: ClientVersionOptions;
   /** What layer 3 offers on this machine. Default: nothing. */
   readonly sandbox?: SandboxCapabilities;
   /** Default: one layer for every field. */
@@ -248,7 +317,9 @@ export abstract class ClientAdapter implements ClientAdapterContract {
 
   readonly #launcher: ProcessLauncher;
   readonly #baseEnv: Readonly<Record<string, string>>;
-  readonly #adapterVersion: string;
+  #adapterVersion: string;
+  #clientVersion: ClientVersion;
+  readonly #versioning: ClientVersionOptions | undefined;
   readonly #sandbox: SandboxCapabilities;
   readonly #minLayers: MinLayers;
   readonly #unenforced: UnenforcedMode;
@@ -267,7 +338,14 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   protected constructor(options: ClientAdapterOptions) {
     this.#launcher = options.launcher;
     this.#baseEnv = options.baseEnv;
-    this.#adapterVersion = options.adapterVersion;
+    this.#versioning = options.clientVersion;
+    this.#clientVersion = options.clientVersion?.initial ?? {
+      version: UNKNOWN_CLIENT_VERSION,
+      source: 'unknown',
+    };
+    this.#adapterVersion =
+      options.clientVersion?.adapterVersionOf(this.#clientVersion.version) ??
+      options.adapterVersion;
     this.#sandbox = options.sandbox ?? { fields: [] };
     this.#minLayers = options.minLayers ?? DEFAULT_MIN_LAYERS;
     this.#unenforced = options.unenforced ?? 'refuse';
@@ -289,6 +367,21 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   }
 
   // ---- common, written once ----
+
+  /**
+   * The version of the client the adapter takes as current, and its source. It starts as the
+   * `client_version` the user wrote or the one read from the `package.json`, and, when
+   * {@link ClientVersionOptions.confirmByInitialize} is on, follows what the client reports in the
+   * ACP `initialize` (N63). The base never runs the client to ask. `unknown` when nothing knows.
+   */
+  get clientVersion(): ClientVersion {
+    return this.#clientVersion;
+  }
+
+  /** The key of the conformance cache now (see {@link ClientAdapterOptions.clientVersion}). */
+  get adapterVersion(): string {
+    return this.#adapterVersion;
+  }
 
   /**
    * Starts the client and returns the normalized session. Order: refuse a policy that is short of
@@ -583,6 +676,9 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       normalizer: this.#normalizer(via.id),
       onPermission: (request) => this.answerPermission(request, policy),
       extensions: this.extensions(),
+      onAgentInfo: (info) => {
+        this.#observeAgentInfo(info);
+      },
     };
     const opened = await (sessionId === undefined
       ? via.open(params)
@@ -609,6 +705,31 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }
+  }
+
+  /**
+   * The `initialize` of a session said who the client is. With `confirmByInitialize`, a version
+   * that differs from the current one (and is not what the user wrote) replaces it, and the key of
+   * the conformance cache moves with it. A version that is not a plausible token is ignored.
+   */
+  #observeAgentInfo(info: AgentInfo): void {
+    const versioning = this.#versioning;
+    if (versioning?.confirmByInitialize !== true) return;
+    const current = this.#clientVersion;
+    if (current.source === 'config') return;
+    const version = typeof info.version === 'string' ? info.version.trim() : '';
+    if (!isClientVersion(version) || version === current.version) return;
+    const next: ClientVersion = { version, source: 'initialize' };
+    this.#clientVersion = next;
+    this.#adapterVersion = versioning.adapterVersionOf(version);
+    this.#warn({
+      kind: 'client_version_corrected',
+      clientId: this.id,
+      from: current,
+      to: next,
+      adapterVersion: this.#adapterVersion,
+      agentName: typeof info.name === 'string' ? info.name.slice(0, 100) : '',
+    });
   }
 
   /** The mode of the setup goes to the client with `session/set_config_option`, behind the session: ask first. */
