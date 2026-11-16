@@ -23,3 +23,4 @@ export * from './managed-agent-session.js';
 export * from './shared-process.js';
 export * from './client-adapter-base.js';
 export * from './catalog-probe-session.js';
+export * from './mode-veto-session.js';

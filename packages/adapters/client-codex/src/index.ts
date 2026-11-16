@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 export { CodexAdapter, DEFAULT_CODEX_COMMAND, type CodexAdapterOptions } from './codex-adapter.js';
-export { guardModes } from './guard-transport.js';
 export {
   CODEX_FAMILY,
   CodexModelCatalog,
@@ -15,7 +14,7 @@ export {
   DEFAULT_ALLOWED_MODES,
   DEFAULT_INITIAL_MODE,
   VETOED_MODES,
-  assertModeAllowed,
+  modeRefusal,
   modePolicyOf,
   type ModePolicy,
 } from './modes.js';

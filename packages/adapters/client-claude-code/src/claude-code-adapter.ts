@@ -2,7 +2,6 @@
 import {
   AdapterUnavailable,
   ClientAdapter,
-  InvalidInput,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
   type ClientCapabilities,
@@ -48,7 +47,7 @@ export const DEFAULT_COMMAND: { readonly cmd: string; readonly args: readonly st
 /** Version of the translation of this adapter: the key of the conformance cache. Change it with the translation. */
 export const CLAUDE_CODE_ADAPTER_VERSION = '0.1.0';
 
-/** Modes the Executor may not ask for, and why (`mapConfig`). */
+/** Modes the client may not be put in, and why (`modeVeto`). */
 const REFUSED_MODES: Readonly<Record<string, string>> = {
   bypassPermissions: 'it skips the permission requests that layer 2 answers (bypass: forbidden)',
   dontAsk: 'it is not in the mode catalog of the adapter [V] and never reaches layer 2',
@@ -121,8 +120,14 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     this.models = new ClaudeModelCatalog(options.modelCatalog);
   }
 
+  /** The same command for both transports: the headless one starts `claude` from `setup.args`. */
   protected command(): { cmd: string; args: string[] } {
     return { cmd: this.#command.cmd, args: [...this.#command.args] };
+  }
+
+  /** `bypassPermissions`, `dontAsk` and `auto` ({@link REFUSED_MODES}), on every transport. */
+  protected modeVeto(mode: string): string | null {
+    return Object.hasOwn(REFUSED_MODES, mode) ? (REFUSED_MODES[mode] ?? null) : null;
   }
 
   /** The profile is the config directory of Claude Code (`docs/08`): login and settings live in it. */
@@ -176,11 +181,6 @@ export class ClaudeCodeAdapter extends ClientAdapter {
 
   /** `model`, `effort` and `mode` are the ids of the config options. [V: Phase 0 item 2] */
   protected mapConfig(want: ExecutorConfig): Record<string, string> {
-    if (want.mode !== undefined && Object.hasOwn(REFUSED_MODES, want.mode)) {
-      throw new InvalidInput(
-        `${this.id}: the mode ${want.mode} is refused: ${REFUSED_MODES[want.mode] ?? ''}`,
-      );
-    }
     return {
       [MODEL_OPTION_ID]: want.model,
       ...(want.effort === undefined ? {} : { [EFFORT_OPTION_ID]: want.effort }),

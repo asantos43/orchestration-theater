@@ -57,6 +57,17 @@ export interface ClientAdapterHarness extends Disposable {
   readonly rootProcessesAlive?: () => number | Promise<number>;
   /** Kills every client process the way a crash does (no `close`, no `cancel`). */
   readonly crash?: () => Promise<void>;
+  /**
+   * The modes the adapter vetoes (the hook `modeVeto` of the base: `bypass` is the daemon's, so a
+   * mode that would skip layer 2 never reaches the client), and what the transport has been asked
+   * to apply, as the values of the config options. When given, the suite opens a session and
+   * checks that `setConfig('mode', <vetoed>)` rejects with `PERMISSION_DENIED` and that none of
+   * them reaches the transport.
+   */
+  readonly modeVeto?: {
+    readonly modes: readonly string[];
+    readonly applied: () => readonly unknown[];
+  };
 }
 
 const text = (update: NormalizedUpdate): string =>
@@ -225,6 +236,21 @@ export function describeClientAdapterConformance(
           code: 'PERMISSION_DENIED',
         });
         expect(seen).toEqual([]);
+        await session.close();
+        expect(await h.processesAlive()).toBe(0);
+      });
+
+      it('refuses a vetoed mode on the open session, before it reaches the client', async (ctx: TestContext) => {
+        const h = harness();
+        const veto = h.modeVeto;
+        if (veto === undefined || veto.modes.length === 0) ctx.skip();
+        const session = await h.adapter.openSession(h.profile, h.policy, h.cwd, h.via);
+        for (const mode of veto.modes) {
+          expect(await rejectionOf(session.setConfig('mode', mode))).toMatchObject({
+            code: 'PERMISSION_DENIED',
+          });
+          expect(veto.applied()).not.toContain(mode);
+        }
         await session.close();
         expect(await h.processesAlive()).toBe(0);
       });

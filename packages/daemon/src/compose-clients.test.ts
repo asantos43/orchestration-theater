@@ -2,15 +2,10 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type ClientAdapter, type Profile } from '@otheater/core';
-import {
-  FakeClock,
-  FakeClientAdapter,
-  FakeProcessLauncher,
-  FakeSessionTransport,
-} from '@otheater/core/testing';
+import { FakeClock, FakeProcessLauncher, FakeSessionTransport } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import type { ClientFactoryParts, FindExecutable } from './clients.js';
-import { DEFAULT_CLIENT_EXECUTABLES, productionClients, transportFor } from './compose.js';
+import { DEFAULT_CLIENT_EXECUTABLES, productionClients } from './compose.js';
 import { parseConfig } from './config.js';
 import { dataPaths } from './paths.js';
 import { captureLogger, makeTempDataDir, TEST_POLICY } from './test-helpers.js';
@@ -396,7 +391,7 @@ describe('the default catalog readers', () => {
               t.profile(id),
               TEST_POLICY,
               t.dir,
-              transportFor(adapter, t.transport),
+              t.transport,
               { purpose: 'catalog-probe' },
             );
             await session.close();
@@ -435,7 +430,7 @@ describe('the default catalog readers', () => {
     }
   });
 
-  it('lists the Codex models and efforts the same way, through the guarded transport', async () => {
+  it('lists the Codex models and efforts the same way', async () => {
     const t = await setup();
     try {
       const codexAdapter = byId(
@@ -532,27 +527,40 @@ describe('the default catalog readers', () => {
   });
 });
 
-describe('transportFor', () => {
-  it('wraps the transport of Codex once per adapter and leaves the others alone', async () => {
+describe('the veto of modes of the production clients', () => {
+  it('refuses the bypass modes of Claude Code and Codex on the session, and lets the rest through', async () => {
     const t = await setup();
     try {
-      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
-        t.parts,
-      );
-      const base = t.transport;
-      expect(transportFor(byId(adapters, 'claude-code'), base)).toBe(base);
-      expect(transportFor(byId(adapters, 'opencode'), base)).toBe(base);
-      const codex = byId(adapters, 'codex');
-      const guarded = transportFor(codex, base);
-      expect(guarded).not.toBe(base);
-      expect(transportFor(codex, base)).toBe(guarded);
-      const fake = new FakeClientAdapter({
-        launcher: t.launcher,
-        baseEnv: {},
-        adapterVersion: '1.0.0',
-        command: { cmd: 'fake-client', args: [] },
-      });
-      expect(transportFor(fake, base)).toBe(base);
+      const adapters = productionClients(parseConfig(OPEN), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+      })(t.parts);
+      const vetoed: Record<string, string[]> = {
+        'claude-code': ['bypassPermissions', 'dontAsk', 'auto'],
+        codex: ['agent', 'agent-full-access'],
+        opencode: [],
+      };
+      const allowed: Record<string, string> = {
+        'claude-code': 'plan',
+        codex: 'read-only',
+        opencode: 'plan',
+      };
+      for (const [id, modes] of Object.entries(vetoed)) {
+        const adapter = byId(adapters, id);
+        const session = await adapter.openSession(t.profile(id), TEST_POLICY, t.dir, t.transport);
+        for (const mode of modes) {
+          await expect(session.setConfig('mode', mode)).rejects.toMatchObject({
+            code: 'PERMISSION_DENIED',
+          });
+          expect(() => adapter.configOptionsFor({ model: 'm', mode })).toThrow(/is refused/);
+        }
+        await session.close();
+        expect(adapter.configOptionsFor({ model: 'm', mode: allowed[id] ?? '' }).mode).toBe(
+          allowed[id],
+        );
+      }
+      const applied = t.transport.configApplied.map((entry) => entry.value);
+      for (const mode of Object.values(vetoed).flat()) expect(applied).not.toContain(mode);
     } finally {
       await t.dispose();
     }

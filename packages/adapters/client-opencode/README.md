@@ -20,6 +20,7 @@ confirmed. Everything marked **[proposta]** is a default or a key the owner has 
 | `sessionSetup`          | ACP: no `--auto` anywhere; `mode: plan` only with `read_only_mode: plan`. Headless: `run --format json` [N]                              |
 | `enforcement`           | layer `client` for tools, shell, write scope and (isolated config) MCP servers; `onAsk` and `bypass` also `daemon`; `network` none        |
 | `mapConfig`             | `model`, `effort`, `mode`: the ACP config option ids of 1.19.5 [V]                                                                       |
+| `modeVeto`              | refuses nothing (`null`): whether a mode loosens the pinned permission was not measured [N]                                              |
 | `normalizeUpdate/Error` | the updates and errors measured in Phase 0 [V]; the stream of `run --format json` is not translated [N]                                 |
 | `models`                | `assisted`: `opencode models --verbose` in the profile directory, through the injected `ProcessLauncher`                                 |
 | `quota`                 | rejects with `AdapterUnavailable` ("arrives in Phase 5")                                                                                  |

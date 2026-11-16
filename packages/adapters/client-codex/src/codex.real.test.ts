@@ -41,7 +41,7 @@ describe.skipIf(!flags.clients || profileDir === undefined)('the real codex-acp'
   });
 
   it.skipIf(!flags.prompts)(
-    'answers a prompt, in the pinned mode, through the guarded transport',
+    'answers a prompt, in the pinned mode, with the mode veto of the adapter',
     () => {
       // The ACP transport that spawns the process arrives with the daemon wiring (P8); until then
       // this test only documents the intent and builds the adapter it will drive.

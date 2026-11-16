@@ -7,6 +7,7 @@ import {
   type OTheaterError,
 } from './errors.js';
 import { CatalogProbeSession } from './catalog-probe-session.js';
+import { ModeVetoSession } from './mode-veto-session.js';
 import type { NormalizedUpdate } from './normalized-update.js';
 import type { AdapterImplements } from './ports/adapter.js';
 import type {
@@ -17,10 +18,12 @@ import type {
   PermissionRequest,
   RawUpdate,
   SessionNormalizer,
+  SessionConfigOption,
   SessionOpenParams,
   SessionSetup,
   SessionTransport,
 } from './ports/agent-session.js';
+import type { ConfigValue } from './normalized-update.js';
 import {
   CLIENT_ADAPTER_PORT_VERSION,
   ROLE_POLICY_FIELDS,
@@ -52,6 +55,14 @@ import {
   type SharedCancelEscalation,
   type SharedCancelMode,
 } from './shared-process.js';
+
+/**
+ * Id of the session config option that selects the mode, in the setup of a session and in
+ * `Executor.mode`. [proposta] The three clients (Claude Code, Codex, OpenCode) call it `mode`. A
+ * session also marks an option as the mode with `category: 'mode'` (ACP), whatever its id; the
+ * veto looks at both.
+ */
+export const MODE_CONFIG_ID = 'mode';
 
 /** Id of a {@link SessionTransport}: what the descendant sees where the architecture writes `SessionTransport`. */
 export type TransportId = SessionTransport['id'];
@@ -338,7 +349,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     purpose: SessionPurpose = 'work',
   ): Promise<LaunchOptions> {
     this.#assertGuaranteed(policy, via, purpose);
-    return this.#spec(profile, policy, cwd);
+    return this.#spec(profile, policy, cwd, via);
   }
 
   /**
@@ -454,16 +465,24 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   /**
    * Maps the model, effort and mode of an Executor to the config option ids of the client
    * (`session.setConfig(id, value)`). [proposta] `openSession` has no `ExecutorConfig`, and
-   * `mapConfig` is protected, so the caller gets it through here.
+   * `mapConfig` is protected, so the caller gets it through here. A mode the client refuses
+   * ({@link ClientAdapter.modeVeto}) rejects with `PermissionDenied` before anything is mapped, the
+   * same refusal a `setConfig` of that mode gets, so the caller learns it before a session exists.
+   * `via` is the transport the session will run on (default `acp`); the veto may depend on it.
    */
-  configOptionsFor(want: ExecutorConfig): Record<string, string> {
+  configOptionsFor(want: ExecutorConfig, via: TransportId = 'acp'): Record<string, string> {
+    if (want.mode !== undefined) this.#assertModeAllowed(want.mode, via);
     return this.mapConfig(want);
   }
 
   // ---- specific, each client fills in ----
 
-  /** Executable and arguments of the ACP client, e.g. `npx claude-agent-acp`. */
-  protected abstract command(profile: Profile): { cmd: string; args: string[] };
+  /**
+   * Executable and arguments of the client, e.g. `npx claude-agent-acp`. `via` is the transport
+   * the session will use: the command may differ between ACP and the headless exit (architecture
+   * 5.2). [proposta] A client whose command is the same for both ignores it.
+   */
+  protected abstract command(profile: Profile, via: TransportId): { cmd: string; args: string[] };
   /** What the profile adds to the environment: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`... (never a secret in clear in logs). */
   protected abstract profileEnv(profile: Profile): Record<string, string>;
   /** Layer 1 in a file: writes the settings of the profile (permissions, statusline, telemetry). */
@@ -476,8 +495,27 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   protected abstract normalizeUpdate(raw: RawUpdate, via: TransportId): NormalizedUpdate | null;
   /** Agent shell: quota (N42), login, stuck client. */
   protected abstract normalizeError(raw: unknown, via: TransportId): NormalizedError;
-  /** Model, effort and mode in the ids of the client. */
+  /**
+   * Model, effort and mode in the ids of the client. It only translates: a mode the client must
+   * not be in is refused by {@link modeVeto} before it gets here.
+   */
   protected abstract mapConfig(want: ExecutorConfig): Record<string, string>;
+  /**
+   * The veto of the mode (architecture 5.8, `bypass`): why the client must not be put in `mode`
+   * on this transport, or `null` to allow it. The base asks before every change of mode, so a
+   * refusal is `PermissionDenied` and never reaches the client: the mode of the setup of a
+   * session (`sessionSetup`, on `openSession`, `loadSession`, `openSessionOn` and `loadSessionOn`),
+   * `configOptionsFor`, and every `setConfig` of the session it hands out, on a shared process
+   * too. Synchronous and free of side effects. The text is the reason, without the client id: the
+   * base adds it. [proposta]
+   *
+   * It is a `protected abstract` member, not a constructor option: the veto is what the client
+   * is (Codex keeps `agent` and `agent-full-access` in its catalog and cannot remove them, Claude
+   * Code refuses `bypassPermissions`), and a descendant with nothing to refuse returns `null`.
+   * The base owns the part that is the same for every client (which `setConfig` is a change of
+   * mode, the `PermissionDenied`, the wrapper of the session), so no common method is overridden.
+   */
+  protected abstract modeVeto(mode: string, via: TransportId): string | null;
   /** Answers the `_otheater/<resource>` extension methods of this client. */
   protected abstract extensions(): AcpExtensionHandler[];
   /** Probes of this client, in addition to the common ones. */
@@ -500,7 +538,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     const mcpServers = this.#mcpServersOf(policy);
     // The spec is built on every open, shared process or not: the profile files and the slot the
     // descendant keeps for this policy are written per session, and the key needs the environment.
-    const spec = await this.#spec(profile, policy, cwd);
+    const spec = await this.#spec(profile, policy, cwd, via.id);
     const sharing =
       this.processModel === 'multi-session' &&
       (options?.process ?? this.#processReuse) === 'shared';
@@ -515,9 +553,14 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     }
   }
 
-  async #spec(profile: Profile, policy: RolePolicy, cwd: string): Promise<LaunchOptions> {
+  async #spec(
+    profile: Profile,
+    policy: RolePolicy,
+    cwd: string,
+    via: TransportId,
+  ): Promise<LaunchOptions> {
     await this.prepareProfile(profile, policy);
-    const { cmd, args } = this.command(profile);
+    const { cmd, args } = this.command(profile, via);
     return { cmd, args, cwd, env: { ...this.#baseEnv, ...this.profileEnv(profile) } };
   }
 
@@ -530,18 +573,23 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     mcpServers: readonly McpServerRef[],
     purpose: SessionPurpose,
   ): Promise<AgentSession> {
+    const setup = this.sessionSetup(policy, via.id);
+    this.#assertSetupModes(setup, via.id);
     const params: SessionOpenParams = {
       process,
       cwd,
-      setup: this.sessionSetup(policy, via.id),
+      setup,
       mcpServers,
       normalizer: this.#normalizer(via.id),
       onPermission: (request) => this.answerPermission(request, policy),
       extensions: this.extensions(),
     };
-    const session = await (sessionId === undefined
+    const opened = await (sessionId === undefined
       ? via.open(params)
       : via.load({ ...params, sessionId }));
+    const session = new ModeVetoSession(opened, (id, value, options) =>
+      this.#modeRefusal(id, value, options, via.id),
+    );
     return purpose === 'catalog-probe' ? new CatalogProbeSession(session) : session;
   }
 
@@ -561,6 +609,46 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }
+  }
+
+  /** The mode of the setup goes to the client with `session/set_config_option`, behind the session: ask first. */
+  #assertSetupModes(setup: SessionSetup, via: TransportId): void {
+    if (setup.via !== 'acp') return;
+    for (const [id, value] of Object.entries(setup.configOptions)) {
+      const refusal = this.#modeRefusal(id, value, [], via);
+      if (refusal !== undefined) throw refusal;
+    }
+  }
+
+  #assertModeAllowed(mode: string, via: TransportId): void {
+    const reason = this.modeVeto(mode, via);
+    if (reason !== null) throw this.#refusedMode(mode, reason);
+  }
+
+  /**
+   * The refusal of a `setConfig(id, value)` (or of a config of the setup), when `id` is the mode
+   * option and the veto says no. `options` are the ones the session announced: an option with
+   * `category: 'mode'` is the mode whatever its id.
+   */
+  #modeRefusal(
+    id: string,
+    value: ConfigValue,
+    options: readonly SessionConfigOption[],
+    via: TransportId,
+  ): PermissionDenied | undefined {
+    const isMode =
+      id === MODE_CONFIG_ID ||
+      options.some((option) => option.id === id && option.category === 'mode');
+    if (!isMode) return undefined;
+    if (typeof value !== 'string') {
+      return new PermissionDenied(`${this.id}: the mode has to be one of the mode ids`);
+    }
+    const reason = this.modeVeto(value, via);
+    return reason === null ? undefined : this.#refusedMode(value, reason);
+  }
+
+  #refusedMode(mode: string, reason: string): PermissionDenied {
+    return new PermissionDenied(`${this.id}: the mode ${mode} is refused: ${reason}`);
   }
 
   #assertGuaranteed(policy: RolePolicy, via: TransportId, purpose: SessionPurpose): void {

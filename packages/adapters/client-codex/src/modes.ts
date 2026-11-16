@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { InvalidInput, PermissionDenied } from '@otheater/core';
+import { InvalidInput } from '@otheater/core';
 
 /**
  * Ids of the session config options of `codex-acp` 2.6.0, as `session/new` listed them in Phase 0
@@ -66,19 +66,17 @@ export function modePolicyOf(initial: string, allowed: readonly string[]): ModeP
 }
 
 /**
- * The veto: resolves for a mode the session may be in, throws `PermissionDenied` for any other.
- * An allow-list, not a deny-list: besides the two vetoed modes the client adds a mode per
- * permission profile it knows (`permission-profile:<id>`) [S], and none of those was measured.
+ * The veto: why a session may not be in `mode` (`null` when it may). An allow-list, not a
+ * deny-list: besides the two vetoed modes the client adds a mode per permission profile it knows
+ * (`permission-profile:<id>`) [S], and none of those was measured. The base turns the reason into
+ * a `PermissionDenied` (`ClientAdapter.modeVeto`).
  */
-export function assertModeAllowed(policy: ModePolicy, mode: string): void {
+export function modeRefusal(policy: ModePolicy, mode: string): string | null {
   if (VETOED_MODES.includes(mode)) {
-    throw new PermissionDenied(
-      `codex: the mode ${mode} is vetoed (it never asks the client for permission); allowed: ${policy.allowed.join(', ')}`,
-    );
+    return `it is vetoed (it never asks the client for permission); allowed: ${policy.allowed.join(', ')}`;
   }
   if (!policy.allowed.includes(mode)) {
-    throw new PermissionDenied(
-      `codex: the mode ${mode} is not allowed; allowed: ${policy.allowed.join(', ')}`,
-    );
+    return `it is not allowed; allowed: ${policy.allowed.join(', ')}`;
   }
+  return null;
 }
