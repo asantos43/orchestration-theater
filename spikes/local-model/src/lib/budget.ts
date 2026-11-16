@@ -4,7 +4,7 @@ import { OUT } from './paths.ts';
 
 const COUNTER = join(OUT, 'prompt-count.json');
 const PROMPTS = join(OUT, 'prompts.jsonl');
-export const MAX_PROMPTS = 80;
+export const MAX_PROMPTS = Number(process.env.OT_MAX_PROMPTS ?? 80);
 
 /** Contador global (entre processos) do limite de 25 prompts. Lança ao estourar. */
 export function spendPrompt(label: string, text: string): number {

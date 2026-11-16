@@ -108,7 +108,7 @@ Objetivo: tirar o item 1 do n=1 e fechar o que a rodada 1 deixou em aberto. **Co
 - **Execuções excluídas**: 2 execuções do Codex→OpenCode com `gemini-3.5-flash` na variante full (r2 e r3) falharam por **cota da API do Google** (erro "free tier ... limit: 20 ... per day", `usage` 0). São falha de infraestrutura, aparecem na tabela por execução como "excluída (cota)" e **não entram** nos agregados. Detalhe: a mensagem de erro cita `gemini-3.6-flash`, embora o log de fio mostre `google/gemini-3.5-flash` aplicado na sessão; por que o provedor cita outro nome é **[N]**. Não deu para repor: o erro diz para tentar de novo em cerca de 15 horas.
 - Não foi aberto nenhum arquivo de sessão do dono, nenhuma credencial lida, e o `opencode serve` do dono (porta 4096) não foi tocado.
 
-Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = origem refeita; "(3.5-flash)" = destino OpenCode com `google/gemini-3.5-flash` em vez do padrão `google/gemini-3.1-flash-lite`. Os pares A, B e C da rodada 1 são Claude→Codex, Codex→OpenCode e OpenCode→Claude.
+Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = origem refeita; "(3.5-flash)" = destino OpenCode com `google/gemini-3.5-flash` em vez do padrão `google/gemini-3.1-flash-lite`; "(gemma local)" = destino OpenCode com o Gemma 4 E4B local no Ollama (seção própria, abaixo). "(glm-5.3-flash free)", "(deepseek-v4.1-flash free)" e "(minimax-m3.1-flash free)" = destino OpenCode com o modelo free do Zen (`opencode/...`); "(gemma 26b google)" e "(gemma 31b google)" = destino OpenCode com `google/gemma-4-26b-a4b-it` e `google/gemma-4-31b-it` (seção "Destino OpenCode com modelos free", abaixo). Os pares A, B e C da rodada 1 são Claude→Codex, Codex→OpenCode e OpenCode→Claude.
 
 ### Todas as execuções da continuação (rodada 1 e rodada 2)
 
@@ -134,11 +134,45 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 | Codex→Claude | full | r2 | sim | 9/9 | 5/5 | 6/6 | 19,1 s | 0/11 | 4 (4) | 305538 |
 | Codex→Claude | min | r1 | sim | 9/9 | 5/5 | 6/6 | 18,2 s | 0/11 | 4 (4) | 301032 |
 | Codex→Claude | min | r2 | sim | 9/9 | 5/5 | 6/6 | 19,2 s | 0/11 | 4 (4) | 301630 |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
 | Codex→OpenCode (3.5-flash) | full | r1 | sim | 9/9 | 5/5 | 6/6 | 48,7 s | 0/11 | 4 (4) | 21940 |
 | Codex→OpenCode (3.5-flash) | full | r2 | excluída (cota) | 3/3 | 0/5 | 3/6 | 80,9 s | 0/11 | 1 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
 | Codex→OpenCode (3.5-flash) | full | r3 | excluída (cota) | 3/3 | 0/5 | 2/6 | 75,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
 | Codex→OpenCode (3.5-flash) | min | r1 | sim | 9/9 | 5/5 | 6/6 | 18,3 s | 0/11 | 4 (4) | 21604 |
 | Codex→OpenCode (3.5-flash) | min | r2 | sim | 9/9 | 5/5 | 6/6 | 60,3 s | 0/11 | 4 (4) | 21613 |
+| Codex→OpenCode (gemma local) | full | r1 | **não** | 3/3 | 0/5 | 2/6 | 273,6 s | 0/11 | 0 (4) | 17911 |
+| Codex→OpenCode (gemma local) | full | r2 | **não** | 3/3 | 0/5 | 2/6 | 354,1 s | 0/11 | 0 (4) | 18587 |
+| Codex→OpenCode (gemma local) | min | r1 | **não** | 0/1 | 0/5 | 4/6 | 1500,1 s (vigia) | 3/11 | 9‡ (4) | 0 ERRO: ACP connection closed |
+| Codex→OpenCode (gemma local) | min | r2 | **não** | 4/4 | 0/5 | 2/6 | 1291,2 s | 9/11 | 6‡ (4) | 21533 |
+| Codex→OpenCode (gemma 26b google) | full | r1 | excluída (cota) | 3/3 | 0/5 | 2/6 | 74,5 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | full | r2 | excluída (cota) | 3/3 | 0/5 | 2/6 | 73,4 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | full | r3 | excluída (cota) | 3/3 | 0/5 | 2/6 | 71,4 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r1 | excluída (cota) | 3/3 | 0/5 | 2/6 | 150,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r2 | excluída (cota) | 3/3 | 0/5 | 2/6 | 145,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 3/6 | 212,2 s | 0/11 | 2 (4) | 0 ERRO: Internal error: Internal error encountered. |
+| Codex→OpenCode (gemma 31b google) | full | r1 | excluída (cota) | 3/3 | 0/5 | 3/6 | 404,6 s | 0/11 | 2 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 31b google) | full | r2 | excluída (cota) | 3/3 | 0/5 | 3/6 | 249,8 s | 0/11 | 1 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 31b google) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 165,2 s | 0/11 | 0 (4) | 0 ERRO: Internal error: Internal error encountered. |
+| Codex→OpenCode (gemma 31b google) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 138,3 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This model is currently experiencing high de |
+| Codex→OpenCode (gemma 31b google) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 165,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This model is currently experiencing high de |
+| Codex→OpenCode (gemma 31b google) | min | r3 | excluída (cota) | 3/3 | 0/5 | 2/6 | 215,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (glm-5.3-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
 | Codex→OpenCode (origem 2) | full | r1 | sim | 9/9 | 5/5 | 6/6 | 17,0 s | 0/15 | 3 (3) | 21894 |
 | Codex→OpenCode (origem 2) | full | r2 | sim | 9/9 | 5/5 | 6/6 | 83,1 s | 0/15 | 3 (3) | 21331 |
 | Codex→OpenCode (origem 2) | min | r1 | sim | 8/8 | 5/5 | 6/6 | 197,5 s | 0/15 | 6 (3) | 26213 |
@@ -178,6 +212,8 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 | Codex→Claude | min | 2 | 2 de 2 | 18,7 s | 18,2 a 19,2 s | 0 | 0 (0, 0) | 3129 |
 | Codex→OpenCode (3.5-flash) | full | 1 | 1 de 1 | 48,7 s | 48,7 a 48,7 s | 0 | 0 (0) | 4243 |
 | Codex→OpenCode (3.5-flash) | min | 2 | 2 de 2 | 39,3 s | 18,3 a 60,3 s | 0 | 0 (0, 0) | 3129 |
+| Codex→OpenCode (gemma local) | full | 2 | 0 de 2 | 313,9 s | 273,6 a 354,1 s | 0 | 0 (0, 0) | 4243 |
+| Codex→OpenCode (gemma local) | min | 2 | 0 de 2 | 1395,6 s | 1291,2 a 1500,1 s | 12 | 7‡ (5, 2) | 3129 |
 | Codex→OpenCode (origem 2) | full | 2 | 2 de 2 | 50,1 s | 17,0 a 83,1 s | 0 | 0 (0, 0) | 4654 |
 | Codex→OpenCode (origem 2) | min | 2 | 2 de 2 | 112,6 s | 27,6 a 197,5 s | 0 | 3 (3, 0) | 3415 |
 | Codex→OpenCode | full | 3 | 2 de 3 | 86,6 s | 58,6 a 179,6 s | 0 | 5 (2, 2, 1) | 4243 |
@@ -189,7 +225,9 @@ Convenção dos nomes: "Claude→Codex" etc. = origem→destino; "(origem 2)" = 
 | OpenCode→Codex | full | 2 | 2 de 2 | 22,0 s | 20,8 a 23,1 s | 0 | 0 (0, 0) | 4156 |
 | OpenCode→Codex | min | 2 | 1 de 2 | 11,1 s | 3,4 a 18,9 s | 5 | 0 (0, 0) | 3107 |
 
-"ok em n" exige testes do próprio agente verdes, aceitação 5/5 e 6 passos. O tempo é a mediana, com a faixa ao lado. As execuções "excluída (cota)" não entram.
+As células "(deepseek-v4.1-flash free)", "(glm-5.3-flash free)", "(minimax-m3.1-flash free)", "(gemma 26b google)" e "(gemma 31b google)" **não têm linha neste agregado**: as 30 execuções foram todas excluídas por infraestrutura (seção "Destino OpenCode com modelos free"), então n válido = 0 em cada uma.
+
+"ok em n" exige testes do próprio agente verdes, aceitação 5/5 e 6 passos. O tempo é a mediana, com a faixa ao lado. As execuções "excluída (cota)" não entram. ‡ = nas linhas "gemma local", as escritas contam **tentativas** de edição (inclusive as que o OpenCode recusou); ver a seção do Gemma local.
 
 ### Leitura (item 1: repetições e sentidos novos)
 
@@ -216,6 +254,10 @@ Modelo: `google/gemini-3.5-flash`, escolhido na lista de `opencode models` (mesm
 
 Nas 3 execuções válidas com o 3.5-flash: todas corretas, 0 linhas perdidas e **exatamente as 4 escritas que faltavam**, nos dois pacotes. Na mesma origem com o flash-lite, 3 de 6 falharam e as escritas passaram de 4 em todas. Leitura: é compatível com "o modelo de destino pesa mais que o formato do pacote" neste par, mas n=3 válidas não prova nada, e o full ficou com n=1 por causa da cota **[N]**. A cota diária do tier grátis (20 requisições por dia, segundo o erro) também sugere que esse modelo, nesta conta, não sustenta uso contínuo no tier grátis **[N]**.
 
+**Decisão do dono, 2026-11-15:** a célula pendente do `google/gemini-3.5-flash` full (ficou com **n=1** válida; 2 excluídas por cota) **não será completada**. No lugar dela entra a célula do modelo local (próxima seção). A célula do 3.5-flash fica registrada como **exceção**: min n=2 e full n=1, ambas corretas, sem mais repetições; qualquer conclusão sobre o "modelo mais forte" com o Gemini fica com esse n.
+
+**Atualização, 2026-11-15:** o dono mandou rodar mais 5 modelos no mesmo par e origem (3 modelos free do Zen e 2 Gemma pelo Google); a seção "Destino OpenCode com modelos free" registra o que aconteceu. A decisão acima (não completar a célula do 3.5-flash) continua valendo.
+
 ### Item 4: retomada nativa com `cwd` diferente
 
 1 execução por célula de repetição, 2 para o OpenCode (rodada com 180 s e rodada com 400 s). O novo cwd é uma worktree irmã do repositório (`wt`) ou uma pasta fora de qualquer repositório (`plain`). A: ACP cria, CLI retoma no novo cwd. B: CLI cria, ACP `session/load` com o novo cwd. Controle do OpenCode: mesmo cwd.
@@ -235,9 +277,163 @@ Nas 3 execuções válidas com o 3.5-flash: todas corretas, 0 linhas perdidas e 
 - O `session/load` reproduz o histórico como `session/update` antes de responder, como na rodada 1 (1 a 2 mensagens antes do follow-up); o cliente precisa descartá-lo.
 - Observação: o ACP do OpenCode anuncia (`available_commands_update`) comandos vindos de skills do ambiente do dono; é só o que o cliente expõe, nada foi lido além do fio ACP.
 
+### Destino OpenCode com modelo local (Gemma 4 E4B no Ollama)
+
+Medido em 2026-11-15, das 16:11 às 17:09 (UTC-3), a pedido do dono (que trocou a célula do `gemini-3.5-flash` por esta). Par **Codex→OpenCode, origem 1** (mesmo checkpoint restaurado e mesmos pacotes das células do flash-lite e do 3.5-flash), variantes **min** e **full**, **2 execuções por variante**. Uma terceira execução por variante **não foi feita** (cada execução levou de 4,5 a 25 min; ver "Tempo"), então n=2. **n de 2 não é estatística.**
+
+**Configuração [V]**
+
+| Item | Valor |
+|---|---|
+| Modelo | `local/gemma4-e4b` (provedor local, `@ai-sdk/openai-compatible`); é o `gemma4-e4b` do Ollama, o **mesmo** da configuração cheia do spike `local-model` (GGUF `gemma-4-E4B-it-Q4_0`, sem baixar nem importar nada) |
+| Servidor | Ollama v0.40.16 por `spikes/local-model/ollama.sh start`, `127.0.0.1:47510`, iGPU por Vulkan (`library=Vulkan`, "AMD ... RADV RENOIR"); só eu o subi e só eu o parei |
+| Contexto | `OLLAMA_CONTEXT_LENGTH=32768` (padrão do `ollama.sh`); o log do servidor mostra `n_ctx_slot = 32768` |
+| Raciocínio | **ligado** (padrão do Ollama; o OpenCode não manda nada que o desligue; 591 a 8001 `agent_thought_chunk` por execução); mesma condição da corrida cheia do `local-model` |
+| Ferramentas do OpenCode | **perfil padrão do dono**, o mesmo das células do Gemini; só o provedor foi acrescentado, por `OPENCODE_CONFIG_CONTENT` (limite de contexto 32768, saída 4096, como no `local-model`). O `~/.config/opencode` não foi lido nem alterado |
+| Prompt | 16 996 tokens na 1ª requisição principal (com o pacote), crescendo até 21 576 na última; cabe nos 32 768. É mais que os ~11,6 mil do OpenCode "padrão" do `local-model`, porque o perfil do dono acrescenta contexto (skills etc.) |
+| Velocidade (log do Ollama, 41 requisições) | prefill do prompt cheio: 151 tok/s (16 996 tokens em 113 s); com cache de prefixo, ~90 a 110 tok/s nos trechos novos (cerca de 200 a 400 tokens); geração 8,0 a 11,2 tok/s; ~23,7 mil tokens gerados nas quatro execuções (raciocínio incluído) |
+| Mudança no código | **`acp.ts` não mudou**: o processo filho herda `OPENCODE_CONFIG_CONTENT` e `OT_MODEL=local/gemma4-e4b` do ambiente. Em `cont.ts`, só o vigia ficou configurável (`OT_WATCHDOG_MS`, antes fixo em 600 s; aqui 1500 s, porque a execução local leva mais que 10 min). `agg.ts` ganhou o rótulo "(gemma local)". Novo `src/rep5.sh` roda as execuções |
+
+**Tabela por execução** (mesmo formato das anteriores; as 4 linhas também estão na tabela geral acima)
+
+| Par | Variante | Execução | ok | Próprios | Aceitação | Passos | Tempo | Linhas perdidas | Escritas (faltavam) | Tokens do usage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Codex→OpenCode (gemma local) | min | r1 | **não** | 0/1 (arquivo não carrega) | 0/5 | 4/6 | 1500,1 s (vigia) | 3/11 | 9‡ (4) | sem usage (processo morto) |
+| Codex→OpenCode (gemma local) | min | r2 | **não** | 4/4 | 0/5 | 2/6 | 1291,2 s | 9/11 | 6‡ (4) | 21533 |
+| Codex→OpenCode (gemma local) | full | r1 | **não** | 3/3 | 0/5 | 2/6 | 273,6 s | 0/11 | 0 (4) | 17911 |
+| Codex→OpenCode (gemma local) | full | r2 | **não** | 3/3 | 0/5 | 2/6 | 354,1 s | 0/11 | 0 (4) | 18587 |
+
+‡ = tentativas de edição, contando as que o OpenCode recusou (min r1: 3 concluídas e 6 recusadas; min r2: 5 concluídas e 1 recusada, mais 2 comandos `node --test`).
+
+**Falhas, uma a uma [V, a partir de `out/cont-codex-opencode-gemma-*.json` e das worktrees finais]**
+
+- **full r1 e full r2 (iguais)**: o modelo leu `lib.mjs` (r2 leu também `lib.test.mjs`), **parou o turno** (`end_turn`) e escreveu a próxima chamada **como texto** (um bloco JSON com `read` ou `edit`) em vez de chamar a ferramenta. 0 edições; o estado final é o da origem (0 linhas perdidas, 2/6 passos), só que sem a continuação. Isso é o "texto no lugar da chamada" do `local-model`, que lá deu 0 em 10 tarefas. A causa (raciocínio ligado, prompt de ~17 mil tokens, tarefa mais longa, ou o parser de ferramentas do Ollama) **não foi separada [N]**.
+- **min r1**: nenhuma parada precoce; 16 chamadas em 25 min, **6 de 9 edições recusadas pelo OpenCode** (2 "found multiple matches for oldString" e 4 "could not find oldString"). As 3 edições aceitas deixaram `lib.mjs` com `wordFreq` e `chunk` coladas **dentro** de `slugify` (sem fechar a chave): `SyntaxError`. O vigia de 1500 s matou o adaptador; o prompt não terminou (sem resposta final). Perdeu 3 linhas de teste da origem. Laço de chamadas repetidas idênticas **não** houve (as chamadas variaram), mas houve "ler, tentar editar, falhar, ler de novo" **[V]**.
+- **min r2**: terminou sozinho em 21,5 min, respondeu **"DONE 10"** e **reescreveu `lib.mjs` e `lib.test.mjs` só com o `chunk` e seus testes**, apagando `slugify` e `wordFreq` (9 de 11 linhas da origem sumiram). Os testes do próprio agente ficaram verdes (4/4) e ele declarou sucesso, mas a aceitação (0/5) não carrega porque faltam exports e há 4 testes, não 10. **Falha silenciosa**: autoavaliação verde e resposta "DONE", com o trabalho da origem destruído **[V]**. É o tipo de falha que só o diff contra o checkpoint (o harness) pega.
+- Nenhuma recusa de permissão (`permissions` = 0), nenhum erro de infraestrutura (Ollama estável, sem "GPU Hang", sem estouro de contexto), nenhuma cota.
+
+**Tempo [V]**
+
+- Tempo até a 1ª chamada de ferramenta: 227 a 244 s nas quatro execuções (prefill de ~17 mil tokens em ~113 s mais raciocínio a ~9 tok/s).
+- Total: full 274 e 354 s (paradas precoces); min 1291 s e 1500 s (limite do vigia). O tempo do min é dominado por raciocínio longo entre chamadas (requisições de até ~1,3 mil tokens gerados, ~2,5 min cada). Contraste: flash-lite 45 a 184 s, 3.5-flash 18 a 60 s.
+- O vigia de 600 s original teria matado as duas execuções do min; 1500 s é um teto escolhido por mim, sem relação com o produto.
+
+**Tokens [N]**: o `usage` que o OpenCode devolve pelo ACP veio mais plausível que nos testes anteriores (`outputTokens` de 284 a 605, `cachedReadTokens` 17 387 a 20 968), mas o total (~18 a 21 mil) é do tamanho de **uma** requisição, não da soma das chamadas; parece reportar só o último passo. Por isso não comparo com os demais. A medida confiável aqui é do servidor: **41 requisições e ~23,7 mil tokens gerados** nas quatro execuções, e 3 de 4 chegaram a ~21 mil de contexto (min r1/r2 e a corrida até o corte).
+
+**Comparação com as células do flash-lite e do 3.5-flash (mesmo par, mesma origem, mesmos pacotes)**
+
+| Modelo do destino | Variante | Válidas | ok | Tempo | Escritas (faltavam 4) | Linhas perdidas |
+|---|---|---|---|---|---|---|
+| flash-lite (padrão) | min | 3 | 1 de 3 | 45 a 184 s | 5, 6, 8 | 3 |
+| flash-lite (padrão) | full | 3 | 2 de 3 | 59 a 180 s | 5, 6, 6 | 0 |
+| 3.5-flash (exceção; n=1 no full) | min | 2 | 2 de 2 | 18 e 60 s | 4 e 4 | 0 |
+| 3.5-flash (exceção; n=1 no full) | full | 1 | 1 de 1 | 49 s | 4 | 0 |
+| **Gemma 4 E4B local** | min | 2 | **0 de 2** | 1291 e 1500 s | 6 e 9 tentativas | 12 |
+| **Gemma 4 E4B local** | full | 2 | **0 de 2** | 274 e 354 s | 0 | 0 |
+
+Leitura (n de 2 a 3 por célula **não é estatística**; mesma máquina, mesmo dia, serviços diferentes):
+
+- **Nesta tarefa e neste par, o Gemma 4 E4B local não fechou nenhuma das 4 execuções** (0 de 4), contra 3 de 6 do flash-lite e 3 de 3 do 3.5-flash **[V, n pequeno]**. O resultado é pior que o do flash-lite e bem pior que o do 3.5-flash; o intervalo é largo demais para dizer quanto (com 0 de 4, uma taxa verdadeira de até ~50% ainda não seria improvável **[N]**, cálculo aproximado, não verificado).
+- **Os modos de falha diferem do flash-lite**: o flash-lite errava no conteúdo (reescrever testes, `chunk` sem `RangeError`) e fazia escritas a mais; o Gemma parou o turno com chamada em texto (2 execuções, full), fez edições que o OpenCode recusou e quebrou a sintaxe (min r1) e **apagou o trabalho da origem declarando DONE** (min r2) **[V]**. O full evitou a perda de trabalho (0 linhas perdidas) porque o modelo nem chegou a editar; **isso não é evidência de que o full protege**, é parada precoce **[N]**.
+- **Variante**: o full teve 0 linhas perdidas e o min 12, mas com 0 edições nas execuções do full a comparação das variantes fica sem sentido aqui. O que se pode dizer é que **nenhuma** das duas variantes funcionou com este modelo nesta configuração.
+- **Custo de tempo**: no min, 21 a 25 min por execução, de 7 a 30 vezes o flash-lite/3.5-flash. Mesmo que o resultado fosse correto, o Executor local nesta máquina e com raciocínio ligado seria lento para continuar tarefas de 6 passos **[V para estas execuções]**.
+- **Não se separou** a causa (modelo pequeno, raciocínio ligado, prompt de ~17 mil tokens do perfil do dono, ferramenta `edit` do OpenCode, parser do Ollama) **[N]**. Não foi rodado: raciocínio desligado (`reasoning_effort: none`), perfil enxuto do OpenCode, outro quantizador ou o Gemma maior, nem a 3ª execução. Cada um poderia mudar o resultado; os do `local-model` (10/10 em tarefas curtas, mesmo modelo e servidor) mostram que o modelo e a cadeia funcionam em tarefas de 1 a 3 chamadas, não nesta de 6 passos com bastão.
+- **Consequência para o bastão (proposta [N], decisão do dono)**: destino local de 4B efetivos, com raciocínio ligado, não deve receber continuação sem checagem do harness; a falha mais perigosa (min r2) passou nos testes do próprio agente e só foi vista no diff contra o checkpoint e na aceitação escondida. Reforça a recomendação de medir o progresso pelo estado dos arquivos, e não pela resposta do agente.
+
+Dados brutos em `out/cont-codex-opencode-gemma-{min,full}.r{1,2}.json` e `*.wire.jsonl` (git-ignored). O log do servidor Ollama desta sessão ficou em `spikes/local-model/out/ollama-serve.log` (também git-ignored; sobrescrito na próxima subida).
+
+### Destino OpenCode com modelos free (Zen e Gemma pelo Google)
+
+Medido em 2026-11-15, das 17:21 às 17:57 (UTC-3), a pedido do dono, que escolheu estes 5 modelos no mesmo dia (IDs vindos de `opencode models` [V]). Par **Codex→OpenCode, origem 1** (mesmo checkpoint restaurado e mesmos pacotes das células do flash-lite, 3.5-flash e Gemma local), variantes **min** e **full**, **3 execuções por variante (r1 a r3)**: 5 modelos x 2 x 3 = **30 execuções, uma de cada vez**. **Resultado: nenhuma das 30 produziu uma continuação avaliável. As 30 foram excluídas por infraestrutura (cota ou provedor), então esta seção não mede o desempenho de nenhum dos 5 modelos.** O que ela registra é por que não deu e o que o dono precisa resolver.
+
+**Configuração [V]**
+
+| Item | Valor |
+|---|---|
+| Modelos (`OT_MODEL`) | `opencode/glm-5.3-flash-free`, `opencode/deepseek-v4.1-flash-free`, `opencode/minimax-m3.1-flash-free` (Zen); `google/gemma-4-26b-a4b-it`, `google/gemma-4-31b-it` (Google) |
+| Perfil do OpenCode | o padrão do dono, como no 3.5-flash; **só `OT_MODEL` muda**, sem `OPENCODE_CONFIG_CONTENT`. O harness troca o modelo da sessão por `session/set_config_option`; o log de fio confirma `applied: model = <id>` nas execuções. O padrão do perfil que o ACP anunciou foi `minimax/MiniMax-M3` (esforço `none`, modo `build`), não o flash-lite que o `SPEC` do `acp.ts` usa quando `OT_MODEL` não está definido |
+| Script | novo `src/rep6.sh <modelo> <rótulo> <min\|full> <tag> ...`, par `codex-opencode-<rótulo>` (`glm`, `deepseek`, `minimax`, `gemma26`, `gemma31`), `OT_ORIGIN=codex-opencode.restored`, vigia padrão de 600 000 ms, `timeout -k 10 700`. Ordem: r1 de todos os modelos, depois r2, depois r3. `cont.ts` e `acp.ts` não mudaram; `agg.ts` ganhou os 5 rótulos e a exclusão "provedor" |
+| Pasta e repositório | `SPIKE_SCRATCH` com o repositório restaurado e o checkpoint `76e6d48` conferidos antes (o mesmo das células anteriores) |
+| Processos | só os que o harness iniciou (`node src/cont.ts`, `opencode acp` filhos). O `opencode serve` do dono (porta 4096) não foi tocado. Nenhum login, nenhuma credencial lida |
+
+**Fatos de fonte secundária [S], consultados em 2026-11-15 (não verifiquei localmente)**
+
+- **Zen** (https://opencode.ai/docs/zen/): GLM-5.3-Flash Free, DeepSeek V4.1 Flash Free e MiniMax M3.1 Flash Free têm "zero-retention" e não usam os dados para treino; são grátis "for a limited time"; a página **não informa limite de requisições** para eles.
+- **Google** (termos dos Unpaid Services, https://aistudio.google.com/docs/terms, vigentes desde 2026-03-23): o conteúdo enviado é usado para melhorar produtos e pode ter revisão humana. **Limites do tier grátis para Gemma: não os encontrei na documentação [N]**; os números abaixo vêm só das mensagens de erro da API.
+- Implicação [N]: no Gemma pelo Google, a requisição inclui o prompt do perfil do OpenCode do dono (o `local-model` mediu ~17 mil tokens na 1ª requisição, com skills etc.), além do pacote, e essa parte segue os termos acima. Não abri o conteúdo do prompt de sistema.
+
+**Tabela por execução** (mesmo formato das anteriores; as 30 linhas também estão na tabela geral). "Próprios", "Aceitação" e "Passos" são do estado da worktree no fim (o do checkpoint, 2 de 6 passos, quando o destino não fez nada); em linhas excluídas **não medem o modelo**.
+
+| Par | Variante | Execução | ok | Próprios | Aceitação | Passos | Tempo | Linhas perdidas | Escritas (faltavam) | Tokens do usage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Codex→OpenCode (glm-5.3-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (glm-5.3-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (deepseek-v4.1-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,7 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (minimax-m3.1-flash free) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 0,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This API key has expired. Create a new API k |
+| Codex→OpenCode (gemma 26b google) | full | r1 | excluída (cota) | 3/3 | 0/5 | 2/6 | 74,5 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | full | r2 | excluída (cota) | 3/3 | 0/5 | 2/6 | 73,4 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | full | r3 | excluída (cota) | 3/3 | 0/5 | 2/6 | 71,4 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r1 | excluída (cota) | 3/3 | 0/5 | 2/6 | 150,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r2 | excluída (cota) | 3/3 | 0/5 | 2/6 | 145,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 26b google) | min | r3 | excluída (provedor) | 3/3 | 0/5 | 3/6 | 212,2 s | 0/11 | 2 (4) | 0 ERRO: Internal error: Internal error encountered. |
+| Codex→OpenCode (gemma 31b google) | full | r1 | excluída (cota) | 3/3 | 0/5 | 3/6 | 404,6 s | 0/11 | 2 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 31b google) | full | r2 | excluída (cota) | 3/3 | 0/5 | 3/6 | 249,8 s | 0/11 | 1 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+| Codex→OpenCode (gemma 31b google) | full | r3 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 165,2 s | 0/11 | 0 (4) | 0 ERRO: Internal error: Internal error encountered. |
+| Codex→OpenCode (gemma 31b google) | min | r1 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 138,3 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This model is currently experiencing high de |
+| Codex→OpenCode (gemma 31b google) | min | r2 | excluída (provedor) | 3/3 | 0/5 | 2/6 | 165,8 s | 0/11 | 0 (4) | 0 ERRO: Internal error: This model is currently experiencing high de |
+| Codex→OpenCode (gemma 31b google) | min | r3 | excluída (cota) | 3/3 | 0/5 | 2/6 | 215,6 s | 0/11 | 0 (4) | 0 ERRO: Internal error: You exceeded your current quota, please chec |
+
+**Por que as 30 foram excluídas [V, a partir de `out/cont-codex-opencode-*.json` e dos logs de fio]**
+
+- **18 do Zen (GLM, DeepSeek, MiniMax; 3 x 2 x 3): "This API key has expired"**, devolvido pelo provedor no 1º `session/prompt`, em 0,7 a 0,8 s, 0 chamadas de ferramenta, `usage` 0. O texto do erro manda criar uma nova chave no console do OpenCode ("Signing in again will not renew this key"). Repeti os 3 modelos nas 3 execuções, com o mesmo resultado. A chave é da conta do dono no OpenCode (auth que não li e não mexi); **renovar é ação do dono**. Que a chave do Zen seja a mesma de `opencode/` no `opencode models` é o que a mensagem indica [N: não inspecionei a configuração].
+- **8 do Google por cota** (erro `generate_content_free_tier_input_token_count`, **limite 16000 tokens de entrada por minuto, "on Free Tier"**, modelos `gemma-4-26b` e `gemma-4-31b`, com "retry in" de 18 a 58 s): 26B full r1/r2/r3 e min r1/r2; 31B full r1/r2 e min r3. O erro mostra também que a chave do dono no Google está no **tier grátis** [V: texto do erro]. O erro aparece 3 vezes no log de fio de cada execução (provavelmente tentativas do OpenCode **[N]**) e a execução termina com ele. Execuções levaram de 71 a 405 s, **tempo de espera e nova tentativa, não velocidade do modelo**.
+- **4 do Google por erro do provedor**: 31B min r1 e r2 ("This model is currently experiencing high demand"), 26B min r3 e 31B full r3 ("Internal error encountered").
+- **Chegou a haver trabalho parcial** antes do corte: 26B min r3 fez 2 edições (3 de 6 passos), 31B full r1 fez 2 (3 de 6) e full r2 fez 1 (3 de 6). São execuções interrompidas pelo provedor, **não avaliáveis**: sem resposta final, aceitação 0/5. Não dá para dizer se o modelo teria fechado a tarefa, nem se erraria.
+- **O limite de 16 000 tokens por minuto é o provável bloqueio estrutural do Gemma neste perfil [N]**: o prompt do perfil do dono com o pacote tem ~17 mil tokens por requisição medidos no Ollama (tokenizador diferente do Google, então a contagem do Google pode diferir), e uma execução faz várias requisições em sequência. Algumas execuções passaram de 1 a 4 chamadas antes do corte, então não é "toda requisição falha" [V]; que 2 ou mais requisições seguidas estourem o minuto é inferência [N].
+
+**Comparação com as células anteriores (mesmo par, mesma origem, mesmos pacotes)**
+
+| Modelo do destino | Variante | Válidas | ok | Observação |
+|---|---|---|---|---|
+| flash-lite (padrão) | min | 3 | 1 de 3 | 45 a 184 s, 5 a 8 escritas |
+| flash-lite (padrão) | full | 3 | 2 de 3 | 59 a 180 s, 5 a 6 escritas |
+| 3.5-flash (exceção) | min | 2 | 2 de 2 | 18 e 60 s, 4 escritas |
+| 3.5-flash (exceção) | full | 1 | 1 de 1 | 49 s, 4 escritas |
+| Gemma 4 E4B local | min / full | 2 / 2 | 0 de 2 / 0 de 2 | 0 de 4; paradas precoces, edições recusadas, trabalho da origem apagado |
+| GLM-5.3-Flash free | min / full | 0 / 0 | sem dado (0 de 0) | chave do Zen expirada (6 excluídas) |
+| DeepSeek V4.1 Flash free | min / full | 0 / 0 | sem dado (0 de 0) | chave do Zen expirada (6 excluídas) |
+| MiniMax M3.1 Flash free | min / full | 0 / 0 | sem dado (0 de 0) | chave do Zen expirada (6 excluídas) |
+| Gemma 4 26B (Google) | min / full | 0 / 0 | sem dado (0 de 0) | cota do tier grátis e erros do provedor (6 excluídas) |
+| Gemma 4 31B (Google) | min / full | 0 / 0 | sem dado (0 de 0) | cota do tier grátis e erros do provedor (6 excluídas) |
+
+**Leitura**
+
+- **Nada a concluir sobre a qualidade dos 5 modelos** como destino do bastão: 0 de 30 execuções válidas. Os números "0 de 0" não são falhas dos modelos e não entram nas taxas de nenhuma célula.
+- **O que a tentativa mostrou, e que é dado de infraestrutura para o OTheater [V para esta conta e este dia]**: (1) uma credencial de provedor expirada derruba o destino na 1ª requisição, em menos de 1 s, e o erro chega pelo ACP como "Internal error: ..." com o texto do provedor; o harness precisa classificar isso (aqui, por texto do erro no `agg.ts`) como "provedor indisponível", não como falha do modelo, e tentar outro destino; (2) o tier grátis do Google para Gemma tem limite de tokens de entrada por minuto (16 000) menor que o prompt do perfil cheio do OpenCode, o que torna o Gemma pelo Google na conta grátis impraticável com este perfil **[N: inferência]**; (3) "modelo free" do Zen tem, nesta conta, um ponto único de falha na chave.
+- **O dado do Gemma local continua valendo** (0 de 4, seção anterior); esta rodada não o confirma nem o refuta com os Gemma maiores.
+- **Opções, para o dono decidir [N]**: renovar a chave do Zen e repetir `rep6.sh` nos 3 modelos free; para o Gemma, usar uma chave do Google com cobrança (tier pago, sem o limite de 16 000 por minuto, a confirmar na documentação do Google) ou os IDs `openrouter/google/gemma-4-26b-a4b-it` e `openrouter/google/gemma-4-31b-it` (e as variantes `:free`) que aparecem no `opencode models` e **não foram testados** (outro provedor, outros termos). Não escolhi nenhuma.
+
+Dados brutos em `out/cont-codex-opencode-{glm,deepseek,minimax,gemma26,gemma31}-{min,full}.r{1,2,3}.json` e `*.wire.jsonl` (git-ignored).
+
 ### O que NÃO foi rodado ou ficou incompleto na Rodada 2
 
-- `gemini-3.5-flash` full: só 1 execução válida (2 excluídas por cota diária do tier grátis; reposição bloqueada por cerca de 15 horas).
+- `gemini-3.5-flash` full: só 1 execução válida (2 excluídas por cota diária do tier grátis). **Exceção registrada**: por decisão do dono (2026-11-15), a célula não será completada e foi substituída pela do Gemma 4 E4B local (seção acima).
+- Gemma local: n=2 por variante, só raciocínio ligado e só o perfil padrão do OpenCode; sem 3ª execução.
+- Modelos free do Zen (GLM-5.3-Flash, DeepSeek V4.1 Flash, MiniMax M3.1 Flash) e Gemma 4 26B/31B pelo Google: 30 execuções feitas, **0 válidas** (chave do Zen expirada; tier grátis do Google com limite de tokens de entrada por minuto e erros do provedor). Nenhum desses modelos tem resultado de qualidade.
 - Origem 2 só tem n=2 por célula; origem 3 e tarefas maiores não foram feitas.
 - Nenhum modelo mais forte para os destinos Claude e Codex (usaram o modelo mais barato de sempre), então "destino fraco" só foi separado no OpenCode.
 - Retomada nativa com sessões antigas (pós-retenção): não testada.
@@ -270,6 +466,8 @@ Notas: os caminhos absolutos do cwd de origem devem ser normalizados para relati
 - `usage` de OpenCode (`outputTokens` = 3) não confiável [N].
 - Retenção real do Claude acima do documentado (38 dias contra 30): causa não investigada.
 - Preço do `gemini-3.5-flash` frente ao flash-lite: não verificado [N].
+- Destino local (Gemma 4 E4B): separar a causa do 0 de 4 (raciocínio ligado ou desligado, perfil enxuto do OpenCode, modelo maior, parser de ferramentas do Ollama) e medir uma 3ª execução; o `usage` do OpenCode com o modelo local parece só do último passo [N].
+- **Modelos free (Zen) e Gemma pelo Google**: 0 execuções válidas de 30. Falta (ação do dono, **[N]** se resolve): renovar a chave do OpenCode Zen (a mensagem do provedor manda criar uma nova no console do OpenCode; não renovo por login) e decidir como rodar o Gemma pelo Google sem o limite de 16 000 tokens de entrada por minuto do tier grátis (o pacote com o perfil do OpenCode já passa disso na 1ª requisição). Depois, repetir `rep6.sh` (r1 a r3, min e full).
 
 
 ## Como rodar
@@ -290,12 +488,16 @@ SPIKE_SCRATCH=<pasta> ./src/rep3.sh [x|y|modelo|todos]       # repetições r1..
 SPIKE_SCRATCH=<pasta> ./src/origin2.sh                       # segunda origem dos 3 pares
 SPIKE_SCRATCH=<pasta> ./src/rep4.sh [rapido|lento]           # continuações a partir das origens 2
 node src/agg.ts                                              # agrega out/cont-*.json em tabelas markdown
+# Destino local (Gemma 4 E4B no Ollama): subir antes spikes/local-model/ollama.sh start; parar com stop ao fim
+SPIKE_SCRATCH=<pasta> ./src/rep5.sh min r1 full r1 min r2 full r2   # OPENCODE_CONFIG_CONTENT com o provedor local, OT_MODEL=local/gemma4-e4b, vigia de 1500 s
+# Modelos free (Zen) e Gemma pelo Google: perfil padrao do OpenCode, so OT_MODEL muda; rotulo = glm|deepseek|minimax|gemma26|gemma31
+SPIKE_SCRATCH=<pasta> ./src/rep6.sh opencode/glm-5.3-flash-free glm min r1 full r1 min r2 full r2 min r3 full r3
 ```
 
-Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o par), `OT_TAG` (sufixo `.rN` da execução), `OT_MODEL` (modelo do OpenCode, ex. `google/gemini-3.5-flash`). Variáveis de `native.ts`: `OT_CWD2=wt|plain|same` (cwd novo da retomada: worktree irmã, pasta fora do git, ou o mesmo como controle), `OT_CLI_TIMEOUT` (ms, padrão 180000), `OT_NTAG` (sufixo para repetir sem colidir). O OpenCode usa `opencode acp`; o `opencode serve` do dono não é usado.
+Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o par), `OT_TAG` (sufixo `.rN` da execução), `OT_MODEL` (modelo do OpenCode, ex. `google/gemini-3.5-flash`), `OT_WATCHDOG_MS` (vigia da execução em ms, padrão 600000). Variáveis de `native.ts`: `OT_CWD2=wt|plain|same` (cwd novo da retomada: worktree irmã, pasta fora do git, ou o mesmo como controle), `OT_CLI_TIMEOUT` (ms, padrão 180000), `OT_NTAG` (sufixo para repetir sem colidir). O OpenCode usa `opencode acp`; o `opencode serve` do dono não é usado.
 
 `src/task.ts` define a pasta de trabalho (scratchpad) e recria o repositório de teste. As saídas (JSON por execução, pacotes `.md`, log de fio ACP `*.wire.jsonl`) ficam em `out/`, ignorado pelo git.
 
 ## Arquivos
 
-`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`).
+`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`). Destino local: `src/rep5.sh`, `OT_WATCHDOG_MS` em `cont.ts`, rótulo "(gemma local)" em `agg.ts`. Modelos free: `src/rep6.sh` (modelo, rótulo, lista variante/tag), rótulos dos 5 modelos e exclusão por provedor ("excluída (provedor)") em `agg.ts`.

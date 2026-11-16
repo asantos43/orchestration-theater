@@ -8,7 +8,7 @@ Marcas usadas em todo o documento:
 - **[S]** = fonte secundária (documentação, código ou cabeçalho lido, mas não executado).
 - **[N]** = não confirmado, ou hipótese.
 
-Os termos de uso dos provedores não foram consultados. Nada aqui afirma o que o provedor permite.
+Os termos de uso dos provedores **não** foram consultados, com uma exceção: os do Google (Unpaid Services) para a seção "Gemma 4 26B-A4B e 31B pela API do Google", com fonte e data lá. Nada mais aqui afirma o que um provedor permite.
 
 ## Resumo
 
@@ -17,6 +17,7 @@ Os termos de uso dos provedores não foram consultados. Nada aqui afirma o que o
 - Nas 10 tarefas, com uma configuração enxuta do OpenCode (~1,9 mil tokens de prompt), o Gemma 4 E4B acertou **10 de 10**, sem argumento errado, ferramenta inventada, texto no lugar da chamada nem laço. O `google/gemini-3.1-flash-lite` também acertou 10 de 10. **[V]**, mas com uma execução por modelo e 10 tarefas curtas: não mostra diferença, e não dá para medir taxa de erro.
 - O teste com o **prompt cheio** do OpenCode (14 ferramentas, ~12 mil tokens) no llama-server do Fedora foi **interrompido a pedido do dono** em 2026-11-15, com 52% do prompt processado. Ver "Prompt cheio do OpenCode".
 - **No Ollama v0.40.16, com a iGPU por Vulkan**, o mesmo GGUF processa o prompt a ~150 a 210 tok/s e gera a ~8 a 11 tok/s: de 50 a 70 vezes mais rápido no prompt e ~4 vezes na geração. As 10 tarefas passaram **10 de 10** nas duas configurações, a enxuta (11 min 40 s) e a **cheia** (20 min 28 s, com 14 ferramentas e ~11,6 mil tokens), e com o raciocínio ligado, que é o padrão do Ollama. **[V]** Ver "Ollama com a iGPU por Vulkan". O Ollama passa a ser a ferramenta de modelo local para desenvolvimento e testes (`./ollama.sh`). O pacote `llama-cpp` do Fedora foi removido pelo dono, e o `serve.sh` ficou obsoleto.
+- **Gemma 4 26B-A4B e 31B pela API do Google** (qualidade apenas; **não** mede RAM, tok/s nem quantização local): nas 10 tarefas, os dois acertaram **10 de 10** na configuração enxuta (n=2 cada, perfil `authonly`, ~1,9 mil tokens) e no perfil do dono (n=1); o 31B também 10 de 10 com o prompt cheio (~11,8 mil tokens), e o 26B 7 de 7, com 3 tarefas **excluídas por cota ou erro do provedor** (infraestrutura, não erro do modelo). O 26B chamou `record_findings` e `submit_result` sem o prefixo `otheater_` em 3 tarefas por corrida no `authonly` enxuto e se corrigiu depois da recusa do OpenCode (nada inválido chegou ao MCP); o 31B nunca errou o nome. As tarefas não distinguem os modelos (E4B, 26B, 31B e flash-lite, todos 10/10). **[V]** O tier grátis limita em 16 mil tokens de entrada por minuto **[V]**, e os termos do Google dizem que o conteúdo pode ser usado para melhorar produtos e ter revisão humana **[S]**. Ver "Gemma 4 26B-A4B e 31B pela API do Google".
 
 ## O que foi medido, onde e com quê
 
@@ -171,6 +172,93 @@ As duas corridas tiveram 0 argumento errado, 0 ferramenta inventada, 0 texto no 
 
 A pasta `~/.ollama` já existia antes deste teste. O download (1,5 GB) foi apagado.
 
+## Gemma 4 26B-A4B e 31B pela API do Google
+
+Pedido do dono em 2026-11-15: medir a **qualidade** do Gemma 4 26B-A4B (`google/gemma-4-26b-a4b-it`) e do 31B (`google/gemma-4-31b-it`) nas mesmas 10 tarefas, pela API do Google, via OpenCode (ACP). **Não mede RAM, tok/s nem quantização local**: o modelo roda nos servidores do Google, com precisão e hardware que não conheço **[N]**. Os números de tempo abaixo são de um serviço remoto, sem relação com o desempenho que esses modelos teriam nesta máquina.
+
+### Configuração
+
+- **Provedor e credencial**: provedor `google` do OpenCode, com o login que o dono já tinha. Não li, copiei nem imprimi credencial nenhuma. Datas: todas as corridas em 2026-11-15 (UTC-3).
+- **Perfis do OpenCode** (`OT_PROFILE`), três:
+  - `authonly` (novo, em `src/run-tasks.ts`): config, cache e banco do OpenCode isolados; só o diretório de dados com o login do Google é o real. Com a configuração enxuta, ~1,9 mil tokens por requisição **[V]**, o mesmo tamanho do teste do E4B. É o perfil principal desta seção, porque deixa a comparação com o E4B justa em tamanho de prompt.
+  - `default`: o perfil real do dono, o mesmo do Gemini. Com a configuração enxuta, ~6,6 mil tokens por requisição (~0,6 mil novos mais ~6 mil lidos do cache) **[V]**. Rodei uma vez por modelo, como extra, para comparar com o `google/gemini-3.1-flash-lite` no mesmo caminho.
+  - `isolated`: só o provedor local (o dos testes do E4B). Não serve aqui.
+- **Configurações** (`OT_CONFIG`): `lean` (7 ferramentas, prompt de uma frase, sem título) e `default` (a "cheia": 14 ferramentas e o prompt do OpenCode; no `authonly` foram ~1,6 mil tokens novos mais ~10,2 mil lidos do cache, ~11,8 mil por requisição **[V]**).
+- **Raciocínio**: o OpenCode escolheu `minimal` sozinho para os dois modelos (campo `effort` dos brutos). O raciocínio não foi variado **[V]**.
+- **Repetições**: `lean` no `authonly` com n=2 para cada modelo; as demais combinações, n=1. A cheia não foi repetida: a corrida do 26B levou ~67 min e a do 31B ~34 min de relógio, em boa parte por esperas de cota (abaixo), e eu priorizei cobrir os dois modelos nas três combinações antes de repetir.
+- **Comandos**: ver "Como rodar". Uma corrida por vez (porta 47501 do MCP; worktree restaurada entre as tarefas).
+
+### Cota, termos e infraestrutura
+
+- **Termos de uso [S]**: os "Unpaid Services" do Google (https://aistudio.google.com/docs/terms, vigentes desde 2026-03-23, consultados em 2026-11-15) dizem que o conteúdo enviado é usado para melhorar os produtos do Google e pode passar por revisão humana. Consequência prática, **a confirmar pelo dono**: não mandar código ou dados sensíveis por esse caminho. As tarefas daqui usam só texto sintético.
+- **Limites do tier grátis para Gemma [N]**: não os encontrei na documentação consultada.
+- **Limite visto na prática [V]**: a API devolveu "Quota exceeded ... generate_content_free_tier_input_token_count, limit: 16000, model: gemma-4-31b (e gemma-4-26b), ... input tokens per minute limit exceeded on Free Tier". Ou seja, o tier grátis limita em **16 mil tokens de entrada por minuto**. A cota também falhou com requisições de ~2 mil tokens; então ela não é só a soma dos prompts do meu lado **[N]** (o que conta como entrada para a cota, ou se outros usos da mesma chave entram na conta, não sei).
+- **Erros do provedor [V]**: além da cota, houve "Internal error encountered" (HTTP 500 do provedor). O OpenCode faz retentativas internas e depois devolve o erro `-32603 APIError`.
+- **Tratamento**: falha por cota, limite de taxa ou erro do provedor é **infraestrutura**, não erro do modelo. O `run-tasks.ts` repete a tarefa inteira (worktree restaurada), com espera de 65 s entre as tentativas (`OT_INFRA_RETRIES`, `OT_INFRA_WAIT_MS`, `OT_TASK_GAP_MS`), e, se todas falham, marca a tarefa como **excluída** (`excluded: true`), que não entra na contagem de acertos nem de falhas. O tempo da tabela é o da tentativa que passou.
+- **Contagem de erros de infraestrutura nas 8 corridas [V]**: 11 de cota e 19 do provedor (500). Por corrida: 26B lean (1) 1 cota e 2 de 500; 26B lean (2) 1 de 500; 31B lean (1) 3 de cota; 31B lean (2) nenhum; 26B cheia 6 de cota e 9 de 500; 31B cheia 1 de cota; 26B dono lean 6 de 500; 31B dono lean 1 de 500.
+- A primeira tentativa de `gemma26-google-lean` rodou no perfil `default`, bateu na cota logo na T1 e foi descartada (não está em `out/`). Foi o que me levou a criar o `authonly` e as retentativas.
+
+### Resultado
+
+Tempos em segundos, da tentativa que passou (inclui as retentativas internas do OpenCode, se houve **[N]**). "(inv.)" = a tarefa teve chamada de ferramenta inventada, mas passou. "(N tent.)" = foram necessárias N tentativas por erro de infraestrutura. **EXCL** = excluída por infraestrutura (todas as tentativas falharam por cota ou erro do provedor).
+
+| Tarefa | 26B lean (1) | 26B lean (2) | 31B lean (1) | 31B lean (2) | 26B cheia | 31B cheia | 26B dono lean | 31B dono lean |
+|---|---|---|---|---|---|---|---|---|
+| T1 | ok 8 s | ok 89 s | ok 55 s (2 tent.) | ok 55 s | ok 101 s (2 tent.) | ok 115 s | ok 74 s | ok 291 s |
+| T2 | ok 15 s (inv.) | ok 7 s (inv.) | ok 48 s | ok 76 s | **EXCL** (3 tent.) | ok 61 s | ok 23 s | ok 63 s |
+| T3 | ok 9 s | ok 9 s | ok 51 s | ok 96 s | ok 263 s (2 tent.) | ok 187 s (2 tent.) | ok 121 s (4 tent.) | ok 182 s |
+| T4 | ok 79 s | ok 44 s | ok 74 s | ok 92 s | ok 113 s | ok 88 s | ok 89 s | ok 260 s |
+| T5 | ok 22 s (inv.) (2 tent.) | ok 9 s (inv.) (2 tent.) | ok 92 s (2 tent.) | ok 167 s | **EXCL** (3 tent.) | ok 228 s | ok 88 s | ok 237 s |
+| T6 | ok 13 s (2 tent.) | ok 9 s | ok 112 s (2 tent.) | ok 110 s | ok 145 s (2 tent.) | ok 266 s | ok 78 s (2 tent.) | ok 178 s (2 tent.) |
+| T7 | ok 23 s (inv.) | ok 45 s (inv.) | ok 111 s | ok 76 s | ok 116 s (3 tent.) | ok 68 s | ok 151 s | ok 153 s |
+| T8 | ok 9 s | ok 4 s | ok 31 s | ok 37 s | **EXCL** (3 tent.) | ok 105 s | ok 40 s (2 tent.) | ok 48 s |
+| T9 | ok 4 s (2 tent.) | ok 11 s | ok 34 s | ok 245 s | ok 157 s (2 tent.) | ok 119 s | ok 114 s | ok 94 s |
+| T10 | ok 6 s | ok 13 s | ok 57 s | ok 66 s | ok 110 s | ok 158 s | ok 118 s (2 tent.) | ok 122 s |
+
+| Corrida | Perfil / config | ok | excluídas | MCP válidas | arg. errado | inventada (chamadas) | texto | laço | tempo das tarefas ok | ensaios extras |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 26B lean (1) | `authonly` / enxuta | 10/10 | 0 | 20 | 0 | 3 | 0 | 0 | 187 s | 3 |
+| 26B lean (2) | `authonly` / enxuta | 10/10 | 0 | 20 | 0 | 3 | 0 | 0 | 239 s | 1 |
+| 31B lean (1) | `authonly` / enxuta | 10/10 | 0 | 20 | 0 | 0 | 0 | 0 | 666 s | 3 |
+| 31B lean (2) | `authonly` / enxuta | 10/10 | 0 | 20 | 0 | 0 | 0 | 0 | 1021 s | 0 |
+| 26B cheia | `authonly` / cheia | 7/7 | 3 | 15 | 0 | 0 | 0 | 0 | 1006 s | 12 |
+| 31B cheia | `authonly` / cheia | 10/10 | 0 | 20 | 0 | 0 | 0 | 0 | 1397 s | 1 |
+| 26B dono lean | `default` / enxuta | 10/10 | 0 | 20 | 0 | 0 | 0 | 0 | 895 s | 6 |
+| 31B dono lean | `default` / enxuta | 10/10 | 0 | 20 | 0 | 0 | 0 | 0 | 1628 s | 1 |
+
+Brutos em `out/`, cada um com `.results.json`, `.mcp.jsonl`, `.acp.jsonl`, `.acp.stderr.log` e `.log`: `gemma26-google-lean`, `gemma26-google-lean-r2`, `gemma31-google-lean`, `gemma31-google-lean-r2`, `gemma26-google-default` (a "26B cheia"), `gemma31-google-default` (a "31B cheia"), `gemma26-google-dono-lean` e `gemma31-google-dono-lean`.
+
+**Exclusões**: só a "26B cheia" teve, e foram 3 de 10 (T2, T5 e T8), cada uma com 3 tentativas falhas por cota ou erro 500 do provedor. Conto como infraestrutura, não como erro do modelo, e **não sei** como o 26B teria se saído nessas três tarefas com o prompt cheio **[N]**. As 7 tarefas restantes passaram.
+
+**Ferramenta inventada, só no 26B no `authonly` enxuto [V]**: nas duas execuções, e nas mesmas três tarefas (T2, T5 e T7), o 26B chamou `record_findings` e `submit_result` **sem o prefixo `otheater_`** (o OpenCode nomeia as ferramentas do MCP como `otheater_<nome>`). O OpenCode recusou ("unavailable tool"), o modelo repetiu a chamada com o nome certo no turno seguinte e a tarefa passou. Pelos critérios, isso é "ferramenta inventada" (3 por corrida), mas **nenhuma chamada inventada chegou ao servidor MCP**, e as 20 chamadas válidas vieram todas com o nome e os argumentos certos. Esse erro **não** apareceu no 26B com a configuração cheia (nas 7 tarefas rodadas, T7 incluída) nem no perfil do dono (0 em 10 tarefas), nem no 31B em nenhuma corrida. Por que só no `authonly` enxuto, não sei **[N]**; a diferença de ferramentas ou de prompt é só uma hipótese.
+
+**Outras observações [V]**: na T4 o 26B (nas duas execuções do `authonly` enxuto) usou a ferramenta `write` para criar um `MIGRATION.md`, que a tarefa não pedia (o nome só aparece em `artifacts` de `submit_result`); a tarefa passou porque o critério só confere as chamadas MCP. Em nenhuma corrida houve argumento errado, texto no lugar da chamada ou laço. No 31B, a T1 do perfil do dono levou 291 s, perto do prazo de 300 s por tarefa que usei nessas corridas (`OT_TASK_TIMEOUT_MS`).
+
+### Comparação com o E4B e com o flash-lite
+
+| Modelo | Onde roda | Configuração | Resultado |
+|---|---|---|---|
+| Gemma 4 E4B Q4_0 | llama-server (CPU) | enxuta, ~1,9 mil tokens | 10/10, 20 válidas, 0 falhas; 58 a 733 s por tarefa |
+| Gemma 4 E4B Q4_0 | Ollama (iGPU, Vulkan) | enxuta; cheia (~11,6 mil tokens) | 10/10 nas duas; 11 min 40 s e 20 min 28 s no total |
+| Gemma 4 26B-A4B | API do Google | enxuta, ~1,9 mil tokens (n=2) | 10/10 nas duas; 20 válidas; 3 inventadas (corrigidas) por corrida; 4 a 89 s por tarefa |
+| Gemma 4 26B-A4B | API do Google | cheia, ~11,8 mil tokens | 7/7 não excluídas, 3 excluídas por cota ou erro do provedor; 0 falhas |
+| Gemma 4 26B-A4B | API do Google | perfil do dono, enxuta | 10/10; 20 válidas; 0 inventadas; 23 a 151 s por tarefa |
+| Gemma 4 31B | API do Google | enxuta, ~1,9 mil tokens (n=2) | 10/10 nas duas; 20 válidas; 0 falhas; 31 a 245 s por tarefa |
+| Gemma 4 31B | API do Google | cheia, ~11,8 mil tokens | 10/10; 20 válidas; 0 falhas; 61 a 266 s por tarefa |
+| Gemma 4 31B | API do Google | perfil do dono, enxuta | 10/10; 20 válidas; 0 falhas; 48 a 291 s por tarefa |
+| `google/gemini-3.1-flash-lite` | API do Google | perfil do dono, enxuta | 10/10; 20 válidas; 0 falhas; 2,6 a 31 s por tarefa |
+
+### Leitura
+
+- **[V] Nestas 10 tarefas, os dois modelos grandes fazem o que o E4B e o flash-lite fazem**: chamadas MCP estruturadas (objeto aninhado, array, enum, decimal, encadeadas) e as ferramentas nativas `edit`, `read` e `write`, com 20 chamadas MCP válidas em toda corrida completa, sem argumento errado, texto no lugar da chamada nem laço. Isso vale nas três combinações de perfil e configuração, inclusive com o prompt cheio.
+- **[V] As tarefas não distinguem os modelos.** Os quatro (E4B, 26B, 31B e flash-lite) tiram 10/10. Qualquer diferença de qualidade que exista fica abaixo do que estas 10 tarefas fáceis conseguem mostrar, com n=1 ou n=2. Não dá para dizer que 26B ou 31B são melhores que o E4B nesse tipo de tarefa; só que não pioram.
+- **[V] O 26B errou o nome da ferramenta no `authonly` enxuto** (sem o prefixo, nas duas execuções, nas mesmas três tarefas) e se corrigiu sozinho. O 31B não errou nenhuma vez em 6 execuções. É um sinal de que o 26B é mais frágil com nomes de ferramentas em prompt curto, mas com 2 execuções e uma só configuração onde aparece, não é prova **[N]**. Para o OTheater, vale tratar a recusa "unavailable tool" como recuperável (o modelo se corrigiu) e contar a ocorrência.
+- **[V] O 31B é bem mais lento que o 26B pela API**: 666 s e 1021 s contra 187 s e 239 s, no `authonly` enxuto. Isso é latência do serviço remoto e depende de carga e de cota **[N]**; não é velocidade local.
+- **[V] A cota do tier grátis é o fator limitante**, não o modelo: com o prompt cheio (~11,8 mil tokens por requisição) e o limite de 16 mil tokens de entrada por minuto, o 26B perdeu 3 de 10 tarefas por infraestrutura. O tier grátis é inadequado para um Executor contínuo, e há o aviso dos termos acima **[S]**.
+- **Ressalvas**: n=2 só no `authonly` enxuto, n=1 nas outras; 10 tarefas curtas escritas para serem acertáveis; o esforço de raciocínio foi o que o OpenCode escolheu (`minimal`); o Gemma local é o E4B quantizado em Q4_0, enquanto 26B e 31B rodam no Google em precisão que não conheço **[N]**, então a comparação é entre modelos de tamanhos e execuções diferentes, não só de qualidade. A "26B cheia" tem 3 tarefas sem resultado.
+- **Fora do escopo, não medido**: RAM do 26B-A4B e do 31B, tok/s e TTFT locais, qualidade com quantização local (Q4 ou outra). A arquitetura cita o 26B-A4B como candidato local; **nada aqui diz se ele cabe ou roda bem nesta máquina** **[N]**.
+
+
 ## Pendências (não medido)
 
 Cada item abaixo **não foi medido**. O motivo vem ao lado.
@@ -181,10 +269,10 @@ Cada item abaixo **não foi medido**. O motivo vem ao lado.
 | 2 | ~~TTFT e tok/s com 12 a 14 mil tokens de prompt~~ | **Medido no Ollama**: 11 633 tokens em 75,6 s (seção própria). No llama-server do Fedora, ficou só a extrapolação **[N]**. |
 | 3 | `opencode run` (sem ACP) | Só o caminho ACP foi exercitado, que é o do OTheater. |
 | 4 | Raciocínio: qualidade e custo em tokens, comparando ligado e desligado | **Em parte**: no Ollama, com o raciocínio ligado, foram 10/10 nas duas configurações. Falta rodar no Ollama com o raciocínio desligado e contar os tokens de raciocínio. |
-| 5 | Outras quantizações (Q8_0, Q5, Q6) e o Gemma 4 26B-A4B ou 31B, que a arquitetura cita | Download de vários GB, fora do briefing. A RAM do 26B-A4B em Q4 é **[N]**. |
+| 5 | Outras quantizações (Q8_0, Q5, Q6) e o desempenho **local** do Gemma 4 26B-A4B e do 31B, que a arquitetura cita | **Parcial.** A **qualidade** do 26B-A4B e do 31B nas 10 tarefas foi medida pela API do Google (seção própria): 10/10, com a ressalva das exclusões por cota. Continuam **não medidos**: RAM, tok/s e TTFT locais e a qualidade com quantização local, porque exigem baixar vários GB. A RAM do 26B-A4B em Q4 é **[N]**. |
 | 6 | Mais de um slot (`-np 2` ou mais), contexto por slot e admissão | Só `-np 1` foi rodado. Que a janela por slot é `-c` dividido por `-np` vem da documentação do llama.cpp **[S]**; aqui o `/props` e o log mostraram `n_ctx_slot = 32768` com 1 slot **[V]**. |
-| 7 | Repetição das 10 tarefas, para estimar variância, e mais tarefas (erros de esquema, instruções ambíguas, contexto longo) | Uma execução por modelo; as 10 tarefas são curtas e foram escritas para serem acertáveis. |
-| 8 | Gemini no mesmo perfil isolado e com o mesmo prompt do Gemma | O Gemini rodou no perfil padrão do dono (7 mil tokens por requisição). Para a comparação ficar justa, rodar nos dois o mesmo perfil. |
+| 7 | Repetição das 10 tarefas, para estimar variância, e mais tarefas (erros de esquema, instruções ambíguas, contexto longo) | **Em parte**: 26B e 31B rodaram 2 vezes na configuração enxuta (`authonly`); o resto, 1 vez. As 10 tarefas são curtas e foram escritas para serem acertáveis, e os quatro modelos tiram 10/10: falta um conjunto mais difícil para separá-los. |
+| 8 | Gemini no mesmo perfil isolado e com o mesmo prompt do Gemma | **Em parte**: o 26B e o 31B rodaram no perfil do dono (como o Gemini) e no `authonly` (mesmo tamanho de prompt do E4B). O flash-lite **não** foi rodado no `authonly` **[N]**. |
 | 9 | Cancelamento (`session/cancel`) com o modelo local no meio de um prompt longo | Fora do escopo das 10 tarefas. |
 | 10 | Windows e macOS | Só Linux. |
 | 11 | Leitura do texto completo da licença e da política de uso do Gemma 4 | Só o cartão do modelo foi consultado (2026-11-15). |
@@ -212,6 +300,21 @@ OT_CONFIG=default node src/run-tasks.ts ollama-default
 ./ollama.sh stop
 ```
 
+Gemma 4 26B-A4B e 31B pela API do Google (precisa do login do Google já feito no OpenCode; nada de credencial no repositório). Uma corrida por vez, porque a porta do MCP é a 47501 e a worktree é única:
+
+```bash
+cd spikes/local-model
+export OT_MAX_PROMPTS=800 OT_TASK_TIMEOUT_MS=300000 OT_INFRA_RETRIES=3 OT_TASK_GAP_MS=30000   # o limite padrão de prompts por sessão é 80
+# perfil authonly (config isolada, login real do Google), enxuta e cheia
+OT_PROFILE=authonly OT_CONFIG=lean    OT_MODEL=google/gemma-4-26b-a4b-it node src/run-tasks.ts gemma26-google-lean
+OT_PROFILE=authonly OT_CONFIG=lean    OT_MODEL=google/gemma-4-31b-it     node src/run-tasks.ts gemma31-google-lean
+OT_PROFILE=authonly OT_CONFIG=default OT_MODEL=google/gemma-4-26b-a4b-it OT_INFRA_RETRIES=2 OT_TASK_GAP_MS=60000 node src/run-tasks.ts gemma26-google-default
+# perfil do dono (como o Gemini)
+OT_PROFILE=default  OT_CONFIG=lean    OT_MODEL=google/gemma-4-31b-it     node src/run-tasks.ts gemma31-google-dono-lean
+```
+
+Variáveis novas do `run-tasks.ts`: `OT_PROFILE` (`isolated`, `default` ou `authonly`), `OT_INFRA_RETRIES` (retentativas por tarefa em erro de cota ou do provedor; padrão 0), `OT_INFRA_WAIT_MS` (espera entre elas; padrão 65 000), `OT_TASK_GAP_MS` (pausa entre tarefas; padrão 0) e `OT_MAX_PROMPTS` (limite de prompts da sessão, em `src/lib/budget.ts`; padrão 80). Valores usados: `authonly` enxuta, 3 retentativas e 10 s de pausa; `authonly` cheia, 2 retentativas e 60 s; perfil do dono, 3 retentativas e 30 s; prazo de 300 s por tentativa em todas. Não cobre RAM, tok/s nem quantização local.
+
 Variáveis do `ollama.sh`: `OT_OLLAMA_DIR` (padrão `~/.local/opt/ollama-v0.40.16`), `OT_OLLAMA_PORT` (padrão 47510), `OT_CTX` (padrão 32768), `OT_GGUF`.
 
 O caminho antigo (`./serve.sh`, `src/bench.ts` e `src/parse-llama-log.ts`) usava o `/usr/bin/llama-server` do pacote do Fedora. O pacote foi removido em 2026-11-15, e por isso esse caminho **não roda mais** nesta máquina. Ele fica só como registro das medições em CPU. A comparação com o Gemini continua igual: `OT_MODEL=google/gemini-3.1-flash-lite OT_PROFILE=default node src/run-tasks.ts gemini`.
@@ -222,7 +325,7 @@ Variáveis: `SPIKE_SCRATCH` (repositório de teste; padrão `<tmpdir>/otheater-s
 
 Tudo abaixo é **[proposta]**, a partir do que foi medido; a decisão é do dono.
 
-1. **Modelo e quantização.** `gemma-4-E4B-it-Q4_0` (4,27 GiB, Apache-2.0 pelo cartão) acertou 10/10 nas chamadas MCP estruturadas e nas ferramentas `edit`, `read` e `write` com o prompt enxuto **[V]**. Serve como ponto de partida do Executor local para tarefas curtas com ferramentas. Não testei Q8 nem o 26B-A4B, que a arquitetura cita; não recomendo trocar sem medir **[N]**.
+1. **Modelo e quantização.** `gemma-4-E4B-it-Q4_0` (4,27 GiB, Apache-2.0 pelo cartão) acertou 10/10 nas chamadas MCP estruturadas e nas ferramentas `edit`, `read` e `write` com o prompt enxuto **[V]**. Serve como ponto de partida do Executor local para tarefas curtas com ferramentas. Não testei Q8 localmente. O 26B-A4B e o 31B, que a arquitetura cita, só foram medidos pela API do Google (qualidade, 10/10 nas 10 tarefas, sem diferença em relação ao E4B nelas); RAM, velocidade e quantização local deles **não** foram medidas; não recomendo trocar sem medir **[N]**.
 2. **RAM.** ~5,5 GB de RSS com `-c 32768 -np 1` **[V]**. Mais slots aumentam o cache de contexto; quanto, não medi **[N]**. Cabe folgado nos 30 GB desta máquina.
 3. **Velocidade manda.** Com o binário do pacote (CPU sem AVX), 2 a 3 tok/s no prompt e ~2,2 na geração **[V]**: inviável como Ator interativo. Com o Ollama e a iGPU por Vulkan, ~150 a 210 tok/s no prompt e ~9,6 na geração, e as tarefas levam de 1 a 3 min **[V]**: lento para conversa, mas usável como Ator de tarefas curtas. O Executor local só faz sentido com **GPU funcionando ou CPU com SIMD**. O `LocalModelServer` precisa saber ligar a iGPU (no Ollama, `OLLAMA_IGPU_ENABLE=1`), porque o padrão a descarta. O `LocalModelServer` (§5.9) deveria medir tok/s de prompt e de geração no cadastro e avisar quando for baixo, em vez de só ler a janela de contexto.
 4. **Prompt do cliente.** O OpenCode padrão manda ~12 mil tokens; o enxuto, ~1,9 mil **[V]**. Um perfil `local` do lançador deveria aplicar o corte (ferramentas negadas por `permission`, `agent.build.prompt` curto, `agent.title.disable`), pois o ganho é de ~6 vezes. O custo: o Ator perde `bash`, `grep` e `glob`; se ele precisar delas, o perfil precisa de um modo intermediário. Se isso derruba a qualidade, **não medido**.
@@ -239,9 +342,9 @@ Em `spikes/local-model/` (a pasta `out/` e `node_modules/` são ignoradas pelo g
 
 - `README.md` (este arquivo), `package.json`, `package-lock.json`, `tsconfig.json`;
 - `ollama.sh` (servidor de desenvolvimento e testes) e `serve.sh` (o llama-server do Fedora, obsoleto);
-- `src/run-tasks.ts` (executor das 10 tarefas), `src/tasks.ts` (as tarefas e os critérios), `src/bench.ts` (TTFT, tok/s e RAM do servidor), `src/parse-llama-log.ts` (tempos por requisição a partir do log), `src/stub-llm.ts` (servidor OpenAI falso para medir o prompt do OpenCode);
-- `src/lib/`: `agent.ts`, `budget.ts`, `jsonl.ts`, `proc.ts`, `session.ts` (cliente ACP, vindos de `spikes/acp-opencode` com pequenas mudanças), `mcp-server.ts` e `paths.ts` (novos);
-- `out/` (git-ignored): resultados, logs ACP/MCP e os logs do llama-server e do Ollama de cada corrida.
+- `src/run-tasks.ts` (executor das 10 tarefas; ganhou o perfil `authonly`, as retentativas e a exclusão por infraestrutura), `src/tasks.ts` (as tarefas e os critérios), `src/bench.ts` (TTFT, tok/s e RAM do servidor), `src/parse-llama-log.ts` (tempos por requisição a partir do log), `src/stub-llm.ts` (servidor OpenAI falso para medir o prompt do OpenCode);
+- `src/lib/`: `agent.ts`, `budget.ts` (limite de prompts agora por `OT_MAX_PROMPTS`), `jsonl.ts`, `proc.ts`, `session.ts` (cliente ACP, vindos de `spikes/acp-opencode` com pequenas mudanças), `mcp-server.ts` e `paths.ts` (novos);
+- `out/` (git-ignored): resultados, logs ACP/MCP e os logs do llama-server e do Ollama de cada corrida; as da API do Google são `gemma26-google-lean`, `gemma26-google-lean-r2`, `gemma31-google-lean`, `gemma31-google-lean-r2`, `gemma26-google-default`, `gemma31-google-default`, `gemma26-google-dono-lean` e `gemma31-google-dono-lean` (`.results.json`, `.mcp.jsonl`, `.acp.jsonl`, `.acp.stderr.log`, `.log`).
 
 Fora do repositório: o Ollama em `~/.local/opt/ollama-v0.40.16`, o modelo importado em `~/.ollama/models` e a scratchpad da sessão.
 

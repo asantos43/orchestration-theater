@@ -10,6 +10,7 @@ const [clientName, pair, variant] = process.argv.slice(2) as [ClientName, string
 // OT_ORIGIN: nome do registro de origem em out/ (origin-<OT_ORIGIN>.json); padrao = o proprio par. Permite reaproveitar
 //   a mesma origem para destinos diferentes (par "claude-opencode" usa a origem "claude-codex").
 // OT_TAG: sufixo da repeticao (ex. "r3"); vira cont-<par>-<variante>.<tag>.json. OT_MODEL: modelo do OpenCode (ver acp.ts).
+// OT_WATCHDOG_MS: vigia da execucao em ms (padrao 600000). Modelo local: OPENCODE_CONFIG_CONTENT (herdado do ambiente) acrescenta o provedor; ver rep5.sh.
 const originName = process.env.OT_ORIGIN ?? pair;
 const tag = process.env.OT_TAG ? `.${process.env.OT_TAG}` : "";
 const runName = `cont-${pair}-${variant}${tag}`;
@@ -27,7 +28,7 @@ const sessionId = await run.newSession(dir);
 const originAdded = new Set(
   diffAgainst(dir, o.base).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).trim()).filter(Boolean),
 );
-const watchdog = setTimeout(() => killTree(run.pid), 600_000); // trava de seguranca: 10 min
+const watchdog = setTimeout(() => killTree(run.pid), Number(process.env.OT_WATCHDOG_MS ?? 600_000)); // trava de seguranca (padrao 10 min; OT_WATCHDOG_MS muda)
 const snaps: unknown[] = [];
 let seen = 0;
 const res = await run.prompt(sessionId, pkg, (t) => {

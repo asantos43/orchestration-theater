@@ -5,7 +5,8 @@ import { OUT } from "./task.ts";
 
 type Row = { pair: string; variant: string; model: string; tag: string; file: string; ok: boolean; own: string; acc: string; steps: number; ms: number; lost: number; origAdded: number; edits: number; shell: number; missing: number; extra: number; tokens: number; bytes: number; err?: string };
 const rows: Row[] = [];
-const excl = (r: Row) => /quota/i.test(r.err ?? "");
+const excl = (r: Row) => /quota|api key has expired|high demand|internal error encountered|rate.?limit|\b429\b|unavailable|overloaded|not found|too many requests/i.test(r.err ?? "");
+const exclTxt = (r: Row) => (/quota/i.test(r.err ?? "") ? "excluída (cota)" : "excluída (provedor)");
 const rows_shell = (r: any) => (r.trace.tools as any[]).filter((t) => t.kind === 'execute' && /<<\s*'?EOF|>>?\s*lib|\btee\b|sed -i|apply_patch/.test(t.cmd ?? t.title ?? '')).length;
 for (const f of readdirSync(OUT).filter((x) => /^cont-.*\.json$/.test(x) && !x.endsWith(".wire.jsonl"))) {
   const r = JSON.parse(readFileSync(join(OUT, f), "utf8"));
@@ -25,13 +26,13 @@ for (const f of readdirSync(OUT).filter((x) => /^cont-.*\.json$/.test(x) && !x.e
   });
 }
 const N: Record<string, string> = { claude: "Claude", codex: "Codex", opencode: "OpenCode" };
-// rotulo legivel: claude-codex -> "Claude→Codex"; sufixos: -o2 = 2a origem, -g35f = destino com gemini-3.5-flash
-const lab = (pair: string) => { const [a, b, ...x] = pair.split("-"); return `${N[a]}→${N[b]}${x.includes("o2") ? " (origem 2)" : ""}${x.includes("g35f") ? " (3.5-flash)" : ""}`; };
+// rotulo legivel: claude-codex -> "Claude→Codex"; sufixos: -o2 = 2a origem, -g35f = destino com gemini-3.5-flash, -gemma = destino com o Gemma 4 E4B local no Ollama, -glm/-deepseek/-minimax = modelos free do Zen, -gemma26/-gemma31 = Gemma pelo Google
+const lab = (pair: string) => { const [a, b, ...x] = pair.split("-"); return `${N[a]}→${N[b]}${x.includes("o2") ? " (origem 2)" : ""}${x.includes("g35f") ? " (3.5-flash)" : ""}${x.includes("gemma") ? " (gemma local)" : ""}${x.includes("glm") ? " (glm-5.3-flash free)" : ""}${x.includes("deepseek") ? " (deepseek-v4.1-flash free)" : ""}${x.includes("minimax") ? " (minimax-m3.1-flash free)" : ""}${x.includes("gemma26") ? " (gemma 26b google)" : ""}${x.includes("gemma31") ? " (gemma 31b google)" : ""}`; };
 rows.sort((a, b) => (a.pair + a.variant + a.tag).localeCompare(b.pair + b.variant + b.tag));
 const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); const n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
 const sec = (ms: number) => (ms / 1000).toFixed(1).replace(".", ",");
 console.log("| Par | Variante | Execução | ok | Próprios | Aceitação | Passos | Tempo | Linhas perdidas | Escritas (faltavam) | Tokens do usage |\n|---|---|---|---|---|---|---|---|---|---|---|");
-for (const r of rows) console.log(`| ${lab(r.pair)} | ${r.variant} | ${r.tag} | ${excl(r) ? "excluída (cota)" : r.ok ? "sim" : "**não**"} | ${r.own} | ${r.acc} | ${r.steps}/6 | ${sec(r.ms)} s | ${r.lost}/${r.origAdded} | ${r.edits}${r.shell ? "†" : ""} (${r.missing}) | ${r.tokens}${r.err ? " ERRO: " + r.err.slice(0, 60) : ""} |`);
+for (const r of rows) console.log(`| ${lab(r.pair)} | ${r.variant} | ${r.tag} | ${excl(r) ? exclTxt(r) : r.ok ? "sim" : "**não**"} | ${r.own} | ${r.acc} | ${r.steps}/6 | ${sec(r.ms)} s | ${r.lost}/${r.origAdded} | ${r.edits}${r.shell ? "†" : ""} (${r.missing}) | ${r.tokens}${r.err ? " ERRO: " + r.err.slice(0, 60) : ""} |`);
 console.log("\n| Par | Variante | n | ok em n | Mediana do tempo | Faixa do tempo | Linhas perdidas (soma) | Escritas a mais (soma; por execução) | Pacote (bytes) |\n|---|---|---|---|---|---|---|---|---|");
 const cells = new Map<string, Row[]>();
 // execucoes que falharam por cota da API (infraestrutura) ficam na tabela por execucao, mas nao entram na celula
