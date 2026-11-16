@@ -4,7 +4,10 @@
     { "path": "packages/core" },
     { "path": "packages/sdk" },
     { "path": "packages/fake-agent" },
+    { "path": "packages/adapters/clock-system" },
     { "path": "packages/adapters/store-sqlite" },
+    { "path": "packages/adapters/vault-file" },
+    { "path": "packages/adapters/vault-keyring" },
     { "path": "tools/verify" }
   ]
 }

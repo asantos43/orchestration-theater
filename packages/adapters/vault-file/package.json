@@ -1,0 +1,24 @@
+{
+  "name": "@otheater/adapter-vault-file",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@otheater/core": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@otheater/sdk": "workspace:*",
+    "vitest": "5.1.0"
+  }
+}
