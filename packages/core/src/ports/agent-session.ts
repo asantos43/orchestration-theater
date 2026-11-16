@@ -18,6 +18,37 @@ export interface PromptOutcome {
 
 export type UpdateListener = (update: NormalizedUpdate) => void;
 
+/** One value of a select config option (ACP `SessionConfigSelectOption`). */
+export interface SessionConfigChoice {
+  /** The id `setConfig` takes. */
+  readonly value: string;
+  readonly name?: string;
+  readonly description?: string;
+}
+
+/** A named group of values of a select config option (ACP `SessionConfigSelectGroup`). */
+export interface SessionConfigChoiceGroup {
+  readonly group: string;
+  readonly name?: string;
+  readonly options: readonly SessionConfigChoice[];
+}
+
+/**
+ * A session config option as the client announced it (ACP `SessionConfigOption`), in neutral
+ * terms: core does not know ACP. [proposta] Only what the daemon reads: the model and effort
+ * catalogs find their lists here. A `select` option lists its `options` flat or grouped; a
+ * `boolean` has none.
+ */
+export interface SessionConfigOption {
+  readonly id: string;
+  readonly name?: string;
+  /** `model`, `thought_level`, `mode`, `model_config` or a custom (`_`-prefixed) category. */
+  readonly category?: string;
+  readonly type: 'select' | 'boolean';
+  readonly currentValue?: ConfigValue;
+  readonly options?: readonly (SessionConfigChoice | SessionConfigChoiceGroup)[];
+}
+
 /**
  * The normalized conversation with an Executor (architecture 5.2, "Casca de agente"; 5.18): the
  * only thing the Director, the pipeline and the interfaces see of a client. Whatever the
@@ -33,7 +64,12 @@ export type UpdateListener = (update: NormalizedUpdate) => void;
  * - `cancel` is idempotent. It asks the client to stop and ends the process tree of the client
  *   (architecture 5.2: do not trust ACP's cancel alone), then resolves.
  * - `setConfig` changes a session config option (`model`, `thought_level`, `mode`...); an id or
- *   value the client does not offer rejects with `InvalidInput`.
+ *   value the client does not offer rejects with `InvalidInput`. When it resolves, `configOptions`
+ *   already shows the new value (for a client that reports its options).
+ * - `configOptions` is the snapshot of the options the client announced for the session, taken at
+ *   `session/new` or `session/load`, replaced whenever the client sends the full list again (the
+ *   answer of `setConfig`, a `config_option_update`). [proposta] It is empty for a client that
+ *   announces none; it stays readable after the session ends.
  * - `close` ends the session and releases the process when it was the last session on it; after
  *   it every method rejects with `AdapterUnavailable`.
  */
@@ -42,6 +78,8 @@ export interface AgentSession {
   readonly sessionId: string;
   /** This session can be reloaded later with `loadSession` (native resume, architecture 5.16). */
   readonly canLoad: boolean;
+  /** Snapshot of the config options the client announced; see the contract above. */
+  readonly configOptions: readonly SessionConfigOption[];
   prompt(blocks: readonly ContentBlock[]): Promise<PromptOutcome>;
   onUpdate(listener: UpdateListener): Disposable;
   cancel(): Promise<void>;

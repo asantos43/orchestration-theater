@@ -49,7 +49,25 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       });
       return;
     case 'session/new':
-      send({ id: message.id, result: { sessionId: 'stub-1' } });
+      send({
+        id: message.id,
+        result: { sessionId: 'stub-1', ...(cfg.configOptions ? { configOptions: cfg.configOptions } : {}) },
+      });
+      return;
+    case 'session/set_config_option':
+      send({ id: message.id, result: { configOptions: cfg.afterSet ?? [] } });
+      return;
+    case 'session/prompt':
+      // With updateOnPrompt the client reports a changed option list, then never answers.
+      if (cfg.updateOnPrompt) {
+        send({
+          method: 'session/update',
+          params: {
+            sessionId: message.params.sessionId,
+            update: { sessionUpdate: 'config_option_update', configOptions: cfg.updateOnPrompt },
+          },
+        });
+      }
       return;
     case 'session/load':
       send({ id: message.id, error: { code: -32002, message: 'session not found' } });
@@ -183,6 +201,96 @@ describe('AcpTransport against a stub agent', () => {
       _meta: { claudeCode: { options: { settingSources: [] } } },
     });
     await session.close();
+  });
+
+  describe('config options', () => {
+    const effort = (current: string) => ({
+      type: 'select',
+      id: 'effort',
+      name: 'Effort',
+      category: 'thought_level',
+      currentValue: current,
+      options: [
+        { value: 'low', name: 'Low' },
+        { value: 'high', name: 'High', description: 'Thinks longer' },
+      ],
+    });
+
+    it('exposes the options of session/new in the neutral form: groups, booleans, nulls, junk', async () => {
+      const { open } = await params('options-new', {
+        config: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              description: null,
+              currentValue: 'a',
+              options: [
+                { group: 'g1', name: 'Group', options: [{ value: 'a', name: 'A' }] },
+                { value: 'b', name: 'B', description: null },
+                { name: 'no value' },
+              ],
+            },
+            { type: 'boolean', id: 'brave', name: 'Brave', category: null, currentValue: true },
+            { type: 'select', name: 'no id' },
+            'not an object',
+          ],
+        },
+      });
+      const session = await new AcpTransport().open(open);
+      expect(session.configOptions).toEqual([
+        {
+          id: 'model',
+          type: 'select',
+          name: 'Model',
+          category: 'model',
+          currentValue: 'a',
+          options: [
+            { group: 'g1', name: 'Group', options: [{ value: 'a', name: 'A' }] },
+            { value: 'b', name: 'B' },
+          ],
+        },
+        { id: 'brave', type: 'boolean', name: 'Brave', currentValue: true },
+      ]);
+      await session.close();
+    });
+
+    it('is empty when the client announces none', async () => {
+      const { open } = await params('options-none');
+      const session = await new AcpTransport().open(open);
+      expect(session.configOptions).toEqual([]);
+      await session.close();
+    });
+
+    it('follows the answer of the setup config calls and of setConfig', async () => {
+      const { open } = await params('options-set', {
+        config: { configOptions: [effort('low')], afterSet: [effort('high')] },
+        configOptions: { effort: 'high' },
+      });
+      const session = await new AcpTransport().open(open);
+      // The setup applied effort=high at open: the snapshot is the answer of that call.
+      expect(session.configOptions[0]).toMatchObject({ id: 'effort', currentValue: 'high' });
+      await session.close();
+    });
+
+    it('is replaced by a config_option_update of the client', async () => {
+      const { open } = await params('options-update', {
+        config: { configOptions: [effort('low')], updateOnPrompt: [effort('high')] },
+      });
+      const session = await new AcpTransport({ killGraceMs: 500 }).open(open);
+      expect(session.configOptions[0]).toMatchObject({ currentValue: 'low' });
+      const running = session.prompt([{ type: 'text', text: 'go' }]).then(
+        () => 'resolved',
+        () => 'rejected',
+      );
+      await vi.waitFor(() => {
+        expect(session.configOptions[0]).toMatchObject({ currentValue: 'high' });
+      });
+      await session.close();
+      expect(await running).toBe('rejected');
+    });
   });
 
   it('refuses MCP servers when the client did not announce HTTP', async () => {

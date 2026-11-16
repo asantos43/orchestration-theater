@@ -15,7 +15,11 @@ import {
   type SessionWarning,
 } from './managed-agent-session.js';
 import type { StopReason } from './normalized-update.js';
-import type { NormalizedError, SessionNormalizer } from './ports/agent-session.js';
+import type {
+  NormalizedError,
+  SessionConfigOption,
+  SessionNormalizer,
+} from './ports/agent-session.js';
 import { FakeLaunchedProcess } from './testing/fake-process-launcher.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -39,6 +43,7 @@ class ScriptedDriver implements SessionDriver {
   disconnects = 0;
   configs: [string, unknown][] = [];
   failConfig: Error | undefined;
+  announce: readonly SessionConfigOption[] | undefined;
   runTurn(): Promise<StopReason> {
     return new Promise((resolve, reject) => {
       this.turns.push({ resolve, reject });
@@ -48,9 +53,11 @@ class ScriptedDriver implements SessionDriver {
     this.cancels += 1;
     return Promise.resolve();
   }
-  applyConfig(id: string, value: unknown): Promise<void> {
+  applyConfig(id: string, value: unknown): Promise<readonly SessionConfigOption[] | undefined> {
     this.configs.push([id, value]);
-    return this.failConfig === undefined ? Promise.resolve() : Promise.reject(this.failConfig);
+    return this.failConfig === undefined
+      ? Promise.resolve(this.announce)
+      : Promise.reject(this.failConfig);
   }
   disconnect(): void {
     this.disconnects += 1;
@@ -249,6 +256,40 @@ describe('ManagedAgentSession', () => {
     const invalid = new InvalidInput('no such option');
     driver.failConfig = invalid;
     await expect(session.setConfig('nope', 'x')).rejects.toBe(invalid);
+  });
+
+  it('exposes the config options: empty by default, replaced by the driver answer and by updates', async () => {
+    const { driver, session } = setup();
+    expect(session.configOptions).toEqual([]);
+    const high: SessionConfigOption = { id: 'effort', type: 'select', currentValue: 'high' };
+    driver.announce = [high];
+    await session.setConfig('effort', 'high');
+    expect(session.configOptions).toEqual([high]);
+    // A driver that does not announce anything leaves the snapshot as it was.
+    driver.announce = undefined;
+    await session.setConfig('effort', 'high');
+    expect(session.configOptions).toEqual([high]);
+    const low: SessionConfigOption = { id: 'effort', type: 'select', currentValue: 'low' };
+    session.updateConfigOptions([low]);
+    expect(session.configOptions).toEqual([low]);
+    driver.failConfig = new InvalidInput('no');
+    driver.announce = [high];
+    await expect(session.setConfig('effort', 'x')).rejects.toBeInstanceOf(InvalidInput);
+    expect(session.configOptions).toEqual([low]);
+  });
+
+  it('seeds the config options from the options of the constructor', () => {
+    const seeded: SessionConfigOption = { id: 'model', type: 'select' };
+    const process = new FakeLaunchedProcess(1, { cmd: 'x', args: [], cwd: '/', env: {} });
+    const session = new ManagedAgentSession({
+      sessionId: 's2',
+      canLoad: false,
+      driver: new ScriptedDriver(),
+      process,
+      normalizer,
+      configOptions: [seeded],
+    });
+    expect(session.configOptions).toEqual([seeded]);
   });
 });
 

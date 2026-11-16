@@ -6,16 +6,47 @@ import type {
   AgentSession,
   PermissionAnswer,
   PermissionRequest,
+  SessionConfigOption,
   SessionLoadParams,
   SessionOpenParams,
   SessionTransport,
 } from '../ports/agent-session.js';
 
-/** Config options the fake client offers (the same ones as `@otheater/fake-agent`). */
-export const FAKE_CONFIG_OPTIONS: Readonly<Record<string, readonly string[]>> = {
-  model: ['fake-model', 'fake-model-2'],
-  mode: ['default', 'plan'],
-};
+/** What the fake client announces for each config option (the same ones as `@otheater/fake-agent`). */
+const FAKE_CONFIG_SPEC = [
+  {
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    values: ['fake-model', 'fake-model-2'],
+    initial: 'fake-model',
+  },
+  { id: 'mode', name: 'Mode', category: 'mode', values: ['default', 'plan'], initial: 'default' },
+  {
+    id: 'effort',
+    name: 'Effort',
+    category: 'thought_level',
+    values: ['low', 'medium', 'high'],
+    initial: 'medium',
+  },
+] as const;
+
+/** Config options the fake client offers and the values each accepts. */
+export const FAKE_CONFIG_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  FAKE_CONFIG_SPEC.map((option) => [option.id, option.values]),
+);
+
+/** The options the fake client announces for a session whose chosen values are `chosen`. */
+function fakeConfigOptions(chosen: ReadonlyMap<string, string>): SessionConfigOption[] {
+  return FAKE_CONFIG_SPEC.map((option) => ({
+    id: option.id,
+    name: option.name,
+    category: option.category,
+    type: 'select' as const,
+    currentValue: chosen.get(option.id) ?? option.initial,
+    options: option.values.map((value) => ({ value, name: value })),
+  }));
+}
 
 export interface FakeSessionTransportOptions {
   /** Default `fake`. */
@@ -82,7 +113,7 @@ class FakeDriver implements SessionDriver {
     return Promise.resolve();
   }
 
-  applyConfig(id: string, value: ConfigValue): Promise<void> {
+  applyConfig(id: string, value: ConfigValue): Promise<SessionConfigOption[]> {
     const values = FAKE_CONFIG_OPTIONS[id];
     if (values === undefined)
       return Promise.reject(new InvalidInput(`unknown config option: ${id}`));
@@ -91,7 +122,7 @@ class FakeDriver implements SessionDriver {
     }
     this.#config.set(id, value);
     this.#transport.configApplied.push({ id, value });
-    return Promise.resolve();
+    return Promise.resolve(fakeConfigOptions(this.#config));
   }
 
   disconnect(): void {
@@ -251,6 +282,7 @@ export class FakeSessionTransport implements SessionTransport {
     const session = new ManagedAgentSession({
       sessionId,
       canLoad: this.#canLoad,
+      configOptions: fakeConfigOptions(new Map()),
       driver,
       process: params.process,
       normalizer: params.normalizer,

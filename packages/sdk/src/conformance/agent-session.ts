@@ -7,6 +7,7 @@ import {
   type ContentBlock,
   type NormalizedUpdate,
   type PromptOutcome,
+  type SessionConfigOption,
 } from '@otheater/core';
 import { describe, expect, it, type TestContext } from 'vitest';
 import { useHarness, type AdapterFactory, type Disposable } from '../harness.js';
@@ -62,6 +63,13 @@ export interface AgentSessionHarness extends Disposable {
   readonly rootProcessesAlive?: () => number | Promise<number>;
 }
 
+/** The `value` ids of a select option, with the groups flattened. */
+function valuesOfOption(option: SessionConfigOption): string[] {
+  return (option.options ?? []).flatMap((entry) =>
+    'value' in entry ? [entry.value] : entry.options.map((choice) => choice.value),
+  );
+}
+
 const text = (update: NormalizedUpdate): string =>
   update.kind === 'agent_message_chunk' && update.content.type === 'text'
     ? update.content.text
@@ -87,8 +95,8 @@ const untilRunning = settle;
  * Registers the `AgentSession` conformance tests (port version {@link AGENT_SESSION_PORT_VERSION})
  * in the calling Vitest file. They check the whole JSDoc contract of `AgentSession`: one prompt at
  * a time, the updates before the answer, listeners that cannot break the session, typed errors, a
- * cancelled turn that is not an error, `cancel` that ends the process tree, `setConfig`, and
- * `close`. Call it at the top level of a test file, once per transport.
+ * cancelled turn that is not an error, `cancel` that ends the process tree, `setConfig` and the
+ * `configOptions` it keeps current, and `close`. Call it at the top level of a test file, once per transport.
  *
  * With `{ real: true }` the suite is skipped unless `OT_TEST_REAL_CLIENTS=1`, and the tests that
  * send a prompt unless `OT_TEST_REAL_PROMPTS=1` too (a real client spends the quota of a real
@@ -265,6 +273,48 @@ export function describeAgentSessionConformance(
         expect(await rejectionOf(session.setConfig(known.unknownId, 'x'))).toMatchObject({
           code: 'INVALID_INPUT',
         });
+      });
+
+      it('exposes the config options the client announced', (ctx) => {
+        const { session, config } = harness();
+        const known = needs(ctx, config);
+        expect(Array.isArray(session.configOptions)).toBe(true);
+        for (const option of session.configOptions) {
+          expect(typeof option.id).toBe('string');
+          expect(['select', 'boolean']).toContain(option.type);
+        }
+        const offered = session.configOptions.find((option) => option.id === known.valid.id);
+        expect(offered, `the session does not expose the option ${known.valid.id}`).toBeDefined();
+        if (offered === undefined) return;
+        expect(offered.type).toBe('select');
+        expect(valuesOfOption(offered)).toContain(known.valid.value);
+        expect(typeof offered.currentValue).toBe('string');
+        expect(valuesOfOption(offered)).toContain(offered.currentValue);
+      });
+
+      it('setConfig updates configOptions, and a refused setConfig leaves them as they were', async (ctx) => {
+        const { session, config } = harness();
+        const known = needs(ctx, config);
+        const currentOf = (id: string): unknown =>
+          session.configOptions.find((option) => option.id === id)?.currentValue;
+        const before = session.configOptions;
+        await session.setConfig(known.valid.id, known.valid.value);
+        expect(currentOf(known.valid.id)).toBe(known.valid.value);
+        const after = session.configOptions;
+        // A snapshot that was handed out earlier is not changed behind the caller's back.
+        expect(before).not.toBe(after);
+        await rejectionOf(session.setConfig(known.invalidValue.id, known.invalidValue.value));
+        expect(currentOf(known.valid.id)).toBe(known.valid.value);
+        expect(session.configOptions.map((option) => option.id)).toEqual(
+          after.map((option) => option.id),
+        );
+      });
+
+      it('configOptions stays readable after close', async (ctx) => {
+        const { session, config } = harness();
+        const known = needs(ctx, config);
+        await session.close();
+        expect(session.configOptions.some((option) => option.id === known.valid.id)).toBe(true);
       });
 
       it('close resolves, is idempotent, and leaves no process', async () => {

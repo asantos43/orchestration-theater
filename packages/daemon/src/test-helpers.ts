@@ -61,6 +61,9 @@ export function editingTransport(inner: SessionTransport): SessionTransport {
       get canLoad() {
         return session.canLoad;
       },
+      get configOptions() {
+        return session.configOptions;
+      },
       onUpdate(listener: UpdateListener): Disposable {
         listeners.add(listener);
         const below = session.onUpdate(listener);

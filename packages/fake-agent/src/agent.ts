@@ -52,10 +52,27 @@ interface TurnContext {
 const ALLOW: PermissionOption = { optionId: 'allow', name: 'Allow', kind: 'allow_once' };
 const REJECT: PermissionOption = { optionId: 'reject', name: 'Reject', kind: 'reject_once' };
 
-/** Config options the fake agent offers: id, category, values (the first value is the default). */
+/**
+ * Config options the fake agent offers: id, category, values and the value a new session starts
+ * with. `model` and `effort` are the ones the model catalogs read (`thought_level` is the
+ * category of the effort in the real clients).
+ */
 const CONFIG_OPTIONS = [
-  { id: 'model', name: 'Model', category: 'model', values: ['fake-model', 'fake-model-2'] },
-  { id: 'mode', name: 'Mode', category: 'mode', values: ['default', 'plan'] },
+  {
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    values: ['fake-model', 'fake-model-2'],
+    initial: 'fake-model',
+  },
+  { id: 'mode', name: 'Mode', category: 'mode', values: ['default', 'plan'], initial: 'default' },
+  {
+    id: 'effort',
+    name: 'Effort',
+    category: 'thought_level',
+    values: ['low', 'medium', 'high'],
+    initial: 'medium',
+  },
 ] as const;
 
 function configOptionsOf(session: Session): SessionConfigOption[] {
@@ -64,7 +81,7 @@ function configOptionsOf(session: Session): SessionConfigOption[] {
     id: option.id,
     name: option.name,
     category: option.category,
-    currentValue: session.config.get(option.id) ?? option.values[0],
+    currentValue: session.config.get(option.id) ?? option.initial,
     options: option.values.map((value) => ({ value, name: value })),
   }));
 }
