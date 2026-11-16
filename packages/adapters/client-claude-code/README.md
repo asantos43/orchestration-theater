@@ -71,7 +71,8 @@ lacks is a warning, never an error. Ids ending in `[1m]` get a 1,000,000 token w
 
 ## Modes it refuses
 
-`mapConfig` throws `InvalidInput` for `bypassPermissions` (it skips layer 2) [V], `dontAsk` (not in
+The `modeVeto` hook of the `ClientAdapter` base refuses (`PermissionDenied`, on the setup, on
+`configOptionsFor` and on `session.setConfig('mode', ...)`) `bypassPermissions` (it skips layer 2) [V], `dontAsk` (not in
 the mode catalog, never reaches layer 2) [V] and `auto` (a classifier would answer instead of layer
 2; not measured) [N].
 

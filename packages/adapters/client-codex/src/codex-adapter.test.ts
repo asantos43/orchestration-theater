@@ -252,14 +252,15 @@ describe('CodexAdapter.configOptionsFor', () => {
     expect(() => adapter.configOptionsFor({ model: 'model-a', mode })).toThrow(PermissionDenied);
   });
 
-  it('refuses the veto through a guarded transport, on the open session', async () => {
+  it('refuses the veto on the open session, before it reaches the transport', async () => {
     const { adapter } = build();
-    const via = adapter.guardTransport(new FakeSessionTransport());
+    const via = new FakeSessionTransport();
     const session = await adapter.openSession(await profileIn(), policy, '/work', via);
     await expect(session.setConfig('mode', 'agent')).rejects.toBeInstanceOf(PermissionDenied);
     await expect(session.setConfig('mode', 'agent-full-access')).rejects.toBeInstanceOf(
       PermissionDenied,
     );
+    expect(via.configApplied.map((applied) => applied.value)).not.toContain('agent');
   });
 
   it('can widen the allowed modes by configuration, but never to a vetoed one', () => {

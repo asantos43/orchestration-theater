@@ -101,6 +101,12 @@ export interface FakeClientAdapterOptions extends ClientAdapterOptions {
   readonly processModel?: ProcessModel;
   /** Called by `prepareProfile`, to see what the base asked for. */
   readonly onPrepareProfile?: (profile: Profile, policy: RolePolicy) => void;
+  /** Modes `modeVeto` refuses, each with the reason (a bare list gives a default reason). Default none. */
+  readonly vetoedModes?: readonly string[] | Readonly<Record<string, string>>;
+  /** Only when this transport asks for it, the veto is on (`modeVeto` receives the transport). Default every transport. */
+  readonly vetoVia?: TransportId;
+  /** The config options of the ACP setup of every session (`SessionSetup.configOptions`). Default none. */
+  readonly setupConfig?: Readonly<Record<string, string>>;
 }
 
 const DEFAULT_ENFORCEMENT = Object.fromEntries(
@@ -204,6 +210,8 @@ export class FakeClientAdapter extends ClientAdapter {
   readonly capabilities: ClientCapabilities;
   /** Profiles the base asked to prepare, in order. */
   readonly prepared: Profile[] = [];
+  /** The transport the base asked `command` for, in order. */
+  readonly commandVia: TransportId[] = [];
   readonly #options: FakeClientAdapterOptions;
 
   constructor(options: FakeClientAdapterOptions) {
@@ -221,7 +229,8 @@ export class FakeClientAdapter extends ClientAdapter {
     };
   }
 
-  protected command(): { cmd: string; args: string[] } {
+  protected command(_profile: Profile, via: TransportId): { cmd: string; args: string[] } {
+    this.commandVia.push(via);
     return { cmd: this.#options.command.cmd, args: [...this.#options.command.args] };
   }
 
@@ -239,7 +248,16 @@ export class FakeClientAdapter extends ClientAdapter {
   protected sessionSetup(_policy: RolePolicy, via: TransportId): SessionSetup {
     return via === 'headless'
       ? { via: 'headless', args: [], env: {} }
-      : { via: 'acp', configOptions: {} };
+      : { via: 'acp', configOptions: { ...this.#options.setupConfig } };
+  }
+
+  protected modeVeto(mode: string, via: TransportId): string | null {
+    const vetoed = this.#options.vetoedModes;
+    if (vetoed === undefined) return null;
+    if (this.#options.vetoVia !== undefined && this.#options.vetoVia !== via) return null;
+    if (Array.isArray(vetoed)) return vetoed.includes(mode) ? 'the fake client refuses it' : null;
+    const reasons = vetoed as Readonly<Record<string, string>>;
+    return Object.hasOwn(reasons, mode) ? (reasons[mode] ?? null) : null;
   }
 
   protected enforcement(): Enforcement {

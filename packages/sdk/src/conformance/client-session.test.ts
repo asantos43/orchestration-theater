@@ -48,6 +48,8 @@ const prompts = {
   quota: script('quota-signal'),
 };
 
+const VETOED = ['plan'];
+
 function build(
   processModel: ProcessModel = 'process-per-session',
   sharedCancel?: SharedCancelMode,
@@ -59,6 +61,7 @@ function build(
     baseEnv: {},
     adapterVersion: '1.0.0',
     command: { cmd: 'fake-client', args: [] },
+    vetoedModes: VETOED,
     processModel,
     ...(sharedCancel === undefined ? {} : { sharedCancel }),
   });
@@ -111,6 +114,7 @@ describeClientAdapterConformance('FakeClientAdapter + FakeSessionTransport', () 
       granted: () => via.edits.length > 0,
     },
     processesAlive: alive,
+    modeVeto: { modes: VETOED, applied: () => via.configApplied.map((entry) => entry.value) },
     unknownSessionId: 'unknown',
     dispose: async () => {
       await Promise.all(launcher.running.map((process) => process.killTree()));
@@ -170,6 +174,7 @@ for (const mode of ['escalate', 'always_kill', 'release'] as const) {
         },
         processesAlive: alive,
         rootProcessesAlive: alive,
+        modeVeto: { modes: VETOED, applied: () => via.configApplied.map((entry) => entry.value) },
         crash: () => {
           for (const process of launcher.running) process.exit(1, null);
           return Promise.resolve();

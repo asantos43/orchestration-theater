@@ -21,7 +21,8 @@ schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.
 | `enforcement` | `onAsk` client+daemon, `bypass` daemon, `writeScope` client, `mcpServers` client; nothing for `nativeTools`, `nativeShell`, `network` (only layer 3) | [V] |
 | `normalizeUpdate` | ACP updates; `usage_update` becomes `usage`; `session_info_update` is dropped | [V] |
 | `normalizeError` | `data.codexErrorInfo` (`usageLimitExceeded` quota, `unauthorized`, connection kinds transient, `sandboxError`); `-32000` "Authentication required" is auth | [V] quota and auth; [S] the other kinds |
-| `mapConfig` | `model`, `reasoning_effort`, `mode` (allow-list) | [V] |
+| `mapConfig` | `model`, `reasoning_effort`, `mode` (ids of the client; the veto is `modeVeto`) | [V] |
+| `modeVeto` | allow-list of modes (`allowedModes`); a refusal reason, or `null` | [V] |
 | `models` | `automatic`, family `openai`, built from the `session/new` config options; no model call | [V] |
 | `quota`, `login`, `logout` | reject with `AdapterUnavailable` (Phase 5) | n/a |
 | `probes` | `codex-mode-veto` (offline), `codex-pinned-mode` (needs an injected `readSessionMode`) | [V] |
@@ -29,8 +30,10 @@ schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.
 ## The mode veto
 
 `agent` ("Auto review") and `agent-full-access` can never be selected: the adapter does not ask for
-them, `mapConfig` refuses them (`PermissionDenied`), and `guardTransport` wraps a transport so that
-`session.setConfig('mode', ...)` is refused too. Phase 0 could not remove them from the catalog by
+them, and the `modeVeto` hook of the `ClientAdapter` base refuses them (`PermissionDenied`) before
+any mode change reaches the client: the initial mode of the setup, `configOptionsFor`, and
+`session.setConfig('mode', ...)` on an open session, also in a shared process. The refusal does not
+depend on the transport. Phase 0 could not remove them from the catalog by
 any of 6 override variants [V], and in `agent` the escalation goes to the Guardian Review and
 never reaches the client [V], so a veto at the adapter is the only way to keep `bypass` guaranteed
 by the daemon. The allowed modes are a list (`allowedModes`, [proposta] `clients.codex.modes`),
@@ -48,8 +51,8 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 - **`processModel` is `multi-session`**, but the base `ClientAdapter` only starts
   `process-per-session`. The adapter reports the measured value; tests override it. The session
   pool (P8) is the place to close this.
-- **`command(profile)` has no `via`**, so a headless transport has to start `codex` itself from
-  `setup.args`.
+- **`command(profile, via)` receives the transport id** (P13). Codex starts the same `codex-acp`
+  for both; a headless transport still has to start `codex` itself from `setup.args`.
 - **Quota**: `usageLimitExceeded` carries a time of day without a date ("try again at 9:31 AM")
   [V], so the reset is only taken from `data.resetsAt` when present [N]; the message is not parsed
   (N42). The rate-limit windows are only readable with `account/rateLimits/read` on the app-server

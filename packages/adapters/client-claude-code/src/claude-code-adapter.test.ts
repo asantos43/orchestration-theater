@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   AdapterUnavailable,
-  InvalidInput,
   PermissionDenied,
   type PermissionRequest,
   type Profile,
@@ -259,7 +258,7 @@ describe('configOptionsFor', () => {
   it('refuses the modes that would skip layer 2 or are not in the catalog', () => {
     const adapter = build();
     for (const mode of ['bypassPermissions', 'dontAsk', 'auto']) {
-      expect(() => adapter.configOptionsFor({ model: 'sonnet', mode })).toThrow(InvalidInput);
+      expect(() => adapter.configOptionsFor({ model: 'sonnet', mode })).toThrow(PermissionDenied);
     }
   });
 

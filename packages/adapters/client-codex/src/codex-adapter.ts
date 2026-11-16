@@ -19,17 +19,15 @@ import {
   type RawUpdate,
   type RolePolicy,
   type SessionSetup,
-  type SessionTransport,
   type TransportId,
 } from '@otheater/core';
-import { guardModes } from './guard-transport.js';
 import { CodexModelCatalog, type CodexConfigSource } from './model-catalog.js';
 import {
   CODEX_CONFIG_IDS,
   DEFAULT_ALLOWED_MODES,
   DEFAULT_INITIAL_MODE,
   SANDBOX_OF,
-  assertModeAllowed,
+  modeRefusal,
   modePolicyOf,
   type ModePolicy,
 } from './modes.js';
@@ -143,16 +141,17 @@ export class CodexAdapter extends ClientAdapter {
     });
   }
 
-  /**
-   * Wraps a transport so the daemon cannot select a vetoed mode through `session.setConfig`; the
-   * composition root passes the transport of every Codex session through here.
-   */
-  guardTransport(via: SessionTransport): SessionTransport {
-    return guardModes(via, this.#modes);
-  }
-
+  /** The same command for both transports: the headless one starts `codex` from `setup.args`. */
   protected command(): { cmd: string; args: string[] } {
     return { cmd: this.#command.cmd, args: [...this.#command.args] };
+  }
+
+  /**
+   * `agent` and `agent-full-access` are vetoed and cannot be allowed by configuration; any other
+   * mode is allowed only when it is in `allowedModes`. The same answer on every transport.
+   */
+  protected modeVeto(mode: string): string | null {
+    return modeRefusal(this.#modes, mode);
   }
 
   protected profileEnv(profile: Profile): Record<string, string> {
@@ -227,9 +226,8 @@ export class CodexAdapter extends ClientAdapter {
     return normalizeCodexError(raw);
   }
 
-  /** Model, effort and mode in the ids of the client; a mode off the allow-list is refused with `PermissionDenied`. */
+  /** Model, effort and mode in the ids of the client; a mode off the allow-list never gets here (`modeVeto`). */
   protected mapConfig(want: ExecutorConfig): Record<string, string> {
-    if (want.mode !== undefined) assertModeAllowed(this.#modes, want.mode);
     return {
       [CODEX_CONFIG_IDS.model]: want.model,
       ...(want.effort === undefined ? {} : { [CODEX_CONFIG_IDS.effort]: want.effort }),
@@ -243,7 +241,7 @@ export class CodexAdapter extends ClientAdapter {
 
   protected probes(): ConformanceProbe[] {
     return [
-      modeVetoProbe(this.#modes, (want) => this.mapConfig(want)),
+      modeVetoProbe(this.#modes, (want) => this.configOptionsFor(want)),
       pinnedModeProbe(this.#modes, this.#readSessionMode),
     ];
   }

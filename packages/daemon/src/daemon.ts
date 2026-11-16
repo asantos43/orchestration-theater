@@ -22,7 +22,6 @@ import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
   productionClients,
-  transportFor,
   type ComposeOverrides,
   type Composition,
   type ProductionClientsOptions,
@@ -324,7 +323,7 @@ function buildExecution(
   return new Execution({
     clients,
     launcher,
-    transport: (adapter) => transportFor(adapter, composition.transport),
+    transport: () => composition.transport,
     store: composition.store,
     vcs: composition.vcs,
     clock: composition.clock,

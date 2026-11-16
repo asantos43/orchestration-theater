@@ -58,8 +58,7 @@ function build(processModel: ProcessModel) {
     readSessionMode: () => Promise.resolve('workspace-write'),
   });
   const fake = new FakeSessionTransport();
-  const via = adapter.guardTransport(fake);
-  return { adapter, via, fake, launcher, alive: () => launcher.running.length };
+  return { adapter, via: fake, fake, launcher, alive: () => launcher.running.length };
 }
 
 /** The suites run in both process models: `multi-session` is the default of Codex (Phase 0), the other is the option. */
@@ -115,6 +114,10 @@ for (const processModel of ['multi-session', 'process-per-session'] as const) {
       },
       processesAlive: alive,
       rootProcessesAlive: alive,
+      modeVeto: {
+        modes: ['agent', 'agent-full-access'],
+        applied: () => fake.configApplied.map((entry) => entry.value),
+      },
       crash: () => {
         for (const process of launcher.running) process.exit(1, null);
         return Promise.resolve();

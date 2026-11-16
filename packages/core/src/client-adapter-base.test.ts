@@ -799,6 +799,127 @@ describe('ClientAdapter.configOptionsFor', () => {
   });
 });
 
+describe('ClientAdapter mode veto', () => {
+  const veto = { vetoedModes: { plan: 'it skips layer 2' } } as const;
+
+  it('refuses setConfig of a vetoed mode on the open session, before the client', async () => {
+    const { adapter, launcher } = setup(veto);
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via);
+    const refused = session.setConfig('mode', 'plan');
+    await expect(refused).rejects.toBeInstanceOf(PermissionDenied);
+    await expect(refused).rejects.toThrow(/fake: the mode plan is refused: it skips layer 2/);
+    expect(via.configApplied).toEqual([]);
+    // What the veto does not name goes through, the model and the other modes included.
+    await session.setConfig('mode', 'default');
+    await session.setConfig('model', 'fake-model-2');
+    expect(via.configApplied).toEqual([
+      { id: 'mode', value: 'default' },
+      { id: 'model', value: 'fake-model-2' },
+    ]);
+    await session.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('refuses a value that is not one mode id, and the mode marked by category', async () => {
+    const { adapter } = setup(veto);
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via);
+    await expect(session.setConfig('mode', true)).rejects.toBeInstanceOf(PermissionDenied);
+    expect(session.configOptions.find((option) => option.id === 'mode')?.category).toBe('mode');
+    await session.close();
+  });
+
+  it('refuses the initial mode of the setup without reaching the client, and leaves nothing', async () => {
+    const { adapter, launcher } = setup({ ...veto, setupConfig: { mode: 'plan' } });
+    const via = new FakeSessionTransport();
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    expect(via.opened).toEqual([]);
+    expect(launcher.running).toEqual([]);
+    await expect(adapter.loadSession(profile, policy, '/work', 's', via)).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('lets a setup mode that is not vetoed through', async () => {
+    const { adapter } = setup({ ...veto, setupConfig: { mode: 'default' } });
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via);
+    expect(via.opened[0]?.setup).toEqual({ via: 'acp', configOptions: { mode: 'default' } });
+    await session.close();
+  });
+
+  it('refuses it in configOptionsFor too, and never calls mapConfig for a refused mode', () => {
+    const { adapter } = setup(veto);
+    expect(() => adapter.configOptionsFor({ model: 'fake-model', mode: 'plan' })).toThrow(
+      PermissionDenied,
+    );
+    expect(adapter.configOptionsFor({ model: 'fake-model', mode: 'default' }).mode).toBe('default');
+    expect(adapter.configOptionsFor({ model: 'fake-model' })).toEqual({ model: 'fake-model' });
+  });
+
+  it('covers the sessions of a shared process, the loaded ones and the catalog probe', async () => {
+    const { adapter, launcher } = setup({ ...veto, processModel: 'multi-session' });
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, policy, '/work/a', via);
+    const second = await adapter.openSession(profile, policy, '/work/b', via);
+    const loaded = await adapter.loadSession(profile, policy, '/work/a', first.sessionId, via);
+    expect(launcher.launched).toHaveLength(1);
+    for (const session of [first, second, loaded]) {
+      await expect(session.setConfig('mode', 'plan')).rejects.toBeInstanceOf(PermissionDenied);
+    }
+    expect(via.configApplied).toEqual([]);
+    await first.close();
+    await second.close();
+    await loaded.close();
+    // The probe session refuses every change anyway, and a veto does not turn that into another error.
+    const probe = await adapter.openSession(profile, policy, '/work', via, {
+      purpose: 'catalog-probe',
+    });
+    await expect(probe.setConfig('mode', 'plan')).rejects.toBeInstanceOf(PermissionDenied);
+    await probe.close();
+    expect(launcher.running).toEqual([]);
+  });
+
+  it('asks the descendant about the transport the session goes through', async () => {
+    const { adapter } = setup({ ...veto, vetoVia: 'headless' });
+    expect(adapter.configOptionsFor({ model: 'fake-model', mode: 'plan' }).mode).toBe('plan');
+    expect(() =>
+      adapter.configOptionsFor({ model: 'fake-model', mode: 'plan' }, 'headless'),
+    ).toThrow(PermissionDenied);
+    const acp = new FakeSessionTransport({ id: 'acp' });
+    const onAcp = await adapter.openSession(profile, policy, '/work', acp);
+    await onAcp.setConfig('mode', 'plan');
+    await onAcp.close();
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    const onHeadless = await adapter.openSession(profile, policy, '/work', headless);
+    await expect(onHeadless.setConfig('mode', 'plan')).rejects.toBeInstanceOf(PermissionDenied);
+    await onHeadless.close();
+  });
+
+  it('a bare list of modes gives a default reason', () => {
+    const { adapter } = setup({ vetoedModes: ['plan'] });
+    expect(() => adapter.configOptionsFor({ model: 'fake-model', mode: 'plan' })).toThrow(
+      /the mode plan is refused: the fake client refuses it/,
+    );
+  });
+});
+
+describe('ClientAdapter.command', () => {
+  it('receives the transport the session goes through, on open and on load', async () => {
+    const { adapter } = setup();
+    const acp = new FakeSessionTransport({ id: 'acp' });
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await (await adapter.openSession(profile, policy, '/work', acp)).close();
+    await (await adapter.openSession(profile, policy, '/work', headless)).close();
+    await (await adapter.loadSession(profile, policy, '/work', 'fake-session-1', acp)).close();
+    expect(adapter.commandVia).toEqual(['acp', 'headless', 'acp']);
+  });
+});
+
 describe('FakeSessionTransport scripts', () => {
   async function open() {
     const { adapter, launcher } = setup();

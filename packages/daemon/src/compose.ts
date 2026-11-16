@@ -470,7 +470,7 @@ function claudeCode(
       ? undefined
       : sessionConfigReader({
           adapter: () => built(own.adapter),
-          via: (target) => transportFor(target, parts.transport),
+          via: () => parts.transport,
           paths: parts.paths,
         }));
   const adapter = new ClaudeCodeAdapter({
@@ -514,7 +514,7 @@ function codex(
       ? undefined
       : sessionConfigReader({
           adapter: () => built(own.adapter),
-          via: (target) => transportFor(target, parts.transport),
+          via: () => parts.transport,
           paths: parts.paths,
         }));
   const adapter = new CodexAdapter({
@@ -629,23 +629,4 @@ export function productionClients(
     }
     return adapters;
   };
-}
-
-const guardedTransports = new WeakMap<
-  ClientAdapter,
-  { readonly base: SessionTransport; readonly guarded: SessionTransport }
->();
-
-/**
- * The transport a client's sessions go through: the base one, except for Codex, whose adapter
- * wraps it to veto the `agent` and `agent-full-access` modes (architecture 5.8). The wrapper is
- * kept per adapter, so every session of a client shares one.
- */
-export function transportFor(adapter: ClientAdapter, base: SessionTransport): SessionTransport {
-  if (!(adapter instanceof CodexAdapter)) return base;
-  const known = guardedTransports.get(adapter);
-  if (known?.base === base) return known.guarded;
-  const guarded = adapter.guardTransport(base);
-  guardedTransports.set(adapter, { base, guarded });
-  return guarded;
 }

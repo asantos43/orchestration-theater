@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { InvalidInput, PermissionDenied } from '@otheater/core';
+import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ALLOWED_MODES,
   DEFAULT_INITIAL_MODE,
   VETOED_MODES,
-  assertModeAllowed,
   modePolicyOf,
+  modeRefusal,
 } from './modes.js';
 
 describe('modePolicyOf', () => {
@@ -31,21 +31,18 @@ describe('modePolicyOf', () => {
   });
 });
 
-describe('assertModeAllowed', () => {
+describe('modeRefusal', () => {
   const policy = modePolicyOf(DEFAULT_INITIAL_MODE, DEFAULT_ALLOWED_MODES);
 
-  it('lets the allowed modes through', () => {
-    expect(() => {
-      assertModeAllowed(policy, 'read-only');
-    }).not.toThrow();
-    expect(() => {
-      assertModeAllowed(policy, 'workspace-write');
-    }).not.toThrow();
+  it.each(['read-only', 'workspace-write'])('lets the allowed mode %s through', (mode) => {
+    expect(modeRefusal(policy, mode)).toBeNull();
   });
 
-  it.each([...VETOED_MODES, 'permission-profile:custom', 'anything'])('refuses %s', (mode) => {
-    expect(() => {
-      assertModeAllowed(policy, mode);
-    }).toThrow(PermissionDenied);
+  it.each(VETOED_MODES)('says why the vetoed mode %s is refused', (mode) => {
+    expect(modeRefusal(policy, mode)).toMatch(/vetoed/);
+  });
+
+  it.each(['permission-profile:custom', 'anything'])('refuses %s as not allowed', (mode) => {
+    expect(modeRefusal(policy, mode)).toMatch(/not allowed/);
   });
 });

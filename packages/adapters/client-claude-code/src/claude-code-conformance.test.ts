@@ -114,6 +114,10 @@ describeClientAdapterConformance('ClaudeCodeAdapter + FakeSessionTransport', () 
       granted: () => via.edits.length > 0,
     },
     processesAlive: alive,
+    modeVeto: {
+      modes: ['bypassPermissions', 'dontAsk', 'auto'],
+      applied: () => via.configApplied.map((entry) => entry.value),
+    },
     unknownSessionId: 'unknown',
     dispose: async () => {
       await Promise.all(launcher.running.map((process) => process.killTree()));

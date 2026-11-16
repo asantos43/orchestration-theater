@@ -34,7 +34,7 @@ export const CATALOG_PROBE_POLICY: RolePolicy = {
 export interface SessionConfigReaderOptions {
   /** The client whose catalog is read. A function, because the adapter is built with the reader. */
   readonly adapter: () => ClientAdapter;
-  /** The transport the session goes through (for Codex, the one its adapter guards). */
+  /** The transport the session goes through (the veto of modes is in the adapter, not in the transport). */
   readonly via: (adapter: ClientAdapter) => SessionTransport;
   readonly paths: Pick<DataPaths, 'dataDir' | 'profiles'>;
   /** Default {@link CATALOG_PROBE_POLICY}. */

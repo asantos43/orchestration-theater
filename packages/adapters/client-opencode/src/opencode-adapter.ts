@@ -189,6 +189,14 @@ export class OpenCodeAdapter extends ClientAdapter {
     });
   }
 
+  /**
+   * OpenCode refuses no mode, as before the hook existed. [N] Whether a mode of the client can
+   * loosen the pinned permission was not measured (see `read_only_mode`).
+   */
+  protected modeVeto(): string | null {
+    return null;
+  }
+
   protected command(): { cmd: string; args: string[] } {
     const command = this.#options.command;
     return { cmd: command?.cmd ?? 'opencode', args: [...(command?.args ?? ['acp'])] };

@@ -45,11 +45,12 @@ export function pinnedModeProbe(
 
 /**
  * The veto of `agent` and `agent-full-access` (and of any mode off the allow-list): the adapter
- * must refuse to map them to a config option. Local, it needs no client.
+ * must refuse to map them to a config option, which it does through the veto hook of the base
+ * (`configOptionsFor`). Local, it needs no client.
  */
 export function modeVetoProbe(
   modes: ModePolicy,
-  mapConfig: (want: ExecutorConfig) => Record<string, string>,
+  configOptionsFor: (want: ExecutorConfig) => Record<string, string>,
 ): ConformanceProbe {
   return {
     id: MODE_VETO_PROBE_ID,
@@ -57,7 +58,7 @@ export function modeVetoProbe(
       const accepted: string[] = [];
       for (const mode of [...VETOED_MODES, '__not-a-mode__']) {
         try {
-          mapConfig({ model: 'probe', mode });
+          configOptionsFor({ model: 'probe', mode });
           accepted.push(mode);
         } catch (error) {
           if (!(error instanceof PermissionDenied)) throw error;
