@@ -24,6 +24,9 @@ import type {
 import {
   CLIENT_ADAPTER_PORT_VERSION,
   ROLE_POLICY_FIELDS,
+  type ProcessReuse,
+  type SessionPurpose,
+  type SessionStartOptions,
   type ClientAdapterContract,
   type ClientCapabilities,
   type ConformanceReport,
@@ -132,33 +135,9 @@ export type ClientAdapterWarning =
       readonly short: readonly RolePolicyField[];
     };
 
-/** `multi-session` reuse: `shared` puts sessions of one profile on one process, `own` gives each its own. */
-export type ProcessReuse = 'shared' | 'own';
-
-/**
- * What a caller can ask of one `openSession`/`loadSession`. [proposta] Additive: the port signature
- * has no fifth parameter, and a call without it behaves as before.
- */
-export interface SessionStartOptions {
-  /**
-   * `own` starts a process for this session alone, even when the client is `multi-session` and a
-   * shared one has room. `shared` (the default of {@link ClientAdapterOptions.processReuse}) joins
-   * one. Ignored for a `process-per-session` client, which always gets its own.
-   */
-  readonly process?: ProcessReuse;
-  /**
-   * What the session is for. `work` (default): a session that runs prompts. `catalog-probe`: a
-   * session opened only to read the config options the client announces (model, effort, mode). It
-   * never runs a prompt: the session handed back rejects `prompt` and `setConfig` with
-   * `PermissionDenied` (see {@link CatalogProbeSession}). With
-   * {@link ClientAdapterOptions.catalogProbe} `allow` it is exempt from the `security.unenforced`
-   * check. [proposta]
-   */
-  readonly purpose?: SessionPurpose;
-}
-
-/** What a session is for; see {@link SessionStartOptions.purpose}. */
-export type SessionPurpose = 'work' | 'catalog-probe';
+// The types of the options moved to the port (`ports/client-adapter.ts`); kept here for importers
+// of this module.
+export type { ProcessReuse, SessionPurpose, SessionStartOptions };
 
 /** Everything the base needs from the outside; the core reads no environment and no file (rule `core-only-zod`). */
 export interface ClientAdapterOptions {

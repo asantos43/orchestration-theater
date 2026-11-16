@@ -151,6 +151,18 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('security:\n  catalog_probe: maybe\n')).toThrow(/catalog_probe/);
   });
 
+  it('defaults security.catalog_probe_log to once and takes every and off', () => {
+    expect(parseConfig('').security.catalog_probe_log).toBe('once');
+    for (const mode of ['once', 'every', 'off']) {
+      expect(
+        parseConfig(`security:\n  catalog_probe_log: ${mode}\n`).security.catalog_probe_log,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('security:\n  catalog_probe_log: sometimes\n')).toThrow(
+      /catalog_probe_log/,
+    );
+  });
+
   it('rejects a timeout above the ceiling, a bad preset and a bad process model', () => {
     expect(() => parseConfig('limits:\n  demand_timeout: 3h\n')).toThrow(/demand_timeout/);
     expect(() => parseConfig('resume:\n  preset: lazy\n')).toThrow(/resume\.preset/);

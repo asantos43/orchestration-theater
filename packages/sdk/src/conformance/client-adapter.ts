@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   CLIENT_ADAPTER_PORT_VERSION,
-  ClientAdapter,
   ROLE_POLICY_FIELDS,
   type ClientAdapterContract,
   type ContentBlock,
@@ -210,10 +209,8 @@ export function describeClientAdapterConformance(
         expect(await h.processesAlive()).toBe(0);
       });
 
-      it('a catalog-probe session reads its config options and refuses to run anything', async (ctx: TestContext) => {
+      it('a catalog-probe session reads its config options and refuses to run anything', async () => {
         const h = harness();
-        // `purpose` belongs to `SessionStartOptions` of the base class, not to the port signature.
-        if (!(h.adapter instanceof ClientAdapter)) ctx.skip();
         const session = await h.adapter.openSession(h.profile, h.policy, h.cwd, h.via, {
           purpose: 'catalog-probe',
         });
