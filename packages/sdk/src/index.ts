@@ -26,3 +26,5 @@ export {
   describeProcessLauncherConformance,
   type ProcessLauncherHarness,
 } from './conformance/process-launcher.js';
+// Vcs
+export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
