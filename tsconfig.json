@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "packages/core" }, { "path": "packages/fake-agent" }]
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/fake-agent" },
+    { "path": "tools/verify" }
+  ]
 }
