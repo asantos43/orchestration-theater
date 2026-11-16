@@ -10,6 +10,7 @@ import {
   type CommandContext,
   type CommandName,
 } from './commands.js';
+import { NOTICES_PLATFORM } from './notices.js';
 import { cleanupTemp, makeTemp, REPOSITORY_ROOT, writeTree } from './test-helpers.js';
 
 afterAll(cleanupTemp);
@@ -128,6 +129,7 @@ describe('commands', () => {
     await expect(runCommand('licenses', ctx, NO_JSON)).rejects.toBeInstanceOf(UsageError);
   });
 
+  // Off the generating platform a difference is only a warning (see NOTICES_PLATFORM).
   it('notices: writes the file, then --check passes; changing it makes --check fail', async () => {
     const root = fixtureRoot();
     const exec = (): Promise<string> => Promise.resolve('No licenses in packages found');
@@ -137,7 +139,9 @@ describe('commands', () => {
     expect(existsSync(path.join(root, NOTICES_FILE))).toBe(true);
     expect(await runCommand('notices', ctx, { json: undefined, check: true })).toBe(0);
     writeFileSync(path.join(root, NOTICES_FILE), 'changed\n');
-    expect(await runCommand('notices', ctx, { json: undefined, check: true })).toBe(1);
+    expect(await runCommand('notices', ctx, { json: undefined, check: true })).toBe(
+      process.platform === NOTICES_PLATFORM ? 1 : 0,
+    );
   });
 
   it('catalogs: the fixture without locales fails, with matching locales passes', async () => {
