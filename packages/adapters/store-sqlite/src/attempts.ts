@@ -32,6 +32,7 @@ function toRecord(row: Selectable<AttemptsTable>): AttemptRecord {
     lastCheckpointAt: row.last_checkpoint_at,
     lastEventAt: row.last_event_at,
     resumes: row.resumes,
+    freeResumes: row.free_resumes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -92,6 +93,7 @@ export async function upsertAttempt(
       last_checkpoint_at: input.lastCheckpointAt,
       last_event_at: input.lastEventAt,
       resumes: input.resumes,
+      free_resumes: input.freeResumes,
       updated_at: now,
     };
     const row = await db

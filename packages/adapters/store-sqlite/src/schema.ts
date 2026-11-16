@@ -33,6 +33,7 @@ export interface AttemptsTable {
   last_checkpoint_at: number | null;
   last_event_at: number | null;
   resumes: number;
+  free_resumes: number;
   /** Epoch milliseconds from the `Clock`. */
   created_at: number;
   updated_at: number;
