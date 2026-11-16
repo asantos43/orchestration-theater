@@ -280,6 +280,7 @@ export function composeStoreFileTools(config: DaemonConfig, dataDir: string): St
         destPath: dest,
         busyTimeoutMs: section.busyTimeoutMs,
         ...(options.method === undefined ? {} : { method: parseBackupMethod(options.method) }),
+        ...(options.pagesPerStep === undefined ? {} : { pagesPerStep: options.pagesPerStep }),
       }),
     restoreFile: (backupPath, clock) =>
       restoreDatabase({

@@ -1,6 +1,6 @@
 # OTheater (Orchestration Theater)
 
-**Status: Fase 0 fechada com portões (2026-11-15, N48); a próxima é a Fase 1.** O código descartável dos testes da Fase 0 fica em [spikes/](spikes/) (N33), e o veredito está no [relatório](spikes/RELATORIO-FASE-0.md); o código do produto começa na Fase 1. O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.49). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
+**Status: Fase 1 com o critério de aceite cumprido em Linux (2026-11-16, passo 7); a próxima é a Fase 2.** A Fase 0 foi fechada com portões (2026-11-15, N48). O código descartável dos testes da Fase 0 fica em [spikes/](spikes/) (N33), e o veredito está no [relatório](spikes/RELATORIO-FASE-0.md); o código do produto começa na Fase 1. O repositório nasceu em 2026-11-08 de uma conversa de planejamento. Desde **2026-11-13**, a base de construção é a arquitetura do **OTheater**, em [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.50). Os demais documentos resumem essa arquitetura, guardam o contexto e o histórico, e registram o que ainda falta decidir.
 
 ## Em uma frase
 

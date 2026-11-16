@@ -49,6 +49,8 @@ export interface CreateBackupInput {
   readonly dataDir: string;
   readonly content: BackupContent;
   readonly method: string;
+  /** Pages per step of an `online_api` copy; omitted means one step for everything. */
+  readonly pagesPerStep?: number | undefined;
   readonly trigger: BackupTrigger;
   readonly clock: Pick<Clock, 'now'>;
   readonly version: string;
@@ -94,6 +96,7 @@ export async function createBackup(input: CreateBackupInput): Promise<CreatedBac
   try {
     const result = await input.storeBackup(join(partial, BACKUP_STORE_FILE), {
       method: input.method,
+      ...(input.pagesPerStep === undefined ? {} : { pagesPerStep: input.pagesPerStep }),
     });
     if (input.content !== 'store_only') {
       await copyScenarios(
@@ -204,6 +207,7 @@ export class BackupService {
         dataDir: this.#options.dataDir,
         content: settings.content,
         method: settings.method,
+        pagesPerStep: settings.pages_per_step === 'all' ? undefined : settings.pages_per_step,
         trigger,
         clock,
         version: this.#options.version,
