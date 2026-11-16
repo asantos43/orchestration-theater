@@ -55,6 +55,9 @@ export const STORE_ADAPTER_IDS = ['sqlite'] as const;
 export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
 
+/** `all` (one step for the whole database) or a page count per step, an integer >= 1. */
+export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
+
 /** A section whose keys belong to an adapter: `compose.ts` validates it with the adapter's schema. */
 const AdapterSection = z.record(z.string(), z.unknown());
 
@@ -89,6 +92,13 @@ export const DaemonConfigSchema = z.strictObject({
       copies: z.int().min(1).default(7),
       content: z.enum(BACKUP_CONTENTS).default('without_runs'),
       method: z.enum(BACKUP_METHOD_NAMES).default('online_api'),
+      /**
+       * `online_api` only (ignored with `vacuum_into`): pages copied per `sqlite3_backup_step`.
+       * `all` copies everything in one step. WARNING: a number >= 1 lets the event loop breathe
+       * between steps, but SQLite restarts the copy at every commit, so with a writer active in
+       * the same process steps of 100 or 1000 pages timed out (`Transient`) in 21 of 24 runs.
+       */
+      pages_per_step: PagesPerStepSchema.default('all'),
     })
     .prefault({}),
   ui: z

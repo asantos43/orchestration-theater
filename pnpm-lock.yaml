@@ -195,6 +195,12 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
+  tools/bench:
+    dependencies:
+      '@otheater/adapter-store-sqlite':
+        specifier: workspace:*
+        version: link:../../packages/adapters/store-sqlite
+
   tools/verify:
     devDependencies:
       '@types/semver':

@@ -58,6 +58,12 @@ export interface StoreBackupResult {
 export interface StoreBackupOptions {
   /** Adapter-specific method name. An unknown name rejects with `InvalidInput`. */
   readonly method?: string;
+  /**
+   * Adapter-specific: pages copied per step by an online copy. Omitted means the adapter's own
+   * default (the SQLite adapter copies everything in one step). An adapter or method without
+   * steps ignores it.
+   */
+  readonly pagesPerStep?: number;
 }
 
 /**

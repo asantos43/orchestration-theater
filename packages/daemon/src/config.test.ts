@@ -42,9 +42,21 @@ describe('parseConfig', () => {
       copies: 7,
       content: 'without_runs',
       method: 'online_api',
+      pages_per_step: 'all',
     });
     expect(config.ui.locale).toBe('auto');
     expect(config.log).toEqual({ level: 'info', destination: 'file' });
+  });
+
+  it('takes backup.pages_per_step as "all" or an integer >= 1', () => {
+    expect(parseConfig('backup:\n  pages_per_step: all\n').backup.pages_per_step).toBe('all');
+    expect(parseConfig('backup:\n  pages_per_step: 500\n').backup.pages_per_step).toBe(500);
+    expect(parseConfig('backup:\n  pages_per_step: 1\n').backup.pages_per_step).toBe(1);
+    for (const bad of ['0', '-5', '1.5', 'few', '"500"', 'null']) {
+      expect(() => parseConfig(`backup:\n  pages_per_step: ${bad}\n`), bad).toThrow(
+        /backup\.pages_per_step/,
+      );
+    }
   });
 
   it('keeps "03:00" a string (YAML 1.2) and converts durations to milliseconds', () => {

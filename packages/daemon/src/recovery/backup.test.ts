@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Transient, type NewEvent, type StoreBackupResult } from '@otheater/core';
+import {
+  Transient,
+  type NewEvent,
+  type StoreBackupOptions,
+  type StoreBackupResult,
+} from '@otheater/core';
 import { FakeClock } from '@otheater/core/testing';
 import { BackupManifestSchema } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
@@ -218,6 +223,30 @@ describe('BackupService', () => {
         error: { code: 'TRANSIENT' },
         removed: [],
       });
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('hands backup.pages_per_step to the store copy: "all" sends none, a number is sent as is', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const seen: StoreBackupOptions[] = [];
+      const spy: StoreBackupFn = (dest, options) => {
+        seen.push(options);
+        return writeCopy(dest, options);
+      };
+      const clock = new FakeClock(AT);
+      await service(tmp.dir, clock, spy, []).run('manual');
+      await clock.advance(1000);
+      await service(tmp.dir, clock, spy, [], 'backup:\n  pages_per_step: all\n').run('manual');
+      await clock.advance(1000);
+      await service(tmp.dir, clock, spy, [], 'backup:\n  pages_per_step: 500\n').run('manual');
+      expect(seen).toEqual([
+        { method: 'online_api' },
+        { method: 'online_api' },
+        { method: 'online_api', pagesPerStep: 500 },
+      ]);
     } finally {
       await tmp.dispose();
     }
