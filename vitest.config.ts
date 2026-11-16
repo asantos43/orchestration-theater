@@ -12,6 +12,8 @@ const alias = {
   '@otheater/adapter-vault-file': `${import.meta.dirname}/packages/adapters/vault-file/src/index.ts`,
   '@otheater/adapter-vault-keyring': `${import.meta.dirname}/packages/adapters/vault-keyring/src/index.ts`,
   '@otheater/adapter-clock-system': `${import.meta.dirname}/packages/adapters/clock-system/src/index.ts`,
+  '@otheater/adapter-vcs-git': `${import.meta.dirname}/packages/adapters/vcs-git/src/index.ts`,
+  '@otheater/adapter-platform-posix': `${import.meta.dirname}/packages/adapters/platform-posix/src/index.ts`,
   '@otheater/adapter-session-acp': `${import.meta.dirname}/packages/adapters/session-acp/src/index.ts`,
 };
 

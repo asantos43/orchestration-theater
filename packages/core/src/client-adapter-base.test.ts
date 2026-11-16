@@ -461,3 +461,57 @@ describe('FakeSessionTransport scripts', () => {
     await session.close();
   });
 });
+
+describe('ClientAdapter, process owned by the caller (session pool)', () => {
+  it('launchSpec writes the profile and builds the launch options without starting anything', async () => {
+    const { adapter, launcher } = setup({ env: { FROM_PROFILE: 'profile' } });
+    const spec = await adapter.launchSpec(profile, policy, '/work');
+    expect(spec).toEqual({
+      cmd: 'fake-client',
+      args: ['--acp'],
+      cwd: '/work',
+      env: { PATH: '/bin', FROM_BASE: 'base', FROM_PROFILE: 'profile' },
+    });
+    expect(adapter.prepared).toEqual([profile]);
+    expect(launcher.launched).toEqual([]);
+  });
+
+  it('launchSpec refuses a policy that is short of layers', async () => {
+    const { adapter } = setup({ enforcement: enforcementWith({ onAsk: [] }) });
+    await expect(adapter.launchSpec(profile, policy, '/work')).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+  });
+
+  it('opens and reloads sessions on a process it did not start, and leaves it running', async () => {
+    const { adapter, launcher } = setup({ processModel: 'multi-session' });
+    const via = new FakeSessionTransport();
+    const process = await launcher.launch(await adapter.launchSpec(profile, policy, '/work'));
+    const first = await adapter.openSessionOn(process, policy, '/work', via);
+    const second = await adapter.openSessionOn(process, policy, '/work', via);
+    expect(via.opened.map((params) => params.process)).toEqual([process, process]);
+    await first.close().catch(() => undefined);
+    const again = await adapter.loadSessionOn(process, policy, '/work', second.sessionId, via);
+    expect(again.sessionId).toBe(second.sessionId);
+    expect(launcher.launched).toHaveLength(1);
+  });
+
+  it('a failed open on an owned process does not end it', async () => {
+    const { adapter, launcher } = setup({ processModel: 'multi-session' });
+    const via = new FakeSessionTransport();
+    via.failWith = new Error('boom');
+    const process = await launcher.launch(await adapter.launchSpec(profile, policy, '/work'));
+    await expect(adapter.openSessionOn(process, policy, '/work', via)).rejects.toBeInstanceOf(
+      AdapterUnavailable,
+    );
+    expect(launcher.running).toHaveLength(1);
+  });
+
+  it('loadSessionOn refuses a client that cannot reload', async () => {
+    const { adapter, launcher } = setup({ capabilities: { loadSession: false } });
+    const process = await launcher.launch(await adapter.launchSpec(profile, policy, '/work'));
+    await expect(
+      adapter.loadSessionOn(process, policy, '/work', 'x', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+  });
+});

@@ -16,7 +16,30 @@ export interface EventsTable {
   payload: string;
 }
 
+/** Row of the `attempts` table: the per-attempt registry (architecture 5.21). */
+export interface AttemptsTable {
+  attempt_id: string;
+  play_id: string;
+  demand_id: string;
+  attempt: number;
+  client: string;
+  profile: string;
+  state: string;
+  cause: string | null;
+  session_id: string | null;
+  worktree: string;
+  branch: string;
+  last_checkpoint: string | null;
+  last_checkpoint_at: number | null;
+  last_event_at: number | null;
+  resumes: number;
+  /** Epoch milliseconds from the `Clock`. */
+  created_at: number;
+  updated_at: number;
+}
+
 /** Tables of the store. Aggregates join as the phases that need them arrive. */
 export interface StoreDatabase {
   events: EventsTable;
+  attempts: AttemptsTable;
 }

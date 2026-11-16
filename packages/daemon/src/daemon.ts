@@ -5,7 +5,9 @@ import {
   hasStoreMaintenance,
   isLockableSecretVault,
   PermissionDenied,
+  type ClientAdapter,
   type Clock,
+  type ProcessLauncher,
   type LockableSecretVault,
   type Secret,
   type SecretVault,
@@ -20,6 +22,9 @@ import {
 } from '@otheater/protocol';
 import { compose, type Composition, type ComposeOverrides } from './compose.js';
 import { loadConfig, type DaemonConfig } from './config.js';
+import { Execution } from './execution/service.js';
+import type { AttemptResolver } from './execution/reconcile.js';
+import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import { dataPaths, ensureDataDir } from './paths.js';
@@ -45,6 +50,19 @@ export type PasswordPrompt = (request: PasswordRequest) => Promise<Secret | unde
 
 export type { ActivityProbe };
 
+/** What a factory of clients may need to build its adapters. */
+export interface ClientFactoryParts {
+  readonly launcher: ProcessLauncher;
+  readonly clock: Clock;
+}
+
+/**
+ * Builds the `ClientAdapter`s the daemon executes attempts with. They are injected, not named
+ * here: the daemon imports adapters only in `compose.ts` (architecture 5.18). The three real
+ * clients are wired by the composition of the product; tests pass the fake.
+ */
+export type ClientFactory = (parts: ClientFactoryParts) => readonly ClientAdapter[];
+
 export interface StartDaemonOptions {
   readonly dataDir: string;
   /** Already validated configuration; when absent, `<data>/config.yaml` is read (missing file = defaults). */
@@ -57,6 +75,13 @@ export interface StartDaemonOptions {
   readonly logger?: Logger | undefined;
   readonly version?: string | undefined;
   readonly activityProbe?: ActivityProbe | undefined;
+  /** The clients that run attempts. Without them the daemon starts with the execution off. */
+  readonly clients?: ClientFactory | undefined;
+  /**
+   * Tells the reconciliation what it needs to resume an attempt the daemon did not start (profile,
+   * Executor, policy). Without it, the attempts that were running are parked as `interrupted`.
+   */
+  readonly resolveAttempt?: AttemptResolver | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -69,6 +94,8 @@ export interface DaemonHandle {
   readonly adapters: Composition['adapters'];
   /** Whether the vault is open now (a vault without a master password is always open). */
   readonly vaultLocked: boolean;
+  /** The execution of attempts; `undefined` when no clients were given or there is no launcher. */
+  readonly execution: Execution | undefined;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -87,8 +114,10 @@ export interface DaemonHandle {
  *    damaged store and says how to restore (full reconciliation of runs is not built yet);
  * 5. the vault is unlocked with the injected prompt, if it has a master password;
  * 6. `daemon.started` is appended to the log;
- * 7. the backup scheduler starts (only if the store can make copies);
- * 8. state `running`.
+ * 7. the execution of attempts is built (when clients were given) and reconciles the attempts the
+ *    previous daemon left running: each one is resumed with `session/load`, or parked;
+ * 8. the backup scheduler starts (only if the store can make copies);
+ * 9. state `running`.
  * Any failure after step 1 releases everything taken so far and rejects.
  */
 export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHandle> {
@@ -168,6 +197,13 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     }),
   );
 
+  const execution = buildExecution(options, config, composition, paths.worktrees);
+  if (execution !== undefined) {
+    const report = await execution.reconcile();
+    // The resumed attempts run on; nothing here waits for them.
+    void report.done;
+  }
+
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
     dataDir: paths.dataDir,
@@ -219,6 +255,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         }
       };
       await attempt('scheduler', () => scheduler.stop());
+      await attempt('execution', async () => execution?.stop());
       await attempt('daemon.stopped', () =>
         store.events.append(
           buildDaemonEvent('daemon.stopped', {
@@ -237,6 +274,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     store,
     vault,
     adapters: composition.adapters,
+    execution,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },
@@ -255,6 +293,34 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     else options.signal.addEventListener('abort', onAbort, { once: true });
   }
   return handle;
+}
+
+function buildExecution(
+  options: StartDaemonOptions,
+  config: DaemonConfig,
+  composition: Composition,
+  worktreeRoot: string,
+): Execution | undefined {
+  const { logger } = composition;
+  if (options.clients === undefined) return undefined;
+  const { launcher } = composition;
+  if (launcher === undefined) {
+    logger.warn('this platform has no process launcher yet; the execution of attempts is off');
+    return undefined;
+  }
+  const clients = options.clients({ launcher, clock: composition.clock });
+  return new Execution({
+    clients,
+    launcher,
+    transport: () => composition.transport,
+    store: composition.store,
+    vcs: composition.vcs,
+    clock: composition.clock,
+    settings: executionSettingsOf(config),
+    worktreeRoot,
+    logger,
+    ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
+  });
 }
 
 function adapterRef(

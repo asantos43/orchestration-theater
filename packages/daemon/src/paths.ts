@@ -63,6 +63,8 @@ export interface DataPaths {
   readonly logs: string;
   readonly logFile: string;
   readonly scenarios: string;
+  /** The worktrees of the attempts (`<worktrees>/<play>/<demand>-<n>`). */
+  readonly worktrees: string;
 }
 
 export function dataPaths(dataDir: string): DataPaths {
@@ -77,6 +79,7 @@ export function dataPaths(dataDir: string): DataPaths {
     logs: resolve(root, 'logs'),
     logFile: resolve(root, 'logs', 'daemon.log'),
     scenarios: resolve(root, 'scenarios'),
+    worktrees: resolve(root, 'worktrees'),
   };
 }
 

@@ -4,6 +4,7 @@
  * production code does not pull them in: only tests and the conformance suites import this.
  */
 export * from './fake-clock.js';
+export * from './in-memory-attempt-registry.js';
 export * from './in-memory-event-log.js';
 export * from './in-memory-secret-vault.js';
 export * from './in-memory-store.js';

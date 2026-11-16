@@ -6,11 +6,12 @@
     "emitDeclarationOnly": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.test.ts", "src/test-helpers.ts"],
+  "include": ["src/**/*.test.ts", "src/test-helpers.ts", "src/**/*-fixture.ts"],
   "references": [
     { "path": "tsconfig.src.json" },
     { "path": "../core/tsconfig.src.json" },
     { "path": "../protocol/tsconfig.src.json" },
+    { "path": "../sdk/tsconfig.src.json" },
     { "path": "../adapters/store-sqlite/tsconfig.src.json" }
   ]
 }

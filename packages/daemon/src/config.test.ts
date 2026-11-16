@@ -94,6 +94,55 @@ describe('parseConfig', () => {
   });
 });
 
+describe('parseConfig, execution keys', () => {
+  it('has the pool, limits and resume defaults of the architecture (5.2, 5.4, 5.16)', () => {
+    const config = parseConfig('');
+    expect(config.pool).toEqual({
+      sessions_per_process: 4,
+      max_sessions: 4,
+      idle: 120_000,
+      opencode: { process_model: 'per_profile' },
+    });
+    expect(config.limits).toEqual({ demand_timeout: 1_800_000, demand_timeout_max: 7_200_000 });
+    expect(config.resume).toMatchObject({
+      preset: 'balanced',
+      max_resumes: 5,
+      quota_wait_max: 1_800_000,
+      checkpoint_every: 600_000,
+      stuck: { no_event_for: 600_000, same_error_times: 3 },
+      transient_backoff: [30_000, 120_000, 600_000],
+    });
+  });
+
+  it('fills the resume values from the preset, and an individual key overrides only itself', () => {
+    expect(parseConfig('resume:\n  preset: agile\n').resume).toMatchObject({
+      max_resumes: 3,
+      checkpoint_every: 300_000,
+      stuck: { no_event_for: 300_000, same_error_times: 2 },
+      transient_backoff: [30_000, 120_000, 600_000],
+    });
+    const patient = parseConfig(
+      'resume:\n  preset: patient\n  max_resumes: 1\n  stuck:\n    same_error_times: 2\n  transient_backoff: [1s, 2s]\n',
+    ).resume;
+    expect(patient).toMatchObject({
+      max_resumes: 1,
+      quota_wait_max: 7_200_000,
+      checkpoint_every: 900_000,
+      stuck: { no_event_for: 1_200_000, same_error_times: 2 },
+      transient_backoff: [1000, 2000],
+    });
+  });
+
+  it('rejects a timeout above the ceiling, a bad preset and a bad process model', () => {
+    expect(() => parseConfig('limits:\n  demand_timeout: 3h\n')).toThrow(/demand_timeout/);
+    expect(() => parseConfig('resume:\n  preset: lazy\n')).toThrow(/resume\.preset/);
+    expect(() => parseConfig('pool:\n  opencode:\n    process_model: shared\n')).toThrow(
+      /process_model/,
+    );
+    expect(() => parseConfig('pool:\n  sessions_per_process: 0\n')).toThrow(/sessions_per_process/);
+  });
+});
+
 describe('loadConfig', () => {
   it('treats a missing file as the defaults and reads an existing one', async () => {
     const tmp = await makeTempDataDir();

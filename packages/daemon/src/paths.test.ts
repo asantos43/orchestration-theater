@@ -66,6 +66,7 @@ describe('dataPaths', () => {
       logs: join(root, 'logs'),
       logFile: join(root, 'logs', 'daemon.log'),
       scenarios: join(root, 'scenarios'),
+      worktrees: join(root, 'worktrees'),
     });
   });
 });
