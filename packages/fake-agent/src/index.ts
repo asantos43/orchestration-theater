@@ -8,16 +8,6 @@ export {
   type FakeAgentOptions,
 } from './agent.js';
 export {
-  QUOTA_EXHAUSTED_CODE,
-  QUOTA_SIGNAL_METHOD,
-  quotaExhaustedDataSchema,
-  quotaSignalParamsSchema,
-  quotaSignalSchema,
-  type QuotaExhaustedData,
-  type QuotaSignal,
-  type QuotaSignalParams,
-} from './quota.js';
-export {
   parsePrompt,
   parseScriptSpec,
   SCRIPT_NAMES,

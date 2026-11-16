@@ -1,0 +1,32 @@
+{
+  "usage": {
+    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon            Inicia o daemon do OTheater neste terminal\n  backup            Faz um backup dos dados agora\n  restore <pasta>   Restaura um backup (o daemon precisa estar parado)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "hint": "Rode \"ot --help\" para ver o uso.",
+    "unknownCommand": "Comando desconhecido: \"{{command}}\".",
+    "missingCommand": "Nenhum comando informado.",
+    "missingBackupPath": "\"ot restore\" precisa da pasta do backup a restaurar.",
+    "tooManyArguments": "Argumentos demais para \"ot {{command}}\".",
+    "invalidOption": "Opção inválida: {{message}}"
+  },
+  "daemon": {
+    "running": "Daemon do OTheater em execução (pid {{pid}}), dados em {{dataDir}}. Pressione Ctrl+C para parar.",
+    "stopping": "Parando o daemon...",
+    "stopped": "Daemon parado.",
+    "vaultLocked": "O cofre está trancado: nenhuma senha mestra foi informada, então os segredos não estão disponíveis.",
+    "passwordPrompt": "Senha mestra (tentativa {{attempt}} de {{max}}): "
+  },
+  "backup": {
+    "daemonRunning": "O daemon está em execução nesta pasta de dados: a cópia sai do arquivo do banco e nenhum evento é registrado.",
+    "done": "Backup salvo em {{path}} ({{bytes}} bytes, método {{method}}).",
+    "removed": "Backups antigos removidos: {{names}}."
+  },
+  "restore": {
+    "daemonRunning": "O daemon está em execução nesta pasta de dados. Pare-o antes de restaurar.",
+    "done": "Banco restaurado em {{path}}.",
+    "keptDatabase": "O banco anterior foi guardado como {{path}}.",
+    "keptScenarios": "A pasta de cenários anterior foi guardada como {{path}}."
+  },
+  "errors": {
+    "prefix": "Erro: {{message}}"
+  }
+}

@@ -16,6 +16,7 @@ export {
   backupDatabase,
   DEFAULT_BACKUP_TIMEOUT_MS,
   DEFAULT_BACKUP_METHOD,
+  parseBackupMethod,
   restoreDatabase,
   type BackupDatabaseOptions,
   type BackupMethod,

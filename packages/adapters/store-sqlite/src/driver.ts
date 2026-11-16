@@ -128,3 +128,10 @@ export function integrityCheck(db: RawDatabase): string[] {
   const rows = db.prepare('PRAGMA integrity_check').all([]) as Record<string, unknown>[];
   return rows.map((row) => String(Object.values(row)[0]));
 }
+
+/** `PRAGMA quick_check`: no problems for a healthy database (an empty array), else the problems found. */
+export function quickCheck(db: RawDatabase): string[] {
+  const rows = db.prepare('PRAGMA quick_check').all([]) as Record<string, unknown>[];
+  const lines = rows.map((row) => String(Object.values(row)[0]));
+  return lines.length === 1 && lines[0] === 'ok' ? [] : lines;
+}

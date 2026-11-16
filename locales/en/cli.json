@@ -1,0 +1,32 @@
+{
+  "usage": {
+    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon            Start the OTheater daemon in this terminal\n  backup            Make a backup of the data now\n  restore <folder>  Put a backup back (the daemon must be stopped)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "hint": "Run \"ot --help\" for usage.",
+    "unknownCommand": "Unknown command \"{{command}}\".",
+    "missingCommand": "No command given.",
+    "missingBackupPath": "\"ot restore\" needs the backup folder to restore.",
+    "tooManyArguments": "Too many arguments for \"ot {{command}}\".",
+    "invalidOption": "Invalid option: {{message}}"
+  },
+  "daemon": {
+    "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
+    "stopping": "Stopping the daemon...",
+    "stopped": "Daemon stopped.",
+    "vaultLocked": "The vault is locked: no master password was given, so secrets are not available.",
+    "passwordPrompt": "Master password (attempt {{attempt}} of {{max}}): "
+  },
+  "backup": {
+    "daemonRunning": "The daemon is running on this data directory: the copy is made from the database file and no event is recorded.",
+    "done": "Backup saved in {{path}} ({{bytes}} bytes, method {{method}}).",
+    "removed": "Old backups removed: {{names}}."
+  },
+  "restore": {
+    "daemonRunning": "The daemon is running on this data directory. Stop it before restoring.",
+    "done": "Restored the database at {{path}}.",
+    "keptDatabase": "The previous database was kept as {{path}}.",
+    "keptScenarios": "The previous scenarios folder was kept as {{path}}."
+  },
+  "errors": {
+    "prefix": "Error: {{message}}"
+  }
+}

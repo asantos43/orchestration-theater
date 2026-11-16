@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts"],
+  "references": [
+    { "path": "../core/tsconfig.src.json" },
+    { "path": "../protocol/tsconfig.src.json" },
+    { "path": "../adapters/clock-system/tsconfig.src.json" },
+    { "path": "../adapters/store-sqlite/tsconfig.src.json" },
+    { "path": "../adapters/vault-file/tsconfig.src.json" },
+    { "path": "../adapters/vault-keyring/tsconfig.src.json" }
+  ]
+}

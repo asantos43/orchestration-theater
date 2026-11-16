@@ -20,7 +20,7 @@ import {
   QUOTA_SIGNAL_METHOD,
   type QuotaExhaustedData,
   type QuotaSignalParams,
-} from './quota.js';
+} from '@otheater/protocol';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
 
 export const FAKE_AGENT_NAME = 'otheater-fake-agent';

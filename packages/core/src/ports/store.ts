@@ -37,3 +37,48 @@ export interface Store {
 
   close(): Promise<void>;
 }
+
+/**
+ * Outcome of {@link StoreMaintenance.backup}, neutral about the adapter. [proposta] The shape is
+ * what the SQLite adapter already reports, so the daemon can log and record it without knowing
+ * which store made the copy.
+ */
+export interface StoreBackupResult {
+  /** Absolute path of the finished copy. */
+  readonly path: string;
+  readonly bytes: number;
+  /** Name of the method the adapter used (`online_api`, `vacuum_into`...). */
+  readonly method: string;
+  readonly durationMs: number;
+  /** Times an online copy started over because the store changed under it (0 when none). */
+  readonly restarts: number;
+}
+
+/** Options of {@link StoreMaintenance.backup}; every adapter documents the names it accepts. */
+export interface StoreBackupOptions {
+  /** Adapter-specific method name. An unknown name rejects with `InvalidInput`. */
+  readonly method?: string;
+}
+
+/**
+ * Optional capability of a `Store`: maintenance that only a real database offers (architecture
+ * 5.21). It is **not** part of the `Store` port, so `STORE_PORT_VERSION` does not change and the
+ * in-memory store simply does not have it. The daemon asks with {@link hasStoreMaintenance}.
+ *
+ * - `quickCheck()` is the cheap integrity check of start-up. It resolves with the problems found;
+ *   an empty array means the check passed.
+ * - `backup(dest)` makes a consistent copy of the store **while it is in use**, checks the copy
+ *   (a failed check rejects and leaves nothing at `dest`), and refuses to overwrite (`Conflict`).
+ *
+ * Both reject with `AdapterUnavailable` after `close()`.
+ */
+export interface StoreMaintenance {
+  quickCheck(): Promise<string[]>;
+  backup(dest: string, options?: StoreBackupOptions): Promise<StoreBackupResult>;
+}
+
+/** Type guard for the optional {@link StoreMaintenance} capability of a store. */
+export function hasStoreMaintenance(store: Store): store is Store & StoreMaintenance {
+  const candidate = store as Partial<Record<keyof StoreMaintenance, unknown>>;
+  return typeof candidate.quickCheck === 'function' && typeof candidate.backup === 'function';
+}

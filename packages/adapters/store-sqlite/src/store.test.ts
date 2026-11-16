@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { AdapterUnavailable, InvalidInput, isOTheaterError } from '@otheater/core';
+import {
+  AdapterUnavailable,
+  hasStoreMaintenance,
+  InvalidInput,
+  isOTheaterError,
+} from '@otheater/core';
 import { FakeClock } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import type { SqliteDriverName } from './config.js';
@@ -250,12 +255,46 @@ describe.each(DRIVERS)('SqliteStore on %s', (driver) => {
         () => ctx.store.events.readFrom(0, 1),
         () => ctx.store.events.lastId(),
         () => ctx.store.diagnostics(),
+        () => ctx.store.quickCheck(),
         () => ctx.store.backup(join(ctx.dir, 'late.db')),
       ]) {
         const error = await rejectionOf(call());
         expect(error).toBeInstanceOf(AdapterUnavailable);
         expect(isOTheaterError(error)).toBe(true);
       }
+    } finally {
+      await ctx.dispose();
+    }
+  });
+});
+
+describe.each(DRIVERS)('StoreMaintenance on %s', (driver) => {
+  it('is recognised as a store with maintenance', async () => {
+    const ctx = await openTempStore(driver);
+    try {
+      expect(hasStoreMaintenance(ctx.store)).toBe(true);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  it('quickCheck resolves with no problems for a healthy database', async () => {
+    const ctx = await openTempStore(driver);
+    try {
+      await ctx.store.events.append(event(1));
+      expect(await ctx.store.quickCheck()).toEqual([]);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  it('backup through the capability rejects an unknown method with InvalidInput', async () => {
+    const ctx = await openTempStore(driver);
+    try {
+      const dest = join(ctx.dir, 'backups', 'x.db');
+      const error = await rejectionOf(ctx.store.backup(dest, { method: 'copy_files' }));
+      expect(error).toBeInstanceOf(InvalidInput);
+      expect(await readdir(ctx.dir)).not.toContain('backups');
     } finally {
       await ctx.dispose();
     }

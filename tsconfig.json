@@ -3,7 +3,9 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/sdk" },
+    { "path": "packages/protocol" },
     { "path": "packages/fake-agent" },
+    { "path": "packages/daemon" },
     { "path": "packages/adapters/clock-system" },
     { "path": "packages/adapters/store-sqlite" },
     { "path": "packages/adapters/vault-file" },
