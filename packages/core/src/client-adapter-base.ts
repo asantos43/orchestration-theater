@@ -39,7 +39,7 @@ import {
 } from './ports/client-adapter.js';
 import type { ExecutorConfig, Profile } from './ports/executor.js';
 import type { ModelCatalog } from './ports/model-catalog.js';
-import type { LaunchedProcess, ProcessLauncher } from './ports/process-launcher.js';
+import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from './ports/process-launcher.js';
 import type { QuotaProbe } from './ports/quota-probe.js';
 
 /** Id of a {@link SessionTransport}: what the descendant sees where the architecture writes `SessionTransport`. */
@@ -242,6 +242,55 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   }
 
   /**
+   * What a caller that owns the process (the daemon's session pool) needs to start the client
+   * itself: refuses a policy that is short of layers, writes the profile files and returns the
+   * launch options (command, working directory, environment built by the base). It starts nothing.
+   * [proposta] Additive: it is the first half of {@link openSession}, so the pool can keep one
+   * process for several sessions (`processModel: 'multi-session'`).
+   */
+  async launchSpec(
+    profile: Profile,
+    policy: RolePolicy,
+    cwd: string,
+    via: TransportId = 'acp',
+  ): Promise<LaunchOptions> {
+    this.#assertGuaranteed(policy, via);
+    return this.#spec(profile, policy, cwd);
+  }
+
+  /**
+   * Opens a session on a process the caller already started (see {@link launchSpec}). The caller
+   * owns the process: a failure here does not end it, and the error is normalized the same way as
+   * in {@link openSession}. [proposta] Additive, for the session pool.
+   */
+  openSessionOn(
+    process: LaunchedProcess,
+    policy: RolePolicy,
+    cwd: string,
+    via: SessionTransport,
+  ): Promise<AgentSession> {
+    return this.#attachOwned(process, policy, cwd, via, undefined);
+  }
+
+  /** Same as {@link openSessionOn} for an existing conversation (`session/load`). */
+  loadSessionOn(
+    process: LaunchedProcess,
+    policy: RolePolicy,
+    cwd: string,
+    sessionId: string,
+    via: SessionTransport,
+  ): Promise<AgentSession> {
+    if (!this.capabilities.loadSession) {
+      return Promise.reject(
+        new AdapterUnavailable(
+          `${this.id} cannot reload a conversation (capabilities.loadSession is false)`,
+        ),
+      );
+    }
+    return this.#attachOwned(process, policy, cwd, via, sessionId);
+  }
+
+  /**
    * Layer 2 of the permissions (architecture 5.8): the answer to a `session/request_permission`,
    * the same for every client. With `onAsk: 'reject'` it picks `reject_once`, which refuses this
    * request and leaves no rule behind in the client (`reject_always` may be written to the profile
@@ -367,28 +416,53 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     }
     this.#assertGuaranteed(policy, via.id);
     const mcpServers = this.#mcpServersOf(policy);
-    await this.prepareProfile(profile, policy);
-    const { cmd, args } = this.command(profile);
-    const process = await this.#launcher.launch({
-      cmd,
-      args,
-      cwd,
-      env: { ...this.#baseEnv, ...this.profileEnv(profile) },
-    });
+    const spec = await this.#spec(profile, policy, cwd);
+    const process = await this.#launcher.launch(spec);
     try {
-      const params: SessionOpenParams = {
-        process,
-        cwd,
-        setup: this.sessionSetup(policy, via.id),
-        mcpServers,
-        normalizer: this.#normalizer(via.id),
-        onPermission: (request) => this.answerPermission(request, policy),
-      };
-      return sessionId === undefined
-        ? await via.open(params)
-        : await via.load({ ...params, sessionId });
+      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers);
     } catch (error) {
       await this.#reap(process);
+      throw isOTheaterError(error) ? error : this.#unavailable(error);
+    }
+  }
+
+  async #spec(profile: Profile, policy: RolePolicy, cwd: string): Promise<LaunchOptions> {
+    await this.prepareProfile(profile, policy);
+    const { cmd, args } = this.command(profile);
+    return { cmd, args, cwd, env: { ...this.#baseEnv, ...this.profileEnv(profile) } };
+  }
+
+  async #attach(
+    process: LaunchedProcess,
+    policy: RolePolicy,
+    cwd: string,
+    via: SessionTransport,
+    sessionId: string | undefined,
+    mcpServers: readonly McpServerRef[],
+  ): Promise<AgentSession> {
+    const params: SessionOpenParams = {
+      process,
+      cwd,
+      setup: this.sessionSetup(policy, via.id),
+      mcpServers,
+      normalizer: this.#normalizer(via.id),
+      onPermission: (request) => this.answerPermission(request, policy),
+    };
+    return sessionId === undefined ? via.open(params) : via.load({ ...params, sessionId });
+  }
+
+  async #attachOwned(
+    process: LaunchedProcess,
+    policy: RolePolicy,
+    cwd: string,
+    via: SessionTransport,
+    sessionId: string | undefined,
+  ): Promise<AgentSession> {
+    try {
+      this.#assertGuaranteed(policy, via.id);
+      const mcpServers = this.#mcpServersOf(policy);
+      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers);
+    } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }
   }

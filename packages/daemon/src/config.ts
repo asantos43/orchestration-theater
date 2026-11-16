@@ -54,6 +54,37 @@ export const LOCALE_SETTINGS = ['auto', 'en', 'pt-BR'] as const;
 export const STORE_ADAPTER_IDS = ['sqlite'] as const;
 export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
+export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
+export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
+
+/**
+ * The `resume.preset` table of architecture 5.16 (decision N14): one row fills every value at once,
+ * and an individual key overrides only its own value. `transient_backoff` does not change with the
+ * preset ([proposta] in 5.16).
+ */
+export const RESUME_PRESETS = {
+  balanced: {
+    max_resumes: 5,
+    quota_wait_max: 30 * 60_000,
+    checkpoint_every: 10 * 60_000,
+    no_event_for: 10 * 60_000,
+    same_error_times: 3,
+  },
+  patient: {
+    max_resumes: 8,
+    quota_wait_max: 2 * 3_600_000,
+    checkpoint_every: 15 * 60_000,
+    no_event_for: 20 * 60_000,
+    same_error_times: 5,
+  },
+  agile: {
+    max_resumes: 3,
+    quota_wait_max: 10 * 60_000,
+    checkpoint_every: 5 * 60_000,
+    no_event_for: 5 * 60_000,
+    same_error_times: 2,
+  },
+} as const;
 
 /** `all` (one step for the whole database) or a page count per step, an integer >= 1. */
 export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
@@ -101,6 +132,76 @@ export const DaemonConfigSchema = z.strictObject({
       pages_per_step: PagesPerStepSchema.default('all'),
     })
     .prefault({}),
+  /**
+   * Pools of Executor processes per `(client, profile)` (architecture 5.2). `sessions_per_process`
+   * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta].
+   */
+  pool: z
+    .strictObject({
+      /** `K`: sessions per adapter process, for the clients that share one (`multi-session`). */
+      sessions_per_process: z.int().min(1).default(4),
+      /** Admission semaphore: sessions running at once, counted per session and not per process. */
+      max_sessions: z.int().min(1).default(4),
+      /** A process with no session for this long is closed (`idleMs`). */
+      idle: DurationSchema.prefault('2m'),
+      /** N56 (5.2): how OpenCode shares its processes. The adapter wiring reads it; the pool follows the adapter's `processModel`. */
+      opencode: z
+        .strictObject({ process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile') })
+        .prefault({}),
+    })
+    .prefault({}),
+  /** The timeout keys of `limits` (architecture 5.4); the other keys of that group are not wired yet. */
+  limits: z
+    .strictObject({
+      /** When the plan does not set `timeoutMin` for the demand. */
+      demand_timeout: DurationSchema.prefault('30m'),
+      /** Ceiling of what the plan may ask for. */
+      demand_timeout_max: DurationSchema.prefault('2h'),
+    })
+    .prefault({})
+    .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {
+      message: 'demand_timeout must not exceed demand_timeout_max',
+      path: ['demand_timeout'],
+    }),
+  /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */
+  resume: z
+    .strictObject({
+      preset: z.enum(RESUME_PRESET_NAMES).default('balanced'),
+      max_resumes: z.int().min(0).optional(),
+      quota_wait_max: DurationSchema.optional(),
+      checkpoint_every: DurationSchema.optional(),
+      /** [proposta] Completed edit tool calls that make one batch (a checkpoint follows each batch). */
+      checkpoint_edit_batch: z.int().min(1).default(3),
+      stuck: z
+        .strictObject({
+          no_event_for: DurationSchema.optional(),
+          same_error_times: z.int().min(1).optional(),
+        })
+        .prefault({}),
+      transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
+      /** [proposta] What the Executor is told when a conversation is reloaded. */
+      continue_prompt: z
+        .string()
+        .min(1)
+        .default('Continue the task from where you stopped. Do not start over.'),
+    })
+    .prefault({})
+    .transform((resume) => {
+      const preset = RESUME_PRESETS[resume.preset];
+      return {
+        preset: resume.preset,
+        max_resumes: resume.max_resumes ?? preset.max_resumes,
+        quota_wait_max: resume.quota_wait_max ?? preset.quota_wait_max,
+        checkpoint_every: resume.checkpoint_every ?? preset.checkpoint_every,
+        checkpoint_edit_batch: resume.checkpoint_edit_batch,
+        stuck: {
+          no_event_for: resume.stuck.no_event_for ?? preset.no_event_for,
+          same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
+        },
+        transient_backoff: resume.transient_backoff,
+        continue_prompt: resume.continue_prompt,
+      };
+    }),
   ui: z
     .strictObject({
       locale: z.enum(LOCALE_SETTINGS).default('auto'),
