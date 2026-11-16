@@ -29,6 +29,7 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   checkpointEveryMs: 0,
   checkpointEditBatch: 0,
   maxResumes: 3,
+  maxFreeResumes: 3,
   transientBackoffMs: [0],
   stuckNoEventMs: 0,
   stuckSameErrorTimes: 99,

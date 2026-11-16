@@ -17,7 +17,9 @@ export const CATALOG_PROBE_DIR = 'catalog-probe';
  * The policy of a session opened only to read its `configOptions`: the role of a reader. No
  * prompt is ever sent, so no tool runs; the policy is there because `openSession` takes one, and
  * it asks for the least a session can have (reads, no shell, no MCP, nothing written outside the
- * worktree, no network).
+ * worktree, no network). The session is opened with `purpose: 'catalog-probe'`: with
+ * `security.catalog_probe: allow` the adapter exempts it from `security.unenforced`, and the
+ * session it hands back never runs a prompt.
  */
 export const CATALOG_PROBE_POLICY: RolePolicy = {
   nativeTools: ['read', 'search'],
@@ -64,6 +66,7 @@ export function sessionConfigReader(
       options.policy ?? CATALOG_PROBE_POLICY,
       cwd,
       options.via(adapter),
+      { purpose: 'catalog-probe' },
     );
     try {
       return session.configOptions;

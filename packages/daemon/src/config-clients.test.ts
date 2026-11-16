@@ -47,6 +47,7 @@ describe('clients.* and security.* of the config', () => {
       min_layers: { default: 1 },
       unenforced: 'refuse',
       conformance: 'on_version_change',
+      catalog_probe: 'allow',
     });
   });
 
@@ -129,6 +130,7 @@ describe('clients.* and security.* of the config', () => {
       min_layers: { default: 2, writeScope: 0 },
       unenforced: 'warn',
       conformance: 'every_start',
+      catalog_probe: 'allow',
     });
   });
 
@@ -157,6 +159,7 @@ describe('clients.* and security.* of the config', () => {
       ['clients:\n  opencode:\n    isolation: [home]\n', /clients\.opencode\.isolation/],
       ['clients:\n  opencode:\n    models_cache: -1\n', /clients\.opencode\.models_cache/],
       ['clients:\n  opencode:\n    min_context_window: 0\n', /min_context_window/],
+      ['security:\n  catalog_probe: maybe\n', /security\.catalog_probe/],
       ['security:\n  unenforced: ignore\n', /security\.unenforced/],
       ['security:\n  conformance: sometimes\n', /security\.conformance/],
       ['security:\n  min_layers: { default: -1 }\n', /security\.min_layers\.default/],

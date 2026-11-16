@@ -516,6 +516,100 @@ describe('AttemptRunner, the cancel of a session on a shared process (pool.share
     TEST_TIMEOUT_MS,
   );
 
+  /**
+   * The sibling hangs again after every resume (`continuePrompt`); a deaf attempt's timeout fells
+   * it once. Returns the sibling's pending outcome in a box, so `await` does not wait for it.
+   */
+  async function felledOnce(r: TestRig) {
+    const { a, b } = await bothRunning(r, '#script:deaf', '#script:hang');
+    await r.clock.advance(1000);
+    expect(await a).toMatchObject({ state: 'timed_out' });
+    await until(() => r.transport.loaded.length === 1, 'the free resume');
+    return { b };
+  }
+
+  async function secondDeaf(r: TestRig): Promise<void> {
+    const c = r.runner.run(specOf(r, '#script:deaf', { attempt: 3, timeoutMs: 1000 }));
+    await until(() => r.pool.stats().sessions === 2, 'the deaf attempt on the resumed process');
+    await r.clock.advance(1000);
+    expect(await c).toMatchObject({ state: 'timed_out' });
+  }
+
+  it(
+    'max_free_resumes 0: no resume after another session cancel is free',
+    async () => {
+      const r = await rig(
+        {
+          maxResumes: 0,
+          maxFreeResumes: 0,
+          continuePrompt: '#script:hang',
+          pool: { ...QUIET_SETTINGS.pool, sharedCancel: 'escalate' },
+        },
+        true,
+      );
+      const { a, b } = await bothRunning(r, '#script:deaf', '#script:hang');
+      await r.clock.advance(1000);
+      expect(await a).toMatchObject({ state: 'timed_out' });
+      // It counts in max_resumes (0), so the attempt parks and nothing is reloaded.
+      expect(await b).toMatchObject({
+        state: 'interrupted',
+        cause: 'client_crash',
+        needsDecision: true,
+        resumes: 0,
+      });
+      expect(r.transport.loaded).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'max_free_resumes 1: the second fall counts in max_resumes and parks the attempt at 0',
+    async () => {
+      const r = await rig(
+        {
+          maxResumes: 0,
+          maxFreeResumes: 1,
+          continuePrompt: '#script:hang',
+          pool: { ...QUIET_SETTINGS.pool, sharedCancel: 'escalate' },
+        },
+        true,
+      );
+      const { b } = await felledOnce(r);
+      await secondDeaf(r);
+      expect(await b).toMatchObject({ state: 'interrupted', needsDecision: true, resumes: 0 });
+      // Only the first resume went through.
+      expect(r.transport.loaded).toHaveLength(1);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'max_free_resumes 1: past the cap the resume is charged to max_resumes and goes on',
+    async () => {
+      const r = await rig(
+        {
+          maxResumes: 1,
+          maxFreeResumes: 1,
+          continuePrompt: '#script:hang',
+          pool: { ...QUIET_SETTINGS.pool, sharedCancel: 'escalate' },
+        },
+        true,
+      );
+      const { b } = await felledOnce(r);
+      expect((await r.store.attempts.get('play-1/demand-1/2'))?.resumes).toBe(0);
+      await secondDeaf(r);
+      await until(() => r.transport.loaded.length === 2, 'the charged resume');
+      expect((await r.store.attempts.get('play-1/demand-1/2'))?.resumes).toBe(1);
+      await r.runner.stop();
+      expect(await b).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it('the default allows three free resumes per attempt', () => {
+    expect(QUIET_SETTINGS.maxFreeResumes).toBe(3);
+  });
+
   it(
     'escalate: a timeout the client honours leaves the process and the sibling alone',
     async () => {

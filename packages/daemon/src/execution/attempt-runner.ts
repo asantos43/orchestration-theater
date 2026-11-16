@@ -105,7 +105,8 @@ type Ended =
       readonly kill: boolean;
       /**
        * The loss was no failure of the client: the cancel of another session ended the shared
-       * process (`pool.shared_cancel`). The resume that follows does not use `resume.max_resumes`.
+       * process (`pool.shared_cancel`). The resume that follows does not use `resume.max_resumes`,
+       * until the attempt has had `resume.max_free_resumes` of them; after that it counts.
        */
       readonly free?: boolean;
       readonly sha: string | undefined;
@@ -138,6 +139,11 @@ interface AttemptContext {
   readonly deadline: number;
   readonly firstPrompt: string;
   sessionId: string | undefined;
+  /**
+   * Free resumes granted so far (see `Ended.free`). [proposta] Kept in memory: a restart of the
+   * daemon starts the count again, because the attempt registry has no column for it.
+   */
+  freeResumes: number;
   /** `session.opened` was recorded and `session.closed` was not yet. */
   sessionOpen: boolean;
   lease: SessionLease | undefined;
@@ -309,6 +315,7 @@ export class AttemptRunner {
       deadline: clock.now() + timeoutMs,
       firstPrompt,
       sessionId: record.sessionId ?? undefined,
+      freeResumes: 0,
       sessionOpen: false,
       lease: undefined,
       lastEventAt: clock.now(),
@@ -370,7 +377,9 @@ export class AttemptRunner {
         case 'interrupted': {
           const { journal } = context;
           await this.#interrupted(context, ended);
-          const free = ended.free === true;
+          // A casualty of another session's cancel resumes free of `max_resumes`, up to
+          // `resume.max_free_resumes` times per attempt; past that it is a drop like any other.
+          const free = ended.free === true && context.freeResumes < settings.maxFreeResumes;
           const sameTimes = free ? 0 : this.#repeated(context, `${ended.cause}:${ended.detail}`);
           const resumes = journal.record.resumes;
           if (!ended.native || (!free && resumes >= settings.maxResumes)) {
@@ -379,6 +388,7 @@ export class AttemptRunner {
           if (sameTimes >= settings.stuckSameErrorTimes) {
             return this.#parked(context, 'stuck');
           }
+          if (free) context.freeResumes += 1;
           await journal.write(undefined, { state: 'awaiting_resume', cause: ended.cause });
           const waited = await this.#backoff(context, ended.cause, free ? 0 : resumes);
           if (waited === 'timeout') return this.#timedOut(context, ended.sha);

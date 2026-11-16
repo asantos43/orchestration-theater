@@ -326,14 +326,15 @@ describe('the default catalog readers', () => {
   const MODELS = ['fake-model', 'fake-model-2'];
   const open = (extra = '') => parseConfig(`${OPEN}${extra}`);
 
-  it('is bound by security.unenforced: with the default `refuse` the session is not opened', async () => {
-    // A session without a prompt still goes through the guarantee check of `openSession`, and the
-    // policy of a reader is short of layers while there is no sandbox (architecture 5.8).
+  it('with security.unenforced: refuse and catalog_probe: refuse the session is not opened', async () => {
+    // A session without a prompt goes through the guarantee check of `openSession` like any other,
+    // and the policy of a reader is short of layers while there is no sandbox (architecture 5.8).
     const t = await setup();
     try {
-      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
-        t.parts,
-      );
+      const adapters = productionClients(parseConfig('security:\n  catalog_probe: refuse\n'), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+      })(t.parts);
       const claude = byId(adapters, 'claude-code');
       const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
       expect(models.map((m) => m.id)).toContain('sonnet');
@@ -341,6 +342,35 @@ describe('the default catalog readers', () => {
         byId(adapters, 'codex').models.list({ client: 'codex', profile: 'work' }),
       ).rejects.toThrow(/security\.unenforced is refuse/);
       expect(t.transport.opened).toEqual([]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('with the default catalog_probe: allow, the catalogs read the fake options although unenforced is refuse', async () => {
+    const t = await setup();
+    try {
+      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
+        t.parts,
+      );
+      // The same adapters still refuse a work session.
+      await expect(
+        byId(adapters, 'codex').launchSpec(t.profile('codex'), TEST_POLICY, t.dir),
+      ).rejects.toThrow(/security\.unenforced is refuse/);
+      const claude = await byId(adapters, 'claude-code').models.list({
+        client: 'claude-code',
+        profile: 'work',
+      });
+      const codex = await byId(adapters, 'codex').models.list({ client: 'codex', profile: 'work' });
+      expect(claude.map((m) => m.id)).toEqual(MODELS);
+      expect(codex.map((m) => m.id)).toEqual(MODELS);
+      expect(t.transport.opened).toHaveLength(2);
+      // The daemon hears of each exemption, and nothing is left running.
+      const warned = t.lines.filter(
+        (l) => (l.fields.warning as { kind?: string } | undefined)?.kind === 'catalog_probe_exempt',
+      );
+      expect(warned).toHaveLength(2);
+      expect(t.launcher.launched.every((p) => !p.alive)).toBe(true);
     } finally {
       await t.dispose();
     }

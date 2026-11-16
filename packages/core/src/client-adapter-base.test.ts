@@ -271,6 +271,90 @@ describe('ClientAdapter security.unenforced', () => {
   });
 });
 
+describe('ClientAdapter security.catalog_probe', () => {
+  const short = { enforcement: enforcementWith({ network: [] }) };
+  const probe = { purpose: 'catalog-probe' } as const;
+
+  it('exempts a catalog session from refuse by default, warns, and runs nothing', async () => {
+    const { adapter, launcher, warnings } = setup(short);
+    const via = new FakeSessionTransport();
+    const session = await adapter.openSession(profile, policy, '/work', via, probe);
+    expect(warnings).toEqual([
+      { kind: 'catalog_probe_exempt', clientId: 'fake', short: ['network'] },
+    ]);
+    expect(session.configOptions.length).toBeGreaterThan(0);
+    await expect(session.prompt([{ type: 'text', text: 'hello' }])).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    await expect(session.setConfig('model', 'fake-model-2')).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    // Nothing reached the client: no turn started, no config changed.
+    expect(via.configApplied).toEqual([]);
+    await session.close();
+    expect(launcher.running).toHaveLength(0);
+  });
+
+  it('never exempts a work session, with or without the purpose spelled out', async () => {
+    const { adapter, launcher } = setup(short);
+    for (const options of [undefined, { purpose: 'work' } as const]) {
+      await expect(
+        adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), options),
+      ).rejects.toBeInstanceOf(PermissionDenied);
+    }
+    expect(launcher.launched).toEqual([]);
+  });
+
+  it('refuse: the catalog session goes through the check like any other', async () => {
+    const { adapter, launcher, warnings } = setup({ ...short, catalogProbe: 'refuse' });
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), probe),
+    ).rejects.toBeInstanceOf(PermissionDenied);
+    expect(launcher.launched).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('stays quiet when the policy is guaranteed, and still gives a session that never prompts', async () => {
+    const { adapter, warnings } = setup();
+    const session = await adapter.openSession(
+      profile,
+      policy,
+      '/work',
+      new FakeSessionTransport(),
+      probe,
+    );
+    expect(warnings).toEqual([]);
+    await expect(session.prompt([{ type: 'text', text: 'hello' }])).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    await session.close();
+  });
+
+  it('applies to launchSpec, openSessionOn and loadSession as well', async () => {
+    const { adapter, launcher, warnings } = setup(short);
+    await expect(adapter.launchSpec(profile, policy, '/work')).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    const spec = await adapter.launchSpec(profile, policy, '/work', 'acp', 'catalog-probe');
+    const process = await launcher.launch(spec);
+    const via = new FakeSessionTransport();
+    await expect(adapter.openSessionOn(process, policy, '/work', via)).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    const owned = await adapter.openSessionOn(process, policy, '/work', via, probe);
+    await expect(owned.prompt([{ type: 'text', text: 'hello' }])).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    const loaded = await adapter.loadSession(profile, policy, '/work', owned.sessionId, via, probe);
+    await expect(loaded.prompt([{ type: 'text', text: 'hello' }])).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    expect(warnings.filter((w) => w.kind === 'catalog_probe_exempt')).toHaveLength(3);
+    await loaded.close();
+    await process.killTree();
+  });
+});
+
 describe('ClientAdapter multi-session', () => {
   function multi(options: Partial<FakeClientAdapterOptions> = {}) {
     return setup({ processModel: 'multi-session', ...options });
