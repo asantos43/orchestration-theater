@@ -460,13 +460,17 @@ describe('fake agent in process', () => {
     });
   });
 
-  it('offers the model and mode config options and applies set_config_option', async () => {
+  it('offers the model, mode and effort config options and applies set_config_option', async () => {
     const { app } = recordingClient('allow');
     await app.connectWith(createFakeAgent(), async (cx) => {
       await cx.request(methods.agent.initialize, { protocolVersion: 1 });
       const created = await cx.request(methods.agent.session.new, { cwd, mcpServers: [] });
       const ids = (created.configOptions ?? []).map((option) => option.id);
-      expect(ids).toEqual(['model', 'mode']);
+      expect(ids).toEqual(['model', 'mode', 'effort']);
+      expect(created.configOptions?.find((option) => option.id === 'effort')).toMatchObject({
+        category: 'thought_level',
+        currentValue: 'medium',
+      });
       const changed = await cx.request(methods.agent.session.setConfigOption, {
         sessionId: created.sessionId,
         configId: 'model',

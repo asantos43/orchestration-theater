@@ -18,6 +18,7 @@ function recording() {
   const session: AgentSession = {
     sessionId: 's-1',
     canLoad: true,
+    configOptions: [],
     prompt: () => Promise.resolve({ stopReason: 'end_turn' }),
     onUpdate: () => ({ dispose: () => undefined }),
     cancel: () => Promise.resolve(),

@@ -29,6 +29,7 @@ describe('clients.* and security.* of the config', () => {
       credentials_store: 'file',
       approval_policy: 'on-request',
       suggested_effort: 'high',
+      model_catalog: 'session',
     });
     expect(clients.opencode).toEqual({
       ...common,

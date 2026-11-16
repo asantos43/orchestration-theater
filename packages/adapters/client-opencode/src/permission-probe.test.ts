@@ -68,6 +68,7 @@ function stub(behaviour: Behaviour = {}): { adapter: ClientAdapterContract; call
       const session: AgentSession = {
         sessionId: 's',
         canLoad: false,
+        configOptions: [],
         async prompt(blocks) {
           calls.prompts.push(
             blocks.map((block) => (block.type === 'text' ? block.text : '')).join(''),
