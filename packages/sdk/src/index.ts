@@ -34,3 +34,14 @@ export {
   type LocalModelServerHarness,
   type LocalServerBehavior,
 } from './conformance/local-model-server.js';
+// AgentSession / ClientAdapter
+export {
+  describeAgentSessionConformance,
+  type AgentSessionHarness,
+  type AgentSessionPrompts,
+} from './conformance/agent-session.js';
+export {
+  describeClientAdapterConformance,
+  type ClientAdapterHarness,
+} from './conformance/client-adapter.js';
+export { realClientFlags, type ClientConformanceOptions } from './conformance/helpers.js';
