@@ -1,0 +1,9 @@
+spikes/
+docs/
+*.md
+pnpm-lock.yaml
+dist
+coverage
+.claude/
+LICENSE
+dist-test

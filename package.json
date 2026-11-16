@@ -1,0 +1,29 @@
+{
+  "name": "otheater",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MPL-2.0",
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "check": "pnpm build && pnpm lint && pnpm format:check && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.15.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.14.0",
+    "prettier": "3.10.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}
