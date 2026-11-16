@@ -116,7 +116,7 @@ NEED → PLANNING → CLARIFYING → REVIEWING_PLAN → SCRIPTING → REVIEWING_
 
 ## Workspace (arquitetura §5.5)
 
-- Branches: `play/<id>`, `play/<id>/<demand>/<attempt>` e `play/<id>/integration`.
+- Branches, todas sob `play/<id>/` (N59): `play/<id>/base`, `play/<id>/attempts/<demand>/<attempt>` e `play/<id>/integration`.
 - Commit WIP automático no timeout, no cancelamento e na interrupção, mais checkpoints periódicos.
 - O Crítico avalia a branch **integrada**. Conflito de merge conta como falha de roteiro.
 - A entrega é por PR (`gh pr create`) por padrão.

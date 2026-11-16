@@ -6,7 +6,7 @@ Este arquivo orienta o Claude Code neste repositório.
 
 Repositório do **OTheater** (*Orchestration Theater*). O OTheater é um sistema de orquestração multi-agente e multi-conta que usa os clientes oficiais (Claude Code, Codex, OpenCode) como Executores, por ACP, e aceita tanto assinaturas quanto chaves de API. Até a Fase 0, o repositório era só de desenho. Desde 2026-11-14 (N33), o código descartável da Fase 0 vai em `spikes/`; o código do produto começa na Fase 1.
 
-A arquitetura de construção é [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.50, 2026-11-16). Ela é a referência: quando um documento de `docs/` divergir dela, ajuste o documento de `docs/`. Não mude a arquitetura nem tome as decisões que ela deixa em aberto (seção 12 e [docs/13](docs/13-DECISOES-EM-ABERTO.md)) por conta própria; elas são do dono (Anderson).
+A arquitetura de construção é [docs/framework-ideas/arquitetura.md](docs/framework-ideas/arquitetura.md) (v0.51, 2026-11-16). Ela é a referência: quando um documento de `docs/` divergir dela, ajuste o documento de `docs/`. Não mude a arquitetura nem tome as decisões que ela deixa em aberto (seção 12 e [docs/13](docs/13-DECISOES-EM-ABERTO.md)) por conta própria; elas são do dono (Anderson).
 
 Por onde começar:
 - [README.md](README.md), que é o índice;

@@ -2,6 +2,15 @@
 import { InvalidInput, type NewEvent } from '@otheater/core';
 import { z } from 'zod';
 import { BACKUP_TRIGGERS } from './api.js';
+import {
+  AttemptCheckpointPayloadSchema,
+  SessionClosedPayloadSchema,
+  SessionInterruptedPayloadSchema,
+  SessionOpenedPayloadSchema,
+  SessionPromptFinishedPayloadSchema,
+  SessionResumedPayloadSchema,
+  SessionUpdatePayloadSchema,
+} from './session-events.js';
 
 /**
  * Registry of the event types the daemon itself writes (architecture 5.18, "Registros"). The
@@ -61,6 +70,13 @@ export const DAEMON_EVENT_TYPES = {
   'daemon.started': { schemaVersion: 1, payload: DaemonStartedPayloadSchema },
   'daemon.stopped': { schemaVersion: 1, payload: DaemonStoppedPayloadSchema },
   'daemon.backup': { schemaVersion: 1, payload: DaemonBackupPayloadSchema },
+  'session.opened': { schemaVersion: 1, payload: SessionOpenedPayloadSchema },
+  'session.update': { schemaVersion: 1, payload: SessionUpdatePayloadSchema },
+  'session.prompt_finished': { schemaVersion: 1, payload: SessionPromptFinishedPayloadSchema },
+  'session.interrupted': { schemaVersion: 1, payload: SessionInterruptedPayloadSchema },
+  'session.resumed': { schemaVersion: 1, payload: SessionResumedPayloadSchema },
+  'session.closed': { schemaVersion: 1, payload: SessionClosedPayloadSchema },
+  'attempt.checkpoint': { schemaVersion: 1, payload: AttemptCheckpointPayloadSchema },
 } as const;
 
 export type DaemonEventType = keyof typeof DAEMON_EVENT_TYPES;
@@ -72,6 +88,13 @@ export type DaemonEventPayloads = {
 export type DaemonStartedPayload = DaemonEventPayloads['daemon.started'];
 export type DaemonStoppedPayload = DaemonEventPayloads['daemon.stopped'];
 export type DaemonBackupPayload = DaemonEventPayloads['daemon.backup'];
+export type SessionOpenedPayload = DaemonEventPayloads['session.opened'];
+export type SessionUpdatePayload = DaemonEventPayloads['session.update'];
+export type SessionPromptFinishedPayload = DaemonEventPayloads['session.prompt_finished'];
+export type SessionInterruptedPayload = DaemonEventPayloads['session.interrupted'];
+export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
+export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
+export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);
