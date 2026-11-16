@@ -153,3 +153,9 @@ export function captureLogger(): { logger: Logger; lines: LoggedLine[] } {
   );
   return { logger, lines };
 }
+
+/**
+ * Says no client is installed, so a daemon started without `clients` never looks at the real
+ * `PATH` and the test stays hermetic.
+ */
+export const NO_CLIENTS = { env: { PATH: '' }, findExecutable: () => undefined } as const;
