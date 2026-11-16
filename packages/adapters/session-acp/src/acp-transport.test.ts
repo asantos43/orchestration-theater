@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LaunchedProcess, SessionNormalizer, SessionOpenParams } from '@otheater/core';
 import { normalizeFakeError, normalizeFakeUpdate } from '@otheater/core/testing';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AcpTransport, type AcpTransportWarning } from './acp-transport.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
+import { removeDir } from './testing/remove-dir.js';
 
 // `AcpTransport` against a stub agent: a few lines of plain Node that speak raw JSON-RPC on stdio,
 // so each test can make the agent say exactly what it needs (no `loadSession`, `session/load` that
@@ -23,8 +24,11 @@ const record = (method, params) => {
   if (cfg.recordTo) appendFileSync(cfg.recordTo, JSON.stringify({ method, params }) + '\n');
 };
 if (cfg.grandchild) {
-  // Same process group as the stub: a tree kill has to reach it.
-  spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  // Same process group (POSIX) or process tree (Windows) as the stub: a tree kill has to reach it.
+  const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    stdio: 'ignore',
+  });
+  record('grandchild', { pid: grandchild.pid });
 }
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line);
@@ -73,8 +77,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await rm(dir, { recursive: true, force: true });
   expect(launcher.aliveGroups()).toBe(0);
+  await removeDir(dir);
 });
 
 const launched: LaunchedProcess[] = [];
@@ -116,6 +120,16 @@ async function params(
       onPermission: () => ({ outcome: 'cancelled' }),
     },
   };
+}
+
+/** True while a process with this pid exists (signal 0 only probes). */
+function pidAlive(pid: number): boolean {
+  try {
+    globalThis.process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 async function recorded(file: string): Promise<{ method: string; params: unknown }[]> {
@@ -223,7 +237,7 @@ describe('AcpTransport against a stub agent', () => {
 
   it('cancel does not trust the client: the tree is killed, grandchild included', async () => {
     const warnings: AcpTransportWarning[] = [];
-    const { open } = await params('ignores-cancel', { config: { grandchild: true } });
+    const { open, record } = await params('ignores-cancel', { config: { grandchild: true } });
     const session = await new AcpTransport({
       cancelGraceMs: 100,
       killGraceMs: 500,
@@ -234,6 +248,14 @@ describe('AcpTransport against a stub agent', () => {
     await session.cancel();
     await expect(running).resolves.toMatchObject({ stopReason: 'cancelled' });
     expect(launcher.aliveGroups()).toBe(0);
+    // The group/tree check above sees the root (Windows) or the group (POSIX); the grandchild
+    // itself is checked by its own pid, on both.
+    const grandchild = (await recorded(record)).find((entry) => entry.method === 'grandchild');
+    const { pid } = grandchild?.params as { pid: number };
+    expect(pid).toBeGreaterThan(0);
+    await vi.waitFor(() => {
+      expect(pidAlive(pid)).toBe(false);
+    });
     expect(warnings).toEqual([]);
   });
 
