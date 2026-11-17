@@ -86,15 +86,12 @@ jobs:
     steps:
       - run: sudo apt-get update >/dev/null && sudo apt-get install -y bubblewrap socat ripgrep >/dev/null
       - run: |
-          sysctl -a 2>/dev/null | grep -i "apparmor\|userns\|unprivileged" || true
-          sudo aa-status 2>&1 | head -20 || true
-          for u in 0 1; do
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-            [ $u = 1 ] && sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0 || true
-            echo "--- round $u: nested -U inside bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
-            echo "--- no unshare-pid"; bwrap --ro-bind / / --unshare-user --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
-            echo "--- bind /proc"; bwrap --ro-bind / / --unshare-user --unshare-pid --bind /proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
-            echo "--- outside bwrap"; unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
-          done
-          echo "--- dmesg"; sudo dmesg 2>&1 | grep -i "apparmor" | tail -8 || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          ls /etc/apparmor.d | grep -i "bwrap\|userns" || true
+          echo "--- outside"; unshare -Ur id
+          echo "--- in bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id
+          for f in /etc/apparmor.d/bwrap*; do echo "== $f"; sudo head -40 "$f"; done
+          for f in /etc/apparmor.d/bwrap*; do sudo apparmor_parser -R "$f" || true; done
+          echo "--- after removing the profiles"; sudo aa-status 2>&1 | grep -i bwrap || true
+          echo "--- in bwrap again"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id
         continue-on-error: true
