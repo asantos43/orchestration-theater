@@ -269,10 +269,9 @@ security:
 clients:
   <id>:
     client_version: unknown   # unknown | <versão>; quando escrita, ganha das outras fontes
-    version_source: auto      # auto (package.json e depois initialize) | package_json | initialize | config (só client_version) [proposta]
+    version_source: auto      # auto (package.json e depois initialize) | package_json | initialize | config (só client_version)
+    version_packages: [...]   # opcional; padrão: o adaptador ACP (Claude Code, Codex) ou opencode-ai (OpenCode)
 ```
-
-O nome da chave, os modos e onde o adaptador acha o pacote instalado são **[proposta]** e fecham no passo da implementação, depois do P13.
 
 **Casca de agente** (v0.43, ideia do dono, **[proposta]**). Cada descendente da `ClientAdapter` é também a **casca** do seu cliente: além de traduzir a política, ele normaliza a conversa. O resto do daemon (Diretor, pipeline, TUI, telemetria, cotas) fala com um agente só e nunca vê o cliente de destino. Não confundir com as cascas de ferramentas (`tools/`, 5.8), que embrulham shell, testes e rede.
 - **O ACP é a língua única entre o daemon e o agente.** O daemon só fala ACP, com os mesmos métodos e eventos para todos os agentes. As particularidades de cada cliente são resolvidas dentro da casca, sem que o daemon perceba. O tipo é a `AgentSession` (5.18).
@@ -2958,6 +2957,7 @@ Ficam fora **[N]**: Windows e macOS (com o `fullfsync`), o prompt de senha sem e
 - Versão do cliente pelo `package.json` do pacote instalado, confirmada pelo `initialize`, depois do P13 (N63, 5.2).
 
 **Critério de aceite:** N Executores reais e simulados em worktrees diferentes, stream como eventos, cancelamento por timeout sem processo órfão e com WIP commitado.
+**Aceite real, nível `clients` (2026-11-16) [V]:** rodado pelo dono com `tools/acceptance/real-acceptance.sh` (N57), na main depois do PR #38, com `claude-agent-acp` 0.107.0, `codex-acp` 2.6.0 e `opencode-ai` 1.19.5. Os três clientes sobem em perfil vazio e não deixam processo. O Claude Code e o OpenCode abrem sessão. O Codex é recusado no `session/new` com `PermissionDenied` (`auth_required`), como medido na Fase 0, e o pool fica vazio. O pico de memória foi de ~0,7 GB. Faltam o nível `prompts`, que gasta cota e usa o login do dono, e a medição de `K` e `processModel`.
 **Estimativa:** 2 semanas (era 1,5 na v0.9: entram checkpoints e retomada nativa).
 
 ### Fase 3 — Pipeline, MCP do framework e blackboard

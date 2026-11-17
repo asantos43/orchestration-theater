@@ -22,9 +22,9 @@
 #
 # Build (--build): o teste lê o `dist` dos pacotes (o Executor simulado e, com --with-adapters, os
 # adaptadores), então um `dist` velho dá falha que não é do código. Local e offline (`pnpm build`).
-#   auto    (padrão) compila se algum pacote de packages/ (inclui packages/adapters/*) não tem
-#           `dist` ou tem arquivo em `src`, `package.json` ou `tsconfig*.json` mais novo que o
-#           arquivo mais novo do `dist` dele; senão não faz nada.
+#   auto    (padrão) pergunta ao `tsc -b --dry` (não grava nada) e compila se ele construiria
+#           algum projeto `tsconfig.src.json`, ou seja, algum `dist`; mudança só em teste
+#           (`tsconfig.test.json`, que gera `dist-test`) não conta; senão não faz nada.
 #   always  sempre roda `pnpm build`.
 #   never   nunca compila; falha se o `dist` do fake-agent não existe e avisa dos pacotes velhos.
 # Com --dry-run o script só diz o que faria com o build.
@@ -195,19 +195,21 @@ fi
 
 # ---- build (decide aqui, compila depois da confirmação) -----------------------------------------
 
-# Pacotes de packages/ com `dist` ausente, vazio ou mais velho que as fontes: um por linha, com o
-# motivo. O teste lê o `dist`; um `dist` velho dá falha que não é do código.
+# Pacotes cujo `dist` o build mudaria, um por linha: o que o `tsc -b --dry` diz que construiria,
+# fora os projetos de teste (`tsconfig.test.json` gera `dist-test`, que o teste não lê). Quem
+# decide é o próprio `tsc`, com as regras de `include`/`exclude` de cada pacote; um `touch` sem
+# mudança de conteúdo não conta. Se o `tsc` falhar, compila (o build mostra o erro).
 stale_packages() {
-  local dir newest
-  for dir in packages/* packages/adapters/*; do
-    [ -f "$dir/package.json" ] || continue
-    if [ ! -d "$dir/dist" ]; then echo "$dir (sem dist)"; continue; fi
-    newest="$(find "$dir/dist" -type f -printf '%T@ %p\n' | sort -rn | sed -n 1p | cut -d' ' -f2-)"
-    if [ -z "$newest" ]; then echo "$dir (dist vazio)"; continue; fi
-    if [ -n "$(find "$dir/src" "$dir/package.json" "$dir"/tsconfig*.json -newer "$newest" -print -quit 2>/dev/null)" ]; then
-      echo "$dir (fonte mais nova que o dist)"
-    fi
-  done
+  local out
+  if ! out="$(timeout 120 pnpm exec tsc -b --dry 2>&1)"; then
+    echo "(tsc -b --dry falhou: compila para ver o erro)"
+    return
+  fi
+  grep -o "would build project '[^']*'" <<<"$out" \
+    | sed "s/^would build project '//; s/'\$//" \
+    | grep -v '/tsconfig\.test\.json$' \
+    | sed "s|^$PWD/||; s|/tsconfig[^/]*\.json\$||" \
+    | sort -u || true
 }
 
 echo
