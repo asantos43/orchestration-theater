@@ -130,7 +130,7 @@ export async function makeToolsRig(options: ToolsRigOptions = {}): Promise<Tools
     launcher,
     vcs,
     clock,
-    env: { PATH: process.env['PATH'] ?? '', HOME: '/nonexistent' },
+    env: { PATH: process.env.PATH ?? '', HOME: '/nonexistent' },
     host: nodePathHost(),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   };
