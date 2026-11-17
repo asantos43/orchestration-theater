@@ -7,6 +7,10 @@ Decisões do dono em 2026-11-16, por múltipla escolha, iguais às recomendaçõ
 - **N76:** os downloads da Fase 3, com as versões exatas;
 - **N77:** o plano fica neste documento, e a fase ganha o marco interno 3a.
 
+Decisões de 2026-11-17, também iguais às recomendações:
+- **N78:** no MVP, o Produtor conversa com o Diretor por um `ot chat` mínimo no terminal, com o Diretor aberto pelo daemon (P8);
+- **N79:** `limits.submit_retries`, com padrão 2 (P3).
+
 ## Como usar
 
 - Cada passo tem uma branch e um PR com título "Fase 3: ...". O PR que conclui um passo também muda o estado dele na tabela de passos.
@@ -165,7 +169,7 @@ Ordem em ondas **[proposta]**:
   - cada sessão recebe um token próprio, gerado pelo daemon e ligado à sessão e ao papel;
   - a fábrica lê o `authInfo` e monta só as ferramentas do papel, tiradas do registro do P1.
 - O `AttemptRunner` preenche a `SessionSetup.mcpServers` com a URL e o cabeçalho `Authorization`. Isso também vale na retomada por `session/load`.
-- As ferramentas `submit*` validam a saída com zod. Uma saída inválida volta ao Executor com o erro, até `N` vezes, e depois disso conta como falha. A chave de `N` e o seu padrão são decididos ao abrir o passo.
+- As ferramentas `submit*` validam a saída com zod. Uma saída inválida volta ao Executor com o erro, até `limits.submit_retries` vezes (2 na predefinição `moderate`, 1 na `economical` e 3 na `persistent`; N79), e depois disso conta como falha.
 - O `ask_producer` ganha o schema da §5.3: de 1 a 4 perguntas, de 2 a 4 opções cada, com a opção recomendada, `multi_select` e `open`.
 - O agente falso ganha os roteiros `mcp-call` e `submit`: ele chama as ferramentas por `fetch` em JSON-RPC sobre Streamable HTTP, sem o pacote `client`.
 - Um teste real opcional (N57) abre o `claude-agent-acp` com o Haiku, faz uma chamada a uma ferramenta do framework e entrega um `submit` válido. Ele confere se o cliente conversa com o MCP v2, e quem roda é o dono.
@@ -255,6 +259,7 @@ Ordem em ondas **[proposta]**:
 **Escopo:**
 - Ligar os passos P3 a P7 e o P11 numa peça completa:
   - o Diretor falso chama `next_action`, `decide` e `open_play`;
+  - o `ot chat` mínimo (N78): o daemon abre o Diretor, e o comando manda as mensagens do Produtor pela fila única, mostra as respostas e responde às perguntas do `ask_producer`;
   - os Atores rodam pelo `AttemptRunner`;
   - o Crítico avalia a branch integrada, e a entrega sai por PR no `CodeHost` falso.
 - O agente falso ganha roteiros por papel para cada desfecho.
@@ -343,8 +348,8 @@ Ordem em ondas **[proposta]**:
 
 ## Decisões que surgem deste plano
 
-São levadas ao dono por múltipla escolha, ao abrir o passo indicado ou antes:
-- **P3:** a chave do `N` de correções do `submit` e o seu padrão;
-- **P8:** como o Produtor conversa com o Diretor no MVP sem interface. A §10 diz "pelo próprio cliente apontado para o MCP do framework", mas o aceite da fase usa o Diretor aberto pelo daemon. Falta decidir:
-  - como o cliente do Produtor recebe um token de Diretor;
-  - se entra um `ot chat` mínimo no terminal.
+As duas que o plano levantou foram decididas pelo dono em 2026-11-17, por múltipla escolha:
+- **P3 (N79):** `limits.submit_retries`, com padrão 2;
+- **P8 (N78):** o `ot chat` mínimo no terminal, com o Diretor aberto pelo daemon.
+
+As próximas que surgirem vão ao dono do mesmo jeito, ao abrir o passo.
