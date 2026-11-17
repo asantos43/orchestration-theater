@@ -38,6 +38,10 @@ matching rule wins [V]:
   as "Invalid Tool" [V]; the other keys come from the permission docs [S] and are [N] here);
 - `nativeShell: none`: `bash` is `deny`. The V2 docs call it `shell` [S]; for 1.19.5 only `bash` was
   verified, so `shell` is not in the default. Key `clients.opencode.shell_keys` [proposta];
+- `nativeShell: shells` does not touch `bash`: the daemon's shells are MCP tools, listed in `mcpTools`;
+- `mcpTools` (Phase 4, P1): each MCP tool of the role is `allow` by name, `<server>_<tool>` [V for
+  the prefix, Phase 0]; `<server>_*` only for a server whose tools are `all`; a server with no entry
+  has no tool allowed (fail closed) [proposta];
 - everything else is `ask`, and the base answers `session/request_permission` with `reject_once`
   (layer 2); there is no bypass through ACP [V];
 - `external_directory`: `deny` (`writeScope: worktree`); `task`, `webfetch`, `websearch` and `skill`

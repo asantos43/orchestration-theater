@@ -18,7 +18,8 @@ schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.
 | `prepareProfile` | writes `config.toml` (`cli_auth_credentials_store`, `sandbox_mode`, `approval_policy`) in the profile directory only; never reads or writes credentials | [V] the store key; [S] the other two |
 | `sessionSetup` (ACP) | pins `mode` (default `workspace-write`) after `session/new` and after `session/load` | [V] both reset the mode to `agent` |
 | `sessionSetup` (headless) | `codex exec --json --sandbox <sandbox of the mode>`; a role with MCP servers is refused | [S]/[N] flags; transport not written here |
-| `enforcement` | `onAsk` client+daemon, `bypass` daemon, `writeScope` client, `mcpServers` client; nothing for `nativeTools`, `nativeShell`, `network` (only layer 3) | [V] |
+| `enforcement` | `onAsk` client+daemon, `bypass` daemon, `writeScope` client, `mcpServers` client, `mcpTools` daemon (the grant of the framework server lists only the tools of the role; client in headless, which refuses MCP); nothing for `nativeTools`, `nativeShell`, `network` (only layer 3) | [V] |
+| `mcpTools`, `nativeShell: shells` (Phase 4, P1) | no key: how Codex approves an MCP call, and whether `config.toml` can name a tool, is [N] (the page of the config reference was not read). The setup does not change with them; the MCP request reaches layer 2 and is rejected, as before | [N] |
 | `normalizeUpdate` | ACP updates; `usage_update` becomes `usage`; `session_info_update` is dropped | [V] |
 | `normalizeError` | `data.codexErrorInfo` (`usageLimitExceeded` quota, `unauthorized`, connection kinds transient, `sandboxError`); `-32000` "Authentication required" is auth | [V] quota and auth; [S] the other kinds |
 | `mapConfig` | `model`, `reasoning_effort`, `mode` (ids of the client; the veto is `modeVeto`) | [V] |
