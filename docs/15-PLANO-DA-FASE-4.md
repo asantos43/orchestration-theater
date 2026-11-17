@@ -100,7 +100,7 @@ Ordem em ondas **[proposta]**:
 
 **Marco 4a (N96):** permissões e cascas fechadas, com a suíte de fuga verde no agente falso e nos testes reais opcionais. São o P1 a o P5 e o primeiro item do aceite da fase. O navegador, o perfil `software`, a fila de ideias e as sobras da Fase 3 vêm depois, até o aceite completo.
 
-**Estimativa:** 3 semanas para a fase inteira, como na §10 **[proposta]**.
+**Estimativa:** 3 semanas para a fase inteira, como na §10 **[proposta]**. No ritmo medido nas Fases 1 a 3 (§10, v0.72), ≈ 8–23 h de trabalho, cerca de um dia **[proposta]**.
 
 ### P1. Política por papel e camada 1 completa (§5.2 e §5.8)
 
