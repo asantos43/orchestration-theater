@@ -205,13 +205,19 @@ export const CodexClientSchema = z.strictObject({
 });
 
 /**
- * `pool.<client>`: what the pool decides for one client alone. Every key is optional and has no
- * default of its own: absent means the global key of `pool` (owner's decision, 2026-11-16; the
- * per-client defaults wait for a measurement).
+ * `pool.<client>`: what the pool decides for one client alone. `sessions_per_process` (`K`) has a
+ * default of its own only where a real measurement justified one (N74, owner's decision,
+ * 2026-11-16: Codex 6, OpenCode 4); a client without one (Claude Code) inherits the global
+ * `pool.sessions_per_process`.
  */
 export const PoolClientSchema = z.strictObject({
   /** `K` of this client; absent: `pool.sessions_per_process`. */
   sessions_per_process: z.int().min(1).optional(),
+});
+
+/** `pool.codex`: `K` defaults to 6 (N74, measured on 2026-11-16). */
+export const PoolCodexSchema = PoolClientSchema.extend({
+  sessions_per_process: z.int().min(1).default(6),
 });
 
 /** `clients.opencode` (keys of `OpenCodeAdapterOptions`; `pool.opencode.process_model` is under `pool`). */
@@ -293,13 +299,15 @@ export const DaemonConfigSchema = z.strictObject({
    * Pools of Executor processes per `(client, profile)` (architecture 5.2). `sessions_per_process`
    * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta]. Each client has
    * a section of its own (`pool.claude-code`, `pool.codex`, `pool.opencode`); a key absent there
-   * inherits the global one (owner's decision, 2026-11-16).
+   * inherits the global one, except `sessions_per_process` of Codex (6) and OpenCode (4), which
+   * have their own defaults (N74, owner's decision after a real measurement, 2026-11-16).
    */
   pool: z
     .strictObject({
       /**
-       * `K`: sessions per adapter process, for the clients that share one (`multi-session`). The
-       * value of a client without `pool.<client>.sessions_per_process`.
+       * `K`: sessions per adapter process, for the clients that share one (`multi-session`). Only
+       * applies to a client with no default of its own (today Claude Code, which is
+       * `process-per-session`, so `K` changes nothing there); Codex and OpenCode have theirs (N74).
        */
       sessions_per_process: z.int().min(1).default(4),
       /** Admission semaphore: sessions running at once, counted per session and not per process. */
@@ -312,15 +320,17 @@ export const DaemonConfigSchema = z.strictObject({
        * `always_kill` ends it on every cancel; `release` only gives the slot back.
        */
       shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
-      /** `K` of Claude Code alone. */
+      /** `K` of Claude Code alone; no default of its own (inherits the global key, 4). */
       'claude-code': PoolClientSchema.prefault({}),
-      /** `K` of Codex alone. */
-      codex: PoolClientSchema.prefault({}),
+      /** `K` of Codex alone; default 6 (N74, real measurement of 2026-11-16). */
+      codex: PoolCodexSchema.prefault({}),
       /**
        * N56 (5.2): how OpenCode shares its processes (the adapter wiring reads `process_model`; the
-       * pool follows the adapter's `processModel`), and `K` of OpenCode alone.
+       * pool follows the adapter's `processModel`), and `K` of OpenCode alone (default 4, explicit:
+       * N74, real measurement of 2026-11-16).
        */
       opencode: PoolClientSchema.extend({
+        sessions_per_process: z.int().min(1).default(4),
         process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
       }).prefault({}),
     })
@@ -489,7 +499,10 @@ export async function loadConfig(configPath: string): Promise<DaemonConfig> {
   return parseConfig(text, configPath);
 }
 
-/** `K` of a client: `pool.<client>.sessions_per_process`, or else the global `pool.sessions_per_process`. */
+/**
+ * `K` of a client: `pool.<client>.sessions_per_process` (default 6 for Codex, 4 for OpenCode, N74),
+ * or else the global `pool.sessions_per_process` for a client without one (Claude Code).
+ */
 export function sessionsPerProcessOf(pool: DaemonConfig['pool'], client: ClientId): number {
   return pool[client].sessions_per_process ?? pool.sessions_per_process;
 }

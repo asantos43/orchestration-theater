@@ -111,8 +111,8 @@ describe('parseConfig, execution keys', () => {
       idle: 120_000,
       shared_cancel: 'escalate',
       'claude-code': {},
-      codex: {},
-      opencode: { process_model: 'per_profile' },
+      codex: { sessions_per_process: 6 },
+      opencode: { sessions_per_process: 4, process_model: 'per_profile' },
     });
     expect(config.limits).toEqual({ demand_timeout: 1_800_000, demand_timeout_max: 7_200_000 });
     expect(config.resume).toMatchObject({
@@ -183,31 +183,55 @@ describe('parseConfig, execution keys', () => {
   });
 
   describe('pool.<client>.sessions_per_process', () => {
-    it('inherits the global key when the client sets none', () => {
+    it('has the per-client defaults of N74 without any config', () => {
       const pool = parseConfig('').pool;
-      for (const client of CLIENT_IDS) expect(sessionsPerProcessOf(pool, client)).toBe(4);
+      expect(sessionsPerProcessOf(pool, 'claude-code')).toBe(4);
+      expect(sessionsPerProcessOf(pool, 'codex')).toBe(6);
+      expect(sessionsPerProcessOf(pool, 'opencode')).toBe(4);
+      expect(pool['claude-code'].sessions_per_process).toBeUndefined();
+      expect(pool.codex.sessions_per_process).toBe(6);
+      expect(pool.opencode.sessions_per_process).toBe(4);
     });
 
-    it('follows the global key for the clients without one, and wins where present', () => {
+    it('changes only Claude Code when the global key changes', () => {
+      const pool = parseConfig('pool:\n  sessions_per_process: 7\n').pool;
+      expect(sessionsPerProcessOf(pool, 'claude-code')).toBe(7);
+      expect(sessionsPerProcessOf(pool, 'codex')).toBe(6);
+      expect(sessionsPerProcessOf(pool, 'opencode')).toBe(4);
+    });
+
+    it('lets each client override its own value, and Claude Code override the global', () => {
       const pool = parseConfig(
-        'pool:\n  sessions_per_process: 6\n  codex:\n    sessions_per_process: 2\n  opencode:\n    sessions_per_process: 9\n',
+        'pool:\n  sessions_per_process: 6\n  codex:\n    sessions_per_process: 2\n  opencode:\n    sessions_per_process: 9\n  claude-code:\n    sessions_per_process: 3\n',
       ).pool;
-      expect(sessionsPerProcessOf(pool, 'claude-code')).toBe(6);
+      expect(sessionsPerProcessOf(pool, 'claude-code')).toBe(3);
       expect(sessionsPerProcessOf(pool, 'codex')).toBe(2);
       expect(sessionsPerProcessOf(pool, 'opencode')).toBe(9);
-      expect(pool.codex.sessions_per_process).toBe(2);
-      expect(pool['claude-code'].sessions_per_process).toBeUndefined();
+      // Overriding one client leaves the others on their defaults.
+      const only = parseConfig('pool:\n  codex:\n    sessions_per_process: 1\n').pool;
+      expect(sessionsPerProcessOf(only, 'codex')).toBe(1);
+      expect(sessionsPerProcessOf(only, 'opencode')).toBe(4);
+      expect(sessionsPerProcessOf(only, 'claude-code')).toBe(4);
     });
 
     it('reaches the pool settings as the effective K of each client', () => {
+      const defaults = executionSettingsOf(parseConfig('')).pool;
+      expect(sessionsPerProcessFor(defaults, 'claude-code')).toBe(4);
+      expect(sessionsPerProcessFor(defaults, 'codex')).toBe(6);
+      expect(sessionsPerProcessFor(defaults, 'opencode')).toBe(4);
+      expect(defaults.sessionsPerProcessByClient).toEqual({
+        'claude-code': 4,
+        codex: 6,
+        opencode: 4,
+      });
       const { pool } = executionSettingsOf(
-        parseConfig('pool:\n  sessions_per_process: 6\n  codex:\n    sessions_per_process: 2\n'),
+        parseConfig('pool:\n  sessions_per_process: 5\n  codex:\n    sessions_per_process: 2\n'),
       );
       expect(sessionsPerProcessFor(pool, 'codex')).toBe(2);
-      expect(sessionsPerProcessFor(pool, 'claude-code')).toBe(6);
-      expect(sessionsPerProcessFor(pool, 'opencode')).toBe(6);
+      expect(sessionsPerProcessFor(pool, 'claude-code')).toBe(5);
+      expect(sessionsPerProcessFor(pool, 'opencode')).toBe(4);
       // A client the settings do not name uses the global value.
-      expect(sessionsPerProcessFor(pool, 'fake')).toBe(6);
+      expect(sessionsPerProcessFor(pool, 'fake')).toBe(5);
     });
 
     it('rejects a value below 1, a non-integer and an unknown client', () => {
