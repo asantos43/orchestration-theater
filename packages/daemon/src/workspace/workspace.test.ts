@@ -13,7 +13,7 @@ import {
 import { FakeClock, FakeCodeHost, InMemoryStore } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RealHeadCodeHost, type FakeCodeHostLike } from '../orchestration/e2e-fixture.js';
+import { RealHeadCodeHost } from '../orchestration/e2e-fixture.js';
 import { demandOf, makeWorkspaceRig, scriptOf, type WorkspaceRig } from './workspace-fixture.js';
 import { Workspace } from './workspace.js';
 
@@ -793,7 +793,7 @@ describe('Workspace.deliver: what the delivery adds before the push (P7)', () =>
     const clock = new FakeClock();
     const store = new InMemoryStore({ clock });
     const host = new FakeCodeHost({ clock });
-    const codeHost = new RealHeadCodeHost(host as FakeCodeHostLike);
+    const codeHost = new RealHeadCodeHost(host);
     const made = { ...(await makeWorkspaceRig({ store, codeHost })), store, host };
     rigs.push(made);
     return made;
