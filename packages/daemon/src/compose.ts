@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { resolve } from 'node:path';
+import { PlaywrightBrowserSession } from '@otheater/adapter-browser-playwright';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
   CLAUDE_CODE_ADAPTER_VERSION,
@@ -46,6 +47,7 @@ import {
 import { GIT_VCS_ADAPTER, GitVcs } from '@otheater/adapter-vcs-git';
 import {
   AdapterUnavailable,
+  BROWSER_SESSION_PORT_VERSION,
   CLOCK_PORT_VERSION,
   InvalidInput,
   isLockableSecretVault,
@@ -55,6 +57,7 @@ import {
   STORE_PORT_VERSION,
   VCS_PORT_VERSION,
   type Adapter,
+  type BrowserSession,
   type ClientAdapter,
   type ClientAdapterOptions,
   type ClientAdapterWarning,
@@ -94,7 +97,8 @@ import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
 
 /** The ports the daemon composes. */
-export type PortName = 'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher';
+export type PortName =
+  'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher' | 'BrowserSession';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -116,6 +120,11 @@ export interface ComposeOverrides {
   readonly vcs?: Vcs;
   /** Starts the adapter processes (`PosixProcessLauncher` by default; none on Windows yet). */
   readonly launcher?: ProcessLauncher;
+  /**
+   * The browser of the agent (P6, 5.19). By default the Playwright adapter over a Chromium that
+   * is a child of the launcher; tests hand in `FakeBrowserSession`.
+   */
+  readonly browser?: BrowserSession;
   /** The wire the sessions speak (`AcpTransport` by default). */
   readonly transport?: SessionTransport;
   /**
@@ -159,6 +168,11 @@ export interface Composition {
    */
   readonly launcher: ProcessLauncher | undefined;
   readonly transport: SessionTransport;
+  /**
+   * [proposta] The browser of the agent, or `undefined` where there is no launcher (Windows,
+   * until the launcher with the Job Object is wired): the `browser_*` tools are not served there.
+   */
+  readonly browser: BrowserSession | undefined;
   /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
   readonly codeHost: CodeHost | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
@@ -244,6 +258,33 @@ export function defaultLauncher(): ProcessLauncher | undefined {
   return new PosixProcessLauncher();
 }
 
+/**
+ * The browser of the agent: the Playwright adapter, which runs Chromium as a child of `launcher`
+ * (5.9). Nothing starts here: the first `open` of a scenario does it, after the RAM admission.
+ * `undefined` without a launcher.
+ */
+export function defaultBrowser(
+  config: DaemonConfig,
+  profilesDir: string,
+  launcher: ProcessLauncher | undefined,
+  logger: Logger,
+): BrowserSession | undefined {
+  if (launcher === undefined) return undefined;
+  const settings = config.browser;
+  const session = new PlaywrightBrowserSession({
+    launcher,
+    profilesDir: resolve(profilesDir, 'browser'),
+    executablePath: settings.executable_path,
+    sandbox: settings.sandbox,
+    minFreeMemoryBytes: settings.min_free_memory_mb * 1024 * 1024,
+    maxInstances: settings.max_instances,
+    timeoutMs: settings.timeout_ms,
+    onWarning: (message) => logger.warn({ adapter: session.id }, message),
+  });
+  checkAdapterRange(session, 'BrowserSession', BROWSER_SESSION_PORT_VERSION);
+  return session;
+}
+
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
   return { port, id: 'override', range: `^${portVersion}`, portVersion };
 }
@@ -325,8 +366,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
     const transport = overrides.transport ?? new AcpTransport();
+    const browser = overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger);
 
-    const opened = { store, vault };
+    const opened = { store, vault, browser };
     let closing: Promise<void> | undefined;
     return {
       clock,
@@ -338,6 +380,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       vcs,
       launcher,
       transport,
+      browser,
       codeHost: overrides.codeHost,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
@@ -348,11 +391,20 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
 }
 
 async function closeParts(
-  parts: { store: Store | undefined; vault: SecretVault | undefined },
+  parts: {
+    store: Store | undefined;
+    vault: SecretVault | undefined;
+    browser?: BrowserSession | undefined;
+  },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
+  try {
+    await parts.browser?.close();
+  } catch (error) {
+    failures.push(error);
+  }
   try {
     await parts.store?.close();
   } catch (error) {

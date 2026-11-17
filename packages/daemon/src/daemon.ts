@@ -40,7 +40,8 @@ import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
-import { nodePathHost, registerWorkTools } from './tools/index.js';
+import { registerBrowserTools, type BrowserTools } from './browser/index.js';
+import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
@@ -188,6 +189,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let composition: Composition | undefined;
   let mcp: FrameworkMcpServer | undefined;
   let directives: DirectiveService | undefined;
+  let browserTools: BrowserTools | undefined;
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
   // Producer channel wait here (5.21: "os comandos que mudam estado esperam").
   const gate = new RecoveryGate();
@@ -224,6 +226,38 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     if (!handlers.has('propose_directive')) {
       registerDirectiveTools(handlers, directives, composition.store);
     }
+    const workDeps: ToolsDeps = {
+      store: composition.store,
+      config: config.tools,
+      // The commands are processes too: they are written down like the clients' (5.21).
+      launcher:
+        composition.launcher === undefined
+          ? undefined
+          : new TrackingLauncher(
+              composition.launcher,
+              composition.store,
+              composition.clock,
+              composition.logger,
+            ),
+      vcs: composition.vcs,
+      codeHost: composition.codeHost,
+      clock: composition.clock,
+      env: options.clientSearch?.env ?? process.env,
+      host: nodePathHost(),
+      logger: composition.logger,
+    };
+    // P6 (5.19): the browser tools. A write asks the Producer through the chat prompt queue;
+    // `isSecret` is the list of `security.secret_paths` (P4), not wired yet.
+    if (composition.browser !== undefined) {
+      browserTools = registerBrowserTools(handlers, {
+        ...workDeps,
+        browser: config.browser,
+        session: composition.browser,
+        dataDir: paths.dataDir,
+        askApproval: (scenarioId, input) => orchestrationHandlers.openApproval(scenarioId, input),
+      });
+      browserTools.startIdleLoop();
+    }
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
@@ -232,26 +266,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
       handlers: scenarioHandlers.register(
         orchestrationHandlers.register(
-          registerWorkTools(registerReadTools(handlers, composition.store), {
-            store: composition.store,
-            config: config.tools,
-            // The commands are processes too: they are written down like the clients' (5.21).
-            launcher:
-              composition.launcher === undefined
-                ? undefined
-                : new TrackingLauncher(
-                    composition.launcher,
-                    composition.store,
-                    composition.clock,
-                    composition.logger,
-                  ),
-            vcs: composition.vcs,
-            codeHost: composition.codeHost,
-            clock: composition.clock,
-            env: options.clientSearch?.env ?? process.env,
-            host: nodePathHost(),
-            logger: composition.logger,
-          }),
+          registerWorkTools(registerReadTools(handlers, composition.store), workDeps),
         ),
       ),
       logger: composition.logger,
@@ -264,6 +279,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       composition,
       registries,
       mcp,
+      browserTools,
       directives,
       lock,
       version,
@@ -276,6 +292,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     gate.open();
     await directives?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
+    await browserTools?.close().catch(() => undefined);
     await composition?.close().catch(() => undefined);
     await lock.release().catch(() => undefined);
     throw error;
@@ -288,6 +305,7 @@ interface RunInput {
   readonly composition: Composition;
   readonly registries: Registries;
   readonly mcp: FrameworkMcpServer;
+  readonly browserTools: BrowserTools | undefined;
   readonly directives: DirectiveService;
   readonly lock: InstanceLock;
   readonly version: string;
@@ -304,6 +322,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     composition,
     registries,
     mcp,
+    browserTools,
     directives,
     lock,
     version,
@@ -475,6 +494,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
       await attempt('mcp', () => mcp.stop());
+      await attempt('browser', async () => browserTools?.close());
       await attempt('daemon.stopped', () =>
         store.events.append(
           buildDaemonEvent('daemon.stopped', {
