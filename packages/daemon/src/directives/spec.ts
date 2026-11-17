@@ -77,11 +77,12 @@ function readInstant(label: string, text: string, timezone: string, endOfDay = f
     );
   }
   if (endOfDay && DATE_ONLY.test(text.trim())) {
-    // [proposta] A bare date as the end covers the whole day (architecture 5.17): the end is the
-    // first instant of the next day, so "until 2026-11-20" still holds at 23:59:59 on the 20th.
+    // A bare date as the end covers the whole day: the end is 23:59:59 of that day (architecture
+    // 5.17), one second before the first instant of the next day.
     const [y, m, d] = text.trim().split('-').map(Number) as [number, number, number];
     const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
-    instant = parseDirectiveInstant(next, timezone) ?? instant;
+    const nextDay = parseDirectiveInstant(next, timezone);
+    if (nextDay !== undefined) instant = nextDay - 1000;
   }
   return instant;
 }

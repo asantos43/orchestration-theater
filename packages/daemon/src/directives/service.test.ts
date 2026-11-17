@@ -362,8 +362,8 @@ describe('DirectiveService, validation', () => {
       scope: 'global',
       validity: { until: '2026-11-20' },
     });
-    // 2026-11-21 00:00 in São Paulo (UTC-3).
-    expect(order.endsAt).toBe(Date.UTC(2026, 10, 21, 3, 0, 0));
+    // 2026-11-20 23:59:59 in São Paulo (UTC-3).
+    expect(order.endsAt).toBe(Date.UTC(2026, 10, 21, 2, 59, 59));
     const bad = await failure(
       service.create({ text: 'x', scope: 'global', validity: { until: 'next week' } }),
     );
