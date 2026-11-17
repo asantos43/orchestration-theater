@@ -51,6 +51,7 @@ import type { ExecutorConfig, Profile } from './ports/executor.js';
 import type { ModelCatalog } from './ports/model-catalog.js';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from './ports/process-launcher.js';
 import type { QuotaProbe } from './ports/quota-probe.js';
+import type { LaunchWrapper } from './ports/sandbox.js';
 import {
   DEFAULT_SESSIONS_PER_PROCESS,
   SharedProcessRegistry,
@@ -239,6 +240,12 @@ export interface ClientAdapterOptions {
   readonly clientVersion?: ClientVersionOptions;
   /** What layer 3 offers on this machine. Default: nothing. */
   readonly sandbox?: SandboxCapabilities;
+  /**
+   * Layer 3 at the launch: turns the command of the client into the confined one (the `Sandbox`
+   * port). Called on every `launchSpec` and on every open that starts a process, after the profile
+   * files are written. Without one the client starts as built. [proposta]
+   */
+  readonly launchWrapper?: LaunchWrapper;
   /** Default: one layer for every field. */
   readonly minLayers?: MinLayers;
   /** Default `refuse`. */
@@ -332,6 +339,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   #clientVersion: ClientVersion;
   readonly #versioning: ClientVersionOptions | undefined;
   readonly #sandbox: SandboxCapabilities;
+  readonly #launchWrapper: LaunchWrapper | undefined;
   readonly #minLayers: MinLayers;
   readonly #unenforced: UnenforcedMode;
   readonly #catalogProbe: CatalogProbeMode;
@@ -358,6 +366,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       options.clientVersion?.adapterVersionOf(this.#clientVersion.version) ??
       options.adapterVersion;
     this.#sandbox = options.sandbox ?? { fields: [] };
+    this.#launchWrapper = options.launchWrapper;
     this.#minLayers = options.minLayers ?? DEFAULT_MIN_LAYERS;
     this.#unenforced = options.unenforced ?? 'refuse';
     this.#catalogProbe = options.catalogProbe ?? 'allow';
@@ -694,7 +703,15 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   ): Promise<LaunchOptions> {
     await this.prepareProfile(profile, policy);
     const { cmd, args } = this.command(profile, via);
-    return { cmd, args, cwd, env: { ...this.#baseEnv, ...this.profileEnv(profile) } };
+    const spec: LaunchOptions = {
+      cmd,
+      args,
+      cwd,
+      env: { ...this.#baseEnv, ...this.profileEnv(profile) },
+    };
+    return this.#launchWrapper === undefined
+      ? spec
+      : this.#launchWrapper({ profile, policy, cwd, via, spec });
   }
 
   async #attach(

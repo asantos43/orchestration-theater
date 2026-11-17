@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
@@ -23,6 +24,7 @@ import {
   POSIX_PROCESS_LAUNCHER_ADAPTER,
   PosixProcessLauncher,
 } from '@otheater/adapter-platform-posix';
+import { SRT_SANDBOX_ADAPTER, SrtSandbox } from '@otheater/adapter-sandbox-srt';
 import { AcpTransport } from '@otheater/adapter-session-acp';
 import {
   backupDatabase,
@@ -51,6 +53,7 @@ import {
   isLockableSecretVault,
   PROCESS_LAUNCHER_PORT_VERSION,
   ROLE_POLICY_FIELDS,
+  SANDBOX_PORT_VERSION,
   SECRET_VAULT_PORT_VERSION,
   STORE_PORT_VERSION,
   VCS_PORT_VERSION,
@@ -62,6 +65,8 @@ import {
   type CodeHost,
   type MinLayers,
   type ProcessLauncher,
+  type Sandbox,
+  type SandboxAvailability,
   type SecretVault,
   type SessionTransport,
   type Store,
@@ -92,9 +97,10 @@ import {
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
+import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
 
 /** The ports the daemon composes. */
-export type PortName = 'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher';
+export type PortName = 'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher' | 'Sandbox';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -118,6 +124,11 @@ export interface ComposeOverrides {
   readonly launcher?: ProcessLauncher;
   /** The wire the sessions speak (`AcpTransport` by default). */
   readonly transport?: SessionTransport;
+  /**
+   * Layer 3 (`SrtSandbox` by default, when `sandbox.mode` is `runtime` and the platform has one).
+   * `'none'` runs the daemon without it, whatever `sandbox.mode` says.
+   */
+  readonly sandbox?: Sandbox | 'none';
   /**
    * The code host the plays deliver to (P8). [proposta] There is no default: the GitHub adapter
    * is not a dependency of the daemon package yet, so without this instance a play runs up to
@@ -159,6 +170,12 @@ export interface Composition {
    */
   readonly launcher: ProcessLauncher | undefined;
   readonly transport: SessionTransport;
+  /**
+   * Layer 3, ready to use: `undefined` when `sandbox.mode` is `off`, the platform has no adapter
+   * (Windows, N94) or the mechanism does not work here (the reason is in the log). Then
+   * `security.unenforced` decides about `writeScope` and `network`.
+   */
+  readonly sandbox: SandboxWiring | undefined;
   /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
   readonly codeHost: CodeHost | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
@@ -244,6 +261,68 @@ export function defaultLauncher(): ProcessLauncher | undefined {
   return new PosixProcessLauncher();
 }
 
+/**
+ * One probe per process and configuration: the check runs a real confined command, which costs a
+ * moment, and the answer does not change while the daemon runs. The probe uses an adapter of its
+ * own and closes it, so nothing stays open until the daemon really needs the sandbox.
+ */
+const sandboxProbes = new Map<string, Promise<SandboxAvailability>>();
+
+export function probeSandbox(): Promise<SandboxAvailability> {
+  const key = process.platform;
+  let probe = sandboxProbes.get(key);
+  if (probe === undefined) {
+    probe = (async () => {
+      const own = new SrtSandbox();
+      try {
+        return await own.available();
+      } finally {
+        await own.close();
+      }
+    })();
+    sandboxProbes.set(key, probe);
+  }
+  return probe;
+}
+
+/** Layer 3 of this daemon (architecture 5.8): checked, logged, and `undefined` where it is not there. */
+async function composeSandbox(
+  config: DaemonConfig,
+  paths: DataPaths,
+  overrides: ComposeOverrides,
+  logger: Logger,
+): Promise<SandboxWiring | undefined> {
+  if (overrides.sandbox === 'none' || config.sandbox.mode === 'off') {
+    logger.info(
+      { mode: config.sandbox.mode },
+      'sandbox is off: writeScope and network have no layer, security.unenforced decides',
+    );
+    return undefined;
+  }
+  let sandbox: Sandbox;
+  if (overrides.sandbox !== undefined) {
+    sandbox = overrides.sandbox;
+    const availability = await sandbox.available();
+    if (!availability.ok) {
+      logger.warn({ reason: availability.reason }, 'sandbox is not available');
+      return undefined;
+    }
+  } else {
+    checkAdapterRange(SRT_SANDBOX_ADAPTER, 'Sandbox', SANDBOX_PORT_VERSION);
+    const availability = await probeSandbox();
+    if (!availability.ok) {
+      logger.warn(
+        { reason: availability.reason, platform: process.platform },
+        'layer 3 (sandbox) is missing here: writeScope and network have no guarantee, security.unenforced decides',
+      );
+      return undefined;
+    }
+    sandbox = new SrtSandbox();
+  }
+  logger.info({ sandbox: sandbox.id, fields: sandbox.capabilities().fields }, 'sandbox');
+  return buildSandboxWiring({ sandbox, config, home: homedir(), dataDir: paths.dataDir });
+}
+
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
   return { port, id: 'override', range: `^${portVersion}`, portVersion };
 }
@@ -325,8 +404,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
     const transport = overrides.transport ?? new AcpTransport();
+    const sandbox = await composeSandbox(config, paths, overrides, logger);
 
-    const opened = { store, vault };
+    const opened = { store, vault, sandbox };
     let closing: Promise<void> | undefined;
     return {
       clock,
@@ -338,21 +418,33 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       vcs,
       launcher,
       transport,
+      sandbox,
       codeHost: overrides.codeHost,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
-    await closeParts({ store, vault }, daemonLogger, undefined).catch(() => undefined);
+    await closeParts({ store, vault, sandbox: undefined }, daemonLogger, undefined).catch(
+      () => undefined,
+    );
     throw error;
   }
 }
 
 async function closeParts(
-  parts: { store: Store | undefined; vault: SecretVault | undefined },
+  parts: {
+    store: Store | undefined;
+    vault: SecretVault | undefined;
+    sandbox: SandboxWiring | undefined;
+  },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
+  try {
+    await parts.sandbox?.close();
+  } catch (error) {
+    failures.push(error);
+  }
   try {
     await parts.store?.close();
   } catch (error) {
@@ -502,6 +594,9 @@ function commonOptions(
     baseEnv: buildClientEnv(section, env),
     minLayers: minLayersOf(config.security),
     unenforced: config.security.unenforced,
+    ...(parts.sandbox === undefined
+      ? {}
+      : { sandbox: parts.sandbox.capabilities, launchWrapper: parts.sandbox.launchWrapper }),
     catalogProbe: config.security.catalog_probe,
     conformance: config.security.conformance,
     onWarning: (warning: ClientAdapterWarning) => {

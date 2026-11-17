@@ -136,6 +136,13 @@ export const CATALOG_PROBE_MODES = ['allow', 'refuse'] as const;
  */
 export const CATALOG_PROBE_LOG_MODES = ['once', 'every', 'off'] as const;
 export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
+/**
+ * `sandbox.mode` (architecture 5.8, layer 3): `runtime` confines the clients and the commands of
+ * the daemon with the OS mechanism (bubblewrap on Linux, Seatbelt on macOS) where an adapter
+ * exists; `off` turns layer 3 off, and then `security.unenforced` decides what happens to the
+ * fields that only layer 3 guarantees (`writeScope`, `network`).
+ */
+export const SANDBOX_MODES = ['runtime', 'off'] as const;
 
 /**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
@@ -798,8 +805,9 @@ export const DaemonConfigSchema = z.strictObject({
     .prefault({}),
   /**
    * `security` (architecture 5.2): how many layers must guarantee each field of a policy, and what
-   * happens when they do not. Until the Sandbox exists (Phase 4), `writeScope` and `network` have
-   * no layer, so the defaults refuse sessions with those fields; `unenforced: warn` lets them run.
+   * happens when they do not. `writeScope` and `network` are guaranteed only by layer 3 (the
+   * Sandbox, `sandbox.mode`): where it does not run (`sandbox.mode: off`, Windows, a kernel that
+   * forbids it) the defaults refuse sessions with those fields; `unenforced: warn` lets them run.
    */
   security: z
     .strictObject({
@@ -830,6 +838,34 @@ export const DaemonConfigSchema = z.strictObject({
        */
       catalog_probe_log: z.enum(CATALOG_PROBE_LOG_MODES).default('once'),
       conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
+      /**
+       * The paths an Executor cannot READ (architecture 5.19): the defaults (`~/.ssh`, the profiles
+       * of the clients, `<data>`, `.env`...) plus `add`, minus `remove`. One list for the Sandbox and
+       * for `browser_open`; `browser.secret_paths` is an alias of it [proposta]. An entry is `~/...`,
+       * `<data>/...`, an absolute path or a bare name (`.env`) that matches in any folder.
+       */
+      secret_paths: z
+        .strictObject({
+          add: z.array(z.string().min(1)).default([]),
+          remove: z.array(z.string().min(1)).default([]),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  /**
+   * Layer 3 of the permissions (architecture 5.8). [proposta] `mode`: `runtime` (default) where an
+   * adapter exists (Linux, macOS), `off` otherwise or by choice. `extra_write_paths`: absolute
+   * folders a confined client or command may write besides the worktree, its own profile folder and
+   * the temporary folder (for example the git folder of the repository). `extra_domains`: domains a
+   * confined client may reach besides the `network.allow` of the role and the ones of its provider.
+   */
+  sandbox: z
+    .strictObject({
+      mode: z.enum(SANDBOX_MODES).default('runtime'),
+      extra_write_paths: z
+        .array(z.string().min(1).startsWith('/', 'expected an absolute path'))
+        .default([]),
+      extra_domains: z.array(z.string().min(1)).default([]),
     })
     .prefault({}),
   tools: ToolsConfigSchema,

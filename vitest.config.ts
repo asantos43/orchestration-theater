@@ -22,6 +22,7 @@ const alias = {
   '@otheater/adapter-client-opencode': `${import.meta.dirname}/packages/adapters/client-opencode/src/index.ts`,
   '@otheater/adapter-local-ollama': `${import.meta.dirname}/packages/adapters/local-ollama/src/index.ts`,
   '@otheater/adapter-local-llama-cpp': `${import.meta.dirname}/packages/adapters/local-llama-cpp/src/index.ts`,
+  '@otheater/adapter-sandbox-srt': `${import.meta.dirname}/packages/adapters/sandbox-srt/src/index.ts`,
 };
 
 export default defineConfig({

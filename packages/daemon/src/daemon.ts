@@ -247,6 +247,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
                   ),
             vcs: composition.vcs,
             codeHost: composition.codeHost,
+            confine: composition.sandbox?.confineCommand,
             clock: composition.clock,
             env: options.clientSearch?.env ?? process.env,
             host: nodePathHost(),
@@ -541,6 +542,15 @@ function buildExecution(
     transport: composition.transport,
     paths: dataPaths(options.dataDir),
     logger,
+    ...(composition.sandbox === undefined
+      ? {}
+      : {
+          sandbox: {
+            capabilities: composition.sandbox.capabilities,
+            // The framework MCP server is the daemon's own loopback service the client must reach.
+            launchWrapper: composition.sandbox.launchWrapper(() => [mcp.url]),
+          },
+        }),
   });
   if (clients.length === 0) {
     logger.warn(

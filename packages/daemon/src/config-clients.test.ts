@@ -50,6 +50,7 @@ describe('clients.* and security.* of the config', () => {
       conformance: 'on_version_change',
       catalog_probe: 'allow',
       catalog_probe_log: 'once',
+      secret_paths: { add: [], remove: [] },
     });
   });
 
@@ -152,6 +153,7 @@ describe('clients.* and security.* of the config', () => {
       conformance: 'every_start',
       catalog_probe: 'allow',
       catalog_probe_log: 'once',
+      secret_paths: { add: [], remove: [] },
     });
   });
 

@@ -213,6 +213,52 @@ describe('ClientAdapter.openSession', () => {
     expect(launcher.running).toEqual([]);
   });
 
+  it('hands the launch to the launchWrapper (layer 3) and starts what it returns, in openSession and launchSpec', async () => {
+    const seen: { cwd: string; via: string; cmd: string; policy: RolePolicy; profile: Profile }[] =
+      [];
+    const { adapter, launcher } = setup({
+      launchWrapper: (input) => {
+        seen.push({
+          cwd: input.cwd,
+          via: input.via,
+          cmd: input.spec.cmd,
+          policy: input.policy,
+          profile: input.profile,
+        });
+        return Promise.resolve({
+          cmd: 'bwrap',
+          args: ['--', input.spec.cmd, ...input.spec.args],
+          cwd: input.spec.cwd,
+          env: input.spec.env,
+        });
+      },
+    });
+    const session = await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    expect(launcher.launched[0]?.options).toMatchObject({
+      cmd: 'bwrap',
+      args: ['--', 'fake-client', '--acp'],
+      cwd: '/work',
+      env: { PATH: '/bin', FROM_BASE: 'base' },
+    });
+    const spec = await adapter.launchSpec(profile, policy, '/work');
+    expect(spec).toMatchObject({ cmd: 'bwrap', args: ['--', 'fake-client', '--acp'] });
+    expect(seen).toEqual([
+      { cwd: '/work', via: 'fake', cmd: 'fake-client', policy, profile },
+      { cwd: '/work', via: 'acp', cmd: 'fake-client', policy, profile },
+    ]);
+    await session.close();
+  });
+
+  it('a launchWrapper that rejects fails the open and leaves no process', async () => {
+    const { adapter, launcher } = setup({
+      launchWrapper: () => Promise.reject(new AdapterUnavailable('no sandbox here')),
+    });
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    expect(launcher.launched).toEqual([]);
+  });
+
   it('asks the transport for the headless setup when it is the headless one', async () => {
     const { adapter } = setup();
     const via = new FakeSessionTransport({ id: 'headless' });

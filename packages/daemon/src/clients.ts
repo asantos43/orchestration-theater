@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { accessSync, constants, statSync } from 'node:fs';
 import { delimiter, join, win32 } from 'node:path';
-import type { ClientAdapter, Clock, ProcessLauncher, SessionTransport } from '@otheater/core';
+import type {
+  ClientAdapter,
+  Clock,
+  LaunchWrapper,
+  ProcessLauncher,
+  SandboxCapabilities,
+  SessionTransport,
+} from '@otheater/core';
 import { CLIENT_IDS, type ClientId, type DaemonConfig } from './config.js';
 import type { Logger } from './logger.js';
 import type { DataPaths, Env } from './paths.js';
@@ -18,6 +25,18 @@ export interface ClientFactoryParts {
   /** Where the profiles and the scratch worktrees live (`<data>/profiles`, `<data>/scratch`). */
   readonly paths: DataPaths;
   readonly logger: Logger;
+  /**
+   * Layer 3 (architecture 5.8), when it is on: what it guarantees (for `guarantee()`) and the wrapper
+   * that confines the launch of the client. Absent when the sandbox is off or not available; a
+   * factory that does not pass it on starts its clients unconfined.
+   */
+  readonly sandbox?: SandboxParts;
+}
+
+/** What a client adapter takes of layer 3 (`ClientAdapterOptions.sandbox` and `.launchWrapper`). */
+export interface SandboxParts {
+  readonly capabilities: SandboxCapabilities;
+  readonly launchWrapper: LaunchWrapper;
 }
 
 /**

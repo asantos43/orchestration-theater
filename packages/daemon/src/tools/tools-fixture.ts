@@ -18,6 +18,7 @@ import { defaultLauncher, defaultVcs } from '../compose.js';
 import { parseConfig, type ToolsConfig } from '../config.js';
 import { ToolFailure, type ToolCall, type ToolCaller, type ToolHandler } from '../mcp/handlers.js';
 import { buildDaemonRegistries } from '../registries.js';
+import type { CommandConfiner } from '../sandbox-wiring.js';
 import { makeRepo } from '../execution/attempt-fixture.js';
 import { nodePathHost, workToolHandlers, type ToolsDeps } from './index.js';
 
@@ -39,6 +40,8 @@ export interface ToolsRigOptions {
   readonly networkAllow?: readonly string[];
   readonly fetch?: typeof fetch;
   readonly launcher?: ProcessLauncher | undefined;
+  /** Layer 3 for the commands: what the tools run their launches through (P4). Default none. */
+  readonly confine?: CommandConfiner;
   readonly vcs?: Vcs;
   /** Leaves the attempt out of the store (a session that is tied to nothing). */
   readonly withoutAttempt?: boolean;
@@ -154,6 +157,7 @@ export async function makeToolsRig(
     store,
     config,
     launcher,
+    ...(options.confine === undefined ? {} : { confine: options.confine }),
     vcs,
     clock,
     env: { PATH: process.env.PATH ?? '', HOME: '/nonexistent' },

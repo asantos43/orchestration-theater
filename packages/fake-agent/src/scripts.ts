@@ -71,6 +71,19 @@ export const scriptSchema = z.discriminatedUnion('name', [
     name: z.literal('role-play'),
     server: z.string().min(1).default('otheater'),
   }),
+  /**
+   * [proposal] Tries what the sandbox (layer 3) must forbid, and says what the operating system
+   * answered, one message chunk per attempt: `probe write <path>: ok | failed <code>`, the same for
+   * `read <path>` (`ok <bytes> bytes`) and `connect <host>:<port>` (a raw TCP connection, the way
+   * a client that ignores the proxy does it). Nothing is asked of the client: the files and the
+   * ports are the test's own.
+   */
+  z.strictObject({
+    name: z.literal('probe'),
+    write: z.array(z.string().min(1)).default([]),
+    read: z.array(z.string().min(1)).default([]),
+    connect: z.array(z.string().min(1)).default([]),
+  }),
   z.strictObject({ name: z.literal('hang') }),
   z.strictObject({
     name: z.literal('deaf'),
@@ -95,6 +108,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'mcp-call',
   'submit',
   'role-play',
+  'probe',
   'fail',
   'hang',
   'deaf',

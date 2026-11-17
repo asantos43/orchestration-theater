@@ -13,6 +13,7 @@ import { buildDaemonEvent, type ToolOutcome } from '@otheater/protocol';
 import { buildClientEnv } from '../clients.js';
 import type { ToolsConfig } from '../config.js';
 import type { Logger } from '../logger.js';
+import type { CommandConfiner } from '../sandbox-wiring.js';
 import { ToolFailure, type ToolCall } from '../mcp/handlers.js';
 import type { Env } from '../paths.js';
 import { Semaphore } from './semaphore.js';
@@ -27,6 +28,11 @@ export interface ToolsDeps {
   readonly launcher: ProcessLauncher | undefined;
   readonly vcs: Vcs;
   readonly codeHost?: CodeHost | undefined;
+  /**
+   * Layer 3 for the commands (P4): runs the launch of a command inside the sandbox. `undefined`
+   * when the sandbox is off or there is none (the command then runs as before).
+   */
+  readonly confine?: CommandConfiner | undefined;
   readonly clock: Clock;
   /** The environment the commands inherit from (`tools.env_inherit`): `process.env`, in the daemon. */
   readonly env: Env;
