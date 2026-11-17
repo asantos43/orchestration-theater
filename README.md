@@ -71,6 +71,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [11-TELEMETRIA-E-ATIF.md](docs/11-TELEMETRIA-E-ATIF.md) | Log de eventos, OTel nativo dos clientes, ATIF-v1.8 |
 | [12-HARNESSES-OPEN-SOURCE-AVALIADOS.md](docs/12-HARNESSES-OPEN-SOURCE-AVALIADOS.md) | Agentes open source como Executores e projetos candidatos a base de fork |
 | [13-DECISOES-EM-ABERTO.md](docs/13-DECISOES-EM-ABERTO.md) | Estado de cada decisão, com data e motivo |
+| [14-PLANO-DA-FASE-3.md](docs/14-PLANO-DA-FASE-3.md) | Plano de passos da Fase 3, com dependências, paralelismo, aceite de cada passo e o marco 3a |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
 | [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
 
