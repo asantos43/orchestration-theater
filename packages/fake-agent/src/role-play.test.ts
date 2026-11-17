@@ -314,4 +314,40 @@ describe('the role-play script', () => {
       result: { answer: 'consulted on "what is in it" [A1 says the note]' },
     });
   });
+
+  it('plays the Author grouping the queue: ideas of the first area go together', async () => {
+    const run = host(
+      [
+        'prefix',
+        '#ot-role: author',
+        '#ot-group-ideas: 5',
+        '- I1 [area: api] add a route',
+        '- I2 [area: ui] add a button',
+        '- I3 [area: api] test the route',
+        '- I4 [area: -] fix a typo',
+      ].join('\n'),
+    );
+    await playRolePlay(run.host);
+    expect(run.calls.map((call) => call.tool)).toEqual(['submit_idea_group']);
+    const args = run.calls[0]?.args as {
+      group: { ideaIds: string[]; need: string };
+      leftOut: { ideaId: string }[];
+    };
+    expect(args.group.ideaIds).toEqual(['I1', 'I3']);
+    expect(args.group.need).toBe('add a route; test the route');
+    expect(args.leftOut.map((item) => item.ideaId)).toEqual(['I2', 'I4']);
+  });
+
+  it('an idea with no area goes alone and the group respects the maximum', async () => {
+    const alone = host('#ot-group-ideas: 5\n- I7 [area: -] one\n- I8 [area: -] two');
+    await playRolePlay(alone.host);
+    expect((alone.calls[0]?.args as { group: { ideaIds: string[] } }).group.ideaIds).toEqual([
+      'I7',
+    ]);
+    const capped = host('#ot-group-ideas: 1\n- I1 [area: a] x\n- I2 [area: a] y');
+    await playRolePlay(capped.host);
+    expect((capped.calls[0]?.args as { group: { ideaIds: string[] } }).group.ideaIds).toEqual([
+      'I1',
+    ]);
+  });
 });

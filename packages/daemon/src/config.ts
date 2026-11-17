@@ -12,6 +12,7 @@ import {
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { IdeasConfigSchema } from './ideas/settings.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -749,6 +750,12 @@ export const DaemonConfigSchema = z.strictObject({
       consultant_alternatives: z.array(PlayExecutorSchema).default([]),
     })
     .prefault({}),
+  /**
+   * The idea queue of the scenario (architecture 5.20, N91): `drain` (`auto`, `manual`; `scheduled`
+   * is refused until the scheduler exists), `grouping_approval` (`ask`, `auto`), `max_per_play`
+   * and `parallel_plays`. A scenario overrides each key with `configOverride` (`ideas.drain`...).
+   */
+  ideas: IdeasConfigSchema.prefault({}),
   /**
    * Delivery policy (architecture 5.5, owner's decision N5). `mode` is the global value; the
    * override per project, play and scheduled task is the rule registry's `delivery.mode`.

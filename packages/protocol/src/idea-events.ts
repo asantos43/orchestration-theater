@@ -34,6 +34,16 @@ export const IdeaGroupedPayloadSchema = z.strictObject({
   /** The need the group became (what the play receives). */
   need: z.string().min(1),
   awaitingApproval: z.boolean(),
+  /** The ideas the Author left out of this group, each with the reason (and a question, if any). */
+  leftOut: z
+    .array(
+      z.strictObject({
+        ideaId,
+        reason: z.string().min(1),
+        question: z.string().min(1).optional(),
+      }),
+    )
+    .default([]),
 });
 
 /** `idea.play_opened`: the group became the need of a play (approved, or automatic). */

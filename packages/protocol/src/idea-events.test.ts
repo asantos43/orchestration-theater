@@ -25,7 +25,15 @@ describe('idea event payloads (architecture 5.20)', () => {
       need: 'Do I1 and I2',
       awaitingApproval: true,
     };
-    expect(validateEventPayload('idea.grouped', 1, grouped)).toEqual(grouped);
+    expect(validateEventPayload('idea.grouped', 1, grouped)).toEqual({ ...grouped, leftOut: [] });
+    const withLeftOut = {
+      ...grouped,
+      leftOut: [{ ideaId: 'I3', reason: 'unclear', question: 'Which?' }],
+    };
+    expect(IdeaGroupedPayloadSchema.parse(withLeftOut).leftOut).toHaveLength(1);
+    expect(
+      IdeaGroupedPayloadSchema.safeParse({ ...grouped, leftOut: [{ ideaId: 'I3' }] }).success,
+    ).toBe(false);
     expect(IdeaGroupedPayloadSchema.safeParse({ ...grouped, ideaIds: [] }).success).toBe(false);
   });
 
