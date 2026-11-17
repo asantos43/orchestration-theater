@@ -57,6 +57,8 @@ export {
 // Vcs
 export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
 export { disposeTestGitIsolation } from './conformance/git-isolation.js';
+// CodeHost
+export { describeCodeHostConformance, type CodeHostHarness } from './conformance/code-host.js';
 // LocalModelServer
 export {
   describeLocalModelServerConformance,

@@ -162,6 +162,22 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('resume:\n  max_free_resumes: -1\n')).toThrow(/max_free_resumes/);
   });
 
+  it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {
+    expect(parseConfig('').delivery).toEqual({ mode: 'pr', allow_direct_merge: false });
+    for (const mode of ['pr', 'direct_merge', 'ask']) {
+      expect(parseConfig(`delivery:\n  mode: ${mode}\n`).delivery.mode).toBe(mode);
+    }
+    expect(parseConfig('delivery:\n  allow_direct_merge: true\n').delivery).toEqual({
+      mode: 'pr',
+      allow_direct_merge: true,
+    });
+    expect(() => parseConfig('delivery:\n  mode: merge\n')).toThrow(/mode/);
+    expect(() => parseConfig('delivery:\n  allow_direct_merge: yes please\n')).toThrow(
+      /allow_direct_merge/,
+    );
+    expect(() => parseConfig('delivery:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
   it('defaults security.catalog_probe to allow and takes refuse', () => {
     expect(parseConfig('').security.catalog_probe).toBe('allow');
     expect(parseConfig('security:\n  catalog_probe: refuse\n').security.catalog_probe).toBe(

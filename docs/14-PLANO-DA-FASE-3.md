@@ -100,7 +100,7 @@ Ficam como portões **[N]**:
 | P3 | Servidor MCP do framework | P1 | P4, P6, P11 | feito (PR #54) |
 | P4 | Máquina da peça em XState | P1, P2 | P3, P6, P11 | a fazer |
 | P5 | Roteiro: validação e DAG | P0 | P1, P2, P3, P4 | feito (PR #50) |
-| P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | a fazer |
+| P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | feito (PR #55) |
 | P7 | Blackboard e fila única de prompts | P2, P3 | P10 | a fazer |
 | P8 | Peça ponta a ponta com o agente falso | P3 a P7, P11 | P10 | a fazer |
 | P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | a fazer |

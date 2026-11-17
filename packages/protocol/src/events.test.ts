@@ -35,6 +35,9 @@ describe('daemon event registry', () => {
       'attempt.checkpoint',
       'attempt.submitted',
       'attempt.submit_failed',
+      'workspace.integrated',
+      'workspace.integration_failed',
+      'delivery.completed',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);
