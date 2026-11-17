@@ -6,14 +6,17 @@ import {
   type RegistryEntries,
 } from '@otheater/core';
 import { DAEMON_EVENT_DEFINITIONS } from '@otheater/protocol';
+import { assertPlayFlowLinked } from './pipeline/flows.js';
+import { PLAY_EVENT_DEFINITIONS } from './pipeline/events.js';
 
 /**
  * The registries the daemon starts with (architecture 5.18, "Registros"): the official roles,
- * tools, `rule` keys, flows and scenario types of `@otheater/core`, and the 11 event types of
- * `@otheater/protocol`. Plugin entries join here when the plugin steps arrive.
+ * tools, `rule` keys, flows and scenario types of `@otheater/core`, the 16 event types of
+ * `@otheater/protocol` and the 2 of the play machine (`play.created`, `play.transitioned`).
+ * Plugin entries join here when the plugin steps arrive.
  */
 export function defaultRegistryEntries(): RegistryEntries {
-  return officialRegistryEntries(DAEMON_EVENT_DEFINITIONS);
+  return officialRegistryEntries([...DAEMON_EVENT_DEFINITIONS, ...PLAY_EVENT_DEFINITIONS]);
 }
 
 /**
@@ -24,5 +27,8 @@ export function defaultRegistryEntries(): RegistryEntries {
 export function buildDaemonRegistries(
   entries: RegistryEntries = defaultRegistryEntries(),
 ): Registries {
-  return buildRegistries(entries);
+  const registries = buildRegistries(entries);
+  // The `play` entry of the flow registry is the descriptor of the machine in `./pipeline`.
+  assertPlayFlowLinked(registries);
+  return registries;
 }

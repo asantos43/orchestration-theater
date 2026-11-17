@@ -5,6 +5,7 @@ import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   CLIENT_IDS,
+  LIMIT_PRESETS,
   loadConfig,
   parseConfig,
   parseDuration,
@@ -107,6 +108,67 @@ describe('parseConfig', () => {
   });
 });
 
+describe('parseConfig, limits (architecture 5.4)', () => {
+  // The table of 5.4, written out so a change of a preset shows up here.
+  const TABLE = {
+    moderate: [2, 2, 3, 3, 2, 2, 1, 2, 30, 120],
+    economical: [1, 1, 2, 2, 1, 1, 0, 1, 20, 60],
+    persistent: [3, 3, 4, 4, 3, 3, 2, 3, 45, 180],
+  } as const;
+
+  it.each(Object.entries(TABLE))('the %s preset fills every key', (name, row) => {
+    const limits = parseConfig(`limits:\n  preset: ${name}\n`).limits;
+    expect(limits).toEqual({
+      preset: name,
+      plan_reviews: row[0],
+      critic_rejections: row[1],
+      attempts_per_demand: row[2],
+      script_validations: row[3],
+      script_vetoes: row[4],
+      script_returns: row[5],
+      structural_restarts: row[6],
+      submit_retries: row[7],
+      demand_timeout: row[8] * 60_000,
+      demand_timeout_max: row[9] * 60_000,
+    });
+  });
+
+  it('defaults to the moderate preset', () => {
+    expect(parseConfig('').limits.preset).toBe('moderate');
+  });
+
+  it('lets one key override only its own value, on top of any preset', () => {
+    const limits = parseConfig(
+      'limits:\n  preset: economical\n  plan_reviews: 5\n  submit_retries: 0\n  demand_timeout: 10m\n',
+    ).limits;
+    expect(limits).toEqual({
+      ...LIMIT_PRESETS.economical,
+      preset: 'economical',
+      plan_reviews: 5,
+      submit_retries: 0,
+      demand_timeout: 600_000,
+    });
+  });
+
+  it('keeps submit_retries at 2 by default (N79) and checks the timeout against the ceiling', () => {
+    expect(parseConfig('').limits.submit_retries).toBe(2);
+    expect(() => parseConfig('limits:\n  preset: economical\n  demand_timeout: 90m\n')).toThrow(
+      /demand_timeout must not exceed/,
+    );
+    expect(
+      parseConfig('limits:\n  preset: economical\n  demand_timeout_max: 4h\n').limits
+        .demand_timeout_max,
+    ).toBe(14_400_000);
+  });
+
+  it('rejects an unknown preset, an unknown key, a negative count and zero attempts', () => {
+    expect(() => parseConfig('limits:\n  preset: lazy\n')).toThrow(/limits\.preset/);
+    expect(() => parseConfig('limits:\n  retries: 3\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('limits:\n  plan_reviews: -1\n')).toThrow(/plan_reviews/);
+    expect(() => parseConfig('limits:\n  attempts_per_demand: 0\n')).toThrow(/attempts_per_demand/);
+  });
+});
+
 describe('parseConfig, execution keys', () => {
   it('has the pool, limits and resume defaults of the architecture (5.2, 5.4, 5.16)', () => {
     const config = parseConfig('');
@@ -120,9 +182,10 @@ describe('parseConfig, execution keys', () => {
       opencode: { sessions_per_process: 4, process_model: 'per_profile' },
     });
     expect(config.limits).toEqual({
+      preset: 'moderate',
+      ...LIMIT_PRESETS.moderate,
       demand_timeout: 1_800_000,
       demand_timeout_max: 7_200_000,
-      submit_retries: 2,
     });
     expect(config.resume).toMatchObject({
       preset: 'balanced',
