@@ -3,16 +3,16 @@
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SystemClock } from '@otheater/adapter-clock-system';
 import {
   attemptBranch,
   playBranch,
   type JsonObject,
+  type Clock,
   type NewEvent,
   type ProcessLauncher,
+  type Store,
   type Vcs,
 } from '@otheater/core';
-import { InMemoryStore } from '@otheater/core/testing';
 import { testGit } from '@otheater/sdk';
 import { defaultLauncher, defaultVcs } from '../compose.js';
 import { parseConfig, type ToolsConfig } from '../config.js';
@@ -48,7 +48,7 @@ export interface ToolsRig {
   readonly repo: string;
   readonly worktree: string;
   readonly branch: string;
-  readonly store: InMemoryStore;
+  readonly store: Store;
   readonly deps: ToolsDeps;
   readonly config: ToolsConfig;
   /** Every event the tools recorded, in order. */
@@ -66,12 +66,39 @@ export function eventsOf(rig: Pick<ToolsRig, 'events'>, type: string): NewEvent[
   return rig.events.filter((event) => event.type === type);
 }
 
+/** The real time: the tools measure durations and the timeouts are real. */
+export const realClock: Clock = {
+  now: () => Date.now(),
+  sleep: (ms, signal) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      // As SystemClock does: an abort rejects.
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new Error('sleep cancelled'));
+      });
+    }),
+};
+
+/**
+ * What the tests hand to the rig: this file is no test, so the fakes of `@otheater/core/testing`
+ * and the adapters come from the test file (rules testing-only-from-tests and
+ * daemon-adapters-only-in-compose).
+ */
+export interface ToolsRigParts {
+  readonly store: Store;
+  readonly clock: Clock;
+}
+
 /**
  * A real git repository with the branch of the play and a real worktree of one attempt, the real
  * process launcher and the real clock, over an in-memory store with the scenario, the play and
  * the attempt written down. The tools run exactly as the daemon registers them.
  */
-export async function makeToolsRig(options: ToolsRigOptions = {}): Promise<ToolsRig> {
+export async function makeToolsRig(
+  options: ToolsRigOptions,
+  parts: ToolsRigParts,
+): Promise<ToolsRig> {
   const { repo, dispose: disposeRepo } = await makeRepo();
   const vcs = options.vcs ?? defaultVcs();
   await testGit(repo, 'branch', playBranch(PLAY_ID), 'main');
@@ -80,8 +107,7 @@ export async function makeToolsRig(options: ToolsRigOptions = {}): Promise<Tools
   const branch = attemptBranch(PLAY_ID, DEMAND_ID, 1);
   await vcs.createWorktree({ repo, path: worktree, branch, base: playBranch(PLAY_ID) });
 
-  const clock = new SystemClock();
-  const store = new InMemoryStore({ clock });
+  const { clock, store } = parts;
   await store.scenarios.create({
     id: SCENARIO_ID,
     kind: 'project',

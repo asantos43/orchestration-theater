@@ -9,15 +9,20 @@ import {
   DEMAND_ID,
   eventsOf,
   makeToolsRig,
+  realClock,
   PLAY_ID,
   type ToolsRig,
   type ToolsRigOptions,
 } from './tools-fixture.js';
+import { InMemoryStore } from '@otheater/core/testing';
 
 const rigs: ToolsRig[] = [];
 
 async function rigOf(options: ToolsRigOptions = {}): Promise<ToolsRig> {
-  const rig = await makeToolsRig(options);
+  const rig = await makeToolsRig(options, {
+    store: new InMemoryStore({ clock: realClock }),
+    clock: realClock,
+  });
   rigs.push(rig);
   return rig;
 }
