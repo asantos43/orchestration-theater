@@ -7,6 +7,8 @@ import {
   PermissionDenied,
   type Clock,
   type LockableSecretVault,
+  type Registries,
+  type RegistryEntries,
   type Secret,
   type SecretVault,
   type Store,
@@ -33,6 +35,7 @@ import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import { dataPaths, ensureDataDir } from './paths.js';
+import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { packageVersion } from './version.js';
@@ -81,6 +84,12 @@ export interface StartDaemonOptions {
    * Executor, policy). Without it, the attempts that were running are parked as `interrupted`.
    */
   readonly resolveAttempt?: AttemptResolver | undefined;
+  /**
+   * The entries the registries are built from (roles, tools, rule keys, event types, flows,
+   * scenario types). Without it the daemon uses the official ones. Tests hand in an invalid set to
+   * check that the daemon refuses to start. [proposta]
+   */
+  readonly registries?: RegistryEntries | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -89,6 +98,8 @@ export interface DaemonHandle {
   readonly clock: Clock;
   readonly store: Store;
   readonly vault: SecretVault;
+  /** The validated registries the daemon started with (architecture 5.18). */
+  readonly registries: Registries;
   /** Which adapter of each port is running (what `daemon.started` recorded). */
   readonly adapters: Composition['adapters'];
   /** Whether the vault is open now (a vault without a master password is always open). */
@@ -107,7 +118,8 @@ export interface DaemonHandle {
 /**
  * Starts the daemon (architecture 5.1, 5.18, 5.21). Order, and why:
  * 1. data directory and the **instance lock** first: a second daemon must never open the store;
- * 2. configuration, then `compose` (the only place that names adapters);
+ * 2. configuration; the registries are built and validated (a problem stops the start-up, naming
+ *    the entry); then `compose` (the only place that names adapters), which opens the store;
  * 3. the lock info is published (pid, start, version) for the "already running" message;
  * 4. state `recovering`: `PRAGMA quick_check` on the store. The daemon refuses to start on a
  *    damaged store and says how to restore (full reconciliation of runs is not built yet);
@@ -128,12 +140,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let composition: Composition | undefined;
   try {
     const config = options.config ?? (await loadConfig(paths.config));
+    // Registries first, before the store is opened: an invalid entry stops the start-up here.
+    const registries = buildDaemonRegistries(options.registries);
     composition = await compose(config, {
       dataDir: paths.dataDir,
+      events: { registry: registries.events, unknownType: config.events.unknown_type },
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
-    return await run({ options, config, composition, lock, version });
+    return await run({ options, config, composition, registries, lock, version });
   } catch (error) {
     await composition?.close().catch(() => undefined);
     await lock.release().catch(() => undefined);
@@ -145,12 +160,13 @@ interface RunInput {
   readonly options: StartDaemonOptions;
   readonly config: DaemonConfig;
   readonly composition: Composition;
+  readonly registries: Registries;
   readonly lock: InstanceLock;
   readonly version: string;
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
-  const { options, config, composition, lock, version } = input;
+  const { options, config, composition, registries, lock, version } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
   const startedAt = clock.now();
@@ -270,8 +286,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   const handle: DaemonHandle = {
     clock,
-    store,
+    // The store as the adapter built it; the daemon's own code appends through the validated one.
+    store: composition.rawStore,
     vault,
+    registries,
     adapters: composition.adapters,
     execution,
     get vaultLocked() {
