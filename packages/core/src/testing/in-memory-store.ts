@@ -8,9 +8,11 @@ import type {
   AttemptRecordInput,
   AttemptRegistry,
 } from '../ports/attempt-registry.js';
-import type { Store, StoreTransaction } from '../ports/store.js';
+import type { Store, StoreAggregates, StoreTransaction } from '../ports/store.js';
+import { autoCommitAggregates, createStoreAggregates } from '../store-kit/index.js';
 import { InMemoryAttemptRegistry } from './in-memory-attempt-registry.js';
 import { InMemoryEventLog } from './in-memory-event-log.js';
+import { InMemoryTables } from './in-memory-tables.js';
 
 export interface InMemoryStoreOptions {
   /** Stamps the events. Pass a `FakeClock` to control it. */
@@ -25,16 +27,51 @@ export interface InMemoryStoreOptions {
 export class InMemoryStore implements Store {
   readonly events: EventLog;
   readonly attempts: AttemptRegistry;
+  readonly scenarios: Store['scenarios'];
+  readonly scenarioRepos: Store['scenarioRepos'];
+  readonly attachments: Store['attachments'];
+  readonly plays: Store['plays'];
+  readonly stages: Store['stages'];
+  readonly demands: Store['demands'];
+  readonly decisions: Store['decisions'];
+  readonly blackboard: Store['blackboard'];
+  readonly promptQueue: Store['promptQueue'];
+  readonly sideEffects: Store['sideEffects'];
+  readonly sessions: Store['sessions'];
+  readonly directives: Store['directives'];
+  readonly #clock: Pick<Clock, 'now'>;
   readonly #committed: InMemoryEventLog;
   readonly #committedAttempts: InMemoryAttemptRegistry;
+  readonly #committedTables: InMemoryTables;
   #tail: Promise<unknown> = Promise.resolve();
   #closed = false;
 
   constructor(options: InMemoryStoreOptions) {
+    this.#clock = options.clock;
     this.#committed = new InMemoryEventLog(options.clock);
     this.#committedAttempts = new InMemoryAttemptRegistry(options.clock);
+    this.#committedTables = new InMemoryTables();
     this.events = new AutoCommitEvents(this, this.#committed);
     this.attempts = new AutoCommitAttempts(this, this.#committedAttempts);
+    const aggregates = autoCommitAggregates(
+      createStoreAggregates(this.#committedTables.factory, options.clock),
+      (fn) => this.transaction((tx) => fn(tx)),
+      () => {
+        this.assertOpen();
+      },
+    );
+    this.scenarios = aggregates.scenarios;
+    this.scenarioRepos = aggregates.scenarioRepos;
+    this.attachments = aggregates.attachments;
+    this.plays = aggregates.plays;
+    this.stages = aggregates.stages;
+    this.demands = aggregates.demands;
+    this.decisions = aggregates.decisions;
+    this.blackboard = aggregates.blackboard;
+    this.promptQueue = aggregates.promptQueue;
+    this.sideEffects = aggregates.sideEffects;
+    this.sessions = aggregates.sessions;
+    this.directives = aggregates.directives;
   }
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
@@ -43,14 +80,18 @@ export class InMemoryStore implements Store {
     const run = this.#tail.then(async () => {
       const overlay = this.#committed.fork();
       const attempts = this.#committedAttempts.fork();
+      const tables = this.#committedTables.fork();
+      const aggregates: StoreAggregates = createStoreAggregates(tables.factory, this.#clock);
       try {
-        const result = await fn({ events: overlay, attempts });
+        const result = await fn({ events: overlay, attempts, ...aggregates });
         overlay.commit();
         attempts.commit();
+        tables.commit();
         return result;
       } catch (error) {
         overlay.discard();
         attempts.discard();
+        tables.discard();
         throw error;
       }
     });

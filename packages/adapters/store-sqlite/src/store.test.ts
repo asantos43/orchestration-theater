@@ -159,7 +159,7 @@ describe.each(DRIVERS)('SqliteStore on %s', (driver) => {
         dbPath,
         (db) => {
           db.exec('ALTER TABLE attempts DROP COLUMN free_resumes');
-          db.exec("DELETE FROM kysely_migration WHERE name = '0003_attempts_free_resumes'");
+          db.exec("DELETE FROM kysely_migration WHERE name >= '0003'");
           db.exec(OLD_ROW);
         },
         false,
@@ -202,7 +202,7 @@ describe.each(DRIVERS)('SqliteStore on %s', (driver) => {
           driver,
           dbPath,
           (db) => {
-            db.exec("DELETE FROM kysely_migration WHERE name = '0003_attempts_free_resumes'");
+            db.exec("DELETE FROM kysely_migration WHERE name >= '0003'");
           },
           false,
         );

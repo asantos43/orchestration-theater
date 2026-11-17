@@ -2,7 +2,11 @@
 import { QuotaExhausted, STORE_PORT_VERSION, type Clock, type Store } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { useHarness, type AdapterFactory, type Disposable } from '../harness.js';
+import { describeAggregateTransactionsConformance } from './aggregate-transactions.js';
 import { describeAttemptRegistryConformance } from './attempt-registry.js';
+import { describeCoordinationAggregatesConformance } from './coordination-aggregates.js';
+import { describePlayAggregatesConformance } from './play-aggregates.js';
+import { describeScenarioAggregatesConformance } from './scenario-aggregates.js';
 import { describeEventLogConformance, sampleEvent } from './event-log.js';
 import { deferred, rejectionOf, settle } from './helpers.js';
 
@@ -14,8 +18,10 @@ export interface StoreHarness extends Disposable {
 
 /**
  * Registers the `Store` conformance tests (port version {@link STORE_PORT_VERSION}): transactions,
- * isolation, close, the whole `EventLog` suite against `store.events` and the `AttemptRegistry`
- * suite against `store.attempts`.
+ * isolation, close, the whole `EventLog` suite against `store.events`, the `AttemptRegistry`
+ * suite against `store.attempts` and the suites of the Phase 3 aggregates (scenarios, plays,
+ * blackboard, prompt queue, side effects, sessions, directives and how they behave in a
+ * transaction).
  */
 export function describeStoreConformance(
   name: string,
@@ -27,6 +33,10 @@ export function describeStoreConformance(
   });
 
   describeAttemptRegistryConformance(`${name} (store.attempts)`, factory);
+  describeScenarioAggregatesConformance(name, factory);
+  describePlayAggregatesConformance(name, factory);
+  describeCoordinationAggregatesConformance(name, factory);
+  describeAggregateTransactionsConformance(name, factory);
 
   describe(`Store conformance: ${name} (port ${STORE_PORT_VERSION})`, () => {
     const harness = useHarness(factory);

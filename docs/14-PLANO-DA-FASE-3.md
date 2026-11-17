@@ -95,7 +95,7 @@ Ficam como portões **[N]**:
 |---|---|---|---|---|
 | P0 | Plano, fechamento da Fase 2 e downloads (este documento) | nada | nada | feito (PR #49) |
 | P1 | Registros validados na subida | P0 | P2, P5 | feito (PR #51) |
-| P2 | Store da Fase 3 | P0 | P1, P5 | a fazer |
+| P2 | Store da Fase 3 | P0 | P1, P5 | feito (PR #52) |
 | P3 | Servidor MCP do framework | P1 | P4, P6, P11 | a fazer |
 | P4 | Máquina da peça em XState | P1, P2 | P3, P6, P11 | a fazer |
 | P5 | Roteiro: validação e DAG | P0 | P1, P2, P3, P4 | feito (PR #50) |
