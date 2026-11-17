@@ -39,6 +39,7 @@ export class InMemoryStore implements Store {
   readonly sideEffects: Store['sideEffects'];
   readonly sessions: Store['sessions'];
   readonly directives: Store['directives'];
+  readonly ideas: Store['ideas'];
   readonly #clock: Pick<Clock, 'now'>;
   readonly #committed: InMemoryEventLog;
   readonly #committedAttempts: InMemoryAttemptRegistry;
@@ -72,6 +73,7 @@ export class InMemoryStore implements Store {
     this.sideEffects = aggregates.sideEffects;
     this.sessions = aggregates.sessions;
     this.directives = aggregates.directives;
+    this.ideas = aggregates.ideas;
   }
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
