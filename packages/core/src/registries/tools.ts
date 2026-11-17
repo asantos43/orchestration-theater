@@ -58,6 +58,54 @@ const accepted = z.strictObject({ ok: z.boolean() });
 const id = z.string().min(1);
 const json = z.record(z.string(), z.json());
 const text = z.string();
+
+/** One option of a question to the Producer (architecture 5.3, `ask_producer`). [proposta] field names. */
+const askOption = z.strictObject({
+  label: z.string().min(1).max(80),
+  description: z.string().max(500),
+});
+
+/**
+ * One question of `ask_producer`: 2 to 4 options with label and description, the recommended one
+ * (by label), `multi_select` and `open` for a question that does not fit options. The interface
+ * adds "Other" with free text by itself. Options are absent only on an `open` question; the
+ * `chat.producer_questions` mode (`choices`, `choices_strict`, `free`) is applied by the daemon,
+ * because it is a configuration key and not part of the schema. [proposta]
+ */
+export const askProducerQuestion = z
+  .strictObject({
+    question: z.string().min(1).max(500),
+    options: z.array(askOption).min(2).max(4).optional(),
+    recommended: z.string().min(1).max(80).optional(),
+    multi_select: z.boolean().default(false),
+    open: z.boolean().default(false),
+  })
+  .superRefine((q, ctx) => {
+    const labels = (q.options ?? []).map((o) => o.label);
+    if (new Set(labels).size !== labels.length) {
+      ctx.addIssue({ code: 'custom', path: ['options'], message: 'option labels must be unique' });
+    }
+    if (q.recommended !== undefined && !labels.includes(q.recommended)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['recommended'],
+        message: 'recommended must be the label of one of the options',
+      });
+    }
+    if (q.multi_select && q.options === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['multi_select'],
+        message: 'multi_select needs options',
+      });
+    }
+  });
+
+/** Input of `ask_producer`: 1 to 4 questions, answered at once (architecture 5.3). */
+export const askProducerInput = z.strictObject({
+  questions: z.array(askProducerQuestion).min(1).max(4),
+});
+
 const decisionBody = z.strictObject({ decisionId: id, payload: json });
 
 const COMMON = EXECUTOR_ROLE_IDS;
@@ -104,7 +152,7 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('pause', DIRECTOR, noInput, accepted),
   tool('resume', DIRECTOR, noInput, accepted),
   tool('cancel_actor', DIRECTOR, z.strictObject({ attemptId: id }), accepted),
-  tool('ask_producer', DIRECTOR, z.strictObject({ questions: z.array(json).min(1).max(4) }), json),
+  tool('ask_producer', DIRECTOR, askProducerInput, json),
   tool(
     'open_pr',
     DIRECTOR,

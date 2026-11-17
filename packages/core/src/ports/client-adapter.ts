@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Adapter } from './adapter.js';
-import type { AgentSession, SessionTransport } from './agent-session.js';
+import type { AgentSession, McpServerRef, SessionTransport } from './agent-session.js';
 import type { ConfigCategory } from '../normalized-update.js';
 import type { Profile } from './executor.js';
 import type { ModelCatalog } from './model-catalog.js';
@@ -150,6 +150,15 @@ export interface SessionStartOptions {
    * needs no guarantee that the policy holds while it runs.
    */
   readonly purpose?: SessionPurpose;
+  /**
+   * MCP servers of this session alone, with the address and headers only the caller knows (the
+   * daemon's framework server, with the token of the attempt: architecture 5.3). Each name must
+   * be one of `policy.mcpServers`; the policy stays the strict list of what the role may use, and
+   * a ref outside it is refused with `InvalidInput`. A name here is not resolved by the adapter's
+   * `resolveMcpServers`. [proposta] Additive, without a new port version: a session that ignored it
+   * would only run without the framework tools, and every descendant of `ClientAdapterBase` honours it.
+   */
+  readonly mcpServers?: readonly McpServerRef[];
 }
 
 /**

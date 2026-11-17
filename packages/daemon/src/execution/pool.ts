@@ -10,9 +10,11 @@ import {
   type KillReport,
   type LaunchOptions,
   type LaunchedProcess,
+  type McpServerRef,
   type ProcessLauncher,
   type Profile,
   type RolePolicy,
+  type SessionStartOptions,
   type SessionTransport,
   endsSharedProcess,
   sharedProcessKey,
@@ -29,6 +31,11 @@ export interface PoolRequest {
   readonly cwd: string;
   /** Reload this conversation (`session/load`) instead of opening a new one. */
   readonly resumeSessionId?: string;
+  /**
+   * MCP servers of this session alone, with the address and the token of the attempt (the
+   * framework server, architecture 5.3). Each name must be in `policy.mcpServers`. [proposta]
+   */
+  readonly mcpServers?: readonly McpServerRef[];
   /** Aborts the wait for admission. */
   readonly signal?: AbortSignal;
 }
@@ -265,11 +272,14 @@ export class SessionPool {
     const via = this.#transport(adapter);
     const { profile, policy, cwd, resumeSessionId } = request;
     const profileId = profile.id;
+    // Only a session with its own MCP servers gets an `options`; the others call as before.
+    const extra: [SessionStartOptions] | [] =
+      request.mcpServers === undefined ? [] : [{ mcpServers: request.mcpServers }];
     if (adapter.processModel === 'process-per-session') {
       const session =
         resumeSessionId === undefined
-          ? await adapter.openSession(profile, policy, cwd, via)
-          : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via);
+          ? await adapter.openSession(profile, policy, cwd, via, ...extra)
+          : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via, ...extra);
       return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined);
     }
     const { entry, token } = await this.#slotFor(adapter, request, via);
@@ -277,8 +287,8 @@ export class SessionPool {
       const lent = lendProcess(entry.process, (options) => this.#detach(entry, token, options));
       const session =
         resumeSessionId === undefined
-          ? await adapter.openSessionOn(lent, policy, cwd, via)
-          : await adapter.loadSessionOn(lent, policy, cwd, resumeSessionId, via);
+          ? await adapter.openSessionOn(lent, policy, cwd, via, ...extra)
+          : await adapter.loadSessionOn(lent, policy, cwd, resumeSessionId, via, ...extra);
       return this.#lease(session, adapter.id, profileId, via.id, entry, token);
     } catch (error) {
       entry.sessions.delete(token);
