@@ -20,6 +20,22 @@ export default {
       },
     },
     {
+      name: 'registries-pure',
+      comment:
+        'packages/core/src/registries is pure logic (architecture 5.18): it may import itself, zod, core/src/errors.ts and the event envelope of core/src/ports/event-log.ts. No adapter, no daemon, no protocol, no other port.',
+      severity: 'error',
+      from: { path: '^packages/core/src/registries/', pathNot: '\\.test\\.ts$' },
+      to: {
+        pathNot: [
+          '^packages/core/src/registries/',
+          '^packages/core/src/errors\\.ts$',
+          '^packages/core/src/ports/event-log\\.ts$',
+          '(^|/)node_modules/zod/',
+          '^zod(/|$)',
+        ],
+      },
+    },
+    {
       name: 'protocol-only-core-and-zod',
       comment:
         'packages/protocol/src is the wire contract: it may import only itself, @otheater/core (types and errors) and zod. No adapter, no daemon, no Node built-ins [proposta].',

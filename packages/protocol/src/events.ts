@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { InvalidInput, type NewEvent } from '@otheater/core';
+import { createEventRegistry, defineEventType, InvalidInput, type NewEvent } from '@otheater/core';
 import { z } from 'zod';
 import { BACKUP_TRIGGERS } from './api.js';
 import {
@@ -67,19 +67,81 @@ export const DaemonBackupPayloadSchema = z.strictObject({
   removed: z.array(z.string()),
 });
 
-export const DAEMON_EVENT_TYPES = {
-  'daemon.started': { schemaVersion: 1, payload: DaemonStartedPayloadSchema },
-  'daemon.stopped': { schemaVersion: 1, payload: DaemonStoppedPayloadSchema },
-  'daemon.backup': { schemaVersion: 1, payload: DaemonBackupPayloadSchema },
-  'session.opened': { schemaVersion: 1, payload: SessionOpenedPayloadSchema },
-  'session.update': { schemaVersion: 1, payload: SessionUpdatePayloadSchema },
-  'session.prompt_finished': { schemaVersion: 1, payload: SessionPromptFinishedPayloadSchema },
-  'session.interrupted': { schemaVersion: 1, payload: SessionInterruptedPayloadSchema },
-  'session.resumed': { schemaVersion: 1, payload: SessionResumedPayloadSchema },
-  'session.cancel_escalated': { schemaVersion: 1, payload: SessionCancelEscalatedPayloadSchema },
-  'session.closed': { schemaVersion: 1, payload: SessionClosedPayloadSchema },
-  'attempt.checkpoint': { schemaVersion: 1, payload: AttemptCheckpointPayloadSchema },
-} as const;
+/**
+ * The definitions of the 11 event types the daemon writes. This list is what the daemon hands to
+ * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
+ */
+export const DAEMON_EVENT_DEFINITIONS = [
+  defineEventType({
+    type: 'daemon.started',
+    schemaVersion: 1,
+    payload: DaemonStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'daemon.stopped',
+    schemaVersion: 1,
+    payload: DaemonStoppedPayloadSchema,
+  }),
+  defineEventType({ type: 'daemon.backup', schemaVersion: 1, payload: DaemonBackupPayloadSchema }),
+  defineEventType({
+    type: 'session.opened',
+    schemaVersion: 1,
+    payload: SessionOpenedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.update',
+    schemaVersion: 1,
+    payload: SessionUpdatePayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.prompt_finished',
+    schemaVersion: 1,
+    payload: SessionPromptFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.interrupted',
+    schemaVersion: 1,
+    payload: SessionInterruptedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.resumed',
+    schemaVersion: 1,
+    payload: SessionResumedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.cancel_escalated',
+    schemaVersion: 1,
+    payload: SessionCancelEscalatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.closed',
+    schemaVersion: 1,
+    payload: SessionClosedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.checkpoint',
+    schemaVersion: 1,
+    payload: AttemptCheckpointPayloadSchema,
+  }),
+] as const;
+
+type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
+
+/** Registry of the daemon's own event types, derived from {@link DAEMON_EVENT_DEFINITIONS}. */
+export const DAEMON_EVENT_TYPES = Object.fromEntries(
+  DAEMON_EVENT_DEFINITIONS.map((definition) => [
+    definition.type,
+    { schemaVersion: definition.schemaVersion, payload: definition.payload },
+  ]),
+) as {
+  readonly [D in DaemonEventDefinition as D['type']]: {
+    readonly schemaVersion: number;
+    readonly payload: D['payload'];
+  };
+};
+
+/** The event registry of the daemon's own types. */
+const DAEMON_EVENT_REGISTRY = createEventRegistry(DAEMON_EVENT_DEFINITIONS);
 
 export type DaemonEventType = keyof typeof DAEMON_EVENT_TYPES;
 
@@ -116,19 +178,11 @@ export function validateEventPayload(
   if (!isDaemonEventType(type)) {
     throw new InvalidInput(`Unknown daemon event type: ${type}`);
   }
-  const entry = DAEMON_EVENT_TYPES[type];
-  if (entry.schemaVersion !== schemaVersion) {
-    throw new InvalidInput(
-      `Unsupported schemaVersion ${String(schemaVersion)} for ${type} (the registry has ${String(entry.schemaVersion)})`,
-    );
-  }
-  const result = entry.payload.safeParse(payload);
-  if (!result.success) {
-    throw new InvalidInput(`Invalid ${type} payload: ${z.prettifyError(result.error)}`, {
-      cause: result.error,
-    });
-  }
-  return result.data;
+  return DAEMON_EVENT_REGISTRY.parseEvent(
+    type,
+    schemaVersion,
+    payload,
+  ) as DaemonEventPayloads[DaemonEventType];
 }
 
 /**

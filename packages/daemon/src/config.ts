@@ -103,6 +103,14 @@ export const CATALOG_PROBE_LOG_MODES = ['once', 'every', 'off'] as const;
 export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
 
 /**
+ * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
+ * whose type is not in the event registry or whose payload fails its schema. `reject` throws
+ * and stores nothing; `warn` stores it and logs a warning.
+ */
+export const EVENT_UNKNOWN_TYPE_MODES = ['reject', 'warn'] as const;
+export type EventUnknownTypeMode = (typeof EVENT_UNKNOWN_TYPE_MODES)[number];
+
+/**
  * The `resume.preset` table of architecture 5.16 (decision N14): one row fills every value at once,
  * and an individual key overrides only its own value. `transient_backoff` does not change with the
  * preset ([proposta] in 5.16).
@@ -438,6 +446,12 @@ export const DaemonConfigSchema = z.strictObject({
        */
       catalog_probe_log: z.enum(CATALOG_PROBE_LOG_MODES).default('once'),
       conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
+    })
+    .prefault({}),
+  events: z
+    .strictObject({
+      /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
+      unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
     })
     .prefault({}),
   ui: z
