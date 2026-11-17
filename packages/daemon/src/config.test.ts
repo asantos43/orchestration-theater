@@ -5,6 +5,7 @@ import { InvalidInput, PROMPT_ORDER_MODES } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   CHAT_CHANNEL_MODES,
+  RECOVERY_NOTICE_MODES,
   CLIENT_IDS,
   LIMIT_PRESETS,
   loadConfig,
@@ -552,6 +553,23 @@ describe('chat', () => {
       expect(() => parseConfig(`chat:\n  history: ${bad}\n`)).toThrow(/history/);
     }
     expect(() => parseConfig('chat:\n  port: 80\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('recovery', () => {
+  it('tells the chat on every start-up that took something up, by default', () => {
+    expect(parseConfig('').recovery).toEqual({ notice: 'always' });
+  });
+
+  it('takes each mode of the notice', () => {
+    for (const mode of RECOVERY_NOTICE_MODES) {
+      expect(parseConfig(`recovery:\n  notice: ${mode}\n`).recovery.notice).toBe(mode);
+    }
+  });
+
+  it('rejects an unknown mode and unknown keys', () => {
+    expect(() => parseConfig('recovery:\n  notice: sometimes\n')).toThrow(/recovery\.notice/);
+    expect(() => parseConfig('recovery:\n  chat: true\n')).toThrow(InvalidInput);
   });
 });
 

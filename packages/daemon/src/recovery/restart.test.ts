@@ -85,7 +85,14 @@ describe('a restart in the middle of a play (P9)', { timeout: 180_000 }, () => {
       const first = daemon;
       const producer = first.producer;
       if (producer === undefined) throw new Error('the daemon has no Producer channel');
+      // A clean start has nothing to reconcile: no message for any chat.
+      expect(
+        (await first.store.events.readFrom(0, 100_000)).filter(
+          (event) => event.type === 'scenario.system_message',
+        ),
+      ).toEqual([]);
       const { scenarioId } = await producer.openChat({ repo: rig.repo });
+      expect((await producer.poll(scenarioId, 0)).notices).toEqual([]);
       await producer.send(scenarioId, '#ot-play write alpha and beta #outcome:approved');
       const play: PlayRecord = await waitFor('the play to exist', async () => {
         return (await first.store.plays.list({ scenarioId }))[0];
@@ -98,6 +105,18 @@ describe('a restart in the middle of a play (P9)', { timeout: 180_000 }, () => {
 
       daemon = await start();
       const second = daemon;
+      // The chat of the scenario gets the system message of the reconciliation, once.
+      const taken = await second.producer?.poll(scenarioId, 0);
+      expect(taken?.notices).toEqual([
+        {
+          scenarioId,
+          kind: 'recovery',
+          resumed: [{ kind: 'play', id: play.id }],
+          settled: [],
+          waiting: [],
+        },
+      ]);
+      expect((await second.producer?.poll(scenarioId, 0))?.notices).toEqual([]);
       await waitFor(
         'DONE after the restart',
         async () => (await second.store.plays.get(play.id))?.state === 'DONE',
@@ -107,6 +126,10 @@ describe('a restart in the middle of a play (P9)', { timeout: 180_000 }, () => {
       const recovered = events.filter((event) => event.type === 'daemon.recovered');
       expect(recovered).toHaveLength(2);
       expect(recovered[1]?.payload).toMatchObject({ playsResumed: [play.id], playsRefused: [] });
+      // The record: one event, for this scenario, written by the second start only.
+      const messages = events.filter((event) => event.type === 'scenario.system_message');
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ scenarioId, payload: { kind: 'recovery' } });
       expect(
         events.filter((event) => event.type === 'delivery.completed' && event.playId === play.id),
       ).toHaveLength(1);

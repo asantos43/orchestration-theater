@@ -50,7 +50,23 @@
     "leftPending": "Something still waits for your answer. It stays in the daemon: run \"ot chat\" again to answer it.",
     "attached": "Attached as {{id}}: {{name}} ({{mime}}, {{size}} bytes). It goes with your next message.",
     "attachFailed": "The file was not attached: {{message}}",
-    "attachUsage": "Usage: /attach [--ref] <file>"
+    "attachUsage": "Usage: /attach [--ref] <file>",
+    "system": {
+      "recovery": {
+        "title": "System: the daemon restarted and reconciled this scenario.",
+        "resumed": "  Resumed: {{items}}.",
+        "settled": "  Settled by the effect verifier: {{items}}.",
+        "waiting": "  Waiting for you: {{items}}.",
+        "item": {
+          "play": "play {{id}}",
+          "attempt": "attempt {{id}}",
+          "settledDone": "{{effectType}} of play {{playId}} (done)",
+          "settledNotDone": "{{effectType}} of play {{playId}} (not done)",
+          "waitingEffect": "{{effectType}} of play {{playId}} (nobody could check it)",
+          "waitingPlay": "play {{id}} (it could not be restored)"
+        }
+      }
+    }
   },
   "directives": {
     "daemonRunning": "The daemon is running on this data directory. Stop it to change orders here, or ask the Director to propose the change.",

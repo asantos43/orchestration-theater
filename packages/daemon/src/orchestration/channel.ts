@@ -8,6 +8,7 @@ import {
   NotFound,
   type Store,
 } from '@otheater/core';
+import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
 import type { Logger } from '../logger.js';
 import type { PlayRunner } from '../pipeline/index.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
@@ -56,6 +57,11 @@ export interface ChatPoll {
   readonly asks: readonly PendingAsk[];
   readonly plays: readonly { readonly id: string; readonly state: string }[];
   /**
+   * The system messages of the daemon for this scenario that nobody has taken yet, oldest first
+   * (the reconciliation of the start-up, 5.21). Each one is handed out once.
+   */
+  readonly notices: readonly ScenarioSystemMessagePayload[];
+  /**
    * True while something is still going on that the Producer does not have to answer: the Director
    * has a turn or a prompt to go, or a play is in a state that moves by itself.
    */
@@ -75,9 +81,21 @@ export const chatScenarioId = projectScenarioId;
  */
 export class ProducerChannel {
   readonly #options: ProducerChannelOptions;
+  readonly #notices = new Map<string, ScenarioSystemMessagePayload[]>();
 
   constructor(options: ProducerChannelOptions) {
     this.#options = options;
+  }
+
+  /**
+   * Keeps a system message for the chat of its scenario until the next poll takes it. [proposta]
+   * In memory only: the record is the `scenario.system_message` event, and a new start writes its
+   * own, so a message nobody read before another restart is not shown late.
+   */
+  notify(notice: ScenarioSystemMessagePayload): void {
+    const waiting = this.#notices.get(notice.scenarioId) ?? [];
+    waiting.push(notice);
+    this.#notices.set(notice.scenarioId, waiting);
   }
 
   /**
@@ -168,10 +186,13 @@ export class ProducerChannel {
       asks.filter((ask) => ask.kind !== DECISION_KINDS.question).map((ask) => ask.playId),
     );
     const moving = open.some((play) => play.state !== 'NEED' && !awaiting.has(play.id));
+    const notices = this.#notices.get(scenarioId) ?? [];
+    this.#notices.delete(scenarioId);
     return {
       replies: directors.replies(scenarioId, since),
       asks,
       plays: open.map((play) => ({ id: play.id, state: play.state })),
+      notices,
       busy: (await directors.busy(scenarioId)) || moving || asks.some((a) => board.has(a.id)),
     };
   }

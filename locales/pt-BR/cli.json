@@ -50,7 +50,23 @@
     "leftPending": "Ainda há algo esperando a sua resposta. Fica no daemon: rode \"ot chat\" de novo para responder.",
     "attached": "Anexado como {{id}}: {{name}} ({{mime}}, {{size}} bytes). Vai com a sua próxima mensagem.",
     "attachFailed": "O arquivo não foi anexado: {{message}}",
-    "attachUsage": "Uso: /attach [--ref] <arquivo>"
+    "attachUsage": "Uso: /attach [--ref] <arquivo>",
+    "system": {
+      "recovery": {
+        "title": "Sistema: o daemon reiniciou e reconciliou este cenário.",
+        "resumed": "  Retomado: {{items}}.",
+        "settled": "  Resolvido pelo verificador de efeitos: {{items}}.",
+        "waiting": "  Esperando por você: {{items}}.",
+        "item": {
+          "play": "peça {{id}}",
+          "attempt": "tentativa {{id}}",
+          "settledDone": "{{effectType}} da peça {{playId}} (feito)",
+          "settledNotDone": "{{effectType}} da peça {{playId}} (não feito)",
+          "waitingEffect": "{{effectType}} da peça {{playId}} (ninguém conseguiu verificar)",
+          "waitingPlay": "peça {{id}} (não pôde ser restaurada)"
+        }
+      }
+    }
   },
   "directives": {
     "daemonRunning": "O daemon está em execução nesta pasta de dados. Pare-o para mudar as ordens aqui, ou peça ao Diretor que proponha a mudança.",

@@ -68,3 +68,34 @@ export const ScenarioChatTransitionedPayloadSchema = z.strictObject({
   /** Why that Executor (the Director's reason, a forced choice, the only one with image...). */
   reason: z.string().nullable(),
 });
+
+/**
+ * `scenario.system_message`: a message of the daemon for the chat of a scenario (architecture
+ * 5.21, step 8). [proposta] Only the `recovery` kind exists: what the reconciliation of a start-up
+ * did in this scenario. The payload is data, not text: each interface writes the words in the
+ * language of the Producer (5.22), so the log stays in English.
+ */
+export const ScenarioSystemMessagePayloadSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('recovery'),
+  /** What the start-up took up again: plays (machine restored) and attempts (conversation reloaded). */
+  resumed: z.array(z.strictObject({ kind: z.enum(['play', 'attempt']), id: z.string().min(1) })),
+  /** Effects with an intent and no end that the verifier checked from outside. */
+  settled: z.array(
+    z.strictObject({
+      effectType: z.string().min(1),
+      playId: z.string().min(1),
+      outcome: z.enum(['done', 'not_done']),
+    }),
+  ),
+  /** What waits for the Producer: an effect nobody could check, a play that could not be restored. */
+  waiting: z.array(
+    z.strictObject({
+      kind: z.enum(['effect', 'play']),
+      /** The idempotency key of the effect, or the id of the play. */
+      id: z.string().min(1),
+      playId: z.string().min(1).nullable(),
+      effectType: z.string().min(1).nullable(),
+    }),
+  ),
+});
