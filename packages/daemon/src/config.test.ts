@@ -39,7 +39,12 @@ describe('parseConfig', () => {
   it('gives every default for an empty file or only comments', () => {
     const config = parseConfig('# nothing here\n');
     expect(config).toEqual(parseConfig(''));
-    expect(config.adapters).toEqual({ store: 'sqlite', vault: 'keyring', clock: 'system' });
+    expect(config.adapters).toEqual({
+      store: 'sqlite',
+      vault: 'keyring',
+      clock: 'system',
+      prompts: 'files',
+    });
     expect(config.backup).toEqual({
       when: 'daily_after',
       after: '03:00',
