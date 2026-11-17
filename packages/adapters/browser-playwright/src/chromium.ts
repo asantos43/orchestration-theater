@@ -156,11 +156,9 @@ export async function launchChromium(
         );
       }),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(new Error(`no DevTools endpoint within ${String(options.launchTimeoutMs)} ms`)),
-          options.launchTimeoutMs,
-        );
+        timer = setTimeout(() => {
+          reject(new Error(`no DevTools endpoint within ${String(options.launchTimeoutMs)} ms`));
+        }, options.launchTimeoutMs);
       }),
     ]);
   } catch (cause) {

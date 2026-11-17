@@ -138,6 +138,13 @@ function channel() {
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
 
+/** The payload of the event at `index` (negative counts from the end); fails the test when absent. */
+function payloadAt(events: readonly { readonly payload: JsonObject }[], index: number): JsonObject {
+  const event = events.at(index);
+  if (event === undefined) throw new Error(`no event at ${String(index)}`);
+  return event.payload;
+}
+
 describe('the browser tools, with the defaults of N40', () => {
   let s: Setup;
   beforeEach(async () => {
@@ -170,8 +177,8 @@ describe('the browser tools, with the defaults of N40', () => {
     await s.call('browser_open', { url: PAGE_URL });
     await s.call('browser_click', { ref: 'e1' });
     const actions = eventsOf(s.rig, 'browser.action');
-    expect(actions.map((e) => (e.payload as JsonObject).action)).toEqual(['open', 'click']);
-    const click = actions[1]?.payload as JsonObject;
+    expect(actions.map((e) => e.payload.action)).toEqual(['open', 'click']);
+    const click = payloadAt(actions, 1);
     expect(click).toMatchObject({ outcome: 'ok', url: PAGE_URL, ref: 'e1', scenarioId: 's1' });
     expect(click.idempotencyKey).toBe(`${PLAY_ID}:browser_click:${ATTEMPT_ID}:1`);
     // the path is relative to the data directory
@@ -180,13 +187,13 @@ describe('the browser tools, with the defaults of N40', () => {
     expect(shot.startsWith(join('browser', 's1'))).toBe(true);
     expect(existsSync(join(s.dataDir, shot))).toBe(true);
     // action_screenshots "writes": the open and the read leave none
-    expect((actions[0]?.payload as JsonObject).screenshot).toBeUndefined();
+    expect(payloadAt(actions, 0).screenshot).toBeUndefined();
   });
 
   it('saves the screenshot of browser_screenshot as a PNG under the data dir', async () => {
     await s.call('browser_open', { url: PAGE_URL });
     await s.call('browser_screenshot', {});
-    const action = eventsOf(s.rig, 'browser.action').at(-1)?.payload as JsonObject;
+    const action = payloadAt(eventsOf(s.rig, 'browser.action'), -1);
     const bytes = await readFile(join(s.dataDir, action.screenshot as string));
     expect(bytes.subarray(1, 4).toString()).toBe('PNG');
   });
@@ -194,7 +201,7 @@ describe('the browser tools, with the defaults of N40', () => {
   it('never puts what was typed in an event or in the side effect', async () => {
     await s.call('browser_open', { url: PAGE_URL });
     await s.call('browser_fill', { ref: 'e2', value: 'correct-horse-battery' });
-    const fill = eventsOf(s.rig, 'browser.action').at(-1)?.payload as JsonObject;
+    const fill = payloadAt(eventsOf(s.rig, 'browser.action'), -1);
     expect(fill.valueChars).toBe(21);
     expect(JSON.stringify(s.rig.events)).not.toContain('correct-horse');
     const effects = await s.rig.store.sideEffects.list({ types: ['browser_fill'] });
@@ -239,7 +246,7 @@ describe('the browser tools, with the defaults of N40', () => {
     const refused = eventsOf(s.rig, 'browser.refused');
     expect(refused).toHaveLength(1);
     expect(refused[0]?.payload).toMatchObject({ kind: 'call', code: 'invalid_url' });
-    expect((eventsOf(s.rig, 'browser.action')[0]?.payload as JsonObject).outcome).toBe('refused');
+    expect(payloadAt(eventsOf(s.rig, 'browser.action'), 0).outcome).toBe('refused');
   });
 });
 
@@ -266,7 +273,7 @@ describe('browser.write_approval', () => {
     chat.answer(0, 'Allow');
     await expect(pending).resolves.toMatchObject({ reused: false });
     expect(s.session.callCount('click')).toBe(1);
-    const states = eventsOf(s.rig, 'browser.approval').map((e) => (e.payload as JsonObject).state);
+    const states = eventsOf(s.rig, 'browser.approval').map((e) => e.payload.state);
     expect(states).toEqual(['requested', 'granted']);
   });
 
@@ -309,9 +316,7 @@ describe('browser.write_approval', () => {
     await s.call('browser_press_key', { key: 'Enter' });
     expect(chat.asked).toHaveLength(1);
     expect(s.session.callCount('click')).toBe(2);
-    const approvals = eventsOf(s.rig, 'browser.approval').map(
-      (e) => (e.payload as JsonObject).state,
-    );
+    const approvals = eventsOf(s.rig, 'browser.approval').map((e) => e.payload.state);
     expect(approvals).toEqual(['requested', 'granted', 'granted', 'granted']);
   });
 
@@ -500,7 +505,7 @@ describe('a write that may or may not have happened (restart)', () => {
     await expect(s.call('browser_click', { ref: 'e1' })).resolves.toMatchObject({ reused: false });
     expect(s.session.callCount('click')).toBe(1);
     const actions = eventsOf(s.rig, 'browser.action');
-    expect((actions.at(-1)?.payload as JsonObject).idempotencyKey).toBe(`${key}~2`);
+    expect(payloadAt(actions, -1).idempotencyKey).toBe(`${key}~2`);
   });
 });
 

@@ -46,7 +46,7 @@ describe('browserOverrideOf', () => {
       { browser: { executable_path: '/x' } },
       { browser: { domains: 'everything' } },
     ]) {
-      expect(() => browserOverrideOf(bad)).toThrowError(/invalid/);
+      expect(() => browserOverrideOf(bad)).toThrow(/invalid/);
     }
   });
 });
@@ -89,13 +89,11 @@ describe('effectiveProfile', () => {
   it('extension falls to the shared profile only when browser.fallback says shared', () => {
     expect(effectiveProfile({ profile: 'extension', fallback: 'shared' })).toBe('shared');
     for (const fallback of ['wait', 'fail'] as const) {
-      expect(() => effectiveProfile({ profile: 'extension', fallback })).toThrowError(/extension/);
+      expect(() => effectiveProfile({ profile: 'extension', fallback })).toThrow(/extension/);
     }
   });
 
   it('import is refused in every fallback', () => {
-    expect(() => effectiveProfile({ profile: 'import', fallback: 'shared' })).toThrowError(
-      /import/,
-    );
+    expect(() => effectiveProfile({ profile: 'import', fallback: 'shared' })).toThrow(/import/);
   });
 });

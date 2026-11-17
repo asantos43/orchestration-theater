@@ -53,11 +53,15 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('no port');
-  origin = `${String(address.port)}`;
+  origin = String(address.port);
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) =>
+    server.close(() => {
+      resolve();
+    }),
+  );
 });
 
 interface Run {
@@ -198,7 +202,7 @@ describe.skipIf(process.platform === 'win32')(
       await run.call('browser_click', { ref: await buttonRef(run) });
       expect(await titleOf(run)).toBe('clicked');
 
-      const actions = eventsOf(run.rig, 'browser.action').map((e) => e.payload as JsonObject);
+      const actions = eventsOf(run.rig, 'browser.action').map((e) => e.payload);
       expect(actions.map((a) => a.action)).toEqual(
         expect.arrayContaining(['open', 'read', 'screenshot', 'click']),
       );
@@ -238,9 +242,10 @@ describe.skipIf(process.platform === 'win32')(
       answer('Allow');
       await pending;
       expect(await titleOf(run)).toBe('clicked');
-      expect(
-        eventsOf(run.rig, 'browser.approval').map((e) => (e.payload as JsonObject).state),
-      ).toEqual(['requested', 'granted']);
+      expect(eventsOf(run.rig, 'browser.approval').map((e) => e.payload.state)).toEqual([
+        'requested',
+        'granted',
+      ]);
     });
 
     it('with write_approval "always" a Deny leaves the page as it was', async (ctx) => {

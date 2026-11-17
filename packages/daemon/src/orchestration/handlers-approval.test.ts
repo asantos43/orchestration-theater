@@ -49,20 +49,21 @@ describe('openApproval', () => {
   it('opens a producer question and resolves with the answers the channel sends', async () => {
     bind();
     const opened = await handlers.openApproval('c1', QUESTIONS);
-    expect(opened).toBeDefined();
-    const pending = await store.decisions.get(opened!.decisionId);
+    if (opened === undefined) throw new Error('the approval was not opened');
+    const pending = await store.decisions.get(opened.decisionId);
     expect(pending?.kind).toBe('producer_question');
-    expect(handlers.board.has(opened!.decisionId)).toBe(true);
-    handlers.board.resolve(opened!.decisionId, { answers: [{ selected: ['Allow'] }] });
-    await expect(opened!.answer).resolves.toEqual([{ selected: ['Allow'] }]);
+    expect(handlers.board.has(opened.decisionId)).toBe(true);
+    handlers.board.resolve(opened.decisionId, { answers: [{ selected: ['Allow'] }] });
+    await expect(opened.answer).resolves.toEqual([{ selected: ['Allow'] }]);
   });
 
   it('cancels the decision and rejects when the daemon stops before the answer', async () => {
     bind();
     const opened = await handlers.openApproval('c1', QUESTIONS);
+    if (opened === undefined) throw new Error('the approval was not opened');
     handlers.board.abortAll('daemon stopping');
-    await expect(opened!.answer).rejects.toThrow('daemon stopping');
-    const decision = await store.decisions.get(opened!.decisionId);
+    await expect(opened.answer).rejects.toThrow('daemon stopping');
+    const decision = await store.decisions.get(opened.decisionId);
     expect(decision?.state).not.toBe('pending');
   });
 });

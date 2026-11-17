@@ -279,7 +279,9 @@ export function defaultBrowser(
     minFreeMemoryBytes: settings.min_free_memory_mb * 1024 * 1024,
     maxInstances: settings.max_instances,
     timeoutMs: settings.timeout_ms,
-    onWarning: (message) => logger.warn({ adapter: session.id }, message),
+    onWarning: (message) => {
+      logger.warn({ adapter: session.id }, message);
+    },
   });
   checkAdapterRange(session, 'BrowserSession', BROWSER_SESSION_PORT_VERSION);
   return session;

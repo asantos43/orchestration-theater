@@ -21,6 +21,13 @@ import { chromiumPath, CHROMIUM_INSTALL_COMMAND } from './chromium.js';
 import { PlaywrightBrowserSession } from './session.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
 
+/** The ref a pattern captures on the tree of a read; fails the test when the page lacks it. */
+function refOf(pattern: RegExp, tree: string): string {
+  const ref = pattern.exec(tree)?.[1];
+  if (ref === undefined) throw new Error(`no ref for ${String(pattern)}`);
+  return ref;
+}
+
 /**
  * Tests with a real Chromium (the one `playwright-core` expects in `~/.cache/ms-playwright`) open
  * pages served by THIS test on 127.0.0.1, never the internet. One browser at most per test, closed
@@ -67,7 +74,11 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
   return async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) =>
+      server.close(() => {
+        resolve();
+      }),
+    );
   };
 });
 
@@ -222,10 +233,8 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     expect(read.tree).toContain('button "Click me"');
     expect(read.truncated).toBe(false);
 
-    const button = /button "Click me" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1];
-    const name = /textbox "Name" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1];
-    expect(button).toBeDefined();
-    expect(name).toBeDefined();
+    const button = refOf(/button "Click me" \[ref=([a-z0-9]+)\]/, read.tree);
+    const name = refOf(/textbox "Name" \[ref=([a-z0-9]+)\]/, read.tree);
 
     const shot = await adapter.screenshot(s);
     expect(shot.mimeType).toBe('image/png');
@@ -233,8 +242,8 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     const element = await adapter.screenshot(s, button);
     expect(element.data.length).toBeGreaterThan(8);
 
-    expect((await adapter.click(s, button as string)).title).toBe('clicked');
-    await adapter.fill(s, name as string, 'Anderson');
+    expect((await adapter.click(s, button)).title).toBe('clicked');
+    await adapter.fill(s, name, 'Anderson');
     const after = await adapter.read(s, { maxChars: 10_000 });
     expect(after.tree).toContain('Anderson');
     await adapter.pressKey(s, 'Tab');
@@ -250,7 +259,7 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     expect(read.tree).toContain('textbox "Secret"');
     expect(read.tree).not.toContain('hunter2-secret');
     expect(read.text).not.toContain('hunter2-secret');
-    const secret = /textbox "Secret" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1] as string;
+    const secret = refOf(/textbox "Secret" \[ref=([a-z0-9]+)\]/, read.tree);
     const scoped = await adapter.read(s, { ref: secret, maxChars: 10_000 });
     expect(scoped.tree).not.toContain('hunter2-secret');
   });
@@ -323,7 +332,7 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     const s = scope('s1', guard);
     await adapter.open(s, `${origin}/`);
     const read = await adapter.read(s, { maxChars: 10_000 });
-    const link = /link "filelink" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1] as string;
+    const link = refOf(/link "filelink" \[ref=([a-z0-9]+)\]/, read.tree);
     await adapter.click(s, link);
     expect((await adapter.state('s1'))?.url).toBe(`${origin}/`);
     expect(seen.some((url) => url.startsWith('file:'))).toBe(false);
@@ -339,7 +348,7 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     const s = scope('s1', guard);
     await adapter.open(s, `${origin}/`);
     const read = await adapter.read(s, { maxChars: 10_000 });
-    const link = /link "popup" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1] as string;
+    const link = refOf(/link "popup" \[ref=([a-z0-9]+)\]/, read.tree);
     const after = await adapter.click(s, link);
     expect(seen).toContain(`${origin}/two`);
     expect(after.url).toBe(`${origin}/two`);
@@ -353,7 +362,7 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     const s = scope('s1', guard);
     await adapter.open(s, `${origin}/`);
     const read = await adapter.read(s, { maxChars: 10_000 });
-    const link = /link "popup" \[ref=([a-z0-9]+)\]/.exec(read.tree)?.[1] as string;
+    const link = refOf(/link "popup" \[ref=([a-z0-9]+)\]/, read.tree);
     await adapter.click(s, link);
     expect(requested).not.toContain('/two');
   });
@@ -417,7 +426,8 @@ describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
     const adapter = make();
     const s = scope('a');
     await adapter.open(s, `${origin}/`);
-    const pid = launcher.pids[0] as number;
+    const pid = launcher.pids[0];
+    if (pid === undefined) throw new Error('the launcher started nothing');
     process.kill(-pid, 'SIGKILL');
     await new Promise((resolve) => setTimeout(resolve, 500));
     await expect(adapter.read(s, { maxChars: 100 })).rejects.toThrow(NotFound);

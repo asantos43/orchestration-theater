@@ -383,7 +383,7 @@ export class PlaywrightBrowserSession implements BrowserSession {
         cause: error,
       });
     }
-    if (/net::ERR_/.test(message)) {
+    if (message.includes('net::ERR_')) {
       return new Transient(`The page did not load (${what}): ${message}`, { cause: error });
     }
     if (error instanceof Error) return error;
@@ -401,10 +401,11 @@ export class PlaywrightBrowserSession implements BrowserSession {
     if (known !== undefined) this.#states.delete(scope.scenarioId);
     const instance = await this.#instanceFor(scope);
     const again = this.#states.get(scope.scenarioId);
-    if (again !== undefined && again.instance === instance && !instance.closed) return again;
+    if (again?.instance === instance && !instance.closed) return again;
+    const first = instance.context.pages()[0];
     const page =
-      scope.profile === 'per_scenario' && instance.context.pages()[0] !== undefined
-        ? (instance.context.pages()[0] as Page)
+      scope.profile === 'per_scenario' && first !== undefined
+        ? first
         : await instance.context.newPage();
     page.setDefaultTimeout(this.#timeout());
     page.setDefaultNavigationTimeout(this.#timeout());
@@ -495,8 +496,12 @@ export class PlaywrightBrowserSession implements BrowserSession {
       owners: new WeakMap(),
       closed: false,
     };
-    browser.on('disconnected', () => this.#dropped(instance));
-    void running.process.exited.then(() => this.#dropped(instance));
+    browser.on('disconnected', () => {
+      this.#dropped(instance);
+    });
+    void running.process.exited.then(() => {
+      this.#dropped(instance);
+    });
     await this.#denyDownloads(browser);
     await context.route('**/*', (route, request) => this.#route(instance, route, request));
     context.on('page', (page) => void this.#adopt(instance, page));
@@ -599,8 +604,7 @@ export class PlaywrightBrowserSession implements BrowserSession {
     const acting: ScenarioState[] = [];
     for (const id of instance.scenarios) {
       const state = this.#states.get(id);
-      if (state !== undefined && state.instance === instance && state.acting > 0)
-        acting.push(state);
+      if (state?.instance === instance && state.acting > 0) acting.push(state);
     }
     return acting;
   }
