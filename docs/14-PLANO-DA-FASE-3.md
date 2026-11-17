@@ -103,7 +103,7 @@ Ficam como portões **[N]**:
 | P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | feito (PR #55) |
 | P7 | Blackboard e fila única de prompts | P2, P3 | P10 | feito (PR #57) |
 | P8 | Peça ponta a ponta com o agente falso | P3 a P7, P11 | P10 | feito (PR #59) |
-| P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | a fazer |
+| P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | feito (PR #61) |
 | P10 | Ordens globais e locais | P3, P11 | P7, P8, P9 | feito (PR #58) |
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | a fazer |
