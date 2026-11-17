@@ -288,6 +288,12 @@ export class FrameworkMcpServer implements McpAccess {
           record: record.input.record,
         },
       });
+      if (value instanceof ToolFailure) {
+        return {
+          ok: false,
+          value: { ...value.details, error: value.code, message: value.message },
+        };
+      }
       return { ok: true, value };
     } catch (error) {
       if (error instanceof ToolFailure) {

@@ -18,6 +18,8 @@ export * from './ports/sessions.js';
 export * from './ports/directives.js';
 export * from './ports/prompt-source.js';
 export * from './store-kit/index.js';
+export * from './blackboard-keys.js';
+export * from './state-summary.js';
 export * from './ports/secret-vault.js';
 export * from './disposable.js';
 export * from './normalized-update.js';

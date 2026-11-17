@@ -53,9 +53,10 @@ export class ToolHandlers {
 }
 
 /**
- * [proposta] What a handler throws when the call is refused for a reason the Executor can act on
- * (an unknown order, a conflict, a bad date): the server answers an error result carrying `error`
- * (a stable code) and the message, instead of the opaque `internal_error` of an unexpected throw.
+ * [proposta] What a handler throws or returns when the call is refused for a reason the Executor
+ * can act on (an unknown order, a conflict, a bad date, a miss such as `not_found`): the server
+ * answers an error result carrying `error` (a stable code) and the message, instead of the opaque
+ * `internal_error` of an unexpected throw.
  */
 export class ToolFailure extends Error {
   constructor(

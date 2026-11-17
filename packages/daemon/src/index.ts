@@ -13,6 +13,7 @@ export * from './instance-lock.js';
 export * from './logger.js';
 export * from './mcp/index.js';
 export * from './paths.js';
+export * from './prompt-dispatcher.js';
 export * from './pipeline/index.js';
 export * from './recovery/backup.js';
 export * from './recovery/restore.js';

@@ -58,6 +58,8 @@ const accepted = z.strictObject({ ok: z.boolean() });
 const id = z.string().min(1);
 const json = z.record(z.string(), z.json());
 const text = z.string();
+/** The version of a blackboard key to read; omitted means the latest (P7). */
+const blackboardVersion = z.int().min(1).optional();
 
 /** One option of a question to the Producer (architecture 5.3, `ask_producer`). [proposta] field names. */
 const askOption = z.strictObject({
@@ -227,8 +229,13 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   ),
 
   // Common to every Executor.
-  tool('read_blackboard', COMMON, z.strictObject({ key: id }), z.json()),
-  tool('read_contract', COMMON, z.strictObject({ id }), json),
+  tool(
+    'read_blackboard',
+    COMMON,
+    z.strictObject({ key: id, version: blackboardVersion }),
+    z.json(),
+  ),
+  tool('read_contract', COMMON, z.strictObject({ id, version: blackboardVersion }), json),
   tool('read_decision', COMMON, z.strictObject({ id }), json),
   tool('read_indication', COMMON, z.strictObject({ id }), json),
   tool('read_attachment', COMMON, z.strictObject({ id }), json),

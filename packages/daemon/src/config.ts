@@ -2,9 +2,11 @@
 import { readFile } from 'node:fs/promises';
 import {
   DEFAULT_DIRECTIVE_TIMEZONE,
+  DEFAULT_SUMMARY_MESSAGES,
   DELIVERY_MODES,
   InvalidInput,
   isKnownTimezone,
+  PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
 } from '@otheater/core';
 import { BACKUP_CONTENTS } from '@otheater/protocol';
@@ -451,6 +453,18 @@ export const DaemonConfigSchema = z.strictObject({
   mcp: z
     .strictObject({
       port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+    })
+    .prefault({}),
+  /**
+   * The single prompt queue of the Director (architecture 5.4; P7). `order`: `producer_first`
+   * (default) delivers the Producer's message ahead of the notices of the daemon, `fifo` delivers
+   * by arrival only. `summary_messages` is how many of the last messages the state summary lists
+   * (a new Director session, or one waking up, reads it).
+   */
+  prompt_queue: z
+    .strictObject({
+      order: z.enum(PROMPT_ORDER_MODES).default('producer_first'),
+      summary_messages: z.int().min(0).default(DEFAULT_SUMMARY_MESSAGES),
     })
     .prefault({}),
   /**
