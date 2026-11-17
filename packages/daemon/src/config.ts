@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
 import {
-  DELIVERY_MODES,
+  DEFAULT_DIRECTIVE_TIMEZONE,
   DEFAULT_SUMMARY_MESSAGES,
+  DELIVERY_MODES,
   InvalidInput,
+  isKnownTimezone,
   PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
 } from '@otheater/core';
@@ -636,6 +638,22 @@ export const DaemonConfigSchema = z.strictObject({
     .strictObject({
       /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
       unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
+    })
+    .prefault({}),
+  /**
+   * Orders of the Producer (architecture 5.17). [proposta] Names and modes: `timezone` is the zone
+   * a validity is read in when the order does not say one (architecture default
+   * `America/Sao_Paulo`); `expiring_notice` is how long before the end the `directive.expiring`
+   * notice is written (architecture default 24 hours; `0` turns the notice off).
+   */
+  directives: z
+    .strictObject({
+      timezone: z
+        .string()
+        .min(1)
+        .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
+        .default(DEFAULT_DIRECTIVE_TIMEZONE),
+      expiring_notice: DurationSchema.or(z.literal(0)).prefault('24h'),
     })
     .prefault({}),
   /**

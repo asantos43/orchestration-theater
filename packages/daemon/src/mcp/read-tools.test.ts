@@ -64,9 +64,9 @@ describe('read_blackboard', () => {
     const store = newStore();
     await seed(store);
     const noKey = failure(await run(store, 'read_blackboard', { key: 'nothing' }));
-    expect(noKey.error).toBe('not_found');
+    expect(noKey.code).toBe('not_found');
     const noVersion = failure(await run(store, 'read_blackboard', { key: 'script', version: 9 }));
-    expect(noVersion.error).toBe('not_found');
+    expect(noVersion.code).toBe('not_found');
     expect(noVersion.message).toContain('no version 9');
     expect(noVersion.message).toContain('latest version is 2');
     // A version of a key that does not exist at all has no latest to point to.
@@ -81,7 +81,7 @@ describe('read_blackboard', () => {
     expect(await run(store, 'read_blackboard', { key: 'script' }, 'p2')).toMatchObject({
       value: { other: 'play' },
     });
-    expect(failure(await run(store, 'read_blackboard', { key: 'script' }, 'p3')).error).toBe(
+    expect(failure(await run(store, 'read_blackboard', { key: 'script' }, 'p3')).code).toBe(
       'not_found',
     );
   });
@@ -89,7 +89,7 @@ describe('read_blackboard', () => {
   it('answers no_play when the session is not tied to a play', async () => {
     const store = newStore();
     await seed(store);
-    expect(failure(await run(store, 'read_blackboard', { key: 'script' }, null)).error).toBe(
+    expect(failure(await run(store, 'read_blackboard', { key: 'script' }, null)).code).toBe(
       'no_play',
     );
   });
@@ -114,7 +114,7 @@ describe('read_contract', () => {
     const store = newStore();
     await seed(store);
     const unknown = failure(await run(store, 'read_contract', { id: 'zz' }));
-    expect(unknown.error).toBe('not_found');
+    expect(unknown.code).toBe('not_found');
     expect(unknown.message).toContain('"zz"');
     expect(failure(await run(store, 'read_contract', { id: 'c1', version: 5 })).message).toContain(
       'latest version is 2',
@@ -153,7 +153,7 @@ describe('read_decision', () => {
     const store = newStore();
     await seed(store);
     for (const id of ['D-sibling', 'D-foreign', 'D-nope']) {
-      expect(failure(await run(store, 'read_decision', { id })).error, id).toBe('not_found');
+      expect(failure(await run(store, 'read_decision', { id })).code, id).toBe('not_found');
     }
   });
 });

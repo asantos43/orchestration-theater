@@ -37,6 +37,7 @@ import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
+import { DirectiveService, registerDirectiveTools } from './directives/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
@@ -137,6 +138,8 @@ export interface DaemonHandle {
    * read the Director's replies, answer its questions. `undefined` when the execution is off.
    */
   readonly producer: ProducerChannel | undefined;
+  /** The orders (architecture 5.17): what is in force, the drafts and the rules. */
+  readonly directives: DirectiveService;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -156,7 +159,9 @@ export interface DaemonHandle {
  *    damaged store and says how to restore (full reconciliation of runs is not built yet);
  * 5. the vault is unlocked with the injected prompt, if it has a master password;
  * 6. `daemon.started` is appended to the log;
- * 7. the execution of attempts is built (when clients were given) and reconciles the attempts the
+ * 7. the orders catch up with the clock (what started or ended while the daemon was stopped gets
+ *    its event with the real boundary time) before any session opens, and their watcher starts;
+ *    the execution of attempts is built (when clients were given) and reconciles the attempts the
  *    previous daemon left running: each one is resumed with `session/load`, or parked;
  * 8. the backup scheduler starts (only if the store can make copies);
  * 9. state `running`.
@@ -170,6 +175,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
 
   let composition: Composition | undefined;
   let mcp: FrameworkMcpServer | undefined;
+  let directives: DirectiveService | undefined;
   try {
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
@@ -186,15 +192,29 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const orchestrationHandlers = new OrchestrationHandlers();
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
     // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
+    // The orders (5.17): the tools of the Director come from here, unless the caller already
+    // handed in its own handlers for them.
+    directives = new DirectiveService({
+      store: composition.store,
+      clock: composition.clock,
+      ruleKeys: registries.ruleKeys,
+      settings: {
+        timezone: config.directives.timezone,
+        expiringNoticeMs: config.directives.expiring_notice,
+      },
+      logger: composition.logger,
+    });
+    const handlers = options.mcpHandlers ?? new ToolHandlers();
+    if (!handlers.has('propose_directive')) {
+      registerDirectiveTools(handlers, directives, composition.store);
+    }
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
       submitRetries: config.limits.submit_retries,
       // The read tools (P7) are built in; a handler the caller already registered wins.
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
-      handlers: orchestrationHandlers.register(
-        registerReadTools(options.mcpHandlers ?? new ToolHandlers(), composition.store),
-      ),
+      handlers: orchestrationHandlers.register(registerReadTools(handlers, composition.store)),
       logger: composition.logger,
       version,
     });
@@ -204,12 +224,14 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       composition,
       registries,
       mcp,
+      directives,
       lock,
       version,
       prompts,
       orchestrationHandlers,
     });
   } catch (error) {
+    await directives?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
     await composition?.close().catch(() => undefined);
     await lock.release().catch(() => undefined);
@@ -223,6 +245,7 @@ interface RunInput {
   readonly composition: Composition;
   readonly registries: Registries;
   readonly mcp: FrameworkMcpServer;
+  readonly directives: DirectiveService;
   readonly lock: InstanceLock;
   readonly version: string;
   readonly prompts: PromptSource;
@@ -230,7 +253,8 @@ interface RunInput {
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
-  const { options, config, composition, registries, mcp, lock, version, prompts } = input;
+  const { options, config, composition, registries, mcp, directives, lock, version, prompts } =
+    input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
   const startedAt = clock.now();
@@ -275,6 +299,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       },
     }),
   );
+
+  await directives.start();
 
   const execution = buildExecution(options, config, composition, paths.worktrees, mcp);
   if (execution !== undefined) {
@@ -349,6 +375,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       };
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
+      await attempt('directives', () => directives.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
       await attempt('mcp', () => mcp.stop());
@@ -375,6 +402,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     execution,
     mcpUrl: mcp.url,
     producer: orchestration?.channel,
+    directives,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },

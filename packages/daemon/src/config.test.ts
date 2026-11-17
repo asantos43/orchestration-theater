@@ -372,6 +372,26 @@ describe('parseConfig, mcp and submit_retries (P3)', () => {
   });
 });
 
+describe('parseConfig, directives (architecture 5.17)', () => {
+  it('defaults to the Sao Paulo time zone and a notice 24 hours before the end', () => {
+    const { directives } = parseConfig('');
+    expect(directives.timezone).toBe('America/Sao_Paulo');
+    expect(directives.expiring_notice).toBe(86_400_000);
+  });
+
+  it('takes another time zone and notice, and 0 turns the notice off', () => {
+    const custom = parseConfig('directives:\n  timezone: UTC\n  expiring_notice: 2h\n');
+    expect(custom.directives).toEqual({ timezone: 'UTC', expiring_notice: 7_200_000 });
+    expect(parseConfig('directives:\n  expiring_notice: 0\n').directives.expiring_notice).toBe(0);
+  });
+
+  it('rejects an unknown time zone, a bad notice and unknown keys', () => {
+    expect(() => parseConfig('directives:\n  timezone: Mars/Olympus\n')).toThrow(/timezone/);
+    expect(() => parseConfig('directives:\n  expiring_notice: soon\n')).toThrow(/expiring_notice/);
+    expect(() => parseConfig('directives:\n  other: 1\n')).toThrow(/other/);
+  });
+});
+
 describe('parseConfig, prompt_queue (P7)', () => {
   it('defaults to the Producer first and ten messages in the summary', () => {
     expect(parseConfig('').prompt_queue).toEqual({ order: 'producer_first', summary_messages: 10 });
