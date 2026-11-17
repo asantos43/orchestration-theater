@@ -213,9 +213,81 @@ async function playClarify(host: RolePlayHost): Promise<void> {
   }
 }
 
+const ATTACHMENT_ID = /A[1-9][0-9]*/g;
+
+function attachmentIdsOf(line: string | undefined): string[] {
+  return line === undefined ? [] : (line.match(ATTACHMENT_ID) ?? []);
+}
+
+/**
+ * The Consultant of the chat (5.20): reads the attachments the prompt lists (`#ot-attachments:`)
+ * and answers the question (`#ot-consult-ask:`) with what it found, through `submit`.
+ */
+async function playConsultant(host: RolePlayHost, question: string): Promise<void> {
+  const found: string[] = [];
+  for (const id of attachmentIdsOf(markerOf(host.text, '#ot-attachments:'))) {
+    const reply = await host.call('read_attachment', { id });
+    if (reply.isError || !isRecord(reply.structured)) {
+      found.push(`${id} refused`);
+      continue;
+    }
+    const { mime, kind, content } = reply.structured;
+    found.push(
+      kind === 'text' && typeof content === 'string'
+        ? `${id} says ${content.trim()}`
+        : `${id} is ${String(mime)}`,
+    );
+  }
+  const seen = found.length === 0 ? '' : ` [${found.join('; ')}]`;
+  await submit(host, 'submit', { result: { answer: `consulted on "${question}"${seen}` } });
+}
+
+/**
+ * A turn of the Director of a generic chat: `#ot-chat <text>` is a simple question it answers
+ * itself; `#ot-consult <question>` (with `#ot-attach A1 A2`) is a hard one it hands to the
+ * Consultant with `consult`; `#ot-read A1 A2` reads attachments itself. A prompt that carries the
+ * state summary (a Director that woke up) says so.
+ */
+async function playChat(host: RolePlayHost): Promise<boolean> {
+  const { text } = host;
+  const woke = /^State of scenario "[^"]*" \(([^,)]*),/m.exec(text)?.[1];
+  const wake = woke === undefined ? [] : [`woke with the state of ${woke}`];
+  const consult = markerOf(text, '#ot-consult(?![-\\w])');
+  if (consult !== undefined && consult !== '') {
+    const attachments = attachmentIdsOf(markerOf(text, '#ot-attach(?![-\\w])'));
+    const reply = await host.call('consult', {
+      question: consult,
+      ...(attachments.length === 0 ? {} : { attachments }),
+    });
+    for (const line of wake) await host.say(line);
+    await host.say(`${reply.isError ? 'consult refused' : 'consulted'}: ${reply.text}`);
+    return true;
+  }
+  const read = markerOf(text, '#ot-read(?![-\\w])');
+  if (read !== undefined && read !== '') {
+    for (const id of attachmentIdsOf(read)) {
+      const reply = await host.call('read_attachment', { id });
+      await host.say(`read ${id}: ${reply.isError ? 'refused' : 'ok'} ${reply.text.slice(0, 200)}`);
+    }
+    return true;
+  }
+  const chat = markerOf(text, '#ot-chat(?![-\\w])');
+  if (chat !== undefined && chat !== '') {
+    for (const line of wake) await host.say(line);
+    await host.say(`answer: ${chat}`);
+    return true;
+  }
+  return false;
+}
+
 /** One turn of the script: the Director when no stage marker is there, a role of the play when it is. */
 export async function playRolePlay(host: RolePlayHost): Promise<void> {
   const { text } = host;
+  const consulted = markerOf(text, '#ot-consult-ask:');
+  if (consulted !== undefined && consulted !== '') {
+    await playConsultant(host, consulted);
+    return;
+  }
   const demandId = markerOf(text, '#ot-demand:');
   if (demandId !== undefined && demandId !== '' && !demandId.startsWith('stage-')) {
     await playActor(host, demandId);
@@ -226,6 +298,7 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
     await playStage(host, stage);
     return;
   }
+  if (await playChat(host)) return;
   const need = markerOf(text, '#ot-play(?!:)');
   if (need !== undefined && need !== '') {
     const reply = await host.call('open_play', { need });

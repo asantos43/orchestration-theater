@@ -217,7 +217,13 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool(
     'consult',
     DIRECTOR,
-    z.strictObject({ question: text.min(1) }),
+    z.strictObject({
+      question: text.min(1),
+      /** Attachments (`A<n>`) the consultant gets along with the question. */
+      attachments: z.array(z.string().regex(/^A[1-9][0-9]*$/)).optional(),
+      /** Why the Director chose to consult, and what the Producer asked for ("use o forte"). */
+      reason: text.optional(),
+    }),
     z.strictObject({ answer: text }),
   ),
   tool('promote', DIRECTOR, json, z.strictObject({ draftId: id })),

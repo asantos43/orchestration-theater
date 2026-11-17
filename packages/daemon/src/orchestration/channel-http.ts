@@ -28,11 +28,28 @@ export const ChannelInfoSchema = z.strictObject({
 export type ChannelInfo = z.infer<typeof ChannelInfoSchema>;
 
 const OpenBody = z.strictObject({
-  repo: z.string().min(1),
+  type: z.string().min(1).optional(),
+  repo: z.string().min(1).optional(),
   base: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
 });
-const SendBody = z.strictObject({ scenarioId: z.string().min(1), text: z.string() });
+const SendBody = z.strictObject({
+  scenarioId: z.string().min(1),
+  text: z.string(),
+  attachments: z.array(z.string().min(1)).optional(),
+});
+const AttachBody = z.union([
+  z.strictObject({
+    scenarioId: z.string().min(1),
+    path: z.string().min(1),
+    mode: z.enum(['copy', 'reference']).optional(),
+  }),
+  z.strictObject({
+    scenarioId: z.string().min(1),
+    text: z.string().min(1),
+    name: z.string().min(1).optional(),
+  }),
+]);
 const AnswerBody = z.strictObject({
   decisionId: z.string().min(1),
   answer: z.record(z.string(), z.json()),
@@ -98,7 +115,8 @@ export class ProducerChannelServer {
       const body = OpenBody.safeParse(await c.req.json().catch(() => undefined));
       if (!body.success) throw new InvalidInput(body.error.message);
       const input: OpenChatInput = {
-        repo: body.data.repo,
+        ...(body.data.type === undefined ? {} : { type: body.data.type }),
+        ...(body.data.repo === undefined ? {} : { repo: body.data.repo }),
         ...(body.data.base === undefined ? {} : { base: body.data.base }),
         ...(body.data.name === undefined ? {} : { name: body.data.name }),
       };
@@ -107,8 +125,20 @@ export class ProducerChannelServer {
     app.post('/chat/send', async (c) => {
       const body = SendBody.safeParse(await c.req.json().catch(() => undefined));
       if (!body.success) throw new InvalidInput(body.error.message);
-      await channel.send(body.data.scenarioId, body.data.text);
+      await channel.send(body.data.scenarioId, body.data.text, body.data.attachments);
       return c.json({ ok: true });
+    });
+    app.post('/chat/attach', async (c) => {
+      const body = AttachBody.safeParse(await c.req.json().catch(() => undefined));
+      if (!body.success) throw new InvalidInput(body.error.message);
+      const { scenarioId, ...what } = body.data;
+      const record = await channel.attach(
+        scenarioId,
+        'text' in what
+          ? { text: what.text, ...(what.name === undefined ? {} : { name: what.name }) }
+          : { path: what.path, ...(what.mode === undefined ? {} : { mode: what.mode }) },
+      );
+      return c.json({ id: record.id, name: record.name, mime: record.mime, size: record.size });
     });
     app.get('/chat/poll', async (c) => {
       const scenarioId = c.req.query('scenario');
@@ -219,8 +249,22 @@ export class ChannelClient {
     return this.#call('POST', '/chat/open', input);
   }
 
-  async send(scenarioId: string, text: string): Promise<void> {
-    await this.#call('POST', '/chat/send', { scenarioId, text });
+  async send(scenarioId: string, text: string, attachments?: readonly string[]): Promise<void> {
+    await this.#call('POST', '/chat/send', {
+      scenarioId,
+      text,
+      ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }),
+    });
+  }
+
+  /** Attaches a file (by `path`, copied unless `mode` is `reference`) or a pasted text. */
+  attach(
+    scenarioId: string,
+    what:
+      | { readonly path: string; readonly mode?: 'copy' | 'reference' }
+      | { readonly text: string; readonly name?: string },
+  ): Promise<{ id: string; name: string; mime: string; size: number }> {
+    return this.#call('POST', '/chat/attach', { scenarioId, ...what });
   }
 
   poll(scenarioId: string, since: number): Promise<ChatPoll> {

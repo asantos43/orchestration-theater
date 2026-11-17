@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { copyFile, lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, normalize } from 'node:path';
 import {
@@ -12,6 +12,7 @@ import {
   type Adapter,
   type CommitOptions,
   type CreateWorktreeOptions,
+  type InitOptions,
   type DiffStat,
   type DiffStatFile,
   type MergeOptions,
@@ -19,6 +20,7 @@ import {
   type RemoveWorktreeOptions,
   type Vcs,
   type VcsHistory,
+  type VcsInit,
   type VcsMerge,
   type WorktreeInfo,
 } from '@otheater/core';
@@ -57,7 +59,7 @@ const TRAILER_KEY = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
  * serialized per repository inside this process, so several attempts of one play can be created
  * at once without fighting over git's own lock files.
  */
-export class GitVcs implements Vcs, VcsMerge, VcsHistory {
+export class GitVcs implements Vcs, VcsMerge, VcsHistory, VcsInit {
   readonly id = GIT_VCS_ADAPTER.id;
   readonly implements = GIT_VCS_ADAPTER.implements;
 
@@ -109,6 +111,40 @@ export class GitVcs implements Vcs, VcsMerge, VcsHistory {
       if (this.#include) await this.#copyInclude(opts.repo, opts.path);
       return { path: opts.path, branch: opts.branch, head, main: false };
     });
+  }
+
+  async init(
+    folder: string,
+    opts: InitOptions = {},
+  ): Promise<{ readonly branch: string; readonly head: string }> {
+    assertAbsolute('folder', folder);
+    const branch = opts.branch ?? 'main';
+    assertText('branch', branch);
+    if (branch.startsWith('-')) throw new InvalidInput('A branch name cannot start with "-"');
+    const valid = await this.#git.try(tmpdir(), ['check-ref-format', '--branch', branch]);
+    if (valid.code !== 0 || branch.includes('@{')) {
+      throw new InvalidInput(`Invalid branch name: ${JSON.stringify(branch)}`);
+    }
+    await mkdir(folder, { recursive: true });
+    const real = await realpath(folder);
+    // A folder inside another repository would otherwise "already be one": it must be the root.
+    const top = await this.#git.try(real, ['rev-parse', '--show-toplevel']);
+    const isRoot = top.code === 0 && (await realpathOrSelf(top.stdout.trim())) === real;
+    if (!isRoot) await this.#git.run(real, ['init', '--quiet', `--initial-branch=${branch}`]);
+    const head = await this.#git.try(real, ['rev-parse', '--verify', 'HEAD']);
+    if (head.code !== 0) {
+      await this.#git.run(real, [
+        'commit',
+        '--quiet',
+        '--no-verify',
+        '--no-gpg-sign',
+        '--allow-empty',
+        '-m',
+        opts.message ?? 'Initial commit',
+      ]);
+    }
+    const current = (await this.#git.run(real, ['symbolic-ref', '--short', 'HEAD'])).trim();
+    return { branch: current, head: await this.#head(real) };
   }
 
   async removeWorktree(worktree: string, opts: RemoveWorktreeOptions = {}): Promise<void> {

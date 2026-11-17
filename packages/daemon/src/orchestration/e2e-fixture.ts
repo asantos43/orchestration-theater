@@ -57,12 +57,16 @@ export interface PlayFakes {
   readonly codeHost: FakeCodeHostLike;
   readonly clock: Clock;
   readonly vault: SecretVault;
-  /** The fake client adapter that runs the command it is given, with `env` in its processes. */
+  /**
+   * The fake client adapter that runs the command it is given, with `env` in its processes. A test
+   * that needs more than one client (one that accepts images, say) returns a list; each one
+   * needs its own id.
+   */
   readonly client: (
     launcher: ProcessLauncher,
     command: { readonly cmd: string; readonly args: readonly string[] },
     env: Readonly<Record<string, string>>,
-  ) => ClientAdapter;
+  ) => ClientAdapter | readonly ClientAdapter[];
 }
 
 /**
@@ -115,6 +119,8 @@ export interface PlayHarness {
   readonly dataDir: string;
   /** Opens the chat of the repository and returns the scenario id. */
   openChat(): Promise<string>;
+  /** Opens a generic chat (type `chat`, no repository) and returns the scenario id. */
+  openGenericChat(name?: string): Promise<string>;
   /** The plays of the scenario, newest last. */
   plays(scenarioId: string): Promise<readonly PlayRecord[]>;
   /** Every event of the play, in order. */
@@ -188,11 +194,13 @@ ${options.extra ?? ''}
     },
     clients: (parts) => [
       ...productionClients(config)(parts),
-      fakes.client(
-        parts.launcher,
-        { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
-        { FAKE_AGENT_SCRIPT: 'role-play', FAKE_AGENT_STATE_DIR: stateDir },
-      ),
+      ...[
+        fakes.client(
+          parts.launcher,
+          { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
+          { FAKE_AGENT_SCRIPT: 'role-play', FAKE_AGENT_STATE_DIR: stateDir },
+        ),
+      ].flat(),
     ],
     logger: createSilentLogger(),
     version: '0.0.0-test',
@@ -209,6 +217,9 @@ ${options.extra ?? ''}
       rig,
       dataDir: tmp.dir,
       openChat: async () => (await producer.openChat({ repo: rig.repo })).scenarioId,
+      openGenericChat: async (name) =>
+        (await producer.openChat({ type: 'chat', ...(name === undefined ? {} : { name }) }))
+          .scenarioId,
       plays: (scenarioId) => daemon.store.plays.list({ scenarioId }),
       eventsOf: async (playId) =>
         (await daemon.store.events.readFrom(0, 100_000)).filter((event) => event.playId === playId),

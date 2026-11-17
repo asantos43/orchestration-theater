@@ -12,6 +12,13 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  ScenarioAttachmentAddedPayloadSchema,
+  ScenarioChatTransitionedPayloadSchema,
+  ScenarioCreatedPayloadSchema,
+  ScenarioDirectorSleptPayloadSchema,
+  ScenarioDirectorWokePayloadSchema,
+} from './scenario-events.js';
+import {
   AttemptCheckpointPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
@@ -84,7 +91,7 @@ export const DaemonBackupPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 23 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 28 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -199,6 +206,31 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DirectiveSuspendedPayloadSchema,
   }),
+  defineEventType({
+    type: 'scenario.created',
+    schemaVersion: 1,
+    payload: ScenarioCreatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.attachment_added',
+    schemaVersion: 1,
+    payload: ScenarioAttachmentAddedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.director_slept',
+    schemaVersion: 1,
+    payload: ScenarioDirectorSleptPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.director_woke',
+    schemaVersion: 1,
+    payload: ScenarioDirectorWokePayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.chat_transitioned',
+    schemaVersion: 1,
+    payload: ScenarioChatTransitionedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -248,6 +280,11 @@ export type DirectiveExpiringPayload = DaemonEventPayloads['directive.expiring']
 export type DirectiveExpiredPayload = DaemonEventPayloads['directive.expired'];
 export type DirectiveRevokedPayload = DaemonEventPayloads['directive.revoked'];
 export type DirectiveSuspendedPayload = DaemonEventPayloads['directive.suspended'];
+export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
+export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
+export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
+export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];
+export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat_transitioned'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

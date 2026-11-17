@@ -7,6 +7,13 @@ import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
+import {
+  AttachmentService,
+  ChatFlow,
+  ConsultService,
+  ScenarioService,
+  type ScenarioHandlers,
+} from '../scenarios/index.js';
 import { Workspace } from '../workspace/index.js';
 import { ProducerChannel } from './channel.js';
 import { ProducerChannelServer } from './channel-http.js';
@@ -21,14 +28,19 @@ export interface OrchestrationInput {
   readonly mcp: McpAccess;
   readonly registries: Registries;
   readonly prompts: PromptSource;
-  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel'>;
+  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel' | 'scenarios'>;
   readonly handlers: OrchestrationHandlers;
+  /** The handlers of `consult` and `read_attachment` (P12), bound here with the services. */
+  readonly scenarioHandlers: ScenarioHandlers;
 }
 
 /** The plays of the daemon, running: what `startDaemon` builds once the execution exists (P8). */
 export interface Orchestration {
   readonly runner: PlayRunner;
   readonly channel: ProducerChannel;
+  readonly scenarios: ScenarioService;
+  readonly attachments: AttachmentService;
+  readonly chatFlow: ChatFlow;
   /**
    * First step of the shutdown, before the execution stops: closes the door of the Producer
    * channel, frees the questions that wait for the Producer, and stops the plays from taking the
@@ -49,6 +61,7 @@ export interface Orchestration {
  */
 export async function startOrchestration(input: OrchestrationInput): Promise<Orchestration> {
   const { config, composition, execution, mcp, registries, prompts, paths, handlers } = input;
+  const { scenarioHandlers } = input;
   const { store, logger } = composition;
   const dispatcher = new PromptDispatcher({
     store,
@@ -67,6 +80,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     config,
     paths,
     logger,
+    clock: composition.clock,
   });
   const workspace =
     composition.codeHost === undefined
@@ -97,10 +111,48 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   });
   const runner = new PlayRunner({ store, clock: composition.clock, effects, logger });
   effects.bind(runner);
-  handlers.bind({ store, runner, workspace, directors, config, logger });
-  const channel = new ProducerChannel({
+  const chatFlow = new ChatFlow({ store, logger });
+  handlers.bind({ store, runner, workspace, directors, config, logger, chatFlow });
+  const scenarios = new ScenarioService({
     store,
     vcs: composition.vcs,
+    registries,
+    scenariosDir: paths.scenarios,
+  });
+  const attachments = new AttachmentService({
+    store,
+    clock: composition.clock,
+    scenariosDir: paths.scenarios,
+    limits: () => ({
+      maxSize: config.scenarios.attachment_max_size,
+      readMax: config.scenarios.attachment_read_max,
+    }),
+  });
+  const consult = new ConsultService({
+    store,
+    vcs: composition.vcs,
+    runner: execution.runner,
+    adapters: execution.pool,
+    registries,
+    prompts,
+    config,
+    paths,
+    attachments,
+    chatFlow,
+    logger,
+  });
+  scenarioHandlers.bind({
+    store,
+    directors,
+    attachments,
+    consult,
+    adapters: execution.pool,
+    config,
+  });
+  const channel = new ProducerChannel({
+    store,
+    scenarios,
+    attachments,
     directors,
     dispatcher,
     runner,
@@ -117,11 +169,15 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   return {
     runner,
     channel,
+    scenarios,
+    attachments,
+    chatFlow,
     quiesce: () =>
       (quiet ??= (async () => {
         await server?.stop(paths.channel);
         handlers.board.abortAll('The daemon is stopping.');
         handlers.bind(undefined);
+        scenarioHandlers.bind(undefined);
         effects.close();
         await runner.close();
         await directors.close();

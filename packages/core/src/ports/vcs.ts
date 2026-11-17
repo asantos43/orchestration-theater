@@ -142,6 +142,37 @@ export interface VcsHistory {
   ): Promise<string | undefined>;
 }
 
+/** Options of {@link VcsInit.init}. */
+export interface InitOptions {
+  /** Name of the first branch. Default `main`. */
+  readonly branch?: string;
+  /** Message of the empty first commit. Default `Initial commit`. */
+  readonly message?: string;
+}
+
+/**
+ * Optional capability of a `Vcs`: turns a plain folder into a repository with one empty commit, so
+ * worktrees can be made from it. It is what the folder of a scenario without a project (the
+ * generic chat, architecture 5.20) needs for the attempts of its consultations. Check with
+ * {@link supportsInit}. [proposta] Not in the architecture; the alternative is a consultant that
+ * runs with no worktree.
+ */
+export interface VcsInit {
+  /**
+   * Idempotent: a folder that already is a repository with a commit is left as it is. Returns the
+   * name of the branch checked out and the sha of its head.
+   */
+  init(
+    folder: string,
+    opts?: InitOptions,
+  ): Promise<{ readonly branch: string; readonly head: string }>;
+}
+
+/** Narrows a `Vcs` to one that can create a repository. */
+export function supportsInit(vcs: Vcs): vcs is Vcs & VcsInit {
+  return typeof (vcs as Partial<VcsInit>).init === 'function';
+}
+
 /** Narrows a `Vcs` to one that can merge. */
 export function supportsMerge(vcs: Vcs): vcs is Vcs & VcsMerge {
   return typeof (vcs as Partial<VcsMerge>).merge === 'function';
