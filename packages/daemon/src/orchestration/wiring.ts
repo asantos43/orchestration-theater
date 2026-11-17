@@ -21,6 +21,7 @@ import { ProducerChannelServer } from './channel-http.js';
 import { DirectorSessions } from './director.js';
 import type { OrchestrationHandlers } from './handlers.js';
 import { OrchestrationEffects } from './play-effects.js';
+import { ChatPresence } from './presence.js';
 
 export interface OrchestrationInput {
   readonly config: DaemonConfig;
@@ -100,6 +101,11 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
       'no code host is set up: plays cannot be opened, because they could not deliver their work',
     );
   }
+  const presence = new ChatPresence({
+    clock: composition.clock,
+    mode: config.chat.presence,
+    windowMs: config.chat.presence_window,
+  });
   const effects = new OrchestrationEffects({
     store,
     execution,
@@ -112,6 +118,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     config,
     paths,
     logger,
+    attended: ({ scenarioId }) => presence.attended(scenarioId),
   });
   const runner = new PlayRunner({ store, clock: composition.clock, effects, logger });
   effects.bind(runner);
@@ -162,6 +169,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     runner,
     board: handlers.board,
     logger,
+    presence,
   });
   const server =
     config.chat.channel === 'off'
