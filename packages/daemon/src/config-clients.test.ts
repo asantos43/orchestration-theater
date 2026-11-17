@@ -155,6 +155,23 @@ describe('clients.* and security.* of the config', () => {
     });
   });
 
+  it('takes security.min_layers.mcpTools, the field the tool list added to the policy', () => {
+    expect(parseConfig('security:\n  min_layers: { mcpTools: 2 }\n').security.min_layers).toEqual({
+      default: 1,
+      mcpTools: 2,
+    });
+    expect(() => parseConfig('security:\n  min_layers: { mcpTools: -1 }\n')).toThrow(
+      /security\.min_layers\.mcpTools/,
+    );
+  });
+
+  it('has an empty roles block by default and refuses an unknown role', () => {
+    expect(parseConfig('').roles).toEqual({});
+    expect(() => parseConfig('roles:\n  nobody:\n    policy: {}\n', 'config.yaml')).toThrow(
+      InvalidInput,
+    );
+  });
+
   it('keeps pool.opencode.process_model next to the clients', () => {
     expect(parseConfig('').pool.opencode.process_model).toBe('per_profile');
     expect(
