@@ -40,12 +40,22 @@ export interface PendingEffect {
   readonly reason: string;
 }
 
+/** An effect the verifier settled from outside. */
+export interface ResolvedEffect {
+  readonly key: string;
+  readonly effectType: string;
+  readonly playId: string | null;
+  readonly outcome: 'done' | 'not_done';
+}
+
 /** What the part of the reconciliation that runs before anything is resumed found and did. */
 export interface RecoveryReport {
   readonly orphansKilled: number;
   readonly sessionsInterrupted: number;
   readonly wipCommits: number;
   readonly effectsResolved: number;
+  /** The effects counted in `effectsResolved`, one by one (for the notice of each scenario). */
+  readonly resolved: readonly ResolvedEffect[];
   readonly pending: readonly PendingEffect[];
 }
 
@@ -72,14 +82,14 @@ export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<Recover
   });
   const effects = await settleEffects(deps).catch((error: unknown) => {
     logger.error({ err: error }, 'recovery: the side effects could not be settled');
-    return { resolved: 0, pending: [] as PendingEffect[] };
+    return { resolved: [] as ResolvedEffect[], pending: [] as PendingEffect[] };
   });
   logger.info(
     {
       orphansKilled: orphans.killed,
       sessionsInterrupted: orphans.interrupted,
       wipCommits,
-      effectsResolved: effects.resolved,
+      effectsResolved: effects.resolved.length,
       pending: effects.pending.length,
     },
     'recovery before the resume done',
@@ -88,7 +98,8 @@ export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<Recover
     orphansKilled: orphans.killed,
     sessionsInterrupted: orphans.interrupted,
     wipCommits,
-    effectsResolved: effects.resolved,
+    effectsResolved: effects.resolved.length,
+    resolved: effects.resolved,
     pending: effects.pending,
   };
 }
@@ -171,13 +182,13 @@ export function recoveryDecisionId(playId: string, key: string): string {
 
 async function settleEffects(
   deps: RecoveryDeps,
-): Promise<{ resolved: number; pending: PendingEffect[] }> {
+): Promise<{ resolved: ResolvedEffect[]; pending: PendingEffect[] }> {
   const { store, vcs, codeHost, logger } = deps;
   const records = await store.sideEffects.list({ states: ['pending', 'ambiguous'] });
   const openPlays = await store.plays.list({ open: true });
   const verifierDeps =
     codeHost !== undefined && supportsHistory(vcs) ? { vcs, codeHost } : undefined;
-  let resolved = 0;
+  const resolved: ResolvedEffect[] = [];
   const pending: PendingEffect[] = [];
   for (const record of records) {
     const play = playOfKey(record.idempotencyKey, openPlays);
@@ -188,7 +199,12 @@ async function settleEffects(
         result: verdict.result,
         verifier: 'verifier',
       });
-      resolved += 1;
+      resolved.push({
+        key: record.idempotencyKey,
+        effectType: record.type,
+        playId: play?.id ?? null,
+        outcome: 'done',
+      });
       continue;
     }
     if (verdict.verdict === 'not_done') {
@@ -196,7 +212,12 @@ async function settleEffects(
         state: 'not_done',
         verifier: 'verifier',
       });
-      resolved += 1;
+      resolved.push({
+        key: record.idempotencyKey,
+        effectType: record.type,
+        playId: play?.id ?? null,
+        outcome: 'not_done',
+      });
       continue;
     }
     if (record.state === 'pending') {

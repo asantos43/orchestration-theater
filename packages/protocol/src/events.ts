@@ -14,6 +14,7 @@ import {
 import {
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
+  ScenarioSystemMessagePayloadSchema,
   ScenarioCreatedPayloadSchema,
   ScenarioDirectorSleptPayloadSchema,
   ScenarioDirectorWokePayloadSchema,
@@ -124,7 +125,7 @@ export const DaemonRecoveredPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 29 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 30 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -269,6 +270,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ScenarioChatTransitionedPayloadSchema,
   }),
+  defineEventType({
+    type: 'scenario.system_message',
+    schemaVersion: 1,
+    payload: ScenarioSystemMessagePayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -324,6 +330,7 @@ export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attac
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
 export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];
 export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat_transitioned'];
+export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

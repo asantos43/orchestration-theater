@@ -51,6 +51,7 @@ import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { RecoveryGate } from './recovery/gate.js';
+import { announceRecovery } from './recovery/notice.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
@@ -345,9 +346,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   const execution = buildExecution(options, config, composition, paths.worktrees, mcp);
   let attemptsInterrupted = 0;
+  let attempts: { resuming: readonly string[] } = { resuming: [] };
   if (execution !== undefined) {
     const report = await execution.reconcile();
     attemptsInterrupted = report.parked.length;
+    attempts = { resuming: report.resuming };
     // The resumed attempts run on; nothing here waits for them.
     void report.done;
   }
@@ -379,6 +382,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       }),
     ),
   );
+  // What the start-up did, for the chat of each scenario it touched (5.21, step 8); nothing when
+  // there was nothing to settle. The record is the event; the channel hands it to the next poll.
+  const notices = await announceRecovery({ store, logger, recovery, plays: resumed, attempts });
+  for (const notice of notices) orchestration?.channel.notify(notice);
   gate.open();
 
   const storeCanBackUp = hasStoreMaintenance(store);
