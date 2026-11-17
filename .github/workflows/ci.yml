@@ -88,10 +88,10 @@ jobs:
       - run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           ls /etc/apparmor.d | grep -i "bwrap\|userns" || true
-          echo "--- outside"; unshare -Ur id
-          echo "--- in bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id
+          echo "--- outside"; unshare -Ur id || true
+          echo "--- in bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id || true
           for f in /etc/apparmor.d/bwrap*; do echo "== $f"; sudo head -40 "$f"; done
           for f in /etc/apparmor.d/bwrap*; do sudo apparmor_parser -R "$f" || true; done
           echo "--- after removing the profiles"; sudo aa-status 2>&1 | grep -i bwrap || true
-          echo "--- in bwrap again"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id
+          echo "--- in bwrap again"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id || true
         continue-on-error: true
