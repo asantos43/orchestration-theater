@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
+import { ideaGroupOutput } from './idea-group.js';
 import { EXECUTOR_ROLE_IDS } from './roles.js';
 import { isZodSchema, reportDuplicates, type ProblemCollector } from './problems.js';
 
@@ -334,6 +335,9 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     z.strictObject({ diff: text }),
   ),
   tool('submit_critique', ['critic'], reviewOutput, accepted),
+
+  // Idea queue of the scenario (P8, N91): the Author's judgment point `group_ideas`, outside the play.
+  tool('submit_idea_group', ['author'], ideaGroupOutput, accepted),
 ];
 
 export function validateTools(
