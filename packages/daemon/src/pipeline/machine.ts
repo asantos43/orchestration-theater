@@ -365,8 +365,13 @@ function openJudgment(point: JudgmentPointId) {
     actions: [
       patch((a) => {
         const id = demandOf(a.event) ?? '';
-        const dependentIds = a.event.type === 'DEPENDENCY_REDONE' ? a.event.dependentIds : [];
-        const judgment: OpenJudgment = { point, demandId: id, dependentIds };
+        const redone = a.event.type === 'DEPENDENCY_REDONE' ? a.event : undefined;
+        const judgment: OpenJudgment = {
+          point,
+          demandId: id,
+          dependentIds: redone?.dependentIds ?? [],
+          ...(redone?.verified === true ? { verified: true } : {}),
+        };
         return {
           deadlines: withoutDeadline(a.context, id),
           openJudgments: [...a.context.openJudgments, judgment],
@@ -497,10 +502,17 @@ function executingJudgments() {
       actions: [
         // the dependents lose their approval and their attempts: they start over on the new base
         patch(({ context, event }) => {
-          const dependents = dependentsOf(context, demandOf(event) ?? '');
+          const id = demandOf(event) ?? '';
+          const dependents = dependentsOf(context, id);
+          const verified = context.openJudgments.some(
+            (j) => j.point === 'dependency_redone' && j.demandId === id && j.verified === true,
+          );
+          const kept = context.approvedDemands.filter((other) => !dependents.includes(other));
           return {
-            approvedDemands: context.approvedDemands.filter((id) => !dependents.includes(id)),
+            // the redone demand passed `verify` already: it is approved with the answer
+            approvedDemands: verified && !kept.includes(id) ? [...kept, id] : kept,
             counters: withoutAttempts(context.counters, dependents),
+            ...(verified ? { feedback: null } : {}),
           };
         }),
         emit(({ context, event }) => [

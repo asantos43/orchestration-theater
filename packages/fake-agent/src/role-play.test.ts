@@ -214,6 +214,55 @@ describe('the role-play script', () => {
     });
   });
 
+  it('notes which answer of point 8 the outcome asks for, and gives it', async () => {
+    const classify = (outcome: string) =>
+      host('#ot-judge', {
+        next_action: {
+          decisions: [
+            {
+              id: 'd1',
+              kind: 'judge.classify_critique',
+              input: { reason: `[outcome:${outcome}]`, demandIds: ['alpha', 'beta'] },
+            },
+          ],
+        },
+      });
+    const redo = classify('dependency_redone_redo');
+    await playRolePlay(redo.host);
+    expect(
+      String((redo.calls[1]?.args.payload as { failures: { note: string }[] }).failures[0]?.note),
+    ).toContain('[answer:redo]');
+    const rebase = classify('dependency_redone_rebase');
+    await playRolePlay(rebase.host);
+    expect(
+      String((rebase.calls[1]?.args.payload as { failures: { note: string }[] }).failures[0]?.note),
+    ).not.toContain('[answer:');
+
+    const answer = async (reason: string) => {
+      const judge = host('#ot-judge', {
+        next_action: {
+          decisions: [
+            {
+              id: 'p8',
+              kind: 'judge.dependency_redone',
+              input: { reason, dependentIds: ['beta'] },
+            },
+          ],
+        },
+      });
+      await playRolePlay(judge.host);
+      return judge.calls[1]?.args;
+    };
+    expect(await answer('redo the first demand [answer:redo]')).toEqual({
+      decisionId: 'p8',
+      payload: { action: 'redo' },
+    });
+    expect(await answer('redo the first demand')).toEqual({
+      decisionId: 'p8',
+      payload: { action: 'rebase' },
+    });
+  });
+
   it('answers a clarify decision with what the Producer said', async () => {
     const run = host('#ot-clarify\n#ot-play: play-1', {
       next_action: { decisions: [{ id: 'c1', kind: 'clarify', input: {} }] },
