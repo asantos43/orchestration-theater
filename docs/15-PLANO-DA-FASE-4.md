@@ -86,7 +86,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P4 | Camada 3: porta `Sandbox` e `sandbox-runtime` | P1, P3 | P2, P6, P7 | pendente |
 | P5 | Suíte de fuga | P2, P3, P4 | P9, P10 | pendente |
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | pendente |
-| P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | em andamento |
+| P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | concluído (PR #77) |
 | P8 | Fila de ideias | P0 | P1, P3, P7 | em andamento |
 | P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | pendente |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
