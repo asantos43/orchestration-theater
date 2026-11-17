@@ -164,7 +164,10 @@ export class ClaudeCodeAdapter extends ClientAdapter {
 
   /**
    * Layer 1 per field. `nativeTools`, `nativeShell` and `mcpServers` are the client's (`tools`,
-   * `disallowedTools`, `strictMcpConfig`). `onAsk` has the daemon behind it (it rejects each
+   * `disallowedTools`, `strictMcpConfig`; the MCP tools of the role by name in `allowedTools`).
+   * `nativeShell` holds for both values of the policy: `shells` is the daemon's shells, MCP tools,
+   * and the native Bash is removed either way. The same answer for every role: the translation
+   * of the policy changes the lists, not the layers. `onAsk` has the daemon behind it (it rejects each
    * `request_permission`); `bypass` is the client's `allowDangerouslySkipPermissions: false`
    * plus the `disableBypassPermissionsMode` of the profile file. `writeScope` and `network` have
    * no key in the client: layer 3 or nothing. [V: Phase 0 item 8; architecture 5.2]
@@ -174,6 +177,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
       nativeTools: ['client'],
       nativeShell: ['client'],
       mcpServers: ['client'],
+      mcpTools: ['client', 'daemon'],
       onAsk: ['client', 'daemon'],
       bypass: ['client'],
       writeScope: [],

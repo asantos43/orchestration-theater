@@ -14,7 +14,8 @@ import type { DaemonConfig, PlayExecutor } from '../config.js';
 import type { AttemptRunner } from '../execution/attempt-runner.js';
 import type { Logger } from '../logger.js';
 import { ToolFailure } from '../mcp/handlers.js';
-import { executorOf, policyOf, sessionSettingsOf } from '../orchestration/roles.js';
+import { resolveRolePolicy } from '../orchestration/role-policy.js';
+import { executorOf, sessionSettingsOf } from '../orchestration/roles.js';
 import type { DataPaths } from '../paths.js';
 import { type AttachmentService, isImage } from './attachments.js';
 import { CHAT_DECISION_KINDS, type ChatFlow } from './chat-flow.js';
@@ -203,7 +204,7 @@ export class ConsultService {
     input: ConsultInput,
     records: readonly AttachmentRecord[],
   ): Promise<string | { readonly reason: string }> {
-    const { store, vcs, runner, registries, prompts, paths } = this.#options;
+    const { store, vcs, runner, registries, prompts, paths, config } = this.#options;
     const repos = await store.scenarioRepos.list(scenarioId);
     const scenario = await store.scenarios.get(scenarioId);
     const prefix = assemblePrefix({
@@ -244,7 +245,11 @@ export class ConsultService {
       base: repos[0]?.mainBranch ?? scenario?.baseBranch ?? 'main',
       profile,
       executor: settings,
-      policy: policyOf(CONSULTANT_ROLE),
+      policy: await resolveRolePolicy(
+        { config, scenarios: store.scenarios, tools: () => registries.tools.list() },
+        CONSULTANT_ROLE,
+        scenarioId,
+      ),
       prompt: `${prefix}\n${body}`,
       role: CONSULTANT_ROLE,
     });

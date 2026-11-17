@@ -86,6 +86,7 @@ const ALL_FIELDS_NONE: Enforcement = {
   nativeTools: [],
   nativeShell: [],
   mcpServers: [],
+  mcpTools: [],
   onAsk: [],
   bypass: [],
   writeScope: [],
@@ -205,6 +206,17 @@ export class CodexAdapter extends ClientAdapter {
    * What the client itself guarantees. `nativeTools`, `nativeShell` and `network` have no client
    * layer: Codex cannot remove its shell or a tool, and a domain allow-list is layer 3's. They
    * stay empty, so the policy is short for them unless a sandbox covers them.
+   *
+   * Phase 4, P1 (policy v2): `mcpTools` and `nativeShell: 'shells'` are not translated. The
+   * architecture says Codex has an enable setting per MCP server, and the profile file
+   * (`config.toml`) could carry one, but no key name, no way for a server that arrives by
+   * `session/new` to meet an entry of the file, and no way a call to an MCP tool is approved
+   * are confirmed [N]; this step writes no key of Codex it has no source for, and the fake agent
+   * cannot measure how Codex approves an MCP call. `mcpTools` has the `daemon` layer only: the
+   * framework server hands the session the tools of its role alone (the grant of the attempt
+   * carries the list of the policy), and a request that does reach `answerPermission` is
+   * rejected whatever the policy lists. `mcpServers` is the set of servers the session was opened
+   * with and nothing finer. The real optional test is where the measurement belongs.
    */
   protected enforcement(_policy: RolePolicy, via: TransportId): Enforcement {
     if (via === 'headless') {
@@ -212,6 +224,7 @@ export class CodexAdapter extends ClientAdapter {
         ...ALL_FIELDS_NONE,
         // `sessionSetup` refuses a role with MCP servers in headless mode, so the client has none.
         mcpServers: ['client'],
+        mcpTools: ['client'],
         onAsk: ['client'],
         bypass: ['daemon'],
         writeScope: ['client'],
@@ -220,6 +233,7 @@ export class CodexAdapter extends ClientAdapter {
     return {
       ...ALL_FIELDS_NONE,
       mcpServers: ['client'],
+      mcpTools: ['daemon'],
       onAsk: ['client', 'daemon'],
       bypass: ['daemon'],
       writeScope: ['client'],

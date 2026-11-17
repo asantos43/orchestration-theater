@@ -238,6 +238,7 @@ export class FrameworkMcpServer implements McpAccess {
         if (record === undefined) return server;
         for (const tool of this.#options.registries.tools.list()) {
           if (!tool.roles.includes(record.input.role)) continue;
+          if (record.input.tools !== undefined && !record.input.tools.includes(tool.name)) continue;
           server.registerTool(
             tool.name,
             { description: describe(tool), inputSchema: deferred(tool.input) },

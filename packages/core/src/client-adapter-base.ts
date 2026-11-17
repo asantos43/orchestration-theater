@@ -278,8 +278,12 @@ export interface ClientAdapterOptions {
 
 const DEFAULT_MIN_LAYERS: MinLayers = { default: 1 };
 
-/** Layers the daemon can vouch for, per field (architecture 5.2: refusing a request does not stop a tool that never asks). */
-const DAEMON_FIELDS: readonly RolePolicyField[] = ['onAsk', 'bypass'];
+/**
+ * Layers the daemon can vouch for, per field (architecture 5.2: refusing a request does not stop a
+ * tool that never asks). `mcpTools`: layer 2 rejects the request of a tool the policy does not
+ * list, and the framework server hands the session only the tools of its role.
+ */
+const DAEMON_FIELDS: readonly RolePolicyField[] = ['onAsk', 'bypass', 'mcpTools'];
 
 /** In-memory cache: one process lifetime. */
 class MemoryConformanceCache implements ConformanceCache {
@@ -502,7 +506,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * Joins what the client guarantees by itself (`enforcement()`) with what layer 3 offers on this
    * machine, per field, and points at the fields with fewer layers than `security.min_layers`
    * (architecture 5.2, "Garantia por campo"). Pure and synchronous. The `daemon` layer counts only
-   * for `onAsk` and `bypass`: refusing a request does not stop a tool that never asks.
+   * for `onAsk`, `bypass` and `mcpTools`: refusing a request does not stop a tool that never asks.
    *
    * [proposta] The third parameter is the transport id the client enforces for (default `acp`);
    * the port signature has only `(policy, os)` and `enforcement()` depends on the transport.

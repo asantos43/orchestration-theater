@@ -35,6 +35,7 @@ const WITH_FRAMEWORK: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: ['otheater'],
+  mcpTools: { otheater: 'all' },
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

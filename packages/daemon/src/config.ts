@@ -12,6 +12,7 @@ import {
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -596,6 +597,12 @@ export const DaemonConfigSchema = z.strictObject({
     })
     .prefault({}),
   /**
+   * The tool policy of each role: `roles.<role>.policy` (architecture 5.2 and 5.8; Phase 4, P1,
+   * N99). Absent: the default policy of the role. A project and a scenario override it through
+   * their `configOverride`. See `role-policy-config.ts`.
+   */
+  roles: RolesConfigSchema.prefault({}),
+  /**
    * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
    * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
    * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
@@ -688,6 +695,7 @@ export const DaemonConfigSchema = z.strictObject({
           nativeTools: z.int().min(0).optional(),
           nativeShell: z.int().min(0).optional(),
           mcpServers: z.int().min(0).optional(),
+          mcpTools: z.int().min(0).optional(),
           onAsk: z.int().min(0).optional(),
           bypass: z.int().min(0).optional(),
           writeScope: z.int().min(0).optional(),
