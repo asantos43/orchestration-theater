@@ -107,7 +107,7 @@ Ficam como portões **[N]**:
 | P10 | Ordens globais e locais | P3, P11 | P7, P8, P9 | feito (PR #58) |
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
-| P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | a fazer |
+| P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
 | P13 | Aceite da fase e peça real | P9, P10, P12, P14 | nada | a fazer |
 
 Ordem em ondas **[proposta]**:
