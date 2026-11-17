@@ -125,6 +125,17 @@ export function isImage(mime: string): boolean {
   return mime.startsWith('image/');
 }
 
+/** How `read_attachment` hands a type over: text as is, an image or anything else as base64. */
+export function kindOf(mime: string): AttachmentContent['kind'] {
+  if (isImage(mime)) return 'image';
+  return mime.startsWith('text/') ||
+    mime === 'application/json' ||
+    mime === 'application/yaml' ||
+    mime === 'application/xml'
+    ? 'text'
+    : 'binary';
+}
+
 async function headOf(path: string, bytes: number): Promise<Uint8Array> {
   const handle = await open(path, 'r');
   try {
@@ -260,14 +271,7 @@ export class AttachmentService {
   async read(record: AttachmentRecord): Promise<AttachmentContent> {
     const { readMax } = this.#options.limits();
     const max = readMax > 0 ? readMax : Number.MAX_SAFE_INTEGER;
-    const kind = isImage(record.mime)
-      ? 'image'
-      : record.mime.startsWith('text/') ||
-          record.mime === 'application/json' ||
-          record.mime === 'application/yaml' ||
-          record.mime === 'application/xml'
-        ? 'text'
-        : 'binary';
+    const kind = kindOf(record.mime);
     const info = await stat(record.path).catch(() => undefined);
     if (!info?.isFile()) {
       throw new NotFound(`The file of attachment ${record.id} is gone (${record.source})`);

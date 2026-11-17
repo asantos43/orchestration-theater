@@ -244,7 +244,8 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('read_contract', COMMON, z.strictObject({ id, version: blackboardVersion }), json),
   tool('read_decision', COMMON, z.strictObject({ id }), json),
   tool('read_indication', COMMON, z.strictObject({ id }), json),
-  tool('read_attachment', COMMON, z.strictObject({ id }), json),
+  // The Director reads text attachments too (N85); the handler refuses it any other kind.
+  tool('read_attachment', [...COMMON, 'director'], z.strictObject({ id }), json),
   tool('submit', COMMON, z.strictObject({ result: json }), accepted),
 
   // Author, Reviewer, Scriptwriter.
