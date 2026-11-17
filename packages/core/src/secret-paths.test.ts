@@ -62,7 +62,7 @@ describe('isSecretPath', () => {
   it('is true for an entry and for anything inside it', () => {
     expect(isSecretPath('/home/someone/.ssh', list)).toBe(true);
     expect(isSecretPath('/home/someone/.ssh/id_ed25519', list)).toBe(true);
-    expect(isSecretPath('/home/someone/.codex/auth.json', list)).toBe(true);
+    expect(isSecretPath('/home/someone/.codex/sessions/one', list)).toBe(true);
     expect(isSecretPath(`${DATA}/profiles/claude-code/a/x`, list)).toBe(true);
   });
 
