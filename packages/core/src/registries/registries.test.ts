@@ -93,6 +93,21 @@ describe('the official entries', () => {
     expect(registries.tools.get('git_commit')?.effect).toBe('worktree');
   });
 
+  it('let read_blackboard and read_contract ask for a version, and read_decision not (P7)', () => {
+    const registries = buildRegistries(valid());
+    const accepts = (tool: string, input: unknown): boolean =>
+      registries.tools.get(tool)?.input.safeParse(input).success ?? false;
+    expect(accepts('read_blackboard', { key: 'plan' })).toBe(true);
+    expect(accepts('read_blackboard', { key: 'plan', version: 3 })).toBe(true);
+    expect(accepts('read_contract', { id: 'c1', version: 1 })).toBe(true);
+    for (const version of [0, -1, 1.5, '2']) {
+      expect(accepts('read_blackboard', { key: 'plan', version })).toBe(false);
+      expect(accepts('read_contract', { id: 'c1', version })).toBe(false);
+    }
+    expect(accepts('read_decision', { id: 'D-1' })).toBe(true);
+    expect(accepts('read_decision', { id: 'D-1', version: 1 })).toBe(false);
+  });
+
   it('hold a value schema per rule key that accepts its example and refuses a bad one', () => {
     const registries = buildRegistries(valid());
     const schema = (key: string): z.ZodType => {

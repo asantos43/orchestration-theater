@@ -62,3 +62,15 @@ export function notImplemented(tool: string): { readonly error: string; readonly
     message: `The tool "${tool}" exists in the registry but has no handler in this version of the daemon.`,
   };
 }
+
+/**
+ * [proposta] What a handler returns (not throws) to answer the client with an error result that
+ * carries a stable `error` code, such as `not_found`: the Executor reads it as text and can act on
+ * it, unlike the generic `internal_error` of a throw.
+ */
+export class ToolFailure {
+  constructor(
+    readonly error: string,
+    readonly message: string,
+  ) {}
+}
