@@ -7,7 +7,13 @@ import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
 import { dataPaths } from './paths.js';
-import type { ChatPoll, PendingAsk } from './orchestration/channel.js';
+import type {
+  ChatPoll,
+  IdeaCommand,
+  IdeaCommandResult,
+  IdeaView,
+  PendingAsk,
+} from './orchestration/channel.js';
 import { ChannelClient, readChannelInfo } from './orchestration/channel-http.js';
 
 /** How often `ot chat` asks the daemon what happened, in milliseconds. [proposta] */
@@ -29,6 +35,10 @@ export interface ChatOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function recordsOf(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function textOf(value: unknown): string {
@@ -108,6 +118,112 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
     lines.push(t('chat.system.recovery.waiting', { items: waiting.join('; ') }));
   }
   return lines;
+}
+
+/** The kind of the ask of a group of ideas (`ideas/service.ts`; not imported, the chat is lean). */
+const IDEA_GROUP_KIND = 'ideas.group';
+
+/** The command `/idea ...` as the channel takes it; `undefined` when the line does not fit. */
+export function parseIdeaCommand(line: string): IdeaCommand | undefined {
+  const rest = line.trim().replace(/^\/idea\s*/, '');
+  const [word = '', ...words] = rest.split(/\s+/);
+  switch (word) {
+    // `list` and `drain` alone are commands; with more words they are the start of an idea.
+    case 'list':
+      if (words.length === 0) return { action: 'list' };
+      break;
+    case 'drain':
+      if (words.length === 0) return { action: 'drain' };
+      break;
+    case 'requeue':
+      return words.length === 1 && words[0] !== undefined
+        ? { action: 'requeue', id: words[0] }
+        : undefined;
+    case 'discard':
+    case 'defer': {
+      const [id, ...reason] = words;
+      if (id === undefined || reason.length === 0) return undefined;
+      return { action: word, id, reason: reason.join(' ') };
+    }
+    default:
+  }
+  // Anything else is the text of an idea; `add` says so when the text starts with a word above.
+  let body = word === 'add' ? words.join(' ') : rest;
+  let area: string | undefined;
+  const flagged = /^--area[=\s]+(\S+)\s*(.*)$/s.exec(body);
+  if (flagged !== null) {
+    area = flagged[1];
+    body = flagged[2] ?? '';
+  }
+  body = body.trim();
+  if (body === '') return undefined;
+  return { action: 'add', text: body, ...(area === undefined ? {} : { area }) };
+}
+
+function ideaLine(t: TFunction, idea: IdeaView): string {
+  const links = [
+    idea.playId === null ? '' : ` (${idea.playId}`,
+    idea.playId !== null && idea.prNumber !== null ? ` PR #${String(idea.prNumber)}` : '',
+    idea.playId === null ? '' : ')',
+    idea.reason !== null && (idea.state === 'discarded' || idea.state === 'deferred')
+      ? ` - ${idea.reason}`
+      : '',
+  ].join('');
+  return t('chat.ideaLine', {
+    id: idea.id,
+    state: idea.state,
+    area: idea.area === null ? '' : ` {${idea.area}}`,
+    text: idea.text,
+    links,
+  });
+}
+
+/** What `/idea` prints. */
+export function renderIdeaResult(
+  t: TFunction,
+  command: IdeaCommand,
+  result: IdeaCommandResult,
+): string[] {
+  const lines: string[] = [];
+  if (command.action === 'add' && result.idea !== undefined) {
+    lines.push(t('chat.ideaAdded', { id: result.idea.id }));
+  } else if (command.action === 'drain' && result.drain !== undefined) {
+    lines.push(t('chat.ideaDrained', { groups: result.drain.groups }));
+    if (result.drain.stopped !== undefined) {
+      lines.push(t('chat.ideaDrainStopped', { reason: result.drain.stopped }));
+    }
+  } else if (result.idea !== undefined && command.action !== 'list') {
+    lines.push(t('chat.ideaSettled', { id: result.idea.id, state: result.idea.state }));
+  }
+  if (command.action === 'list') {
+    if (result.ideas.length === 0) lines.push(t('chat.ideaEmpty'));
+    for (const idea of result.ideas) lines.push(ideaLine(t, idea));
+  }
+  return lines;
+}
+
+/** The group of ideas that waits for the Producer: what the Author put together, and what it left. */
+export function renderIdeaGroup(t: TFunction, ask: PendingAsk): string[] {
+  const ideas = recordsOf(ask.input.ideas);
+  const leftOut = recordsOf(ask.input.leftOut);
+  return [
+    t('chat.ideaGroup', {
+      count: ideas.length,
+      need: textOf(ask.input.need),
+      rationale: textOf(ask.input.rationale),
+    }),
+    ...ideas.map((item) =>
+      t('chat.ideaGroupItem', { id: textOf(item.id), text: textOf(item.text) }),
+    ),
+    ...leftOut.map((item) =>
+      t('chat.ideaGroupLeftOut', {
+        id: textOf(item.ideaId),
+        reason: textOf(item.reason),
+        question: textOf(item.question) === '' ? '' : ` - ${textOf(item.question)}`,
+      }),
+    ),
+    t('chat.ideaGroupOptions'),
+  ];
 }
 
 /**
@@ -201,7 +317,9 @@ export async function runChatCommand(
     const ask = waiting.shift();
     if (ask === undefined) return;
     current = { ask, collected: [] };
-    if (ask.kind !== 'producer_question') {
+    if (ask.kind === IDEA_GROUP_KIND) {
+      for (const line of renderIdeaGroup(t, ask)) out(line);
+    } else if (ask.kind !== 'producer_question') {
       out(
         t('chat.menu', {
           playId: ask.playId ?? '',
@@ -238,6 +356,39 @@ export async function runChatCommand(
     return true;
   };
 
+  const answerGroup = async (ask: PendingAsk, line: string): Promise<boolean> => {
+    const [option = '', ...rest] = line.trim().split(/\s+/);
+    const text = rest.join(' ');
+    let answer: JsonObject;
+    if (option === 'approve') answer = { option };
+    else if (option === 'refuse') answer = { option, ...(text === '' ? {} : { reason: text }) };
+    else if (option === 'edit' && text !== '') answer = { option, need: text };
+    else if (option === 'keep' && rest.length > 0) {
+      answer = { option: 'edit', ideaIds: rest.flatMap((word) => word.split(',')).filter(Boolean) };
+    } else {
+      out(t('chat.ideaGroupBad'));
+      return false;
+    }
+    await client.answer(ask.id, answer);
+    return true;
+  };
+
+  const idea = async (line: string): Promise<void> => {
+    const command = parseIdeaCommand(line);
+    if (command === undefined) {
+      err(t('chat.ideaUsage'));
+      return;
+    }
+    try {
+      const result = await client.idea(scenarioId, command);
+      for (const text of renderIdeaResult(t, command, result)) out(text);
+    } catch (error) {
+      err(
+        t('chat.ideaFailed', { message: error instanceof Error ? error.message : String(error) }),
+      );
+    }
+  };
+
   /** The attachments made with `/attach` that the next message carries. */
   const attached: string[] = [];
   const attach = async (line: string): Promise<void> => {
@@ -263,6 +414,10 @@ export async function runChatCommand(
   };
 
   const handleLine = async (line: string): Promise<void> => {
+    if (/^\/idea(\s|$)/.test(line)) {
+      await idea(line);
+      return;
+    }
     if (current === undefined) {
       if (/^\/attach(\s|$)/.test(line)) {
         await attach(line);
@@ -273,6 +428,10 @@ export async function runChatCommand(
     }
     const { ask } = current;
     try {
+      if (ask.kind === IDEA_GROUP_KIND) {
+        if (await answerGroup(ask, line)) current = undefined;
+        return;
+      }
       if (ask.kind !== 'producer_question') {
         if (await answerMenu(ask, line)) current = undefined;
         return;

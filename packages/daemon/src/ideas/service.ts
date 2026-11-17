@@ -52,11 +52,16 @@ export interface IdeaQueueServiceOptions {
   readonly logger: Logger;
 }
 
-export type IdeaAddInput = {
+export interface IdeaAddInput {
   readonly text: string;
   readonly area?: string | undefined;
   readonly source?: 'chat' | 'tui' | 'terminal' | 'author' | 'import' | undefined;
-};
+}
+
+/** How one grouping ended: `failed` carries the reason it could not be made. */
+type GroupingOutcome =
+  | { readonly kind: 'grouped' | 'nothing' | 'progress' }
+  | { readonly kind: 'failed'; readonly reason: string };
 
 /** What one pass of the queue did, for the command that asked for it. */
 export interface DrainResult {
@@ -186,7 +191,7 @@ export class IdeaQueueService {
     const pass = this.#serial(scenarioId, async () => {
       if (this.#held.has(scenarioId)) return;
       const settings = await this.#settingsOf(scenarioId);
-      if (settings === undefined || settings.drain !== 'auto') return;
+      if (settings?.drain !== 'auto') return;
       await this.#pass(scenarioId, settings);
     }).catch((error: unknown) => {
       this.#options.logger.error({ err: error, scenarioId }, 'the idea queue pass failed');
@@ -206,6 +211,11 @@ export class IdeaQueueService {
       if (settings === undefined) return { groups: 0, stopped: 'the scenario is gone' };
       return this.#pass(scenarioId, settings);
     });
+  }
+
+  /** True while a pass of the queue, or the settling of a finished play, is going on. */
+  busy(scenarioId: string): boolean {
+    return this.#chains.has(scenarioId);
   }
 
   /** Resolves when the passes started in the background have ended (the tests, the shutdown). */
@@ -252,12 +262,12 @@ export class IdeaQueueService {
         return { groups, stopped: 'ideas.parallel_plays groups are already in flight' };
       }
       const outcome = await this.#group(scenarioId, queued, settings);
-      if (typeof outcome === 'string') {
+      if (outcome.kind === 'failed') {
         this.#held.add(scenarioId);
-        return { groups, stopped: outcome };
+        return { groups, stopped: outcome.reason };
       }
-      if (outcome === 'grouped') groups += 1;
-      else if (outcome === 'nothing') {
+      if (outcome.kind === 'grouped') groups += 1;
+      else if (outcome.kind === 'nothing') {
         // The Author left everything out: asking again would give the same answer.
         this.#held.add(scenarioId);
         return { groups, stopped: 'the Author left every idea out of the group' };
@@ -274,10 +284,10 @@ export class IdeaQueueService {
     scenarioId: string,
     queued: readonly IdeaRecord[],
     settings: IdeaSettings,
-  ): Promise<'grouped' | 'nothing' | 'progress' | string> {
+  ): Promise<GroupingOutcome> {
     const { store } = this.#options;
     const answer = await this.#runAuthor(scenarioId, queued, settings.max_per_play);
-    if (typeof answer === 'string') return answer;
+    if (typeof answer === 'string') return { kind: 'failed', reason: answer };
     for (const item of answer.discarded) {
       await store.ideas.transition(item.ideaId, 'discarded', { reason: item.reason });
       await this.#emit('idea.discarded', scenarioId, {
@@ -324,8 +334,8 @@ export class IdeaQueueService {
     const members = answer.group.ideaIds;
     if (members.length === 0) {
       return split || answer.discarded.length > 0 || answer.deferred.length > 0
-        ? 'progress'
-        : 'nothing';
+        ? { kind: 'progress' }
+        : { kind: 'nothing' };
     }
 
     const groupId = `grp-${randomUUID().slice(0, 8)}`;
@@ -348,7 +358,7 @@ export class IdeaQueueService {
     });
     if (!awaiting) {
       await this.#openGroup(scenarioId, groupId, need, 'auto');
-      return 'grouped';
+      return { kind: 'grouped' };
     }
     const ideas = await store.ideas.list({ scenarioId, groupId });
     await store.decisions.create({
@@ -367,7 +377,7 @@ export class IdeaQueueService {
         })),
       },
     });
-    return 'grouped';
+    return { kind: 'grouped' };
   }
 
   /** Runs the Author on the queue; the answer, or the reason there is none. */
@@ -445,14 +455,14 @@ export class IdeaQueueService {
   async answerGroup(decisionId: string, answer: GroupAnswer): Promise<JsonObject> {
     const { store } = this.#options;
     const decision = await store.decisions.get(decisionId);
-    if (decision === undefined || decision.kind !== IDEA_GROUP_DECISION) {
+    if (decision?.kind !== IDEA_GROUP_DECISION) {
       throw new NotFound(`There is no idea group "${decisionId}"`);
     }
     if (decision.state !== 'pending') {
       throw new Conflict(`The decision "${decisionId}" is already ${decision.state}`);
     }
     const { scenarioId } = decision;
-    const groupId = String(decision.input.groupId);
+    const groupId = textOf(decision.input.groupId);
     return this.#serial(scenarioId, async () => {
       const members = await store.ideas.list({ scenarioId, groupId });
       if (answer.option === 'refuse') {
@@ -467,7 +477,7 @@ export class IdeaQueueService {
         this.#held.add(scenarioId);
         return { option: 'refuse', returned: members.map((idea) => idea.id) };
       }
-      let need = String(decision.input.need);
+      let need = textOf(decision.input.need);
       let kept = members;
       if (answer.option === 'edit') {
         if (answer.need === undefined && answer.ideaIds === undefined) {
@@ -610,8 +620,12 @@ export class IdeaQueueService {
         if (event.type !== 'delivery.completed' || event.playId !== playId) continue;
         const pr = event.payload.pullRequest;
         found =
-          typeof pr === 'object' && pr !== null && !Array.isArray(pr)
-            ? { pullRequest: { number: Number(pr.number), url: String(pr.url) } }
+          typeof pr === 'object' &&
+          pr !== null &&
+          !Array.isArray(pr) &&
+          typeof pr.number === 'number' &&
+          typeof pr.url === 'string'
+            ? { pullRequest: { number: pr.number, url: pr.url } }
             : {};
       }
     }
@@ -662,6 +676,10 @@ export class IdeaQueueService {
   ): Promise<void> {
     await this.#options.store.events.append({ ...buildDaemonEvent(type, payload), scenarioId });
   }
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function reasonOf(reason: string): string {

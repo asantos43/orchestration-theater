@@ -33,7 +33,11 @@ export interface PlayOpening {
 
 export type OpenedPlay =
   | { readonly ok: true; readonly playId: string }
-  | { readonly ok: false; readonly code: 'no_code_host' | 'no_repository'; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: 'no_code_host' | 'no_repository';
+      readonly message: string;
+    };
 
 /**
  * Creates the play of a scenario from a need, its base branch, and starts it. The path the
