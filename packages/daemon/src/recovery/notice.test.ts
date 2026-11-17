@@ -52,6 +52,7 @@ function input(extra: Partial<RecoveryNoticeInput>): RecoveryNoticeInput {
   return {
     store,
     logger: createSilentLogger(),
+    mode: 'always',
     recovery: EMPTY,
     plays: NOTHING,
     attempts: NO_ATTEMPTS,
@@ -157,6 +158,39 @@ describe('announceRecovery', () => {
     for (const event of written) {
       expect(ScenarioSystemMessagePayloadSchema.safeParse(event.payload).success).toBe(true);
     }
+  });
+
+  it('says nothing in the mode off, whatever happened', async () => {
+    const notices = await announceRecovery(
+      input({
+        mode: 'off',
+        recovery: { ...EMPTY, pending: [{ key: 'k', effectType: 'x', playId: 'p1', reason: 'r' }] },
+        plays: { resumed: ['p1'], refused: [] },
+      }),
+    );
+    expect(notices).toEqual([]);
+    expect(await systemMessages()).toEqual([]);
+  });
+
+  it('tells only the scenarios with something settled or waiting in unclean_only', async () => {
+    const notices = await announceRecovery(
+      input({
+        mode: 'unclean_only',
+        recovery: {
+          ...EMPTY,
+          resolved: [{ key: 'k1', effectType: 'open_pr', playId: 'p2', outcome: 'done' }],
+        },
+        // s1 only took a play up again (a clean restart); s2 had an effect settled.
+        plays: { resumed: ['p1', 'p2'], refused: [] },
+      }),
+    );
+    expect(notices.map((notice) => notice.scenarioId)).toEqual(['s2']);
+    expect(await systemMessages()).toHaveLength(1);
+    const clean = await announceRecovery(
+      input({ mode: 'unclean_only', plays: { resumed: ['p1'], refused: [] } }),
+    );
+    expect(clean).toEqual([]);
+    expect(await systemMessages()).toHaveLength(1);
   });
 
   it('does not stop the start-up when a message cannot be written', async () => {

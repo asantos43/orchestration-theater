@@ -384,7 +384,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   );
   // What the start-up did, for the chat of each scenario it touched (5.21, step 8); nothing when
   // there was nothing to settle. The record is the event; the channel hands it to the next poll.
-  const notices = await announceRecovery({ store, logger, recovery, plays: resumed, attempts });
+  const notices = await announceRecovery({
+    store,
+    logger,
+    mode: config.recovery.notice,
+    recovery,
+    plays: resumed,
+    attempts,
+  });
   for (const notice of notices) orchestration?.channel.notify(notice);
   gate.open();
 

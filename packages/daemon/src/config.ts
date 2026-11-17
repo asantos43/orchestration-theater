@@ -290,6 +290,16 @@ export type RescriptReuseMode = (typeof RESCRIPT_REUSE_MODES)[number];
 export const CHAT_CHANNEL_MODES = ['auto', 'off'] as const;
 export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
 
+/**
+ * `recovery.notice` [proposta]: when the reconciliation of a start-up tells the chat of a scenario
+ * (architecture 5.21, step 8). `always` (default): every scenario it touched, a clean restart that
+ * only took plays up again included; `unclean_only`: only when something was settled by a verifier
+ * or waits for the Producer (an effect nobody could check, a play that could not be restored);
+ * `off`: no event and no message.
+ */
+export const RECOVERY_NOTICE_MODES = ['always', 'unclean_only', 'off'] as const;
+export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
+
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
   client: z.string().min(1),
@@ -586,6 +596,12 @@ export const DaemonConfigSchema = z.strictObject({
     .strictObject({
       channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
       history: z.int().min(1).default(200),
+    })
+    .prefault({}),
+  /** What the start-up does after a crash or a restart (architecture 5.21). */
+  recovery: z
+    .strictObject({
+      notice: z.enum(RECOVERY_NOTICE_MODES).default('always'),
     })
     .prefault({}),
   /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Store } from '@otheater/core';
 import { buildDaemonEvent, type ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type { RecoveryNoticeMode } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { RecoveryReport } from './reconcile.js';
 
 export interface RecoveryNoticeInput {
   readonly store: Pick<Store, 'attempts' | 'events' | 'plays'>;
   readonly logger: Logger;
+  /** `recovery.notice`: `always`, `unclean_only` or `off`. */
+  readonly mode: RecoveryNoticeMode;
   /** The part of the reconciliation that runs before the resume. */
   readonly recovery: RecoveryReport;
   /** The plays the runner restored from their snapshots, and the ones it could not. */
@@ -27,7 +30,8 @@ type Draft = {
  * on and does the work again, so it waits for nobody (`daemon.recovered` counts it). Everything is
  * attributed to a scenario through its play; an effect or an attempt of no known play is only in
  * `daemon.recovered`. A start that found nothing of the kind returns an empty list and writes
- * nothing.
+ * nothing. The mode `recovery.notice` narrows it: `unclean_only` skips a scenario with only
+ * resumes, `off` skips all.
  *
  * One `scenario.system_message` event is written for each scenario touched (the record), and the
  * payloads are returned for the Producer channel to show. A message that cannot be written is
@@ -37,6 +41,7 @@ export async function announceRecovery(
   input: RecoveryNoticeInput,
 ): Promise<readonly ScenarioSystemMessagePayload[]> {
   const { store, logger } = input;
+  if (input.mode === 'off') return [];
   const drafts = new Map<string, Draft>();
   const scenarioCache = new Map<string, string | undefined>();
 
@@ -103,6 +108,10 @@ export async function announceRecovery(
   for (const scenarioId of [...drafts.keys()].sort()) {
     const draft = drafts.get(scenarioId);
     if (draft === undefined) continue;
+    // A restart that only took things up again has nothing to tell in this mode.
+    if (input.mode === 'unclean_only' && draft.settled.length === 0 && draft.waiting.length === 0) {
+      continue;
+    }
     const payload: ScenarioSystemMessagePayload = { scenarioId, kind: 'recovery', ...draft };
     try {
       await store.events.append({
