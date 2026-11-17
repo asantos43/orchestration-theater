@@ -29,6 +29,7 @@ const policy: RolePolicy = {
   nativeTools: ['read'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

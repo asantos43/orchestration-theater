@@ -199,6 +199,37 @@ describe('the token and the role', () => {
     expect(director).not.toContain('submit');
   });
 
+  it('lists only the tools the grant names (the tool list of the role policy), inside the role', async () => {
+    const h = await harness();
+    const attemptId = 'p1/d1/2';
+    const narrow = h.server.grant({
+      attemptId,
+      role: 'actor',
+      tools: ['submit', 'next_action'],
+      correlation: { playId: 'p1', demandId: 'd1', attemptId },
+      record: () => Promise.resolve(),
+    });
+    // `next_action` is the Director's: a name in the list does not give a tool the role lacks.
+    expect(await listTools(narrow, h.server.url)).toEqual(['submit']);
+    const none = h.server.grant({
+      attemptId: 'p1/d1/3',
+      role: 'actor',
+      tools: [],
+      correlation: { playId: 'p1', demandId: 'd1', attemptId: 'p1/d1/3' },
+      record: () => Promise.resolve(),
+    });
+    // A server with no tool does not announce the capability: the list is an error, never a tool.
+    const empty = await rpc(h.server.url, authOf(none), 'tools/list', {});
+    expect(
+      empty.body.result === undefined ||
+        (empty.body.result as { tools: unknown[] }).tools.length === 0,
+    ).toBe(true);
+    // With no list the role keeps every tool the registry gives it.
+    expect((await listTools(h.grant('actor'), h.server.url)).length).toBeGreaterThan(1);
+    const { result, body } = await callTool(narrow, h.server.url, 'read_blackboard', {});
+    expect(result?.isError === true || body.error !== undefined).toBe(true);
+  });
+
   it('gives each tool its real JSON schema (ask_producer lists the questions)', async () => {
     const h = await harness();
     const { body } = await rpc(h.server.url, authOf(h.grant('director')), 'tools/list', {});

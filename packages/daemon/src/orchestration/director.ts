@@ -3,6 +3,7 @@ import { buildDaemonEvent } from '@otheater/protocol';
 import {
   AdapterUnavailable,
   assemblePrefix,
+  mcpToolsOf,
   type Clock,
   type Disposable,
   NotFound,
@@ -18,10 +19,11 @@ import type { DaemonConfig } from '../config.js';
 import type { SessionLease } from '../execution/pool.js';
 import type { Execution } from '../execution/service.js';
 import type { Logger } from '../logger.js';
-import type { McpAccess, McpGrant } from '../mcp/access.js';
+import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
-import { executorOf, policyOf, sessionSettingsOf } from './roles.js';
+import { resolveRolePolicy } from './role-policy.js';
+import { executorOf, sessionSettingsOf } from './roles.js';
 
 /** The role the session of the Director plays. */
 export const DIRECTOR_ROLE = 'director';
@@ -259,7 +261,7 @@ export class DirectorSessions {
 
   /** The pool lease and the MCP grant of the Director of a scenario. */
   async #acquire(scenarioId: string): Promise<{ lease: SessionLease; grant: McpGrant }> {
-    const { store, execution, mcp, config, paths } = this.#options;
+    const { store, execution, mcp, config, paths, registries } = this.#options;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
     const executor = executorOf(config, DIRECTOR_ROLE);
@@ -271,10 +273,16 @@ export class DirectorSessions {
     const repos = await store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
     const { profile, executor: settings } = sessionSettingsOf(paths, executor);
-    const policy = policyOf(DIRECTOR_ROLE);
+    const policy = await resolveRolePolicy(
+      { config, scenarios: store.scenarios, tools: () => registries.tools.list() },
+      DIRECTOR_ROLE,
+      scenarioId,
+    );
+    const tools = mcpToolsOf(policy, FRAMEWORK_MCP_NAME);
     const grant = mcp.grant({
       attemptId: directorAttemptId(scenarioId),
       role: DIRECTOR_ROLE,
+      ...(tools === 'all' ? {} : { tools }),
       correlation: {},
       record: async (event) => {
         await store.events.append(event);

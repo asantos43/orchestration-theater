@@ -16,6 +16,13 @@ export interface McpGrantInput {
   readonly attemptId: string;
   /** The role the session plays: it decides which tools it lists and may call. */
   readonly role: string;
+  /**
+   * The tools of the server this session may see and call, by name: the list of its role policy
+   * (`RolePolicy.mcpTools`, P1). Absent: every tool the registry gives the role. [proposta] A tool
+   * the policy leaves out is neither listed nor callable, which is what makes the `mcpTools` field
+   * of the policy hold in the daemon layer.
+   */
+  readonly tools?: readonly string[];
   readonly correlation: McpCorrelation;
   /**
    * The worktree of the attempt: where the work tools (`restricted_shell`, `run_tests`...) run and

@@ -279,6 +279,7 @@ export class OpenCodeAdapter extends ClientAdapter {
       nativeTools: ['client'],
       nativeShell: ['client'],
       mcpServers: ownServersOnly ? ['client'] : [],
+      mcpTools: ownServersOnly && acp ? ['client', 'daemon'] : ['daemon'],
       onAsk: acp ? ['client', 'daemon'] : [],
       bypass: acp ? ['client', 'daemon'] : ['client'],
       writeScope: ['client'],

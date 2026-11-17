@@ -32,6 +32,7 @@ const policy: RolePolicy = {
   nativeTools: ['read'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -146,6 +147,48 @@ describe('ClientAdapter.guarantee', () => {
     expect(report.fields.nativeTools.layers).toEqual([]);
     expect(report.short).toContain('nativeTools');
     expect(report.fields.network.layers).toEqual(['os']);
+  });
+});
+
+describe('ClientAdapter.guarantee with the policy of version 2 (Phase 4, P1)', () => {
+  const v2: RolePolicy = {
+    ...policy,
+    nativeShell: 'shells',
+    mcpServers: ['otheater'],
+    mcpTools: { otheater: ['submit', 'run_tests'] },
+    network: { allow: ['example.com'] },
+  };
+
+  it('counts the daemon layer for mcpTools, because the daemon filters the tool list of the grant', () => {
+    const { adapter } = setup({
+      enforcement: enforcementWith({ mcpTools: ['client', 'daemon'] }),
+      minLayers: { default: 1, mcpTools: 2 },
+    });
+    const report = adapter.guarantee(v2, { fields: [] });
+    expect(report.fields.mcpTools).toEqual({ layers: ['client', 'daemon'], required: 2, ok: true });
+  });
+
+  it('is short on mcpTools when the client alone guarantees it and two layers are required', () => {
+    const { adapter } = setup({ minLayers: { default: 1, mcpTools: 2 } });
+    const report = adapter.guarantee(v2, { fields: [] });
+    expect(report.fields.mcpTools).toEqual({ layers: ['client'], required: 2, ok: false });
+    expect(report.short).toEqual(['mcpTools']);
+    expect(report.ok).toBe(false);
+  });
+
+  it('the shells and the network domains stay with the layers of their fields (the OS covers the network)', () => {
+    const { adapter } = setup({ minLayers: { default: 1, network: 2, nativeShell: 2 } });
+    const without = adapter.guarantee(v2, { fields: [] });
+    expect(without.short).toEqual(['nativeShell', 'network']);
+    const withOs = adapter.guarantee(v2, { fields: ['network', 'nativeShell'] });
+    expect(withOs.ok).toBe(true);
+    expect(withOs.fields.network.layers).toEqual(['client', 'os']);
+  });
+
+  it('a policy of version 2 with onAsk rules gets the same report, and the field stays onAsk', () => {
+    const { adapter } = setup();
+    const rules: RolePolicy = { ...v2, onAsk: 'rules' };
+    expect(adapter.guarantee(rules, { fields: [] })).toEqual(adapter.guarantee(v2, { fields: [] }));
   });
 });
 
