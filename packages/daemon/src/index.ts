@@ -11,6 +11,7 @@ export * from './execution/settings.js';
 export * from './i18n.js';
 export * from './instance-lock.js';
 export * from './logger.js';
+export * from './mcp/index.js';
 export * from './paths.js';
 export * from './pipeline/index.js';
 export * from './recovery/backup.js';

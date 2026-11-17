@@ -7,6 +7,7 @@
     { "path": "packages/fake-agent" },
     { "path": "packages/daemon" },
     { "path": "packages/adapters/clock-system" },
+    { "path": "packages/adapters/prompts-files" },
     { "path": "packages/adapters/store-sqlite" },
     { "path": "packages/adapters/vault-file" },
     { "path": "packages/adapters/vault-keyring" },

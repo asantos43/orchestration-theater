@@ -40,7 +40,12 @@ describe('parseConfig', () => {
   it('gives every default for an empty file or only comments', () => {
     const config = parseConfig('# nothing here\n');
     expect(config).toEqual(parseConfig(''));
-    expect(config.adapters).toEqual({ store: 'sqlite', vault: 'keyring', clock: 'system' });
+    expect(config.adapters).toEqual({
+      store: 'sqlite',
+      vault: 'keyring',
+      clock: 'system',
+      prompts: 'files',
+    });
     expect(config.backup).toEqual({
       when: 'daily_after',
       after: '03:00',
@@ -322,6 +327,30 @@ describe('parseConfig, execution keys', () => {
       expect(parseConfig(`pool:\n  shared_cancel: ${mode}\n`).pool.shared_cancel).toBe(mode);
     }
     expect(() => parseConfig('pool:\n  shared_cancel: kill\n')).toThrow(/shared_cancel/);
+  });
+});
+
+describe('parseConfig, mcp and submit_retries (P3)', () => {
+  it('defaults mcp.port to auto (N81) and takes a fixed port from 1024 to 65535', () => {
+    expect(parseConfig('').mcp).toEqual({ port: 'auto' });
+    expect(parseConfig('mcp:\n  port: auto\n').mcp.port).toBe('auto');
+    expect(parseConfig('mcp:\n  port: 1024\n').mcp.port).toBe(1024);
+    expect(parseConfig('mcp:\n  port: 65535\n').mcp.port).toBe(65535);
+  });
+
+  it('rejects a port out of range, a non-integer, any other word and unknown keys of mcp', () => {
+    for (const bad of ['1023', '65536', '0', '-1', '80.5', 'random', '"8080"']) {
+      expect(() => parseConfig(`mcp:\n  port: ${bad}\n`)).toThrow(/mcp\.port/);
+    }
+    expect(() => parseConfig('mcp:\n  host: 0.0.0.0\n')).toThrow(/host/);
+  });
+
+  it('defaults limits.submit_retries to 2 (N79) and takes any integer from 0', () => {
+    expect(parseConfig('').limits.submit_retries).toBe(2);
+    expect(parseConfig('limits:\n  submit_retries: 0\n').limits.submit_retries).toBe(0);
+    expect(parseConfig('limits:\n  submit_retries: 5\n').limits.submit_retries).toBe(5);
+    expect(() => parseConfig('limits:\n  submit_retries: -1\n')).toThrow(/submit_retries/);
+    expect(() => parseConfig('limits:\n  submit_retries: 1.5\n')).toThrow(/submit_retries/);
   });
 });
 

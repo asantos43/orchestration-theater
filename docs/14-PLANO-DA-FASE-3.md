@@ -10,7 +10,8 @@ Decisões do dono em 2026-11-16, por múltipla escolha, iguais às recomendaçõ
 Decisões de 2026-11-17, também iguais às recomendações:
 - **N78:** no MVP, o Produtor conversa com o Diretor por um `ot chat` mínimo no terminal, com o Diretor aberto pelo daemon (P8);
 - **N79:** `limits.submit_retries`, com padrão 2 (P3);
-- **N80:** `events.unknown_type: reject | warn`, com padrão `reject` (P1).
+- **N80:** `events.unknown_type: reject | warn`, com padrão `reject` (P1);
+- **N81:** `mcp.port: auto | <número>`, com padrão `auto` (P3).
 
 ## Como usar
 
@@ -96,7 +97,7 @@ Ficam como portões **[N]**:
 | P0 | Plano, fechamento da Fase 2 e downloads (este documento) | nada | nada | feito (PR #49) |
 | P1 | Registros validados na subida | P0 | P2, P5 | feito (PR #51) |
 | P2 | Store da Fase 3 | P0 | P1, P5 | feito (PR #52) |
-| P3 | Servidor MCP do framework | P1 | P4, P6, P11 | a fazer |
+| P3 | Servidor MCP do framework | P1 | P4, P6, P11 | feito (PR #54) |
 | P4 | Máquina da peça em XState | P1, P2 | P3, P6, P11 | a fazer |
 | P5 | Roteiro: validação e DAG | P0 | P1, P2, P3, P4 | feito (PR #50) |
 | P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | a fazer |
@@ -104,7 +105,7 @@ Ficam como portões **[N]**:
 | P8 | Peça ponta a ponta com o agente falso | P3 a P7, P11 | P10 | a fazer |
 | P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | a fazer |
 | P10 | Ordens globais e locais | P3, P11 | P7, P8, P9 | a fazer |
-| P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | a fazer |
+| P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | a fazer |
 | P13 | Aceite da fase e peça real | P9, P10, P12 | nada | a fazer |
 
@@ -166,7 +167,7 @@ Ordem em ondas **[proposta]**:
 **Escopo:**
 - Instalar o `@modelcontextprotocol/server` 2.4.0 e o `@modelcontextprotocol/node` 2.1.2, com o `hono` e o `@hono/node-server` travados nas versões da tabela (N76).
 - Em `daemon/src/mcp`:
-  - o servidor usa `createMcpHandler(factory)` e responde por Streamable HTTP só em `127.0.0.1`, com as guardas de `Host` e `Origin` para localhost. A porta vem de `mcp.port: auto | <número>`, e o padrão `auto` é **[proposta]**;
+  - o servidor usa `createMcpHandler(factory)` e responde por Streamable HTTP só em `127.0.0.1`, com as guardas de `Host` e `Origin` para localhost. A porta vem de `mcp.port: auto | <número>`, com padrão `auto` (N81, decidida em 2026-11-17);
   - cada sessão recebe um token próprio, gerado pelo daemon e ligado à sessão e ao papel;
   - a fábrica lê o `authInfo` e monta só as ferramentas do papel, tiradas do registro do P1.
 - O `AttemptRunner` preenche a `SessionSetup.mcpServers` com a URL e o cabeçalho `Authorization`. Isso também vale na retomada por `session/load`.

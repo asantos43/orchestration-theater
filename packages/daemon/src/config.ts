@@ -54,6 +54,7 @@ export const LOCALE_SETTINGS = ['auto', 'en', 'pt-BR'] as const;
 export const STORE_ADAPTER_IDS = ['sqlite'] as const;
 export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
+export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
 
@@ -363,12 +364,18 @@ export const DaemonConfigSchema = z.strictObject({
       store: z.enum(STORE_ADAPTER_IDS).default('sqlite'),
       vault: z.enum(VAULT_ADAPTER_IDS).default('keyring'),
       clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
+      prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
     })
     .prefault({}),
   /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */
   store: AdapterSection.prefault({}),
   /** Config of the chosen vault adapter (keyring: service, linuxStore; encrypted-file: path, scrypt). */
   vault: AdapterSection.prefault({}),
+  /**
+   * Config of the chosen prompt source (files: `directory`, a folder with one `<role>.md` per role;
+   * without it the versioned `prompts/` folder of the repository is used). [proposta]
+   */
+  prompts: AdapterSection.prefault({}),
   backup: z
     .strictObject({
       when: z.enum(BACKUP_WHEN).default('daily_after'),
@@ -428,6 +435,16 @@ export const DaemonConfigSchema = z.strictObject({
         sessions_per_process: z.int().min(1).default(4),
         process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
       }).prefault({}),
+    })
+    .prefault({}),
+  /**
+   * The framework MCP server (architecture 5.3), Streamable HTTP on 127.0.0.1 only. `port: auto`
+   * (N81, owner's decision) takes a free port at every start and the real URL is given to the
+   * sessions; a number (1024 to 65535) fixes it.
+   */
+  mcp: z
+    .strictObject({
+      port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
     })
     .prefault({}),
   /**

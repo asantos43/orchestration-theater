@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { BACKUP_TRIGGERS } from './api.js';
 import {
   AttemptCheckpointPayloadSchema,
+  AttemptSubmitFailedPayloadSchema,
+  AttemptSubmittedPayloadSchema,
   SessionClosedPayloadSchema,
   SessionCancelEscalatedPayloadSchema,
   SessionInterruptedPayloadSchema,
@@ -68,7 +70,7 @@ export const DaemonBackupPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 11 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 13 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -123,6 +125,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: AttemptCheckpointPayloadSchema,
   }),
+  defineEventType({
+    type: 'attempt.submitted',
+    schemaVersion: 1,
+    payload: AttemptSubmittedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.submit_failed',
+    schemaVersion: 1,
+    payload: AttemptSubmitFailedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -160,6 +172,8 @@ export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
+export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
+export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

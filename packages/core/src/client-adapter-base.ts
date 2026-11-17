@@ -628,7 +628,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   ): Promise<AgentSession> {
     const purpose = options?.purpose ?? 'work';
     this.#assertGuaranteed(policy, via.id, purpose);
-    const mcpServers = this.#mcpServersOf(policy);
+    const mcpServers = this.#mcpServersOf(policy, options?.mcpServers);
     // The spec is built on every open, shared process or not: the profile files and the slot the
     // descendant keeps for this policy are written per session, and the key needs the environment.
     const spec = await this.#spec(profile, policy, cwd, via.id);
@@ -700,7 +700,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     try {
       const purpose = options?.purpose ?? 'work';
       this.#assertGuaranteed(policy, via.id, purpose);
-      const mcpServers = this.#mcpServersOf(policy);
+      const mcpServers = this.#mcpServersOf(policy, options?.mcpServers);
       return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose);
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
@@ -797,14 +797,26 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     );
   }
 
-  #mcpServersOf(policy: RolePolicy): readonly McpServerRef[] {
-    if (policy.mcpServers.length === 0) return [];
+  /**
+   * The MCP servers of one session: the ones the caller handed in (`extra`, each named by the
+   * policy) and the other names of the policy through the resolver.
+   */
+  #mcpServersOf(policy: RolePolicy, extra: readonly McpServerRef[] = []): readonly McpServerRef[] {
+    for (const ref of extra) {
+      if (!policy.mcpServers.includes(ref.name)) {
+        throw new InvalidInput(
+          `${this.id}: the MCP server "${ref.name}" is not one of the role's (${policy.mcpServers.join(', ') || 'none'})`,
+        );
+      }
+    }
+    const named = policy.mcpServers.filter((name) => !extra.some((ref) => ref.name === name));
+    if (named.length === 0) return [...extra];
     if (this.#resolveMcpServers === undefined) {
       throw new InvalidInput(
-        `${this.id}: the role names MCP servers (${policy.mcpServers.join(', ')}) and no resolver was given`,
+        `${this.id}: the role names MCP servers (${named.join(', ')}) and no resolver was given`,
       );
     }
-    return this.#resolveMcpServers(policy.mcpServers);
+    return [...this.#resolveMcpServers(named), ...extra];
   }
 
   #normalizer(via: TransportId): SessionNormalizer {

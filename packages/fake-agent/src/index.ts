@@ -9,6 +9,12 @@ export {
   type FakeAgentOptions,
 } from './agent.js';
 export {
+  McpClientError,
+  McpHttpClient,
+  type HttpMcpServer,
+  type McpToolOutcome,
+} from './mcp-client.js';
+export {
   parsePrompt,
   parseScriptSpec,
   SCRIPT_NAMES,

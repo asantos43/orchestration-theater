@@ -53,6 +53,20 @@ const good: Record<string, unknown> = {
     branch: 'play/p1/attempts/d1/1',
     ...correlation,
   },
+  'attempt.submitted': {
+    tool: 'submit_plan',
+    role: 'planner',
+    output: { steps: ['a'] },
+    calls: 2,
+    ...correlation,
+  },
+  'attempt.submit_failed': {
+    tool: 'submit_plan',
+    role: 'planner',
+    errors: 'steps: required',
+    calls: 3,
+    ...correlation,
+  },
 };
 
 describe('session and checkpoint events', () => {
@@ -109,6 +123,8 @@ describe('session and checkpoint events', () => {
       ['session.closed', { sessionId: 's1', reason: 'because' }],
       ['attempt.checkpoint', { sha: 'a', label: 'x', reason: 'whim' }],
       ['attempt.checkpoint', { sha: '', label: 'x', reason: 'interval' }],
+      ['attempt.submitted', { tool: 'submit', role: 'planner', output: {}, calls: 0 }],
+      ['attempt.submit_failed', { tool: 'submit', role: 'planner', errors: '', calls: 1 }],
       ['session.opened', { ...(good['session.opened'] as object), playId: '' }],
     ];
     for (const [type, payload] of bad) {
