@@ -3,11 +3,14 @@ import { readFile } from 'node:fs/promises';
 import {
   DEFAULT_DIRECTIVE_TIMEZONE,
   DEFAULT_SUMMARY_MESSAGES,
+  DEFAULT_SHELL_ALLOWLIST,
   DELIVERY_MODES,
   InvalidInput,
   isKnownTimezone,
+  parseAllowEntry,
   PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
+  TRUNCATE_MODES,
 } from '@otheater/core';
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
@@ -308,6 +311,88 @@ export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
  */
 export const CHAT_PRESENCE_MODES = ['poll', 'always', 'never'] as const;
 export type ChatPresenceMode = (typeof CHAT_PRESENCE_MODES)[number];
+
+/**
+ * `tools.shell_allowlist.mode` (N97): which programs `restricted_shell` runs. `list` (default):
+ * the entries of `tools.shell_allowlist.list`; `profile`: only the commands of the project
+ * conventions (`scenarios.conventions`); `any`: any program of the PATH (the sandbox, P4, is the
+ * only container). The argv rules and the confinement of the paths apply in all three.
+ */
+export const SHELL_ALLOWLIST_MODES = ['list', 'profile', 'any'] as const;
+export type ShellAllowlistMode = (typeof SHELL_ALLOWLIST_MODES)[number];
+
+/** The tools that can count toward `tools.heavy_concurrency` (`tools.heavy_commands`). [proposta] */
+export const HEAVY_TOOL_NAMES = ['restricted_shell', 'run_tests', 'install_deps'] as const;
+export type HeavyToolName = (typeof HEAVY_TOOL_NAMES)[number];
+
+/**
+ * `tools.http.redirects` [proposta]: what `http_get` does with a 3xx answer. `refuse` (default):
+ * the answer is the redirect itself, nothing is followed; `follow_allowed`: it follows a redirect
+ * only while the target is also in the role's `network.allow` (at most 5 hops).
+ */
+export const HTTP_REDIRECT_MODES = ['refuse', 'follow_allowed'] as const;
+export type HttpRedirectMode = (typeof HTTP_REDIRECT_MODES)[number];
+
+/** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. */
+export const ToolCommandSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+export type ToolCommand = z.infer<typeof ToolCommandSchema>;
+
+const AllowlistEntrySchema = z
+  .string()
+  .min(1)
+  .refine((entry) => {
+    try {
+      parseAllowEntry(entry);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'expected a bare program name and optional leading words, such as "git status"');
+
+/**
+ * `tools` (architecture 5.8, N97 and N98): the work tools of the Executors. The scenario and the
+ * project can override every key (`resolveToolSettings`).
+ */
+export const ToolsConfigSchema = z
+  .strictObject({
+    /** N97: which programs `restricted_shell` runs. */
+    shell_allowlist: z
+      .strictObject({
+        mode: z.enum(SHELL_ALLOWLIST_MODES).default('list'),
+        /** The entries of mode `list`: a program and, optionally, the words that must follow it. */
+        list: z.array(AllowlistEntrySchema).default([...DEFAULT_SHELL_ALLOWLIST]),
+      })
+      .prefault({}),
+    /** N98: the longest a command runs; at the end the process tree is killed. */
+    timeout_ms: z.int().min(1).default(600_000),
+    /** N98: the most bytes of stdout, of stderr or of a body that go back to the Executor. */
+    output_max_bytes: z.int().min(1).default(65_536),
+    /** [proposta] Which part of a long output is kept: `head`, `tail` or `head_tail` (default). */
+    truncate: z.enum(TRUNCATE_MODES).default('head_tail'),
+    /** N98: how many heavy commands run at once; the others wait their turn. */
+    heavy_concurrency: z.int().min(1).default(1),
+    /** [proposta] The tools that count as heavy. */
+    heavy_commands: z.array(z.enum(HEAVY_TOOL_NAMES)).default(['run_tests', 'install_deps']),
+    /**
+     * [proposta] The commands `run_tests` and `install_deps` run when the conventions of the
+     * project (`scenarios.conventions`) say none. Never from the model.
+     */
+    commands: z
+      .strictObject({
+        test: ToolCommandSchema.optional(),
+        install: ToolCommandSchema.optional(),
+      })
+      .prefault({}),
+    /** [proposta] `http_get`: the time limit of a request and what a redirect does. */
+    http: z
+      .strictObject({
+        timeout_ms: z.int().min(1).default(30_000),
+        redirects: z.enum(HTTP_REDIRECT_MODES).default('refuse'),
+      })
+      .prefault({}),
+  })
+  .prefault({});
+export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
 
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
@@ -710,6 +795,7 @@ export const DaemonConfigSchema = z.strictObject({
       conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
     })
     .prefault({}),
+  tools: ToolsConfigSchema,
   events: z
     .strictObject({
       /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
