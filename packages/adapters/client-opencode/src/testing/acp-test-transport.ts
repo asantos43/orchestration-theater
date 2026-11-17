@@ -126,9 +126,11 @@ function stringOf(value: unknown): string | undefined {
  * The reduction of a `session/request_permission` to what the policy needs (architecture 5.8,
  * layer 2). Besides the title and the kind, what the release rules read (Phase 4, P2): the tool
  * name, the files, the command and the address the call carries. The files come from
- * `toolCall.locations` (V: Claude Code and OpenCode send them for an edit) and, when the client
- * sends none, from the path keys of `rawInput`; the command from `rawInput.command` (V, Claude
- * Code and OpenCode for `execute`); the tool name from `_meta.claudeCode.toolName` [N].
+ * `toolCall.locations` and, when the client sends none, from the path keys of `rawInput` (neither
+ * measured per client for an edit [N]; the fake agent sends `locations`); the command from
+ * `rawInput.command` ([V] in the Phase 0 spikes, Claude Code and OpenCode for `execute`); the tool
+ * name from `_meta.claudeCode.toolName` [N]. A request that lacks the file of a write is rejected
+ * (`write_target_unknown`), so what is not measured fails closed.
  */
 function permissionRequestOf(params: RequestPermissionRequest): PermissionRequest {
   const { toolCall } = params;
