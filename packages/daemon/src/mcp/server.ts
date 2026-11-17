@@ -22,6 +22,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import type { Logger } from '../logger.js';
+import type { RecoveryGate } from '../recovery/gate.js';
 import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
 import { notImplemented, ToolFailure, ToolHandlers } from './handlers.js';
@@ -47,6 +48,8 @@ export interface FrameworkMcpOptions {
   readonly producerQuestions?: ProducerQuestionMode;
   readonly logger: Logger;
   readonly version: string;
+  /** Calls wait here while the reconciliation of the start-up runs (5.21). Default: no wait. */
+  readonly gate?: Pick<RecoveryGate, 'wait'>;
 }
 
 /**
@@ -254,6 +257,7 @@ export class FrameworkMcpServer implements McpAccess {
   /** One call of a tool: the order is revoked? submit? input valid? handler? */
   async #call(record: GrantRecord, tool: ToolDefinition, args: unknown): Promise<ToolReply> {
     if (record.revoked) return { ok: false, value: { error: 'revoked' } };
+    await this.#options.gate?.wait();
     try {
       if (isSubmitTool(tool.name)) {
         return await runSubmit(record, tool, args, this.#options.submitRetries);

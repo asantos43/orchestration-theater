@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { PROCESS_LAUNCHER_PORT_VERSION } from '@otheater/core';
+import { PROCESS_LAUNCHER_PORT_VERSION, supportsOrphanKill } from '@otheater/core';
 import { describeProcessLauncherConformance } from '@otheater/sdk';
 import { PosixProcessLauncher } from './index.js';
 
@@ -36,5 +36,53 @@ describe('PosixProcessLauncher', () => {
     expect(() => new PosixProcessLauncher({ nope: 1 } as object)).toThrow(
       expect.objectContaining({ code: 'INVALID_INPUT' }) as Error,
     );
+  });
+});
+
+describe.skipIf(process.platform !== 'linux')('PosixProcessLauncher orphan capability', () => {
+  const launchSleeper = async (launcher: PosixProcessLauncher) =>
+    launcher.launch({
+      cmd: process.execPath,
+      args: ['-e', 'setInterval(() => undefined, 1000)'],
+      cwd: process.cwd(),
+      env: {},
+    });
+
+  it('is recognised as an orphan reaper', () => {
+    expect(supportsOrphanKill(new PosixProcessLauncher())).toBe(true);
+  });
+
+  it('knows nothing of a pid that is not there', async () => {
+    const launcher = new PosixProcessLauncher();
+    expect(await launcher.processStartedAt(2 ** 22 + 12345)).toBeUndefined();
+    expect((await launcher.killOrphan({ pid: 2 ** 22 + 12345, startedAt: 1 })).matched).toBe(false);
+  });
+
+  it('never signals a pid whose start instant is not the recorded one (a recycled pid)', async () => {
+    const launcher = new PosixProcessLauncher();
+    const process_ = await launchSleeper(launcher);
+    try {
+      const started = await launcher.processStartedAt(process_.pid);
+      expect(started).toBeGreaterThan(0);
+      const result = await launcher.killOrphan({
+        pid: process_.pid,
+        startedAt: (started ?? 0) - 60_000,
+      });
+      expect(result.matched).toBe(false);
+      expect(await launcher.processStartedAt(process_.pid)).toBeDefined();
+    } finally {
+      await process_.killTree();
+    }
+  });
+
+  it('ends the tree of the process that was recorded', async () => {
+    const launcher = new PosixProcessLauncher();
+    const process_ = await launchSleeper(launcher);
+    const started = await launcher.processStartedAt(process_.pid);
+    const result = await launcher.killOrphan({ pid: process_.pid, startedAt: started ?? 0 });
+    expect(result.matched).toBe(true);
+    expect(result.report.found).toBeGreaterThanOrEqual(1);
+    await process_.exited;
+    expect(await launcher.processStartedAt(process_.pid)).toBeUndefined();
   });
 });

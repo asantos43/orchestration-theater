@@ -103,11 +103,12 @@ Ficam como portões **[N]**:
 | P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | feito (PR #55) |
 | P7 | Blackboard e fila única de prompts | P2, P3 | P10 | feito (PR #57) |
 | P8 | Peça ponta a ponta com o agente falso | P3 a P7, P11 | P10 | feito (PR #59) |
-| P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | a fazer |
+| P9 | Reconciliação na subida e `kill -9` | P8 | P10, P12 | feito (PR #61) |
 | P10 | Ordens globais e locais | P3, P11 | P7, P8, P9 | feito (PR #58) |
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | a fazer |
-| P13 | Aceite da fase e peça real | P9, P10, P12 | nada | a fazer |
+| P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | a fazer |
+| P13 | Aceite da fase e peça real | P9, P10, P12, P14 | nada | a fazer |
 
 Ordem em ondas **[proposta]**:
 1. P1, P2 e P5;
@@ -115,7 +116,8 @@ Ordem em ondas **[proposta]**:
 3. P7 e P10;
 4. P8 e depois P9; **o marco 3a fecha com o P9**;
 5. P12, junto com o P9 e o P10 se der tempo;
-6. P13.
+6. P14, depois do P9 e do P12, porque mexe nos mesmos arquivos de efeitos da peça;
+7. P13.
 
 **Marco 3a (N77):** uma peça ponta a ponta com o agente falso, nos quatro desfechos e no critério de parada, um reinício do daemon no meio da peça e o `kill -9` no meio de um efeito colateral. São os três primeiros itens do aceite da fase. Ordens, cenários e chat vêm depois, até o aceite completo.
 
@@ -339,6 +341,21 @@ Ordem em ondas **[proposta]**:
 - um anexo de imagem só vai a quem aceita imagem;
 - o Diretor adormece e acorda sem perder o estado.
 
+### P14. Conflitos de merge (N82 a N84; §5.4 e §5.5)
+
+Passo criado em 2026-11-17, quando o dono decidiu as três lacunas dos conflitos de merge.
+
+**Escopo:**
+- `integration.rebase_conflict` (N82): o efeito `rebase_dependents`, que no P8 só registra no log, passa a rebasear. Com conflito, o daemon aborta o rebase e abre a tentativa nova da dependente, com o diff antigo no contexto.
+- `delivery.base_drift` (N83): em DELIVERING, merge da base em `play/<id>/integration` e `verify` de novo antes do PR. O conflito vira falha de roteiro, com os arquivos em conflito.
+- `rescript.reuse` (N84): a marcação das demandas iguais no roteiro novo, a conferência no daemon, a integração refeita e a limpeza das branches depois da entrega.
+- Os modos que não são padrão, com teste cada um.
+
+**Aceite**, com o agente falso e o `CodeHost` falso:
+- um rebase com conflito refaz a dependente, contando em `attempts_per_demand`;
+- com a base adiantada sem conflito, a peça entrega; com conflito, volta a SCRIPTING;
+- no roteiro novo, a demanda igual não roda de novo, e a que mudou roda com o diff antigo no contexto.
+
 ### P13. Aceite da fase e peça real
 
 **Escopo:**
@@ -353,5 +370,10 @@ Ordem em ondas **[proposta]**:
 As duas que o plano levantou foram decididas pelo dono em 2026-11-17, por múltipla escolha:
 - **P3 (N79):** `limits.submit_retries`, com padrão 2;
 - **P8 (N78):** o `ot chat` mínimo no terminal, com o Diretor aberto pelo daemon.
+
+Depois, as três lacunas dos conflitos de merge também foram decididas pelo dono em 2026-11-17, por múltipla escolha, e viraram o P14:
+- **N82:** um conflito no rebase das dependentes refaz a dependente;
+- **N83:** a base que mudou entra na integração antes da entrega, e o conflito vira falha de roteiro;
+- **N84:** no roteiro novo depois de um conflito, o que não mudou continua aprovado.
 
 As próximas que surgirem vão ao dono do mesmo jeito, ao abrir o passo.

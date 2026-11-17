@@ -16,7 +16,19 @@ export interface ProcessInfo {
    * a process, so a recycled pid is never mistaken for the one that was seen before.
    */
   readonly start: string;
+  /**
+   * The same instant as epoch milliseconds, when the table can tell (what the reconciliation of a
+   * restart compares with the instant it recorded). Linux derives it from the boot time, so it is
+   * good to a second or so: callers compare with a tolerance ({@link START_TOLERANCE_MS}).
+   */
+  readonly startedAtMs?: number;
 }
+
+/** [proposta] How far two readings of one process start may differ and still be the same process. */
+export const START_TOLERANCE_MS = 2000;
+
+/** [proposta] Clock ticks per second of `/proc/<pid>/stat` times; 100 on every Linux in use. */
+const CLOCK_TICKS_PER_SECOND = 100;
 
 /** A snapshot of every process the user can see, keyed by pid. */
 export type ProcessSnapshot = ReadonlyMap<number, ProcessInfo>;
@@ -29,7 +41,11 @@ export type ProcessTable = () => Promise<ProcessSnapshot>;
  * parentheses itself, so the fields are counted after the LAST `)`: state, ppid, pgrp, ...,
  * starttime (the 20th field after the command; proc(5), fields 3, 4, 5 and 22).
  */
-export function parseProcStat(pid: number, text: string): ProcessInfo | undefined {
+export function parseProcStat(
+  pid: number,
+  text: string,
+  bootTimeMs?: number,
+): ProcessInfo | undefined {
   const end = text.lastIndexOf(')');
   if (end < 0) return undefined;
   const fields = text
@@ -42,7 +58,25 @@ export function parseProcStat(pid: number, text: string): ProcessInfo | undefine
   const start = fields[19];
   if (state === undefined || start === undefined || !Number.isInteger(ppid)) return undefined;
   if (!Number.isInteger(pgid)) return undefined;
-  return { pid, ppid, pgid, zombie: state === 'Z' || state === 'X', start };
+  const ticks = Number(start);
+  const startedAtMs =
+    bootTimeMs !== undefined && Number.isFinite(ticks)
+      ? Math.round(bootTimeMs + (ticks * 1000) / CLOCK_TICKS_PER_SECOND)
+      : undefined;
+  return {
+    pid,
+    ppid,
+    pgid,
+    zombie: state === 'Z' || state === 'X',
+    start,
+    ...(startedAtMs === undefined ? {} : { startedAtMs }),
+  };
+}
+
+/** The boot time of the machine in epoch ms (`btime` of `/proc/stat`), or `undefined`. */
+export function parseBootTime(text: string): number | undefined {
+  const match = /^btime\s+(\d+)\s*$/m.exec(text);
+  return match?.[1] === undefined ? undefined : Number(match[1]) * 1000;
 }
 
 /**
@@ -57,12 +91,14 @@ export function parsePsOutput(text: string): ProcessSnapshot {
     const [, pid, ppid, pgid, stat, start] = match;
     if (pid === undefined || ppid === undefined || pgid === undefined) continue;
     if (stat === undefined || start === undefined) continue;
+    const startedAtMs = Date.parse(start);
     table.set(Number(pid), {
       pid: Number(pid),
       ppid: Number(ppid),
       pgid: Number(pgid),
       zombie: stat.startsWith('Z'),
       start,
+      ...(Number.isNaN(startedAtMs) ? {} : { startedAtMs }),
     });
   }
   return table;
@@ -77,12 +113,17 @@ export function procFsTable(procDir = '/proc'): ProcessTable {
     } catch {
       return new Map();
     }
+    const bootTimeMs = parseBootTime(await readFile(`${procDir}/stat`, 'utf8').catch(() => ''));
     const rows = await Promise.all(
       names
         .filter((name) => /^\d+$/.test(name))
         .map(async (name) => {
           try {
-            return parseProcStat(Number(name), await readFile(`${procDir}/${name}/stat`, 'utf8'));
+            return parseProcStat(
+              Number(name),
+              await readFile(`${procDir}/${name}/stat`, 'utf8'),
+              bootTimeMs,
+            );
           } catch {
             return undefined;
           }

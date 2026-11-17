@@ -118,6 +118,45 @@ export interface ProcessLauncher extends Adapter {
   launch(opts: LaunchOptions): Promise<LaunchedProcess>;
 }
 
+/** A process of a previous daemon: its pid and the instant it started (epoch ms, as the OS says). */
+export interface OrphanTarget {
+  readonly pid: number;
+  readonly startedAt: number;
+}
+
+/** What {@link OrphanReaper.killOrphan} found. */
+export interface OrphanKillReport {
+  /**
+   * The pid was alive and started at the recorded instant, so the tree was ended. `false` when the
+   * process is gone, or the pid now belongs to another process (it is never signalled then).
+   */
+  readonly matched: boolean;
+  readonly report: KillReport;
+}
+
+/**
+ * Optional capability of a `ProcessLauncher` (architecture 5.21, step 2 of the reconciliation): end
+ * the client processes a dead daemon left behind. A process is identified by pid AND start instant,
+ * so a recycled pid is never killed. Check with {@link supportsOrphanKill}. [proposta] An optional
+ * capability, like `VcsHistory`, so the port version does not change.
+ */
+export interface OrphanReaper {
+  /** When the process `pid` started (epoch ms), or `undefined` if there is no such live process. */
+  processStartedAt(pid: number): Promise<number | undefined>;
+  /** Ends the tree of `target` if, and only if, the process is the one that was recorded. */
+  killOrphan(target: OrphanTarget, opts?: KillOptions): Promise<OrphanKillReport>;
+}
+
+/** Narrows a `ProcessLauncher` to one that can find and end orphans. */
+export function supportsOrphanKill(
+  launcher: ProcessLauncher,
+): launcher is ProcessLauncher & OrphanReaper {
+  const candidate = launcher as Partial<OrphanReaper>;
+  return (
+    typeof candidate.processStartedAt === 'function' && typeof candidate.killOrphan === 'function'
+  );
+}
+
 const ABSOLUTE_PATH = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/;
 
 /**

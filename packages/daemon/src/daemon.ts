@@ -19,6 +19,7 @@ import {
   buildDaemonEvent,
   DaemonStatusSchema,
   type BackupTrigger,
+  type DaemonRecoveredPayload,
   type DaemonState,
   type DaemonStatus,
 } from '@otheater/protocol';
@@ -49,7 +50,10 @@ import { dataPaths, ensureDataDir } from './paths.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
+import { RecoveryGate } from './recovery/gate.js';
+import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
+import { TrackingLauncher } from './recovery/tracking-launcher.js';
 import { packageVersion } from './version.js';
 
 /** How many times the master password is asked before the daemon gives up. */
@@ -162,10 +166,15 @@ export interface DaemonHandle {
  * 6. `daemon.started` is appended to the log;
  * 7. the orders catch up with the clock (what started or ended while the daemon was stopped gets
  *    its event with the real boundary time) before any session opens, and their watcher starts;
- *    the execution of attempts is built (when clients were given) and reconciles the attempts the
- *    previous daemon left running: each one is resumed with `session/load`, or parked;
- * 8. the backup scheduler starts (only if the store can make copies);
- * 9. state `running`.
+ * 8. the reconciliation (5.21), while the MCP server and the Producer channel hold their calls:
+ *    the client processes the dead daemon left are ended (pid and start instant), its sessions
+ *    become `interrupted`, what its worktrees held uncommitted becomes a `wip(recovery)` commit,
+ *    and the effects with an intent and no end are settled by their verifiers (or the Producer is
+ *    asked); then the execution of attempts is built (when clients were given) and reconciles the
+ *    attempts the previous daemon left running (each resumed with `session/load`, or parked), the
+ *    plays are restored from their snapshots, `daemon.recovered` is written and the calls go on;
+ * 9. the backup scheduler starts (only if the store can make copies);
+ * 10. state `running`.
  * Any failure after step 1 releases everything taken so far and rejects.
  */
 export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHandle> {
@@ -177,6 +186,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let composition: Composition | undefined;
   let mcp: FrameworkMcpServer | undefined;
   let directives: DirectiveService | undefined;
+  // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
+  // Producer channel wait here (5.21: "os comandos que mudam estado esperam").
+  const gate = new RecoveryGate();
   try {
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
@@ -221,6 +233,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       ),
       logger: composition.logger,
       version,
+      gate,
     });
     return await run({
       options,
@@ -234,8 +247,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       prompts,
       orchestrationHandlers,
       scenarioHandlers,
+      gate,
     });
   } catch (error) {
+    gate.open();
     await directives?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
     await composition?.close().catch(() => undefined);
@@ -256,11 +271,22 @@ interface RunInput {
   readonly prompts: PromptSource;
   readonly orchestrationHandlers: OrchestrationHandlers;
   readonly scenarioHandlers: ScenarioHandlers;
+  readonly gate: RecoveryGate;
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
-  const { options, config, composition, registries, mcp, directives, lock, version, prompts } =
-    input;
+  const {
+    options,
+    config,
+    composition,
+    registries,
+    mcp,
+    directives,
+    lock,
+    version,
+    prompts,
+    gate,
+  } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
   const startedAt = clock.now();
@@ -308,9 +334,20 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   await directives.start();
 
+  const recoveryStartedAt = clock.now();
+  // Before anything is resumed: the orphans, the sessions, the worktrees and the effects (5.21).
+  const recovery = await reconcileBeforeResume({
+    store,
+    vcs: composition.vcs,
+    codeHost: composition.codeHost,
+    launcher: composition.launcher,
+    logger,
+  });
   const execution = buildExecution(options, config, composition, paths.worktrees, mcp);
+  let attemptsInterrupted = 0;
   if (execution !== undefined) {
     const report = await execution.reconcile();
+    attemptsInterrupted = report.parked.length;
     // The resumed attempts run on; nothing here waits for them.
     void report.done;
   }
@@ -327,8 +364,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       paths,
       handlers: input.orchestrationHandlers,
       scenarioHandlers: input.scenarioHandlers,
+      gate,
     });
   }
+  // The machines of the plays come back from their snapshots; the orders were recomputed by
+  // `directives.start()` above (it emits the transitions the stop made it miss).
+  const resumed = (await orchestration?.runner.resumeAll()) ?? { resumed: [], refused: [] };
+  await store.events.append(
+    buildDaemonEvent(
+      'daemon.recovered',
+      recoveredPayload(recovery, resumed, {
+        attemptsInterrupted,
+        durationMs: Math.max(0, clock.now() - recoveryStartedAt),
+      }),
+    ),
+  );
+  gate.open();
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
@@ -438,11 +489,13 @@ function buildExecution(
   mcp: McpAccess,
 ): Execution | undefined {
   const { logger } = composition;
-  const { launcher } = composition;
-  if (launcher === undefined) {
+  const { launcher: rawLauncher } = composition;
+  if (rawLauncher === undefined) {
     logger.warn('this platform has no process launcher yet; the execution of attempts is off');
     return undefined;
   }
+  // Every process the clients start is written down, so the next daemon can find the orphans (5.21).
+  const launcher = new TrackingLauncher(rawLauncher, composition.store, composition.clock, logger);
   const factory = options.clients ?? productionClients(config, options.clientSearch);
   const clients = factory({
     launcher,
@@ -470,6 +523,30 @@ function buildExecution(
     mcp,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
+}
+
+function recoveredPayload(
+  recovery: RecoveryReport,
+  plays: { resumed: string[]; refused: string[] },
+  extra: { attemptsInterrupted: number; durationMs: number },
+): DaemonRecoveredPayload {
+  return {
+    durationMs: extra.durationMs,
+    orphansKilled: recovery.orphansKilled,
+    sessionsInterrupted: recovery.sessionsInterrupted,
+    attemptsInterrupted: extra.attemptsInterrupted,
+    wipCommits: recovery.wipCommits,
+    effectsResolved: recovery.effectsResolved,
+    playsResumed: plays.resumed,
+    playsRefused: plays.refused,
+    pending: recovery.pending.map((item) => ({
+      kind: 'effect' as const,
+      key: item.key,
+      effectType: item.effectType,
+      playId: item.playId,
+      reason: item.reason,
+    })),
+  };
 }
 
 function adapterRef(

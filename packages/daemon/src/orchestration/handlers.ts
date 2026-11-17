@@ -270,7 +270,11 @@ export class OrchestrationHandlers {
       );
     }
     const { playId } = decision;
-    if (decision.kind === DECISION_KINDS.menu || decision.kind === DECISION_KINDS.question) {
+    if (
+      decision.kind === DECISION_KINDS.menu ||
+      decision.kind === DECISION_KINDS.question ||
+      decision.kind === DECISION_KINDS.recovery
+    ) {
       return new ToolFailure(
         'producer_only',
         'Only the Producer answers this one; it is shown to them in the chat.',

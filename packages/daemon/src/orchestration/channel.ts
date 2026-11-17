@@ -2,6 +2,7 @@
 import {
   type AttachmentRecord,
   Conflict,
+  type DecisionRecord,
   type JsonObject,
   InvalidInput,
   NotFound,
@@ -148,8 +149,9 @@ export class ProducerChannel {
     const asks: PendingAsk[] = [];
     for (const decision of pending) {
       const isMenu = decision.kind === DECISION_KINDS.menu;
+      const isRecovery = decision.kind === DECISION_KINDS.recovery;
       const isQuestion = decision.kind === DECISION_KINDS.question && board.has(decision.id);
-      if (!isMenu && !isQuestion) continue;
+      if (!isMenu && !isQuestion && !isRecovery) continue;
       asks.push({
         id: decision.id,
         kind: decision.kind,
@@ -159,7 +161,7 @@ export class ProducerChannel {
     }
     const open = await store.plays.list({ scenarioId, open: true });
     const awaiting = new Set(
-      asks.filter((ask) => ask.kind === DECISION_KINDS.menu).map((ask) => ask.playId),
+      asks.filter((ask) => ask.kind !== DECISION_KINDS.question).map((ask) => ask.playId),
     );
     const moving = open.some((play) => play.state !== 'NEED' && !awaiting.has(play.id));
     return {
@@ -200,6 +202,57 @@ export class ProducerChannel {
       await store.decisions.decide(decisionId, { answer, decidedBy: 'producer' });
       return;
     }
+    if (decision.kind === DECISION_KINDS.recovery && decision.playId !== null) {
+      await this.#answerRecovery(decision, answer);
+      return;
+    }
     throw new InvalidInput(`The decision "${decisionId}" is not for the Producer to answer`);
   }
+
+  /**
+   * The Producer says whether an effect the start-up could not check happened (5.21): `not_done`
+   * lets the play do it again (the next idempotency key), `done` takes it as done with the result
+   * the Producer gives (`result`, or `reason` holding it as JSON), because the play needs what
+   * the effect produced (the number and the address of a PR, say). [proposta]
+   */
+  async #answerRecovery(decision: DecisionRecord, answer: JsonObject): Promise<void> {
+    const { store, runner } = this.#options;
+    const playId = decision.playId;
+    const key = decision.input.key;
+    if (playId === null || typeof key !== 'string') {
+      throw new InvalidInput(`The decision "${decision.id}" does not say which effect it is about`);
+    }
+    const record = await store.sideEffects.get(key);
+    if (record === undefined) throw new NotFound(`There is no side effect "${key}"`);
+    if (answer.option === 'not_done') {
+      await store.sideEffects.resolve(key, { state: 'not_done', verifier: 'producer' });
+    } else if (answer.option === 'done') {
+      const result = recoveryResultOf(answer);
+      if (result === undefined) {
+        throw new InvalidInput(
+          'To say the effect is done, give what it produced as a JSON object (result)',
+        );
+      }
+      await store.sideEffects.resolve(key, { state: 'done', result, verifier: 'producer' });
+    } else {
+      throw new InvalidInput('The answer must be "done" or "not_done"');
+    }
+    await store.decisions.decide(decision.id, { answer, decidedBy: 'producer' });
+    await runner.resume(playId);
+  }
+}
+
+function recoveryResultOf(answer: JsonObject): JsonObject | undefined {
+  const given = answer.result ?? answer.reason;
+  let value: unknown = given;
+  if (typeof given === 'string') {
+    try {
+      value = JSON.parse(given);
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as JsonObject)
+    : undefined;
 }

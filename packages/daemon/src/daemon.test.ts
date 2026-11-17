@@ -192,7 +192,7 @@ describe('startDaemon', () => {
         'override',
       ]);
       const started = await store.events.readFrom(0, 10);
-      expect(types(started)).toEqual(['daemon.started']);
+      expect(types(started)).toEqual(['daemon.started', 'daemon.recovered']);
       expect(started[0]?.payload).toMatchObject({
         pid: process.pid,
         version: '9.9.9',
@@ -233,8 +233,8 @@ describe('startDaemon', () => {
       });
       await clock.advance(2500);
       await daemon.stop('signal');
-      expect(types(log)).toEqual(['daemon.started', 'daemon.stopped']);
-      expect(log[1]?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
+      expect(types(log)).toEqual(['daemon.started', 'daemon.recovered', 'daemon.stopped']);
+      expect(log[2]?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
     } finally {
       await tmp.dispose();
     }
@@ -456,6 +456,7 @@ describe('startDaemon', () => {
         expect(await readdir(join(tmp.dir, 'backups'))).toHaveLength(1);
         expect(types(await store.events.readFrom(0, 10))).toEqual([
           'daemon.started',
+          'daemon.recovered',
           'daemon.backup',
         ]);
         await daemon.stop();
