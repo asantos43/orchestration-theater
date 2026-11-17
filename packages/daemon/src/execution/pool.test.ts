@@ -349,3 +349,108 @@ describe('SessionPool, shared process', () => {
     await expect(pool.acquire(request())).rejects.toThrow(/closed/);
   });
 });
+
+describe('SessionPool, acquires at the same time', () => {
+  function pids(leases: readonly { pid: number }[]): number[] {
+    const counts = new Map<number, number>();
+    for (const lease of leases) counts.set(lease.pid, (counts.get(lease.pid) ?? 0) + 1);
+    return [...counts.values()].sort((a, b) => b - a);
+  }
+
+  /** Makes the `n`-th `open` of the transport (from 1) reject. */
+  function failOpen(transport: FakeSessionTransport, n: number): void {
+    const open = transport.open.bind(transport);
+    let calls = 0;
+    transport.open = (params) => {
+      calls += 1;
+      return calls === n ? Promise.reject(new Error('boom')) : open(params);
+    };
+  }
+
+  it('K=4: four at once share one process', async () => {
+    const { pool, launcher, request } = setup({ shared: true, k: 4 });
+    const leases = await Promise.all([1, 2, 3, 4].map(() => pool.acquire(request())));
+    expect(launcher.launched).toHaveLength(1);
+    expect(pids(leases)).toEqual([4]);
+    expect(pool.stats()).toEqual({ processes: 1, sessions: 4, queued: 0 });
+    for (const lease of leases) await lease.release();
+  });
+
+  it('K=2: five at once open three processes', async () => {
+    const { pool, launcher, request } = setup({ shared: true, k: 2 });
+    const leases = await Promise.all([1, 2, 3, 4, 5].map(() => pool.acquire(request())));
+    expect(launcher.launched).toHaveLength(3);
+    expect(pids(leases)).toEqual([2, 2, 1]);
+    for (const lease of leases) await lease.release();
+    expect(pool.stats().sessions).toBe(0);
+  });
+
+  it('an open that fails in the middle gives its slot on the process back', async () => {
+    const { pool, launcher, transport, request } = setup({ shared: true, k: 4 });
+    failOpen(transport, 2);
+    const results = await Promise.allSettled([1, 2, 3, 4].map(() => pool.acquire(request())));
+    const leases = results.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+    expect(leases).toHaveLength(3);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(launcher.launched).toHaveLength(1);
+    expect(pool.stats()).toEqual({ processes: 1, sessions: 3, queued: 0 });
+    // The freed slot takes the next session, on the same process.
+    const next = await pool.acquire(request());
+    expect(launcher.launched).toHaveLength(1);
+    expect(next.pid).toBe(leases[0]?.pid);
+    for (const lease of [...leases, next]) await lease.release();
+  });
+
+  it('a process whose every open failed starts its idle timer', async () => {
+    const { pool, launcher, transport, clock, request } = setup({
+      shared: true,
+      k: 2,
+      idleMs: 5_000,
+    });
+    transport.failWith = new Error('boom');
+    const results = await Promise.allSettled([1, 2].map(() => pool.acquire(request())));
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    expect(launcher.launched).toHaveLength(1);
+    expect(pool.stats()).toEqual({ processes: 1, sessions: 0, queued: 0 });
+    await clock.advance(5_000);
+    expect(launcher.running).toHaveLength(0);
+    expect(pool.stats().processes).toBe(0);
+  });
+
+  it('a launch that fails rejects every session waiting on it and frees their slots', async () => {
+    const { pool, launcher, request } = setup({ shared: true, k: 2 });
+    launcher.failWith = new Error('no binary');
+    const results = await Promise.allSettled([1, 2, 3].map(() => pool.acquire(request())));
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    expect(pool.stats()).toEqual({ processes: 0, sessions: 0, queued: 0 });
+    launcher.failWith = undefined;
+    const leases = await Promise.all([1, 2].map(() => pool.acquire(request())));
+    expect(launcher.launched).toHaveLength(1);
+    expect(pids(leases)).toEqual([2]);
+    for (const lease of leases) await lease.release();
+  });
+
+  it('a shutdown during the launch ends the process and rejects every session on it', async () => {
+    const { pool, launcher, request } = setup({ shared: true, k: 4 });
+    const waiting = Promise.allSettled([1, 2, 3].map(() => pool.acquire(request())));
+    await pool.shutdown();
+    const results = await waiting;
+    for (const result of results) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') expect(String(result.reason)).toMatch(/closed/);
+    }
+    expect(launcher.launched).toHaveLength(1);
+    expect(launcher.running).toHaveLength(0);
+  });
+
+  it('process per session (Claude Code): four at once still start four processes', async () => {
+    const { pool, launcher, request } = setup({ shared: false });
+    const leases = await Promise.all([1, 2, 3, 4].map(() => pool.acquire(request())));
+    expect(launcher.launched).toHaveLength(4);
+    expect(leases.every((lease) => !lease.shared)).toBe(true);
+    for (const lease of leases) await lease.release();
+    expect(launcher.running).toHaveLength(0);
+  });
+});

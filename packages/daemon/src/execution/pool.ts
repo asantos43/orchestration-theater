@@ -8,6 +8,7 @@ import {
   type Clock,
   type KillOptions,
   type KillReport,
+  type LaunchOptions,
   type LaunchedProcess,
   type ProcessLauncher,
   type Profile,
@@ -87,6 +88,15 @@ export interface SessionPoolOptions {
 
 const NO_KILL: KillReport = { found: 0, forced: false, remaining: [] };
 
+/**
+ * A shared process being launched, with the sessions that already took a slot on it. When the
+ * launch ends, `tokens` becomes the `sessions` of the new `PoolProcess`.
+ */
+interface PendingLaunch {
+  readonly ready: Promise<PoolProcess>;
+  readonly tokens: Set<symbol>;
+}
+
 /** A process of the pool and the sessions on it. */
 interface PoolProcess {
   readonly key: string;
@@ -159,6 +169,8 @@ export class SessionPool {
   readonly #clock: Clock;
   readonly #settings: PoolSettings;
   readonly #processes = new Map<string, PoolProcess[]>();
+  /** Shared processes still being launched, by the same key as `#processes`. */
+  readonly #launching = new Map<string, PendingLaunch[]>();
   readonly #waiters: { resolve: () => void; reject: (error: unknown) => void }[] = [];
   #sessions = 0;
   #closed = false;
@@ -260,10 +272,7 @@ export class SessionPool {
           : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via);
       return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined);
     }
-    const entry = await this.#processFor(adapter, request, via);
-    const token = Symbol(`${adapter.id}/${profileId}`);
-    entry.sessions.add(token);
-    this.#stopIdle(entry);
+    const { entry, token } = await this.#slotFor(adapter, request, via);
     try {
       const lent = lendProcess(entry.process, (options) => this.#detach(entry, token, options));
       const session =
@@ -278,24 +287,50 @@ export class SessionPool {
     }
   }
 
-  async #processFor(
+  /**
+   * Takes a slot on a shared process: a live one with fewer than `K` sessions, else one being
+   * launched with fewer than `K` slots taken, else a new launch. The slot is taken with no `await`
+   * between the search and the claim, so `acquire`s at the same time split a process up to `K` and
+   * only launch another above that. A launch that fails rejects every session waiting on it, and
+   * their slots go with it.
+   */
+  async #slotFor(
     adapter: ClientAdapter,
     request: PoolRequest,
     via: SessionTransport,
-  ): Promise<PoolProcess> {
+  ): Promise<{ entry: PoolProcess; token: symbol }> {
     const spec = await adapter.launchSpec(request.profile, request.policy, request.cwd, via.id);
     const key = `${adapter.id}|${sharedProcessKey(request.profile, spec)}`;
-    const list = this.#processes.get(key) ?? [];
-    const found = list.find(
-      (entry) => entry.alive && entry.sessions.size < this.#settings.sessionsPerProcess,
-    );
-    if (found !== undefined) return found;
+    const k = this.#settings.sessionsPerProcess;
+    const token = Symbol(`${adapter.id}/${request.profile.id}`);
+    const found = this.#processes.get(key)?.find((entry) => entry.alive && entry.sessions.size < k);
+    if (found !== undefined) {
+      found.sessions.add(token);
+      this.#stopIdle(found);
+      return { entry: found, token };
+    }
+    const pending = this.#launching.get(key)?.find((launch) => launch.tokens.size < k);
+    if (pending !== undefined) {
+      pending.tokens.add(token);
+      return { entry: await pending.ready, token };
+    }
+    const tokens = new Set([token]);
+    const launch: PendingLaunch = { ready: this.#launch(key, spec, tokens), tokens };
+    this.#launching.set(key, [...(this.#launching.get(key) ?? []), launch]);
+    const settled = (): void => {
+      this.#launched(key, launch);
+    };
+    void launch.ready.then(settled, settled);
+    return { entry: await launch.ready, token };
+  }
+
+  async #launch(key: string, spec: LaunchOptions, sessions: Set<symbol>): Promise<PoolProcess> {
     const process = await this.#launcher.launch(spec);
     const entry: PoolProcess = {
       key,
       process,
       shared: true,
-      sessions: new Set(),
+      sessions,
       alive: true,
       idle: undefined,
       escalation: undefined,
@@ -313,6 +348,13 @@ export class SessionPool {
       throw new AdapterUnavailable('the session pool is closed');
     }
     return entry;
+  }
+
+  /** A launch ended, well or not: new sessions no longer join it. */
+  #launched(key: string, launch: PendingLaunch): void {
+    const rest = (this.#launching.get(key) ?? []).filter((candidate) => candidate !== launch);
+    if (rest.length === 0) this.#launching.delete(key);
+    else this.#launching.set(key, rest);
   }
 
   #lease(
