@@ -45,11 +45,18 @@ const WRITING_ROLES: ReadonlySet<string> = new Set(['actor']);
  */
 export const NETWORK_TOOLS: ReadonlySet<string> = new Set(['http_get']);
 
-/** The policy of a role with no configuration: the one the daemon used before it had keys. */
+/**
+ * Roles that get the daemon's shells (`native_shell: shells`) by default. Owner decision of
+ * 2026-11-17: the Actor works with the shells of the daemon (P3), every other role starts with none.
+ * A project or a scenario can turn them off or on, for any role, with `native_shell`.
+ */
+const SHELL_ROLES: ReadonlySet<string> = new Set(['actor']);
+
+/** The policy of a role with no configuration: the default of the role, before any key changes it. */
 export function defaultPolicySettings(role: string): PolicySettings {
   return {
     nativeTools: WRITING_ROLES.has(role) ? ['read', 'search', 'edit', 'write'] : ['read', 'search'],
-    nativeShell: 'none',
+    nativeShell: SHELL_ROLES.has(role) ? 'shells' : 'none',
     network: { allow: [] },
     onAsk: 'reject',
   };

@@ -327,8 +327,9 @@ export const HEAVY_TOOL_NAMES = ['restricted_shell', 'run_tests', 'install_deps'
 export type HeavyToolName = (typeof HEAVY_TOOL_NAMES)[number];
 
 /**
- * `tools.http.redirects` [proposta]: what `http_get` does with a 3xx answer. `refuse` (default):
- * the answer is the redirect itself, nothing is followed; `follow_allowed`: it follows a redirect
+ * `tools.http.redirects`: what `http_get` does with a 3xx answer. `refuse` (default):
+ * the answer is the redirect itself, nothing is followed (default, owner decision of
+ * 2026-11-17); `follow_allowed`: it follows a redirect
  * only while the target is also in the role's `network.allow` (at most 5 hops).
  */
 export const HTTP_REDIRECT_MODES = ['refuse', 'follow_allowed'] as const;

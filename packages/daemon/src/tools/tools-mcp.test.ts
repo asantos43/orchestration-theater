@@ -13,6 +13,12 @@ import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { makeRepo } from '../execution/attempt-fixture.js';
 import type { AttemptSpec } from '../execution/attempt-runner.js';
 import { createSilentLogger } from '../logger.js';
+import {
+  buildRolePolicy,
+  defaultPolicySettings,
+  type PolicySettings,
+} from '../orchestration/role-policy.js';
+import { buildDaemonRegistries } from '../registries.js';
 import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
 
 /**
@@ -35,15 +41,20 @@ tools:
     test: [node, -e, "console.log('tests pass')"]
 `);
 
-const ACTOR: RolePolicy = {
-  nativeTools: ['read', 'search'],
-  nativeShell: 'none',
-  mcpServers: ['otheater'],
-  onAsk: 'reject',
-  bypass: 'forbidden',
-  writeScope: 'worktree',
-  network: { allow: ['127.0.0.1'] },
-};
+/**
+ * The policy of the Actor as the daemon resolves it (P1): the default of the role (with the shells,
+ * owner decision of 2026-11-17) and `network.allow` of the test server, so `mcpTools` lists
+ * `http_get` as well.
+ */
+function policyOf(settings: Partial<PolicySettings> = {}): RolePolicy {
+  return buildRolePolicy(
+    'actor',
+    { ...defaultPolicySettings('actor'), network: { allow: ['127.0.0.1'] }, ...settings },
+    buildDaemonRegistries().tools.list(),
+  );
+}
+
+const ACTOR = policyOf();
 
 beforeAll(() => {
   if (!existsSync(FAKE_AGENT_CLI)) {
@@ -95,7 +106,12 @@ async function withDaemon(
   }
 }
 
-function specOf(repo: string, demandId: string, prompt: string): AttemptSpec {
+function specOf(
+  repo: string,
+  demandId: string,
+  prompt: string,
+  policy: RolePolicy = ACTOR,
+): AttemptSpec {
   return {
     playId: 'play-tools',
     demandId,
@@ -104,7 +120,7 @@ function specOf(repo: string, demandId: string, prompt: string): AttemptSpec {
     base: 'main',
     profile: TEST_PROFILE,
     executor: { model: 'fake-model' },
-    policy: ACTOR,
+    policy,
     prompt,
     role: 'actor',
   };
@@ -236,6 +252,21 @@ describe('the work tools through the framework MCP server', () => {
       }
     }, 60_000);
   });
+
+  it('does not list the shells for an Actor whose policy closes them (native_shell: none)', async () => {
+    await withDaemon(async (daemon, repo) => {
+      const runner = daemon.execution?.runner;
+      if (runner === undefined) throw new Error('the daemon has no execution');
+      const closed = policyOf({ nativeShell: 'none' });
+      expect(JSON.stringify(closed.mcpTools)).not.toContain('restricted_shell');
+      const result = await runner.run(
+        specOf(repo, 'closed', script('restricted_shell', { argv: ['ls'] }), closed),
+      );
+      const events = ofAttempt(await daemon.store.events.readFrom(0, 100_000), result.attemptId);
+      expect(chunksOf(events)).toContain('mcp error');
+      expect(events.map((event) => event.type)).not.toContain('tool.called');
+    });
+  }, 60_000);
 
   it('does not give the tools of the actor to another role', async () => {
     await withDaemon(async (daemon, repo) => {
