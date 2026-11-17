@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
+import type { JsonObject } from './store-schemas.js';
 
 /**
  * Conventions of a project, the value of `scenarios.conventions` (architecture 5.20: "convenções
@@ -78,6 +79,11 @@ export function profileConventions(mainBranch: string): ProjectConventions {
     ci: 'github-actions',
     commands: { test: './scripts/test.sh' },
   };
+}
+
+/** The value as the store keeps it (`scenarios.conventions` is a JSON object): no `undefined`. */
+export function conventionsToJson(conventions: ProjectConventions): JsonObject {
+  return JSON.parse(JSON.stringify(conventions)) as JsonObject;
 }
 
 /** Parses the stored field; `undefined` when it is absent or in a shape this version does not know. */
