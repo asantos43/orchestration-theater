@@ -116,6 +116,18 @@ describe('assemblePrefix', () => {
     expect(text).toContain('- O1: Line one\n  Line two\n');
   });
 
+  it('says when an order ends, in the time zone of the order, and says nothing for one with no end', () => {
+    const text = assemblePrefix({
+      ...base,
+      directives: [
+        order(1, { endsAt: Date.UTC(2026, 10, 20, 21, 0, 0), timezone: 'America/Sao_Paulo' }),
+        order(2),
+      ],
+    });
+    expect(text).toContain('- O1 (until 2026-11-20 18:00 America/Sao_Paulo): Order number 1');
+    expect(text).toContain('- O2: Order number 2');
+  });
+
   it('changes only the orders part when an order is added, so the role part stays the same', () => {
     const without = assemblePrefix(base);
     const withOrder = assemblePrefix({ ...base, directives: [order(1)] });

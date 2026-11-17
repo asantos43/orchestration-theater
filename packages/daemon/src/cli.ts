@@ -18,6 +18,11 @@ import {
 } from './commands.js';
 import type { ComposeOverrides } from './compose.js';
 import { loadConfig } from './config.js';
+import {
+  isDirectiveAction,
+  runDirectivesCommand,
+  type DirectivesOptions,
+} from './directives/command.js';
 import { startDaemon, type PasswordPrompt } from './daemon.js';
 import {
   createTranslator,
@@ -49,7 +54,7 @@ export interface CliDeps {
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
-const COMMANDS = ['daemon', 'backup', 'restore'] as const;
+const COMMANDS = ['daemon', 'backup', 'restore', 'directives'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function isCommand(name: string): name is Command {
@@ -136,6 +141,13 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
         if (extra.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         return await runRestoreCommand(context, folder);
       }
+      case 'directives': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingDirectivesAction'));
+        if (!isDirectiveAction(action))
+          return usageError(t('usage.unknownDirectivesAction', { action }));
+        return await runDirectivesCommand(context, action, args, directivesOptions(values));
+      }
     }
   } catch (error) {
     deps.err(
@@ -145,24 +157,51 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
   }
 }
 
-function parseCliArgs(argv: readonly string[]): {
-  values: {
-    'data-dir'?: string | undefined;
-    help?: boolean | undefined;
-    version?: boolean | undefined;
-  };
-  positionals: string[];
-} {
+type ParsedValues = ReturnType<typeof parseCliArgs>['values'];
+
+function parseCliArgs(argv: readonly string[]) {
   return parseArgs({
     args: [...argv],
     options: {
       'data-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
+      // The options of `ot directives`.
+      scenario: { type: 'string' },
+      kind: { type: 'string' },
+      role: { type: 'string', multiple: true },
+      'rule-key': { type: 'string' },
+      'rule-value': { type: 'string' },
+      suspends: { type: 'string' },
+      replaces: { type: 'string' },
+      from: { type: 'string' },
+      until: { type: 'string' },
+      for: { type: 'string' },
+      forever: { type: 'boolean' },
+      reason: { type: 'string' },
+      all: { type: 'boolean' },
     },
     allowPositionals: true,
     strict: true,
   });
+}
+
+function directivesOptions(values: ParsedValues): DirectivesOptions {
+  return {
+    scenario: values.scenario,
+    kind: values.kind,
+    role: values.role ?? [],
+    ruleKey: values['rule-key'],
+    ruleValue: values['rule-value'],
+    suspends: values.suspends,
+    replaces: values.replaces,
+    from: values.from,
+    until: values.until,
+    for: values.for,
+    forever: values.forever === true,
+    reason: values.reason,
+    all: values.all === true,
+  };
 }
 
 async function runDaemon(context: CommandContext, deps: CliDeps): Promise<number> {

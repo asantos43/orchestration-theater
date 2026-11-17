@@ -53,6 +53,24 @@ export class ToolHandlers {
 }
 
 /**
+ * [proposta] What a handler throws or returns when the call is refused for a reason the Executor
+ * can act on (an unknown order, a conflict, a bad date, a miss such as `not_found`): the server
+ * answers an error result carrying `error` (a stable code) and the message, instead of the opaque
+ * `internal_error` of an unexpected throw.
+ */
+export class ToolFailure extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    /** Extra fields of the error result (the order a draft conflicts with, say). */
+    readonly details: Readonly<Record<string, unknown>> = {},
+  ) {
+    super(message);
+    this.name = 'ToolFailure';
+  }
+}
+
+/**
  * [proposta] What a registered tool with no handler yet answers: an error result with a stable
  * `error` code, so an Executor (and a test) can tell "not built yet" from a failure of the tool.
  */
@@ -61,16 +79,4 @@ export function notImplemented(tool: string): { readonly error: string; readonly
     error: 'not_implemented',
     message: `The tool "${tool}" exists in the registry but has no handler in this version of the daemon.`,
   };
-}
-
-/**
- * [proposta] What a handler returns (not throws) to answer the client with an error result that
- * carries a stable `error` code, such as `not_found`: the Executor reads it as text and can act on
- * it, unlike the generic `internal_error` of a throw.
- */
-export class ToolFailure {
-  constructor(
-    readonly error: string,
-    readonly message: string,
-  ) {}
 }

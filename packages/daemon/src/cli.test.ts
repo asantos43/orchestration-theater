@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { main, type CliDeps } from './cli.js';
+import { InstanceLock } from './instance-lock.js';
+import { dataPaths } from './paths.js';
 import { makeTempDataDir } from './test-helpers.js';
 
 interface Captured {
@@ -227,6 +229,169 @@ describe('ot daemon', () => {
         overrides: quietOverrides(),
       });
       expect(await first).toBe(0);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+});
+
+describe('ot directives', () => {
+  const NOW = Date.UTC(2026, 10, 17, 12, 0, 0);
+  const run = (argv: readonly string[], dir: string, extra: Partial<CliDeps> = {}) =>
+    ot([...argv, '--data-dir', dir], dir, {
+      overrides: { clock: new FakeClock(NOW), vault: new InMemorySecretVault() },
+      ...extra,
+    });
+
+  it('adds, lists, shows, extends and revokes orders, and they stay in the store', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const empty = await run(['directives', 'list'], tmp.dir);
+      expect(empty).toMatchObject({ code: 0, out: ['No orders.'] });
+
+      const added = await run(
+        ['directives', 'add', 'Always run the linter.', '--for', '2d'],
+        tmp.dir,
+      );
+      expect(added.err).toEqual([]);
+      expect(added.out).toEqual(['Order O1 created (active).']);
+      const local = await run(
+        ['directives', 'add', 'Use pnpm.', '--scenario', 's1', '--role', 'actor'],
+        tmp.dir,
+      );
+      expect(local.out).toEqual(['Order O2 created (active).']);
+
+      const listed = await run(['directives', 'list'], tmp.dir);
+      expect(listed.out).toEqual([
+        'O1 [active] global instruction until 2026-11-19 09:00 America/Sao_Paulo: Always run the linter.',
+        'O2 [active] scenario s1 instruction: Use pnpm.',
+      ]);
+      const other = await run(['directives', 'list', '--scenario', 's2'], tmp.dir);
+      expect(other.out).toHaveLength(1);
+
+      const shown = await run(['directives', 'show', 'O2'], tmp.dir);
+      expect(JSON.parse(shown.out.join('\n'))).toMatchObject({
+        id: 'O2',
+        scope: 'local',
+        scenarioId: 's1',
+        roles: ['actor'],
+      });
+
+      const extended = await run(['directives', 'extend', 'O1', '--forever'], tmp.dir);
+      expect(extended.out).toEqual(['Order O1 extended (active).']);
+      const revoked = await run(['directives', 'revoke', 'O2', '--reason', 'Not needed.'], tmp.dir);
+      expect(revoked.out).toEqual(['Order O2 revoked.']);
+
+      const after = await run(['directives', 'list'], tmp.dir);
+      expect(after.out).toEqual(['O1 [active] global instruction: Always run the linter.']);
+      const all = await run(['directives', 'list', '--all'], tmp.dir);
+      expect(all.out).toHaveLength(2);
+      expect(all.out[1]).toContain('[revoked]');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('adds a rule with a typed value, a suspension, and refuses a clashing rule', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const rule = await run(
+        [
+          'directives',
+          'add',
+          'Deliver by PR.',
+          '--kind',
+          'rule',
+          '--rule-key',
+          'delivery.mode',
+          '--rule-value',
+          'pr',
+        ],
+        tmp.dir,
+      );
+      expect(rule.out).toEqual(['Order O1 created (active).']);
+      const clash = await run(
+        [
+          'directives',
+          'add',
+          'Ask first.',
+          '--kind',
+          'rule',
+          '--rule-key',
+          'delivery.mode',
+          '--rule-value',
+          'ask',
+        ],
+        tmp.dir,
+      );
+      expect(clash.code).toBe(1);
+      expect(clash.err[0]).toMatch(/^Error: /);
+
+      const suspended = await run(
+        ['directives', 'suspend', 'O1', '--scenario', 'docs', 'Docs ship on their own.'],
+        tmp.dir,
+      );
+      expect(suspended.err).toEqual([]);
+      expect(suspended.out).toEqual(['Order O2 created (active).']);
+      const shown = await run(['directives', 'show', 'O2'], tmp.dir);
+      expect(JSON.parse(shown.out.join('\n'))).toMatchObject({
+        kind: 'suspension',
+        suspendsId: 'O1',
+        scenarioId: 'docs',
+      });
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('reports a bad date or an unknown order as an error with exit 1', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const bad = await run(['directives', 'add', 'x', '--until', 'someday'], tmp.dir);
+      expect(bad.code).toBe(1);
+      expect(bad.err[0]).toMatch(/^Error: .*"someday" is not a date/);
+      const missing = await run(['directives', 'show', 'O9'], tmp.dir);
+      expect(missing).toMatchObject({ code: 1, err: ['Order O9 not found.'] });
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it.each([
+    ['no action', ['directives'], /needs an action/],
+    ['an unknown action', ['directives', 'burn'], /Unknown action "burn"/],
+    ['show without an id', ['directives', 'show'], /needs the order id/],
+    ['add without a text', ['directives', 'add'], /needs the text/],
+    ['revoke without a reason', ['directives', 'revoke', 'O1'], /needs --reason/],
+    ['suspend without a scenario', ['directives', 'suspend', 'O1'], /needs --scenario/],
+    ['an unknown kind', ['directives', 'add', 'x', '--kind', 'law'], /--kind must be/],
+    ['list with an argument', ['directives', 'list', 'x'], /Too many arguments/],
+  ])('exits 2 with a hint for %s', async (_name, argv, message) => {
+    const tmp = await makeTempDataDir();
+    try {
+      const result = await run(argv, tmp.dir);
+      expect(result.code).toBe(2);
+      expect(result.err.join('\n')).toMatch(message);
+      expect(result.err.at(-1)).toBe('Run "ot --help" for usage.');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('refuses while a daemon holds the data directory, and speaks pt-BR when asked', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const paths = dataPaths(tmp.dir);
+      const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+      try {
+        const refused = await run(['directives', 'list'], tmp.dir, { systemLocale: 'pt-BR' });
+        expect(refused.code).toBe(1);
+        expect(refused.err[0]).toMatch(/O daemon está em execução/);
+      } finally {
+        await lock.release();
+      }
+      const empty = await run(['directives', 'list'], tmp.dir, { systemLocale: 'pt-BR' });
+      expect(empty.out).toEqual(['Nenhuma ordem.']);
     } finally {
       await tmp.dispose();
     }

@@ -1,12 +1,20 @@
 {
   "usage": {
-    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon            Inicia o daemon do OTheater neste terminal\n  backup            Faz um backup dos dados agora\n  restore <pasta>   Restaura um backup (o daemon precisa estar parado)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
     "hint": "Rode \"ot --help\" para ver o uso.",
     "unknownCommand": "Comando desconhecido: \"{{command}}\".",
     "missingCommand": "Nenhum comando informado.",
     "missingBackupPath": "\"ot restore\" precisa da pasta do backup a restaurar.",
     "tooManyArguments": "Argumentos demais para \"ot {{command}}\".",
-    "invalidOption": "Opção inválida: {{message}}"
+    "invalidOption": "Opção inválida: {{message}}",
+    "missingDirectivesAction": "\"ot directives\" precisa de uma ação: list, show, add, extend, suspend ou revoke.",
+    "unknownDirectivesAction": "Ação desconhecida \"{{action}}\" para \"ot directives\".",
+    "directiveNeedsId": "Esta ação precisa do id da ordem (por exemplo O1).",
+    "directiveNeedsText": "\"ot directives add\" precisa do texto da ordem.",
+    "directiveNeedsReason": "\"ot directives revoke\" precisa de --reason <texto>.",
+    "directiveNeedsScenario": "\"ot directives suspend\" precisa de --scenario <id>: o cenário que deixa de seguir a ordem.",
+    "directiveKind": "--kind deve ser instruction, rule ou suspension.",
+    "directiveTooMany": "Argumentos demais para esta ação de \"ot directives\"."
   },
   "daemon": {
     "running": "Daemon do OTheater em execução (pid {{pid}}), dados em {{dataDir}}. Pressione Ctrl+C para parar.",
@@ -25,6 +33,15 @@
     "done": "Banco restaurado em {{path}}.",
     "keptDatabase": "O banco anterior foi guardado como {{path}}.",
     "keptScenarios": "A pasta de cenários anterior foi guardada como {{path}}."
+  },
+  "directives": {
+    "daemonRunning": "O daemon está em execução nesta pasta de dados. Pare-o para mudar as ordens aqui, ou peça ao Diretor que proponha a mudança.",
+    "none": "Nenhuma ordem.",
+    "notFound": "Ordem {{id}} não encontrada.",
+    "created": "Ordem {{id}} criada ({{state}}).",
+    "extended": "Ordem {{id}} prorrogada ({{state}}).",
+    "revoked": "Ordem {{id}} revogada.",
+    "suspendText": "Suspende {{id}} neste cenário."
   },
   "errors": {
     "prefix": "Erro: {{message}}"

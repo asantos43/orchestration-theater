@@ -11,7 +11,7 @@ import { PLAY_EVENT_DEFINITIONS } from './pipeline/events.js';
 
 /**
  * The registries the daemon starts with (architecture 5.18, "Registros"): the official roles,
- * tools, `rule` keys, flows and scenario types of `@otheater/core`, the 16 event types of
+ * tools, `rule` keys, flows and scenario types of `@otheater/core`, the 23 event types of
  * `@otheater/protocol` and the 2 of the play machine (`play.created`, `play.transitioned`).
  * Plugin entries join here when the plugin steps arrive.
  */

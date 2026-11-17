@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { formatInTimezone } from '../directives/validity.js';
 import type { DirectiveRecord } from '../ports/directives.js';
 import type { ToolDefinition } from '../registries/tools.js';
 import { toolsOfRole } from './validate.js';
@@ -38,13 +39,30 @@ const EFFECT_NOTE: Readonly<Record<ToolDefinition['effect'], string>> = {
   external_write: ' (acts outside the worktree)',
 };
 
-/** One order as a list item; later lines of a multi-line text are indented under it. */
+/**
+ * One order as a list item; later lines of a multi-line text are indented under it. [proposta] An
+ * order that ends says so (`- O3 (until 2026-11-20 18:00 America/Sao_Paulo): text`), in its own
+ * time zone, so the Executor knows the order is temporary; one with no end shows nothing.
+ */
 function orderItem(order: DirectiveRecord): string {
   const [first = '', ...rest] = order.text.trim().split('\n');
-  return [`- ${order.id}: ${first}`, ...rest.map((line) => `  ${line}`)].join('\n');
+  const until =
+    order.endsAt === null
+      ? ''
+      : ` (until ${formatInTimezone(order.endsAt, order.timezone)} ${order.timezone})`;
+  return [`- ${order.id}${until}: ${first}`, ...rest.map((line) => `  ${line}`)].join('\n');
 }
 
-function ordersSection(role: string, directives: readonly DirectiveRecord[]): string | undefined {
+/**
+ * The text of the orders that reach `role`: global ones, then local ones, each by `seq`; only
+ * `instruction` orders. `undefined` when there is none. The prefix and the continuation package
+ * (`renderContinuationOrders`) share it, so the same order reads the same in both.
+ */
+export function renderOrders(
+  role: string,
+  directives: readonly DirectiveRecord[],
+  heading = '## Orders from the Producer',
+): string | undefined {
   const reaching = directives
     .filter(
       (order) =>
@@ -54,7 +72,7 @@ function ordersSection(role: string, directives: readonly DirectiveRecord[]): st
   const global = reaching.filter((order) => order.scope === 'global');
   const local = reaching.filter((order) => order.scope === 'local');
   if (global.length === 0 && local.length === 0) return undefined;
-  const parts = ['## Orders from the Producer', ORDERS_INTRO];
+  const parts = [heading, ORDERS_INTRO];
   if (global.length > 0) parts.push(['### Global orders', ...global.map(orderItem)].join('\n'));
   if (local.length > 0) parts.push(['### Local orders', ...local.map(orderItem)].join('\n'));
   return parts.join('\n\n');
@@ -83,7 +101,7 @@ export function assemblePrefix(input: PrefixInput): string {
   const sections: string[] = [];
   const rules = input.projectRules?.trim();
   if (rules !== undefined && rules !== '') sections.push(`## Project rules\n\n${rules}`);
-  const orders = ordersSection(input.role, input.directives ?? []);
+  const orders = renderOrders(input.role, input.directives ?? []);
   if (orders !== undefined) sections.push(orders);
   sections.push(`## Your role: ${input.role}\n\n${input.rolePrompt.trim()}`);
   sections.push(toolsSection(input.role, input.tools));

@@ -3,6 +3,15 @@ import { createEventRegistry, defineEventType, InvalidInput, type NewEvent } fro
 import { z } from 'zod';
 import { BACKUP_TRIGGERS } from './api.js';
 import {
+  DirectiveActivatedPayloadSchema,
+  DirectiveCreatedPayloadSchema,
+  DirectiveExpiredPayloadSchema,
+  DirectiveExpiringPayloadSchema,
+  DirectiveRevokedPayloadSchema,
+  DirectiveSuspendedPayloadSchema,
+  DirectiveValidityChangedPayloadSchema,
+} from './directive-events.js';
+import {
   AttemptCheckpointPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
@@ -75,7 +84,7 @@ export const DaemonBackupPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 16 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 23 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -155,6 +164,41 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DeliveryCompletedPayloadSchema,
   }),
+  defineEventType({
+    type: 'directive.created',
+    schemaVersion: 1,
+    payload: DirectiveCreatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.activated',
+    schemaVersion: 1,
+    payload: DirectiveActivatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.validity_changed',
+    schemaVersion: 1,
+    payload: DirectiveValidityChangedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.expiring',
+    schemaVersion: 1,
+    payload: DirectiveExpiringPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.expired',
+    schemaVersion: 1,
+    payload: DirectiveExpiredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.revoked',
+    schemaVersion: 1,
+    payload: DirectiveRevokedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'directive.suspended',
+    schemaVersion: 1,
+    payload: DirectiveSuspendedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -197,6 +241,13 @@ export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_fai
 export type WorkspaceIntegratedPayload = DaemonEventPayloads['workspace.integrated'];
 export type WorkspaceIntegrationFailedPayload = DaemonEventPayloads['workspace.integration_failed'];
 export type DeliveryCompletedPayload = DaemonEventPayloads['delivery.completed'];
+export type DirectiveCreatedPayload = DaemonEventPayloads['directive.created'];
+export type DirectiveActivatedPayload = DaemonEventPayloads['directive.activated'];
+export type DirectiveValidityChangedPayload = DaemonEventPayloads['directive.validity_changed'];
+export type DirectiveExpiringPayload = DaemonEventPayloads['directive.expiring'];
+export type DirectiveExpiredPayload = DaemonEventPayloads['directive.expired'];
+export type DirectiveRevokedPayload = DaemonEventPayloads['directive.revoked'];
+export type DirectiveSuspendedPayload = DaemonEventPayloads['directive.suspended'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

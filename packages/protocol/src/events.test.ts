@@ -38,6 +38,13 @@ describe('daemon event registry', () => {
       'workspace.integrated',
       'workspace.integration_failed',
       'delivery.completed',
+      'directive.created',
+      'directive.activated',
+      'directive.validity_changed',
+      'directive.expiring',
+      'directive.expired',
+      'directive.revoked',
+      'directive.suspended',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

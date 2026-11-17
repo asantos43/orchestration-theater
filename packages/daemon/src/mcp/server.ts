@@ -289,10 +289,19 @@ export class FrameworkMcpServer implements McpAccess {
         },
       });
       if (value instanceof ToolFailure) {
-        return { ok: false, value: { error: value.error, message: value.message } };
+        return {
+          ok: false,
+          value: { ...value.details, error: value.code, message: value.message },
+        };
       }
       return { ok: true, value };
     } catch (error) {
+      if (error instanceof ToolFailure) {
+        return {
+          ok: false,
+          value: { ...error.details, error: error.code, message: error.message },
+        };
+      }
       this.#options.logger.error({ err: error, tool: tool.name }, 'MCP tool failed');
       return {
         ok: false,

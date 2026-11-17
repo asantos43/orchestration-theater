@@ -110,6 +110,51 @@ export const askProducerInput = z.strictObject({
 
 const decisionBody = z.strictObject({ decisionId: id, payload: json });
 
+/**
+ * [proposta] The tools of the orders (architecture 5.17). None of them saves anything: each one
+ * writes a draft the Producer confirms (confirm / edit / cancel), so the output is the draft's id
+ * with the validity already turned into dates (`preview`) and the orders it clashes with.
+ * Dates are written `YYYY-MM-DD`, `YYYY-MM-DD HH:mm` or with an offset, read in the time zone of
+ * the order; `for` is a duration such as `2h` or `3d`.
+ */
+const listDirectivesInput = z.strictObject({
+  scenarioId: id.optional(),
+  states: z.array(z.enum(['scheduled', 'active', 'expired', 'revoked'])).optional(),
+});
+const proposeDirectiveInput = z.strictObject({
+  text: z.string().min(1),
+  scope: z.enum(['global', 'local']),
+  scenarioId: id.optional(),
+  kind: z.enum(['instruction', 'rule', 'suspension']).optional(),
+  roles: z.array(id).optional(),
+  ruleKey: id.optional(),
+  ruleValue: z.json().optional(),
+  suspends: id.optional(),
+  replaces: id.optional(),
+  from: id.optional(),
+  until: id.optional(),
+  for: id.optional(),
+});
+const extendDirectiveInput = z.strictObject({
+  directiveId: id,
+  scenarioId: id.optional(),
+  from: id.optional(),
+  /** A new end, or `null` to leave the order with no end. */
+  until: id.nullable().optional(),
+  /** Adds this much to the current end (to the confirmation, when the order has none). */
+  for: id.optional(),
+});
+const revokeDirectiveInput = z.strictObject({
+  directiveId: id,
+  scenarioId: id.optional(),
+  reason: z.string().min(1),
+});
+const directiveDraftOutput = z.strictObject({
+  draftId: id,
+  preview: json,
+  conflicts: z.array(id),
+});
+
 const COMMON = EXECUTOR_ROLE_IDS;
 
 function tool(
@@ -165,15 +210,10 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('schedule', DIRECTOR, json, z.strictObject({ draftId: id })),
   tool('list_schedules', DIRECTOR, noInput, z.array(json)),
   tool('pause_schedule', DIRECTOR, z.strictObject({ scheduleId: id }), accepted),
-  tool('list_directives', DIRECTOR, noInput, z.array(json)),
-  tool('propose_directive', DIRECTOR, json, z.strictObject({ draftId: id })),
-  tool('extend_directive', DIRECTOR, json, z.strictObject({ draftId: id })),
-  tool(
-    'revoke_directive',
-    DIRECTOR,
-    z.strictObject({ directiveId: id }),
-    z.strictObject({ draftId: id }),
-  ),
+  tool('list_directives', DIRECTOR, listDirectivesInput, z.array(json)),
+  tool('propose_directive', DIRECTOR, proposeDirectiveInput, directiveDraftOutput),
+  tool('extend_directive', DIRECTOR, extendDirectiveInput, directiveDraftOutput),
+  tool('revoke_directive', DIRECTOR, revokeDirectiveInput, directiveDraftOutput),
   tool(
     'consult',
     DIRECTOR,
