@@ -88,6 +88,7 @@ import {
   type ClientId,
   type DaemonConfig,
 } from './config.js';
+import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
 
@@ -123,11 +124,23 @@ export interface ComposeOptions {
   readonly overrides?: ComposeOverrides;
   /** Use this logger instead of building one from `config.log` (it is not closed by `close()`). */
   readonly logger?: Logger;
+  /**
+   * The event registry and what to do with an event it does not accept (`events.unknown_type`).
+   * When set, the `store` of the composition validates every `append`; when absent it does not.
+   */
+  readonly events?: Pick<EventValidation, 'registry' | 'unknownType'>;
 }
 
 export interface Composition {
   readonly clock: Clock;
+  /** What the daemon's own code uses: every `append` is checked against the event registry. */
   readonly store: Store;
+  /**
+   * [proposta] The store as the adapter built it, with no event validation. `DaemonHandle.store`
+   * exposes this one (the Phase 2 tests append their own event types through it); the same
+   * instance as `store` when `events` is not set.
+   */
+  readonly rawStore: Store;
   readonly vault: SecretVault;
   readonly logger: Logger;
   readonly adapters: readonly AdapterRecord[];
@@ -294,6 +307,12 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       store = await SqliteStore.open(storeSection(config, paths), clock);
     }
 
+    // N80: every `append` of the daemon goes through the event registry.
+    const rawStore = store;
+    if (options.events !== undefined) {
+      store = validateEventsOf(store, { ...options.events, logger });
+    }
+
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
     const transport = overrides.transport ?? new AcpTransport();
@@ -303,6 +322,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     return {
       clock,
       store,
+      rawStore,
       vault,
       logger,
       adapters,
