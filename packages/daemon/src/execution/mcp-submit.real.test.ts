@@ -20,8 +20,8 @@ import { makeRepo } from './attempt-fixture.js';
  * - `OT_TEST_CLAUDE_MODEL`: the model id the client lists (a Haiku one is enough; the test does
  *   not guess it);
  * - `OT_TEST_CLAUDE_MODE` (optional): the mode id of the session. With `onAsk: 'reject'` an ask is
- *   refused (architecture 5.8), so the adapter allows the tools of the MCP servers of the role with
- *   `allowedTools` and `permissions.allow` (`mcp__otheater`); this test is the cheap check that the
+ *   refused (architecture 5.8), so the adapter allows the MCP tools of the role with
+ *   `allowedTools` and `permissions.allow` (`mcp__otheater__<tool>`); this test is the cheap check that the
  *   rule works against the real client (the `play` level of `tools/acceptance/real-acceptance.sh`
  *   runs it before the whole play). [N] Not confirmed by a real run yet.
  *
@@ -60,6 +60,7 @@ const AUTHOR: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: ['otheater'],
+  mcpTools: { otheater: ['read_blackboard', 'submit', 'submit_plan'] },
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

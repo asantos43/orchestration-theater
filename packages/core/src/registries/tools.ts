@@ -204,6 +204,50 @@ const directiveDraftOutput = z.strictObject({
   conflicts: z.array(id),
 });
 
+/**
+ * [proposta] The work tools of the Executors (architecture 5.8, N97 and N98). What a command
+ * printed is cut to `tools.output_max_bytes`: `truncated` says it, and `stdoutBytes` and
+ * `stderrBytes` are the sizes before the cut. `exitCode` is `null` when the process did not exit
+ * by itself (`timedOut`, the tree was killed). The command of `run_tests` and `install_deps`
+ * never comes from the model: `target` only narrows what the project's own command runs.
+ */
+const restrictedShellInput = z.strictObject({ argv: z.array(text).min(1).max(256) });
+const runTestsInput = z.strictObject({ target: text.max(4096).optional() });
+const gitCommitInput = z.strictObject({ message: text.min(1).max(10_000) });
+const viewDiffInput = z.strictObject({ demand: id.optional() });
+const httpGetInput = z.strictObject({ url: z.url().max(4096) });
+
+const commandOutput = z.strictObject({
+  exitCode: z.int().nullable(),
+  stdout: text,
+  stderr: text,
+  truncated: z.boolean(),
+  durationMs: z.int().min(0),
+  timedOut: z.boolean(),
+  stdoutBytes: z.int().min(0),
+  stderrBytes: z.int().min(0),
+});
+
+/** `reused`: the commit of an earlier call with the same step was found, nothing was committed again. */
+const gitCommitOutput = z.strictObject({ sha: id, reused: z.boolean() });
+
+const viewDiffOutput = z.strictObject({
+  diff: text,
+  truncated: z.boolean(),
+  originalBytes: z.int().min(0),
+});
+
+/** `untrusted` is always `true`: the body is data from the network, never instructions. */
+const httpGetOutput = z.strictObject({
+  url: text,
+  status: z.int(),
+  contentType: text.nullable(),
+  body: text,
+  truncated: z.boolean(),
+  originalBytes: z.int().min(0),
+  untrusted: z.literal(true),
+});
+
 const COMMON = EXECUTOR_ROLE_IDS;
 
 function tool(
@@ -304,36 +348,23 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('submit_script_review', ['author'], reviewOutput, accepted),
 
   // Actor.
-  tool('run_tests', ['actor', 'critic'], z.strictObject({ target: text.optional() }), json, {
-    effect: 'worktree',
-  }),
-  tool('install_deps', ['actor'], noInput, accepted, {
+  tool('run_tests', ['actor', 'critic'], runTestsInput, commandOutput, { effect: 'worktree' }),
+  tool('install_deps', ['actor'], noInput, commandOutput, {
     effect: 'worktree',
     idempotencyKey: 'attempt_step',
   }),
-  tool(
-    'git_commit',
-    ['actor'],
-    z.strictObject({ message: text.min(1) }),
-    z.strictObject({ sha: id }),
-    {
-      effect: 'worktree',
-      idempotencyKey: 'attempt_step',
-    },
-  ),
-  tool('restricted_shell', ['actor'], z.strictObject({ argv: z.array(text).min(1) }), json, {
+  tool('git_commit', ['actor'], gitCommitInput, gitCommitOutput, {
     effect: 'worktree',
     idempotencyKey: 'attempt_step',
   }),
-  tool('http_get', ['actor', 'consultant'], z.strictObject({ url: z.url() }), json),
+  tool('restricted_shell', ['actor'], restrictedShellInput, commandOutput, {
+    effect: 'worktree',
+    idempotencyKey: 'attempt_step',
+  }),
+  tool('http_get', ['actor', 'consultant'], httpGetInput, httpGetOutput),
 
   // Critic.
-  tool(
-    'view_diff',
-    ['critic'],
-    z.strictObject({ demand: id.optional() }),
-    z.strictObject({ diff: text }),
-  ),
+  tool('view_diff', ['critic'], viewDiffInput, viewDiffOutput),
   tool('submit_critique', ['critic'], reviewOutput, accepted),
 
   // Idea queue of the scenario (P8, N91): the Author's judgment point `group_ideas`, outside the play.

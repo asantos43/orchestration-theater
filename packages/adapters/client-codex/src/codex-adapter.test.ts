@@ -21,6 +21,7 @@ const policy: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -231,6 +232,68 @@ describe('CodexAdapter.guarantee', () => {
     expect(report.fields.mcpServers.layers).toEqual(['client']);
     expect(report.fields.onAsk.layers).toEqual(['client']);
     expect(report.fields.bypass.layers).toEqual(['daemon']);
+  });
+});
+
+describe('CodexAdapter and the policy of each role (Phase 4, P1)', () => {
+  // Codex has no per-tool key for an MCP server that is checked here [N]: no key was invented, so
+  // the setup of a role does not depend on its MCP tool list; layer 2 rejects what asks.
+  const roles = [
+    ['director', ['read', 'search'], ['next_action', 'ask_producer']],
+    ['author', ['read', 'search'], ['submit_plan']],
+    ['reviewer', ['read', 'search'], ['submit_plan_review']],
+    ['scriptwriter', ['read', 'search'], ['submit_script']],
+    ['actor', ['read', 'search', 'edit', 'write'], ['submit', 'read_blackboard']],
+    ['critic', ['read', 'search'], ['submit_critique']],
+    ['consultant', ['read', 'search'], ['read_blackboard']],
+  ] as const;
+
+  for (const [role, nativeTools, tools] of roles) {
+    it(`${role}: the setup and the config.toml do not change with the MCP tools or the daemon shells`, async () => {
+      const plain: RolePolicy = { ...policy, nativeTools };
+      const shelled: RolePolicy = {
+        ...plain,
+        nativeShell: 'shells',
+        mcpTools: { otheater: [...tools, 'run_tests'] },
+        network: { allow: ['example.com'] },
+      };
+      const setups = [];
+      const tomls = [];
+      for (const each of [plain, shelled]) {
+        const { adapter } = build({ bare: true, unenforced: 'allow' });
+        const via = new FakeSessionTransport();
+        const profile = await profileIn();
+        await adapter.openSession(profile, each, '/work', via);
+        setups.push(via.opened[0]?.setup);
+        tomls.push(await readFile(join(profile.dir, CONFIG_FILE), 'utf8'));
+      }
+      expect(setups[1]).toEqual(setups[0]);
+      expect(tomls[1]).toBe(tomls[0]);
+    });
+
+    it(`${role}: guarantee() with the v2 policy leaves mcpTools to the daemon and the rest as before`, () => {
+      const { adapter } = build({ bare: true });
+      const shelled: RolePolicy = {
+        ...policy,
+        nativeTools,
+        nativeShell: 'shells',
+        mcpServers: ['otheater'],
+        mcpTools: { otheater: tools },
+        network: { allow: ['example.com'] },
+      };
+      const report = adapter.guarantee(shelled, SANDBOX);
+      expect(report.ok).toBe(true);
+      expect(report.fields.mcpTools.layers).toEqual(['daemon']);
+      const headless = adapter.guarantee(shelled, SANDBOX, 'headless');
+      expect(headless.fields.mcpTools.layers).toEqual(['client']);
+    });
+  }
+
+  it('security.min_layers.mcpTools counts the layers of the field', () => {
+    const { adapter } = build({ bare: true, minLayers: { default: 1, mcpTools: 2 } });
+    const report = adapter.guarantee(policy, SANDBOX);
+    expect(report.fields.mcpTools).toEqual({ layers: ['daemon'], required: 2, ok: false });
+    expect(report.short).toEqual(['mcpTools']);
   });
 });
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { RolePolicy } from '@otheater/core';
+import { mcpToolsOf, type RolePolicy } from '@otheater/core';
 
 /** What OpenCode does with a tool call: run it, ask (`session/request_permission`) or remove it. */
 export type PermissionAction = 'allow' | 'ask' | 'deny';
@@ -47,8 +47,12 @@ export function mcpToolPrefix(serverName: string): string {
  * - `nativeTools`: each tool the role has is `allow`; the others are `deny`, which removes the
  *   tool (measured for the shell: "Invalid Tool", Phase 0 [V]; for the other keys [N]).
  * - `nativeShell: none`: the shell keys are `deny`.
- * - `mcpServers`: the tools of each server of the role are `allow`; the rest of the MCP world
- *   falls under the default (`mcpServers` is strict: an unnamed server is not in the session).
+ * - `mcpServers` and `mcpTools`: each tool the role may call is `allow` by name
+ *   (`<server>_<tool>`), or `<server>_*` for a server whose tools are `all`; the other tools of the
+ *   server fall under the default `ask`, which layer 2 rejects (`mcpServers` is strict: an unnamed
+ *   server is not in the session).
+ * - `nativeShell: shells`: the shell of the client stays `deny`; the shells of the daemon are MCP
+ *   tools and come in with `mcpTools`.
  * - `onAsk: reject`: the default for everything else is `ask`; layer 2 (`answerPermission` of the
  *   base) answers `reject_once`.
  * - `bypass: forbidden`: there is no bypass through ACP; the pinned variable is what stops an
@@ -68,7 +72,12 @@ export function opencodePermission(
   for (const key of options.shellKeys ?? DEFAULT_SHELL_KEYS) rules[key] = 'deny';
   rules.external_directory = 'deny';
   for (const tool of REMOVED_TOOLS) rules[tool] = 'deny';
-  for (const server of policy.mcpServers) rules[`${mcpToolPrefix(server)}_*`] = 'allow';
+  for (const server of policy.mcpServers) {
+    const prefix = mcpToolPrefix(server);
+    const named = mcpToolsOf(policy, server);
+    if (named === 'all') rules[`${prefix}_*`] = 'allow';
+    else for (const tool of named) rules[`${prefix}_${mcpToolPrefix(tool)}`] = 'allow';
+  }
   return rules;
 }
 
@@ -85,6 +94,7 @@ export const DENY_ALL_POLICY: RolePolicy = {
   nativeTools: [],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

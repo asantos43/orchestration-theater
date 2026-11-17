@@ -15,8 +15,9 @@ metadata), **[N]** not confirmed (read in code or inferred; nothing here ran aga
 | Policy field | Claude Code key | Layers | Source |
 | --- | --- | --- | --- |
 | `nativeTools` | `tools` in `_meta.claudeCode.options` | client | [V] |
-| `nativeShell: 'none'` | `Bash` out of `tools`, in `disallowedTools` and in `permissions.deny` | client | [V] |
+| `nativeShell: 'none'` or `'shells'` | `Bash` out of `tools`, in `disallowedTools` and in `permissions.deny`, in both values: `shells` are the daemon's own tools and come in as MCP tools | client | [V] |
 | `mcpServers` | `strictMcpConfig: true`; servers go through `session/new` | client | [V] |
+| `mcpTools` | `allowedTools` and `permissions.allow` with one `mcp__<server>__<tool>` rule per tool of the role (`mcp__<server>` only for `all`); a tool outside the list asks and layer 2 rejects it | client, daemon (the grant lists only these tools) | [S] rule form (code.claude.com/docs/en/permissions, read 2026-11-17); [N] that a real session runs the tool with no request |
 | `onAsk: 'reject'` | mode `default` so every request reaches the daemon, which answers `reject_once` | client, daemon | [V] |
 | `bypass: 'forbidden'` | `allowDangerouslySkipPermissions: false` and `disableBypassPermissionsMode` in the profile `settings.json` | client | [V] |
 | `writeScope`, `network` | none: the client has no key for them | none (needs a sandbox) | [V] |

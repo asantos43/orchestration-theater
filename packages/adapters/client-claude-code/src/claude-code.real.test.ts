@@ -37,6 +37,7 @@ const policy: RolePolicy = {
   nativeTools: ['read'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -183,6 +184,7 @@ function sessionNewParams(cwd: string): Json {
   return {
     cwd,
     mcpServers: [],
+    mcpTools: {},
     _meta: { claudeCode: { options: acpOptions(policy, 'none') } },
   };
 }

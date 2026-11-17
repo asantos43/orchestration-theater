@@ -7,6 +7,7 @@ import {
   attemptInputOf,
   Cancelled,
   hasErrorCode,
+  mcpToolsOf,
   type AttemptRecord,
   type AttemptRecordInput,
   type Clock,
@@ -492,10 +493,14 @@ export class AttemptRunner {
     const { spec } = context;
     if (mcp === undefined || spec.role === undefined) return undefined;
     if (!spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
+    const tools = mcpToolsOf(spec.policy, FRAMEWORK_MCP_NAME);
     return mcp.grant({
       attemptId: context.attemptId,
       role: spec.role,
+      ...(tools === 'all' ? {} : { tools }),
       correlation: this.#correlation(context),
+      worktree: context.worktree,
+      networkAllow: spec.policy.network.allow,
       record: (event) => context.journal.write(event),
     });
   }

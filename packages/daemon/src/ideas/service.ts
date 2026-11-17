@@ -27,7 +27,8 @@ import type { DaemonConfig } from '../config.js';
 import type { AttemptRunner } from '../execution/attempt-runner.js';
 import type { Logger } from '../logger.js';
 import { type PlayOpening, openPlayFromNeed } from '../orchestration/open-play.js';
-import { executorOf, policyOf, sessionSettingsOf } from '../orchestration/roles.js';
+import { resolveRolePolicy } from '../orchestration/role-policy.js';
+import { executorOf, sessionSettingsOf } from '../orchestration/roles.js';
 import type { DataPaths } from '../paths.js';
 import { type IdeaSettings, ideaSettingsOf } from './settings.js';
 
@@ -423,7 +424,11 @@ export class IdeaQueueService {
       base: repos[0]?.mainBranch ?? scenario.baseBranch ?? 'main',
       profile,
       executor: settings,
-      policy: policyOf(GROUPING_ROLE),
+      policy: await resolveRolePolicy(
+        { config, scenarios: store.scenarios, tools: () => registries.tools.list() },
+        GROUPING_ROLE,
+        scenarioId,
+      ),
       prompt: `${prefix}\n${body}`,
       role: GROUPING_ROLE,
     });

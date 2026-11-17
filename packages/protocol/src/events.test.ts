@@ -36,6 +36,8 @@ describe('daemon event registry', () => {
       'attempt.checkpoint',
       'attempt.submitted',
       'attempt.submit_failed',
+      'tool.called',
+      'tool.finished',
       'workspace.integrated',
       'workspace.integration_failed',
       'delivery.completed',

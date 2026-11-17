@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { RolePolicy } from '@otheater/core';
+import { mcpToolsOf, type RolePolicy } from '@otheater/core';
 
 /**
  * Translation of the neutral `RolePolicy` into the keys of Claude Code (architecture 5.2, table
@@ -24,8 +24,13 @@ import type { RolePolicy } from '@otheater/core';
  *   check treats `mcp__*` tools like the others. [V: reading of `dist/v1/acp-agent.js` and
  *   `permissions/effects.js` of the adapter 0.107.0, 2026-11-17] That a real session then runs an
  *   MCP tool with no request was not measured: the real play round of 2026-11-17 is what
- *   motivated this, and its log was not kept. [N] The policy allows only the MCP servers of the
- *   role (`policy.mcpServers`): never the shell, never a native tool; those stay as above.
+ *   motivated this, and its log was not kept. [N] The policy allows only the MCP tools of the
+ *   role (`policy.mcpTools`, Phase 4 P1): one `mcp__<server>__<tool>` rule per tool, never the
+ *   whole server unless the policy says `all`; never the shell, never a native tool. The rule for
+ *   one tool has the same form as the rule for a server, with the tool name after a second `__`
+ *   [S: same page]; a tool of the server that the role does not list asks for permission, and
+ *   layer 2 answers it. `nativeShell: 'shells'` changes nothing here: the shells of the daemon are
+ *   MCP tools (in `mcpTools`), and the native shell stays removed in both values.
  */
 
 /** Names of the native tools of Claude Code this adapter knows how to grant. [V: init tool list, Phase 0 item 8] */
@@ -36,7 +41,7 @@ export const CLAUDE_TOOL_NAMES = {
   write: ['Write'],
 } as const satisfies Record<RolePolicy['nativeTools'][number], readonly string[]>;
 
-/** The native shell of Claude Code. `nativeShell: 'none'` (the only value of version 1) removes it. */
+/** The native shell of Claude Code. It is removed whatever `nativeShell` says (`shells` is the daemon's own). */
 export const CLAUDE_SHELL_TOOL = 'Bash';
 
 /** Every tool name the policy decides about, in a fixed order. */
@@ -83,17 +88,23 @@ export function deniedTools(policy: RolePolicy): string[] {
   ];
 }
 
+/** The name of an MCP server or tool the way Claude Code writes it in a tool name. [N: from the public docs of MCP naming, not run here] */
+function claudeMcpName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/gu, '_');
+}
+
 /**
- * The permission rules that let the MCP servers of the role run without a request: one
- * `mcp__<server>` rule per server of the policy, in the order of the policy, without repeats. The
- * name of the server is written the way Claude Code writes it in a tool name (every character
- * outside letters, digits, `_` and `-` becomes `_`). [N: the normalization is from the public
- * docs of MCP naming, not run here] Never a native tool, never the shell.
+ * The permission rules that let the MCP tools of the role run without a request: one
+ * `mcp__<server>__<tool>` rule per tool of the policy (`mcp__<server>` for a server whose tools
+ * are `all`), in the order of the policy, without repeats. Never a native tool, never the shell.
  */
 export function allowedMcpRules(policy: RolePolicy): string[] {
   const rules = new Set<string>();
   for (const server of policy.mcpServers) {
-    rules.add(`mcp__${server.replace(/[^a-zA-Z0-9_-]/gu, '_')}`);
+    const prefix = `mcp__${claudeMcpName(server)}`;
+    const tools = mcpToolsOf(policy, server);
+    if (tools === 'all') rules.add(prefix);
+    else for (const tool of tools) rules.add(`${prefix}__${claudeMcpName(tool)}`);
   }
   return [...rules];
 }
@@ -120,7 +131,7 @@ export function permissionSettings(policy: RolePolicy): {
 export interface ClaudeAcpOptions {
   readonly tools: readonly string[];
   readonly disallowedTools: readonly string[];
-  /** Tools that run with no permission request: the MCP servers of the role (`mcp__<server>`). */
+  /** Tools that run with no permission request: the MCP tools of the role (`mcp__<server>__<tool>`). */
   readonly allowedTools: readonly string[];
   readonly strictMcpConfig: true;
   readonly allowDangerouslySkipPermissions: false;
@@ -145,7 +156,7 @@ export function acpOptions(policy: RolePolicy, sources: SettingSourcesMode): Cla
  * from `docs/08` part 2, checked against `--help` of 2.1.319 on 2026-11-08 [V], except
  * `--setting-sources` and `--verbose` (stream-json needs it with `-p`), which are not in that
  * table [N]: they come from the public CLI reference. `--allowedTools` is there only when the
- * policy lists an MCP server, with the same `mcp__<server>` rules as the ACP setup. Nothing here
+ * policy lists an MCP tool, with the same `mcp__<server>__<tool>` rules as the ACP setup. Nothing here
  * ran against the real client.
  */
 export function headlessArgs(policy: RolePolicy, sources: SettingSourcesMode): string[] {

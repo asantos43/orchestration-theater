@@ -124,6 +124,7 @@ const READ_ONLY: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
