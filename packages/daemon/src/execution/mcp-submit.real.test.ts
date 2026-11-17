@@ -108,7 +108,7 @@ describe.skipIf(!ready)(
             timeoutMs: 5 * 60_000,
             prompt: [
               'You play the author. Deliver your plan with the MCP tool submit_plan of the server',
-              'otheater: call it once with the argument steps set to a list of two short strings.',
+              'otheater: call it once with plan set to a short plan as plain text and openQuestions set to an empty list.',
               'Do not use any other tool. When the tool accepts the plan, say done.',
             ].join(' '),
           });
