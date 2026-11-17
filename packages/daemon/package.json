@@ -27,6 +27,7 @@
     "@otheater/adapter-clock-system": "workspace:*",
     "@otheater/adapter-platform-posix": "workspace:*",
     "@otheater/adapter-prompts-files": "workspace:*",
+    "@otheater/adapter-sandbox-srt": "workspace:*",
     "@otheater/adapter-session-acp": "workspace:*",
     "@otheater/adapter-store-sqlite": "workspace:*",
     "@otheater/adapter-vault-file": "workspace:*",

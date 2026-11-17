@@ -115,7 +115,7 @@ async function execute(
   settings: ToolSettings,
 ): Promise<ToolDone> {
   const worktree = worktreeOf(call);
-  const { launcher, clock } = context.deps;
+  const { launcher, clock, confine } = context.deps;
   if (launcher === undefined) {
     throw new ToolFailure(
       'unavailable',
@@ -124,14 +124,19 @@ async function execute(
   }
   const argv = await argvOf(context, call, settings, worktree);
   const { timeout_ms, output_max_bytes, truncate } = settings.config;
-  const result = await runCommand(launcher, clock, {
-    argv,
-    cwd: worktree,
-    env: context.commandEnv(),
-    timeoutMs: timeout_ms,
-    outputMaxBytes: output_max_bytes,
-    truncate,
-  });
+  const result = await runCommand(
+    launcher,
+    clock,
+    {
+      argv,
+      cwd: worktree,
+      env: context.commandEnv(),
+      timeoutMs: timeout_ms,
+      outputMaxBytes: output_max_bytes,
+      truncate,
+    },
+    confine === undefined ? undefined : (launch) => confine(launch, worktree),
+  );
   const reply: CommandReply = {
     exitCode: result.exitCode,
     stdout: result.stdout.text,

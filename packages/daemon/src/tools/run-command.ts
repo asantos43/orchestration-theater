@@ -2,6 +2,7 @@
 import {
   OutputCollector,
   type Clock,
+  type LaunchOptions,
   type ProcessLauncher,
   type TruncatedOutput,
   type TruncateMode,
@@ -67,17 +68,22 @@ function pump(stream: ReadableStream<Uint8Array>, collector: OutputCollector): P
  * never holds more), and a timeout that ends the whole process tree through `killTree`.
  *
  * A non-zero exit is a normal result, not an error; so is a timeout (`timedOut`, `exitCode`
- * `null`). A launcher that cannot start the process rejects (`AdapterUnavailable`).
+ * `null`). A launcher that cannot start the process rejects (`AdapterUnavailable`). With `confine`
+ * the process starts inside the sandbox (layer 3, P4).
  */
 export async function runCommand(
   launcher: ProcessLauncher,
   clock: Clock,
   spec: CommandSpec,
+  confine?: (launch: LaunchOptions) => Promise<LaunchOptions>,
 ): Promise<CommandResult> {
   const [cmd, ...args] = spec.argv;
   if (cmd === undefined) throw new RangeError('runCommand needs a non-empty argv');
   const startedAt = clock.now();
-  const proc = await launcher.launch({ cmd, args, cwd: spec.cwd, env: spec.env });
+  const launch: LaunchOptions = { cmd, args, cwd: spec.cwd, env: spec.env };
+  // Inside the sandbox (layer 3) when there is one; a sandbox that cannot wrap rejects, and the
+  // command does NOT run unconfined.
+  const proc = await launcher.launch(confine === undefined ? launch : await confine(launch));
 
   const stdout = new OutputCollector(spec.outputMaxBytes, spec.truncate);
   const stderr = new OutputCollector(spec.outputMaxBytes, spec.truncate);
