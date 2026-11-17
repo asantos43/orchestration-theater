@@ -12,6 +12,15 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  IdeaAddedPayloadSchema,
+  IdeaDeferredPayloadSchema,
+  IdeaDiscardedPayloadSchema,
+  IdeaDonePayloadSchema,
+  IdeaGroupedPayloadSchema,
+  IdeaPlayOpenedPayloadSchema,
+  IdeaReturnedPayloadSchema,
+} from './idea-events.js';
+import {
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
@@ -245,6 +254,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DirectiveSuspendedPayloadSchema,
   }),
+  defineEventType({ type: 'idea.added', schemaVersion: 1, payload: IdeaAddedPayloadSchema }),
+  defineEventType({ type: 'idea.grouped', schemaVersion: 1, payload: IdeaGroupedPayloadSchema }),
+  defineEventType({
+    type: 'idea.play_opened',
+    schemaVersion: 1,
+    payload: IdeaPlayOpenedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'idea.discarded',
+    schemaVersion: 1,
+    payload: IdeaDiscardedPayloadSchema,
+  }),
+  defineEventType({ type: 'idea.deferred', schemaVersion: 1, payload: IdeaDeferredPayloadSchema }),
+  defineEventType({ type: 'idea.done', schemaVersion: 1, payload: IdeaDonePayloadSchema }),
+  defineEventType({ type: 'idea.returned', schemaVersion: 1, payload: IdeaReturnedPayloadSchema }),
   defineEventType({
     type: 'scenario.created',
     schemaVersion: 1,
@@ -325,6 +349,13 @@ export type DirectiveExpiringPayload = DaemonEventPayloads['directive.expiring']
 export type DirectiveExpiredPayload = DaemonEventPayloads['directive.expired'];
 export type DirectiveRevokedPayload = DaemonEventPayloads['directive.revoked'];
 export type DirectiveSuspendedPayload = DaemonEventPayloads['directive.suspended'];
+export type IdeaAddedPayload = DaemonEventPayloads['idea.added'];
+export type IdeaGroupedPayload = DaemonEventPayloads['idea.grouped'];
+export type IdeaPlayOpenedPayload = DaemonEventPayloads['idea.play_opened'];
+export type IdeaDiscardedPayload = DaemonEventPayloads['idea.discarded'];
+export type IdeaDeferredPayload = DaemonEventPayloads['idea.deferred'];
+export type IdeaDonePayload = DaemonEventPayloads['idea.done'];
+export type IdeaReturnedPayload = DaemonEventPayloads['idea.returned'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
