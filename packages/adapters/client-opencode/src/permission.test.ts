@@ -106,3 +106,55 @@ describe('opencodePermission', () => {
     expect(Object.entries(rules).filter(([, action]) => action === 'allow')).toEqual([]);
   });
 });
+
+describe('the translation for each role (Phase 4, P1)', () => {
+  const roles: readonly {
+    readonly role: string;
+    readonly nativeTools: RolePolicy['nativeTools'];
+    readonly tools: readonly string[];
+  }[] = [
+    { role: 'director', nativeTools: ['read', 'search'], tools: ['next_action', 'ask_producer'] },
+    { role: 'author', nativeTools: ['read', 'search'], tools: ['submit_plan'] },
+    { role: 'reviewer', nativeTools: ['read', 'search'], tools: ['submit_plan_review'] },
+    { role: 'scriptwriter', nativeTools: ['read', 'search'], tools: ['submit_script'] },
+    {
+      role: 'actor',
+      nativeTools: ['read', 'search', 'edit', 'write'],
+      tools: ['submit', 'read_blackboard'],
+    },
+    { role: 'critic', nativeTools: ['read', 'search'], tools: ['submit_critique'] },
+    { role: 'consultant', nativeTools: ['read', 'search'], tools: ['read_blackboard'] },
+  ];
+
+  for (const row of roles) {
+    const mine = policy({
+      nativeTools: row.nativeTools,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: row.tools },
+    });
+
+    it(`${row.role}: allows its native tools and its own MCP tools by name, nothing else`, () => {
+      const rules = opencodePermission(mine);
+      expect(rules.read).toBe('allow');
+      expect(rules.edit).toBe(row.nativeTools.includes('edit') ? 'allow' : 'deny');
+      expect(rules.bash).toBe('deny');
+      expect(rules.external_directory).toBe('deny');
+      const allowedMcp = Object.keys(rules).filter(
+        (key) => key.startsWith('otheater_') && rules[key] === 'allow',
+      );
+      expect(allowedMcp).toEqual(row.tools.map((tool) => `otheater_${tool}`));
+      expect(rules['otheater_*']).toBeUndefined();
+    });
+
+    it(`${row.role}: with the daemon shells the client shell stays denied and the shells come in by name`, () => {
+      const rules = opencodePermission({
+        ...mine,
+        nativeShell: 'shells',
+        mcpTools: { otheater: [...row.tools, 'run_tests'] },
+      });
+      expect(rules.bash).toBe('deny');
+      expect(rules.otheater_run_tests).toBe('allow');
+      expect(rules['*']).toBe('ask');
+    });
+  }
+});

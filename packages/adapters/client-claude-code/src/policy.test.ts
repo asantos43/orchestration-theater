@@ -216,3 +216,114 @@ describe('headlessArgs', () => {
     expect(args.join(' ')).not.toMatch(/bypass|dangerously|skip-permissions/iu);
   });
 });
+
+/** The policy each role gets (shape of the daemon's default; the tool names are literal here). */
+const ROLE_TABLE: readonly {
+  readonly role: string;
+  readonly nativeTools: RolePolicy['nativeTools'];
+  readonly tools: readonly string[];
+  readonly allowed: readonly string[];
+  readonly denied: readonly string[];
+}[] = [
+  {
+    role: 'director',
+    nativeTools: ['read', 'search'],
+    tools: ['next_action', 'ask_producer'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'author',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_plan'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'reviewer',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_plan_review'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'scriptwriter',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_script'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'actor',
+    nativeTools: ['read', 'search', 'edit', 'write'],
+    tools: ['submit', 'read_blackboard'],
+    allowed: ['Read', 'Glob', 'Grep', 'Edit', 'Write'],
+    denied: ['Bash'],
+  },
+  {
+    role: 'critic',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_critique'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'consultant',
+    nativeTools: ['read', 'search'],
+    tools: ['read_blackboard'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+];
+
+describe('the translation for each role (Phase 4, P1)', () => {
+  for (const row of ROLE_TABLE) {
+    const policy: RolePolicy = {
+      ...base,
+      nativeTools: row.nativeTools,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: row.tools },
+    };
+
+    it(`${row.role}: native tools, shell removed, one MCP rule per tool`, () => {
+      const rules = row.tools.map((tool) => `mcp__otheater__${tool}`);
+      const options = acpOptions(policy, 'none');
+      expect(options.tools).toEqual(row.allowed);
+      expect(options.disallowedTools).toEqual(row.denied);
+      expect(options.allowedTools).toEqual(rules);
+      expect(options.settings.permissions.allow).toEqual(rules);
+      expect(options.allowDangerouslySkipPermissions).toBe(false);
+      const args = headlessArgs(policy, 'none');
+      expect(args[args.indexOf('--tools') + 1]).toBe(row.allowed.join(','));
+      expect(args[args.indexOf('--allowedTools') + 1]).toBe(rules.join(','));
+      // Never the whole server, which would let a tool of the server the role lacks run.
+      expect(options.allowedTools).not.toContain('mcp__otheater');
+    });
+
+    it(`${row.role}: the shells of the daemon change no native key and add no rule beyond mcpTools`, () => {
+      const withShells: RolePolicy = {
+        ...policy,
+        nativeShell: 'shells',
+        mcpTools: { otheater: [...row.tools, 'run_tests', 'restricted_shell'] },
+      };
+      const options = acpOptions(withShells, 'none');
+      expect(options.tools).toEqual(row.allowed);
+      expect(options.disallowedTools).toEqual(row.denied);
+      expect(options.disallowedTools[0]).toBe('Bash');
+      expect(options.allowedTools).toEqual([
+        ...row.tools.map((tool) => `mcp__otheater__${tool}`),
+        'mcp__otheater__run_tests',
+        'mcp__otheater__restricted_shell',
+      ]);
+    });
+  }
+
+  it('a server with no entry in mcpTools gets no rule, and "all" gets the server rule', () => {
+    const open: RolePolicy = {
+      ...base,
+      mcpServers: ['otheater', 'docs'],
+      mcpTools: { docs: 'all' },
+    };
+    expect(allowedMcpRules(open)).toEqual(['mcp__docs']);
+  });
+});
