@@ -91,11 +91,12 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | pendente |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
 | P11 | Aceite da fase | todos | nada | pendente |
+| Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | decidida em 2026-11-17, **pendente** (antes do P5, do P9 e do P10) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P7 e P8;
 2. P2, P4 e P6;
-3. P5, P9 e P10; **o marco 4a fecha com o P5**;
+3. **antes de tudo, a medição do N115 (MCP do daemon dentro da sandbox, rodada real curta que precisa do ok do dono)**, depois P5, P9 e P10; **o marco 4a fecha com o P5**;
 4. P11.
 
 **Marco 4a (N96):** permissões e cascas fechadas, com a suíte de fuga verde no agente falso e nos testes reais opcionais. São o P1 a o P5 e o primeiro item do aceite da fase. O navegador, o perfil `software`, a fila de ideias e as sobras da Fase 3 vêm depois, até o aceite completo.
@@ -217,7 +218,7 @@ Ordem em ondas **[proposta]**:
 **Aceite:** com o agente falso dentro da sandbox, uma escrita fora do worktree e uma conexão a um domínio fora da lista falham no sistema operacional; a `guarantee()` passa sem `unenforced: warn`; o teste real opcional de cada cliente roda sob a sandbox.
 
 **Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[S]** fonte secundária (documentação da biblioteca), **[N]** não confirmado.
-- Porta `Sandbox` e `SandboxCapabilities` em `core`, mais o módulo puro `security.secret_paths` (padrões da §5.19, expansão de `~` e de glob, `add`/`remove`) e o `launchWrapper` na base dos clientes. `browser.secret_paths` é o apelido da mesma lista; a ligação com o navegador é do P6 **[N]**.
+- Porta `Sandbox` e `SandboxCapabilities` em `core`, mais o módulo puro `security.secret_paths` (padrões da §5.19, expansão de `~` e de glob, `add`/`remove`) e o `launchWrapper` na base dos clientes. `browser.secret_paths` é o apelido da mesma lista; a ligação com o navegador foi feita no P6 (PR #82) **[V]**.
 - Adaptador `adapters/sandbox-srt` sobre `@anthropic-ai/sandbox-runtime` 0.0.81 (Apache-2.0), com `bwrap` real nos testes **[V]**: escrita só no worktree, nas pastas do perfil e em `extra_write_paths`; rede negada, com os domínios do papel e do provedor; leitura negada nos caminhos de segredo. A biblioteca guarda um singleton por processo: um `SrtSandbox` aberto por processo **[V]**.
 - Daemon: `sandbox-wiring.ts` (sem adaptador), `compose.ts` e `clients.ts` passam o `SandboxCapabilities` à `guarantee()`; `run_tests`, `install_deps` e `restricted_shell` rodam confinados e não rodam se o sandbox não embrulha o comando. Sem adaptador (Windows) ou com `sandbox.mode: off`, vale `security.unenforced` (padrão `refuse`).
 - Chaves **[proposta]**: `sandbox.mode` (`runtime`, `off`; padrão `runtime`), `sandbox.extra_write_paths` (caminhos absolutos), `sandbox.extra_domains` e `security.secret_paths.{add,remove}`.
