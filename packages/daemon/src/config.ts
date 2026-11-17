@@ -8,6 +8,7 @@ import {
   InvalidInput,
   isKnownTimezone,
   parseAllowEntry,
+  ProjectCommandSchema,
   PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
@@ -353,8 +354,8 @@ export type HeavyToolName = (typeof HEAVY_TOOL_NAMES)[number];
 export const HTTP_REDIRECT_MODES = ['refuse', 'follow_allowed'] as const;
 export type HttpRedirectMode = (typeof HTTP_REDIRECT_MODES)[number];
 
-/** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. */
-export const ToolCommandSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+/** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. Same schema as `scenarios.conventions.commands`. */
+export const ToolCommandSchema = ProjectCommandSchema;
 export type ToolCommand = z.infer<typeof ToolCommandSchema>;
 
 export const AllowlistEntrySchema = z

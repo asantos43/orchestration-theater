@@ -34,6 +34,20 @@ export type CommitType = (typeof COMMIT_TYPES)[number];
 
 const text = z.string().min(1);
 
+/**
+ * A command of the project: a line (`pnpm test`, split without a shell when it runs) or an argv
+ * (`['pnpm', 'test']`). It is the one shape of `scenarios.conventions.commands.<name>`: the writers
+ * (detection, the Producer's answer) and the reader (`run_tests`, `install_deps`, the allowlist of
+ * the mode `profile`) share it, and `tools.commands` has the same shape.
+ */
+export const ProjectCommandSchema = z.union([text, z.array(text).min(1)]);
+export type ProjectCommand = z.infer<typeof ProjectCommandSchema>;
+
+/** The command as one line to show: an argv is joined with spaces. */
+export function commandLine(command: ProjectCommand): string {
+  return typeof command === 'string' ? command : command.join(' ');
+}
+
 /** Version of the format of the field, for a later change. */
 export const CONVENTIONS_VERSION = 1;
 
@@ -58,8 +72,16 @@ export const ProjectConventionsSchema = z.strictObject({
     defaultType: z.enum(COMMIT_TYPES).default('feat'),
   }),
   ci: z.enum(CI_KINDS),
-  /** Commands P3 reads for `run_tests` and `install_deps`, when the repository tells them. */
-  commands: z.strictObject({ test: text.optional(), install: text.optional() }).default({}),
+  /**
+   * Commands `run_tests` and `install_deps` run, when the repository tells them. The override of
+   * the scenario beats this, and this beats the global `tools.commands`.
+   */
+  commands: z
+    .strictObject({
+      test: ProjectCommandSchema.optional(),
+      install: ProjectCommandSchema.optional(),
+    })
+    .default({}),
 });
 export type ProjectConventions = z.infer<typeof ProjectConventionsSchema>;
 

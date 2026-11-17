@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { randomUUID } from 'node:crypto';
 import {
+  commandLine,
+  type ProjectCommand,
   conventionsToJson,
   parseConventions,
   type ChangelogFormat,
@@ -86,6 +88,10 @@ function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
+function commandText(command: ProjectCommand | undefined): string {
+  return command === undefined ? 'none' : commandLine(command);
+}
+
 /** What the detection found, in one paragraph for the Producer. */
 export function describeConventions(conventions: ProjectConventions): string {
   const changelog =
@@ -96,19 +102,20 @@ export function describeConventions(conventions: ProjectConventions): string {
     [
       `Imported repository${conventions.mainBranch === undefined ? '' : `, main branch ${conventions.mainBranch}`}:`,
       `${changelog}; commits ${conventions.commit.style}; CI ${conventions.ci};`,
-      `test ${conventions.commands.test ?? 'none'}; install ${conventions.commands.install ?? 'none'}.`,
+      `test ${commandText(conventions.commands.test)}; install ${commandText(conventions.commands.install)}.`,
     ].join(' '),
     QUESTION_MAX - 60,
   );
 }
 
-function commandQuestion(what: string, detected: string | undefined): Question {
-  if (detected === undefined) {
+function commandQuestion(what: string, command: ProjectCommand | undefined): Question {
+  if (command === undefined) {
     return {
       question: `No ${what} command was detected. Type it, or "${NO_COMMAND}" if the repository has none.`,
       open: true,
     };
   }
+  const detected = commandLine(command);
   return {
     question: cut(
       `Is the ${what} command right: ${detected}? Choose, or type the right one.`,
@@ -163,7 +170,10 @@ function pick<T>(
   );
 }
 
-function commandOf(answer: string | undefined, detected: string | undefined): string | undefined {
+function commandOf(
+  answer: string | undefined,
+  detected: ProjectCommand | undefined,
+): ProjectCommand | undefined {
   const text = answer?.trim();
   if (text === undefined || text === '') return detected;
   if (text.toLowerCase() === USE_DETECTED.toLowerCase() || /^1$/.test(text)) return detected;
