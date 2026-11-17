@@ -95,7 +95,7 @@ describe('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => 
       const seen: string[][] = [];
       for (let round = 1; round <= 3; round += 1) {
         const result = await harness.producer.idea(scenarioId, { action: 'drain' });
-        expect(result.drain.groups).toBe(1);
+        expect(result.drain?.groups).toBe(1);
         // `grouping_approval: ask`: the group waits, and no play exists for it yet.
         const ask = await groupAsk(harness, scenarioId);
         expect(await harness.plays(scenarioId)).toHaveLength(round - 1);
@@ -111,7 +111,7 @@ describe('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => 
           async () =>
             (await ideasOf(harness, scenarioId)).find(
               (idea) => members.has(idea.id) && idea.playId !== null,
-            )?.playId,
+            )?.playId ?? undefined,
         );
         await waitFor('the play to end', async () => {
           const found = await harness.daemon.store.plays.get(playId);

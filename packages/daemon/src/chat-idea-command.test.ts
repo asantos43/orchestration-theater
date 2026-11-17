@@ -87,11 +87,7 @@ const DEFERRED: IdeaView = {
 describe('renderIdeaResult', () => {
   it('lists the ideas with the play and the PR they ended in, and the reason of a deferred one', async () => {
     const t = await createTranslator('en');
-    const lines = renderIdeaResult(
-      t,
-      { action: 'list' },
-      { ideas: [DONE, DEFERRED], idea: undefined, drain: undefined },
-    );
+    const lines = renderIdeaResult(t, { action: 'list' }, { ideas: [DONE, DEFERRED] });
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain('I1');
     expect(lines[0]).toContain('add the route');
@@ -106,7 +102,7 @@ describe('renderIdeaResult', () => {
       const lines = renderIdeaResult(
         t,
         { action: 'drain' },
-        { ideas: [], idea: undefined, drain: { groups: 2, stopped: 'a reason' } },
+        { ideas: [], drain: { groups: 2, stopped: 'a reason' } },
       );
       expect(lines).toHaveLength(2);
       expect(lines[0]).toContain('2');
