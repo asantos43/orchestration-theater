@@ -15,7 +15,13 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Logger } from '../logger.js';
 import type { RecoveryGate } from '../recovery/gate.js';
-import type { ChatPoll, OpenChatInput, ProducerChannel } from './channel.js';
+import type {
+  ChatPoll,
+  IdeaCommand,
+  IdeaCommandResult,
+  OpenChatInput,
+  ProducerChannel,
+} from './channel.js';
 
 /** Where the channel listens: the loopback only, like the MCP server. */
 export const CHANNEL_HOST = '127.0.0.1';
@@ -56,6 +62,28 @@ const AnswerBody = z.strictObject({
   decisionId: z.string().min(1),
   answer: z.record(z.string(), z.json()),
 });
+
+const IdeaBody = z.discriminatedUnion('action', [
+  z.strictObject({
+    action: z.literal('add'),
+    scenarioId: z.string().min(1),
+    text: z.string(),
+    area: z.string().optional(),
+  }),
+  z.strictObject({ action: z.literal('list'), scenarioId: z.string().min(1) }),
+  z.strictObject({ action: z.literal('drain'), scenarioId: z.string().min(1) }),
+  z.strictObject({
+    action: z.enum(['discard', 'defer']),
+    scenarioId: z.string().min(1),
+    id: z.string().min(1),
+    reason: z.string(),
+  }),
+  z.strictObject({
+    action: z.literal('requeue'),
+    scenarioId: z.string().min(1),
+    id: z.string().min(1),
+  }),
+]);
 
 function sameToken(given: string | undefined, expected: string): boolean {
   if (given === undefined) return false;
@@ -160,6 +188,12 @@ export class ProducerChannelServer {
       if (!body.success) throw new InvalidInput(body.error.message);
       await channel.answer(body.data.decisionId, body.data.answer);
       return c.json({ ok: true });
+    });
+    app.post('/chat/idea', async (c) => {
+      const body = IdeaBody.safeParse(await c.req.json().catch(() => undefined));
+      if (!body.success) throw new InvalidInput(body.error.message);
+      const { scenarioId, ...command } = body.data;
+      return c.json(await channel.idea(scenarioId, command as IdeaCommand));
     });
     const http = await new Promise<HttpServer>((resolve, reject) => {
       const server = serve(
@@ -279,6 +313,11 @@ export class ChannelClient {
       'GET',
       `/chat/poll?scenario=${encodeURIComponent(scenarioId)}&since=${String(since)}`,
     );
+  }
+
+  /** `/idea`: add, list, drain, discard, defer or requeue (5.20). */
+  idea(scenarioId: string, command: IdeaCommand): Promise<IdeaCommandResult> {
+    return this.#call('POST', '/chat/idea', { scenarioId, ...command });
   }
 
   async answer(decisionId: string, answer: JsonObject): Promise<void> {

@@ -17,6 +17,7 @@ export * from './ports/prompt-queue.js';
 export * from './ports/side-effects.js';
 export * from './ports/sessions.js';
 export * from './ports/directives.js';
+export * from './ports/ideas.js';
 export * from './ports/prompt-source.js';
 export * from './store-kit/index.js';
 export * from './blackboard-keys.js';

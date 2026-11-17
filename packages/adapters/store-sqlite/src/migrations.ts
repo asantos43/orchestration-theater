@@ -405,6 +405,45 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  // The idea queue of a scenario (5.20, N91): ideas wait here to be grouped into the need of a
+  // play. No foreign keys, like the other aggregates: the daemon keeps the links.
+  '0008_ideas': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('ideas')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('scenario_id', 'text', notNull)
+        .addColumn('text', 'text', notNull)
+        .addColumn('area', 'text')
+        .addColumn('source', 'text', notNull)
+        .addColumn('state', 'text', notNull)
+        .addColumn('group_id', 'text')
+        .addColumn('group_order', 'integer')
+        .addColumn('play_id', 'text')
+        .addColumn('pr_number', 'integer')
+        .addColumn('pr_url', 'text')
+        .addColumn('reason', 'text')
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addColumn('closed_at', 'integer')
+        .execute();
+      // The queue of a scenario, and the ideas of a play.
+      await db.schema
+        .createIndex('ideas_queue')
+        .ifNotExists()
+        .on('ideas')
+        .columns(['scenario_id', 'state', 'seq'])
+        .execute();
+      await db.schema
+        .createIndex('ideas_play')
+        .ifNotExists()
+        .on('ideas')
+        .columns(['play_id'])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */

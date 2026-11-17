@@ -122,6 +122,10 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.directives;
   }
 
+  get ideas(): Store['ideas'] {
+    return this.inner.ideas;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }
