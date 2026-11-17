@@ -80,3 +80,19 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo build --locked
       - run: cargo test --locked
+
+  sandbox-diag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: |
+          uname -r; cat /etc/os-release | head -3; bwrap --version
+          id
+          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone user.max_user_namespaces || true
+          echo "--- bwrap plain"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- /bin/true; echo rc=$?
+          echo "--- bwrap + nested unshare -U"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo rc=$?'; echo rc=$?
+          echo "--- bwrap + nested unshare -Ur"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id; echo rc=$?
+          echo "--- bwrap cap-drop ALL"; bwrap --ro-bind / / --unshare-user --cap-drop ALL --unshare-pid --proc /proc -- unshare -Ur id; echo rc=$?
+          echo "--- dmesg apparmor"; sudo dmesg 2>/dev/null | grep -i "apparmor.*userns\|DENIED" | tail -5 || true
+        continue-on-error: true
