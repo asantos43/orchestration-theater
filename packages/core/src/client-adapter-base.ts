@@ -8,6 +8,7 @@ import {
 } from './errors.js';
 import { CatalogProbeSession } from './catalog-probe-session.js';
 import { ModeVetoSession } from './mode-veto-session.js';
+import { answerOf, answeredAs, decidePermission } from './permission-rules.js';
 import type { NormalizedUpdate } from './normalized-update.js';
 import type { AdapterImplements } from './ports/adapter.js';
 import type {
@@ -30,6 +31,7 @@ import {
   ROLE_POLICY_FIELDS,
   type ProcessReuse,
   type SessionPurpose,
+  type SessionPermissions,
   type SessionStartOptions,
   type ClientAdapterContract,
   type ClientCapabilities,
@@ -57,6 +59,11 @@ import {
   type SharedCancelEscalation,
   type SharedCancelMode,
 } from './shared-process.js';
+
+/** What the answer of layer 2 takes besides the request and the policy (`SessionPermissions` and the worktree). */
+interface AnswerContext extends SessionPermissions {
+  readonly cwd?: string;
+}
 
 /**
  * Id of the session config option that selects the mode, in the setup of a session and in
@@ -494,21 +501,41 @@ export abstract class ClientAdapter implements ClientAdapterContract {
 
   /**
    * Layer 2 of the permissions (architecture 5.8): the answer to a `session/request_permission`,
-   * the same for every client. With `onAsk: 'reject'` it picks `reject_once`, which refuses this
-   * request and leaves no rule behind in the client (`reject_always` may be written to the profile
-   * and would outlive the policy that asked for it); `reject_always` only when `reject_once` is not
-   * offered; and `cancelled` when no option refuses. It never selects an `allow_*` option. [proposta]
+   * the same for every client.
+   *
+   * With `onAsk: 'reject'` it picks `reject_once`, which refuses this request and leaves no rule
+   * behind in the client (`reject_always` may be written to the profile and would outlive the
+   * policy that asked for it); `reject_always` only when `reject_once` is not offered; and
+   * `cancelled` when no option refuses. With `onAsk: 'rules'` (Phase 4, P2) the request first goes
+   * through what is always rejected (N99), then through the rules of the policy, the first match
+   * deciding (see `decidePermission`); a release picks `allow_once`, never `allow_always`. Without
+   * a rule that matches the answer is the rejection above. [proposta]
+   *
+   * `context.onDecision` hears every answer (it never changes it), and `context.resolvePath` lets
+   * the check of the worktree see through symbolic links. An unknown `onAsk` rejects.
    */
-  protected answerPermission(request: PermissionRequest, policy: RolePolicy): PermissionAnswer {
-    // `onAsk` has a single value in version 1. Any other value reaching here is a bug or a newer
-    // policy: the safe answer is still to refuse.
+  protected answerPermission(
+    request: PermissionRequest,
+    policy: RolePolicy,
+    context: AnswerContext = {},
+  ): PermissionAnswer {
+    const decision = decidePermission(request, policy, {
+      cwd: context.cwd ?? '/',
+      ...(context.resolvePath === undefined ? {} : { resolvePath: context.resolvePath }),
+    });
+    // A value of `onAsk` this version does not know is a bug or a newer policy: the safe answer is
+    // to cancel, without even picking the option that refuses.
     const onAsk: string = policy.onAsk;
-    if (onAsk !== 'reject') return { outcome: 'cancelled' };
-    for (const kind of ['reject_once', 'reject_always'] as const) {
-      const option = request.options.find((candidate) => candidate.kind === kind);
-      if (option !== undefined) return { outcome: 'selected', optionId: option.optionId };
+    const known = onAsk === 'reject' || onAsk === 'rules';
+    const answer: PermissionAnswer = known ? answerOf(request, decision) : { outcome: 'cancelled' };
+    if (context.onDecision !== undefined) {
+      try {
+        context.onDecision({ ...decision, request, answered: answeredAs(request, answer) });
+      } catch {
+        // The observer reports; it does not decide. A failure of its own changes nothing here.
+      }
     }
-    return { outcome: 'cancelled' };
+    return answer;
   }
 
   /**
@@ -652,7 +679,16 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       ? await this.#shared.acquire(sharedProcessKey(profile, spec), spec)
       : await this.#launcher.launch(spec);
     try {
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose);
+      return await this.#attach(
+        process,
+        policy,
+        cwd,
+        via,
+        sessionId,
+        mcpServers,
+        purpose,
+        options?.permissions,
+      );
     } catch (error) {
       await this.#reap(process);
       throw isOTheaterError(error) ? error : this.#unavailable(error);
@@ -686,6 +722,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     sessionId: string | undefined,
     mcpServers: readonly McpServerRef[],
     purpose: SessionPurpose,
+    permissions: SessionPermissions | undefined,
   ): Promise<AgentSession> {
     const setup = this.sessionSetup(policy, via.id);
     this.#assertSetupModes(setup, via.id);
@@ -695,7 +732,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       setup,
       mcpServers,
       normalizer: this.#normalizer(via.id),
-      onPermission: (request) => this.answerPermission(request, policy),
+      onPermission: (request) => this.answerPermission(request, policy, { cwd, ...permissions }),
       extensions: this.extensions(),
       onAgentInfo: (info) => {
         this.#observeAgentInfo(info);
@@ -722,7 +759,16 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       const purpose = options?.purpose ?? 'work';
       this.#assertGuaranteed(policy, via.id, purpose);
       const mcpServers = this.#mcpServersOf(policy, options?.mcpServers);
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose);
+      return await this.#attach(
+        process,
+        policy,
+        cwd,
+        via,
+        sessionId,
+        mcpServers,
+        purpose,
+        options?.permissions,
+      );
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }

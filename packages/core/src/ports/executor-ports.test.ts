@@ -68,8 +68,8 @@ describe('types', () => {
     expect([acp.via, headless.via]).toEqual(['acp', 'headless']);
   });
 
-  it('Enforcement has one entry per RolePolicy field', () => {
-    expectTypeOf<keyof Enforcement>().toEqualTypeOf<keyof RolePolicy>();
+  it('Enforcement has one entry per RolePolicy field, except the release rules of onAsk', () => {
+    expectTypeOf<keyof Enforcement>().toEqualTypeOf<Exclude<keyof RolePolicy, 'rules'>>();
     expect([...ROLE_POLICY_FIELDS].sort()).toEqual(
       [
         'bypass',
