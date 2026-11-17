@@ -38,7 +38,7 @@ export class TableSideEffectRegistry implements SideEffectRegistry {
       attemptId: given.attemptId ?? null,
       params: given.params ?? null,
       result: null,
-      state: 'intended',
+      state: 'pending',
       verifier: null,
       createdAt: now,
       updatedAt: now,
@@ -70,7 +70,7 @@ export class TableSideEffectRegistry implements SideEffectRegistry {
       'Side effect',
       idempotencyKey,
     );
-    if (current.state !== 'intended' && current.state !== 'ambiguous') {
+    if (current.state !== 'pending' && current.state !== 'ambiguous') {
       throw new Conflict(`Side effect ${idempotencyKey} is already ${current.state}`);
     }
     const now = this.clock.now();

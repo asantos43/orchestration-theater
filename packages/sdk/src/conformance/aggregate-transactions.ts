@@ -41,7 +41,7 @@ export function describeAggregateTransactionsConformance(
         expect((await tx.plays.get('play-1'))?.need).toBe('Need 1');
         expect((await tx.blackboard.get('play-1', 'plan'))?.value).toEqual({ n: 1 });
         expect((await tx.promptQueue.next())?.id).toBe('p1');
-        expect((await tx.sideEffects.get('k1'))?.state).toBe('intended');
+        expect((await tx.sideEffects.get('k1'))?.state).toBe('pending');
         expect((await tx.sessions.get('s1'))?.state).toBe('active');
         expect((await tx.directives.inForce({ scenarioId: 'scn-1' })).map((d) => d.id)).toEqual([
           'O1',

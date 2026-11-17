@@ -284,7 +284,7 @@ export function describeCoordinationAggregatesConformance(
         attemptId: 'attempt-1',
         params: { message: 'm' },
         result: null,
-        state: 'intended',
+        state: 'pending',
         verifier: null,
         createdAt: clock.now(),
         updatedAt: clock.now(),
@@ -359,14 +359,14 @@ export function describeCoordinationAggregatesConformance(
       );
       await store.sideEffects.intend(sampleSideEffect('k1'));
       await expectCode(
-        store.sideEffects.resolve('k1', { state: 'intended' as never }),
+        store.sideEffects.resolve('k1', { state: 'pending' as never }),
         'INVALID_INPUT',
       );
       await expectCode(
         store.sideEffects.resolve('k1', { state: 'done', verifier: 'nobody' as never }),
         'INVALID_INPUT',
       );
-      expect((await store.sideEffects.get('k1'))?.state).toBe('intended');
+      expect((await store.sideEffects.get('k1'))?.state).toBe('pending');
     });
 
     it('list is ordered by creation, then key, and filters by state, type and attempt', async () => {
@@ -381,7 +381,7 @@ export function describeCoordinationAggregatesConformance(
         filter: Parameters<typeof store.sideEffects.list>[0],
       ): Promise<string[]> => (await store.sideEffects.list(filter)).map((e) => e.idempotencyKey);
       expect(await keys({})).toEqual(['a', 'b', 'c']);
-      expect(await keys({ states: ['intended'] })).toEqual(['a', 'b']);
+      expect(await keys({ states: ['pending'] })).toEqual(['a', 'b']);
       expect(await keys({ types: ['git_push', 'open_pr'] })).toEqual(['b', 'c']);
       expect(await keys({ attemptId: 'at-2' })).toEqual(['a']);
       expect(await keys({ states: ['done'], types: ['git_commit'] })).toEqual([]);

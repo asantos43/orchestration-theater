@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { EpochMsSchema, JsonObjectSchema, RecordIdSchema } from './store-schemas.js';
 
 /**
- * State of a side effect (architecture 5.21). [proposta] `intended` is written before the effect
- * (the architecture's `pending`), then it resolves to `done`, `failed` (the effect ran and
- * errored), `not_done` (checked: it did not happen) or `ambiguous` (a "before" with no "after"
- * that nobody could settle yet).
+ * State of a side effect (architecture 5.21 and section 7). `pending` is written before the
+ * effect, then it resolves to `done`, `not_done` (checked: it did not happen) or `ambiguous` (a
+ * "before" with no "after" that nobody could settle yet). [proposta] `failed`: the effect ran
+ * and the tool reported an error.
  */
-export const SIDE_EFFECT_STATES = ['intended', 'done', 'failed', 'not_done', 'ambiguous'] as const;
+export const SIDE_EFFECT_STATES = ['pending', 'done', 'failed', 'not_done', 'ambiguous'] as const;
 export type SideEffectState = (typeof SIDE_EFFECT_STATES)[number];
 
 /** The states a side effect resolves to. */
@@ -67,12 +67,12 @@ export interface SideEffectListFilter {
 
 /**
  * Registry of side effects, part of `Store`. Contract (`describeSideEffectConformance`):
- * - `intend` records the effect as `intended` before it runs; an existing key rejects with
+ * - `intend` records the effect as `pending` before it runs; an existing key rejects with
  *   `Conflict` (the key is unique, so a repeated step finds its earlier record with `get`).
- * - `resolve` settles an `intended` or `ambiguous` effect (`NotFound` for an unknown key,
+ * - `resolve` settles an `pending` or `ambiguous` effect (`NotFound` for an unknown key,
  *   `Conflict` for one already `done`, `failed` or `not_done`); it stamps `resolvedAt` unless the
  *   resolution is `ambiguous`.
- * - `list` is ordered by `createdAt`, then key; `list({ states: ['intended'] })` is what the
+ * - `list` is ordered by `createdAt`, then key; `list({ states: ['pending'] })` is what the
  *   reconciliation of a restart reads (5.21).
  */
 export interface SideEffectRegistry {
