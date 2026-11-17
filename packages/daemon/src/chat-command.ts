@@ -150,7 +150,7 @@ export async function runChatCommand(
     const ask = waiting.shift();
     if (ask === undefined) return;
     current = { ask, collected: [] };
-    if (ask.kind === 'producer_menu') {
+    if (ask.kind !== 'producer_question') {
       out(
         t('chat.menu', {
           playId: ask.playId ?? '',
@@ -194,7 +194,7 @@ export async function runChatCommand(
     }
     const { ask } = current;
     try {
-      if (ask.kind === 'producer_menu') {
+      if (ask.kind !== 'producer_question') {
         if (await answerMenu(ask, line)) current = undefined;
         return;
       }

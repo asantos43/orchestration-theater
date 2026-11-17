@@ -25,6 +25,7 @@ describe('daemon event registry', () => {
       'daemon.started',
       'daemon.stopped',
       'daemon.backup',
+      'daemon.recovered',
       'session.opened',
       'session.update',
       'session.prompt_finished',
@@ -70,6 +71,21 @@ describe('daemon event registry', () => {
       removed: [],
     };
     expect(validateEventPayload('daemon.backup', 1, backup)).toEqual(backup);
+    const recovered = {
+      durationMs: 12,
+      orphansKilled: 1,
+      sessionsInterrupted: 2,
+      attemptsInterrupted: 1,
+      wipCommits: 1,
+      effectsResolved: 1,
+      playsResumed: ['play-1'],
+      playsRefused: [],
+      pending: [{ kind: 'effect', key: 'k', effectType: 'open_pr', playId: 'play-1', reason: 'x' }],
+    };
+    expect(validateEventPayload('daemon.recovered', 1, recovered)).toEqual(recovered);
+    expect(() =>
+      validateEventPayload('daemon.recovered', 1, { ...recovered, extra: true }),
+    ).toThrow();
     expect(
       validateEventPayload('daemon.backup', 1, {
         ok: false,

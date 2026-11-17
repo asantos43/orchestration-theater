@@ -12,6 +12,9 @@ import {
   type LauncherCapabilities,
   type LaunchedProcess,
   type LaunchOptions,
+  type OrphanKillReport,
+  type OrphanReaper,
+  type OrphanTarget,
   type ProcessExit,
   type ProcessLauncher,
 } from '@otheater/core';
@@ -22,7 +25,7 @@ import {
   type PosixLauncherConfigInput,
 } from './config.js';
 import { killProcessTree, sendSignal, type KillDeps } from './kill-tree.js';
-import { systemProcessTable, type ProcessTable } from './process-table.js';
+import { START_TOLERANCE_MS, systemProcessTable, type ProcessTable } from './process-table.js';
 import { findSystemdRun, scopeCommand } from './systemd-scope.js';
 
 /** [proposta] Longest wait for the root's `exit` event once the tree is gone. */
@@ -45,7 +48,7 @@ export interface PosixLauncherDeps {
  * - The streams are WHATWG streams over the pipes. The caller must read `stdout` and `stderr`: a
  *   child that fills a pipe nobody reads blocks (as in any pipe), until `killTree`.
  */
-export class PosixProcessLauncher implements ProcessLauncher {
+export class PosixProcessLauncher implements ProcessLauncher, OrphanReaper {
   readonly id: Adapter['id'] = POSIX_PROCESS_LAUNCHER_ADAPTER.id;
   readonly implements: Adapter['implements'] = POSIX_PROCESS_LAUNCHER_ADAPTER.implements;
   readonly config: PosixLauncherConfig;
@@ -73,6 +76,43 @@ export class PosixProcessLauncher implements ProcessLauncher {
       memoryLimit: this.config.memoryLimit === 'systemd-scope',
       suspendedStart: false,
     };
+  }
+
+  async processStartedAt(pid: number): Promise<number | undefined> {
+    const info = (await this.#table()).get(pid);
+    return info === undefined || info.zombie ? undefined : info.startedAtMs;
+  }
+
+  /**
+   * Ends the tree a dead daemon left (architecture 5.21): the process must still be alive and have
+   * started at the recorded instant (within {@link START_TOLERANCE_MS}); a recycled pid starts at
+   * another time and is left alone. The orphan was launched as a group leader, so its group is
+   * its tree, as in `killTree`.
+   */
+  async killOrphan(target: OrphanTarget, opts: KillOptions = {}): Promise<OrphanKillReport> {
+    const none = { found: 0, forced: false, remaining: [] as number[] };
+    const info = (await this.#table()).get(target.pid);
+    if (info === undefined || info.zombie || info.startedAtMs === undefined) {
+      return { matched: false, report: none };
+    }
+    if (Math.abs(info.startedAtMs - target.startedAt) > START_TOLERANCE_MS) {
+      return { matched: false, report: none };
+    }
+    const deps: KillDeps = {
+      table: this.#table,
+      signal: sendSignal,
+      sleep: (ms) =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, ms);
+        }),
+      now: () => performance.now(),
+    };
+    const report = await killProcessTree(
+      { rootPid: target.pid, rootStart: info.start },
+      opts.graceMs ?? DEFAULT_KILL_GRACE_MS,
+      deps,
+    );
+    return { matched: true, report };
   }
 
   async launch(opts: LaunchOptions): Promise<LaunchedProcess> {
