@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import {
@@ -235,6 +235,57 @@ describe('fake agent in process', () => {
       },
       'reject',
     );
+  });
+
+  it('write-file writes inside the cwd without asking for permission, even when asks are rejected', async () => {
+    await withSession(
+      createFakeAgent(),
+      async (h) => {
+        const response = await prompt(
+          h,
+          '#script:write-file {"path":"nested/out.txt","content":"hello\\n"}',
+        );
+        expect(response.stopReason).toBe('end_turn');
+        expect(await readFile(join(cwd, 'nested', 'out.txt'), 'utf8')).toBe('hello\n');
+        expect(h.recorded.permissions).toHaveLength(0);
+        await waitFor(() => h.recorded.updates.length === 2);
+        const [call, done] = h.recorded.updates;
+        expect(call).toMatchObject({
+          sessionUpdate: 'tool_call',
+          kind: 'edit',
+          status: 'in_progress',
+          locations: [{ path: (await realpath(join(cwd, 'nested'))) + sep + 'out.txt' }],
+        });
+        expect(done).toMatchObject({
+          sessionUpdate: 'tool_call_update',
+          status: 'completed',
+          content: [{ type: 'diff', oldText: null, newText: 'hello\n' }],
+        });
+      },
+      'reject',
+    );
+  });
+
+  it('write-file refuses paths outside the cwd without writing', async () => {
+    const outside = join(sandbox, 'outside');
+    await mkdir(outside);
+    await symlink(outside, join(cwd, 'link'));
+    await withSession(createFakeAgent(), async (h) => {
+      for (const path of ['../escape.txt', join(sandbox, 'abs.txt'), 'link/escape.txt']) {
+        h.recorded.updates.length = 0;
+        const response = await prompt(h, `#script:write-file ${JSON.stringify({ path })}`);
+        expect(response.stopReason).toBe('end_turn');
+        await waitFor(() => h.recorded.updates.length === 1);
+        expect(h.recorded.updates[0]).toMatchObject({
+          sessionUpdate: 'tool_call',
+          status: 'failed',
+        });
+      }
+      expect(h.recorded.permissions).toHaveLength(0);
+      expect(await exists(join(sandbox, 'escape.txt'))).toBe(false);
+      expect(await exists(join(sandbox, 'abs.txt'))).toBe(false);
+      expect(await exists(join(outside, 'escape.txt'))).toBe(false);
+    });
   });
 
   it('edit-file refuses paths outside the cwd without asking for permission', async () => {

@@ -214,6 +214,28 @@ class FakeDriver implements SessionDriver {
         });
         return 'end_turn';
       }
+      case 'write-file': {
+        // As `edit-file`, but no permission request: the client's mode already allows the edit.
+        const toolCallId = this.#nextToolCallId();
+        const path =
+          typeof directive.options.path === 'string'
+            ? directive.options.path
+            : 'fake-agent-output.txt';
+        this.#deliver({
+          sessionUpdate: 'tool_call',
+          toolCallId,
+          title: `Write ${path}`,
+          kind: 'edit',
+          status: 'in_progress',
+        });
+        if (signal.aborted) {
+          this.#deliver({ sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' });
+          return 'cancelled';
+        }
+        this.#transport.edits.push(path);
+        this.#deliver({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed' });
+        return 'end_turn';
+      }
       case 'fail':
         throw new Error('fake-agent scripted failure');
       case 'hang':
@@ -260,7 +282,7 @@ class FakeDriver implements SessionDriver {
 
 /**
  * A `SessionTransport` with no wire and no process: the session it returns plays the same scripts
- * as `@otheater/fake-agent` (`#script:echo|tool-call|edit-file|fail|hang|deaf|quota-signal`; `deaf` ignores `session/cancel`) in memory,
+ * as `@otheater/fake-agent` (`#script:echo|tool-call|edit-file|write-file|fail|hang|deaf|quota-signal`; `deaf` ignores `session/cancel`) in memory,
  * on the common `ManagedAgentSession`. It records what the `ClientAdapter` handed it, so a test of
  * the adapter (or of a session pool, P8) sees the process, the setup and the permission answers.
  */
@@ -275,7 +297,7 @@ export class FakeSessionTransport implements SessionTransport {
   /** Every permission request the scripts made, and the answer the adapter gave. */
   readonly permissionRequests: PermissionRequest[] = [];
   readonly permissionAnswers: PermissionAnswer[] = [];
-  /** Paths the `edit-file` script would have written (it writes nothing): only when the permission was granted. */
+  /** Paths the `edit-file` and `write-file` scripts would have written (they write nothing): for `edit-file` only when the permission was granted. */
   readonly edits: string[] = [];
   /** Config options applied with `setConfig`. */
   readonly configApplied: { id: string; value: ConfigValue }[] = [];

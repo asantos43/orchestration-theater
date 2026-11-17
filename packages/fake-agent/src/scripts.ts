@@ -17,6 +17,16 @@ export const scriptSchema = z.discriminatedUnion('name', [
     path: z.string().min(1).default('fake-agent-output.txt'),
     content: z.string().default('written by fake-agent\n'),
   }),
+  /**
+   * Like `edit-file`, but writes without asking for permission: what a real client does when its
+   * mode already allows the edit (e.g. Claude Code in `acceptEdits`). A policy that rejects asks
+   * cannot stop it, so a test that needs a file to land in the worktree uses this one.
+   */
+  z.strictObject({
+    name: z.literal('write-file'),
+    path: z.string().min(1).default('fake-agent-output.txt'),
+    content: z.string().default('written by fake-agent\n'),
+  }),
   z.strictObject({
     name: z.literal('fail'),
     message: z.string().default('fake-agent scripted failure'),
@@ -41,6 +51,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'echo',
   'tool-call',
   'edit-file',
+  'write-file',
   'fail',
   'hang',
   'deaf',

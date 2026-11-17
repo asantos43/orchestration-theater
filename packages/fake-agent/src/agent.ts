@@ -193,6 +193,46 @@ async function playToolCall(
   return END_TURN;
 }
 
+/** The failed `edit` tool call a script reports for a path outside the session cwd. */
+function refuseOutsideCwd(
+  turn: TurnContext,
+  toolCallId: string,
+  title: string,
+  path: string,
+): Promise<void> {
+  return update(turn, {
+    sessionUpdate: 'tool_call',
+    toolCallId,
+    title,
+    kind: 'edit',
+    status: 'failed',
+    content: [
+      {
+        type: 'content',
+        content: { type: 'text', text: `refused: ${path} is outside the session cwd` },
+      },
+    ],
+  });
+}
+
+/** Writes `content` to `target` and reports the edit as completed, with the diff. */
+async function writeAndReport(
+  turn: TurnContext,
+  toolCallId: string,
+  target: string,
+  content: string,
+): Promise<void> {
+  const oldText = await readFile(target, 'utf8').catch(() => null);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, content);
+  await update(turn, {
+    sessionUpdate: 'tool_call_update',
+    toolCallId,
+    status: 'completed',
+    content: [{ type: 'diff', path: target, oldText, newText: content }],
+  });
+}
+
 async function playEditFile(
   turn: TurnContext,
   script: Extract<Script, { name: 'edit-file' }>,
@@ -201,19 +241,7 @@ async function playEditFile(
   const title = `Write ${script.path}`;
   const target = await resolveInsideCwd(turn.session.cwd, script.path);
   if (target === undefined) {
-    await update(turn, {
-      sessionUpdate: 'tool_call',
-      toolCallId,
-      title,
-      kind: 'edit',
-      status: 'failed',
-      content: [
-        {
-          type: 'content',
-          content: { type: 'text', text: `refused: ${script.path} is outside the session cwd` },
-        },
-      ],
-    });
+    await refuseOutsideCwd(turn, toolCallId, title, script.path);
     return END_TURN;
   }
   const locations = [{ path: target }];
@@ -247,15 +275,39 @@ async function playEditFile(
     });
     return END_TURN;
   }
-  const oldText = await readFile(target, 'utf8').catch(() => null);
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, script.content);
+  await writeAndReport(turn, toolCallId, target, script.content);
+  return END_TURN;
+}
+
+/**
+ * [proposal] `edit-file` without the permission request: the way a real client behaves when its
+ * mode already allows the edit (Claude Code in `acceptEdits`). The write cannot be refused by the
+ * client's `onAsk` policy because nothing is asked.
+ */
+async function playWriteFile(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'write-file' }>,
+): Promise<PromptResponse> {
+  const toolCallId = nextToolCallId(turn.session);
+  const title = `Write ${script.path}`;
+  const target = await resolveInsideCwd(turn.session.cwd, script.path);
+  if (target === undefined) {
+    await refuseOutsideCwd(turn, toolCallId, title, script.path);
+    return END_TURN;
+  }
   await update(turn, {
-    sessionUpdate: 'tool_call_update',
+    sessionUpdate: 'tool_call',
     toolCallId,
-    status: 'completed',
-    content: [{ type: 'diff', path: target, oldText, newText: script.content }],
+    title,
+    kind: 'edit',
+    status: 'in_progress',
+    locations: [{ path: target }],
   });
+  if (turn.signal.aborted) {
+    await update(turn, { sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' });
+    return CANCELLED;
+  }
+  await writeAndReport(turn, toolCallId, target, script.content);
   return END_TURN;
 }
 
@@ -311,6 +363,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playToolCall(turn, script);
     case 'edit-file':
       return playEditFile(turn, script);
+    case 'write-file':
+      return playWriteFile(turn, script);
     case 'fail':
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
     case 'hang':
