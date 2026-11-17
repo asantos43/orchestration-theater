@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHAT_CHANNEL_MODES,
   RECOVERY_NOTICE_MODES,
+  SANDBOX_MODES,
   CLIENT_IDS,
   LIMIT_PRESETS,
   loadConfig,
@@ -589,6 +590,45 @@ describe('recovery', () => {
   it('rejects an unknown mode and unknown keys', () => {
     expect(() => parseConfig('recovery:\n  notice: sometimes\n')).toThrow(/recovery\.notice/);
     expect(() => parseConfig('recovery:\n  chat: true\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('sandbox and security.secret_paths', () => {
+  it('turns layer 3 on by default where an adapter exists, with nothing extra', () => {
+    expect(parseConfig('').sandbox).toEqual({
+      mode: 'runtime',
+      extra_write_paths: [],
+      extra_domains: [],
+    });
+    expect(parseConfig('').security.secret_paths).toEqual({ add: [], remove: [] });
+    expect(SANDBOX_MODES).toEqual(['runtime', 'off']);
+  });
+
+  it('takes each mode and the extra folders and domains', () => {
+    for (const mode of SANDBOX_MODES) {
+      expect(parseConfig(`sandbox:\n  mode: ${mode}\n`).sandbox.mode).toBe(mode);
+    }
+    const { sandbox } = parseConfig(
+      'sandbox:\n  extra_write_paths: [/var/cache/x]\n  extra_domains: [registry.npmjs.org]\n',
+    );
+    expect(sandbox.extra_write_paths).toEqual(['/var/cache/x']);
+    expect(sandbox.extra_domains).toEqual(['registry.npmjs.org']);
+  });
+
+  it('rejects an unknown mode, a relative folder and unknown keys', () => {
+    expect(() => parseConfig('sandbox:\n  mode: docker\n')).toThrow(/sandbox\.mode/);
+    expect(() => parseConfig('sandbox:\n  extra_write_paths: [cache]\n')).toThrow(
+      /sandbox\.extra_write_paths/,
+    );
+    expect(() => parseConfig('sandbox:\n  other: 1\n')).toThrow(InvalidInput);
+  });
+
+  it('adds to and removes from the secret paths', () => {
+    const { secret_paths } = parseConfig(
+      'security:\n  secret_paths:\n    add: ["~/.vault"]\n    remove: ["~/.aws"]\n',
+    ).security;
+    expect(secret_paths).toEqual({ add: ['~/.vault'], remove: ['~/.aws'] });
+    expect(() => parseConfig('security:\n  secret_paths:\n    add: [""]\n')).toThrow(InvalidInput);
   });
 });
 

@@ -6,6 +6,7 @@ export { WriteApprovals, isApproval, type AskApproval, type ApprovalQuestion } f
 export { FileOrigin, type FileGrant, type IsSecretPath } from './file-origin.js';
 export { makeGuard, parseOpenUrl } from './guard.js';
 export { isLocalHost } from './local-host.js';
+export { secretPathCheck } from './secret-list.js';
 export {
   BrowserOverrideSchema,
   browserOverrideOf,

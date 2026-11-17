@@ -23,6 +23,7 @@ const alias = {
   '@otheater/adapter-local-ollama': `${import.meta.dirname}/packages/adapters/local-ollama/src/index.ts`,
   '@otheater/adapter-local-llama-cpp': `${import.meta.dirname}/packages/adapters/local-llama-cpp/src/index.ts`,
   '@otheater/adapter-browser-playwright': `${import.meta.dirname}/packages/adapters/browser-playwright/src/index.ts`,
+  '@otheater/adapter-sandbox-srt': `${import.meta.dirname}/packages/adapters/sandbox-srt/src/index.ts`,
 };
 
 export default defineConfig({

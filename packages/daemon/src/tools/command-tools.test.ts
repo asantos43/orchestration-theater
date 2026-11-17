@@ -11,6 +11,8 @@ import {
   type ToolsRigOptions,
 } from './tools-fixture.js';
 import { InMemoryStore } from '@otheater/core/testing';
+import type { ProcessLauncher } from '@otheater/core';
+import { defaultLauncher } from '../compose.js';
 
 const rigs: ToolsRig[] = [];
 
@@ -417,5 +419,45 @@ describe('tool.called and tool.finished', () => {
     expect(await rig.call('restricted_shell', { argv: ['cat', 'keep.txt'] })).toMatchObject({
       stdout: 'keep\n',
     });
+  });
+});
+
+describe('the commands inside the sandbox (layer 3, P4)', () => {
+  it('runs the launch the sandbox hands back, with the worktree of the call', async () => {
+    const seen: { cmd: string; worktree: string }[] = [];
+    const rig = await rigOf({
+      confine: (launch, worktree) => {
+        seen.push({ cmd: launch.cmd, worktree });
+        // What a wrapper does: the same command, run by another one.
+        return Promise.resolve({
+          ...launch,
+          cmd: 'env',
+          args: ['CONFINED=yes', launch.cmd, ...launch.args],
+        });
+      },
+    });
+    const reply = await rig.call('restricted_shell', { argv: ['ls'] });
+    expect(reply).toMatchObject({ exitCode: 0 });
+    expect(seen).toEqual([{ cmd: 'ls', worktree: rig.worktree }]);
+  });
+
+  it('does NOT run the command when the sandbox cannot wrap it', async () => {
+    const real = defaultLauncher();
+    if (real === undefined) throw new Error('this platform has no process launcher');
+    let launches = 0;
+    const rig = await rigOf({
+      launcher: {
+        id: real.id,
+        implements: real.implements,
+        capabilities: () => real.capabilities(),
+        launch: (options) => {
+          launches += 1;
+          return real.launch(options);
+        },
+      } satisfies ProcessLauncher,
+      confine: () => Promise.reject(new Error('the sandbox is gone')),
+    });
+    await expect(rig.call('restricted_shell', { argv: ['ls'] })).rejects.toThrow(/sandbox is gone/);
+    expect(launches).toBe(0);
   });
 });

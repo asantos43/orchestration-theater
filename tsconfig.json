@@ -22,6 +22,7 @@
     { "path": "tools/bench" },
     { "path": "packages/adapters/local-llama-cpp" },
     { "path": "packages/adapters/local-ollama" },
-    { "path": "packages/adapters/browser-playwright" }
+    { "path": "packages/adapters/browser-playwright" },
+    { "path": "packages/adapters/sandbox-srt" }
   ]
 }

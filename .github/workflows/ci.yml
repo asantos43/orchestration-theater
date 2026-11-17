@@ -22,6 +22,16 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy and
+      # ripgrep finds the files to hide. The runner (Ubuntu 26.04, measured in PR #81) restricts user
+      # namespaces through AppArmor: the sysctl lifts the general restriction, and the second step
+      # unloads the profile that strips the capabilities of what runs inside bwrap (the seccomp
+      # helper of the sandbox-runtime needs a nested user namespace). Both ONLY on the disposable
+      # runner, never on a developer machine.
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      - run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
       - run: pnpm install --frozen-lockfile
       # The tests of the browser (P6, N95) drive a real Chromium over pages served by the test itself.
       # `playwright-core` does not download one on its own: this is the revision its version expects.
@@ -32,9 +42,11 @@ jobs:
       - run: cargo fetch --locked
         working-directory: native/job-launcher
       # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
+      # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
       - run: pnpm check
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+          OT_REQUIRE_SANDBOX: '1'
       - run: cargo fmt --check
         working-directory: native/job-launcher
       - run: cargo clippy --locked --all-targets -- -D warnings

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { homedir } from 'node:os';
 import {
   AdapterUnavailable,
   hasErrorCode,
@@ -40,7 +41,7 @@ import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
-import { registerBrowserTools, type BrowserTools } from './browser/index.js';
+import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
@@ -241,19 +242,21 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
             ),
       vcs: composition.vcs,
       codeHost: composition.codeHost,
+      confine: composition.sandbox?.confineCommand,
       clock: composition.clock,
       env: options.clientSearch?.env ?? process.env,
       host: nodePathHost(),
       logger: composition.logger,
     };
     // P6 (5.19): the browser tools. A write asks the Producer through the chat prompt queue;
-    // `isSecret` is the list of `security.secret_paths` (P4), not wired yet.
+    // `isSecret` is the one list of `security.secret_paths` (P4), the same the Sandbox uses.
     if (composition.browser !== undefined) {
       browserTools = registerBrowserTools(handlers, {
         ...workDeps,
         browser: config.browser,
         session: composition.browser,
         dataDir: paths.dataDir,
+        isSecret: secretPathCheck(config, homedir(), paths.dataDir),
         askApproval: (scenarioId, input) => orchestrationHandlers.openApproval(scenarioId, input),
       });
       browserTools.startIdleLoop();
@@ -561,6 +564,15 @@ function buildExecution(
     transport: composition.transport,
     paths: dataPaths(options.dataDir),
     logger,
+    ...(composition.sandbox === undefined
+      ? {}
+      : {
+          sandbox: {
+            capabilities: composition.sandbox.capabilities,
+            // The framework MCP server is the daemon's own loopback service the client must reach.
+            launchWrapper: composition.sandbox.launchWrapper(() => [mcp.url]),
+          },
+        }),
   });
   if (clients.length === 0) {
     logger.warn(

@@ -136,6 +136,13 @@ export const CATALOG_PROBE_MODES = ['allow', 'refuse'] as const;
  */
 export const CATALOG_PROBE_LOG_MODES = ['once', 'every', 'off'] as const;
 export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as const;
+/**
+ * `sandbox.mode` (architecture 5.8, layer 3): `runtime` confines the clients and the commands of
+ * the daemon with the OS mechanism (bubblewrap on Linux, Seatbelt on macOS) where an adapter
+ * exists; `off` turns layer 3 off, and then `security.unenforced` decides what happens to the
+ * fields that only layer 3 guarantees (`writeScope`, `network`).
+ */
+export const SANDBOX_MODES = ['runtime', 'off'] as const;
 
 /**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
@@ -484,6 +491,16 @@ export const BrowserConfigSchema = z
      * the browser with it when it was the last one); `0` never closes. Global only.
      */
     idle_close_ms: z.int().min(0).default(600_000),
+    /**
+     * [proposta] An alias of `security.secret_paths` (same `add`/`remove`, same list: the Sandbox and
+     * `browser_open` share it, 5.19). Write it in one place: both with entries is refused. Global only.
+     */
+    secret_paths: z
+      .strictObject({
+        add: z.array(z.string().min(1)).default([]),
+        remove: z.array(z.string().min(1)).default([]),
+      })
+      .prefault({}),
   })
   .prefault({});
 export type BrowserConfig = z.infer<typeof BrowserConfigSchema>;
@@ -626,370 +643,428 @@ const AdapterSection = z.record(z.string(), z.unknown());
  *
  * Durations are written as text and held as milliseconds after parsing (`backup.idle`).
  */
-export const DaemonConfigSchema = z.strictObject({
-  adapters: z
-    .strictObject({
-      store: z.enum(STORE_ADAPTER_IDS).default('sqlite'),
-      vault: z.enum(VAULT_ADAPTER_IDS).default('keyring'),
-      clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
-      prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
-    })
-    .prefault({}),
-  /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */
-  store: AdapterSection.prefault({}),
-  /** Config of the chosen vault adapter (keyring: service, linuxStore; encrypted-file: path, scrypt). */
-  vault: AdapterSection.prefault({}),
-  /**
-   * Config of the chosen prompt source (files: `directory`, a folder with one `<role>.md` per role;
-   * without it the versioned `prompts/` folder of the repository is used). [proposta]
-   */
-  prompts: AdapterSection.prefault({}),
-  backup: z
-    .strictObject({
-      when: z.enum(BACKUP_WHEN).default('daily_after'),
-      after: TimeOfDaySchema.default('03:00'),
-      idle: DurationSchema.prefault('30m'),
-      /** Relative to the data directory, or absolute. */
-      dir: z.string().min(1).default('backups'),
-      retention: z.enum(BACKUP_RETENTION).default('days'),
-      keep_days: z.number().positive().default(2),
-      copies: z.int().min(1).default(7),
-      content: z.enum(BACKUP_CONTENTS).default('without_runs'),
-      method: z.enum(BACKUP_METHOD_NAMES).default('online_api'),
-      /**
-       * `online_api` only (ignored with `vacuum_into`): pages copied per `sqlite3_backup_step`.
-       * `all` copies everything in one step. WARNING: a number >= 1 lets the event loop breathe
-       * between steps, but SQLite restarts the copy at every commit, so with a writer active in
-       * the same process steps of 100 or 1000 pages timed out (`Transient`) in 21 of 24 runs.
-       */
-      pages_per_step: PagesPerStepSchema.default('all'),
-    })
-    .prefault({}),
-  /**
-   * Pools of Executor processes per `(client, profile)` (architecture 5.2). `sessions_per_process`
-   * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta]. Each client has
-   * a section of its own (`pool.claude-code`, `pool.codex`, `pool.opencode`); a key absent there
-   * inherits the global one, except `sessions_per_process` of Codex (6) and OpenCode (4), which
-   * have their own defaults (N74, owner's decision after a real measurement, 2026-11-16).
-   */
-  pool: z
-    .strictObject({
-      /**
-       * `K`: sessions per adapter process, for the clients that share one (`multi-session`). Only
-       * applies to a client with no default of its own (today Claude Code, which is
-       * `process-per-session`, so `K` changes nothing there); Codex and OpenCode have theirs (N74).
-       */
-      sessions_per_process: z.int().min(1).default(4),
-      /** Admission semaphore: sessions running at once, counted per session and not per process. */
-      max_sessions: z.int().min(1).default(4),
-      /** A process with no session for this long is closed (`idleMs`). */
-      idle: DurationSchema.prefault('2m'),
-      /**
-       * N64: what cancelling a session does to a process that runs other sessions too. `escalate`
-       * ends the process only when the client did not honour `session/cancel` within the grace;
-       * `always_kill` ends it on every cancel; `release` only gives the slot back.
-       */
-      shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
-      /** `K` of Claude Code alone; no default of its own (inherits the global key, 4). */
-      'claude-code': PoolClientSchema.prefault({}),
-      /** `K` of Codex alone; default 6 (N74, real measurement of 2026-11-16). */
-      codex: PoolCodexSchema.prefault({}),
-      /**
-       * N56 (5.2): how OpenCode shares its processes (the adapter wiring reads `process_model`; the
-       * pool follows the adapter's `processModel`), and `K` of OpenCode alone (default 4, explicit:
-       * N74, real measurement of 2026-11-16).
-       */
-      opencode: PoolClientSchema.extend({
+export const DaemonConfigSchema = z
+  .strictObject({
+    adapters: z
+      .strictObject({
+        store: z.enum(STORE_ADAPTER_IDS).default('sqlite'),
+        vault: z.enum(VAULT_ADAPTER_IDS).default('keyring'),
+        clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
+        prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
+      })
+      .prefault({}),
+    /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */
+    store: AdapterSection.prefault({}),
+    /** Config of the chosen vault adapter (keyring: service, linuxStore; encrypted-file: path, scrypt). */
+    vault: AdapterSection.prefault({}),
+    /**
+     * Config of the chosen prompt source (files: `directory`, a folder with one `<role>.md` per role;
+     * without it the versioned `prompts/` folder of the repository is used). [proposta]
+     */
+    prompts: AdapterSection.prefault({}),
+    backup: z
+      .strictObject({
+        when: z.enum(BACKUP_WHEN).default('daily_after'),
+        after: TimeOfDaySchema.default('03:00'),
+        idle: DurationSchema.prefault('30m'),
+        /** Relative to the data directory, or absolute. */
+        dir: z.string().min(1).default('backups'),
+        retention: z.enum(BACKUP_RETENTION).default('days'),
+        keep_days: z.number().positive().default(2),
+        copies: z.int().min(1).default(7),
+        content: z.enum(BACKUP_CONTENTS).default('without_runs'),
+        method: z.enum(BACKUP_METHOD_NAMES).default('online_api'),
+        /**
+         * `online_api` only (ignored with `vacuum_into`): pages copied per `sqlite3_backup_step`.
+         * `all` copies everything in one step. WARNING: a number >= 1 lets the event loop breathe
+         * between steps, but SQLite restarts the copy at every commit, so with a writer active in
+         * the same process steps of 100 or 1000 pages timed out (`Transient`) in 21 of 24 runs.
+         */
+        pages_per_step: PagesPerStepSchema.default('all'),
+      })
+      .prefault({}),
+    /**
+     * Pools of Executor processes per `(client, profile)` (architecture 5.2). `sessions_per_process`
+     * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta]. Each client has
+     * a section of its own (`pool.claude-code`, `pool.codex`, `pool.opencode`); a key absent there
+     * inherits the global one, except `sessions_per_process` of Codex (6) and OpenCode (4), which
+     * have their own defaults (N74, owner's decision after a real measurement, 2026-11-16).
+     */
+    pool: z
+      .strictObject({
+        /**
+         * `K`: sessions per adapter process, for the clients that share one (`multi-session`). Only
+         * applies to a client with no default of its own (today Claude Code, which is
+         * `process-per-session`, so `K` changes nothing there); Codex and OpenCode have theirs (N74).
+         */
         sessions_per_process: z.int().min(1).default(4),
-        process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
-      }).prefault({}),
-    })
-    .prefault({}),
-  /**
-   * The framework MCP server (architecture 5.3), Streamable HTTP on 127.0.0.1 only. `port: auto`
-   * (N81, owner's decision) takes a free port at every start and the real URL is given to the
-   * sessions; a number (1024 to 65535) fixes it.
-   */
-  mcp: z
-    .strictObject({
-      port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
-    })
-    .prefault({}),
-  /**
-   * The single prompt queue of the Director (architecture 5.4; P7). `order`: `producer_first`
-   * (default) delivers the Producer's message ahead of the notices of the daemon, `fifo` delivers
-   * by arrival only. `summary_messages` is how many of the last messages the state summary lists
-   * (a new Director session, or one waking up, reads it).
-   */
-  prompt_queue: z
-    .strictObject({
-      order: z.enum(PROMPT_ORDER_MODES).default('producer_first'),
-      summary_messages: z.int().min(0).default(DEFAULT_SUMMARY_MESSAGES),
-    })
-    .prefault({}),
-  /**
-   * Limits of the pipeline (architecture 5.4). Resolved: the preset is already applied, and an
-   * individual key overrides only its own value.
-   */
-  limits: z
-    .strictObject({
-      preset: z.enum(LIMIT_PRESET_NAMES).default('moderate'),
-      /** `Np`: plan rejections that go back to PLANNING; one more goes to the Producer. */
-      plan_reviews: z.int().min(0).optional(),
-      /** `Nc`: Critic rejections before the failure becomes structural. */
-      critic_rejections: z.int().min(0).optional(),
-      /** Attempts per demand, the first one included. */
-      attempts_per_demand: z.int().min(1).optional(),
-      script_validations: z.int().min(0).optional(),
-      script_vetoes: z.int().min(0).optional(),
-      script_returns: z.int().min(0).optional(),
-      structural_restarts: z.int().min(0).optional(),
-      /** Invalid `submit*` outputs handed back to the Executor before the failure (N79). */
-      submit_retries: z.int().min(0).optional(),
-      /** When the plan does not set `timeoutMin` for the demand. */
-      demand_timeout: DurationSchema.optional(),
-      /** Ceiling of what the plan may ask for. */
-      demand_timeout_max: DurationSchema.optional(),
-    })
-    .prefault({})
-    .transform(resolveLimits)
-    .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {
-      message: 'demand_timeout must not exceed demand_timeout_max',
-      path: ['demand_timeout'],
-    }),
-  /**
-   * How a play runs (architecture 5.4; P8). [proposta] Until the executor catalog and the role
-   * presets exist (`roles.preset`, 5.7), the Executor of each role is a key here:
-   * - `executor`: the Executor every role without its own entry uses (`client` is the id of a
-   *   client adapter, `profile` the name of a profile of it). Absent: a play cannot start its
-   *   stages and says so (the daemon never picks an account for the user);
-   * - `roles`: an Executor per role, which wins over `executor`;
-   * - `verify`: `run` (default) runs the `verify` steps of a demand in its worktree when the
-   *   attempt ends; `skip` takes them as passed (a test rig, or a project whose checks run in CI).
-   */
-  orchestration: z
-    .strictObject({
-      executor: PlayExecutorSchema.optional(),
-      roles: z.record(z.string().min(1), PlayExecutorSchema).default({}),
-      verify: z.enum(VERIFY_MODES).default('run'),
-    })
-    .prefault({}),
-  /**
-   * The tool policy of each role: `roles.<role>.policy` (architecture 5.2 and 5.8; Phase 4, P1,
-   * N99). Absent: the default policy of the role. A project and a scenario override it through
-   * their `configOverride`. See `role-policy-config.ts`.
-   */
-  roles: RolesConfigSchema.prefault({}),
-  /**
-   * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
-   * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
-   * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
-   * replies of the Director the channel keeps in memory per scenario for `ot chat` to show.
-   * `presence` and `presence_window` say when a play counts as watched (`delivery.base_drift: ask`).
-   */
-  chat: z
-    .strictObject({
-      channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
-      history: z.int().min(1).default(200),
-      /** [proposta] Who counts as watching a play: see {@link CHAT_PRESENCE_MODES}. */
-      presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),
-      /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: poll`). */
-      presence_window: DurationSchema.prefault('30s'),
-    })
-    .prefault({}),
-  /** What the start-up does after a crash or a restart (architecture 5.21). */
-  recovery: z
-    .strictObject({
-      notice: z.enum(RECOVERY_NOTICE_MODES).default('always'),
-    })
-    .prefault({}),
-  /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */
-  resume: z
-    .strictObject({
-      preset: z.enum(RESUME_PRESET_NAMES).default('balanced'),
-      max_resumes: z.int().min(0).optional(),
-      /**
-       * [proposta] Resumes of a session that fell with another session's cancel
-       * (`pool.shared_cancel`) that do not count in `max_resumes`, per attempt. Past this many, the
-       * resume counts like any other drop. `0`: none is free. Decided by the owner, 2026-11-16.
-       */
-      max_free_resumes: z.int().min(0).optional(),
-      quota_wait_max: DurationSchema.optional(),
-      checkpoint_every: DurationSchema.optional(),
-      /** [proposta] Completed edit tool calls that make one batch (a checkpoint follows each batch). */
-      checkpoint_edit_batch: z.int().min(1).default(3),
-      stuck: z
-        .strictObject({
-          no_event_for: DurationSchema.optional(),
-          same_error_times: z.int().min(1).optional(),
-        })
-        .prefault({}),
-      transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
-      /** [proposta] What the Executor is told when a conversation is reloaded. */
-      continue_prompt: z
-        .string()
-        .min(1)
-        .default('Continue the task from where you stopped. Do not start over.'),
-    })
-    .prefault({})
-    .transform((resume) => {
-      const preset = RESUME_PRESETS[resume.preset];
-      return {
-        preset: resume.preset,
-        max_resumes: resume.max_resumes ?? preset.max_resumes,
-        max_free_resumes: resume.max_free_resumes ?? preset.max_free_resumes,
-        quota_wait_max: resume.quota_wait_max ?? preset.quota_wait_max,
-        checkpoint_every: resume.checkpoint_every ?? preset.checkpoint_every,
-        checkpoint_edit_batch: resume.checkpoint_edit_batch,
-        stuck: {
-          no_event_for: resume.stuck.no_event_for ?? preset.no_event_for,
-          same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
-        },
-        transient_backoff: resume.transient_backoff,
-        continue_prompt: resume.continue_prompt,
-      };
-    }),
-  /**
-   * The clients that run attempts (architecture 5.2). Each one is built from its section by the
-   * product's `ClientFactory`, in `compose.ts`.
-   */
-  clients: z
-    .strictObject({
-      'claude-code': ClaudeCodeClientSchema.prefault({}),
-      codex: CodexClientSchema.prefault({}),
-      opencode: OpenCodeClientSchema.prefault({}),
-    })
-    .prefault({}),
-  /**
-   * `security` (architecture 5.2): how many layers must guarantee each field of a policy, and what
-   * happens when they do not. Until the Sandbox exists (Phase 4), `writeScope` and `network` have
-   * no layer, so the defaults refuse sessions with those fields; `unenforced: warn` lets them run.
-   */
-  security: z
-    .strictObject({
-      min_layers: z
-        .strictObject({
-          default: z.int().min(0).default(1),
-          nativeTools: z.int().min(0).optional(),
-          nativeShell: z.int().min(0).optional(),
-          mcpServers: z.int().min(0).optional(),
-          mcpTools: z.int().min(0).optional(),
-          onAsk: z.int().min(0).optional(),
-          bypass: z.int().min(0).optional(),
-          writeScope: z.int().min(0).optional(),
-          network: z.int().min(0).optional(),
-        })
-        .prefault({}),
-      unenforced: z.enum(UNENFORCED_MODES).default('refuse'),
-      /**
-       * [proposta] `allow` (default): the session opened only to read a client's model catalog
-       * (no prompt, never runs a turn) is exempt from `unenforced`; `refuse`: it goes through the
-       * same check as a work session. Decided by the owner, 2026-11-16.
-       */
-      catalog_probe: z.enum(CATALOG_PROBE_MODES).default('allow'),
-      /**
-       * [proposta] How the daemon logs the `catalog_probe_exempt` warning the adapters emit at
-       * every catalog read: `once` (default) per client and adapter version in each run, `every`
-       * or `off`. Other warnings are always logged. Decided by the owner, 2026-11-16 (N69).
-       */
-      catalog_probe_log: z.enum(CATALOG_PROBE_LOG_MODES).default('once'),
-      conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
-    })
-    .prefault({}),
-  tools: ToolsConfigSchema,
-  browser: BrowserConfigSchema,
-  events: z
-    .strictObject({
-      /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
-      unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
-    })
-    .prefault({}),
-  /**
-   * Orders of the Producer (architecture 5.17). [proposta] Names and modes: `timezone` is the zone
-   * a validity is read in when the order does not say one (architecture default
-   * `America/Sao_Paulo`); `expiring_notice` is how long before the end the `directive.expiring`
-   * notice is written (architecture default 24 hours; `0` turns the notice off).
-   */
-  directives: z
-    .strictObject({
-      timezone: z
-        .string()
-        .min(1)
-        .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
-        .default(DEFAULT_DIRECTIVE_TIMEZONE),
-      expiring_notice: DurationSchema.or(z.literal(0)).prefault('24h'),
-    })
-    .prefault({}),
-  /**
-   * Scenarios and the `chat` flow (architecture 5.20). `director_idle_after` is how long a Director
-   * stays idle before it sleeps (architecture default 15 minutes; `0` = never sleeps).
-   * `attachment_max_size` is the limit of an attachment copied into the data directory
-   * (architecture default 50 MB; `0` = no limit; a reference to a file is not copied, so it is not
-   * limited). [proposta] `attachment_read_max` is how much of an attachment `read_attachment`
-   * returns in one call; `consultant_alternatives` are the Executors tried after the consultant's
-   * own when the first cannot take the attachments (an image needs a client that accepts images).
-   */
-  scenarios: z
-    .strictObject({
-      director_idle_after: DurationSchema.or(z.literal(0)).prefault('15m'),
-      attachment_max_size: SizeSchema.or(z.literal(0)).prefault('50MB'),
-      attachment_read_max: SizeSchema.prefault('8MB'),
-      consultant_alternatives: z.array(PlayExecutorSchema).default([]),
-    })
-    .prefault({}),
-  /**
-   * The idea queue of the scenario (architecture 5.20, N91): `drain` (`auto`, `manual`; `scheduled`
-   * is refused until the scheduler exists), `grouping_approval` (`ask`, `auto`), `max_per_play`
-   * and `parallel_plays`. A scenario overrides each key with `configOverride` (`ideas.drain`...).
-   */
-  ideas: IdeasConfigSchema.prefault({}),
-  /**
-   * Delivery policy (architecture 5.5, owner's decision N5). `mode` is the global value; the
-   * override per project, play and scheduled task is the rule registry's `delivery.mode`.
-   * `allow_direct_merge` is the project's permission: without it `direct_merge` and `ask` become
-   * `pr`. Default: open the PR and stop.
-   */
-  delivery: z
-    .strictObject({
-      mode: z.enum(DELIVERY_MODES).default('pr'),
-      allow_direct_merge: z.boolean().default(false),
-      base_drift: z.enum(BASE_DRIFT_MODES).default('update'),
-      changelog: z.enum(CHANGELOG_MODES).default('always'),
-    })
-    .prefault({}),
-  /**
-   * Projects (architecture 5.20, profile `software`; P7). `conventions` is what happens to the
-   * conventions of an imported repository: see {@link CONVENTIONS_MODES}.
-   */
-  project: z
-    .strictObject({
-      conventions: z.enum(CONVENTIONS_MODES).default('ask'),
-    })
-    .prefault({}),
-  /** Integration of the demands (architecture 5.5): the rebase of the dependents (N82). */
-  integration: z
-    .strictObject({
-      rebase_conflict: z.enum(REBASE_CONFLICT_MODES).default('redo'),
-    })
-    .prefault({}),
-  /** A new script of a play that already did some work (architecture 5.5, N84). */
-  rescript: z
-    .strictObject({
-      reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
-    })
-    .prefault({}),
-  ui: z
-    .strictObject({
-      locale: z.enum(LOCALE_SETTINGS).default('auto'),
-    })
-    .prefault({}),
-  log: z
-    .strictObject({
-      level: z.enum(LOG_LEVELS).default('info'),
-      destination: z.enum(LOG_DESTINATIONS).default('file'),
-    })
-    .prefault({}),
-});
+        /** Admission semaphore: sessions running at once, counted per session and not per process. */
+        max_sessions: z.int().min(1).default(4),
+        /** A process with no session for this long is closed (`idleMs`). */
+        idle: DurationSchema.prefault('2m'),
+        /**
+         * N64: what cancelling a session does to a process that runs other sessions too. `escalate`
+         * ends the process only when the client did not honour `session/cancel` within the grace;
+         * `always_kill` ends it on every cancel; `release` only gives the slot back.
+         */
+        shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
+        /** `K` of Claude Code alone; no default of its own (inherits the global key, 4). */
+        'claude-code': PoolClientSchema.prefault({}),
+        /** `K` of Codex alone; default 6 (N74, real measurement of 2026-11-16). */
+        codex: PoolCodexSchema.prefault({}),
+        /**
+         * N56 (5.2): how OpenCode shares its processes (the adapter wiring reads `process_model`; the
+         * pool follows the adapter's `processModel`), and `K` of OpenCode alone (default 4, explicit:
+         * N74, real measurement of 2026-11-16).
+         */
+        opencode: PoolClientSchema.extend({
+          sessions_per_process: z.int().min(1).default(4),
+          process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
+        }).prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The framework MCP server (architecture 5.3), Streamable HTTP on 127.0.0.1 only. `port: auto`
+     * (N81, owner's decision) takes a free port at every start and the real URL is given to the
+     * sessions; a number (1024 to 65535) fixes it.
+     */
+    mcp: z
+      .strictObject({
+        port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+      })
+      .prefault({}),
+    /**
+     * The single prompt queue of the Director (architecture 5.4; P7). `order`: `producer_first`
+     * (default) delivers the Producer's message ahead of the notices of the daemon, `fifo` delivers
+     * by arrival only. `summary_messages` is how many of the last messages the state summary lists
+     * (a new Director session, or one waking up, reads it).
+     */
+    prompt_queue: z
+      .strictObject({
+        order: z.enum(PROMPT_ORDER_MODES).default('producer_first'),
+        summary_messages: z.int().min(0).default(DEFAULT_SUMMARY_MESSAGES),
+      })
+      .prefault({}),
+    /**
+     * Limits of the pipeline (architecture 5.4). Resolved: the preset is already applied, and an
+     * individual key overrides only its own value.
+     */
+    limits: z
+      .strictObject({
+        preset: z.enum(LIMIT_PRESET_NAMES).default('moderate'),
+        /** `Np`: plan rejections that go back to PLANNING; one more goes to the Producer. */
+        plan_reviews: z.int().min(0).optional(),
+        /** `Nc`: Critic rejections before the failure becomes structural. */
+        critic_rejections: z.int().min(0).optional(),
+        /** Attempts per demand, the first one included. */
+        attempts_per_demand: z.int().min(1).optional(),
+        script_validations: z.int().min(0).optional(),
+        script_vetoes: z.int().min(0).optional(),
+        script_returns: z.int().min(0).optional(),
+        structural_restarts: z.int().min(0).optional(),
+        /** Invalid `submit*` outputs handed back to the Executor before the failure (N79). */
+        submit_retries: z.int().min(0).optional(),
+        /** When the plan does not set `timeoutMin` for the demand. */
+        demand_timeout: DurationSchema.optional(),
+        /** Ceiling of what the plan may ask for. */
+        demand_timeout_max: DurationSchema.optional(),
+      })
+      .prefault({})
+      .transform(resolveLimits)
+      .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {
+        message: 'demand_timeout must not exceed demand_timeout_max',
+        path: ['demand_timeout'],
+      }),
+    /**
+     * How a play runs (architecture 5.4; P8). [proposta] Until the executor catalog and the role
+     * presets exist (`roles.preset`, 5.7), the Executor of each role is a key here:
+     * - `executor`: the Executor every role without its own entry uses (`client` is the id of a
+     *   client adapter, `profile` the name of a profile of it). Absent: a play cannot start its
+     *   stages and says so (the daemon never picks an account for the user);
+     * - `roles`: an Executor per role, which wins over `executor`;
+     * - `verify`: `run` (default) runs the `verify` steps of a demand in its worktree when the
+     *   attempt ends; `skip` takes them as passed (a test rig, or a project whose checks run in CI).
+     */
+    orchestration: z
+      .strictObject({
+        executor: PlayExecutorSchema.optional(),
+        roles: z.record(z.string().min(1), PlayExecutorSchema).default({}),
+        verify: z.enum(VERIFY_MODES).default('run'),
+      })
+      .prefault({}),
+    /**
+     * The tool policy of each role: `roles.<role>.policy` (architecture 5.2 and 5.8; Phase 4, P1,
+     * N99). Absent: the default policy of the role. A project and a scenario override it through
+     * their `configOverride`. See `role-policy-config.ts`.
+     */
+    roles: RolesConfigSchema.prefault({}),
+    /**
+     * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
+     * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
+     * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
+     * replies of the Director the channel keeps in memory per scenario for `ot chat` to show.
+     * `presence` and `presence_window` say when a play counts as watched (`delivery.base_drift: ask`).
+     */
+    chat: z
+      .strictObject({
+        channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
+        history: z.int().min(1).default(200),
+        /** [proposta] Who counts as watching a play: see {@link CHAT_PRESENCE_MODES}. */
+        presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),
+        /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: poll`). */
+        presence_window: DurationSchema.prefault('30s'),
+      })
+      .prefault({}),
+    /** What the start-up does after a crash or a restart (architecture 5.21). */
+    recovery: z
+      .strictObject({
+        notice: z.enum(RECOVERY_NOTICE_MODES).default('always'),
+      })
+      .prefault({}),
+    /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */
+    resume: z
+      .strictObject({
+        preset: z.enum(RESUME_PRESET_NAMES).default('balanced'),
+        max_resumes: z.int().min(0).optional(),
+        /**
+         * [proposta] Resumes of a session that fell with another session's cancel
+         * (`pool.shared_cancel`) that do not count in `max_resumes`, per attempt. Past this many, the
+         * resume counts like any other drop. `0`: none is free. Decided by the owner, 2026-11-16.
+         */
+        max_free_resumes: z.int().min(0).optional(),
+        quota_wait_max: DurationSchema.optional(),
+        checkpoint_every: DurationSchema.optional(),
+        /** [proposta] Completed edit tool calls that make one batch (a checkpoint follows each batch). */
+        checkpoint_edit_batch: z.int().min(1).default(3),
+        stuck: z
+          .strictObject({
+            no_event_for: DurationSchema.optional(),
+            same_error_times: z.int().min(1).optional(),
+          })
+          .prefault({}),
+        transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
+        /** [proposta] What the Executor is told when a conversation is reloaded. */
+        continue_prompt: z
+          .string()
+          .min(1)
+          .default('Continue the task from where you stopped. Do not start over.'),
+      })
+      .prefault({})
+      .transform((resume) => {
+        const preset = RESUME_PRESETS[resume.preset];
+        return {
+          preset: resume.preset,
+          max_resumes: resume.max_resumes ?? preset.max_resumes,
+          max_free_resumes: resume.max_free_resumes ?? preset.max_free_resumes,
+          quota_wait_max: resume.quota_wait_max ?? preset.quota_wait_max,
+          checkpoint_every: resume.checkpoint_every ?? preset.checkpoint_every,
+          checkpoint_edit_batch: resume.checkpoint_edit_batch,
+          stuck: {
+            no_event_for: resume.stuck.no_event_for ?? preset.no_event_for,
+            same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
+          },
+          transient_backoff: resume.transient_backoff,
+          continue_prompt: resume.continue_prompt,
+        };
+      }),
+    /**
+     * The clients that run attempts (architecture 5.2). Each one is built from its section by the
+     * product's `ClientFactory`, in `compose.ts`.
+     */
+    clients: z
+      .strictObject({
+        'claude-code': ClaudeCodeClientSchema.prefault({}),
+        codex: CodexClientSchema.prefault({}),
+        opencode: OpenCodeClientSchema.prefault({}),
+      })
+      .prefault({}),
+    /**
+     * `security` (architecture 5.2): how many layers must guarantee each field of a policy, and what
+     * happens when they do not. `writeScope` and `network` are guaranteed only by layer 3 (the
+     * Sandbox, `sandbox.mode`): where it does not run (`sandbox.mode: off`, Windows, a kernel that
+     * forbids it) the defaults refuse sessions with those fields; `unenforced: warn` lets them run.
+     */
+    security: z
+      .strictObject({
+        min_layers: z
+          .strictObject({
+            default: z.int().min(0).default(1),
+            nativeTools: z.int().min(0).optional(),
+            nativeShell: z.int().min(0).optional(),
+            mcpServers: z.int().min(0).optional(),
+            mcpTools: z.int().min(0).optional(),
+            onAsk: z.int().min(0).optional(),
+            bypass: z.int().min(0).optional(),
+            writeScope: z.int().min(0).optional(),
+            network: z.int().min(0).optional(),
+          })
+          .prefault({}),
+        unenforced: z.enum(UNENFORCED_MODES).default('refuse'),
+        /**
+         * [proposta] `allow` (default): the session opened only to read a client's model catalog
+         * (no prompt, never runs a turn) is exempt from `unenforced`; `refuse`: it goes through the
+         * same check as a work session. Decided by the owner, 2026-11-16.
+         */
+        catalog_probe: z.enum(CATALOG_PROBE_MODES).default('allow'),
+        /**
+         * [proposta] How the daemon logs the `catalog_probe_exempt` warning the adapters emit at
+         * every catalog read: `once` (default) per client and adapter version in each run, `every`
+         * or `off`. Other warnings are always logged. Decided by the owner, 2026-11-16 (N69).
+         */
+        catalog_probe_log: z.enum(CATALOG_PROBE_LOG_MODES).default('once'),
+        conformance: z.enum(CONFORMANCE_MODES).default('on_version_change'),
+        /**
+         * The paths an Executor cannot READ (architecture 5.19): the defaults (`~/.ssh`, the profiles
+         * of the clients, `<data>`, `.env`...) plus `add`, minus `remove`. One list for the Sandbox and
+         * for `browser_open`; `browser.secret_paths` is an alias of it [proposta]. An entry is `~/...`,
+         * `<data>/...`, an absolute path or a bare name (`.env`) that matches in any folder.
+         */
+        secret_paths: z
+          .strictObject({
+            add: z.array(z.string().min(1)).default([]),
+            remove: z.array(z.string().min(1)).default([]),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * Layer 3 of the permissions (architecture 5.8). [proposta] `mode`: `runtime` (default) where an
+     * adapter exists (Linux, macOS), `off` otherwise or by choice. `extra_write_paths`: absolute
+     * folders a confined client or command may write besides the worktree, its own profile folder and
+     * the temporary folder (for example the git folder of the repository). `extra_domains`: domains a
+     * confined client may reach besides the `network.allow` of the role and the ones of its provider.
+     */
+    sandbox: z
+      .strictObject({
+        mode: z.enum(SANDBOX_MODES).default('runtime'),
+        extra_write_paths: z
+          .array(z.string().min(1).startsWith('/', 'expected an absolute path'))
+          .default([]),
+        extra_domains: z.array(z.string().min(1)).default([]),
+      })
+      .prefault({}),
+    tools: ToolsConfigSchema,
+    browser: BrowserConfigSchema,
+    events: z
+      .strictObject({
+        /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
+        unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
+      })
+      .prefault({}),
+    /**
+     * Orders of the Producer (architecture 5.17). [proposta] Names and modes: `timezone` is the zone
+     * a validity is read in when the order does not say one (architecture default
+     * `America/Sao_Paulo`); `expiring_notice` is how long before the end the `directive.expiring`
+     * notice is written (architecture default 24 hours; `0` turns the notice off).
+     */
+    directives: z
+      .strictObject({
+        timezone: z
+          .string()
+          .min(1)
+          .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
+          .default(DEFAULT_DIRECTIVE_TIMEZONE),
+        expiring_notice: DurationSchema.or(z.literal(0)).prefault('24h'),
+      })
+      .prefault({}),
+    /**
+     * Scenarios and the `chat` flow (architecture 5.20). `director_idle_after` is how long a Director
+     * stays idle before it sleeps (architecture default 15 minutes; `0` = never sleeps).
+     * `attachment_max_size` is the limit of an attachment copied into the data directory
+     * (architecture default 50 MB; `0` = no limit; a reference to a file is not copied, so it is not
+     * limited). [proposta] `attachment_read_max` is how much of an attachment `read_attachment`
+     * returns in one call; `consultant_alternatives` are the Executors tried after the consultant's
+     * own when the first cannot take the attachments (an image needs a client that accepts images).
+     */
+    scenarios: z
+      .strictObject({
+        director_idle_after: DurationSchema.or(z.literal(0)).prefault('15m'),
+        attachment_max_size: SizeSchema.or(z.literal(0)).prefault('50MB'),
+        attachment_read_max: SizeSchema.prefault('8MB'),
+        consultant_alternatives: z.array(PlayExecutorSchema).default([]),
+      })
+      .prefault({}),
+    /**
+     * The idea queue of the scenario (architecture 5.20, N91): `drain` (`auto`, `manual`; `scheduled`
+     * is refused until the scheduler exists), `grouping_approval` (`ask`, `auto`), `max_per_play`
+     * and `parallel_plays`. A scenario overrides each key with `configOverride` (`ideas.drain`...).
+     */
+    ideas: IdeasConfigSchema.prefault({}),
+    /**
+     * Delivery policy (architecture 5.5, owner's decision N5). `mode` is the global value; the
+     * override per project, play and scheduled task is the rule registry's `delivery.mode`.
+     * `allow_direct_merge` is the project's permission: without it `direct_merge` and `ask` become
+     * `pr`. Default: open the PR and stop.
+     */
+    delivery: z
+      .strictObject({
+        mode: z.enum(DELIVERY_MODES).default('pr'),
+        allow_direct_merge: z.boolean().default(false),
+        base_drift: z.enum(BASE_DRIFT_MODES).default('update'),
+        changelog: z.enum(CHANGELOG_MODES).default('always'),
+      })
+      .prefault({}),
+    /**
+     * Projects (architecture 5.20, profile `software`; P7). `conventions` is what happens to the
+     * conventions of an imported repository: see {@link CONVENTIONS_MODES}.
+     */
+    project: z
+      .strictObject({
+        conventions: z.enum(CONVENTIONS_MODES).default('ask'),
+      })
+      .prefault({}),
+    /** Integration of the demands (architecture 5.5): the rebase of the dependents (N82). */
+    integration: z
+      .strictObject({
+        rebase_conflict: z.enum(REBASE_CONFLICT_MODES).default('redo'),
+      })
+      .prefault({}),
+    /** A new script of a play that already did some work (architecture 5.5, N84). */
+    rescript: z
+      .strictObject({
+        reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
+      })
+      .prefault({}),
+    ui: z
+      .strictObject({
+        locale: z.enum(LOCALE_SETTINGS).default('auto'),
+      })
+      .prefault({}),
+    log: z
+      .strictObject({
+        level: z.enum(LOG_LEVELS).default('info'),
+        destination: z.enum(LOG_DESTINATIONS).default('file'),
+      })
+      .prefault({}),
+  })
+  .refine(
+    (config) => !(hasSecretPathEntries(config.security) && hasSecretPathEntries(config.browser)),
+    {
+      path: ['browser', 'secret_paths'],
+      message:
+        'browser.secret_paths is an alias of security.secret_paths: write the list in one of them, not in both',
+    },
+  );
+
+/** Whether a block with a `secret_paths` key (`security`, `browser`) has an entry in it. */
+function hasSecretPathEntries(block: {
+  readonly secret_paths: { readonly add: readonly string[]; readonly remove: readonly string[] };
+}): boolean {
+  return block.secret_paths.add.length > 0 || block.secret_paths.remove.length > 0;
+}
+
+/**
+ * The `add` and `remove` of the one list of secret paths (architecture 5.19): `security.secret_paths`,
+ * or its alias `browser.secret_paths` when that is where the owner wrote it. The schema refuses both.
+ */
+export function secretPathEntries(config: Pick<DaemonConfig, 'security' | 'browser'>): {
+  readonly add: readonly string[];
+  readonly remove: readonly string[];
+} {
+  return hasSecretPathEntries(config.security)
+    ? config.security.secret_paths
+    : config.browser.secret_paths;
+}
 
 /** What a user may write (every key optional). */
 export type DaemonConfigInput = z.input<typeof DaemonConfigSchema>;

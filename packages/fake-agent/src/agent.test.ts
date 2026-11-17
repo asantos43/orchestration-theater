@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -286,6 +288,35 @@ describe('fake agent in process', () => {
       expect(await exists(join(sandbox, 'abs.txt'))).toBe(false);
       expect(await exists(join(outside, 'escape.txt'))).toBe(false);
     });
+  });
+
+  it('probe says what the system answered to a write, a read and a connection', async () => {
+    const present = join(cwd, 'present.txt');
+    await writeFile(present, 'abc');
+    const server = createServer((socket) => socket.end());
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const port = (server.address() as AddressInfo).port;
+    await withSession(createFakeAgent(), async (h) => {
+      const spec = {
+        write: [join(cwd, 'new.txt'), join(sandbox, 'no-such-dir', 'x.txt')],
+        read: [present, join(sandbox, 'missing.txt')],
+        connect: [`127.0.0.1:${String(port)}`],
+      };
+      const response = await prompt(h, `#script:probe ${JSON.stringify(spec)}`);
+      expect(response.stopReason).toBe('end_turn');
+      await waitFor(() => agentText(h.recorded.updates).includes('probe connect'));
+      const text = agentText(h.recorded.updates);
+      expect(text).toContain(`probe write ${join(cwd, 'new.txt')}: ok`);
+      expect(text).toContain('x.txt: failed ENOENT');
+      expect(text).toContain(`probe read ${present}: ok 3 bytes`);
+      expect(text).toContain('missing.txt: failed ENOENT');
+      expect(text).toContain(`probe connect 127.0.0.1:${String(port)}: ok`);
+    });
+    await new Promise<void>((done) =>
+      server.close(() => {
+        done();
+      }),
+    );
   });
 
   it('edit-file refuses paths outside the cwd without asking for permission', async () => {

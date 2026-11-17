@@ -83,7 +83,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P1 | Política por papel e camada 1 completa | P0 | P3, P7, P8 | concluído (PR #76) |
 | P2 | Camada 2: resposta por regra e eventos | P1 | P4, P6, P7 | concluído (PR #80) |
 | P3 | Cascas: confinamento, truncamento, semáforo e handlers | P0 | P1, P7, P8 | concluído (PR #79) |
-| P4 | Camada 3: porta `Sandbox` e `sandbox-runtime` | P1, P3 | P2, P6, P7 | pendente |
+| P4 | Camada 3: porta `Sandbox` e `sandbox-runtime` | P1, P3 | P2, P6, P7 | concluído (PR #81) |
 | P5 | Suíte de fuga | P2, P3, P4 | P9, P10 | pendente |
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | concluído (PR #82) |
 | P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | concluído (PR #77) |
@@ -215,6 +215,18 @@ Ordem em ondas **[proposta]**:
   - se um servidor em `localhost` que o Ator sobe dentro da sandbox é alcançável pelo navegador, que fica fora dela (§5.19).
 
 **Aceite:** com o agente falso dentro da sandbox, uma escrita fora do worktree e uma conexão a um domínio fora da lista falham no sistema operacional; a `guarantee()` passa sem `unenforced: warn`; o teste real opcional de cada cliente roda sob a sandbox.
+
+**Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[S]** fonte secundária (documentação da biblioteca), **[N]** não confirmado.
+- Porta `Sandbox` e `SandboxCapabilities` em `core`, mais o módulo puro `security.secret_paths` (padrões da §5.19, expansão de `~` e de glob, `add`/`remove`) e o `launchWrapper` na base dos clientes. `browser.secret_paths` é o apelido da mesma lista; a ligação com o navegador é do P6 **[N]**.
+- Adaptador `adapters/sandbox-srt` sobre `@anthropic-ai/sandbox-runtime` 0.0.81 (Apache-2.0), com `bwrap` real nos testes **[V]**: escrita só no worktree, nas pastas do perfil e em `extra_write_paths`; rede negada, com os domínios do papel e do provedor; leitura negada nos caminhos de segredo. A biblioteca guarda um singleton por processo: um `SrtSandbox` aberto por processo **[V]**.
+- Daemon: `sandbox-wiring.ts` (sem adaptador), `compose.ts` e `clients.ts` passam o `SandboxCapabilities` à `guarantee()`; `run_tests`, `install_deps` e `restricted_shell` rodam confinados e não rodam se o sandbox não embrulha o comando. Sem adaptador (Windows) ou com `sandbox.mode: off`, vale `security.unenforced` (padrão `refuse`).
+- Chaves **[proposta]**: `sandbox.mode` (`runtime`, `off`; padrão `runtime`), `sandbox.extra_write_paths` (caminhos absolutos), `sandbox.extra_domains` e `security.secret_paths.{add,remove}`.
+- Aceite com o agente falso por ACP real dentro do `bwrap` **[V]**: a escrita fora do worktree (`EROFS`), a conexão fora da lista (`ECONNREFUSED`, com `--unshare-net`) e a leitura de um `.ssh` falso e de um `.env` do worktree falham no sistema operacional; o servidor local do teste não viu nenhuma requisição; a `guarantee()` passa sem `unenforced: warn` e recusa (`interrupted`, `permission`) com `sandbox.mode: off`.
+- Um servidor em `localhost` dentro da sandbox não é alcançável de fora **[V]** (o loopback de dentro é outro, `--unshare-net`). Logo o navegador que fica fora não o alcança sem uma ponte **[S]**, o que o P6 precisa decidir.
+- Limites medidos: o glob de leitura negada (`<worktree>/**/.env`) é expandido ao embrulhar, no Linux; um `.env` criado depois do início da sessão não fica coberto **[V]**.
+- CI: o job `linux` instala `bubblewrap`, `socat` e `ripgrep` (o `sandbox-runtime` exige o `rg`) por apt e define `OT_REQUIRE_SANDBOX=1` (sem o `bwrap`, o teste de aceite falha em vez de pular). **[V, medido no PR #81]** O runner `ubuntu-latest` é hoje o Ubuntu 26.04 (kernel 7.0): só o sysctl `kernel.apparmor_restrict_unprivileged_userns=0` não basta, porque o perfil `bwrap-userns-restrict` tira as capacidades do que roda dentro do `bwrap` (o helper seccomp do `sandbox-runtime` falha em `/proc/self/setgroups`). O job descarrega esse perfil com `apparmor_parser -R`, só no runner descartável, nunca numa máquina do dono. Isso amplia o que a N95 previa (só o sysctl).
+- **[N]** Não rodados: `claude-agent-acp`, `codex-acp` e `opencode acp` dentro da sandbox (o teste real `sandbox.real.test.ts` está escrito e pulado; os domínios de `PROVIDER_DOMAINS` são uma proposta não medida); o alcance do MCP do daemon em `127.0.0.1` por um cliente confinado (o `NO_PROXY` e o loopback próprio sugerem que não alcança **[S]**; um modo de ponte, p. ex. por soquete Unix, fica para decisão); macOS/Seatbelt **[S]**; escritas do `git` fora do worktree (o `gitdir` de um worktree liga ao repositório).
+- Windows: sem adaptador (N94); o daemon registra que a camada 3 falta e segue o `security.unenforced`.
 
 ### P5. Suíte de fuga (§5.8 e Fase 4)
 

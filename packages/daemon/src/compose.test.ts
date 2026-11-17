@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
-import { AdapterUnavailable, InvalidInput, type Adapter } from '@otheater/core';
+import {
+  AdapterUnavailable,
+  InvalidInput,
+  type Adapter,
+  type Sandbox,
+  type SandboxAvailability,
+} from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { checkAdapterRange, compose, composeClock } from './compose.js';
@@ -101,6 +107,87 @@ describe('compose', () => {
       ).rejects.toThrow(/store\.driver/);
     } finally {
       await tmp.dispose();
+    }
+  });
+});
+
+/** A sandbox that answers `availability` and counts what the daemon asks of it. */
+function fakeSandbox(availability: SandboxAvailability): Sandbox & {
+  asked: number;
+  closed: number;
+} {
+  return {
+    id: 'fake-sandbox',
+    implements: { port: 'Sandbox', range: '^0.1.0' },
+    asked: 0,
+    closed: 0,
+    capabilities() {
+      return availability.ok ? { fields: ['writeScope', 'network'] } : { fields: [] };
+    },
+    available() {
+      this.asked += 1;
+      return Promise.resolve(availability);
+    },
+    wrap: () => Promise.reject(new AdapterUnavailable('not used here')),
+    close() {
+      this.closed += 1;
+      return Promise.resolve();
+    },
+  };
+}
+
+describe('compose: layer 3 (the sandbox)', () => {
+  async function composed(config: string, sandbox: Sandbox | 'none') {
+    const tmp = await makeTempDataDir();
+    const clock = new FakeClock(1000);
+    const composition = await compose(parseConfig(config), {
+      dataDir: tmp.dir,
+      overrides: {
+        clock,
+        store: new InMemoryStore({ clock }),
+        vault: new InMemorySecretVault(),
+        sandbox,
+      },
+    });
+    return { composition, dispose: tmp.dispose };
+  }
+
+  it('wires an available sandbox: capabilities for guarantee(), and closes it with the daemon', async () => {
+    const sandbox = fakeSandbox({ ok: true });
+    const { composition, dispose } = await composed('', sandbox);
+    try {
+      expect(composition.sandbox?.capabilities).toEqual({ fields: ['writeScope', 'network'] });
+      await composition.close();
+      expect(sandbox.closed).toBe(1);
+    } finally {
+      await dispose();
+    }
+  });
+
+  it('runs without layer 3 when the sandbox says it does not work here', async () => {
+    const sandbox = fakeSandbox({ ok: false, reason: 'no bubblewrap' });
+    const { composition, dispose } = await composed('', sandbox);
+    try {
+      expect(composition.sandbox).toBeUndefined();
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('does not even ask the sandbox when sandbox.mode is off or the override is none', async () => {
+    const sandbox = fakeSandbox({ ok: true });
+    const off = await composed('sandbox:\n  mode: off\n', sandbox);
+    const none = await composed('', 'none');
+    try {
+      expect(off.composition.sandbox).toBeUndefined();
+      expect(none.composition.sandbox).toBeUndefined();
+      expect(sandbox.asked).toBe(0);
+    } finally {
+      await off.composition.close();
+      await none.composition.close();
+      await off.dispose();
+      await none.dispose();
     }
   });
 });
