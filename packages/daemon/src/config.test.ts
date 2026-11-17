@@ -532,7 +532,12 @@ describe('orchestration', () => {
 
 describe('chat', () => {
   it('defaults to an open local channel and 200 replies of history', () => {
-    expect(parseConfig('').chat).toEqual({ channel: 'auto', history: 200 });
+    expect(parseConfig('').chat).toEqual({
+      channel: 'auto',
+      history: 200,
+      presence: 'poll',
+      presence_window: 30_000,
+    });
   });
 
   it('takes each mode of the channel and any history from 1', () => {

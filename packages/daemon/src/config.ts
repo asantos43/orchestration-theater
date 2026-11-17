@@ -300,6 +300,15 @@ export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
 export const RECOVERY_NOTICE_MODES = ['always', 'unclean_only', 'off'] as const;
 export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
 
+/**
+ * Who counts as watching a play (decision of P15a, [proposta]). `poll` (default): an `ot chat`
+ * that polled the scenario of the play within `chat.presence_window`; `always`: someone is always
+ * there (the Producer is trusted to answer); `never`: nobody is, so `delivery.base_drift: ask`
+ * acts as `update`.
+ */
+export const CHAT_PRESENCE_MODES = ['poll', 'always', 'never'] as const;
+export type ChatPresenceMode = (typeof CHAT_PRESENCE_MODES)[number];
+
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
   client: z.string().min(1),
@@ -591,11 +600,16 @@ export const DaemonConfigSchema = z.strictObject({
    * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
    * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
    * replies of the Director the channel keeps in memory per scenario for `ot chat` to show.
+   * `presence` and `presence_window` say when a play counts as watched (`delivery.base_drift: ask`).
    */
   chat: z
     .strictObject({
       channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
       history: z.int().min(1).default(200),
+      /** [proposta] Who counts as watching a play: see {@link CHAT_PRESENCE_MODES}. */
+      presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),
+      /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: poll`). */
+      presence_window: DurationSchema.prefault('30s'),
     })
     .prefault({}),
   /** What the start-up does after a crash or a restart (architecture 5.21). */

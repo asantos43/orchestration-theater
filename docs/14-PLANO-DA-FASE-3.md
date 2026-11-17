@@ -108,7 +108,7 @@ Ficam como portões **[N]**:
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
 | P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
-| P15 | Lacunas antes do aceite (N86) | P14 | P13 | a fazer |
+| P15 | Lacunas antes do aceite (N86) | P14 | P13 | feito (PR #66 e #67) |
 | P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | a fazer |
 
 Ordem em ondas **[proposta]**:
@@ -397,5 +397,9 @@ Por fim, o fechamento da fase foi decidido pelo dono em 2026-11-17, por múltipl
 - **N86:** as partes que ficaram sem ligação no código entram no P15, antes do aceite; a escrita do consultor na pasta do chat, as ferramentas de pesquisa dele e a imagem nos adaptadores reais ficam para a Fase 4;
 - **N87:** a peça real roda num repositório local, com todos os papéis no Haiku e a entrega no `CodeHost` falso;
 - **N88:** a Fase 3 fecha depois que o dono rodar a peça real e ela passar.
+
+No P15, o dono decidiu em 2026-11-17, por múltipla escolha:
+- **N89:** com alguém olhando, `delivery.mode: ask` fica para a Fase 4 e, até lá, vira `pr`;
+- **N90:** o aviso da reconciliação vai ao chat uma vez, em memória, no próximo poll.
 
 As próximas que surgirem vão ao dono do mesmo jeito, ao abrir o passo.

@@ -17,6 +17,7 @@ import { type ScenarioService, projectScenarioId } from '../scenarios/service.js
 import type { DirectorReply, DirectorSessions } from './director.js';
 import type { QuestionBoard } from './handlers.js';
 import { DECISION_KINDS } from './play-effects.js';
+import type { ChatPresence } from './presence.js';
 
 export interface ProducerChannelOptions {
   readonly store: Store;
@@ -27,6 +28,8 @@ export interface ProducerChannelOptions {
   readonly runner: PlayRunner;
   readonly board: QuestionBoard;
   readonly logger: Logger;
+  /** Told that a chat polled a scenario: that is what makes a play watched. */
+  readonly presence?: ChatPresence;
 }
 
 export interface OpenChatInput {
@@ -159,10 +162,11 @@ export class ProducerChannel {
   }
 
   async poll(scenarioId: string, since: number): Promise<ChatPoll> {
-    const { store, directors, board } = this.#options;
+    const { store, directors, board, presence } = this.#options;
     if ((await store.scenarios.get(scenarioId)) === undefined) {
       throw new NotFound(`There is no scenario "${scenarioId}"`);
     }
+    presence?.touch(scenarioId);
     const pending = await store.decisions.list({ scenarioId, states: ['pending'] });
     const asks: PendingAsk[] = [];
     for (const decision of pending) {

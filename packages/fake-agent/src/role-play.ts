@@ -22,6 +22,11 @@ const execFileAsync = promisify(execFile);
  * play also writes, or with a file that makes the `verify` of the demands fail) and
  * `rescript` (the Critic rejects its first look as a script failure, and the second script keeps
  * alpha as it was, marked `unchanged`, and changes beta).
+ *
+ * `dependency_redone_rebase` and `dependency_redone_redo` (P15a) fail like `execution_failure`
+ * (alpha is redone while beta, which depends on it, is approved) and the Director answers judgment
+ * point 8 with the `rebase` or the `redo` that the outcome names. Every other outcome answers
+ * point 8 with `rebase`.
  */
 
 export const OUTCOMES = [
@@ -35,6 +40,8 @@ export const OUTCOMES = [
   'base_drift_conflict',
   'base_drift_verify',
   'rescript',
+  'dependency_redone_rebase',
+  'dependency_redone_redo',
 ] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 
@@ -205,6 +212,8 @@ async function playCritic(host: RolePlayHost, playId: string, outcome: Outcome):
   }
   const fails =
     outcome === 'execution_failure' ||
+    outcome === 'dependency_redone_rebase' ||
+    outcome === 'dependency_redone_redo' ||
     outcome === 'script_failure' ||
     outcome === 'rescript' ||
     outcome === 'structural_failure';
@@ -277,9 +286,17 @@ async function playJudge(host: RolePlayHost): Promise<void> {
             : {
                 kind: 'execution',
                 demandIds: demandIds.slice(0, 1),
-                note: 'redo the first demand',
+                // the note comes back as the `reason` of point 8: the answer it asks for
+                note: `redo the first demand${tag === 'dependency_redone_redo' ? ' [answer:redo]' : ''}`,
               };
       const reply = await host.call('decide', { decisionId: id, payload: { failures: [failure] } });
+      await host.say(`decided ${id}: ${reply.text}`);
+    } else if (decision.kind === 'judge.dependency_redone') {
+      const redo = typeof input.reason === 'string' && input.reason.includes('[answer:redo]');
+      const reply = await host.call('decide', {
+        decisionId: id,
+        payload: { action: redo ? 'redo' : 'rebase' },
+      });
       await host.say(`decided ${id}: ${reply.text}`);
     } else {
       await host.say(`fake agent: no answer for ${String(decision.kind)}`);
