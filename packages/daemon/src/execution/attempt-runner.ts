@@ -19,6 +19,7 @@ import {
   type Vcs,
 } from '@otheater/core';
 import { buildDaemonEvent, type ExecutorPayload, type InterruptionCause } from '@otheater/protocol';
+import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { CheckpointTracker } from './checkpoints.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
 import type { SessionLease, SessionPool } from './pool.js';
@@ -39,12 +40,19 @@ export interface AttemptSpec {
   readonly executor: ExecutorConfig;
   readonly policy: RolePolicy;
   readonly prompt: string;
+  /**
+   * The role the Executor plays (`author`, `reviewer`...). It decides the tools the framework MCP
+   * server lists for the session. Without it the session gets no framework tools.
+   */
+  readonly role?: string;
   /** Overrides `limits.demand_timeout`; never above `limits.demand_timeout_max`. */
   readonly timeoutMs?: number;
 }
 
 /** What the daemon must know again to resume an attempt it did not start (reconciliation). */
 export interface ResumeContext {
+  /** The role again, for the framework tools of the resumed session (see `AttemptSpec.role`). */
+  readonly role?: string;
   readonly profile: Profile;
   readonly executor: ExecutorConfig;
   readonly policy: RolePolicy;
@@ -89,6 +97,11 @@ export interface AttemptRunnerOptions {
   /** Directory the worktrees of the attempts go under (`<root>/<play>/<demand>-<n>`). */
   readonly worktreeRoot: string;
   readonly logger: Logger;
+  /**
+   * The framework MCP server (5.3). When set, an attempt with a `role` whose policy lists
+   * `otheater` gets its URL and a token of its own in the MCP servers of the session.
+   */
+  readonly mcp?: McpAccess;
 }
 
 /** What one go at a session came to. */
@@ -423,6 +436,9 @@ export class AttemptRunner {
   async #once(context: AttemptContext, step: Step): Promise<Ended> {
     const { pool } = this.#options;
     const { spec } = context;
+    // A new token for each go, also for the reload of a conversation (`session/load`): the MCP
+    // servers of a session are the ones of the call that opens it, so the old token is gone.
+    const grant = this.#grant(context);
     let lease: SessionLease;
     try {
       lease = await pool.acquire({
@@ -431,14 +447,17 @@ export class AttemptRunner {
         policy: spec.policy,
         cwd: context.worktree,
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
+        ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
         signal: context.stop.signal,
       });
     } catch (error) {
+      grant?.revoke();
       if (context.stop.signal.aborted && hasErrorCode(error, 'CANCELLED')) {
         return { kind: 'stopped', sha: await this.#checkpoint(context, 'stopped') };
       }
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
+    grant?.bind(lease.session.sessionId);
     context.lease = lease;
     // `session.opened` means "the session is configured": until it is written, the updates wait.
     context.pending = [];
@@ -458,8 +477,27 @@ export class AttemptRunner {
     ended = this.#casualty(lease, ended);
     ended = await this.#beforeClosing(context, lease, ended);
     await lease.release().catch(() => undefined);
+    grant?.revoke();
     context.lease = undefined;
     return ended;
+  }
+
+  /**
+   * The door of the framework MCP server for one go of an attempt (architecture 5.3). There is one
+   * only when the daemon runs the server, the attempt has a role and the policy of the role lists
+   * the server (`policy.mcpServers` has `otheater`); otherwise the session runs without it.
+   */
+  #grant(context: AttemptContext): McpGrant | undefined {
+    const { mcp } = this.#options;
+    const { spec } = context;
+    if (mcp === undefined || spec.role === undefined) return undefined;
+    if (!spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
+    return mcp.grant({
+      attemptId: context.attemptId,
+      role: spec.role,
+      correlation: this.#correlation(context),
+      record: (event) => context.journal.write(event),
+    });
   }
 
   /**

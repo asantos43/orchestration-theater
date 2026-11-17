@@ -156,3 +156,30 @@ export const AttemptCheckpointPayloadSchema = z.strictObject({
   branch: z.string().min(1).optional(),
   ...correlation,
 });
+
+/**
+ * `attempt.submitted`: the agent delivered a valid `submit*` through the framework MCP server
+ * (architecture 5.3). The output is the validated payload of the tool. [proposta] `submission` is
+ * how many calls the tool took (1 = valid at the first try); `tool` is the name of the `submit*`
+ * tool and `role` the role whose token made the call.
+ */
+export const AttemptSubmittedPayloadSchema = z.strictObject({
+  tool: id,
+  role: id,
+  output: z.json(),
+  calls: z.int().min(1),
+  ...correlation,
+});
+
+/**
+ * `attempt.submit_failed`: the agent sent an invalid `submit*` once more than `limits.submit_retries`
+ * allows (the N+1-th invalid call counts as failure, N79). [proposta] `errors` is the text of the
+ * last validation error, `calls` the number of invalid calls.
+ */
+export const AttemptSubmitFailedPayloadSchema = z.strictObject({
+  tool: id,
+  role: id,
+  errors: z.string().min(1).max(4000),
+  calls: z.int().min(1),
+  ...correlation,
+});

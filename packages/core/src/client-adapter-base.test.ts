@@ -233,6 +233,53 @@ describe('ClientAdapter.openSession', () => {
     await (await resolved.adapter.openSession(profile, withNames, '/work', via)).close();
     expect(via.opened[0]?.mcpServers).toEqual([{ name: 'docs', url: 'http://127.0.0.1/docs' }]);
   });
+
+  it('takes the MCP servers of one session from the options, without a resolver', async () => {
+    const withNames: RolePolicy = { ...policy, mcpServers: ['otheater'] };
+    const ref = {
+      name: 'otheater',
+      url: 'http://127.0.0.1:4000/mcp',
+      headers: { Authorization: 'Bearer t' },
+    };
+    const { adapter, launcher } = setup();
+    const via = new FakeSessionTransport();
+    const first = await adapter.openSession(profile, withNames, '/work', via, {
+      mcpServers: [ref],
+    });
+    expect(via.opened[0]?.mcpServers).toEqual([ref]);
+    // A reload (`session/load`) gets them too.
+    await (
+      await adapter.loadSession(profile, withNames, '/work', first.sessionId, via, {
+        mcpServers: [ref],
+      })
+    ).close();
+    await first.close();
+    expect(via.loaded[0]?.mcpServers).toEqual([ref]);
+
+    // A ref outside the policy is refused before anything starts.
+    const before = launcher.launched.length;
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), {
+        mcpServers: [ref],
+      }),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    expect(launcher.launched).toHaveLength(before);
+  });
+
+  it('mixes the resolver and the options: the names the options do not cover are resolved', async () => {
+    const both: RolePolicy = { ...policy, mcpServers: ['docs', 'otheater'] };
+    const ref = { name: 'otheater', url: 'http://127.0.0.1:4000/mcp' };
+    const { adapter } = setup({
+      resolveMcpServers: (names) =>
+        names.map((name) => ({ name, url: `http://127.0.0.1/${name}` })),
+    });
+    const via = new FakeSessionTransport();
+    await (await adapter.openSession(profile, both, '/work', via, { mcpServers: [ref] })).close();
+    expect(via.opened[0]?.mcpServers).toEqual([
+      { name: 'docs', url: 'http://127.0.0.1/docs' },
+      ref,
+    ]);
+  });
 });
 
 describe('ClientAdapter security.unenforced', () => {

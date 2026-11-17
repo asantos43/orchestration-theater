@@ -18,6 +18,9 @@
     "dist"
   ],
   "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "@otheater/adapter-client-claude-code": "workspace:*",
     "@otheater/adapter-client-codex": "workspace:*",
     "@otheater/adapter-client-opencode": "workspace:*",
@@ -31,6 +34,7 @@
     "@otheater/adapter-vcs-git": "workspace:*",
     "@otheater/core": "workspace:*",
     "@otheater/protocol": "workspace:*",
+    "hono": "4.13.16",
     "i18next": "26.6.0",
     "pino": "10.4.0",
     "semver": "7.8.5",

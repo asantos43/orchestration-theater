@@ -8,6 +8,7 @@ import type {
   Vcs,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
+import type { McpAccess } from '../mcp/access.js';
 import { AttemptRunner } from './attempt-runner.js';
 import { SessionPool } from './pool.js';
 import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
@@ -25,6 +26,8 @@ export interface ExecutionOptions {
   readonly logger: Logger;
   /** Who knows the roles: lets the reconciliation resume attempts it did not start. */
   readonly resolver?: AttemptResolver;
+  /** The framework MCP server, which hands each attempt's session its tools (5.3). */
+  readonly mcp?: McpAccess;
 }
 
 /**
@@ -54,6 +57,7 @@ export class Execution {
       settings: options.settings,
       worktreeRoot: options.worktreeRoot,
       logger: options.logger,
+      ...(options.mcp === undefined ? {} : { mcp: options.mcp }),
     });
   }
 
