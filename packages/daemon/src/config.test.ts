@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { InvalidInput } from '@otheater/core';
+import { InvalidInput, PROMPT_ORDER_MODES } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   CLIENT_IDS,
@@ -367,6 +367,34 @@ describe('parseConfig, mcp and submit_retries (P3)', () => {
     expect(parseConfig('limits:\n  submit_retries: 5\n').limits.submit_retries).toBe(5);
     expect(() => parseConfig('limits:\n  submit_retries: -1\n')).toThrow(/submit_retries/);
     expect(() => parseConfig('limits:\n  submit_retries: 1.5\n')).toThrow(/submit_retries/);
+  });
+});
+
+describe('parseConfig, prompt_queue (P7)', () => {
+  it('defaults to the Producer first and ten messages in the summary', () => {
+    expect(parseConfig('').prompt_queue).toEqual({ order: 'producer_first', summary_messages: 10 });
+  });
+
+  it('takes each mode of the order and any count of messages from 0', () => {
+    for (const mode of PROMPT_ORDER_MODES) {
+      expect(parseConfig(`prompt_queue:\n  order: ${mode}\n`).prompt_queue.order).toBe(mode);
+    }
+    expect(
+      parseConfig('prompt_queue:\n  summary_messages: 0\n').prompt_queue.summary_messages,
+    ).toBe(0);
+    expect(
+      parseConfig('prompt_queue:\n  summary_messages: 25\n').prompt_queue.summary_messages,
+    ).toBe(25);
+  });
+
+  it('rejects an unknown mode, a bad count and unknown keys', () => {
+    expect(() => parseConfig('prompt_queue:\n  order: lifo\n')).toThrow(/prompt_queue\.order/);
+    for (const bad of ['-1', '1.5', '"ten"']) {
+      expect(() => parseConfig(`prompt_queue:\n  summary_messages: ${bad}\n`)).toThrow(
+        /summary_messages/,
+      );
+    }
+    expect(() => parseConfig('prompt_queue:\n  size: 3\n')).toThrow(InvalidInput);
   });
 });
 

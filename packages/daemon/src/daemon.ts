@@ -37,7 +37,8 @@ import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
-import type { ToolHandlers } from './mcp/handlers.js';
+import { ToolHandlers } from './mcp/handlers.js';
+import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { defaultPromptSource } from './prompts.js';
@@ -182,7 +183,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       registries,
       port: config.mcp.port,
       submitRetries: config.limits.submit_retries,
-      ...(options.mcpHandlers === undefined ? {} : { handlers: options.mcpHandlers }),
+      // The read tools (P7) are built in; a handler the caller already registered wins.
+      handlers: registerReadTools(options.mcpHandlers ?? new ToolHandlers(), composition.store),
       logger: composition.logger,
       version,
     });

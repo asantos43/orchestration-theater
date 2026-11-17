@@ -21,6 +21,14 @@ export const PROMPT_PRIORITY: Readonly<Record<PromptOrigin, number>> = {
   daemon: 0,
 };
 
+/**
+ * [proposta] How the single queue orders what it delivers (`prompt_queue.order`, architecture
+ * 5.4): `producer_first` (default) uses the priorities above, so the Producer's message passes
+ * ahead of the notices of the daemon; `fifo` delivers by arrival only.
+ */
+export const PROMPT_ORDER_MODES = ['producer_first', 'fifo'] as const;
+export type PromptOrderMode = (typeof PROMPT_ORDER_MODES)[number];
+
 export const PROMPT_STATES = ['pending', 'delivered'] as const;
 export type PromptState = (typeof PROMPT_STATES)[number];
 

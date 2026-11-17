@@ -24,7 +24,7 @@ import { Hono } from 'hono';
 import type { Logger } from '../logger.js';
 import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
-import { notImplemented, ToolHandlers } from './handlers.js';
+import { notImplemented, ToolFailure, ToolHandlers } from './handlers.js';
 import { describeIssues, isSubmitTool, runSubmit, type ToolReply } from './submit.js';
 import { bearerToken, GrantBook, type GrantRecord } from './tokens.js';
 
@@ -288,6 +288,9 @@ export class FrameworkMcpServer implements McpAccess {
           record: record.input.record,
         },
       });
+      if (value instanceof ToolFailure) {
+        return { ok: false, value: { error: value.error, message: value.message } };
+      }
       return { ok: true, value };
     } catch (error) {
       this.#options.logger.error({ err: error, tool: tool.name }, 'MCP tool failed');
