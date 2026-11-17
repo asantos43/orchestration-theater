@@ -4,15 +4,22 @@ import { mkdir } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import {
   AdapterUnavailable,
+  conventionsToJson,
   InvalidInput,
+  parseConventions,
+  type ProjectConventions,
   type Registries,
   type ScenarioRecord,
   type Store,
   supportsHistory,
   supportsInit,
+  supportsInspect,
   type Vcs,
 } from '@otheater/core';
 import { buildDaemonEvent } from '@otheater/protocol';
+import type { ConventionsMode } from '../config.js';
+import { createSoftwareProject } from '../project/create.js';
+import { detectConventions } from '../project/detect.js';
 
 export interface ScenarioServiceOptions {
   readonly store: Pick<Store, 'events' | 'scenarioRepos' | 'scenarios'>;
@@ -20,6 +27,11 @@ export interface ScenarioServiceOptions {
   readonly registries: Pick<Registries, 'scenarioTypes'>;
   /** `<dataDir>/scenarios`: the folder of a scenario that has no repository of its own. */
   readonly scenariosDir: string;
+  /**
+   * `project.conventions`, read at each creation. With `off` the daemon detects nothing; any
+   * other value detects (the question to the Producer is the channel's). Default `ask`.
+   */
+  readonly conventionsMode?: () => ConventionsMode;
 }
 
 export interface CreateScenarioInput {
@@ -31,12 +43,20 @@ export interface CreateScenarioInput {
   readonly base?: string;
   /** Shown name. Default: the folder name of a project, `chat` for a chat. */
   readonly name?: string;
+  /**
+   * Create the project (a `project` scenario only): `repo` is a folder that does not exist or is
+   * empty, and it becomes a repository with the structure of the `software` profile. Without it
+   * the repository must exist (an import).
+   */
+  readonly newProject?: boolean;
 }
 
 export interface CreatedScenario {
   readonly scenario: ScenarioRecord;
   /** False when the scenario already existed and was only reopened. */
   readonly created: boolean;
+  /** The conventions of the project, as stored; none for a chat or with `project.conventions: off`. */
+  readonly conventions?: ProjectConventions;
 }
 
 function slugOf(text: string, fallback: string): string {
@@ -73,9 +93,11 @@ export function genericChatId(name: string): string {
  */
 export class ScenarioService {
   readonly #options: ScenarioServiceOptions;
+  readonly #conventionsMode: () => ConventionsMode;
 
   constructor(options: ScenarioServiceOptions) {
     this.#options = options;
+    this.#conventionsMode = options.conventionsMode ?? (() => 'ask');
   }
 
   async create(input: CreateScenarioInput): Promise<CreatedScenario> {
@@ -102,20 +124,29 @@ export class ScenarioService {
       throw new InvalidInput('A project scenario needs the repository it works on (repo)');
     }
     const path = resolve(input.repo);
-    const base = input.base ?? 'main';
-    try {
-      if (!supportsHistory(vcs)) throw new Error('the Vcs adapter cannot read refs');
-      await vcs.resolveRef(path, base);
-    } catch (error) {
-      throw new InvalidInput(
-        `"${path}" is not a git repository with a "${base}" branch: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
     const id = projectScenarioId(path);
     const existing = await store.scenarios.get(id);
-    const scenario =
-      existing ??
-      (await store.scenarios.create({
+    // A new project is born with the structure of the profile; its conventions are the profile's.
+    const born =
+      input.newProject === true
+        ? await createSoftwareProject({
+            vcs,
+            folder: path,
+            ...(input.name === undefined ? {} : { name: input.name }),
+            ...(input.base === undefined ? {} : { branch: input.base }),
+          })
+        : undefined;
+    const base = born?.branch ?? (await this.#baseOf(path, input.base));
+    let conventions = parseConventions(existing?.conventions);
+    if (born !== undefined) {
+      conventions = born.conventions;
+    } else if (conventions === undefined && this.#conventionsMode() !== 'off') {
+      conventions = await detectConventions({ vcs, repo: path, base });
+    }
+    const stored = conventions === undefined ? undefined : conventionsToJson(conventions);
+    let scenario = existing;
+    if (scenario === undefined) {
+      scenario = await store.scenarios.create({
         id,
         kind: 'project',
         flowId: flow,
@@ -123,10 +154,48 @@ export class ScenarioService {
         folder: path,
         profile: 'software',
         baseBranch: base,
-      }));
+        ...(stored === undefined ? {} : { conventions: stored }),
+      });
+    } else if (stored !== undefined && parseConventions(scenario.conventions) === undefined) {
+      // Reopened without conventions (before P7, or a shape this version does not know).
+      scenario = await store.scenarios.update(id, { conventions: stored });
+    }
     await store.scenarioRepos.put({ scenarioId: id, path, mainBranch: base });
     if (existing === undefined) await this.#announce(scenario, type);
-    return { scenario, created: existing === undefined };
+    return {
+      scenario,
+      created: existing === undefined,
+      ...(conventions === undefined ? {} : { conventions }),
+    };
+  }
+
+  /**
+   * The branch plays start from: the one named, else `main`, else the branch the repository
+   * itself calls its default (an imported repository may use `master` or `trunk`).
+   */
+  async #baseOf(path: string, named: string | undefined): Promise<string> {
+    const { vcs } = this.#options;
+    const wanted = named ?? 'main';
+    try {
+      if (!supportsHistory(vcs)) throw new Error('the Vcs adapter cannot read refs');
+      await vcs.resolveRef(path, wanted);
+      return wanted;
+    } catch (error) {
+      const fallback =
+        named === undefined && supportsInspect(vcs)
+          ? await vcs.defaultBranch(path).catch(() => undefined)
+          : undefined;
+      if (fallback !== undefined && supportsHistory(vcs)) {
+        const found = await vcs.resolveRef(path, fallback).then(
+          () => true,
+          () => false,
+        );
+        if (found) return fallback;
+      }
+      throw new InvalidInput(
+        `"${path}" is not a git repository with a "${wanted}" branch: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async #chat(type: string, flow: string, input: CreateScenarioInput): Promise<CreatedScenario> {

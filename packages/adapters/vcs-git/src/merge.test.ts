@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   IDEMPOTENCY_TRAILER,
   supportsHistory,
+  supportsInspect,
   supportsMerge,
   withIdempotencyTrailer,
 } from '@otheater/core';
@@ -128,6 +129,39 @@ describe('merge', () => {
     expect(await rejection(vcs.merge(target, '--abort'))).toMatchObject({
       code: 'INVALID_INPUT',
     });
+  });
+});
+
+describe('inspection queries (convention detection)', () => {
+  it('recentSubjects lists the newest first, leaves merges out and honours the limit', async () => {
+    await branchWith('a', 'a.txt', 'from a\n');
+    const target = join(wt, 'target');
+    await vcs.createWorktree({ repo, path: target, branch: 'target', base: 'main' });
+    await vcs.merge(target, 'a', { message: 'integrate: a' });
+    expect(supportsInspect(vcs)).toBe(true);
+    expect(await vcs.recentSubjects(repo, 'target', 10)).toEqual([
+      'change a.txt on a',
+      'initial commit',
+    ]);
+    expect(await vcs.recentSubjects(repo, 'target', 1)).toEqual(['change a.txt on a']);
+    expect(await rejection(vcs.recentSubjects(repo, 'nope', 3))).toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    expect(await rejection(vcs.recentSubjects(repo, 'main', 0))).toMatchObject({
+      code: 'INVALID_INPUT',
+    });
+  });
+
+  it('defaultBranch answers the checked-out branch and prefers the remote head', async () => {
+    expect(await vcs.defaultBranch(repo)).toBe('main');
+    await testGit(repo, 'checkout', '--quiet', '-b', 'feature');
+    expect(await vcs.defaultBranch(repo)).toBe('feature');
+    await testGit(repo, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD');
+    await testGit(repo, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
+    expect(await vcs.defaultBranch(repo)).toBe('trunk');
+    await testGit(repo, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD');
+    await testGit(repo, 'checkout', '--quiet', '--detach');
+    expect(await vcs.defaultBranch(repo)).toBeUndefined();
   });
 });
 

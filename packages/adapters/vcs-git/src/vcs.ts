@@ -26,6 +26,7 @@ import {
   type VcsDiff,
   type VcsHistory,
   type VcsInit,
+  type VcsInspect,
   type VcsMerge,
   type VcsRebase,
   type WorktreeInfo,
@@ -66,7 +67,7 @@ const TRAILER_KEY = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
  * at once without fighting over git's own lock files.
  */
 export class GitVcs
-  implements Vcs, VcsMerge, VcsRebase, VcsDiff, VcsBranchDelete, VcsHistory, VcsInit
+  implements Vcs, VcsMerge, VcsRebase, VcsDiff, VcsBranchDelete, VcsHistory, VcsInit, VcsInspect
 {
   readonly id = GIT_VCS_ADAPTER.id;
   readonly implements = GIT_VCS_ADAPTER.implements;
@@ -468,6 +469,44 @@ export class GitVcs
       if (trailers.split('\x1f').some((found) => found.trim() === value)) return sha;
     }
     return undefined;
+  }
+
+  async recentSubjects(repo: string, ref: string, limit: number): Promise<readonly string[]> {
+    assertAbsolute('repo', repo);
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new InvalidInput('The limit of subjects must be a positive integer');
+    }
+    const tip = await this.resolveRef(repo, ref);
+    const output = await this.#git.run(repo, [
+      'log',
+      '--no-merges',
+      '--topo-order',
+      `--max-count=${String(Math.min(limit, 1000))}`,
+      '--format=%s%x00',
+      tip,
+      '--',
+    ]);
+    return output
+      .split('\0')
+      .map((subject) => subject.replace(/^\n/, ''))
+      .filter((subject) => subject !== '');
+  }
+
+  async defaultBranch(repo: string): Promise<string | undefined> {
+    assertAbsolute('repo', repo);
+    const remote = await this.#git.try(repo, [
+      'symbolic-ref',
+      '--quiet',
+      '--short',
+      'refs/remotes/origin/HEAD',
+    ]);
+    const remoteHead = remote.stdout.trim();
+    if (remote.code === 0 && remoteHead.startsWith('origin/')) {
+      return remoteHead.slice('origin/'.length);
+    }
+    const current = await this.#git.try(repo, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const branch = current.stdout.trim();
+    return current.code === 0 && branch !== '' ? branch : undefined;
   }
 
   /**
