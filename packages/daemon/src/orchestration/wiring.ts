@@ -5,6 +5,7 @@ import type { DaemonConfig } from '../config.js';
 import type { Execution } from '../execution/service.js';
 import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
+import type { RecoveryGate } from '../recovery/gate.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
 import { Workspace } from '../workspace/index.js';
@@ -23,6 +24,8 @@ export interface OrchestrationInput {
   readonly prompts: PromptSource;
   readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel'>;
   readonly handlers: OrchestrationHandlers;
+  /** The Producer channel holds its requests here until the reconciliation ends (P9, 5.21). */
+  readonly gate?: Pick<RecoveryGate, 'wait'>;
 }
 
 /** The plays of the daemon, running: what `startDaemon` builds once the execution exists (P8). */
@@ -44,8 +47,9 @@ export interface Orchestration {
  * Director sessions it feeds, the effects that open Actors and integrate and deliver, the machine
  * runner, the MCP handlers of the Director's tools, and the Producer channel `ot chat` uses.
  *
- * The runner is not asked to resume the plays the previous daemon left (`resumeAll`): that is the
- * reconciliation of P9, which will call it once it has checked what each play left behind.
+ * The runner is not asked to resume the plays the previous daemon left (`resumeAll`) here: the
+ * reconciliation of the start-up (`recovery/reconcile.ts`, P9) calls it, once it has checked what
+ * each play left behind.
  */
 export async function startOrchestration(input: OrchestrationInput): Promise<Orchestration> {
   const { config, composition, execution, mcp, registries, prompts, paths, handlers } = input;
@@ -110,7 +114,12 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   const server =
     config.chat.channel === 'off'
       ? undefined
-      : await ProducerChannelServer.start({ channel, port: 'auto', logger });
+      : await ProducerChannelServer.start({
+          channel,
+          port: 'auto',
+          logger,
+          ...(input.gate === undefined ? {} : { gate: input.gate }),
+        });
   await server?.publish(paths.channel);
 
   let quiet: Promise<void> | undefined;

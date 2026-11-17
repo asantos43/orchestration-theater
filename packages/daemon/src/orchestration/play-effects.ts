@@ -55,6 +55,11 @@ export const DECISION_KINDS = {
   menu: 'producer_menu',
   /** A blocking `ask_producer` of the Director; only the Producer answers. */
   question: 'producer_question',
+  /**
+   * An effect the start-up reconciliation could not settle (5.21): the Producer says whether it
+   * happened. [proposta] The kind and the two answers (`done`, `not_done`).
+   */
+  recovery: 'recovery_effect',
 } as const;
 
 /** Most characters of a reason that goes into an event or a prompt. */

@@ -14,6 +14,7 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Logger } from '../logger.js';
+import type { RecoveryGate } from '../recovery/gate.js';
 import type { ChatPoll, OpenChatInput, ProducerChannel } from './channel.js';
 
 /** Where the channel listens: the loopback only, like the MCP server. */
@@ -58,6 +59,8 @@ export interface ProducerChannelServerOptions {
   /** `auto` lets the system pick a free port. */
   readonly port: number | 'auto';
   readonly logger: Logger;
+  /** Requests wait here while the reconciliation of the start-up runs (5.21). Default: no wait. */
+  readonly gate?: Pick<RecoveryGate, 'wait'>;
 }
 
 /**
@@ -76,13 +79,15 @@ export class ProducerChannelServer {
   }
 
   static async start(options: ProducerChannelServerOptions): Promise<ProducerChannelServer> {
-    const { channel, logger } = options;
+    const { channel, logger, gate } = options;
     const token = randomBytes(32).toString('base64url');
     const app = new Hono();
     app.use('*', async (c, next) => {
       const header = c.req.header('authorization');
       const given = header?.startsWith('Bearer ') === true ? header.slice(7) : undefined;
       if (!sameToken(given, token)) return c.json({ error: 'unauthorized' }, 401 as const);
+      // The reconciliation of the start-up (5.21) holds the commands until it ends.
+      await gate?.wait();
       await next();
       return undefined;
     });

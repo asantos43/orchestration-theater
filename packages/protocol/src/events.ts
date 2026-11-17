@@ -84,7 +84,40 @@ export const DaemonBackupPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 23 event types the daemon writes. This list is what the daemon hands to
+ * [proposta] Fields of `daemon.recovered` (architecture 5.21, step 8 of the reconciliation): what
+ * the start-up found and did, written once the plays were resumed. `pending` lists what still
+ * needs the Producer.
+ */
+export const DaemonRecoveredPayloadSchema = z.strictObject({
+  durationMs: z.int().min(0),
+  /** Client processes of the dead daemon that were alive, matched by pid and start instant, and ended. */
+  orphansKilled: z.int().min(0),
+  /** Sessions that were `active` and are now `interrupted`. */
+  sessionsInterrupted: z.int().min(0),
+  /** Attempts that were in progress and are now parked as `interrupted`. */
+  attemptsInterrupted: z.int().min(0),
+  /** `wip(recovery)` commits made over what the worktrees held uncommitted. */
+  wipCommits: z.int().min(0),
+  /** Effects that had an intent and no end, and that the verifier settled. */
+  effectsResolved: z.int().min(0),
+  /** Plays whose machine was restored from the snapshot. */
+  playsResumed: z.array(z.string().min(1)),
+  /** Plays that could not be restored. */
+  playsRefused: z.array(z.string().min(1)),
+  pending: z.array(
+    z.strictObject({
+      kind: z.literal('effect'),
+      /** Idempotency key of the effect nobody could settle. */
+      key: z.string().min(1),
+      effectType: z.string().min(1),
+      playId: z.string().min(1).nullable(),
+      reason: z.string(),
+    }),
+  ),
+});
+
+/**
+ * The definitions of the 24 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -99,6 +132,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: DaemonStoppedPayloadSchema,
   }),
   defineEventType({ type: 'daemon.backup', schemaVersion: 1, payload: DaemonBackupPayloadSchema }),
+  defineEventType({
+    type: 'daemon.recovered',
+    schemaVersion: 1,
+    payload: DaemonRecoveredPayloadSchema,
+  }),
   defineEventType({
     type: 'session.opened',
     schemaVersion: 1,
@@ -228,6 +266,7 @@ export type DaemonEventPayloads = {
 export type DaemonStartedPayload = DaemonEventPayloads['daemon.started'];
 export type DaemonStoppedPayload = DaemonEventPayloads['daemon.stopped'];
 export type DaemonBackupPayload = DaemonEventPayloads['daemon.backup'];
+export type DaemonRecoveredPayload = DaemonEventPayloads['daemon.recovered'];
 export type SessionOpenedPayload = DaemonEventPayloads['session.opened'];
 export type SessionUpdatePayload = DaemonEventPayloads['session.update'];
 export type SessionPromptFinishedPayload = DaemonEventPayloads['session.prompt_finished'];

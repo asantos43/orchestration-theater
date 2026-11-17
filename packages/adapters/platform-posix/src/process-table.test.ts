@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { parseProcStat, parsePsOutput, procFsTable, systemProcessTable } from './process-table.js';
+import {
+  parseBootTime,
+  parseProcStat,
+  parsePsOutput,
+  procFsTable,
+  systemProcessTable,
+} from './process-table.js';
 
 // proc(5): after the command name come state, ppid, pgrp, session, tty_nr, tpgid, flags, minflt,
 // cminflt, majflt, cmajflt, utime, stime, cutime, cstime, priority, nice, num_threads,
@@ -38,6 +44,29 @@ describe('parseProcStat', () => {
   });
 });
 
+describe('start instant in epoch milliseconds', () => {
+  it('derives it from the boot time and the start ticks of /proc', () => {
+    const info = parseProcStat(9, `9 (x) ${tail('S', 1, 9, '12345')}`, 1_700_000_000_000);
+    // 12345 ticks of 10 ms after the boot.
+    expect(info?.startedAtMs).toBe(1_700_000_000_000 + 123_450);
+  });
+
+  it('leaves it out when the boot time is not known', () => {
+    expect(parseProcStat(9, `9 (x) ${tail('S', 1, 9, '12345')}`)?.startedAtMs).toBeUndefined();
+  });
+
+  it('reads btime of /proc/stat', () => {
+    expect(parseBootTime('cpu  1 2 3\nbtime 1700000000\nprocesses 5\n')).toBe(1_700_000_000_000);
+    expect(parseBootTime('cpu  1 2 3\n')).toBeUndefined();
+    expect(parseBootTime('')).toBeUndefined();
+  });
+
+  it('reads it from the lstart of ps', () => {
+    const table = parsePsOutput('  200     1   200 S+   Mon Nov 16 09:01:02 2026');
+    expect(table.get(200)?.startedAtMs).toBe(Date.parse('Mon Nov 16 09:01:02 2026'));
+  });
+});
+
 describe('parsePsOutput', () => {
   it('reads the BSD ps columns, keeping the whole lstart as the start time', () => {
     const table = parsePsOutput(
@@ -50,7 +79,7 @@ describe('parsePsOutput', () => {
       ].join('\n'),
     );
     expect([...table.keys()]).toEqual([1, 200, 201]);
-    expect(table.get(200)).toEqual({
+    expect(table.get(200)).toMatchObject({
       pid: 200,
       ppid: 1,
       pgid: 200,
@@ -68,6 +97,9 @@ describe('real process table', () => {
     expect(me).toBeDefined();
     expect(me?.ppid).toBe(process.ppid);
     expect(me?.zombie).toBe(false);
+    // The start instant is a recent instant in epoch milliseconds.
+    expect(me?.startedAtMs).toBeLessThanOrEqual(Date.now() + 2000);
+    expect(me?.startedAtMs).toBeGreaterThan(1_600_000_000_000);
   });
 
   // Off Linux the table comes from `ps`; on Windows that would be Git for Windows' msys ps, whose
