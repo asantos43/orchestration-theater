@@ -18,10 +18,13 @@ import {
   NotFound,
   parseScript,
   PLAN_KEY,
+  planOutput,
   playBranch,
   type PromptSource,
   type Registries,
+  reviewOutput,
   type Script,
+  scriptOutput,
   SCRIPT_KEY,
   type Store,
   supportsDiff,
@@ -91,13 +94,22 @@ export function stageDemandId(stage: string): string {
   return `stage-${stage.toLowerCase().replaceAll('_', '-')}`;
 }
 
-// What the roles send through their `submit_*` tool (the tools take a free record).
-const PlanOutput = z.looseObject({
-  plan: z.string().min(1),
-  openQuestions: z.array(z.string().min(1)).default([]),
-});
-const ReviewOutput = z.looseObject({ approved: z.boolean(), reason: z.string().optional() });
-const ScriptOutput = z.looseObject({ script: z.unknown() });
+// What the roles send through their `submit_*` tool is validated by the tool itself, with the
+// schemas of `@otheater/core` (`planOutput`, `reviewOutput`, `scriptOutput`): the same ones read
+// the accepted output back here, so the two cannot drift apart.
+
+/**
+ * Reads the accepted output of a stage tool. It cannot fail after the tool accepted it; if it
+ * does (a change of schema between the call and now, a hand-written event), the reason of the
+ * failure carries what was wrong, not only that something was.
+ */
+function readStageOutput<T>(schema: z.ZodType<T>, tool: string, output: unknown): T {
+  const parsed = schema.safeParse(output);
+  if (parsed.success) return parsed.data;
+  throw new InvalidInput(
+    `The output of ${tool} does not match its schema.\n${z.prettifyError(parsed.error)}`,
+  );
+}
 
 type Submission =
   | { readonly kind: 'submitted'; readonly tool: string; readonly output: unknown }
@@ -327,7 +339,7 @@ export class OrchestrationEffects implements PlayEffects {
 
   async #planText(playId: string): Promise<string | undefined> {
     const value = await this.#blackboard(playId, PLAN_KEY);
-    const parsed = PlanOutput.safeParse(value);
+    const parsed = planOutput.safeParse(value);
     return parsed.success ? parsed.data.plan : undefined;
   }
 
@@ -510,7 +522,7 @@ export class OrchestrationEffects implements PlayEffects {
     const { playId } = scope;
     switch (effect.stage) {
       case 'PLANNING': {
-        const plan = PlanOutput.parse(output);
+        const plan = readStageOutput(planOutput, 'submit_plan', output);
         await store.blackboard.put({
           playId,
           key: PLAN_KEY,
@@ -524,7 +536,7 @@ export class OrchestrationEffects implements PlayEffects {
         return;
       }
       case 'REVIEWING_PLAN': {
-        const review = ReviewOutput.parse(output);
+        const review = readStageOutput(reviewOutput, 'submit_plan_review', output);
         await this.#send(playId, generation, {
           type: 'PLAN_REVIEWED',
           approved: review.approved,
@@ -533,10 +545,14 @@ export class OrchestrationEffects implements PlayEffects {
         return;
       }
       case 'SCRIPTING':
-        await this.#scriptResult(scope, generation, ScriptOutput.parse(output).script);
+        await this.#scriptResult(
+          scope,
+          generation,
+          readStageOutput(scriptOutput, 'submit_script', output).script,
+        );
         return;
       case 'REVIEWING_SCRIPT': {
-        const review = ReviewOutput.parse(output);
+        const review = readStageOutput(reviewOutput, 'submit_script_review', output);
         await this.#send(playId, generation, {
           type: 'SCRIPT_REVIEWED',
           approved: review.approved,
@@ -545,7 +561,7 @@ export class OrchestrationEffects implements PlayEffects {
         return;
       }
       case 'CRITIQUING': {
-        const review = ReviewOutput.parse(output);
+        const review = readStageOutput(reviewOutput, 'submit_critique', output);
         await this.#send(playId, generation, {
           type: 'CRITIQUED',
           approved: review.approved,
@@ -760,7 +776,7 @@ export class OrchestrationEffects implements PlayEffects {
       if (pending.length > 0) return false;
       const all = await store.decisions.list({ playId, kinds: [DECISION_KINDS.clarify] });
       const value = await this.#blackboard(playId, PLAN_KEY);
-      const plan = PlanOutput.safeParse(value);
+      const plan = planOutput.safeParse(value);
       await store.decisions.create({
         id: `${playId}:clarify:${String(all.length + 1)}`,
         scenarioId,

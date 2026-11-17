@@ -127,6 +127,20 @@ describe('PlayRunner', () => {
       });
     });
 
+    it('writes the reason of the event in the transition (why a SUBMIT_FAILED moved the play)', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'SUBMIT_FAILED', reason: 'plan: expected string' });
+      const events = await store.events.readFrom(0, 10);
+      expect(events.at(-1)?.payload).toMatchObject({
+        event: 'SUBMIT_FAILED',
+        from: 'PLANNING',
+        to: 'AWAITING_PRODUCER',
+        reason: 'plan: expected string',
+      });
+      expect(events[1]?.payload).not.toHaveProperty('reason');
+    });
+
     it('writes the counters of the machine in the record', async () => {
       await create();
       await runner.send('p1', { type: 'START' });

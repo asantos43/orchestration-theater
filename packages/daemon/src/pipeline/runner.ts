@@ -218,6 +218,9 @@ export class PlayRunner {
             to,
             counters: { ...next.context.counters },
             effects: effects.map((effect) => effect.type),
+            ...('reason' in machineEvent && typeof machineEvent.reason === 'string'
+              ? { reason: machineEvent.reason }
+              : {}),
           },
           scenarioId: record.scenarioId,
           playId,

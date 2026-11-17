@@ -14,6 +14,9 @@ import {
   OFFICIAL_SCENARIO_TYPES,
   OFFICIAL_TOOLS,
   officialRegistryEntries,
+  planOutput,
+  reviewOutput,
+  scriptOutput,
   ROLE_IDS,
   SCENARIO_TYPE_IDS,
   validateRegistries,
@@ -91,6 +94,54 @@ describe('the official entries', () => {
     expect(registries.tools.get('open_pr')?.effect).toBe('external_write');
     expect(registries.tools.get('open_pr')?.idempotencyKey).toBe('attempt_step');
     expect(registries.tools.get('git_commit')?.effect).toBe('worktree');
+  });
+
+  it('give the stage tools the schemas of the stage outputs, one source for tool and daemon', () => {
+    const registries = buildRegistries(valid());
+    const inputOf = (name: string): unknown => registries.tools.get(name)?.input;
+    expect(inputOf('submit_plan')).toBe(planOutput);
+    expect(inputOf('submit_plan_review')).toBe(reviewOutput);
+    expect(inputOf('submit_script_review')).toBe(reviewOutput);
+    expect(inputOf('submit_critique')).toBe(reviewOutput);
+    expect(inputOf('submit_script')).toBe(scriptOutput);
+  });
+
+  it('read a plan: text plan, plain-string questions that default to none', () => {
+    expect(planOutput.parse({ plan: 'p' })).toEqual({ plan: 'p', openQuestions: [] });
+    expect(planOutput.parse({ plan: 'p', openQuestions: ['q?'], extra: 1 })).toEqual({
+      plan: 'p',
+      openQuestions: ['q?'],
+      extra: 1,
+    });
+    for (const bad of [
+      {},
+      { plan: '' },
+      { plan: { steps: ['a'] } },
+      { plan: 'p', openQuestions: [{ question: 'q' }] },
+      { plan: 'p', openQuestions: [''] },
+      { plan: 'p', openQuestions: 'q' },
+    ]) {
+      expect(planOutput.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('read a review: approved is a boolean and a veto carries its reason [proposta]', () => {
+    expect(reviewOutput.safeParse({ approved: true }).success).toBe(true);
+    expect(reviewOutput.safeParse({ approved: false, reason: 'no tests' }).success).toBe(true);
+    for (const bad of [
+      {},
+      { approved: 'yes' },
+      { approved: false },
+      { approved: false, reason: '  ' },
+    ]) {
+      expect(reviewOutput.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('read a script submission: the key must be there, its content is for parseScript', () => {
+    expect(scriptOutput.safeParse({ script: { demands: [] } }).success).toBe(true);
+    expect(scriptOutput.safeParse({ script: 'text' }).success).toBe(true);
+    expect(scriptOutput.safeParse({}).success).toBe(false);
   });
 
   it('let read_blackboard and read_contract ask for a version, and read_decision not (P7)', () => {

@@ -164,6 +164,9 @@ export const PlayCreatedPayloadSchema = z.strictObject({
  * `play.transitioned`: one transition of the machine, written in the same transaction as the
  * snapshot (5.4, 5.21). [proposta] `effects` lists the types of the effects the transition
  * asked for, so the log tells what was about to start even if the daemon died before it did.
+ * `reason` is the reason the event carried (a veto, `SUBMIT_FAILED`, a failed attempt), so the
+ * log tells why the play moved: it is not in the machine context for every event. Optional, so the
+ * events already written stay valid (same schema version).
  */
 export const PlayTransitionedPayloadSchema = z.strictObject({
   event: text,
@@ -171,6 +174,7 @@ export const PlayTransitionedPayloadSchema = z.strictObject({
   to: z.enum(PLAY_STATES),
   counters: countersSchema,
   effects: z.array(text),
+  reason: z.string().optional(),
 });
 
 export const PLAY_CREATED_EVENT = defineEventType({

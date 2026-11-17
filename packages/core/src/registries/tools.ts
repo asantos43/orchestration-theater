@@ -52,7 +52,8 @@ export interface ToolDefinition {
 /** Pattern of a tool name: lowercase snake case. */
 export const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 
-// Simple shared shapes. The precise schemas of each tool arrive with the step that implements it.
+// Simple shared shapes. The precise schemas of the remaining tools arrive with the step that
+// implements them (the stage tools already have theirs: `planOutput`, `reviewOutput`, `scriptOutput`).
 const noInput = z.strictObject({});
 const accepted = z.strictObject({ ok: z.boolean() });
 const id = z.string().min(1);
@@ -109,6 +110,53 @@ export const askProducerInput = z.strictObject({
 });
 
 const decisionBody = z.strictObject({ decisionId: id, payload: json });
+
+/**
+ * [proposta] What each role sends through its stage tool (architecture 5.3). One source: the tool
+ * validates its input with these schemas, so a wrong shape goes back to the model inside the
+ * `limits.submit_retries` loop, and the daemon reads the accepted output with the very same
+ * schemas, so what the tool accepted can never fail to parse later. The objects are loose: an
+ * extra field is kept and ignored. The descriptions go to the model through the JSON Schema the
+ * MCP server announces.
+ */
+export const planOutput = z.looseObject({
+  plan: z.string().min(1).describe('The plan, as text (not an object).'),
+  openQuestions: z
+    .array(z.string().min(1))
+    .default([])
+    .describe(
+      'Questions only the Producer can answer, as plain strings; an empty list when there is none.',
+    ),
+});
+
+/**
+ * [proposta] The verdict of the Reviewer, of the Author over the script and of the Critic.
+ * `reason` is required when `approved` is false (a veto the next attempt cannot read is a veto
+ * without feedback); the machine itself still accepts a veto without one.
+ */
+export const reviewOutput = z
+  .looseObject({
+    approved: z.boolean().describe('true to approve; false to veto (then say why in "reason").'),
+    reason: z.string().optional().describe('What is wrong, when not approved. Required then.'),
+  })
+  .superRefine((review, ctx) => {
+    if (!review.approved && (review.reason === undefined || review.reason.trim() === '')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['reason'],
+        message: 'a veto (approved: false) needs a non-empty reason',
+      });
+    }
+  });
+
+/**
+ * [proposta] The script is only required to be there: its shape and rules are checked by
+ * `parseScript` and `validateScript`, a counted loop of its own (`SCRIPT_VALIDATED`, N-th invalid
+ * script), which must not turn into a failed submit.
+ */
+export const scriptOutput = z.looseObject({
+  script: z.unknown().describe('The script: the object with "contracts" and "demands".'),
+});
 
 /**
  * [proposta] The tools of the orders (architecture 5.17). None of them saves anything: each one
@@ -249,10 +297,10 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('submit', COMMON, z.strictObject({ result: json }), accepted),
 
   // Author, Reviewer, Scriptwriter.
-  tool('submit_plan', ['author'], json, accepted),
-  tool('submit_plan_review', ['reviewer'], json, accepted),
-  tool('submit_script', ['scriptwriter'], json, accepted),
-  tool('submit_script_review', ['author'], json, accepted),
+  tool('submit_plan', ['author'], planOutput, accepted),
+  tool('submit_plan_review', ['reviewer'], reviewOutput, accepted),
+  tool('submit_script', ['scriptwriter'], scriptOutput, accepted),
+  tool('submit_script_review', ['author'], reviewOutput, accepted),
 
   // Actor.
   tool('run_tests', ['actor', 'critic'], z.strictObject({ target: text.optional() }), json, {
@@ -285,7 +333,7 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     z.strictObject({ demand: id.optional() }),
     z.strictObject({ diff: text }),
   ),
-  tool('submit_critique', ['critic'], json, accepted),
+  tool('submit_critique', ['critic'], reviewOutput, accepted),
 ];
 
 export function validateTools(

@@ -125,7 +125,7 @@ describe('framework MCP server over the real ACP stdio transport', () => {
         specOf(
           repo,
           'mcp-ok',
-          '#script:submit {"tool":"submit_plan","output":{"steps":["a","b"]}}\nsubmit',
+          '#script:submit {"tool":"submit_plan","output":{"plan":"do a, then b","openQuestions":[]}}\nsubmit',
         ),
       );
       expect(result).toMatchObject({ state: 'completed', stopReason: 'end_turn' });
@@ -136,7 +136,7 @@ describe('framework MCP server over the real ACP stdio transport', () => {
       expect(submitted[0]?.payload).toMatchObject({
         tool: 'submit_plan',
         role: 'author',
-        output: { steps: ['a', 'b'] },
+        output: { plan: 'do a, then b', openQuestions: [] },
         calls: 1,
       });
       expect(events.map((event) => event.type)).not.toContain('attempt.submit_failed');
