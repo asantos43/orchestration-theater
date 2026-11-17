@@ -14,6 +14,7 @@ const alias = {
   '@otheater/adapter-clock-system': `${import.meta.dirname}/packages/adapters/clock-system/src/index.ts`,
   '@otheater/adapter-prompts-files': `${import.meta.dirname}/packages/adapters/prompts-files/src/index.ts`,
   '@otheater/adapter-vcs-git': `${import.meta.dirname}/packages/adapters/vcs-git/src/index.ts`,
+  '@otheater/adapter-codehost-github': `${import.meta.dirname}/packages/adapters/codehost-github/src/index.ts`,
   '@otheater/adapter-platform-posix': `${import.meta.dirname}/packages/adapters/platform-posix/src/index.ts`,
   '@otheater/adapter-session-acp': `${import.meta.dirname}/packages/adapters/session-acp/src/index.ts`,
   '@otheater/adapter-client-claude-code': `${import.meta.dirname}/packages/adapters/client-claude-code/src/index.ts`,

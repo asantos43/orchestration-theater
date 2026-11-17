@@ -26,7 +26,10 @@ jobs:
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
+      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
       - run: pnpm check
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - run: cargo fmt --check
         working-directory: native/job-launcher
       - run: cargo clippy --locked --all-targets -- -D warnings
@@ -52,7 +55,10 @@ jobs:
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
+      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
       - run: pnpm check
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
   # Real test of the Windows Job Object launcher (N58): only here the integration tests run.
   windows-launcher:

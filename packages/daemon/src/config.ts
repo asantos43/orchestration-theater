@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
-import { InvalidInput, SHARED_CANCEL_MODES } from '@otheater/core';
+import { DELIVERY_MODES, InvalidInput, SHARED_CANCEL_MODES } from '@otheater/core';
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -573,6 +573,18 @@ export const DaemonConfigSchema = z.strictObject({
     .strictObject({
       /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
       unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
+    })
+    .prefault({}),
+  /**
+   * Delivery policy (architecture 5.5, owner's decision N5). `mode` is the global value; the
+   * override per project, play and scheduled task is the rule registry's `delivery.mode`.
+   * `allow_direct_merge` is the project's permission: without it `direct_merge` and `ask` become
+   * `pr`. Default: open the PR and stop.
+   */
+  delivery: z
+    .strictObject({
+      mode: z.enum(DELIVERY_MODES).default('pr'),
+      allow_direct_merge: z.boolean().default(false),
     })
     .prefault({}),
   ui: z

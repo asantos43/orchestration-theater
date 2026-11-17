@@ -7,3 +7,4 @@ export * from './quota.js';
 export * from './config.js';
 export * from './session-events.js';
 export * from './session-update.js';
+export * from './workspace-events.js';
