@@ -82,7 +82,12 @@ import {
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
-import { describeZodError, type ClientId, type DaemonConfig } from './config.js';
+import {
+  describeZodError,
+  sessionsPerProcessOf,
+  type ClientId,
+  type DaemonConfig,
+} from './config.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
 
@@ -455,12 +460,15 @@ function commonOptions(
   warnings: ClientWarningLog,
   versioning: ClientVersioning,
   adapterVersionOf: (clientVersion: string) => string,
+  client: ClientId,
 ): ClientAdapterOptions {
   let adapterVersion = adapterVersionOf(versioning.initial.version);
   return {
     adapterVersion,
     clientVersion: { ...versioning, adapterVersionOf },
     launcher: parts.launcher,
+    // `K` for the use of the adapter without the pool above it: the same value the pool uses.
+    sessionsPerProcess: sessionsPerProcessOf(config.pool, client),
     baseEnv: buildClientEnv(section, env),
     minLayers: minLayersOf(config.security),
     unenforced: config.security.unenforced,
@@ -501,8 +509,16 @@ function claudeCode(
           paths: parts.paths,
         }));
   const adapter = new ClaudeCodeAdapter({
-    ...commonOptions(config, section, env, parts, warnings, versioning, (clientVersion) =>
-      adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', clientVersion),
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      versioning,
+      (clientVersion) =>
+        adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', clientVersion),
+      'claude-code',
     ),
     ...(command === undefined
       ? {}
@@ -541,8 +557,15 @@ function codex(
           paths: parts.paths,
         }));
   const adapter = new CodexAdapter({
-    ...commonOptions(config, section, env, parts, warnings, versioning, (clientVersion) =>
-      adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', clientVersion),
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      versioning,
+      (clientVersion) => adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', clientVersion),
+      'codex',
     ),
     ...(command === undefined
       ? {}
@@ -569,7 +592,16 @@ function opencode(
   const section = config.clients.opencode;
   const command = section.command;
   return new OpenCodeAdapter({
-    ...commonOptions(config, section, env, parts, warnings, versioning, opencodeAdapterVersion),
+    ...commonOptions(
+      config,
+      section,
+      env,
+      parts,
+      warnings,
+      versioning,
+      opencodeAdapterVersion,
+      'opencode',
+    ),
     ...(command === undefined
       ? {}
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),

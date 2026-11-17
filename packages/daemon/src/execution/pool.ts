@@ -16,7 +16,7 @@ import {
   endsSharedProcess,
   sharedProcessKey,
 } from '@otheater/core';
-import type { PoolSettings } from './settings.js';
+import { type PoolSettings, sessionsPerProcessFor } from './settings.js';
 
 /** What a caller asks the pool for: one session of one `(client, profile)`. */
 export interface PoolRequest {
@@ -286,9 +286,8 @@ export class SessionPool {
     const spec = await adapter.launchSpec(request.profile, request.policy, request.cwd, via.id);
     const key = `${adapter.id}|${sharedProcessKey(request.profile, spec)}`;
     const list = this.#processes.get(key) ?? [];
-    const found = list.find(
-      (entry) => entry.alive && entry.sessions.size < this.#settings.sessionsPerProcess,
-    );
+    const k = sessionsPerProcessFor(this.#settings, adapter.id);
+    const found = list.find((entry) => entry.alive && entry.sessions.size < k);
     if (found !== undefined) return found;
     const process = await this.#launcher.launch(spec);
     const entry: PoolProcess = {
