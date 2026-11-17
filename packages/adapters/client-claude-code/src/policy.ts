@@ -14,6 +14,18 @@ import type { RolePolicy } from '@otheater/core';
  * - `settingSources: []` drops the plugins, skills and MCP servers of the user's profile. [V]
  * - `permissions.defaultMode` in `_meta` is ignored: the mode belongs to ACP and starts at `auto`,
  *   so the session setup sets `default` explicitly. [V]
+ * - A tool of an MCP server asks for permission unless a rule allows it, and the mode
+ *   `acceptEdits` only allows file edits. The daemon answers `reject_once` to every
+ *   `session/request_permission` (`onAsk: 'reject'`), so without a rule the framework tools
+ *   (`open_play`, `submit`...) are refused and never run. The rule `mcp__<server>` matches every
+ *   tool of that server. [S: https://code.claude.com/docs/en/permissions, read 2026-11-17] The
+ *   `options` of `_meta.claudeCode.options` are spread into the options of the Agent SDK
+ *   (`...userProvidedOptions`), so `allowedTools` and `settings` reach it, and the permission
+ *   check treats `mcp__*` tools like the others. [V: reading of `dist/v1/acp-agent.js` and
+ *   `permissions/effects.js` of the adapter 0.107.0, 2026-11-17] That a real session then runs an
+ *   MCP tool with no request was not measured: the real play round of 2026-11-17 is what
+ *   motivated this, and its log was not kept. [N] The policy allows only the MCP servers of the
+ *   role (`policy.mcpServers`): never the shell, never a native tool; those stay as above.
  */
 
 /** Names of the native tools of Claude Code this adapter knows how to grant. [V: init tool list, Phase 0 item 8] */
@@ -71,6 +83,21 @@ export function deniedTools(policy: RolePolicy): string[] {
   ];
 }
 
+/**
+ * The permission rules that let the MCP servers of the role run without a request: one
+ * `mcp__<server>` rule per server of the policy, in the order of the policy, without repeats. The
+ * name of the server is written the way Claude Code writes it in a tool name (every character
+ * outside letters, digits, `_` and `-` becomes `_`). [N: the normalization is from the public
+ * docs of MCP naming, not run here] Never a native tool, never the shell.
+ */
+export function allowedMcpRules(policy: RolePolicy): string[] {
+  const rules = new Set<string>();
+  for (const server of policy.mcpServers) {
+    rules.add(`mcp__${server.replace(/[^a-zA-Z0-9_-]/gu, '_')}`);
+  }
+  return [...rules];
+}
+
 /** True for the names of {@link MANAGED_TOOLS}: `prepareProfile` owns these entries of `deny`. */
 export function isManagedToolName(entry: unknown): boolean {
   return typeof entry === 'string' && MANAGED_TOOLS.includes(entry);
@@ -79,15 +106,22 @@ export function isManagedToolName(entry: unknown): boolean {
 /** The permission keys that go to a `settings.json` (the profile file) and to `_meta` alike. */
 export function permissionSettings(policy: RolePolicy): {
   disableBypassPermissionsMode: 'disable';
+  allow: string[];
   deny: string[];
 } {
-  return { disableBypassPermissionsMode: 'disable', deny: deniedTools(policy) };
+  return {
+    disableBypassPermissionsMode: 'disable',
+    allow: allowedMcpRules(policy),
+    deny: deniedTools(policy),
+  };
 }
 
 /** `_meta.claudeCode.options` of `session/new` (the `via: 'acp'` setup). */
 export interface ClaudeAcpOptions {
   readonly tools: readonly string[];
   readonly disallowedTools: readonly string[];
+  /** Tools that run with no permission request: the MCP servers of the role (`mcp__<server>`). */
+  readonly allowedTools: readonly string[];
   readonly strictMcpConfig: true;
   readonly allowDangerouslySkipPermissions: false;
   readonly settingSources: readonly string[];
@@ -98,6 +132,7 @@ export function acpOptions(policy: RolePolicy, sources: SettingSourcesMode): Cla
   return {
     tools: allowedTools(policy),
     disallowedTools: deniedTools(policy),
+    allowedTools: allowedMcpRules(policy),
     strictMcpConfig: true,
     allowDangerouslySkipPermissions: false,
     settingSources: [...SETTING_SOURCES[sources]],
@@ -109,9 +144,12 @@ export function acpOptions(policy: RolePolicy, sources: SettingSourcesMode): Cla
  * The flags of `claude -p --output-format stream-json` (the emergency exit). The flag names come
  * from `docs/08` part 2, checked against `--help` of 2.1.319 on 2026-11-08 [V], except
  * `--setting-sources` and `--verbose` (stream-json needs it with `-p`), which are not in that
- * table [N]: they come from the public CLI reference. Nothing here ran against the real client.
+ * table [N]: they come from the public CLI reference. `--allowedTools` is there only when the
+ * policy lists an MCP server, with the same `mcp__<server>` rules as the ACP setup. Nothing here
+ * ran against the real client.
  */
 export function headlessArgs(policy: RolePolicy, sources: SettingSourcesMode): string[] {
+  const allowed = allowedMcpRules(policy);
   return [
     '-p',
     '--output-format',
@@ -124,6 +162,7 @@ export function headlessArgs(policy: RolePolicy, sources: SettingSourcesMode): s
     allowedTools(policy).join(','),
     '--disallowedTools',
     deniedTools(policy).join(','),
+    ...(allowed.length === 0 ? [] : ['--allowedTools', allowed.join(',')]),
     '--permission-mode',
     SESSION_MODE,
     // `host`: with `--print`, the host (the daemon, layer 2) answers the requests, not a terminal.

@@ -3,6 +3,7 @@ import type { RolePolicy } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   acpOptions,
+  allowedMcpRules,
   allowedTools,
   deniedTools,
   headlessArgs,
@@ -67,12 +68,50 @@ describe('isManagedToolName', () => {
   });
 });
 
+describe('allowedMcpRules', () => {
+  it('is empty when the policy has no MCP server', () => {
+    expect(allowedMcpRules(base)).toEqual([]);
+  });
+
+  it('gives one mcp__<server> rule per server, in order, without repeats', () => {
+    expect(allowedMcpRules({ ...base, mcpServers: ['otheater', 'docs', 'otheater'] })).toEqual([
+      'mcp__otheater',
+      'mcp__docs',
+    ]);
+  });
+
+  it('writes the server name the way Claude Code writes it in a tool name', () => {
+    expect(allowedMcpRules({ ...base, mcpServers: ['my.server', 'a b', 'ok_1-x'] })).toEqual([
+      'mcp__my_server',
+      'mcp__a_b',
+      'mcp__ok_1-x',
+    ]);
+  });
+
+  it('never allows a native tool or the shell, whatever the policy grants', () => {
+    const policy: RolePolicy = {
+      ...base,
+      nativeTools: ['read', 'search', 'edit', 'write'],
+      mcpServers: ['otheater'],
+    };
+    for (const rule of allowedMcpRules(policy)) expect(rule).toMatch(/^mcp__/u);
+    expect(allowedMcpRules(policy)).not.toContain('Bash');
+  });
+});
+
 describe('permissionSettings', () => {
   it('disables the bypass mode and denies the tools of the policy', () => {
     expect(permissionSettings(base)).toEqual({
       disableBypassPermissionsMode: 'disable',
+      allow: [],
       deny: deniedTools(base),
     });
+  });
+
+  it('allows the MCP servers of the policy and nothing else', () => {
+    const policy: RolePolicy = { ...base, mcpServers: ['otheater'] };
+    expect(permissionSettings(policy).allow).toEqual(['mcp__otheater']);
+    expect(permissionSettings(policy).deny).toEqual(deniedTools(policy));
   });
 });
 
@@ -84,6 +123,19 @@ describe('acpOptions', () => {
     expect(options.strictMcpConfig).toBe(true);
     expect(options.allowDangerouslySkipPermissions).toBe(false);
     expect(options.settings.permissions.disableBypassPermissionsMode).toBe('disable');
+    expect(options.allowedTools).toEqual([]);
+    expect(options.settings.permissions.allow).toEqual([]);
+  });
+
+  it('lets the tools of the MCP servers of the role run with no permission request', () => {
+    const policy: RolePolicy = { ...base, mcpServers: ['otheater'] };
+    const options = acpOptions(policy, 'none');
+    expect(options.allowedTools).toEqual(['mcp__otheater']);
+    expect(options.settings.permissions.allow).toEqual(['mcp__otheater']);
+    // The shell and the native tools are not in `allowedTools`: the mode and layer 2 decide them.
+    expect(options.allowedTools).not.toContain('Bash');
+    expect(options.allowedTools).not.toContain('Read');
+    expect(options.disallowedTools).toContain('Bash');
   });
 
   it('maps each setting-sources mode to the SDK list', () => {
@@ -109,6 +161,15 @@ describe('headlessArgs', () => {
     expect(after('--permission-mode')).toBe('default');
     expect(after('--setting-sources')).toBe('');
     expect(args).toContain('--strict-mcp-config');
+  });
+
+  it('has no --allowedTools while the policy lists no MCP server', () => {
+    expect(headlessArgs(base, 'none')).not.toContain('--allowedTools');
+  });
+
+  it('allows the MCP servers of the policy with --allowedTools', () => {
+    const args = headlessArgs({ ...base, mcpServers: ['otheater', 'docs'] }, 'none');
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__otheater,mcp__docs');
   });
 
   it('never asks for a mode or a flag that skips permissions', () => {

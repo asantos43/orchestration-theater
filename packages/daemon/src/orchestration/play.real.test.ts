@@ -34,7 +34,9 @@ import { RealHeadCodeHost, waitFor } from './e2e-fixture.js';
  *   not guess it);
  * - `OT_TEST_CLAUDE_MODE` (optional): the mode id that lets the client call an MCP tool and edit
  *   a file without asking. With `onAsk: 'reject'` an ask is refused (architecture 5.8), so a
- *   mode that asks for every tool makes the play fail on the first one;
+ *   mode that asks for every tool makes the play fail on the first one. The tools of the MCP
+ *   servers of each role are the exception: the adapter allows them with `allowedTools` and
+ *   `permissions.allow` (`mcp__<server>`), whatever the mode;
  * - `OT_TEST_PLAY_TIMEOUT_MS` (optional): the total deadline of the play, in milliseconds. Default
  *   25 minutes; the `play` level of `tools/acceptance/real-acceptance.sh` kills the run after 30;
  * - `OT_TEST_PLAY_LIMITS` (optional): the `limits.preset` of the play (`economical`, `moderate` or
@@ -71,6 +73,14 @@ const DEFAULT_TIMEOUT_MS = 25 * 60_000;
 /** What the test needs after the deadline: stopping the daemon and the processes, removing files. */
 const TEARDOWN_MARGIN_MS = 3 * 60_000;
 const POLL_MS = 2_000;
+/**
+ * How long the test waits, after the Director answered with text and no play is open and nothing
+ * waits for the Producer, before it fails with "answered without opening a play". Ninety seconds
+ * is a margin over the gap between two turns of the Director; the play itself takes minutes.
+ */
+const NO_PLAY_GRACE_MS = 90_000;
+/** How much of each reply of the Director goes into the notes. */
+const REPLY_NOTE_CHARS = 600;
 
 function playTimeoutMs(): number {
   const raw = process.env.OT_TEST_PLAY_TIMEOUT_MS;
@@ -149,6 +159,11 @@ function log(text: string): void {
   process.stderr.write(`[play-real] ${text}\n`);
 }
 
+function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/gu, ' ').trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max)}...`;
+}
+
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
@@ -215,6 +230,23 @@ function usageOf(events: readonly EventEnvelope[]): { sum: UsageTotals; last: Us
     }
   }
   return { sum, last };
+}
+
+/**
+ * How many `tool_call_update` events of the play end with status `failed`. The `session.update`
+ * events come from the attempt runner only (`attempt-runner.ts`); the Director's updates are read
+ * for the text of its reply and never recorded, so a refused MCP call of the Director does not
+ * show here: its replies, in the notes, are what is left. A refused permission is not told apart
+ * from other failures: the normalized update has the status, not the reason.
+ */
+function failedToolCalls(events: readonly EventEnvelope[]): number {
+  let count = 0;
+  for (const event of events) {
+    if (event.type !== 'session.update') continue;
+    const update = (event.payload as { update?: { kind?: unknown; status?: unknown } }).update;
+    if (update?.kind === 'tool_call_update' && update.status === 'failed') count += 1;
+  }
+  return count;
 }
 
 function describeUsage(label: string, totals: UsageTotals): string {
@@ -298,8 +330,20 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           // recorded and cancelled (the criteria below then fail with a clear summary).
           const answered = new Set<string>();
           const deadline = started + timeoutMs;
+          // The cursor of the replies of the Director (`since`) keeps each one from coming twice.
+          let since = 0;
+          let directorReplied = false;
+          // Since when the Director has answered, no play is open and nothing waits for us.
+          let idleSince: number | undefined;
           for (;;) {
-            const poll = await producer.poll(scenarioId, 0);
+            const poll = await producer.poll(scenarioId, since);
+            for (const reply of poll.replies) {
+              since = Math.max(since, reply.seq);
+              directorReplied = true;
+              notes.push(
+                `Director reply #${String(reply.seq)} to ${reply.to}: ${clip(reply.text, REPLY_NOTE_CHARS)}`,
+              );
+            }
             for (const ask of poll.asks) {
               if (answered.has(ask.id)) continue;
               answered.add(ask.id);
@@ -324,6 +368,24 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
             playRecord = (await daemon.store.plays.list({ scenarioId }))[0];
             if (playRecord?.finishedAt !== null && playRecord?.finishedAt !== undefined) break;
             if (Date.now() > deadline) break;
+            // Fail early: a Director that answered in text and opened nothing will not open a play
+            // by waiting; the notes say what it answered.
+            const waiting =
+              playRecord === undefined &&
+              directorReplied &&
+              poll.plays.length === 0 &&
+              poll.asks.length === 0 &&
+              !poll.busy;
+            if (!waiting) {
+              idleSince = undefined;
+            } else {
+              idleSince ??= Date.now();
+              if (Date.now() - idleSince >= NO_PLAY_GRACE_MS) {
+                throw new Error(
+                  `the Director answered without opening a play (${seconds(NO_PLAY_GRACE_MS)} of grace; see the notes)`,
+                );
+              }
+            }
             await sleep(POLL_MS);
           }
 
@@ -382,6 +444,7 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
               const demands = await daemon.store.demands.list({ playId: id });
               const submitted = events.filter((event) => event.type === 'attempt.submitted').length;
               const usage = usageOf(events);
+              const failedCalls = failedToolCalls(events);
               log(`play ${id}: state ${(await daemon.store.plays.get(id))?.state ?? '?'}`);
               log(`path: ${path || '(no transition)'}`);
               log(
@@ -390,6 +453,10 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                   .join(', ')}); submits: ${String(submitted)}`,
               );
               log(`demands: ${demands.map((d) => `${d.id}:${d.state}`).join(', ') || '(none)'}`);
+              log(
+                `tool calls that ended failed in the recorded sessions: ${String(failedCalls)} ` +
+                  '(attempt sessions only: the updates of the Director are not in the event log)',
+              );
               log(describeUsage('usage, sum of the updates [N]', usage.sum));
               log(describeUsage('usage, last update of each session [N]', usage.last));
             } else {

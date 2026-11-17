@@ -160,6 +160,23 @@ describe('sessionSetup', () => {
     });
   });
 
+  it('on ACP, allows the MCP servers of the policy in the options and in the settings of _meta', async () => {
+    await build().openSession(profile, { ...policy, mcpServers: ['otheater'] }, '/work', via, {
+      mcpServers: [{ name: 'otheater', url: 'http://127.0.0.1:1/mcp' }],
+    });
+    expect(via.opened[0]?.setup).toMatchObject({
+      via: 'acp',
+      meta: {
+        claudeCode: {
+          options: {
+            allowedTools: ['mcp__otheater'],
+            settings: { permissions: { allow: ['mcp__otheater'] } },
+          },
+        },
+      },
+    });
+  });
+
   it('follows the setting_sources mode', async () => {
     await build({ settingSources: 'user' }).openSession(profile, policy, '/work', via);
     expect(JSON.stringify(via.opened[0]?.setup)).toContain(
