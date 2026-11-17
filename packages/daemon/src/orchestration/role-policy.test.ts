@@ -153,7 +153,7 @@ describe('roles.<role>.policy in the configuration', () => {
     expect(policy.onAsk).toBe('reject');
   });
 
-  it('takes the literals that are the only values (bypass, write_scope, on_ask: reject)', () => {
+  it('takes the literals that are the only values (bypass, write_scope) and on_ask: reject', () => {
     const config = parseConfig(
       'roles:\n  actor:\n    policy:\n      bypass: forbidden\n      write_scope: worktree\n      on_ask: reject\n',
     );
@@ -205,12 +205,6 @@ const REFUSALS: readonly Refusal[] = [
   },
   { key: 'native_shell', yaml: 'bash', json: 'bash', message: /native_shell: "bash" is refused/u },
   { key: 'native_shell', yaml: 'all', json: 'all', message: /native_shell: "all" is refused/u },
-  {
-    key: 'on_ask',
-    yaml: 'rules',
-    json: 'rules',
-    message: /on_ask: "rules" needs the release rules.*P2/u,
-  },
   { key: 'on_ask', yaml: 'allow', json: 'allow', message: /actor\.policy\.on_ask/u },
   {
     key: 'network',

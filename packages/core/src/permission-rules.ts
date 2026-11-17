@@ -142,7 +142,11 @@ function resolved(segments: string[], resolve: PermissionContext['resolvePath'])
 }
 
 /** The path of a request as segments of an absolute path: a relative one is taken from the worktree. */
-function resolveSegments(path: string, cwd: readonly string[], context: PermissionContext): string[] {
+function resolveSegments(
+  path: string,
+  cwd: readonly string[],
+  context: PermissionContext,
+): string[] {
   const own = absoluteSegments(path) ?? walk([...cwd, ...path.replaceAll('\\', '/').split('/')]);
   return resolved(own, context.resolvePath);
 }
@@ -158,14 +162,11 @@ interface Confined {
   readonly inside: readonly string[] | undefined;
 }
 
-function confine(
-  path: string,
-  cwd: readonly string[],
-  context: PermissionContext,
-): Confined {
+function confine(path: string, cwd: readonly string[], context: PermissionContext): Confined {
   const target = resolveSegments(path, cwd, context);
   const fold = WINDOWS_DRIVE.test(cwd[0] ?? '');
-  const same = (a: string, b: string): boolean => (fold ? a.toLowerCase() === b.toLowerCase() : a === b);
+  const same = (a: string, b: string): boolean =>
+    fold ? a.toLowerCase() === b.toLowerCase() : a === b;
   if (target.length < cwd.length) return { inside: undefined };
   for (let i = 0; i < cwd.length; i += 1) {
     if (!same(target[i] ?? '', cwd[i] ?? '')) return { inside: undefined };
@@ -258,8 +259,8 @@ export function matchRule(
   context: PermissionContext,
 ): PermissionRule | undefined {
   const cwd = cwdSegments(context);
-  const relative = (request.locations ?? []).map(
-    (path) => confine(path, cwd, context).inside?.join('/'),
+  const relative = (request.locations ?? []).map((path) =>
+    confine(path, cwd, context).inside?.join('/'),
   );
   return rules.find((rule) => {
     if (rule.kind !== undefined) {
@@ -326,8 +327,14 @@ function optionOf(
  * rejection picks `reject_once`, then `reject_always`; with no option that refuses the answer is
  * `cancelled`, and so is a release the client offers no `allow_once` for (fail closed).
  */
-export function answerOf(request: PermissionRequest, decision: PermissionDecision): PermissionAnswer {
-  const kinds = decision.decision === 'allow' ? (['allow_once'] as const) : (['reject_once', 'reject_always'] as const);
+export function answerOf(
+  request: PermissionRequest,
+  decision: PermissionDecision,
+): PermissionAnswer {
+  const kinds =
+    decision.decision === 'allow'
+      ? (['allow_once'] as const)
+      : (['reject_once', 'reject_always'] as const);
   const option = optionOf(request, kinds);
   return option === undefined
     ? { outcome: 'cancelled' }
