@@ -221,7 +221,8 @@ describe('admission and start (no Chromium needed)', () => {
   });
 });
 
-describe.skipIf(!HAS_CHROMIUM)('a real Chromium', () => {
+// A real Chromium starts cold in each test; 5 s (the vitest default) is too short on a busy CI runner.
+describe.skipIf(!HAS_CHROMIUM)('a real Chromium', { timeout: 30_000 }, () => {
   it('opens a local page, reads it, takes a screenshot, clicks, fills and presses a key', async () => {
     const adapter = make();
     const s = scope('s1');
