@@ -18,6 +18,16 @@ export interface McpGrantInput {
   readonly role: string;
   readonly correlation: McpCorrelation;
   /**
+   * The worktree of the attempt: where the work tools (`restricted_shell`, `run_tests`...) run and
+   * what they are confined to. A tool that needs it refuses without one.
+   */
+  readonly worktree?: string;
+  /**
+   * The domains of the role's `network.allow` (`RolePolicy.network`): the only hosts `http_get`
+   * may reach. Absent or empty means none.
+   */
+  readonly networkAllow?: readonly string[];
+  /**
    * Appends an event of this attempt to the log (the journal of the attempt). The `submit*` tools
    * write `attempt.submitted` and `attempt.submit_failed` through it.
    */

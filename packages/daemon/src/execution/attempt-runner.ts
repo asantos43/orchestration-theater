@@ -496,6 +496,8 @@ export class AttemptRunner {
       attemptId: context.attemptId,
       role: spec.role,
       correlation: this.#correlation(context),
+      worktree: context.worktree,
+      networkAllow: spec.policy.network.allow,
       record: (event) => context.journal.write(event),
     });
   }
