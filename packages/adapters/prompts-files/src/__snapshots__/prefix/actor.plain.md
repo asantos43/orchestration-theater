@@ -42,3 +42,9 @@ These are the only framework tools you can call:
 - `git_commit` (changes your worktree)
 - `restricted_shell` (changes your worktree)
 - `http_get`
+- `browser_open`
+- `browser_read`
+- `browser_screenshot`
+- `browser_click` (acts outside the worktree)
+- `browser_fill` (acts outside the worktree)
+- `browser_press_key` (acts outside the worktree)

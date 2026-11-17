@@ -70,4 +70,48 @@ describe('the input and output schemas of the work tools', () => {
     expect(schemas('http_get').output.safeParse({ ...body, untrusted: true }).success).toBe(true);
     expect(schemas('http_get').output.safeParse({ ...body, untrusted: false }).success).toBe(false);
   });
+
+  it('describe the browser tools: reads are plain, clicks and keys are external writes', () => {
+    for (const name of ['browser_open', 'browser_read', 'browser_screenshot']) {
+      expect(schemas(name).effect, name).toBe('none');
+      expect(schemas(name).roles, name).toEqual(['actor', 'consultant']);
+    }
+    for (const name of ['browser_click', 'browser_fill', 'browser_press_key']) {
+      expect(schemas(name).effect, name).toBe('external_write');
+      expect(schemas(name).idempotencyKey, name).toBe('attempt_step');
+    }
+    expect(schemas('browser_open').input.safeParse({ url: 'file:///tmp/a.html' }).success).toBe(
+      true,
+    );
+    expect(schemas('browser_open').input.safeParse({ url: '' }).success).toBe(false);
+    expect(schemas('browser_read').input.safeParse({}).success).toBe(true);
+    expect(schemas('browser_read').input.safeParse({ ref: 'f1e6' }).success).toBe(true);
+    expect(schemas('browser_click').input.safeParse({}).success).toBe(false);
+    expect(schemas('browser_fill').input.safeParse({ ref: 'f1e6', value: '' }).success).toBe(true);
+    expect(schemas('browser_fill').input.safeParse({ ref: 'f1e6' }).success).toBe(false);
+    expect(schemas('browser_press_key').input.safeParse({ key: 'Enter' }).success).toBe(true);
+    const page = { url: 'http://127.0.0.1:1/', title: 't' };
+    expect(
+      schemas('browser_read').output.safeParse({
+        ...page,
+        text: 'x',
+        tree: '- heading',
+        truncated: false,
+        untrusted: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      schemas('browser_read').output.safeParse({
+        ...page,
+        text: 'x',
+        tree: '',
+        truncated: false,
+        untrusted: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      schemas('browser_click').output.safeParse({ ...page, reused: false, untrusted: true })
+        .success,
+    ).toBe(true);
+  });
 });

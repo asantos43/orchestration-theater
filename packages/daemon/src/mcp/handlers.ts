@@ -75,6 +75,18 @@ export class ToolFailure extends Error {
 }
 
 /**
+ * [proposta] A reply that carries an image (a screenshot of `browser_screenshot`): `value` goes
+ * back as `structuredContent` and as text, like any reply, and `image` as an `image` content block
+ * the model can look at. `data` is base64 (what the MCP image block takes).
+ */
+export class ToolWithImage {
+  constructor(
+    readonly value: unknown,
+    readonly image: { readonly mimeType: string; readonly data: string },
+  ) {}
+}
+
+/**
  * [proposta] What a registered tool with no handler yet answers: an error result with a stable
  * `error` code, so an Executor (and a test) can tell "not built yet" from a failure of the tool.
  */

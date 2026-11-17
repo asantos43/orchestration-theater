@@ -15,6 +15,8 @@ export function isSubmitTool(name: string): boolean {
 export interface ToolReply {
   readonly ok: boolean;
   readonly value: unknown;
+  /** An image to show the model beside the value (`ToolWithImage`); base64 data. */
+  readonly image?: { readonly mimeType: string; readonly data: string };
 }
 
 /** Longest validation error the event keeps (the schema of `attempt.submit_failed`). */

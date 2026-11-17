@@ -7,7 +7,7 @@ import {
   type Sandbox,
   type SandboxCapabilities,
 } from '@otheater/core';
-import type { ClientId, DaemonConfig } from './config.js';
+import { secretPathEntries, type ClientId, type DaemonConfig } from './config.js';
 
 /**
  * [proposta, N] The domains each client needs to work at all (its API and its login). Not measured
@@ -68,11 +68,12 @@ const NO_NETWORK: Pick<RolePolicy, 'writeScope' | 'network'> = {
 /** Builds what the daemon hands out from a `Sandbox` and the config. Pure apart from the sandbox. */
 export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
   const { sandbox, config, home, dataDir } = input;
+  const entries = secretPathEntries(config);
   const secretPaths = resolveSecretPaths({
     home,
     dataDir,
-    add: config.security.secret_paths.add,
-    remove: config.security.secret_paths.remove,
+    add: entries.add,
+    remove: entries.remove,
   });
   const extraWritePaths = config.sandbox.extra_write_paths;
   const extraDomains = config.sandbox.extra_domains;

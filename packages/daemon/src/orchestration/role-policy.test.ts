@@ -146,6 +146,41 @@ describe('roles.<role>.policy in the configuration', () => {
     expect(toolsOf(await resolveRolePolicy(resolver(), 'consultant'))).not.toContain('http_get');
   });
 
+  it('the browser key gives the browser tools by their effect: none, read (only looks), full', async () => {
+    const BROWSER_READ = ['browser_open', 'browser_read', 'browser_screenshot'];
+    const BROWSER_WRITE = ['browser_click', 'browser_fill', 'browser_press_key'];
+    const none = toolsOf(await resolveRolePolicy(resolver(), 'actor'));
+    for (const name of [...BROWSER_READ, ...BROWSER_WRITE]) expect(none).not.toContain(name);
+
+    const read = toolsOf(
+      await resolveRolePolicy(
+        resolver('roles:\n  actor:\n    policy:\n      browser: read\n'),
+        'actor',
+      ),
+    );
+    expect(read).toEqual(expect.arrayContaining(BROWSER_READ));
+    for (const name of BROWSER_WRITE) expect(read).not.toContain(name);
+
+    const full = toolsOf(
+      await resolveRolePolicy(
+        resolver('roles:\n  consultant:\n    policy:\n      browser: full\n'),
+        'consultant',
+      ),
+    );
+    expect(full).toEqual(expect.arrayContaining([...BROWSER_READ, ...BROWSER_WRITE]));
+    // A role the registry does not give the browser to never gets it.
+    const critic = toolsOf(
+      await resolveRolePolicy(
+        resolver('roles:\n  critic:\n    policy:\n      browser: full\n'),
+        'critic',
+      ),
+    );
+    expect(critic).not.toContain('browser_open');
+    expect(() => parseConfig('roles:\n  actor:\n    policy:\n      browser: sometimes\n')).toThrow(
+      InvalidInput,
+    );
+  });
+
   it('the native tools key gives a role the write tools, or takes them away', async () => {
     const yaml =
       'roles:\n  critic:\n    policy:\n      native_tools: [read, search, edit, write]\n';
