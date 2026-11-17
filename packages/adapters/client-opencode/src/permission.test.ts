@@ -13,6 +13,7 @@ const policy = (patch: Partial<RolePolicy> = {}): RolePolicy => ({
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -61,11 +62,30 @@ describe('opencodePermission', () => {
     expect(opencodePermission(policy())).not.toHaveProperty('shell');
   });
 
-  it('allows only the MCP servers of the role, by their prefix', () => {
-    const rules = opencodePermission(policy({ mcpServers: ['otheater-shells', 'my server'] }));
-    expect(rules['otheater-shells_*']).toBe('allow');
+  it('allows only the MCP tools the role lists, by server and tool name', () => {
+    const rules = opencodePermission(
+      policy({
+        mcpServers: ['otheater-shells', 'my server'],
+        mcpTools: { 'otheater-shells': ['run_tests', 'read_file'], 'my server': 'all' },
+      }),
+    );
+    expect(rules['otheater-shells_run_tests']).toBe('allow');
+    expect(rules['otheater-shells_read_file']).toBe('allow');
     expect(rules['my_server_*']).toBe('allow');
+    expect(rules).not.toHaveProperty('otheater-shells_*');
     expect(mcpToolPrefix('a.b/c')).toBe('a_b_c');
+  });
+
+  it('a server of the role with no tool listed has no tool allowed (fail closed)', () => {
+    const rules = opencodePermission(policy({ mcpServers: ['otheater'], mcpTools: {} }));
+    expect(Object.keys(rules).filter((key) => key.startsWith('otheater'))).toEqual([]);
+  });
+
+  it('a tool of a server the policy does not list is not allowed', () => {
+    const rules = opencodePermission(
+      policy({ mcpServers: [], mcpTools: { otheater: ['submit'] } }),
+    );
+    expect(rules).not.toHaveProperty('otheater_submit');
   });
 
   it('is pure and does not change the policy', () => {

@@ -25,6 +25,7 @@ const policy: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -160,17 +161,21 @@ describe('sessionSetup', () => {
     });
   });
 
-  it('on ACP, allows the MCP servers of the policy in the options and in the settings of _meta', async () => {
-    await build().openSession(profile, { ...policy, mcpServers: ['otheater'] }, '/work', via, {
-      mcpServers: [{ name: 'otheater', url: 'http://127.0.0.1:1/mcp' }],
-    });
+  it('on ACP, allows the MCP tools of the policy in the options and in the settings of _meta', async () => {
+    await build().openSession(
+      profile,
+      { ...policy, mcpServers: ['otheater'], mcpTools: { otheater: ['submit'] } },
+      '/work',
+      via,
+      { mcpServers: [{ name: 'otheater', url: 'http://127.0.0.1:1/mcp' }] },
+    );
     expect(via.opened[0]?.setup).toMatchObject({
       via: 'acp',
       meta: {
         claudeCode: {
           options: {
-            allowedTools: ['mcp__otheater'],
-            settings: { permissions: { allow: ['mcp__otheater'] } },
+            allowedTools: ['mcp__otheater__submit'],
+            settings: { permissions: { allow: ['mcp__otheater__submit'] } },
           },
         },
       },

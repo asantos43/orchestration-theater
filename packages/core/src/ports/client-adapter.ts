@@ -12,26 +12,55 @@ import type { QuotaProbe } from './quota-probe.js';
  * parameter is optional, but a client adapter that ignores `purpose: 'catalog-probe'` would hand a
  * working session to a caller that expects one that cannot run a prompt, so the range
  * `^0.1.0` no longer vouches for it. [proposta]
+ * `0.3.0` (Phase 4, P1): `RolePolicy` is version 2 (`nativeShell: 'shells'`, `onAsk: 'rules'`,
+ * `mcpTools`). A client adapter written for version 1 would read `shells` as no shell and an MCP
+ * server as whole, so the range `^0.2.0` no longer vouches for it. [proposta]
  */
-export const CLIENT_ADAPTER_PORT_VERSION = '0.2.0';
+export const CLIENT_ADAPTER_PORT_VERSION = '0.3.0';
+
+/**
+ * The tools of one MCP server that a role may call: the names, or `all` for a server whose tools
+ * the daemon does not know in advance (a plugin server). [proposta]
+ */
+export type McpToolSet = readonly string[] | 'all';
 
 /**
  * Neutral policy of a role: it names no key of any client (architecture 5.2). The descendant of
- * the `ClientAdapter` translates it. The literal types are the only values of version 1.
+ * the `ClientAdapter` translates it. Version 2 (Phase 4, P1, [proposta]); the daemon builds it
+ * from the configuration (`roles.<role>.policy`) and refuses an opening that is always forbidden
+ * (N99), so `bypass`, the native shell of the client and `writeScope` keep a single value here.
  */
 export interface RolePolicy {
   /** Native tools that exist; the others are removed. */
   readonly nativeTools: readonly ('read' | 'search' | 'edit' | 'write')[];
-  /** v1: shell only through the shells of the daemon (5.8). */
-  readonly nativeShell: 'none';
+  /**
+   * `none`: the role has no shell at all. `shells`: the role also gets the shells of the daemon
+   * (5.8, `restricted_shell`, `run_tests`...), which reach the client as MCP tools listed in
+   * {@link RolePolicy.mcpTools}. The shell of the client itself is never available, in either value.
+   */
+  readonly nativeShell: 'none' | 'shells';
   /** Only the MCP servers of the role (strict). */
   readonly mcpServers: readonly string[];
-  /** Reject every request; other values only when a release rule exists. */
-  readonly onAsk: 'reject';
+  /**
+   * The tools the role may call, per server of {@link RolePolicy.mcpServers}, by the name the
+   * server announces (without the client's prefix). A server with no entry has no tool allowed
+   * (fail closed); a tool of the server that is not listed stays under the layer 2 answer.
+   */
+  readonly mcpTools: Readonly<Record<string, McpToolSet>>;
+  /**
+   * `reject`: reject every request. `rules`: answer by the release rules of the daemon (layer 2,
+   * P2); the request outside the policy is still rejected.
+   */
+  readonly onAsk: 'reject' | 'rules';
   readonly bypass: 'forbidden';
   readonly writeScope: 'worktree';
   /** Allowed domains; guaranteed by layer 3. */
   readonly network: { readonly allow: readonly string[] };
+}
+
+/** The tools of `server` the policy allows; none for a server the policy gives no entry. */
+export function mcpToolsOf(policy: RolePolicy, server: string): McpToolSet {
+  return Object.hasOwn(policy.mcpTools, server) ? (policy.mcpTools[server] ?? []) : [];
 }
 
 /** Fields of the {@link RolePolicy}, the keys of {@link Enforcement}. */
@@ -39,6 +68,7 @@ export const ROLE_POLICY_FIELDS = [
   'nativeTools',
   'nativeShell',
   'mcpServers',
+  'mcpTools',
   'onAsk',
   'bypass',
   'writeScope',
