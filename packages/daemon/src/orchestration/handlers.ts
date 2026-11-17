@@ -385,6 +385,46 @@ export class OrchestrationHandlers {
   }
 
   /**
+   * Opens a question to the Producer for something other than the Director, today the approval of
+   * an action of the browser (architecture 5.19, `browser.write_approval`). It is the same decision
+   * as `ask_producer` (kind `producer_question`, the same prompt queue, the same answer `{answers}`),
+   * so the Producer answers it where they answer the Director's questions. Returns the id at once
+   * and the answer as a promise, which rejects when the daemon stops (the decision is then
+   * cancelled). `undefined` while the daemon is still starting: nobody can be asked, which a caller
+   * reads as a refusal. [proposta]
+   */
+  async openApproval(
+    scenarioId: string,
+    input: z.infer<typeof askProducerInput>,
+  ): Promise<{ decisionId: string; answer: Promise<JsonValue> } | undefined> {
+    const rt = this.#runtime;
+    if (rt === undefined) return undefined;
+    const id = `${scenarioId}:ask:${randomUUID().slice(0, 8)}`;
+    await rt.store.decisions.create({
+      id,
+      scenarioId,
+      kind: DECISION_KINDS.question,
+      input: { questions: JSON.parse(JSON.stringify(input.questions)) as JsonValue },
+    });
+    const waiting = this.board.wait(id);
+    await rt.chatFlow?.sync(scenarioId, 'ask_producer', { decisionId: id });
+    const answer = waiting.then(
+      async (value) => {
+        await rt.chatFlow?.sync(scenarioId, 'producer_answered', { decisionId: id });
+        return isRecord(value) && 'answers' in value ? (value.answers ?? null) : value;
+      },
+      async (error: unknown) => {
+        await rt.store.decisions.cancel(id).catch(() => undefined);
+        await rt.chatFlow
+          ?.sync(scenarioId, 'ask_cancelled', { decisionId: id })
+          .catch(() => undefined);
+        throw error;
+      },
+    );
+    return { decisionId: id, answer };
+  }
+
+  /**
    * `ask_producer`: records the questions as a decision for the Producer and holds the call open
    * until they answer (or the daemon stops). [proposta] A blocking call keeps the Director's turn,
    * and with it the single queue, until the answer: the Producer is the only one who can unblock
