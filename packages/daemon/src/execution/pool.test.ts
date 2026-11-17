@@ -532,3 +532,36 @@ describe('SessionPool, acquires at the same time', () => {
     expect(launcher.running).toHaveLength(0);
   });
 });
+
+describe('SessionPool, framework MCP server', () => {
+  const framework = {
+    name: 'otheater',
+    url: 'http://127.0.0.1:1/mcp',
+    headers: { Authorization: 'Bearer t' },
+  };
+
+  it.each([false, true])(
+    'hands the MCP servers of the request to the session, new and reloaded (shared: %s)',
+    async (shared) => {
+      const { pool, transport, request } = setup({ shared });
+      const policy = { ...TEST_POLICY, mcpServers: ['otheater'] };
+      const lease = await pool.acquire({ ...request(), policy, mcpServers: [framework] });
+      expect(transport.opened[0]?.mcpServers).toEqual([framework]);
+      const reloaded = await pool.acquire({
+        ...request(TEST_PROFILE, { resumeSessionId: lease.session.sessionId }),
+        policy,
+        mcpServers: [framework],
+      });
+      expect(transport.loaded[0]?.mcpServers).toEqual([framework]);
+      await reloaded.release();
+      await lease.release();
+    },
+  );
+
+  it('refuses a server the policy of the role does not list', async () => {
+    const { pool, request } = setup({ shared: false });
+    await expect(pool.acquire({ ...request(), mcpServers: [framework] })).rejects.toThrow(
+      /otheater/,
+    );
+  });
+});

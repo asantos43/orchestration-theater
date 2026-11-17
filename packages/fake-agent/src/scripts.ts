@@ -31,6 +31,34 @@ export const scriptSchema = z.discriminatedUnion('name', [
     name: z.literal('fail'),
     message: z.string().default('fake-agent scripted failure'),
   }),
+  /**
+   * [proposal] Plays an Executor that uses a framework MCP tool: `initialize`, `tools/list` and,
+   * when `tool` is given, `tools/call`, over Streamable HTTP with the URL and the headers the
+   * session received in `mcpServers` (`fetch` only, no client package). The names of the listed
+   * tools and the reply of the call come back as message chunks (`tools: a, b` and `reply: {...}`).
+   */
+  z.strictObject({
+    name: z.literal('mcp-call'),
+    /** Name of the server in the `mcpServers` of the session. */
+    server: z.string().min(1).default('otheater'),
+    tool: z.string().min(1).optional(),
+    arguments: z.record(z.string(), z.json()).default({}),
+    /** Skips `tools/list` when false. */
+    list: z.boolean().default(true),
+  }),
+  /**
+   * [proposal] Delivers the output of the role: calls a `submit*` tool of the framework server
+   * with `output` as the arguments, up to `repeat` times and until a call is accepted (so an
+   * invalid `output` plays the retry loop of `limits.submit_retries`). Each reply comes back as a
+   * message chunk (`submit 1: {...}`).
+   */
+  z.strictObject({
+    name: z.literal('submit'),
+    server: z.string().min(1).default('otheater'),
+    tool: z.string().min(1).default('submit'),
+    output: z.record(z.string(), z.json()).default({ result: 'done' }),
+    repeat: z.int().min(1).max(10).default(1),
+  }),
   z.strictObject({ name: z.literal('hang') }),
   z.strictObject({
     name: z.literal('deaf'),
@@ -52,6 +80,8 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'tool-call',
   'edit-file',
   'write-file',
+  'mcp-call',
+  'submit',
   'fail',
   'hang',
   'deaf',

@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: MPL-2.0
+import { InvalidInput, type NewEvent, type ToolDefinition } from '@otheater/core';
+import type { McpCorrelation } from './access.js';
+
+/** Who is calling: the session of one attempt, with the role its token was minted for. */
+export interface ToolCaller {
+  readonly role: string;
+  readonly attemptId: string;
+  readonly sessionId: string | undefined;
+  readonly correlation: McpCorrelation;
+  /** Appends an event of the attempt to the log. */
+  readonly record: (event: NewEvent) => Promise<void>;
+}
+
+/** One call of a tool, already validated against its schema and allowed for the role. */
+export interface ToolCall {
+  readonly tool: ToolDefinition;
+  readonly input: unknown;
+  readonly caller: ToolCaller;
+}
+
+/**
+ * Runs a tool and returns its result (any JSON value). A throw is an error result for the client;
+ * the server logs it. Returned objects go back as `structuredContent` and as text.
+ */
+export type ToolHandler = (call: ToolCall) => unknown;
+
+/**
+ * The handlers of the tools of the registry, by name (architecture 5.3). The server registers the
+ * tools of the role from the tool registry; what runs when one is called is looked up here.
+ * `submit*` is built in (`runSubmit`); the other tools get their handler from the step that owns
+ * them: the blackboard and contracts (P7), the orders (P10) and the chat (P12). A tool without a
+ * handler answers a structured error that says so (see `notImplemented`).
+ */
+export class ToolHandlers {
+  readonly #byName = new Map<string, ToolHandler>();
+
+  register(name: string, handler: ToolHandler): this {
+    if (this.#byName.has(name)) {
+      throw new InvalidInput(`a handler for the tool "${name}" is already registered`);
+    }
+    this.#byName.set(name, handler);
+    return this;
+  }
+
+  has(name: string): boolean {
+    return this.#byName.has(name);
+  }
+
+  get(name: string): ToolHandler | undefined {
+    return this.#byName.get(name);
+  }
+}
+
+/**
+ * [proposta] What a registered tool with no handler yet answers: an error result with a stable
+ * `error` code, so an Executor (and a test) can tell "not built yet" from a failure of the tool.
+ */
+export function notImplemented(tool: string): { readonly error: string; readonly message: string } {
+  return {
+    error: 'not_implemented',
+    message: `The tool "${tool}" exists in the registry but has no handler in this version of the daemon.`,
+  };
+}

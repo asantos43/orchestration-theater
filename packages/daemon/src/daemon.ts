@@ -36,6 +36,9 @@ import type { AttemptResolver } from './execution/reconcile.js';
 import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
+import type { McpAccess } from './mcp/access.js';
+import type { ToolHandlers } from './mcp/handlers.js';
+import { FrameworkMcpServer } from './mcp/server.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -94,6 +97,11 @@ export interface StartDaemonOptions {
    */
   readonly registries?: RegistryEntries | undefined;
   /**
+   * What runs when a framework tool without a built-in handler is called (the blackboard, orders
+   * and chat steps register theirs). Without it those tools answer `not_implemented`. [proposta]
+   */
+  readonly mcpHandlers?: ToolHandlers | undefined;
+  /**
    * Where the role prompts come from. Without it the daemon uses the source `adapters.prompts`
    * asks for (the repository folder `prompts/`, or `prompts.directory`). Tests hand in a source with a bad
    * prompt to check that the daemon refuses to start. [proposta]
@@ -115,6 +123,11 @@ export interface DaemonHandle {
   readonly vaultLocked: boolean;
   /** The execution of attempts; `undefined` when no clients were given or there is no launcher. */
   readonly execution: Execution | undefined;
+  /**
+   * `http://127.0.0.1:<port>/mcp`: where the framework MCP server listens, with the port it got
+   * (`mcp.port: auto` takes a free one at each start). Handed to the sessions of the attempts.
+   */
+  readonly mcpUrl: string;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -147,6 +160,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
 
   let composition: Composition | undefined;
+  let mcp: FrameworkMcpServer | undefined;
   try {
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
@@ -162,8 +176,19 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
-    return await run({ options, config, composition, registries, lock, version });
+    // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
+    // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
+    mcp = await FrameworkMcpServer.start({
+      registries,
+      port: config.mcp.port,
+      submitRetries: config.limits.submit_retries,
+      ...(options.mcpHandlers === undefined ? {} : { handlers: options.mcpHandlers }),
+      logger: composition.logger,
+      version,
+    });
+    return await run({ options, config, composition, registries, mcp, lock, version });
   } catch (error) {
+    await mcp?.stop().catch(() => undefined);
     await composition?.close().catch(() => undefined);
     await lock.release().catch(() => undefined);
     throw error;
@@ -175,12 +200,13 @@ interface RunInput {
   readonly config: DaemonConfig;
   readonly composition: Composition;
   readonly registries: Registries;
+  readonly mcp: FrameworkMcpServer;
   readonly lock: InstanceLock;
   readonly version: string;
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
-  const { options, config, composition, registries, lock, version } = input;
+  const { options, config, composition, registries, mcp, lock, version } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
   const startedAt = clock.now();
@@ -226,7 +252,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     }),
   );
 
-  const execution = buildExecution(options, config, composition, paths.worktrees);
+  const execution = buildExecution(options, config, composition, paths.worktrees, mcp);
   if (execution !== undefined) {
     const report = await execution.reconcile();
     // The resumed attempts run on; nothing here waits for them.
@@ -285,6 +311,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       };
       await attempt('scheduler', () => scheduler.stop());
       await attempt('execution', async () => execution?.stop());
+      await attempt('mcp', () => mcp.stop());
       await attempt('daemon.stopped', () =>
         store.events.append(
           buildDaemonEvent('daemon.stopped', {
@@ -306,6 +333,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     registries,
     adapters: composition.adapters,
     execution,
+    mcpUrl: mcp.url,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },
@@ -331,6 +359,7 @@ function buildExecution(
   config: DaemonConfig,
   composition: Composition,
   worktreeRoot: string,
+  mcp: McpAccess,
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher } = composition;
@@ -362,6 +391,7 @@ function buildExecution(
     settings: executionSettingsOf(config),
     worktreeRoot,
     logger,
+    mcp,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }

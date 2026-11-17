@@ -33,6 +33,8 @@ describe('daemon event registry', () => {
       'session.cancel_escalated',
       'session.closed',
       'attempt.checkpoint',
+      'attempt.submitted',
+      'attempt.submit_failed',
       'workspace.integrated',
       'workspace.integration_failed',
       'delivery.completed',

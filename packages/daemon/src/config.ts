@@ -350,13 +350,30 @@ export const DaemonConfigSchema = z.strictObject({
       }).prefault({}),
     })
     .prefault({}),
-  /** The timeout keys of `limits` (architecture 5.4); the other keys of that group are not wired yet. */
+  /**
+   * The framework MCP server (architecture 5.3), Streamable HTTP on 127.0.0.1 only. `port: auto`
+   * (N81, owner's decision) takes a free port at every start and the real URL is given to the
+   * sessions; a number (1024 to 65535) fixes it.
+   */
+  mcp: z
+    .strictObject({
+      port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+    })
+    .prefault({}),
+  /** The timeout keys of `limits` (architecture 5.4), plus `submit_retries`; the others are not wired yet. */
   limits: z
     .strictObject({
       /** When the plan does not set `timeoutMin` for the demand. */
       demand_timeout: DurationSchema.prefault('30m'),
       /** Ceiling of what the plan may ask for. */
       demand_timeout_max: DurationSchema.prefault('2h'),
+      /**
+       * N79: how many times an invalid `submit*` goes back to the Executor with the validation
+       * error. The N+1-th invalid submit counts as the attempt's failure. `0`: the first invalid
+       * submit already fails. P4 will create the presets (economical 1, moderate 2, persistent 3);
+       * until then, 2 is the default.
+       */
+      submit_retries: z.int().min(0).default(2),
     })
     .prefault({})
     .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {

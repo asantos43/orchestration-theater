@@ -11,6 +11,7 @@ import {
   type AgentApp,
   type AgentConnection,
   type AgentContext,
+  type McpServer,
   type PermissionOption,
   type PromptResponse,
   type RequestPermissionResponse,
@@ -23,6 +24,7 @@ import {
   type QuotaExhaustedData,
   type QuotaSignalParams,
 } from '@otheater/protocol';
+import { McpHttpClient, type HttpMcpServer } from './mcp-client.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
 
 export const FAKE_AGENT_NAME = 'otheater-fake-agent';
@@ -51,6 +53,8 @@ interface Session {
   /** Aborted by `session/cancel`; present only while a prompt is running. */
   turn: AbortController | undefined;
   toolCalls: number;
+  /** The HTTP MCP servers of `session/new` or `session/load`, with the headers to send. */
+  mcpServers: HttpMcpServer[];
 }
 
 interface TurnContext {
@@ -311,6 +315,104 @@ async function playWriteFile(
   return END_TURN;
 }
 
+function httpServersOf(servers: readonly McpServer[] | undefined): HttpMcpServer[] {
+  const found: HttpMcpServer[] = [];
+  for (const server of servers ?? []) {
+    if (!('url' in server)) continue;
+    found.push({
+      name: server.name,
+      url: server.url,
+      headers: Object.fromEntries(server.headers.map((header) => [header.name, header.value])),
+    });
+  }
+  return found;
+}
+
+/** A tool call the Executor made, reported to the client as one `tool_call` that already ended. */
+async function reportMcpCall(
+  turn: TurnContext,
+  title: string,
+  status: 'completed' | 'failed',
+  text: string,
+): Promise<void> {
+  const toolCallId = nextToolCallId(turn.session);
+  await update(turn, {
+    sessionUpdate: 'tool_call',
+    toolCallId,
+    title,
+    kind: 'other',
+    status: 'in_progress',
+  });
+  await update(turn, {
+    sessionUpdate: 'tool_call_update',
+    toolCallId,
+    status,
+    content: [{ type: 'content', content: { type: 'text', text } }],
+    rawOutput: text,
+  });
+}
+
+/** The client of the named MCP server of the session, or a message that says why there is none. */
+async function mcpClientFor(turn: TurnContext, server: string): Promise<McpHttpClient | undefined> {
+  const found = turn.session.mcpServers.find((candidate) => candidate.name === server);
+  if (found === undefined) {
+    const names = turn.session.mcpServers.map((candidate) => candidate.name).join(', ');
+    await message(turn, `no MCP server "${server}" in this session (has: ${names || 'none'})`);
+    return undefined;
+  }
+  const client = new McpHttpClient(found);
+  await client.initialize();
+  return client;
+}
+
+/** What the turn says about a failure of the MCP call that is not a tool result. */
+async function mcpFailed(turn: TurnContext, title: string, error: unknown): Promise<void> {
+  const text = error instanceof Error ? error.message : String(error);
+  await reportMcpCall(turn, title, 'failed', text);
+  await message(turn, `mcp error: ${text}`);
+}
+
+async function playMcpCall(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'mcp-call' }>,
+): Promise<PromptResponse> {
+  const title = `MCP ${script.server}${script.tool === undefined ? '' : ` ${script.tool}`}`;
+  try {
+    const client = await mcpClientFor(turn, script.server);
+    if (client === undefined) return END_TURN;
+    if (script.list) await message(turn, `tools: ${(await client.listTools()).sort().join(', ')}`);
+    if (script.tool !== undefined) {
+      const outcome = await client.callTool(script.tool, script.arguments);
+      await reportMcpCall(turn, title, outcome.isError ? 'failed' : 'completed', outcome.text);
+      await message(turn, `reply: ${outcome.text}`);
+    }
+  } catch (error) {
+    await mcpFailed(turn, title, error);
+  }
+  return turn.signal.aborted ? CANCELLED : END_TURN;
+}
+
+async function playSubmit(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'submit' }>,
+): Promise<PromptResponse> {
+  const title = `MCP ${script.server} ${script.tool}`;
+  try {
+    const client = await mcpClientFor(turn, script.server);
+    if (client === undefined) return END_TURN;
+    for (let call = 1; call <= script.repeat; call += 1) {
+      if (turn.signal.aborted) return CANCELLED;
+      const outcome = await client.callTool(script.tool, script.output);
+      await reportMcpCall(turn, title, outcome.isError ? 'failed' : 'completed', outcome.text);
+      await message(turn, `submit ${String(call)}: ${outcome.text}`);
+      if (!outcome.isError) break;
+    }
+  } catch (error) {
+    await mcpFailed(turn, title, error);
+  }
+  return turn.signal.aborted ? CANCELLED : END_TURN;
+}
+
 async function playHang(turn: TurnContext): Promise<PromptResponse> {
   // The chunk tells the client the turn is running, so a cancel sent after it is never lost.
   await message(turn, 'hanging until session/cancel');
@@ -365,6 +467,10 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playEditFile(turn, script);
     case 'write-file':
       return playWriteFile(turn, script);
+    case 'mcp-call':
+      return playMcpCall(turn, script);
+    case 'submit':
+      return playSubmit(turn, script);
     case 'fail':
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
     case 'hang':
@@ -385,8 +491,14 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
   const sessions = new Map<string, Session>();
   let created = 0;
 
-  const open = (sessionId: string, cwd: string): void => {
-    sessions.set(sessionId, { cwd, config: new Map(), turn: undefined, toolCalls: 0 });
+  const open = (sessionId: string, cwd: string, mcpServers: readonly McpServer[]): void => {
+    sessions.set(sessionId, {
+      cwd,
+      config: new Map(),
+      turn: undefined,
+      toolCalls: 0,
+      mcpServers: httpServersOf(mcpServers),
+    });
   };
   const find = (sessionId: string): Session => {
     const session = sessions.get(sessionId);
@@ -397,7 +509,12 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
   return agent({ name: FAKE_AGENT_NAME })
     .onRequest(methods.agent.initialize, () => ({
       protocolVersion: PROTOCOL_VERSION,
-      agentCapabilities: { loadSession: true, promptCapabilities: {} },
+      // `mcpCapabilities.http`: the client takes the framework MCP server of 5.3 (HTTP only).
+      agentCapabilities: {
+        loadSession: true,
+        promptCapabilities: {},
+        mcpCapabilities: { http: true },
+      },
       agentInfo: {
         name: FAKE_AGENT_NAME,
         title: 'OTheater fake agent',
@@ -409,12 +526,12 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
     .onRequest(methods.agent.session.new, ({ params }) => {
       created += 1;
       const sessionId = `fake-session-${String(created)}`;
-      open(sessionId, params.cwd);
+      open(sessionId, params.cwd, params.mcpServers);
       return { sessionId, configOptions: configOptionsOf(find(sessionId)) };
     })
     .onRequest(methods.agent.session.load, ({ params }) => {
       // No history to replay: the fake agent only recreates the session state.
-      open(params.sessionId, params.cwd);
+      open(params.sessionId, params.cwd, params.mcpServers);
       return { configOptions: configOptionsOf(find(params.sessionId)) };
     })
     .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
