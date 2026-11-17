@@ -249,6 +249,31 @@ function failedToolCalls(events: readonly EventEnvelope[]): number {
   return count;
 }
 
+/**
+ * One line for each `attempt.submitted` and `attempt.submit_failed` of the play (the tool and its
+ * output or its validation errors), and for each transition that carried a reason (a
+ * SUBMIT_FAILED, for one). Everything is clipped: the output of a plan can be long.
+ */
+function submitNoteOf(event: EventEnvelope, started: number): string[] {
+  const at = seconds(event.timestamp - started);
+  const payload = event.payload as Record<string, unknown>;
+  if (event.type === 'attempt.submitted') {
+    const output = clip(JSON.stringify(payload.output ?? null), REPLY_NOTE_CHARS);
+    return [`submitted@${at} ${String(payload.tool)} (call ${String(payload.calls)}): ${output}`];
+  }
+  if (event.type === 'attempt.submit_failed') {
+    const errors = clip(typeof payload.errors === 'string' ? payload.errors : '', REPLY_NOTE_CHARS);
+    return [
+      `submit_failed@${at} ${String(payload.tool)} (${String(payload.calls)} calls): ${errors}`,
+    ];
+  }
+  if (event.type === 'play.transitioned' && typeof payload.reason === 'string') {
+    const reason = clip(payload.reason, REPLY_NOTE_CHARS);
+    return [`transition@${at} ${String(payload.event)} -> ${String(payload.to)}: ${reason}`];
+  }
+  return [];
+}
+
 function describeUsage(label: string, totals: UsageTotals): string {
   return (
     `${label}: ${String(totals.turns)} updates, in ${String(totals.inputTokens)}, ` +
@@ -357,7 +382,9 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                 notes.push(`the Director asked ${String(questions.length)} question(s): answered`);
                 await producer.answer(ask.id, { answers });
               } else {
-                const reason = typeof ask.input.reason === 'string' ? ask.input.reason : '';
+                // `reason` of a menu is the `ProducerReason` object of the machine (`kind`, and
+                // `counter`/`resumeTo` for a limit), not a string: show it whole, clipped.
+                const reason = clip(JSON.stringify(ask.input.reason ?? null), REPLY_NOTE_CHARS);
                 notes.push(`menu "${ask.kind}" in ${ask.playId ?? '?'}: ${reason}; cancelled`);
                 await producer.answer(ask.id, {
                   option: 'cancel',
@@ -443,6 +470,9 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
               );
               const demands = await daemon.store.demands.list({ playId: id });
               const submitted = events.filter((event) => event.type === 'attempt.submitted').length;
+              // What each stage tool received (or refused) and, in the transitions, why the play
+              // moved on a failure: without this a SUBMIT_FAILED says only that it happened.
+              const submitNotes = events.flatMap((event) => submitNoteOf(event, started));
               const usage = usageOf(events);
               const failedCalls = failedToolCalls(events);
               log(`play ${id}: state ${(await daemon.store.plays.get(id))?.state ?? '?'}`);
@@ -452,6 +482,7 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                   .map((a) => `${a.demandId}#${String(a.attempt)}:${a.state}`)
                   .join(', ')}); submits: ${String(submitted)}`,
               );
+              for (const note of submitNotes) log(note);
               log(`demands: ${demands.map((d) => `${d.id}:${d.state}`).join(', ') || '(none)'}`);
               log(
                 `tool calls that ended failed in the recorded sessions: ${String(failedCalls)} ` +

@@ -337,6 +337,7 @@ pool:
 - a saída é validada com **zod** contra o schema do papel;
 - saída inválida volta ao Executor com o erro de validação, até `N` vezes (`limits.submit_retries`, padrão 2 na predefinição `moderate`; decidido em 2026-11-17, N79);
 - depois disso, conta como falha da tentativa.
+- **[proposta]** as ferramentas de etapa (`submit_plan`, `submit_plan_review`, `submit_script`, `submit_script_review`, `submit_critique`) validam com o esquema da saída da etapa, o mesmo que o daemon usa para ler o que foi aceito; assim um formato errado volta ao modelo dentro das `N` retentativas e não derruba a peça depois (rodada real de 2026-11-17).
 
 **Perguntas ao Produtor (`ask_producer`)** (decidido em 2026-11-14, v0.26, item 24 da seção 12, a pedido do dono): por padrão, o Diretor pergunta por **listas de opções de múltipla escolha**, e isso é aplicado em código (P3), não por texto no prompt.
 - **Schema** (zod), validado como o `submit`: de 1 a 4 perguntas por chamada, respondidas de uma vez. Cada pergunta tem o texto, de 2 a 4 opções com rótulo e descrição, a opção **recomendada** (mostrada em primeiro e destacada), se aceita **mais de uma** opção (`multi_select`) e a marca `open` para a pergunta que não cabe em opções (ex.: "qual o nome do projeto?"). A interface sempre acrescenta **"Outra"**, com texto livre, sem o Diretor pedir. Nomes dos campos **[proposta]**;

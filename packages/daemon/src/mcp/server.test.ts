@@ -210,6 +210,35 @@ describe('the token and the role', () => {
     expect(schema).toContain('"maxItems":4');
   });
 
+  it('announces the real schema of the stage tools, not a free record', async () => {
+    const h = await harness();
+    const schemaOf = async (role: string, name: string): Promise<Record<string, unknown>> => {
+      const { body } = await rpc(h.server.url, authOf(h.grant(role)), 'tools/list', {});
+      const tools = (body.result as { tools: { name: string; inputSchema: unknown }[] }).tools;
+      return tools.find((tool) => tool.name === name)?.inputSchema as Record<string, unknown>;
+    };
+    const plan = await schemaOf('author', 'submit_plan');
+    expect(plan.required).toEqual(['plan']);
+    expect(plan.properties).toMatchObject({
+      plan: { type: 'string', minLength: 1 },
+      openQuestions: { type: 'array', items: { type: 'string' } },
+    });
+    for (const [role, name] of [
+      ['reviewer', 'submit_plan_review'],
+      ['author', 'submit_script_review'],
+      ['critic', 'submit_critique'],
+    ] as const) {
+      const review = await schemaOf(role, name);
+      expect(review.required, name).toEqual(['approved']);
+      expect(review.properties, name).toMatchObject({
+        approved: { type: 'boolean' },
+        reason: { type: 'string' },
+      });
+    }
+    const script = await schemaOf('scriptwriter', 'submit_script');
+    expect(script.required).toEqual(['script']);
+  });
+
   it("a role's token cannot call the tool of another role, and nothing is recorded", async () => {
     const h = await harness();
     const author = h.grant('author');
@@ -263,7 +292,7 @@ describe('Host and Origin', () => {
 });
 
 describe('submit tools', () => {
-  const plan = { steps: ['a', 'b'] };
+  const plan = { plan: 'write a, then b', openQuestions: [] };
 
   it('a valid submit is accepted and writes attempt.submitted with the correlation', async () => {
     const h = await harness();
@@ -285,6 +314,92 @@ describe('submit tools', () => {
         attemptId: 'p1/d1/1',
       },
     });
+  });
+
+  it.each([
+    ['plan missing', {}],
+    ['plan empty', { plan: '' }],
+    ['plan an object', { plan: { steps: ['a'] } }],
+    ['openQuestions with an object', { plan: 'p', openQuestions: [{ question: 'q?' }] }],
+    ['openQuestions with an empty string', { plan: 'p', openQuestions: [''] }],
+    ['openQuestions not a list', { plan: 'p', openQuestions: 'q?' }],
+  ])('submit_plan refuses %s inside the tool and counts it as a try', async (_name, input) => {
+    const h = await harness({ retries: 1 });
+    const grant = h.grant('author');
+    const bad = await callTool(grant, h.server.url, 'submit_plan', input);
+    expect(bad.result?.isError).toBe(true);
+    expect(bad.result?.content[0]?.text).toContain('call submit_plan again');
+    expect(h.events).toEqual([]);
+    // The model fixes it and the very same attempt goes on.
+    const good = await callTool(grant, h.server.url, 'submit_plan', { plan: 'p' });
+    expect(good.result?.isError).toBeUndefined();
+    expect(h.events.map((e) => e.type)).toEqual(['attempt.submitted']);
+    expect(h.events[0]?.payload).toMatchObject({
+      calls: 2,
+      output: { plan: 'p', openQuestions: [] },
+    });
+  });
+
+  it('submit_plan: the N+1-th invalid call is the failure of the attempt, with the errors', async () => {
+    const h = await harness({ retries: 1 });
+    const grant = h.grant('author');
+    const input = { plan: { steps: ['a'] } };
+    await callTool(grant, h.server.url, 'submit_plan', input);
+    const second = await callTool(grant, h.server.url, 'submit_plan', input);
+    expect(second.result?.structuredContent?.error).toBe('submit_failed');
+    expect(h.events).toHaveLength(1);
+    expect(h.events[0]).toMatchObject({
+      type: 'attempt.submit_failed',
+      payload: { tool: 'submit_plan' },
+    });
+    expect((h.events[0]?.payload as { errors: string }).errors).toContain('plan');
+  });
+
+  it.each([
+    ['reviewer', 'submit_plan_review'],
+    ['author', 'submit_script_review'],
+    ['critic', 'submit_critique'],
+  ])('%s: %s needs a boolean approved and a reason for a veto', async (role, tool) => {
+    const h = await harness({ retries: 4 });
+    const grant = h.grant(role);
+    for (const bad of [
+      {},
+      { approved: 'true' },
+      { approved: false },
+      { approved: false, reason: ' ' },
+    ]) {
+      const reply = await callTool(grant, h.server.url, tool, bad);
+      expect(reply.result?.isError, JSON.stringify(bad)).toBe(true);
+    }
+    expect(h.events).toEqual([]);
+    const veto = await callTool(grant, h.server.url, tool, { approved: false, reason: 'no tests' });
+    expect(veto.result?.isError).toBeUndefined();
+    expect(h.events[0]?.payload).toMatchObject({
+      output: { approved: false, reason: 'no tests' },
+      calls: 5,
+    });
+  });
+
+  it('approved needs no reason, and an extra field is kept', async () => {
+    const h = await harness();
+    const reply = await callTool(h.grant('critic'), h.server.url, 'submit_critique', {
+      approved: true,
+      notes: 'fine',
+    });
+    expect(reply.result?.isError).toBeUndefined();
+    expect(h.events[0]?.payload).toMatchObject({ output: { approved: true, notes: 'fine' } });
+  });
+
+  it('submit_script needs the script key; what is inside is checked by the script validation', async () => {
+    const h = await harness({ retries: 1 });
+    const grant = h.grant('scriptwriter');
+    const missing = await callTool(grant, h.server.url, 'submit_script', { demands: [] });
+    expect(missing.result?.isError).toBe(true);
+    const malformed = await callTool(grant, h.server.url, 'submit_script', {
+      script: 'not a script',
+    });
+    expect(malformed.result?.isError).toBeUndefined();
+    expect(h.events.map((e) => e.type)).toEqual(['attempt.submitted']);
   });
 
   it('the common submit validates its own schema: result is required', async () => {
