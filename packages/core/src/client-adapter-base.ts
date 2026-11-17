@@ -516,7 +516,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     });
     // A value of `onAsk` this version does not know is a bug or a newer policy: the safe answer is
     // to cancel, without even picking the option that refuses.
-    const known = policy.onAsk === 'reject' || policy.onAsk === 'rules';
+    const onAsk: string = policy.onAsk;
+    const known = onAsk === 'reject' || onAsk === 'rules';
     const answer: PermissionAnswer = known ? answerOf(request, decision) : { outcome: 'cancelled' };
     if (context.onDecision !== undefined) {
       try {
@@ -669,7 +670,16 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       ? await this.#shared.acquire(sharedProcessKey(profile, spec), spec)
       : await this.#launcher.launch(spec);
     try {
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose, options?.permissions);
+      return await this.#attach(
+        process,
+        policy,
+        cwd,
+        via,
+        sessionId,
+        mcpServers,
+        purpose,
+        options?.permissions,
+      );
     } catch (error) {
       await this.#reap(process);
       throw isOTheaterError(error) ? error : this.#unavailable(error);
@@ -732,7 +742,16 @@ export abstract class ClientAdapter implements ClientAdapterContract {
       const purpose = options?.purpose ?? 'work';
       this.#assertGuaranteed(policy, via.id, purpose);
       const mcpServers = this.#mcpServersOf(policy, options?.mcpServers);
-      return await this.#attach(process, policy, cwd, via, sessionId, mcpServers, purpose, options?.permissions);
+      return await this.#attach(
+        process,
+        policy,
+        cwd,
+        via,
+        sessionId,
+        mcpServers,
+        purpose,
+        options?.permissions,
+      );
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }

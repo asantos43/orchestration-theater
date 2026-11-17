@@ -72,7 +72,7 @@ describe('permissionEventsOf', () => {
   it('falls back to the kind, then to "unknown", for the tool name', () => {
     const base = { toolCallId: 'c', options: [] };
     const named = (request: object) =>
-      permissionEventsOf(outcome({ request: { ...base, ...request } as never }), scope)[0].payload;
+      permissionEventsOf(outcome({ request: { ...base, ...request } }), scope)[0].payload;
     expect(named({ toolKind: 'fetch' })).toMatchObject({ tool: 'fetch', kind: 'fetch' });
     expect(named({})).toMatchObject({ tool: 'unknown' });
     expect(named({})).not.toHaveProperty('kind');
@@ -80,9 +80,9 @@ describe('permissionEventsOf', () => {
   });
 
   it('lists at most the limit of paths and keeps the real count', () => {
-    const locations = Array.from({ length: 25 }, (_, i) => `f${i}.txt`);
+    const locations = Array.from({ length: 25 }, (_, i) => `f${String(i)}.txt`);
     const [asked] = permissionEventsOf(
-      outcome({ request: { toolCallId: 'c', toolKind: 'edit', locations, options: [] } as never }),
+      outcome({ request: { toolCallId: 'c', toolKind: 'edit', locations, options: [] } }),
       scope,
     );
     const payload = asked.payload as { paths: string[]; pathCount: number };
@@ -93,7 +93,7 @@ describe('permissionEventsOf', () => {
   it('keeps only the host of an address, in lower case, and drops what is not an address', () => {
     const host = (url: string) =>
       permissionEventsOf(
-        outcome({ request: { toolCallId: 'c', toolKind: 'fetch', url, options: [] } as never }),
+        outcome({ request: { toolCallId: 'c', toolKind: 'fetch', url, options: [] } }),
         scope,
       )[0].payload as { host?: string };
     expect(host('https://Example.COM/a/b?token=secret-token-123').host).toBe('example.com');

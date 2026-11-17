@@ -103,7 +103,7 @@ export function frameworkToolsOf(
 
 /** The id a rule gets when the configuration names none: its place in the final list. */
 export function defaultRuleId(index: number): string {
-  return `rules[${index}]`;
+  return `rules[${String(index)}]`;
 }
 
 /** The rules of the settings as the port carries them, every one with its id. */

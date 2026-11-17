@@ -85,7 +85,7 @@ describe('permission event payloads (architecture 5.8, layer 2)', () => {
   });
 
   it('limits the listed paths and tells the real count apart', () => {
-    const many = Array.from({ length: PERMISSION_EVENT_MAX_PATHS }, (_, i) => `f${i}.txt`);
+    const many = Array.from({ length: PERMISSION_EVENT_MAX_PATHS }, (_, i) => `f${String(i)}.txt`);
     expect(
       PermissionAskedPayloadSchema.safeParse({ ...asked, paths: many, pathCount: 25 }).success,
     ).toBe(true);
@@ -97,8 +97,10 @@ describe('permission event payloads (architecture 5.8, layer 2)', () => {
   });
 
   it('refuses a payload without session or tool', () => {
-    const { sessionId: _s, ...noSession } = asked;
-    const { tool: _t, ...noTool } = asked;
+    const noSession: Partial<typeof asked> = { ...asked };
+    delete noSession.sessionId;
+    const noTool: Partial<typeof asked> = { ...asked };
+    delete noTool.tool;
     expect(PermissionAskedPayloadSchema.safeParse(noSession).success).toBe(false);
     expect(PermissionAskedPayloadSchema.safeParse(noTool).success).toBe(false);
   });

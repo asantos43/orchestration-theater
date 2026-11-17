@@ -452,7 +452,9 @@ export class AttemptRunner {
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
         ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
         permissions: {
-          onDecision: (outcome) => this.#onPermission(context, outcome),
+          onDecision: (outcome) => {
+            this.#onPermission(context, outcome);
+          },
           resolvePath: resolveExistingPath,
         },
         signal: context.stop.signal,

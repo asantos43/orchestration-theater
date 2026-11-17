@@ -145,7 +145,7 @@ export type PolicyRule = z.output<typeof PolicyRuleSchema>;
 /** The list of rules: bounded, and an explicit id appears once. */
 export const PolicyRulesSchema = z
   .array(PolicyRuleSchema)
-  .max(POLICY_RULES_MAX, { message: `rules: at most ${POLICY_RULES_MAX} rules` })
+  .max(POLICY_RULES_MAX, { message: `rules: at most ${String(POLICY_RULES_MAX)} rules` })
   .superRefine((rules, ctx) => {
     const seen = new Set<string>();
     rules.forEach((rule, index) => {

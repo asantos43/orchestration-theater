@@ -205,7 +205,7 @@ describe('what N99 forbids a rule to release', () => {
 
   it.each(N99_REFUSALS)('the override of a scenario refuses $name', async ({ rule, message }) => {
     const record = scenario('s1', {
-      configOverride: { 'roles.actor.policy.rules': [rule] } as JsonObject,
+      configOverride: { 'roles.actor.policy.rules': [rule] },
     });
     await expect(resolveRolePolicy(resolver('', [record]), 'actor', 's1')).rejects.toThrow(
       InvalidInput,

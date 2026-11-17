@@ -156,7 +156,7 @@ describe('layer 2 answers by the rules, with the fake agent', () => {
     const policy = withRules(RULES);
     for (const path of ['/etc/passwd', 'docs/../../escape.txt']) {
       await r.runner.run(
-        specOf(r, editing(path), { policy, demandId: `d-${path.length}`, attempt: 1 }),
+        specOf(r, editing(path), { policy, demandId: `d-${String(path.length)}`, attempt: 1 }),
       );
     }
     expect(r.transport.permissionAnswers).toEqual([
