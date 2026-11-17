@@ -222,7 +222,7 @@ export interface ConventionConfirmerOptions {
 /**
  * Asks the Producer to confirm or correct the conventions detected in an imported repository, with
  * the question mechanism of the Director (a `producer_question` decision, shown by the chat and
- * answered with `answers`). [proposta] The question does not hold anything up: a play that starts
+ * answered with `answers`). The question does not hold anything up: a play that starts
  * before the answer uses what was detected, and the answer, when it comes, replaces it in
  * `scenarios.conventions`. A question nobody answered before the daemon stopped is asked again the
  * next time the chat opens, until the Producer has answered once.

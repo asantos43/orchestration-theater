@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { InvalidInput, ProjectConventionsSchema } from '@otheater/core';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultVcs } from '../compose.js';
 import { createSoftwareProject } from './create.js';
 import { detectConventions } from './detect.js';
+
+const run = promisify(execFile);
 
 afterAll(disposeTestGitIsolation);
 
@@ -40,7 +44,7 @@ describe('createSoftwareProject', () => {
       expect((await stat(join(folder, file))).isFile()).toBe(true);
     }
     const ci = await readFile(join(folder, '.github', 'workflows', 'ci.yml'), 'utf8');
-    expect(ci).toContain('actions/checkout@v4');
+    expect(ci).toContain('actions/checkout@v7');
     expect(ci).toContain('./scripts/test.sh');
     expect(ci).toContain('branches: ["main"]');
     expect(await readFile(join(folder, 'README.md'), 'utf8')).toContain('# shiny');
@@ -54,6 +58,16 @@ describe('createSoftwareProject', () => {
       'chore: scaffold the project from the software profile',
       'chore: initial commit',
     ]);
+  });
+
+  it('ships a test script that warns that no test is configured and exits 0, and the README says so', async () => {
+    const folder = join(root, 'placeholder');
+    await createSoftwareProject({ vcs, folder });
+    const { stdout } = await run('sh', [join(folder, 'scripts', 'test.sh')]);
+    expect(stdout).toContain('No tests configured; edit scripts/test.sh');
+    const readme = await readFile(join(folder, 'README.md'), 'utf8');
+    expect(readme).toContain('no tests configured; edit');
+    expect(readme).toContain('exits 0');
   });
 
   it('is read back as the conventions it declares', async () => {

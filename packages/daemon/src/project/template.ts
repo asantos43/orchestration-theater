@@ -35,8 +35,11 @@ function readme(input: TemplateInput): string {
     '## Tests',
     '',
     `Run \`./${TEST_SCRIPT}\`. It is the one command the CI and the OTheater run, so the project has`,
-    'one place that says what "the tests pass" means: replace the body of the script with the real',
-    'test command of the project.',
+    'one place that says what "the tests pass" means.',
+    '',
+    'The script that comes with the project is a placeholder: it prints "no tests configured; edit',
+    'scripts/test.sh" and exits 0, so the CI passes without testing anything until you replace the',
+    'body of the script with the real test command of the project.',
     '',
     '## Changes',
     '',
@@ -84,10 +87,15 @@ const TEST_SCRIPT_TEXT = [
   '# Replace the body with the real test command (`npm test`, `cargo test`, `pytest`, ...).',
   'set -eu',
   '',
-  'echo "No tests yet: replace scripts/test.sh with the test command of the project."',
+  'echo "No tests configured; edit scripts/test.sh."',
+  'exit 0',
   '',
 ].join('\n');
 
+/**
+ * `actions/checkout` is at v7 (latest release v7.0.1). [V: `gh api repos/actions/checkout/releases/latest`,
+ * 2026-11-17]
+ */
 function workflow(input: TemplateInput): string {
   return [
     'name: CI',
@@ -101,7 +109,7 @@ function workflow(input: TemplateInput): string {
     '  test:',
     '    runs-on: ubuntu-latest',
     '    steps:',
-    '      - uses: actions/checkout@v4',
+    '      - uses: actions/checkout@v7',
     '      - name: Test',
     `        run: ./${TEST_SCRIPT}`,
     '',

@@ -282,7 +282,7 @@ export type BaseDriftMode = (typeof BASE_DRIFT_MODES)[number];
  * What the daemon does with the conventions of a repository the Producer imports (architecture
  * 5.20; P7). `ask` (default): it detects them and asks the Producer to confirm or correct them,
  * in the chat, until they do; `detect`: it detects them and uses them as they are, without asking;
- * `off`: it detects nothing and a delivery follows no convention of the project. [proposta]
+ * `off`: it detects nothing and a delivery follows no convention of the project.
  */
 export const CONVENTIONS_MODES = ['ask', 'detect', 'off'] as const;
 export type ConventionsMode = (typeof CONVENTIONS_MODES)[number];
