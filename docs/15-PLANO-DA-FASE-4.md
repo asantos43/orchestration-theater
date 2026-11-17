@@ -243,6 +243,36 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** os casos de navegador do aceite da fase, com uma página de teste servida pelo próprio teste: abrir, ler, tirar print e clicar sem aprovação no padrão; com `write_approval: always`, a aprovação antes do clique; com `allowlist`, a recusa de um domínio fora da lista; abrir `localhost` e um arquivo do worktree; recusar um caminho de segredo em `file://`.
 
+**Como ficou (2026-11-17):** tudo abaixo é **[proposta]**, salvo o que está marcado. **[V]** é medido aqui (Chromium 1248 do `playwright-core` 1.64.1, Linux, páginas servidas pelo próprio teste em 127.0.0.1); **[N]** não foi confirmado. O detalhe do adaptador está em `packages/adapters/browser-playwright/README.md`.
+
+- **Peças:** a porta `BrowserSession` e o `FakeBrowserSession` no `core`; o adaptador `adapters/browser-playwright` (único lugar que importa `playwright-core`, versão exata 1.64.1); o módulo `packages/daemon/src/browser/` (guarda, origem de arquivos, aprovação, ferramentas); a montagem em `compose.ts` (`defaultBrowser`, `Composition.browser`) e no `daemon.ts`.
+- **Chaves** (`browser.*`, global; um projeto ou cenário sobrescreve só as que dizem o que o agente pode fazer):
+
+| Chave | Padrão | Modos | Onde vale |
+|---|---|---|---|
+| `profile` | `extension` | `extension`, `shared`, `per_scenario`, `import` | cenário; `extension` cai no `fallback`, `import` é recusado (Fase 12) |
+| `fallback` | `shared` | `shared`, `wait`, `fail` | cenário; `wait` age como `fail` (nada pode se conectar nesta fase) |
+| `domains` | `any` | `any`, `allowlist` | cenário; a lista é o `network.allow` do papel e vale só para navegações |
+| `blocked_domains` | `[]` | lista de hosts | cenário; vale em todo modo e em toda requisição |
+| `local_urls` | `allow` | `allow`, `deny` | cenário; "local" inclui a rede privada, link-local, `*.local` e `*.internal` |
+| `file_urls` | `except_secrets` | `except_secrets`, `any`, `scenario`, `deny` | cenário; aplicado pelo daemon |
+| `write_approval` | `never` | `never`, `per_domain`, `always` | cenário |
+| `action_screenshots` | `writes` | `writes`, `all`, `none` | cenário |
+| `read_max_chars` | 32768 | inteiro | cenário |
+| `timeout_ms`, `min_free_memory_mb`, `max_instances`, `sandbox`, `executable_path`, `idle_close_ms` | 30000, 1024, 2, `true`, (do cache), 600000 | | só global: são da máquina |
+
+  - Papel: a chave `roles.<papel>.policy.browser` (`none` padrão, `read`, `full`) decide quais ferramentas o papel recebe: `read` só as de olhar, `full` também as de agir.
+- **Ferramentas:** `browser_open`, `browser_read`, `browser_screenshot` (efeito `none`) e `browser_click`, `browser_fill`, `browser_press_key` (`external_write`, chave de idempotência por tentativa e passo). Papéis `actor` e `consultant`. A saída traz `untrusted: true` (texto da página nunca é instrução). O print volta como imagem e fica em `<dados>/browser/<cenário>/`.
+- **`file://`:** `browser_open` recusa o caminho de segredo, e o navegador nunca abre `file:`: o daemon serve o arquivo permitido numa origem própria em 127.0.0.1 (`/files/<token>/...`), com token por cenário, só `GET`/`HEAD`, `Host` conferido e sem listar pasta. O agente vê `file:///...`, nunca o token (`presentUrl`/`scrub`). O caminho é resolvido com `realpath` antes da lista, então um link para um segredo é recusado.
+- **Lista de segredos:** o `file://` recebe a lista por injeção (`isSecret`). O P4 (`security.secret_paths`) **ainda não entrou**: sem a lista, `except_secrets` falha fechado (`secret_list_unavailable`). A ligação e o alias `browser.secret_paths` ficam para depois do P4 **[N]**. Os testes usam uma lista falsa e um HOME temporário.
+- **Aprovação de escrita:** vai ao Produtor pela mesma fila de prompts do `ask_producer`, **antes** do clique; só o texto exato `Allow` libera (resposta livre, vazia ou as duas opções valem como não), sem prazo. `per_domain` lembra o sim por cenário e domínio; o não não é lembrado. Sem ninguém para perguntar, a ação é recusada (`approval_unavailable`), nunca liberada.
+- **Eventos** (`browser.action`, `browser.refused`, `browser.approval`, com a correlação): URL, print e `idempotencyKey`; o valor digitado em `fill` nunca entra (só o número de caracteres), nem no evento nem no registro de efeito. As chamadas de um cenário andam uma por vez.
+- **Reconciliação:** um passo de escrita que o daemon começou e não terminou volta como `ambiguous` uma vez; a chamada seguinte tenta de novo sob a chave `~2`. Um tipo de efeito de navegador desconhecido é `ambiguous` na reconciliação do reinício.
+- **Sem lançador (Windows):** não há `Composition.browser` e as ferramentas `browser_*` não são registradas.
+- **CI (N95):** o job `linux` baixa o Chromium com `npx playwright-core install chromium`. Nos outros sistemas, ou sem o Chromium fora do CI, os testes com navegador real são pulados com mensagem; no `linux` do CI eles falham.
+- **Aceite medido [V]:** `packages/daemon/src/browser/acceptance.test.ts` (7 casos, Chromium real, página do próprio teste): abrir, ler, print e clicar sem aprovação; `write_approval: always` com a pergunta antes do clique (e um Deny que deixa a página como estava); `allowlist` recusando domínio fora da lista; `localhost`; arquivo do worktree servido pela origem do daemon; caminho de segredo recusado em `file://` (lista falsa, HOME temporário), inclusive um iframe de página do worktree para o segredo. Mais 92 testes de unidade (guarda, origem de arquivos, aprovação, configuração, ferramentas com o `FakeBrowserSession`) e 23 do adaptador.
+- **Não confirmado [N]:** a política corporativa do Chromium para `file://` (uma segunda trava; a rota é a única); WebSocket e service workers (a rota não os intercepta); a porta CDP aberta a processos locais do mesmo usuário; as portas do próprio daemon alcançáveis com `local_urls: allow`; DNS rebinding para IP privado; caminhos de `file:` no Windows e no macOS.
+
 ### P7. Perfil de projeto `software` (§5.20)
 
 **Escopo:**

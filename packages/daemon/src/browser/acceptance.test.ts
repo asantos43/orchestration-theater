@@ -33,6 +33,8 @@ import { BrowserTools } from './handlers.js';
  */
 const registries = buildDaemonRegistries();
 const ON_CI = process.env.CI !== undefined;
+/** Only the `linux` job downloads Chromium (N95); on another platform a missing browser is a skip. */
+const MUST_RUN = ON_CI && process.platform === 'linux';
 
 const PAGE = `<html><head><title>Acceptance</title></head><body>
 <h1>Hello</h1><p>some text here</p>
@@ -156,7 +158,7 @@ async function openOrSkip(run: Run, ctx: TestContext, url: string): Promise<Json
   try {
     return (await run.call('browser_open', { url })) as JsonObject;
   } catch (error) {
-    if (!ON_CI && error instanceof ToolFailure && error.code === 'unavailable') {
+    if (!MUST_RUN && error instanceof ToolFailure && error.code === 'unavailable') {
       console.warn(`[browser acceptance] skipped, no Chromium to run: ${error.message}`);
       ctx.skip();
     }
@@ -176,125 +178,132 @@ const titleOf = async (run: Run): Promise<string> =>
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 200));
 
-describe('the browser of an agent, with a real Chromium', { timeout: 90_000 }, () => {
-  it('opens, reads, takes a screenshot and clicks with no approval by default', async (ctx) => {
-    const run = await start();
-    const url = `http://127.0.0.1:${origin}/app`;
-    const opened = await openOrSkip(run, ctx, url);
-    expect(opened).toMatchObject({ title: 'Acceptance', untrusted: true });
+// Windows has no process launcher yet (5.9): no browser, so nothing to run there.
+describe.skipIf(process.platform === 'win32')(
+  'the browser of an agent, with a real Chromium',
+  { timeout: 90_000 },
+  () => {
+    it('opens, reads, takes a screenshot and clicks with no approval by default', async (ctx) => {
+      const run = await start();
+      const url = `http://127.0.0.1:${origin}/app`;
+      const opened = await openOrSkip(run, ctx, url);
+      expect(opened).toMatchObject({ title: 'Acceptance', untrusted: true });
 
-    const read = (await run.call('browser_read', {})) as { text: string; tree: string };
-    expect(read.text).toContain('some text here');
+      const read = (await run.call('browser_read', {})) as { text: string; tree: string };
+      expect(read.text).toContain('some text here');
 
-    const shot = await run.call('browser_screenshot', {});
-    expect(shot).toBeDefined();
+      const shot = await run.call('browser_screenshot', {});
+      expect(shot).toBeDefined();
 
-    await run.call('browser_click', { ref: await buttonRef(run) });
-    expect(await titleOf(run)).toBe('clicked');
+      await run.call('browser_click', { ref: await buttonRef(run) });
+      expect(await titleOf(run)).toBe('clicked');
 
-    const actions = eventsOf(run.rig, 'browser.action').map((e) => e.payload as JsonObject);
-    expect(actions.map((a) => a.action)).toEqual(
-      expect.arrayContaining(['open', 'read', 'screenshot', 'click']),
-    );
-    expect(actions.find((a) => a.action === 'click')).toMatchObject({
-      url,
-      outcome: 'ok',
-      idempotencyKey: `${PLAY_ID}:browser_click:${ATTEMPT_ID}:1`,
+      const actions = eventsOf(run.rig, 'browser.action').map((e) => e.payload as JsonObject);
+      expect(actions.map((a) => a.action)).toEqual(
+        expect.arrayContaining(['open', 'read', 'screenshot', 'click']),
+      );
+      expect(actions.find((a) => a.action === 'click')).toMatchObject({
+        url,
+        outcome: 'ok',
+        idempotencyKey: `${PLAY_ID}:browser_click:${ATTEMPT_ID}:1`,
+      });
+      expect(eventsOf(run.rig, 'browser.approval')).toHaveLength(0);
     });
-    expect(eventsOf(run.rig, 'browser.approval')).toHaveLength(0);
-  });
 
-  it('with write_approval "always" the Producer answers BEFORE the click', async (ctx) => {
-    let answer: (value: JsonValue) => void = () => undefined;
-    const questions: string[] = [];
-    const run = await start({
-      browser: { write_approval: 'always' },
-      askApproval: (_scenario, input) => {
-        questions.push(input.questions[0]?.question ?? '');
-        return Promise.resolve({
-          decisionId: 'd1',
-          answer: new Promise<JsonValue>((resolve) => {
-            answer = resolve;
-          }),
-        });
-      },
+    it('with write_approval "always" the Producer answers BEFORE the click', async (ctx) => {
+      let answer: (value: JsonValue) => void = () => undefined;
+      const questions: string[] = [];
+      const run = await start({
+        browser: { write_approval: 'always' },
+        askApproval: (_scenario, input) => {
+          questions.push(input.questions[0]?.question ?? '');
+          return Promise.resolve({
+            decisionId: 'd1',
+            answer: new Promise<JsonValue>((resolve) => {
+              answer = resolve;
+            }),
+          });
+        },
+      });
+      await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
+      const ref = await buttonRef(run);
+
+      const pending = run.call('browser_click', { ref });
+      await tick();
+      expect(questions).toHaveLength(1);
+      // The calls of a scenario go one at a time, so a read would wait behind the click. What
+      // proves nothing was done yet is that the click is not even recorded as intended.
+      expect(await run.rig.store.sideEffects.list({ types: ['browser_click'] })).toHaveLength(0);
+
+      answer('Allow');
+      await pending;
+      expect(await titleOf(run)).toBe('clicked');
+      expect(
+        eventsOf(run.rig, 'browser.approval').map((e) => (e.payload as JsonObject).state),
+      ).toEqual(['requested', 'granted']);
     });
-    await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
-    const ref = await buttonRef(run);
 
-    const pending = run.call('browser_click', { ref });
-    await tick();
-    expect(questions).toHaveLength(1);
-    // The calls of a scenario go one at a time, so a read would wait behind the click. What
-    // proves nothing was done yet is that the click is not even recorded as intended.
-    expect(await run.rig.store.sideEffects.list({ types: ['browser_click'] })).toHaveLength(0);
-
-    answer('Allow');
-    await pending;
-    expect(await titleOf(run)).toBe('clicked');
-    expect(
-      eventsOf(run.rig, 'browser.approval').map((e) => (e.payload as JsonObject).state),
-    ).toEqual(['requested', 'granted']);
-  });
-
-  it('with write_approval "always" a Deny leaves the page as it was', async (ctx) => {
-    const run = await start({
-      browser: { write_approval: 'always' },
-      askApproval: () => Promise.resolve({ decisionId: 'd1', answer: Promise.resolve('Deny') }),
+    it('with write_approval "always" a Deny leaves the page as it was', async (ctx) => {
+      const run = await start({
+        browser: { write_approval: 'always' },
+        askApproval: () => Promise.resolve({ decisionId: 'd1', answer: Promise.resolve('Deny') }),
+      });
+      await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
+      const failure = await run.fail('browser_click', { ref: await buttonRef(run) });
+      expect(failure.code).toBe('approval_denied');
+      expect(await titleOf(run)).toBe('Acceptance');
     });
-    await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
-    const failure = await run.fail('browser_click', { ref: await buttonRef(run) });
-    expect(failure.code).toBe('approval_denied');
-    expect(await titleOf(run)).toBe('Acceptance');
-  });
 
-  it('with domains "allowlist" refuses a domain outside the list and opens one inside it', async (ctx) => {
-    const run = await start({
-      browser: { domains: 'allowlist' },
-      networkAllow: ['127.0.0.1'],
+    it('with domains "allowlist" refuses a domain outside the list and opens one inside it', async (ctx) => {
+      const run = await start({
+        browser: { domains: 'allowlist' },
+        networkAllow: ['127.0.0.1'],
+      });
+      const opened = await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
+      expect(opened.title).toBe('Acceptance');
+      const failure = await run.fail('browser_open', { url: 'http://not-in-the-list.test/' });
+      expect(failure.code).toBe('domain_not_allowed');
+      expect(eventsOf(run.rig, 'browser.refused')).toHaveLength(1);
     });
-    const opened = await openOrSkip(run, ctx, `http://127.0.0.1:${origin}/app`);
-    expect(opened.title).toBe('Acceptance');
-    const failure = await run.fail('browser_open', { url: 'http://not-in-the-list.test/' });
-    expect(failure.code).toBe('domain_not_allowed');
-    expect(eventsOf(run.rig, 'browser.refused')).toHaveLength(1);
-  });
 
-  it('opens localhost', async (ctx) => {
-    const run = await start();
-    const opened = await openOrSkip(run, ctx, `http://localhost:${origin}/app`);
-    expect(opened).toMatchObject({ title: 'Acceptance' });
-  });
+    it('opens localhost', async (ctx) => {
+      const run = await start();
+      const opened = await openOrSkip(run, ctx, `http://localhost:${origin}/app`);
+      expect(opened).toMatchObject({ title: 'Acceptance' });
+    });
 
-  it('opens a file of the worktree, served on the daemon origin, and never shows the token', async (ctx) => {
-    const run = await start({ isSecret: (path) => path.includes('/.ssh/') });
-    await run.rig.write('local.html', '<title>From a file</title><p>file page</p>');
-    const url = `file://${join(run.rig.worktree, 'local.html')}`;
-    const opened = await openOrSkip(run, ctx, url);
-    expect(opened).toMatchObject({ title: 'From a file', url });
-    const read = (await run.call('browser_read', {})) as { url: string; text: string };
-    expect(read.text).toContain('file page');
-    expect(read.url).toBe(url);
-    expect(JSON.stringify(run.rig.events)).not.toContain('/files/');
-  });
+    it('opens a file of the worktree, served on the daemon origin, and never shows the token', async (ctx) => {
+      const run = await start({ isSecret: (path) => path.includes('/.ssh/') });
+      await run.rig.write('local.html', '<title>From a file</title><p>file page</p>');
+      const url = `file://${join(run.rig.worktree, 'local.html')}`;
+      const opened = await openOrSkip(run, ctx, url);
+      expect(opened).toMatchObject({ title: 'From a file', url });
+      const read = (await run.call('browser_read', {})) as { url: string; text: string };
+      expect(read.text).toContain('file page');
+      expect(read.url).toBe(url);
+      expect(JSON.stringify(run.rig.events)).not.toContain('/files/');
+    });
 
-  it('refuses a secret path in file:// (fake list, temporary HOME) and a secret behind a link', async (ctx) => {
-    const holder: { home: string } = { home: '' };
-    const run = await start({ isSecret: (path) => path.startsWith(`${holder.home}/.ssh`) });
-    holder.home = run.home;
-    const secret = join(run.home, '.ssh', 'id_fake');
-    const failure = await run.fail('browser_open', { url: `file://${secret}` });
-    expect(failure.code).toBe('secret_path');
-    expect(eventsOf(run.rig, 'browser.refused')[0]?.payload).toMatchObject({ code: 'secret_path' });
+    it('refuses a secret path in file:// (fake list, temporary HOME) and a secret behind a link', async (ctx) => {
+      const holder: { home: string } = { home: '' };
+      const run = await start({ isSecret: (path) => path.startsWith(`${holder.home}/.ssh`) });
+      holder.home = run.home;
+      const secret = join(run.home, '.ssh', 'id_fake');
+      const failure = await run.fail('browser_open', { url: `file://${secret}` });
+      expect(failure.code).toBe('secret_path');
+      expect(eventsOf(run.rig, 'browser.refused')[0]?.payload).toMatchObject({
+        code: 'secret_path',
+      });
 
-    // a page of the worktree that tries to load the secret straight from the disk
-    await run.rig.write(
-      'sneaky.html',
-      `<title>Sneaky</title><iframe src="file://${secret}"></iframe><p>after</p>`,
-    );
-    await openOrSkip(run, ctx, `file://${join(run.rig.worktree, 'sneaky.html')}`);
-    const read = (await run.call('browser_read', {})) as { text: string; tree: string };
-    expect(`${read.text}${read.tree}`).not.toContain('FAKE-PRIVATE-KEY');
-    expect(JSON.stringify(run.rig.events)).not.toContain('FAKE-PRIVATE-KEY');
-  });
-});
+      // a page of the worktree that tries to load the secret straight from the disk
+      await run.rig.write(
+        'sneaky.html',
+        `<title>Sneaky</title><iframe src="file://${secret}"></iframe><p>after</p>`,
+      );
+      await openOrSkip(run, ctx, `file://${join(run.rig.worktree, 'sneaky.html')}`);
+      const read = (await run.call('browser_read', {})) as { text: string; tree: string };
+      expect(`${read.text}${read.tree}`).not.toContain('FAKE-PRIVATE-KEY');
+      expect(JSON.stringify(run.rig.events)).not.toContain('FAKE-PRIVATE-KEY');
+    });
+  },
+);

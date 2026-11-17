@@ -23,6 +23,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The tests of the browser (P6, N95) drive a real Chromium over pages served by the test itself.
+      # `playwright-core` does not download one on its own: this is the revision its version expects.
+      - run: npx playwright-core install chromium
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
