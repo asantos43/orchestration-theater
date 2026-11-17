@@ -56,6 +56,11 @@ export interface FakeSessionTransportOptions {
   readonly canLoad?: boolean;
   /** What the fake client says about itself at `open` and `load` (the `agentInfo` of an ACP `initialize`). Default: nothing. */
   readonly agentInfo?: AgentInfo;
+  /**
+   * Each `setConfig` makes the client send an `available_commands_update`, the way the fake agent
+   * does with `updatesOnConfig` (`@otheater/fake-agent`). Default false: nothing outside a turn.
+   */
+  readonly updatesOnConfig?: boolean;
 }
 
 /** The directive of a prompt: `#script:<name>[ <json>]` on the first line, as in `@otheater/fake-agent`. */
@@ -125,6 +130,12 @@ class FakeDriver implements SessionDriver {
     }
     this.#config.set(id, value);
     this.#transport.configApplied.push({ id, value });
+    if (this.#transport.updatesOnConfig) {
+      this.#deliver({
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [{ name: 'fake-command', description: 'Announced during the setup' }],
+      });
+    }
     return Promise.resolve(fakeConfigOptions(this.#config));
   }
 
@@ -255,6 +266,8 @@ class FakeDriver implements SessionDriver {
  */
 export class FakeSessionTransport implements SessionTransport {
   readonly id: string;
+  /** Each `setConfig` is followed by an `available_commands_update` of the client. */
+  readonly updatesOnConfig: boolean;
   /** What `openSession` handed over, in order. */
   readonly opened: SessionOpenParams[] = [];
   /** What `loadSession` handed over, in order. */
@@ -275,6 +288,7 @@ export class FakeSessionTransport implements SessionTransport {
 
   constructor(options: FakeSessionTransportOptions = {}) {
     this.id = options.id ?? 'fake';
+    this.updatesOnConfig = options.updatesOnConfig ?? false;
     this.#canLoad = options.canLoad ?? true;
     this.agentInfo = options.agentInfo;
   }

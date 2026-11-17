@@ -31,7 +31,18 @@ export const FAKE_AGENT_VERSION = '0.0.0';
 export interface FakeAgentOptions {
   /** Script played by prompts without a `#script:` directive. Defaults to `echo`. */
   defaultScript?: Script;
+  /**
+   * Sends an `available_commands_update` while it answers `session/set_config_option`, before the
+   * response, as the real clients announce things around the setup of a session. Default `false`:
+   * the fake agent says nothing outside a prompt turn.
+   */
+  updatesOnConfig?: boolean;
 }
+
+/** The commands the fake agent announces when `updatesOnConfig` is on. */
+export const FAKE_COMMANDS_ANNOUNCED = [
+  { name: 'fake-command', description: 'A command announced during the setup of the session' },
+] as const;
 
 interface Session {
   cwd: string;
@@ -352,7 +363,7 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       open(params.sessionId, params.cwd);
       return { configOptions: configOptionsOf(find(params.sessionId)) };
     })
-    .onRequest(methods.agent.session.setConfigOption, ({ params }) => {
+    .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
       const session = find(params.sessionId);
       const option = CONFIG_OPTIONS.find((candidate) => candidate.id === params.configId);
       if (option === undefined) {
@@ -366,6 +377,15 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
         );
       }
       session.config.set(option.id, value);
+      if (options.updatesOnConfig === true) {
+        await client.notify(methods.client.session.update, {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: FAKE_COMMANDS_ANNOUNCED.map((command) => ({ ...command })),
+          },
+        });
+      }
       return { configOptions: configOptionsOf(session) };
     })
     .onRequest(methods.agent.session.prompt, async ({ params, signal, client }) => {

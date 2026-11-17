@@ -3,6 +3,7 @@ export {
   connectToStreams,
   createFakeAgent,
   FAKE_AGENT_NAME,
+  FAKE_COMMANDS_ANNOUNCED,
   FAKE_AGENT_VERSION,
   serveStdio,
   type FakeAgentOptions,

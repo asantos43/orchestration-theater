@@ -502,6 +502,33 @@ describe('fake agent in process', () => {
     });
   });
 
+  it('says nothing during set_config_option by default', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      await h.cx.request(methods.agent.session.setConfigOption, {
+        sessionId: h.sessionId,
+        configId: 'model',
+        value: 'fake-model-2',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(h.recorded.updates).toEqual([]);
+    });
+  });
+
+  it('with updatesOnConfig, announces commands before the set_config_option response', async () => {
+    await withSession(createFakeAgent({ updatesOnConfig: true }), async (h) => {
+      await h.cx.request(methods.agent.session.setConfigOption, {
+        sessionId: h.sessionId,
+        configId: 'model',
+        value: 'fake-model-2',
+      });
+      await waitFor(() => h.recorded.updates.length === 1);
+      expect(h.recorded.updates[0]).toMatchObject({
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [{ name: 'fake-command' }],
+      });
+    });
+  });
+
   it('runs over a pair of byte streams', async () => {
     const toAgent = new TransformStream<Uint8Array, Uint8Array>();
     const toClient = new TransformStream<Uint8Array, Uint8Array>();
@@ -563,6 +590,18 @@ describe('fake-agent binary over stdio', () => {
     await withProcess({ FAKE_AGENT_SCRIPT: 'fail {"message":"env failure"}' }, async (h) => {
       const error = await rejection(prompt(h, 'anything'));
       expect(error.message).toContain('env failure');
+    });
+  });
+
+  it('takes updatesOnConfig from FAKE_AGENT_UPDATES_ON_CONFIG', async () => {
+    await withProcess({ FAKE_AGENT_UPDATES_ON_CONFIG: '1' }, async (h) => {
+      await h.cx.request(methods.agent.session.setConfigOption, {
+        sessionId: h.sessionId,
+        configId: 'mode',
+        value: 'plan',
+      });
+      await waitFor(() => h.recorded.updates.length === 1);
+      expect(h.recorded.updates[0]).toMatchObject({ sessionUpdate: 'available_commands_update' });
     });
   });
 

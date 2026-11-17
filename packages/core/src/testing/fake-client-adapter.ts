@@ -133,7 +133,7 @@ function statusOf(value: unknown): ToolCallStatus | undefined {
 
 /**
  * Normalizes the ACP `session/update` payloads the fake agent sends: message and thought chunks,
- * tool calls and their updates. Anything else is swallowed (`null`). A real client writes its own,
+ * tool calls and their updates, and the list of commands. Anything else is swallowed (`null`). A real client writes its own,
  * with its own quirks; this one is only as much as the fakes and the suites need.
  */
 export function normalizeFakeUpdate(raw: RawUpdate): NormalizedUpdate | null {
@@ -167,6 +167,20 @@ export function normalizeFakeUpdate(raw: RawUpdate): NormalizedUpdate | null {
         toolCallId: update.toolCallId,
         ...(status === undefined ? {} : { status }),
       };
+    }
+    case 'available_commands_update': {
+      if (!Array.isArray(update.availableCommands)) return null;
+      const commands = (update.availableCommands as unknown[]).flatMap((candidate) => {
+        const command = record(candidate);
+        if (typeof command?.name !== 'string' || command.name === '') return [];
+        return [
+          {
+            name: command.name,
+            description: typeof command.description === 'string' ? command.description : '',
+          },
+        ];
+      });
+      return { kind: 'available_commands', commands };
     }
     default:
       return null;
