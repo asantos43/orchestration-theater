@@ -50,6 +50,12 @@ These are the only framework tools you can call:
 - `read_attachment`
 - `submit`
 - `http_get`
+- `browser_open`
+- `browser_read`
+- `browser_screenshot`
+- `browser_click` (acts outside the worktree)
+- `browser_fill` (acts outside the worktree)
+- `browser_press_key` (acts outside the worktree)
 
 ## Contract
 
