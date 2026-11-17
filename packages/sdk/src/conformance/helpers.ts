@@ -28,15 +28,24 @@ export async function settle(): Promise<void> {
 }
 
 /**
- * Switches of the suites that can talk to a real client (Claude Code, Codex, OpenCode). Both are
+ * Switches of the suites that can talk to a real client (Claude Code, Codex, OpenCode). All are
  * off unless the environment says `1`, so a plain test run never starts a real client:
  * - `OT_TEST_REAL_CLIENTS=1` lets a suite registered with `{ real: true }` run at all;
- * - `OT_TEST_REAL_PROMPTS=1` also lets it send prompts, which spend quota of a real account.
+ * - `OT_TEST_REAL_PROMPTS=1` also lets it send prompts, which spend quota of a real account;
+ * - `OT_TEST_REAL_MEASURE_K=1` lets the measurement of `K` and the process model run
+ *   (`k-measure.real.test.ts` in the daemon). It starts up to 6 sessions per client and, with the
+ *   two switches above, sends a trivial prompt per session. Only that file reads it: the regular
+ *   acceptance never measures.
  */
-export function realClientFlags(): { readonly clients: boolean; readonly prompts: boolean } {
+export function realClientFlags(): {
+  readonly clients: boolean;
+  readonly prompts: boolean;
+  readonly measureK: boolean;
+} {
   return {
     clients: process.env.OT_TEST_REAL_CLIENTS === '1',
     prompts: process.env.OT_TEST_REAL_PROMPTS === '1',
+    measureK: process.env.OT_TEST_REAL_MEASURE_K === '1',
   };
 }
 
