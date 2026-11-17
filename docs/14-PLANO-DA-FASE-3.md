@@ -108,7 +108,8 @@ Ficam como portões **[N]**:
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
 | P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
-| P13 | Aceite da fase e peça real | P9, P10, P12, P14 | nada | a fazer |
+| P15 | Lacunas antes do aceite (N86) | P14 | P13 | a fazer |
+| P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | a fazer |
 
 Ordem em ondas **[proposta]**:
 1. P1, P2 e P5;
@@ -117,7 +118,7 @@ Ordem em ondas **[proposta]**:
 4. P8 e depois P9; **o marco 3a fecha com o P9**;
 5. P12, junto com o P9 e o P10 se der tempo;
 6. P14, depois do P9 e do P12, porque mexe nos mesmos arquivos de efeitos da peça;
-7. P13.
+7. P15 e P13 juntos, com o P13 mesclado por último (N86).
 
 **Marco 3a (N77):** uma peça ponta a ponta com o agente falso, nos quatro desfechos e no critério de parada, um reinício do daemon no meio da peça e o `kill -9` no meio de um efeito colateral. São os três primeiros itens do aceite da fase. Ordens, cenários e chat vêm depois, até o aceite completo.
 
@@ -356,12 +357,28 @@ Passo criado em 2026-11-17, quando o dono decidiu as três lacunas dos conflitos
 - com a base adiantada sem conflito, a peça entrega; com conflito, volta a SCRIPTING;
 - no roteiro novo, a demanda igual não roda de novo, e a que mudou roda com o diff antigo no contexto.
 
+### P15. Lacunas antes do aceite (N86)
+
+Passo criado em 2026-11-17, quando o dono decidiu que as partes que o P12 e o P14 deixaram sem ligação entram antes do aceite.
+
+**Escopo:**
+- **Dependência refeita** (ponto de julgamento 8, §5.4 e §5.5): quando uma demanda que tem dependentes já aprovadas é refeita, por exemplo depois de uma falha de demanda na crítica, o daemon envia `DEPENDENCY_REDONE` com as dependentes. O Diretor decide entre rebasear e refazer, e o rebase com conflito segue o `integration.rebase_conflict` (N82). As netas entram na lista de dependentes **[proposta]**.
+- **Quem está olhando** (`attended`): a peça é dada como presente quando há um `ot chat` aberto no cenário dela **[proposta]**. Com `delivery.base_drift: ask`, o menu só abre com alguém presente; sem ninguém, vale o `update` (N83).
+- **Aviso depois da reconciliação** (§5.21, item 8): depois da reconciliação na subida, o chat de cada cenário afetado recebe uma mensagem de sistema que diz o que foi retomado, o que foi resolvido pelo verificador e o que espera o Produtor.
+
+**Aceite**, com o agente falso:
+- a reprovação de uma demanda com dependentes aprovadas abre o ponto 8, e as duas respostas do Diretor (rebasear e refazer) levam a peça à entrega;
+- com `ask` e um `ot chat` aberto, o menu abre; sem ninguém, a peça faz o `update`;
+- depois de um `kill -9` no meio da peça, o chat do cenário mostra a mensagem de sistema da reconciliação.
+
+Pode ser feito em duas partes, cada uma com o seu PR: a dependência refeita com quem está olhando, que mexem nos efeitos da peça, e o aviso depois da reconciliação.
+
 ### P13. Aceite da fase e peça real
 
 **Escopo:**
-- O nível `play` no `tools/acceptance/real-acceptance.sh` **[proposta]**: uma peça real pequena, com o Orquestrador em `claude-agent-acp` com o Haiku, num repositório de teste. Quem roda é o dono (N57).
+- O nível `play` no `tools/acceptance/real-acceptance.sh` **[proposta]**: uma peça real pequena (N87). O teste cria um repositório git local e pede uma tarefa pequena, uma função e o teste dela. Todos os papéis rodam no `claude-agent-acp` com o Haiku, e a entrega vai ao `CodeHost` falso. Nada vai ao GitHub. Quem roda é o dono (N57).
 - O resultado, com data e marca **[V]**, entra na §10.
-- A Fase 3 fecha, com os portões que sobrarem.
+- A Fase 3 fecha depois que o dono rodar o nível `play` e ele passar (N88).
 
 **Aceite:** todos os itens do critério de aceite da Fase 3 na §10.
 
@@ -375,5 +392,10 @@ Depois, as três lacunas dos conflitos de merge também foram decididas pelo don
 - **N82:** um conflito no rebase das dependentes refaz a dependente;
 - **N83:** a base que mudou entra na integração antes da entrega, e o conflito vira falha de roteiro;
 - **N84:** no roteiro novo depois de um conflito, o que não mudou continua aprovado.
+
+Por fim, o fechamento da fase foi decidido pelo dono em 2026-11-17, por múltipla escolha:
+- **N86:** as partes que ficaram sem ligação no código entram no P15, antes do aceite; a escrita do consultor na pasta do chat, as ferramentas de pesquisa dele e a imagem nos adaptadores reais ficam para a Fase 4;
+- **N87:** a peça real roda num repositório local, com todos os papéis no Haiku e a entrega no `CodeHost` falso;
+- **N88:** a Fase 3 fecha depois que o dono rodar a peça real e ela passar.
 
 As próximas que surgirem vão ao dono do mesmo jeito, ao abrir o passo.
