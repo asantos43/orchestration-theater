@@ -152,6 +152,16 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** testes de unidade do confinamento (traversal, symlink de arquivo e de pasta, symlink em cadeia) e do argv (encadeamento, redirecionamento, programa por caminho); testes dos handlers com o agente falso chamando o MCP; timeout e truncamento; dois comandos pesados esperando o semáforo.
 
+**Implementação (2026-11-17, [V] verificada localmente pelos testes):**
+- Biblioteca pura em `packages/core` (confinamento, argv, allowlist, truncamento) e handlers em `packages/daemon/src/tools/` (`command-tools.ts`, `git-tools.ts`, `http-get.ts`, `settings.ts`, `semaphore.ts`, `run-command.ts`), registrados em `daemon.ts`. O papel das ferramentas de trabalho é o `actor`; outro papel recebe `mcp error`.
+- Chaves do bloco `tools` (todas com override no projeto e no cenário, em `configOverride` aninhado em `tools` ou com chave pontilhada `tools.x.y`; um override inválido é recusado com `invalid_config`, nunca vira um limite maior):
+  - N97: `shell_allowlist.mode` (`list` padrão, `profile`, `any`) e `shell_allowlist.list`.
+  - N98: `timeout_ms` 600000, `output_max_bytes` 65536, `heavy_concurrency` 1.
+  - **[proposta]**: `truncate` (`head`, `tail`, `head_tail` padrão), `heavy_commands` (padrão `run_tests` e `install_deps`), `commands.test` e `commands.install`, `http.timeout_ms` (30000), `http.redirects` (`refuse` padrão, `follow_allowed`), `env_inherit` (`minimal` padrão, `none`, `all`) e `env_allow`. As duas últimas só valem no bloco global.
+- O comando de `run_tests` e `install_deps` vem, em ordem, do override do projeto ou do cenário (`tools.commands.*`), de `scenarios.conventions.commands.<nome>` (linha ou argv, **[proposta]**) e da config global. Nunca do modelo; sem comando, a ferramenta responde `no_command`.
+- Eventos `tool.called` e `tool.finished` (tipos novos no registro de eventos do daemon). O timeout mata a árvore de processos por `killTree`.
+- `git_commit` usa `runEffect`, `verifyGitCommit` e a chave de passo `<play>:git_commit:<tentativa>:<n>`. `restricted_shell` e `install_deps` não têm verificador de efeito (**[proposta]**, ver a seção "Decisões para o dono" do PR).
+
 ### P4. Camada 3: porta `Sandbox` e `sandbox-runtime` (§5.8)
 
 **Escopo:**
