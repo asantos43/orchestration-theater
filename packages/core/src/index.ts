@@ -37,6 +37,7 @@ export * from './ports/client-adapter.js';
 export * from './managed-agent-session.js';
 export * from './shared-process.js';
 export * from './client-adapter-base.js';
+export * from './permission-rules.js';
 export * from './catalog-probe-session.js';
 export * from './mode-veto-session.js';
 export * from './registries/index.js';

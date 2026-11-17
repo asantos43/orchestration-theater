@@ -2,6 +2,7 @@
 import type { Adapter } from './adapter.js';
 import type { AgentSession, McpServerRef, SessionTransport } from './agent-session.js';
 import type { ConfigCategory } from '../normalized-update.js';
+import type { PermissionOutcome, PermissionRule } from '../permission-rules.js';
 import type { Profile } from './executor.js';
 import type { ModelCatalog } from './model-catalog.js';
 import type { QuotaProbe } from './quota-probe.js';
@@ -52,6 +53,14 @@ export interface RolePolicy {
    * P2); the request outside the policy is still rejected.
    */
   readonly onAsk: 'reject' | 'rules';
+  /**
+   * The release rules `onAsk: 'rules'` reads, in order, the first match deciding (Phase 4, P2,
+   * `PermissionRule`). Absent or empty: no rule matches, so every request is rejected. Not a field
+   * of the guarantee ({@link ROLE_POLICY_FIELDS}): it is what `onAsk` answers with. Additive, so
+   * the port version stays: a client adapter takes the answer from the base, which reads it.
+   * [proposta]
+   */
+  readonly rules?: readonly PermissionRule[];
   readonly bypass: 'forbidden';
   readonly writeScope: 'worktree';
   /** Allowed domains; guaranteed by layer 3. */
@@ -203,6 +212,28 @@ export interface SessionStartOptions {
    * would only run without the framework tools, and every descendant of `ClientAdapterBase` honours it.
    */
   readonly mcpServers?: readonly McpServerRef[];
+  /**
+   * What the daemon hands to the layer 2 answer of this session (Phase 4, P2). Additive, without
+   * a new port version: a session that ignored it would answer as before, without telling anyone
+   * and with a lexical check of the paths, and every descendant of `ClientAdapterBase` honours it.
+   * [proposta]
+   */
+  readonly permissions?: SessionPermissions;
+}
+
+/** What the daemon gives one session for the answer of layer 2 (P2). */
+export interface SessionPermissions {
+  /**
+   * Called for every request the session answered, after the answer is decided, with the request,
+   * the decision, the rule and the reason. It cannot change the answer: an error it throws is
+   * ignored.
+   */
+  readonly onDecision?: (outcome: PermissionOutcome) => void;
+  /**
+   * Resolves the symbolic links of an absolute path (see `PermissionContext.resolvePath`), so the
+   * check "inside the worktree" sees a link that points out of it.
+   */
+  readonly resolvePath?: (absolute: string) => string;
 }
 
 /**

@@ -12,6 +12,10 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  PermissionAnsweredPayloadSchema,
+  PermissionAskedPayloadSchema,
+} from './permission-events.js';
+import {
   IdeaAddedPayloadSchema,
   IdeaDeferredPayloadSchema,
   IdeaDiscardedPayloadSchema,
@@ -136,7 +140,7 @@ export const DaemonRecoveredPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 30 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 32 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -190,6 +194,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'session.closed',
     schemaVersion: 1,
     payload: SessionClosedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'permission.asked',
+    schemaVersion: 1,
+    payload: PermissionAskedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'permission.answered',
+    schemaVersion: 1,
+    payload: PermissionAnsweredPayloadSchema,
   }),
   defineEventType({
     type: 'attempt.checkpoint',
@@ -353,6 +367,8 @@ export type SessionInterruptedPayload = DaemonEventPayloads['session.interrupted
 export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
+export type PermissionAskedPayload = DaemonEventPayloads['permission.asked'];
+export type PermissionAnsweredPayload = DaemonEventPayloads['permission.answered'];
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
