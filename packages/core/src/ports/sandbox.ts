@@ -37,8 +37,7 @@ export interface SandboxRequest {
 
 /** Whether the mechanism of this machine works, found by trying it once (never by looking at the platform). */
 export type SandboxAvailability =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /**
  * Layer 3 of the permissions (architecture 5.8): confinement by the operating system, for the

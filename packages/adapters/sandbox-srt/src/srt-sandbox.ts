@@ -84,7 +84,7 @@ export class SrtSandbox implements Sandbox {
     this.config = parsed.data;
     this.#platform = deps.platform ?? process.platform;
     const uid = deps.uid ?? (typeof process.getuid === 'function' ? process.getuid() : 0);
-    this.#tempDir = this.config.tempDir ?? join(tmpdir(), `otheater-sandbox-${uid}`);
+    this.#tempDir = this.config.tempDir ?? join(tmpdir(), `otheater-sandbox-${String(uid)}`);
     assertAbsolute('tempDir', this.#tempDir);
   }
 

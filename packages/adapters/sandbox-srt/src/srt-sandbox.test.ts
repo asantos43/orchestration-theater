@@ -90,7 +90,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await sandbox.close();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) =>
+    server.close(() => {
+      resolve();
+    }),
+  );
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -116,10 +120,7 @@ function request(script: string, overrides: Partial<SandboxRequest> = {}): Sandb
   };
 }
 
-async function confined(
-  script: string,
-  overrides: Partial<SandboxRequest> = {},
-): Promise<Outcome> {
+async function confined(script: string, overrides: Partial<SandboxRequest> = {}): Promise<Outcome> {
   return execute(await sandbox.wrap(request(script, overrides)));
 }
 
@@ -269,9 +270,12 @@ real('SrtSandbox in the operating system', () => {
   });
 
   it('the allow list of the role policy counts as much as the one of the daemon', async () => {
-    const outcome = await confined(`curl -sS -m 10 --noproxy '' http://localhost:${String(port)}/`, {
-      policy: { writeScope: 'worktree', network: { allow: ['localhost'] } },
-    });
+    const outcome = await confined(
+      `curl -sS -m 10 --noproxy '' http://localhost:${String(port)}/`,
+      {
+        policy: { writeScope: 'worktree', network: { allow: ['localhost'] } },
+      },
+    );
     expect(outcome.stdout).toContain('HELLO-FROM-HOST');
   });
 

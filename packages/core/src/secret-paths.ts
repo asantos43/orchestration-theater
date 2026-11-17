@@ -94,7 +94,8 @@ function expandEntry(entry: string, home: string, dataDir: string | undefined): 
   }
   if (text.startsWith('/')) {
     const clean = trimSlashes(text);
-    if (clean === '/') throw new InvalidInput('a secret path cannot be the root of the file system');
+    if (clean === '/')
+      throw new InvalidInput('a secret path cannot be the root of the file system');
     return clean;
   }
   if (text.includes('/')) {
@@ -175,7 +176,8 @@ export function isSecretPath(path: string, list: readonly string[]): boolean {
     }
     const pattern = segmentsOf(entry).parts;
     if (!target.absolute || target.parts.length < pattern.length) continue;
-    if (pattern.every((part, index) => segmentMatches(part, target.parts[index] ?? ''))) return true;
+    if (pattern.every((part, index) => segmentMatches(part, target.parts[index] ?? '')))
+      return true;
   }
   return false;
 }

@@ -71,7 +71,9 @@ describe('allowedDomains', () => {
   it('joins the role policy and the daemon, once each', () => {
     expect(allowedDomains(request())).toEqual(['api.example.com', 'api.provider.com']);
     expect(
-      allowedDomains(request({ policy: { writeScope: 'worktree', network: { allow: [] } }, domains: [] })),
+      allowedDomains(
+        request({ policy: { writeScope: 'worktree', network: { allow: [] } }, domains: [] }),
+      ),
     ).toEqual([]);
   });
 });
@@ -98,7 +100,11 @@ describe('commandIdFor', () => {
   it('does not depend on the order of the lists, but on the content', () => {
     const base = commandIdFor(secret, request(), '/tmp/ot');
     expect(
-      commandIdFor(secret, request({ domains: ['api.example.com', 'api.provider.com'] }), '/tmp/ot'),
+      commandIdFor(
+        secret,
+        request({ domains: ['api.example.com', 'api.provider.com'] }),
+        '/tmp/ot',
+      ),
     ).toBe(base);
     expect(commandIdFor(secret, request({ domains: [] }), '/tmp/ot')).not.toBe(base);
     expect(commandIdFor(secret, request({ worktree: '/work/other' }), '/tmp/ot')).not.toBe(base);
