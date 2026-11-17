@@ -25,3 +25,4 @@ export * from './client-adapter-base.js';
 export * from './catalog-probe-session.js';
 export * from './mode-veto-session.js';
 export * from './registries/index.js';
+export * from './script/index.js';
