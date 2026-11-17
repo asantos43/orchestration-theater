@@ -71,4 +71,9 @@ export const DeliveryCompletedPayloadSchema = z.strictObject({
   pullRequest: z.strictObject({ number: z.int().min(1), url: z.string().min(1) }).optional(),
   /** `mode: 'direct_merge'`: the new head of the base. */
   mergeSha: sha.optional(),
+  /**
+   * What the Producer should know about the delivery, e.g. the files that conflict with a base
+   * that moved (`delivery.base_drift: deliver_and_warn`, N83). Also in the text of the PR.
+   */
+  warnings: z.array(z.string().min(1)).optional(),
 });

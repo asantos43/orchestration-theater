@@ -122,6 +122,91 @@ export interface VcsMerge {
   merge(worktree: string, ref: string, opts?: MergeOptions): Promise<MergeOutcome>;
 }
 
+/** Options of {@link VcsRebase.rebaseBranch}. */
+export interface RebaseOptions {
+  /**
+   * The old base the commits of `branch` were made on top of. Only the commits after it are
+   * replayed (`git rebase --onto <onto> <upstream>`). Default: `onto` itself, which replays
+   * what `branch` has that `onto` lacks.
+   */
+  readonly upstream?: string;
+}
+
+/**
+ * What a rebase did. `conflict` leaves the branch exactly where it was (the adapter aborts the
+ * rebase), so the caller can inspect `files` and decide without cleaning up.
+ */
+export type RebaseOutcome =
+  /** The branch was moved onto `onto`; `sha` is its new head. */
+  | { readonly kind: 'rebased'; readonly sha: string }
+  /** The branch already sits on `onto` (and has nothing to replay): nothing changed. */
+  | { readonly kind: 'up_to_date'; readonly sha: string }
+  /** Paths with a conflict, sorted. */
+  | { readonly kind: 'conflict'; readonly files: readonly string[] };
+
+/**
+ * Optional capability of a `Vcs`: rebase a branch that is not checked out anywhere onto another
+ * ref, in place (the dependents of a redone demand, architecture 5.5, N82). [proposta] Not in
+ * the architecture; the adapter does it in a private throwaway worktree, because `createWorktree`
+ * only makes new branches. Check with {@link supportsRebase}.
+ *
+ * Errors: a missing repository or ref is `NotFound`; a branch checked out in a worktree is
+ * `Conflict` (moving it would leave that worktree behind). A conflict of the rebase is NOT an
+ * error: it is the `conflict` outcome.
+ */
+export interface VcsRebase {
+  rebaseBranch(
+    repo: string,
+    branch: string,
+    onto: string,
+    opts?: RebaseOptions,
+  ): Promise<RebaseOutcome>;
+}
+
+/** Narrows a `Vcs` to one that can rebase a branch. */
+export function supportsRebase(vcs: Vcs): vcs is Vcs & VcsRebase {
+  return typeof (vcs as Partial<VcsRebase>).rebaseBranch === 'function';
+}
+
+/** What {@link VcsDiff.diffBetween} returns: the text of the diff, clipped when it is long. */
+export interface DiffText {
+  readonly text: string;
+  /** The diff was longer than `maxChars` and `text` ends where it was cut. */
+  readonly truncated: boolean;
+}
+
+/**
+ * Optional capability of a `Vcs`: the text of the difference between two refs, to hand the work
+ * of an old attempt to a new one (architecture 5.5, N82 and N84). [proposta] Not in the
+ * architecture. Check with {@link supportsDiff}.
+ *
+ * `diffBetween` is `git diff <base>...<head>`: what `head` did since it left `base`. A missing
+ * repository or ref is `NotFound`.
+ */
+export interface VcsDiff {
+  diffBetween(repo: string, base: string, head: string, maxChars?: number): Promise<DiffText>;
+}
+
+/** Narrows a `Vcs` to one that can give the text of a diff. */
+export function supportsDiff(vcs: Vcs): vcs is Vcs & VcsDiff {
+  return typeof (vcs as Partial<VcsDiff>).diffBetween === 'function';
+}
+
+/**
+ * Optional capability of a `Vcs`: delete a local branch (the integration branch that is rebuilt
+ * from the base of the play, N84). [proposta] Not in the architecture. Deleting a branch that
+ * does not exist is a no-op; a branch checked out in a worktree is `Conflict`. Check with
+ * {@link supportsBranchDelete}.
+ */
+export interface VcsBranchDelete {
+  deleteBranch(repo: string, branch: string): Promise<void>;
+}
+
+/** Narrows a `Vcs` to one that can delete a branch. */
+export function supportsBranchDelete(vcs: Vcs): vcs is Vcs & VcsBranchDelete {
+  return typeof (vcs as Partial<VcsBranchDelete>).deleteBranch === 'function';
+}
+
 /**
  * Optional capability of a `Vcs`: the history queries the verifiers of the reconciliation use
  * (architecture 5.21: "is the commit with the idempotency key on the branch?"). Check with

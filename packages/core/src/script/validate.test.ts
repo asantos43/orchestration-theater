@@ -33,6 +33,14 @@ describe('validateScript: roteiro valido', () => {
     expect(validateScript(s)).toEqual([]);
   });
 
+  it('aceita unchanged (N84), e so booleano', () => {
+    const marked = script([demand('a', { unchanged: true })]);
+    expect(validateScript(marked)).toEqual([]);
+    expect(ScriptSchema.safeParse(marked).success).toBe(true);
+    const wrong = { ...marked, demands: [{ ...need(marked.demands[0]), unchanged: 'yes' }] };
+    expect(ScriptSchema.safeParse(wrong).success).toBe(false);
+  });
+
   it('nao limita timeoutMin sem o teto, nem exige timeoutMin', () => {
     const s = script([demand('a', { timeoutMin: 99_999 }), demand('b', { timeoutMin: undefined })]);
     expect(validateScript(s)).toEqual([]);

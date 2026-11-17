@@ -228,19 +228,54 @@ describe('parseConfig, execution keys', () => {
   });
 
   it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {
-    expect(parseConfig('').delivery).toEqual({ mode: 'pr', allow_direct_merge: false });
+    expect(parseConfig('').delivery).toEqual({
+      mode: 'pr',
+      allow_direct_merge: false,
+      base_drift: 'update',
+    });
     for (const mode of ['pr', 'direct_merge', 'ask']) {
       expect(parseConfig(`delivery:\n  mode: ${mode}\n`).delivery.mode).toBe(mode);
     }
     expect(parseConfig('delivery:\n  allow_direct_merge: true\n').delivery).toEqual({
       mode: 'pr',
       allow_direct_merge: true,
+      base_drift: 'update',
     });
     expect(() => parseConfig('delivery:\n  mode: merge\n')).toThrow(/mode/);
     expect(() => parseConfig('delivery:\n  allow_direct_merge: yes please\n')).toThrow(
       /allow_direct_merge/,
     );
     expect(() => parseConfig('delivery:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
+  it('defaults delivery.base_drift to update (N83) and takes the three modes', () => {
+    expect(parseConfig('').delivery.base_drift).toBe('update');
+    for (const mode of ['update', 'deliver_and_warn', 'ask']) {
+      expect(parseConfig(`delivery:\n  base_drift: ${mode}\n`).delivery.base_drift).toBe(mode);
+    }
+    expect(() => parseConfig('delivery:\n  base_drift: rebase\n')).toThrow(/base_drift/);
+  });
+
+  it('defaults integration.rebase_conflict to redo (N82) and takes the three modes', () => {
+    expect(parseConfig('').integration).toEqual({ rebase_conflict: 'redo' });
+    for (const mode of ['redo', 'script_failure', 'resolve_attempt']) {
+      expect(
+        parseConfig(`integration:\n  rebase_conflict: ${mode}\n`).integration.rebase_conflict,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('integration:\n  rebase_conflict: ignore\n')).toThrow(
+      /rebase_conflict/,
+    );
+    expect(() => parseConfig('integration:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
+  it('defaults rescript.reuse to keep_unchanged (N84) and takes the three modes', () => {
+    expect(parseConfig('').rescript).toEqual({ reuse: 'keep_unchanged' });
+    for (const mode of ['keep_unchanged', 'redo_all', 'from_previous']) {
+      expect(parseConfig(`rescript:\n  reuse: ${mode}\n`).rescript.reuse).toBe(mode);
+    }
+    expect(() => parseConfig('rescript:\n  reuse: always\n')).toThrow(/reuse/);
+    expect(() => parseConfig('rescript:\n  extra: 1\n')).toThrow(/extra/);
   });
 
   it('defaults security.catalog_probe to allow and takes refuse', () => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AdapterUnavailable,
@@ -447,6 +447,39 @@ describe('Workspace.deliver', () => {
   );
 
   it(
+    'lists the warnings (N83, deliver_and_warn) in the PR and in the delivery event',
+    async () => {
+      const result = await rig.workspace.deliver({
+        ...delivery,
+        repo: rig.repo,
+        warnings: ['main moved while the play ran; conflicts: a.txt, b.txt'],
+      });
+      expect(result.kind).toBe('delivered');
+      const opened = rig.host.calls.find((call) => call.method === 'openPullRequest');
+      const body = (opened?.args as { body: string }).body;
+      expect(body).toContain('**Warnings**');
+      expect(body).toContain('- main moved while the play ran; conflicts: a.txt, b.txt');
+      expect((await eventsOf(rig, 'delivery.completed'))[0]?.payload).toMatchObject({
+        warnings: ['main moved while the play ran; conflicts: a.txt, b.txt'],
+      });
+    },
+    T,
+  );
+
+  it(
+    'a delivery without warnings has no Warnings section and no warnings in the event',
+    async () => {
+      await rig.workspace.deliver({ ...delivery, repo: rig.repo });
+      const opened = rig.host.calls.find((call) => call.method === 'openPullRequest');
+      expect((opened?.args as { body: string }).body).not.toContain('Warnings');
+      expect((await eventsOf(rig, 'delivery.completed'))[0]?.payload).not.toHaveProperty(
+        'warnings',
+      );
+    },
+    T,
+  );
+
+  it(
     'merges on the remote when allowed and asked for by the play',
     async () => {
       const input = {
@@ -612,6 +645,124 @@ describe('Workspace.deliver', () => {
       await expect(
         rig.workspace.deliver({ ...delivery, repo: rig.repo, playId: 'other-play' }),
       ).rejects.toBeInstanceOf(NotFound);
+    },
+    T,
+  );
+});
+
+describe('Workspace: the base moves while the play runs (N83, N84)', () => {
+  let rig: Rig;
+  const demands = scriptOf([demandOf('d1'), demandOf('d2')]);
+  beforeEach(async () => {
+    rig = await setup();
+    await rig.workspace.createPlayBase({ repo: rig.repo, playId: PLAY, base: 'main' });
+  }, T);
+
+  async function advanceMain(file: string, content: string): Promise<string> {
+    const path = join(rig.worktreeRoot, 'main-advance');
+    await rig.vcs.createWorktree({ repo: rig.repo, path, branch: 'tmp-advance', base: 'main' });
+    await writeFile(join(path, file), content);
+    await rig.vcs.commitAll(path, `main moves: ${file}`);
+    const sha = await rig.vcs.headOf(path);
+    await rig.vcs.removeWorktree(path, { force: true, deleteBranch: true });
+    await testGit(rig.repo, 'update-ref', 'refs/heads/main', sha);
+    return sha;
+  }
+
+  it(
+    'moveBase fast-forwards play/<id>/base onto the new base',
+    async () => {
+      const sha = await advanceMain('news.txt', 'new\n');
+      const moved = await rig.workspace.moveBase({ repo: rig.repo, playId: PLAY, onto: 'main' });
+      expect(moved).toBe(sha);
+      expect(await testGit(rig.repo, 'rev-parse', playBranch(PLAY))).toBe(sha);
+      // Again: nothing to do.
+      expect(await rig.workspace.moveBase({ repo: rig.repo, playId: PLAY, onto: 'main' })).toBe(
+        sha,
+      );
+    },
+    T,
+  );
+
+  it(
+    'mergeBase: no change of the base is up_to_date, and a moved base is merged once',
+    async () => {
+      await rig.attempt(PLAY, 'd1', 1, { 'd1.txt': 'one\n' });
+      await rig.workspace.integrate({
+        repo: rig.repo,
+        playId: PLAY,
+        script: demands,
+        approved: [{ demandId: 'd1', attempt: 1 }],
+      });
+      const same = await rig.workspace.mergeBase({ repo: rig.repo, playId: PLAY });
+      expect(same.kind).toBe('up_to_date');
+
+      const sha = await advanceMain('news.txt', 'new\n');
+      await rig.workspace.moveBase({ repo: rig.repo, playId: PLAY, onto: 'main' });
+      const merged = await rig.workspace.mergeBase({ repo: rig.repo, playId: PLAY });
+      if (merged.kind !== 'merged') throw new Error(`Expected merged: ${merged.kind}`);
+      expect(merged.baseSha).toBe(sha);
+      expect(await readFile(join(merged.worktree, 'news.txt'), 'utf8')).toBe('new\n');
+      expect(await readFile(join(merged.worktree, 'd1.txt'), 'utf8')).toBe('one\n');
+
+      // The same base again replays the record and the head stays.
+      const again = await rig.workspace.mergeBase({ repo: rig.repo, playId: PLAY });
+      expect(again).toMatchObject({ kind: 'merged', head: merged.head });
+      const log = await testGit(rig.repo, 'log', '--format=%b', integrationBranch(PLAY));
+      expect(log.match(/OTheater-Idempotency-Key: play-1:drift:r1:/g)).toHaveLength(1);
+    },
+    T,
+  );
+
+  it(
+    'mergeBase: a conflict names the files and leaves the integration as it was',
+    async () => {
+      await rig.attempt(PLAY, 'd1', 1, { 'shared.txt': 'the attempt\n' });
+      const integrated = await rig.workspace.integrate({
+        repo: rig.repo,
+        playId: PLAY,
+        script: demands,
+        approved: [{ demandId: 'd1', attempt: 1 }],
+      });
+      if (integrated.kind !== 'integrated') throw new Error('Expected integrated');
+      await advanceMain('shared.txt', 'main changed it\n');
+      await rig.workspace.moveBase({ repo: rig.repo, playId: PLAY, onto: 'main' });
+
+      const result = await rig.workspace.mergeBase({ repo: rig.repo, playId: PLAY });
+      expect(result).toMatchObject({ kind: 'conflict', conflictFiles: ['shared.txt'] });
+      expect(await testGit(rig.repo, 'rev-parse', integrationBranch(PLAY))).toBe(integrated.head);
+      expect(await testGit(integrated.worktree, 'status', '--porcelain')).toBe('');
+    },
+    T,
+  );
+
+  it(
+    'resetIntegration drops the branch, and the next round integrates from the base again',
+    async () => {
+      await rig.attempt(PLAY, 'd1', 1, { 'd1.txt': 'one\n' });
+      const input = {
+        repo: rig.repo,
+        playId: PLAY,
+        script: demands,
+        approved: [{ demandId: 'd1', attempt: 1 }],
+      };
+      await rig.workspace.integrate(input);
+      expect(await rig.workspace.resetIntegration({ repo: rig.repo, playId: PLAY })).toBe(true);
+      await expect(
+        testGit(rig.repo, 'rev-parse', '--verify', integrationBranch(PLAY)),
+      ).rejects.toBeDefined();
+      expect(await rig.workspace.resetIntegration({ repo: rig.repo, playId: PLAY })).toBe(false);
+
+      // With the same key the registry would replay the old merge and the branch would stay empty.
+      const second = await rig.workspace.integrate({ ...input, round: 2 });
+      if (second.kind !== 'integrated') throw new Error(`Expected integrated: ${second.kind}`);
+      expect(second.merged.map((entry) => entry.outcome)).toEqual(['merged']);
+      expect(await readFile(join(second.worktree, 'd1.txt'), 'utf8')).toBe('one\n');
+      expect(
+        (await rig.store.sideEffects.list({ types: ['git_commit'] })).map(
+          (effect) => effect.idempotencyKey,
+        ),
+      ).toEqual(['play-1:integrate:d1:1', 'play-1:integrate:d1:1:r2']);
     },
     T,
   );

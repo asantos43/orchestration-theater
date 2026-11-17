@@ -29,7 +29,14 @@ export type PlayEffect =
       readonly type: 'run_demands';
       readonly demandIds: readonly string[];
       /** `same` is a plain (re)try; the others come from a judgment point of the Director. */
-      readonly strategy: 'same' | 'handoff' | 'reformulate' | 'switch_executor' | 'redo';
+      readonly strategy:
+        | 'same'
+        | 'handoff'
+        | 'reformulate'
+        | 'switch_executor'
+        | 'redo'
+        /** [proposta] An attempt only to resolve a rebase conflict (N82, `resolve_attempt`). */
+        | 'resolve';
       readonly retry: boolean;
       readonly feedback: string | null;
       readonly submitRetries: number;
@@ -61,6 +68,8 @@ export type PlayEffect =
       readonly partial: boolean;
       /** The PR says the Critic was waived. */
       readonly criticWaived: boolean;
+      /** The Producer accepted the conflicts of a drifted base: no more drift check (N83). */
+      readonly driftAccepted: boolean;
     }
   | {
       /** The fixed menu of AWAITING_PRODUCER, with the options that hold now. */
@@ -155,6 +164,7 @@ export function entryEffects(state: PlayState, context: PlayContext): PlayEffect
           demandIds: context.deliverOnlyApproved ? context.approvedDemands : context.demandIds,
           partial: context.deliverOnlyApproved,
           criticWaived: context.criticWaived,
+          driftAccepted: context.driftAccepted === true,
         },
       ];
     case 'AWAITING_PRODUCER':

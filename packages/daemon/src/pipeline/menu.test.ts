@@ -16,12 +16,14 @@ function spentPlanReviews(model = new Model()): Model {
 }
 
 describe('the fixed menu of AWAITING_PRODUCER', () => {
-  it('is a closed list of 5 options, in a fixed order', () => {
+  it('is a closed list of 7 options, in a fixed order', () => {
     expect(MENU_OPTIONS).toEqual([
       'redefine_need',
       'raise_limit',
       'deliver_ready',
       'accept_as_is',
+      'redo_on_new_base',
+      'deliver_with_conflict',
       'cancel',
     ]);
   });
@@ -29,7 +31,12 @@ describe('the fixed menu of AWAITING_PRODUCER', () => {
   it('shows every option when demands were approved and the Critic rejected', () => {
     const model = new Model(limitsOf('economical')).toDeciding();
     model.classify([{ kind: 'structural' }]);
-    expect(model.effect('ask_menu').options).toEqual(MENU_OPTIONS);
+    // the two options of a drifted base (N83) hold only for that reason
+    expect(model.effect('ask_menu').options).toEqual(
+      MENU_OPTIONS.filter(
+        (option) => option !== 'redo_on_new_base' && option !== 'deliver_with_conflict',
+      ),
+    );
   });
 
   it('refuses an option that does not hold, and an option outside the list', () => {

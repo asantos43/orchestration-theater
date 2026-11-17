@@ -23,6 +23,15 @@ export type ProducerReason =
       readonly kind: 'consulted';
       readonly point: JudgmentPointId;
       readonly demandId: string | null;
+    }
+  | {
+      /**
+       * [proposta] `delivery.base_drift: ask` (N83): the base moved and merging it into the
+       * integration conflicts. `reason` is what goes to the Scriptwriter if the Producer redoes.
+       */
+      readonly kind: 'base_drift';
+      readonly files: readonly string[];
+      readonly reason: string;
     };
 
 /** A judgment point that was opened in EXECUTING and waits for the answer of the Director. */
@@ -66,6 +75,11 @@ export interface PlayContext {
   readonly producerReason: ProducerReason | null;
   /** DELIVERING with only the approved demands ("deliver what is ready"). */
   readonly deliverOnlyApproved: boolean;
+  /**
+   * [proposta] The Producer chose to deliver with the conflicts of a drifted base (N83). Missing in
+   * snapshots written before P14, so it is read with `=== true`.
+   */
+  readonly driftAccepted?: boolean;
   /** PLANNING was entered by a restart or a new need, not for the first time. */
   readonly restart: boolean;
   /** Sequence of the decisions this play recorded; makes their ids deterministic (`<play>:d<n>`). */

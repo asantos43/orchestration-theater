@@ -4,6 +4,11 @@ import { availableMenu } from './menu.js';
 import { CRITICAL_EXCEPTIONS, MENU_OPTIONS, type MenuOption } from './definitions.js';
 import { limitsOf, Model, PRESETS } from './model-fixture.js';
 
+/** Every option except the two of a drifted base (N83), which hold only for that reason. */
+const LIMIT_MENU = MENU_OPTIONS.filter(
+  (option) => option !== 'redo_on_new_base' && option !== 'deliver_with_conflict',
+);
+
 function menuOf(model: Model): readonly MenuOption[] {
   return model.effect('ask_menu').options;
 }
@@ -234,7 +239,7 @@ describe.each(PRESETS)('the loop counters, preset %s', (preset) => {
     model.send({ type: 'CRITIQUED', approved: false, reason: 'again' });
     if (limits.structural_restarts === 0) {
       // economical: no restart is allowed, so the play goes to the Producer, with every option
-      expectAwaiting(model, MENU_OPTIONS);
+      expectAwaiting(model, LIMIT_MENU);
       expect(model.context.producerReason).toMatchObject({
         counter: 'structural_restarts',
         resumeTo: 'PLANNING',
@@ -336,7 +341,7 @@ describe('the Critic', () => {
   it('accept as is, after a rejection, waives the Critic and records it as a decision', () => {
     const model = new Model(limitsOf('economical')).toDeciding();
     model.classify([{ kind: 'structural' }]);
-    expectAwaiting(model, MENU_OPTIONS);
+    expectAwaiting(model, LIMIT_MENU);
     const before = model.decisions.length;
     model.send({ type: 'PRODUCER_CHOSE', option: 'accept_as_is', reason: 'good enough for now' });
     expect(model.state).toBe('DELIVERING');

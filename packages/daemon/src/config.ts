@@ -261,6 +261,32 @@ function resolveLimits(
 export const VERIFY_MODES = ['run', 'skip'] as const;
 export type VerifyMode = (typeof VERIFY_MODES)[number];
 
+/**
+ * What a rebase of a dependent onto the new branch of a redone dependency does when it
+ * conflicts (architecture 5.5, N82). `redo`: a new attempt of the dependent from the new
+ * dependency branch, with the old diff in the Actor's context (default); `script_failure`: the
+ * conflict is a script failure; `resolve_attempt`: an attempt only to resolve the conflict.
+ */
+export const REBASE_CONFLICT_MODES = ['redo', 'script_failure', 'resolve_attempt'] as const;
+export type RebaseConflictMode = (typeof REBASE_CONFLICT_MODES)[number];
+
+/**
+ * What the delivery does when the project's base moved while the play ran (N83). `update`: merge
+ * the base into the integration and run `verify` again (default); `deliver_and_warn`: open the PR
+ * with the conflicts listed; `ask`: the Producer chooses (with nobody watching it is `update`).
+ */
+export const BASE_DRIFT_MODES = ['update', 'deliver_and_warn', 'ask'] as const;
+export type BaseDriftMode = (typeof BASE_DRIFT_MODES)[number];
+
+/**
+ * What a new script does with the demands the old one had already done (N84).
+ * `keep_unchanged`: the demands the Scriptwriter marks as unchanged (and that the daemon finds
+ * equal) stay approved (default); `redo_all`: everything is redone; `from_previous`: the demands
+ * start from the branch of their old attempt.
+ */
+export const RESCRIPT_REUSE_MODES = ['keep_unchanged', 'redo_all', 'from_previous'] as const;
+export type RescriptReuseMode = (typeof RESCRIPT_REUSE_MODES)[number];
+
 export const CHAT_CHANNEL_MODES = ['auto', 'off'] as const;
 export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
 
@@ -703,6 +729,19 @@ export const DaemonConfigSchema = z.strictObject({
     .strictObject({
       mode: z.enum(DELIVERY_MODES).default('pr'),
       allow_direct_merge: z.boolean().default(false),
+      base_drift: z.enum(BASE_DRIFT_MODES).default('update'),
+    })
+    .prefault({}),
+  /** Integration of the demands (architecture 5.5): the rebase of the dependents (N82). */
+  integration: z
+    .strictObject({
+      rebase_conflict: z.enum(REBASE_CONFLICT_MODES).default('redo'),
+    })
+    .prefault({}),
+  /** A new script of a play that already did some work (architecture 5.5, N84). */
+  rescript: z
+    .strictObject({
+      reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
     })
     .prefault({}),
   ui: z

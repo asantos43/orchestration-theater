@@ -81,6 +81,13 @@ export const DemandSchema = z.strictObject({
   verify: z.array(VerifyStepSchema).max(50),
   /** Why there is no `verify` step. The Author judges it (REVIEWING_SCRIPT). */
   verifyWaiver: text(2000).optional(),
+  /**
+   * A rewritten script (N84): the Scriptwriter says this demand is exactly as it was in the script
+   * it replaces. The daemon checks it (same description, contract, expected files, dependencies
+   * and verify) before it keeps the approved work. [proposta] The architecture says the
+   * Scriptwriter marks the unchanged demands but not how.
+   */
+  unchanged: z.boolean().optional(),
 });
 export type Demand = z.infer<typeof DemandSchema>;
 

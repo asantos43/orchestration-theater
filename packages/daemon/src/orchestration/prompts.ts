@@ -11,6 +11,28 @@ import type { Demand } from '@otheater/core';
  * (5.22) and says which tool to call and with what.
  */
 
+/**
+ * The work of an earlier attempt of the demand that this attempt takes over (N82, N84). [proposta]
+ * The daemon builds it from the `carry:<demand>` note of the blackboard.
+ */
+export interface CarriedWork {
+  /** Why the earlier work is here: its rebase conflicted, or the script was rewritten. */
+  readonly kind: 'rebase_conflict' | 'rescript';
+  /** The branch of the earlier attempt. */
+  readonly branch: string;
+  /** What the earlier attempt changed (a unified diff), when the daemon could read it. */
+  readonly diff?: string | undefined;
+  readonly truncated?: boolean | undefined;
+  /** The attempt only resolves a conflict: the worktree starts on `branch`. */
+  readonly resolve: boolean;
+  /** With `resolve`: the branch to merge in. */
+  readonly mergeIn: string | null;
+  /** The conflicting files, for a rebase that conflicted. */
+  readonly files: readonly string[];
+  /** The worktree starts on the earlier branch (`resolve`, or `rescript.reuse: from_previous`). */
+  readonly startsFromBranch: boolean;
+}
+
 export interface StagePromptInput {
   readonly stage: string;
   readonly role: string;
@@ -28,6 +50,10 @@ export interface StagePromptInput {
   readonly attempt?: number | undefined;
   /** Where the integrated work is (CRITIQUING): the base to compare it with. */
   readonly baseRef?: string | undefined;
+  /** EXECUTING: the earlier attempt this one takes over. */
+  readonly carried?: CarriedWork | undefined;
+  /** SCRIPTING: the script that is being rewritten, as JSON text, and the demands it kept. */
+  readonly previousScript?: string | undefined;
 }
 
 const SCRIPT_SHAPE = [
@@ -59,6 +85,37 @@ function instruction(input: StagePromptInput): string {
   }
 }
 
+const UNCHANGED_NOTE =
+  'Mark `"unchanged": true` on every demand you keep exactly as it is in this script (same description, contract, expected files, dependencies and verify). The daemon keeps the approved work of those demands and runs only the others. Change a demand and leave the mark off when it has to be redone.';
+
+function carriedSection(work: CarriedWork): string {
+  const lines: string[] = ['## Work of the earlier attempt'];
+  if (work.kind === 'rebase_conflict') {
+    lines.push(
+      `The earlier attempt of this demand was moved onto the new work it depends on and conflicts in: ${work.files.join(', ') || 'some files'}.`,
+    );
+  } else {
+    lines.push('The script was rewritten and this demand has to be done again.');
+  }
+  lines.push(`The earlier work is on the branch \`${work.branch}\`.`);
+  if (work.resolve && work.mergeIn !== null) {
+    lines.push(
+      `This worktree starts from that branch. Only resolve the conflict: merge \`${work.mergeIn}\` into it, fix the conflicting files, and call \`submit\`. Change nothing else.`,
+    );
+  } else if (work.startsFromBranch) {
+    lines.push('This worktree starts from that branch: change what the demand now asks for.');
+  } else {
+    lines.push(
+      'Redo the demand on this worktree. What the earlier attempt changed, for reference:',
+    );
+  }
+  if (work.diff !== undefined && work.diff !== '') {
+    lines.push('```diff', work.diff, '```');
+    if (work.truncated === true) lines.push('(the diff was cut; read the branch for the rest)');
+  }
+  return lines.join('\n');
+}
+
 /** The prompt of one stage or one Actor attempt, to follow the prefix of the role. */
 export function stagePrompt(input: StagePromptInput): string {
   const lines = [
@@ -72,6 +129,10 @@ export function stagePrompt(input: StagePromptInput): string {
   if (input.feedback !== null) sections.push(`## Why this runs again\n\n${input.feedback}`);
   if (input.plan !== undefined) sections.push(`## Plan\n\n${input.plan}`);
   if (input.script !== undefined) sections.push(`## Script\n\n${input.script}`);
+  if (input.previousScript !== undefined) {
+    sections.push(`## Previous script\n\n${input.previousScript}\n\n${UNCHANGED_NOTE}`);
+  }
+  if (input.carried !== undefined) sections.push(carriedSection(input.carried));
   if (input.demand !== undefined) {
     sections.push(
       `## Your demand\n\n${JSON.stringify(input.demand, null, 2)}\n\nWork only inside this worktree. When the demand is done, call \`submit\` with \`{ "result": "<what you did>" }\`. Read the contracts you depend on with \`read_contract\`.`,
