@@ -54,6 +54,7 @@ export const LOCALE_SETTINGS = ['auto', 'en', 'pt-BR'] as const;
 export const STORE_ADAPTER_IDS = ['sqlite'] as const;
 export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
+export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
 
@@ -276,12 +277,18 @@ export const DaemonConfigSchema = z.strictObject({
       store: z.enum(STORE_ADAPTER_IDS).default('sqlite'),
       vault: z.enum(VAULT_ADAPTER_IDS).default('keyring'),
       clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
+      prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
     })
     .prefault({}),
   /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */
   store: AdapterSection.prefault({}),
   /** Config of the chosen vault adapter (keyring: service, linuxStore; encrypted-file: path, scrypt). */
   vault: AdapterSection.prefault({}),
+  /**
+   * Config of the chosen prompt source (files: `directory`, a folder with one `<role>.md` per role;
+   * without it the versioned `prompts/` folder of the repository is used). [proposta]
+   */
+  prompts: AdapterSection.prefault({}),
   backup: z
     .strictObject({
       when: z.enum(BACKUP_WHEN).default('daily_after'),

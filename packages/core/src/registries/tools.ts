@@ -174,7 +174,7 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     effect: 'worktree',
     idempotencyKey: 'attempt_step',
   }),
-  tool('http_get', ['actor'], z.strictObject({ url: z.url() }), json),
+  tool('http_get', ['actor', 'consultant'], z.strictObject({ url: z.url() }), json),
 
   // Critic.
   tool(

@@ -80,9 +80,13 @@ export default {
     },
     {
       name: 'daemon-adapters-only-in-compose',
-      comment: 'In the daemon, only compose.ts (the composition point) may import adapters.',
+      comment:
+        'In the daemon, only compose.ts (the composition point) and prompts.ts (the prompt source, outside compose.ts to keep P11 apart from it) may import adapters.',
       severity: 'error',
-      from: { path: '^packages/daemon/src/', pathNot: '^packages/daemon/src/compose\\.ts$' },
+      from: {
+        path: '^packages/daemon/src/',
+        pathNot: '^packages/daemon/src/(compose|prompts)\\.ts$',
+      },
       to: { path: ['^packages/adapters/', '(^|/)node_modules/@otheater/adapter-'] },
     },
     {

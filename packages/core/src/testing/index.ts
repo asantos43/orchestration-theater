@@ -13,3 +13,4 @@ export * from './fake-process-launcher.js';
 export * from './fake-session-transport.js';
 export * from './fake-client-adapter.js';
 export * from './fake-code-host.js';
+export * from './in-memory-prompt-source.js';

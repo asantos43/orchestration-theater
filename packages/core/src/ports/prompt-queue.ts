@@ -2,16 +2,19 @@
 import { z } from 'zod';
 import { EpochMsSchema, JsonObjectSchema, RecordIdSchema } from './store-schemas.js';
 
-/** Who put a prompt in the queue. [proposta] */
+/**
+ * Who put a prompt in the queue. [proposta] Named `PromptOrigin` (P11), not `PromptSource`: that
+ * name is the port that supplies the role prompts (architecture 5.18).
+ */
 export const PROMPT_SOURCES = ['producer', 'director', 'daemon', 'schedule'] as const;
-export type PromptSource = (typeof PROMPT_SOURCES)[number];
+export type PromptOrigin = (typeof PROMPT_SOURCES)[number];
 
 /**
  * [proposta] Default priority of each source: the Producer goes first (architecture 5.4), then
  * the Director's own follow-ups, then what the daemon and the schedules generate. A caller may
  * pass any integer; a higher number is delivered first.
  */
-export const PROMPT_PRIORITY: Readonly<Record<PromptSource, number>> = {
+export const PROMPT_PRIORITY: Readonly<Record<PromptOrigin, number>> = {
   producer: 100,
   director: 50,
   schedule: 10,
