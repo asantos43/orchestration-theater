@@ -109,7 +109,7 @@ Ficam como portões **[N]**:
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
 | P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
 | P15 | Lacunas antes do aceite (N86) | P14 | P13 | a fazer |
-| P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | a fazer |
+| P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | código feito (PR #68); falta a rodada do dono (N88) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P2 e P5;
