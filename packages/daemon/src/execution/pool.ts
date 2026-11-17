@@ -14,6 +14,7 @@ import {
   type ProcessLauncher,
   type Profile,
   type RolePolicy,
+  type SessionPermissions,
   type SessionStartOptions,
   type SessionTransport,
   endsSharedProcess,
@@ -36,6 +37,11 @@ export interface PoolRequest {
    * framework server, architecture 5.3). Each name must be in `policy.mcpServers`. [proposta]
    */
   readonly mcpServers?: readonly McpServerRef[];
+  /**
+   * What the base of the adapter tells the caller about every permission request it answers, and
+   * how it resolves links (Phase 4, P2). Absent means nobody listens. [proposta]
+   */
+  readonly permissions?: SessionPermissions;
   /** Aborts the wait for admission. */
   readonly signal?: AbortSignal;
 }
@@ -273,8 +279,11 @@ export class SessionPool {
     const { profile, policy, cwd, resumeSessionId } = request;
     const profileId = profile.id;
     // Only a session with its own MCP servers gets an `options`; the others call as before.
-    const extra: [SessionStartOptions] | [] =
-      request.mcpServers === undefined ? [] : [{ mcpServers: request.mcpServers }];
+    const options: SessionStartOptions = {
+      ...(request.mcpServers === undefined ? {} : { mcpServers: request.mcpServers }),
+      ...(request.permissions === undefined ? {} : { permissions: request.permissions }),
+    };
+    const extra: [SessionStartOptions] | [] = Object.keys(options).length === 0 ? [] : [options];
     if (adapter.processModel === 'process-per-session') {
       const session =
         resumeSessionId === undefined

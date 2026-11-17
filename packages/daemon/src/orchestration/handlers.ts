@@ -11,7 +11,7 @@ import {
   type Store,
 } from '@otheater/core';
 import type { z } from 'zod';
-import type { DaemonConfig, PlayLimits } from '../config.js';
+import type { DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { producerQuestionErrors } from '../mcp/ask-producer.js';
 import { ToolFailure, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
@@ -24,6 +24,7 @@ import {
 import type { ChatFlow } from '../scenarios/chat-flow.js';
 import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
+import { openPlayFromNeed } from './open-play.js';
 import { DECISION_KINDS } from './play-effects.js';
 
 /** The tools of the Director that the orchestration answers (P8). */
@@ -87,22 +88,6 @@ export interface OrchestrationRuntime {
   readonly logger: Logger;
   /** The state machine of the `chat` flow (P12): told when a question to the Producer opens or ends. */
   readonly chatFlow?: ChatFlow | undefined;
-}
-
-function limitsOf(config: DaemonConfig): PlayLimits {
-  const { limits } = config;
-  return {
-    plan_reviews: limits.plan_reviews,
-    critic_rejections: limits.critic_rejections,
-    attempts_per_demand: limits.attempts_per_demand,
-    script_validations: limits.script_validations,
-    script_vetoes: limits.script_vetoes,
-    script_returns: limits.script_returns,
-    structural_restarts: limits.structural_restarts,
-    submit_retries: limits.submit_retries,
-    demand_timeout: limits.demand_timeout,
-    demand_timeout_max: limits.demand_timeout_max,
-  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -362,26 +347,9 @@ export class OrchestrationHandlers {
     scenarioId: string,
     need: string,
   ): Promise<JsonObject | ToolFailure> {
-    if (rt.workspace === undefined) {
-      return new ToolFailure(
-        'no_code_host',
-        'This daemon has no code host, so a play cannot deliver its work: it cannot open plays.',
-      );
-    }
-    const repo = (await rt.store.scenarioRepos.list(scenarioId))[0];
-    if (repo === undefined) {
-      return new ToolFailure('no_repository', 'The scenario has no repository to work on.');
-    }
-    // [proposta] ids of plays: a short random suffix (a valid branch name, unique enough).
-    const playId = `play-${randomUUID().slice(0, 8)}`;
-    await rt.runner.create({ playId, scenarioId, need, limits: limitsOf(rt.config) });
-    await rt.workspace.createPlayBase({
-      repo: repo.path,
-      playId,
-      base: repo.mainBranch,
-    });
-    await rt.runner.send(playId, { type: 'START' });
-    return { playId };
+    const opened = await openPlayFromNeed(rt, scenarioId, need);
+    if (!opened.ok) return new ToolFailure(opened.code, opened.message);
+    return { playId: opened.playId };
   }
 
   /**

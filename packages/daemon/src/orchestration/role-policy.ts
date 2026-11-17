@@ -2,6 +2,7 @@
 import {
   InvalidInput,
   type JsonObject,
+  type PermissionRule,
   type RolePolicy,
   type ScenarioRecord,
   type ScenarioRegistry,
@@ -13,6 +14,7 @@ import {
   RolesConfigSchema,
   type POLICY_BROWSER_MODES,
   type POLICY_NATIVE_TOOLS,
+  type PolicyRule,
   type RolePolicySettings,
 } from '../role-policy-config.js';
 
@@ -36,6 +38,8 @@ export interface PolicySettings {
   readonly network: { readonly allow: readonly string[] };
   readonly browser: (typeof POLICY_BROWSER_MODES)[number];
   readonly onAsk: 'reject' | 'rules';
+  /** The rules of layer 2, ids still optional; they count only when `onAsk` is `rules`. */
+  readonly rules: readonly PolicyRule[];
 }
 
 /** Roles that write in their worktree; every other role only reads (5.4, "Fronteira de cada papel"). */
@@ -78,6 +82,7 @@ export function defaultPolicySettings(role: string): PolicySettings {
     network: { allow: [] },
     browser: 'none',
     onAsk: 'reject',
+    rules: [],
   };
 }
 
@@ -89,6 +94,7 @@ export function applyPolicyLayer(base: PolicySettings, layer: RolePolicySettings
     network: layer.network === undefined ? base.network : { allow: unique(layer.network.allow) },
     browser: layer.browser ?? base.browser,
     onAsk: layer.on_ask ?? base.onAsk,
+    rules: layer.rules ?? base.rules,
   };
 }
 
@@ -123,6 +129,39 @@ function browserToolAllowed(tool: ToolDefinition, mode: PolicySettings['browser'
   return mode === 'full' || tool.effect !== 'external_write';
 }
 
+/** The id a rule gets when the configuration names none: its place in the final list. */
+export function defaultRuleId(index: number): string {
+  return `rules[${String(index)}]`;
+}
+
+/** The rules of the settings as the port carries them, every one with its id. */
+export function permissionRulesOf(settings: PolicySettings): PermissionRule[] {
+  return settings.rules.map((rule, index) => ({
+    id: rule.id ?? defaultRuleId(index),
+    action: rule.action,
+    ...(rule.kind === undefined ? {} : { kind: rule.kind }),
+    ...(rule.tool === undefined ? {} : { tool: rule.tool }),
+    ...(rule.path === undefined ? {} : { path: rule.path }),
+  }));
+}
+
+/**
+ * Refuses what only the merged layers show (N99): a rule that releases the network (kind `fetch`)
+ * when `network.allow` is empty, so the rule could never hold and the file says something it
+ * cannot do. The other openings N99 forbids are refused by the schema, per rule.
+ */
+export function assertRulesOpenNothingForbidden(role: string, settings: PolicySettings): void {
+  if (settings.onAsk !== 'rules' || settings.network.allow.length > 0) return;
+  const rule = settings.rules.find(
+    (candidate) => candidate.action === 'allow' && candidate.kind?.toLowerCase() === 'fetch',
+  );
+  if (rule !== undefined) {
+    throw new InvalidInput(
+      `roles.${role}.policy.rules: a rule that allows kind "fetch" needs domains in network.allow; the network outside network.allow is always rejected (N99)`,
+    );
+  }
+}
+
 /** The neutral policy of a role for the settings the layers settled on. */
 export function buildRolePolicy(
   role: string,
@@ -135,6 +174,7 @@ export function buildRolePolicy(
     mcpServers: [FRAMEWORK_MCP_NAME],
     mcpTools: { [FRAMEWORK_MCP_NAME]: frameworkToolsOf(role, settings, tools) },
     onAsk: settings.onAsk,
+    ...(settings.onAsk === 'rules' ? { rules: permissionRulesOf(settings) } : {}),
     bypass: 'forbidden',
     writeScope: 'worktree',
     network: { allow: settings.network.allow },
@@ -248,5 +288,6 @@ export async function resolveRolePolicy(
       if (layer !== undefined) settings = applyPolicyLayer(settings, layer);
     }
   }
+  assertRulesOpenNothingForbidden(role, settings);
   return buildRolePolicy(role, settings, resolver.tools());
 }

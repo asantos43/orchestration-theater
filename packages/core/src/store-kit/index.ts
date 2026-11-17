@@ -3,6 +3,7 @@ import type { Clock } from '../ports/clock.js';
 import type { StoreAggregates } from '../ports/store.js';
 import { BLACKBOARD_SPEC, TableBlackboard } from './blackboard.js';
 import { DIRECTIVES_SPEC, TableDirectiveRegistry } from './directives.js';
+import { IDEAS_SPEC, TableIdeaRegistry } from './ideas.js';
 import {
   DECISIONS_SPEC,
   DEMANDS_SPEC,
@@ -28,6 +29,7 @@ import { SIDE_EFFECTS_SPEC, TableSideEffectRegistry } from './side-effects.js';
 
 export * from './blackboard.js';
 export * from './directives.js';
+export * from './ideas.js';
 export * from './plays.js';
 export * from './prompt-queue.js';
 export * from './record-table.js';
@@ -50,6 +52,7 @@ export const AGGREGATE_TABLE_NAMES: readonly string[] = [
   SIDE_EFFECTS_SPEC.name,
   SESSIONS_SPEC.name,
   DIRECTIVES_SPEC.name,
+  IDEAS_SPEC.name,
 ];
 
 /**
@@ -74,6 +77,7 @@ export function createStoreAggregates(
     sideEffects: new TableSideEffectRegistry(tables(SIDE_EFFECTS_SPEC), clock),
     sessions: new TableSessionRegistry(tables(SESSIONS_SPEC), clock),
     directives: new TableDirectiveRegistry(tables(DIRECTIVES_SPEC), clock),
+    ideas: new TableIdeaRegistry(tables(IDEAS_SPEC), clock),
   };
 }
 
@@ -96,6 +100,7 @@ export const AGGREGATE_READ_METHODS: Readonly<Record<AggregateName, readonly str
   sideEffects: ['get', 'list'],
   sessions: ['get', 'list'],
   directives: ['get', 'list', 'inForce'],
+  ideas: ['get', 'list'],
 };
 
 /** The methods of each aggregate that write: each one is a single-call transaction outside one. */
@@ -112,6 +117,7 @@ export const AGGREGATE_WRITE_METHODS: Readonly<Record<AggregateName, readonly st
   sideEffects: ['intend', 'resolve'],
   sessions: ['open', 'update'],
   directives: ['create', 'extend', 'revoke', 'refreshStates'],
+  ideas: ['create', 'transition'],
 };
 
 type AnyMethod = (...args: unknown[]) => Promise<unknown>;

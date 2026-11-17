@@ -3,13 +3,19 @@ import {
   type AttachmentRecord,
   Conflict,
   type DecisionRecord,
+  type IdeaRecord,
   type JsonObject,
   InvalidInput,
   NotFound,
   type Store,
 } from '@otheater/core';
-import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
+import { z } from 'zod';
+import type { ConventionsMode } from '../config.js';
+import type { DrainResult, IdeaQueueService } from '../ideas/index.js';
+import { IDEA_GROUP_DECISION } from '../ideas/index.js';
 import type { Logger } from '../logger.js';
+import type { ConventionConfirmer } from '../project/confirm.js';
 import type { PlayRunner } from '../pipeline/index.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { AttachmentService } from '../scenarios/attachments.js';
@@ -26,10 +32,16 @@ export interface ProducerChannelOptions {
   readonly directors: DirectorSessions;
   readonly dispatcher: PromptDispatcher;
   readonly runner: PlayRunner;
+  /** The idea queue of the scenarios (5.20): `/idea` and the approval of a group. */
+  readonly ideas?: IdeaQueueService;
   readonly board: QuestionBoard;
   readonly logger: Logger;
   /** Told that a chat polled a scenario: that is what makes a play watched. */
   readonly presence?: ChatPresence;
+  /** Asks the Producer to confirm the conventions detected in an imported repository (P7). */
+  readonly confirmer?: ConventionConfirmer;
+  /** `project.conventions`: only `ask` opens the question. Default `ask`. */
+  readonly conventionsMode?: () => ConventionsMode;
 }
 
 export interface OpenChatInput {
@@ -41,6 +53,8 @@ export interface OpenChatInput {
   readonly base?: string;
   /** A name for the scenario. Default: the name of the folder. */
   readonly name?: string;
+  /** Create the project in `repo` with the structure of the `software` profile (a `project`). */
+  readonly newProject?: boolean;
 }
 
 /** What the Producer has to answer, as the chat shows it. */
@@ -52,6 +66,61 @@ export interface PendingAsk {
   readonly input: JsonObject;
 }
 
+/** An idea as the chat shows it. */
+export interface IdeaView {
+  readonly id: string;
+  readonly text: string;
+  readonly area: string | null;
+  readonly state: string;
+  readonly groupId: string | null;
+  readonly playId: string | null;
+  readonly prNumber: number | null;
+  readonly prUrl: string | null;
+  readonly reason: string | null;
+}
+
+export function ideaViewOf(idea: IdeaRecord): IdeaView {
+  return {
+    id: idea.id,
+    text: idea.text,
+    area: idea.area,
+    state: idea.state,
+    groupId: idea.groupId,
+    playId: idea.playId,
+    prNumber: idea.prNumber,
+    prUrl: idea.prUrl,
+    reason: idea.reason,
+  };
+}
+
+/** What `/idea` can do (5.20): add an idea, list the queue, drain it now, or settle one idea. */
+export type IdeaCommand =
+  | { readonly action: 'add'; readonly text: string; readonly area?: string | undefined }
+  | { readonly action: 'list' }
+  | { readonly action: 'drain' }
+  | { readonly action: 'discard' | 'defer'; readonly id: string; readonly reason: string }
+  | { readonly action: 'requeue'; readonly id: string };
+
+export interface IdeaCommandResult {
+  /** The idea the command acted on (`add`, `discard`, `defer`, `requeue`). */
+  readonly idea?: IdeaView;
+  /** The whole queue of the scenario after the command. */
+  readonly ideas: readonly IdeaView[];
+  /** `drain`: what the pass did. */
+  readonly drain?: DrainResult;
+}
+
+/** The answer to a group of ideas that waits for approval. */
+const GroupAnswerBody = z.discriminatedUnion('option', [
+  z.strictObject({ option: z.literal('approve') }),
+  z.strictObject({
+    option: z.literal('edit'),
+    need: z.string().optional(),
+    ideaIds: z.array(z.string()).optional(),
+  }),
+  z.strictObject({ option: z.literal('refuse'), reason: z.string().optional() }),
+]);
+
 export interface ChatPoll {
   readonly replies: readonly DirectorReply[];
   readonly asks: readonly PendingAsk[];
@@ -61,6 +130,11 @@ export interface ChatPoll {
    * (the reconciliation of the start-up, 5.21). Each one is handed out once.
    */
   readonly notices: readonly ScenarioSystemMessagePayload[];
+  /**
+   * The stops of the idea queue of this scenario that nobody has taken yet, oldest first (5.20):
+   * why it stopped, and `/idea drain`, `/idea requeue` or a new idea frees it. Each is handed out once.
+   */
+  readonly queueHolds: readonly IdeaQueueHeldPayload[];
   /**
    * True while something is still going on that the Producer does not have to answer: the Director
    * has a turn or a prompt to go, or a play is in a state that moves by itself.
@@ -82,6 +156,7 @@ export const chatScenarioId = projectScenarioId;
 export class ProducerChannel {
   readonly #options: ProducerChannelOptions;
   readonly #notices = new Map<string, ScenarioSystemMessagePayload[]>();
+  readonly #holds = new Map<string, IdeaQueueHeldPayload[]>();
 
   constructor(options: ProducerChannelOptions) {
     this.#options = options;
@@ -99,19 +174,35 @@ export class ProducerChannel {
   }
 
   /**
+   * Keeps the stop of an idea queue for the chat of its scenario until the next poll takes it.
+   * [proposta] In memory only, like the system messages: the record is the `idea.queue_held` event.
+   */
+  notifyQueueHeld(held: IdeaQueueHeldPayload): void {
+    const waiting = this.#holds.get(held.scenarioId) ?? [];
+    waiting.push(held);
+    this.#holds.set(held.scenarioId, waiting);
+  }
+
+  /**
    * Makes sure the scenario exists and its Director is open. [proposta] `ot chat` opens a
    * `project` scenario on a repository (the default, as in P8) or, with `type: 'chat'`, a generic
    * chat with a folder of its own; the type comes from the scenario type registry (5.20).
    */
   async openChat(input: OpenChatInput): Promise<{ scenarioId: string; cursor: number }> {
-    const { scenarios, directors } = this.#options;
+    const { scenarios, directors, confirmer, conventionsMode } = this.#options;
     const { scenario } = await scenarios.create({
       type: input.type ?? 'project',
       ...(input.repo === undefined ? {} : { repo: input.repo }),
       ...(input.base === undefined ? {} : { base: input.base }),
       ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.newProject === true ? { newProject: true } : {}),
     });
     const scenarioId = scenario.id;
+    // An imported repository: the Producer confirms or corrects what the daemon detected. It does
+    // not hold the chat up (the question shows in the next poll).
+    if (scenario.kind === 'project' && (conventionsMode?.() ?? 'ask') === 'ask') {
+      await confirmer?.ask(scenarioId);
+    }
     await directors.ensure(scenarioId);
     const replies = directors.replies(scenarioId, 0);
     return { scenarioId, cursor: replies[replies.length - 1]?.seq ?? 0 };
@@ -172,8 +263,9 @@ export class ProducerChannel {
     for (const decision of pending) {
       const isMenu = decision.kind === DECISION_KINDS.menu;
       const isRecovery = decision.kind === DECISION_KINDS.recovery;
+      const isGroup = decision.kind === IDEA_GROUP_DECISION;
       const isQuestion = decision.kind === DECISION_KINDS.question && board.has(decision.id);
-      if (!isMenu && !isQuestion && !isRecovery) continue;
+      if (!isMenu && !isQuestion && !isRecovery && !isGroup) continue;
       asks.push({
         id: decision.id,
         kind: decision.kind,
@@ -188,18 +280,80 @@ export class ProducerChannel {
     const moving = open.some((play) => play.state !== 'NEED' && !awaiting.has(play.id));
     const notices = this.#notices.get(scenarioId) ?? [];
     this.#notices.delete(scenarioId);
+    const queueHolds = this.#holds.get(scenarioId) ?? [];
+    this.#holds.delete(scenarioId);
     return {
       replies: directors.replies(scenarioId, since),
       asks,
       plays: open.map((play) => ({ id: play.id, state: play.state })),
       notices,
-      busy: (await directors.busy(scenarioId)) || moving || asks.some((a) => board.has(a.id)),
+      queueHolds,
+      busy:
+        (await directors.busy(scenarioId)) ||
+        moving ||
+        this.#options.ideas?.busy(scenarioId) === true ||
+        asks.some((a) => board.has(a.id)),
+    };
+  }
+
+  #ideas(): IdeaQueueService {
+    const { ideas } = this.#options;
+    if (ideas === undefined) throw new InvalidInput('This daemon has no idea queue');
+    return ideas;
+  }
+
+  /** `/idea`: the idea queue of the scenario (5.20). */
+  async idea(scenarioId: string, command: IdeaCommand): Promise<IdeaCommandResult> {
+    const { store } = this.#options;
+    const ideas = this.#ideas();
+    if ((await store.scenarios.get(scenarioId)) === undefined) {
+      throw new NotFound(`There is no scenario "${scenarioId}"`);
+    }
+    const own = async (id: string): Promise<void> => {
+      const found = await store.ideas.get(id);
+      if (found?.scenarioId !== scenarioId) {
+        throw new NotFound(`There is no idea "${id}" in this scenario`);
+      }
+    };
+    let idea: IdeaRecord | undefined;
+    let drain: DrainResult | undefined;
+    switch (command.action) {
+      case 'add':
+        idea = await ideas.add(scenarioId, {
+          text: command.text,
+          source: 'chat',
+          ...(command.area === undefined ? {} : { area: command.area }),
+        });
+        break;
+      case 'list':
+        break;
+      case 'drain':
+        drain = await ideas.drain(scenarioId);
+        break;
+      case 'discard':
+        await own(command.id);
+        idea = await ideas.discard(command.id, command.reason);
+        break;
+      case 'defer':
+        await own(command.id);
+        idea = await ideas.defer(command.id, command.reason);
+        break;
+      case 'requeue':
+        await own(command.id);
+        idea = await ideas.requeue(command.id);
+        break;
+    }
+    return {
+      ...(idea === undefined ? {} : { idea: ideaViewOf(idea) }),
+      ideas: (await ideas.list(scenarioId)).map(ideaViewOf),
+      ...(drain === undefined ? {} : { drain }),
     };
   }
 
   /**
-   * The Producer's answer to a question of the Director (`{answers}`) or to the menu of a play
-   * that ran out of a counter (`{option, need?, reason?}`, 5.4). Anything else is the Director's.
+   * The Producer's answer to a question of the Director (`{answers}`), to the menu of a play
+   * that ran out of a counter (`{option, need?, reason?}`, 5.4) or to a group of ideas that waits
+   * for approval (`{option: approve|edit|refuse}`, 5.20). Anything else is the Director's.
    */
   async answer(decisionId: string, answer: JsonObject): Promise<void> {
     const { store, runner, board } = this.#options;
@@ -225,6 +379,28 @@ export class ProducerChannel {
         throw error;
       }
       await store.decisions.decide(decisionId, { answer, decidedBy: 'producer' });
+      return;
+    }
+    if (decision.kind === IDEA_GROUP_DECISION) {
+      const parsed = GroupAnswerBody.safeParse(answer);
+      if (!parsed.success) {
+        throw new InvalidInput(
+          'Answer a group of ideas with option "approve", "edit" (need and/or ideaIds) or "refuse" (reason)',
+        );
+      }
+      const given = parsed.data;
+      await this.#ideas().answerGroup(
+        decisionId,
+        given.option === 'edit'
+          ? {
+              option: 'edit',
+              ...(given.need === undefined ? {} : { need: given.need }),
+              ...(given.ideaIds === undefined ? {} : { ideaIds: given.ideaIds }),
+            }
+          : given.option === 'refuse'
+            ? { option: 'refuse', ...(given.reason === undefined ? {} : { reason: given.reason }) }
+            : { option: 'approve' },
+      );
       return;
     }
     if (decision.kind === DECISION_KINDS.recovery && decision.playId !== null) {

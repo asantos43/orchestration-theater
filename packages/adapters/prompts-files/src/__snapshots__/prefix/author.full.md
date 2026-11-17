@@ -63,6 +63,7 @@ These are the only framework tools you can call:
 - `submit`
 - `submit_plan`
 - `submit_script_review`
+- `submit_idea_group`
 
 ## Contract
 

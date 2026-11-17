@@ -7,6 +7,7 @@ import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import type { RecoveryGate } from '../recovery/gate.js';
 import { PlayRunner } from '../pipeline/index.js';
+import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
 import {
   AttachmentService,
@@ -15,6 +16,7 @@ import {
   ScenarioService,
   type ScenarioHandlers,
 } from '../scenarios/index.js';
+import { IdeaQueueService } from '../ideas/index.js';
 import { Workspace } from '../workspace/index.js';
 import { ProducerChannel } from './channel.js';
 import { ProducerChannelServer } from './channel-http.js';
@@ -45,6 +47,8 @@ export interface Orchestration {
   readonly scenarios: ScenarioService;
   readonly attachments: AttachmentService;
   readonly chatFlow: ChatFlow;
+  /** The idea queue of the scenarios (5.20). */
+  readonly ideas: IdeaQueueService;
   /**
    * First step of the shutdown, before the execution stops: closes the door of the Producer
    * channel, frees the questions that wait for the Producer, and stops the plays from taking the
@@ -120,7 +124,22 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     logger,
     attended: ({ scenarioId }) => presence.attended(scenarioId),
   });
-  const runner = new PlayRunner({ store, clock: composition.clock, effects, logger });
+  // The queue of ideas hears the end of every play; it is built after the runner it needs.
+  const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};
+  const runner = new PlayRunner({
+    store,
+    clock: composition.clock,
+    effects,
+    logger,
+    onFinish: (play) => {
+      void late.ideas?.onPlayFinished(play).catch((error: unknown) => {
+        logger.error(
+          { err: error, playId: play.id },
+          'the ideas of a finished play were not settled',
+        );
+      });
+    },
+  });
   effects.bind(runner);
   const chatFlow = new ChatFlow({ store, logger });
   handlers.bind({ store, runner, workspace, directors, config, logger, chatFlow });
@@ -129,7 +148,9 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     vcs: composition.vcs,
     registries,
     scenariosDir: paths.scenarios,
+    conventionsMode: () => config.project.conventions,
   });
+  const confirmer = new ConventionConfirmer({ store, board: handlers.board, logger });
   const attachments = new AttachmentService({
     store,
     clock: composition.clock,
@@ -160,8 +181,22 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     adapters: execution.pool,
     config,
   });
+  const ideas = new IdeaQueueService({
+    store,
+    vcs: composition.vcs,
+    runner: execution.runner,
+    registries,
+    prompts,
+    config,
+    paths,
+    opening: { store, runner, workspace, config },
+    logger,
+    onHeld: (held) => late.channel?.notifyQueueHeld(held),
+  });
+  late.ideas = ideas;
   const channel = new ProducerChannel({
     store,
+    ideas,
     scenarios,
     attachments,
     directors,
@@ -170,7 +205,10 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     board: handlers.board,
     logger,
     presence,
+    confirmer,
+    conventionsMode: () => config.project.conventions,
   });
+  late.channel = channel;
   const server =
     config.chat.channel === 'off'
       ? undefined
@@ -189,6 +227,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     scenarios,
     attachments,
     chatFlow,
+    ideas,
     quiesce: () =>
       (quiet ??= (async () => {
         await server?.stop(paths.channel);
@@ -201,6 +240,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
       })()),
     drain: async () => {
       await effects.idle();
+      await ideas.idle();
     },
   };
 }

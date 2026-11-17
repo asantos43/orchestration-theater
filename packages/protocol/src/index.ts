@@ -9,6 +9,8 @@ export * from './session-events.js';
 export * from './session-update.js';
 export * from './workspace-events.js';
 export * from './directive-events.js';
+export * from './idea-events.js';
 export * from './scenario-events.js';
+export * from './permission-events.js';
 export * from './tool-events.js';
 export * from './browser-events.js';

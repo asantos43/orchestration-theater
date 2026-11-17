@@ -1,6 +1,6 @@
 {
   "usage": {
-    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
     "hint": "Run \"ot --help\" for usage.",
     "unknownCommand": "Unknown command \"{{command}}\".",
     "missingCommand": "No command given.",
@@ -51,6 +51,25 @@
     "attached": "Attached as {{id}}: {{name}} ({{mime}}, {{size}} bytes). It goes with your next message.",
     "attachFailed": "The file was not attached: {{message}}",
     "attachUsage": "Usage: /attach [--ref] <file>",
+    "ideaUsage": "Usage: /idea [--area <area>] <text> | /idea list | /idea drain | /idea discard <id> <reason> | /idea defer <id> <reason> | /idea requeue <id>",
+    "ideaAdded": "Idea {{id}} queued.",
+    "ideaEmpty": "The idea queue is empty.",
+    "ideaLine": "  {{id}} [{{state}}]{{area}} {{text}}{{links}}",
+    "ideaFailed": "The idea command failed: {{message}}",
+    "ideaDrained": "{{groups}} group(s) made.",
+    "ideaDrainStopped": "The queue stopped: {{reason}}",
+    "ideaHeld": "The idea queue stopped: {{what}} ({{reason}}).\n  It stays stopped until you type /idea drain, /idea requeue <id> or add a new idea.",
+    "ideaHeldWhat_author_failed": "the Author could not group the ideas",
+    "ideaHeldWhat_author_left_all_out": "the Author left every idea out of the group",
+    "ideaHeldWhat_group_refused": "the group was refused",
+    "ideaHeldWhat_play_not_opened": "the play of the group did not open",
+    "ideaHeldWhat_play_ended": "the play of the group ended without delivering (play {{playId}})",
+    "ideaSettled": "Idea {{id}} is now {{state}}.",
+    "ideaGroup": "The Author grouped {{count}} idea(s) into the next play:\n  Need: {{need}}\n  Why together: {{rationale}}",
+    "ideaGroupItem": "  - {{id}}: {{text}}",
+    "ideaGroupLeftOut": "  Left in the queue: {{id}} ({{reason}}){{question}}",
+    "ideaGroupOptions": "Type: approve | edit <new need> | keep <ids in order> | refuse [reason].",
+    "ideaGroupBad": "That is not one of the options. Type: approve, edit <new need>, keep <ids> or refuse [reason].",
     "system": {
       "recovery": {
         "title": "System: the daemon restarted and reconciled this scenario.",
