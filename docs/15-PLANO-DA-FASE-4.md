@@ -110,7 +110,7 @@ Ordem em ondas **[proposta]**:
   - `network.allow` com a lista de domínios do papel, garantida pela camada 3 (P4);
   - o conjunto das ferramentas MCP do papel por nome, já filtrado pelo registro;
   - `onAsk: 'reject' | 'rules'` (P2).
-- A política sai do código (`policyOf`) para a configuração, com override no projeto e no cenário: `roles.<papel>.policy` **[proposta]**. O padrão é a política de hoje.
+- A política sai do código (`policyOf`) para a configuração, com override no projeto e no cenário: `roles.<papel>.policy`. O padrão é a política de hoje. O override só abre o que é seguro (N99): liga as cascas, os domínios de rede e as ferramentas nativas de escrita; o bypass, o shell nativo e a escrita fora do worktree ficam sempre proibidos, e o daemon recusa a configuração que tentar abri-los.
 - O `prepareProfile` e o `sessionSetup` de cada cliente traduzem a versão 2:
   - **Claude Code:** sem mudança de mecanismo; o `allowedTools` passa a listar só as ferramentas MCP do papel;
   - **Codex:** a liberação das ferramentas MCP do papel, se o cliente tiver uma. Como o Codex aprova uma chamada MCP está **[N]**; o passo mede no agente falso o que der e deixa a medição real para o teste opcional;
@@ -145,8 +145,9 @@ Ordem em ondas **[proposta]**:
   - `view_diff {demand?}`: o diff da demanda pela porta `Vcs`, truncado;
   - `http_get {url}`: só os domínios permitidos do papel, com o corpo truncado e marcado como conteúdo não confiável.
 - Schemas de saída por ferramenta: `exitCode`, `stdout`, `stderr`, `truncated`, `durationMs` **[proposta]**.
-- O semáforo de comandos pesados: `tools.heavy_concurrency`, padrão 1 **[proposta]**, com a lista de comandos pesados por configuração.
-- Chaves **[proposta]**: `tools.timeout_ms`, `tools.output_max_bytes` e `tools.shell_allowlist`, com padrões e override no projeto e no cenário.
+- O semáforo de comandos pesados: `tools.heavy_concurrency`, padrão 1 (N98), com a lista de comandos pesados por configuração.
+- Os limites `tools.timeout_ms`, padrão 600000 (10 min), e `tools.output_max_bytes`, padrão 65536 (64 KiB) (N98).
+- A lista de programas `tools.shell_allowlist` (N97): modos `list | profile | any`, padrão `list`, com uma lista curada (o `git` só nos subcomandos de leitura, `ls`, `cat`, `head`, `rg`, `node`, `pnpm run` e `npm run`, `tsc`, `eslint`, `prettier`, `vitest`). As chaves têm override no projeto e no cenário.
 - Cada chamada vira evento `tool.called` e `tool.finished`, e as de efeito colateral (`git_commit`, `install_deps`) usam a chave de idempotência `attempt_step`.
 
 **Aceite:** testes de unidade do confinamento (traversal, symlink de arquivo e de pasta, symlink em cadeia) e do argv (encadeamento, redirecionamento, programa por caminho); testes dos handlers com o agente falso chamando o MCP; timeout e truncamento; dois comandos pesados esperando o semáforo.
@@ -204,8 +205,9 @@ Ordem em ondas **[proposta]**:
 - Estrutura inicial do projeto novo, a partir do modelo do perfil, com a CI (GitHub Actions) **[proposta]**.
 - Importação de um repositório que já existe, com a detecção das convenções: o formato do changelog (Keep a Changelog, conventional-changelog ou outro), o padrão de commit (Conventional Commits ou livre), a CI e a branch principal. O OTheater mostra o que achou ao Produtor, que confirma ou corrige, e grava em `scenarios.conventions`.
 - A detecção é código, com as heurísticas testadas por repositórios de exemplo criados no teste **[proposta]**.
+- O changelog na entrega (N100): `delivery.changelog: auto | always | never`, padrão `always`. Se o repositório não tem changelog, a entrega cria o `CHANGELOG.md` no formato Keep a Changelog; se já tem, mantém o formato dele.
 
-**Aceite:** um repositório importado mantém o formato do próprio changelog e o padrão de commit depois de uma peça com o agente falso; um projeto novo nasce com a estrutura e a CI do perfil.
+**Aceite:** um repositório importado mantém o formato do próprio changelog e o padrão de commit depois de uma peça com o agente falso; um importado sem changelog ganha o `CHANGELOG.md` na primeira entrega; um projeto novo nasce com a estrutura e a CI do perfil.
 
 ### P8. Fila de ideias (§5.20, N91)
 
@@ -252,4 +254,10 @@ As quatro que o plano levantou foram decididas pelo dono em 2026-11-17, por múl
 - **N95:** a CI instala o `bwrap` e o `socat` por apt, libera os namespaces se o AppArmor barrar e baixa o Chromium do Playwright, e os testes de sandbox e de navegador rodam em todo PR;
 - **N96:** o plano fica neste documento, com o marco interno 4a fechando no P5.
 
-As chaves novas dos passos (`roles.<papel>.policy`, `tools.*`, `sandbox.*`) vão ao dono ao abrir o passo, como em "Como usar". As próximas decisões que surgirem também vão ao dono do mesmo jeito.
+Ao abrir a primeira onda, o dono fixou os padrões dela, no mesmo dia:
+- **N97:** a lista curada do `restricted_shell` (`tools.shell_allowlist.mode: list`), igual à recomendação;
+- **N98:** os limites das cascas (10 min, 64 KiB, um comando pesado por vez), igual à recomendação;
+- **N99:** o override da política do papel só abre o que é seguro, igual à recomendação;
+- **N100:** o changelog sempre mantido na entrega (`delivery.changelog: always`), diferente da recomendação (`auto`).
+
+As chaves novas dos outros passos (`sandbox.*`, `browser.*`) vão ao dono ao abrir o passo, como em "Como usar". As próximas decisões que surgirem também vão ao dono do mesmo jeito.
