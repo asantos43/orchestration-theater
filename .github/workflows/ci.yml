@@ -22,14 +22,21 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy. Ubuntu 24.04
+      # runners restrict unprivileged user namespaces through AppArmor, which stops bubblewrap; the
+      # sysctl below lifts that ONLY on the disposable runner (never done on a developer machine).
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: pnpm install --frozen-lockfile
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
       # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
+      # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
       - run: pnpm check
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+          OT_REQUIRE_SANDBOX: '1'
       - run: cargo fmt --check
         working-directory: native/job-launcher
       - run: cargo clippy --locked --all-targets -- -D warnings
