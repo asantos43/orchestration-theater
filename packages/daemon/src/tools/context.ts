@@ -105,7 +105,7 @@ export class ToolsContext {
   async track(
     call: ToolCall,
     summary: string,
-    body: (settings: ToolSettings) => Promise<ToolDone>,
+    body: (settings: ToolSettings, callId: string) => Promise<ToolDone>,
   ): Promise<unknown> {
     const { clock } = this.deps;
     const { caller } = call;
@@ -170,7 +170,7 @@ export class ToolsContext {
         queuedMs = Math.max(0, clock.now() - requested);
       }
       startedAt = clock.now();
-      const done = await body(settings);
+      const done = await body(settings, callId);
       await finish({
         outcome: done.outcome,
         ...(done.exitCode === undefined ? {} : { exitCode: done.exitCode }),

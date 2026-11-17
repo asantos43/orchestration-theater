@@ -22,6 +22,16 @@ export const POLICY_NATIVE_TOOLS = ['read', 'search', 'edit', 'write'] as const;
 export const POLICY_NATIVE_SHELL_MODES = ['none', 'shells'] as const;
 
 /**
+ * The browser tools of the framework server (`browser_*`, architecture 5.19) a role gets
+ * [proposta]. `none`: no browser tool. `read`: the tools that only look (`browser_open`,
+ * `browser_read`, `browser_screenshot`: the tools whose effect is not `external_write`). `full`:
+ * also the ones that act on a page (`browser_click`, `browser_fill`, `browser_press_key`: effect
+ * `external_write`). The rest of the rules (domains, local and file URLs, approval) is the `browser`
+ * block of the configuration.
+ */
+export const POLICY_BROWSER_MODES = ['none', 'read', 'full'] as const;
+
+/**
  * `reject`: every request that reaches layer 2 is rejected. `rules`: the rules of
  * `roles.<role>.policy.rules` answer it, and what no rule matches is rejected (P2).
  */
@@ -195,6 +205,7 @@ export const RolePolicySettingsSchema = z.strictObject({
     })
     .optional(),
   network: z.strictObject({ allow: z.array(PolicyDomainSchema) }).optional(),
+  browser: z.enum(POLICY_BROWSER_MODES).optional(),
   on_ask: z
     .enum(POLICY_ON_ASK_MODES)
     .refine((mode) => POLICY_ON_ASK_AVAILABLE.includes(mode), {
