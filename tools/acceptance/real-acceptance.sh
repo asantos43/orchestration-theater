@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
 #
-# Roda o aceite real da Fase 2 (packages/daemon/src/execution/acceptance.real.test.ts) e a medição
-# de K e do processModel (k-measure.real.test.ts) com checagens antes e um monitor de memória
-# durante. Feito para o dono rodar (N57): o script nunca
+# Roda os testes reais com clientes de verdade, com checagens antes e um monitor de memória durante:
+# o aceite real da Fase 2 (packages/daemon/src/execution/acceptance.real.test.ts), a medição de K e
+# do processModel (k-measure.real.test.ts) e a peça inteira da Fase 3
+# (packages/daemon/src/orchestration/play.real.test.ts). Feito para o dono rodar (N57): o script nunca
 # faz login, nunca lê nem imprime credencial e nunca baixa nada. Só Linux: usa /proc/meminfo,
 # setsid e o timeout do coreutils (o teste pula no Windows; lá o aceite roda na CI).
 #
@@ -31,9 +32,23 @@
 #            OT_TEST_K_SAMPLE_MS (250), OT_TEST_K_MIN_AVAILABLE_MB (1536). Saída, na pasta de
 #            logs: k-measure-<hora>.tsv, .json e .txt (tabela legível, com as versões dos
 #            clientes), além do log e das amostras de memória do script.
+#   play     a peça inteira (Fase 3, P13, N88) com o Claude Code em todos os papéis (Diretor,
+#            autor, revisores, Ator e Crítico) por `claude-agent-acp`: OT_TEST_REAL_CLIENTS=1,
+#            OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PLAY=1, só play.real.test.ts. O teste cria um
+#            repositório git temporário com um projeto mínimo, pede uma tarefa pequena (uma função
+#            e o teste dela), entrega no CodeHost falso (sem GitHub, sem `gh`) e confere o
+#            resultado: a peça chega a DONE, o PR existe no CodeHost falso, a branch entregue tem
+#            os arquivos pedidos e nenhum processo de cliente sobra. Exige
+#            OT_TEST_CLAUDE_PROFILE_DIR (perfil já logado; o teste só aponta para ele, com um
+#            link, e nunca o copia nem o lê) e OT_TEST_CLAUDE_MODEL (um Haiku basta);
+#            OT_TEST_CLAUDE_MODE é opcional. O Codex e o OpenCode ficam de fora. Ajustes do
+#            teste, pelo ambiente: OT_TEST_PLAY_TIMEOUT_MS (prazo total da peça; padrão 1500000,
+#            25m, abaixo do teto de 30m deste nível) e OT_TEST_PLAY_LIMITS (economical, moderate
+#            ou persistent; padrão moderate). GASTA COTA: avisa e pede confirmação, a menos que
+#            haja --yes. O resumo do teste (estados, tentativas, tempo, tokens) vai para o log.
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -52,7 +67,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m no nível k), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m no nível k; 30m no nível play), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -93,10 +108,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k) ;; *) echo "--level deve ser clients, prompts ou k" >&2; exit 2 ;; esac
-# O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais.
+case "$level" in clients|prompts|k|play) ;; *) echo "--level deve ser clients, prompts, k ou play" >&2; exit 2 ;; esac
+# O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
+# nível play [proposta] é de 30m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m e sobram 5m
+# para parar o daemon e conferir os processos.
 if [ -z "$run_timeout" ]; then
-  if [ "$level" = k ]; then run_timeout=40m; else run_timeout=20m; fi
+  case "$level" in k) run_timeout=40m ;; play) run_timeout=30m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -140,7 +157,7 @@ swap_free_mb() { awk '/^SwapFree:/ { printf "%d", $2 / 1024 }' /proc/meminfo; }
 tmp_dir="${TMPDIR:-/tmp}"
 tmp_free_mb() { df -Pm "$tmp_dir" | awk 'NR == 2 { print $4 }'; }
 
-echo "Aceite real da Fase 2 — nível: $level"
+echo "Aceite real (Fases 2 e 3) — nível: $level"
 echo
 echo "Recursos:"
 avail="$(available_mb)"
@@ -187,10 +204,15 @@ k_left_out=()
 declare -A executable=([CLAUDE]=claude-agent-acp [CODEX]=codex-acp [OPENCODE]=opencode)
 for key in CLAUDE CODEX OPENCODE; do
   exe="${executable[$key]}"
+  # O nível play roda a peça só com o Claude Code; os outros clientes não entram.
+  if [ "$level" = play ] && [ "$key" != CLAUDE ]; then
+    printf '  [--]    %s: fora do nível play (só o Claude Code)\n' "$exe"
+    continue
+  fi
   if command -v "$exe" >/dev/null 2>&1; then
     clients_found=$((clients_found + 1))
     ok "$exe"
-    if [ "$level" = prompts ] || [ "$level" = k ]; then
+    if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ]; then
       profile_var="OT_TEST_${key}_PROFILE_DIR"
       model_var="OT_TEST_${key}_MODEL"
       mode_var="OT_TEST_${key}_MODE"
@@ -203,6 +225,8 @@ for key in CLAUDE CODEX OPENCODE; do
         else
           fail "  $profile_var aponta para uma pasta que não existe"
         fi
+      elif [ "$level" = play ]; then
+        fail "  o nível play exige $profile_var (perfil já logado) e $model_var (por exemplo, um Haiku)"
       else
         warn "  sem $profile_var e $model_var: o teste deixa $exe de fora no nível $level"
         k_left_out+=("$key")
@@ -218,6 +242,17 @@ if [ "$level" = prompts ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -e
 fi
 if [ "$level" = k ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -eq 0 ]; then
   fail "nenhum cliente com perfil e modelo: no nível k não haveria o que medir"
+fi
+if [ "$level" = play ] && [ -n "${OT_TEST_PLAY_TIMEOUT_MS:-}" ]; then
+  case "$OT_TEST_PLAY_TIMEOUT_MS" in
+    *[!0-9]*) fail "OT_TEST_PLAY_TIMEOUT_MS deve ser um inteiro em milissegundos: $OT_TEST_PLAY_TIMEOUT_MS" ;;
+  esac
+fi
+if [ "$level" = play ] && [ -n "${OT_TEST_PLAY_LIMITS:-}" ]; then
+  case "$OT_TEST_PLAY_LIMITS" in
+    economical|moderate|persistent) ;;
+    *) fail "OT_TEST_PLAY_LIMITS deve ser economical, moderate ou persistent: $OT_TEST_PLAY_LIMITS" ;;
+  esac
 fi
 if [ "$level" = k ] && [ -n "${OT_TEST_K_VALUES:-}" ]; then
   case "$OT_TEST_K_VALUES" in
@@ -284,6 +319,9 @@ tests=(packages/daemon/src/execution/acceptance.real.test.ts)
 if [ "$level" = k ]; then
   tests=(packages/daemon/src/execution/k-measure.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível k: roda só a medição de K"
+elif [ "$level" = play ]; then
+  tests=(packages/daemon/src/orchestration/play.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível play: roda só a peça"
 elif [ "$with_adapters" = 1 ]; then
   tests+=(packages/adapters/client-claude-code/src/claude-code.real.test.ts
           packages/adapters/client-codex/src/codex.real.test.ts
@@ -296,7 +334,7 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 echo "Checagens: tudo certo."
-echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" != clients ] && echo ' OT_TEST_REAL_PROMPTS=1')$([ "$level" = k ] && echo ' OT_TEST_REAL_MEASURE_K=1') vitest run ${tests[*]}"
+echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" != clients ] && echo ' OT_TEST_REAL_PROMPTS=1')$([ "$level" = k ] && echo ' OT_TEST_REAL_MEASURE_K=1')$([ "$level" = play ] && echo ' OT_TEST_REAL_PLAY=1') vitest run ${tests[*]}"
 case "$build_mode" in
   always) echo "Build: 'pnpm build' antes do teste (--build always; teto de $build_timeout)." ;;
   auto) if [ "$will_build" = 1 ]; then echo "Build: 'pnpm build' antes do teste (--build auto, dist velho; teto de $build_timeout)."; else echo "Build: nada a compilar (--build auto, dist em dia)."; fi ;;
@@ -304,6 +342,13 @@ case "$build_mode" in
 esac
 echo "Teto: $run_timeout. Aborta se a memória disponível cair abaixo de ${abort_below_mb} MB."
 [ "$level" = prompts ] && echo "Atenção: o nível prompts envia prompts reais e gasta cota das contas dos perfis."
+if [ "$level" = play ]; then
+  echo "Atenção: o nível play roda UMA PEÇA INTEIRA com o Claude Code em todos os papéis e gasta cota da conta do perfil."
+  # [proposta] Estimativa, não medida: quem mede é a primeira rodada do dono (N88).
+  echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz (Diretor, planejador e revisor, roteirista e revisor, Ator, Crítico); com repetições até cerca de 50."
+  echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."
+  echo "  O resumo (estados, tentativas, tempo, tokens) sai no log com o prefixo [play-real]."
+fi
 if [ "$level" = k ]; then
   echo "Atenção: o nível k envia prompts reais (curtos, sem ferramentas) e gasta cota das contas dos perfis."
   # Um turno por sessão e por célula; mesmo plano do teste (planCells): N=1 uma célula; N>1 duas
@@ -353,7 +398,8 @@ mem_log="$log_dir/real-acceptance-$level-$stamp.mem.tsv"
 printf 'hora\tdisponivel_mb\tswap_livre_mb\n' >"$mem_log"
 
 export OT_TEST_REAL_CLIENTS=1
-if [ "$level" = prompts ] || [ "$level" = k ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
+if [ "$level" = play ]; then export OT_TEST_REAL_PLAY=1; else unset OT_TEST_REAL_PLAY; fi
+if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
   # O teste grava k-measure-<stamp>.* na pasta de logs, com o mesmo carimbo deste log.
@@ -390,7 +436,7 @@ status=$?
 set -e
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[k-measure\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[k-measure\]|\[play-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"
