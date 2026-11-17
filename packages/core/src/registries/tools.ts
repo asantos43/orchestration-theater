@@ -216,6 +216,20 @@ const gitCommitInput = z.strictObject({ message: text.min(1).max(10_000) });
 const viewDiffInput = z.strictObject({ demand: id.optional() });
 const httpGetInput = z.strictObject({ url: z.url().max(4096) });
 
+/**
+ * [proposta] The browser tools (architecture 5.19). `ref` is the id of an element in the tree of
+ * the last `browser_read` of the scenario. `url` of `browser_open` is any absolute URL the guard of
+ * the scenario allows, `file:` included, so it is a plain string here. Whatever the page said
+ * comes out marked `untrusted: true`, as `http_get` does.
+ */
+const browserRef = z.string().min(1).max(64);
+const browserOpenInput = z.strictObject({ url: z.string().min(1).max(4096) });
+const browserReadInput = z.strictObject({ ref: browserRef.optional() });
+const browserScreenshotInput = z.strictObject({ ref: browserRef.optional() });
+const browserClickInput = z.strictObject({ ref: browserRef });
+const browserFillInput = z.strictObject({ ref: browserRef, value: z.string().max(100_000) });
+const browserPressKeyInput = z.strictObject({ key: z.string().min(1).max(64) });
+
 const commandOutput = z.strictObject({
   exitCode: z.int().nullable(),
   stdout: text,
@@ -247,6 +261,29 @@ const httpGetOutput = z.strictObject({
   untrusted: z.literal(true),
 });
 
+const browserPage = { url: text, title: text };
+const browserOpenOutput = z.strictObject({ ...browserPage, untrusted: z.literal(true) });
+const browserReadOutput = z.strictObject({
+  ...browserPage,
+  text,
+  tree: text,
+  truncated: z.boolean(),
+  untrusted: z.literal(true),
+});
+/** The image itself travels as an image block of the tool result; this is what is about it. */
+const browserScreenshotOutput = z.strictObject({
+  ...browserPage,
+  mimeType: z.literal('image/png'),
+  bytes: z.int().min(0),
+  untrusted: z.literal(true),
+});
+/** `reused`: the action of an earlier call with the same step was found, nothing was done again. */
+const browserActionOutput = z.strictObject({
+  ...browserPage,
+  reused: z.boolean(),
+  untrusted: z.literal(true),
+});
+
 const COMMON = EXECUTOR_ROLE_IDS;
 
 function tool(
@@ -270,6 +307,12 @@ function tool(
 }
 
 const DIRECTOR = ['director'] as const;
+/** The roles that browse: the Actor and the consultant (architecture 5.8 and 5.19). */
+const BROWSER_ROLES = ['actor', 'consultant'] as const;
+const BROWSER_WRITE = {
+  effect: 'external_write',
+  idempotencyKey: 'attempt_step',
+} as const;
 
 /**
  * [proposta] The tools of architecture 5.3 with simple schemas. Effect classes, the roles of the
@@ -361,6 +404,18 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     idempotencyKey: 'attempt_step',
   }),
   tool('http_get', ['actor', 'consultant'], httpGetInput, httpGetOutput),
+  tool('browser_open', BROWSER_ROLES, browserOpenInput, browserOpenOutput),
+  tool('browser_read', BROWSER_ROLES, browserReadInput, browserReadOutput),
+  tool('browser_screenshot', BROWSER_ROLES, browserScreenshotInput, browserScreenshotOutput),
+  tool('browser_click', BROWSER_ROLES, browserClickInput, browserActionOutput, BROWSER_WRITE),
+  tool('browser_fill', BROWSER_ROLES, browserFillInput, browserActionOutput, BROWSER_WRITE),
+  tool(
+    'browser_press_key',
+    BROWSER_ROLES,
+    browserPressKeyInput,
+    browserActionOutput,
+    BROWSER_WRITE,
+  ),
 
   // Critic.
   tool('view_diff', ['critic'], viewDiffInput, viewDiffOutput),
