@@ -29,14 +29,14 @@ import type { SharedCancelMode } from '@otheater/core';
 
 const TEST_TIMEOUT_MS = 30_000;
 
-function fakes(shared = false) {
+function fakes(shared = false, transport: FakeSessionTransport = new FakeSessionTransport()) {
   const clock = new FakeClock();
   const launcher = new FakeProcessLauncher();
   return {
     clock,
     store: new InMemoryStore({ clock }),
     launcher,
-    transport: new FakeSessionTransport(),
+    transport,
     adapter: new FakeClientAdapter({
       launcher,
       baseEnv: {},
@@ -51,8 +51,12 @@ type TestRig = Rig<ReturnType<typeof fakes>>;
 
 const rigs: TestRig[] = [];
 
-async function rig(overrides: Partial<ExecutionSettings> = {}, shared = false): Promise<TestRig> {
-  const made = await makeRig(fakes(shared), overrides);
+async function rig(
+  overrides: Partial<ExecutionSettings> = {},
+  shared = false,
+  transport?: FakeSessionTransport,
+): Promise<TestRig> {
+  const made = await makeRig(fakes(shared, transport), overrides);
   rigs.push(made);
   return made;
 }
@@ -136,6 +140,69 @@ describe('AttemptRunner, a normal attempt', () => {
       const outcome = await r.runner.run(specOf(r, '#throw boom'));
       expect(outcome.state).toBe('failed');
       expect(outcome.cause).toBe('boom');
+      expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({ state: 'failed' });
+      expect(r.launcher.running).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('AttemptRunner, what the client says while the session is being configured', () => {
+  const announcing = (): FakeSessionTransport =>
+    new FakeSessionTransport({ updatesOnConfig: true });
+
+  it(
+    'records session.opened first and keeps every update, in order, behind it',
+    async () => {
+      const r = await rig({}, false, announcing());
+      const outcome = await r.runner.run(
+        specOf(r, 'hello there', { executor: { model: 'fake-model', mode: 'plan' } }),
+      );
+      expect(outcome.state).toBe('completed');
+      // One announcement per config option, sent before `session.opened` could be written.
+      expect(r.transport.configApplied).toHaveLength(2);
+      const events = await eventsOf(r);
+      const types = events.map((event) => event.type);
+      expect(types[0]).toBe('session.opened');
+      expect(types.at(-2)).toBe('session.prompt_finished');
+      expect(types.at(-1)).toBe('session.closed');
+      const kinds = events
+        .filter((event) => event.type === 'session.update')
+        .map((event) => (event.payload as { update: { kind: string } }).update.kind);
+      expect(kinds.slice(0, 2)).toEqual(['available_commands', 'available_commands']);
+      expect(kinds.filter((kind) => kind === 'available_commands')).toHaveLength(2);
+      expect(kinds.slice(2).every((kind) => kind === 'agent_message_chunk')).toBe(true);
+      expect(kinds.length).toBeGreaterThan(2);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'without announcements the log is unchanged (opened, updates, closed)',
+    async () => {
+      const r = await rig();
+      await r.runner.run(specOf(r, 'hello there'));
+      const kinds = (await eventsOf(r, 'session.update')).map(
+        (event) => (event.payload as { update: { kind: string } }).update.kind,
+      );
+      expect(kinds).not.toContain('available_commands');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'drops them, with the failure recorded, when the configuration fails before session.opened',
+    async () => {
+      const r = await rig({}, false, announcing());
+      // The model is accepted (and announced); the mode is refused: the session never opens.
+      const outcome = await r.runner.run(
+        specOf(r, 'hello there', { executor: { model: 'fake-model', mode: 'no-such-mode' } }),
+      );
+      expect(outcome.state).toBe('failed');
+      expect(r.transport.configApplied).toHaveLength(1);
+      const types = (await eventsOf(r)).map((event) => event.type);
+      expect(types).not.toContain('session.update');
+      expect(types).not.toContain('session.opened');
       expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({ state: 'failed' });
       expect(r.launcher.running).toHaveLength(0);
     },

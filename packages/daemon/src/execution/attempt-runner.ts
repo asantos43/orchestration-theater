@@ -124,6 +124,11 @@ interface Step {
   readonly cause: InterruptionCause | undefined;
 }
 
+interface PendingUpdate {
+  readonly sessionId: string;
+  readonly update: NormalizedUpdate;
+}
+
 interface AttemptContext {
   readonly attemptId: string;
   readonly spec: ResumeContext & {
@@ -142,6 +147,12 @@ interface AttemptContext {
   /** `session.opened` was recorded and `session.closed` was not yet. */
   sessionOpen: boolean;
   lease: SessionLease | undefined;
+  /**
+   * Updates of the current session that arrived before its `session.opened` was recorded, in
+   * arrival order. `undefined` when no session is waiting to be opened (none is running, or its
+   * `session.opened` is already in the log). It belongs to one go (`#once`), not to the attempt.
+   */
+  pending: PendingUpdate[] | undefined;
   lastEventAt: number;
   lastError: { key: string; count: number } | undefined;
 }
@@ -313,6 +324,7 @@ export class AttemptRunner {
       sessionId: record.sessionId ?? undefined,
       sessionOpen: false,
       lease: undefined,
+      pending: undefined,
       lastEventAt: clock.now(),
       lastError: undefined,
     };
@@ -428,6 +440,8 @@ export class AttemptRunner {
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
     context.lease = lease;
+    // `session.opened` means "the session is configured": until it is written, the updates wait.
+    context.pending = [];
     const guard = new AbortController();
     const subscription = lease.session.onUpdate((update) => {
       this.#onUpdate(context, lease.session.sessionId, update);
@@ -438,6 +452,7 @@ export class AttemptRunner {
     } finally {
       guard.abort();
       subscription.dispose();
+      this.#dropPending(context);
     }
     await context.tracker.settled();
     ended = this.#casualty(lease, ended);
@@ -556,7 +571,11 @@ export class AttemptRunner {
           }),
         );
       }
+      this.#flushPending(context);
     } catch (error) {
+      // `session.opened` is in the log (even if `session.resumed` was not): the session is
+      // closed with a `session.closed` later, so what it said belongs in the log too.
+      if (context.sessionOpen) this.#flushPending(context);
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
 
@@ -652,23 +671,70 @@ export class AttemptRunner {
 
   #onUpdate(context: AttemptContext, sessionId: string, update: NormalizedUpdate): void {
     try {
+      // Whatever the client sends is activity, buffered or not: the stuck watch keeps counting.
       const now = context.journal.touch();
       context.lastEventAt = now;
-      void context.journal.write(
-        buildDaemonEvent('session.update', {
-          sessionId,
-          update,
-          ...this.#correlation(context),
-        }),
-        { lastEventAt: now },
-      );
-      context.tracker.observe(update);
+      if (context.pending !== undefined) {
+        context.pending.push({ sessionId, update });
+        return;
+      }
+      this.#record(context, sessionId, update, now);
     } catch (error) {
       this.#options.logger.warn(
         { err: error, attemptId: context.attemptId },
         'update not recorded',
       );
     }
+  }
+
+  #record(context: AttemptContext, sessionId: string, update: NormalizedUpdate, now: number): void {
+    void context.journal.write(
+      buildDaemonEvent('session.update', {
+        sessionId,
+        update,
+        ...this.#correlation(context),
+      }),
+      { lastEventAt: now },
+    );
+    context.tracker.observe(update);
+  }
+
+  /**
+   * Records the updates that came before `session.opened`, right after it (and after
+   * `session.resumed`), so the log reads opened, [resumed], updates, ... The journal queues writes
+   * in the order they are asked for, and `pending` is emptied in the same synchronous step, so an
+   * update that arrives meanwhile goes straight to the journal behind these.
+   */
+  #flushPending(context: AttemptContext): void {
+    const { pending } = context;
+    context.pending = undefined;
+    for (const { sessionId, update } of pending ?? []) {
+      try {
+        this.#record(context, sessionId, update, context.journal.touch());
+      } catch (error) {
+        this.#options.logger.warn(
+          { err: error, attemptId: context.attemptId },
+          'update not recorded',
+        );
+      }
+    }
+  }
+
+  /**
+   * The turn ended and `session.opened` was never written (the configuration or the write failed):
+   * the updates are dropped, with a warning. The log would hold events of a session that has no
+   * `session.opened` and, with `sessionOpen` false, no `session.closed` either, and the failure
+   * itself is what gets classified and recorded; the checkpoint tracker never saw them, which is
+   * right for a session that did not start working.
+   */
+  #dropPending(context: AttemptContext): void {
+    const { pending } = context;
+    context.pending = undefined;
+    if (pending === undefined || pending.length === 0) return;
+    this.#options.logger.warn(
+      { attemptId: context.attemptId, dropped: pending.length },
+      'updates dropped: the session ended before session.opened was recorded',
+    );
   }
 
   // ---- errors ----

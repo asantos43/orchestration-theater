@@ -3,11 +3,16 @@
 import { createFakeAgent, serveStdio } from './agent.js';
 import { parseScriptSpec, ScriptError } from './scripts.js';
 
-/** Entry point of the `fake-agent` binary: an ACP agent on stdio. FAKE_AGENT_SCRIPT sets the default script. */
+/** Entry point of the `fake-agent` binary: an ACP agent on stdio. FAKE_AGENT_SCRIPT sets the default script; FAKE_AGENT_UPDATES_ON_CONFIG=1 turns on `updatesOnConfig`. */
 async function main(): Promise<void> {
   const spec = process.env.FAKE_AGENT_SCRIPT;
   const defaultScript = spec === undefined || spec === '' ? undefined : parseScriptSpec(spec);
-  await serveStdio(createFakeAgent(defaultScript === undefined ? {} : { defaultScript }));
+  await serveStdio(
+    createFakeAgent({
+      ...(defaultScript === undefined ? {} : { defaultScript }),
+      ...(process.env.FAKE_AGENT_UPDATES_ON_CONFIG === '1' ? { updatesOnConfig: true } : {}),
+    }),
+  );
 }
 
 main().catch((error: unknown) => {
