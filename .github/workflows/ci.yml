@@ -22,11 +22,16 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy,
-      # ripgrep finds the files to hide. Ubuntu 24.04 runners restrict unprivileged user namespaces through AppArmor, which stops bubblewrap; the
-      # sysctl below lifts that ONLY on the disposable runner (never done on a developer machine).
+      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy and
+      # ripgrep finds the files to hide. The runner (Ubuntu 26.04, measured in PR #81) restricts user
+      # namespaces through AppArmor: the sysctl lifts the general restriction, and the second step
+      # unloads the profile that strips the capabilities of what runs inside bwrap (the seccomp
+      # helper of the sandbox-runtime needs a nested user namespace). Both ONLY on the disposable
+      # runner, never on a developer machine.
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
-      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
       - run: pnpm install --frozen-lockfile
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
@@ -80,18 +85,3 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo build --locked
       - run: cargo test --locked
-
-  sandbox-diag:
-    runs-on: ubuntu-latest
-    steps:
-      - run: sudo apt-get update >/dev/null && sudo apt-get install -y bubblewrap socat ripgrep >/dev/null
-      - run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          ls /etc/apparmor.d | grep -i "bwrap\|userns" || true
-          echo "--- outside"; unshare -Ur id || true
-          echo "--- in bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id || true
-          for f in /etc/apparmor.d/bwrap*; do echo "== $f"; sudo head -40 "$f"; done
-          for f in /etc/apparmor.d/bwrap*; do sudo apparmor_parser -R "$f" || true; done
-          echo "--- after removing the profiles"; sudo aa-status 2>&1 | grep -i bwrap || true
-          echo "--- in bwrap again"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id || true
-        continue-on-error: true
