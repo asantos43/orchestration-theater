@@ -123,7 +123,8 @@ function setDeep(target: Record<string, unknown>, path: readonly string[], value
       node = fresh;
     }
   }
-  const last = path[path.length - 1] as string;
+  const last = path.at(-1);
+  if (last === undefined) return;
   if (isObject(value)) {
     for (const [key, inner] of Object.entries(value)) setDeep(node, [last, key], inner);
     if (Object.keys(value).length === 0 && !isObject(node[last])) node[last] = {};
