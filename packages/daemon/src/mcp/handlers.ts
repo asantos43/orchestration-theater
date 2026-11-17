@@ -8,6 +8,10 @@ export interface ToolCaller {
   readonly attemptId: string;
   readonly sessionId: string | undefined;
   readonly correlation: McpCorrelation;
+  /** The worktree of the attempt, when the grant carries one (see `McpGrantInput.worktree`). */
+  readonly worktree?: string | undefined;
+  /** The domains the role may reach with `http_get` (`McpGrantInput.networkAllow`). */
+  readonly networkAllow?: readonly string[];
   /** Appends an event of the attempt to the log. */
   readonly record: (event: NewEvent) => Promise<void>;
 }

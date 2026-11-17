@@ -39,6 +39,7 @@ export {
   sampleSession,
   sampleSideEffect,
 } from './conformance/coordination-aggregates.js';
+export { describeIdeaAggregatesConformance, sampleIdea } from './conformance/idea-aggregates.js';
 export { describeAggregateTransactionsConformance } from './conformance/aggregate-transactions.js';
 export {
   describeSecretVaultConformance,

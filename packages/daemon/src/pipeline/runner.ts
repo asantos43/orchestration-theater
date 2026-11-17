@@ -43,6 +43,12 @@ export interface PlayRunnerOptions {
   /** Starts the long work the machine asks for (wired by the step that runs the sessions, P8). */
   readonly effects: PlayEffects;
   readonly logger?: PlayRunnerLogger;
+  /**
+   * Told, once the transition is saved, that a play reached a final state (`DONE` or `CANCELLED`).
+   * The idea queue (5.20) hears it to link the ideas to the play and its PR, or to take them back
+   * to the queue. It must not wait for long work (start it and return); an error is logged.
+   */
+  readonly onFinish?: (play: PlayRecord) => void;
 }
 
 export interface NewPlayInput {
@@ -114,6 +120,7 @@ export class PlayRunner {
   readonly #clock: Clock;
   readonly #effects: PlayEffects;
   readonly #logger: PlayRunnerLogger;
+  readonly #onFinish: ((play: PlayRecord) => void) | undefined;
   readonly #queues = new Map<string, Promise<void>>();
   readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
   readonly #fired = new Set<Promise<void>>();
@@ -124,6 +131,7 @@ export class PlayRunner {
     this.#clock = options.clock;
     this.#effects = options.effects;
     this.#logger = options.logger ?? NO_LOGGER;
+    this.#onFinish = options.onFinish;
   }
 
   /** Creates the play in NEED, with its first snapshot, and writes `play.created`. */
@@ -229,6 +237,7 @@ export class PlayRunner {
       });
       this.#reconcileDeadlines(playId, finished ? {} : next.context.deadlines);
       await this.#dispatch(effects, { playId, scenarioId: record.scenarioId });
+      if (finished) this.#notifyFinish(updated);
       return updated;
     });
   }
@@ -350,6 +359,14 @@ export class PlayRunner {
           'play effect not started',
         );
       }
+    }
+  }
+
+  #notifyFinish(play: PlayRecord): void {
+    try {
+      this.#onFinish?.(play);
+    } catch (error) {
+      this.#logger.warn({ playId: play.id, err: error }, 'the end of the play was not handled');
     }
   }
 

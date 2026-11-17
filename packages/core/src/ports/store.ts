@@ -3,6 +3,7 @@ import type { AttemptRegistry } from './attempt-registry.js';
 import type { Blackboard } from './blackboard.js';
 import type { DirectiveRegistry } from './directives.js';
 import type { EventLog } from './event-log.js';
+import type { IdeaRegistry } from './ideas.js';
 import type { DecisionRegistry, DemandRegistry, PlayRegistry, StageRegistry } from './plays.js';
 import type { PromptQueue } from './prompt-queue.js';
 import type { AttachmentRegistry, ScenarioRegistry, ScenarioRepoRegistry } from './scenarios.js';
@@ -15,8 +16,9 @@ import type { SideEffectRegistry } from './side-effects.js';
  * - 0.2.0 added the attempt registry (`attempts`); a 0.x minor bump is a contract change.
  * - 0.3.0 added the aggregates of Phase 3 ({@link StoreAggregates}): scenarios, plays, stages,
  *   demands, decisions, the blackboard, the prompt queue, side effects, sessions and directives.
+ * - 0.4.0 added the idea queue of the scenario (`ideas`, Phase 4, architecture 5.20).
  */
-export const STORE_PORT_VERSION = '0.3.0';
+export const STORE_PORT_VERSION = '0.4.0';
 
 /**
  * The aggregates of the store (architecture section 7), one registry per table. [proposta] Each
@@ -37,6 +39,7 @@ export interface StoreAggregates {
   readonly sideEffects: SideEffectRegistry;
   readonly sessions: SessionRegistry;
   readonly directives: DirectiveRegistry;
+  readonly ideas: IdeaRegistry;
 }
 
 /**

@@ -16,6 +16,9 @@ const clock = { now: () => Date.UTC(2026, 0, 1) };
 /** The migrations that existed before Phase 3 (0001 to 0003). */
 const PHASE_2 = Object.fromEntries(Object.entries(MIGRATIONS).filter(([name]) => name < '0004'));
 
+/** The migrations that existed before Phase 4 (0001 to 0007). */
+const PHASE_3 = Object.fromEntries(Object.entries(MIGRATIONS).filter(([name]) => name < '0008'));
+
 const PHASE_3_TABLES = [
   'scenarios',
   'scenario_repos',
@@ -152,5 +155,99 @@ describe.each(DRIVERS)('Phase 3 migrations on %s', (driver: SqliteDriverName) =>
     expect(names).toEqual([...names].sort());
     expect(names.slice(0, 3)).toEqual(Object.keys(PHASE_2));
     for (const name of names) expect(name).toMatch(/^\d{4}_[a-z0-9_]+$/);
+  });
+});
+
+describe.each(DRIVERS)('Phase 4 migration 0008_ideas on %s', (driver: SqliteDriverName) => {
+  it('adds the ideas table to a Phase 3 database and keeps its data', async () => {
+    const { dir, dispose } = await makeTempDir();
+    try {
+      const path = join(dir, 'phase3.db');
+      const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+      raw.exec('PRAGMA journal_mode = WAL');
+      const old = new Kysely<StoreDatabase>({
+        dialect: new ImmediateSqliteDialect({ database: raw }),
+      });
+      const migrator = new Migrator({
+        db: old,
+        provider: { getMigrations: () => Promise.resolve(PHASE_3) },
+      });
+      expect((await migrator.migrateToLatest()).error).toBeUndefined();
+      expect(Object.keys(PHASE_3).at(-1)).toBe('0007_sessions_directives');
+      raw
+        .prepare(
+          `INSERT INTO directives (id, seq, scope, kind, text, roles, starts_at, timezone, state, origin, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(['O1', 1, 'global', 'instruction', 'kept', '[]', 1, 'UTC', 'active', 'chat', 1, 1]);
+      await old.destroy();
+
+      const store = await SqliteStore.open({ path, driver }, clock);
+      try {
+        expect((await store.directives.get('O1'))?.text).toBe('kept');
+        const idea = await store.ideas.create({ scenarioId: 'scn-1', text: 'after 0008' });
+        expect(idea).toMatchObject({ id: 'I1', state: 'queued' });
+        await store.ideas.transition('I1', 'grouped', { groupId: 'g1', groupOrder: 1 });
+        await store.ideas.transition('I1', 'done', {
+          playId: 'play-1',
+          pullRequest: { number: 3, url: 'https://example.test/pr/3' },
+        });
+      } finally {
+        await store.close();
+      }
+
+      // The data of the lifecycle survived a reopen, with the columns as the record fields.
+      const again = await SqliteStore.open({ path, driver }, clock);
+      try {
+        expect(await again.ideas.get('I1')).toMatchObject({
+          state: 'done',
+          groupId: 'g1',
+          groupOrder: 1,
+          playId: 'play-1',
+          prNumber: 3,
+          prUrl: 'https://example.test/pr/3',
+        });
+      } finally {
+        await again.close();
+      }
+
+      const check = await openRawDatabase(driver, path, { readonly: true, busyTimeoutMs: 1000 });
+      try {
+        const columns = (check.prepare('PRAGMA table_info(ideas)').all([]) as { name: string }[])
+          .map((column) => column.name)
+          .sort();
+        expect(columns).toEqual(
+          [
+            'id',
+            'seq',
+            'scenario_id',
+            'text',
+            'area',
+            'source',
+            'state',
+            'group_id',
+            'group_order',
+            'play_id',
+            'pr_number',
+            'pr_url',
+            'reason',
+            'created_at',
+            'updated_at',
+            'closed_at',
+          ].sort(),
+        );
+        const applied = (
+          check.prepare('SELECT name FROM kysely_migration ORDER BY name').all([]) as {
+            name: string;
+          }[]
+        ).map((row) => row.name);
+        expect(applied.at(-1)).toBe('0008_ideas');
+        expect(applied).toEqual(Object.keys(MIGRATIONS));
+      } finally {
+        check.close();
+      }
+    } finally {
+      await dispose();
+    }
   });
 });

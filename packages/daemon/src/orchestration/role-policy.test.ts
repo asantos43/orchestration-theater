@@ -54,14 +54,14 @@ const toolsOf = (policy: RolePolicy): readonly string[] => {
 };
 
 describe('the default policy of each role', () => {
-  it('is the policy of before the configuration: read and search, the Actor also writes, no shell, no network', async () => {
+  it('is the policy of before the configuration: read and search, the Actor also writes and has the daemon shells (owner decision, 2026-11-17), the other roles have none, no network', async () => {
     for (const role of ROLE_IDS) {
       const policy = await resolveRolePolicy(resolver(), role);
       expect(policy.nativeTools).toEqual(
         role === 'actor' ? ['read', 'search', 'edit', 'write'] : ['read', 'search'],
       );
       expect(policy).toMatchObject({
-        nativeShell: 'none',
+        nativeShell: role === 'actor' ? 'shells' : 'none',
         mcpServers: ['otheater'],
         onAsk: 'reject',
         bypass: 'forbidden',
@@ -75,13 +75,18 @@ describe('the default policy of each role', () => {
     ]);
   });
 
-  it('lists the tools the registry gives the role, with no shell and no network tool', async () => {
+  it('lists the tools the registry gives the role: the Actor has the shells, no role has a network tool', async () => {
     const actor = toolsOf(await resolveRolePolicy(resolver(), 'actor'));
     expect(actor).toEqual(expect.arrayContaining(['read_blackboard', 'submit']));
-    for (const shell of ['run_tests', 'install_deps', 'git_commit', 'restricted_shell']) {
-      expect(actor).not.toContain(shell);
-    }
+    expect(actor).toEqual(
+      expect.arrayContaining(['restricted_shell', 'run_tests', 'install_deps', 'git_commit']),
+    );
     expect(actor).not.toContain('http_get');
+    // The other roles start with no shell: the tools with effect `worktree` are left out.
+    const critic = toolsOf(await resolveRolePolicy(resolver(), 'critic'));
+    for (const shell of ['run_tests', 'install_deps', 'git_commit', 'restricted_shell']) {
+      expect(critic).not.toContain(shell);
+    }
     expect(toolsOf(await resolveRolePolicy(resolver(), 'director'))).toContain('next_action');
     expect(toolsOf(await resolveRolePolicy(resolver(), 'author'))).toEqual(
       expect.arrayContaining(['submit_plan', 'submit_script_review']),
@@ -106,16 +111,25 @@ describe('the default policy of each role', () => {
 });
 
 describe('roles.<role>.policy in the configuration', () => {
-  it('the shells key opens the daemon shells for that role only', async () => {
-    const yaml = 'roles:\n  actor:\n    policy:\n      native_shell: shells\n';
-    const actor = await resolveRolePolicy(resolver(yaml), 'actor');
-    expect(actor.nativeShell).toBe('shells');
-    expect(toolsOf(actor)).toEqual(
-      expect.arrayContaining(['run_tests', 'install_deps', 'git_commit', 'restricted_shell']),
-    );
+  it('the shells key opens the daemon shells for that role only, and none takes them from the Actor', async () => {
+    const yaml = 'roles:\n  critic:\n    policy:\n      native_shell: shells\n';
     const critic = await resolveRolePolicy(resolver(yaml), 'critic');
-    expect(critic.nativeShell).toBe('none');
-    expect(toolsOf(critic)).not.toContain('run_tests');
+    expect(critic.nativeShell).toBe('shells');
+    expect(toolsOf(critic)).toContain('run_tests');
+    const reviewer = await resolveRolePolicy(resolver(yaml), 'reviewer');
+    expect(reviewer.nativeShell).toBe('none');
+    const closed = 'roles:\n  actor:\n    policy:\n      native_shell: none\n';
+    const actor = await resolveRolePolicy(resolver(closed), 'actor');
+    expect(actor.nativeShell).toBe('none');
+    for (const shell of [
+      'run_tests',
+      'install_deps',
+      'git_commit',
+      'restricted_shell',
+      'view_diff',
+    ]) {
+      expect(toolsOf(actor)).not.toContain(shell);
+    }
     // `run_tests` belongs to the Critic too, once the Critic gets the shells; `git_commit` does not.
     const both = 'roles:\n  critic:\n    policy:\n      native_shell: shells\n';
     const shelled = toolsOf(await resolveRolePolicy(resolver(both), 'critic'));
@@ -146,7 +160,7 @@ describe('roles.<role>.policy in the configuration', () => {
   });
 
   it('a key the file leaves out keeps the default', async () => {
-    const yaml = 'roles:\n  actor:\n    policy:\n      native_shell: shells\n';
+    const yaml = 'roles:\n  actor:\n    policy:\n      native_shell: none\n';
     const policy = await resolveRolePolicy(resolver(yaml), 'actor');
     expect(policy.nativeTools).toEqual(['read', 'search', 'edit', 'write']);
     expect(policy.network.allow).toEqual([]);
@@ -285,13 +299,19 @@ describe('what N99 forbids is refused, at the configuration and at the override'
 });
 
 describe('the override in a scenario', () => {
-  it('a scenario enables the shells of a role with a dotted key', async () => {
+  it('a scenario enables the shells of a role with a dotted key, and closes those of the Actor', async () => {
     const record = scenario('s1', {
-      configOverride: { 'roles.actor.policy.native_shell': 'shells' },
+      configOverride: { 'roles.critic.policy.native_shell': 'shells' },
     });
-    const policy = await resolveRolePolicy(resolver('', [record]), 'actor', 's1');
+    const policy = await resolveRolePolicy(resolver('', [record]), 'critic', 's1');
     expect(policy.nativeShell).toBe('shells');
-    expect(toolsOf(policy)).toContain('git_commit');
+    expect(toolsOf(policy)).toContain('run_tests');
+    const closing = scenario('s2', {
+      configOverride: { 'roles.actor.policy.native_shell': 'none' },
+    });
+    const closed = await resolveRolePolicy(resolver('', [closing]), 'actor', 's2');
+    expect(closed.nativeShell).toBe('none');
+    expect(toolsOf(closed)).not.toContain('git_commit');
   });
 
   it('accepts the nested form and a dotted path to the whole policy', async () => {
@@ -302,9 +322,9 @@ describe('the override in a scenario', () => {
       'example.com',
     ]);
     const dotted = scenario('d', {
-      configOverride: { 'roles.actor.policy': { native_shell: 'shells' } },
+      configOverride: { 'roles.critic.policy': { native_shell: 'shells' } },
     });
-    expect((await resolveRolePolicy(resolver('', [dotted]), 'actor', 'd')).nativeShell).toBe(
+    expect((await resolveRolePolicy(resolver('', [dotted]), 'critic', 'd')).nativeShell).toBe(
       'shells',
     );
   });
@@ -319,6 +339,14 @@ describe('the override in a scenario', () => {
     expect(policy.nativeShell).toBe('none');
     expect(policy.nativeTools).toEqual(['read']);
     expect((await resolveRolePolicy(resolver(yaml, [record]), 'actor')).nativeShell).toBe('shells');
+    // The file closes the shells of the Actor; a scenario opens them again.
+    const closed = 'roles:\n  actor:\n    policy:\n      native_shell: none\n';
+    const reopen = scenario('s2', {
+      configOverride: { 'roles.actor.policy.native_shell': 'shells' },
+    });
+    expect((await resolveRolePolicy(resolver(closed, [reopen]), 'actor', 's2')).nativeShell).toBe(
+      'shells',
+    );
   });
 
   it('the scenario it came from comes first, its own override last', async () => {
@@ -328,11 +356,11 @@ describe('the override in a scenario', () => {
     const task = scenario('t', {
       kind: 'task',
       originScenarioId: 'p',
-      configOverride: { 'roles.actor.policy.native_shell': 'shells' },
+      configOverride: { 'roles.actor.policy.native_shell': 'none' },
     });
     const policy = await resolveRolePolicy(resolver('', [project, task]), 'actor', 't');
     expect(policy.network.allow).toEqual(['a.example.com']);
-    expect(policy.nativeShell).toBe('shells');
+    expect(policy.nativeShell).toBe('none');
     const own = scenario('t2', {
       originScenarioId: 'p',
       configOverride: { 'roles.actor.policy.network': { allow: ['b.example.com'] } },
@@ -344,8 +372,8 @@ describe('the override in a scenario', () => {
   it('survives a loop in originScenarioId and an unknown scenario', async () => {
     const a = scenario('a', { originScenarioId: 'b' });
     const b = scenario('b', { originScenarioId: 'a' });
-    expect((await resolveRolePolicy(resolver('', [a, b]), 'actor', 'a')).nativeShell).toBe('none');
-    expect((await resolveRolePolicy(resolver(), 'actor', 'missing')).nativeShell).toBe('none');
+    expect((await resolveRolePolicy(resolver('', [a, b]), 'critic', 'a')).nativeShell).toBe('none');
+    expect((await resolveRolePolicy(resolver(), 'critic', 'missing')).nativeShell).toBe('none');
   });
 
   it('leaves the keys that are not roles to their own readers', () => {

@@ -21,7 +21,12 @@ const asked = {
   attemptId: 'attempt-1',
 };
 
-const answered = { ...asked, answer: 'allow', rule: 'docs-edit', reason: 'rule' };
+const answered = {
+  ...asked,
+  answer: 'allow' as const,
+  rule: 'docs-edit',
+  reason: 'rule' as const,
+};
 
 describe('permission event payloads (architecture 5.8, layer 2)', () => {
   it('accepts a request and its answer', () => {

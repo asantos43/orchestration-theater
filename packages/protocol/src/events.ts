@@ -16,6 +16,16 @@ import {
   PermissionAskedPayloadSchema,
 } from './permission-events.js';
 import {
+  IdeaAddedPayloadSchema,
+  IdeaDeferredPayloadSchema,
+  IdeaDiscardedPayloadSchema,
+  IdeaDonePayloadSchema,
+  IdeaGroupedPayloadSchema,
+  IdeaPlayOpenedPayloadSchema,
+  IdeaQueueHeldPayloadSchema,
+  IdeaReturnedPayloadSchema,
+} from './idea-events.js';
+import {
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
@@ -35,6 +45,7 @@ import {
   SessionResumedPayloadSchema,
   SessionUpdatePayloadSchema,
 } from './session-events.js';
+import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
   WorkspaceIntegratedPayloadSchema,
@@ -210,6 +221,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: AttemptSubmitFailedPayloadSchema,
   }),
   defineEventType({
+    type: 'tool.called',
+    schemaVersion: 1,
+    payload: ToolCalledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'tool.finished',
+    schemaVersion: 1,
+    payload: ToolFinishedPayloadSchema,
+  }),
+  defineEventType({
     type: 'workspace.integrated',
     schemaVersion: 1,
     payload: WorkspaceIntegratedPayloadSchema,
@@ -258,6 +279,26 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'directive.suspended',
     schemaVersion: 1,
     payload: DirectiveSuspendedPayloadSchema,
+  }),
+  defineEventType({ type: 'idea.added', schemaVersion: 1, payload: IdeaAddedPayloadSchema }),
+  defineEventType({ type: 'idea.grouped', schemaVersion: 1, payload: IdeaGroupedPayloadSchema }),
+  defineEventType({
+    type: 'idea.play_opened',
+    schemaVersion: 1,
+    payload: IdeaPlayOpenedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'idea.discarded',
+    schemaVersion: 1,
+    payload: IdeaDiscardedPayloadSchema,
+  }),
+  defineEventType({ type: 'idea.deferred', schemaVersion: 1, payload: IdeaDeferredPayloadSchema }),
+  defineEventType({ type: 'idea.done', schemaVersion: 1, payload: IdeaDonePayloadSchema }),
+  defineEventType({ type: 'idea.returned', schemaVersion: 1, payload: IdeaReturnedPayloadSchema }),
+  defineEventType({
+    type: 'idea.queue_held',
+    schemaVersion: 1,
+    payload: IdeaQueueHeldPayloadSchema,
   }),
   defineEventType({
     type: 'scenario.created',
@@ -331,6 +372,8 @@ export type PermissionAnsweredPayload = DaemonEventPayloads['permission.answered
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
+export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
+export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
 export type WorkspaceIntegratedPayload = DaemonEventPayloads['workspace.integrated'];
 export type WorkspaceIntegrationFailedPayload = DaemonEventPayloads['workspace.integration_failed'];
 export type DeliveryCompletedPayload = DaemonEventPayloads['delivery.completed'];
@@ -341,6 +384,14 @@ export type DirectiveExpiringPayload = DaemonEventPayloads['directive.expiring']
 export type DirectiveExpiredPayload = DaemonEventPayloads['directive.expired'];
 export type DirectiveRevokedPayload = DaemonEventPayloads['directive.revoked'];
 export type DirectiveSuspendedPayload = DaemonEventPayloads['directive.suspended'];
+export type IdeaAddedPayload = DaemonEventPayloads['idea.added'];
+export type IdeaGroupedPayload = DaemonEventPayloads['idea.grouped'];
+export type IdeaPlayOpenedPayload = DaemonEventPayloads['idea.play_opened'];
+export type IdeaDiscardedPayload = DaemonEventPayloads['idea.discarded'];
+export type IdeaDeferredPayload = DaemonEventPayloads['idea.deferred'];
+export type IdeaDonePayload = DaemonEventPayloads['idea.done'];
+export type IdeaReturnedPayload = DaemonEventPayloads['idea.returned'];
+export type IdeaQueueHeldPayload = DaemonEventPayloads['idea.queue_held'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];

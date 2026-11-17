@@ -40,6 +40,7 @@ import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
+import { nodePathHost, registerWorkTools } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
@@ -230,7 +231,28 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       // The read tools (P7) are built in; a handler the caller already registered wins.
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
       handlers: scenarioHandlers.register(
-        orchestrationHandlers.register(registerReadTools(handlers, composition.store)),
+        orchestrationHandlers.register(
+          registerWorkTools(registerReadTools(handlers, composition.store), {
+            store: composition.store,
+            config: config.tools,
+            // The commands are processes too: they are written down like the clients' (5.21).
+            launcher:
+              composition.launcher === undefined
+                ? undefined
+                : new TrackingLauncher(
+                    composition.launcher,
+                    composition.store,
+                    composition.clock,
+                    composition.logger,
+                  ),
+            vcs: composition.vcs,
+            codeHost: composition.codeHost,
+            clock: composition.clock,
+            env: options.clientSearch?.env ?? process.env,
+            host: nodePathHost(),
+            logger: composition.logger,
+          }),
+        ),
       ),
       logger: composition.logger,
       version,
@@ -394,6 +416,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   for (const notice of notices) orchestration?.channel.notify(notice);
   gate.open();
+  // The ideas of a group the restart lost go back to the queue, and the queues that can move do.
+  await orchestration?.ideas.settle();
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
