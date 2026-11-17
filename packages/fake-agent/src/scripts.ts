@@ -59,6 +59,18 @@ export const scriptSchema = z.discriminatedUnion('name', [
     output: z.record(z.string(), z.json()).default({ result: 'done' }),
     repeat: z.int().min(1).max(10).default(1),
   }),
+  /**
+   * [proposal] Plays every role of a play (architecture 5.4) from the marker lines the daemon puts
+   * in its prompts (`#ot-stage:`, `#ot-demand:`, `#ot-judge`, ...) and from `#outcome:<name>` in the
+   * need of the play: `approved` (default), `execution_failure`, `script_failure`,
+   * `structural_failure`, `exhausted` or `clarify`. No marker means the Director, who reacts to
+   * `#ot-play <need>`, `#ot-ask <question>`, `#ot-judge` and `#ot-clarify`. Uses the framework MCP
+   * server of the session, so it needs a daemon behind it.
+   */
+  z.strictObject({
+    name: z.literal('role-play'),
+    server: z.string().min(1).default('otheater'),
+  }),
   z.strictObject({ name: z.literal('hang') }),
   z.strictObject({
     name: z.literal('deaf'),
@@ -82,6 +94,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'write-file',
   'mcp-call',
   'submit',
+  'role-play',
   'fail',
   'hang',
   'deaf',

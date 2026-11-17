@@ -25,6 +25,7 @@ import {
   type QuotaSignalParams,
 } from '@otheater/protocol';
 import { McpHttpClient, type HttpMcpServer } from './mcp-client.js';
+import { playRolePlay } from './role-play.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
 
 export const FAKE_AGENT_NAME = 'otheater-fake-agent';
@@ -392,6 +393,35 @@ async function playMcpCall(
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
 
+async function playRolePlayScript(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'role-play' }>,
+): Promise<PromptResponse> {
+  try {
+    const client = await mcpClientFor(turn, script.server);
+    if (client === undefined) return END_TURN;
+    await playRolePlay({
+      text: turn.text,
+      cwd: turn.session.cwd,
+      signal: turn.signal,
+      say: (text) => message(turn, text),
+      call: async (tool, args) => {
+        const outcome = await client.callTool(tool, args);
+        await reportMcpCall(
+          turn,
+          `MCP ${script.server} ${tool}`,
+          outcome.isError ? 'failed' : 'completed',
+          outcome.text,
+        );
+        return outcome;
+      },
+    });
+  } catch (error) {
+    await mcpFailed(turn, `MCP ${script.server}`, error);
+  }
+  return turn.signal.aborted ? CANCELLED : END_TURN;
+}
+
 async function playSubmit(
   turn: TurnContext,
   script: Extract<Script, { name: 'submit' }>,
@@ -471,6 +501,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playMcpCall(turn, script);
     case 'submit':
       return playSubmit(turn, script);
+    case 'role-play':
+      return playRolePlayScript(turn, script);
     case 'fail':
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
     case 'hang':

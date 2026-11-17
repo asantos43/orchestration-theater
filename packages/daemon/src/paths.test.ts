@@ -69,6 +69,7 @@ describe('dataPaths', () => {
       worktrees: join(root, 'worktrees'),
       profiles: join(root, 'profiles'),
       scratch: join(root, 'scratch'),
+      channel: join(root, 'channel.json'),
     });
   });
 });

@@ -59,6 +59,7 @@ import {
   type ClientAdapterOptions,
   type ClientAdapterWarning,
   type Clock,
+  type CodeHost,
   type MinLayers,
   type ProcessLauncher,
   type SecretVault,
@@ -117,6 +118,12 @@ export interface ComposeOverrides {
   readonly launcher?: ProcessLauncher;
   /** The wire the sessions speak (`AcpTransport` by default). */
   readonly transport?: SessionTransport;
+  /**
+   * The code host the plays deliver to (P8). [proposta] There is no default: the GitHub adapter
+   * is not a dependency of the daemon package yet, so without this instance a play runs up to
+   * the delivery and the delivery fails with a clear error.
+   */
+  readonly codeHost?: CodeHost;
 }
 
 export interface ComposeOptions {
@@ -152,6 +159,8 @@ export interface Composition {
    */
   readonly launcher: ProcessLauncher | undefined;
   readonly transport: SessionTransport;
+  /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
+  readonly codeHost: CodeHost | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -329,6 +338,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       vcs,
       launcher,
       transport,
+      codeHost: overrides.codeHost,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {

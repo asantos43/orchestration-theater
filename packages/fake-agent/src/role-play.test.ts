@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: MPL-2.0
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { playRolePlay, type RolePlayHost } from './role-play.js';
+import { parseScriptSpec } from './scripts.js';
+
+interface Call {
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+}
+
+let sandbox: string;
+const previous = process.env.FAKE_AGENT_STATE_DIR;
+
+beforeEach(async () => {
+  sandbox = await mkdtemp(join(tmpdir(), 'fake-agent-role-play-'));
+  process.env.FAKE_AGENT_STATE_DIR = join(sandbox, 'state');
+});
+
+afterEach(async () => {
+  if (previous === undefined) delete process.env.FAKE_AGENT_STATE_DIR;
+  else process.env.FAKE_AGENT_STATE_DIR = previous;
+  await rm(sandbox, { recursive: true, force: true });
+});
+
+/** A host that records the tool calls and answers them with `replies`. */
+function host(
+  text: string,
+  replies: Record<string, unknown> = {},
+): { host: RolePlayHost; calls: Call[]; said: string[] } {
+  const calls: Call[] = [];
+  const said: string[] = [];
+  return {
+    calls,
+    said,
+    host: {
+      text,
+      cwd: sandbox,
+      signal: new AbortController().signal,
+      say: (line) => {
+        said.push(line);
+        return Promise.resolve();
+      },
+      call: (tool, args) => {
+        calls.push({ tool, args });
+        const structured = replies[tool] ?? { ok: true };
+        return Promise.resolve({ isError: false, text: JSON.stringify(structured), structured });
+      },
+    },
+  };
+}
+
+function stagePrompt(stage: string, need = 'build it', extra = ''): string {
+  return `prefix of the role\n#ot-stage: ${stage}\n#ot-play: play-1\n#ot-role: x\n\n## Need\n\n${need}\n${extra}`;
+}
+
+describe('the role-play script', () => {
+  it('is a script the fake agent can parse', () => {
+    expect(parseScriptSpec('role-play').name).toBe('role-play');
+  });
+
+  it('plays the Actor: writes the file of the demand and submits the result', async () => {
+    const run = host(`${stagePrompt('EXECUTING')}\n#ot-demand: alpha\n#ot-attempt: 1\n`);
+    await playRolePlay(run.host);
+    expect(await readFile(join(sandbox, 'alpha.txt'), 'utf8')).toContain('alpha');
+    expect(run.calls.map((call) => call.tool)).toEqual(['submit']);
+  });
+
+  it('plays the stages with the tool of each one', async () => {
+    const tools: Record<string, string> = {
+      PLANNING: 'submit_plan',
+      REVIEWING_PLAN: 'submit_plan_review',
+      SCRIPTING: 'submit_script',
+      REVIEWING_SCRIPT: 'submit_script_review',
+      CRITIQUING: 'submit_critique',
+    };
+    for (const [stage, tool] of Object.entries(tools)) {
+      const run = host(stagePrompt(stage));
+      await playRolePlay(run.host);
+      expect(run.calls.map((call) => call.tool)).toEqual([tool]);
+    }
+  });
+
+  it('writes a script of two demands, the second after the first, that fails its check when exhausted', async () => {
+    const ok = host(stagePrompt('SCRIPTING'));
+    await playRolePlay(ok.host);
+    const script = ok.calls[0]?.args.script as {
+      demands: { id: string; dependsOn: string[]; verify: { args: string[] }[] }[];
+    };
+    expect(script.demands.map((demand) => [demand.id, demand.dependsOn])).toEqual([
+      ['alpha', []],
+      ['beta', ['alpha']],
+    ]);
+    expect(script.demands[0]?.verify[0]?.args).toEqual(['-e', 'process.exit(0)']);
+    const bad = host(stagePrompt('SCRIPTING', 'build it #outcome:exhausted'));
+    await playRolePlay(bad.host);
+    const failing = bad.calls[0]?.args.script as typeof script;
+    expect(failing.demands[0]?.verify[0]?.args).toEqual(['-e', 'process.exit(1)']);
+  });
+
+  it('has the Critic reject the first look for a failure outcome and approve the next', async () => {
+    const prompt = stagePrompt('CRITIQUING', 'build it #outcome:script_failure');
+    const first = host(prompt);
+    await playRolePlay(first.host);
+    expect(first.calls[0]?.args).toMatchObject({ approved: false });
+    expect(String(first.calls[0]?.args.reason)).toContain('[outcome:script_failure]');
+    const second = host(prompt);
+    await playRolePlay(second.host);
+    expect(second.calls[0]?.args).toEqual({ approved: true });
+  });
+
+  it('has the Critic approve at once when the outcome is approved', async () => {
+    const run = host(stagePrompt('CRITIQUING'));
+    await playRolePlay(run.host);
+    expect(run.calls[0]?.args).toEqual({ approved: true });
+  });
+
+  it('plays the Director: opens a play, asks the Producer, and classifies a critique', async () => {
+    const open = host('prefix\n#ot-play do the thing #outcome:approved');
+    await playRolePlay(open.host);
+    expect(open.calls[0]).toEqual({
+      tool: 'open_play',
+      args: { need: 'do the thing #outcome:approved' },
+    });
+
+    const ask = host('#ot-ask which name?', {});
+    await playRolePlay(ask.host);
+    expect(ask.calls[0]?.tool).toBe('ask_producer');
+
+    const judge = host('#ot-judge\n#ot-play: play-1\n#ot-point: classify_critique', {
+      next_action: {
+        decisions: [
+          {
+            id: 'd1',
+            kind: 'judge.classify_critique',
+            input: { reason: 'bad [outcome:structural_failure]', demandIds: ['alpha', 'beta'] },
+          },
+        ],
+      },
+    });
+    await playRolePlay(judge.host);
+    expect(judge.calls.map((call) => call.tool)).toEqual(['next_action', 'decide']);
+    expect(judge.calls[1]?.args).toMatchObject({
+      decisionId: 'd1',
+      payload: { failures: [{ kind: 'structural' }] },
+    });
+  });
+
+  it('classifies an execution failure with the first demand', async () => {
+    const judge = host('#ot-judge', {
+      next_action: {
+        decisions: [
+          {
+            id: 'd1',
+            kind: 'judge.classify_critique',
+            input: { reason: '[outcome:execution_failure]', demandIds: ['alpha', 'beta'] },
+          },
+        ],
+      },
+    });
+    await playRolePlay(judge.host);
+    expect(judge.calls[1]?.args).toMatchObject({
+      payload: { failures: [{ kind: 'execution', demandIds: ['alpha'] }] },
+    });
+  });
+
+  it('answers a clarify decision with what the Producer said', async () => {
+    const run = host('#ot-clarify\n#ot-play: play-1', {
+      next_action: { decisions: [{ id: 'c1', kind: 'clarify', input: {} }] },
+      ask_producer: { answers: ['hello'] },
+    });
+    await playRolePlay(run.host);
+    expect(run.calls.map((call) => call.tool)).toEqual(['next_action', 'ask_producer', 'decide']);
+    expect(run.calls[2]?.args).toEqual({ decisionId: 'c1', payload: { answers: ['hello'] } });
+  });
+});

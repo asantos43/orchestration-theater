@@ -236,6 +236,22 @@ function resolveLimits(
   };
 }
 
+export const VERIFY_MODES = ['run', 'skip'] as const;
+export type VerifyMode = (typeof VERIFY_MODES)[number];
+
+export const CHAT_CHANNEL_MODES = ['auto', 'off'] as const;
+export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
+
+/** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
+export const PlayExecutorSchema = z.strictObject({
+  client: z.string().min(1),
+  profile: z.string().min(1),
+  model: z.string().min(1),
+  effort: z.string().min(1).optional(),
+  mode: z.string().min(1).optional(),
+});
+export type PlayExecutor = z.infer<typeof PlayExecutorSchema>;
+
 /** `all` (one step for the whole database) or a page count per step, an integer >= 1. */
 export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
 
@@ -495,6 +511,35 @@ export const DaemonConfigSchema = z.strictObject({
       message: 'demand_timeout must not exceed demand_timeout_max',
       path: ['demand_timeout'],
     }),
+  /**
+   * How a play runs (architecture 5.4; P8). [proposta] Until the executor catalog and the role
+   * presets exist (`roles.preset`, 5.7), the Executor of each role is a key here:
+   * - `executor`: the Executor every role without its own entry uses (`client` is the id of a
+   *   client adapter, `profile` the name of a profile of it). Absent: a play cannot start its
+   *   stages and says so (the daemon never picks an account for the user);
+   * - `roles`: an Executor per role, which wins over `executor`;
+   * - `verify`: `run` (default) runs the `verify` steps of a demand in its worktree when the
+   *   attempt ends; `skip` takes them as passed (a test rig, or a project whose checks run in CI).
+   */
+  orchestration: z
+    .strictObject({
+      executor: PlayExecutorSchema.optional(),
+      roles: z.record(z.string().min(1), PlayExecutorSchema).default({}),
+      verify: z.enum(VERIFY_MODES).default('run'),
+    })
+    .prefault({}),
+  /**
+   * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
+   * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
+   * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
+   * replies of the Director the channel keeps in memory per scenario for `ot chat` to show.
+   */
+  chat: z
+    .strictObject({
+      channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
+      history: z.int().min(1).default(200),
+    })
+    .prefault({}),
   /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */
   resume: z
     .strictObject({
