@@ -26,6 +26,8 @@ export interface ChatOptions {
   readonly repo?: string | undefined;
   readonly base?: string | undefined;
   readonly name?: string | undefined;
+  /** Create the project in `repo` with the structure of the `software` profile. */
+  readonly newProject?: boolean | undefined;
   /** What the Producer types: one message per line. */
   readonly input: NodeJS.ReadableStream;
   /** Aborting leaves the chat (the entry point wires Ctrl+C to it). */
@@ -258,6 +260,7 @@ export async function runChatCommand(
     ...(options.repo === undefined ? {} : { repo: options.repo }),
     ...(options.base === undefined ? {} : { base: options.base }),
     ...(options.name === undefined ? {} : { name: options.name }),
+    ...(options.newProject === true ? { newProject: true } : {}),
   });
   const { scenarioId } = opened;
   let cursor = opened.cursor;

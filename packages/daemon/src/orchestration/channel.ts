@@ -11,9 +11,11 @@ import {
 } from '@otheater/core';
 import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
 import { z } from 'zod';
+import type { ConventionsMode } from '../config.js';
 import type { DrainResult, IdeaQueueService } from '../ideas/index.js';
 import { IDEA_GROUP_DECISION } from '../ideas/index.js';
 import type { Logger } from '../logger.js';
+import type { ConventionConfirmer } from '../project/confirm.js';
 import type { PlayRunner } from '../pipeline/index.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { AttachmentService } from '../scenarios/attachments.js';
@@ -36,6 +38,10 @@ export interface ProducerChannelOptions {
   readonly logger: Logger;
   /** Told that a chat polled a scenario: that is what makes a play watched. */
   readonly presence?: ChatPresence;
+  /** Asks the Producer to confirm the conventions detected in an imported repository (P7). */
+  readonly confirmer?: ConventionConfirmer;
+  /** `project.conventions`: only `ask` opens the question. Default `ask`. */
+  readonly conventionsMode?: () => ConventionsMode;
 }
 
 export interface OpenChatInput {
@@ -47,6 +53,8 @@ export interface OpenChatInput {
   readonly base?: string;
   /** A name for the scenario. Default: the name of the folder. */
   readonly name?: string;
+  /** Create the project in `repo` with the structure of the `software` profile (a `project`). */
+  readonly newProject?: boolean;
 }
 
 /** What the Producer has to answer, as the chat shows it. */
@@ -181,14 +189,20 @@ export class ProducerChannel {
    * chat with a folder of its own; the type comes from the scenario type registry (5.20).
    */
   async openChat(input: OpenChatInput): Promise<{ scenarioId: string; cursor: number }> {
-    const { scenarios, directors } = this.#options;
+    const { scenarios, directors, confirmer, conventionsMode } = this.#options;
     const { scenario } = await scenarios.create({
       type: input.type ?? 'project',
       ...(input.repo === undefined ? {} : { repo: input.repo }),
       ...(input.base === undefined ? {} : { base: input.base }),
       ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.newProject === true ? { newProject: true } : {}),
     });
     const scenarioId = scenario.id;
+    // An imported repository: the Producer confirms or corrects what the daemon detected. It does
+    // not hold the chat up (the question shows in the next poll).
+    if (scenario.kind === 'project' && (conventionsMode?.() ?? 'ask') === 'ask') {
+      await confirmer?.ask(scenarioId);
+    }
     await directors.ensure(scenarioId);
     const replies = directors.replies(scenarioId, 0);
     return { scenarioId, cursor: replies[replies.length - 1]?.seq ?? 0 };

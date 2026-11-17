@@ -9,6 +9,7 @@ export * from './ports/event-log.js';
 export * from './ports/attempt-registry.js';
 export * from './ports/store.js';
 export * from './ports/store-schemas.js';
+export * from './ports/conventions.js';
 export * from './ports/scenarios.js';
 export * from './ports/plays.js';
 export * from './ports/blackboard.js';

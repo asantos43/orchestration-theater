@@ -233,6 +233,7 @@ describe('parseConfig, execution keys', () => {
       mode: 'pr',
       allow_direct_merge: false,
       base_drift: 'update',
+      changelog: 'always',
     });
     for (const mode of ['pr', 'direct_merge', 'ask']) {
       expect(parseConfig(`delivery:\n  mode: ${mode}\n`).delivery.mode).toBe(mode);
@@ -241,6 +242,7 @@ describe('parseConfig, execution keys', () => {
       mode: 'pr',
       allow_direct_merge: true,
       base_drift: 'update',
+      changelog: 'always',
     });
     expect(() => parseConfig('delivery:\n  mode: merge\n')).toThrow(/mode/);
     expect(() => parseConfig('delivery:\n  allow_direct_merge: yes please\n')).toThrow(
@@ -255,6 +257,23 @@ describe('parseConfig, execution keys', () => {
       expect(parseConfig(`delivery:\n  base_drift: ${mode}\n`).delivery.base_drift).toBe(mode);
     }
     expect(() => parseConfig('delivery:\n  base_drift: rebase\n')).toThrow(/base_drift/);
+  });
+
+  it('defaults delivery.changelog to always (N100) and takes the three modes', () => {
+    expect(parseConfig('').delivery.changelog).toBe('always');
+    for (const mode of ['auto', 'always', 'never']) {
+      expect(parseConfig(`delivery:\n  changelog: ${mode}\n`).delivery.changelog).toBe(mode);
+    }
+    expect(() => parseConfig('delivery:\n  changelog: sometimes\n')).toThrow(/changelog/);
+  });
+
+  it('defaults project.conventions to ask and takes the three modes (P7)', () => {
+    expect(parseConfig('').project).toEqual({ conventions: 'ask' });
+    for (const mode of ['ask', 'detect', 'off']) {
+      expect(parseConfig(`project:\n  conventions: ${mode}\n`).project.conventions).toBe(mode);
+    }
+    expect(() => parseConfig('project:\n  conventions: guess\n')).toThrow(/conventions/);
+    expect(() => parseConfig('project:\n  extra: 1\n')).toThrow(/extra/);
   });
 
   it('defaults integration.rebase_conflict to redo (N82) and takes the three modes', () => {
