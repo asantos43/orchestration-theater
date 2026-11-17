@@ -11,6 +11,7 @@ import { describeZodError, type DaemonConfig } from '../config.js';
 import { FRAMEWORK_MCP_NAME } from '../mcp/access.js';
 import {
   RolesConfigSchema,
+  type POLICY_BROWSER_MODES,
   type POLICY_NATIVE_TOOLS,
   type RolePolicySettings,
 } from '../role-policy-config.js';
@@ -33,6 +34,7 @@ export interface PolicySettings {
   readonly nativeTools: readonly (typeof POLICY_NATIVE_TOOLS)[number][];
   readonly nativeShell: 'none' | 'shells';
   readonly network: { readonly allow: readonly string[] };
+  readonly browser: (typeof POLICY_BROWSER_MODES)[number];
   readonly onAsk: 'reject' | 'rules';
 }
 
@@ -44,6 +46,22 @@ const WRITING_ROLES: ReadonlySet<string> = new Set(['actor']);
  * while `network.allow` has a domain, so a role with an empty list has no tool that reaches out.
  */
 export const NETWORK_TOOLS: ReadonlySet<string> = new Set(['http_get']);
+
+/**
+ * The tools of the browser (architecture 5.19). [proposta] A role gets them by `browser` of its
+ * policy, never by the registry alone: `none` (the default) drops all of them, `read` drops the ones
+ * whose effect is `external_write` (the registry says which acts on a page: click, fill, press_key)
+ * and keeps the ones that only look, `full` keeps them all. This is how the effect of a tool enters
+ * `mcpTools`: the policy reads `ToolDefinition.effect`, it does not keep a second list of writers.
+ */
+export const BROWSER_TOOLS: ReadonlySet<string> = new Set([
+  'browser_open',
+  'browser_read',
+  'browser_screenshot',
+  'browser_click',
+  'browser_fill',
+  'browser_press_key',
+]);
 
 /**
  * Roles that get the daemon's shells (`native_shell: shells`) by default. Owner decision of
@@ -58,6 +76,7 @@ export function defaultPolicySettings(role: string): PolicySettings {
     nativeTools: WRITING_ROLES.has(role) ? ['read', 'search', 'edit', 'write'] : ['read', 'search'],
     nativeShell: SHELL_ROLES.has(role) ? 'shells' : 'none',
     network: { allow: [] },
+    browser: 'none',
     onAsk: 'reject',
   };
 }
@@ -68,6 +87,7 @@ export function applyPolicyLayer(base: PolicySettings, layer: RolePolicySettings
     nativeTools: layer.native_tools === undefined ? base.nativeTools : unique(layer.native_tools),
     nativeShell: layer.native_shell ?? base.nativeShell,
     network: layer.network === undefined ? base.network : { allow: unique(layer.network.allow) },
+    browser: layer.browser ?? base.browser,
     onAsk: layer.on_ask ?? base.onAsk,
   };
 }
@@ -80,7 +100,8 @@ function unique<T>(values: readonly T[]): T[] {
  * The tools of the framework server a role may call (architecture 5.3, "filtrado pelo registro"):
  * the ones the registry gives the role, minus the daemon's shells (effect `worktree`) unless
  * `native_shell` is `shells`, minus the tools that open the network unless `network.allow` has a
- * domain. [proposta] That the shells are the tools with effect `worktree` is the reading of the
+ * domain, and minus the `browser_*` tools the `browser` key does not give (see {@link BROWSER_TOOLS}).
+ * [proposta] That the shells are the tools with effect `worktree` is the reading of the
  * registry of this step; P3 owns the registry and can change it.
  */
 export function frameworkToolsOf(
@@ -92,7 +113,14 @@ export function frameworkToolsOf(
     .filter((tool) => tool.roles.includes(role))
     .filter((tool) => settings.nativeShell === 'shells' || tool.effect !== 'worktree')
     .filter((tool) => settings.network.allow.length > 0 || !NETWORK_TOOLS.has(tool.name))
+    .filter((tool) => browserToolAllowed(tool, settings.browser))
     .map((tool) => tool.name);
+}
+
+function browserToolAllowed(tool: ToolDefinition, mode: PolicySettings['browser']): boolean {
+  if (!BROWSER_TOOLS.has(tool.name)) return true;
+  if (mode === 'none') return false;
+  return mode === 'full' || tool.effect !== 'external_write';
 }
 
 /** The neutral policy of a role for the settings the layers settled on. */

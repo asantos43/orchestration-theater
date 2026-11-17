@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AdapterUnavailable, type NewEvent } from '@otheater/core';
 import { buildDaemonRegistries } from '../registries.js';
 import { captureLogger } from '../test-helpers.js';
-import { FrameworkMcpServer, MCP_PATH, ToolHandlers, type McpGrant } from './index.js';
+import {
+  FrameworkMcpServer,
+  MCP_PATH,
+  ToolHandlers,
+  ToolWithImage,
+  type McpGrant,
+} from './index.js';
 
 const registries = buildDaemonRegistries();
 
@@ -108,7 +114,7 @@ async function listTools(grant: McpGrant, url: string): Promise<string[]> {
 
 interface ToolResult {
   isError?: boolean;
-  content: { type: string; text: string }[];
+  content: { type: string; text: string; data?: string; mimeType?: string }[];
   structuredContent?: Record<string, unknown>;
 }
 
@@ -526,6 +532,21 @@ describe('tools without a handler and with one', () => {
       input: { key: 'k' },
       caller: { role: 'actor', attemptId: 'p1/d1/1', sessionId: 'sess-9' },
     });
+  });
+
+  it('a ToolWithImage answers the value and an image block', async () => {
+    const handlers = new ToolHandlers().register(
+      'read_blackboard',
+      () => new ToolWithImage({ bytes: 3 }, { mimeType: 'image/png', data: 'AQID' }),
+    );
+    const h = await harness({ handlers });
+    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', {
+      key: 'k',
+    });
+    expect(result?.isError).toBeUndefined();
+    expect(result?.structuredContent).toEqual({ bytes: 3 });
+    expect(result?.content[0]?.type).toBe('text');
+    expect(result?.content[1]).toEqual({ type: 'image', data: 'AQID', mimeType: 'image/png' });
   });
 
   it('refuses a second handler for the same tool', () => {

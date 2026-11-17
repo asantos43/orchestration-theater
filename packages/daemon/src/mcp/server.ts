@@ -25,7 +25,7 @@ import type { Logger } from '../logger.js';
 import type { RecoveryGate } from '../recovery/gate.js';
 import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
-import { notImplemented, ToolFailure, ToolHandlers } from './handlers.js';
+import { notImplemented, ToolFailure, ToolHandlers, ToolWithImage } from './handlers.js';
 import { describeIssues, isSubmitTool, runSubmit, type ToolReply } from './submit.js';
 import { bearerToken, GrantBook, type GrantRecord } from './tokens.js';
 
@@ -94,7 +94,12 @@ function asResult(reply: ToolReply): CallToolResult {
       ? (value as Record<string, unknown>)
       : undefined;
   return {
-    content: [{ type: 'text', text }],
+    content: [
+      { type: 'text', text },
+      ...(reply.image === undefined
+        ? []
+        : [{ type: 'image' as const, data: reply.image.data, mimeType: reply.image.mimeType }]),
+    ],
     ...(structured === undefined ? {} : { structuredContent: structured }),
     ...(reply.ok ? {} : { isError: true }),
   };
@@ -300,6 +305,9 @@ export class FrameworkMcpServer implements McpAccess {
           ok: false,
           value: { ...value.details, error: value.code, message: value.message },
         };
+      }
+      if (value instanceof ToolWithImage) {
+        return { ok: true, value: value.value, image: value.image };
       }
       return { ok: true, value };
     } catch (error) {
