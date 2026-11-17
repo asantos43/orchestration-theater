@@ -131,6 +131,84 @@ describe('SessionPool, process per session', () => {
   });
 });
 
+describe('SessionPool, K per client', () => {
+  function twoClients(byClient: Record<string, number>) {
+    const launcher = new FakeProcessLauncher();
+    const transport = new FakeSessionTransport();
+    const make = (id: string) =>
+      new FakeClientAdapter({
+        id,
+        launcher,
+        baseEnv: {},
+        adapterVersion: '1.0.0',
+        command: { cmd: `${id}-client`, args: [] },
+        processModel: 'multi-session',
+      });
+    const pool = new SessionPool({
+      clients: [make('fake'), make('other')],
+      launcher,
+      transport: () => transport,
+      clock: new FakeClock(),
+      settings: {
+        sessionsPerProcess: 4,
+        sessionsPerProcessByClient: byClient,
+        maxSessions: 20,
+        idleMs: 60_000,
+        sharedCancel: 'escalate',
+      },
+    });
+    const request = (client: string) => ({
+      client,
+      profile: TEST_PROFILE,
+      policy: TEST_POLICY,
+      cwd: '/work/one',
+    });
+    return { launcher, pool, request };
+  }
+
+  it('opens processes at the K of each client', async () => {
+    const { launcher, pool, request } = twoClients({ fake: 2, other: 3 });
+    const leases = [];
+    for (let i = 0; i < 5; i += 1) leases.push(await pool.acquire(request('fake')));
+    // 5 sessions at K=2: three processes.
+    expect(launcher.launched).toHaveLength(3);
+    for (let i = 0; i < 5; i += 1) leases.push(await pool.acquire(request('other')));
+    // 5 sessions at K=3: two more processes.
+    expect(launcher.launched).toHaveLength(5);
+    for (const lease of leases) await lease.release();
+  });
+
+  it('uses the global K for a client without a value of its own', async () => {
+    const { launcher, pool, request } = twoClients({ fake: 1 });
+    const leases = [];
+    for (let i = 0; i < 4; i += 1) leases.push(await pool.acquire(request('other')));
+    expect(launcher.launched).toHaveLength(1);
+    for (let i = 0; i < 2; i += 1) leases.push(await pool.acquire(request('fake')));
+    expect(launcher.launched).toHaveLength(3);
+    for (const lease of leases) await lease.release();
+  });
+
+  it('acquires at the same time split each process at the K of its client', async () => {
+    const { launcher, pool, request } = twoClients({ fake: 2, other: 3 });
+    // Ten acquires at once, the two clients interleaved.
+    const clients = [1, 2, 3, 4, 5].flatMap(() => ['fake', 'other']);
+    const leases = await Promise.all(clients.map((client) => pool.acquire(request(client))));
+    // 5 at K=2 (2, 2, 1) and 5 at K=3 (3, 2): five processes.
+    expect(launcher.launched).toHaveLength(5);
+    const perProcess = (client: string): number[] => {
+      const counts = new Map<number, number>();
+      for (const lease of leases.filter((candidate) => candidate.client === client)) {
+        counts.set(lease.pid, (counts.get(lease.pid) ?? 0) + 1);
+      }
+      return [...counts.values()].sort((a, b) => b - a);
+    };
+    expect(perProcess('fake')).toEqual([2, 2, 1]);
+    expect(perProcess('other')).toEqual([3, 2]);
+    for (const lease of leases) await lease.release();
+    expect(pool.stats().sessions).toBe(0);
+  });
+});
+
 describe('SessionPool, shared process', () => {
   it('puts up to K sessions on one process and opens another above that', async () => {
     const { pool, launcher, request } = setup({ shared: true, k: 2 });

@@ -3,7 +3,15 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
-import { loadConfig, parseConfig, parseDuration, parseTimeOfDay } from './config.js';
+import {
+  CLIENT_IDS,
+  loadConfig,
+  parseConfig,
+  parseDuration,
+  parseTimeOfDay,
+  sessionsPerProcessOf,
+} from './config.js';
+import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
 import { makeTempDataDir } from './test-helpers.js';
 
 describe('parseDuration / parseTimeOfDay', () => {
@@ -102,6 +110,8 @@ describe('parseConfig, execution keys', () => {
       max_sessions: 4,
       idle: 120_000,
       shared_cancel: 'escalate',
+      'claude-code': {},
+      codex: {},
       opencode: { process_model: 'per_profile' },
     });
     expect(config.limits).toEqual({ demand_timeout: 1_800_000, demand_timeout_max: 7_200_000 });
@@ -170,6 +180,50 @@ describe('parseConfig, execution keys', () => {
       /process_model/,
     );
     expect(() => parseConfig('pool:\n  sessions_per_process: 0\n')).toThrow(/sessions_per_process/);
+  });
+
+  describe('pool.<client>.sessions_per_process', () => {
+    it('inherits the global key when the client sets none', () => {
+      const pool = parseConfig('').pool;
+      for (const client of CLIENT_IDS) expect(sessionsPerProcessOf(pool, client)).toBe(4);
+    });
+
+    it('follows the global key for the clients without one, and wins where present', () => {
+      const pool = parseConfig(
+        'pool:\n  sessions_per_process: 6\n  codex:\n    sessions_per_process: 2\n  opencode:\n    sessions_per_process: 9\n',
+      ).pool;
+      expect(sessionsPerProcessOf(pool, 'claude-code')).toBe(6);
+      expect(sessionsPerProcessOf(pool, 'codex')).toBe(2);
+      expect(sessionsPerProcessOf(pool, 'opencode')).toBe(9);
+      expect(pool.codex.sessions_per_process).toBe(2);
+      expect(pool['claude-code'].sessions_per_process).toBeUndefined();
+    });
+
+    it('reaches the pool settings as the effective K of each client', () => {
+      const { pool } = executionSettingsOf(
+        parseConfig('pool:\n  sessions_per_process: 6\n  codex:\n    sessions_per_process: 2\n'),
+      );
+      expect(sessionsPerProcessFor(pool, 'codex')).toBe(2);
+      expect(sessionsPerProcessFor(pool, 'claude-code')).toBe(6);
+      expect(sessionsPerProcessFor(pool, 'opencode')).toBe(6);
+      // A client the settings do not name uses the global value.
+      expect(sessionsPerProcessFor(pool, 'fake')).toBe(6);
+    });
+
+    it('rejects a value below 1, a non-integer and an unknown client', () => {
+      for (const client of CLIENT_IDS) {
+        expect(() => parseConfig(`pool:\n  ${client}:\n    sessions_per_process: 0\n`)).toThrow(
+          /sessions_per_process/,
+        );
+        expect(() => parseConfig(`pool:\n  ${client}:\n    sessions_per_process: 1.5\n`)).toThrow(
+          /sessions_per_process/,
+        );
+      }
+      expect(() => parseConfig('pool:\n  gemini:\n    sessions_per_process: 2\n')).toThrow(
+        /gemini/,
+      );
+      expect(() => parseConfig('pool:\n  codex:\n    nope: 2\n')).toThrow(/nope/);
+    });
   });
 
   it('takes the three modes of pool.shared_cancel and rejects any other', () => {

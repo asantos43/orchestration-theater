@@ -204,6 +204,16 @@ export const CodexClientSchema = z.strictObject({
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
 });
 
+/**
+ * `pool.<client>`: what the pool decides for one client alone. Every key is optional and has no
+ * default of its own: absent means the global key of `pool` (owner's decision, 2026-11-16; the
+ * per-client defaults wait for a measurement).
+ */
+export const PoolClientSchema = z.strictObject({
+  /** `K` of this client; absent: `pool.sessions_per_process`. */
+  sessions_per_process: z.int().min(1).optional(),
+});
+
 /** `clients.opencode` (keys of `OpenCodeAdapterOptions`; `pool.opencode.process_model` is under `pool`). */
 export const OpenCodeClientSchema = z.strictObject({
   ...clientCommon,
@@ -281,11 +291,16 @@ export const DaemonConfigSchema = z.strictObject({
     .prefault({}),
   /**
    * Pools of Executor processes per `(client, profile)` (architecture 5.2). `sessions_per_process`
-   * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta].
+   * is the `K` of the text and `idle` its `idleMs`; the other keys are [proposta]. Each client has
+   * a section of its own (`pool.claude-code`, `pool.codex`, `pool.opencode`); a key absent there
+   * inherits the global one (owner's decision, 2026-11-16).
    */
   pool: z
     .strictObject({
-      /** `K`: sessions per adapter process, for the clients that share one (`multi-session`). */
+      /**
+       * `K`: sessions per adapter process, for the clients that share one (`multi-session`). The
+       * value of a client without `pool.<client>.sessions_per_process`.
+       */
       sessions_per_process: z.int().min(1).default(4),
       /** Admission semaphore: sessions running at once, counted per session and not per process. */
       max_sessions: z.int().min(1).default(4),
@@ -297,10 +312,17 @@ export const DaemonConfigSchema = z.strictObject({
        * `always_kill` ends it on every cancel; `release` only gives the slot back.
        */
       shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
-      /** N56 (5.2): how OpenCode shares its processes. The adapter wiring reads it; the pool follows the adapter's `processModel`. */
-      opencode: z
-        .strictObject({ process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile') })
-        .prefault({}),
+      /** `K` of Claude Code alone. */
+      'claude-code': PoolClientSchema.prefault({}),
+      /** `K` of Codex alone. */
+      codex: PoolClientSchema.prefault({}),
+      /**
+       * N56 (5.2): how OpenCode shares its processes (the adapter wiring reads `process_model`; the
+       * pool follows the adapter's `processModel`), and `K` of OpenCode alone.
+       */
+      opencode: PoolClientSchema.extend({
+        process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
+      }).prefault({}),
     })
     .prefault({}),
   /** The timeout keys of `limits` (architecture 5.4); the other keys of that group are not wired yet. */
@@ -465,4 +487,9 @@ export async function loadConfig(configPath: string): Promise<DaemonConfig> {
     throw new InvalidInput(`Cannot read ${configPath}: ${String(error)}`, { cause: error });
   }
   return parseConfig(text, configPath);
+}
+
+/** `K` of a client: `pool.<client>.sessions_per_process`, or else the global `pool.sessions_per_process`. */
+export function sessionsPerProcessOf(pool: DaemonConfig['pool'], client: ClientId): number {
+  return pool[client].sessions_per_process ?? pool.sessions_per_process;
 }
