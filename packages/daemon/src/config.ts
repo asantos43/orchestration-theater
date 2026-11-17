@@ -459,6 +459,11 @@ export const BrowserConfigSchema = z
     sandbox: z.boolean().default(true),
     /** [proposta] The Chromium executable; unset, the one playwright-core finds in its cache. Global only. */
     executable_path: z.string().min(1).optional(),
+    /**
+     * [proposta] A scenario whose browser has not been used for this long is closed (its page, and
+     * the browser with it when it was the last one); `0` never closes. Global only.
+     */
+    idle_close_ms: z.int().min(0).default(600_000),
   })
   .prefault({});
 export type BrowserConfig = z.infer<typeof BrowserConfigSchema>;

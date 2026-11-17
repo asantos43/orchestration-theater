@@ -63,6 +63,6 @@ describe('openApproval', () => {
     handlers.board.abortAll('daemon stopping');
     await expect(opened!.answer).rejects.toThrow('daemon stopping');
     const decision = await store.decisions.get(opened!.decisionId);
-    expect(decision?.status).not.toBe('pending');
+    expect(decision?.state).not.toBe('pending');
   });
 });
