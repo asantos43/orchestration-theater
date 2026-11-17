@@ -74,6 +74,54 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.attempts;
   }
 
+  get scenarios(): Store['scenarios'] {
+    return this.inner.scenarios;
+  }
+
+  get scenarioRepos(): Store['scenarioRepos'] {
+    return this.inner.scenarioRepos;
+  }
+
+  get attachments(): Store['attachments'] {
+    return this.inner.attachments;
+  }
+
+  get plays(): Store['plays'] {
+    return this.inner.plays;
+  }
+
+  get stages(): Store['stages'] {
+    return this.inner.stages;
+  }
+
+  get demands(): Store['demands'] {
+    return this.inner.demands;
+  }
+
+  get decisions(): Store['decisions'] {
+    return this.inner.decisions;
+  }
+
+  get blackboard(): Store['blackboard'] {
+    return this.inner.blackboard;
+  }
+
+  get promptQueue(): Store['promptQueue'] {
+    return this.inner.promptQueue;
+  }
+
+  get sideEffects(): Store['sideEffects'] {
+    return this.inner.sideEffects;
+  }
+
+  get sessions(): Store['sessions'] {
+    return this.inner.sessions;
+  }
+
+  get directives(): Store['directives'] {
+    return this.inner.directives;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }

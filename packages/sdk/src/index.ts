@@ -18,6 +18,28 @@ export {
 } from './conformance/event-log.js';
 export { describeStoreConformance, type StoreHarness } from './conformance/store.js';
 export { sampleAttempt } from './conformance/attempt-registry.js';
+export { type AggregateHarness } from './conformance/aggregate-support.js';
+export {
+  describeScenarioAggregatesConformance,
+  sampleAttachment,
+  sampleRepo,
+  sampleScenario,
+} from './conformance/scenario-aggregates.js';
+export {
+  describePlayAggregatesConformance,
+  sampleDecision,
+  sampleDemand,
+  samplePlay,
+  sampleStage,
+} from './conformance/play-aggregates.js';
+export {
+  describeCoordinationAggregatesConformance,
+  sampleDirective,
+  samplePrompt,
+  sampleSession,
+  sampleSideEffect,
+} from './conformance/coordination-aggregates.js';
+export { describeAggregateTransactionsConformance } from './conformance/aggregate-transactions.js';
 export {
   describeSecretVaultConformance,
   type SecretVaultHarness,

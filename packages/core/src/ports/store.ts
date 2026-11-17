@@ -1,17 +1,49 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AttemptRegistry } from './attempt-registry.js';
+import type { Blackboard } from './blackboard.js';
+import type { DirectiveRegistry } from './directives.js';
 import type { EventLog } from './event-log.js';
-
-/** Semver of the `Store` port contract. */
-/** 0.2.0 added the attempt registry (`attempts`); a 0.x minor bump is a contract change. */
-export const STORE_PORT_VERSION = '0.2.0';
+import type { DecisionRegistry, DemandRegistry, PlayRegistry, StageRegistry } from './plays.js';
+import type { PromptQueue } from './prompt-queue.js';
+import type { AttachmentRegistry, ScenarioRegistry, ScenarioRepoRegistry } from './scenarios.js';
+import type { SessionRegistry } from './sessions.js';
+import type { SideEffectRegistry } from './side-effects.js';
 
 /**
- * What a transaction body can touch. Aggregates (plays, demands, directives, ...) join it as the
- * phases that need them arrive; for now the transactional resources are the event log and the
- * attempt registry, so the domain can change state and record the event in one atomic step.
+ * Semver of the `Store` port contract.
+ *
+ * - 0.2.0 added the attempt registry (`attempts`); a 0.x minor bump is a contract change.
+ * - 0.3.0 added the aggregates of Phase 3 ({@link StoreAggregates}): scenarios, plays, stages,
+ *   demands, decisions, the blackboard, the prompt queue, side effects, sessions and directives.
  */
-export interface StoreTransaction {
+export const STORE_PORT_VERSION = '0.3.0';
+
+/**
+ * The aggregates of the store (architecture section 7), one registry per table. [proposta] Each
+ * one is available in a transaction (`tx.plays`) and outside it (`store.plays`), with the rules
+ * described at {@link Store}; every contract is checked by its `describe*Conformance` suite.
+ * `task_definitions` and `task_runs` join when the tasks do (5.20).
+ */
+export interface StoreAggregates {
+  readonly scenarios: ScenarioRegistry;
+  readonly scenarioRepos: ScenarioRepoRegistry;
+  readonly attachments: AttachmentRegistry;
+  readonly plays: PlayRegistry;
+  readonly stages: StageRegistry;
+  readonly demands: DemandRegistry;
+  readonly decisions: DecisionRegistry;
+  readonly blackboard: Blackboard;
+  readonly promptQueue: PromptQueue;
+  readonly sideEffects: SideEffectRegistry;
+  readonly sessions: SessionRegistry;
+  readonly directives: DirectiveRegistry;
+}
+
+/**
+ * What a transaction body can touch: the event log, the attempt registry and the aggregates, so
+ * the domain can change state and record the event in one atomic step.
+ */
+export interface StoreTransaction extends StoreAggregates {
   readonly events: EventLog;
   readonly attempts: AttemptRegistry;
 }
@@ -29,12 +61,13 @@ export interface StoreTransaction {
  * - Read-your-writes inside `fn`; outside it, only committed data is visible, and a transaction
  *   becomes visible all at once (never half of its events).
  * - Using `tx` after `fn` settled is a programming error and rejects with `Conflict`.
- * - `events` and `attempts` are the same resources outside a transaction: each call there is its
- *   own transaction (reads see only committed data).
+ * - `events`, `attempts` and the aggregates are the same resources outside a transaction: each
+ *   call that writes there is its own transaction, and a read sees only committed data (it never
+ *   waits for a transaction in progress).
  * - After `close()` every operation rejects with `AdapterUnavailable`; `close()` is idempotent and
  *   waits for the transaction in flight.
  */
-export interface Store {
+export interface Store extends StoreAggregates {
   readonly events: EventLog;
   readonly attempts: AttemptRegistry;
 

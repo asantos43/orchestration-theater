@@ -39,7 +39,12 @@ export interface AttemptsTable {
   updated_at: number;
 }
 
-/** Tables of the store. Aggregates join as the phases that need them arrive. */
+/**
+ * Typed tables of the store: the ones with code of their own (`events`, `attempts`). The
+ * aggregates of Phase 3 (migrations 0004 to 0007) go through the generic `SqliteTable`, which
+ * builds its SQL from the `TableSpec` of each aggregate in `@otheater/core`, so they are not
+ * listed here.
+ */
 export interface StoreDatabase {
   events: EventsTable;
   attempts: AttemptsTable;

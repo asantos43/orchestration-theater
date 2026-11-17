@@ -3,6 +3,8 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   AdapterUnavailable,
+  autoCommitAggregates,
+  createStoreAggregates,
   InvalidInput,
   isOTheaterError,
   type AttemptListFilter,
@@ -14,6 +16,7 @@ import {
   type EventLog,
   type NewEvent,
   type Store,
+  type StoreAggregates,
   type StoreMaintenance,
   type StoreTransaction,
 } from '@otheater/core';
@@ -33,6 +36,7 @@ import { toStoreError } from './errors.js';
 import { selectEvents, selectLastId, TransactionEventLog } from './events.js';
 import { migrateToLatest } from './migrations.js';
 import type { StoreDatabase } from './schema.js';
+import { committedTables, TransactionTables } from './tables.js';
 
 /**
  * Pragmas of the write connection, in the order they are applied. `busy_timeout` goes first so
@@ -84,6 +88,18 @@ export interface SqliteStoreDiagnostics {
 export class SqliteStore implements Store, StoreMaintenance {
   readonly events: EventLog;
   readonly attempts: AttemptRegistry;
+  readonly scenarios: StoreAggregates['scenarios'];
+  readonly scenarioRepos: StoreAggregates['scenarioRepos'];
+  readonly attachments: StoreAggregates['attachments'];
+  readonly plays: StoreAggregates['plays'];
+  readonly stages: StoreAggregates['stages'];
+  readonly demands: StoreAggregates['demands'];
+  readonly decisions: StoreAggregates['decisions'];
+  readonly blackboard: StoreAggregates['blackboard'];
+  readonly promptQueue: StoreAggregates['promptQueue'];
+  readonly sideEffects: StoreAggregates['sideEffects'];
+  readonly sessions: StoreAggregates['sessions'];
+  readonly directives: StoreAggregates['directives'];
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -115,6 +131,32 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.attempts = new StoreAttempts(this, (record) =>
       this.transaction((tx) => tx.attempts.put(record)),
     );
+    // Outside a transaction a read goes to the read-only connection (committed data, never
+    // waiting for a transaction) and a write is a transaction of its own.
+    const aggregates = autoCommitAggregates(
+      createStoreAggregates(
+        committedTables(this.#reader, () => {
+          if (this.#closed) throw this.#closedError();
+        }),
+        clock,
+      ),
+      (fn) => this.transaction((tx) => fn(tx)),
+      () => {
+        if (this.#closed) throw this.#closedError();
+      },
+    );
+    this.scenarios = aggregates.scenarios;
+    this.scenarioRepos = aggregates.scenarioRepos;
+    this.attachments = aggregates.attachments;
+    this.plays = aggregates.plays;
+    this.stages = aggregates.stages;
+    this.demands = aggregates.demands;
+    this.decisions = aggregates.decisions;
+    this.blackboard = aggregates.blackboard;
+    this.promptQueue = aggregates.promptQueue;
+    this.sideEffects = aggregates.sideEffects;
+    this.sessions = aggregates.sessions;
+    this.directives = aggregates.directives;
   }
 
   /**
@@ -192,12 +234,15 @@ export class SqliteStore implements Store, StoreMaintenance {
       return await this.#writer.transaction().execute(async (trx) => {
         const events = new TransactionEventLog(trx, this.#clock);
         const attempts = new TransactionAttemptRegistry(trx, this.#clock);
+        const tables = new TransactionTables(trx);
+        const aggregates = createStoreAggregates(tables.factory, this.#clock);
         try {
-          return await fn({ events, attempts });
+          return await fn({ events, attempts, ...aggregates });
         } finally {
           // From here on a leaked handle is refused, even while the commit is still running.
           events.finish();
           attempts.finish();
+          tables.finish();
         }
       });
     } catch (error) {
