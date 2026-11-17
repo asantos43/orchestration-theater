@@ -53,6 +53,7 @@ describe('daemon event registry', () => {
       'idea.deferred',
       'idea.done',
       'idea.returned',
+      'idea.queue_held',
       'scenario.created',
       'scenario.attachment_added',
       'scenario.director_slept',

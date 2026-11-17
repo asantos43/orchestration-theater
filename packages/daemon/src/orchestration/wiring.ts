@@ -124,7 +124,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     attended: ({ scenarioId }) => presence.attended(scenarioId),
   });
   // The queue of ideas hears the end of every play; it is built after the runner it needs.
-  const late: { ideas?: IdeaQueueService } = {};
+  const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};
   const runner = new PlayRunner({
     store,
     clock: composition.clock,
@@ -188,6 +188,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     opening: { store, runner, workspace, config },
     logger,
+    onHeld: (held) => late.channel?.notifyQueueHeld(held),
   });
   late.ideas = ideas;
   const channel = new ProducerChannel({
@@ -202,6 +203,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     logger,
     presence,
   });
+  late.channel = channel;
   const server =
     config.chat.channel === 'off'
       ? undefined

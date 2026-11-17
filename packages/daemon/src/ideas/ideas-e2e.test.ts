@@ -216,11 +216,43 @@ describe('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => 
       await harness.producer.idea(scenarioId, { action: 'drain' });
       const ask = await groupAsk(harness, scenarioId);
       await harness.producer.answer(ask.id, { option: 'refuse', reason: 'not now' });
+      // The Producer is told why the queue stopped, once.
+      const poll = await harness.producer.poll(scenarioId, 0);
+      expect(poll.queueHolds).toEqual([
+        { scenarioId, cause: 'group_refused', reason: 'not now', playId: null },
+      ]);
+      expect((await harness.producer.poll(scenarioId, 0)).queueHolds).toEqual([]);
+      expect(await eventTypes(harness, 'idea.queue_held')).toHaveLength(1);
       const ideas = await ideasOf(harness, scenarioId);
       expect(ideas.map((idea) => idea.state)).toEqual(['queued', 'queued', 'queued', 'queued']);
       expect(ideas[0]?.reason).toBe('not now');
       expect(await harness.plays(scenarioId)).toHaveLength(0);
       expect((await harness.daemon.store.decisions.get(ask.id))?.state).toBe('decided');
+    });
+  });
+
+  it('a stopped queue stays stopped under drain auto until a command or a new idea frees it', async () => {
+    await withPlayDaemon({}, async (harness) => {
+      const scenarioId = await harness.openChat();
+      await harness.producer.idea(scenarioId, { action: 'add', text: 'one thing' });
+      const first = await groupAsk(harness, scenarioId);
+      await harness.producer.answer(first.id, { option: 'refuse', reason: 'changed my mind' });
+      const held = await waitFor('the notice of the stop', async () => {
+        const { queueHolds } = await harness.producer.poll(scenarioId, 0);
+        return queueHolds.length === 0 ? undefined : queueHolds;
+      });
+      expect(held[0]).toMatchObject({ cause: 'group_refused', reason: 'changed my mind' });
+      // Nothing moves the queue by itself: the idea stays queued and no new group is asked.
+      await waitFor(
+        'the channel to be quiet',
+        async () => !(await harness.producer.poll(scenarioId, 0)).busy,
+      );
+      expect((await ideasOf(harness, scenarioId)).map((idea) => idea.state)).toEqual(['queued']);
+      expect((await harness.producer.poll(scenarioId, 0)).asks).toEqual([]);
+      // A new idea frees it: the Author groups again.
+      await harness.producer.idea(scenarioId, { action: 'add', text: 'another thing' });
+      const second = await groupAsk(harness, scenarioId);
+      expect(second.id).not.toBe(first.id);
     });
   });
 
@@ -254,6 +286,10 @@ describe('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => 
           (event) => event.type === 'idea.returned',
         );
         expect(returned.map((event) => event.payload.playId)).toEqual([play.id]);
+        const { queueHolds } = await harness.producer.poll(scenarioId, 0);
+        expect(queueHolds).toHaveLength(1);
+        expect(queueHolds[0]).toMatchObject({ cause: 'play_ended', playId: play.id });
+        expect(queueHolds[0]?.reason).toContain('cancelled');
         expect(harness.codeHost.pullRequests()).toHaveLength(0);
       },
     );

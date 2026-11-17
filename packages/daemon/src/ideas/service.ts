@@ -21,6 +21,7 @@ import {
   buildDaemonEvent,
   type DaemonEventPayloads,
   type DaemonEventType,
+  type IdeaQueueHeldPayload,
 } from '@otheater/protocol';
 import type { DaemonConfig } from '../config.js';
 import type { AttemptRunner } from '../execution/attempt-runner.js';
@@ -50,6 +51,8 @@ export interface IdeaQueueServiceOptions {
   /** What opening a play needs; the same the Director's `open_play` uses. */
   readonly opening: PlayOpening;
   readonly logger: Logger;
+  /** Told when the queue of a scenario stops (the channel shows it to the Producer). */
+  readonly onHeld?: ((held: IdeaQueueHeldPayload) => void) | undefined;
 }
 
 export interface IdeaAddInput {
@@ -263,14 +266,15 @@ export class IdeaQueueService {
       }
       const outcome = await this.#group(scenarioId, queued, settings);
       if (outcome.kind === 'failed') {
-        this.#held.add(scenarioId);
+        await this.#hold(scenarioId, 'author_failed', outcome.reason);
         return { groups, stopped: outcome.reason };
       }
       if (outcome.kind === 'grouped') groups += 1;
       else if (outcome.kind === 'nothing') {
         // The Author left everything out: asking again would give the same answer.
-        this.#held.add(scenarioId);
-        return { groups, stopped: 'the Author left every idea out of the group' };
+        const stopped = 'the Author left every idea out of the group';
+        await this.#hold(scenarioId, 'author_left_all_out', stopped);
+        return { groups, stopped };
       }
     }
     return { groups, stopped: 'the pass reached its limit of groupings' };
@@ -474,7 +478,7 @@ export class IdeaQueueService {
           decidedBy: 'producer',
         });
         for (const idea of members) await this.#giveBack(idea, null, reason);
-        this.#held.add(scenarioId);
+        await this.#hold(scenarioId, 'group_refused', reason);
         return { option: 'refuse', returned: members.map((idea) => idea.id) };
       }
       let need = textOf(decision.input.need);
@@ -537,12 +541,12 @@ export class IdeaQueueService {
       const reason = error instanceof Error ? error.message : String(error);
       for (const idea of members)
         await this.#giveBack(idea, null, `the play did not open: ${reason}`);
-      this.#held.add(scenarioId);
+      await this.#hold(scenarioId, 'play_not_opened', reason);
       return { returned: members.map((idea) => idea.id), reason };
     }
     if (!opened.ok) {
       for (const idea of members) await this.#giveBack(idea, null, opened.message);
-      this.#held.add(scenarioId);
+      await this.#hold(scenarioId, 'play_not_opened', opened.message);
       return { returned: members.map((idea) => idea.id), reason: opened.message };
     }
     this.#marks.set(opened.playId, mark);
@@ -586,7 +590,7 @@ export class IdeaQueueService {
             ? 'the play ended without delivering'
             : `the play ended ${play.state.toLowerCase()}`;
         for (const idea of members) await this.#giveBack(idea, play.id, reason);
-        this.#held.add(play.scenarioId);
+        await this.#hold(play.scenarioId, 'play_ended', reason, play.id);
         return;
       }
       for (const idea of members) {
@@ -667,6 +671,27 @@ export class IdeaQueueService {
     for (const idea of await store.ideas.list({ states: ['queued'] }))
       scenarios.add(idea.scenarioId);
     for (const scenarioId of scenarios) this.kick(scenarioId);
+  }
+
+  /**
+   * Stops the queue of the scenario until the Producer frees it (`/idea drain`, `/idea requeue`
+   * or a new idea) and says why: an event in the log and a notice through the channel.
+   */
+  async #hold(
+    scenarioId: string,
+    cause: IdeaQueueHeldPayload['cause'],
+    reason: string,
+    playId: string | null = null,
+  ): Promise<void> {
+    this.#held.add(scenarioId);
+    const held: IdeaQueueHeldPayload = {
+      scenarioId,
+      cause,
+      reason: reason === '' ? cause : reason,
+      playId,
+    };
+    await this.#emit('idea.queue_held', scenarioId, held);
+    this.#options.onHeld?.(held);
   }
 
   async #emit<T extends DaemonEventType>(

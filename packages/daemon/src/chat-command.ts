@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { JsonObject } from '@otheater/core';
-import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
 import { dataPaths } from './paths.js';
@@ -160,6 +160,14 @@ export function parseIdeaCommand(line: string): IdeaCommand | undefined {
   return { action: 'add', text: body, ...(area === undefined ? {} : { area }) };
 }
 
+/** What the Producer is told when the idea queue stops: why, and what frees it. */
+export function renderQueueHeld(t: TFunction, held: IdeaQueueHeldPayload): string[] {
+  return t('chat.ideaHeld', {
+    what: t(`chat.ideaHeldWhat_${held.cause}`, { playId: held.playId ?? '' }),
+    reason: held.reason,
+  }).split('\n');
+}
+
 function ideaLine(t: TFunction, idea: IdeaView): string {
   const links = [
     idea.playId === null ? '' : ` (${idea.playId}`,
@@ -280,6 +288,9 @@ export async function runChatCommand(
   const show = (poll: ChatPoll): void => {
     for (const notice of poll.notices) {
       for (const line of renderSystemMessage(t, notice)) out(line);
+    }
+    for (const held of poll.queueHolds) {
+      for (const line of renderQueueHeld(t, held)) out(line);
     }
     for (const reply of poll.replies) {
       out(t('chat.reply', { text: reply.text }));

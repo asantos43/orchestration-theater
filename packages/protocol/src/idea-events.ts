@@ -87,3 +87,26 @@ export const IdeaReturnedPayloadSchema = z.strictObject({
   playId: z.string().min(1).nullable(),
   reason: z.string().min(1),
 });
+
+/** Why the queue of a scenario stopped (the causes of `idea.queue_held`). */
+export const IDEA_QUEUE_HOLD_CAUSES = [
+  'author_failed',
+  'author_left_all_out',
+  'group_refused',
+  'play_not_opened',
+  'play_ended',
+] as const;
+
+/**
+ * `idea.queue_held`: the queue stopped on purpose and stays stopped until the Producer frees it
+ * (`/idea drain`, `/idea requeue <id>` or a new idea). The Producer is told through the channel.
+ * [proposta] Data, not text: each interface writes the words in the language of the Producer.
+ */
+export const IdeaQueueHeldPayloadSchema = z.strictObject({
+  scenarioId: z.string().min(1),
+  cause: z.enum(IDEA_QUEUE_HOLD_CAUSES),
+  /** Why, in the words of whoever refused or failed (the Producer's reason, the error...). */
+  reason: z.string().min(1),
+  /** The play whose end held the queue, for `play_ended` and `play_not_opened`. */
+  playId: z.string().min(1).nullable(),
+});

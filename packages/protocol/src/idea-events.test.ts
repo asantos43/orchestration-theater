@@ -6,6 +6,7 @@ import {
   IdeaDiscardedPayloadSchema,
   IdeaDonePayloadSchema,
   IdeaGroupedPayloadSchema,
+  IdeaQueueHeldPayloadSchema,
   IdeaReturnedPayloadSchema,
 } from './idea-events.js';
 
@@ -57,6 +58,17 @@ describe('idea event payloads (architecture 5.20)', () => {
     };
     expect(IdeaDonePayloadSchema.parse(done)).toEqual(done);
     expect(IdeaDonePayloadSchema.parse({ ...done, pullRequest: null }).pullRequest).toBeNull();
+  });
+
+  it('a held queue says why it stopped, with a cause the Producer can act on', () => {
+    const held = { scenarioId: 'scn-1', cause: 'group_refused', reason: 'not now', playId: null };
+    expect(IdeaQueueHeldPayloadSchema.parse(held)).toEqual(held);
+    expect(validateEventPayload('idea.queue_held', 1, held)).toEqual(held);
+    expect(IdeaQueueHeldPayloadSchema.safeParse({ ...held, cause: 'whim' }).success).toBe(false);
+    expect(IdeaQueueHeldPayloadSchema.safeParse({ ...held, reason: '' }).success).toBe(false);
+    expect(
+      IdeaQueueHeldPayloadSchema.safeParse({ scenarioId: 'scn-1', cause: 'play_ended' }).success,
+    ).toBe(false);
   });
 
   it('buildDaemonEvent builds the envelope of an idea event', () => {

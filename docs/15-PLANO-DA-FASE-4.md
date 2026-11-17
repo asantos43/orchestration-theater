@@ -218,6 +218,11 @@ Ordem em ondas **[proposta]**:
 - Os eventos `idea.*`, o comando `/idea` no `ot chat` e a volta das ideias à fila quando a peça é cancelada ou termina sem entrega.
 - Fica de fora: a importação do `okit` (N92), que entra com a ferramenta da Q12.
 
+**Decidido pelo dono em 2026-11-17 (no PR #78):**
+- **Fila parada.** Quando o grupo é recusado, a peça do grupo termina sem entrega ou é cancelada, a peça não abre, o Autor falha ou deixa todas as ideias de fora, a fila continua parada até `/idea drain`, `/idea requeue <id>` ou uma ideia nova. O Produtor é avisado pelo canal (campo `queueHolds` do `poll`, mostrado pelo `ot chat`) do motivo da parada e do comando que a libera. O aviso também fica no log, no evento `idea.queue_held` (causas: `author_failed`, `author_left_all_out`, `group_refused`, `play_not_opened`, `play_ended`). Testes: `ideas/ideas-e2e.test.ts` (recusa, cancelamento e parada sob `drain: auto`), `chat-idea-command.test.ts`, `idea-events.test.ts`.
+- **Perguntas sobre as ideias deixadas de fora.** Ficam só no pedido de aprovação do grupo e no evento `idea.grouped`; não vão ao Diretor.
+- **`ideas.drain: scheduled`.** Continua recusado na validação, com mensagem clara, até existir o agendador (§5.15).
+
 **Aceite:** com o agente falso, uma fila de quatro ideias, duas da mesma área, vira três peças; o grupo espera a aprovação com `grouping_approval: ask`; a fila esvazia, com cada ideia ligada à peça e ao PR.
 
 ### P9. `delivery.mode: ask` com alguém olhando (§5.5, N89)

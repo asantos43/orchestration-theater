@@ -18,6 +18,7 @@ import {
   IdeaDonePayloadSchema,
   IdeaGroupedPayloadSchema,
   IdeaPlayOpenedPayloadSchema,
+  IdeaQueueHeldPayloadSchema,
   IdeaReturnedPayloadSchema,
 } from './idea-events.js';
 import {
@@ -270,6 +271,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
   defineEventType({ type: 'idea.done', schemaVersion: 1, payload: IdeaDonePayloadSchema }),
   defineEventType({ type: 'idea.returned', schemaVersion: 1, payload: IdeaReturnedPayloadSchema }),
   defineEventType({
+    type: 'idea.queue_held',
+    schemaVersion: 1,
+    payload: IdeaQueueHeldPayloadSchema,
+  }),
+  defineEventType({
     type: 'scenario.created',
     schemaVersion: 1,
     payload: ScenarioCreatedPayloadSchema,
@@ -356,6 +362,7 @@ export type IdeaDiscardedPayload = DaemonEventPayloads['idea.discarded'];
 export type IdeaDeferredPayload = DaemonEventPayloads['idea.deferred'];
 export type IdeaDonePayload = DaemonEventPayloads['idea.done'];
 export type IdeaReturnedPayload = DaemonEventPayloads['idea.returned'];
+export type IdeaQueueHeldPayload = DaemonEventPayloads['idea.queue_held'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];

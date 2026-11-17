@@ -9,7 +9,7 @@ import {
   NotFound,
   type Store,
 } from '@otheater/core';
-import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
 import { z } from 'zod';
 import type { DrainResult, IdeaQueueService } from '../ideas/index.js';
 import { IDEA_GROUP_DECISION } from '../ideas/index.js';
@@ -123,6 +123,11 @@ export interface ChatPoll {
    */
   readonly notices: readonly ScenarioSystemMessagePayload[];
   /**
+   * The stops of the idea queue of this scenario that nobody has taken yet, oldest first (5.20):
+   * why it stopped, and `/idea drain`, `/idea requeue` or a new idea frees it. Each is handed out once.
+   */
+  readonly queueHolds: readonly IdeaQueueHeldPayload[];
+  /**
    * True while something is still going on that the Producer does not have to answer: the Director
    * has a turn or a prompt to go, or a play is in a state that moves by itself.
    */
@@ -143,6 +148,7 @@ export const chatScenarioId = projectScenarioId;
 export class ProducerChannel {
   readonly #options: ProducerChannelOptions;
   readonly #notices = new Map<string, ScenarioSystemMessagePayload[]>();
+  readonly #holds = new Map<string, IdeaQueueHeldPayload[]>();
 
   constructor(options: ProducerChannelOptions) {
     this.#options = options;
@@ -157,6 +163,16 @@ export class ProducerChannel {
     const waiting = this.#notices.get(notice.scenarioId) ?? [];
     waiting.push(notice);
     this.#notices.set(notice.scenarioId, waiting);
+  }
+
+  /**
+   * Keeps the stop of an idea queue for the chat of its scenario until the next poll takes it.
+   * [proposta] In memory only, like the system messages: the record is the `idea.queue_held` event.
+   */
+  notifyQueueHeld(held: IdeaQueueHeldPayload): void {
+    const waiting = this.#holds.get(held.scenarioId) ?? [];
+    waiting.push(held);
+    this.#holds.set(held.scenarioId, waiting);
   }
 
   /**
@@ -250,11 +266,14 @@ export class ProducerChannel {
     const moving = open.some((play) => play.state !== 'NEED' && !awaiting.has(play.id));
     const notices = this.#notices.get(scenarioId) ?? [];
     this.#notices.delete(scenarioId);
+    const queueHolds = this.#holds.get(scenarioId) ?? [];
+    this.#holds.delete(scenarioId);
     return {
       replies: directors.replies(scenarioId, since),
       asks,
       plays: open.map((play) => ({ id: play.id, state: play.state })),
       notices,
+      queueHolds,
       busy:
         (await directors.busy(scenarioId)) ||
         moving ||

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { parseIdeaCommand, renderIdeaGroup, renderIdeaResult } from './chat-command.js';
+import {
+  parseIdeaCommand,
+  renderIdeaGroup,
+  renderIdeaResult,
+  renderQueueHeld,
+} from './chat-command.js';
 import { createTranslator } from './i18n.js';
 import type { IdeaView, PendingAsk } from './orchestration/channel.js';
 
@@ -144,5 +149,36 @@ describe('renderIdeaGroup', () => {
     const lines = renderIdeaGroup(t, ask);
     expect(lines).toHaveLength(5);
     expect(lines[0]).toContain('Do the route and its test');
+  });
+});
+
+describe('renderQueueHeld', () => {
+  const CAUSES = [
+    'author_failed',
+    'author_left_all_out',
+    'group_refused',
+    'play_not_opened',
+    'play_ended',
+  ] as const;
+
+  it('says why the queue stopped and what frees it, for every cause, in both languages', async () => {
+    for (const language of ['en', 'pt-BR'] as const) {
+      const t = await createTranslator(language);
+      for (const cause of CAUSES) {
+        const lines = renderQueueHeld(t, {
+          scenarioId: 's1',
+          cause,
+          reason: 'the reason given',
+          playId: cause === 'play_ended' ? 'play-9' : null,
+        });
+        const text = lines.join('\n');
+        expect(lines).toHaveLength(2);
+        expect(text).toContain('the reason given');
+        expect(text).toContain('/idea drain');
+        expect(text).toContain('/idea requeue');
+        expect(text).not.toContain('ideaHeld');
+        expect(text.includes('play-9')).toBe(cause === 'play_ended');
+      }
+    }
   });
 });
