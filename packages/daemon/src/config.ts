@@ -404,6 +404,65 @@ export const ToolsConfigSchema = z
   .prefault({});
 export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
 
+export const BROWSER_PROFILE_CONFIG_MODES = [
+  'extension',
+  'import',
+  'shared',
+  'per_scenario',
+] as const;
+export const BROWSER_FALLBACK_MODES = ['shared', 'wait', 'fail'] as const;
+export const BROWSER_DOMAIN_MODES = ['any', 'allowlist'] as const;
+export const BROWSER_LOCAL_URL_MODES = ['allow', 'deny'] as const;
+export const BROWSER_FILE_URL_MODES = ['except_secrets', 'any', 'scenario', 'deny'] as const;
+export const BROWSER_WRITE_APPROVAL_MODES = ['never', 'per_domain', 'always'] as const;
+export const BROWSER_SCREENSHOT_MODES = ['writes', 'all', 'none'] as const;
+export type BrowserFileUrlMode = (typeof BROWSER_FILE_URL_MODES)[number];
+export type BrowserWriteApprovalMode = (typeof BROWSER_WRITE_APPROVAL_MODES)[number];
+
+/**
+ * `browser` (architecture 5.19, N40): the browser of the agent without the screen. The defaults
+ * are the ones the owner chose (N40: no restrictions); a project or a scenario overrides the
+ * keys of `BrowserOverrideSchema` (browser/settings.ts). Keys marked [proposta] are choices of
+ * Phase 4 the architecture leaves open.
+ */
+export const BrowserConfigSchema = z
+  .strictObject({
+    /**
+     * N40: `extension` (default) is the Producer's own browser, an adapter of Phase 12; until then
+     * it falls to `fallback`. `import` [proposta] is Phase 12 too, and the call is refused.
+     * `shared` is one profile of OTheater for every scenario, `per_scenario` one for each.
+     */
+    profile: z.enum(BROWSER_PROFILE_CONFIG_MODES).default('extension'),
+    /** [proposta] What `profile: extension` does while no extension is connected. */
+    fallback: z.enum(BROWSER_FALLBACK_MODES).default('shared'),
+    /** N40: `any` (default) or `allowlist`, the `network.allow` of the role, as `http_get`. */
+    domains: z.enum(BROWSER_DOMAIN_MODES).default('any'),
+    /** [proposta] Hosts refused in every `domains` mode, as `network.allow` writes them. */
+    blocked_domains: z.array(z.string().min(1)).default([]),
+    /** N40: `localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, any port. */
+    local_urls: z.enum(BROWSER_LOCAL_URL_MODES).default('allow'),
+    /** N40: what `file://` may reach. The daemon enforces it, not the browser. */
+    file_urls: z.enum(BROWSER_FILE_URL_MODES).default('except_secrets'),
+    /** N40: `never` (default), `per_domain` or `always`; the Producer answers in the chat. */
+    write_approval: z.enum(BROWSER_WRITE_APPROVAL_MODES).default('never'),
+    /** [proposta] Which actions leave a screenshot with their `browser.action` event. */
+    action_screenshots: z.enum(BROWSER_SCREENSHOT_MODES).default('writes'),
+    /** [proposta] The most characters `browser_read` returns, for the text and for the tree. */
+    read_max_chars: z.int().min(1).default(32_768),
+    /** [proposta] The longest a page action (open, click, fill...) waits. Global only. */
+    timeout_ms: z.int().min(1).default(30_000),
+    /** [proposta] RAM admission (5.9): no browser starts below this much free memory. Global only. */
+    min_free_memory_mb: z.int().min(0).default(1024),
+    /** [proposta] The most browsers at once (only `per_scenario` has more than one). Global only. */
+    max_instances: z.int().min(1).default(2),
+    /** [proposta] `false` starts Chromium with `--no-sandbox`: only where the sandbox cannot run. Global only. */
+    sandbox: z.boolean().default(true),
+    /** [proposta] The Chromium executable; unset, the one playwright-core finds in its cache. Global only. */
+    executable_path: z.string().min(1).optional(),
+  })
+  .prefault({});
+export type BrowserConfig = z.infer<typeof BrowserConfigSchema>;
+
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
   client: z.string().min(1),
@@ -813,6 +872,7 @@ export const DaemonConfigSchema = z.strictObject({
     })
     .prefault({}),
   tools: ToolsConfigSchema,
+  browser: BrowserConfigSchema,
   events: z
     .strictObject({
       /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */

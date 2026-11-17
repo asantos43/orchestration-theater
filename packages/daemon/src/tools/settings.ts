@@ -46,14 +46,14 @@ export const ToolsOverrideSchema = z.strictObject({
 });
 export type ToolsOverride = z.infer<typeof ToolsOverrideSchema>;
 
-type Plain = Record<string, unknown>;
+export type Plain = Record<string, unknown>;
 
-function isPlain(value: unknown): value is Plain {
+export function isPlain(value: unknown): value is Plain {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Objects merge key by key; arrays and scalars of `over` replace those of `base`. */
-function mergeDeep(base: Plain, over: Plain): Plain {
+export function mergeDeep(base: Plain, over: Plain): Plain {
   const out: Plain = { ...base };
   for (const [key, value] of Object.entries(over)) {
     const current = out[key];
@@ -63,26 +63,27 @@ function mergeDeep(base: Plain, over: Plain): Plain {
 }
 
 /**
- * The `tools` part of a `configOverride` ({@link ScenarioRecord}): either a nested `tools` object
- * or dotted keys (`tools.timeout_ms`, `tools.shell_allowlist.mode`), or both (the dotted key
- * wins). Keys that do not start with `tools` belong to other blocks and are left alone.
- * [proposta] The two spellings; the scenario record only says "keys overridden for this scenario".
+ * The part of a `configOverride` ({@link ScenarioRecord}) that belongs to one block of the
+ * configuration: either a nested object (`tools: {...}`) or dotted keys (`tools.timeout_ms`,
+ * `tools.shell_allowlist.mode`), or both (the dotted key wins). Keys that do not start with
+ * `block` belong to other blocks and are left alone. [proposta] The two spellings; the scenario
+ * record only says "keys overridden for this scenario".
  */
-export function toolsOverrideOf(configOverride: JsonObject): ToolsOverride {
+export function blockOverrideOf(configOverride: JsonObject, block: string): Plain {
   let collected: Plain = {};
-  const nested = configOverride.tools;
+  const nested = configOverride[block];
   if (nested !== undefined) {
     if (!isPlain(nested)) {
       throw new ToolFailure(
         'invalid_config',
-        'The "tools" override of the scenario is not an object.',
+        `The "${block}" override of the scenario is not an object.`,
       );
     }
     collected = nested;
   }
   for (const [key, value] of Object.entries(configOverride)) {
-    if (!key.startsWith('tools.')) continue;
-    const path = key.slice('tools.'.length).split('.');
+    if (!key.startsWith(`${block}.`)) continue;
+    const path = key.slice(block.length + 1).split('.');
     const tree: Plain = {};
     let cursor = tree;
     path.slice(0, -1).forEach((segment) => {
@@ -93,6 +94,12 @@ export function toolsOverrideOf(configOverride: JsonObject): ToolsOverride {
     cursor[path[path.length - 1] ?? ''] = value;
     collected = mergeDeep(collected, tree);
   }
+  return collected;
+}
+
+/** The `tools` part of a `configOverride`, validated: see {@link blockOverrideOf}. */
+export function toolsOverrideOf(configOverride: JsonObject): ToolsOverride {
+  const collected = blockOverrideOf(configOverride, 'tools');
   const parsed = ToolsOverrideSchema.safeParse(collected);
   if (!parsed.success) {
     throw new ToolFailure(
