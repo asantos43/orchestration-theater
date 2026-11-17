@@ -109,7 +109,7 @@ Ficam como portões **[N]**:
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
 | P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
 | P15 | Lacunas antes do aceite (N86) | P14 | P13 | feito (PR #66 e #67) |
-| P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | código feito (PR #68); falta a rodada do dono (N88) |
+| P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | feito (PR #68, #70 e #71); o nível `play` passou em 2026-11-17 (N88) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P2 e P5;
@@ -380,7 +380,7 @@ Pode ser feito em duas partes, cada uma com o seu PR: a dependência refeita com
 - O resultado, com data e marca **[V]**, entra na §10.
 - A Fase 3 fecha depois que o dono rodar o nível `play` e ele passar (N88).
 
-**Como o dono roda o nível `play`** (escrito em 2026-11-17; o código foi **verificado localmente** só até onde dá sem cliente real: compila, passa no lint e o teste pula sem as variáveis; a execução real **não foi confirmada**, é a que o dono faz). O teste é `packages/daemon/src/orchestration/play.real.test.ts`; o script confere os recursos e as ferramentas, avisa que gasta cota e pede a confirmação (a menos que haja `--yes`).
+**Como o dono roda o nível `play`** (escrito em 2026-11-17; o código foi **verificado localmente** só até onde dá sem cliente real: compila, passa no lint e o teste pula sem as variáveis; a execução real **não foi confirmada**, é a que o dono faz). O teste é `packages/daemon/src/orchestration/play.real.test.ts`; antes dele, o nível roda `packages/daemon/src/execution/mcp-submit.real.test.ts` (um turno que chama uma ferramenta do framework) e para se ele falhar; o script confere os recursos e as ferramentas, avisa que gasta cota e pede a confirmação (a menos que haja `--yes`).
 
 ```bash
 OT_TEST_CLAUDE_PROFILE_DIR=<pasta do perfil do Claude Code já logado> \
@@ -390,11 +390,12 @@ tools/acceptance/real-acceptance.sh --level play
 
 - Precisa de `claude-agent-acp` no PATH (ou `--bin-dir <pasta>`), de `pnpm install --frozen-lockfile` feito e de `OT_TEST_CLAUDE_PROFILE_DIR` e `OT_TEST_CLAUDE_MODEL`. Sem os dois, o script falha antes de rodar. `OT_TEST_CLAUDE_MODE` é opcional: o modo que deixa o cliente chamar as ferramentas do framework e editar sem perguntar (com `onAsk: 'reject'`, um pedido de permissão é recusado).
 - Só o Claude Code entra: o Codex e o OpenCode ficam de fora. O teste aponta o perfil da peça para o `OT_TEST_CLAUDE_PROFILE_DIR` por um link dentro da pasta de dados temporária; não copia nem lê o que há nele.
-- `--dry-run` mostra as checagens e o que rodaria, sem rodar nada. Ajustes **[proposta]**: `--timeout` (teto do script, padrão 30m), `OT_TEST_PLAY_TIMEOUT_MS` (prazo total da peça, padrão 25m) e `OT_TEST_PLAY_LIMITS` (`economical`, `moderate` ou `persistent`; padrão `moderate`).
+- `--dry-run` mostra as checagens e o que rodaria, sem rodar nada. Ajustes **[proposta]**: `--timeout` (teto do script, padrão 40m desde o PR #70, que também cobre o teste da chamada MCP), `OT_TEST_PLAY_TIMEOUT_MS` (prazo total da peça, padrão 25m) e `OT_TEST_PLAY_LIMITS` (`economical`, `moderate` ou `persistent`; padrão `moderate`).
 - **Gasto de cota (estimativa, não medida) [proposta]:** de 10 a 25 turnos no caso feliz (o Diretor, o planejador e o revisor do plano, o roteirista e o revisor do roteiro, o Ator, o Crítico), com o Haiku; com repetições e retentativas, até cerca de 50. A primeira rodada do dono é quem mede.
 - O que o teste confere, sem olhar o texto do modelo: a peça chega a `DONE` com `delivery.completed`; o `CodeHost` falso tem um PR aberto para `main`; a branch entregue tem `src/slugify.js` e `src/slugify.test.js`; nenhum processo de cliente sobra depois que o daemon para. Ao fim, sai o resumo (estados com o tempo de cada um, tentativas, demandas, tokens e custo) no log, com o prefixo `[play-real]`; o script o repete no terminal. Os tokens e o custo somam as atualizações `usage` dos clientes: **não confirmado** se cada uma é do turno ou o total da sessão, então o teste mostra a soma e o último valor de cada sessão.
 - Pergunta do Diretor ao Produtor: o teste responde sozinho (a primeira opção, ou "use seu melhor critério"). Um menu de `AWAITING_PRODUCER` (um contador estourou) conta como falha: o teste o cancela e a falha mostra o motivo.
 - Depois da rodada, o dono diz o resultado ao orquestrador, que o registra na §10 com data e **[V]**; este passo não escreve resultado (N88).
+- **Resultado (2026-11-17, [V]):** passou na terceira rodada, feita pelo orquestrador a pedido do dono, com o Haiku e `OT_TEST_CLAUDE_MODE=acceptEdits`: `DONE` em 103 s, 7 tentativas (uma retentativa do Ator), custo somado de US$ 0,0275, nenhum processo órfão. A primeira rodada não abriu peça (ferramentas MCP do papel bloqueadas no Claude Code, PR #70); a segunda parou em `SUBMIT_FAILED` (esquema genérico nas ferramentas de etapa, PR #71). Os tokens das atualizações de uso saíram 0 **[N]**, então a estimativa de turnos continua sem medida. O registro completo está na §10.
 
 **Aceite:** todos os itens do critério de aceite da Fase 3 na §10.
 
