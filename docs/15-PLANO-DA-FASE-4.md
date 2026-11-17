@@ -131,6 +131,39 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** testes com o agente falso: um pedido liberado por regra, um recusado sem regra e um recusado com regra (fora do worktree), cada um com os eventos.
 
+**Como ficou (2026-11-17):** tudo abaixo é **[proposta]**, salvo o que está marcado. Medido nos testes com o agente falso **[V]**; o que um cliente real manda não foi medido **[N]**.
+
+- **Formato** (`roles.<papel>.policy.rules`, lista de objetos estritos; chave desconhecida é recusada com o nome da chave):
+  - `action`: `allow` ou `reject` (obrigatória);
+  - `kind`: tipo ACP da chamada (`read`, `edit`, `delete`, `move`, `search`, `fetch`, `other`...); `*` vale por qualquer trecho;
+  - `tool`: nome da ferramenta como o cliente a anuncia (uma ferramenta MCP, por exemplo);
+  - `path`: glob relativo ao worktree (`src/**`, `docs/*.md`); `*` fica num segmento, `**` atravessa segmentos, `?` é um caractere; todo caminho do pedido precisa casar, e um pedido sem caminho nunca casa uma regra com `path`;
+  - `id`: opcional; o padrão é `rules[<índice>]`; `none` é reservado e um id explícito repetido é recusado;
+  - a regra nomeia ao menos um de `kind`, `tool` e `path`; os critérios nomeados valem todos juntos (E); a primeira regra que casa decide; no máximo 100 regras.
+  - **Camadas:** como no P1, a lista da camada mais específica substitui a da anterior (papel, `config.yaml`, cenário de origem, cenário). As regras só chegam à `RolePolicy` com `on_ask: rules`; com `reject` (o padrão) elas ficam guardadas e sem uso.
+- **Ordem da decisão:** (1) o que é sempre recusado (N99); (2) com `on_ask: rules`, a primeira regra que casa; (3) sem regra, a recusa de hoje (`reject_once`; `reject_always`; ou `cancelled` se o pedido não trouxer opção de recusa). Uma regra `allow` responde só `allow_once`, nunca `allow_always`.
+- **Sempre recusado (N99), com qualquer regra:**
+
+| Pedido | `reason` no evento | Onde mais é barrado |
+|---|---|---|
+| escrita (`edit`, `delete`, `move`) fora do worktree, inclusive por `..` e por link simbólico | `write_outside_worktree` | a configuração recusa regra `allow` com caminho absoluto, `~`, unidade ou `..` |
+| escrita sem caminho conhecido | `write_target_unknown` | falha fechada: o cliente que não diz o arquivo não escreve |
+| shell nativo do cliente (`execute`, ou ferramenta de nome de shell) | `native_shell` | a configuração recusa `allow` com `kind: execute` ou `tool` bash, shell, sh, zsh, execute, exec, terminal, powershell, cmd |
+| rede (`fetch`) fora de `network.allow` | `network_outside_allow` | a configuração recusa `allow` de `fetch` sem `network.allow` no papel |
+| troca de modo (`switch_mode`), o caminho para o bypass | `mode_switch` | a configuração recusa `allow` com `kind: switch_mode` |
+
+- **Eventos** (módulo `packages/protocol/src/permission-events.ts`, registrados em `DAEMON_EVENT_TYPES`, `schemaVersion` 1, payload estrito):
+  - `permission.asked` e `permission.answered`, nessa ordem, para todo pedido, inclusive com `on_ask: reject`;
+  - campos: sessão, `toolCallId`, ferramenta (o nome do cliente, ou o tipo ACP, ou `unknown`), tipo, caminhos (até 10, mais `pathCount`), host do endereço, e a correlação `playId`, `demandId` e `attemptId`;
+  - `permission.answered` soma `answer` (`allow`, `reject`, `cancelled`), `rule` (o id que decidiu, ou `none`), `reason` e `overruledRule` (a regra que liberaria o pedido se o N99 não o barrasse);
+  - o evento não leva a linha de comando nem o título da chamada, que podem trazer um segredo; o endereço vira só o host.
+- **Como o evento chega ao log:** o runner da tentativa passa `permissions.onDecision` ao abrir a sessão (campo novo, opcional, em `SessionStartOptions`); o adaptador chama o retorno em cada decisão e o runner grava os dois eventos com a sessão e a tentativa. O motor fica no `core` (`permission-rules.ts`), puro e sem Node; o daemon injeta o `resolvePath` (`realpath` do ancestral mais fundo que existe).
+- **Pedido da sessão:** `PermissionRequest` ganhou `toolName`, `locations`, `command` e `url`, preenchidos pelo transporte ACP.
+  - `rawInput.command` para `execute`: **[V]** nos spikes da Fase 0 (Claude Code e OpenCode);
+  - `toolCall.locations`, as chaves de caminho do `rawInput` e `_meta.claudeCode.toolName`: **[N]** num cliente real. O agente falso manda `locations`. Sem arquivo, uma escrita é recusada, então o que não foi medido falha fechado.
+- **Aceite medido [V]:** `packages/daemon/src/execution/permission-rules.test.ts` (agente falso, worktree real): liberado por regra (`docs-edit`), recusado sem regra (`none`/`no_rule`), recusado por regra (`no-secrets`) e recusado com regra que liberaria (`../outside.txt`, `/etc/passwd`, `docs/../../escape.txt`: `write_outside_worktree`, `overruledRule: any-edit`), cada um com os dois eventos. Mais: testes do motor no `core` (50), da validação da configuração e das camadas (`role-policy-rules.test.ts`), dos payloads e do `permission-log`.
+- **Fora deste passo:** o pedido de uma sessão direta (N44, Fase 7); o `command` não é critério de regra (a casca do cliente é sempre recusada, e a casca do daemon é o P3); medir o que Claude Code, Codex e OpenCode mandam num pedido real fica para o teste opcional **[N]**.
+
 ### P3. Cascas: confinamento, truncamento, semáforo e handlers (§5.8)
 
 **Escopo:**
