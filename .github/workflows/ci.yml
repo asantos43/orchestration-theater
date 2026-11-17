@@ -22,10 +22,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy. Ubuntu 24.04
-      # runners restrict unprivileged user namespaces through AppArmor, which stops bubblewrap; the
+      # Layer 3 (the sandbox, P4): bubblewrap confines the client, socat feeds its proxy,
+      # ripgrep finds the files to hide. Ubuntu 24.04 runners restrict unprivileged user namespaces through AppArmor, which stops bubblewrap; the
       # sysctl below lifts that ONLY on the disposable runner (never done on a developer machine).
-      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: pnpm install --frozen-lockfile
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
