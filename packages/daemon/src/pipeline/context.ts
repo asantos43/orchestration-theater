@@ -40,6 +40,11 @@ export interface OpenJudgment {
   readonly demandId: string;
   /** The demands that depend on `demandId` (point 8 only; empty otherwise). */
   readonly dependentIds: readonly string[];
+  /**
+   * Point 8 only: the redone demand already passed `verify` and waits, not yet approved, for the
+   * answer ([proposta], see `DEPENDENCY_REDONE`). Missing in snapshots written before P15a.
+   */
+  readonly verified?: boolean;
 }
 
 /**

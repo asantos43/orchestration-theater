@@ -117,11 +117,11 @@ export interface OrchestrationEffectsOptions {
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly logger: Logger;
   /**
-   * Whether someone is watching the play now (a Producer chat open). [proposta] With nobody,
-   * `delivery.base_drift: ask` is `update` (N83). Nothing wires it yet, like the `attended` of the
-   * delivery mode: absent means nobody.
+   * Whether someone is watching the play now: a Producer chat polling its scenario
+   * (`ChatPresence`). [proposta] With nobody, `delivery.base_drift: ask` is `update` (N83). Absent
+   * means nobody. Not used for the `attended` of `delivery.mode: ask` (see `#deliver`).
    */
-  readonly attended?: ((playId: string) => boolean) | undefined;
+  readonly attended?: ((scope: PlayEffectScope) => boolean) | undefined;
 }
 
 /** How much of the diff of an earlier attempt goes into the prompt of the next one. */
@@ -798,6 +798,14 @@ export class OrchestrationEffects implements PlayEffects {
       };
       this.#wanted.set(playId, wanted);
     }
+    // A demand that is asked again with an approved row (a dependent that is redone) starts over:
+    // its stale row would let the demands that wait for it start too early.
+    for (const id of effect.demandIds) {
+      const row = await this.#options.store.demands.get(playId, id);
+      if (row?.state === 'approved') {
+        await this.#options.store.demands.update(playId, id, { state: 'pending' });
+      }
+    }
     wanted.seq += 1;
     wanted.ids = new Set(effect.demandIds);
     wanted.feedback = effect.feedback;
@@ -962,6 +970,18 @@ export class OrchestrationEffects implements PlayEffects {
         return;
       }
       await store.demands.update(playId, demand.id, { state: 'approved' });
+      // A demand that was redone while others already depend on its old work opens judgment
+      // point 8 first; its approval follows the answer (the play must not integrate stale work).
+      const dependents = await this.#approvedDependents(playId, demand.id);
+      if (dependents.length > 0) {
+        await this.#send(playId, generation, {
+          type: 'DEPENDENCY_REDONE',
+          demandId: demand.id,
+          dependentIds: dependents,
+          verified: true,
+        });
+        return;
+      }
       await this.#send(playId, generation, { type: 'DEMAND_APPROVED', demandId: demand.id });
     } catch (error) {
       await store.demands.update(playId, demand.id, { state: 'failed' }).catch(() => undefined);
@@ -1043,6 +1063,60 @@ export class OrchestrationEffects implements PlayEffects {
    * script. The machine counts it.
    */
   async #rebaseDependents(
+    effect: Extract<PlayEffect, { type: 'rebase_dependents' }>,
+    scope: PlayEffectScope,
+    generation: number,
+  ): Promise<void> {
+    const { store } = this.#options;
+    const { playId } = scope;
+    try {
+      await this.#moveDependents(effect, scope, generation);
+    } finally {
+      // The redone demand waited for the dependents (`DEPENDENCY_REDONE`, `verified`): now it is
+      // approved, a conflict or not (the machine already took the conflict, if there was one).
+      const play = await store.plays.get(playId);
+      const row = await store.demands.get(playId, effect.demandId);
+      const context = play === undefined ? undefined : restorePlay(play).context;
+      const waiting =
+        play?.state === 'EXECUTING' &&
+        context !== undefined &&
+        context.demandIds.includes(effect.demandId) &&
+        !context.approvedDemands.includes(effect.demandId) &&
+        context.openJudgments.every((j) => j.demandId !== effect.demandId);
+      if (waiting && row?.state === 'approved') {
+        await this.#send(playId, generation, {
+          type: 'DEMAND_APPROVED',
+          demandId: effect.demandId,
+        });
+      }
+    }
+  }
+
+  /**
+   * The demands that depend, directly or not, on `demandId` and that the play holds as approved,
+   * in the order of the script ([proposta]: judgment point 8 carries them all).
+   */
+  async #approvedDependents(playId: string, demandId: string): Promise<string[]> {
+    const play = await this.#options.store.plays.get(playId);
+    const script = await this.#script(playId);
+    if (play === undefined || script === undefined) return [];
+    const approved = new Set(restorePlay(play).context.approvedDemands);
+    const reach = new Set([demandId]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const demand of script.demands) {
+        if (!reach.has(demand.id) && demand.dependsOn.some((id) => reach.has(id))) {
+          reach.add(demand.id);
+          grew = true;
+        }
+      }
+    }
+    return topologicalLayers(script)
+      .flat()
+      .filter((id) => id !== demandId && reach.has(id) && approved.has(id));
+  }
+
+  async #moveDependents(
     effect: Extract<PlayEffect, { type: 'rebase_dependents' }>,
     scope: PlayEffectScope,
     generation: number,
@@ -1185,7 +1259,7 @@ export class OrchestrationEffects implements PlayEffects {
         const mode = config.delivery.base_drift;
         if (mode !== 'deliver_and_warn') {
           // `ask` needs someone to ask: with nobody it is `update` (N83)
-          const asking = mode === 'ask' && this.#options.attended?.(playId) === true;
+          const asking = mode === 'ask' && this.#options.attended?.(scope) === true;
           await this.#send(playId, generation, {
             type: 'BASE_DRIFT',
             mode: asking ? 'ask' : 'update',
@@ -1216,8 +1290,9 @@ export class OrchestrationEffects implements PlayEffects {
       configMode: config.delivery.mode,
       allowDirectMerge: config.delivery.allow_direct_merge,
       ...(warnings.length === 0 ? {} : { warnings }),
-      // [proposta] The ask of `delivery.mode: ask` is the chat's (P12): until then the play is not
-      // attended, and `ask` falls back to a pull request.
+      // [proposta] Not the presence of the chat: `delivery.mode: ask` would answer `ask_producer`,
+      // and no menu of the machine takes that answer yet (it is a decision of the owner, so the
+      // play would hang in DELIVERING). The play is not attended here and `ask` falls to a PR.
       attended: false,
     });
     if (result.kind === 'delivered') {

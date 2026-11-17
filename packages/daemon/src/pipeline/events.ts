@@ -85,11 +85,19 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ACTOR_REFUSED'), demandId }),
   /** Judgment point 7: an attempt went over the limit of resumes. */
   z.strictObject({ type: z.literal('RESUMES_EXCEEDED'), demandId }),
-  /** Judgment point 8: a demand was redone and others depend on it. */
+  /**
+   * Judgment point 8: a demand was redone and others depend on it. [proposta] `verified`: the daemon
+   * sends it when the redone demand has just passed `verify`, before `DEMAND_APPROVED`, which
+   * waits for the answer (the play must not integrate while the dependents are stale). With it the
+   * answer `redo` also approves the redone demand, and `rebase` leaves that to the daemon, which
+   * sends `DEMAND_APPROVED` once the dependents moved. `dependentIds` are the approved dependents,
+   * grandchildren included, in the order of the script.
+   */
   z.strictObject({
     type: z.literal('DEPENDENCY_REDONE'),
     demandId,
     dependentIds: z.array(demandId).min(1),
+    verified: z.boolean().optional(),
   }),
   /** The answer of the Director to a judgment point (validated against the schema of the point). */
   z.strictObject({

@@ -414,4 +414,8 @@ Por fim, o fechamento da fase foi decidido pelo dono em 2026-11-17, por múltipl
 - **N87:** a peça real roda num repositório local, com todos os papéis no Haiku e a entrega no `CodeHost` falso;
 - **N88:** a Fase 3 fecha depois que o dono rodar a peça real e ela passar.
 
+No P15, o dono decidiu em 2026-11-17, por múltipla escolha:
+- **N89:** com alguém olhando, `delivery.mode: ask` fica para a Fase 4 e, até lá, vira `pr`;
+- **N90:** o aviso da reconciliação vai ao chat uma vez, em memória, no próximo poll.
+
 As próximas que surgirem vão ao dono do mesmo jeito, ao abrir o passo.

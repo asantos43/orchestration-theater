@@ -290,6 +290,50 @@ describe('the judgment points of the Director in EXECUTING', () => {
     });
   });
 
+  describe('8. a redone demand that passed verify (what the daemon sends, P15a)', () => {
+    // d1 passed `verify` again while d2, which depends on it, is still approved
+    const verified = () => {
+      const model = executing();
+      model.send({ type: 'DEMAND_APPROVED', demandId: 'd2' });
+      return model.send({
+        type: 'DEPENDENCY_REDONE',
+        demandId: 'd1',
+        dependentIds: ['d2'],
+        verified: true,
+      });
+    };
+
+    it('waits for the answer: the play does not integrate with d1 still pending', () => {
+      const model = verified();
+      expect(model.state).toBe('EXECUTING');
+      expect(model.context.approvedDemands).toEqual(['d2']);
+      expect(model.context.openJudgments).toMatchObject([
+        { point: 'dependency_redone', verified: true },
+      ]);
+    });
+
+    it('rebase: d1 stays pending until the daemon approves it after the rebase', () => {
+      const model = verified();
+      judged(model, 'dependency_redone', 'rebase');
+      expect(model.state).toBe('EXECUTING');
+      expect(model.context.approvedDemands).toEqual(['d2']);
+      expect(model.context.openJudgments).toEqual([]);
+      model.send({ type: 'DEMAND_APPROVED', demandId: 'd1' });
+      expect(model.state).toBe('INTEGRATING');
+    });
+
+    it('redo: d1 is approved with the answer and the dependents run again', () => {
+      const model = verified();
+      judged(model, 'dependency_redone', 'redo');
+      expect(model.state).toBe('EXECUTING');
+      expect(model.context.approvedDemands).toEqual(['d1']);
+      expect(model.effect('run_demands')).toMatchObject({ demandIds: ['d2'], strategy: 'redo' });
+      model.send({ type: 'DEMAND_STARTED', demandId: 'd2' });
+      model.send({ type: 'DEMAND_APPROVED', demandId: 'd2' });
+      expect(model.state).toBe('INTEGRATING');
+    });
+  });
+
   it('refuses an answer that does not fit the point, or that no one asked for', () => {
     const model = executing().send({ type: 'ACTOR_TIMED_OUT', demandId: 'd1' });
     const answer = (point: string, action: string, demandId = 'd1') =>
