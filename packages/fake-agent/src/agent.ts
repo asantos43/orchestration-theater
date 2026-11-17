@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
@@ -443,6 +444,48 @@ async function playSubmit(
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
 
+/** One raw TCP connection: `ok` when it connected, else the error code the system gave. */
+function tryConnect(target: string): Promise<string> {
+  const at = target.lastIndexOf(':');
+  const host = target.slice(0, at);
+  const port = Number(target.slice(at + 1));
+  return new Promise((done) => {
+    const socket = connect({ host, port, timeout: 5000 });
+    socket.once('connect', () => {
+      socket.destroy();
+      done('ok');
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      done('failed ETIMEDOUT');
+    });
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      done(`failed ${error.code ?? error.message}`);
+    });
+  });
+}
+
+/** What the operating system says to a write, a read and a connection (for the sandbox tests). */
+async function playProbe(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'probe' }>,
+): Promise<PromptResponse> {
+  const code = (error: unknown): string =>
+    `failed ${(error as NodeJS.ErrnoException).code ?? String(error)}`;
+  for (const path of script.write) {
+    const result = await writeFile(path, 'written by the fake agent\n').then(() => 'ok', code);
+    await message(turn, `probe write ${path}: ${result}`);
+  }
+  for (const path of script.read) {
+    const result = await readFile(path).then((bytes) => `ok ${String(bytes.length)} bytes`, code);
+    await message(turn, `probe read ${path}: ${result}`);
+  }
+  for (const target of script.connect) {
+    await message(turn, `probe connect ${target}: ${await tryConnect(target)}`);
+  }
+  return END_TURN;
+}
+
 async function playHang(turn: TurnContext): Promise<PromptResponse> {
   // The chunk tells the client the turn is running, so a cancel sent after it is never lost.
   await message(turn, 'hanging until session/cancel');
@@ -505,6 +548,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playRolePlayScript(turn, script);
     case 'fail':
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
+    case 'probe':
+      return playProbe(turn, script);
     case 'hang':
       return playHang(turn);
     case 'deaf':
