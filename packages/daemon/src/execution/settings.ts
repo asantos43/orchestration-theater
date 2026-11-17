@@ -1,17 +1,28 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SharedCancelMode } from '@otheater/core';
-import type { DaemonConfig } from '../config.js';
+import { type DaemonConfig, CLIENT_IDS, sessionsPerProcessOf } from '../config.js';
 
 /** Pool constants (architecture 5.2). */
 export interface PoolSettings {
-  /** `K`: sessions per adapter process, for clients that share one. */
+  /** `K`: sessions per adapter process, for clients that share one. The value of a client with none of its own. */
   readonly sessionsPerProcess: number;
+  /**
+   * The effective `K` by adapter id (`pool.<client>.sessions_per_process`, or else the global
+   * one). A client missing here uses `sessionsPerProcess`; read it through
+   * {@link sessionsPerProcessFor}.
+   */
+  readonly sessionsPerProcessByClient?: Readonly<Record<string, number>>;
   /** Sessions admitted at once (the admission semaphore counts sessions, not processes). */
   readonly maxSessions: number;
   /** A process with no session for this long is closed (`idleMs`). */
   readonly idleMs: number;
   /** `pool.shared_cancel`: what a cancel does to a process shared by several sessions. */
   readonly sharedCancel: SharedCancelMode;
+}
+
+/** `K` of one client: its own value, or else the global one. */
+export function sessionsPerProcessFor(settings: PoolSettings, client: string): number {
+  return settings.sessionsPerProcessByClient?.[client] ?? settings.sessionsPerProcess;
 }
 
 /** Everything the execution of attempts reads from the configuration, in milliseconds. */
@@ -44,6 +55,9 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
   return {
     pool: {
       sessionsPerProcess: config.pool.sessions_per_process,
+      sessionsPerProcessByClient: Object.fromEntries(
+        CLIENT_IDS.map((client) => [client, sessionsPerProcessOf(config.pool, client)]),
+      ),
       maxSessions: config.pool.max_sessions,
       idleMs: config.pool.idle,
       sharedCancel: config.pool.shared_cancel,
