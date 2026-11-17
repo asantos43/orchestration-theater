@@ -286,7 +286,7 @@ export const DaemonConfigSchema = z.strictObject({
   vault: AdapterSection.prefault({}),
   /**
    * Config of the chosen prompt source (files: `directory`, a folder with one `<role>.md` per role;
-   * without it the prompts bundled with the daemon are used). [proposta]
+   * without it the versioned `prompts/` folder of the repository is used). [proposta]
    */
   prompts: AdapterSection.prefault({}),
   backup: z

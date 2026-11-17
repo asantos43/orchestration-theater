@@ -11,8 +11,7 @@
     }
   },
   "files": [
-    "dist",
-    "prompts"
+    "dist"
   ],
   "dependencies": {
     "@otheater/core": "workspace:*",

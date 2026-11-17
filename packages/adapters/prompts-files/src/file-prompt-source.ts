@@ -14,12 +14,13 @@ import {
 const EXTENSION = '.md';
 
 /**
- * [proposta] The prompts ship inside this package (`prompts/` next to `src/` and `dist/`, listed in
- * `files` of its `package.json`), so the installed daemon finds them through the workspace link or
- * the published package and never depends on the working directory. The architecture draws the
- * folder at the repository root; keeping it here makes it part of the artifact that is installed.
+ * The versioned `prompts/` folder at the repository root (architecture 5.22 and the repository
+ * layout, next to `locales/`). The daemon reads it the same way it reads `locales/`; shipping it
+ * with an installed artifact is a packaging task of a later phase.
  */
-export const BUNDLED_PROMPTS_DIR: string = fileURLToPath(new URL('../prompts', import.meta.url));
+export const BUNDLED_PROMPTS_DIR: string = fileURLToPath(
+  new URL('../../../../prompts', import.meta.url),
+);
 
 export interface FilePromptSourceOptions {
   /** Folder with one `<role>.md` per role. Defaults to {@link BUNDLED_PROMPTS_DIR}. */

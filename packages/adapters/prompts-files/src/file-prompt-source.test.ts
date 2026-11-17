@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   assertValidPrompts,
   OFFICIAL_ROLES,
@@ -95,7 +96,7 @@ describe('FilePromptSource', () => {
   });
 });
 
-describe('the bundled prompts', () => {
+describe('the repository prompts', () => {
   const registries = {
     roles: { list: () => OFFICIAL_ROLES },
     tools: { list: () => OFFICIAL_TOOLS },
@@ -103,7 +104,8 @@ describe('the bundled prompts', () => {
 
   it('are the default folder and cover exactly the roles of the registry', async () => {
     const source = new FilePromptSource();
-    expect(BUNDLED_PROMPTS_DIR).toMatch(/prompts-files[/\\]prompts$/);
+    expect(basename(BUNDLED_PROMPTS_DIR)).toBe('prompts');
+    expect(existsSync(join(dirname(BUNDLED_PROMPTS_DIR), 'locales'))).toBe(true);
     expect(await source.roles()).toEqual(OFFICIAL_ROLES.map((role) => role.id).sort());
   });
 

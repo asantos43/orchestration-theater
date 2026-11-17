@@ -95,7 +95,7 @@ export interface StartDaemonOptions {
   readonly registries?: RegistryEntries | undefined;
   /**
    * Where the role prompts come from. Without it the daemon uses the source `adapters.prompts`
-   * asks for (the bundled prompts, or `prompts.directory`). Tests hand in a source with a bad
+   * asks for (the repository folder `prompts/`, or `prompts.directory`). Tests hand in a source with a bad
    * prompt to check that the daemon refuses to start. [proposta]
    */
   readonly prompts?: PromptSource | undefined;

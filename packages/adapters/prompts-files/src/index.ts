@@ -10,7 +10,7 @@ export {
 
 /**
  * Configuration of the files prompt source (`adapters.prompts: files`). `directory` replaces the
- * bundled folder (a user's own prompts); without it the bundled one is used.
+ * repository folder `prompts/` (a user's own prompts); without it that folder is used.
  */
 export const FilePromptSourceConfigSchema = z.strictObject({
   directory: z.string().min(1).optional(),
