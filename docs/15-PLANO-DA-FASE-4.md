@@ -81,7 +81,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 |---|---|---|---|---|
 | P0 | Plano e downloads (este documento) | nada | nada | concluído (PR #74) |
 | P1 | Política por papel e camada 1 completa | P0 | P3, P7, P8 | concluído (PR #76) |
-| P2 | Camada 2: resposta por regra e eventos | P1 | P4, P6, P7 | pendente |
+| P2 | Camada 2: resposta por regra e eventos | P1 | P4, P6, P7 | concluído (PR #80) |
 | P3 | Cascas: confinamento, truncamento, semáforo e handlers | P0 | P1, P7, P8 | concluído (PR #79) |
 | P4 | Camada 3: porta `Sandbox` e `sandbox-runtime` | P1, P3 | P2, P6, P7 | pendente |
 | P5 | Suíte de fuga | P2, P3, P4 | P9, P10 | pendente |
