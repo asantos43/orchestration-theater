@@ -13,6 +13,7 @@ import {
   type Clock,
   type ExecutorConfig,
   type NormalizedUpdate,
+  type PermissionOutcome,
   type Profile,
   type RolePolicy,
   type StopReason,
@@ -23,6 +24,7 @@ import { buildDaemonEvent, type ExecutorPayload, type InterruptionCause } from '
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { CheckpointTracker } from './checkpoints.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
+import { permissionEventsOf, resolveExistingPath } from './permission-log.js';
 import type { SessionLease, SessionPool } from './pool.js';
 import type { ExecutionSettings } from './settings.js';
 import type { Logger } from '../logger.js';
@@ -449,6 +451,10 @@ export class AttemptRunner {
         cwd: context.worktree,
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
         ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
+        permissions: {
+          onDecision: (outcome) => this.#onPermission(context, outcome),
+          resolvePath: resolveExistingPath,
+        },
         signal: context.stop.signal,
       });
     } catch (error) {
@@ -724,6 +730,26 @@ export class AttemptRunner {
       this.#options.logger.warn(
         { err: error, attemptId: context.attemptId },
         'update not recorded',
+      );
+    }
+  }
+
+  /**
+   * Layer 2 answered a request of the client: `permission.asked` and `permission.answered` go to the
+   * log, in that order, for every request, whatever the policy (`onAsk: reject` included). The
+   * answer has already gone back to the client; a failure here only costs the events.
+   */
+  #onPermission(context: AttemptContext, outcome: PermissionOutcome): void {
+    try {
+      const sessionId = context.lease?.session.sessionId ?? 'unopened';
+      const events = permissionEventsOf(outcome, { sessionId, ...this.#correlation(context) });
+      const now = context.journal.touch();
+      context.lastEventAt = now;
+      for (const event of events) void context.journal.write(event, { lastEventAt: now });
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'permission events not recorded',
       );
     }
   }
