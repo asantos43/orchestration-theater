@@ -2,6 +2,7 @@
 import {
   FakeClock,
   InMemoryEventLog,
+  InMemoryPromptSource,
   InMemorySecretVault,
   InMemoryStore,
 } from '@otheater/core/testing';
@@ -10,6 +11,7 @@ import { InvalidInput, Cancelled } from '@otheater/core';
 import {
   describeClockConformance,
   describeEventLogConformance,
+  describePromptSourceConformance,
   describeSecretVaultConformance,
   describeStoreConformance,
 } from '../index.js';
@@ -65,6 +67,11 @@ describeEventLogConformance('InMemoryEventLog', () => {
 describeStoreConformance('InMemoryStore', () => {
   const clock = new FakeClock();
   return { store: new InMemoryStore({ clock }), clock };
+});
+
+describePromptSourceConformance('InMemoryPromptSource', () => {
+  const prompts = { actor: 'You write code.', critic: 'You judge the work.' };
+  return { source: new InMemoryPromptSource(prompts), prompts };
 });
 
 describeSecretVaultConformance('InMemorySecretVault', () => {
