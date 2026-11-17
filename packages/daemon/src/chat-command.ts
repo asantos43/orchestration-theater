@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { JsonObject } from '@otheater/core';
+import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
 import { dataPaths } from './paths.js';
 import type { ChatPoll, PendingAsk } from './orchestration/channel.js';
@@ -67,6 +69,48 @@ function menuOptionsOf(ask: PendingAsk): string[] {
 }
 
 /**
+ * The lines of a system message of the daemon in the language of the Producer (5.22). [proposta]
+ * The `recovery` kind: a title, then one line each for what was resumed, what the effect verifier
+ * settled and what waits for the Producer; a line with nothing in it is left out.
+ */
+export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessagePayload): string[] {
+  const lines = [t('chat.system.recovery.title')];
+  const resumed = notice.resumed.map((item) =>
+    t(
+      item.kind === 'play' ? 'chat.system.recovery.item.play' : 'chat.system.recovery.item.attempt',
+      { id: item.id },
+    ),
+  );
+  const settled = notice.settled.map((item) =>
+    t(
+      item.outcome === 'done'
+        ? 'chat.system.recovery.item.settledDone'
+        : 'chat.system.recovery.item.settledNotDone',
+      { effectType: item.effectType, playId: item.playId },
+    ),
+  );
+  const waiting = notice.waiting.map((item) => {
+    if (item.kind === 'effect') {
+      return t('chat.system.recovery.item.waitingEffect', {
+        effectType: item.effectType ?? '',
+        playId: item.playId ?? '',
+      });
+    }
+    return t('chat.system.recovery.item.waitingPlay', { id: item.id });
+  });
+  if (resumed.length > 0) {
+    lines.push(t('chat.system.recovery.resumed', { items: resumed.join('; ') }));
+  }
+  if (settled.length > 0) {
+    lines.push(t('chat.system.recovery.settled', { items: settled.join('; ') }));
+  }
+  if (waiting.length > 0) {
+    lines.push(t('chat.system.recovery.waiting', { items: waiting.join('; ') }));
+  }
+  return lines;
+}
+
+/**
  * `ot chat` (decision N78, the minimal chat of the terminal): opens the scenario of a repository
  * on the running daemon, sends each line the Producer types to the single queue, shows what the
  * Director says and how the plays move, and takes the Producer's answers to the Director's
@@ -118,6 +162,9 @@ export async function runChatCommand(
   let quiet = 0;
 
   const show = (poll: ChatPoll): void => {
+    for (const notice of poll.notices) {
+      for (const line of renderSystemMessage(t, notice)) out(line);
+    }
     for (const reply of poll.replies) {
       out(t('chat.reply', { text: reply.text }));
       cursor = Math.max(cursor, reply.seq);

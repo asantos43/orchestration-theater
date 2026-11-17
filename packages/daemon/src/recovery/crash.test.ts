@@ -102,6 +102,14 @@ function startChild(script: string, env: Record<string, string>): Child {
   };
 }
 
+interface SystemMessage {
+  scenarioId: string;
+  kind: string;
+  resumed: { kind: string; id: string }[];
+  settled: { effectType: string; playId: string; outcome: string }[];
+  waiting: { kind: string; id: string }[];
+}
+
 interface Report {
   timedOut: boolean;
   plays: { id: string; state: string }[];
@@ -112,6 +120,8 @@ interface Report {
     playsResumed: string[];
     pending: unknown[];
   }[];
+  notices?: { scenarioId?: string; taken: SystemMessage[]; again: SystemMessage[] };
+  systemMessages: { scenarioId: string | null; payload: SystemMessage }[];
   events: { type: string; playId: string | null }[];
   sideEffects: { key: string; type: string; state: string; verifier: string | null }[];
   decisions: { kind: string; state: string }[];
@@ -195,6 +205,20 @@ describe.skipIf(process.platform !== 'linux')(
         // One per start: the first daemon and the one that took over.
         expect(report.events.filter((event) => event.type === 'daemon.recovered')).toHaveLength(2);
         expect(report.plays.map((play) => play.state)).toEqual(['DONE']);
+        // The chat of the scenario shows what the start-up did (5.21, step 8): the play taken up
+        // again and the pull request settled by the verifier; nothing waits for the Producer. The
+        // first start of the folder was clean and wrote no message; each message is shown once.
+        const playId = report.plays[0]?.id ?? '';
+        expect(report.systemMessages).toHaveLength(1);
+        expect(report.notices?.taken).toHaveLength(1);
+        expect(report.notices?.taken[0]).toEqual(report.systemMessages[0]?.payload);
+        const notice = report.notices?.taken[0];
+        expect(notice?.scenarioId).toBe(report.notices?.scenarioId);
+        expect(notice?.kind).toBe('recovery');
+        expect(notice?.resumed).toContainEqual({ kind: 'play', id: playId });
+        expect(notice?.settled).toEqual([{ effectType: 'open_pr', playId, outcome: 'done' }]);
+        expect(notice?.waiting).toEqual([]);
+        expect(report.notices?.again).toEqual([]);
       } finally {
         for (const pid of spawned) {
           if (isAlive(pid)) process.kill(pid, 'SIGKILL');

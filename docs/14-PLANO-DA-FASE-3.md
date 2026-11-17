@@ -108,7 +108,7 @@ Ficam como portões **[N]**:
 | P11 | Prompts iniciais dos papéis | P1 | P3, P4, P6 | feito (PR #53) |
 | P12 | Cenários e fluxo `chat` | P4, P7, P8 | P9, P10 | feito (PR #62) |
 | P14 | Conflitos de merge (N82 a N84) | P9, P12 | nada | feito (PR #64) |
-| P15 | Lacunas antes do aceite (N86) | P14 | P13 | a fazer |
+| P15 | Lacunas antes do aceite (N86) | P14 | P13 | feito (PR #66 e #67) |
 | P13 | Aceite da fase e peça real | P9, P10, P12, P14, P15 | P15 | a fazer |
 
 Ordem em ondas **[proposta]**:

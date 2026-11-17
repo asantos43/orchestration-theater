@@ -291,6 +291,16 @@ export const CHAT_CHANNEL_MODES = ['auto', 'off'] as const;
 export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
 
 /**
+ * `recovery.notice` [proposta]: when the reconciliation of a start-up tells the chat of a scenario
+ * (architecture 5.21, step 8). `always` (default): every scenario it touched, a clean restart that
+ * only took plays up again included; `unclean_only`: only when something was settled by a verifier
+ * or waits for the Producer (an effect nobody could check, a play that could not be restored);
+ * `off`: no event and no message.
+ */
+export const RECOVERY_NOTICE_MODES = ['always', 'unclean_only', 'off'] as const;
+export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
+
+/**
  * Who counts as watching a play (decision of P15a, [proposta]). `poll` (default): an `ot chat`
  * that polled the scenario of the play within `chat.presence_window`; `always`: someone is always
  * there (the Producer is trusted to answer); `never`: nobody is, so `delivery.base_drift: ask`
@@ -600,6 +610,12 @@ export const DaemonConfigSchema = z.strictObject({
       presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),
       /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: poll`). */
       presence_window: DurationSchema.prefault('30s'),
+    })
+    .prefault({}),
+  /** What the start-up does after a crash or a restart (architecture 5.21). */
+  recovery: z
+    .strictObject({
+      notice: z.enum(RECOVERY_NOTICE_MODES).default('always'),
     })
     .prefault({}),
   /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */
