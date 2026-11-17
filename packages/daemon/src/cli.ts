@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Secret } from '@otheater/core';
 import type { TFunction } from 'i18next';
+import { runChatCommand } from './chat-command.js';
 import {
   EXIT_FAILED,
   EXIT_OK,
@@ -49,12 +50,16 @@ export interface CliDeps {
   /** Replaces `Intl`/`LANG` detection in tests. */
   readonly systemLocale?: string | undefined;
   readonly version?: string | undefined;
+  /** The folder `ot chat` works on when `--repo` is not given. */
+  readonly cwd?: string | undefined;
+  /** What the Producer types in `ot chat`, one message per line. */
+  readonly input?: NodeJS.ReadableStream | undefined;
 }
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
-const COMMANDS = ['daemon', 'backup', 'restore', 'directives'] as const;
+const COMMANDS = ['daemon', 'backup', 'restore', 'directives', 'chat'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function isCommand(name: string): name is Command {
@@ -148,6 +153,19 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           return usageError(t('usage.unknownDirectivesAction', { action }));
         return await runDirectivesCommand(context, action, args, directivesOptions(values));
       }
+      case 'chat': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        const repo = values.repo ?? deps.cwd;
+        if (repo === undefined) return usageError(t('usage.missingRepo'));
+        if (deps.input === undefined) return usageError(t('usage.noInput'));
+        return await runChatCommand(context, {
+          repo,
+          base: values.base,
+          name: values.name,
+          input: deps.input,
+          signal: deps.signal,
+        });
+      }
     }
   } catch (error) {
     deps.err(
@@ -164,6 +182,9 @@ function parseCliArgs(argv: readonly string[]) {
     args: [...argv],
     options: {
       'data-dir': { type: 'string' },
+      repo: { type: 'string' },
+      base: { type: 'string' },
+      name: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
       // The options of `ot directives`.
@@ -308,6 +329,8 @@ async function entry(): Promise<void> {
       process.stderr.write(`${line}\n`);
     },
     signal: controller.signal,
+    cwd: process.cwd(),
+    input: process.stdin,
     passwordPrompt: process.stdin.isTTY ? terminalPasswordPrompt : undefined,
   });
   process.exitCode = code;

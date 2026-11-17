@@ -70,6 +70,11 @@ export interface DataPaths {
   readonly profiles: string;
   /** Scratch worktrees of the probes (the OpenCode permission probe creates its own here). */
   readonly scratch: string;
+  /**
+   * Where a running daemon publishes the address and token of the Producer channel `ot chat`
+   * talks to (P8, N78). Mode 0600; removed when the daemon stops.
+   */
+  readonly channel: string;
 }
 
 export function dataPaths(dataDir: string): DataPaths {
@@ -87,6 +92,7 @@ export function dataPaths(dataDir: string): DataPaths {
     worktrees: resolve(root, 'worktrees'),
     profiles: resolve(root, 'profiles'),
     scratch: resolve(root, 'scratch'),
+    channel: resolve(root, 'channel.json'),
   };
 }
 

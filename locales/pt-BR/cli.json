@@ -1,12 +1,14 @@
 {
   "usage": {
-    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta)\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
     "hint": "Rode \"ot --help\" para ver o uso.",
     "unknownCommand": "Comando desconhecido: \"{{command}}\".",
     "missingCommand": "Nenhum comando informado.",
     "missingBackupPath": "\"ot restore\" precisa da pasta do backup a restaurar.",
     "tooManyArguments": "Argumentos demais para \"ot {{command}}\".",
     "invalidOption": "Opção inválida: {{message}}",
+    "missingRepo": "\"ot chat\" precisa de um repositório: use --repo <pasta>.",
+    "noInput": "\"ot chat\" precisa de um lugar de onde ler as mensagens.",
     "missingDirectivesAction": "\"ot directives\" precisa de uma ação: list, show, add, extend, suspend ou revoke.",
     "unknownDirectivesAction": "Ação desconhecida \"{{action}}\" para \"ot directives\".",
     "directiveNeedsId": "Esta ação precisa do id da ordem (por exemplo O1).",
@@ -33,6 +35,19 @@
     "done": "Banco restaurado em {{path}}.",
     "keptDatabase": "O banco anterior foi guardado como {{path}}.",
     "keptScenarios": "A pasta de cenários anterior foi guardada como {{path}}."
+  },
+  "chat": {
+    "noDaemon": "Nenhum daemon está em execução nesta pasta de dados (ou o canal do Produtor está desligado). Inicie-o com \"ot daemon\".",
+    "opened": "Chat aberto no cenário {{scenarioId}}. Digite uma mensagem e pressione Enter.",
+    "reply": "Diretor: {{text}}",
+    "play": "Peça {{id}}: {{state}}",
+    "playEnded": "A peça {{id}} terminou.",
+    "menu": "A peça {{playId}} precisa de você: {{reason}}\nDigite uma das opções: {{options}} (depois de redefine_need, a nova necessidade; depois das outras, um motivo opcional).",
+    "question": "O Diretor pergunta: {{question}}",
+    "option": "  - {{label}}: {{description}}",
+    "badOption": "Essa não é uma das opções. Digite uma de: {{options}}.",
+    "answerFailed": "A resposta não foi aceita: {{message}}",
+    "leftPending": "Ainda há algo esperando a sua resposta. Fica no daemon: rode \"ot chat\" de novo para responder."
   },
   "directives": {
     "daemonRunning": "O daemon está em execução nesta pasta de dados. Pare-o para mudar as ordens aqui, ou peça ao Diretor que proponha a mudança.",

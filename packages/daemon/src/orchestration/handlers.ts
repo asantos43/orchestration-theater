@@ -1,0 +1,415 @@
+// SPDX-License-Identifier: MPL-2.0
+import { randomUUID } from 'node:crypto';
+import {
+  Conflict,
+  type askProducerInput,
+  type JsonObject,
+  type JsonValue,
+  NotFound,
+  renderStateSummary,
+  stateSummaryOf,
+  type Store,
+} from '@otheater/core';
+import type { z } from 'zod';
+import type { DaemonConfig, PlayLimits } from '../config.js';
+import type { Logger } from '../logger.js';
+import { producerQuestionErrors } from '../mcp/ask-producer.js';
+import { ToolFailure, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
+import {
+  judgmentPoint,
+  parseAnswer,
+  type JudgmentPointId,
+  type PlayRunner,
+} from '../pipeline/index.js';
+import type { Workspace } from '../workspace/index.js';
+import type { DirectorSessions } from './director.js';
+import { DECISION_KINDS } from './play-effects.js';
+
+/** The tools of the Director that the orchestration answers (P8). */
+export const ORCHESTRATION_TOOL_NAMES = [
+  'next_action',
+  'status',
+  'decide',
+  'open_play',
+  'ask_producer',
+] as const;
+
+/** The blackboard key with what the Producer answered to the questions of the plan. */
+export const CLARIFICATIONS_KEY = 'clarifications';
+
+/**
+ * The questions of `ask_producer` that wait for the Producer. The handler holds the Director's
+ * call open until the answer comes ({@link QuestionBoard.wait}); the channel resolves it. A
+ * question is answered once, and everything pending ends with the daemon ({@link abortAll}).
+ */
+export class QuestionBoard {
+  readonly #waiting = new Map<
+    string,
+    { resolve: (answer: JsonValue) => void; reject: (reason: Error) => void }
+  >();
+
+  /** True while a Director call waits for the answer of this decision. */
+  has(decisionId: string): boolean {
+    return this.#waiting.has(decisionId);
+  }
+
+  wait(decisionId: string): Promise<JsonValue> {
+    return new Promise<JsonValue>((resolve, reject) => {
+      this.#waiting.set(decisionId, { resolve, reject });
+    });
+  }
+
+  /** Hands the answer to the Director's call; false when nobody waits for it any more. */
+  resolve(decisionId: string, answer: JsonValue): boolean {
+    const waiter = this.#waiting.get(decisionId);
+    if (waiter === undefined) return false;
+    this.#waiting.delete(decisionId);
+    waiter.resolve(answer);
+    return true;
+  }
+
+  abortAll(reason: string): void {
+    const waiting = [...this.#waiting.values()];
+    this.#waiting.clear();
+    for (const waiter of waiting) waiter.reject(new Error(reason));
+  }
+}
+
+/** What the handlers need once the daemon has composed everything (they are registered earlier). */
+export interface OrchestrationRuntime {
+  readonly store: Store;
+  readonly runner: PlayRunner;
+  /** `undefined` while the daemon has no code host. */
+  readonly workspace: Workspace | undefined;
+  readonly directors: DirectorSessions;
+  readonly config: DaemonConfig;
+  readonly logger: Logger;
+}
+
+function limitsOf(config: DaemonConfig): PlayLimits {
+  const { limits } = config;
+  return {
+    plan_reviews: limits.plan_reviews,
+    critic_rejections: limits.critic_rejections,
+    attempts_per_demand: limits.attempts_per_demand,
+    script_validations: limits.script_validations,
+    script_vetoes: limits.script_vetoes,
+    script_returns: limits.script_returns,
+    structural_restarts: limits.structural_restarts,
+    submit_retries: limits.submit_retries,
+    demand_timeout: limits.demand_timeout,
+    demand_timeout_max: limits.demand_timeout_max,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** The answer of a decision is a JSON object: another value is kept under `answer`. */
+function asObject(value: JsonValue): JsonObject {
+  return isRecord(value) ? value : { answer: value };
+}
+
+function notReady(): ToolFailure {
+  return new ToolFailure(
+    'not_ready',
+    'The daemon is still starting (or already stopping): try again in a moment.',
+  );
+}
+
+/**
+ * The handlers of the Director's tools that move a play: `next_action`, `status`, `decide`,
+ * `open_play` and `ask_producer` (architecture 5.3 and 5.4). They are registered before the MCP
+ * server starts, and the runtime is bound when the rest of the daemon exists.
+ *
+ * Every call is tied to a scenario through the Director session it came from
+ * ({@link DirectorSessions.scenarioOf}); a caller that is not one gets `no_scenario`.
+ */
+export class OrchestrationHandlers {
+  readonly board = new QuestionBoard();
+  #runtime: OrchestrationRuntime | undefined;
+
+  /** The runtime is handed in when the daemon is composed; `undefined` unbinds it (shutdown). */
+  bind(runtime: OrchestrationRuntime | undefined): void {
+    this.#runtime = runtime;
+  }
+
+  /** Registers the five handlers, skipping a name that already has one. */
+  register(handlers: ToolHandlers): ToolHandlers {
+    const mine: Record<(typeof ORCHESTRATION_TOOL_NAMES)[number], (call: ToolCall) => unknown> = {
+      next_action: (call) => this.#with(call, (rt, scenarioId) => this.#nextAction(rt, scenarioId)),
+      status: (call) =>
+        this.#with(call, (rt, scenarioId) =>
+          this.#status(rt, scenarioId, (call.input as { play?: string }).play),
+        ),
+      decide: (call) =>
+        this.#with(call, (rt, scenarioId) =>
+          this.#decide(rt, scenarioId, call.input as { decisionId: string; payload: JsonValue }),
+        ),
+      open_play: (call) =>
+        this.#with(call, (rt, scenarioId) =>
+          this.#openPlay(rt, scenarioId, (call.input as { need: string }).need),
+        ),
+      ask_producer: (call) =>
+        this.#with(call, (rt, scenarioId) =>
+          this.#askProducer(rt, scenarioId, call.input as z.infer<typeof askProducerInput>),
+        ),
+    };
+    for (const [name, handler] of Object.entries(mine)) {
+      if (!handlers.has(name)) handlers.register(name, handler);
+    }
+    return handlers;
+  }
+
+  #with(
+    call: ToolCall,
+    run: (runtime: OrchestrationRuntime, scenarioId: string) => unknown,
+  ): unknown {
+    const runtime = this.#runtime;
+    if (runtime === undefined) return notReady();
+    const scenarioId = runtime.directors.scenarioOf(call.caller.attemptId);
+    if (scenarioId === undefined) {
+      return new ToolFailure(
+        'no_scenario',
+        `${call.tool.name} is a tool of the Director of a scenario, and this session is not one.`,
+      );
+    }
+    return run(runtime, scenarioId);
+  }
+
+  /** The judgment points and questions the Director has to settle, and where the scenario stands. */
+  async #nextAction(rt: OrchestrationRuntime, scenarioId: string): Promise<JsonObject> {
+    const pending = await rt.store.decisions.list({ scenarioId, states: ['pending'] });
+    const mine: JsonObject[] = [];
+    for (const decision of pending) {
+      const settledByDirector =
+        decision.kind.startsWith(DECISION_KINDS.judgePrefix) ||
+        decision.kind === DECISION_KINDS.clarify;
+      if (!settledByDirector) continue;
+      if (decision.playId !== null) {
+        const play = await rt.store.plays.get(decision.playId);
+        if (play?.finishedAt !== null) continue;
+      }
+      mine.push({
+        id: decision.id,
+        kind: decision.kind,
+        playId: decision.playId,
+        input: decision.input,
+      });
+    }
+    const summary = renderStateSummary(await stateSummaryOf(rt.store, scenarioId));
+    return {
+      decisions: mine,
+      hint:
+        mine.length === 0
+          ? 'Nothing is waiting for you. Answer the Producer, or wait for the next prompt.'
+          : 'Settle each decision with `decide {decisionId, payload}`; the payload follows the point.',
+      summary,
+    };
+  }
+
+  async #status(
+    rt: OrchestrationRuntime,
+    scenarioId: string,
+    playId: string | undefined,
+  ): Promise<JsonObject | ToolFailure> {
+    if (playId === undefined) {
+      const plays = await rt.store.plays.list({ scenarioId });
+      return {
+        plays: plays.map((play) => ({
+          id: play.id,
+          state: play.state,
+          need: play.need,
+          finished: play.finishedAt !== null,
+        })),
+      };
+    }
+    const play = await rt.store.plays.get(playId);
+    if (play?.scenarioId !== scenarioId) {
+      return new ToolFailure('not_found', `The play "${playId}" does not exist in this scenario.`);
+    }
+    const demands = await rt.store.demands.list({ playId });
+    return {
+      id: play.id,
+      state: play.state,
+      need: play.need,
+      counters: play.counters,
+      finished: play.finishedAt !== null,
+      demands: demands.map((demand) => ({
+        id: demand.id,
+        title: demand.title,
+        state: demand.state,
+        dependsOn: demand.dependsOn,
+      })),
+    };
+  }
+
+  /**
+   * `decide`: settles a decision of the Director. A `judge.<point>` answer is validated by the
+   * point and goes to the machine as `JUDGED`; the answer of `clarify` goes to the blackboard
+   * and the play moves on (`QUESTIONS_ANSWERED`). The menu of AWAITING_PRODUCER and the
+   * questions of `ask_producer` are the Producer's, never the Director's (5.4).
+   */
+  async #decide(
+    rt: OrchestrationRuntime,
+    scenarioId: string,
+    input: { decisionId: string; payload: JsonValue },
+  ): Promise<JsonObject | ToolFailure> {
+    const decision = await rt.store.decisions.get(input.decisionId);
+    if (decision?.scenarioId !== scenarioId) {
+      return new ToolFailure('not_found', `The decision "${input.decisionId}" does not exist.`);
+    }
+    if (decision.state !== 'pending') {
+      return new ToolFailure(
+        'already_decided',
+        `The decision "${decision.id}" is ${decision.state}; call next_action for what waits.`,
+      );
+    }
+    const { playId } = decision;
+    if (decision.kind === DECISION_KINDS.menu || decision.kind === DECISION_KINDS.question) {
+      return new ToolFailure(
+        'producer_only',
+        'Only the Producer answers this one; it is shown to them in the chat.',
+      );
+    }
+    if (playId === null) {
+      return new ToolFailure('not_found', `The decision "${decision.id}" has no play.`);
+    }
+    if (decision.kind === DECISION_KINDS.clarify) {
+      await rt.store.blackboard.put({
+        playId,
+        key: CLARIFICATIONS_KEY,
+        value: { decisionId: decision.id, answer: input.payload },
+        author: 'director',
+      });
+      return this.#settle(
+        rt,
+        decision.id,
+        playId,
+        { type: 'QUESTIONS_ANSWERED' },
+        asObject(input.payload),
+      );
+    }
+    if (!decision.kind.startsWith(DECISION_KINDS.judgePrefix)) {
+      return new ToolFailure('unsupported', `The decision kind "${decision.kind}" has no answer.`);
+    }
+    const point = decision.kind.slice(DECISION_KINDS.judgePrefix.length);
+    if (judgmentPoint(point) === undefined) {
+      return new ToolFailure('unsupported', `The point "${point}" is not a judgment point.`);
+    }
+    const answer = parseAnswer(point as JudgmentPointId, input.payload);
+    if (answer === undefined || !isRecord(input.payload)) {
+      return new ToolFailure(
+        'invalid_answer',
+        `The payload does not fit the point "${point}". Read the "input" of the decision and answer with the shape the point asks for.`,
+      );
+    }
+    const demandId =
+      typeof decision.input.demandId === 'string' ? decision.input.demandId : undefined;
+    return this.#settle(
+      rt,
+      decision.id,
+      playId,
+      {
+        type: 'JUDGED',
+        point,
+        ...(demandId === undefined ? {} : { demandId }),
+        answer: input.payload,
+      },
+      input.payload,
+    );
+  }
+
+  /** Sends the event of the answer; the decision is marked decided only when the machine took it. */
+  async #settle(
+    rt: OrchestrationRuntime,
+    decisionId: string,
+    playId: string,
+    event: unknown,
+    answer: JsonObject,
+  ): Promise<JsonObject | ToolFailure> {
+    try {
+      await rt.runner.send(playId, event);
+    } catch (error) {
+      if (error instanceof Conflict || error instanceof NotFound) {
+        // The play left the state that asked (cancelled, restarted): the question is stale.
+        await rt.store.decisions.cancel(decisionId).catch(() => undefined);
+        return new ToolFailure(
+          'stale',
+          `The decision "${decisionId}" no longer applies: the play moved on. Call next_action.`,
+        );
+      }
+      return new ToolFailure(
+        'invalid_answer',
+        error instanceof Error ? error.message : 'The answer was refused.',
+      );
+    }
+    await rt.store.decisions.decide(decisionId, { answer, decidedBy: 'director' });
+    return { ok: true };
+  }
+
+  /** `open_play`: creates the play of the scenario, its base branch, and starts it. */
+  async #openPlay(
+    rt: OrchestrationRuntime,
+    scenarioId: string,
+    need: string,
+  ): Promise<JsonObject | ToolFailure> {
+    if (rt.workspace === undefined) {
+      return new ToolFailure(
+        'no_code_host',
+        'This daemon has no code host, so a play cannot deliver its work: it cannot open plays.',
+      );
+    }
+    const repo = (await rt.store.scenarioRepos.list(scenarioId))[0];
+    if (repo === undefined) {
+      return new ToolFailure('no_repository', 'The scenario has no repository to work on.');
+    }
+    // [proposta] ids of plays: a short random suffix (a valid branch name, unique enough).
+    const playId = `play-${randomUUID().slice(0, 8)}`;
+    await rt.runner.create({ playId, scenarioId, need, limits: limitsOf(rt.config) });
+    await rt.workspace.createPlayBase({
+      repo: repo.path,
+      playId,
+      base: repo.mainBranch,
+    });
+    await rt.runner.send(playId, { type: 'START' });
+    return { playId };
+  }
+
+  /**
+   * `ask_producer`: records the questions as a decision for the Producer and holds the call open
+   * until they answer (or the daemon stops). [proposta] A blocking call keeps the Director's turn,
+   * and with it the single queue, until the answer: the Producer is the only one who can unblock
+   * what comes after.
+   */
+  async #askProducer(
+    rt: OrchestrationRuntime,
+    scenarioId: string,
+    input: z.infer<typeof askProducerInput>,
+  ): Promise<JsonObject | ToolFailure> {
+    const errors = producerQuestionErrors(input, 'choices');
+    if (errors.length > 0) return new ToolFailure('invalid_questions', errors.join('\n'));
+    const id = `${scenarioId}:ask:${randomUUID().slice(0, 8)}`;
+    await rt.store.decisions.create({
+      id,
+      scenarioId,
+      kind: DECISION_KINDS.question,
+      input: { questions: JSON.parse(JSON.stringify(input.questions)) as JsonValue },
+    });
+    const waiting = this.board.wait(id);
+    try {
+      const answer = await waiting;
+      // The channel sends `{answers: [...]}`; anything else is passed on whole.
+      return {
+        answers: isRecord(answer) && 'answers' in answer ? (answer.answers ?? null) : answer,
+      };
+    } catch (error) {
+      await rt.store.decisions.cancel(id).catch(() => undefined);
+      return new ToolFailure(
+        'daemon_stopping',
+        error instanceof Error ? error.message : 'The question was not answered.',
+      );
+    }
+  }
+}

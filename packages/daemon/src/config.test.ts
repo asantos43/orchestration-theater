@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { InvalidInput, PROMPT_ORDER_MODES } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
+  CHAT_CHANNEL_MODES,
   CLIENT_IDS,
   LIMIT_PRESETS,
   loadConfig,
@@ -11,6 +12,7 @@ import {
   parseDuration,
   parseTimeOfDay,
   sessionsPerProcessOf,
+  VERIFY_MODES,
 } from './config.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
 import { makeTempDataDir } from './test-helpers.js';
@@ -415,6 +417,65 @@ describe('parseConfig, prompt_queue (P7)', () => {
       );
     }
     expect(() => parseConfig('prompt_queue:\n  size: 3\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('orchestration', () => {
+  it('defaults to no Executor, no role overrides and running the verify steps', () => {
+    expect(parseConfig('').orchestration).toEqual({ roles: {}, verify: 'run' });
+  });
+
+  it('reads the Executor of the plays and one per role', () => {
+    const { orchestration } = parseConfig(
+      [
+        'orchestration:',
+        '  executor: { client: claude-code, profile: work, model: sonnet, effort: high }',
+        '  roles:',
+        '    critic: { client: codex, profile: alt, model: gpt }',
+      ].join('\n'),
+    );
+    expect(orchestration.executor).toEqual({
+      client: 'claude-code',
+      profile: 'work',
+      model: 'sonnet',
+      effort: 'high',
+    });
+    expect(orchestration.roles.critic?.client).toBe('codex');
+  });
+
+  it('takes each mode of verify', () => {
+    for (const mode of VERIFY_MODES) {
+      expect(parseConfig(`orchestration:\n  verify: ${mode}\n`).orchestration.verify).toBe(mode);
+    }
+  });
+
+  it('rejects a bad mode, an incomplete Executor and unknown keys', () => {
+    expect(() => parseConfig('orchestration:\n  verify: maybe\n')).toThrow(/orchestration\.verify/);
+    expect(() => parseConfig('orchestration:\n  executor: { client: codex }\n')).toThrow(
+      InvalidInput,
+    );
+    expect(() => parseConfig('orchestration:\n  mode: fast\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('chat', () => {
+  it('defaults to an open local channel and 200 replies of history', () => {
+    expect(parseConfig('').chat).toEqual({ channel: 'auto', history: 200 });
+  });
+
+  it('takes each mode of the channel and any history from 1', () => {
+    for (const mode of CHAT_CHANNEL_MODES) {
+      expect(parseConfig(`chat:\n  channel: ${mode}\n`).chat.channel).toBe(mode);
+    }
+    expect(parseConfig('chat:\n  history: 1\n').chat.history).toBe(1);
+  });
+
+  it('rejects an unknown mode, a bad history and unknown keys', () => {
+    expect(() => parseConfig('chat:\n  channel: lan\n')).toThrow(/chat\.channel/);
+    for (const bad of ['0', '1.5', '"all"']) {
+      expect(() => parseConfig(`chat:\n  history: ${bad}\n`)).toThrow(/history/);
+    }
+    expect(() => parseConfig('chat:\n  port: 80\n')).toThrow(InvalidInput);
   });
 });
 

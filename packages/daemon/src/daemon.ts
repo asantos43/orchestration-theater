@@ -41,6 +41,9 @@ import { DirectiveService, registerDirectiveTools } from './directives/index.js'
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
+import { OrchestrationHandlers } from './orchestration/handlers.js';
+import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
+import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -130,6 +133,11 @@ export interface DaemonHandle {
    * (`mcp.port: auto` takes a free one at each start). Handed to the sessions of the attempts.
    */
   readonly mcpUrl: string;
+  /**
+   * The Producer's side (what `ot chat` reaches over `channel.json`): open a chat, send messages,
+   * read the Director's replies, answer its questions. `undefined` when the execution is off.
+   */
+  readonly producer: ProducerChannel | undefined;
   /** The orders (architecture 5.17): what is in force, the drafts and the rules. */
   readonly directives: DirectiveService;
   status(): DaemonStatus;
@@ -173,16 +181,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
     const registries = buildDaemonRegistries(options.registries);
     // P11: a prompt that cites a tool its role cannot call stops the start-up here too.
-    await assertValidPrompts(
-      options.prompts ?? defaultPromptSource(config, paths.dataDir),
-      registries,
-    );
+    const prompts = options.prompts ?? defaultPromptSource(config, paths.dataDir);
+    await assertValidPrompts(prompts, registries);
     composition = await compose(config, {
       dataDir: paths.dataDir,
       events: { registry: registries.events, unknownType: config.events.unknown_type },
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+    const orchestrationHandlers = new OrchestrationHandlers();
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
     // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
     // The orders (5.17): the tools of the Director come from here, unless the caller already
@@ -206,11 +213,23 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       port: config.mcp.port,
       submitRetries: config.limits.submit_retries,
       // The read tools (P7) are built in; a handler the caller already registered wins.
-      handlers: registerReadTools(handlers, composition.store),
+      // So are the tools of the Director that move a play (P8); their runtime is bound later.
+      handlers: orchestrationHandlers.register(registerReadTools(handlers, composition.store)),
       logger: composition.logger,
       version,
     });
-    return await run({ options, config, composition, registries, mcp, directives, lock, version });
+    return await run({
+      options,
+      config,
+      composition,
+      registries,
+      mcp,
+      directives,
+      lock,
+      version,
+      prompts,
+      orchestrationHandlers,
+    });
   } catch (error) {
     await directives?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
@@ -229,10 +248,13 @@ interface RunInput {
   readonly directives: DirectiveService;
   readonly lock: InstanceLock;
   readonly version: string;
+  readonly prompts: PromptSource;
+  readonly orchestrationHandlers: OrchestrationHandlers;
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
-  const { options, config, composition, registries, mcp, directives, lock, version } = input;
+  const { options, config, composition, registries, mcp, directives, lock, version, prompts } =
+    input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
   const startedAt = clock.now();
@@ -286,6 +308,20 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     // The resumed attempts run on; nothing here waits for them.
     void report.done;
   }
+  let orchestration: Orchestration | undefined;
+  if (execution !== undefined) {
+    // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
+    orchestration = await startOrchestration({
+      config,
+      composition,
+      execution,
+      mcp,
+      registries,
+      prompts,
+      paths,
+      handlers: input.orchestrationHandlers,
+    });
+  }
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
@@ -338,8 +374,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         }
       };
       await attempt('scheduler', () => scheduler.stop());
+      await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
       await attempt('execution', async () => execution?.stop());
+      await attempt('effects', async () => orchestration?.drain());
       await attempt('mcp', () => mcp.stop());
       await attempt('daemon.stopped', () =>
         store.events.append(
@@ -363,6 +401,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     adapters: composition.adapters,
     execution,
     mcpUrl: mcp.url,
+    producer: orchestration?.channel,
     directives,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
