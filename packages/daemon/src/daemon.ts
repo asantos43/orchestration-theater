@@ -5,8 +5,10 @@ import {
   hasStoreMaintenance,
   isLockableSecretVault,
   PermissionDenied,
+  assertValidPrompts,
   type Clock,
   type LockableSecretVault,
+  type PromptSource,
   type Registries,
   type RegistryEntries,
   type Secret,
@@ -35,6 +37,7 @@ import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import { dataPaths, ensureDataDir } from './paths.js';
+import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
@@ -90,6 +93,12 @@ export interface StartDaemonOptions {
    * check that the daemon refuses to start. [proposta]
    */
   readonly registries?: RegistryEntries | undefined;
+  /**
+   * Where the role prompts come from. Without it the daemon uses the source `adapters.prompts`
+   * asks for (the bundled prompts, or `prompts.directory`). Tests hand in a source with a bad
+   * prompt to check that the daemon refuses to start. [proposta]
+   */
+  readonly prompts?: PromptSource | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -142,6 +151,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
     const registries = buildDaemonRegistries(options.registries);
+    // P11: a prompt that cites a tool its role cannot call stops the start-up here too.
+    await assertValidPrompts(
+      options.prompts ?? defaultPromptSource(config, paths.dataDir),
+      registries,
+    );
     composition = await compose(config, {
       dataDir: paths.dataDir,
       events: { registry: registries.events, unknownType: config.events.unknown_type },

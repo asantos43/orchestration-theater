@@ -49,6 +49,11 @@ export {
   describeProcessLauncherConformance,
   type ProcessLauncherHarness,
 } from './conformance/process-launcher.js';
+// PromptSource
+export {
+  describePromptSourceConformance,
+  type PromptSourceHarness,
+} from './conformance/prompt-source.js';
 // Vcs
 export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
 export { disposeTestGitIsolation } from './conformance/git-isolation.js';

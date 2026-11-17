@@ -10,6 +10,8 @@ export const REGISTRY_NAMES = [
   'events',
   'flows',
   'scenarioTypes',
+  /** Not a registry of entries: the role prompts, checked against `roles` and `tools` (P11). */
+  'prompts',
 ] as const;
 export type RegistryName = (typeof REGISTRY_NAMES)[number];
 
@@ -39,6 +41,12 @@ export const REGISTRY_PROBLEM_CODES = [
   'missing_idempotency_key',
   /** A plugin event outside `plugin.<id>.*`, or an official event inside it. */
   'plugin_prefix',
+  /** A role of the registry has no prompt in the prompt source. */
+  'missing_prompt',
+  /** A prompt has no text. */
+  'empty_prompt',
+  /** A prompt cites a tool that exists but is not in the tool set of its role. */
+  'tool_not_for_role',
   /** A `rule` key in a family `rule` may never change (permissions, architecture 5.8 and 5.17). */
   'reserved_rule_key',
 ] as const;
