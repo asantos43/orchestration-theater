@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PermissionDenied } from '@otheater/core';
 import type {
   EventEnvelope,
   LaunchedProcess,
@@ -95,6 +96,19 @@ const MODE_ENV: Readonly<Record<ClientId, string>> = {
   'claude-code': 'OT_TEST_CLAUDE_MODE',
   codex: 'OT_TEST_CODEX_MODE',
   opencode: 'OT_TEST_OPENCODE_MODE',
+};
+
+/**
+ * What `session/new` does in an EMPTY profile, per client. Claude Code and OpenCode open the
+ * session with no login (the first prompt is what asks for one). Codex does not: `codex-acp` 2.6
+ * answers `session/new` with JSON-RPC -32000 "Authentication required" and does not start a login
+ * by itself (measured in Phase 0, `spikes/acp-codex/README.md`, item 9), so the pool must refuse
+ * with `PermissionDenied` (kind `auth_required`) and leave no process behind.
+ */
+const EMPTY_PROFILE_OUTCOME: Readonly<Record<ClientId, 'session' | 'auth_required'>> = {
+  'claude-code': 'session',
+  codex: 'auth_required',
+  opencode: 'session',
 };
 
 const READ_ONLY: RolePolicy = {
@@ -245,7 +259,7 @@ describe.skipIf(!flags.clients || !supported)(
     });
 
     it.each(found.map((selection) => [selection.id, selection] as const))(
-      '%s: starts, opens a session in an empty profile and leaves no process',
+      '%s: starts, opens a session in an empty profile (or is refused with auth_required) and leaves no process',
       async (id) => {
         const rig = await openRig(false);
         try {
@@ -261,27 +275,38 @@ describe.skipIf(!flags.clients || !supported)(
           await mkdir(empty.dir, { recursive: true });
           const cwd = join(rig.root, 'work', id);
           await mkdir(cwd, { recursive: true });
-          const lease = await execution.pool.acquire({
-            client: id,
-            profile: empty,
-            policy: READ_ONLY,
-            cwd,
-          });
-          expect(lease.session.sessionId.length).toBeGreaterThan(0);
-          expect(alive(lease.pid)).toBe(true);
-          await lease.release();
-          if (id === 'opencode') {
-            // OpenCode lists its models through the same process model and the profile directory.
-            const models = await execution.pool.adapterOf(id).models.list({
-              client: id,
-              profile: empty.profile,
-            });
-            expect(Array.isArray(models)).toBe(true);
+          const request = { client: id, profile: empty, policy: READ_ONLY, cwd };
+          if (EMPTY_PROFILE_OUTCOME[id] === 'auth_required') {
+            // The refusal is a `PermissionDenied`; the kind is in the `NormalizedError` it carries
+            // as `cause` (`typedErrorOf`, architecture 5.2). The message text is not asserted.
+            const refusal = await execution.pool.acquire(request).then(
+              () => undefined,
+              (error: unknown) => error,
+            );
+            expect(refusal, 'acquire should have been refused').toBeInstanceOf(PermissionDenied);
+            expect((refusal as PermissionDenied).cause).toMatchObject({ kind: 'auth_required' });
+            // The refused open gave its slot back and the pool keeps nothing.
+            expect(execution.pool.stats()).toMatchObject({ processes: 0, sessions: 0, queued: 0 });
+          } else {
+            const lease = await execution.pool.acquire(request);
+            expect(lease.session.sessionId.length).toBeGreaterThan(0);
+            expect(alive(lease.pid)).toBe(true);
+            await lease.release();
+            if (id === 'opencode') {
+              // OpenCode lists its models through the same process model and the profile directory.
+              const models = await execution.pool.adapterOf(id).models.list({
+                client: id,
+                profile: empty.profile,
+              });
+              expect(Array.isArray(models)).toBe(true);
+            }
           }
         } finally {
           await rig.dispose();
         }
-        // Whatever the test started is gone: nothing left on the pids it saw.
+        // Whatever the test started (a refused Codex included) is gone: nothing left on the pids
+        // it saw. It is checked here, after the daemon stopped, in both outcomes.
+        expect(rig.pids.length).toBeGreaterThan(0);
         expect(rig.pids.filter(alive)).toEqual([]);
       },
       TEST_TIMEOUT_MS,

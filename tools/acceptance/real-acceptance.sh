@@ -16,15 +16,26 @@
 #
 # Uso:
 #   tools/acceptance/real-acceptance.sh [--level clients|prompts] [--dry-run] [--with-adapters]
+#       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
+#
+# Build (--build): o teste lê o `dist` dos pacotes (o Executor simulado e, com --with-adapters, os
+# adaptadores), então um `dist` velho dá falha que não é do código. Local e offline (`pnpm build`).
+#   auto    (padrão) compila se algum pacote de packages/ (inclui packages/adapters/*) não tem
+#           `dist` ou tem arquivo em `src`, `package.json` ou `tsconfig*.json` mais novo que o
+#           arquivo mais novo do `dist` dele; senão não faz nada.
+#   always  sempre roda `pnpm build`.
+#   never   nunca compila; falha se o `dist` do fake-agent não existe e avisa dos pacotes velhos.
+# Com --dry-run o script só diz o que faria com o build.
 #
 # --bin-dir põe DIR na frente do PATH, para achar um adaptador ACP instalado fora dele (por
 # exemplo, o node_modules/.bin de um projeto). Pode repetir.
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m), OT_ACCEPT_LOG_DIR
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
 
@@ -35,6 +46,8 @@ min_available_mb="${OT_ACCEPT_MIN_AVAILABLE_MB:-4096}"
 abort_below_mb="${OT_ACCEPT_ABORT_BELOW_MB:-1024}"
 min_tmp_mb="${OT_ACCEPT_MIN_TMP_MB:-1024}"
 run_timeout="${OT_ACCEPT_TIMEOUT:-20m}"
+build_mode="${OT_ACCEPT_BUILD:-auto}"
+build_timeout="${OT_ACCEPT_BUILD_TIMEOUT:-10m}"
 log_dir="${OT_ACCEPT_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/otheater/acceptance}"
 dry_run=0
 with_adapters=0
@@ -52,6 +65,8 @@ while [ $# -gt 0 ]; do
     --abort-below-mb) abort_below_mb="$2"; shift 2 ;;
     --min-tmp-mb) min_tmp_mb="$2"; shift 2 ;;
     --timeout) run_timeout="$2"; shift 2 ;;
+    --build) build_mode="$2"; shift 2 ;;
+    --build-timeout) build_timeout="$2"; shift 2 ;;
     --log-dir) log_dir="$2"; shift 2 ;;
     --bin-dir) bin_dirs="${bin_dirs:+$bin_dirs:}$2"; shift 2 ;;
     --yes|-y) assume_yes=1; shift ;;
@@ -61,6 +76,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$level" in clients|prompts) ;; *) echo "--level deve ser clients ou prompts" >&2; exit 2 ;; esac
+case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
   case "$n" in ''|*[!0-9]*) echo "valor numérico inválido: $n" >&2; exit 2 ;; esac
 done
@@ -177,6 +193,57 @@ if [ "$level" = prompts ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -e
   fail "nenhum cliente com perfil e modelo: no nível prompts só o Executor simulado rodaria"
 fi
 
+# ---- build (decide aqui, compila depois da confirmação) -----------------------------------------
+
+# Pacotes de packages/ com `dist` ausente, vazio ou mais velho que as fontes: um por linha, com o
+# motivo. O teste lê o `dist`; um `dist` velho dá falha que não é do código.
+stale_packages() {
+  local dir newest
+  for dir in packages/* packages/adapters/*; do
+    [ -f "$dir/package.json" ] || continue
+    if [ ! -d "$dir/dist" ]; then echo "$dir (sem dist)"; continue; fi
+    newest="$(find "$dir/dist" -type f -printf '%T@ %p\n' | sort -rn | sed -n 1p | cut -d' ' -f2-)"
+    if [ -z "$newest" ]; then echo "$dir (dist vazio)"; continue; fi
+    if [ -n "$(find "$dir/src" "$dir/package.json" "$dir"/tsconfig*.json -newer "$newest" -print -quit 2>/dev/null)" ]; then
+      echo "$dir (fonte mais nova que o dist)"
+    fi
+  done
+}
+
+echo
+echo "Build (--build $build_mode):"
+will_build=0
+stale=()
+if [ "$build_mode" != always ]; then
+  mapfile -t stale < <(stale_packages)
+fi
+case "$build_mode" in
+  always)
+    will_build=1
+    ok "vai rodar 'pnpm build' (--build always)"
+    ;;
+  auto)
+    if [ "${#stale[@]}" -gt 0 ]; then
+      will_build=1
+      ok "vai rodar 'pnpm build': ${#stale[@]} pacote(s) com dist ausente ou velho"
+      printf '            %s\n' "${stale[@]}"
+    else
+      ok "dist em dia em todos os pacotes: não precisa compilar"
+    fi
+    ;;
+  never)
+    if [ "${#stale[@]}" -gt 0 ]; then
+      warn "--build never: ${#stale[@]} pacote(s) com dist ausente ou velho (o teste lê o dist)"
+      printf '            %s\n' "${stale[@]}"
+    else
+      ok "dist em dia em todos os pacotes"
+    fi
+    if [ ! -f packages/fake-agent/dist/cli.js ]; then
+      fail "--build never e falta packages/fake-agent/dist/cli.js: rode 'pnpm build' ou use --build auto"
+    fi
+    ;;
+esac
+
 # ---- resumo antes de rodar ----------------------------------------------------------------------
 
 tests=(packages/daemon/src/execution/acceptance.real.test.ts)
@@ -193,6 +260,11 @@ if [ "$failures" -gt 0 ]; then
 fi
 echo "Checagens: tudo certo."
 echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" = prompts ] && echo ' OT_TEST_REAL_PROMPTS=1') vitest run ${tests[*]}"
+case "$build_mode" in
+  always) echo "Build: 'pnpm build' antes do teste (--build always; teto de $build_timeout)." ;;
+  auto) if [ "$will_build" = 1 ]; then echo "Build: 'pnpm build' antes do teste (--build auto, dist velho; teto de $build_timeout)."; else echo "Build: nada a compilar (--build auto, dist em dia)."; fi ;;
+  never) echo "Build: nenhum (--build never)." ;;
+esac
 echo "Teto: $run_timeout. Aborta se a memória disponível cair abaixo de ${abort_below_mb} MB."
 [ "$level" = prompts ] && echo "Atenção: o nível prompts envia prompts reais e gasta cota das contas dos perfis."
 if [ "$dry_run" = 1 ]; then
@@ -207,10 +279,13 @@ fi
 
 # ---- build (local, offline) ---------------------------------------------------------------------
 
-if [ ! -f packages/fake-agent/dist/cli.js ]; then
+if [ "$will_build" = 1 ]; then
   echo
-  echo "Falta o build (packages/fake-agent/dist): rodando 'pnpm build'..."
-  pnpm build
+  echo "Compilando ('pnpm build', teto de $build_timeout)..."
+  if ! timeout --kill-after=30s "$build_timeout" pnpm build; then
+    echo "Resultado: o build falhou ou estourou o teto de $build_timeout. O teste não foi rodado." >&2
+    exit 1
+  fi
 fi
 
 # ---- execução com monitor de memória ------------------------------------------------------------
