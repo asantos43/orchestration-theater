@@ -33,6 +33,7 @@ const OpenBody = z.strictObject({
   repo: z.string().min(1).optional(),
   base: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
+  newProject: z.boolean().optional(),
 });
 const SendBody = z.strictObject({
   scenarioId: z.string().min(1),
@@ -124,6 +125,7 @@ export class ProducerChannelServer {
         ...(body.data.repo === undefined ? {} : { repo: body.data.repo }),
         ...(body.data.base === undefined ? {} : { base: body.data.base }),
         ...(body.data.name === undefined ? {} : { name: body.data.name }),
+        ...(body.data.newProject === true ? { newProject: true } : {}),
       };
       return c.json(await channel.openChat(input));
     });

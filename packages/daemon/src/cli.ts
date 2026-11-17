@@ -164,6 +164,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           repo,
           base: values.base,
           name: values.name,
+          newProject: values['new-project'],
           input: deps.input,
           signal: deps.signal,
         });
@@ -188,6 +189,7 @@ function parseCliArgs(argv: readonly string[]) {
       base: { type: 'string' },
       name: { type: 'string' },
       type: { type: 'string' },
+      'new-project': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
       // The options of `ot directives`.

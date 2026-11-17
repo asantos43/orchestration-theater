@@ -7,6 +7,7 @@ import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import type { RecoveryGate } from '../recovery/gate.js';
 import { PlayRunner } from '../pipeline/index.js';
+import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
 import {
   AttachmentService,
@@ -129,7 +130,9 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     vcs: composition.vcs,
     registries,
     scenariosDir: paths.scenarios,
+    conventionsMode: () => config.project.conventions,
   });
+  const confirmer = new ConventionConfirmer({ store, board: handlers.board, logger });
   const attachments = new AttachmentService({
     store,
     clock: composition.clock,
@@ -170,6 +173,8 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     board: handlers.board,
     logger,
     presence,
+    confirmer,
+    conventionsMode: () => config.project.conventions,
   });
   const server =
     config.chat.channel === 'off'
