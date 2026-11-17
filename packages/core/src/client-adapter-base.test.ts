@@ -947,6 +947,21 @@ describe('FakeSessionTransport scripts', () => {
     expect(launcher.running).toEqual([]);
   });
 
+  it('write-file edits without asking, so the policy has nothing to refuse', async () => {
+    const { session, via } = await open();
+    const seen: string[] = [];
+    session.onUpdate((update) =>
+      seen.push('status' in update ? `${update.kind}:${String(update.status)}` : update.kind),
+    );
+    await expect(session.prompt(text('#script:write-file {"path":"a.txt"}'))).resolves.toEqual({
+      stopReason: 'end_turn',
+    });
+    expect(via.permissionRequests).toEqual([]);
+    expect(via.edits).toEqual(['a.txt']);
+    expect(seen).toEqual(['tool_call:in_progress', 'tool_call_update:completed']);
+    await session.close();
+  });
+
   it('hang ends with cancel and leaves no process', async () => {
     const { session, launcher } = await open();
     const turn = session.prompt(text('#script:hang'));

@@ -35,9 +35,11 @@ import type { AttemptOutcome, AttemptSpec } from './attempt-runner.js';
  *   finds in PATH), does `initialize` and `session/new` and ends it, in an EMPTY temporary
  *   profile. No prompt goes out.
  * - `OT_TEST_REAL_PROMPTS=1` (plus a logged-in profile and a model per client): the whole
- *   criterion of step 8, with one real Executor per enabled client plus one simulated (the fake
- *   agent over the real ACP transport), each in its own worktree: the stream as events, a
- *   timeout, the WIP commit and no process left.
+ *   criterion of step 8, with one real Executor per enabled client plus simulated ones (the fake
+ *   agent over the real ACP transport: `sim-edit` writes with `write-file`, which asks for no
+ *   permission, and `sim-refused` uses `edit-file`, which asks and is refused by `onAsk: reject`;
+ *   `simulated-acp.test.ts` runs these two without real clients), each in its own worktree: the
+ *   stream as events, a timeout, the WIP commit and no process left.
  *
  * A logged-in profile is pointed at, never copied, and is used as is and never deleted (the
  * pattern of `OT_TEST_OPENCODE_PROFILE_DIR` in `adapter-client-opencode`):
@@ -415,9 +417,17 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
               ),
             ),
           }));
+          // `write-file` writes with no permission request (a client whose mode already allows the
+          // edit); `edit-file` asks, and the policy rejects every ask (`onAsk: 'reject'`, 5.8).
           const edited = runner.run(
             simulated(
               'sim-edit',
+              '#script:write-file {"path":"sim.txt","content":"simulated\\n"}\nedit',
+            ),
+          );
+          const refused = runner.run(
+            simulated(
+              'sim-refused',
               '#script:edit-file {"path":"sim.txt","content":"simulated\\n"}\nedit',
             ),
           );
@@ -453,6 +463,25 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
             simulatedEdit.attemptId,
           );
           expect(simulatedTypes).toContain('attempt.checkpoint');
+          expect(await testGit(simulatedEdit.worktree, 'show', 'HEAD:sim.txt')).toBe('simulated');
+          // The refused edit: the ask was rejected over the real ACP transport, so the tool call
+          // failed, nothing was written and nothing was checkpointed.
+          const refusedEdit = await refused;
+          outcomes.push(refusedEdit);
+          expect(refusedEdit).toMatchObject({ state: 'completed', stopReason: 'end_turn' });
+          const refusedEvents = (await rig.daemon.store.events.readFrom(0, 100_000)).filter(
+            (event) => event.attemptId === refusedEdit.attemptId,
+          );
+          expect(refusedEvents.map((event) => event.type)).not.toContain('attempt.checkpoint');
+          expect(
+            refusedEvents.some(
+              (event) =>
+                event.type === 'session.update' &&
+                JSON.stringify(event.payload).includes('"kind":"tool_call_update"') &&
+                JSON.stringify(event.payload).includes('"status":"failed"'),
+            ),
+          ).toBe(true);
+          expect(await exists(join(refusedEdit.worktree, 'sim.txt'))).toBe(false);
 
           // 2. The timeout cuts what is still running: WIP commit, cancel, kill.
           await rig.clock.advance(TIMEOUT_MS);
