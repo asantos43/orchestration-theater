@@ -290,6 +290,8 @@ export class FrameworkMcpServer implements McpAccess {
           attemptId: record.input.attemptId,
           sessionId: record.sessionId,
           correlation: record.input.correlation,
+          worktree: record.input.worktree,
+          networkAllow: record.input.networkAllow ?? [],
           record: record.input.record,
         },
       });
