@@ -175,4 +175,46 @@ describe('the role-play script', () => {
     expect(run.calls.map((call) => call.tool)).toEqual(['next_action', 'ask_producer', 'decide']);
     expect(run.calls[2]?.args).toEqual({ decisionId: 'c1', payload: { answers: ['hello'] } });
   });
+
+  it('answers a simple chat question itself, and says so when it woke with the state summary', async () => {
+    const plain = host('#ot-chat two and two');
+    await playRolePlay(plain.host);
+    expect(plain.calls).toEqual([]);
+    expect(plain.said).toEqual(['answer: two and two']);
+    const woke = host('State of scenario "talk" (talk-1, chat).\n\n#ot-chat again');
+    await playRolePlay(woke.host);
+    expect(woke.said).toEqual(['woke with the state of talk-1', 'answer: again']);
+  });
+
+  it('hands a hard chat question to the consultant with its attachments', async () => {
+    const run = host('#ot-consult how to shard\n#ot-attach A1 A2', {
+      consult: { answer: 'x' },
+    });
+    await playRolePlay(run.host);
+    expect(run.calls).toEqual([
+      { tool: 'consult', args: { question: 'how to shard', attachments: ['A1', 'A2'] } },
+    ]);
+    expect(run.said[0]).toContain('consulted');
+  });
+
+  it('reads the attachments the Director names', async () => {
+    const run = host('#ot-read A1 A3');
+    await playRolePlay(run.host);
+    expect(run.calls.map((call) => call.args)).toEqual([{ id: 'A1' }, { id: 'A3' }]);
+    expect(run.said).toHaveLength(2);
+  });
+
+  it('plays the consultant: reads what the prompt lists and submits the answer', async () => {
+    const run = host(
+      'prefix\n#ot-role: consultant\n#ot-consult-ask: what is in it\n#ot-attachments: A1',
+      {
+        read_attachment: { kind: 'text', mime: 'text/plain', content: 'the note\n' },
+      },
+    );
+    await playRolePlay(run.host);
+    expect(run.calls.map((call) => call.tool)).toEqual(['read_attachment', 'submit']);
+    expect(run.calls[1]?.args).toEqual({
+      result: { answer: 'consulted on "what is in it" [A1 says the note]' },
+    });
+  });
 });

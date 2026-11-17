@@ -36,6 +36,26 @@ export const DurationSchema = z.string().transform((text, ctx) => {
   return ms;
 });
 
+const SIZE_PATTERN = /^(\d+)\s*(B|KB|MB|GB)$/i;
+const SIZE_UNIT_BYTES = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 } as const;
+
+/** `"50MB"` to bytes (binary multiples), or `undefined` when the text is not `<integer><B|KB|MB|GB>`. */
+export function parseSize(text: string): number | undefined {
+  const [, amount, unit] = SIZE_PATTERN.exec(text.trim()) ?? [];
+  if (amount === undefined || unit === undefined) return undefined;
+  return Number(amount) * SIZE_UNIT_BYTES[unit.toLowerCase() as keyof typeof SIZE_UNIT_BYTES];
+}
+
+/** A size written as text (`50MB`, `512KB`, `1GB`); the parsed value is bytes. Zero is allowed. */
+export const SizeSchema = z.string().transform((text, ctx) => {
+  const bytes = parseSize(text);
+  if (bytes === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'expected a size such as 512KB, 50MB or 1GB' });
+    return z.NEVER;
+  }
+  return bytes;
+});
+
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /** `"03:00"` as hour and minute, or `undefined` when it is not `HH:MM` (24 hours). */
@@ -654,6 +674,23 @@ export const DaemonConfigSchema = z.strictObject({
         .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
         .default(DEFAULT_DIRECTIVE_TIMEZONE),
       expiring_notice: DurationSchema.or(z.literal(0)).prefault('24h'),
+    })
+    .prefault({}),
+  /**
+   * Scenarios and the `chat` flow (architecture 5.20). `director_idle_after` is how long a Director
+   * stays idle before it sleeps (architecture default 15 minutes; `0` = never sleeps).
+   * `attachment_max_size` is the limit of an attachment copied into the data directory
+   * (architecture default 50 MB; `0` = no limit; a reference to a file is not copied, so it is not
+   * limited). [proposta] `attachment_read_max` is how much of an attachment `read_attachment`
+   * returns in one call; `consultant_alternatives` are the Executors tried after the consultant's
+   * own when the first cannot take the attachments (an image needs a client that accepts images).
+   */
+  scenarios: z
+    .strictObject({
+      director_idle_after: DurationSchema.or(z.literal(0)).prefault('15m'),
+      attachment_max_size: SizeSchema.or(z.literal(0)).prefault('50MB'),
+      attachment_read_max: SizeSchema.prefault('8MB'),
+      consultant_alternatives: z.array(PlayExecutorSchema).default([]),
     })
     .prefault({}),
   /**

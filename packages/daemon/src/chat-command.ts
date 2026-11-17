@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { JsonObject } from '@otheater/core';
@@ -11,8 +12,10 @@ import { ChannelClient, readChannelInfo } from './orchestration/channel-http.js'
 export const CHAT_POLL_MS = 300;
 
 export interface ChatOptions {
-  /** The repository the Director works on. */
-  readonly repo: string;
+  /** The type of scenario: `project` (default) or `chat`. */
+  readonly type?: string | undefined;
+  /** The repository the Director works on (a `project`). */
+  readonly repo?: string | undefined;
   readonly base?: string | undefined;
   readonly name?: string | undefined;
   /** What the Producer types: one message per line. */
@@ -83,7 +86,8 @@ export async function runChatCommand(
   }
   const client = new ChannelClient(info);
   const opened = await client.open({
-    repo: options.repo,
+    ...(options.type === undefined ? {} : { type: options.type }),
+    ...(options.repo === undefined ? {} : { repo: options.repo }),
     ...(options.base === undefined ? {} : { base: options.base }),
     ...(options.name === undefined ? {} : { name: options.name }),
   });
@@ -187,9 +191,37 @@ export async function runChatCommand(
     return true;
   };
 
+  /** The attachments made with `/attach` that the next message carries. */
+  const attached: string[] = [];
+  const attach = async (line: string): Promise<void> => {
+    const [, ...words] = line.trim().split(/\s+/);
+    const reference = words[0] === '--ref';
+    const path = (reference ? words.slice(1) : words).join(' ');
+    if (path === '') {
+      err(t('chat.attachUsage'));
+      return;
+    }
+    try {
+      const record = await client.attach(scenarioId, {
+        path: resolve(path),
+        ...(reference ? { mode: 'reference' as const } : {}),
+      });
+      attached.push(record.id);
+      out(t('chat.attached', record));
+    } catch (error) {
+      err(
+        t('chat.attachFailed', { message: error instanceof Error ? error.message : String(error) }),
+      );
+    }
+  };
+
   const handleLine = async (line: string): Promise<void> => {
     if (current === undefined) {
-      if (line.trim() !== '') await client.send(scenarioId, line);
+      if (/^\/attach(\s|$)/.test(line)) {
+        await attach(line);
+        return;
+      }
+      if (line.trim() !== '') await client.send(scenarioId, line, attached.splice(0));
       return;
     }
     const { ask } = current;

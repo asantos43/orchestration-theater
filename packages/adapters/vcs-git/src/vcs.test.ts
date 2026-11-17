@@ -387,6 +387,44 @@ describe('unusual file names', () => {
   });
 });
 
+describe('init', () => {
+  it('turns a plain folder into a repository with one empty commit, and worktrees work from it', async () => {
+    const vcs = new GitVcs();
+    const folder = join(root, 'plain', 'chat');
+    const made = await vcs.init(folder);
+    expect(made.branch).toBe('main');
+    expect(await testGit(folder, 'rev-list', '--count', 'HEAD')).toBe('1');
+    expect(made.head).toBe(await vcs.headOf(folder));
+    const info = await vcs.createWorktree({
+      repo: folder,
+      path: join(root, 'wt-chat'),
+      branch: 'consult/1',
+      base: 'main',
+    });
+    expect(info.head).toBe(made.head);
+  });
+
+  it('is idempotent and leaves an existing repository as it is', async () => {
+    const vcs = new GitVcs();
+    const before = await vcs.headOf(repo);
+    expect(await vcs.init(repo)).toEqual({ branch: 'main', head: before });
+    const folder = join(root, 'again');
+    const first = await vcs.init(folder, { branch: 'trunk' });
+    expect(await vcs.init(folder, { branch: 'trunk' })).toEqual(first);
+    expect(first.branch).toBe('trunk');
+  });
+
+  it('makes its own repository inside a folder of another one, and refuses a bad branch', async () => {
+    const vcs = new GitVcs();
+    const inner = join(repo, 'inner');
+    const made = await vcs.init(inner);
+    expect(made.head).not.toBe(await vcs.headOf(repo));
+    expect(await testGit(inner, 'rev-parse', '--show-toplevel')).toBe(await realpath(inner));
+    await expect(vcs.init(join(root, 'x'), { branch: '-bad' })).rejects.toThrow(/start with/);
+    await expect(vcs.init('relative/path')).rejects.toThrow(/absolute/);
+  });
+});
+
 describe('parsers', () => {
   it('parseWorktreeList reads main, branch, detached and skips a bare entry', () => {
     const output = [

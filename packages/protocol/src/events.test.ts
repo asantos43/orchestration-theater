@@ -46,6 +46,11 @@ describe('daemon event registry', () => {
       'directive.expired',
       'directive.revoked',
       'directive.suspended',
+      'scenario.created',
+      'scenario.attachment_added',
+      'scenario.director_slept',
+      'scenario.director_woke',
+      'scenario.chat_transitioned',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

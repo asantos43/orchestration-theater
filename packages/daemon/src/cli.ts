@@ -155,10 +155,12 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
       }
       case 'chat': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
-        const repo = values.repo ?? deps.cwd;
-        if (repo === undefined) return usageError(t('usage.missingRepo'));
+        const type = values.type ?? 'project';
+        const repo = values.repo ?? (type === 'project' ? deps.cwd : undefined);
+        if (type === 'project' && repo === undefined) return usageError(t('usage.missingRepo'));
         if (deps.input === undefined) return usageError(t('usage.noInput'));
         return await runChatCommand(context, {
+          type,
           repo,
           base: values.base,
           name: values.name,
@@ -185,6 +187,7 @@ function parseCliArgs(argv: readonly string[]) {
       repo: { type: 'string' },
       base: { type: 'string' },
       name: { type: 'string' },
+      type: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
       // The options of `ot directives`.

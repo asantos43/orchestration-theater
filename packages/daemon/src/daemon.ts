@@ -43,6 +43,7 @@ import { ToolHandlers } from './mcp/handlers.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
+import { ScenarioHandlers } from './scenarios/handlers.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
@@ -202,6 +203,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     const orchestrationHandlers = new OrchestrationHandlers();
+    const scenarioHandlers = new ScenarioHandlers();
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
     // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
     // The orders (5.17): the tools of the Director come from here, unless the caller already
@@ -226,7 +228,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       submitRetries: config.limits.submit_retries,
       // The read tools (P7) are built in; a handler the caller already registered wins.
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
-      handlers: orchestrationHandlers.register(registerReadTools(handlers, composition.store)),
+      handlers: scenarioHandlers.register(
+        orchestrationHandlers.register(registerReadTools(handlers, composition.store)),
+      ),
       logger: composition.logger,
       version,
       gate,
@@ -242,6 +246,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       version,
       prompts,
       orchestrationHandlers,
+      scenarioHandlers,
       gate,
     });
   } catch (error) {
@@ -265,6 +270,7 @@ interface RunInput {
   readonly version: string;
   readonly prompts: PromptSource;
   readonly orchestrationHandlers: OrchestrationHandlers;
+  readonly scenarioHandlers: ScenarioHandlers;
   readonly gate: RecoveryGate;
 }
 
@@ -357,6 +363,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       prompts,
       paths,
       handlers: input.orchestrationHandlers,
+      scenarioHandlers: input.scenarioHandlers,
       gate,
     });
   }

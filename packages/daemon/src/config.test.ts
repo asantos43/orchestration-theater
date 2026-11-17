@@ -372,6 +372,42 @@ describe('parseConfig, mcp and submit_retries (P3)', () => {
   });
 });
 
+describe('parseConfig, scenarios (architecture 5.20)', () => {
+  it('defaults: 15 minutes to sleep, 50 MB per attachment, 8 MB per read, no alternatives', () => {
+    const { scenarios } = parseConfig('');
+    expect(scenarios.director_idle_after).toBe(900_000);
+    expect(scenarios.attachment_max_size).toBe(50 * 1024 * 1024);
+    expect(scenarios.attachment_read_max).toBe(8 * 1024 * 1024);
+    expect(scenarios.consultant_alternatives).toEqual([]);
+  });
+
+  it('takes the modes: never sleep, no limit, sizes and alternatives', () => {
+    const custom = parseConfig(
+      'scenarios:\n  director_idle_after: 0\n  attachment_max_size: 0\n  attachment_read_max: 512KB\n' +
+        '  consultant_alternatives:\n    - { client: codex, profile: p, model: m }\n',
+    );
+    expect(custom.scenarios.director_idle_after).toBe(0);
+    expect(custom.scenarios.attachment_max_size).toBe(0);
+    expect(custom.scenarios.attachment_read_max).toBe(512 * 1024);
+    expect(custom.scenarios.consultant_alternatives).toEqual([
+      { client: 'codex', profile: 'p', model: 'm' },
+    ]);
+    expect(
+      parseConfig('scenarios:\n  director_idle_after: 2h\n').scenarios.director_idle_after,
+    ).toBe(7_200_000);
+  });
+
+  it('rejects a bad duration, a bad size and an unknown key', () => {
+    expect(() => parseConfig('scenarios:\n  director_idle_after: soon\n')).toThrow(
+      /director_idle_after/,
+    );
+    expect(() => parseConfig('scenarios:\n  attachment_max_size: big\n')).toThrow(
+      /attachment_max_size/,
+    );
+    expect(() => parseConfig('scenarios:\n  other: 1\n')).toThrow(/other/);
+  });
+});
+
 describe('parseConfig, directives (architecture 5.17)', () => {
   it('defaults to the Sao Paulo time zone and a notice 24 hours before the end', () => {
     const { directives } = parseConfig('');

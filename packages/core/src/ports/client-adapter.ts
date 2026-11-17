@@ -90,6 +90,14 @@ export interface ConformanceReport {
 /** Process model of the client adapter, measured in Phase 0 (architecture 5.2, "Pools"). */
 export type ProcessModel = 'process-per-session' | 'multi-session';
 
+/**
+ * The kinds of input beyond text a client can take in a prompt (architecture 5.20: "o
+ * `ClientAdapter` declara os tipos de entrada que aceita"). Text is always accepted.
+ * [proposta] The list; `image` is the only one P12 acts on.
+ */
+export const INPUT_TYPES = ['image', 'audio', 'pdf'] as const;
+export type InputType = (typeof INPUT_TYPES)[number];
+
 /** What only this client offers, announced at `initialize` (architecture 5.2). */
 export interface ClientCapabilities {
   /** The client can reload a conversation (`session/load`). */
@@ -102,6 +110,12 @@ export interface ClientCapabilities {
   readonly headless: boolean;
   /** Names of the `_otheater/<resource>` extension methods the shell exposes. */
   readonly extensions: readonly string[];
+  /**
+   * Input types besides text the client accepts (an image attachment, say). [proposta] Absent
+   * means text only: an adapter that cannot verify the answer leaves it out, so no demand with an
+   * image ever reaches it. The real adapters do not declare it yet.
+   */
+  readonly inputTypes?: readonly InputType[];
 }
 
 export const LOGIN_MODES = ['browser', 'device_code', 'terminal'] as const;

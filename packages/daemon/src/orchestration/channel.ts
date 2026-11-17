@@ -1,29 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createHash } from 'node:crypto';
-import { basename, resolve } from 'node:path';
 import {
+  type AttachmentRecord,
   Conflict,
   type DecisionRecord,
   type JsonObject,
   InvalidInput,
   NotFound,
   type Store,
-  supportsHistory,
-  type Vcs,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import type { PlayRunner } from '../pipeline/index.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
+import type { AttachmentService } from '../scenarios/attachments.js';
+import { type ScenarioService, projectScenarioId } from '../scenarios/service.js';
 import type { DirectorReply, DirectorSessions } from './director.js';
 import type { QuestionBoard } from './handlers.js';
 import { DECISION_KINDS } from './play-effects.js';
 
-/** The flow of a scenario the chat opens (the play flow: the Director opens plays in it). */
-const CHAT_FLOW_ID = 'play';
-
 export interface ProducerChannelOptions {
   readonly store: Store;
-  readonly vcs: Vcs;
+  readonly scenarios: ScenarioService;
+  readonly attachments: AttachmentService;
   readonly directors: DirectorSessions;
   readonly dispatcher: PromptDispatcher;
   readonly runner: PlayRunner;
@@ -32,8 +29,10 @@ export interface ProducerChannelOptions {
 }
 
 export interface OpenChatInput {
-  /** The repository the Director works on. */
-  readonly repo: string;
+  /** The type of the scenario (a key of the scenario type registry). Default `project`. */
+  readonly type?: string;
+  /** The repository the Director works on: required by a `project`, not used by a `chat`. */
+  readonly repo?: string;
   /** The branch plays start from and deliver to. Default `main`. */
   readonly base?: string;
   /** A name for the scenario. Default: the name of the folder. */
@@ -60,21 +59,8 @@ export interface ChatPoll {
   readonly busy: boolean;
 }
 
-function slugOf(text: string): string {
-  const slug = text
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '')
-    .slice(0, 32);
-  return slug === '' ? 'repo' : slug;
-}
-
 /** The id of the scenario of a repository: stable, so `ot chat` in the same folder returns to it. */
-export function chatScenarioId(repo: string): string {
-  const path = resolve(repo);
-  const digest = createHash('sha1').update(path).digest('hex').slice(0, 8);
-  return `chat-${slugOf(basename(path))}-${digest}`;
-}
+export const chatScenarioId = projectScenarioId;
 
 /**
  * The Producer's side of the daemon (decision N78, "ot chat" mínimo): opens the scenario and its
@@ -92,49 +78,66 @@ export class ProducerChannel {
   }
 
   /**
-   * Makes sure the scenario of the repository exists and its Director is open. [proposta] `ot chat
-   * --repo <folder>` is the way to get a scenario until the scenarios step (P12) has its own
-   * commands; it makes a `project` scenario with the default flow.
+   * Makes sure the scenario exists and its Director is open. [proposta] `ot chat` opens a
+   * `project` scenario on a repository (the default, as in P8) or, with `type: 'chat'`, a generic
+   * chat with a folder of its own; the type comes from the scenario type registry (5.20).
    */
   async openChat(input: OpenChatInput): Promise<{ scenarioId: string; cursor: number }> {
-    const { store, vcs, directors } = this.#options;
-    const path = resolve(input.repo);
-    const base = input.base ?? 'main';
-    try {
-      if (!supportsHistory(vcs)) throw new Error('the Vcs adapter cannot read refs');
-      await vcs.resolveRef(path, base);
-    } catch (error) {
-      throw new InvalidInput(
-        `"${path}" is not a git repository with a "${base}" branch: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    const scenarioId = chatScenarioId(path);
-    if ((await store.scenarios.get(scenarioId)) === undefined) {
-      await store.scenarios.create({
-        id: scenarioId,
-        kind: 'project',
-        flowId: CHAT_FLOW_ID,
-        name: input.name ?? basename(path),
-        folder: path,
-        profile: 'software',
-        baseBranch: base,
-      });
-    }
-    await store.scenarioRepos.put({ scenarioId, path, mainBranch: base });
+    const { scenarios, directors } = this.#options;
+    const { scenario } = await scenarios.create({
+      type: input.type ?? 'project',
+      ...(input.repo === undefined ? {} : { repo: input.repo }),
+      ...(input.base === undefined ? {} : { base: input.base }),
+      ...(input.name === undefined ? {} : { name: input.name }),
+    });
+    const scenarioId = scenario.id;
     await directors.ensure(scenarioId);
     const replies = directors.replies(scenarioId, 0);
     return { scenarioId, cursor: replies[replies.length - 1]?.seq ?? 0 };
   }
 
+  /**
+   * Attaches a file of the Producer's machine (or a pasted text) to the scenario: it becomes
+   * `A<n>`, which the Director and the consultant read with `read_attachment` (5.20).
+   */
+  async attach(
+    scenarioId: string,
+    input:
+      | { readonly path: string; readonly mode?: 'copy' | 'reference' }
+      | { readonly text: string; readonly name?: string },
+  ): Promise<AttachmentRecord> {
+    const { store, attachments } = this.#options;
+    if ((await store.scenarios.get(scenarioId)) === undefined) {
+      throw new NotFound(`There is no scenario "${scenarioId}"`);
+    }
+    return 'text' in input
+      ? attachments.addText(scenarioId, input)
+      : attachments.addFile(scenarioId, input);
+  }
+
   /** Puts a message of the Producer in the queue; the Director gets it when its turn comes. */
-  async send(scenarioId: string, text: string): Promise<void> {
+  async send(
+    scenarioId: string,
+    text: string,
+    attachmentIds: readonly string[] = [],
+  ): Promise<void> {
     const { store, dispatcher, directors } = this.#options;
     if ((await store.scenarios.get(scenarioId)) === undefined) {
       throw new NotFound(`There is no scenario "${scenarioId}"`);
     }
     if (text.trim() === '') throw new InvalidInput('The message is empty');
+    // [proposta] The message names its attachments (id, name, type, size); their content is read
+    // with `read_attachment`, never pasted into the prompt.
+    const lines: string[] = [];
+    for (const id of attachmentIds) {
+      const record = await store.attachments.get(scenarioId, id);
+      if (record === undefined)
+        throw new NotFound(`There is no attachment "${id}" in this scenario`);
+      lines.push(`- ${record.id}: ${record.name} (${record.mime}, ${String(record.size)} bytes)`);
+    }
+    const body = lines.length === 0 ? text : `${text}\n\nAttachments:\n${lines.join('\n')}`;
     await directors.ensure(scenarioId);
-    await dispatcher.submit({ scenarioId, source: 'producer', text });
+    await dispatcher.submit({ scenarioId, source: 'producer', text: body });
   }
 
   async poll(scenarioId: string, since: number): Promise<ChatPoll> {

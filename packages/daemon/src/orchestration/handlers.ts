@@ -21,6 +21,7 @@ import {
   type JudgmentPointId,
   type PlayRunner,
 } from '../pipeline/index.js';
+import type { ChatFlow } from '../scenarios/chat-flow.js';
 import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
 import { DECISION_KINDS } from './play-effects.js';
@@ -84,6 +85,8 @@ export interface OrchestrationRuntime {
   readonly directors: DirectorSessions;
   readonly config: DaemonConfig;
   readonly logger: Logger;
+  /** The state machine of the `chat` flow (P12): told when a question to the Producer opens or ends. */
+  readonly chatFlow?: ChatFlow | undefined;
 }
 
 function limitsOf(config: DaemonConfig): PlayLimits {
@@ -402,14 +405,19 @@ export class OrchestrationHandlers {
       input: { questions: JSON.parse(JSON.stringify(input.questions)) as JsonValue },
     });
     const waiting = this.board.wait(id);
+    await rt.chatFlow?.sync(scenarioId, 'ask_producer', { decisionId: id });
     try {
       const answer = await waiting;
+      await rt.chatFlow?.sync(scenarioId, 'producer_answered', { decisionId: id });
       // The channel sends `{answers: [...]}`; anything else is passed on whole.
       return {
         answers: isRecord(answer) && 'answers' in answer ? (answer.answers ?? null) : answer,
       };
     } catch (error) {
       await rt.store.decisions.cancel(id).catch(() => undefined);
+      await rt.chatFlow
+        ?.sync(scenarioId, 'ask_cancelled', { decisionId: id })
+        .catch(() => undefined);
       return new ToolFailure(
         'daemon_stopping',
         error instanceof Error ? error.message : 'The question was not answered.',
