@@ -1,0 +1,509 @@
+// SPDX-License-Identifier: MPL-2.0
+import { Conflict, InvalidInput, NotFound, type StoreTransaction } from '@otheater/core';
+import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PLAY_FLOW_ID, PLAY_FLOW_VERSION } from './definitions.js';
+import type { PlayEffect, PlayEffects, PlayEffectScope } from './effects.js';
+import { limitsOf } from './model-fixture.js';
+import { PlayRunner, restorePlay } from './runner.js';
+
+/** Keeps what was dispatched, in order. */
+class FakeEffects implements PlayEffects {
+  readonly dispatched: { effect: PlayEffect; scope: PlayEffectScope }[] = [];
+  failWith: Error | null = null;
+
+  dispatch(effect: PlayEffect, scope: PlayEffectScope): Promise<void> {
+    this.dispatched.push({ effect, scope });
+    return this.failWith === null ? Promise.resolve() : Promise.reject(this.failWith);
+  }
+
+  types(): string[] {
+    return this.dispatched.map((entry) => entry.effect.type);
+  }
+
+  last<T extends PlayEffect['type']>(type: T): Extract<PlayEffect, { type: T }> {
+    const found = [...this.dispatched].reverse().find((entry) => entry.effect.type === type);
+    if (found === undefined) throw new Error(`no ${type} dispatched: ${this.types().join(',')}`);
+    return found.effect as Extract<PlayEffect, { type: T }>;
+  }
+
+  clear(): void {
+    this.dispatched.length = 0;
+  }
+}
+
+/** A store whose next transaction can be made to fail after its work, to prove the rollback. */
+class FlakyStore extends InMemoryStore {
+  failNextCommit = false;
+
+  override transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
+    return super.transaction(async (tx) => {
+      const result = await fn(tx);
+      if (this.failNextCommit) {
+        this.failNextCommit = false;
+        throw new Error('disk full');
+      }
+      return result;
+    });
+  }
+}
+
+const LIMITS = limitsOf('moderate');
+const NEED = 'build the thing';
+
+describe('PlayRunner', () => {
+  let clock: FakeClock;
+  let store: FlakyStore;
+  let effects: FakeEffects;
+  let runner: PlayRunner;
+
+  const newRunner = (): PlayRunner => new PlayRunner({ store, clock, effects });
+  const create = (playId = 'p1') =>
+    runner.create({ playId, scenarioId: 's1', need: NEED, limits: LIMITS });
+  const stateOf = async (playId = 'p1') => (await store.plays.get(playId))?.state;
+  /** NEED -> EXECUTING with demands d1 and d2. */
+  const toExecuting = async (playId = 'p1') => {
+    await runner.send(playId, { type: 'START' });
+    await runner.send(playId, { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+    await runner.send(playId, { type: 'PLAN_REVIEWED', approved: true });
+    await runner.send(playId, { type: 'SCRIPT_VALIDATED', valid: true, demandIds: ['d1', 'd2'] });
+    await runner.send(playId, { type: 'SCRIPT_REVIEWED', approved: true });
+  };
+
+  beforeEach(() => {
+    clock = new FakeClock();
+    store = new FlakyStore({ clock });
+    effects = new FakeEffects();
+    runner = newRunner();
+  });
+
+  afterEach(async () => {
+    await runner.close();
+  });
+
+  describe('create', () => {
+    it('writes the play in NEED with its first snapshot, and play.created', async () => {
+      const record = await create();
+      expect(record).toMatchObject({
+        id: 'p1',
+        scenarioId: 's1',
+        need: NEED,
+        flowId: PLAY_FLOW_ID,
+        flowVersion: PLAY_FLOW_VERSION,
+        state: 'NEED',
+        counters: {},
+      });
+      expect(record.snapshot).not.toBeNull();
+      const events = await store.events.readFrom(0, 10);
+      expect(events.map((event) => event.type)).toEqual(['play.created']);
+      expect(events[0]).toMatchObject({ playId: 'p1', scenarioId: 's1' });
+      expect(restorePlay(record).value).toBe('NEED');
+    });
+
+    it('does not start any effect: the play only starts with START', async () => {
+      await create();
+      expect(effects.dispatched).toEqual([]);
+    });
+
+    it('refuses a second play with the same id', async () => {
+      await create();
+      await expect(create()).rejects.toBeInstanceOf(Conflict);
+    });
+  });
+
+  describe('send', () => {
+    it('in one transaction: the state, the snapshot, the counters and play.transitioned', async () => {
+      await create();
+      const record = await runner.send('p1', { type: 'START' });
+      expect(record.state).toBe('PLANNING');
+      expect((await store.plays.get('p1'))?.snapshot).toMatchObject({ value: 'PLANNING' });
+      const events = await store.events.readFrom(0, 10);
+      expect(events.map((event) => event.type)).toEqual(['play.created', 'play.transitioned']);
+      expect(events[1]?.payload).toMatchObject({
+        event: 'START',
+        from: 'NEED',
+        to: 'PLANNING',
+        effects: ['run_stage'],
+      });
+    });
+
+    it('writes the counters of the machine in the record', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      await runner.send('p1', { type: 'PLAN_REVIEWED', approved: false, reason: 'weak' });
+      expect((await store.plays.get('p1'))?.counters).toEqual({ plan_reviews: 1 });
+      expect(await stateOf()).toBe('PLANNING');
+    });
+
+    it('starts the effects of the transition only after the commit, in order', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      expect(effects.dispatched).toHaveLength(1);
+      expect(effects.dispatched[0]).toMatchObject({
+        effect: { type: 'run_stage', stage: 'PLANNING', role: 'author' },
+        scope: { playId: 'p1', scenarioId: 's1' },
+      });
+    });
+
+    it('a transaction that fails keeps the old state, and dispatches nothing', async () => {
+      await create();
+      await runner.send('p1', { type: 'START', dispenseCritic: { reason: 'small change' } });
+      effects.clear();
+      const before = await store.plays.get('p1');
+      const eventsBefore = await store.events.lastId();
+      store.failNextCommit = true;
+      await expect(
+        runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false }),
+      ).rejects.toThrow('disk full');
+      expect(await store.plays.get('p1')).toEqual(before);
+      expect(await store.events.lastId()).toBe(eventsBefore);
+      expect(await store.decisions.list({ playId: 'p1' })).toHaveLength(1);
+      expect(effects.dispatched).toEqual([]);
+      // the same event goes through afterwards
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      expect(await stateOf()).toBe('REVIEWING_PLAN');
+    });
+
+    it('a failing effect does not undo the saved state', async () => {
+      const warnings: string[] = [];
+      runner = new PlayRunner({
+        store,
+        clock,
+        effects,
+        logger: { warn: (_fields, message) => void warnings.push(message) },
+      });
+      await create();
+      effects.failWith = new Error('no session');
+      const record = await runner.send('p1', { type: 'START' });
+      expect(record.state).toBe('PLANNING');
+      expect(warnings).toEqual(['play effect not started']);
+    });
+
+    it('records the waiver of the Critic as a decision, in the same transaction as START', async () => {
+      await create();
+      await runner.send('p1', { type: 'START', dispenseCritic: { reason: 'it is a typo fix' } });
+      const decisions = await store.decisions.list({ playId: 'p1' });
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0]).toMatchObject({
+        id: 'p1:d1',
+        kind: 'dispense_critic',
+        decidedBy: 'producer',
+        answer: { reason: 'it is a typo fix' },
+      });
+    });
+
+    it('records the decisions of the menu with consecutive ids', async () => {
+      await create();
+      await runner.send('p1', { type: 'START', dispenseCritic: { reason: 'x' } });
+      for (let i = 0; i <= LIMITS.plan_reviews; i += 1) {
+        await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+        await runner.send('p1', { type: 'PLAN_REVIEWED', approved: false });
+      }
+      expect(await stateOf()).toBe('AWAITING_PRODUCER');
+      expect(effects.last('ask_menu').options).toContain('raise_limit');
+      await runner.send('p1', { type: 'PRODUCER_CHOSE', option: 'raise_limit' });
+      const decisions = await store.decisions.list({ playId: 'p1' });
+      expect(decisions.map((d) => [d.id, d.kind])).toEqual([
+        ['p1:d1', 'dispense_critic'],
+        ['p1:d2', 'menu_choice'],
+      ]);
+    });
+
+    it('marks the end of the play with finishedAt', async () => {
+      await create();
+      await runner.send('p1', { type: 'CANCEL', reason: 'changed my mind' });
+      const record = await store.plays.get('p1');
+      expect(record).toMatchObject({ state: 'CANCELLED', finishedAt: clock.now() });
+      expect(effects.types()).toEqual(['abort_work']);
+    });
+
+    it('refuses an invalid event with InvalidInput, before touching the store', async () => {
+      await create();
+      const last = await store.events.lastId();
+      await expect(runner.send('p1', { type: 'START', extra: true })).rejects.toBeInstanceOf(
+        InvalidInput,
+      );
+      await expect(runner.send('p1', { type: 'NOPE' })).rejects.toBeInstanceOf(InvalidInput);
+      await expect(runner.send('p1', 'START')).rejects.toBeInstanceOf(InvalidInput);
+      expect(await store.events.lastId()).toBe(last);
+    });
+
+    it('NotFound for a play that does not exist', async () => {
+      await expect(runner.send('ghost', { type: 'START' })).rejects.toBeInstanceOf(NotFound);
+      await expect(runner.resume('ghost')).rejects.toBeInstanceOf(NotFound);
+    });
+
+    it('Conflict for an event the state does not take, and the play stays as it was', async () => {
+      await create();
+      const before = await store.plays.get('p1');
+      await expect(
+        runner.send('p1', { type: 'PLAN_REVIEWED', approved: true }),
+      ).rejects.toBeInstanceOf(Conflict);
+      expect(await store.plays.get('p1')).toEqual(before);
+    });
+
+    it('Conflict for any event after the play finished', async () => {
+      await create();
+      await runner.send('p1', { type: 'CANCEL' });
+      await expect(runner.send('p1', { type: 'START' })).rejects.toBeInstanceOf(Conflict);
+      await expect(runner.send('p1', { type: 'CANCEL' })).rejects.toBeInstanceOf(Conflict);
+    });
+
+    it('serializes the events of one play: two at once, the second sees the first', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      const results = await Promise.allSettled([
+        runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false }),
+        runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false }),
+        runner.send('p1', { type: 'PLAN_REVIEWED', approved: true }),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected', 'fulfilled']);
+      expect(await stateOf()).toBe('SCRIPTING');
+    });
+
+    it('keeps two plays apart', async () => {
+      await create('p1');
+      await create('p2');
+      await Promise.all([
+        runner.send('p1', { type: 'START' }),
+        runner.send('p2', { type: 'CANCEL' }),
+      ]);
+      expect(await stateOf('p1')).toBe('PLANNING');
+      expect(await stateOf('p2')).toBe('CANCELLED');
+    });
+  });
+
+  describe('save and restore', () => {
+    it('a new runner on the same store continues from the same state, counters included', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      await runner.send('p1', { type: 'PLAN_REVIEWED', approved: false, reason: 'weak' });
+      await runner.close();
+
+      const again = new PlayRunner({ store, clock, effects });
+      runner = again;
+      expect(await stateOf()).toBe('PLANNING');
+      // PLANNING again after one rejection: the counter survived and the plan goes on
+      await again.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      await again.send('p1', { type: 'PLAN_REVIEWED', approved: true });
+      expect(await stateOf()).toBe('SCRIPTING');
+      expect((await store.plays.get('p1'))?.counters).toEqual({ plan_reviews: 1 });
+    });
+
+    it('resume asks for the effects of the state again', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      effects.clear();
+      await runner.close();
+
+      runner = newRunner();
+      await runner.resume('p1');
+      expect(effects.dispatched).toHaveLength(1);
+      expect(effects.dispatched[0]?.effect).toMatchObject({
+        type: 'run_stage',
+        stage: 'REVIEWING_PLAN',
+        role: 'reviewer',
+      });
+    });
+
+    it('resume of a finished play does nothing', async () => {
+      await create();
+      await runner.send('p1', { type: 'CANCEL' });
+      effects.clear();
+      await runner.resume('p1');
+      expect(effects.dispatched).toEqual([]);
+    });
+
+    it('resume asks again for the open judgments, and not for the demand that waits for one', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1' });
+      await runner.send('p1', { type: 'ACTOR_TIMED_OUT', demandId: 'd1' });
+      effects.clear();
+      await runner.close();
+
+      runner = newRunner();
+      await runner.resume('p1');
+      expect(effects.last('judge')).toMatchObject({ point: 'actor_timeout', demandId: 'd1' });
+      expect(effects.last('run_demands').demandIds).toEqual(['d2']);
+    });
+
+    it('a snapshot of another version of the flow is refused, and the play is not touched', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.close();
+      const saved = await store.plays.get('p1');
+      expect(saved).toBeDefined();
+      // simulates a play saved by another version of the flow
+      const other = PLAY_FLOW_VERSION + 1;
+      await store.transaction(async (tx) => {
+        await tx.plays.create({
+          id: 'old',
+          scenarioId: 's1',
+          need: NEED,
+          flowId: PLAY_FLOW_ID,
+          flowVersion: other,
+          state: 'PLANNING',
+          snapshot: saved?.snapshot ?? null,
+          counters: {},
+        });
+      });
+      const before = await store.plays.get('old');
+
+      const warnings: Record<string, unknown>[] = [];
+      runner = new PlayRunner({
+        store,
+        clock,
+        effects,
+        logger: { warn: (fields) => void warnings.push(fields) },
+      });
+      await expect(
+        runner.send('old', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false }),
+      ).rejects.toThrow(/version/);
+      await expect(runner.send('old', { type: 'CANCEL' })).rejects.toBeInstanceOf(Conflict);
+      await expect(runner.resume('old')).rejects.toBeInstanceOf(Conflict);
+      expect(await store.plays.get('old')).toEqual(before);
+      expect(await store.events.readFrom(0, 50)).not.toContainEqual(
+        expect.objectContaining({ playId: 'old', type: 'play.transitioned' }),
+      );
+
+      // resumeAll skips it, and the others go on
+      const result = await runner.resumeAll();
+      expect(result).toEqual({ resumed: ['p1'], refused: ['old'] });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ playId: 'old' });
+    });
+
+    it('a record that says the current version but holds a snapshot of another is refused too', async () => {
+      const record = await create();
+      const snapshot = record.snapshot as { context: Record<string, unknown> };
+      const tampered = {
+        ...record,
+        snapshot: {
+          ...snapshot,
+          context: { ...snapshot.context, flowVersion: PLAY_FLOW_VERSION + 1 },
+        },
+      };
+      expect(() => restorePlay(tampered)).toThrow(Conflict);
+      expect(() => restorePlay({ ...record, snapshot: null })).toThrow(/no snapshot/);
+      expect(() => restorePlay({ ...record, flowId: 'task.run' })).toThrow(/task\.run/);
+    });
+  });
+
+  describe('deadlines, with the FakeClock', () => {
+    const minutes = (n: number) => n * 60_000;
+
+    it('arms a timer for each started demand, at the deadline of the machine', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1' });
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd2', timeoutMin: 5 });
+      const now = clock.now();
+      expect(runner.armedDeadlines('p1')).toEqual({
+        d1: now + LIMITS.demand_timeout,
+        d2: now + minutes(5),
+      });
+      expect(clock.pendingSleeps).toBe(2);
+    });
+
+    it('when the time comes, ACTOR_TIMED_OUT reaches the machine and the judgment opens', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      effects.clear();
+
+      await clock.advance(minutes(4));
+      await runner.idle();
+      expect(await stateOf()).toBe('EXECUTING');
+      expect(effects.dispatched).toEqual([]);
+
+      await clock.advance(minutes(1));
+      await runner.idle();
+      expect(effects.last('judge')).toMatchObject({ point: 'actor_timeout', demandId: 'd1' });
+      const record = await store.plays.get('p1');
+      expect(record?.snapshot).toMatchObject({
+        context: { openJudgments: [{ point: 'actor_timeout', demandId: 'd1' }], deadlines: {} },
+      });
+      expect(runner.armedDeadlines('p1')).toEqual({});
+      expect(clock.pendingSleeps).toBe(0);
+    });
+
+    it('a demand that finishes in time cancels its timer, and nothing fires', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      await runner.send('p1', { type: 'DEMAND_APPROVED', demandId: 'd1' });
+      expect(runner.armedDeadlines('p1')).toEqual({});
+      expect(clock.pendingSleeps).toBe(0);
+      effects.clear();
+      const last = await store.events.lastId();
+      await clock.advance(minutes(60));
+      await runner.idle();
+      expect(effects.dispatched).toEqual([]);
+      expect(await store.events.lastId()).toBe(last);
+    });
+
+    it('the events carry the time of the clock: a deadline counts from when the demand started', async () => {
+      await create();
+      await toExecuting();
+      await clock.advance(minutes(10));
+      const startedAt = clock.now();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      expect(runner.armedDeadlines('p1')).toEqual({ d1: startedAt + minutes(5) });
+    });
+
+    it('a restart re-arms the deadlines from the snapshot, and one already past fires at once', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd2', timeoutMin: 20 });
+      const start = clock.now();
+      await runner.close();
+      expect(clock.pendingSleeps).toBe(0);
+
+      await clock.advance(minutes(10)); // the daemon was down for 10 minutes
+      effects.clear();
+      runner = newRunner();
+      await runner.resume('p1');
+      expect(runner.armedDeadlines('p1')).toEqual({
+        d1: start + minutes(5),
+        d2: start + minutes(20),
+      });
+      await clock.advance(0);
+      await runner.idle();
+      expect(effects.last('judge')).toMatchObject({ point: 'actor_timeout', demandId: 'd1' });
+      expect(runner.armedDeadlines('p1')).toEqual({ d2: start + minutes(20) });
+
+      await clock.advance(minutes(10));
+      await runner.idle();
+      expect(effects.dispatched.filter((entry) => entry.effect.type === 'judge')).toHaveLength(2);
+      expect(await stateOf()).toBe('EXECUTING');
+    });
+
+    it('close stops the timers: time goes by and nothing is sent', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      await runner.close();
+      const last = await store.events.lastId();
+      await clock.advance(minutes(60));
+      await runner.idle();
+      expect(await store.events.lastId()).toBe(last);
+      await expect(
+        runner.send('p1', { type: 'DEMAND_APPROVED', demandId: 'd1' }),
+      ).rejects.toBeInstanceOf(Conflict);
+    });
+
+    it('a play that ends drops its timers', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1' });
+      await runner.send('p1', { type: 'CANCEL' });
+      expect(runner.armedDeadlines('p1')).toEqual({});
+      expect(clock.pendingSleeps).toBe(0);
+    });
+  });
+});

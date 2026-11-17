@@ -142,6 +142,93 @@ export const RESUME_PRESETS = {
   },
 } as const;
 
+export const LIMIT_PRESET_NAMES = ['moderate', 'economical', 'persistent'] as const;
+export type LimitPresetName = (typeof LIMIT_PRESET_NAMES)[number];
+
+/** The counters and timeouts of `limits` (architecture 5.4), as the pipeline reads them. */
+export interface PlayLimits {
+  readonly plan_reviews: number;
+  readonly critic_rejections: number;
+  readonly attempts_per_demand: number;
+  readonly script_validations: number;
+  readonly script_vetoes: number;
+  readonly script_returns: number;
+  readonly structural_restarts: number;
+  readonly submit_retries: number;
+  /** Milliseconds. */
+  readonly demand_timeout: number;
+  /** Milliseconds. */
+  readonly demand_timeout_max: number;
+}
+
+/** The resolved `limits` of the configuration: the values plus the name of the preset. */
+export interface ResolvedLimits extends PlayLimits {
+  readonly preset: LimitPresetName;
+}
+
+/**
+ * The three presets of `limits` (architecture 5.4, table "Predefinição"; `submit_retries` is the
+ * N79 column). A preset fills every value at once and an individual key overrides only its own.
+ */
+export const LIMIT_PRESETS: Readonly<Record<LimitPresetName, PlayLimits>> = {
+  moderate: {
+    plan_reviews: 2,
+    critic_rejections: 2,
+    attempts_per_demand: 3,
+    script_validations: 3,
+    script_vetoes: 2,
+    script_returns: 2,
+    structural_restarts: 1,
+    submit_retries: 2,
+    demand_timeout: 30 * 60_000,
+    demand_timeout_max: 2 * 3_600_000,
+  },
+  economical: {
+    plan_reviews: 1,
+    critic_rejections: 1,
+    attempts_per_demand: 2,
+    script_validations: 2,
+    script_vetoes: 1,
+    script_returns: 1,
+    structural_restarts: 0,
+    submit_retries: 1,
+    demand_timeout: 20 * 60_000,
+    demand_timeout_max: 3_600_000,
+  },
+  persistent: {
+    plan_reviews: 3,
+    critic_rejections: 3,
+    attempts_per_demand: 4,
+    script_validations: 4,
+    script_vetoes: 3,
+    script_returns: 3,
+    structural_restarts: 2,
+    submit_retries: 3,
+    demand_timeout: 45 * 60_000,
+    demand_timeout_max: 3 * 3_600_000,
+  },
+};
+
+/** Fills the keys the user did not write from the preset. */
+function resolveLimits(
+  limits: { preset: LimitPresetName } & { [K in keyof PlayLimits]?: number | undefined },
+): ResolvedLimits {
+  const preset = LIMIT_PRESETS[limits.preset];
+  return {
+    preset: limits.preset,
+    plan_reviews: limits.plan_reviews ?? preset.plan_reviews,
+    critic_rejections: limits.critic_rejections ?? preset.critic_rejections,
+    attempts_per_demand: limits.attempts_per_demand ?? preset.attempts_per_demand,
+    script_validations: limits.script_validations ?? preset.script_validations,
+    script_vetoes: limits.script_vetoes ?? preset.script_vetoes,
+    script_returns: limits.script_returns ?? preset.script_returns,
+    structural_restarts: limits.structural_restarts ?? preset.structural_restarts,
+    submit_retries: limits.submit_retries ?? preset.submit_retries,
+    demand_timeout: limits.demand_timeout ?? preset.demand_timeout,
+    demand_timeout_max: limits.demand_timeout_max ?? preset.demand_timeout_max,
+  };
+}
+
 /** `all` (one step for the whole database) or a page count per step, an integer >= 1. */
 export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
 
@@ -343,15 +430,32 @@ export const DaemonConfigSchema = z.strictObject({
       }).prefault({}),
     })
     .prefault({}),
-  /** The timeout keys of `limits` (architecture 5.4); the other keys of that group are not wired yet. */
+  /**
+   * Limits of the pipeline (architecture 5.4). Resolved: the preset is already applied, and an
+   * individual key overrides only its own value.
+   */
   limits: z
     .strictObject({
+      preset: z.enum(LIMIT_PRESET_NAMES).default('moderate'),
+      /** `Np`: plan rejections that go back to PLANNING; one more goes to the Producer. */
+      plan_reviews: z.int().min(0).optional(),
+      /** `Nc`: Critic rejections before the failure becomes structural. */
+      critic_rejections: z.int().min(0).optional(),
+      /** Attempts per demand, the first one included. */
+      attempts_per_demand: z.int().min(1).optional(),
+      script_validations: z.int().min(0).optional(),
+      script_vetoes: z.int().min(0).optional(),
+      script_returns: z.int().min(0).optional(),
+      structural_restarts: z.int().min(0).optional(),
+      /** Invalid `submit*` outputs handed back to the Executor before the failure (N79). */
+      submit_retries: z.int().min(0).optional(),
       /** When the plan does not set `timeoutMin` for the demand. */
-      demand_timeout: DurationSchema.prefault('30m'),
+      demand_timeout: DurationSchema.optional(),
       /** Ceiling of what the plan may ask for. */
-      demand_timeout_max: DurationSchema.prefault('2h'),
+      demand_timeout_max: DurationSchema.optional(),
     })
     .prefault({})
+    .transform(resolveLimits)
     .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {
       message: 'demand_timeout must not exceed demand_timeout_max',
       path: ['demand_timeout'],

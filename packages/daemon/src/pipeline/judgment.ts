@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: MPL-2.0
+import { z } from 'zod';
+import { CRITICAL_EXCEPTIONS, FAILURE_KINDS } from './definitions.js';
+
+/**
+ * The judgment points of the Director (architecture 5.4): the only places where its model decides,
+ * each with a schema. The list is closed and comes from the code. A point names the flows it
+ * belongs to; the play machine only opens the ones of `play`.
+ */
+export const JUDGMENT_POINT_IDS = [
+  'classify_critique',
+  'actor_timeout',
+  'consult_producer',
+  'chat_consult',
+  'task_step_failed',
+  'refusal_or_permission',
+  'resumes_exceeded',
+  'dependency_redone',
+] as const;
+export type JudgmentPointId = (typeof JUDGMENT_POINT_IDS)[number];
+
+/** One failure the Director found in a critique. */
+export const CritiqueFailureSchema = z
+  .strictObject({
+    kind: z.enum(FAILURE_KINDS),
+    /** The demands the failure is about (needed for an `execution` failure). */
+    demandIds: z.array(z.string().min(1)).optional(),
+    /** The critical exception (needed for a `critical_exception` failure). */
+    exception: z.enum(CRITICAL_EXCEPTIONS).optional(),
+    note: z.string().optional(),
+  })
+  .superRefine((failure, ctx) => {
+    if (failure.kind === 'execution' && (failure.demandIds?.length ?? 0) === 0) {
+      ctx.addIssue({ code: 'custom', message: 'an execution failure lists the affected demands' });
+    }
+    if (failure.kind === 'critical_exception' && failure.exception === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'a critical exception names the exception' });
+    }
+  });
+export type CritiqueFailure = z.infer<typeof CritiqueFailureSchema>;
+
+export interface JudgmentPoint {
+  readonly id: JudgmentPointId;
+  /** 1 to 8, as numbered in 5.4. */
+  readonly number: number;
+  /** The flows that open this point. */
+  readonly flows: readonly string[];
+  /** Schema of the answer of the Director. */
+  readonly answer: z.ZodType;
+}
+
+/**
+ * [proposta] The architecture names the 8 points; the shape of the answers, and the options of
+ * points 6 to 8, are this module's.
+ */
+export const JUDGMENT_POINTS: readonly JudgmentPoint[] = [
+  {
+    id: 'classify_critique',
+    number: 1,
+    flows: ['play'],
+    answer: z.strictObject({ failures: z.array(CritiqueFailureSchema).min(1) }),
+  },
+  {
+    id: 'actor_timeout',
+    number: 2,
+    flows: ['play'],
+    answer: z.strictObject({ action: z.enum(['accept_partial', 'reassign']) }),
+  },
+  {
+    id: 'consult_producer',
+    number: 3,
+    flows: ['play', 'task.define', 'task.run', 'chat'],
+    answer: z.strictObject({ ask: z.boolean(), question: z.string().min(1).optional() }),
+  },
+  {
+    id: 'chat_consult',
+    number: 4,
+    flows: ['chat'],
+    answer: z.strictObject({ consult: z.boolean() }),
+  },
+  {
+    id: 'task_step_failed',
+    number: 5,
+    flows: ['task.run'],
+    answer: z.strictObject({ action: z.enum(['fix_definition', 'retry', 'skip', 'stop']) }),
+  },
+  {
+    id: 'refusal_or_permission',
+    number: 6,
+    flows: ['play'],
+    answer: z.strictObject({ action: z.enum(['reformulate', 'switch_executor', 'ask_producer']) }),
+  },
+  {
+    id: 'resumes_exceeded',
+    number: 7,
+    flows: ['play'],
+    answer: z.strictObject({ action: z.enum(['handoff', 'fail_attempt', 'ask_producer']) }),
+  },
+  {
+    id: 'dependency_redone',
+    number: 8,
+    flows: ['play'],
+    answer: z.strictObject({ action: z.enum(['rebase', 'redo']) }),
+  },
+];
+
+const POINTS_BY_ID = new Map<string, JudgmentPoint>(JUDGMENT_POINTS.map((p) => [p.id, p]));
+
+export function judgmentPoint(id: string): JudgmentPoint | undefined {
+  return POINTS_BY_ID.get(id);
+}
+
+/** True when the point belongs to the flow. */
+export function pointBelongsTo(id: JudgmentPointId, flow: string): boolean {
+  return judgmentPoint(id)?.flows.includes(flow) === true;
+}
+
+/** Parses the answer of a point; `undefined` when it does not fit the schema. */
+export function parseAnswer(id: JudgmentPointId, answer: unknown): unknown {
+  const result = judgmentPoint(id)?.answer.safeParse(answer);
+  return result?.success === true ? result.data : undefined;
+}

@@ -1,0 +1,405 @@
+// SPDX-License-Identifier: MPL-2.0
+import {
+  Conflict,
+  InvalidInput,
+  NotFound,
+  isOTheaterError,
+  type Clock,
+  type PlayRecord,
+  type Store,
+  type StoreTransaction,
+} from '@otheater/core';
+import type { JsonObject } from '@otheater/core';
+import { z } from 'zod';
+import { createActor, initialTransition, transition, type SnapshotFrom } from 'xstate';
+import type { PlayLimits } from '../config.js';
+import type { PlayContext } from './context.js';
+import { PLAY_FLOW_ID, PLAY_FLOW_VERSION, isFinalState, type PlayState } from './definitions.js';
+import {
+  entryEffects,
+  type PlayEffect,
+  type PlayEffects,
+  type PlayEffectScope,
+} from './effects.js';
+import {
+  PLAY_CREATED_EVENT,
+  PLAY_TRANSITIONED_EVENT,
+  PlayEventSchema,
+  type MachineEvent,
+} from './events.js';
+import { playMachine, type PlayDecision } from './machine.js';
+
+type PlaySnapshot = SnapshotFrom<typeof playMachine>;
+
+/** What the runner needs from a logger (pino fits). */
+export interface PlayRunnerLogger {
+  warn(fields: Record<string, unknown>, message: string): void;
+}
+
+export interface PlayRunnerOptions {
+  readonly store: Store;
+  /** Stamps the events and arms the deadlines of the demands. */
+  readonly clock: Clock;
+  /** Starts the long work the machine asks for (wired by the step that runs the sessions, P8). */
+  readonly effects: PlayEffects;
+  readonly logger?: PlayRunnerLogger;
+}
+
+export interface NewPlayInput {
+  readonly playId: string;
+  readonly scenarioId: string;
+  readonly need: string;
+  readonly limits: PlayLimits;
+  readonly parentPlayId?: string | null;
+}
+
+const NO_LOGGER: PlayRunnerLogger = { warn: () => undefined };
+
+function toJson(value: unknown): JsonObject {
+  return JSON.parse(JSON.stringify(value)) as JsonObject;
+}
+
+/**
+ * Restores the machine from what the store holds. A play saved by another version of the flow is
+ * refused with a clear error and is not touched (architecture 5.4: the snapshot is only restored
+ * on the same version).
+ */
+export function restorePlay(record: PlayRecord): PlaySnapshot {
+  if (record.flowId !== PLAY_FLOW_ID || record.flowVersion !== PLAY_FLOW_VERSION) {
+    throw new Conflict(
+      `Play ${record.id} was saved by version ${String(record.flowVersion)} of the flow ` +
+        `"${record.flowId}", and this daemon runs version ${String(PLAY_FLOW_VERSION)} of ` +
+        `"${PLAY_FLOW_ID}": the snapshot is not restored`,
+    );
+  }
+  if (record.snapshot === null) {
+    throw new Conflict(`Play ${record.id} has no snapshot to restore`);
+  }
+  const savedVersion = (record.snapshot as { context?: { flowVersion?: unknown } }).context
+    ?.flowVersion;
+  if (savedVersion !== PLAY_FLOW_VERSION) {
+    throw new Conflict(
+      `The snapshot of play ${record.id} says version ${String(savedVersion)}, but the record says ` +
+        `${String(record.flowVersion)}: the snapshot is not restored`,
+    );
+  }
+  // The input only matters for a new actor; a restored one takes everything from the snapshot.
+  return createActor(playMachine, {
+    snapshot: record.snapshot as never,
+    input: undefined as never,
+  }).getSnapshot();
+}
+
+interface ArmedDeadline {
+  readonly at: number;
+  readonly abort: AbortController;
+}
+
+/**
+ * Drives the play machine (architecture 5.4). It is the only place that writes the state of a
+ * play:
+ *
+ * - `send` runs the pure `transition()`, and in ONE `store.transaction` writes the decisions the
+ *   transition records, the `getPersistedSnapshot()` with the state and the counters (PlayRegistry
+ *   `update`) and the `play.transitioned` event. Only after the commit does it arm the deadlines
+ *   and start the effects the transition asked for (a transactional outbox: if the daemon dies
+ *   in between, `resume` asks for the effects of the state again, so a handler must be idempotent).
+ * - Events of one play are serialized; different plays run in parallel.
+ * - Deadlines are in `context.deadlines`; the runner arms a timer for each through the core
+ *   `Clock` and, when it fires, sends `ACTOR_TIMED_OUT`. A timer is cancelled when the demand
+ *   leaves the map and re-armed from the snapshot on `resume`.
+ */
+export class PlayRunner {
+  readonly #store: Store;
+  readonly #clock: Clock;
+  readonly #effects: PlayEffects;
+  readonly #logger: PlayRunnerLogger;
+  readonly #queues = new Map<string, Promise<void>>();
+  readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
+  readonly #fired = new Set<Promise<void>>();
+  #closed = false;
+
+  constructor(options: PlayRunnerOptions) {
+    this.#store = options.store;
+    this.#clock = options.clock;
+    this.#effects = options.effects;
+    this.#logger = options.logger ?? NO_LOGGER;
+  }
+
+  /** Creates the play in NEED, with its first snapshot, and writes `play.created`. */
+  async create(input: NewPlayInput): Promise<PlayRecord> {
+    const [snapshot] = initialTransition(playMachine, {
+      playId: input.playId,
+      need: input.need,
+      limits: input.limits,
+    });
+    return this.#store.transaction(async (tx) => {
+      const record = await tx.plays.create({
+        id: input.playId,
+        scenarioId: input.scenarioId,
+        need: input.need,
+        flowId: PLAY_FLOW_ID,
+        flowVersion: PLAY_FLOW_VERSION,
+        state: 'NEED',
+        snapshot: toJson(playMachine.getPersistedSnapshot(snapshot)),
+        counters: {},
+        parentPlayId: input.parentPlayId ?? null,
+      });
+      await tx.events.append({
+        type: PLAY_CREATED_EVENT.type,
+        schemaVersion: PLAY_CREATED_EVENT.schemaVersion,
+        payload: {
+          flowId: PLAY_FLOW_ID,
+          flowVersion: PLAY_FLOW_VERSION,
+          need: input.need,
+          parentPlayId: input.parentPlayId ?? null,
+        },
+        scenarioId: input.scenarioId,
+        playId: input.playId,
+      });
+      return record;
+    });
+  }
+
+  /**
+   * Gives the machine an event. Rejects with `InvalidInput` when the event does not fit its schema,
+   * `NotFound` when the play does not exist, and `Conflict` when the play is finished, was saved
+   * by another version of the flow, or does not take the event in its state (a late or repeated
+   * event: the caller decides what to do with it).
+   */
+  send(playId: string, event: unknown): Promise<PlayRecord> {
+    const parsed = PlayEventSchema.safeParse(event);
+    if (!parsed.success) {
+      return Promise.reject(
+        new InvalidInput(`Invalid play event: ${z.prettifyError(parsed.error)}`, {
+          cause: parsed.error,
+        }),
+      );
+    }
+    return this.#enqueue(playId, async () => {
+      if (this.#closed) throw new Conflict('The play runner is closed');
+      const record = await this.#load(playId);
+      if (isFinalState(record.state)) {
+        throw new Conflict(`Play ${playId} is finished (${record.state}) and takes no event`);
+      }
+      const snapshot = restorePlay(record);
+      const machineEvent: MachineEvent = { ...parsed.data, at: this.#clock.now() };
+      if (!snapshot.can(machineEvent)) {
+        throw new Conflict(`Play ${playId} in ${record.state} does not take ${machineEvent.type}`);
+      }
+      const [next, actions] = transition(playMachine, snapshot, machineEvent);
+      const decisions: PlayDecision[] = [];
+      const effects: PlayEffect[] = [];
+      for (const action of actions) {
+        const params = action.params as
+          { effects?: PlayEffect[]; decision?: PlayDecision } | undefined;
+        if (action.type === 'emit' && params?.effects !== undefined)
+          effects.push(...params.effects);
+        if (action.type === 'record' && params?.decision !== undefined) {
+          decisions.push(params.decision);
+        }
+      }
+      const to = next.value;
+      const finished = next.status === 'done';
+      const updated = await this.#store.transaction(async (tx) => {
+        await this.#writeDecisions(tx, record, decisions);
+        const saved = await tx.plays.update(playId, {
+          state: to,
+          snapshot: toJson(playMachine.getPersistedSnapshot(next)),
+          counters: { ...next.context.counters },
+          ...(finished ? { finishedAt: this.#clock.now() } : {}),
+        });
+        await tx.events.append({
+          type: PLAY_TRANSITIONED_EVENT.type,
+          schemaVersion: PLAY_TRANSITIONED_EVENT.schemaVersion,
+          payload: {
+            event: machineEvent.type,
+            from: record.state,
+            to,
+            counters: { ...next.context.counters },
+            effects: effects.map((effect) => effect.type),
+          },
+          scenarioId: record.scenarioId,
+          playId,
+        });
+        return saved;
+      });
+      this.#reconcileDeadlines(playId, finished ? {} : next.context.deadlines);
+      await this.#dispatch(effects, { playId, scenarioId: record.scenarioId });
+      return updated;
+    });
+  }
+
+  /**
+   * After a restart: restores the play, arms the deadlines of its demands again and asks for the
+   * effects of the state it is in (and of its open judgments) once more. A play saved by another
+   * version rejects with `Conflict` and stays as it is.
+   */
+  resume(playId: string): Promise<void> {
+    return this.#enqueue(playId, async () => {
+      if (this.#closed) throw new Conflict('The play runner is closed');
+      const record = await this.#load(playId);
+      if (isFinalState(record.state)) return;
+      const snapshot = restorePlay(record);
+      this.#reconcileDeadlines(playId, snapshot.context.deadlines);
+      const context = snapshot.context;
+      const effects = [
+        ...entryEffects(record.state as PlayState, context),
+        ...context.openJudgments.map((judgment) => judgmentEffect(judgment)),
+      ];
+      await this.#dispatch(effects, { playId, scenarioId: record.scenarioId });
+    });
+  }
+
+  /**
+   * Resumes every play that is not finished. A play that cannot be restored (another version) is
+   * logged and skipped, and the others go on; the ids that failed come back in `refused`.
+   */
+  async resumeAll(): Promise<{ resumed: string[]; refused: string[] }> {
+    const open = await this.#store.plays.list({ open: true });
+    const resumed: string[] = [];
+    const refused: string[] = [];
+    await Promise.all(
+      open.map(async (play) => {
+        try {
+          await this.resume(play.id);
+          resumed.push(play.id);
+        } catch (error) {
+          refused.push(play.id);
+          this.#logger.warn({ playId: play.id, err: error }, 'play not resumed');
+        }
+      }),
+    );
+    return { resumed: resumed.sort(), refused: refused.sort() };
+  }
+
+  /** The deadlines armed now, by play: `{demand id: epoch ms}`. For diagnostics and tests. */
+  armedDeadlines(playId: string): Record<string, number> {
+    return Object.fromEntries(
+      [...(this.#timers.get(playId) ?? [])].map(([demandId, armed]) => [demandId, armed.at]),
+    );
+  }
+
+  /** Resolves when no event of any play is being processed and no fired deadline is pending. */
+  async idle(): Promise<void> {
+    for (;;) {
+      const pending = [...this.#queues.values(), ...this.#fired];
+      if (pending.length === 0) return;
+      await Promise.allSettled(pending);
+    }
+  }
+
+  /** Stops the timers. The state of the plays stays in the store; `resume` picks it up. */
+  async close(): Promise<void> {
+    this.#closed = true;
+    for (const playId of [...this.#timers.keys()]) this.#reconcileDeadlines(playId, {});
+    await this.idle();
+  }
+
+  async #load(playId: string): Promise<PlayRecord> {
+    const record = await this.#store.plays.get(playId);
+    if (record === undefined) throw new NotFound(`Play ${playId} does not exist`);
+    return record;
+  }
+
+  async #writeDecisions(
+    tx: StoreTransaction,
+    record: PlayRecord,
+    decisions: readonly PlayDecision[],
+  ): Promise<void> {
+    for (const decision of decisions) {
+      await tx.decisions.create({
+        id: decision.id,
+        scenarioId: record.scenarioId,
+        playId: record.id,
+        kind: decision.kind,
+        input: decision.input,
+      });
+      await tx.decisions.decide(decision.id, {
+        answer: decision.answer,
+        decidedBy: decision.decidedBy,
+      });
+    }
+  }
+
+  #enqueue<T>(playId: string, work: () => Promise<T>): Promise<T> {
+    const tail = this.#queues.get(playId) ?? Promise.resolve();
+    const run = tail.then(work);
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#queues.set(playId, settled);
+    void settled.then(() => {
+      if (this.#queues.get(playId) === settled) this.#queues.delete(playId);
+    });
+    return run;
+  }
+
+  async #dispatch(effects: readonly PlayEffect[], scope: PlayEffectScope): Promise<void> {
+    for (const effect of effects) {
+      try {
+        await this.#effects.dispatch(effect, scope);
+      } catch (error) {
+        // The state is already saved: the failure of a handler does not undo it (`resume` asks again).
+        this.#logger.warn(
+          { playId: scope.playId, effect: effect.type, err: error },
+          'play effect not started',
+        );
+      }
+    }
+  }
+
+  /** Makes the timers of a play match `deadlines`: arms the new ones, drops the ones that left. */
+  #reconcileDeadlines(playId: string, deadlines: Readonly<Record<string, number>>): void {
+    const armed = this.#timers.get(playId) ?? new Map<string, ArmedDeadline>();
+    for (const [demandId, timer] of armed) {
+      if (deadlines[demandId] !== timer.at) {
+        timer.abort.abort();
+        armed.delete(demandId);
+      }
+    }
+    if (!this.#closed) {
+      for (const [demandId, at] of Object.entries(deadlines)) {
+        if (!armed.has(demandId)) armed.set(demandId, this.#arm(playId, demandId, at));
+      }
+    }
+    if (armed.size === 0) this.#timers.delete(playId);
+    else this.#timers.set(playId, armed);
+  }
+
+  #arm(playId: string, demandId: string, at: number): ArmedDeadline {
+    const abort = new AbortController();
+    const wait = Math.max(0, at - this.#clock.now());
+    void this.#clock.sleep(wait, abort.signal).then(
+      () => {
+        const task = this.#fire(playId, demandId, at).finally(() => this.#fired.delete(task));
+        this.#fired.add(task);
+      },
+      () => undefined, // cancelled: the demand left the map, or the runner closed
+    );
+    return { at, abort };
+  }
+
+  async #fire(playId: string, demandId: string, at: number): Promise<void> {
+    if (this.#timers.get(playId)?.get(demandId)?.at !== at) return;
+    this.#timers.get(playId)?.delete(demandId);
+    try {
+      await this.send(playId, { type: 'ACTOR_TIMED_OUT', demandId });
+    } catch (error) {
+      // A late deadline (the demand finished, the play left EXECUTING) is not an error.
+      if (!(isOTheaterError(error) && error.code === 'CONFLICT')) {
+        this.#logger.warn({ playId, demandId, err: error }, 'deadline not delivered');
+      }
+    }
+  }
+}
+
+function judgmentEffect(judgment: PlayContext['openJudgments'][number]): PlayEffect {
+  return {
+    type: 'judge',
+    point: judgment.point,
+    demandId: judgment.demandId,
+    dependentIds: judgment.dependentIds,
+  };
+}
