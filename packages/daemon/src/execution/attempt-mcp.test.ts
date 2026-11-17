@@ -25,7 +25,11 @@ import { makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixtu
  * real one is covered by `mcp/server.test.ts` and `mcp-submit.test.ts`.
  */
 
-const WITH_FRAMEWORK: RolePolicy = { ...TEST_POLICY, mcpServers: [FRAMEWORK_MCP_NAME] };
+const WITH_FRAMEWORK: RolePolicy = {
+  ...TEST_POLICY,
+  mcpServers: [FRAMEWORK_MCP_NAME],
+  mcpTools: { [FRAMEWORK_MCP_NAME]: 'all' },
+};
 
 interface Issued {
   readonly input: McpGrantInput;

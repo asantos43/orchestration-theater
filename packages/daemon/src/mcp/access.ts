@@ -16,6 +16,13 @@ export interface McpGrantInput {
   readonly attemptId: string;
   /** The role the session plays: it decides which tools it lists and may call. */
   readonly role: string;
+  /**
+   * The tools of the server this session may see and call, by name: the list of its role policy
+   * (`RolePolicy.mcpTools`, P1). Absent: every tool the registry gives the role. [proposta] A tool
+   * the policy leaves out is neither listed nor callable, which is what makes the `mcpTools` field
+   * of the policy hold in the daemon layer.
+   */
+  readonly tools?: readonly string[];
   readonly correlation: McpCorrelation;
   /**
    * Appends an event of this attempt to the log (the journal of the attempt). The `submit*` tools
