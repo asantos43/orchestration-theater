@@ -34,7 +34,9 @@ import { RealHeadCodeHost, waitFor } from './e2e-fixture.js';
  *   not guess it);
  * - `OT_TEST_CLAUDE_MODE` (optional): the mode id that lets the client call an MCP tool and edit
  *   a file without asking. With `onAsk: 'reject'` an ask is refused (architecture 5.8), so a
- *   mode that asks for every tool makes the play fail on the first one;
+ *   mode that asks for every tool makes the play fail on the first one. The tools of the MCP
+ *   servers of each role are the exception: the adapter allows them with `allowedTools` and
+ *   `permissions.allow` (`mcp__<server>`), whatever the mode;
  * - `OT_TEST_PLAY_TIMEOUT_MS` (optional): the total deadline of the play, in milliseconds. Default
  *   25 minutes; the `play` level of `tools/acceptance/real-acceptance.sh` kills the run after 30;
  * - `OT_TEST_PLAY_LIMITS` (optional): the `limits.preset` of the play (`economical`, `moderate` or
