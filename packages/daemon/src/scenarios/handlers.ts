@@ -4,7 +4,7 @@ import type { DaemonConfig } from '../config.js';
 import { ToolFailure, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
 import type { DirectorSessions } from '../orchestration/director.js';
 import { executorOf } from '../orchestration/roles.js';
-import { type AttachmentService, isImage } from './attachments.js';
+import { type AttachmentService, isImage, kindOf } from './attachments.js';
 import { acceptsImages, type AdapterDirectory, type ConsultService } from './consult.js';
 
 /** The tools of the scenarios this module answers (P12). */
@@ -28,8 +28,10 @@ export interface ScenarioRuntime {
  * A caller is tied to a scenario by its Director session, or, for the Consultant (an attempt whose
  * play id is the scenario id), by its correlation. [proposta] An image is handed only to a caller
  * whose client declares `capabilities.inputTypes` with `image`; anyone else gets
- * `image_not_supported`. (The registry gives `read_attachment` to the Executor roles only: the
- * Director hands an attachment to a Consultant with `consult`.)
+ * `image_not_supported`. The Director reads text attachments only (N85): any other kind is
+ * refused to it with `director_text_only` [proposta], and it hands that attachment to a
+ * Consultant with `consult`. (A PDF counts as text once it is converted, which does not exist
+ * yet, so for now it is refused too.)
  */
 export class ScenarioHandlers {
   #runtime: ScenarioRuntime | undefined;
@@ -78,6 +80,12 @@ export class ScenarioHandlers {
     }
     try {
       const record = await runtime.attachments.get(scenarioId, id);
+      if (call.caller.role === 'director' && kindOf(record.mime) !== 'text') {
+        return new ToolFailure(
+          'director_text_only',
+          `${id} is ${record.mime}: the Director reads text attachments only. Hand it to a Consultant with consult(question, attachments: ["${id}"]).`,
+        );
+      }
       if (isImage(record.mime)) {
         const client = await this.#clientOf(runtime, call);
         if (client === undefined || !acceptsImages(runtime.adapters, client)) {

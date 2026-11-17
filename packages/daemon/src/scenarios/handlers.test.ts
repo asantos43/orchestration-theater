@@ -17,6 +17,7 @@ let root: string;
 let store: InMemoryStore;
 let handlers: ToolHandlers;
 let consulted: { scenarioId: string; question: string }[];
+let scenarioAttachments: AttachmentService;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'otheater-scenario-handlers-'));
@@ -42,6 +43,7 @@ beforeEach(async () => {
     scenariosDir: join(root, 'scenarios'),
     limits: () => ({ maxSize: 0, readMax: 1024 }),
   });
+  scenarioAttachments = attachments;
   await attachments.addText('s1', { text: 'the plan', name: 'plan.txt' });
   const image = join(root, 'a.png');
   await writeFile(image, PNG);
@@ -200,6 +202,31 @@ describe('the scenario handlers', () => {
       },
     );
     expect(given).toMatchObject({ kind: 'image', mime: 'image/png', encoding: 'base64' });
+  });
+
+  it('read_attachment gives a text attachment to the Director of the scenario (N85)', async () => {
+    const reply = await run(
+      'read_attachment',
+      { id: 'A1' },
+      { role: 'director', attemptId: 'director/s1' },
+    );
+    expect(reply).toMatchObject({ id: 'A1', kind: 'text', content: 'the plan' });
+  });
+
+  it('read_attachment refuses the Director an image or a PDF and points to consult (N85)', async () => {
+    const pdf = join(root, 'doc.pdf');
+    await writeFile(pdf, '%PDF-1.4\n');
+    await scenarioAttachments.addFile('s1', { path: pdf });
+    for (const id of ['A2', 'A3']) {
+      const refused = await run(
+        'read_attachment',
+        { id },
+        { role: 'director', attemptId: 'director/s1' },
+      );
+      expect(refused).toBeInstanceOf(ToolFailure);
+      expect((refused as ToolFailure).code).toBe('director_text_only');
+      expect((refused as ToolFailure).message).toContain('consult');
+    }
   });
 
   it('read_attachment stays inside the scenario of the caller', async () => {

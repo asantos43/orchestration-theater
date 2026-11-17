@@ -192,6 +192,26 @@ describe('the chat flow with the fake agent (P12)', { timeout: 120_000 }, () => 
     });
   });
 
+  it('lets the Director read a text attachment itself, but not an image (N85)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const dir = await mkdtemp(join(tmpdir(), 'otheater-n85-'));
+      try {
+        const scenarioId = await harness.openGenericChat('talk');
+        await harness.producer.attach(scenarioId, { text: 'the budget is nine', name: 'note.txt' });
+        const file = join(dir, 'diagram.png');
+        await writeFile(file, PNG);
+        await harness.producer.attach(scenarioId, { path: file });
+        await harness.producer.send(scenarioId, '#ot-read A1 A2');
+        await waitForReply(harness, scenarioId, 'read A1: ok');
+        const refused = await waitForReply(harness, scenarioId, 'read A2: refused');
+        expect(refused).toContain('director_text_only');
+        expect(await attemptClients(harness, 'consult')).toEqual([]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it('sleeps after the idle time and wakes with the state summary, without losing the replies', async () => {
     await withChatDaemon({}, async (harness, clock) => {
       const scenarioId = await harness.openGenericChat('talk');
