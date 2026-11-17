@@ -33,7 +33,7 @@ test opens pages served by the test itself on 127.0.0.1, never the internet.
 
 ## Chromium
 
-`playwright-core` does not bring a browser. Run `npx playwright-core install chromium` once (the
+`playwright-core` does not bring a browser. Run `npx playwright-core@1.64.1 install chromium` once (the
 `linux` job of CI does, N95); the cache is `~/.cache/ms-playwright`. Without it `open` says so,
 naming the command (`AdapterUnavailable`); `browser.executable_path` points at another Chromium.
 The package `playwright` is not approved and `playwright install` is not used.

@@ -9,7 +9,7 @@ import { chromium } from 'playwright-core';
  * daemon downloads nothing on its own); the message of a missing browser names it, and CI runs it
  * (N95). `playwright-core` is the only package of Playwright the project approved (N93).
  */
-export const CHROMIUM_INSTALL_COMMAND = 'npx playwright-core install chromium';
+export const CHROMIUM_INSTALL_COMMAND = 'npx playwright-core@1.64.1 install chromium';
 
 /**
  * Flags of the Chromium the daemon starts (architecture 5.19). [V] with Chromium 1248.

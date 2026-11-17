@@ -25,7 +25,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The tests of the browser (P6, N95) drive a real Chromium over pages served by the test itself.
       # `playwright-core` does not download one on its own: this is the revision its version expects.
-      - run: npx playwright-core install chromium
+      # It runs the binary of the package the lockfile pins (1.64.1): a bare `npx` at the root does not
+      # see it and would fetch the latest version of the package from the registry.
+      - run: pnpm --filter @otheater/adapter-browser-playwright exec playwright-core install chromium
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
