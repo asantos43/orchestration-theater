@@ -4,7 +4,8 @@
 # Roda os testes reais com clientes de verdade, com checagens antes e um monitor de memória durante:
 # o aceite real da Fase 2 (packages/daemon/src/execution/acceptance.real.test.ts), a medição de K e
 # do processModel (k-measure.real.test.ts) e a peça inteira da Fase 3
-# (packages/daemon/src/orchestration/play.real.test.ts). Feito para o dono rodar (N57): o script nunca
+# (packages/daemon/src/execution/mcp-submit.real.test.ts, depois
+# packages/daemon/src/orchestration/play.real.test.ts). Feito para o dono rodar (N57): o script nunca
 # faz login, nunca lê nem imprime credencial e nunca baixa nada. Só Linux: usa /proc/meminfo,
 # setsid e o timeout do coreutils (o teste pula no Windows; lá o aceite roda na CI).
 #
@@ -34,7 +35,12 @@
 #            clientes), além do log e das amostras de memória do script.
 #   play     a peça inteira (Fase 3, P13, N88) com o Claude Code em todos os papéis (Diretor,
 #            autor, revisores, Ator e Crítico) por `claude-agent-acp`: OT_TEST_REAL_CLIENTS=1,
-#            OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PLAY=1, só play.real.test.ts. O teste cria um
+#            OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PLAY=1. Roda DOIS testes, um depois do outro,
+#            e para no primeiro que falhar: antes, mcp-submit.real.test.ts (um turno de um
+#            papel que chama a ferramenta MCP `submit_plan` do framework: curto e barato; se a
+#            chamada MCP é recusada, a falha aparece ali, e não depois de 25 minutos da peça);
+#            depois, play.real.test.ts. Os dois leem as mesmas OT_TEST_CLAUDE_PROFILE_DIR,
+#            OT_TEST_CLAUDE_MODEL e OT_TEST_CLAUDE_MODE. A peça: o teste cria um
 #            repositório git temporário com um projeto mínimo, pede uma tarefa pequena (uma função
 #            e o teste dela), entrega no CodeHost falso (sem GitHub, sem `gh`) e confere o
 #            resultado: a peça chega a DONE, o PR existe no CodeHost falso, a branch entregue tem
@@ -43,9 +49,11 @@
 #            link, e nunca o copia nem o lê) e OT_TEST_CLAUDE_MODEL (um Haiku basta);
 #            OT_TEST_CLAUDE_MODE é opcional. O Codex e o OpenCode ficam de fora. Ajustes do
 #            teste, pelo ambiente: OT_TEST_PLAY_TIMEOUT_MS (prazo total da peça; padrão 1500000,
-#            25m, abaixo do teto de 30m deste nível) e OT_TEST_PLAY_LIMITS (economical, moderate
-#            ou persistent; padrão moderate). GASTA COTA: avisa e pede confirmação, a menos que
-#            haja --yes. O resumo do teste (estados, tentativas, tempo, tokens) vai para o log.
+#            25m, abaixo do teto de 40m deste nível, que também cobre o teste da chamada MCP) e
+#            OT_TEST_PLAY_LIMITS (economical, moderate ou persistent; padrão moderate). A peça
+#            falha em cerca de 90 s, e não em 25m, se o Diretor responde só com texto e não abre
+#            nenhuma peça. GASTA COTA: avisa e pede confirmação, a menos que haja --yes. O resumo
+#            do teste (estados, tentativas, tempo, tokens, respostas do Diretor) vai para o log.
 #
 # Uso:
 #   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play] [--dry-run] [--with-adapters]
@@ -67,7 +75,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m no nível k; 30m no nível play), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k e play), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -110,10 +118,11 @@ done
 
 case "$level" in clients|prompts|k|play) ;; *) echo "--level deve ser clients, prompts, k ou play" >&2; exit 2 ;; esac
 # O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
-# nível play [proposta] é de 30m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m e sobram 5m
-# para parar o daemon e conferir os processos.
+# nível play [proposta] é de 40m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m, mais 3m para
+# parar o daemon e conferir os processos, e o teste da chamada MCP que roda antes leva alguns
+# minutos (teto de 5m na tentativa).
 if [ -z "$run_timeout" ]; then
-  case "$level" in k) run_timeout=40m ;; play) run_timeout=30m ;; *) run_timeout=20m ;; esac
+  case "$level" in k|play) run_timeout=40m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -320,8 +329,10 @@ if [ "$level" = k ]; then
   tests=(packages/daemon/src/execution/k-measure.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível k: roda só a medição de K"
 elif [ "$level" = play ]; then
-  tests=(packages/daemon/src/orchestration/play.real.test.ts)
-  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível play: roda só a peça"
+  # Em ordem: o teste curto da chamada MCP antes, a peça depois; o primeiro que falha para tudo.
+  tests=(packages/daemon/src/execution/mcp-submit.real.test.ts
+         packages/daemon/src/orchestration/play.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível play: roda só a chamada MCP e a peça"
 elif [ "$with_adapters" = 1 ]; then
   tests+=(packages/adapters/client-claude-code/src/claude-code.real.test.ts
           packages/adapters/client-codex/src/codex.real.test.ts
@@ -334,7 +345,12 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 echo "Checagens: tudo certo."
-echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" != clients ] && echo ' OT_TEST_REAL_PROMPTS=1')$([ "$level" = k ] && echo ' OT_TEST_REAL_MEASURE_K=1')$([ "$level" = play ] && echo ' OT_TEST_REAL_PLAY=1') vitest run ${tests[*]}"
+if [ "$level" = play ]; then
+  echo "Vai rodar, nesta ordem (para no primeiro que falhar), com OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PLAY=1:"
+  for t in "${tests[@]}"; do echo "  vitest run $t"; done
+else
+  echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" != clients ] && echo ' OT_TEST_REAL_PROMPTS=1')$([ "$level" = k ] && echo ' OT_TEST_REAL_MEASURE_K=1') vitest run ${tests[*]}"
+fi
 case "$build_mode" in
   always) echo "Build: 'pnpm build' antes do teste (--build always; teto de $build_timeout)." ;;
   auto) if [ "$will_build" = 1 ]; then echo "Build: 'pnpm build' antes do teste (--build auto, dist velho; teto de $build_timeout)."; else echo "Build: nada a compilar (--build auto, dist em dia)."; fi ;;
@@ -343,11 +359,13 @@ esac
 echo "Teto: $run_timeout. Aborta se a memória disponível cair abaixo de ${abort_below_mb} MB."
 [ "$level" = prompts ] && echo "Atenção: o nível prompts envia prompts reais e gasta cota das contas dos perfis."
 if [ "$level" = play ]; then
-  echo "Atenção: o nível play roda UMA PEÇA INTEIRA com o Claude Code em todos os papéis e gasta cota da conta do perfil."
+  echo "Atenção: o nível play roda primeiro um teste curto da chamada MCP (um turno de um papel que chama submit_plan) e, se ele passar, UMA PEÇA INTEIRA com o Claude Code em todos os papéis. Os dois gastam cota da conta do perfil."
   # [proposta] Estimativa, não medida: quem mede é a primeira rodada do dono (N88).
-  echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz (Diretor, planejador e revisor, roteirista e revisor, Ator, Crítico); com repetições até cerca de 50."
+  echo "  Teste da chamada MCP: de 1 a 3 turnos [proposta, não medida]; se falhar, a peça não roda."
+  echo "  Estimativa da peça [proposta, não medida]: de 10 a 25 turnos no caso feliz (Diretor, planejador e revisor, roteirista e revisor, Ator, Crítico); com repetições até cerca de 50."
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."
-  echo "  O resumo (estados, tentativas, tempo, tokens) sai no log com o prefixo [play-real]."
+  echo "  O resumo (estados, tentativas, tempo, tokens, respostas do Diretor) sai no log com o prefixo [play-real]."
+  echo "  Se o Diretor responde só com texto e não abre peça, a peça falha em cerca de 90 s (antes esperava os 25m)."
 fi
 if [ "$level" = k ]; then
   echo "Atenção: o nível k envia prompts reais (curtos, sem ferramentas) e gasta cota das contas dos perfis."
@@ -410,7 +428,14 @@ fi
 
 baseline="$(available_mb)"
 # setsid põe o teste num grupo de processos próprio: o aborto mata só esse grupo, nada mais.
-setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${tests[@]}" >"$log" 2>&1 &
+if [ "$level" = play ]; then
+  # Um arquivo por vez, na ordem de `tests`, parando no primeiro que falha: o vitest roda arquivos
+  # em paralelo e na ordem que ele escolhe, e a peça cara não deve começar se a chamada MCP falhou.
+  setsid timeout --kill-after=30s "$run_timeout" bash -c \
+    'for t in "$@"; do echo "[etapa] $t"; pnpm exec vitest run "$t" || exit $?; done' _ "${tests[@]}" >"$log" 2>&1 &
+else
+  setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${tests[@]}" >"$log" 2>&1 &
+fi
 runner=$!
 pgid="$runner"
 
@@ -436,7 +461,7 @@ status=$?
 set -e
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[k-measure\]|\[play-real\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"
