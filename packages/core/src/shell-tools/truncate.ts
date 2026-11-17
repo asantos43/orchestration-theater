@@ -53,7 +53,7 @@ function concat(parts: readonly Uint8Array[], total: number): Uint8Array {
 
 /** The mark inserted where bytes were dropped. */
 export function truncationMark(dropped: number, total: number): string {
-  return `\n[... ${dropped} of ${total} bytes truncated ...]\n`;
+  return `\n[... ${String(dropped)} of ${String(total)} bytes truncated ...]\n`;
 }
 
 /**

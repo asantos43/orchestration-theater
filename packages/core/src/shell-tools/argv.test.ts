@@ -29,12 +29,26 @@ describe('validateArgv', () => {
   });
 
   it('refuses an empty list and bad items', () => {
-    expect(reasonOf(() => validateArgv([]))).toBe('empty_argv');
-    expect(reasonOf(() => validateArgv(['ls', 'a\0b']))).toBe('invalid_argument');
-    expect(reasonOf(() => validateArgv(['ls', 'x'.repeat(9000)]))).toBe('invalid_argument');
-    expect(reasonOf(() => validateArgv(Array.from({ length: 300 }, () => 'x')))).toBe(
-      'invalid_argument',
-    );
+    expect(
+      reasonOf(() => {
+        validateArgv([]);
+      }),
+    ).toBe('empty_argv');
+    expect(
+      reasonOf(() => {
+        validateArgv(['ls', 'a\0b']);
+      }),
+    ).toBe('invalid_argument');
+    expect(
+      reasonOf(() => {
+        validateArgv(['ls', 'x'.repeat(9000)]);
+      }),
+    ).toBe('invalid_argument');
+    expect(
+      reasonOf(() => {
+        validateArgv(Array.from({ length: 300 }, () => 'x'));
+      }),
+    ).toBe('invalid_argument');
   });
 
   it('refuses a program called by path or by expression', () => {
@@ -53,7 +67,9 @@ describe('validateArgv', () => {
       '$HOME/x',
     ]) {
       expect(
-        reasonOf(() => validateArgv([program, 'x'])),
+        reasonOf(() => {
+          validateArgv([program, 'x']);
+        }),
         program,
       ).toBe(program === '' ? 'program_by_path' : 'program_by_path');
     }
@@ -62,7 +78,9 @@ describe('validateArgv', () => {
   it('refuses chaining as arguments', () => {
     for (const op of [';', '|', '||', '&&', '&', '|&', ';;']) {
       expect(
-        reasonOf(() => validateArgv(['ls', 'a', op, 'rm', 'b'])),
+        reasonOf(() => {
+          validateArgv(['ls', 'a', op, 'rm', 'b']);
+        }),
         op,
       ).toBe('shell_syntax');
     }
@@ -83,7 +101,9 @@ describe('validateArgv', () => {
       '<in.txt',
     ]) {
       expect(
-        reasonOf(() => validateArgv(['cat', 'a', arg])),
+        reasonOf(() => {
+          validateArgv(['cat', 'a', arg]);
+        }),
         arg,
       ).toBe('shell_syntax');
     }
@@ -102,7 +122,9 @@ describe('validateArgv', () => {
       'x $? y',
     ]) {
       expect(
-        reasonOf(() => validateArgv(['echo', arg])),
+        reasonOf(() => {
+          validateArgv(['echo', arg]);
+        }),
         arg,
       ).toBe('shell_syntax');
     }
@@ -175,13 +197,21 @@ describe('allowlist', () => {
 
 describe('assertNoForbiddenFlags', () => {
   it('refuses the flags that write or launch another program', () => {
-    expect(reasonOf(() => assertNoForbiddenFlags(['git', 'diff', '--output=x.patch']))).toBe(
-      'forbidden_flag',
-    );
-    expect(reasonOf(() => assertNoForbiddenFlags(['git', 'diff', '--ext-diff']))).toBe(
-      'forbidden_flag',
-    );
-    expect(reasonOf(() => assertNoForbiddenFlags(['rg', '--pre=sh', 'x']))).toBe('forbidden_flag');
+    expect(
+      reasonOf(() => {
+        assertNoForbiddenFlags(['git', 'diff', '--output=x.patch']);
+      }),
+    ).toBe('forbidden_flag');
+    expect(
+      reasonOf(() => {
+        assertNoForbiddenFlags(['git', 'diff', '--ext-diff']);
+      }),
+    ).toBe('forbidden_flag');
+    expect(
+      reasonOf(() => {
+        assertNoForbiddenFlags(['rg', '--pre=sh', 'x']);
+      }),
+    ).toBe('forbidden_flag');
   });
 
   it('lets the others, and what follows "--"', () => {

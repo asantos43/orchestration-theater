@@ -7,7 +7,7 @@ import { confineArgv, confinePath, type PathHost } from './confine.js';
 import { ShellToolRefusal, type ShellRefusalReason } from './refusal.js';
 
 const host: PathHost = {
-  sep: sep as '/' | '\\',
+  sep,
   realpath: (path) => realpath(path),
   isSymlink: async (path) => {
     try {

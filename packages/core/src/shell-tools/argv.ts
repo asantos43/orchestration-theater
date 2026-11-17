@@ -35,7 +35,10 @@ export const ARGV_MAX_ITEM_LENGTH = 8192;
 export function validateArgv(argv: readonly string[]): void {
   if (argv.length === 0) throw new ShellToolRefusal('empty_argv', 'argv must not be empty');
   if (argv.length > ARGV_MAX_ITEMS) {
-    throw new ShellToolRefusal('invalid_argument', `argv has more than ${ARGV_MAX_ITEMS} items`);
+    throw new ShellToolRefusal(
+      'invalid_argument',
+      `argv has more than ${String(ARGV_MAX_ITEMS)} items`,
+    );
   }
   for (const item of argv) {
     if (item.includes('\0')) {
@@ -44,7 +47,7 @@ export function validateArgv(argv: readonly string[]): void {
     if (item.length > ARGV_MAX_ITEM_LENGTH) {
       throw new ShellToolRefusal(
         'invalid_argument',
-        `an argv item is longer than ${ARGV_MAX_ITEM_LENGTH} characters`,
+        `an argv item is longer than ${String(ARGV_MAX_ITEM_LENGTH)} characters`,
       );
     }
   }
