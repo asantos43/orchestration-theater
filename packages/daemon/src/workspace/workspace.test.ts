@@ -13,6 +13,7 @@ import {
 import { FakeClock, FakeCodeHost, InMemoryStore } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { RealHeadCodeHost, type FakeCodeHostLike } from '../orchestration/e2e-fixture.js';
 import { demandOf, makeWorkspaceRig, scriptOf, type WorkspaceRig } from './workspace-fixture.js';
 import { Workspace } from './workspace.js';
 
@@ -763,6 +764,162 @@ describe('Workspace: the base moves while the play runs (N83, N84)', () => {
           (effect) => effect.idempotencyKey,
         ),
       ).toEqual(['play-1:integrate:d1:1', 'play-1:integrate:d1:1:r2']);
+    },
+    T,
+  );
+});
+
+describe('Workspace.deliver: what the delivery adds before the push (P7)', () => {
+  let rig: Rig;
+  let head: string;
+  const branch = integrationBranch(PLAY);
+  const delivery = {
+    playId: PLAY,
+    base: 'main',
+    title: 'Add the thing',
+    body: 'What was done.',
+    configMode: 'pr',
+    allowDirectMerge: false,
+    attended: true,
+  } as const;
+  const change = {
+    file: 'CHANGELOG.md',
+    content: '# Changelog\n\n- Add the thing\n',
+    message: 'Add the changelog entry',
+  };
+
+  /** The fake host pushes the real head of the branch, as the e2e fixture does. */
+  async function setupReal(): Promise<Rig> {
+    const clock = new FakeClock();
+    const store = new InMemoryStore({ clock });
+    const host = new FakeCodeHost({ clock });
+    const codeHost = new RealHeadCodeHost(host as FakeCodeHostLike);
+    const made = { ...(await makeWorkspaceRig({ store, codeHost })), store, host };
+    rigs.push(made);
+    return made;
+  }
+
+  beforeEach(async () => {
+    rig = await setupReal();
+    await rig.workspace.createPlayBase({ repo: rig.repo, playId: PLAY, base: 'main' });
+    await rig.attempt(PLAY, 'd1', 1, { 'd1.txt': 'one\n' });
+    const integrated = await rig.workspace.integrate({
+      repo: rig.repo,
+      playId: PLAY,
+      script,
+      approved: [{ demandId: 'd1', attempt: 1 }],
+    });
+    if (integrated.kind !== 'integrated') throw new Error(integrated.kind);
+    head = integrated.head;
+    rig.host.seedRemote(rig.repo, 'main');
+  }, T);
+
+  it(
+    'commits what prepare returns on the integration branch before the push, once',
+    async () => {
+      const seen: string[] = [];
+      let answer: typeof change | undefined = change;
+      const input = {
+        ...delivery,
+        repo: rig.repo,
+        prepare: (worktree: string) => {
+          seen.push(worktree);
+          return Promise.resolve(answer);
+        },
+      };
+      const first = await rig.workspace.deliver(input);
+      if (first.kind !== 'delivered') throw new Error(first.kind);
+      expect(await readFile(join(seen[0] ?? '', 'CHANGELOG.md'), 'utf8')).toBe(change.content);
+      expect(first.pushedSha).not.toBe(head);
+      expect(first.pushedSha).toBe((await testGit(rig.repo, 'rev-parse', branch)).trim());
+      const message = await testGit(rig.repo, 'log', '-1', '--format=%B', branch);
+      expect(message).toContain(change.message);
+      expect(message).toContain('play-1:deliver_prepare');
+
+      // Delivering again: the file is in, so prepare has nothing more to say.
+      answer = undefined;
+      const second = await rig.workspace.deliver(input);
+      expect(second).toEqual(first);
+      expect((await testGit(rig.repo, 'rev-list', '--count', `${head}..${branch}`)).trim()).toBe(
+        '1',
+      );
+      expect(rig.host.callCount('openPullRequest')).toBe(1);
+      expect(rig.host.callCount('pushRef')).toBe(1);
+    },
+    T,
+  );
+
+  it(
+    'replays the commit with the same key instead of committing twice',
+    async () => {
+      const input = { ...delivery, repo: rig.repo, prepare: () => Promise.resolve(change) };
+      const first = await rig.workspace.deliver(input);
+      const second = await rig.workspace.deliver(input);
+      expect(second).toEqual(first);
+      expect((await testGit(rig.repo, 'rev-list', '--count', `${head}..${branch}`)).trim()).toBe(
+        '1',
+      );
+    },
+    T,
+  );
+
+  it(
+    'creates the folders of the file and refuses a path outside the repository',
+    async () => {
+      await rig.workspace.deliver({
+        ...delivery,
+        repo: rig.repo,
+        prepare: () => Promise.resolve({ ...change, file: 'docs/notes/CHANGELOG.md' }),
+      });
+      expect(await testGit(rig.repo, 'show', `${branch}:docs/notes/CHANGELOG.md`)).toContain(
+        '- Add the thing',
+      );
+      for (const file of ['../escape.md', '/etc/escape.md']) {
+        await expect(
+          rig.workspace.deliver({
+            ...delivery,
+            repo: rig.repo,
+            round: 2,
+            prepare: () => Promise.resolve({ ...change, file }),
+          }),
+        ).rejects.toBeInstanceOf(InvalidInput);
+      }
+    },
+    T,
+  );
+
+  it(
+    'changes nothing when prepare has nothing to add',
+    async () => {
+      const result = await rig.workspace.deliver({
+        ...delivery,
+        repo: rig.repo,
+        prepare: () => Promise.resolve(undefined),
+      });
+      if (result.kind !== 'delivered') throw new Error(result.kind);
+      expect(result.pushedSha).toBe(head);
+      // Only the commit of the integration is there, not one of the delivery.
+      const keys = (await rig.store.sideEffects.list({ types: ['git_commit'] })).map(
+        (effect) => effect.idempotencyKey,
+      );
+      expect(keys.some((key) => key.includes('deliver_prepare'))).toBe(false);
+    },
+    T,
+  );
+
+  it(
+    'uses the merge message it is given in a direct merge',
+    async () => {
+      const result = await rig.workspace.deliver({
+        ...delivery,
+        repo: rig.repo,
+        allowDirectMerge: true,
+        requested: { mode: 'direct_merge', by: 'task' },
+        mergeMessage: 'feat: add the thing\n\nDemands:\n- d1',
+      });
+      expect(result).toMatchObject({ kind: 'delivered', mode: 'direct_merge' });
+      const call = rig.host.calls.find((entry) => entry.method === 'mergeBranch');
+      expect(JSON.stringify(call?.args)).toContain('feat: add the thing');
     },
     T,
   );

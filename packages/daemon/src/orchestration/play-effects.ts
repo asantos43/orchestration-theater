@@ -16,6 +16,7 @@ import {
   integrationBranch,
   type JsonValue,
   NotFound,
+  parseConventions,
   parseScript,
   PLAN_KEY,
   planOutput,
@@ -49,6 +50,7 @@ import {
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
+import { buildDeliveryArtifacts, changelogModeOf, planChangelog } from '../project/artifacts.js';
 import { CarrySchema, carryKey, INTEGRATION_ROUND_KEY, keptDemands, type Carry } from './carry.js';
 import { type CarriedWork, clarifyPrompt, judgePrompt, stagePrompt } from './prompts.js';
 import { executorOf, policyOf, sessionSettingsOf } from './roles.js';
@@ -1289,20 +1291,46 @@ export class OrchestrationEffects implements PlayEffects {
       }
     }
     const need = await this.#needOf(playId);
-    const title = (need.split('\n')[0] ?? need).trim().slice(0, 72) || `Play ${playId}`;
-    const notes = [
-      `Delivered by OTheater (play ${playId}).`,
-      effect.partial ? 'Only the approved demands are included.' : undefined,
-      effect.criticWaived ? 'The Critic was waived for this play.' : undefined,
-      `## Need\n\n${need}`,
-    ].filter((line): line is string => line !== undefined);
+    const scenario = await this.#options.store.scenarios.get(scenarioId);
+    const conventions = parseConventions(scenario?.conventions);
+    const script = await this.#script(playId);
+    const demands = effect.demandIds.flatMap((id) => {
+      const demand = script?.demands.find((candidate) => candidate.id === id);
+      return demand === undefined ? [] : [{ id, title: demand.title }];
+    });
+    // The title, the text of the PR, the merge commit and the changelog entry are built from the
+    // store only (P7): the need, the demands, the state of the play. No model writes them.
+    const artifacts = buildDeliveryArtifacts(
+      {
+        playId,
+        need,
+        demands,
+        partial: effect.partial,
+        criticWaived: effect.criticWaived,
+      },
+      conventions,
+    );
+    const changelogMode = changelogModeOf(config.delivery.changelog, scenario?.configOverride);
     const result = await workspace.deliver({
       repo: repo.path,
       playId,
       base: repo.mainBranch,
       ...(repo.remote === undefined ? {} : { remote: repo.remote }),
-      title,
-      body: notes.join('\n\n'),
+      title: artifacts.title,
+      body: artifacts.body,
+      mergeMessage: artifacts.mergeMessage,
+      round: await this.#roundOf(playId),
+      prepare: async (worktree) => {
+        const change = await planChangelog({
+          mode: changelogMode,
+          worktree,
+          entry: artifacts.entry,
+          conventions,
+        });
+        return change === undefined
+          ? undefined
+          : { file: change.file, content: change.content, message: artifacts.changelogMessage };
+      },
       configMode: config.delivery.mode,
       allowDirectMerge: config.delivery.allow_direct_merge,
       ...(warnings.length === 0 ? {} : { warnings }),

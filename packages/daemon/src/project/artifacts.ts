@@ -7,6 +7,7 @@ import {
   type CommitType,
   type ProjectConventions,
 } from '@otheater/core';
+import { CHANGELOG_MODES, type ChangelogMode } from '../config.js';
 import {
   DEFAULT_CHANGELOG_FILE,
   insertEntry,
@@ -14,14 +15,6 @@ import {
   type ChangelogEntry,
 } from './changelog.js';
 import { detectChangelogFormat, findChangelog } from './detect.js';
-
-/**
- * `delivery.changelog` (N100): does a delivery keep a changelog? `always`: yes, creating
- * `CHANGELOG.md` when the repository has none; `auto`: only when there is one or the project is
- * new; `never`: it does not touch it.
- */
-export const CHANGELOG_MODES = ['auto', 'always', 'never'] as const;
-export type ChangelogMode = (typeof CHANGELOG_MODES)[number];
 
 /** Key of the scenario override (`scenarios.config_override`) of the mode. */
 export const CHANGELOG_OVERRIDE_KEY = 'delivery.changelog';
