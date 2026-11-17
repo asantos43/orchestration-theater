@@ -48,6 +48,12 @@ describe('writeProfileSettings', () => {
     });
   });
 
+  it('does not write the MCP allow rules: they travel in the session, not in the shared file', async () => {
+    await writeProfileSettings(profile, { ...policy, mcpServers: ['otheater'] });
+    const permissions = (await read()).permissions as Record<string, unknown>;
+    expect(permissions).not.toHaveProperty('allow');
+  });
+
   it('keeps the other keys and the other deny entries, and replaces the managed ones', async () => {
     await mkdir(profile.dir, { recursive: true });
     await writeFile(
