@@ -131,6 +131,18 @@ export interface PermissionRequest {
   readonly toolCallId?: string;
   readonly title?: string;
   readonly toolKind?: string;
+  /**
+   * What the rules of layer 2 read (Phase 4, P2), each present only when the client said it, so a
+   * transport that does not fill them leaves the request as it was. [proposta]
+   * - `toolName`: the tool as the client names it (`_meta.claudeCode.toolName` for Claude Code [N]);
+   * - `locations`: the files the call touches (`toolCall.locations`, or the path of `rawInput`);
+   * - `command`: the command line of a call that runs one (`rawInput.command`);
+   * - `url`: the address of a call that fetches one (`rawInput.url`).
+   */
+  readonly toolName?: string;
+  readonly locations?: readonly string[];
+  readonly command?: string;
+  readonly url?: string;
   readonly options: readonly PermissionOption[];
 }
 

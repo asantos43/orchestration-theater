@@ -112,13 +112,43 @@ function timeoutAfter(ms: number, message: string): { promise: Promise<never>; s
   };
 }
 
-/** The reduction of a `session/request_permission` to what the policy needs (architecture 5.8, layer 2). */
+/** Keys of `rawInput` that hold the file a tool call touches, as the clients write them [N: not measured per client]. */
+const RAW_PATH_KEYS = ['path', 'filePath', 'file_path', 'filepath'] as const;
+
+function stringOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/**
+ * The reduction of a `session/request_permission` to what the policy needs (architecture 5.8,
+ * layer 2). Besides the title and the kind, what the release rules read (Phase 4, P2): the tool
+ * name, the files, the command and the address the call carries. The files come from
+ * `toolCall.locations` (V: Claude Code and OpenCode send them for an edit) and, when the client
+ * sends none, from the path keys of `rawInput`; the command from `rawInput.command` (V, Claude
+ * Code and OpenCode for `execute`); the tool name from `_meta.claudeCode.toolName` [N].
+ */
 function permissionRequestOf(params: RequestPermissionRequest): PermissionRequest {
   const { toolCall } = params;
+  const raw: unknown = toolCall.rawInput;
+  const rawInput = isRecord(raw) ? raw : {};
+  const meta: unknown = toolCall._meta;
+  const claude = isRecord(meta) && isRecord(meta.claudeCode) ? meta.claudeCode : {};
+  const located = (toolCall.locations ?? []).map((location) => location.path);
+  const fromRaw = RAW_PATH_KEYS.map((key) => stringOf(rawInput[key])).filter(
+    (path): path is string => path !== undefined,
+  );
+  const locations = located.length > 0 ? located : fromRaw;
+  const toolName = stringOf(claude.toolName);
+  const command = stringOf(rawInput.command) ?? stringOf(rawInput.cmd);
+  const url = stringOf(rawInput.url);
   return {
     toolCallId: toolCall.toolCallId,
     ...(typeof toolCall.title === 'string' ? { title: toolCall.title } : {}),
     ...(typeof toolCall.kind === 'string' ? { toolKind: toolCall.kind } : {}),
+    ...(toolName === undefined ? {} : { toolName }),
+    ...(locations.length === 0 ? {} : { locations }),
+    ...(command === undefined ? {} : { command }),
+    ...(url === undefined ? {} : { url }),
     options: params.options.map((option) => ({
       optionId: option.optionId,
       name: option.name,

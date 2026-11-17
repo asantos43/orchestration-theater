@@ -190,6 +190,8 @@ class FakeDriver implements SessionDriver {
           toolCallId,
           title,
           toolKind: 'edit',
+          toolName: 'Write',
+          locations: [path],
           options: [
             { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
             { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
