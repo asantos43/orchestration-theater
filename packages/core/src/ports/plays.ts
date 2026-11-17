@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
+import { DemandComplexitySchema } from '../script/schema.js';
 import { JsonValueSchema } from './event-log.js';
 import { EpochMsSchema, JsonObjectSchema, RecordIdSchema } from './store-schemas.js';
 
@@ -147,8 +148,6 @@ export const DEMAND_STATES = [
 ] as const;
 export type DemandState = (typeof DEMAND_STATES)[number];
 
-export const DEMAND_COMPLEXITIES = ['low', 'medium', 'high'] as const;
-
 /**
  * One row of `demands`: the fields of `Demand` (architecture 5.4) plus its state. [proposta] The
  * store keeps `contract` references and `verify` steps as JSON, and the script validation (not
@@ -165,7 +164,7 @@ export const DemandRecordSchema = z.strictObject({
     outputs: z.array(JsonValueSchema),
   }),
   expectedFiles: z.array(text),
-  complexity: z.enum(DEMAND_COMPLEXITIES),
+  complexity: DemandComplexitySchema,
   specialty: text.nullable(),
   timeoutMin: z.int().min(1),
   acceptanceCriteria: z.array(text),
