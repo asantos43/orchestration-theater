@@ -17,3 +17,4 @@ export * from './recovery/restore.js';
 export * from './recovery/retention.js';
 export * from './recovery/schedule.js';
 export * from './version.js';
+export * from './workspace/index.js';

@@ -62,9 +62,10 @@ export interface DiffStat {
  * Version control of a local repository, as the Workspace needs it (architecture 5.5, 5.16). The
  * default adapter wraps the `git` CLI.
  *
- * Out of this version, on purpose: merge (`INTEGRATING`), push and the pull request (`CodeHost`).
- * They come with the phases that need them, and adding them is a new, optional capability
- * (an interface of its own plus a guard), not a change to this one.
+ * Out of this interface, on purpose: merge (`INTEGRATING`) and the history queries a verifier
+ * needs. They are optional capabilities (an interface of its own plus a guard: {@link VcsMerge},
+ * {@link VcsHistory}), not a change to this one, so the contract stays at 0.1.0. Push and the pull
+ * request belong to the `CodeHost` port.
  *
  * Errors: a missing repository, worktree or ref is `NotFound`; an existing branch or path, or a
  * dirty worktree on a non-forced removal, is `Conflict`; `git` that cannot run is
@@ -89,6 +90,85 @@ export interface Vcs extends Adapter {
   headOf(worktree: string): Promise<string>;
   /** Changes of the worktree (committed and not) relative to `base` (a ref or a sha). */
   diffStat(worktree: string, base: string): Promise<DiffStat>;
+}
+
+/** Options of {@link VcsMerge.merge}. */
+export interface MergeOptions {
+  /** First line of the merge commit. Default: `Merge <ref>`. */
+  readonly message?: string;
+}
+
+/**
+ * What a merge did. `conflict` leaves the worktree exactly as it was before the merge (the
+ * adapter aborts it), so the caller can inspect `files` and decide without cleaning up.
+ */
+export type MergeOutcome =
+  /** A new merge commit (`--no-ff`, so the history keeps one commit per merged attempt). */
+  | { readonly kind: 'merged'; readonly sha: string }
+  /** `ref` was already part of the branch: nothing changed. */
+  | { readonly kind: 'up_to_date'; readonly sha: string }
+  /** Paths with a conflict, sorted. */
+  | { readonly kind: 'conflict'; readonly files: readonly string[] };
+
+/**
+ * Optional capability of a `Vcs`: merge, for the integration of the approved attempts (`INTEGRATING`,
+ * architecture 5.5 and 5.4). Check with {@link supportsMerge}.
+ *
+ * Errors: a missing worktree or ref is `NotFound`; a worktree with uncommitted changes is `Conflict`.
+ * A merge conflict is NOT an error: it is the `conflict` outcome.
+ */
+export interface VcsMerge {
+  /** Merges `ref` (a branch or a sha) into the branch checked out in `worktree`. */
+  merge(worktree: string, ref: string, opts?: MergeOptions): Promise<MergeOutcome>;
+}
+
+/**
+ * Optional capability of a `Vcs`: the history queries the verifiers of the reconciliation use
+ * (architecture 5.21: "is the commit with the idempotency key on the branch?"). Check with
+ * {@link supportsHistory}.
+ */
+export interface VcsHistory {
+  /** Full sha the ref points at. `NotFound` when it does not exist. */
+  resolveRef(repo: string, ref: string): Promise<string>;
+  /**
+   * Newest commit reachable from `ref` that has the trailer `key: value` (see
+   * {@link IDEMPOTENCY_TRAILER}), or `undefined`. `NotFound` when `ref` does not exist.
+   */
+  findCommitByTrailer(
+    repo: string,
+    ref: string,
+    key: string,
+    value: string,
+  ): Promise<string | undefined>;
+}
+
+/** Narrows a `Vcs` to one that can merge. */
+export function supportsMerge(vcs: Vcs): vcs is Vcs & VcsMerge {
+  return typeof (vcs as Partial<VcsMerge>).merge === 'function';
+}
+
+/** Narrows a `Vcs` to one that can answer history queries. */
+export function supportsHistory(vcs: Vcs): vcs is Vcs & VcsHistory {
+  const candidate = vcs as Partial<VcsHistory>;
+  return (
+    typeof candidate.resolveRef === 'function' &&
+    typeof candidate.findCommitByTrailer === 'function'
+  );
+}
+
+/**
+ * Trailer that carries the idempotency key of a side effect on a commit (architecture 5.21). The
+ * commit verifier looks for it; the key goes in the message, so the git history itself says
+ * whether the effect happened. [proposta] trailer name.
+ */
+export const IDEMPOTENCY_TRAILER = 'OTheater-Idempotency-Key';
+
+/** `message` with the idempotency trailer after a blank line (a trailer block of its own). */
+export function withIdempotencyTrailer(message: string, idempotencyKey: string): string {
+  if (/[\r\n\0]/.test(idempotencyKey) || idempotencyKey.trim() === '') {
+    throw new InvalidInput('An idempotency key must be one non-empty line');
+  }
+  return `${message.trimEnd()}\n\n${IDEMPOTENCY_TRAILER}: ${idempotencyKey}`;
 }
 
 /**

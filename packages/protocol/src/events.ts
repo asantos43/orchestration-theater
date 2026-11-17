@@ -12,6 +12,11 @@ import {
   SessionResumedPayloadSchema,
   SessionUpdatePayloadSchema,
 } from './session-events.js';
+import {
+  DeliveryCompletedPayloadSchema,
+  WorkspaceIntegratedPayloadSchema,
+  WorkspaceIntegrationFailedPayloadSchema,
+} from './workspace-events.js';
 
 /**
  * Registry of the event types the daemon itself writes (architecture 5.18, "Registros"). The
@@ -68,7 +73,7 @@ export const DaemonBackupPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 11 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 14 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -123,6 +128,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: AttemptCheckpointPayloadSchema,
   }),
+  defineEventType({
+    type: 'workspace.integrated',
+    schemaVersion: 1,
+    payload: WorkspaceIntegratedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workspace.integration_failed',
+    schemaVersion: 1,
+    payload: WorkspaceIntegrationFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'delivery.completed',
+    schemaVersion: 1,
+    payload: DeliveryCompletedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -160,6 +180,9 @@ export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
+export type WorkspaceIntegratedPayload = DaemonEventPayloads['workspace.integrated'];
+export type WorkspaceIntegrationFailedPayload = DaemonEventPayloads['workspace.integration_failed'];
+export type DeliveryCompletedPayload = DaemonEventPayloads['delivery.completed'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

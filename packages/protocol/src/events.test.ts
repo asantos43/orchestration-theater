@@ -33,6 +33,9 @@ describe('daemon event registry', () => {
       'session.cancel_escalated',
       'session.closed',
       'attempt.checkpoint',
+      'workspace.integrated',
+      'workspace.integration_failed',
+      'delivery.completed',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

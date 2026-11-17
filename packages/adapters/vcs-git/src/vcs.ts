@@ -14,11 +14,15 @@ import {
   type CreateWorktreeOptions,
   type DiffStat,
   type DiffStatFile,
+  type MergeOptions,
+  type MergeOutcome,
   type RemoveWorktreeOptions,
   type Vcs,
+  type VcsHistory,
+  type VcsMerge,
   type WorktreeInfo,
 } from '@otheater/core';
-import { GitRunner, type GitRunnerOptions } from './git.js';
+import { classifyGitFailure, GitRunner, type GitRunnerOptions } from './git.js';
 import { copyWorktreeInclude, type WorktreeIncludeResult } from './worktree-include.js';
 
 /** Identity of this adapter for the composition point (architecture 5.18). */
@@ -39,6 +43,11 @@ export interface GitVcsOptions extends GitRunnerOptions {
 
 const BRANCH_REF_PREFIX = 'refs/heads/';
 
+/** Most commits `findCommitByTrailer` looks through, newest first. [proposta] */
+const TRAILER_SEARCH_LIMIT = 5000;
+
+const TRAILER_KEY = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+
 /**
  * The `Vcs` port over the `git` CLI (architecture 5.5, 5.16). Every command runs with
  * `execFile` and an argument array, in the isolated environment of {@link GitRunner}: the
@@ -48,7 +57,7 @@ const BRANCH_REF_PREFIX = 'refs/heads/';
  * serialized per repository inside this process, so several attempts of one play can be created
  * at once without fighting over git's own lock files.
  */
-export class GitVcs implements Vcs {
+export class GitVcs implements Vcs, VcsMerge, VcsHistory {
   readonly id = GIT_VCS_ADAPTER.id;
   readonly implements = GIT_VCS_ADAPTER.implements;
 
@@ -198,6 +207,90 @@ export class GitVcs implements Vcs {
     } finally {
       await rm(scratch, { recursive: true, force: true });
     }
+  }
+
+  /**
+   * Merges `ref` into the branch of `worktree` with a merge commit (`--no-ff`: one commit per
+   * merged attempt stays in the history). A conflict is the `conflict` outcome, never an error:
+   * the merge is aborted, so the worktree is clean again and keeps its branch at the same commit.
+   */
+  async merge(worktree: string, ref: string, opts: MergeOptions = {}): Promise<MergeOutcome> {
+    assertText('ref', ref);
+    if (ref.startsWith('-')) throw new InvalidInput('A ref cannot start with "-"');
+    const message = opts.message ?? `Merge ${ref}`;
+    assertText('merge message', message);
+    const root = await this.#worktreeRoot(worktree);
+    const target = await this.#resolveCommit(root, ref);
+    const commonDir = await this.#commonDir(root);
+    return this.#locked(commonDir, async () => {
+      if (await this.#isDirty(root)) {
+        throw new Conflict(`The worktree has uncommitted changes: ${worktree}`);
+      }
+      const head = await this.#head(root);
+      const contained = await this.#git.try(root, ['merge-base', '--is-ancestor', target, head]);
+      if (contained.code === 0) return { kind: 'up_to_date', sha: head };
+      if (contained.code !== 1) {
+        throw new Conflict(`git merge-base failed: ${contained.stderr.trim()}`);
+      }
+      const result = await this.#git.try(root, [
+        'merge',
+        '--no-ff',
+        '--no-edit',
+        '--quiet',
+        '-m',
+        message,
+        target,
+      ]);
+      if (result.code === 0) return { kind: 'merged', sha: await this.#head(root) };
+      const unmerged = await this.#git.run(root, ['diff', '--name-only', '--diff-filter=U', '-z']);
+      const files = unmerged
+        .split('\0')
+        .filter((file) => file !== '')
+        .sort();
+      // Whatever else it was (an unrelated history, a lock), the merge must not stay half done.
+      await this.#git.try(root, ['merge', '--abort']);
+      if (files.length === 0) {
+        throw classifyGitFailure(
+          ['merge', ref],
+          Object.assign(new Error('git merge failed'), { code: result.code }),
+          result.stderr || result.stdout,
+          this.#git.timeoutMs,
+        );
+      }
+      return { kind: 'conflict', files };
+    });
+  }
+
+  async resolveRef(repo: string, ref: string): Promise<string> {
+    assertAbsolute('repo', repo);
+    assertText('ref', ref);
+    if (ref.startsWith('-')) throw new InvalidInput('A ref cannot start with "-"');
+    return this.#resolveCommit(repo, ref);
+  }
+
+  async findCommitByTrailer(
+    repo: string,
+    ref: string,
+    key: string,
+    value: string,
+  ): Promise<string | undefined> {
+    if (!TRAILER_KEY.test(key))
+      throw new InvalidInput(`Invalid trailer key: ${JSON.stringify(key)}`);
+    assertText('trailer value', value);
+    const tip = await this.resolveRef(repo, ref);
+    const output = await this.#git.run(repo, [
+      'log',
+      `--max-count=${String(TRAILER_SEARCH_LIMIT)}`,
+      `--format=%H%x00%(trailers:key=${key},valueonly=true,unfold=true,separator=%x1f)%x1e`,
+      tip,
+      '--',
+    ]);
+    for (const record of output.split('\x1e')) {
+      const [sha, trailers] = record.replace(/^\n/, '').split('\0');
+      if (sha === undefined || sha === '' || trailers === undefined) continue;
+      if (trailers.split('\x1f').some((found) => found.trim() === value)) return sha;
+    }
+    return undefined;
   }
 
   /**
