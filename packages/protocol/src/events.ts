@@ -31,6 +31,11 @@ import {
   SessionResumedPayloadSchema,
   SessionUpdatePayloadSchema,
 } from './session-events.js';
+import {
+  BrowserActionPayloadSchema,
+  BrowserApprovalPayloadSchema,
+  BrowserRefusedPayloadSchema,
+} from './browser-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -207,6 +212,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ToolFinishedPayloadSchema,
   }),
   defineEventType({
+    type: 'browser.action',
+    schemaVersion: 1,
+    payload: BrowserActionPayloadSchema,
+  }),
+  defineEventType({
+    type: 'browser.refused',
+    schemaVersion: 1,
+    payload: BrowserRefusedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'browser.approval',
+    schemaVersion: 1,
+    payload: BrowserApprovalPayloadSchema,
+  }),
+  defineEventType({
     type: 'workspace.integrated',
     schemaVersion: 1,
     payload: WorkspaceIntegratedPayloadSchema,
@@ -328,6 +348,9 @@ export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
 export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
 export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
+export type BrowserActionPayload = DaemonEventPayloads['browser.action'];
+export type BrowserRefusedPayload = DaemonEventPayloads['browser.refused'];
+export type BrowserApprovalPayload = DaemonEventPayloads['browser.approval'];
 export type WorkspaceIntegratedPayload = DaemonEventPayloads['workspace.integrated'];
 export type WorkspaceIntegrationFailedPayload = DaemonEventPayloads['workspace.integration_failed'];
 export type DeliveryCompletedPayload = DaemonEventPayloads['delivery.completed'];
