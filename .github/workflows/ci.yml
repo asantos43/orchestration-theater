@@ -84,15 +84,17 @@ jobs:
   sandbox-diag:
     runs-on: ubuntu-latest
     steps:
-      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
-      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: sudo apt-get update >/dev/null && sudo apt-get install -y bubblewrap socat ripgrep >/dev/null
       - run: |
-          uname -r; cat /etc/os-release | head -3; bwrap --version
-          id
-          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone user.max_user_namespaces || true
-          echo "--- bwrap plain"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- /bin/true; echo rc=$?
-          echo "--- bwrap + nested unshare -U"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo rc=$?'; echo rc=$?
-          echo "--- bwrap + nested unshare -Ur"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -Ur id; echo rc=$?
-          echo "--- bwrap cap-drop ALL"; bwrap --ro-bind / / --unshare-user --cap-drop ALL --unshare-pid --proc /proc -- unshare -Ur id; echo rc=$?
-          echo "--- dmesg apparmor"; sudo dmesg 2>/dev/null | grep -i "apparmor.*userns\|DENIED" | tail -5 || true
+          sysctl -a 2>/dev/null | grep -i "apparmor\|userns\|unprivileged" || true
+          sudo aa-status 2>&1 | head -20 || true
+          for u in 0 1; do
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            [ $u = 1 ] && sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0 || true
+            echo "--- round $u: nested -U inside bwrap"; bwrap --ro-bind / / --unshare-user --unshare-pid --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
+            echo "--- no unshare-pid"; bwrap --ro-bind / / --unshare-user --proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
+            echo "--- bind /proc"; bwrap --ro-bind / / --unshare-user --unshare-pid --bind /proc /proc -- unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
+            echo "--- outside bwrap"; unshare -U sh -c 'echo deny > /proc/self/setgroups; echo inner rc=$?'
+          done
+          echo "--- dmesg"; sudo dmesg 2>&1 | grep -i "apparmor" | tail -8 || true
         continue-on-error: true
