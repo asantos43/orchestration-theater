@@ -109,6 +109,20 @@ export function matchAllowlist(argv: readonly string[], entries: readonly string
 }
 
 /**
+ * True when the argv starts with the words of at least one of the given commands. The mode
+ * `profile` (N97) uses it with the commands of the project conventions, already split into argv.
+ */
+export function matchCommandPrefixes(
+  argv: readonly string[],
+  prefixes: readonly (readonly string[])[],
+): boolean {
+  return prefixes.some(
+    (words) =>
+      words.length > 0 && words.length <= argv.length && words.every((word, i) => argv[i] === word),
+  );
+}
+
+/**
  * Flags that turn an otherwise read-only (or contained) program into a writer or a launcher of
  * another program: `git diff --output=file`, `rg --pre=cmd`. Refused in every mode, `any` included.
  */

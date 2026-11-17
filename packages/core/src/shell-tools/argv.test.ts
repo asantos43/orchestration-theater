@@ -4,6 +4,7 @@ import {
   assertNoForbiddenFlags,
   DEFAULT_SHELL_ALLOWLIST,
   matchAllowlist,
+  matchCommandPrefixes,
   parseAllowEntry,
   splitCommandLine,
   validateArgv,
@@ -157,6 +158,18 @@ describe('allowlist', () => {
     expect(matchAllowlist(['pnpm', 'add', 'left-pad'], entries)).toBe(false);
     expect(matchAllowlist(['lsof'], entries)).toBe(false);
     expect(matchAllowlist(['ls'], [])).toBe(false);
+  });
+
+  it('matches the argv against whole commands of the project (profile mode)', () => {
+    const commands = [['pnpm', 'test'], ['pnpm', 'install', '--frozen-lockfile'], ['make']];
+    expect(matchCommandPrefixes(['pnpm', 'test'], commands)).toBe(true);
+    expect(matchCommandPrefixes(['pnpm', 'test', 'src/a.test.ts'], commands)).toBe(true);
+    expect(matchCommandPrefixes(['make', 'all'], commands)).toBe(true);
+    expect(matchCommandPrefixes(['pnpm', 'install'], commands)).toBe(false);
+    expect(matchCommandPrefixes(['pnpm', 'add', 'x'], commands)).toBe(false);
+    expect(matchCommandPrefixes(['pnpm'], commands)).toBe(false);
+    expect(matchCommandPrefixes(['pnpm', 'test'], [])).toBe(false);
+    expect(matchCommandPrefixes(['pnpm', 'test'], [[]])).toBe(false);
   });
 
   it('lets only the reading subcommands of git through in the curated list', () => {

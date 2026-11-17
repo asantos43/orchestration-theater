@@ -15,6 +15,8 @@ describe('the tools block of the config (N97, N98)', () => {
     expect(tools.truncate).toBe('head_tail');
     expect(tools.commands).toEqual({});
     expect(tools.http).toEqual({ timeout_ms: 30_000, redirects: 'refuse' });
+    expect(tools.env_inherit).toBe('minimal');
+    expect(tools.env_allow).toEqual([]);
   });
 
   it('takes the three modes of the allowlist and refuses another', () => {
@@ -58,6 +60,15 @@ describe('the tools block of the config (N97, N98)', () => {
     ).tools;
     expect(config.commands.test).toBe('pnpm test');
     expect(config.commands.install).toEqual(['pnpm', 'install', '--frozen-lockfile']);
+  });
+
+  it('takes the environment of the commands and refuses another mode', () => {
+    const tools = parseConfig(
+      'tools:\n  env_inherit: none\n  env_allow: [CI, NODE_OPTIONS]\n',
+    ).tools;
+    expect(tools.env_inherit).toBe('none');
+    expect(tools.env_allow).toEqual(['CI', 'NODE_OPTIONS']);
+    expect(() => parseConfig('tools:\n  env_inherit: some\n')).toThrow(/env_inherit/);
   });
 
   it('refuses bad numbers, an unknown key and an unknown tool', () => {

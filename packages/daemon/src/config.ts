@@ -337,7 +337,7 @@ export type HttpRedirectMode = (typeof HTTP_REDIRECT_MODES)[number];
 export const ToolCommandSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
 export type ToolCommand = z.infer<typeof ToolCommandSchema>;
 
-const AllowlistEntrySchema = z
+export const AllowlistEntrySchema = z
   .string()
   .min(1)
   .refine((entry) => {
@@ -383,6 +383,14 @@ export const ToolsConfigSchema = z
         install: ToolCommandSchema.optional(),
       })
       .prefault({}),
+    /**
+     * [proposta] The environment a command starts from, as `clients.*.env_inherit`: `minimal`
+     * (default: PATH, HOME, locale, proxy), `none` or `all`. Global only: a scenario cannot widen
+     * it. The credentials of the clients are not in the minimal list.
+     */
+    env_inherit: z.enum(['minimal', 'none', 'all']).default('minimal'),
+    /** [proposta] Names added to the environment of a command (`env_inherit`: `minimal` or `none`). */
+    env_allow: z.array(z.string().min(1)).default([]),
     /** [proposta] `http_get`: the time limit of a request and what a redirect does. */
     http: z
       .strictObject({
