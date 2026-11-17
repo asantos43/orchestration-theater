@@ -9,7 +9,8 @@ Decisões do dono em 2026-11-16, por múltipla escolha, iguais às recomendaçõ
 
 Decisões de 2026-11-17, também iguais às recomendações:
 - **N78:** no MVP, o Produtor conversa com o Diretor por um `ot chat` mínimo no terminal, com o Diretor aberto pelo daemon (P8);
-- **N79:** `limits.submit_retries`, com padrão 2 (P3).
+- **N79:** `limits.submit_retries`, com padrão 2 (P3);
+- **N80:** `events.unknown_type: reject | warn`, com padrão `reject` (P1).
 
 ## Como usar
 
@@ -92,12 +93,12 @@ Ficam como portões **[N]**:
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano, fechamento da Fase 2 e downloads (este documento) | nada | nada | em PR |
-| P1 | Registros validados na subida | P0 | P2, P5 | a fazer |
+| P0 | Plano, fechamento da Fase 2 e downloads (este documento) | nada | nada | feito (PR #49) |
+| P1 | Registros validados na subida | P0 | P2, P5 | feito (PR #51) |
 | P2 | Store da Fase 3 | P0 | P1, P5 | a fazer |
 | P3 | Servidor MCP do framework | P1 | P4, P6, P11 | a fazer |
 | P4 | Máquina da peça em XState | P1, P2 | P3, P6, P11 | a fazer |
-| P5 | Roteiro: validação e DAG | P0 | P1, P2, P3, P4 | a fazer |
+| P5 | Roteiro: validação e DAG | P0 | P1, P2, P3, P4 | feito (PR #50) |
 | P6 | Workspace: integração e entrega por PR | P2 | P3, P4, P11 | a fazer |
 | P7 | Blackboard e fila única de prompts | P2, P3 | P10 | a fazer |
 | P8 | Peça ponta a ponta com o agente falso | P3 a P7, P11 | P10 | a fazer |
@@ -135,7 +136,7 @@ Ordem em ondas **[proposta]**:
   - se os fluxos apontam para papéis e ferramentas que existem;
   - se os eventos têm schema;
   - se as chaves de `rule` têm schema de valor.
-- O `append` do daemon passa a recusar um tipo de evento fora do registro **[proposta]**.
+- O `append` do daemon passa a recusar um tipo de evento fora do registro, pela chave `events.unknown_type: reject | warn`, com padrão `reject` (N80, decidida em 2026-11-17).
 
 **Aceite:**
 - Cada regra de validação tem um teste que a reprova.
