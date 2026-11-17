@@ -53,6 +53,23 @@ export class ToolHandlers {
 }
 
 /**
+ * [proposta] What a handler throws when the call is refused for a reason the Executor can act on
+ * (an unknown order, a conflict, a bad date): the server answers an error result carrying `error`
+ * (a stable code) and the message, instead of the opaque `internal_error` of an unexpected throw.
+ */
+export class ToolFailure extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    /** Extra fields of the error result (the order a draft conflicts with, say). */
+    readonly details: Readonly<Record<string, unknown>> = {},
+  ) {
+    super(message);
+    this.name = 'ToolFailure';
+  }
+}
+
+/**
  * [proposta] What a registered tool with no handler yet answers: an error result with a stable
  * `error` code, so an Executor (and a test) can tell "not built yet" from a failure of the tool.
  */

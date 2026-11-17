@@ -1,12 +1,20 @@
 {
   "usage": {
-    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon            Start the OTheater daemon in this terminal\n  backup            Make a backup of the data now\n  restore <folder>  Put a backup back (the daemon must be stopped)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
     "hint": "Run \"ot --help\" for usage.",
     "unknownCommand": "Unknown command \"{{command}}\".",
     "missingCommand": "No command given.",
     "missingBackupPath": "\"ot restore\" needs the backup folder to restore.",
     "tooManyArguments": "Too many arguments for \"ot {{command}}\".",
-    "invalidOption": "Invalid option: {{message}}"
+    "invalidOption": "Invalid option: {{message}}",
+    "missingDirectivesAction": "\"ot directives\" needs an action: list, show, add, extend, suspend or revoke.",
+    "unknownDirectivesAction": "Unknown action \"{{action}}\" for \"ot directives\".",
+    "directiveNeedsId": "This action needs the order id (for example O1).",
+    "directiveNeedsText": "\"ot directives add\" needs the text of the order.",
+    "directiveNeedsReason": "\"ot directives revoke\" needs --reason <text>.",
+    "directiveNeedsScenario": "\"ot directives suspend\" needs --scenario <id>: the scenario that stops following the order.",
+    "directiveKind": "--kind must be instruction, rule or suspension.",
+    "directiveTooMany": "Too many arguments for this action of \"ot directives\"."
   },
   "daemon": {
     "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
@@ -25,6 +33,15 @@
     "done": "Restored the database at {{path}}.",
     "keptDatabase": "The previous database was kept as {{path}}.",
     "keptScenarios": "The previous scenarios folder was kept as {{path}}."
+  },
+  "directives": {
+    "daemonRunning": "The daemon is running on this data directory. Stop it to change orders here, or ask the Director to propose the change.",
+    "none": "No orders.",
+    "notFound": "Order {{id}} not found.",
+    "created": "Order {{id}} created ({{state}}).",
+    "extended": "Order {{id}} extended ({{state}}).",
+    "revoked": "Order {{id}} revoked.",
+    "suspendText": "Suspends {{id}} in this scenario."
   },
   "errors": {
     "prefix": "Error: {{message}}"
