@@ -156,6 +156,11 @@ function isKnownPending({ context, event }: Args): boolean {
   return id !== null && pendingDemands(context).includes(id);
 }
 
+function isKnownDemand({ context, event }: Args): boolean {
+  const id = demandOf(event);
+  return id !== null && context.demandIds.includes(id);
+}
+
 function submitRetriesOf(context: PlayContext): number {
   return context.limits.submit_retries + (context.limitBonus.submit_retries ?? 0);
 }
@@ -538,6 +543,28 @@ function approval() {
   ];
 }
 
+/** The demand loses its approval: it runs again (N82). */
+function unapprove() {
+  return patch(({ context, event }) => ({
+    approvedDemands: context.approvedDemands.filter((id) => id !== demandOf(event)),
+  }));
+}
+
+/**
+ * N82, `integration.rebase_conflict`: rebasing a dependent onto the new branch of its dependency
+ * conflicted (the daemon aborted the rebase). `redo` and `resolve_attempt` open a new attempt of the
+ * dependent and count in `attempts_per_demand`; `script_failure` goes back to SCRIPTING.
+ */
+function rebaseConflict() {
+  const withMode = (mode: string) => (a: Args) =>
+    a.event.type === 'REBASE_CONFLICT' && a.event.mode === mode && isKnownDemand(a);
+  return [
+    ...scriptReturn(withMode('script_failure')),
+    ...failAttempt(withMode('redo'), 'redo', [unapprove()]),
+    ...failAttempt(withMode('resolve_attempt'), 'resolve', [unapprove()]),
+  ];
+}
+
 /** The deadline of a demand: the timeout of the script, or the default, never above the ceiling. */
 function deadlineFor({ context, event }: Args): number {
   const { demand_timeout, demand_timeout_max } = context.limits;
@@ -731,6 +758,28 @@ function menuTransitions() {
       ],
     },
     {
+      // [proposta] N83: redo on the new base is a return the Producer asked for, so it is not counted
+      guard: chose('redo_on_new_base'),
+      target: 'SCRIPTING' as const,
+      reenter: true,
+      actions: [
+        ...choice('redo_on_new_base'),
+        patch(({ context }) => ({
+          feedback:
+            context.producerReason?.kind === 'base_drift' ? context.producerReason.reason : null,
+          producerReason: null,
+        })),
+      ],
+    },
+    {
+      guard: chose('deliver_with_conflict'),
+      target: 'DELIVERING' as const,
+      actions: [
+        ...choice('deliver_with_conflict'),
+        patch(() => ({ driftAccepted: true, producerReason: null })),
+      ],
+    },
+    {
       guard: chose('cancel'),
       target: 'CANCELLED' as const,
       actions: [...choice('cancel'), abort('cancelled'), patch(() => ({ producerReason: null }))],
@@ -750,6 +799,7 @@ const FRESH_CONTEXT = {
   feedback: null,
   producerReason: null,
   deliverOnlyApproved: false,
+  driftAccepted: false,
   restart: false,
   decisionSeq: 0,
 } as const;
@@ -871,14 +921,22 @@ export const playMachine = setup({
             guard: ({ event }) => event.valid,
             target: 'REVIEWING_SCRIPT',
             actions: [
-              patch(({ context, event }) => ({
-                demandIds: event.type === 'SCRIPT_VALIDATED' ? (event.demandIds ?? []) : [],
-                approvedDemands: [],
-                deadlines: {},
-                openJudgments: [],
-                counters: withoutAnyAttempts(context.counters),
-                feedback: null,
-              })),
+              patch(({ context, event }) => {
+                const demandIds = event.type === 'SCRIPT_VALIDATED' ? (event.demandIds ?? []) : [];
+                // N84: a demand the new script keeps as it is stays approved, if it was
+                const kept = event.type === 'SCRIPT_VALIDATED' ? (event.keptDemandIds ?? []) : [];
+                return {
+                  demandIds,
+                  approvedDemands: demandIds.filter(
+                    (id) => kept.includes(id) && context.approvedDemands.includes(id),
+                  ),
+                  deadlines: {},
+                  openJudgments: [],
+                  counters: withoutAnyAttempts(context.counters),
+                  feedback: null,
+                  driftAccepted: false,
+                };
+              }),
             ],
           },
           ...loop('script_validations', 'SCRIPTING', {
@@ -892,6 +950,12 @@ export const playMachine = setup({
       entry: [enter('REVIEWING_SCRIPT')],
       on: {
         SCRIPT_REVIEWED: [
+          {
+            // N84: every demand was kept from the previous script, so nothing is left to run
+            guard: ({ context, event }) => event.approved && pendingDemands(context).length === 0,
+            target: 'INTEGRATING',
+            actions: [patch(() => ({ feedback: null }))],
+          },
           {
             guard: ({ event }) => event.approved,
             target: 'EXECUTING',
@@ -923,6 +987,7 @@ export const playMachine = setup({
         RESUMES_EXCEEDED: openJudgment('resumes_exceeded'),
         DEPENDENCY_REDONE: openJudgment('dependency_redone'),
         JUDGED: executingJudgments(),
+        REBASE_CONFLICT: rebaseConflict(),
         SUBMIT_FAILED: submitFailed('EXECUTING'),
       },
     },
@@ -965,7 +1030,26 @@ export const playMachine = setup({
     },
     DELIVERING: {
       entry: [enter('DELIVERING')],
-      on: { DELIVERED: { target: 'DONE' } },
+      on: {
+        DELIVERED: { target: 'DONE' },
+        // N83: the base moved and does not merge cleanly into the integration
+        BASE_DRIFT: [
+          ...scriptReturn(({ event }) => event.type === 'BASE_DRIFT' && event.mode === 'update'),
+          {
+            guard: ({ event }) => event.mode === 'ask',
+            target: 'AWAITING_PRODUCER',
+            actions: [
+              patch(({ event }) => ({
+                producerReason: {
+                  kind: 'base_drift',
+                  files: event.type === 'BASE_DRIFT' ? event.files : [],
+                  reason: reasonOf(event) ?? '',
+                },
+              })),
+            ],
+          },
+        ],
+      },
     },
     AWAITING_PRODUCER: {
       entry: [enter('AWAITING_PRODUCER')],

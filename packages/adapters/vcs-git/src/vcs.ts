@@ -14,14 +14,20 @@ import {
   type CreateWorktreeOptions,
   type InitOptions,
   type DiffStat,
+  type DiffText,
   type DiffStatFile,
   type MergeOptions,
   type MergeOutcome,
+  type RebaseOptions,
+  type RebaseOutcome,
   type RemoveWorktreeOptions,
   type Vcs,
+  type VcsBranchDelete,
+  type VcsDiff,
   type VcsHistory,
   type VcsInit,
   type VcsMerge,
+  type VcsRebase,
   type WorktreeInfo,
 } from '@otheater/core';
 import { classifyGitFailure, GitRunner, type GitRunnerOptions } from './git.js';
@@ -59,7 +65,9 @@ const TRAILER_KEY = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
  * serialized per repository inside this process, so several attempts of one play can be created
  * at once without fighting over git's own lock files.
  */
-export class GitVcs implements Vcs, VcsMerge, VcsHistory, VcsInit {
+export class GitVcs
+  implements Vcs, VcsMerge, VcsRebase, VcsDiff, VcsBranchDelete, VcsHistory, VcsInit
+{
   readonly id = GIT_VCS_ADAPTER.id;
   readonly implements = GIT_VCS_ADAPTER.implements;
 
@@ -294,6 +302,139 @@ export class GitVcs implements Vcs, VcsMerge, VcsHistory, VcsInit {
         );
       }
       return { kind: 'conflict', files };
+    });
+  }
+
+  /**
+   * Rebases `branch` onto `onto` without a checkout of its own: the work runs in a private,
+   * detached worktree that is gone when the call ends, and the branch is moved with a
+   * compare-and-swap `update-ref`. A conflict is the `conflict` outcome, never an error: the
+   * rebase is aborted and the branch stays where it was. A branch checked out in a worktree is
+   * `Conflict` (moving it would leave that worktree behind). [proposta] extra capability.
+   */
+  async rebaseBranch(
+    repo: string,
+    branch: string,
+    onto: string,
+    opts: RebaseOptions = {},
+  ): Promise<RebaseOutcome> {
+    assertAbsolute('repo', repo);
+    assertText('branch', branch);
+    assertText('onto', onto);
+    if (branch.startsWith('-') || onto.startsWith('-')) {
+      throw new InvalidInput('A branch or ref cannot start with "-"');
+    }
+    if (opts.upstream !== undefined) {
+      assertText('upstream', opts.upstream);
+      if (opts.upstream.startsWith('-')) throw new InvalidInput('A ref cannot start with "-"');
+    }
+    const oldHead = await this.#resolveCommit(repo, `${BRANCH_REF_PREFIX}${branch}`);
+    const target = await this.#resolveCommit(repo, onto);
+    const upstream =
+      opts.upstream === undefined ? target : await this.#resolveCommit(repo, opts.upstream);
+    const commonDir = await this.#commonDir(repo);
+    return this.#locked(commonDir, async () => {
+      const inUse = (await this.listWorktrees(repo)).find((entry) => entry.branch === branch);
+      if (inUse !== undefined) {
+        throw new Conflict(`The branch ${branch} is checked out in ${inUse.path}`);
+      }
+      // Already on top of `onto` (or nothing to replay): the branch does not move.
+      const sits = await this.#git.try(repo, ['merge-base', '--is-ancestor', upstream, oldHead]);
+      if (sits.code === 0 && opts.upstream === undefined) {
+        return { kind: 'up_to_date', sha: oldHead };
+      }
+      const scratch = await mkdtemp(join(tmpdir(), 'otheater-rebase-'));
+      const path = join(scratch, 'wt');
+      try {
+        await this.#git.run(repo, ['worktree', 'add', '--quiet', '--detach', '--', path, oldHead]);
+        const result = await this.#git.try(path, ['rebase', '--quiet', '--onto', target, upstream]);
+        if (result.code !== 0) {
+          const unmerged = await this.#git.try(path, [
+            'diff',
+            '--name-only',
+            '--diff-filter=U',
+            '-z',
+          ]);
+          const files = unmerged.stdout
+            .split('\0')
+            .filter((file) => file !== '')
+            .sort();
+          await this.#git.try(path, ['rebase', '--abort']);
+          if (files.length === 0) {
+            throw classifyGitFailure(
+              ['rebase', onto],
+              Object.assign(new Error('git rebase failed'), { code: result.code }),
+              result.stderr || result.stdout,
+              this.#git.timeoutMs,
+            );
+          }
+          return { kind: 'conflict', files };
+        }
+        const newHead = await this.#head(path);
+        if (newHead === oldHead) return { kind: 'up_to_date', sha: oldHead };
+        await this.#git.run(repo, [
+          'update-ref',
+          '-m',
+          `rebase onto ${onto}`,
+          `${BRANCH_REF_PREFIX}${branch}`,
+          newHead,
+          oldHead,
+        ]);
+        return { kind: 'rebased', sha: newHead };
+      } finally {
+        await this.#git.try(repo, ['worktree', 'remove', '--force', '--', path]);
+        await rm(scratch, { recursive: true, force: true });
+        await this.#git.try(repo, ['worktree', 'prune']);
+      }
+    });
+  }
+
+  /** `git diff <base>...<head>`: what `head` did since it left `base`, clipped to `maxChars`. */
+  async diffBetween(
+    repo: string,
+    base: string,
+    head: string,
+    maxChars = 20_000,
+  ): Promise<DiffText> {
+    assertAbsolute('repo', repo);
+    for (const [what, ref] of [
+      ['base', base],
+      ['head', head],
+    ] as const) {
+      assertText(what, ref);
+      if (ref.startsWith('-')) throw new InvalidInput('A ref cannot start with "-"');
+    }
+    if (!Number.isSafeInteger(maxChars) || maxChars < 1) {
+      throw new InvalidInput(`maxChars must be a positive integer, got ${String(maxChars)}`);
+    }
+    const baseSha = await this.#resolveCommit(repo, base);
+    const headSha = await this.#resolveCommit(repo, head);
+    const text = await this.#git.run(repo, [
+      'diff',
+      '--no-color',
+      '--no-ext-diff',
+      '--no-renames',
+      `${baseSha}...${headSha}`,
+      '--',
+    ]);
+    return text.length <= maxChars
+      ? { text, truncated: false }
+      : { text: text.slice(0, maxChars), truncated: true };
+  }
+
+  /** `git branch -D`: a branch that is not there is not an error; one checked out is `Conflict`. */
+  async deleteBranch(repo: string, branch: string): Promise<void> {
+    assertAbsolute('repo', repo);
+    assertText('branch', branch);
+    if (branch.startsWith('-')) throw new InvalidInput('A branch name cannot start with "-"');
+    const commonDir = await this.#commonDir(repo);
+    await this.#locked(commonDir, async () => {
+      if (!(await this.#branchExists(repo, branch))) return;
+      const inUse = (await this.listWorktrees(repo)).find((entry) => entry.branch === branch);
+      if (inUse !== undefined) {
+        throw new Conflict(`The branch ${branch} is checked out in ${inUse.path}`);
+      }
+      await this.#git.run(repo, ['branch', '-D', '--', branch]);
     });
   }
 

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * [proposal] The `role-play` script: one fake agent for every role of a play (architecture 5.4).
@@ -12,6 +16,12 @@ import { join } from 'node:path';
  * it): `approved` (default), `execution_failure`, `script_failure`, `structural_failure`,
  * `exhausted` and `clarify`. The Critic rejects its first look at the work for the three failures
  * and says `[outcome:<name>]` in the reason; the Director reads that tag and classifies it.
+ *
+ * More cover the merge conflicts (N82 to N84): `base_drift`, `base_drift_conflict` and
+ * `base_drift_verify` (the Critic moves `main` on its first look: with a new file, with a file the
+ * play also writes, or with a file that makes the `verify` of the demands fail) and
+ * `rescript` (the Critic rejects its first look as a script failure, and the second script keeps
+ * alpha as it was, marked `unchanged`, and changes beta).
  */
 
 export const OUTCOMES = [
@@ -21,6 +31,10 @@ export const OUTCOMES = [
   'structural_failure',
   'exhausted',
   'clarify',
+  'base_drift',
+  'base_drift_conflict',
+  'base_drift_verify',
+  'rescript',
 ] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 
@@ -70,17 +84,24 @@ async function countOf(key: string): Promise<number> {
 }
 
 const VERIFY_OK = { name: 'check', command: 'node', args: ['-e', 'process.exit(0)'] };
+/** Passes until the file `news.txt` is there: the file `main` gets in `base_drift_verify`. */
+const VERIFY_NO_NEWS = {
+  name: 'check',
+  command: 'node',
+  args: ['-e', "process.exit(require('fs').existsSync('news.txt') ? 1 : 0)"],
+};
 const VERIFY_FAIL = { name: 'check', command: 'node', args: ['-e', 'process.exit(1)'] };
 
 function demandOf(
   id: string,
   dependsOn: string[],
   verify: typeof VERIFY_OK,
+  revision = 1,
 ): Record<string, unknown> {
   return {
     id,
     title: `Write ${id}`,
-    description: `Write the file ${id}.txt with a line that says what it is for.`,
+    description: `Write the file ${id}.txt with a line that says what it is for.${revision > 1 ? ` (revision ${String(revision)})` : ''}`,
     dependsOn,
     contract: { inputs: [], outputs: [`file-${id}`] },
     expectedFiles: [`${id}.txt`],
@@ -91,8 +112,31 @@ function demandOf(
   };
 }
 
-function scriptFor(outcome: Outcome): Record<string, unknown> {
-  const verify = outcome === 'exhausted' ? VERIFY_FAIL : VERIFY_OK;
+/**
+ * The script of the outcome. `rescript` writes a second one (`second`): alpha as it was, marked
+ * `unchanged`, and beta with another description.
+ */
+function scriptFor(outcome: Outcome, second = false): Record<string, unknown> {
+  const verify =
+    outcome === 'exhausted'
+      ? VERIFY_FAIL
+      : outcome === 'base_drift_verify'
+        ? VERIFY_NO_NEWS
+        : VERIFY_OK;
+  if (outcome === 'rescript' && second) {
+    return {
+      contracts: ['alpha', 'beta'].map((id) => ({
+        id: `file-${id}`,
+        kind: 'file',
+        title: `File ${id}`,
+        description: `The file ${id}.txt.`,
+      })),
+      demands: [
+        { ...demandOf('alpha', [], verify), unchanged: true },
+        demandOf('beta', ['alpha'], verify, 2),
+      ],
+    };
+  }
   return {
     contracts: ['alpha', 'beta'].map((id) => ({
       id: `file-${id}`,
@@ -114,15 +158,55 @@ async function submit(
 }
 
 async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
-  await writeFile(join(host.cwd, `${demandId}.txt`), `${demandId}: written by the fake Actor\n`);
+  // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
+  const carried = host.text.includes('## Work of the earlier attempt')
+    ? `took over earlier work, diff ${host.text.includes('```diff') ? 'given' : 'not given'}\n`
+    : '';
+  await writeFile(
+    join(host.cwd, `${demandId}.txt`),
+    `${demandId}: written by the fake Actor\n${carried}`,
+  );
   await submit(host, 'submit', { result: { file: `${demandId}.txt` } });
+}
+
+/**
+ * Moves `main` of the project one commit on, with git plumbing so no worktree is touched: the
+ * base of the play moves while the play runs (N83). `shared` also writes a file the play writes.
+ */
+async function advanceMain(host: RolePlayHost, file: string): Promise<void> {
+  const git = async (args: string[], env: Record<string, string>, input?: string) => {
+    const child = execFileAsync('git', args, { cwd: host.cwd, env: { ...process.env, ...env } });
+    if (input !== undefined) child.child.stdin?.end(input);
+    return (await child).stdout.trim();
+  };
+  const dir = resolve(host.cwd, await git(['rev-parse', '--git-common-dir'], {}));
+  const index = join(stateDir(), `advance-${String(Date.now())}.index`);
+  const env = {
+    GIT_DIR: dir,
+    GIT_INDEX_FILE: index,
+    GIT_AUTHOR_NAME: 'Fake Agent',
+    GIT_AUTHOR_EMAIL: 'fake-agent@example.invalid',
+    GIT_COMMITTER_NAME: 'Fake Agent',
+    GIT_COMMITTER_EMAIL: 'fake-agent@example.invalid',
+  };
+  await mkdir(stateDir(), { recursive: true });
+  await git(['read-tree', 'main'], env);
+  const blob = await git(['hash-object', '-w', '--stdin'], env, `${file}: written on main\n`);
+  await git(['update-index', '--add', '--cacheinfo', `100644,${blob},${file}`], env);
+  const tree = await git(['write-tree'], env);
+  const commit = await git(['commit-tree', tree, '-p', 'main', '-m', `main moves: ${file}`], env);
+  await git(['update-ref', 'refs/heads/main', commit], env);
 }
 
 async function playCritic(host: RolePlayHost, playId: string, outcome: Outcome): Promise<void> {
   const look = await countOf(`${playId}-critic`);
+  if (look === 0 && outcome.startsWith('base_drift')) {
+    await advanceMain(host, outcome === 'base_drift_conflict' ? 'alpha.txt' : 'news.txt');
+  }
   const fails =
     outcome === 'execution_failure' ||
     outcome === 'script_failure' ||
+    outcome === 'rescript' ||
     outcome === 'structural_failure';
   if (fails && look === 0) {
     await submit(host, 'submit_critique', {
@@ -148,7 +232,9 @@ async function playStage(host: RolePlayHost, stage: string): Promise<void> {
       await submit(host, 'submit_plan_review', { approved: true });
       return;
     case 'SCRIPTING':
-      await submit(host, 'submit_script', { script: scriptFor(outcome) });
+      await submit(host, 'submit_script', {
+        script: scriptFor(outcome, (await countOf(`${playId}-script`)) > 0),
+      });
       return;
     case 'REVIEWING_SCRIPT':
       await submit(host, 'submit_script_review', { approved: true });
@@ -184,7 +270,7 @@ async function playJudge(host: RolePlayHost): Promise<void> {
       )?.[1];
       const demandIds = Array.isArray(input.demandIds) ? input.demandIds : [];
       const failure =
-        tag === 'script_failure'
+        tag === 'script_failure' || tag === 'rescript'
           ? { kind: 'script', note: 'the script does not fit the work' }
           : tag === 'structural_failure'
             ? { kind: 'structural', note: 'the plan has to start over' }

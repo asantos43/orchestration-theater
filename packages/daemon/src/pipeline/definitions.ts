@@ -64,6 +64,10 @@ export const MENU_OPTIONS = [
   'raise_limit',
   'deliver_ready',
   'accept_as_is',
+  /** [proposta] `delivery.base_drift: ask` only: go back to SCRIPTING on the new base, without counting. */
+  'redo_on_new_base',
+  /** [proposta] `delivery.base_drift: ask` only: open the PR with the conflicts listed. */
+  'deliver_with_conflict',
   'cancel',
 ] as const;
 export type MenuOption = (typeof MENU_OPTIONS)[number];

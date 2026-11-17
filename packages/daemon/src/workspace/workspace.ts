@@ -15,6 +15,8 @@ import {
   type VcsHistory,
   type VcsMerge,
   hasErrorCode,
+  supportsBranchDelete,
+  supportsRebase,
   integrationBranch,
   playBranch,
   supportsHistory,
@@ -70,7 +72,32 @@ export interface IntegrateInput {
   readonly playId: string;
   readonly script: Pick<Script, 'demands'>;
   readonly approved: readonly ApprovedAttempt[];
+  /**
+   * Which build of the integration branch this is (default 1). A new script rebuilds the branch
+   * from the base ({@link Workspace.resetIntegration}); the merges of the new build need keys of
+   * their own, or the registry would replay the old ones and merge nothing. [proposta]
+   */
+  readonly round?: number;
 }
+
+/** What {@link Workspace.mergeBase} did. */
+export type BaseMergeResult =
+  | {
+      readonly kind: 'merged' | 'up_to_date';
+      /** Head of the integration branch afterwards. */
+      readonly head: string;
+      /** The worktree where the integration branch is checked out. */
+      readonly worktree: string;
+      /** The sha of the play base that was merged. */
+      readonly baseSha: string;
+    }
+  | {
+      readonly kind: 'conflict';
+      readonly worktree: string;
+      readonly baseSha: string;
+      readonly conflictFiles: readonly string[];
+    }
+  | { readonly kind: 'ambiguous'; readonly key: string; readonly reason: string };
 
 export interface IntegratedAttempt {
   readonly demandId: string;
@@ -134,6 +161,8 @@ export interface DeliverInput {
   readonly configMode: DeliveryMode;
   /** `delivery.allow_direct_merge`. */
   readonly allowDirectMerge: boolean;
+  /** What the Producer should know: listed in the PR and in `delivery.completed`. [proposta] */
+  readonly warnings?: readonly string[];
   /** Someone is looking; with nobody, `ask` becomes `pr`. */
   readonly attended: boolean;
 }
@@ -171,8 +200,10 @@ export type DeliveryResult =
  * the merge commits, are side effects of the registry (5.21): the intent is written first, then
  * the effect, then its resolution, and a repetition checks before it acts, so nothing happens twice.
  *
- * Not here (P8 wires it, the Director decides it): who calls it and when, the removal of the
- * worktrees after the delivery, and rebuilding an integration branch from scratch. [proposta]
+ * Not here (the effects of the play wire it): who calls it and when, and the removal of the
+ * worktrees after the delivery. The integration branch is rebuilt from the base for a new script
+ * (`resetIntegration`, with a `round` in the keys) and updated when the base moves (`moveBase`,
+ * `mergeBase`). [proposta]
  */
 export class Workspace {
   readonly #store: Pick<Store, 'events' | 'sideEffects'>;
@@ -236,7 +267,7 @@ export class Workspace {
     for (const { demandId, attempt } of ordered) {
       const source = attemptBranch(input.playId, demandId, attempt);
       const sourceSha = await this.#vcs.resolveRef(input.repo, source);
-      const key = `${input.playId}:integrate:${demandId}:${String(attempt)}`;
+      const key = `${input.playId}:integrate:${demandId}:${String(attempt)}${roundSuffix(input.round)}`;
       const outcome = await runEffect(this.#store.sideEffects, {
         key,
         type: GIT_COMMIT_EFFECT,
@@ -308,6 +339,116 @@ export class Workspace {
       } satisfies WorkspaceIntegratedPayload);
     }
     return { kind: 'integrated', branch, worktree, head, merged };
+  }
+
+  /**
+   * Moves `play/<id>/base` onto `onto` (the project's base, as the play sees it by now), so the
+   * attempts opened after the move start from the new base (N83, "update"). The play base has no
+   * commits of its own, so the rebase is a fast-forward. [proposta] Returns the new sha. Needs the
+   * optional capability `VcsRebase`, and no worktree can have the branch checked out.
+   */
+  async moveBase(input: {
+    readonly repo: string;
+    readonly playId: string;
+    readonly onto: string;
+  }): Promise<string> {
+    if (!supportsRebase(this.#vcs)) {
+      throw new AdapterUnavailable(
+        `The Vcs adapter ${this.#vcs.id} cannot rebase, and moving the base of a play needs it`,
+      );
+    }
+    const outcome = await this.#vcs.rebaseBranch(input.repo, playBranch(input.playId), input.onto);
+    if (outcome.kind === 'conflict') {
+      throw new Conflict(
+        `The base of the play ${input.playId} cannot move onto ${input.onto}: ${outcome.files.join(', ')}`,
+      );
+    }
+    return outcome.sha;
+  }
+
+  /**
+   * Merges `play/<id>/base` (as it is now) into the integration branch, as a side effect keyed
+   * `<play>:drift:r<round>:<sha of the base>`: the base moved while the play ran (N83). A base
+   * the integration already has is `up_to_date`. A conflict leaves the integration as it was and
+   * names the files. Calling it again for the same base and round gives the same answer.
+   */
+  async mergeBase(input: {
+    readonly repo: string;
+    readonly playId: string;
+    readonly round?: number;
+  }): Promise<BaseMergeResult> {
+    const { repo, playId } = input;
+    const source = playBranch(playId);
+    const branch = integrationBranch(playId);
+    const baseSha = await this.#vcs.resolveRef(repo, source);
+    const worktree = await this.#integrationWorktree(repo, playId);
+    const outcome = await runEffect(this.#store.sideEffects, {
+      key: `${playId}:drift:${roundLabel(input.round)}:${baseSha}`,
+      type: GIT_COMMIT_EFFECT,
+      target: branch,
+      params: { repo, branch },
+      execute: async (effectiveKey) => {
+        const result = await this.#vcs.merge(worktree, source, {
+          message: withIdempotencyTrailer(
+            `Update to the base (${baseSha.slice(0, 12)})`,
+            effectiveKey,
+          ),
+        });
+        return result.kind === 'conflict'
+          ? { outcome: 'conflict', files: [...result.files] }
+          : { outcome: result.kind, sha: result.sha };
+      },
+      verify: (record) => verifyGitCommit(this.#deps(), record),
+    });
+    if (outcome.kind === 'ambiguous') {
+      return { kind: 'ambiguous', key: outcome.key, reason: outcome.reason };
+    }
+    if (outcome.result.outcome === 'conflict') {
+      return {
+        kind: 'conflict',
+        worktree,
+        baseSha,
+        conflictFiles: stringList(outcome.result.files),
+      };
+    }
+    return {
+      kind: outcome.result.outcome === 'up_to_date' ? 'up_to_date' : 'merged',
+      head: await this.#vcs.headOf(worktree),
+      worktree,
+      baseSha,
+    };
+  }
+
+  /**
+   * Drops the integration branch and its worktree, so the next {@link Workspace.integrate}
+   * rebuilds it from `play/<id>/base` (a new script, N84). Returns whether there was one. The
+   * attempt branches are not touched. [proposta]
+   */
+  async resetIntegration(input: {
+    readonly repo: string;
+    readonly playId: string;
+  }): Promise<boolean> {
+    const branch = integrationBranch(input.playId);
+    const known = (await this.#vcs.listWorktrees(input.repo)).find(
+      (entry) => entry.branch === branch,
+    );
+    if (known !== undefined) {
+      await this.#vcs.removeWorktree(known.path, { force: true, deleteBranch: true });
+      return true;
+    }
+    try {
+      await this.#vcs.resolveRef(input.repo, branch);
+    } catch (error) {
+      if (hasErrorCode(error, 'NOT_FOUND')) return false;
+      throw error;
+    }
+    if (!supportsBranchDelete(this.#vcs)) {
+      throw new AdapterUnavailable(
+        `The Vcs adapter ${this.#vcs.id} cannot delete the branch ${branch}`,
+      );
+    }
+    await this.#vcs.deleteBranch(input.repo, branch);
+    return true;
   }
 
   /**
@@ -400,6 +541,9 @@ export class Workspace {
         pushedSha,
         ...(pullRequest === undefined ? {} : { pullRequest }),
         ...(mergeSha === undefined ? {} : { mergeSha }),
+        ...(input.warnings === undefined || input.warnings.length === 0
+          ? {}
+          : { warnings: [...input.warnings] }),
       } satisfies DeliveryCompletedPayload);
     }
     return {
@@ -439,7 +583,7 @@ export class Workspace {
         base,
         remote,
         title: args.input.title,
-        body: pullRequestBody(args.input.body, args.decision),
+        body: pullRequestBody(args.input.body, args.decision, args.input.warnings),
       }));
     return { number: pr.number, url: pr.url, state: pr.state };
   }
@@ -520,11 +664,25 @@ function orderApproved(
     });
 }
 
-function pullRequestBody(body: string | undefined, decision: DeliveryDecision): string {
+/** Round 1 keeps the key the registry has always had; later rounds add `:r<round>`. */
+function roundSuffix(round: number | undefined): string {
+  return round === undefined || round <= 1 ? '' : `:r${String(round)}`;
+}
+
+function roundLabel(round: number | undefined): string {
+  return `r${String(round ?? 1)}`;
+}
+
+function pullRequestBody(
+  body: string | undefined,
+  decision: DeliveryDecision,
+  warnings: readonly string[] = [],
+): string {
   const lines = [
     `OTheater delivery: mode \`${decision.mode}\`, requested \`${decision.requestedMode}\` by ${decision.requestedBy}.`,
   ];
   if (decision.reason !== undefined) lines.push(`Downgraded to a PR: ${decision.reason}.`);
+  if (warnings.length > 0) lines.push('', '**Warnings**', ...warnings.map((line) => `- ${line}`));
   const head = body?.trim() ?? '';
   return head === '' ? lines.join('\n') : `${head}\n\n---\n${lines.join('\n')}`;
 }

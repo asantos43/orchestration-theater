@@ -30,6 +30,11 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
       type: z.literal('SCRIPT_VALIDATED'),
       valid: z.boolean(),
       demandIds: z.array(demandId).min(1).optional(),
+      /**
+       * [proposta] N84: the demands of the new script that equal the ones already approved and are
+       * kept as they are (`rescript.reuse`). They must be in `demandIds`.
+       */
+      keptDemandIds: z.array(demandId).optional(),
       reason,
     })
     .refine((event) => !event.valid || event.demandIds !== undefined, {
@@ -43,8 +48,25 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
         message: 'the demand ids are not unique',
         path: ['demandIds'],
       },
+    )
+    .refine(
+      (event) =>
+        event.keptDemandIds === undefined ||
+        event.keptDemandIds.every((id) => event.demandIds?.includes(id) === true),
+      { message: 'a kept demand is one of the demands of the script', path: ['keptDemandIds'] },
     ),
   z.strictObject({ type: z.literal('SCRIPT_REVIEWED'), approved: z.boolean(), reason }),
+  /**
+   * N82: rebasing a dependent onto the new branch of its dependency conflicted (the daemon already
+   * aborted the rebase). `mode` is `integration.rebase_conflict`, read by the effect.
+   */
+  z.strictObject({
+    type: z.literal('REBASE_CONFLICT'),
+    demandId,
+    mode: z.enum(['redo', 'script_failure', 'resolve_attempt']),
+    files: z.array(text),
+    reason,
+  }),
   /** A demand got an Actor. `timeoutMin` comes from the script; the default and the ceiling are in `limits`. */
   z.strictObject({
     type: z.literal('DEMAND_STARTED'),
@@ -81,6 +103,16 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('CRITIQUED'), approved: z.boolean(), reason }),
   /** The session spent `limits.submit_retries` and the output of `submit*` is still invalid (N79). */
   z.strictObject({ type: z.literal('SUBMIT_FAILED'), demandId: demandId.optional(), reason }),
+  /**
+   * N83: in DELIVERING, merging the moved base into the integration branch conflicted, or a
+   * `verify` failed after it. `mode` is `update` (back to SCRIPTING) or `ask` (the Producer chooses).
+   */
+  z.strictObject({
+    type: z.literal('BASE_DRIFT'),
+    mode: z.enum(['update', 'ask']),
+    files: z.array(text),
+    reason,
+  }),
   z.strictObject({ type: z.literal('DELIVERED') }),
   /** The Producer chose an option of the fixed menu. */
   z

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -109,6 +110,53 @@ describe('the role-play script', () => {
     const second = host(prompt);
     await playRolePlay(second.host);
     expect(second.calls[0]?.args).toEqual({ approved: true });
+  });
+
+  it('rescript: the second script keeps alpha, marked unchanged, and rewrites beta', async () => {
+    const prompt = stagePrompt('SCRIPTING', 'build it #outcome:rescript');
+    const first = host(prompt);
+    await playRolePlay(first.host);
+    const second = host(prompt);
+    await playRolePlay(second.host);
+    interface Demands {
+      demands: { id: string; description: string; unchanged?: boolean }[];
+    }
+    const before = (first.calls[0]?.args.script as Demands).demands;
+    const after = (second.calls[0]?.args.script as Demands).demands;
+    expect(before.map((demand) => demand.unchanged)).toEqual([undefined, undefined]);
+    expect(after[0]).toMatchObject({ id: 'alpha', unchanged: true });
+    expect(after[0]?.description).toBe(before[0]?.description);
+    expect(after[1]?.unchanged).toBeUndefined();
+    expect(after[1]?.description).not.toBe(before[1]?.description);
+    const critic = host(stagePrompt('CRITIQUING', 'build it #outcome:rescript'));
+    await playRolePlay(critic.host);
+    expect(String(critic.calls[0]?.args.reason)).toContain('[outcome:rescript]');
+  });
+
+  it('base_drift: the Critic moves main on its first look, with a new file or a shared one', async () => {
+    const git = (...args: string[]): string =>
+      execFileSync('git', args, { cwd: sandbox, encoding: 'utf8' }).trim();
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'a@example.invalid');
+    git('config', 'user.name', 'A');
+    await writeFile(join(sandbox, 'seed.txt'), 'seed\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'seed');
+    const start = git('rev-parse', 'main');
+    const quiet = host(stagePrompt('CRITIQUING', 'build it #outcome:base_drift'));
+    await playRolePlay(quiet.host);
+    expect(git('rev-parse', 'main')).not.toBe(start);
+    expect(git('show', 'main:news.txt')).toContain('written on main');
+    expect(git('show', 'main:seed.txt')).toBe('seed');
+    // the second look leaves main alone
+    const moved = git('rev-parse', 'main');
+    await playRolePlay(host(stagePrompt('CRITIQUING', 'build it #outcome:base_drift')).host);
+    expect(git('rev-parse', 'main')).toBe(moved);
+    const shared = host(stagePrompt('CRITIQUING', 'build it #outcome:base_drift_conflict'));
+    process.env.FAKE_AGENT_STATE_DIR = join(sandbox, 'other-state');
+    await playRolePlay(shared.host);
+    expect(git('show', 'main:alpha.txt')).toContain('written on main');
+    expect(git('log', '--format=%s', 'main')).toContain('main moves: alpha.txt');
   });
 
   it('has the Critic approve at once when the outcome is approved', async () => {

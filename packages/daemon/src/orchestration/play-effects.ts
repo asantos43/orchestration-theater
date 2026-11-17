@@ -4,8 +4,10 @@ import { promisify } from 'node:util';
 import {
   AdapterUnavailable,
   assemblePrefix,
+  Conflict,
   attemptBranch,
   type AttemptRecord,
+  hasErrorCode,
   contractKey,
   type Demand,
   type DecisionRecord,
@@ -22,6 +24,10 @@ import {
   type Script,
   SCRIPT_KEY,
   type Store,
+  supportsDiff,
+  supportsHistory,
+  supportsRebase,
+  topologicalLayers,
   validateScript,
   type Vcs,
 } from '@otheater/core';
@@ -40,7 +46,8 @@ import {
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
-import { clarifyPrompt, judgePrompt, stagePrompt } from './prompts.js';
+import { CarrySchema, carryKey, INTEGRATION_ROUND_KEY, keptDemands, type Carry } from './carry.js';
+import { type CarriedWork, clarifyPrompt, judgePrompt, stagePrompt } from './prompts.js';
 import { executorOf, policyOf, sessionSettingsOf } from './roles.js';
 
 const execFileAsync = promisify(execFile);
@@ -109,7 +116,16 @@ export interface OrchestrationEffectsOptions {
   readonly config: DaemonConfig;
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly logger: Logger;
+  /**
+   * Whether someone is watching the play now (a Producer chat open). [proposta] With nobody,
+   * `delivery.base_drift: ask` is `update` (N83). Nothing wires it yet, like the `attended` of the
+   * delivery mode: absent means nobody.
+   */
+  readonly attended?: ((playId: string) => boolean) | undefined;
 }
+
+/** How much of the diff of an earlier attempt goes into the prompt of the next one. */
+const CARRIED_DIFF_CHARS = 20_000;
 
 /** The demands a play wants running now, and when that was last asked. */
 interface Wanted {
@@ -200,10 +216,14 @@ export class OrchestrationEffects implements PlayEffects {
           await this.#askMenu(effect, scope);
         });
         return;
-      case 'verify_demand':
       case 'rebase_dependents':
-        // Judgment points 2 and 8 (partial work, rebase of dependents) are not reachable until
-        // the Director's answers for them exist (P12); the effect is logged and not run.
+        this.#spawn('rebase_dependents', scope, async () => {
+          await this.#rebaseDependents(effect, scope, generation);
+        });
+        return;
+      case 'verify_demand':
+        // Judgment point 2 (partial work) is not reachable until the Director's answers for it
+        // exist (P12); the effect is logged and not run.
         this.#options.logger.warn(
           { effect: effect.type, playId: scope.playId },
           'this effect has no implementation yet',
@@ -429,6 +449,14 @@ export class OrchestrationEffects implements PlayEffects {
     const need = await this.#needOf(playId);
     const plan = await this.#planText(playId);
     const scriptValue = await this.#blackboard(playId, SCRIPT_KEY);
+    // A script that is being rewritten shows the one it replaces, so the Scriptwriter can mark
+    // the demands it keeps (N84); `redo_all` redoes everything and has nothing to mark.
+    const previousScript =
+      effect.stage === 'SCRIPTING' &&
+      scriptValue !== undefined &&
+      config.rescript.reuse !== 'redo_all'
+        ? JSON.stringify(scriptValue, null, 2)
+        : undefined;
     const demandId = stageDemandId(effect.stage);
     const attempt = await this.#nextAttempt(playId, demandId);
     const base = effect.stage === 'CRITIQUING' ? integrationBranch(playId) : playBranch(playId);
@@ -446,6 +474,7 @@ export class OrchestrationEffects implements PlayEffects {
           : JSON.stringify(scriptValue, null, 2),
       attempt,
       baseRef: base,
+      previousScript,
     });
     const prompt = `${await this.#prefix(effect.role)}\n${body}`;
     const { profile, executor: settings } = sessionSettingsOf(paths, executor);
@@ -553,6 +582,8 @@ export class OrchestrationEffects implements PlayEffects {
       return;
     }
     const { script } = parsed;
+    const previous = await this.#script(playId);
+    const kept = await this.#keptBy(playId, previous, script);
     await store.blackboard.put({
       playId,
       key: SCRIPT_KEY,
@@ -587,16 +618,133 @@ export class OrchestrationEffects implements PlayEffects {
           verifyWaiver: demand.verifyWaiver ?? null,
           state: 'pending',
         });
-      } else if (existing.state !== 'pending') {
-        // A new script starts every demand over (the work of the old one is not trusted).
+      } else if (existing.state !== 'pending' && !kept.includes(demand.id)) {
+        // A new script starts every demand over, except the ones it kept (N84): the work of the
+        // old script is not trusted.
         await store.demands.update(playId, demand.id, { state: 'pending' });
       }
     }
+    await this.#carryForward(playId, previous, script, kept);
+    await this.#rebuildIntegration(scope);
     await this.#send(playId, generation, {
       type: 'SCRIPT_VALIDATED',
       valid: true,
       demandIds: script.demands.map((demand) => demand.id),
+      ...(kept.length === 0 ? {} : { keptDemandIds: kept }),
     });
+  }
+
+  /**
+   * The demands of the new script that keep their approved work (N84): marked `unchanged`,
+   * equal to the old ones (`keptDemands`) and still done: approved in the play, in its row, and
+   * with a finished attempt to integrate.
+   */
+  async #keptBy(playId: string, previous: Script | undefined, next: Script): Promise<string[]> {
+    const { store, config } = this.#options;
+    const mode = config.rescript.reuse;
+    if (mode === 'redo_all' || previous === undefined) return [];
+    const play = await store.plays.get(playId);
+    const inPlay = new Set(play === undefined ? [] : restorePlay(play).context.approvedDemands);
+    const done = new Set<string>();
+    for (const demand of next.demands) {
+      if (!inPlay.has(demand.id)) continue;
+      const row = await store.demands.get(playId, demand.id);
+      if (
+        row?.state === 'approved' &&
+        (await this.#latestCompleted(playId, demand.id)) !== undefined
+      ) {
+        done.add(demand.id);
+      }
+    }
+    return keptDemands({ mode, previous, next, approved: done });
+  }
+
+  /**
+   * What a changed demand takes from its earlier attempt (N84): a `carry` note (the diff for
+   * `keep_unchanged`, the branch to start from for `from_previous`). `redo_all` carries nothing.
+   */
+  async #carryForward(
+    playId: string,
+    previous: Script | undefined,
+    next: Script,
+    kept: readonly string[],
+  ): Promise<void> {
+    const { store, config } = this.#options;
+    const mode = config.rescript.reuse;
+    for (const demand of next.demands) {
+      if (kept.includes(demand.id)) continue;
+      const key = carryKey(demand.id);
+      const latest = await this.#latestCompleted(playId, demand.id);
+      const old = previous?.demands.find((candidate) => candidate.id === demand.id);
+      if (
+        mode === 'redo_all' ||
+        previous === undefined ||
+        old === undefined ||
+        latest === undefined
+      ) {
+        // a note of an earlier conflict must not outlive the script that replaced its demand
+        if ((await this.#blackboard(playId, key)) !== undefined) {
+          await store.blackboard.put({ playId, key, value: null, author: 'daemon' });
+        }
+        continue;
+      }
+      const carry: Carry = {
+        fromAttempt: latest.attempt,
+        kind: 'rescript',
+        branch: latest.branch,
+        oldBase: await this.#oldBaseOf(playId, old, latest),
+        resolve: false,
+        startFromBranch: mode === 'from_previous',
+        mergeIn: null,
+        files: [],
+      };
+      await store.blackboard.put({ playId, key, value: asJson(carry), author: 'daemon' });
+    }
+  }
+
+  /**
+   * The branch an attempt started on: the newest finished attempt of its first dependency that
+   * existed when it began, else the base of the play. [proposta] The attempt records have no base.
+   */
+  async #oldBaseOf(playId: string, demand: Demand, attempt: AttemptRecord): Promise<string> {
+    const first = demand.dependsOn[0];
+    if (first === undefined) return playBranch(playId);
+    const before = (await this.#attemptsOf(playId, first))
+      .filter((other) => other.state === 'completed' && other.createdAt <= attempt.createdAt)
+      .sort((a, b) => b.attempt - a.attempt)[0];
+    return before?.branch ?? playBranch(playId);
+  }
+
+  /** The number of the current build of the integration branch (1 until a script rebuilds it). */
+  async #roundOf(playId: string): Promise<number> {
+    const value = await this.#blackboard(playId, INTEGRATION_ROUND_KEY);
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : 1;
+  }
+
+  /**
+   * A new script drops the integration branch, so it is built again from the base with the
+   * demands of the new script (N84, "a integração é refeita"). The round goes up first: a crash
+   * between the two steps leaves a branch that the new round merges over, never a branch that the
+   * registry thinks is built.
+   */
+  async #rebuildIntegration(scope: PlayEffectScope): Promise<void> {
+    const { workspace, vcs, store } = this.#options;
+    if (workspace === undefined || !supportsHistory(vcs)) return;
+    const { playId, scenarioId } = scope;
+    const repo = await this.#repoOf(scenarioId);
+    try {
+      await vcs.resolveRef(repo.path, integrationBranch(playId));
+    } catch (error) {
+      if (hasErrorCode(error, 'NOT_FOUND')) return;
+      throw error;
+    }
+    await store.blackboard.put({
+      playId,
+      key: INTEGRATION_ROUND_KEY,
+      value: (await this.#roundOf(playId)) + 1,
+      author: 'daemon',
+    });
+    await workspace.resetIntegration({ repo: repo.path, playId });
   }
 
   /** CLARIFYING: the Director asks the Producer what the plan left open, and answers `clarify`. */
@@ -743,7 +891,8 @@ export class OrchestrationEffects implements PlayEffects {
       const first = demand.dependsOn[0];
       const dependency =
         first === undefined ? undefined : await this.#latestCompleted(playId, first);
-      const base = dependency?.branch ?? playBranch(playId);
+      const carried = await this.#carriedOf(playId, demand.id, repo.path);
+      const base = carried?.startFrom ?? dependency?.branch ?? playBranch(playId);
       const body = stagePrompt({
         stage: 'EXECUTING',
         role: 'actor',
@@ -755,6 +904,7 @@ export class OrchestrationEffects implements PlayEffects {
         demand,
         attempt,
         baseRef: base,
+        carried: carried?.work,
       });
       const contract = [
         `Inputs: ${demand.contract.inputs.join(', ') || 'none'}`,
@@ -820,6 +970,46 @@ export class OrchestrationEffects implements PlayEffects {
   }
 
   /**
+   * The earlier attempt this demand takes over (N82, N84), from its `carry` note: what the prompt
+   * says, and the branch the new attempt starts on when it is not the usual base. The note holds
+   * while the newest finished attempt is the one it was written for.
+   */
+  async #carriedOf(
+    playId: string,
+    demandId: string,
+    repo: string,
+  ): Promise<{ work: CarriedWork; startFrom: string | undefined } | undefined> {
+    const parsed = CarrySchema.safeParse(await this.#blackboard(playId, carryKey(demandId)));
+    if (!parsed.success) return undefined;
+    const carry = parsed.data;
+    const latest = await this.#latestCompleted(playId, demandId);
+    if (latest?.attempt !== carry.fromAttempt) return undefined;
+    let diff: { text: string; truncated: boolean } | undefined;
+    // With the earlier branch as the start, its work is in the worktree: no diff to show.
+    if (!carry.startFromBranch && supportsDiff(this.#options.vcs)) {
+      diff = await this.#options.vcs
+        .diffBetween(repo, carry.oldBase ?? playBranch(playId), carry.branch, CARRIED_DIFF_CHARS)
+        .catch((error: unknown) => {
+          this.#options.logger.warn({ err: error, playId, demandId }, 'cannot read the old diff');
+          return undefined;
+        });
+    }
+    return {
+      startFrom: carry.startFromBranch ? carry.branch : undefined,
+      work: {
+        kind: carry.kind,
+        branch: carry.branch,
+        diff: diff?.text,
+        truncated: diff?.truncated,
+        resolve: carry.resolve,
+        mergeIn: carry.mergeIn,
+        files: carry.files,
+        startsFromBranch: carry.startFromBranch,
+      },
+    };
+  }
+
+  /**
    * The verify steps of the demand (5.4, "verify em código"): each runs in the worktree and must
    * exit 0. `undefined` when all passed (or the demand has a waiver, or `orchestration.verify` is
    * `skip`). [proposta] The steps run as the daemon's user, with no sandbox: they come from a
@@ -842,6 +1032,90 @@ export class OrchestrationEffects implements PlayEffects {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Judgment point 8, "rebase": the finished work of the dependents of a redone demand moves onto
+   * its new branch (N82), the dependents in the order of the script. A dependent that does not
+   * conflict is simply moved (and is not verified again: [proposta]). One that conflicts keeps
+   * its branch as it was, gets a `carry` note, and `integration.rebase_conflict` says what
+   * happens: `redo` and `resolve_attempt` open a new attempt, `script_failure` returns to the
+   * script. The machine counts it.
+   */
+  async #rebaseDependents(
+    effect: Extract<PlayEffect, { type: 'rebase_dependents' }>,
+    scope: PlayEffectScope,
+    generation: number,
+  ): Promise<void> {
+    const { vcs, config, logger, store } = this.#options;
+    const { playId, scenarioId } = scope;
+    if (!supportsRebase(vcs) || !supportsHistory(vcs)) {
+      logger.warn({ playId, adapter: vcs.id }, 'the Vcs adapter cannot rebase; nothing was moved');
+      return;
+    }
+    const script = await this.#script(playId);
+    if (script === undefined) return;
+    const repo = await this.#repoOf(scenarioId);
+    const mode = config.integration.rebase_conflict;
+    const oldTips = new Map<string, string>();
+    const conflicted = new Set<string>();
+    const order = topologicalLayers(script)
+      .flat()
+      .filter((id) => effect.dependentIds.includes(id));
+    for (const id of order) {
+      const demand = script.demands.find((candidate) => candidate.id === id);
+      const first = demand?.dependsOn[0];
+      // only a demand that started from the branch of the redone one moves with it
+      if (demand === undefined || first === undefined || conflicted.has(first)) continue;
+      if (first !== effect.demandId && !oldTips.has(first)) continue;
+      const target = await this.#latestCompleted(playId, first);
+      const own = await this.#latestCompleted(playId, id);
+      if (target === undefined || own === undefined) continue;
+      const upstream = oldTips.get(first) ?? (await this.#oldBaseOf(playId, demand, own));
+      // a finished attempt stays checked out; a branch cannot move while it is
+      for (const entry of await vcs.listWorktrees(repo.path)) {
+        if (entry.branch === own.branch) await vcs.removeWorktree(entry.path, { force: true });
+      }
+      oldTips.set(id, await vcs.resolveRef(repo.path, own.branch));
+      let files: string[] = [];
+      let why: string;
+      try {
+        const outcome = await vcs.rebaseBranch(repo.path, own.branch, target.branch, { upstream });
+        if (outcome.kind !== 'conflict') continue;
+        files = [...outcome.files];
+        why = `conflicts in: ${files.join(', ')}`;
+      } catch (error) {
+        // not a conflict but the same remedy: the work of the demand cannot ride on the new base
+        why = `could not be moved: ${messageOf(error)}`;
+      }
+      conflicted.add(id);
+      const resolve = mode === 'resolve_attempt';
+      const carry: Carry = {
+        fromAttempt: own.attempt,
+        kind: 'rebase_conflict',
+        branch: own.branch,
+        oldBase: upstream,
+        resolve,
+        startFromBranch: resolve,
+        mergeIn: resolve ? target.branch : null,
+        files,
+      };
+      await store.blackboard.put({
+        playId,
+        key: carryKey(id),
+        value: asJson(carry),
+        author: 'daemon',
+      });
+      await this.#send(playId, generation, {
+        type: 'REBASE_CONFLICT',
+        demandId: id,
+        mode,
+        files,
+        reason: clip(
+          `The finished work of "${id}" (attempt ${String(own.attempt)}) moved onto the new work of "${first}" ${why}.`,
+        ),
+      });
+    }
   }
 
   // ---- integration and delivery ----
@@ -867,7 +1141,13 @@ export class OrchestrationEffects implements PlayEffects {
           throw new NotFound(`The demand "${demandId}" has no finished attempt`);
         approved.push({ demandId, attempt: latest.attempt });
       }
-      const result = await workspace.integrate({ repo: repo.path, playId, script, approved });
+      const result = await workspace.integrate({
+        repo: repo.path,
+        playId,
+        script,
+        approved,
+        round: await this.#roundOf(playId),
+      });
       if (result.kind === 'integrated') {
         await this.#send(playId, generation, { type: 'INTEGRATED', ok: true });
       } else if (result.kind === 'script_failure') {
@@ -894,6 +1174,30 @@ export class OrchestrationEffects implements PlayEffects {
       return;
     }
     const repo = await this.#repoOf(scenarioId);
+    const warnings: string[] = [];
+    if (effect.driftAccepted) {
+      warnings.push(
+        'The base moved while the play ran, and the Producer chose to deliver it with the conflicts.',
+      );
+    } else {
+      const drift = await this.#updateToBase(effect, repo, playId);
+      if (drift !== undefined) {
+        const mode = config.delivery.base_drift;
+        if (mode !== 'deliver_and_warn') {
+          // `ask` needs someone to ask: with nobody it is `update` (N83)
+          const asking = mode === 'ask' && this.#options.attended?.(playId) === true;
+          await this.#send(playId, generation, {
+            type: 'BASE_DRIFT',
+            mode: asking ? 'ask' : 'update',
+            files: drift.files,
+            reason: clip(drift.reason),
+          });
+          return;
+        }
+        warnings.push(drift.reason);
+        logger.warn({ playId, files: drift.files }, 'delivering although the base moved');
+      }
+    }
     const need = await this.#needOf(playId);
     const title = (need.split('\n')[0] ?? need).trim().slice(0, 72) || `Play ${playId}`;
     const notes = [
@@ -911,6 +1215,7 @@ export class OrchestrationEffects implements PlayEffects {
       body: notes.join('\n\n'),
       configMode: config.delivery.mode,
       allowDirectMerge: config.delivery.allow_direct_merge,
+      ...(warnings.length === 0 ? {} : { warnings }),
       // [proposta] The ask of `delivery.mode: ask` is the chat's (P12): until then the play is not
       // attended, and `ask` falls back to a pull request.
       attended: false,
@@ -923,6 +1228,54 @@ export class OrchestrationEffects implements PlayEffects {
       { playId, result },
       'the delivery did not finish; the play stays in DELIVERING until it is resumed',
     );
+  }
+
+  /**
+   * N83, `update`: the project's base may have moved while the play ran. `play/<id>/base` moves
+   * onto it (the local ref, with no fetch: [proposta]) and is merged into the integration
+   * branch; when something merged, the `verify` steps of the demands run again on the result.
+   * `undefined` when the work is ready to deliver; else the conflicting files (or the `verify`
+   * that failed, no files) and why. Safe to repeat: the merge is a side effect keyed by the base.
+   */
+  async #updateToBase(
+    effect: Extract<PlayEffect, { type: 'deliver' }>,
+    repo: { path: string; mainBranch: string },
+    playId: string,
+  ): Promise<{ files: string[]; reason: string } | undefined> {
+    const { workspace } = this.#options;
+    if (workspace === undefined) return undefined;
+    await workspace.moveBase({ repo: repo.path, playId, onto: repo.mainBranch });
+    const merged = await workspace.mergeBase({
+      repo: repo.path,
+      playId,
+      round: await this.#roundOf(playId),
+    });
+    if (merged.kind === 'ambiguous') throw new Conflict(merged.reason);
+    if (merged.kind === 'conflict') {
+      const files = [...merged.conflictFiles];
+      return {
+        files,
+        reason: `The base (${repo.mainBranch}) moved while the play ran and conflicts with the work in: ${files.join(', ')}.`,
+      };
+    }
+    if (merged.kind === 'up_to_date') return undefined;
+    const script = await this.#script(playId);
+    const limits = await this.#limitsOf(playId);
+    const ran = new Set<string>();
+    for (const demand of script?.demands ?? []) {
+      if (!effect.demandIds.includes(demand.id)) continue;
+      const steps = JSON.stringify(demand.verify);
+      if (ran.has(steps)) continue;
+      ran.add(steps);
+      const problem = await this.#verify(demand, merged.worktree, limits.demand_timeout);
+      if (problem !== undefined) {
+        return {
+          files: [],
+          reason: `The base (${repo.mainBranch}) moved while the play ran; after updating to it, ${problem}`,
+        };
+      }
+    }
+    return undefined;
   }
 
   // ---- decisions ----
@@ -983,7 +1336,7 @@ export class OrchestrationEffects implements PlayEffects {
         scenarioId,
         playId,
         kind: DECISION_KINDS.menu,
-        input: { playId, options: [...effect.options], reason: effect.reason },
+        input: { playId, options: [...effect.options], reason: asJson(effect.reason) },
       });
     });
   }
