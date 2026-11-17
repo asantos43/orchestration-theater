@@ -100,6 +100,7 @@ export class SqliteStore implements Store, StoreMaintenance {
   readonly sideEffects: StoreAggregates['sideEffects'];
   readonly sessions: StoreAggregates['sessions'];
   readonly directives: StoreAggregates['directives'];
+  readonly ideas: StoreAggregates['ideas'];
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -157,6 +158,7 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.sideEffects = aggregates.sideEffects;
     this.sessions = aggregates.sessions;
     this.directives = aggregates.directives;
+    this.ideas = aggregates.ideas;
   }
 
   /**

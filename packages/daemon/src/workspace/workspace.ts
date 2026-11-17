@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, normalize, sep } from 'node:path';
 import {
   AdapterUnavailable,
   attemptBranch,
@@ -144,6 +145,16 @@ export type IntegrationResult =
       readonly reason: string;
     };
 
+/** A file the delivery commits to the integration branch before it is pushed (the changelog). */
+export interface DeliveryChange {
+  /** Path relative to the root of the repository. */
+  readonly file: string;
+  /** The whole new text of the file. */
+  readonly content: string;
+  /** First line of the commit. */
+  readonly message: string;
+}
+
 export interface DeliverInput {
   readonly repo: string;
   readonly playId: string;
@@ -155,6 +166,16 @@ export interface DeliverInput {
   readonly title: string;
   /** Text of the PR; the mode used and who asked for it are added after it. */
   readonly body?: string;
+  /** Message of the merge commit of `direct_merge`. Default `Deliver play <id>`. */
+  readonly mergeMessage?: string;
+  /**
+   * Looks at the integration worktree and says what the delivery still commits to it, or nothing.
+   * Runs before the push; the commit is a side effect keyed `<play>:deliver_prepare[:r<round>]`.
+   * Called again after a crash, it answers `undefined` once the commit is in.
+   */
+  readonly prepare?: (worktree: string) => Promise<DeliveryChange | undefined>;
+  /** The round of the play (a new script is a new round), for the key of the `prepare` commit. */
+  readonly round?: number;
   /** See {@link DeliveryPolicyInput.requested}. */
   readonly requested?: DeliveryRequest;
   /** `delivery.mode`. */
@@ -188,7 +209,7 @@ export type DeliveryResult =
   /** The verifier of an earlier, unfinished step could not tell whether it happened. */
   | {
       readonly kind: 'ambiguous';
-      readonly step: 'push' | 'pull_request' | 'merge';
+      readonly step: 'prepare' | 'push' | 'pull_request' | 'merge';
       readonly key: string;
       readonly reason: string;
     };
@@ -471,6 +492,8 @@ export class Workspace {
     const { repo, playId, base } = input;
     const remote = input.remote ?? DEFAULT_REMOTE;
     const branch = integrationBranch(playId);
+    const prepared = await this.#prepareDelivery(input);
+    if (prepared !== undefined) return prepared;
     const head = await this.#vcs.resolveRef(repo, branch);
 
     const pushed = await runEffect(this.#store.sideEffects, {
@@ -501,7 +524,7 @@ export class Workspace {
               head: branch,
               base,
               remote,
-              message: `Deliver play ${playId}`,
+              message: input.mergeMessage ?? `Deliver play ${playId}`,
             })
           ).sha,
         }),
@@ -556,6 +579,43 @@ export class Workspace {
       ...(pullRequest === undefined ? {} : { pullRequest }),
       ...(mergeSha === undefined ? {} : { mergeSha }),
     };
+  }
+
+  /**
+   * The `prepare` step of a delivery: the commit of what the caller adds to the integration branch
+   * (the changelog) before the push. `undefined` when it went well or there was nothing to add;
+   * else the answer `deliver` gives (the verifier could not tell whether an earlier commit
+   * happened).
+   */
+  async #prepareDelivery(input: DeliverInput): Promise<DeliveryResult | undefined> {
+    if (input.prepare === undefined) return undefined;
+    const { repo, playId } = input;
+    const branch = integrationBranch(playId);
+    const worktree = await this.#integrationWorktree(repo, playId);
+    const change = await input.prepare(worktree);
+    if (change === undefined) return undefined;
+    const target = normalize(change.file);
+    if (isAbsolute(target) || target === '..' || target.startsWith(`..${sep}`)) {
+      throw new InvalidInput(`The file "${change.file}" is not inside the repository`);
+    }
+    const outcome = await runEffect(this.#store.sideEffects, {
+      key: `${playId}:deliver_prepare${roundSuffix(input.round)}`,
+      type: GIT_COMMIT_EFFECT,
+      target: branch,
+      params: { repo, branch },
+      execute: async (effectiveKey) => {
+        const path = join(worktree, target);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, change.content);
+        const sha = await this.#vcs.commitAll(
+          worktree,
+          withIdempotencyTrailer(change.message, effectiveKey),
+        );
+        return sha === undefined ? { outcome: 'up_to_date' } : { outcome: 'merged', sha };
+      },
+      verify: (record) => verifyGitCommit(this.#deps(), record),
+    });
+    return outcome.kind === 'ambiguous' ? ambiguous('prepare', outcome) : undefined;
   }
 
   /** Adopts the PR that is already open for the branch (a crash after the host created it), else opens one. */
@@ -688,7 +748,7 @@ function pullRequestBody(
 }
 
 function ambiguous(
-  step: 'push' | 'pull_request' | 'merge',
+  step: 'prepare' | 'push' | 'pull_request' | 'merge',
   outcome: { readonly key: string; readonly reason: string },
 ): DeliveryResult {
   return { kind: 'ambiguous', step, key: outcome.key, reason: outcome.reason };

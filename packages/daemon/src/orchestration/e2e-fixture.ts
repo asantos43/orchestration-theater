@@ -149,6 +149,11 @@ export interface PlayHarnessOptions {
   readonly limits?: string;
   /** Extra top-level YAML. */
   readonly extra?: string;
+  /**
+   * `project.conventions`. The fixture detects without asking (`detect`), so the question of the
+   * confirmation of an imported repository does not take the place of the one a test waits for.
+   */
+  readonly conventions?: 'ask' | 'detect' | 'off';
 }
 
 /**
@@ -174,6 +179,8 @@ security:
 limits:
   submit_retries: 1
 ${options.limits ?? ''}
+project:
+  conventions: ${options.conventions ?? 'detect'}
 orchestration:
   executor:
     client: fake

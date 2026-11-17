@@ -417,6 +417,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   for (const notice of notices) orchestration?.channel.notify(notice);
   gate.open();
+  // The ideas of a group the restart lost go back to the queue, and the queues that can move do.
+  await orchestration?.ideas.settle();
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({

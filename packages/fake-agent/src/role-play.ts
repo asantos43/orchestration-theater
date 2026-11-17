@@ -346,6 +346,43 @@ async function playConsultant(host: RolePlayHost, question: string): Promise<voi
 }
 
 /**
+ * The Author grouping the idea queue of a scenario (5.20): `#ot-group-ideas: <max>` is followed by
+ * one line per queued idea, `- I3 [area: api] text`. It groups the first idea with the ones of its
+ * area (an idea with no area goes alone), up to `<max>`, and leaves the others out with a reason.
+ */
+async function playIdeaGrouper(host: RolePlayHost, max: number): Promise<void> {
+  const after = host.text.slice(host.text.indexOf('#ot-group-ideas:'));
+  const ideas = [...after.matchAll(/^- (I[1-9][0-9]*) \[area: ([^\]]*)\] (.*)$/gm)].map(
+    (match) => ({
+      id: match[1] ?? '',
+      area: match[2] ?? '-',
+      text: match[3] ?? '',
+    }),
+  );
+  const first = ideas[0];
+  const members =
+    first === undefined
+      ? []
+      : ideas
+          .filter(
+            (idea) => idea.id === first.id || (first.area !== '-' && idea.area === first.area),
+          )
+          .slice(0, max);
+  const inGroup = new Set(members.map((idea) => idea.id));
+  await submit(host, 'submit_idea_group', {
+    group: {
+      ideaIds: members.map((idea) => idea.id),
+      need: members.map((idea) => idea.text).join('; '),
+      rationale:
+        first?.area === '-' ? 'it stands alone' : `they touch the same area (${first?.area ?? ''})`,
+    },
+    leftOut: ideas
+      .filter((idea) => !inGroup.has(idea.id))
+      .map((idea) => ({ ideaId: idea.id, reason: 'another area; it goes in a later group' })),
+  });
+}
+
+/**
  * A turn of the Director of a generic chat: `#ot-chat <text>` is a simple question it answers
  * itself; `#ot-consult <question>` (with `#ot-attach A1 A2`) is a hard one it hands to the
  * Consultant with `consult`; `#ot-read A1 A2` reads attachments itself. A prompt that carries the
@@ -389,6 +426,11 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
   const consulted = markerOf(text, '#ot-consult-ask:');
   if (consulted !== undefined && consulted !== '') {
     await playConsultant(host, consulted);
+    return;
+  }
+  const grouping = markerOf(text, '#ot-group-ideas:');
+  if (grouping !== undefined && grouping !== '') {
+    await playIdeaGrouper(host, Number(grouping) || 5);
     return;
   }
   const demandId = markerOf(text, '#ot-demand:');

@@ -227,6 +227,34 @@ export interface VcsHistory {
   ): Promise<string | undefined>;
 }
 
+/**
+ * Optional capability of a `Vcs`: the read-only questions the convention detection of a project
+ * asks (architecture 5.20: the commit pattern comes "from the git history", and the main branch
+ * from the repository). Check with {@link supportsInspect}. [proposta] Not in the architecture;
+ * the alternative is to read the history in the daemon with a second git client.
+ */
+export interface VcsInspect {
+  /**
+   * Subjects (first line) of the newest commits reachable from `ref`, newest first, merge commits
+   * left out. At most `limit` of them. `NotFound` when `ref` does not exist; an empty list for a
+   * history with no commit but merges.
+   */
+  recentSubjects(repo: string, ref: string, limit: number): Promise<readonly string[]>;
+  /**
+   * The branch the repository treats as the main one: the remote head when it has one, else the
+   * branch checked out. `undefined` when neither can be told (a detached head with no remote).
+   */
+  defaultBranch(repo: string): Promise<string | undefined>;
+}
+
+/** Narrows a `Vcs` to one that can answer the questions of the convention detection. */
+export function supportsInspect(vcs: Vcs): vcs is Vcs & VcsInspect {
+  const candidate = vcs as Partial<VcsInspect>;
+  return (
+    typeof candidate.recentSubjects === 'function' && typeof candidate.defaultBranch === 'function'
+  );
+}
+
 /** Options of {@link VcsInit.init}. */
 export interface InitOptions {
   /** Name of the first branch. Default `main`. */

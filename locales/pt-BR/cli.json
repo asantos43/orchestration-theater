@@ -1,6 +1,6 @@
 {
   "usage": {
-    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)\n  --type <tipo>     project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)\n\nNo chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar):\na próxima mensagem que você enviar o cita como A<n> para o Diretor.\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)\n  --type <tipo>     project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)\n  --new-project     Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software\n\nNo chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar):\na próxima mensagem que você enviar o cita como A<n> para o Diretor.\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
     "hint": "Rode \"ot --help\" para ver o uso.",
     "unknownCommand": "Comando desconhecido: \"{{command}}\".",
     "missingCommand": "Nenhum comando informado.",
@@ -51,6 +51,25 @@
     "attached": "Anexado como {{id}}: {{name}} ({{mime}}, {{size}} bytes). Vai com a sua próxima mensagem.",
     "attachFailed": "O arquivo não foi anexado: {{message}}",
     "attachUsage": "Uso: /attach [--ref] <arquivo>",
+    "ideaUsage": "Uso: /idea [--area <área>] <texto> | /idea list | /idea drain | /idea discard <id> <motivo> | /idea defer <id> <motivo> | /idea requeue <id>",
+    "ideaAdded": "Ideia {{id}} na fila.",
+    "ideaEmpty": "A fila de ideias está vazia.",
+    "ideaLine": "  {{id}} [{{state}}]{{area}} {{text}}{{links}}",
+    "ideaFailed": "O comando de ideia falhou: {{message}}",
+    "ideaDrained": "{{groups}} grupo(s) feito(s).",
+    "ideaDrainStopped": "A fila parou: {{reason}}",
+    "ideaHeld": "A fila de ideias parou: {{what}} ({{reason}}).\n  Ela continua parada até você digitar /idea drain, /idea requeue <id> ou acrescentar uma ideia nova.",
+    "ideaHeldWhat_author_failed": "o Autor não conseguiu agrupar as ideias",
+    "ideaHeldWhat_author_left_all_out": "o Autor deixou todas as ideias fora do grupo",
+    "ideaHeldWhat_group_refused": "o grupo foi recusado",
+    "ideaHeldWhat_play_not_opened": "a peça do grupo não abriu",
+    "ideaHeldWhat_play_ended": "a peça do grupo terminou sem entrega (peça {{playId}})",
+    "ideaSettled": "A ideia {{id}} agora está {{state}}.",
+    "ideaGroup": "O Autor juntou {{count}} ideia(s) na próxima peça:\n  Necessidade: {{need}}\n  Por que juntas: {{rationale}}",
+    "ideaGroupItem": "  - {{id}}: {{text}}",
+    "ideaGroupLeftOut": "  Ficou na fila: {{id}} ({{reason}}){{question}}",
+    "ideaGroupOptions": "Digite: approve | edit <nova necessidade> | keep <ids na ordem> | refuse [motivo].",
+    "ideaGroupBad": "Essa não é uma das opções. Digite: approve, edit <nova necessidade>, keep <ids> ou refuse [motivo].",
     "system": {
       "recovery": {
         "title": "Sistema: o daemon reiniciou e reconciliou este cenário.",

@@ -8,6 +8,7 @@ import {
   InvalidInput,
   isKnownTimezone,
   parseAllowEntry,
+  ProjectCommandSchema,
   PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
@@ -15,6 +16,7 @@ import {
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { IdeasConfigSchema } from './ideas/settings.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -290,6 +292,24 @@ export const BASE_DRIFT_MODES = ['update', 'deliver_and_warn', 'ask'] as const;
 export type BaseDriftMode = (typeof BASE_DRIFT_MODES)[number];
 
 /**
+ * What the daemon does with the conventions of a repository the Producer imports (architecture
+ * 5.20; P7). `ask` (default): it detects them and asks the Producer to confirm or correct them,
+ * in the chat, until they do; `detect`: it detects them and uses them as they are, without asking;
+ * `off`: it detects nothing and a delivery follows no convention of the project.
+ */
+export const CONVENTIONS_MODES = ['ask', 'detect', 'off'] as const;
+export type ConventionsMode = (typeof CONVENTIONS_MODES)[number];
+
+/**
+ * Does a delivery keep a changelog? (N100, architecture 5.20.) `always` (default): every delivery
+ * adds its entry, creating `CHANGELOG.md` in Keep a Changelog format when the repository has none;
+ * `auto`: only when the repository has one or the project is new; `never`: it does not touch it.
+ * A scenario overrides it with `delivery.changelog` in its `config_override`.
+ */
+export const CHANGELOG_MODES = ['auto', 'always', 'never'] as const;
+export type ChangelogMode = (typeof CHANGELOG_MODES)[number];
+
+/**
  * What a new script does with the demands the old one had already done (N84).
  * `keep_unchanged`: the demands the Scriptwriter marks as unchanged (and that the daemon finds
  * equal) stay approved (default); `redo_all`: everything is redone; `from_previous`: the demands
@@ -342,8 +362,8 @@ export type HeavyToolName = (typeof HEAVY_TOOL_NAMES)[number];
 export const HTTP_REDIRECT_MODES = ['refuse', 'follow_allowed'] as const;
 export type HttpRedirectMode = (typeof HTTP_REDIRECT_MODES)[number];
 
-/** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. */
-export const ToolCommandSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+/** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. Same schema as `scenarios.conventions.commands`. */
+export const ToolCommandSchema = ProjectCommandSchema;
 export type ToolCommand = z.infer<typeof ToolCommandSchema>;
 
 export const AllowlistEntrySchema = z
@@ -889,6 +909,12 @@ export const DaemonConfigSchema = z.strictObject({
     })
     .prefault({}),
   /**
+   * The idea queue of the scenario (architecture 5.20, N91): `drain` (`auto`, `manual`; `scheduled`
+   * is refused until the scheduler exists), `grouping_approval` (`ask`, `auto`), `max_per_play`
+   * and `parallel_plays`. A scenario overrides each key with `configOverride` (`ideas.drain`...).
+   */
+  ideas: IdeasConfigSchema.prefault({}),
+  /**
    * Delivery policy (architecture 5.5, owner's decision N5). `mode` is the global value; the
    * override per project, play and scheduled task is the rule registry's `delivery.mode`.
    * `allow_direct_merge` is the project's permission: without it `direct_merge` and `ask` become
@@ -899,6 +925,16 @@ export const DaemonConfigSchema = z.strictObject({
       mode: z.enum(DELIVERY_MODES).default('pr'),
       allow_direct_merge: z.boolean().default(false),
       base_drift: z.enum(BASE_DRIFT_MODES).default('update'),
+      changelog: z.enum(CHANGELOG_MODES).default('always'),
+    })
+    .prefault({}),
+  /**
+   * Projects (architecture 5.20, profile `software`; P7). `conventions` is what happens to the
+   * conventions of an imported repository: see {@link CONVENTIONS_MODES}.
+   */
+  project: z
+    .strictObject({
+      conventions: z.enum(CONVENTIONS_MODES).default('ask'),
     })
     .prefault({}),
   /** Integration of the demands (architecture 5.5): the rebase of the dependents (N82). */
