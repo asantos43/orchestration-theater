@@ -31,6 +31,7 @@ import {
   SessionResumedPayloadSchema,
   SessionUpdatePayloadSchema,
 } from './session-events.js';
+import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
   WorkspaceIntegratedPayloadSchema,
@@ -196,6 +197,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: AttemptSubmitFailedPayloadSchema,
   }),
   defineEventType({
+    type: 'tool.called',
+    schemaVersion: 1,
+    payload: ToolCalledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'tool.finished',
+    schemaVersion: 1,
+    payload: ToolFinishedPayloadSchema,
+  }),
+  defineEventType({
     type: 'workspace.integrated',
     schemaVersion: 1,
     payload: WorkspaceIntegratedPayloadSchema,
@@ -315,6 +326,8 @@ export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
+export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
+export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
 export type WorkspaceIntegratedPayload = DaemonEventPayloads['workspace.integrated'];
 export type WorkspaceIntegrationFailedPayload = DaemonEventPayloads['workspace.integration_failed'];
 export type DeliveryCompletedPayload = DaemonEventPayloads['delivery.completed'];

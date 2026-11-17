@@ -43,3 +43,4 @@ export * from './script/index.js';
 export * from './prompts/index.js';
 export * from './directives/index.js';
 export * from './directives/index.js';
+export * from './shell-tools/index.js';

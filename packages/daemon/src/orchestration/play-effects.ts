@@ -24,6 +24,7 @@ import {
   type PromptSource,
   type Registries,
   reviewOutput,
+  type RolePolicy,
   type Script,
   scriptOutput,
   SCRIPT_KEY,
@@ -53,7 +54,8 @@ import type { DirectorSessions } from './director.js';
 import { buildDeliveryArtifacts, changelogModeOf, planChangelog } from '../project/artifacts.js';
 import { CarrySchema, carryKey, INTEGRATION_ROUND_KEY, keptDemands, type Carry } from './carry.js';
 import { type CarriedWork, clarifyPrompt, judgePrompt, stagePrompt } from './prompts.js';
-import { executorOf, policyOf, sessionSettingsOf } from './roles.js';
+import { resolveRolePolicy } from './role-policy.js';
+import { executorOf, sessionSettingsOf } from './roles.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -443,6 +445,16 @@ export class OrchestrationEffects implements PlayEffects {
     );
   }
 
+  /** The tool policy of a role for the scenario of the play (`roles.<role>.policy`, P1). */
+  #policyOf(role: string, scenarioId: string): Promise<RolePolicy> {
+    const { config, store, registries } = this.#options;
+    return resolveRolePolicy(
+      { config, scenarios: store.scenarios, tools: () => registries.tools.list() },
+      role,
+      scenarioId,
+    );
+  }
+
   /**
    * Runs the session of the role over a worktree of the play and reads what it submitted. A
    * string is the reason the attempt cannot count (it did not end well).
@@ -453,6 +465,7 @@ export class OrchestrationEffects implements PlayEffects {
   ): Promise<Submission | string | undefined> {
     const { store, execution, config, paths, vcs } = this.#options;
     const { playId, scenarioId } = scope;
+    const policy = await this.#policyOf(effect.role, scenarioId);
     const executor = executorOf(config, effect.role);
     if (executor === undefined) {
       throw new AdapterUnavailable(
@@ -501,7 +514,7 @@ export class OrchestrationEffects implements PlayEffects {
       base,
       profile,
       executor: settings,
-      policy: policyOf(effect.role),
+      policy,
       prompt,
       role: effect.role,
     });
@@ -947,7 +960,7 @@ export class OrchestrationEffects implements PlayEffects {
         base,
         profile,
         executor: settings,
-        policy: policyOf('actor'),
+        policy: await this.#policyOf('actor', scenarioId),
         prompt,
         role: 'actor',
         timeoutMs: timeoutMin * 60_000,

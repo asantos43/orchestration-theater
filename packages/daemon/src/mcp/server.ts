@@ -238,6 +238,7 @@ export class FrameworkMcpServer implements McpAccess {
         if (record === undefined) return server;
         for (const tool of this.#options.registries.tools.list()) {
           if (!tool.roles.includes(record.input.role)) continue;
+          if (record.input.tools !== undefined && !record.input.tools.includes(tool.name)) continue;
           server.registerTool(
             tool.name,
             { description: describe(tool), inputSchema: deferred(tool.input) },
@@ -289,6 +290,8 @@ export class FrameworkMcpServer implements McpAccess {
           attemptId: record.input.attemptId,
           sessionId: record.sessionId,
           correlation: record.input.correlation,
+          worktree: record.input.worktree,
+          networkAllow: record.input.networkAllow ?? [],
           record: record.input.record,
         },
       });

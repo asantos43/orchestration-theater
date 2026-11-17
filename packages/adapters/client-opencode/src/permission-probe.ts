@@ -30,6 +30,7 @@ export const PROBE_POLICY: RolePolicy = {
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

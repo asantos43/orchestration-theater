@@ -13,6 +13,7 @@ const policy = (patch: Partial<RolePolicy> = {}): RolePolicy => ({
   nativeTools: ['read', 'search'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -61,11 +62,30 @@ describe('opencodePermission', () => {
     expect(opencodePermission(policy())).not.toHaveProperty('shell');
   });
 
-  it('allows only the MCP servers of the role, by their prefix', () => {
-    const rules = opencodePermission(policy({ mcpServers: ['otheater-shells', 'my server'] }));
-    expect(rules['otheater-shells_*']).toBe('allow');
+  it('allows only the MCP tools the role lists, by server and tool name', () => {
+    const rules = opencodePermission(
+      policy({
+        mcpServers: ['otheater-shells', 'my server'],
+        mcpTools: { 'otheater-shells': ['run_tests', 'read_file'], 'my server': 'all' },
+      }),
+    );
+    expect(rules['otheater-shells_run_tests']).toBe('allow');
+    expect(rules['otheater-shells_read_file']).toBe('allow');
     expect(rules['my_server_*']).toBe('allow');
+    expect(rules).not.toHaveProperty('otheater-shells_*');
     expect(mcpToolPrefix('a.b/c')).toBe('a_b_c');
+  });
+
+  it('a server of the role with no tool listed has no tool allowed (fail closed)', () => {
+    const rules = opencodePermission(policy({ mcpServers: ['otheater'], mcpTools: {} }));
+    expect(Object.keys(rules).filter((key) => key.startsWith('otheater'))).toEqual([]);
+  });
+
+  it('a tool of a server the policy does not list is not allowed', () => {
+    const rules = opencodePermission(
+      policy({ mcpServers: [], mcpTools: { otheater: ['submit'] } }),
+    );
+    expect(rules).not.toHaveProperty('otheater_submit');
   });
 
   it('is pure and does not change the policy', () => {
@@ -85,4 +105,56 @@ describe('opencodePermission', () => {
     const rules = opencodePermission(DENY_ALL_POLICY);
     expect(Object.entries(rules).filter(([, action]) => action === 'allow')).toEqual([]);
   });
+});
+
+describe('the translation for each role (Phase 4, P1)', () => {
+  const roles: readonly {
+    readonly role: string;
+    readonly nativeTools: RolePolicy['nativeTools'];
+    readonly tools: readonly string[];
+  }[] = [
+    { role: 'director', nativeTools: ['read', 'search'], tools: ['next_action', 'ask_producer'] },
+    { role: 'author', nativeTools: ['read', 'search'], tools: ['submit_plan'] },
+    { role: 'reviewer', nativeTools: ['read', 'search'], tools: ['submit_plan_review'] },
+    { role: 'scriptwriter', nativeTools: ['read', 'search'], tools: ['submit_script'] },
+    {
+      role: 'actor',
+      nativeTools: ['read', 'search', 'edit', 'write'],
+      tools: ['submit', 'read_blackboard'],
+    },
+    { role: 'critic', nativeTools: ['read', 'search'], tools: ['submit_critique'] },
+    { role: 'consultant', nativeTools: ['read', 'search'], tools: ['read_blackboard'] },
+  ];
+
+  for (const row of roles) {
+    const mine = policy({
+      nativeTools: row.nativeTools,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: row.tools },
+    });
+
+    it(`${row.role}: allows its native tools and its own MCP tools by name, nothing else`, () => {
+      const rules = opencodePermission(mine);
+      expect(rules.read).toBe('allow');
+      expect(rules.edit).toBe(row.nativeTools.includes('edit') ? 'allow' : 'deny');
+      expect(rules.bash).toBe('deny');
+      expect(rules.external_directory).toBe('deny');
+      const allowedMcp = Object.keys(rules).filter(
+        (key) => key.startsWith('otheater_') && rules[key] === 'allow',
+      );
+      expect(allowedMcp).toEqual(row.tools.map((tool) => `otheater_${tool}`));
+      expect(rules['otheater_*']).toBeUndefined();
+    });
+
+    it(`${row.role}: with the daemon shells the client shell stays denied and the shells come in by name`, () => {
+      const rules = opencodePermission({
+        ...mine,
+        nativeShell: 'shells',
+        mcpTools: { otheater: [...row.tools, 'run_tests'] },
+      });
+      expect(rules.bash).toBe('deny');
+      expect(rules.otheater_run_tests).toBe('allow');
+      expect(rules['*']).toBe('ask');
+    });
+  }
 });

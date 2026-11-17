@@ -42,6 +42,7 @@ const WRITING: RolePolicy = {
   nativeTools: ['read', 'search', 'edit', 'write'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',

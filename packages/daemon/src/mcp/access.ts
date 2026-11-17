@@ -16,7 +16,24 @@ export interface McpGrantInput {
   readonly attemptId: string;
   /** The role the session plays: it decides which tools it lists and may call. */
   readonly role: string;
+  /**
+   * The tools of the server this session may see and call, by name: the list of its role policy
+   * (`RolePolicy.mcpTools`, P1). Absent: every tool the registry gives the role. [proposta] A tool
+   * the policy leaves out is neither listed nor callable, which is what makes the `mcpTools` field
+   * of the policy hold in the daemon layer.
+   */
+  readonly tools?: readonly string[];
   readonly correlation: McpCorrelation;
+  /**
+   * The worktree of the attempt: where the work tools (`restricted_shell`, `run_tests`...) run and
+   * what they are confined to. A tool that needs it refuses without one.
+   */
+  readonly worktree?: string;
+  /**
+   * The domains of the role's `network.allow` (`RolePolicy.network`): the only hosts `http_get`
+   * may reach. Absent or empty means none.
+   */
+  readonly networkAllow?: readonly string[];
   /**
    * Appends an event of this attempt to the log (the journal of the attempt). The `submit*` tools
    * write `attempt.submitted` and `attempt.submit_failed` through it.

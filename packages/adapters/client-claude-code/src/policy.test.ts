@@ -18,6 +18,7 @@ const base: RolePolicy = {
   nativeTools: ['read'],
   nativeShell: 'none',
   mcpServers: [],
+  mcpTools: {},
   onAsk: 'reject',
   bypass: 'forbidden',
   writeScope: 'worktree',
@@ -73,19 +74,40 @@ describe('allowedMcpRules', () => {
     expect(allowedMcpRules(base)).toEqual([]);
   });
 
-  it('gives one mcp__<server> rule per server, in order, without repeats', () => {
-    expect(allowedMcpRules({ ...base, mcpServers: ['otheater', 'docs', 'otheater'] })).toEqual([
-      'mcp__otheater',
+  it('gives one mcp__<server>__<tool> rule per tool, in order, without repeats', () => {
+    expect(
+      allowedMcpRules({
+        ...base,
+        mcpServers: ['otheater', 'docs', 'otheater'],
+        mcpTools: { otheater: ['submit', 'read_blackboard', 'submit'], docs: ['search'] },
+      }),
+    ).toEqual(['mcp__otheater__submit', 'mcp__otheater__read_blackboard', 'mcp__docs__search']);
+  });
+
+  it('gives the rule of the whole server only for a server whose tools are all', () => {
+    expect(allowedMcpRules({ ...base, mcpServers: ['docs'], mcpTools: { docs: 'all' } })).toEqual([
       'mcp__docs',
     ]);
   });
 
-  it('writes the server name the way Claude Code writes it in a tool name', () => {
-    expect(allowedMcpRules({ ...base, mcpServers: ['my.server', 'a b', 'ok_1-x'] })).toEqual([
-      'mcp__my_server',
-      'mcp__a_b',
-      'mcp__ok_1-x',
-    ]);
+  it('allows no tool of a server the policy gives no list (fail closed)', () => {
+    expect(allowedMcpRules({ ...base, mcpServers: ['otheater'], mcpTools: {} })).toEqual([]);
+  });
+
+  it('ignores the tools of a server the policy does not list', () => {
+    expect(
+      allowedMcpRules({ ...base, mcpServers: [], mcpTools: { otheater: ['submit'] } }),
+    ).toEqual([]);
+  });
+
+  it('writes the server and tool names the way Claude Code writes them in a tool name', () => {
+    expect(
+      allowedMcpRules({
+        ...base,
+        mcpServers: ['my.server', 'a b', 'ok_1-x'],
+        mcpTools: { 'my.server': ['do.it'], 'a b': ['x y'], 'ok_1-x': ['t-1'] },
+      }),
+    ).toEqual(['mcp__my_server__do_it', 'mcp__a_b__x_y', 'mcp__ok_1-x__t-1']);
   });
 
   it('never allows a native tool or the shell, whatever the policy grants', () => {
@@ -93,6 +115,8 @@ describe('allowedMcpRules', () => {
       ...base,
       nativeTools: ['read', 'search', 'edit', 'write'],
       mcpServers: ['otheater'],
+      mcpTools: { otheater: ['submit', 'run_tests'] },
+      nativeShell: 'shells',
     };
     for (const rule of allowedMcpRules(policy)) expect(rule).toMatch(/^mcp__/u);
     expect(allowedMcpRules(policy)).not.toContain('Bash');
@@ -108,9 +132,13 @@ describe('permissionSettings', () => {
     });
   });
 
-  it('allows the MCP servers of the policy and nothing else', () => {
-    const policy: RolePolicy = { ...base, mcpServers: ['otheater'] };
-    expect(permissionSettings(policy).allow).toEqual(['mcp__otheater']);
+  it('allows the MCP tools of the policy and nothing else', () => {
+    const policy: RolePolicy = {
+      ...base,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: ['submit'] },
+    };
+    expect(permissionSettings(policy).allow).toEqual(['mcp__otheater__submit']);
     expect(permissionSettings(policy).deny).toEqual(deniedTools(policy));
   });
 });
@@ -128,10 +156,14 @@ describe('acpOptions', () => {
   });
 
   it('lets the tools of the MCP servers of the role run with no permission request', () => {
-    const policy: RolePolicy = { ...base, mcpServers: ['otheater'] };
+    const policy: RolePolicy = {
+      ...base,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: ['submit'] },
+    };
     const options = acpOptions(policy, 'none');
-    expect(options.allowedTools).toEqual(['mcp__otheater']);
-    expect(options.settings.permissions.allow).toEqual(['mcp__otheater']);
+    expect(options.allowedTools).toEqual(['mcp__otheater__submit']);
+    expect(options.settings.permissions.allow).toEqual(['mcp__otheater__submit']);
     // The shell and the native tools are not in `allowedTools`: the mode and layer 2 decide them.
     expect(options.allowedTools).not.toContain('Bash');
     expect(options.allowedTools).not.toContain('Read');
@@ -167,13 +199,131 @@ describe('headlessArgs', () => {
     expect(headlessArgs(base, 'none')).not.toContain('--allowedTools');
   });
 
-  it('allows the MCP servers of the policy with --allowedTools', () => {
-    const args = headlessArgs({ ...base, mcpServers: ['otheater', 'docs'] }, 'none');
-    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__otheater,mcp__docs');
+  it('allows the MCP tools of the policy with --allowedTools', () => {
+    const args = headlessArgs(
+      {
+        ...base,
+        mcpServers: ['otheater', 'docs'],
+        mcpTools: { otheater: ['submit'], docs: 'all' },
+      },
+      'none',
+    );
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__otheater__submit,mcp__docs');
   });
 
   it('never asks for a mode or a flag that skips permissions', () => {
     const args = headlessArgs(base, 'user');
     expect(args.join(' ')).not.toMatch(/bypass|dangerously|skip-permissions/iu);
+  });
+});
+
+/** The policy each role gets (shape of the daemon's default; the tool names are literal here). */
+const ROLE_TABLE: readonly {
+  readonly role: string;
+  readonly nativeTools: RolePolicy['nativeTools'];
+  readonly tools: readonly string[];
+  readonly allowed: readonly string[];
+  readonly denied: readonly string[];
+}[] = [
+  {
+    role: 'director',
+    nativeTools: ['read', 'search'],
+    tools: ['next_action', 'ask_producer'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'author',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_plan'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'reviewer',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_plan_review'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'scriptwriter',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_script'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'actor',
+    nativeTools: ['read', 'search', 'edit', 'write'],
+    tools: ['submit', 'read_blackboard'],
+    allowed: ['Read', 'Glob', 'Grep', 'Edit', 'Write'],
+    denied: ['Bash'],
+  },
+  {
+    role: 'critic',
+    nativeTools: ['read', 'search'],
+    tools: ['submit_critique'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+  {
+    role: 'consultant',
+    nativeTools: ['read', 'search'],
+    tools: ['read_blackboard'],
+    allowed: ['Read', 'Glob', 'Grep'],
+    denied: ['Bash', 'Edit', 'Write'],
+  },
+];
+
+describe('the translation for each role (Phase 4, P1)', () => {
+  for (const row of ROLE_TABLE) {
+    const policy: RolePolicy = {
+      ...base,
+      nativeTools: row.nativeTools,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: row.tools },
+    };
+
+    it(`${row.role}: native tools, shell removed, one MCP rule per tool`, () => {
+      const rules = row.tools.map((tool) => `mcp__otheater__${tool}`);
+      const options = acpOptions(policy, 'none');
+      expect(options.tools).toEqual(row.allowed);
+      expect(options.disallowedTools).toEqual(row.denied);
+      expect(options.allowedTools).toEqual(rules);
+      expect(options.settings.permissions.allow).toEqual(rules);
+      expect(options.allowDangerouslySkipPermissions).toBe(false);
+      const args = headlessArgs(policy, 'none');
+      expect(args[args.indexOf('--tools') + 1]).toBe(row.allowed.join(','));
+      expect(args[args.indexOf('--allowedTools') + 1]).toBe(rules.join(','));
+      // Never the whole server, which would let a tool of the server the role lacks run.
+      expect(options.allowedTools).not.toContain('mcp__otheater');
+    });
+
+    it(`${row.role}: the shells of the daemon change no native key and add no rule beyond mcpTools`, () => {
+      const withShells: RolePolicy = {
+        ...policy,
+        nativeShell: 'shells',
+        mcpTools: { otheater: [...row.tools, 'run_tests', 'restricted_shell'] },
+      };
+      const options = acpOptions(withShells, 'none');
+      expect(options.tools).toEqual(row.allowed);
+      expect(options.disallowedTools).toEqual(row.denied);
+      expect(options.disallowedTools[0]).toBe('Bash');
+      expect(options.allowedTools).toEqual([
+        ...row.tools.map((tool) => `mcp__otheater__${tool}`),
+        'mcp__otheater__run_tests',
+        'mcp__otheater__restricted_shell',
+      ]);
+    });
+  }
+
+  it('a server with no entry in mcpTools gets no rule, and "all" gets the server rule', () => {
+    const open: RolePolicy = {
+      ...base,
+      mcpServers: ['otheater', 'docs'],
+      mcpTools: { docs: 'all' },
+    };
+    expect(allowedMcpRules(open)).toEqual(['mcp__docs']);
   });
 });

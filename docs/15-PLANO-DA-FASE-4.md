@@ -80,9 +80,9 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e downloads (este documento) | nada | nada | concluído (PR #74) |
-| P1 | Política por papel e camada 1 completa | P0 | P3, P7, P8 | em andamento |
+| P1 | Política por papel e camada 1 completa | P0 | P3, P7, P8 | concluído (PR #76) |
 | P2 | Camada 2: resposta por regra e eventos | P1 | P4, P6, P7 | pendente |
-| P3 | Cascas: confinamento, truncamento, semáforo e handlers | P0 | P1, P7, P8 | em andamento |
+| P3 | Cascas: confinamento, truncamento, semáforo e handlers | P0 | P1, P7, P8 | concluído (PR #79) |
 | P4 | Camada 3: porta `Sandbox` e `sandbox-runtime` | P1, P3 | P2, P6, P7 | pendente |
 | P5 | Suíte de fuga | P2, P3, P4 | P9, P10 | pendente |
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | pendente |
@@ -151,6 +151,18 @@ Ordem em ondas **[proposta]**:
 - Cada chamada vira evento `tool.called` e `tool.finished`, e as de efeito colateral (`git_commit`, `install_deps`) usam a chave de idempotência `attempt_step`.
 
 **Aceite:** testes de unidade do confinamento (traversal, symlink de arquivo e de pasta, symlink em cadeia) e do argv (encadeamento, redirecionamento, programa por caminho); testes dos handlers com o agente falso chamando o MCP; timeout e truncamento; dois comandos pesados esperando o semáforo.
+
+**Implementação (2026-11-17, [V] verificada localmente pelos testes):**
+- Biblioteca pura em `packages/core` (confinamento, argv, allowlist, truncamento) e handlers em `packages/daemon/src/tools/` (`command-tools.ts`, `git-tools.ts`, `http-get.ts`, `settings.ts`, `semaphore.ts`, `run-command.ts`), registrados em `daemon.ts`. O papel das ferramentas de trabalho é o `actor`; outro papel recebe `mcp error`.
+- Chaves do bloco `tools` (todas com override no projeto e no cenário, em `configOverride` aninhado em `tools` ou com chave pontilhada `tools.x.y`; um override inválido é recusado com `invalid_config`, nunca vira um limite maior):
+  - N97: `shell_allowlist.mode` (`list` padrão, `profile`, `any`) e `shell_allowlist.list`.
+  - N98: `timeout_ms` 600000, `output_max_bytes` 65536, `heavy_concurrency` 1.
+  - Decisão do dono, 2026-11-17: `http.redirects` tem padrão `refuse` (a resposta é o próprio 3xx, nada é seguido); `follow_allowed` segue só enquanto o destino está no `network.allow` do papel, no máximo 5 saltos.
+  - **[proposta]**: `truncate` (`head`, `tail`, `head_tail` padrão), `heavy_commands` (padrão `run_tests` e `install_deps`), `commands.test` e `commands.install`, `http.timeout_ms` (30000), `http.redirects` (modos `refuse` e `follow_allowed`), `env_inherit` (`minimal` padrão, `none`, `all`) e `env_allow`. As duas últimas só valem no bloco global.
+- O comando de `run_tests` e `install_deps` vem, em ordem, do override do projeto ou do cenário (`tools.commands.*`), de `scenarios.conventions.commands.<nome>` (linha ou argv, **[proposta]**) e da config global. Nunca do modelo; sem comando, a ferramenta responde `no_command`.
+- Eventos `tool.called` e `tool.finished` (tipos novos no registro de eventos do daemon). O timeout mata a árvore de processos por `killTree`.
+- `git_commit` usa `runEffect`, `verifyGitCommit` e a chave de passo `<play>:git_commit:<tentativa>:<n>`. Decisão do dono, 2026-11-17: `restricted_shell` e `install_deps` continuam sem verificador de efeito, porque o efeito deles é arbitrário (um comando do projeto); quem verifica o que vai para a branch é o `git_commit`, que confere o commit e o trailer de idempotência antes de dar o passo por feito. `env_inherit: minimal` (PATH, HOME, locale e proxy) e `heavy_commands` sem `restricted_shell` ficam como estão.
+- Integração com a política por papel (P1, PR #76): `http_get` lê o `network.allow` da política resolvida do papel (`roles.<papel>.policy.network.allow`, com as camadas do P1), que o runner entrega no grant junto com o `worktree`; a lista de ferramentas do grant (`McpGrantInput.tools`, de `RolePolicy.mcpTools`) convive com eles. Decisão do dono, 2026-11-17: o padrão do Ator passa a ser `native_shell: shells` (os demais papéis seguem `none`), então `restricted_shell`, `run_tests`, `install_deps` e `git_commit` entram nas `mcpTools` do Ator; o override do projeto e do cenário vale nos dois sentidos. `view_diff` é do Crítico (efeito `none`) e entra nas dele.
 
 ### P4. Camada 3: porta `Sandbox` e `sandbox-runtime` (§5.8)
 
