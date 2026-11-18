@@ -37,6 +37,7 @@ import {
   validateScript,
   type Vcs,
 } from '@otheater/core';
+import { buildDaemonEvent, type PlayNoticeKind } from '@otheater/protocol';
 import { z } from 'zod';
 import type { DaemonConfig, PlayLimits } from '../config.js';
 import type { Execution } from '../execution/service.js';
@@ -62,7 +63,12 @@ import {
   stagePrompt,
 } from './prompts.js';
 import { resolveRolePolicy } from './role-policy.js';
-import type { Acquired, RoleSelection, RoleSelectionRequest } from './role-selection.js';
+import type {
+  Acquired,
+  AcquireWatch,
+  RoleSelection,
+  RoleSelectionRequest,
+} from './role-selection.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,6 +91,11 @@ export const DECISION_KINDS = {
 
 /** Most characters of a reason that goes into an event or a prompt. */
 const REASON_LIMIT = 1500;
+
+/** The key of a demand in the in-flight count: the play, the demand and the generation of the work. */
+function demandKey(playId: string, demandId: string, generation: number): string {
+  return `${playId}/${demandId}/${String(generation)}`;
+}
 
 function clip(text: string): string {
   const trimmed = text.trim();
@@ -185,7 +196,13 @@ export class OrchestrationEffects implements PlayEffects {
   readonly #tasks = new Set<Promise<void>>();
   readonly #generations = new Map<string, number>();
   readonly #wanted = new Map<string, Wanted>();
+  /** The demands that count as in flight in their play (by `demandKey`). */
   readonly #inflight = new Set<string>();
+  /**
+   * P16b, N142: the demands that wait for an Executor and, with `selection.waiting_holds_slot:
+   * false`, no longer count as in flight. The scheduler does not start them again.
+   */
+  readonly #waitingDemands = new Set<string>();
   /** The watchers of the question of `delivery.mode: ask` (N89), by play; not part of `idle()`. */
   readonly #askWatchers = new Map<string, AbortController>();
   readonly #locks = new Map<string, Promise<unknown>>();
@@ -258,10 +275,7 @@ export class OrchestrationEffects implements PlayEffects {
       case 'verify_demand':
         // Judgment point 2 (partial work) is not reachable until the Director's answers for it
         // exist (P12); the effect is logged and not run.
-        this.#options.logger.warn(
-          { effect: effect.type, playId: scope.playId },
-          'this effect has no implementation yet',
-        );
+        void this.#notice(scope.playId, scope.scenarioId, 'effect_not_implemented', effect.type);
         return;
     }
   }
@@ -289,14 +303,92 @@ export class OrchestrationEffects implements PlayEffects {
    * The Executor of a role for one attempt of the play, waiting for one while there is hope (P16).
    * `undefined`: the play was aborted or the daemon stopped meanwhile.
    */
-  #acquire(request: RoleSelectionRequest, playId: string): Promise<Acquired | undefined> {
+  #acquire(
+    request: RoleSelectionRequest,
+    playId: string,
+    watch?: AcquireWatch,
+  ): Promise<Acquired | undefined> {
     if (this.#closed) return Promise.resolve(undefined);
     let controller = this.#selectionWaits.get(playId);
     if (controller === undefined || controller.signal.aborted) {
       controller = new AbortController();
       this.#selectionWaits.set(playId, controller);
     }
-    return this.#options.selection.acquire(request, { signal: controller.signal });
+    return this.#options.selection.acquire(request, {
+      signal: controller.signal,
+      ...(watch === undefined ? {} : { watch }),
+    });
+  }
+
+  /**
+   * What the play hears of the wait of one of its demands (P16b): `demand.waiting` and
+   * `demand.resumed` are written, and with `selection.waiting_holds_slot: false` the demand leaves
+   * the in-flight count for the wait and comes back when it ends (N142). Stages (`holds: undefined`)
+   * have no slot to give back.
+   */
+  #watchOf(
+    scope: PlayEffectScope,
+    role: string,
+    demandId: string,
+    key: string | undefined,
+  ): AcquireWatch {
+    const { store } = this.#options;
+    const { playId, scenarioId } = scope;
+    const holdsSlot = key !== undefined && this.#options.config.selection.waiting_holds_slot;
+    const envelope = { scenarioId, playId };
+    return {
+      started: async (wait) => {
+        if (key !== undefined && !holdsSlot) {
+          this.#inflight.delete(key);
+          this.#waitingDemands.add(key);
+        }
+        await store.events.append({
+          ...buildDaemonEvent('demand.waiting', {
+            scenarioId,
+            playId,
+            demandId,
+            role,
+            on: wait.on.map((item) => ({ ...item })),
+            until: wait.until,
+            message: wait.message,
+            since: wait.since,
+            holdsSlot,
+          }),
+          ...envelope,
+        });
+      },
+      ended: async (end) => {
+        if (key !== undefined && !holdsSlot) {
+          this.#waitingDemands.delete(key);
+          this.#inflight.add(key);
+        }
+        await store.events.append({
+          ...buildDaemonEvent('demand.resumed', {
+            scenarioId,
+            playId,
+            demandId,
+            role,
+            outcome: end.outcome,
+            executor: end.executor,
+            waitedMs: end.waitedMs,
+            holdsSlot,
+          }),
+          ...envelope,
+        });
+      },
+    };
+  }
+
+  /**
+   * The demands of a play that count as in flight (`waiting_holds_slot: false` leaves out the
+   * ones that wait for an Executor) and the ones that wait. [N] Nothing caps the demands in flight
+   * yet, so today this is only what a cap and `ot status` will read.
+   */
+  demandCounts(playId: string): { readonly inflight: number; readonly waiting: number } {
+    const prefix = `${playId}/`;
+    const count = (keys: ReadonlySet<string>): number =>
+      [...keys].filter((key) => key.startsWith(prefix)).length;
+    return { inflight: count(this.#inflight), waiting: count(this.#waitingDemands) };
   }
 
   #generationOf(playId: string): number {
@@ -328,6 +420,34 @@ export class OrchestrationEffects implements PlayEffects {
       return await run;
     } finally {
       if (this.#locks.get(key) === tail) this.#locks.delete(key);
+    }
+  }
+
+  /**
+   * Writes a `play.notice`: a situation of the play that the daemon used to only log, now an event
+   * that hooks and plugins can read (the owner's order of 2026-11-18). It never stops the play.
+   */
+  async #notice(
+    playId: string,
+    scenarioId: string | undefined,
+    kind: PlayNoticeKind,
+    detail: string | null,
+  ): Promise<void> {
+    const { store, logger } = this.#options;
+    try {
+      const scenario = scenarioId ?? (await store.plays.get(playId))?.scenarioId ?? null;
+      await store.events.append({
+        ...buildDaemonEvent('play.notice', {
+          scenarioId: scenario,
+          playId,
+          kind,
+          detail: detail === null ? null : clip(detail).slice(0, 500),
+        }),
+        ...(scenario === null ? {} : { scenarioId: scenario }),
+        playId,
+      });
+    } catch (error) {
+      logger.error({ err: error, playId, kind }, 'a play notice was not written');
     }
   }
 
@@ -521,6 +641,7 @@ export class OrchestrationEffects implements PlayEffects {
     const picked = await this.#acquire(
       { role: effect.role, scenarioId, attempt: { playId, demandId, number: attempt } },
       playId,
+      this.#watchOf(scope, effect.role, demandId, undefined),
     );
     if (picked === undefined)
       return `The ${effect.role} was cancelled while it waited for an Executor.`;
@@ -893,8 +1014,8 @@ export class OrchestrationEffects implements PlayEffects {
       const script = await this.#script(playId);
       if (script === undefined) return;
       for (const id of [...wanted.ids]) {
-        const key = `${playId}/${id}/${String(generation)}`;
-        if (this.#inflight.has(key)) continue;
+        const key = demandKey(playId, id, generation);
+        if (this.#inflight.has(key) || this.#waitingDemands.has(key)) continue;
         const demand = script.demands.find((candidate) => candidate.id === id);
         if (demand === undefined) continue;
         let ready = true;
@@ -910,6 +1031,7 @@ export class OrchestrationEffects implements PlayEffects {
             await this.#runDemand(demand, scope, generation, wanted);
           } finally {
             this.#inflight.delete(key);
+            this.#waitingDemands.delete(key);
             // asked again while it ran (a retry): stays wanted
             if (wanted.seq === seq) wanted.ids.delete(id);
             await this.#schedule(scope, generation);
@@ -941,6 +1063,7 @@ export class OrchestrationEffects implements PlayEffects {
     const picked = await this.#acquire(
       { role: 'actor', scenarioId, attempt: { playId, demandId: demand.id, number: attempt } },
       playId,
+      this.#watchOf(scope, 'actor', demand.id, demandKey(playId, demand.id, generation)),
     );
     if (picked === undefined) return; // abort_work or the daemon stopped while it waited
     await this.#send(playId, generation, {
@@ -1082,7 +1205,7 @@ export class OrchestrationEffects implements PlayEffects {
       diff = await this.#options.vcs
         .diffBetween(repo, carry.oldBase ?? playBranch(playId), carry.branch, CARRIED_DIFF_CHARS)
         .catch((error: unknown) => {
-          this.#options.logger.warn({ err: error, playId, demandId }, 'cannot read the old diff');
+          void this.#notice(playId, undefined, 'old_diff_unreadable', messageOf(error));
           return undefined;
         });
     }
@@ -1193,10 +1316,10 @@ export class OrchestrationEffects implements PlayEffects {
     scope: PlayEffectScope,
     generation: number,
   ): Promise<void> {
-    const { vcs, config, logger, store } = this.#options;
+    const { vcs, config, store } = this.#options;
     const { playId, scenarioId } = scope;
     if (!supportsRebase(vcs) || !supportsHistory(vcs)) {
-      logger.warn({ playId, adapter: vcs.id }, 'the Vcs adapter cannot rebase; nothing was moved');
+      await this.#notice(playId, scenarioId, 'rebase_unsupported', vcs.id);
       return;
     }
     const script = await this.#script(playId);
@@ -1341,7 +1464,7 @@ export class OrchestrationEffects implements PlayEffects {
           return;
         }
         warnings.push(drift.reason);
-        logger.warn({ playId, files: drift.files }, 'delivering although the base moved');
+        await this.#notice(playId, scenarioId, 'delivery_base_moved', drift.files.join(', '));
       }
     }
     const need = await this.#needOf(playId);
@@ -1583,7 +1706,7 @@ export class OrchestrationEffects implements PlayEffects {
 
   /** Nobody answered the question of the delivery: the play goes on with the PR. */
   async #unanswered(scope: PlayEffectScope, cause: 'timeout' | 'left'): Promise<void> {
-    const { store, logger } = this.#options;
+    const { store } = this.#options;
     const { playId } = scope;
     if (this.#closed || this.#runner === undefined) return;
     try {
@@ -1593,7 +1716,7 @@ export class OrchestrationEffects implements PlayEffects {
       if (error instanceof Conflict) return;
       throw error;
     }
-    logger.info({ playId, cause }, 'nobody answered the delivery question: opening the PR');
+    await this.#notice(playId, scope.scenarioId, 'delivery_unanswered', cause);
     await this.#locked(playId, async () => {
       for (const row of await store.decisions.list({ playId, kinds: [DECISION_KINDS.menu] })) {
         if (row.state === 'pending') await store.decisions.cancel(row.id);

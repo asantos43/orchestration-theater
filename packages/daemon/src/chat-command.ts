@@ -6,6 +6,7 @@ import type { JsonObject } from '@otheater/core';
 import type {
   IdeaQueueHeldPayload,
   ScenarioHandoffNotice,
+  ScenarioSelectionWaitNotice,
   ScenarioRecoveryNotice,
   ScenarioSystemMessagePayload,
 } from '@otheater/protocol';
@@ -92,9 +93,27 @@ function menuOptionsOf(ask: PendingAsk): string[] {
  * settled and what waits for the Producer; a line with nothing in it is left out.
  */
 export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessagePayload): string[] {
-  return notice.kind === 'handoff'
-    ? renderHandoffMessage(t, notice)
-    : renderRecoveryMessage(t, notice);
+  if (notice.kind === 'handoff') return renderHandoffMessage(t, notice);
+  if (notice.kind === 'selection_wait') return renderSelectionWaitMessage(t, notice);
+  return renderRecoveryMessage(t, notice);
+}
+
+/**
+ * The `selection_wait` kind (P16b, N135, [proposta]): one line that says a role waits for an
+ * Executor the strict cross-review keeps out (`wait_notify`), and what it waits on.
+ */
+function renderSelectionWaitMessage(t: TFunction, notice: ScenarioSelectionWaitNotice): string[] {
+  return [
+    t('chat.system.selectionWait', {
+      role: notice.role,
+      what: notice.crossCheck === 'other_model' ? 'model' : 'provider',
+      crossCheck: notice.crossCheck,
+      on:
+        notice.on.length === 0
+          ? '-'
+          : notice.on.map((item) => `${item.executor} (${item.reason})`).join(', '),
+    }),
+  ];
 }
 
 /**

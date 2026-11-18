@@ -13,6 +13,7 @@ import type { McpAccess } from '../mcp/access.js';
 import type { QuotaService } from '../quota/service.js';
 import type { CanAdmit, LocalInstanceResolver } from './admission.js';
 import { AttemptRunner } from './attempt-runner.js';
+import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
 import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
 import type { ExecutionSettings } from './settings.js';
@@ -39,6 +40,8 @@ export interface ExecutionOptions {
   readonly canAdmit?: CanAdmit;
   /** The local instance behind a profile: its `slots` are the vacancies of that profile. */
   readonly localInstance?: LocalInstanceResolver;
+  /** The baton of an attempt (P18): the next Executor and the package. Without it a handoff parks. */
+  readonly handoff?: HandoffPort;
 }
 
 /**
@@ -73,6 +76,7 @@ export class Execution {
       logger: options.logger,
       ...(options.mcp === undefined ? {} : { mcp: options.mcp }),
       ...(options.quota === undefined ? {} : { quota: options.quota }),
+      ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
     });
   }
 

@@ -84,3 +84,33 @@ describe('renderSystemMessage, the handoff', () => {
     ]);
   });
 });
+
+describe('renderSystemMessage, the wait of the strict cross-review (N135)', () => {
+  const WAIT: ScenarioSystemMessagePayload = {
+    scenarioId: 's1',
+    kind: 'selection_wait',
+    role: 'reviewer',
+    playId: 'p1',
+    demandId: 'd1',
+    crossCheck: 'require_other_provider',
+    workedProvider: 'anthropic',
+    on: [{ executor: 'gpt@codex/b', profile: 'codex/b', reason: 'quota' }],
+    until: null,
+  };
+
+  it('says what the role waits on, in English', async () => {
+    const t = await createTranslator('en');
+    const [line] = renderSystemMessage(t, WAIT);
+    expect(line).toContain('the reviewer waits');
+    expect(line).toContain('same provider');
+    expect(line).toContain('gpt@codex/b (quota)');
+  });
+
+  it('says it in Brazilian Portuguese and names the model for other_model', async () => {
+    const t = await createTranslator('pt-BR');
+    const lines = renderSystemMessage(t, { ...WAIT, crossCheck: 'other_model', on: [] });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('Sistema:');
+    expect(lines[0]).toContain('reviewer');
+  });
+});

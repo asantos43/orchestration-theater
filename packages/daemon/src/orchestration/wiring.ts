@@ -22,6 +22,7 @@ import { Workspace } from '../workspace/index.js';
 import { ProducerChannel } from './channel.js';
 import { ProducerChannelServer } from './channel-http.js';
 import { DirectorSessions } from './director.js';
+import { createDaemonHandoff, type LateHandoff } from './handoff-wiring.js';
 import type { OrchestrationHandlers } from './handlers.js';
 import { OrchestrationEffects } from './play-effects.js';
 import { ChatPresence } from './presence.js';
@@ -36,12 +37,19 @@ export interface OrchestrationInput {
   readonly mcp: McpAccess;
   readonly registries: Registries;
   readonly prompts: PromptSource;
-  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel' | 'scenarios'>;
+  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel' | 'scenarios' | 'dataDir'>;
   readonly handlers: OrchestrationHandlers;
   /** The handlers of `consult` and `read_attachment` (P12), bound here with the services. */
   readonly scenarioHandlers: ScenarioHandlers;
   /** The Producer channel holds its requests here until the reconciliation ends (P9, 5.21). */
   readonly gate?: Pick<RecoveryGate, 'wait'>;
+  /**
+   * The baton of the attempts (P18, P16b): the runner already holds it, and the wiring binds the
+   * real port here, with the selection that is built here. Absent, a handoff parks the attempt.
+   */
+  readonly handoff?: LateHandoff;
+  /** The absolute home of the account, for `security.secret_paths`. */
+  readonly home?: string;
 }
 
 /** The plays of the daemon, running: what `startDaemon` builds once the execution exists (P8). */
@@ -78,6 +86,9 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   const { config, composition, execution, mcp, registries, prompts, paths, handlers } = input;
   const { scenarioHandlers } = input;
   const { store, logger } = composition;
+  // The queue of ideas hears the end of every play; it is built after the runner it needs. The
+  // channel is built last, and the notice of a strict wait (N135) reaches it through here.
+  const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};
   const selection = new RoleSelection({
     store,
     config,
@@ -86,6 +97,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     clock: composition.clock,
     logger,
+    onNotice: (notice) => late.channel?.notify(notice),
   });
   const dispatcher = new PromptDispatcher({
     store,
@@ -142,8 +154,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     attended: ({ scenarioId }) => presence.attended(scenarioId),
     clock: composition.clock,
   });
-  // The queue of ideas hears the end of every play; it is built after the runner it needs.
-  const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};
   const runner = new PlayRunner({
     store,
     clock: composition.clock,
@@ -230,6 +240,25 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     conventionsMode: () => config.project.conventions,
   });
   late.channel = channel;
+  if (input.handoff !== undefined && input.home !== undefined) {
+    input.handoff.bind(
+      createDaemonHandoff({
+        config,
+        store,
+        selection,
+        execution,
+        prompts,
+        registries,
+        paths,
+        logger,
+        home: input.home,
+        dataDir: paths.dataDir,
+        announce: (notice) => {
+          channel.notify(notice);
+        },
+      }),
+    );
+  }
   const server =
     config.chat.channel === 'off'
       ? undefined
@@ -257,6 +286,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
         handlers.bind(undefined);
         scenarioHandlers.bind(undefined);
         selection.close();
+        input.handoff?.bind(undefined);
         effects.close();
         await runner.close();
         await directors.close();

@@ -307,7 +307,12 @@ const RecheckSchema = z
  * it invalid), `recheck_every` (how often a demand with no Executor looks again on its own, besides
  * the wake of P9 on `quota.restored`; `off` leaves it to the wake) and `director_wait` (what the
  * Director's session does with no Executor: `fail` answers at once with the reason, `wait` holds
- * the opening until one is free).
+ * the opening until one is free and resumes by itself when the wake or the recheck finds one;
+ * `wait` is the default since the owner's answer of 2026-11-18, N141).
+ *
+ * `waiting_holds_slot` (N142, 2026-11-18, [proposta] for the name): whether a demand that waits for
+ * an Executor still counts as in flight in its play. `false` (default) takes it out of the in-flight
+ * count while it waits, so other demands of the play advance; `true` keeps it counted, as P16 did.
  *
  * `strict_unavailable` (N135, decided by the owner on 2026-11-18) is what a strict `cross_check`
  * (`require_other_provider`, `other_model`) does when only the provider or the model of the work
@@ -335,7 +340,8 @@ export const SelectionConfigSchema = z.strictObject({
   recheck_every: RecheckSchema.default(30_000),
   director_wait: z
     .enum(DIRECTOR_WAIT_MODES, oneOf('director_wait', DIRECTOR_WAIT_MODES))
-    .default('fail'),
+    .default('wait'),
+  waiting_holds_slot: z.boolean({ error: 'waiting_holds_slot: true or false' }).default(false),
   strict_unavailable: z
     .enum(STRICT_UNAVAILABLE_MODES, oneOf('strict_unavailable', STRICT_UNAVAILABLE_MODES))
     .default('wait_notify'),

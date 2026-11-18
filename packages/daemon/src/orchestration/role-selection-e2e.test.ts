@@ -193,6 +193,20 @@ describe('the selection in the pipeline (P16)', { timeout: 180_000 }, () => {
         expect(await stateOf(harness, playId)).toBe('EXECUTING');
         const demands = await harness.daemon.store.demands.list({ playId });
         expect(demands.every((demand) => demand.state === 'pending')).toBe(true);
+        // P16b: the wait is an event too, and the demand does not hold a slot while it waits (N142).
+        const waitEvents = (await harness.eventsOf(playId)).filter(
+          (event) => event.type === 'demand.waiting',
+        );
+        expect(waitEvents.length).toBeGreaterThanOrEqual(1);
+        expect(waitEvents[0]?.payload).toMatchObject({
+          playId,
+          role: 'actor',
+          holdsSlot: false,
+          scenarioId,
+        });
+        expect((await harness.eventsOf(playId)).some((e) => e.type === 'demand.resumed')).toBe(
+          false,
+        );
 
         // The window ends: P9 settles the profiles (`quota.restored`) and wakes the demands.
         await clock.advance(HOUR + 1);
@@ -206,6 +220,137 @@ describe('the selection in the pipeline (P16)', { timeout: 180_000 }, () => {
         );
         expect(picked.length).toBeGreaterThanOrEqual(2);
         expect(await waitingNow(harness, scenarioId)).toBe(0);
+        const resumed = (await harness.eventsOf(playId)).filter(
+          (event) => event.type === 'demand.resumed',
+        );
+        expect(resumed.length).toBeGreaterThanOrEqual(1);
+        expect(resumed[0]?.payload).toMatchObject({ outcome: 'selected', role: 'actor', playId });
+      },
+    );
+  });
+
+  it('parks the Director with no Executor, says so in events, and opens it at quota.restored (N141)', async () => {
+    await withSelectionDaemon(
+      {
+        extra: rolesConfig({
+          director: ['one', 'two'],
+          consultant: ['three'],
+          author: ['three'],
+          reviewer: ['three'],
+          scriptwriter: ['three'],
+          actor: ['three'],
+          critic: ['three'],
+        }),
+      },
+      async (harness, clock) => {
+        const resetsAt = clock.now() + HOUR;
+        for (const profile of ['one', 'two']) {
+          await harness.daemon.quota.ingestLimitHit(
+            { client: 'fake', profile },
+            { source: 'limit_hit:test', resetsAt },
+          );
+        }
+        const scenarioId = await harness.openChat();
+        await harness.producer.send(scenarioId, 'hello');
+        const waiting = await waitFor('the Director to wait', async () =>
+          (await scenarioEvents(harness, scenarioId)).find(
+            (event) => event.type === 'scenario.director_waiting',
+          ),
+        );
+        expect(waiting.payload).toMatchObject({ scenarioId });
+        expect(
+          (await scenarioEvents(harness, scenarioId)).some(
+            (event) => event.type === 'scenario.director_resumed',
+          ),
+        ).toBe(false);
+
+        await clock.advance(HOUR + 1);
+        await harness.daemon.wakeups.reconcile('fake/one');
+        await harness.daemon.wakeups.reconcile('fake/two');
+        const resumed = await waitFor('the Director to resume', async () =>
+          (await scenarioEvents(harness, scenarioId)).find(
+            (event) => event.type === 'scenario.director_resumed',
+          ),
+        );
+        expect(resumed.payload).toMatchObject({ scenarioId, outcome: 'selected' });
+      },
+    );
+  });
+
+  it('answers at once with the reason when selection.director_wait is fail (N141)', async () => {
+    await withSelectionDaemon(
+      {
+        extra: rolesConfig(
+          {
+            director: ['one', 'two'],
+            consultant: ['three'],
+            author: ['three'],
+            reviewer: ['three'],
+            scriptwriter: ['three'],
+            actor: ['three'],
+            critic: ['three'],
+          },
+          '  director_wait: fail\n',
+        ),
+      },
+      async (harness, clock) => {
+        const resetsAt = clock.now() + HOUR;
+        for (const profile of ['one', 'two']) {
+          await harness.daemon.quota.ingestLimitHit(
+            { client: 'fake', profile },
+            { source: 'limit_hit:test', resetsAt },
+          );
+        }
+        const scenarioId = await harness.openChat();
+        await harness.producer.send(scenarioId, 'hello').catch(() => undefined);
+        await waitFor(
+          'the Director to be asked for',
+          async () => (await selections(harness, 'director'))[0],
+        );
+        const types = (await scenarioEvents(harness, scenarioId)).map((event) => event.type);
+        expect(types).not.toContain('scenario.director_waiting');
+        expect(types).not.toContain('scenario.director_resumed');
+      },
+    );
+  });
+
+  it('keeps the old accounting of the slot with selection.waiting_holds_slot: true (N142)', async () => {
+    await withSelectionDaemon(
+      {
+        extra: rolesConfig(
+          {
+            actor: ['one', 'two'],
+            director: ['three'],
+            consultant: ['three'],
+            author: ['three'],
+            reviewer: ['three'],
+            scriptwriter: ['three'],
+            critic: ['three'],
+          },
+          '  waiting_holds_slot: true\n',
+        ),
+      },
+      async (harness, clock) => {
+        const resetsAt = clock.now() + HOUR;
+        for (const profile of ['one', 'two']) {
+          await harness.daemon.quota.ingestLimitHit(
+            { client: 'fake', profile },
+            { source: 'limit_hit:test', resetsAt },
+          );
+        }
+        const { playId } = await openPlay(harness, 'approved');
+        const waiting = await waitFor('the demand to wait', async () =>
+          (await harness.eventsOf(playId)).find((event) => event.type === 'demand.waiting'),
+        );
+        expect(waiting.payload).toMatchObject({ role: 'actor', holdsSlot: true });
+        await clock.advance(HOUR + 1);
+        await harness.daemon.wakeups.reconcile('fake/one');
+        await harness.daemon.wakeups.reconcile('fake/two');
+        await waitFor('DONE', async () => (await stateOf(harness, playId)) === 'DONE');
+        const resumed = (await harness.eventsOf(playId)).find(
+          (event) => event.type === 'demand.resumed',
+        );
+        expect(resumed?.payload).toMatchObject({ outcome: 'selected', holdsSlot: true });
       },
     );
   });
@@ -246,4 +391,9 @@ describe('the selection in the pipeline (P16)', { timeout: 180_000 }, () => {
 
 async function waitingNow(harness: PlayHarness, scenarioId: string): Promise<number> {
   return (await harness.producer.poll(scenarioId, 0)).waits.length;
+}
+
+async function scenarioEvents(harness: PlayHarness, scenarioId: string) {
+  const events = await harness.daemon.store.events.readFrom(0, 100_000);
+  return events.filter((event) => event.scenarioId === scenarioId);
 }

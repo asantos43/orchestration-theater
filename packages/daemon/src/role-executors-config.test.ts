@@ -235,7 +235,8 @@ describe('selection (5.7; P15)', () => {
       context_reserve: 0,
       unregistered_profiles: 'allow',
       recheck_every: 30_000,
-      director_wait: 'fail',
+      director_wait: 'wait',
+      waiting_holds_slot: false,
       strict_unavailable: 'wait_notify',
     });
   });
@@ -251,7 +252,8 @@ selection:
   context_reserve: 8k
   unregistered_profiles: refuse
   recheck_every: 2m
-  director_wait: wait
+  director_wait: fail
+  waiting_holds_slot: true
   strict_unavailable: fallback_prefer
 `);
     expect(selection).toEqual({
@@ -263,7 +265,8 @@ selection:
       context_reserve: 8_000,
       unregistered_profiles: 'refuse',
       recheck_every: 120_000,
-      director_wait: 'wait',
+      director_wait: 'fail',
+      waiting_holds_slot: true,
       strict_unavailable: 'fallback_prefer',
     });
   });
@@ -277,6 +280,9 @@ selection:
       /selection\.unregistered_profiles: /u,
     );
     expect(refusal('selection:\n  director_wait: never\n')).toMatch(/selection\.director_wait: /u);
+    expect(refusal('selection:\n  waiting_holds_slot: sometimes\n')).toMatch(
+      /selection\.waiting_holds_slot: /u,
+    );
   });
 
   it('takes the other modes of the keys', () => {

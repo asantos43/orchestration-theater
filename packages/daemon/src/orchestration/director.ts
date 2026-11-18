@@ -70,8 +70,15 @@ interface DirectorSession {
   readonly prefix: string;
   /** Epoch ms the Director fell asleep at; `undefined` while awake. */
   sleptAt: number | undefined;
-  /** Opening the session again (single flight). */
+  /** Opening the session (or opening it again after a sleep): single flight. */
   waking: Promise<void> | undefined;
+  /**
+   * Settled when the opening holds for an Executor (`selection.director_wait: wait`) or ends: the
+   * callers of `ensure` do not stay behind the wait.
+   */
+  parked: Deferred | undefined;
+  /** Stops a wait for an Executor when the sessions close. */
+  readonly abort: AbortController;
   /** Cancels the idle wait. */
   idleTimer: AbortController | undefined;
   attachment: Disposable | undefined;
@@ -85,6 +92,25 @@ interface DirectorSession {
   prefixed: boolean;
   /** The session was opened again after a sleep: its first prompt carries the state summary. */
   summaryNeeded: boolean;
+}
+
+interface Deferred {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+}
+
+function deferred(): Deferred {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+/** How the opening of a session reports that it holds for an Executor. */
+interface ParkingHooks {
+  readonly signal: AbortSignal;
+  readonly parked: () => void;
 }
 
 function textOf(update: NormalizedUpdate): string {
@@ -107,6 +133,12 @@ function textOf(update: NormalizedUpdate): string {
  * the scenario (P7), so nothing the Director knew is lost: it lives in the store. No reload after
  * a crash: that is the reconciliation (P9). The replies live in memory, bounded by `chat.history`;
  * the queue and the events are what survives a restart.
+ *
+ * P16b (N141) With no Executor available and `selection.director_wait: wait` (the default), the
+ * opening is parked, not blocked: `ensure` returns, the prompts the Producer sends stay in the
+ * queue, and the session opens by itself when the wake of P9 or the recheck of the selection finds
+ * an Executor, and then takes the prompts. `scenario.director_waiting` and
+ * `scenario.director_resumed` mark both ends of the wait.
  */
 export class DirectorSessions {
   readonly #options: DirectorSessionsOptions;
@@ -157,7 +189,7 @@ export class DirectorSessions {
   async busy(scenarioId: string): Promise<boolean> {
     const session = this.#opened.get(scenarioId);
     if (session === undefined) return false;
-    if (session.active) return true;
+    if (session.active || session.waking !== undefined) return true;
     if (session.failed) return false;
     const pending = await this.#options.store.promptQueue.list({
       scenarioId,
@@ -172,6 +204,7 @@ export class DirectorSessions {
     this.#opened.clear();
     this.#sessions.clear();
     for (const session of opened) {
+      session.abort.abort();
       session.idleTimer?.abort();
       session.attachment?.dispose();
       await session.lease?.release().catch(() => undefined);
@@ -235,17 +268,49 @@ export class DirectorSessions {
     });
   }
 
-  /** Opens a session again for a sleeping Director (single flight). */
+  /**
+   * Opens a session again for a sleeping Director (single flight). It settles when the session is
+   * open or, with `selection.director_wait: wait` and no Executor, when the opening starts to wait:
+   * `#awake` is the one that stays until the session is open.
+   */
   #wake(session: DirectorSession): Promise<void> {
     if (session.lease !== undefined) return Promise.resolve();
-    session.waking ??= (async () => {
-      try {
-        const { store } = this.#options;
-        const { lease, grant } = await this.#acquire(session.scenarioId);
-        session.lease = lease;
-        session.grant = grant;
-        const sleptAt = session.sleptAt ?? null;
-        session.sleptAt = undefined;
+    if (session.waking === undefined) {
+      const parked = deferred();
+      session.parked = parked;
+      session.waking = this.#reopen(session, parked.resolve).finally(() => {
+        session.waking = undefined;
+        session.parked = undefined;
+        parked.resolve();
+      });
+    }
+    const { waking, parked } = session;
+    return parked === undefined ? waking : Promise.race([waking, parked.promise]);
+  }
+
+  /** Waits until the session is open, however long the Director waits for an Executor. */
+  async #awake(session: DirectorSession): Promise<void> {
+    await this.#wake(session);
+    await session.waking;
+  }
+
+  async #reopen(session: DirectorSession, parked: () => void): Promise<void> {
+    const { store, logger } = this.#options;
+    const park = { held: false };
+    try {
+      const { lease, grant } = await this.#acquire(session.scenarioId, {
+        signal: session.abort.signal,
+        parked: () => {
+          park.held = true;
+          parked();
+        },
+      });
+      session.lease = lease;
+      session.grant = grant;
+      const sleptAt = session.sleptAt ?? null;
+      const slept = session.sleptAt !== undefined;
+      session.sleptAt = undefined;
+      if (slept) {
         await store.scenarios.update(session.scenarioId, { directorState: 'active' });
         await store.events.append({
           ...buildDaemonEvent('scenario.director_woke', {
@@ -254,23 +319,61 @@ export class DirectorSessions {
           }),
           scenarioId: session.scenarioId,
         });
-      } finally {
-        session.waking = undefined;
       }
-    })();
-    return session.waking;
+      if (park.held) this.#arm(session);
+    } catch (error) {
+      // A caller of `ensure` that stayed behind the opening sees the error; one that was released
+      // when the wait began cannot, so the log keeps it.
+      if (park.held) {
+        logger.error(
+          { err: error, scenarioId: session.scenarioId },
+          'the Director did not open after its wait',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
    * The Executor of the Director of a scenario (P16). With nobody available the opening fails
    * with the reason ("waiting for quota of ...", `selection.director_wait: fail`) or holds until
-   * somebody is (`wait`); the Director session that is already open keeps the Executor it has.
+   * somebody is (`wait`, N141): `hooks.parked` says the wait began, and the events
+   * `scenario.director_waiting` and `scenario.director_resumed` are its two ends. The Director
+   * session that is already open keeps the Executor it has.
    */
-  async #pick(scenarioId: string): Promise<SelectedExecutor> {
-    const { selection, config } = this.#options;
+  async #pick(scenarioId: string, hooks: ParkingHooks | undefined): Promise<SelectedExecutor> {
+    const { selection, config, store } = this.#options;
     const request = { role: DIRECTOR_ROLE, scenarioId };
     if (config.selection.director_wait === 'wait') {
-      const acquired = await selection.acquire(request);
+      const acquired = await selection.acquire(request, {
+        ...(hooks === undefined ? {} : { signal: hooks.signal }),
+        watch: {
+          started: async (wait) => {
+            await store.events.append({
+              ...buildDaemonEvent('scenario.director_waiting', {
+                scenarioId,
+                on: wait.on.map((item) => ({ ...item })),
+                until: wait.until,
+                message: wait.message,
+                since: wait.since,
+              }),
+              scenarioId,
+            });
+            hooks?.parked();
+          },
+          ended: async (end) => {
+            await store.events.append({
+              ...buildDaemonEvent('scenario.director_resumed', {
+                scenarioId,
+                outcome: end.outcome,
+                executor: end.executor,
+                waitedMs: end.waitedMs,
+              }),
+              scenarioId,
+            });
+          },
+        },
+      });
       if (acquired === undefined) {
         throw new AdapterUnavailable('The daemon is stopping: the Director did not open.');
       }
@@ -283,11 +386,14 @@ export class DirectorSessions {
   }
 
   /** The pool lease and the MCP grant of the Director of a scenario. */
-  async #acquire(scenarioId: string): Promise<{ lease: SessionLease; grant: McpGrant }> {
+  async #acquire(
+    scenarioId: string,
+    hooks?: ParkingHooks,
+  ): Promise<{ lease: SessionLease; grant: McpGrant }> {
     const { store, execution, mcp, config, registries } = this.#options;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
-    const picked = await this.#pick(scenarioId);
+    const picked = await this.#pick(scenarioId, hooks);
     const repos = await store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
     const { profile, settings } = picked;
@@ -334,7 +440,6 @@ export class DirectorSessions {
 
   async #open(scenarioId: string): Promise<DirectorSession> {
     const { dispatcher, logger } = this.#options;
-    const { lease, grant } = await this.#acquire(scenarioId);
     const prefix = assemblePrefix({
       role: DIRECTOR_ROLE,
       rolePrompt: await this.#options.prompts.get(DIRECTOR_ROLE),
@@ -342,11 +447,13 @@ export class DirectorSessions {
     });
     const session: DirectorSession = {
       scenarioId,
-      lease,
-      grant,
+      lease: undefined,
+      grant: undefined,
       prefix,
       sleptAt: undefined,
       waking: undefined,
+      parked: undefined,
+      abort: new AbortController(),
       idleTimer: undefined,
       attachment: undefined,
       replies: [],
@@ -356,8 +463,17 @@ export class DirectorSessions {
       prefixed: false,
       summaryNeeded: false,
     };
-    // Registered before the sender is attached: a prompt already in the queue starts at once.
+    // Registered before the opening, so `close` reaches a Director that is still waiting.
     this.#opened.set(scenarioId, session);
+    try {
+      // Settles when the session is open or, under `director_wait: wait`, when it holds for an Executor.
+      await this.#wake(session);
+    } catch (error) {
+      this.#opened.delete(scenarioId);
+      throw error;
+    }
+    // Attached before the Director has an Executor: a prompt already in the queue waits in
+    // `#turn` for the opening, and goes in the moment the session is open.
     session.attachment = dispatcher.attach(scenarioId, (item) =>
       this.#turn(session, item).catch((error: unknown) => {
         logger.error({ err: error, scenarioId }, 'the Director session failed a turn');
@@ -369,8 +485,9 @@ export class DirectorSessions {
   }
 
   async #turn(session: DirectorSession, item: PromptQueueItem): Promise<void> {
-    // A prompt can arrive for a sleeping Director (nobody called `ensure`): it wakes first.
-    await this.#wake(session);
+    // A prompt can arrive for a sleeping Director (nobody called `ensure`): it wakes first, and
+    // stays here while the Director waits for an Executor (N141).
+    await this.#awake(session);
     session.idleTimer?.abort();
     session.idleTimer = undefined;
     const { lease } = session;
