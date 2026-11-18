@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Profile, RolePolicy } from '@otheater/core';
-import { FakeClock, InMemorySecretVault } from '@otheater/core/testing';
+import { InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, realClientFlags } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultLauncher, productionClients } from '../compose.js';
@@ -88,7 +88,8 @@ describe.each(CLIENT_IDS)(
         const daemon = await startDaemon({
           dataDir: tmp.dir,
           config,
-          overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
+          // The system clock: the deadline of the attempt (`timeoutMs`) sleeps on it, and a fake one never wakes.
+          overrides: { vault: new InMemorySecretVault(), launcher: real },
           clients: productionClients(config),
           logger: createSilentLogger(),
           version: '0.0.0-test',
