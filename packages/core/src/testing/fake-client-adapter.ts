@@ -101,6 +101,8 @@ export interface FakeClientAdapterOptions extends ClientAdapterOptions {
   /** Overrides of what the client announces. Default: it can load a session, nothing else. */
   readonly capabilities?: Partial<ClientCapabilities>;
   readonly processModel?: ProcessModel;
+  /** What `models` is. Default: a {@link FakeModelCatalog} (`fake-model`, `fake-model-2`). */
+  readonly models?: ModelCatalog;
   /** Called by `prepareProfile`, to see what the base asked for. */
   readonly onPrepareProfile?: (profile: Profile, policy: RolePolicy) => void;
   /** Modes `modeVeto` refuses, each with the reason (a bare list gives a default reason). Default none. */
@@ -229,7 +231,7 @@ export class FakeClientAdapter extends ClientAdapter {
   readonly id: string;
   readonly processModel: ProcessModel;
   readonly quota: QuotaProbe = new FakeQuotaProbe();
-  readonly models: ModelCatalog = new FakeModelCatalog();
+  readonly models: ModelCatalog;
   readonly capabilities: ClientCapabilities;
   /** Profiles the base asked to prepare, in order. */
   readonly prepared: Profile[] = [];
@@ -244,6 +246,7 @@ export class FakeClientAdapter extends ClientAdapter {
     this.#options = options;
     this.id = options.id ?? 'fake';
     this.processModel = options.processModel ?? 'process-per-session';
+    this.models = options.models ?? new FakeModelCatalog();
     this.capabilities = {
       loadSession: true,
       mcpHttp: false,
