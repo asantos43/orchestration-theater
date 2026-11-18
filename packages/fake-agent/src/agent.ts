@@ -27,7 +27,7 @@ import {
 } from '@otheater/protocol';
 import { playEscape } from './escape-scripts.js';
 import { McpHttpClient, type HttpMcpServer } from './mcp-client.js';
-import { playRolePlay } from './role-play.js';
+import { directorQuotaFailure, playRolePlay } from './role-play.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
 
 export const FAKE_AGENT_NAME = 'otheater-fake-agent';
@@ -399,6 +399,10 @@ async function playRolePlayScript(
   turn: TurnContext,
   script: Extract<Script, { name: 'role-play' }>,
 ): Promise<PromptResponse> {
+  const failure = await directorQuotaFailure(turn.text);
+  if (failure !== undefined) {
+    return playQuotaSignal(turn, { name: 'quota-signal', usedPercent: 100, ...failure });
+  }
   try {
     const client = await mcpClientFor(turn, script.server);
     if (client === undefined) return END_TURN;
