@@ -13,6 +13,7 @@ import {
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { createSilentLogger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
+import { PluginEffectRegistry } from '../workspace/plugin-effects.js';
 import { makeWorkspaceRig, type WorkspaceRig } from '../workspace/workspace-fixture.js';
 import {
   RECOVERY_COMMIT_PREFIX,
@@ -301,6 +302,67 @@ describe('effects with an intent and no end', () => {
     const report = await reconcileBeforeResume(rig.deps());
     expect(report.pending).toEqual([expect.objectContaining({ key, playId: null })]);
     expect(await rig.store.decisions.list({})).toEqual([]);
+  });
+
+  it('settles an open install as not done with no code host, so the next call runs it', async () => {
+    const key = `${PLAY}:install_deps:${PLAY}/d1/1:1`;
+    await rig.store.sideEffects.intend({
+      idempotencyKey: key,
+      type: 'install_deps',
+      target: '/wt',
+      params: { callHash: 'h', openPolicy: 'rerun' },
+    });
+    const report = await reconcileBeforeResume(rig.deps({ codeHost: undefined }));
+    expect(report.effectsResolved).toBe(1);
+    expect(report.pending).toEqual([]);
+    expect(await rig.store.sideEffects.get(key)).toMatchObject({
+      state: 'not_done',
+      verifier: 'verifier',
+    });
+    expect(await rig.store.decisions.list({})).toEqual([]);
+  });
+
+  it('asks the Producer, once, about an open shell command or an install set to ask', async () => {
+    const shell = `${PLAY}:restricted_shell:${PLAY}/d1/1:1`;
+    const install = `${PLAY}:install_deps:${PLAY}/d1/1:1`;
+    await rig.store.sideEffects.intend({
+      idempotencyKey: shell,
+      type: 'restricted_shell',
+      target: '/wt',
+      params: { callHash: 'h', openPolicy: 'ask' },
+    });
+    await rig.store.sideEffects.intend({
+      idempotencyKey: install,
+      type: 'install_deps',
+      target: '/wt',
+      params: { callHash: 'h', openPolicy: 'ask' },
+    });
+    const first = await reconcileBeforeResume(rig.deps());
+    expect(first.effectsResolved).toBe(0);
+    expect(first.pending.map((effect) => effect.key).sort()).toEqual([install, shell].sort());
+    expect(await rig.store.decisions.list({})).toHaveLength(2);
+    expect((await rig.store.sideEffects.get(shell))?.state).toBe('ambiguous');
+    await reconcileBeforeResume(rig.deps());
+    expect(await rig.store.decisions.list({})).toHaveLength(2);
+  });
+
+  it('lets the verifier of a plugin settle the effect of the plugin', async () => {
+    const plugins = new PluginEffectRegistry();
+    plugins.register('fake', {
+      type: 'fake.send',
+      verify: (record) =>
+        Promise.resolve({ verdict: 'done', result: { seen: record.idempotencyKey } }),
+    });
+    const key = `${PLAY}:fake.send:1`;
+    await rig.store.sideEffects.intend({ idempotencyKey: key, type: 'fake.send', target: 'x' });
+    const report = await reconcileBeforeResume(
+      rig.deps({ codeHost: undefined, pluginEffects: plugins }),
+    );
+    expect(report.effectsResolved).toBe(1);
+    expect(await rig.store.sideEffects.get(key)).toMatchObject({
+      state: 'done',
+      result: { seen: key },
+    });
   });
 
   it('leaves settled effects alone', async () => {

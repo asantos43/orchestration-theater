@@ -62,7 +62,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #90) |
 | P1 | Esquema do store da fase: perfis, Executores, interrupções, cota, consumo e despertares | P0 | P3, P4, P22 | concluído (PR #96) |
 | P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | pendente |
-| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | pendente |
+| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
 | P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | pendente |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
@@ -81,7 +81,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | pendente |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | pendente |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
-| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | pendente |
+| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
 
 Ordem em ondas **[proposta]**:
@@ -148,6 +148,13 @@ Ordem em ondas **[proposta]**:
 - As chaves de API continuam pelo cofre e por variável de ambiente (P2).
 
 **Aceite:** com o cliente falso (processo que imita a saída do login), cada adaptador devolve o `LoginFlow` no modo certo, resolve ao fim, cancela com `Cancelled` e faz o logout; a sonda de login diz "sem login" num perfil vazio e "com login" depois do fluxo falso; nenhum teste lê arquivo de credencial; a CI de credenciais passa. O login e o logout reais, com uma segunda conta, só no nível opcional `profiles` (N122).
+
+**Como ficou (2026-11-18):**
+- `login()`, `logout()` e `probeLogin()` nos três adaptadores (`official-login.ts`, igual nos três pacotes pela regra `adapter-isolation`). O `LoginFlow` do núcleo não mudou. `login()` devolve o fluxo quando viu o que o modo precisa (URL; URL e código no `device_code`; o `terminal` não espera), quando o processo terminou ou após `urlWaitMs`. `complete()` resolve no código 0; `PermissionDenied` em saída diferente de zero, sinal ou tempo esgotado; `cancel()` mata a árvore e `complete()` rejeita com `Cancelled`. A saída do cliente nunca é registrada e nenhum token é lido. [V] nos testes com o cliente falso (`src/testing/fake-official-client.ts`); nenhum login nem logout real rodou.
+- O que a ajuda de cada cliente disse (só `--help`) [V]: Claude Code `auth login [--claudeai|--console|--email|--sso]`, `auth logout`, `auth status [--json|--text]`; Codex `login [--device-auth|--with-api-key|--with-access-token]`, `login status`, `logout`; OpenCode `auth list|login [url] [-p -m]|logout [provider]`.
+- Padrões [proposta]: Claude `claude auth login --claudeai` (modo `browser`), `claude auth logout`; Codex `codex login` (`browser` e `terminal`) e `codex login --device-auth` (`device_code`), `codex logout`; OpenCode `opencode auth login [-p provider] [-m method]` (modo `terminal`), `opencode auth logout [provider]`. Chaves, todas [proposta]: `clients.<id>.login.mode`, `.command`, `.logout_command`, `.url_wait_ms` (15000), `.timeout_ms` (600000); `clients.claude-code.login.status_command`; `clients.opencode.login.provider`, `.method`, `.list_command`.
+- Sonda de login: Claude lê o booleano `loggedIn` de `claude auth status --json`, porque o `session/new` do Claude funciona sem login [V]; Codex abre uma sessão com política que nega tudo e `-32000 "Authentication required"` é "sem login" [V, Fase 0]; OpenCode lê a contagem de `auth list`. Resultado `logged_in | logged_out | unknown`; o que não dá para ler é `unknown`, nunca "sem login" por palpite.
+- Em aberto [N]: o que cada comando imprime (formato da URL e do código do dispositivo); se rodam sem TTY (o menu do OpenCode); os códigos de saída; o JSON de `claude auth status --json`; a redação de `opencode auth list`; se `opencode auth logout` sem provedor pergunta. O `LoginFlow` não tem canal de entrada, então um passo em que o cliente pede para colar um código é [N]. A conferência real, com uma segunda conta, fica no nível `profiles` (N122).
 
 ### P4. Admissão por RAM, vagas e cota (§5.9)
 
@@ -394,6 +401,24 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 - **Plugins:** a regra "plugin com `external_write` declara no manifesto se aceita a chave; senão pede confirmação do Produtor antes de repetir" é da Fase 9 (plugins) e **não existe nada para aplicar** hoje **[N]**. O passo deixa o gancho e o teste de contrato com um plugin falso.
 
 **Aceite:** com o agente falso e a worktree de teste: repetir o `install_deps` com a mesma chave devolve o resultado gravado, sem rodar; um "antes" sem "depois" é resolvido pelo verificador ou vira pergunta ao Produtor; a consulta `effectsOf` lista o que foi feito; a reconciliação da subida continua verde.
+
+**Como ficou (2026-11-18):**
+- **Cascas com efeito** [V: `command-effects.test.ts`]: `install_deps`, `run_tests` e `restricted_shell` gravam o "antes" e o "depois" em `side_effects` com a chave `<play>:<ferramenta>:<attempt>:<passo>` (retentativas `~2`, `~3`). `src/tools/command-effects.ts` faz isso em volta do `runCommand`; os handlers e as regras de argv não mudaram. Um comando que falha ou estoura o tempo grava `failed` com a saída (`EffectFailed`) e a resposta ao agente continua a de antes.
+- **Reaproveitar a chave** [V]: `install_deps` com o mesmo comando e o mesmo conteúdo dos arquivos de dependências (`package.json`, lockfiles etc.) que a última instalação concluída devolve o resultado gravado com `reused: true`, sem rodar. Mudou um manifesto, ou a última execução falhou, ou há uma execução aberta depois: roda de novo como passo novo. A chave do passo é por chamada (o agente não manda chave); a "mesma chave" é, na prática, o mesmo comando sobre as mesmas entradas. [proposta]
+- **"Antes" sem "depois"** [V]: o verificador de comando (`verifyCommand`, em `workspace/verifiers.ts`) diz `not_done` para `install_deps` e `run_tests` (rodam do comando do projeto e convergem; `tools.effects.open_command: rerun_safe`) e `ambiguous` para `restricted_shell` (o que o modelo mandou não se verifica depois). Na subida, `reconcileBeforeResume` resolve os comandos sem precisar de code host; o `ambiguous` com play aberto vira a decisão `recovery_effect` ao Produtor (mecanismo já existente). Na chamada, o registro aberto (`ambiguous`) responde `ToolFailure('ambiguous')` e nada roda. Nunca se repete às cegas.
+- **`effectsOf(registry, attemptId, types?)` e `openEffectsOf`** [V]: `src/workspace/effects-of.ts`, exportados por `workspace/index.ts`. A primeira lista os efeitos `done` da tentativa, em ordem; a segunda, os `pending`/`ambiguous`. O P18 pode usar as duas no pacote de continuação; a ligação ao pacote é do P18 [N].
+- **Passos** [V]: `browser/steps.ts` foi movido para `workspace/steps.ts` (agora é usado também pelas cascas) e `stepFor` ganhou o parâmetro opcional `busy`, para que uma chamada em andamento neste processo não seja tomada por execução interrompida. Duas chamadas iguais ao mesmo tempo viram dois passos (`StepGate`).
+- **Plugins** [V: `plugin-effects.test.ts`]: só o gancho. `PluginEffectRegistry` (tipo `<plugin>.<efeito>`, um dono por tipo), `runPluginEffect` (roda sob o protocolo com o verificador do plugin) e o campo opcional `pluginEffects` em `RecoveryDeps`, que a reconciliação consulta antes dos verificadores embutidos. A regra do manifesto (`external_write`, aceitar a chave ou pedir confirmação) continua sendo da Fase 9 [N].
+- **Chaves de configuração novas** [proposta], bloco `tools.effects` (global e por cenário, via `configOverride`):
+  - `mode`: `record` (padrão) | `off` (volta ao comportamento anterior: nada gravado);
+  - `replay`: `same_inputs` (padrão, a §5.16) | `never`;
+  - `open_command`: `rerun_safe` (padrão) | `ask` (todo comando aberto vai ao Produtor);
+  - `fingerprint_files`: lista de caminhos dentro da worktree (padrão: manifestos e lockfiles dos ecossistemas comuns).
+- **Sem mudança de esquema**: nenhuma coluna nova em `side_effects`; o único campo novo do contrato é `reused?` em `commandOutput` (`packages/core/src/registries/tools.ts`).
+- **Riscos e lacunas**:
+  - o `replay` presume que a instalação anterior continua válida; se o agente apagou `node_modules` por fora, use `tools.effects.replay: never` [N: sem detector de `node_modules` ausente];
+  - um `restricted_shell` interrompido bloqueia só a mesma chamada (mesmo argv) até o Produtor responder; **não achei no código quem consuma a decisão `recovery_effect`** (lacuna anterior ao P22) [V: busca no código; N: se existe consumidor fora do repositório];
+  - o aceite foi verificado só com o agente falso e processos de teste (`node`), nada real [V].
 
 ### P23. Aceite da fase
 

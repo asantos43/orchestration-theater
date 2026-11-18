@@ -107,9 +107,43 @@ directory under the policy of a role, and fails if the file exists afterwards. I
 `probes()` returns it only when the `probe` option is given. It checks the end result, not which
 layer stopped the command.
 
+## Official login and logout (Phase 5, P3)
+
+`login(profile)` runs the official command of the client inside the profile (`CLAUDE_CONFIG_DIR`
+= the profile directory, API-key variables stripped as above) and returns a `LoginFlow`: the mode
+(`browser` by default), the first URL the client printed, a code when the mode is `device_code`, and
+`complete()`, which resolves when the command exits 0. `cancel()` ends the process tree and
+`complete()` then rejects with `Cancelled`; a refusal, a signal or the timeout reject with
+`PermissionDenied`. The adapter never reads, writes or prints a token and never calls an OAuth
+endpoint: the client does the login, the adapter only reads the URL and the code from its output.
+The output is never logged.
+
+| Command | Default | Source |
+| --- | --- | --- |
+| login | `claude auth login --claudeai` | [V] the options of `--help` (`--claudeai`, `--console`, `--email`, `--sso`); [proposta] the default |
+| logout | `claude auth logout` | [V] exists in `--help`; [N] the output |
+| status (probe) | `claude auth status --json` | [V] exists in `--help` (`--json`, `--text`); [N] the JSON |
+
+`probeLogin(profile)` runs the status command and reads only the boolean `loggedIn`; anything else
+(a failure, text that is not JSON, no such field) is `unknown`, never "logged out" by guess. The
+status command is the probe because `session/new` works without a login [V], so ACP cannot tell.
+
+| Option | Key | Modes | Default |
+| --- | --- | --- | --- |
+| `login.mode` | `clients.claude-code.login.mode` | `browser`, `device_code`, `terminal` | `browser` |
+| `login.command` | `clients.claude-code.login.command` | any executable and arguments (replaces the default of the mode) | `claude auth login --claudeai` |
+| `login.logoutCommand` | `clients.claude-code.login.logout_command` | any executable and arguments | `claude auth logout` |
+| `login.urlWaitMs` | `clients.claude-code.login.url_wait_ms` | milliseconds `login()` waits for the URL (and the code) | `15000` |
+| `login.timeoutMs` | `clients.claude-code.login.timeout_ms` | milliseconds of the whole flow before the client is ended | `600000` |
+| `login.statusCommand` | `clients.claude-code.login.status_command` | any executable and arguments | `claude auth status --json` |
+
+All of these are [proposta]. [N]: what the commands print (the shape of the URL), whether they run
+without a TTY, the exit codes, and the JSON of `auth status`. `LoginFlow` has no input channel, so a
+step where the client asks the owner to paste a code back is also [N]. The tests use a fake client
+(`src/testing/fake-official-client.ts`) that imitates the output; no real login ran.
+
 ## Not here yet
 
-- `login` and `logout` reject with `AdapterUnavailable` (Phase 5).
 - The `QuotaProbe` declares no window and `read` rejects (Phase 5).
 - Profiles that use an API key (needs the secret vault in `profileEnv`).
 

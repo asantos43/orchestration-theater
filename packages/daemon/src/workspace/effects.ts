@@ -48,6 +48,22 @@ export type EffectOutcome =
   /** The verifier could not tell: the record stays `ambiguous`, for the Producer or a later run. */
   | { readonly kind: 'ambiguous'; readonly key: string; readonly reason: string };
 
+/**
+ * What `execute` throws when the effect ran and the tool reported a failure that has a result
+ * worth keeping (a command that exited with an error, with its output). The record is resolved
+ * `failed` WITH that result, and the error is rethrown: the caller catches it and answers with the
+ * result. A `failed` step is never replayed; the next run takes a new key.
+ */
+export class EffectFailed extends Error {
+  constructor(
+    message: string,
+    readonly result: JsonObject,
+  ) {
+    super(message);
+    this.name = 'EffectFailed';
+  }
+}
+
 /** How many keys (`key`, `key~2`...) a step may go through before it is given up. [proposta] */
 export const MAX_EFFECT_ATTEMPTS = 20;
 
@@ -126,7 +142,10 @@ async function intendAndExecute(
     // The tool reported an error, so the record says so; a failure to write it must not hide the
     // original error.
     try {
-      await registry.resolve(key, { state: 'failed' });
+      await registry.resolve(key, {
+        state: 'failed',
+        ...(error instanceof EffectFailed ? { result: error.result } : {}),
+      });
     } catch {
       // The record stays `pending`; the verifier settles it on the next run.
     }

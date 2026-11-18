@@ -13,7 +13,8 @@ import {
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
-import { verifySideEffect } from '../workspace/verifiers.js';
+import type { PluginEffectRegistry } from '../workspace/plugin-effects.js';
+import { COMMAND_EFFECTS, verifyCommand, verifySideEffect } from '../workspace/verifiers.js';
 
 /** First line of the commit that keeps what a worktree held when the daemon died. */
 export const RECOVERY_COMMIT_PREFIX = 'wip(recovery): ';
@@ -30,6 +31,8 @@ export interface RecoveryDeps {
   /** Without the orphan capability the client processes of the dead daemon are left alone. */
   readonly launcher: ProcessLauncher | undefined;
   readonly logger: Logger;
+  /** The verifiers of the effects of plugins (P22 hook); none by default. */
+  readonly pluginEffects?: PluginEffectRegistry | undefined;
 }
 
 /** An effect nobody could settle: it waits for the Producer. */
@@ -192,7 +195,7 @@ async function settleEffects(
   const pending: PendingEffect[] = [];
   for (const record of records) {
     const play = playOfKey(record.idempotencyKey, openPlays);
-    const verdict = await verdictOf(verifierDeps, record);
+    const verdict = await verdictOf(verifierDeps, record, deps.pluginEffects);
     if (verdict.verdict === 'done') {
       await store.sideEffects.resolve(record.idempotencyKey, {
         state: 'done',
@@ -253,7 +256,13 @@ async function settleEffects(
 async function verdictOf(
   verifierDeps: Parameters<typeof verifySideEffect>[0] | undefined,
   record: SideEffectRecord,
+  plugins?: PluginEffectRegistry,
 ): ReturnType<typeof verifySideEffect> {
+  // An effect a plugin declared is judged by the verifier of the plugin.
+  const ofPlugin = await plugins?.verify(record);
+  if (ofPlugin !== undefined) return ofPlugin;
+  // The commands of the worktree are judged by their own record, with no code host (P22).
+  if (COMMAND_EFFECTS.includes(record.type)) return verifyCommand(record);
   if (verifierDeps === undefined) {
     return { verdict: 'ambiguous', reason: 'There is no code host to check the effect against' };
   }
