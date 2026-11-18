@@ -101,6 +101,12 @@ export class SqliteStore implements Store, StoreMaintenance {
   readonly sessions: StoreAggregates['sessions'];
   readonly directives: StoreAggregates['directives'];
   readonly ideas: StoreAggregates['ideas'];
+  readonly profiles: StoreAggregates['profiles'];
+  readonly executors: StoreAggregates['executors'];
+  readonly interruptions: StoreAggregates['interruptions'];
+  readonly quotaSnapshots: StoreAggregates['quotaSnapshots'];
+  readonly usage: StoreAggregates['usage'];
+  readonly wakeups: StoreAggregates['wakeups'];
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -159,6 +165,12 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.sessions = aggregates.sessions;
     this.directives = aggregates.directives;
     this.ideas = aggregates.ideas;
+    this.profiles = aggregates.profiles;
+    this.executors = aggregates.executors;
+    this.interruptions = aggregates.interruptions;
+    this.quotaSnapshots = aggregates.quotaSnapshots;
+    this.usage = aggregates.usage;
+    this.wakeups = aggregates.wakeups;
   }
 
   /**
