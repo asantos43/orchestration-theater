@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type ClientAdapter, type Profile } from '@otheater/core';
 import { FakeClock, FakeProcessLauncher, FakeSessionTransport } from '@otheater/core/testing';
@@ -565,6 +565,70 @@ describe('the veto of modes of the production clients', () => {
     } finally {
       await t.dispose();
     }
+  });
+});
+
+describe('clients.codex.inner_sandbox (N129)', () => {
+  /** Layer 3 as the daemon hands it to the factory: capabilities and a wrapper that confines nothing. */
+  const layer3: NonNullable<ClientFactoryParts['sandbox']> = {
+    capabilities: { fields: ['nativeTools', 'nativeShell', 'writeScope', 'network'] },
+    launchWrapper: ({ spec }) => Promise.resolve(spec),
+  };
+
+  async function pinned(
+    yaml: string,
+    withLayer3: boolean,
+  ): Promise<{ mode: string | undefined; sandboxMode: string }> {
+    const t = await setup();
+    try {
+      const config = parseConfig(`${OPEN}${yaml}`);
+      const parts = withLayer3 ? { ...t.parts, sandbox: layer3 } : t.parts;
+      const codex = byId(
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(parts),
+        'codex',
+      );
+      const profile = t.profile('codex');
+      await codex.openSession(profile, TEST_POLICY, t.dir, t.transport);
+      const toml = await readFile(join(profile.dir, 'config.toml'), 'utf8');
+      const setup0 = t.transport.opened.at(-1)?.setup;
+      return {
+        mode: setup0?.via === 'acp' ? setup0.configOptions.mode : undefined,
+        sandboxMode: /sandbox_mode = "([^"]+)"/.exec(toml)?.[1] ?? '',
+      };
+    } finally {
+      await t.dispose();
+    }
+  }
+
+  it('keeps workspace-write by default, with or without layer 3', async () => {
+    expect(await pinned('', true)).toEqual({
+      mode: 'workspace-write',
+      sandboxMode: 'workspace-write',
+    });
+    expect(await pinned('', false)).toEqual({
+      mode: 'workspace-write',
+      sandboxMode: 'workspace-write',
+    });
+  });
+
+  it('full_access_when_wrapped opens with no sandbox of the client only when layer 3 is on', async () => {
+    const yaml = 'clients:\n  codex:\n    inner_sandbox: full_access_when_wrapped\n';
+    expect(await pinned(yaml, true)).toEqual({
+      mode: 'agent-full-access',
+      sandboxMode: 'danger-full-access',
+    });
+    expect(await pinned(yaml, false)).toEqual({
+      mode: 'workspace-write',
+      sandboxMode: 'workspace-write',
+    });
+  });
+
+  it('nested keeps workspace-write: layer 3 is what changes, not the client', async () => {
+    const yaml = 'clients:\n  codex:\n    inner_sandbox: nested\n';
+    expect(await pinned(yaml, true)).toEqual({
+      mode: 'workspace-write',
+      sandboxMode: 'workspace-write',
+    });
   });
 });
 

@@ -29,6 +29,7 @@ describe('clients.* and security.* of the config', () => {
       modes: ['read-only', 'workspace-write'],
       credentials_store: 'file',
       approval_policy: 'on-request',
+      inner_sandbox: 'keep',
       suggested_effort: 'high',
       model_catalog: 'session',
     });
@@ -105,6 +106,7 @@ describe('clients.* and security.* of the config', () => {
         '    env: { RUST_LOG: warn }',
         '    process_model: process-per-session',
         '    credentials_store: keyring',
+        '    inner_sandbox: nested',
         '    modes: [read-only]',
         '    initial_mode: read-only',
         '  opencode:',
@@ -131,6 +133,7 @@ describe('clients.* and security.* of the config', () => {
       env: { RUST_LOG: 'warn' },
       process_model: 'process-per-session',
       credentials_store: 'keyring',
+      inner_sandbox: 'nested',
       modes: ['read-only'],
       initial_mode: 'read-only',
     });
@@ -191,6 +194,7 @@ describe('clients.* and security.* of the config', () => {
       ['clients:\n  codex:\n    command: { cmd: "" }\n', /clients\.codex\.command\.cmd/],
       ['clients:\n  codex:\n    credentials_store: cloud\n', /clients\.codex\.credentials_store/],
       ['clients:\n  codex:\n    process_model: per_profile\n', /clients\.codex\.process_model/],
+      ['clients:\n  codex:\n    inner_sandbox: both\n', /clients\.codex\.inner_sandbox/],
       ['clients:\n  codex:\n    modes: []\n', /clients\.codex\.modes/],
       ['clients:\n  codex:\n    env_inherit: some\n', /clients\.codex\.env_inherit/],
       ['clients:\n  codex:\n    env_allow: ["A B"]\n', /clients\.codex\.env_allow/],
