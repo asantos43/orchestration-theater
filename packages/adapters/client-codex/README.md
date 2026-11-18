@@ -25,7 +25,8 @@ schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.
 | `mapConfig` | `model`, `reasoning_effort`, `mode` (ids of the client; the veto is `modeVeto`) | [V] |
 | `modeVeto` | allow-list of modes (`allowedModes`); a refusal reason, or `null` | [V] |
 | `models` | `automatic`, family `openai`, built from the `session/new` config options; no model call | [V] |
-| `quota`, `login`, `logout` | reject with `AdapterUnavailable` (Phase 5) | n/a |
+| `quota` | rejects with `AdapterUnavailable` (Phase 5) | n/a |
+| `login`, `logout`, `probeLogin` | the official `codex login` / `codex logout` in the profile; see Official login and logout | [V] the commands exist in `--help`; [N] the rest |
 | `probes` | `codex-mode-veto` (offline), `codex-pinned-mode` (needs an injected `readSessionMode`) | [V] |
 
 ## The mode veto
@@ -67,6 +68,43 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 `clients.codex.credentials_store` (`file`, `keyring`, `auto`), `clients.codex.approval_policy`
 (`on-request`, `untrusted`), `clients.codex.suggested_effort`.
 `clients.codex.version_source` (`auto`, `package_json`, `initialize`, `config`; see Client version).
+
+## Official login and logout (Phase 5, P3)
+
+`login(profile)` first runs `prepareProfile` (so `cli_auth_credentials_store = "file"` is in the
+profile before the client writes anything), then runs the official command with
+`CODEX_HOME` = the profile directory, and returns a `LoginFlow` with the mode, the first URL, a code
+for `device_code`, `complete()` (resolves on exit 0) and `cancel()` (kills the tree; `complete()`
+rejects with `Cancelled`). A refusal, a signal or the timeout reject with `PermissionDenied`. The
+adapter never reads a token or a credentials file and calls no OAuth endpoint; the output of the
+client is never logged.
+
+| Mode | Command | Source |
+| --- | --- | --- |
+| `browser` (default) | `codex login` | [V] exists in `--help`; [proposta] as the default |
+| `device_code` | `codex login --device-auth` | [V] the flag is in `--help` |
+| `terminal` | `codex login` (no wait for a URL) | [proposta] |
+| logout | `codex logout` | [V] exists in `--help` |
+
+`--with-api-key` and `--with-access-token` also exist [V] but are not used: keys go through the
+vault and the environment (P2).
+
+`probeLogin(profile, via, cwd?)` opens a session through the given transport with a deny-all policy
+and closes it at once. `-32000 "Authentication required"` (or an `auth_required` the transport
+already typed) is `logged_out` [V, Phase 0 item 6]; a session that opens is `logged_in`; any other
+failure goes up, because it says nothing about the login.
+
+| Option | Key | Modes | Default |
+| --- | --- | --- | --- |
+| `login.mode` | `clients.codex.login.mode` | `browser`, `device_code`, `terminal` | `browser` |
+| `login.command` | `clients.codex.login.command` | any executable and arguments (replaces the default of the mode) | per mode, table above |
+| `login.logoutCommand` | `clients.codex.login.logout_command` | any executable and arguments | `codex logout` |
+| `login.urlWaitMs` | `clients.codex.login.url_wait_ms` | milliseconds `login()` waits for the URL (and the code) | `15000` |
+| `login.timeoutMs` | `clients.codex.login.timeout_ms` | milliseconds of the whole flow before the client is ended | `600000` |
+
+All of these are [proposta]. [N]: what the commands print (the URL and the device code shapes),
+the exit codes, whether `codex login` runs without a TTY. `LoginFlow` has no input channel. The tests
+use a fake client; no real login ran.
 
 ## Client version (N63)
 
