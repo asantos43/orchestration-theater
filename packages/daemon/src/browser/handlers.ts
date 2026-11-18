@@ -26,11 +26,11 @@ import {
 import { ToolRefusal, ToolsContext, ToolTimeout, type ToolsDeps } from '../tools/index.js';
 import type { ToolDone } from '../tools/context.js';
 import { runEffect, type EffectVerdict } from '../workspace/effects.js';
+import { stepFor, stepsOf } from '../workspace/steps.js';
 import { WriteApprovals, type AskApproval } from './approval.js';
 import { FileOrigin, type FileRefusal, type IsSecretPath } from './file-origin.js';
 import { makeGuard, parseOpenUrl, type GuardRefusal } from './guard.js';
 import { effectiveProfile, resolveBrowserSettings, type BrowserSettings } from './settings.js';
-import { stepFor, stepsOf } from './steps.js';
 
 /** What the browser tools need of the daemon, over the work tools' own (`ToolsDeps`). */
 export interface BrowserToolsDeps extends ToolsDeps {
