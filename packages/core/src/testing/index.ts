@@ -10,6 +10,7 @@ export * from './in-memory-secret-vault.js';
 export * from './in-memory-store.js';
 export * from './in-memory-tables.js';
 export * from './fake-process-launcher.js';
+export * from './fake-memory-probe.js';
 export * from './fake-session-transport.js';
 export * from './fake-client-adapter.js';
 export * from './fake-code-host.js';

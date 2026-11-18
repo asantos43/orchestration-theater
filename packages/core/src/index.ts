@@ -33,6 +33,7 @@ export * from './disposable.js';
 export * from './normalized-update.js';
 export * from './ports/executor.js';
 export * from './ports/process-launcher.js';
+export * from './ports/memory-probe.js';
 export * from './ports/vcs.js';
 export * from './ports/code-host.js';
 export * from './ports/local-model-server.js';
