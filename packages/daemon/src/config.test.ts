@@ -236,6 +236,7 @@ describe('parseConfig, execution keys', () => {
       allow_direct_merge: false,
       base_drift: 'update',
       changelog: 'always',
+      ask: { timeout: 600_000, on_leave: 'pr' },
     });
     for (const mode of ['pr', 'direct_merge', 'ask']) {
       expect(parseConfig(`delivery:\n  mode: ${mode}\n`).delivery.mode).toBe(mode);
@@ -245,12 +246,27 @@ describe('parseConfig, execution keys', () => {
       allow_direct_merge: true,
       base_drift: 'update',
       changelog: 'always',
+      ask: { timeout: 600_000, on_leave: 'pr' },
     });
     expect(() => parseConfig('delivery:\n  mode: merge\n')).toThrow(/mode/);
     expect(() => parseConfig('delivery:\n  allow_direct_merge: yes please\n')).toThrow(
       /allow_direct_merge/,
     );
     expect(() => parseConfig('delivery:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
+  it('defaults delivery.ask to ten minutes and the PR when the Producer leaves (N89)', () => {
+    expect(parseConfig('').delivery.ask).toEqual({ timeout: 600_000, on_leave: 'pr' });
+    expect(parseConfig('delivery:\n  ask:\n    timeout: 90s\n').delivery.ask.timeout).toBe(90_000);
+    expect(parseConfig('delivery:\n  ask:\n    timeout: 0\n').delivery.ask.timeout).toBe(0);
+    for (const mode of ['pr', 'wait']) {
+      expect(parseConfig(`delivery:\n  ask:\n    on_leave: ${mode}\n`).delivery.ask.on_leave).toBe(
+        mode,
+      );
+    }
+    expect(() => parseConfig('delivery:\n  ask:\n    on_leave: merge\n')).toThrow(/on_leave/);
+    expect(() => parseConfig('delivery:\n  ask:\n    timeout: soon\n')).toThrow(/timeout/);
+    expect(() => parseConfig('delivery:\n  ask:\n    extra: 1\n')).toThrow(/extra/);
   });
 
   it('defaults delivery.base_drift to update (N83) and takes the three modes', () => {

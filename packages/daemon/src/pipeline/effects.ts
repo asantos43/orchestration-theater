@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { pendingDemands, type PlayContext, type ProducerReason } from './context.js';
+import {
+  pendingDemands,
+  type DeliveryChoice,
+  type PlayContext,
+  type ProducerReason,
+} from './context.js';
 import type { MenuOption, PlayState } from './definitions.js';
 import type { JudgmentPointId } from './judgment.js';
 import { availableMenu } from './menu.js';
@@ -70,6 +75,8 @@ export type PlayEffect =
       readonly criticWaived: boolean;
       /** The Producer accepted the conflicts of a drifted base: no more drift check (N83). */
       readonly driftAccepted: boolean;
+      /** The answer to `delivery.mode: ask` (N89); `null` before there is one. */
+      readonly deliveryChoice: DeliveryChoice | null;
     }
   | {
       /** The fixed menu of AWAITING_PRODUCER, with the options that hold now. */
@@ -165,6 +172,7 @@ export function entryEffects(state: PlayState, context: PlayContext): PlayEffect
           partial: context.deliverOnlyApproved,
           criticWaived: context.criticWaived,
           driftAccepted: context.driftAccepted === true,
+          deliveryChoice: context.deliveryChoice ?? null,
         },
       ];
     case 'AWAITING_PRODUCER':

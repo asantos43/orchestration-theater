@@ -121,6 +121,19 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
     files: z.array(text),
     reason,
   }),
+  /**
+   * N89: in DELIVERING, `delivery.mode: ask` with someone watching: the Producer chooses between
+   * the PR and the merge in the menu of AWAITING_PRODUCER.
+   */
+  z.strictObject({ type: z.literal('DELIVERY_ASK') }),
+  /**
+   * N89: nobody answered the question of the delivery (`timeout`), or the Producer left while it
+   * waited (`left`): the daemon chooses the PR, the safe side.
+   */
+  z.strictObject({
+    type: z.literal('DELIVERY_ASK_UNANSWERED'),
+    cause: z.enum(['timeout', 'left']),
+  }),
   z.strictObject({ type: z.literal('DELIVERED') }),
   /** The Producer chose an option of the fixed menu. */
   z
