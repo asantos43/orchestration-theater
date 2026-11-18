@@ -81,7 +81,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | pendente |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | pendente |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
-| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | pendente |
+| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
 
 Ordem em ondas **[proposta]**:
@@ -398,6 +398,24 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 - **Plugins:** a regra "plugin com `external_write` declara no manifesto se aceita a chave; senão pede confirmação do Produtor antes de repetir" é da Fase 9 (plugins) e **não existe nada para aplicar** hoje **[N]**. O passo deixa o gancho e o teste de contrato com um plugin falso.
 
 **Aceite:** com o agente falso e a worktree de teste: repetir o `install_deps` com a mesma chave devolve o resultado gravado, sem rodar; um "antes" sem "depois" é resolvido pelo verificador ou vira pergunta ao Produtor; a consulta `effectsOf` lista o que foi feito; a reconciliação da subida continua verde.
+
+**Como ficou (2026-11-18):**
+- **Cascas com efeito** [V: `command-effects.test.ts`]: `install_deps`, `run_tests` e `restricted_shell` gravam o "antes" e o "depois" em `side_effects` com a chave `<play>:<ferramenta>:<attempt>:<passo>` (retentativas `~2`, `~3`). `src/tools/command-effects.ts` faz isso em volta do `runCommand`; os handlers e as regras de argv não mudaram. Um comando que falha ou estoura o tempo grava `failed` com a saída (`EffectFailed`) e a resposta ao agente continua a de antes.
+- **Reaproveitar a chave** [V]: `install_deps` com o mesmo comando e o mesmo conteúdo dos arquivos de dependências (`package.json`, lockfiles etc.) que a última instalação concluída devolve o resultado gravado com `reused: true`, sem rodar. Mudou um manifesto, ou a última execução falhou, ou há uma execução aberta depois: roda de novo como passo novo. A chave do passo é por chamada (o agente não manda chave); a "mesma chave" é, na prática, o mesmo comando sobre as mesmas entradas. [proposta]
+- **"Antes" sem "depois"** [V]: o verificador de comando (`verifyCommand`, em `workspace/verifiers.ts`) diz `not_done` para `install_deps` e `run_tests` (rodam do comando do projeto e convergem; `tools.effects.open_command: rerun_safe`) e `ambiguous` para `restricted_shell` (o que o modelo mandou não se verifica depois). Na subida, `reconcileBeforeResume` resolve os comandos sem precisar de code host; o `ambiguous` com play aberto vira a decisão `recovery_effect` ao Produtor (mecanismo já existente). Na chamada, o registro aberto (`ambiguous`) responde `ToolFailure('ambiguous')` e nada roda. Nunca se repete às cegas.
+- **`effectsOf(registry, attemptId, types?)` e `openEffectsOf`** [V]: `src/workspace/effects-of.ts`, exportados por `workspace/index.ts`. A primeira lista os efeitos `done` da tentativa, em ordem; a segunda, os `pending`/`ambiguous`. O P18 pode usar as duas no pacote de continuação; a ligação ao pacote é do P18 [N].
+- **Passos** [V]: `browser/steps.ts` foi movido para `workspace/steps.ts` (agora é usado também pelas cascas) e `stepFor` ganhou o parâmetro opcional `busy`, para que uma chamada em andamento neste processo não seja tomada por execução interrompida. Duas chamadas iguais ao mesmo tempo viram dois passos (`StepGate`).
+- **Plugins** [V: `plugin-effects.test.ts`]: só o gancho. `PluginEffectRegistry` (tipo `<plugin>.<efeito>`, um dono por tipo), `runPluginEffect` (roda sob o protocolo com o verificador do plugin) e o campo opcional `pluginEffects` em `RecoveryDeps`, que a reconciliação consulta antes dos verificadores embutidos. A regra do manifesto (`external_write`, aceitar a chave ou pedir confirmação) continua sendo da Fase 9 [N].
+- **Chaves de configuração novas** [proposta], bloco `tools.effects` (global e por cenário, via `configOverride`):
+  - `mode`: `record` (padrão) | `off` (volta ao comportamento anterior: nada gravado);
+  - `replay`: `same_inputs` (padrão, a §5.16) | `never`;
+  - `open_command`: `rerun_safe` (padrão) | `ask` (todo comando aberto vai ao Produtor);
+  - `fingerprint_files`: lista de caminhos dentro da worktree (padrão: manifestos e lockfiles dos ecossistemas comuns).
+- **Sem mudança de esquema**: nenhuma coluna nova em `side_effects`; o único campo novo do contrato é `reused?` em `commandOutput` (`packages/core/src/registries/tools.ts`).
+- **Riscos e lacunas**:
+  - o `replay` presume que a instalação anterior continua válida; se o agente apagou `node_modules` por fora, use `tools.effects.replay: never` [N: sem detector de `node_modules` ausente];
+  - um `restricted_shell` interrompido bloqueia só a mesma chamada (mesmo argv) até o Produtor responder; **não achei no código quem consuma a decisão `recovery_effect`** (lacuna anterior ao P22) [V: busca no código; N: se existe consumidor fora do repositório];
+  - o aceite foi verificado só com o agente falso e processos de teste (`node`), nada real [V].
 
 ### P23. Aceite da fase
 

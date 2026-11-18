@@ -414,6 +414,59 @@ export type HeavyToolName = (typeof HEAVY_TOOL_NAMES)[number];
 export const HTTP_REDIRECT_MODES = ['refuse', 'follow_allowed'] as const;
 export type HttpRedirectMode = (typeof HTTP_REDIRECT_MODES)[number];
 
+/**
+ * `tools.effects.mode` [proposta] (P22, architecture 5.16 and 5.21): whether the commands that
+ * change the worktree write their "before" and "after" in `side_effects`. `record` (default): they
+ * do, so a resume finds what was done; `off`: they do not (what the three tools did before P22).
+ */
+export const EFFECT_RECORD_MODES = ['record', 'off'] as const;
+export type EffectRecordMode = (typeof EFFECT_RECORD_MODES)[number];
+
+/**
+ * `tools.effects.replay` [proposta]: what `install_deps` does when the same call comes again (the
+ * same command over the same dependency files) and the earlier run finished. `same_inputs`
+ * (default, as 5.16 says): the recorded result is returned and nothing runs; `never`: it runs
+ * again, as a new step. A run that failed or timed out is never replayed.
+ */
+export const EFFECT_REPLAY_MODES = ['same_inputs', 'never'] as const;
+export type EffectReplayMode = (typeof EFFECT_REPLAY_MODES)[number];
+
+/**
+ * `tools.effects.open_command` [proposta]: what a command with a "before" and no "after" (the
+ * daemon died in the middle of it) becomes. `rerun_safe` (default): `install_deps` and
+ * `run_tests` run from the command of the project and converge, so their verifier answers "not
+ * done" and the next call runs again; `restricted_shell` has no verifier, so it stays ambiguous
+ * and the Producer decides; `ask`: all three stay ambiguous for the Producer.
+ */
+export const EFFECT_OPEN_COMMAND_MODES = ['rerun_safe', 'ask'] as const;
+export type EffectOpenCommandMode = (typeof EFFECT_OPEN_COMMAND_MODES)[number];
+
+/**
+ * The files whose content says whether an install is still current (`tools.effects.
+ * fingerprint_files`). [proposta] The manifests and lockfiles of the usual ecosystems.
+ */
+export const DEFAULT_FINGERPRINT_FILES = [
+  'package.json',
+  'pnpm-lock.yaml',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+  'pyproject.toml',
+  'poetry.lock',
+  'uv.lock',
+  'requirements.txt',
+  'Cargo.toml',
+  'Cargo.lock',
+  'go.mod',
+  'go.sum',
+  'Gemfile',
+  'Gemfile.lock',
+  'composer.json',
+  'composer.lock',
+] as const;
+
 /** A command of the project (`tools.commands.*`): a line, split without a shell, or an argv. Same schema as `scenarios.conventions.commands`. */
 export const ToolCommandSchema = ProjectCommandSchema;
 export type ToolCommand = z.infer<typeof ToolCommandSchema>;
@@ -472,6 +525,33 @@ export const ToolsConfigSchema = z
     env_inherit: z.enum(['minimal', 'none', 'all']).default('minimal'),
     /** [proposta] Names added to the environment of a command (`env_inherit`: `minimal` or `none`). */
     env_allow: z.array(z.string().min(1)).default([]),
+    /**
+     * [proposta] P22: the "before" and "after" of the commands in `side_effects` (5.16 and 5.21),
+     * the replay of `install_deps` and what an interrupted command becomes.
+     */
+    effects: z
+      .strictObject({
+        mode: z.enum(EFFECT_RECORD_MODES).default('record'),
+        replay: z.enum(EFFECT_REPLAY_MODES).default('same_inputs'),
+        open_command: z.enum(EFFECT_OPEN_COMMAND_MODES).default('rerun_safe'),
+        /** Paths inside the worktree whose content is part of the call of `install_deps`. */
+        fingerprint_files: z
+          .array(
+            z
+              .string()
+              .min(1)
+              .refine(
+                (path) =>
+                  !path.startsWith('/') &&
+                  !path.startsWith('\\') &&
+                  !/^[A-Za-z]:/.test(path) &&
+                  !path.split(/[\\/]/).includes('..'),
+                'expected a path inside the worktree',
+              ),
+          )
+          .default([...DEFAULT_FINGERPRINT_FILES]),
+      })
+      .prefault({}),
     /** [proposta] `http_get`: the time limit of a request and what a redirect does. */
     http: z
       .strictObject({

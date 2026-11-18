@@ -9,6 +9,7 @@ import {
   validateArgv,
 } from '@otheater/core';
 import { ToolFailure, type ToolCall, type ToolHandler } from '../mcp/handlers.js';
+import { runRecordedCommand } from './command-effects.js';
 import type { ToolDone, ToolsContext } from './context.js';
 import { runCommand } from './run-command.js';
 import { configuredCommand, profileCommands, type ToolSettings } from './settings.js';
@@ -124,36 +125,44 @@ async function execute(
   }
   const argv = await argvOf(context, call, settings, worktree);
   const { timeout_ms, output_max_bytes, truncate } = settings.config;
-  const result = await runCommand(
-    launcher,
-    clock,
-    {
-      argv,
-      cwd: worktree,
-      env: context.commandEnv(),
-      timeoutMs: timeout_ms,
-      outputMaxBytes: output_max_bytes,
-      truncate,
-    },
-    confine === undefined ? undefined : (launch) => confine(launch, worktree),
-  );
-  const reply: CommandReply = {
-    exitCode: result.exitCode,
-    stdout: result.stdout.text,
-    stderr: result.stderr.text,
-    truncated: result.stdout.truncated || result.stderr.truncated,
-    durationMs: result.durationMs,
-    timedOut: result.timedOut,
-    stdoutBytes: result.stdout.originalBytes,
-    stderrBytes: result.stderr.originalBytes,
+  const run = async (): Promise<ToolDone> => {
+    const result = await runCommand(
+      launcher,
+      clock,
+      {
+        argv,
+        cwd: worktree,
+        env: context.commandEnv(),
+        timeoutMs: timeout_ms,
+        outputMaxBytes: output_max_bytes,
+        truncate,
+      },
+      confine === undefined ? undefined : (launch) => confine(launch, worktree),
+    );
+    const reply: CommandReply = {
+      exitCode: result.exitCode,
+      stdout: result.stdout.text,
+      stderr: result.stderr.text,
+      truncated: result.stdout.truncated || result.stderr.truncated,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
+      stdoutBytes: result.stdout.originalBytes,
+      stderrBytes: result.stderr.originalBytes,
+    };
+    return {
+      reply,
+      outcome: result.timedOut ? 'timed_out' : result.exitCode === 0 ? 'ok' : 'failed',
+      exitCode: result.exitCode,
+      outputBytes: result.stdout.originalBytes + result.stderr.originalBytes,
+      truncated: reply.truncated,
+    };
   };
-  return {
-    reply,
-    outcome: result.timedOut ? 'timed_out' : result.exitCode === 0 ? 'ok' : 'failed',
-    exitCode: result.exitCode,
-    outputBytes: result.stdout.originalBytes + result.stderr.originalBytes,
-    truncated: reply.truncated,
-  };
+  return runRecordedCommand(context, call, settings, {
+    tool: call.tool.name as 'install_deps' | 'run_tests' | 'restricted_shell',
+    worktree,
+    argv,
+    run,
+  });
 }
 
 /** One line for `tool.called`: what the call is about to run. */
@@ -179,9 +188,10 @@ function summaryOf(call: ToolCall): string {
  * - A command that fails or times out is a normal reply (`exitCode`, `timedOut`); a refusal
  *   (rules, path, no command, no worktree) is an error result with a stable code.
  *
- * [proposta] None of the three goes through the effect protocol of 5.21: what a shell command did
- * cannot be verified afterwards, so the call is not replayed after a crash; the Executor looks at
- * the worktree again.
+ * All three go through the effect protocol of 5.16 and 5.21 (P22, `./command-effects.ts`): the
+ * "before" and the "after" are written under `<play>:<tool>:<attempt>:<step>`, `install_deps` over
+ * the same inputs returns the recorded reply, and a run the daemon lost in the middle is settled by
+ * the verifier or asked to the Producer, never repeated blindly. `tools.effects` tunes it.
  */
 export function commandToolHandlers(context: ToolsContext): Record<string, ToolHandler> {
   const handler: ToolHandler = (call) =>

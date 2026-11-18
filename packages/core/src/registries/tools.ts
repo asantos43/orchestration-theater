@@ -240,6 +240,11 @@ const commandOutput = z.strictObject({
   timedOut: z.boolean(),
   stdoutBytes: z.int().min(0),
   stderrBytes: z.int().min(0),
+  /**
+   * `install_deps` only (P22): `true` when an earlier run of the same call (same command, same
+   * dependency files) had finished, so its recorded result is returned and nothing ran.
+   */
+  reused: z.boolean().optional(),
 });
 
 /** `reused`: the commit of an earlier call with the same step was found, nothing was committed again. */
