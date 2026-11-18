@@ -17,7 +17,7 @@ export type ApprovalPolicy = (typeof APPROVAL_POLICIES)[number];
 
 export interface ProfileConfig {
   readonly credentialsStore: CredentialsStore;
-  readonly sandboxMode: 'read-only' | 'workspace-write';
+  readonly sandboxMode: 'read-only' | 'workspace-write' | 'danger-full-access';
   readonly approvalPolicy: ApprovalPolicy;
 }
 

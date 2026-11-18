@@ -24,11 +24,36 @@ export const CODEX_DEFAULT_MODE = 'agent';
  */
 export const VETOED_MODES: readonly string[] = ['agent', 'agent-full-access'];
 
+/** The mode of Codex with no sandbox of its own (`danger-full-access`) and no approval. See {@link fullAccessPolicy}. */
+export const FULL_ACCESS_MODE = 'agent-full-access';
+
+/**
+ * `clients.codex.inner_sandbox` (N129): what Codex does with its own sandbox when layer 3 wraps it.
+ * `keep` (default, what the adapter always did): Codex opens in `workspace-write` and its sandbox
+ * does not start inside the confinement, so its native shell fails. `full_access_when_wrapped`: with
+ * layer 3 on, Codex opens with no sandbox of its own and layer 3 is the only `os` layer. `nested`:
+ * layer 3 lets this client make user namespaces (the daemon does that, `allowNestedUserNamespaces`
+ * of the sandbox request) and Codex keeps its sandbox; the write denies of layer 3 get weaker.
+ */
+export const INNER_SANDBOX_MODES = ['keep', 'full_access_when_wrapped', 'nested'] as const;
+export type InnerSandboxMode = (typeof INNER_SANDBOX_MODES)[number];
+
 /** Modes with a known sandbox, and the name of that sandbox in `codex exec --sandbox` and `config.toml`. */
 export const SANDBOX_OF: Readonly<Record<string, 'read-only' | 'workspace-write'>> = {
   'read-only': 'read-only',
   'workspace-write': 'workspace-write',
 };
+
+/**
+ * What `config.toml` (`sandbox_mode`) and `codex exec --sandbox` call the sandbox of a session in
+ * `mode`; `undefined` for a mode the adapter does not know. Besides {@link SANDBOX_OF}, it knows the
+ * full-access mode, which only {@link fullAccessPolicy} lets a session be in.
+ */
+export function sandboxOfMode(
+  mode: string,
+): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+  return mode === FULL_ACCESS_MODE ? 'danger-full-access' : SANDBOX_OF[mode];
+}
 
 export const DEFAULT_INITIAL_MODE = 'workspace-write';
 export const DEFAULT_ALLOWED_MODES: readonly string[] = ['read-only', 'workspace-write'];
@@ -41,6 +66,33 @@ export interface ModePolicy {
   readonly initial: string;
   /** Every mode `set_config_option` may select; always contains `initial`, never a vetoed mode. */
   readonly allowed: readonly string[];
+  /**
+   * Modes of {@link VETOED_MODES} this policy does NOT veto. Absent: all of them are vetoed. Only
+   * {@link fullAccessPolicy} sets it, so the veto cannot be lifted by a configuration list.
+   */
+  readonly lifted?: readonly string[];
+}
+
+/** The modes this policy refuses besides everything off its allow-list. */
+export function vetoedModes(policy: ModePolicy): readonly string[] {
+  return VETOED_MODES.filter((mode) => !(policy.lifted ?? []).includes(mode));
+}
+
+/**
+ * N129, `inner_sandbox: full_access_when_wrapped` with layer 3 on: a session whose initial mode is
+ * `workspace-write` starts in {@link FULL_ACCESS_MODE} instead, and that one mode of the veto is
+ * lifted (`agent` stays vetoed). [proposta] A policy whose initial mode is `read-only` is left as
+ * it is: the owner asked for a session that cannot write, and layer 3 does not replace that. The
+ * ACP mode with no sandbox of Codex is `agent-full-access` ("Full access", Phase 0) [V]; that it
+ * leaves exactly the OS confinement of layer 3 in place is [N] until a real round.
+ */
+export function fullAccessPolicy(policy: ModePolicy): ModePolicy {
+  if (policy.initial !== 'workspace-write') return policy;
+  return {
+    initial: FULL_ACCESS_MODE,
+    allowed: [...new Set([...policy.allowed, FULL_ACCESS_MODE])],
+    lifted: [FULL_ACCESS_MODE],
+  };
 }
 
 /** Checks the two options, rejects with `InvalidInput` when they break the veto or each other. */
@@ -72,7 +124,7 @@ export function modePolicyOf(initial: string, allowed: readonly string[]): ModeP
  * a `PermissionDenied` (`ClientAdapter.modeVeto`).
  */
 export function modeRefusal(policy: ModePolicy, mode: string): string | null {
-  if (VETOED_MODES.includes(mode)) {
+  if (vetoedModes(policy).includes(mode)) {
     return `it is vetoed (it never asks the client for permission); allowed: ${policy.allowed.join(', ')}`;
   }
   if (!policy.allowed.includes(mode)) {

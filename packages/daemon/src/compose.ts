@@ -385,7 +385,18 @@ async function composeSandbox(
     sandbox = new SrtSandbox();
   }
   logger.info({ sandbox: sandbox.id, fields: sandbox.capabilities().fields }, 'sandbox');
-  return buildSandboxWiring({ sandbox, config, home: homedir(), dataDir: paths.dataDir });
+  return buildSandboxWiring({
+    sandbox,
+    config,
+    home: homedir(),
+    dataDir: paths.dataDir,
+    onNestedUserNamespaces: ({ client, worktree }) => {
+      logger.warn(
+        { client, worktree },
+        'clients.codex.inner_sandbox is nested: the sandbox lets this client process make user namespaces, so its write denies (denyWrite and the mandatory denies) are weaker against a hostile command (documented by the library)',
+      );
+    },
+  });
 }
 
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
@@ -778,6 +789,7 @@ function codex(
     allowedModes: section.modes,
     credentialsStore: section.credentials_store,
     approvalPolicy: section.approval_policy,
+    innerSandbox: section.inner_sandbox,
     suggestedEffort: section.suggested_effort,
     quota: {
       profileDir: (ref) => profileDirOf(parts.paths, ref),
@@ -796,6 +808,20 @@ function codex(
     ...(source === undefined ? {} : { modelSource: source }),
   });
   own.adapter = adapter;
+  if (section.inner_sandbox !== 'keep') {
+    const layer3 = parts.sandbox !== undefined;
+    parts.logger.info(
+      {
+        client: 'codex',
+        inner_sandbox: section.inner_sandbox,
+        layer3,
+        initial_mode: adapter.initialMode,
+      },
+      layer3
+        ? `clients.codex.inner_sandbox is ${section.inner_sandbox}`
+        : `clients.codex.inner_sandbox is ${section.inner_sandbox}, but layer 3 is off: it behaves as keep`,
+    );
+  }
   return adapter;
 }
 
@@ -824,6 +850,17 @@ function opencode(
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
     // N56: the pool section decides how OpenCode shares its processes.
     processModel: config.pool.opencode.process_model,
+    // P8: the local accounting of the OpenCode quota, only when the owner turns it on.
+    ...(config.quota.opencode.mode === 'ledger'
+      ? {
+          ledger: {
+            clock: parts.clock,
+            windowMs: config.quota.opencode.window,
+            limitTokens: config.quota.opencode.limit_tokens,
+            limitUsd: config.quota.opencode.limit_usd,
+          },
+        }
+      : {}),
     isolation: section.isolation,
     ...(section.profile_config === undefined ? {} : { profileConfig: section.profile_config }),
     shellKeys: section.shell_keys,

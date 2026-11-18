@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { createServer as createNetServer, type AddressInfo } from 'node:net';
@@ -489,6 +489,48 @@ real('SrtSandbox bridge to a loopback server of the daemon (N115)', () => {
     expect(two).toEqual(one);
     const none = await sandbox.wrap(request('true'));
     expect(none.args).not.toEqual(one.args);
+  });
+});
+
+/**
+ * N129: inside the sandbox of the library `/proc/sys/user/max_user_namespaces` is 0, so a client with
+ * a sandbox of its own (Codex) cannot start it. `allowNestedUserNamespaces` is per request, and with
+ * it a command can make a user namespace. Measured by the owner on 2026-11-18 with `srt` 0.0.81 [V];
+ * the test asks the operating system again. Linux only, and skipped where `unshare` does not work
+ * on the host itself.
+ */
+const nestedPossible =
+  process.platform === 'linux' && spawnSync('unshare', ['-Ur', 'true']).status === 0;
+real('SrtSandbox nested user namespaces (N129)', () => {
+  const nested = it.skipIf(!nestedPossible);
+
+  nested('refuses a user namespace by default', async () => {
+    const outcome = await confined('unshare -Ur true');
+    expect(outcome.code).not.toBe(0);
+  });
+
+  nested('allows it for the request that asks, and only for that one', async () => {
+    const asked = await confined('unshare -Ur true', { allowNestedUserNamespaces: true });
+    expect(asked.code, asked.stderr).toBe(0);
+    const next = await confined('unshare -Ur true');
+    expect(next.code).not.toBe(0);
+  });
+
+  nested('keeps the write confinement of the worktree for what the command does', async () => {
+    const outsideFile = join(dirs.outside, 'nested-write.txt');
+    const outcome = await confined(`echo x > ${outsideFile}`, {
+      allowNestedUserNamespaces: true,
+    });
+    expect(outcome.code).not.toBe(0);
+    expect(() => readFileSync(outsideFile)).toThrow();
+  });
+
+  it('gives another launch for the request that asks', async () => {
+    const plain = await sandbox.wrap(request('true'));
+    const asked = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
+    expect(asked.args).not.toEqual(plain.args);
+    const again = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
+    expect(again).toEqual(asked);
   });
 });
 

@@ -102,12 +102,26 @@ export const NORMALIZED_ERROR_KINDS = [
   'unknown',
 ] as const;
 
+/**
+ * Where a limit error came from (P8, architecture 5.6). [proposta] The names:
+ * - `rate_limit_event`: a rate-limit event of the client's stream (it travels as a `rate_limit`
+ *   update, not as an error; listed so the quota service has one vocabulary);
+ * - `429`: the client reported an HTTP 429 of the provider;
+ * - `message`: the client's own message said the limit was reached (matched by pattern);
+ * - `structured`: a typed field said so (the `-32001` code, `data.type`, `codexErrorInfo`).
+ */
+export const LIMIT_SOURCES = ['rate_limit_event', '429', 'message', 'structured'] as const;
+
+export type LimitSource = (typeof LIMIT_SOURCES)[number];
+
 /** An error of the client in the OTheater's own terms (what `normalizeError` returns). */
 export interface NormalizedError {
   readonly kind: (typeof NORMALIZED_ERROR_KINDS)[number];
   readonly message: string;
   /** When the quota comes back, epoch ms, if some source says it (N42). */
   readonly resetsAt?: number;
+  /** Only for `quota_exhausted`: what told the shell about the limit. */
+  readonly limitSource?: LimitSource;
   /** The original error, for the log. */
   readonly cause?: unknown;
 }

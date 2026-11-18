@@ -121,6 +121,66 @@ describe('buildSandboxWiring', () => {
     expect(request?.secretPaths).toContain('.env');
   });
 
+  describe('inner_sandbox (N129)', () => {
+    const run = async (client: 'codex' | 'claude-code', yaml: string) => {
+      const sandbox = new RecordingSandbox();
+      const nested: { client: string; worktree: string }[] = [];
+      await buildSandboxWiring({
+        sandbox,
+        config: parseConfig(yaml),
+        home: '/home/u',
+        dataDir: '/data',
+        onNestedUserNamespaces: (info) => nested.push(info),
+      }).launchWrapper()({
+        profile: { ...PROFILE, client },
+        policy: POLICY,
+        cwd: '/data/worktrees/w1',
+        via: 'acp',
+        spec: LAUNCH,
+      });
+      return { request: sandbox.requests[0], nested };
+    };
+
+    it('asks for nested user namespaces for Codex only with inner_sandbox: nested, and warns', async () => {
+      const { request, nested } = await run(
+        'codex',
+        'clients:\n  codex:\n    inner_sandbox: nested\n',
+      );
+      expect(request?.allowNestedUserNamespaces).toBe(true);
+      expect(nested).toEqual([{ client: 'codex', worktree: '/data/worktrees/w1' }]);
+    });
+
+    it.each([
+      '',
+      'clients:\n  codex:\n    inner_sandbox: keep\n',
+      'clients:\n  codex:\n    inner_sandbox: full_access_when_wrapped\n',
+    ])('does not ask for it with the other modes (%j)', async (yaml) => {
+      const { request, nested } = await run('codex', yaml);
+      expect(request).not.toHaveProperty('allowNestedUserNamespaces');
+      expect(nested).toEqual([]);
+    });
+
+    it('never asks for it for another client, whatever the Codex key says', async () => {
+      const { request, nested } = await run(
+        'claude-code',
+        'clients:\n  codex:\n    inner_sandbox: nested\n',
+      );
+      expect(request).not.toHaveProperty('allowNestedUserNamespaces');
+      expect(nested).toEqual([]);
+    });
+
+    it('never asks for it for the commands of the tools', async () => {
+      const sandbox = new RecordingSandbox();
+      await buildSandboxWiring({
+        sandbox,
+        config: parseConfig('clients:\n  codex:\n    inner_sandbox: nested\n'),
+        home: '/home/u',
+        dataDir: '/data',
+      }).confineCommand(LAUNCH, '/data/worktrees/w1');
+      expect(sandbox.requests[0]).not.toHaveProperty('allowNestedUserNamespaces');
+    });
+  });
+
   it('asks for the bridge of the loopback servers (N115), and not with sandbox.mcp_bridge: off', async () => {
     const run = async (yaml: string): Promise<SandboxRequest | undefined> => {
       const sandbox = new RecordingSandbox();
