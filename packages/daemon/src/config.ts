@@ -106,6 +106,23 @@ export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
  */
 export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 /**
+ * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
+ * remaining quota of the MiniMax Token Plan with the key of the profile (`GET /v1/token_plan/remains`).
+ */
+export const QUOTA_MINIMAX_MODES = ['off', 'token_plan'] as const;
+/**
+ * [proposta] `quota.minimax.usage_count_means`: what `current_*_usage_count` of the Token Plan
+ * answer counts. Third-party notes [S] suggest what is LEFT (`remaining`, default); the real
+ * meaning depends on the owner's key [N].
+ */
+export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
+/**
+ * [proposta] `quota.opencode.mode` (P8): `off` (default) keeps the OpenCode probe without a
+ * reading; `ledger` adds up the usage events of the sessions the daemon runs and compares the
+ * sum with `limit_tokens` and `limit_usd`.
+ */
+export const QUOTA_OPENCODE_MODES = ['off', 'ledger'] as const;
+/**
  * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
  * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
  * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
@@ -1357,6 +1374,34 @@ export const DaemonConfigSchema = z
           .strictObject({
             delivery: z.enum(QUOTA_PROBE_DELIVERY_MODES).default('both'),
             poll_every: DurationSchema.prefault('5m'),
+          })
+          .prefault({}),
+        /**
+         * [proposta] (P8) The MiniMax Token Plan probe, a call the DAEMON makes with the key of the
+         * profile. Default `off`: no call leaves the machine until the owner turns it on.
+         * `base_url` and `allow_hosts` are the daemon network policy for this call (https only;
+         * `http` only for a loopback host); `timeout` is the deadline of the call.
+         */
+        minimax: z
+          .strictObject({
+            mode: z.enum(QUOTA_MINIMAX_MODES).default('off'),
+            base_url: z.url().default('https://api.minimax.io'),
+            allow_hosts: z.array(z.string().min(1)).default(['api.minimax.io', 'www.minimax.io']),
+            timeout: DurationSchema.prefault('10s'),
+            usage_count_means: z.enum(QUOTA_MINIMAX_USAGE_COUNT_MEANS).default('remaining'),
+          })
+          .prefault({}),
+        /**
+         * [proposta] (P8) The OpenCode probe: local accounting of the usage events of the sessions
+         * the daemon runs, over a rolling `window`. A limit left `null` is not measured; with both
+         * `null` the ledger has nothing to compare with and gives no reading.
+         */
+        opencode: z
+          .strictObject({
+            mode: z.enum(QUOTA_OPENCODE_MODES).default('off'),
+            window: DurationSchema.prefault('5h'),
+            limit_tokens: z.int().positive().nullable().default(null),
+            limit_usd: z.number().positive().nullable().default(null),
           })
           .prefault({}),
       })
