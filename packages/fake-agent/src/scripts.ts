@@ -98,6 +98,16 @@ export const scriptSchema = z.discriminatedUnion('name', [
     usedPercent: z.number().min(0).max(100).default(100),
     resetsAt: z.string().optional(),
   }),
+  z.strictObject({
+    name: z.literal('usage-signal'),
+    model: z.string().min(1).default('claude-opus-5-5'),
+    inputTokens: z.number().int().min(0).default(1000),
+    outputTokens: z.number().int().min(0).default(200),
+    /** The cost the client reports itself; left out, the signal carries no cost. */
+    costUsd: z.number().min(0).optional(),
+    /** How many `usage` signals the turn sends. */
+    repeat: z.number().int().min(1).max(20).default(1),
+  }),
 ]);
 
 export type Script = z.infer<typeof scriptSchema>;
@@ -117,6 +127,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'hang',
   'deaf',
   'quota-signal',
+  'usage-signal',
 ];
 
 /** Thrown when a script spec cannot be parsed or fails validation. */

@@ -406,6 +406,40 @@ describe('fake agent in process', () => {
     });
   });
 
+  it('usage-signal reports the consumption of the turn and ends it normally', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const response = await prompt(
+        h,
+        '#script:usage-signal {"model":"gpt-6-sol","inputTokens":50,"outputTokens":7,"costUsd":0.25,"repeat":2}',
+      );
+      expect(response.stopReason).toBe('end_turn');
+      await waitFor(() => h.recorded.quota.length === 2);
+      for (const entry of h.recorded.quota) {
+        expect(entry.sessionId).toBe(h.sessionId);
+        expect(entry.signal).toEqual({
+          kind: 'usage',
+          model: 'gpt-6-sol',
+          inputTokens: 50,
+          outputTokens: 7,
+          costUsd: 0.25,
+        });
+      }
+    });
+  });
+
+  it('usage-signal defaults to one signal of the quality model with no cost', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      await prompt(h, '#script:usage-signal');
+      await waitFor(() => h.recorded.quota.length === 1);
+      expect(h.recorded.quota[0]?.signal).toEqual({
+        kind: 'usage',
+        model: 'claude-opus-5-5',
+        inputTokens: 1000,
+        outputTokens: 200,
+      });
+    });
+  });
+
   it('rejects an invalid script and an unknown session', async () => {
     await withSession(createFakeAgent(), async (h) => {
       expect((await rejection(prompt(h, '#script:nope'))).code).toBe(-32602);
