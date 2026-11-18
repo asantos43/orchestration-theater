@@ -65,7 +65,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
 | P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
-| P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
+| P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | concluído (PR #105) |
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | pendente |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | pendente |
