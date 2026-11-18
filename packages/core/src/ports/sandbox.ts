@@ -33,6 +33,17 @@ export interface SandboxRequest {
    * `sandbox.extra_domains`. Everything else is denied.
    */
   readonly domains: readonly string[];
+  /**
+   * [proposta, N115] Ports of servers the daemon runs on the loopback of the HOST (its MCP server)
+   * that the command must reach at `127.0.0.1:<port>` and with the same URL. Where the mechanism
+   * gives the command a network of its own (bubblewrap's `--unshare-net`), its `127.0.0.1` is not
+   * the host's, so the adapter starts, before the command, a listener on that port inside that
+   * network and forwards it to the host through the channel it already has for its network list.
+   * The adapter allows `localhost:<port>` by itself. Optional, so the port version does not change:
+   * an adapter that ignores it leaves the command unable to reach the server, never more exposed.
+   * Absent or empty: no bridge.
+   */
+  readonly loopbackPorts?: readonly number[];
 }
 
 /** Whether the mechanism of this machine works, found by trying it once (never by looking at the platform). */

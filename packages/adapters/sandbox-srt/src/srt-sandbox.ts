@@ -21,7 +21,14 @@ import {
   type SrtSandboxConfig,
   type SrtSandboxConfigInput,
 } from './config.js';
-import { allowedDomains, commandIdFor, filesystemRules, shellLine } from './policy.js';
+import {
+  allowedDomains,
+  bridgePorts,
+  bridgeScript,
+  commandIdFor,
+  filesystemRules,
+  shellLine,
+} from './policy.js';
 
 /** The shell that runs the wrapped line outside the sandbox. [proposta] Present on Linux and macOS. */
 const OUTER_SHELL = '/bin/bash';
@@ -53,7 +60,10 @@ function assertAbsolute(name: string, value: string): void {
  * the domains of the request, through a proxy of the library that runs in this process, so the
  * event loop of the host must stay free (the caller spawns asynchronously); no read of the secret
  * paths. A server the command starts inside has its own loopback and is NOT reachable from outside
- * (measured, `--unshare-net`).
+ * (measured, `--unshare-net`). The opposite way, a daemon server on the host loopback, is reached only
+ * for the ports of `request.loopbackPorts` (N115): a `socat` listener of the command's own network
+ * forwards them to the host over the library's proxy (TCP only, so the Unix-socket filter of the
+ * library stays on).
  *
  * [proposta] The network list is registered per worktree-and-policy (the id is a secret HMAC of
  * the request), so two commands of the same worktree and policy share a list, and one command that
@@ -115,6 +125,9 @@ export class SrtSandbox implements Sandbox {
         `sandbox-srt has no mechanism for ${this.#platform} (layer 3 is missing there, N94)`,
       );
     }
+    // Only bubblewrap gives the command a network of its own; Seatbelt has no such loopback, and
+    // nothing was measured there (N115), so a `loopbackPorts` is a domain rule and no listener.
+    const ports = this.#platform === 'linux' ? bridgePorts(request) : [];
     await this.#start();
     const rules = filesystemRules(request, this.#tempDir);
     const commandId = commandIdFor(this.#secret, request, this.#tempDir);
@@ -140,7 +153,9 @@ export class SrtSandbox implements Sandbox {
     let wrapped: string;
     try {
       wrapped = await SandboxManager.wrapWithSandbox(
-        shellLine(request.launch.cmd, request.launch.args),
+        ports.length === 0
+          ? shellLine(request.launch.cmd, request.launch.args)
+          : bridgeScript(ports, request.launch.cmd, request.launch.args),
         OUTER_SHELL,
         customConfig,
         undefined,

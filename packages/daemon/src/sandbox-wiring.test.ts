@@ -2,7 +2,12 @@
 import type { LaunchOptions, Profile, RolePolicy, Sandbox, SandboxRequest } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
-import { buildSandboxWiring, loopbackRule, PROVIDER_DOMAINS } from './sandbox-wiring.js';
+import {
+  buildSandboxWiring,
+  loopbackPort,
+  loopbackRule,
+  PROVIDER_DOMAINS,
+} from './sandbox-wiring.js';
 
 /** Records what it is asked to wrap and hands the launch back marked. */
 class RecordingSandbox implements Sandbox {
@@ -63,6 +68,16 @@ describe('loopbackRule', () => {
   });
 });
 
+describe('loopbackPort', () => {
+  it('is the port of a loopback URL, with the default of the scheme, and nothing else', () => {
+    expect(loopbackPort('http://127.0.0.1:4321/mcp')).toBe(4321);
+    expect(loopbackPort('http://localhost/')).toBe(80);
+    expect(loopbackPort('https://[::1]/')).toBe(443);
+    expect(loopbackPort('https://api.example.com/')).toBeUndefined();
+    expect(loopbackPort('nope')).toBeUndefined();
+  });
+});
+
 describe('buildSandboxWiring', () => {
   const config = parseConfig(
     'sandbox:\n  extra_write_paths: [/var/cache/x]\n  extra_domains: [registry.npmjs.org]\nsecurity:\n  secret_paths:\n    add: ["~/.vault"]\n',
@@ -106,6 +121,29 @@ describe('buildSandboxWiring', () => {
     expect(request?.secretPaths).toContain('.env');
   });
 
+  it('asks for the bridge of the loopback servers (N115), and not with sandbox.mcp_bridge: off', async () => {
+    const run = async (yaml: string): Promise<SandboxRequest | undefined> => {
+      const sandbox = new RecordingSandbox();
+      await buildSandboxWiring({
+        sandbox,
+        config: parseConfig(yaml),
+        home: '/home/u',
+        dataDir: '/data',
+      }).launchWrapper(() => ['http://127.0.0.1:4321/mcp', 'https://elsewhere.example/x'])({
+        profile: PROFILE,
+        policy: POLICY,
+        cwd: '/data/worktrees/w1',
+        via: 'acp',
+        spec: LAUNCH,
+      });
+      return sandbox.requests[0];
+    };
+    expect((await run(''))?.loopbackPorts).toEqual([4321]);
+    expect((await run('sandbox:\n  mcp_bridge: off\n'))?.loopbackPorts).toBeUndefined();
+    // The domain rule stays in both modes: `off` is the behaviour before N115.
+    expect((await run('sandbox:\n  mcp_bridge: off\n'))?.domains).toContain('localhost:4321');
+  });
+
   it('gives a client nothing from the daemon when there is no loopback server', async () => {
     const sandbox = new RecordingSandbox();
     await wiring(sandbox).launchWrapper()({
@@ -116,6 +154,7 @@ describe('buildSandboxWiring', () => {
       spec: LAUNCH,
     });
     expect(sandbox.requests[0]?.domains).toEqual(['registry.npmjs.org']);
+    expect(sandbox.requests[0]?.loopbackPorts).toBeUndefined();
   });
 
   it('confines a command of the tools: its worktree, no role network, only the extra domains', async () => {
@@ -128,6 +167,7 @@ describe('buildSandboxWiring', () => {
       domains: ['registry.npmjs.org'],
       policy: { writeScope: 'worktree', network: { allow: [] } },
     });
+    expect(sandbox.requests[0]?.loopbackPorts).toBeUndefined();
   });
 
   it('closes the sandbox', async () => {

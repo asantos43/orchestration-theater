@@ -30,7 +30,8 @@ export interface SandboxWiring {
   readonly capabilities: SandboxCapabilities;
   /**
    * The launch wrapper of the clients. `loopback` gives the URLs of the daemon's own servers (the
-   * framework MCP) the confined client must reach: they are allowed as `localhost:<port>`.
+   * framework MCP) the confined client must reach: they are allowed as `localhost:<port>` and, with
+   * `sandbox.mcp_bridge: proxy` (N115), bridged into the sandbox on the same port.
    */
   launchWrapper(loopback?: () => readonly string[]): LaunchWrapper;
   /** The same confinement for the commands of the tools. */
@@ -38,8 +39,8 @@ export interface SandboxWiring {
   close(): Promise<void>;
 }
 
-/** `localhost:<port>` for a URL that names the loopback, else `undefined`. Pure. */
-export function loopbackRule(url: string): string | undefined {
+/** The port of a URL that names the loopback, else `undefined`. Pure. */
+export function loopbackPort(url: string): number | undefined {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -49,7 +50,13 @@ export function loopbackRule(url: string): string | undefined {
   const host = parsed.hostname.replace(/^\[|\]$/g, '');
   if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') return undefined;
   const port = parsed.port === '' ? (parsed.protocol === 'https:' ? '443' : '80') : parsed.port;
-  return `localhost:${port}`;
+  return Number(port);
+}
+
+/** `localhost:<port>` for a URL that names the loopback, else `undefined`. Pure. */
+export function loopbackRule(url: string): string | undefined {
+  const port = loopbackPort(url);
+  return port === undefined ? undefined : `localhost:${String(port)}`;
 }
 
 export interface SandboxWiringInput {
@@ -77,6 +84,7 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
   });
   const extraWritePaths = config.sandbox.extra_write_paths;
   const extraDomains = config.sandbox.extra_domains;
+  const bridge = config.sandbox.mcp_bridge === 'proxy';
   return {
     capabilities: sandbox.capabilities(),
     launchWrapper:
@@ -85,6 +93,11 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
         const own = loopback()
           .map(loopbackRule)
           .filter((rule): rule is string => rule !== undefined);
+        const ports = bridge
+          ? loopback()
+              .map(loopbackPort)
+              .filter((port): port is number => port !== undefined)
+          : [];
         const provider =
           (PROVIDER_DOMAINS as Readonly<Record<string, readonly string[] | undefined>>)[
             profile.client
@@ -97,6 +110,7 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
           extraWritePaths,
           secretPaths,
           domains: [...provider, ...extraDomains, ...own],
+          ...(ports.length === 0 ? {} : { loopbackPorts: ports }),
         });
       },
     // [proposta] A command of the tools writes only in its worktree and reaches only the domains
