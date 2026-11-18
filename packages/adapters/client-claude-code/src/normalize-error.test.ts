@@ -25,6 +25,13 @@ describe('normalizeClaudeError: order and details', () => {
     ).toBe('auth_required');
   });
 
+  it('says the limit came from the message (P8)', () => {
+    expect(
+      normalizeClaudeError(new Error('Claude AI usage limit reached|1800000000')),
+    ).toMatchObject({ kind: 'quota_exhausted', limitSource: 'message' });
+    expect(normalizeClaudeError(new Error('overloaded')).limitSource).toBeUndefined();
+  });
+
   it('reads the cause from data.details when the message is generic', () => {
     expect(
       normalizeClaudeError({

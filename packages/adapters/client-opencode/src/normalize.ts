@@ -308,6 +308,7 @@ const QUOTA_EXHAUSTED_CODE = -32001;
 
 const QUOTA_PATTERN =
   /\b429\b|rate[ _-]?limit|too many requests|quota|usage limit|insufficient[ _](credits?|balance|funds)|credit balance|exceeded (your|the) (current )?(limit|quota)/i;
+const HTTP_429 = /\b429\b|too many requests/i;
 const AUTH_PATTERN =
   /\b401\b|unauthori[sz]ed|not logged in|login required|authentication (required|failed)|no (api )?(key|credentials?)\b|api key|invalid (token|key|credentials?)|please (log ?in|authenticate)|auth login/i;
 const PERMISSION_PATTERN =
@@ -360,10 +361,12 @@ export function normalizeOpenCodeError(raw: unknown): NormalizedError {
     QUOTA_PATTERN.test(haystack)
   ) {
     const resetsAt = epochMs(fields?.resetsAt);
+    const structured = code === QUOTA_EXHAUSTED_CODE || fields?.type === 'QuotaExhausted';
     return {
       kind: 'quota_exhausted',
       message,
       ...(resetsAt === undefined ? {} : { resetsAt }),
+      limitSource: structured ? 'structured' : HTTP_429.test(haystack) ? '429' : 'message',
       cause: raw,
     };
   }

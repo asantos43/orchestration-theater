@@ -77,15 +77,36 @@ export function parseResetsAt(value: number | string | undefined): number | null
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-/** Reads a limit error: the `-32001` of the agent shells, a normalized error, or a `QuotaExhausted`. */
-export function limitHitOf(error: unknown): LimitHit | undefined {
-  if (hasErrorCode(error, 'QUOTA_EXHAUSTED')) return { source: 'error:QuotaExhausted' };
+/** How deep `limitHitOf` follows the `cause` chain (typed error, normalized error, raw error). */
+const LIMIT_CAUSE_DEPTH = 3;
+
+/**
+ * Reads a limit error: the `-32001` of the agent shells, a normalized error, or a `QuotaExhausted`.
+ * The typed `QuotaExhausted` carries the `NormalizedError` in its `cause` (`typedErrorOf`), and that
+ * one carries the raw error; the reset time and the source are read down that chain (P8). The
+ * source is `limit_hit:<where>` (`429`, `message`, `structured`, `rate_limit_event`) when the
+ * adapter said where the limit came from, else the shape of the error that was read.
+ */
+export function limitHitOf(error: unknown, depth = LIMIT_CAUSE_DEPTH): LimitHit | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const fields = error as { kind?: unknown; code?: unknown; resetsAt?: unknown; data?: unknown };
+  const fields = error as {
+    kind?: unknown;
+    code?: unknown;
+    resetsAt?: unknown;
+    data?: unknown;
+    limitSource?: unknown;
+    cause?: unknown;
+  };
+  const inner = depth > 0 ? limitHitOf(fields.cause, depth - 1) : undefined;
+  if (hasErrorCode(error, 'QUOTA_EXHAUSTED')) {
+    return inner ?? { source: 'error:QuotaExhausted' };
+  }
   if (fields.kind === 'quota_exhausted') {
+    const known = typeof fields.limitSource === 'string' && fields.limitSource !== '';
+    const resetsAt = typeof fields.resetsAt === 'number' ? fields.resetsAt : inner?.resetsAt;
     return {
-      source: 'error:quota_exhausted',
-      ...(typeof fields.resetsAt === 'number' ? { resetsAt: fields.resetsAt } : {}),
+      source: known ? `limit_hit:${String(fields.limitSource)}` : 'error:quota_exhausted',
+      ...(resetsAt === undefined ? {} : { resetsAt }),
     };
   }
   if (fields.code === QUOTA_EXHAUSTED_CODE) {
