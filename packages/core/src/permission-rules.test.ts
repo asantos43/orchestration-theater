@@ -256,6 +256,88 @@ describe('decidePermission, what is always rejected (N99)', () => {
   });
 });
 
+describe('decidePermission, an MCP tool of the role (Codex asks about every MCP call)', () => {
+  /** What codex-acp sends once the transport merged the tool call in: kind execute and the names. */
+  const mcp = (server: string, tool: string, patch: Partial<PermissionRequest> = {}) =>
+    request({ toolKind: 'execute', mcpTool: { server, tool }, ...patch });
+  const roleOf = (patch: Partial<PermissionPolicy> = {}): PermissionPolicy => ({
+    onAsk: 'reject',
+    network: { allow: [] },
+    mcpServers: ['otheater'],
+    mcpTools: { otheater: ['submit_plan'] },
+    ...patch,
+  });
+
+  it('allows a tool the role lists, with allow_once, even with onAsk reject', () => {
+    const decision = decide(mcp('otheater', 'submit_plan'), roleOf());
+    expect(decision).toEqual({ decision: 'allow', rule: NO_RULE, reason: 'mcp_tool_of_role' });
+    expect(answerOf(mcp('otheater', 'submit_plan'), decision)).toEqual({
+      outcome: 'selected',
+      optionId: 'yes',
+    });
+  });
+
+  it('allows it with onAsk rules as well, and never as native_shell', () => {
+    const decision = decide(mcp('otheater', 'submit_plan'), { ...roleOf(), onAsk: 'rules' });
+    expect(decision).toMatchObject({ decision: 'allow', reason: 'mcp_tool_of_role' });
+  });
+
+  it('allows every tool of the server when the role says all', () => {
+    const p = roleOf({ mcpTools: { otheater: 'all' } });
+    expect(decide(mcp('otheater', 'anything'), p)).toMatchObject({ reason: 'mcp_tool_of_role' });
+  });
+
+  it('rejects a server the role does not list', () => {
+    const decision = decide(mcp('other', 'submit_plan'), roleOf());
+    expect(decision).toEqual({
+      decision: 'reject',
+      rule: NO_RULE,
+      reason: 'mcp_tool_outside_role',
+    });
+    expect(answerOf(mcp('other', 'submit_plan'), decision)).toEqual({
+      outcome: 'selected',
+      optionId: 'no',
+    });
+  });
+
+  it('rejects a tool the list of the server does not have', () => {
+    expect(decide(mcp('otheater', 'drop_db'), roleOf())).toMatchObject({
+      decision: 'reject',
+      reason: 'mcp_tool_outside_role',
+    });
+  });
+
+  it('rejects a listed server with no entry in mcpTools, and a policy without the fields', () => {
+    expect(decide(mcp('otheater', 'submit_plan'), roleOf({ mcpTools: {} }))).toMatchObject({
+      reason: 'mcp_tool_outside_role',
+    });
+    expect(
+      decide(mcp('otheater', 'submit_plan'), { onAsk: 'rules', network: { allow: [] } }),
+    ).toMatchObject({ reason: 'mcp_tool_outside_role' });
+  });
+
+  it('does not read names that are properties of Object', () => {
+    const p = roleOf({ mcpServers: ['toString'], mcpTools: {} });
+    expect(decide(mcp('toString', 'x'), p)).toMatchObject({ reason: 'mcp_tool_outside_role' });
+  });
+
+  it('no rule opens an MCP tool outside the role', () => {
+    const p: PermissionPolicy = {
+      ...roleOf(),
+      onAsk: 'rules',
+      rules: [{ id: 'all', action: 'allow', kind: '*' }],
+    };
+    expect(decide(mcp('other', 'x'), p)).toMatchObject({ reason: 'mcp_tool_outside_role' });
+  });
+
+  it('keeps an execute with no mcpTool where it was: native_shell, or on_ask_reject', () => {
+    const shell = request({ toolKind: 'execute', command: 'ls' });
+    const rules = { ...roleOf(), onAsk: 'rules' };
+    expect(decide(shell, rules)).toMatchObject({ reason: 'native_shell' });
+    expect(decide(shell, roleOf())).toMatchObject({ reason: 'on_ask_reject' });
+  });
+});
+
 describe('the symbolic links of the worktree', () => {
   /** `/work/tree/link` points at `/elsewhere`; nothing else is a link. */
   const resolvePath = (absolute: string): string =>
