@@ -211,7 +211,12 @@ export class CodexAdapter extends ClientAdapter {
   /**
    * What the client itself guarantees. `nativeTools`, `nativeShell` and `network` have no client
    * layer: Codex cannot remove its shell or a tool, and a domain allow-list is layer 3's. They
-   * stay empty, so the policy is short for them unless a sandbox covers them.
+   * stay empty here. `guarantee()` adds the `os` layer when the sandbox lists the field in its
+   * capabilities, and `sandbox-srt` lists `nativeTools` and `nativeShell` besides `writeScope` and
+   * `network` (architecture 5.2: "Codex: ['os']"; owner's decision of 2026-11-17, "Sandbox
+   * conta", N128). So with the sandbox on (`sandbox.mode: runtime`) the three fields have one
+   * layer and pass `security.min_layers.default: 1`; without a sandbox (mode `off`, or Windows,
+   * N94) they stay short and `security.unenforced: refuse` still stops the session.
    *
    * Phase 4, P1 (policy v2): `mcpTools` and `nativeShell: 'shells'` are not translated. The
    * architecture says Codex has an enable setting per MCP server, and the profile file
