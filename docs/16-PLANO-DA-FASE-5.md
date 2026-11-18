@@ -60,7 +60,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #90) |
-| P1 | Esquema do store da fase: perfis, Executores, interrupções, cota, consumo e despertares | P0 | P3, P4, P22 | pendente |
+| P1 | Esquema do store da fase: perfis, Executores, interrupções, cota, consumo e despertares | P0 | P3, P4, P22 | concluído (PR #96) |
 | P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | pendente |
 | P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | pendente |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
@@ -109,6 +109,19 @@ Ordem em ondas **[proposta]**:
 - Só este passo toca na migração: os passos seguintes usam as tabelas sem mudar o esquema. Se um passo achar que falta uma coluna, abre um PR pequeno antes dele **[proposta]**.
 
 **Aceite:** a migração sobe do esquema da Fase 4 sem perder linha (teste com o banco da Fase 4 de fixture); cada repositório faz criar, ler, listar e atualizar; o falso em memória passa a mesma suíte de contrato que o SQLite; `PRAGMA foreign_key_check` limpo.
+
+**Como ficou (2026-11-18):**
+- Migração `0009_profiles_executors_quota_usage` em `store-sqlite/src/migrations.ts`, uma só, com `IF NOT EXISTS`, sem chave estrangeira, como as anteriores. Seis tabelas: `profiles`, `executors`, `interruptions`, `quota_snapshots`, `usage`, `wakeups`. [V]
+- Portas novas em `core/src/ports/` (`profiles`, `executor-records`, `interruptions`, `quota-snapshots`, `usage`, `wakeups`), um repositório por tabela, com schema zod por linha; `StoreAggregates` ganha seis campos e `STORE_PORT_VERSION` vai a `0.5.0`. Os repositórios são escritos uma vez sobre `RecordTable` (store-kit), então SQLite e falso em memória compartilham a lógica. [V]
+- Aceite: a migração sobe de um banco montado só com as migrações da Fase 4 (0001 a 0008), com linhas de evento, diretiva e ideia que sobrevivem; `PRAGMA foreign_key_check` volta vazio; a suíte `describeProfileAggregatesConformance` roda no SQLite (os dois drivers) e no falso em memória. [V] (`migrations.test.ts`, `sdk/src/conformance/profile-aggregates.ts`)
+- Nenhum tipo de evento criado e nenhuma chave de configuração nova. [V]
+- [proposta] Ids: `X<n>` (interrupção), `U<n>` (consumo), `W<n>` (despertar), numerados no store inteiro; perfil `<cliente>/<nome>`; Executor `<modelo>-<esforço>@<perfil>` (sem esforço: `<modelo>@<perfil>`).
+- [proposta] Perfil: transições `active -> draining`, `draining -> active | removed`, `removed` final; recriar um perfil removido dá `Conflict`; o aceite do aviso de segunda conta é a coluna `notice_accepted_at`. Preço mensal e orçamento ficam na configuração, não no store.
+- [proposta] Executor: o patch só muda `provider`, `validity` e `invalidReason`; o repositório não confere se o perfil existe (sem chave estrangeira).
+- [proposta] `quota_snapshots` guarda o último estado por (perfil, janela), com `put` em upsert. `usage` não tem coluna de janela (a janela é um intervalo sobre `occurred_at`); o custo é aninhado, `null` significa desconhecido (nunca zero) e `pricing_table` exige `pricingVersion`. `interruptions.signals` é lista de textos.
+- [proposta] `wakeups`: no máximo um `scheduled` por (perfil, causa), garantido pelo repositório (`Conflict`) e por índice único parcial no SQL; só um `scheduled` pode ser atualizado.
+- [proposta] O `core` duplica o vocabulário de causas e formas de retomada (`INTERRUPTION_CAUSE_NAMES`, `RESUME_FORM_NAMES`) porque não importa o `protocol`; um teste no `protocol` confere que as listas são iguais.
+- [V] O store-kit ganhou `ranges` (`gte`/`lte`) em `RecordQuery` e `boolean` em `TableSpec`; não mudam o comportamento das tabelas existentes.
 
 ### P2. Perfis: serviço, cofre e ciclo de vida (§5.6)
 

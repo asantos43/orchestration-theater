@@ -7,6 +7,7 @@ import { describeAttemptRegistryConformance } from './attempt-registry.js';
 import { describeCoordinationAggregatesConformance } from './coordination-aggregates.js';
 import { describeIdeaAggregatesConformance } from './idea-aggregates.js';
 import { describePlayAggregatesConformance } from './play-aggregates.js';
+import { describeProfileAggregatesConformance } from './profile-aggregates.js';
 import { describeScenarioAggregatesConformance } from './scenario-aggregates.js';
 import { describeEventLogConformance, sampleEvent } from './event-log.js';
 import { deferred, rejectionOf, settle } from './helpers.js';
@@ -21,7 +22,8 @@ export interface StoreHarness extends Disposable {
  * Registers the `Store` conformance tests (port version {@link STORE_PORT_VERSION}): transactions,
  * isolation, close, the whole `EventLog` suite against `store.events`, the `AttemptRegistry`
  * suite against `store.attempts` and the suites of the Phase 3 aggregates (scenarios, plays,
- * blackboard, prompt queue, side effects, sessions, directives, ideas and how they behave in a
+ * blackboard, prompt queue, side effects, sessions, directives, ideas, the Phase 5 tables of
+ * profiles, Executors, interruptions, quota, usage and wakeups, and how they behave in a
  * transaction).
  */
 export function describeStoreConformance(
@@ -38,6 +40,7 @@ export function describeStoreConformance(
   describePlayAggregatesConformance(name, factory);
   describeCoordinationAggregatesConformance(name, factory);
   describeIdeaAggregatesConformance(name, factory);
+  describeProfileAggregatesConformance(name, factory);
   describeAggregateTransactionsConformance(name, factory);
 
   describe(`Store conformance: ${name} (port ${STORE_PORT_VERSION})`, () => {

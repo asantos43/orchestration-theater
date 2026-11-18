@@ -13,14 +13,22 @@ export interface OrderTerm {
   readonly desc?: boolean;
 }
 
+/** Bounds of a numeric field in a {@link RecordQuery}: `gte` is inclusive, `lte` is inclusive. */
+export interface RangeBounds {
+  readonly gte?: number;
+  readonly lte?: number;
+}
+
 /**
  * What the aggregates of the store ask of a table: fields equal to a value (`null` means "is
- * null"), fields in a list (an empty list matches nothing), a mandatory ordering (so every backend
- * answers in the same order) and an optional limit.
+ * null"), fields in a list (an empty list matches nothing), numeric fields within bounds
+ * (`ranges`, added with the Phase 5 tables), a mandatory ordering (so every backend answers in
+ * the same order) and an optional limit.
  */
 export interface RecordQuery {
   readonly eq?: Readonly<Record<string, string | number | null>>;
   readonly in?: Readonly<Record<string, readonly (string | number)[]>>;
+  readonly ranges?: Readonly<Record<string, RangeBounds>>;
   readonly orderBy: readonly OrderTerm[];
   readonly limit?: number;
 }
@@ -42,6 +50,11 @@ export interface TableSpec<R extends object> {
    * representation may use it; SQLite stores them as JSON text, with `null` as SQL `NULL`.
    */
   readonly json: readonly (keyof R & string)[];
+  /**
+   * Fields that hold booleans. SQLite has no boolean type: it stores 1/0 and decodes the column
+   * back to a boolean. Omitted means none.
+   */
+  readonly boolean?: readonly (keyof R & string)[];
 }
 
 /**

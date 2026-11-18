@@ -3,12 +3,18 @@ import type { AttemptRegistry } from './attempt-registry.js';
 import type { Blackboard } from './blackboard.js';
 import type { DirectiveRegistry } from './directives.js';
 import type { EventLog } from './event-log.js';
+import type { ExecutorRegistry } from './executor-records.js';
 import type { IdeaRegistry } from './ideas.js';
+import type { InterruptionRegistry } from './interruptions.js';
 import type { DecisionRegistry, DemandRegistry, PlayRegistry, StageRegistry } from './plays.js';
+import type { ProfileRegistry } from './profiles.js';
 import type { PromptQueue } from './prompt-queue.js';
+import type { QuotaSnapshotRegistry } from './quota-snapshots.js';
 import type { AttachmentRegistry, ScenarioRegistry, ScenarioRepoRegistry } from './scenarios.js';
 import type { SessionRegistry } from './sessions.js';
 import type { SideEffectRegistry } from './side-effects.js';
+import type { UsageRegistry } from './usage.js';
+import type { WakeupRegistry } from './wakeups.js';
 
 /**
  * Semver of the `Store` port contract.
@@ -17,8 +23,10 @@ import type { SideEffectRegistry } from './side-effects.js';
  * - 0.3.0 added the aggregates of Phase 3 ({@link StoreAggregates}): scenarios, plays, stages,
  *   demands, decisions, the blackboard, the prompt queue, side effects, sessions and directives.
  * - 0.4.0 added the idea queue of the scenario (`ideas`, Phase 4, architecture 5.20).
+ * - 0.5.0 added the tables of Phase 5 (section 7): `profiles`, `executors`, `interruptions`,
+ *   `quotaSnapshots`, `usage` and `wakeups`.
  */
-export const STORE_PORT_VERSION = '0.4.0';
+export const STORE_PORT_VERSION = '0.5.0';
 
 /**
  * The aggregates of the store (architecture section 7), one registry per table. [proposta] Each
@@ -40,6 +48,12 @@ export interface StoreAggregates {
   readonly sessions: SessionRegistry;
   readonly directives: DirectiveRegistry;
   readonly ideas: IdeaRegistry;
+  readonly profiles: ProfileRegistry;
+  readonly executors: ExecutorRegistry;
+  readonly interruptions: InterruptionRegistry;
+  readonly quotaSnapshots: QuotaSnapshotRegistry;
+  readonly usage: UsageRegistry;
+  readonly wakeups: WakeupRegistry;
 }
 
 /**
