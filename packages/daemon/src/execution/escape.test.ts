@@ -344,9 +344,18 @@ describe('the shells of the daemon: argv rules and confinement to the worktree',
               'refused',
               'shell_syntax',
             ),
-            // ...and inert when it is glued: with no shell it is one odd file name (the call runs,
-            // `ls` finds nothing, and `touch` never starts).
-            shell('control: glued chain is a file name', ['ls', `a;touch ${marker}`], 'failed'),
+            // ...and when it is glued to the words too (owner decision of 2026-11-17: before, it
+            // went through as one odd file name, and a `sh -c` would have run it as two commands).
+            shell('chain with ; glued', ['ls', `a;touch ${marker}`], 'refused', 'shell_syntax'),
+            shell('pipe with | glued', ['cat', 'README.md|sh'], 'refused', 'shell_syntax'),
+            shell('chain with && glued', ['ls', `a&&touch ${marker}`], 'refused', 'shell_syntax'),
+            shell('chain with || glued', ['ls', `a||touch ${marker}`], 'refused', 'shell_syntax'),
+            shell(
+              'background with & glued',
+              ['ls', `a&touch ${marker}`],
+              'refused',
+              'shell_syntax',
+            ),
             // A program called by path, or one that is not on the list, or that hides in an option.
             shell('program by absolute path', ['/bin/touch', marker], 'refused', 'program_by_path'),
             shell('program by relative path', ['./run.sh'], 'refused', 'program_by_path'),
@@ -710,7 +719,7 @@ describe('layer 3: what the operating system holds', () => {
     });
   }, 120_000);
 
-  it('holds a program that the any mode lets through, glued operators included', async (context) => {
+  it('holds a program that the any mode lets through; the argv rules stop the operators', async (context) => {
     if (sandboxIssue !== undefined) {
       context.skip();
       return;
@@ -732,8 +741,9 @@ describe('layer 3: what the operating system holds', () => {
             [
               sh('inside', 'touch inside-any.txt'),
               sh('outside', `touch ${out('any1')}`),
-              // `true;touch x` has no blank around the operator: the argv rules read it as one
-              // word, `sh` runs it as two commands. The rules do not stop it; layer 3 does.
+              // `true;touch x` has no blank around the operator. Until 2026-11-17 the argv rules
+              // read it as one word and `sh` ran it as two commands (only layer 3 held it); the
+              // owner decided to refuse it in validateArgv, so it is `shell_syntax` like the rest.
               sh('glued chain', `true;touch ${out('any2')}`),
               sh('spaced chain', `true ; touch ${out('any3')}`),
               sh('substitution', `echo $(touch ${out('any4')})`),
@@ -743,7 +753,7 @@ describe('layer 3: what the operating system holds', () => {
           expect(seen.tools.map((t) => [t.outcome, t.errorCode])).toEqual([
             ['ok', undefined],
             ['failed', undefined],
-            ['failed', undefined],
+            ['refused', 'shell_syntax'],
             ['refused', 'shell_syntax'],
             ['refused', 'shell_syntax'],
           ]);
