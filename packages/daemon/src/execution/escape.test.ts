@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { RolePolicy } from '@otheater/core';
+import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { probeSandbox } from '../compose.js';
@@ -11,6 +12,7 @@ import {
   chunksOf,
   escapePrompt,
   FAKE_AGENT_CLI,
+  installFakes,
   permissionsOf,
   SHELLS_POLICY,
   specOf,
@@ -21,6 +23,23 @@ import {
   type Outside,
   type Rig,
 } from './escape-fixture.js';
+
+installFakes({
+  clock: () => new FakeClock(),
+  vault: () => new InMemorySecretVault(),
+  client: ({ parts, unenforced, enforcement, command }) =>
+    new FakeClientAdapter({
+      launcher: parts.launcher,
+      baseEnv: {},
+      adapterVersion: '1.0.0',
+      enforcement,
+      unenforced,
+      command,
+      ...(parts.sandbox === undefined
+        ? {}
+        : { sandbox: parts.sandbox.capabilities, launchWrapper: parts.sandbox.launchWrapper }),
+    }),
+});
 
 /**
  * The escape suite (Phase 4, P5; architecture 5.8): a fake agent that tries to leave its

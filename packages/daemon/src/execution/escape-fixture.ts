@@ -8,14 +8,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ROLE_POLICY_FIELDS,
+  type ClientAdapter,
+  type Clock,
   type Enforcement,
   type EventEnvelope,
   type Profile,
   type RolePolicy,
+  type SecretVault,
 } from '@otheater/core';
-import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
+import type { ClientFactoryParts } from '../clients.js';
 import { defaultLauncher, productionClients } from '../compose.js';
-import { parseConfig } from '../config.js';
+import { parseConfig, type DaemonConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir } from '../test-helpers.js';
@@ -56,6 +59,33 @@ const ENFORCEMENT = Object.fromEntries(
     field === 'writeScope' || field === 'network' ? [] : ['client'],
   ]),
 ) as unknown as Enforcement;
+
+/**
+ * What the test files take from `@otheater/core/testing` (only `*.test.ts` files may import it, rule
+ * `testing-only-from-tests`) and hand to this fixture, once, with `installFakes`.
+ */
+export interface EscapeFakes {
+  readonly clock: () => Clock;
+  readonly vault: () => SecretVault;
+  /** The fake client adapter that runs the fake agent CLI over real ACP stdio. */
+  readonly client: (options: {
+    readonly parts: ClientFactoryParts;
+    readonly unenforced: DaemonConfig['security']['unenforced'];
+    readonly enforcement: Enforcement;
+    readonly command: { readonly cmd: string; readonly args: readonly string[] };
+  }) => ClientAdapter;
+}
+
+let installed: EscapeFakes | undefined;
+
+export function installFakes(fakes: EscapeFakes): void {
+  installed = fakes;
+}
+
+function fakes(): EscapeFakes {
+  if (installed === undefined) throw new Error('call installFakes() first');
+  return installed;
+}
 
 /** The "outside" of the suite: a folder and a local server that must receive nothing. */
 export interface Outside {
@@ -110,6 +140,7 @@ export async function withFakeDaemon(
   options: DaemonOptions,
   body: (rig: Rig) => Promise<void>,
 ): Promise<void> {
+  const { clock, vault, client } = fakes();
   const tmp = await makeTempDataDir();
   const real = defaultLauncher();
   if (real === undefined) throw new Error('this platform has no process launcher');
@@ -121,19 +152,14 @@ export async function withFakeDaemon(
   const daemon = await startDaemon({
     dataDir: tmp.dir,
     config,
-    overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
+    overrides: { clock: clock(), vault: vault(), launcher: real },
     clients: (parts) => [
       ...productionClients(config)(parts),
-      new FakeClientAdapter({
-        launcher: parts.launcher,
-        baseEnv: {},
-        adapterVersion: '1.0.0',
-        enforcement: ENFORCEMENT,
+      client({
+        parts,
         unenforced: config.security.unenforced,
+        enforcement: ENFORCEMENT,
         command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
-        ...(parts.sandbox === undefined
-          ? {}
-          : { sandbox: parts.sandbox.capabilities, launchWrapper: parts.sandbox.launchWrapper }),
       }),
     ],
     logger: createSilentLogger(),
