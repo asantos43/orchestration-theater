@@ -77,6 +77,7 @@ describe('daemon event registry', () => {
       'quota.exhausted',
       'quota.restored',
       'budget.restored',
+      'budget.warning',
       'usage.recorded',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);

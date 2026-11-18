@@ -13,6 +13,7 @@ import {
 } from './directive-events.js';
 import {
   BudgetRestoredPayloadSchema,
+  BudgetWarningPayloadSchema,
   QuotaExhaustedPayloadSchema,
   QuotaNearLimitPayloadSchema,
   QuotaRestoredPayloadSchema,
@@ -408,6 +409,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: BudgetRestoredPayloadSchema,
   }),
   defineEventType({
+    type: 'budget.warning',
+    schemaVersion: 1,
+    payload: BudgetWarningPayloadSchema,
+  }),
+  defineEventType({
     type: 'usage.recorded',
     schemaVersion: 1,
     payload: UsageRecordedPayloadSchema,
@@ -493,6 +499,7 @@ export type QuotaNearLimitPayload = DaemonEventPayloads['quota.near_limit'];
 export type QuotaExhaustedPayload = DaemonEventPayloads['quota.exhausted'];
 export type QuotaRestoredPayload = DaemonEventPayloads['quota.restored'];
 export type BudgetRestoredPayload = DaemonEventPayloads['budget.restored'];
+export type BudgetWarningPayload = DaemonEventPayloads['budget.warning'];
 export type UsageRecordedPayload = DaemonEventPayloads['usage.recorded'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {

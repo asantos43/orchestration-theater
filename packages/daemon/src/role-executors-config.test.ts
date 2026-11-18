@@ -16,7 +16,12 @@ const refusal = (yaml: string): string => {
 describe('the defaults', () => {
   it('change nothing: no Executor, no list, the modes of 5.7', () => {
     const config = parseConfig('');
-    expect(config.executors).toEqual({ cross_client: 'api_only', on_register: 'ask', entries: {} });
+    expect(config.executors).toEqual({
+      cross_client: 'api_only',
+      on_register: 'ask',
+      entries: {},
+      budgets: {},
+    });
     expect(config.roles).toEqual({});
     expect(config.orchestration.executor).toBeUndefined();
   });

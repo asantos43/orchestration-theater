@@ -14,6 +14,7 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
       same_provider_notice: 'once',
       drain: { timeout: 600_000, on_timeout: 'handoff', removed_dir: 'delete' },
       api_key_env: {},
+      entries: {},
     });
   });
 

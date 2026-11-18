@@ -720,7 +720,11 @@ export class QuotaService {
               untilReset: typeof untilReset === 'number' ? untilReset : null,
             });
           }
-        } else if (event.type === 'quota.restored' && typeof event.payload.profile === 'string') {
+        } else if (
+          (event.type === 'quota.restored' || event.type === 'budget.restored') &&
+          typeof event.payload.profile === 'string'
+        ) {
+          // The spending cap has its own name for the same end (P9, P11).
           open.delete(event.payload.profile);
         }
       }
