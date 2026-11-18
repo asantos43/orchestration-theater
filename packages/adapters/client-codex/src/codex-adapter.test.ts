@@ -221,6 +221,32 @@ describe('CodexAdapter.guarantee', () => {
     expect(report.fields.nativeShell.layers).toEqual(['os']);
   });
 
+  it('counts the sandbox as the os layer for the shell and the tools: min_layers 1 passes with it and is refused without it', async () => {
+    // What `sandbox-srt` declares where it works (N128); the same list as its own test checks.
+    const runtime = { fields: ['nativeTools', 'nativeShell', 'writeScope', 'network'] } as const;
+    const profile = await profileIn();
+    const via = new FakeSessionTransport();
+
+    const withSandbox = build({
+      bare: true,
+      sandbox: runtime,
+      minLayers: { default: 1 },
+      unenforced: 'refuse',
+    }).adapter;
+    const report = withSandbox.guarantee(policy, runtime);
+    expect(report.ok).toBe(true);
+    expect(report.fields.nativeTools.layers).toEqual(['os']);
+    expect(report.fields.nativeShell.layers).toEqual(['os']);
+    expect(report.fields.network.layers).toEqual(['os']);
+    expect(report.fields.writeScope.layers).toEqual(['client', 'os']);
+    await (await withSandbox.openSession(profile, policy, '/work', via)).close();
+
+    const without = build({ bare: true, minLayers: { default: 1 }, unenforced: 'refuse' }).adapter;
+    await expect(without.openSession(profile, policy, '/work', via)).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+  });
+
   it('with a sandbox that covers everything, every field has the os layer too', () => {
     const { adapter } = build({ bare: true });
     const report = adapter.guarantee(policy, { fields: ROLE_POLICY_FIELDS });
