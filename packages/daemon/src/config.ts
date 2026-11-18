@@ -8,7 +8,6 @@ import {
   InvalidInput,
   isKnownTimezone,
   parseAllowEntry,
-  parseProfileId,
   ProjectCommandSchema,
   PROMPT_ORDER_MODES,
   SHARED_CANCEL_MODES,
@@ -24,13 +23,10 @@ import {
   FALLBACK_SESSION_MB,
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
-import {
-  BUDGET_UNKNOWN_COST_MODES,
-  ProfileEntrySchema,
-  type ProfileEntryConfig,
-} from './budget-config.js';
+import { BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
-import { ExecutorsConfigSchema } from './role-executors-config.js';
+import { withProfileEntries } from './profile-entries-config.js';
+import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -737,79 +733,6 @@ export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** The keys of `profiles` that are not a profile: everything else is `<client>/<profile>`. */
-const PROFILES_FIXED_KEYS = ['same_provider_notice', 'drain', 'api_key_env'] as const;
-
-const ProfilesFixedSchema = z.strictObject({
-  same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
-  drain: z
-    .strictObject({
-      /** How long a drain waits for the running sessions before `on_timeout` applies. */
-      timeout: DurationSchema.or(z.literal(0)).prefault('10m'),
-      on_timeout: z.enum(DRAIN_ON_TIMEOUT_MODES).default('handoff'),
-      removed_dir: z.enum(REMOVED_DIR_MODES).default('delete'),
-    })
-    .prefault({}),
-  /**
-   * The environment variable that carries the API key of a provider into the Executor process of
-   * an API profile, by provider id. A provider not listed uses its built-in name (`anthropic` ->
-   * `ANTHROPIC_API_KEY`, `openai` -> `OPENAI_API_KEY`, `minimax` -> `MINIMAX_API_KEY`, anything
-   * else `<PROVIDER>_API_KEY`).
-   */
-  api_key_env: z
-    .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
-    .default({}),
-});
-
-/** The `profiles` block, after parsing: the fixed keys and the profiles that have an entry. */
-export type ProfilesConfig = z.output<typeof ProfilesFixedSchema> & {
-  /** `profiles.<client>/<profile>` by complete profile id. */
-  readonly entries: Readonly<Record<string, ProfileEntryConfig>>;
-};
-
-/**
- * `profiles`: the three keys of the block and, as every other key, a profile named
- * `<client>/<profile>`. A key that is neither is refused with its name.
- */
-const ProfilesConfigSchema = z
-  .record(z.string(), z.unknown())
-  .transform((raw, ctx): ProfilesConfig => {
-    const issue = (path: (string | number)[], message: string): void => {
-      ctx.addIssue({ code: 'custom', path, message });
-    };
-    const fixed: Record<string, unknown> = {};
-    const entries: Record<string, ProfileEntryConfig> = {};
-    for (const [key, value] of Object.entries(raw)) {
-      if ((PROFILES_FIXED_KEYS as readonly string[]).includes(key)) {
-        fixed[key] = value;
-        continue;
-      }
-      try {
-        parseProfileId(key);
-      } catch {
-        issue(
-          [key],
-          `${JSON.stringify(key)} is not a key of profiles; the keys are ${PROFILES_FIXED_KEYS.join(', ')} and profiles named <client>/<profile>`,
-        );
-        continue;
-      }
-      const parsed = ProfileEntrySchema.safeParse(value);
-      if (!parsed.success) {
-        for (const inner of parsed.error.issues) {
-          issue([key, ...inner.path.map(String)], inner.message);
-        }
-        continue;
-      }
-      entries[key] = parsed.data;
-    }
-    const parsed = ProfilesFixedSchema.safeParse(fixed);
-    if (!parsed.success) {
-      for (const inner of parsed.error.issues) issue(inner.path.map(String), inner.message);
-      return z.NEVER;
-    }
-    return { ...parsed.data, entries };
-  });
-
 const PriceRatesConfigSchema = z.strictObject({
   input_per_mtok: z.number().min(0),
   output_per_mtok: z.number().min(0),
@@ -1166,6 +1089,15 @@ export const DaemonConfigSchema = z
      */
     executors: ExecutorsConfigSchema.prefault({}),
     /**
+     * How the daemon picks among the Executors of a role (architecture 5.7; Phase 5, P15):
+     * `strategy` (`ordered` default | `most_headroom` | `round_robin`, N130), `cross_check`
+     * (`prefer_other_provider` default | `require_other_provider` | `other_model` | `off`) and,
+     * [proposta], `unknown_quota` (`allow` | `skip`), `near_limit` (`keep_order` | `last` | `skip`),
+     * `retry_diversity` (`rotate` | `forward_only` | `off`) and `context_reserve`. See
+     * `role-executors-config.ts`; the pipeline reads them from P16.
+     */
+    selection: SelectionConfigSchema.prefault({}),
+    /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
      * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
@@ -1424,12 +1356,35 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     /**
-     * Profiles (architecture 5.6; Phase 5, P2 and P11). The drain defaults follow N127, decided by
-     * the owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta]. Every other
-     * key is a profile, `<client>/<profile>` (`claude-code/api`), and takes its `budget` (P11): the
-     * spending cap of an API profile. See `budget-config.ts`.
+     * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta]. Any other key is
+     * a profile (`opencode/local`) with its block: `budget`, the spending cap of an API profile
+     * (P11, see `budget-config.ts`), and `local`, the local model server of 5.9, which the cadastro
+     * of an OpenCode Executor with a local model writes (P14).
      */
-    profiles: ProfilesConfigSchema.prefault({}),
+    profiles: withProfileEntries(
+      z.strictObject({
+        same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
+        drain: z
+          .strictObject({
+            /** How long a drain waits for the running sessions before `on_timeout` applies. */
+            timeout: DurationSchema.or(z.literal(0)).prefault('10m'),
+            on_timeout: z.enum(DRAIN_ON_TIMEOUT_MODES).default('handoff'),
+            removed_dir: z.enum(REMOVED_DIR_MODES).default('delete'),
+          })
+          .prefault({}),
+        /**
+         * The environment variable that carries the API key of a provider into the Executor process
+         * of an API profile, by provider id. A provider not listed uses its built-in name
+         * (`anthropic` -> `ANTHROPIC_API_KEY`, `openai` -> `OPENAI_API_KEY`, `minimax` ->
+         * `MINIMAX_API_KEY`, anything else `<PROVIDER>_API_KEY`).
+         */
+        api_key_env: z
+          .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
+          .default({}),
+      }),
+      ['same_provider_notice', 'drain', 'api_key_env'],
+    ).prefault({}),
     /**
      * The spending cap, for every profile and Executor that has one (architecture 5.6; P11).
      * [proposta] `timezone` is the zone whose midnight and day 1 turn the period (the daemon's own;

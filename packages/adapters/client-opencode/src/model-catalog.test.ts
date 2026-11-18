@@ -79,6 +79,15 @@ describe('parseModelsVerbose', () => {
     expect(byId(parsed.models, 'local/completion-only').toolCalls).toBe(false);
   });
 
+  it('reads whether the model reasons and where it is called (the cadastro of P14 uses both)', () => {
+    expect(byId(parsed.models, 'alpha/reasoner-large')).toMatchObject({
+      reasoning: true,
+      baseUrl: 'https://api.alpha.example/v1',
+    });
+    expect(byId(parsed.models, 'local/llama-8b').baseUrl).toBe('http://localhost:11434/v1');
+    expect(byId(parsed.models, 'beta/unspecified').reasoning).toBeUndefined();
+  });
+
   it('does not invent what the list does not say', () => {
     const model = byId(parsed.models, 'beta/unspecified');
     expect(model).not.toHaveProperty('toolCalls');

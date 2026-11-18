@@ -62,3 +62,32 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
     expect(() => parseConfig('profiles:\n  extra: 1\n')).toThrow(InvalidInput);
   });
 });
+
+describe('profiles.<client>/<profile> of the config (Phase 5, P14)', () => {
+  it('reads the local block of a profile, with the defaults of the local model server', () => {
+    const { profiles } = parseConfig(
+      'profiles:\n  opencode/local:\n    local:\n      server: llama-cpp\n      url: http://127.0.0.1:8080/v1\n',
+    );
+    expect(profiles.entries['opencode/local']?.local).toMatchObject({
+      server: 'llama-cpp',
+      url: 'http://127.0.0.1:8080/v1',
+    });
+    // The keys of profiles.* keep working beside the profile blocks.
+    expect(profiles.same_provider_notice).toBe('once');
+  });
+
+  it('takes a profile with no local block', () => {
+    expect(parseConfig('profiles:\n  codex/main: {}\n').profiles.entries['codex/main']).toEqual({});
+  });
+
+  it('refuses a key that is neither a key of profiles nor a profile, naming it', () => {
+    expect(() => parseConfig('profiles:\n  banana:\n    local: {}\n')).toThrow(/banana/u);
+  });
+
+  it('refuses an unknown key inside a profile and a bad local block', () => {
+    expect(() => parseConfig('profiles:\n  opencode/local:\n    dir: /x\n')).toThrow(InvalidInput);
+    expect(() =>
+      parseConfig('profiles:\n  opencode/local:\n    local:\n      server: vllm\n'),
+    ).toThrow(InvalidInput);
+  });
+});

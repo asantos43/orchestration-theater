@@ -2,13 +2,18 @@
 import {
   API_FALLBACK_MODES,
   CAPABILITY_CHECK_MODES,
+  CROSS_CHECK_MODES,
   CROSS_CLIENT_MODES,
   EFFORT_LEVELS,
   FIXED_PROVIDER_OF_CLIENT,
+  NEAR_LIMIT_MODES,
   ON_REGISTER_MODES,
   PRESET_SCOPES,
   PROFILE_NAME_PATTERN,
+  RETRY_DIVERSITY_MODES,
   ROLE_PRESET_NAMES,
+  SELECTION_STRATEGIES,
+  UNKNOWN_QUOTA_MODES,
   WHEN_EXHAUSTED_MODES,
   parseContextSize,
   parseProfileId,
@@ -32,6 +37,15 @@ import { ExecutorBudgetSchema, type ExecutorBudgetConfig } from './budget-config
  * path of the block. Nothing here changes what a play runs: the pipeline still reads
  * `orchestration.executor` until P16.
  */
+
+/**
+ * `executors.test_session` (P14, [proposta]): whether the cadastro runs the short test session of
+ * 5.7 (the model calls a tool and delivers a valid `submit`). `off` (default): no session is run,
+ * the validation of the catalog alone decides; `run`: the session runs (a call to the model, so it
+ * may spend quota) and its outcome is read per `roles.capability_check`.
+ */
+export const TEST_SESSION_MODES = ['off', 'run'] as const;
+export type TestSessionMode = (typeof TEST_SESSION_MODES)[number];
 
 const oneOf = (key: string, values: readonly string[]) => ({
   error: (issue: { input?: unknown }) =>
@@ -151,6 +165,7 @@ const ExecutorEntryInputSchema = z.strictObject({
 export interface ExecutorsConfig {
   readonly cross_client: CrossClientMode;
   readonly on_register: OnRegisterMode;
+  readonly test_session: TestSessionMode;
   /** The `executors.<id>` entries by id, with the provider settled (5.7). */
   readonly entries: Readonly<Record<string, ExecutorEntry>>;
   /** The `executors.<id>.budget` of the Executors that have one, by Executor name (P11). */
@@ -171,6 +186,7 @@ export const ExecutorsConfigSchema = z
     };
     let cross_client: CrossClientMode = 'api_only';
     let on_register: OnRegisterMode = 'ask';
+    let test_session: TestSessionMode = 'off';
     const entries: Record<string, ExecutorEntry> = {};
     const budgets: Record<string, ExecutorBudgetConfig> = {};
 
@@ -187,11 +203,17 @@ export const ExecutorsConfigSchema = z
         else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
         continue;
       }
+      if (key === 'test_session') {
+        const parsed = z.enum(TEST_SESSION_MODES, oneOf(key, TEST_SESSION_MODES)).safeParse(value);
+        if (parsed.success) test_session = parsed.data;
+        else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
+        continue;
+      }
       const name = tryParseExecutorId(key);
       if (typeof name === 'string') {
         issue(
           [key],
-          `${name}; the keys of executors are "cross_client", "on_register" and Executor names`,
+          `${name}; the keys of executors are "cross_client", "on_register", "test_session" and Executor names`,
         );
         continue;
       }
@@ -235,5 +257,32 @@ export const ExecutorsConfigSchema = z
       };
       if (entry.budget !== undefined) budgets[key] = entry.budget;
     }
-    return { cross_client, on_register, entries, budgets };
+    return { cross_client, on_register, test_session, entries, budgets };
   });
+
+/**
+ * `selection` (architecture 5.7; Phase 5, P15): how the daemon picks among the Executors of a role.
+ * `strategy` (N130) and `cross_check` are the architecture's; the defaults are its defaults.
+ * [proposta] `unknown_quota` and `near_limit` are the keys N124 decided (`allow` and `keep_order`),
+ * and `retry_diversity` and `context_reserve` are keys this passage adds so no default is hardcoded:
+ * `retry_diversity` is how a retry starts after the Executor that failed (`rotate`: the 5.7 rule,
+ * wrapping around), `context_reserve` the tokens the client keeps for its own prompt and tools,
+ * which the prompt of a demand must leave free in the window (0 until measured).
+ */
+export const SelectionConfigSchema = z.strictObject({
+  strategy: z
+    .enum(SELECTION_STRATEGIES, oneOf('strategy', SELECTION_STRATEGIES))
+    .default('ordered'),
+  cross_check: z
+    .enum(CROSS_CHECK_MODES, oneOf('cross_check', CROSS_CHECK_MODES))
+    .default('prefer_other_provider'),
+  unknown_quota: z
+    .enum(UNKNOWN_QUOTA_MODES, oneOf('unknown_quota', UNKNOWN_QUOTA_MODES))
+    .default('allow'),
+  near_limit: z.enum(NEAR_LIMIT_MODES, oneOf('near_limit', NEAR_LIMIT_MODES)).default('keep_order'),
+  retry_diversity: z
+    .enum(RETRY_DIVERSITY_MODES, oneOf('retry_diversity', RETRY_DIVERSITY_MODES))
+    .default('rotate'),
+  context_reserve: ContextSchema.default(0),
+});
+export type SelectionConfig = z.infer<typeof SelectionConfigSchema>;

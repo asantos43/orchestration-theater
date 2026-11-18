@@ -89,6 +89,7 @@ function modelOf(id: string, details: unknown): ModelInfo {
   const toolcall = record(model?.capabilities)?.toolcall;
   const contextWindow = positive(record(model?.limit)?.context);
   const cost = costOf(model?.cost);
+  const reasoning = record(model?.capabilities)?.reasoning;
   return {
     id,
     ...(name === undefined ? {} : { name }),
@@ -98,6 +99,8 @@ function modelOf(id: string, details: unknown): ModelInfo {
     ...(typeof toolcall === 'boolean' ? { toolCalls: toolcall } : {}),
     ...(contextWindow === undefined ? {} : { contextWindow }),
     ...(cost === undefined ? {} : { cost }),
+    ...(typeof reasoning === 'boolean' ? { reasoning } : {}),
+    ...(apiUrl === undefined ? {} : { baseUrl: apiUrl }),
   };
 }
 

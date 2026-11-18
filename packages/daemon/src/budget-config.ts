@@ -68,9 +68,3 @@ export const ProfileBudgetSchema = z.strictObject({
     .default('handoff'),
 });
 export type ProfileBudgetConfig = z.output<typeof ProfileBudgetSchema>;
-
-/** What `profiles.<client>/<profile>` takes. */
-export const ProfileEntrySchema = z.strictObject({
-  budget: ProfileBudgetSchema.optional(),
-});
-export type ProfileEntryConfig = z.output<typeof ProfileEntrySchema>;

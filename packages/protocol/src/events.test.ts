@@ -79,6 +79,7 @@ describe('daemon event registry', () => {
       'budget.restored',
       'budget.warning',
       'usage.recorded',
+      'executor.selected',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);
