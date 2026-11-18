@@ -24,7 +24,7 @@ import {
   FALLBACK_SESSION_MB,
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
-import { BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
+import { BUDGET_ON_CAP_CHANGE_MODES, BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
@@ -1431,7 +1431,8 @@ export const DaemonConfigSchema = z
      * [proposta] `timezone` is the zone whose midnight and day 1 turn the period (the daemon's own;
      * default `America/Sao_Paulo`, as `directives.timezone`); `unknown_cost` is what a turn of
      * unknown cost does to the cap (see {@link BUDGET_UNKNOWN_COST_MODES}); `ask_timeout` is how
-     * long `on_exceeded: ask` waits for the Producer before it becomes `skip`.
+     * long `on_exceeded: ask` waits for the Producer before it becomes `skip`; `on_cap_change`
+     * (P11b) is whether a cap that was raised or removed lets an exhausted profile go at once.
      */
     budget: z
       .strictObject({
@@ -1441,6 +1442,7 @@ export const DaemonConfigSchema = z
           .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
           .default(DEFAULT_DIRECTIVE_TIMEZONE),
         unknown_cost: z.enum(BUDGET_UNKNOWN_COST_MODES).default('ignore'),
+        on_cap_change: z.enum(BUDGET_ON_CAP_CHANGE_MODES).default('release'),
         ask_timeout: DurationSchema.prefault('10m'),
       })
       .prefault({}),

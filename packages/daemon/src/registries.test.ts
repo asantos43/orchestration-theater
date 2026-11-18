@@ -13,9 +13,9 @@ import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 const MANUAL = parseConfig('backup:\n  when: manual\n');
 
 describe('the daemon registries', () => {
-  it('are valid with the official entries and hold the 49 daemon and 2 play event types', () => {
+  it('are valid with the official entries and hold the 59 daemon and 2 play event types', () => {
     const registries = buildDaemonRegistries();
-    expect(registries.events.size).toBe(65);
+    expect(registries.events.size).toBe(67);
     expect(registries.events.has('daemon.started')).toBe(true);
     expect(registries.roles.size).toBe(7);
     expect(registries.ruleKeys.size).toBe(6);
@@ -74,7 +74,7 @@ describe('starting the daemon with an invalid registry', () => {
         overrides: { clock, store: inner, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
       });
-      expect(daemon.registries.events.size).toBe(65);
+      expect(daemon.registries.events.size).toBe(67);
       await daemon.stop();
     } finally {
       await tmp.dispose();

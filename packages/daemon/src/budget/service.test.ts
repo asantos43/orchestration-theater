@@ -2,6 +2,7 @@
 import { builtInPricing, type EventEnvelope } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import type { BudgetWarningPayload, InterruptionCause } from '@otheater/protocol';
+import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../config.js';
 import {
@@ -9,7 +10,7 @@ import {
   type InterruptionFacts,
   type InterruptionRules,
 } from '../execution/interruption-policy.js';
-import { createSilentLogger } from '../logger.js';
+import { createSilentLogger, type Logger } from '../logger.js';
 import { QuotaService } from '../quota/service.js';
 import {
   WakeupManager,
@@ -145,7 +146,7 @@ class World {
   #profiles = false;
 
   /** One life of the daemon, over the store the earlier lives left. */
-  async boot(config: Spec | string, asker?: BudgetAsker): Promise<Harness> {
+  async boot(config: Spec | string, asker?: BudgetAsker, logger?: Logger): Promise<Harness> {
     const { clock, store } = this;
     if (!this.#profiles) {
       this.#profiles = true;
@@ -163,13 +164,13 @@ class World {
         });
       }
     }
-    const logger = createSilentLogger();
+    const log = logger ?? createSilentLogger();
     const text = typeof config === 'string' ? config : yamlOf(config);
     const quota = new QuotaService({
       store,
       clock,
       settings: { nearLimitAt: 0.8, staleAfterMs: 10 * MIN, delivery: 'poll', pollEveryMs: HOUR },
-      logger,
+      logger: log,
     });
     const usage = new UsageService({
       store,
@@ -180,13 +181,13 @@ class World {
         monthlyPriceUsd: new Map(),
         pricing: builtInPricing(),
       },
-      logger,
+      logger: log,
     });
     const budget = new BudgetService({
       store,
       clock,
       settings: budgetSettingsOf(parseConfig(text)),
-      logger,
+      logger: log,
       quota,
       usage,
       asker,
@@ -196,7 +197,7 @@ class World {
       clock,
       quota,
       settings: wakeupSettingsOf({ quota: { recheck_every: null } } as never),
-      logger,
+      logger: log,
       probes: () => undefined,
     });
     const hooks: Hooks = { awaiting_resume: [], queued_demands: [], scheduled_tasks: [] };
@@ -861,5 +862,293 @@ describe('BudgetService, the Executor cap inside the profile cap (headroom)', ()
     expect((await h.budget.headroom(opus(API))).allowed).toBe(false);
     await h.clock.advance(DAY_END - T0 + 1000);
     expect((await h.budget.headroom(opus(API))).allowed).toBe(true);
+  });
+});
+
+// ---- P11b: the owner's answers of 2026-11-18 ----
+
+const settingsOf = (spec: Spec | string) =>
+  budgetSettingsOf(parseConfig(typeof spec === 'string' ? spec : yamlOf(spec)));
+
+describe('BudgetService, budget.on_cap_change (a changed cap releases the exhaustion)', () => {
+  const spentWorld = async (budget?: Record<string, string>) => {
+    const world = new World();
+    const h = await world.boot({
+      profiles: { [API]: { daily: 10 } },
+      ...(budget === undefined ? {} : { budget }),
+    });
+    await spend(h, opus(API), 11);
+    expect((await h.quota.statusOf(API)).state).toBe('exhausted');
+    return { world, h };
+  };
+
+  it('release (the default): a cap raised in the configuration brings the profile back at once, with reason config', async () => {
+    const { world, h } = await spentWorld();
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 20 } } }));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    expect(h.budget.exceededOf(API)).toBeUndefined();
+    const restored = await eventsOf(world.store, 'budget.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.payload).toMatchObject({ profile: API, reason: 'config' });
+    expect(await eventsOf(world.store, 'quota.restored')).toEqual([]);
+    // The hooks of P9 run as at the turn of the day: the demands that waited may go.
+    expect(h.hooks.queued_demands).toHaveLength(1);
+    expect(h.hooks.queued_demands[0]).toMatchObject({ profile: API, causes: ['budget'] });
+    expect((await world.store.wakeups.list({}))[0]?.state).toBe('fired');
+    expect(await firstUsable(h, [API, API2])).toBe(API);
+    // The new cap holds: the spending is counted against 20 now.
+    await spend(h, opus(API), 8);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    await spend(h, opus(API), 2);
+    expect((await h.quota.statusOf(API)).state).toBe('exhausted');
+  });
+
+  it('release: a cap that is raised but still at or below the spending does not release', async () => {
+    const { world, h } = await spentWorld();
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 11 } } }));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).toBe('exhausted');
+    expect(await eventsOf(world.store, 'budget.restored')).toEqual([]);
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 11.5 } } }));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    expect(await eventsOf(world.store, 'budget.restored')).toHaveLength(1);
+  });
+
+  it('release: a cap that is removed brings the profile back', async () => {
+    const { world, h } = await spentWorld();
+    await h.budget.applySettings(settingsOf(''));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    expect((await eventsOf(world.store, 'budget.restored'))[0]?.payload).toMatchObject({
+      reason: 'config',
+    });
+    expect((await h.budget.headroom(opus(API))).allowed).toBe(true);
+  });
+
+  it('release: the reading at start-up releases a cap raised or removed while the daemon was stopped', async () => {
+    const raised = await spentWorld();
+    await raised.h.stop();
+    const second = await raised.world.boot({ profiles: { [API]: { daily: 20 } } });
+    expect((await second.quota.statusOf(API)).state).not.toBe('exhausted');
+    const restored = await eventsOf(raised.world.store, 'budget.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.payload).toMatchObject({ reason: 'config' });
+    await second.stop();
+    // Booting again says nothing more.
+    const third = await raised.world.boot({ profiles: { [API]: { daily: 20 } } });
+    expect(await eventsOf(raised.world.store, 'budget.restored')).toHaveLength(1);
+    await third.stop();
+
+    const removed = await spentWorld();
+    await removed.h.stop();
+    const after = await removed.world.boot('');
+    expect((await after.quota.statusOf(API)).state).not.toBe('exhausted');
+    expect((await eventsOf(removed.world.store, 'budget.restored'))[0]?.payload).toMatchObject({
+      profile: API,
+      reason: 'config',
+    });
+  });
+
+  it('release: an exhaustion by the quota (not by the cap) is left alone', async () => {
+    const world = new World();
+    const h = await world.boot({ profiles: { [API]: { daily: 10 } } });
+    await h.quota.ingestLimitHit(API, { source: 'test', resetsAt: DAY_END });
+    expect((await h.quota.statusOf(API)).cause).toBe('quota');
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 20 } } }));
+    await settle(h);
+    expect(await h.quota.statusOf(API)).toMatchObject({ state: 'exhausted', cause: 'quota' });
+    expect(await eventsOf(world.store, 'budget.restored')).toEqual([]);
+    expect(await eventsOf(world.store, 'quota.restored')).toEqual([]);
+  });
+
+  it('keep: a raised or removed cap holds the profile until the period turns, which says reset', async () => {
+    const { world, h } = await spentWorld({ on_cap_change: 'keep' });
+    const keep = { on_cap_change: 'keep' };
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 20 } }, budget: keep }));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).toBe('exhausted');
+    await h.budget.applySettings(settingsOf({ budget: keep }));
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).toBe('exhausted');
+    expect(await eventsOf(world.store, 'budget.restored')).toEqual([]);
+    await h.clock.advance(DAY_END - T0 + 2000);
+    await settle(h);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    expect((await eventsOf(world.store, 'budget.restored'))[0]?.payload).toMatchObject({
+      reason: 'reset',
+    });
+  });
+
+  it('keep: the reading at start-up does not release either', async () => {
+    const { world, h } = await spentWorld({ on_cap_change: 'keep' });
+    await h.stop();
+    const second = await world.boot({
+      profiles: { [API]: { daily: 20 } },
+      budget: { on_cap_change: 'keep' },
+    });
+    expect((await second.quota.statusOf(API)).state).toBe('exhausted');
+    expect(await eventsOf(world.store, 'budget.restored')).toEqual([]);
+  });
+});
+
+describe('BudgetService, budget.exceeded', () => {
+  it('says it once when a profile cap is spent, with the profile, period, spending, limit and end', async () => {
+    const world = new World();
+    const h = await world.boot({ profiles: { [API]: { daily: 10 } } });
+    await spend(h, opus(API), 9);
+    expect(await eventsOf(world.store, 'budget.exceeded')).toEqual([]);
+    await spend(h, opus(API), 1.5);
+    const events = await eventsOf(world.store, 'budget.exceeded');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toEqual({
+      profile: API,
+      executor: null,
+      period: 'day',
+      spentUsd: 10.5,
+      limitUsd: 10,
+      endsAt: DAY_END,
+    });
+    await spend(h, opus(API), 1);
+    expect(await eventsOf(world.store, 'budget.exceeded')).toHaveLength(1);
+  });
+
+  it('says it for an Executor cap, without touching the profile, once per Executor and period', async () => {
+    const world = new World();
+    const h = await world.boot({
+      profiles: { [API]: { daily: 50 } },
+      executors: { [opus(API)]: { daily: 3 }, [sonnet(API)]: { daily: 4 } },
+    });
+    await spend(h, opus(API), 3.5);
+    await spend(h, opus(API), 1);
+    const events = await eventsOf(world.store, 'budget.exceeded');
+    expect(events.map((e) => e.payload)).toEqual([
+      {
+        profile: API,
+        executor: opus(API),
+        period: 'day',
+        spentUsd: 3.5,
+        limitUsd: 3,
+        endsAt: DAY_END,
+      },
+    ]);
+    expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
+    // The other Executor has its own cap and its own event.
+    await spend(h, sonnet(API), 4);
+    expect(await eventsOf(world.store, 'budget.exceeded')).toHaveLength(2);
+    // A new day, a new event.
+    await h.clock.advance(DAY_END - T0 + 2000);
+    await settle(h);
+    await spend(h, opus(API), 3);
+    const next = await eventsOf(world.store, 'budget.exceeded');
+    expect(next).toHaveLength(3);
+    expect(next[2]?.payload).toMatchObject({ executor: opus(API), endsAt: DAY_END + 24 * HOUR });
+  });
+
+  it('says it for the day and the month apart, and does not repeat after a restart', async () => {
+    const world = new World();
+    const spec = { profiles: { [API]: { daily: 10, monthly: 10 } } };
+    const first = await world.boot(spec);
+    await spend(first, opus(API), 12);
+    const events = await eventsOf(world.store, 'budget.exceeded');
+    expect(events.map((e) => (e.payload as { period: string }).period)).toEqual(['day', 'month']);
+    await first.stop();
+    const second = await world.boot(spec);
+    await spend(second, opus(API), 1);
+    expect(await eventsOf(world.store, 'budget.exceeded')).toHaveLength(2);
+  });
+
+  it('says it for a cap lowered below what was spent, once, when the daemon starts', async () => {
+    const world = new World();
+    const before = await world.boot('');
+    await spend(before, opus(API), 12);
+    await before.stop();
+    await world.boot({ profiles: { [API]: { daily: 10 } } });
+    expect(await eventsOf(world.store, 'budget.exceeded')).toHaveLength(1);
+  });
+
+  it('says it again when a raised cap is spent again (a new limit)', async () => {
+    const world = new World();
+    const h = await world.boot({ profiles: { [API]: { daily: 10 } } });
+    await spend(h, opus(API), 11);
+    await h.budget.applySettings(settingsOf({ profiles: { [API]: { daily: 15 } } }));
+    await settle(h);
+    expect(await eventsOf(world.store, 'budget.exceeded')).toHaveLength(1);
+    await spend(h, opus(API), 5);
+    const events = await eventsOf(world.store, 'budget.exceeded');
+    expect(events).toHaveLength(2);
+    expect(events[1]?.payload).toMatchObject({ limitUsd: 15, spentUsd: 16 });
+  });
+});
+
+describe('BudgetService, a turn of unknown cost under budget.unknown_cost: ignore', () => {
+  const capture = (): { logger: Logger; lines: string[] } => {
+    const lines: string[] = [];
+    const logger = pino(
+      { level: 'warn' },
+      {
+        write: (line: string) => {
+          lines.push(line);
+        },
+      },
+    );
+    return { logger, lines };
+  };
+
+  it('warns in the log once per model, saying pricing.<model> resolves it', async () => {
+    const world = new World();
+    const { logger, lines } = capture();
+    const h = await world.boot({ profiles: { [API]: { daily: 10 } } }, undefined, logger);
+    await spend(h, opus(API), undefined, 'no-such-model');
+    await spend(h, opus(API), undefined, 'no-such-model');
+    await spend(h, opus(API), undefined, 'other-model');
+    await spend(h, opus(API), 1);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('pricing.no-such-model');
+    expect(lines[0]).toContain('no known cost');
+    expect(lines[1]).toContain('pricing.other-model');
+    // The same situation is an event too, once per model (N139, revised on 2026-11-18).
+    const events = await eventsOf(world.store, 'budget.unknown_cost');
+    expect(events.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ model: 'no-such-model', profile: API, mode: 'ignore' }),
+      expect.objectContaining({ model: 'other-model', profile: API, mode: 'ignore' }),
+    ]);
+    // The turns are still left out of the sum, as before.
+    expect((await h.budget.headroom(opus(API))).binding).toMatchObject({
+      spentUsd: 1,
+      unknownCostTurns: 3,
+    });
+    // One life of the daemon: the next one says it again.
+    await h.stop();
+    const again = capture();
+    const second = await world.boot(
+      { profiles: { [API]: { daily: 10 } } },
+      undefined,
+      again.logger,
+    );
+    await spend(second, opus(API), undefined, 'no-such-model');
+    expect(again.lines).toHaveLength(1);
+    expect(await eventsOf(world.store, 'budget.unknown_cost')).toHaveLength(3);
+  });
+
+  it('does not warn for a profile without a cap, for a known cost, or in the block mode', async () => {
+    const world = new World();
+    const { logger, lines } = capture();
+    const h = await world.boot({ profiles: { [API]: { daily: 10 } } }, undefined, logger);
+    await spend(h, opus(API2), undefined, 'no-such-model');
+    await spend(h, opus(API), 1, 'no-such-model');
+    expect(lines).toEqual([]);
+    expect(await eventsOf(world.store, 'budget.unknown_cost')).toEqual([]);
+    const strict = new World();
+    const other = capture();
+    const s = await strict.boot(
+      { profiles: { [API]: { daily: 10 } }, budget: { unknown_cost: 'block' } },
+      undefined,
+      other.logger,
+    );
+    await spend(s, opus(API), undefined, 'no-such-model');
+    expect(other.lines).toEqual([]);
+    expect(await eventsOf(strict.store, 'budget.unknown_cost')).toEqual([]);
   });
 });
