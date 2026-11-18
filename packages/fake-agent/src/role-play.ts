@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { consultAnswer } from './consult-scripts.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -58,7 +59,13 @@ export interface RolePlayHost {
   call(
     tool: string,
     args: Record<string, unknown>,
-  ): Promise<{ isError: boolean; text: string; structured: unknown }>;
+  ): Promise<{
+    isError: boolean;
+    text: string;
+    structured: unknown;
+    /** The image blocks the reply carried (a tool that hands the model a picture). */
+    images?: readonly { readonly mimeType: string; readonly bytes: number }[];
+  }>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -323,29 +330,6 @@ function attachmentIdsOf(line: string | undefined): string[] {
 }
 
 /**
- * The Consultant of the chat (5.20): reads the attachments the prompt lists (`#ot-attachments:`)
- * and answers the question (`#ot-consult-ask:`) with what it found, through `submit`.
- */
-async function playConsultant(host: RolePlayHost, question: string): Promise<void> {
-  const found: string[] = [];
-  for (const id of attachmentIdsOf(markerOf(host.text, '#ot-attachments:'))) {
-    const reply = await host.call('read_attachment', { id });
-    if (reply.isError || !isRecord(reply.structured)) {
-      found.push(`${id} refused`);
-      continue;
-    }
-    const { mime, kind, content } = reply.structured;
-    found.push(
-      kind === 'text' && typeof content === 'string'
-        ? `${id} says ${content.trim()}`
-        : `${id} is ${String(mime)}`,
-    );
-  }
-  const seen = found.length === 0 ? '' : ` [${found.join('; ')}]`;
-  await submit(host, 'submit', { result: { answer: `consulted on "${question}"${seen}` } });
-}
-
-/**
  * The Author grouping the idea queue of a scenario (5.20): `#ot-group-ideas: <max>` is followed by
  * one line per queued idea, `- I3 [area: api] text`. It groups the first idea with the ones of its
  * area (an idea with no area goes alone), up to `<max>`, and leaves the others out with a reason.
@@ -425,7 +409,10 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
   const { text } = host;
   const consulted = markerOf(text, '#ot-consult-ask:');
   if (consulted !== undefined && consulted !== '') {
-    await playConsultant(host, consulted);
+    const attachments = attachmentIdsOf(markerOf(text, '#ot-attachments:'));
+    await submit(host, 'submit', {
+      result: { answer: await consultAnswer(host, consulted, attachments) },
+    });
     return;
   }
   const grouping = markerOf(text, '#ot-group-ideas:');

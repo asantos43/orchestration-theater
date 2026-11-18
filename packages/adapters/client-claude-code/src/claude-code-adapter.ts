@@ -107,6 +107,12 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     // `claude -p --output-format stream-json`: the emergency exit. [V: docs/08, claude 2.1.319]
     headless: true,
     extensions: [],
+    // The `initialize` of claude-agent-acp 0.107.0 answers `promptCapabilities.image` [V: spike of Phase 0, 2026-11-14,
+    // recorded in spikes/acp-claude/README.md; not run again in P10]. That is what `inputTypes` says:
+    // the image reaches the model as an MCP `image` block of a tool result (`read_attachment`,
+    // `browser_screenshot`); that a client shows such a block to the model is [N] until the
+    // optional real test (P10).
+    inputTypes: ['image'],
   };
 
   readonly #command: { cmd: string; args: string[] };

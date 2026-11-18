@@ -14,6 +14,8 @@ export interface McpToolOutcome {
   /** The text blocks of the result, joined. */
   readonly text: string;
   readonly structured: unknown;
+  /** The `image` blocks of the result: what the model would be shown (the bytes are not kept). */
+  readonly images: readonly { readonly mimeType: string; readonly bytes: number }[];
 }
 
 /** A failure that is not a tool result: the HTTP status, or a JSON-RPC error. */
@@ -133,6 +135,19 @@ export class McpHttpClient {
           : '',
       )
       .join('');
-    return { isError: record.isError === true, text, structured: record.structuredContent };
+    const images = content.flatMap((block) =>
+      isRecord(block) &&
+      block.type === 'image' &&
+      typeof block.mimeType === 'string' &&
+      typeof block.data === 'string'
+        ? [{ mimeType: block.mimeType, bytes: Buffer.from(block.data, 'base64').length }]
+        : [],
+    );
+    return {
+      isError: record.isError === true,
+      text,
+      structured: record.structuredContent,
+      images,
+    };
   }
 }

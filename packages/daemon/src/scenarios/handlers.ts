@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput, NotFound, type JsonObject, type Store } from '@otheater/core';
 import type { DaemonConfig } from '../config.js';
-import { ToolFailure, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
+import { ToolFailure, ToolWithImage, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
 import type { DirectorSessions } from '../orchestration/director.js';
 import { executorOf } from '../orchestration/roles.js';
 import { type AttachmentService, isImage, kindOf } from './attachments.js';
@@ -28,7 +28,7 @@ export interface ScenarioRuntime {
  * A caller is tied to a scenario by its Director session, or, for the Consultant (an attempt whose
  * play id is the scenario id), by its correlation. [proposta] An image is handed only to a caller
  * whose client declares `capabilities.inputTypes` with `image`; anyone else gets
- * `image_not_supported`. The Director reads text attachments only (N85): any other kind is
+ * `image_not_supported`; an image goes back as an MCP `image` block (`ToolWithImage`). The Director reads text attachments only (N85): any other kind is
  * refused to it with `director_text_only` [proposta], and it hands that attachment to a
  * Consultant with `consult`. (A PDF counts as text once it is converted, which does not exist
  * yet, so for now it is refused too.)
@@ -67,7 +67,7 @@ export class ScenarioHandlers {
     return runtime.consult.consult(scenarioId, input);
   }
 
-  async #read(call: ToolCall): Promise<JsonObject | ToolFailure> {
+  async #read(call: ToolCall): Promise<JsonObject | ToolFailure | ToolWithImage> {
     const runtime = this.#runtime;
     if (runtime === undefined) return notReady();
     const { id } = call.input as { id: string };
@@ -95,7 +95,13 @@ export class ScenarioHandlers {
           );
         }
       }
-      return { ...(await runtime.attachments.read(record)) };
+      const content = await runtime.attachments.read(record);
+      if (isImage(record.mime)) {
+        // An image reaches the model as an MCP `image` block (P10), not as base64 in the text.
+        const { content: data, ...meta } = content;
+        return new ToolWithImage({ ...meta }, { mimeType: record.mime, data });
+      }
+      return { ...content };
     } catch (error) {
       if (error instanceof NotFound) return new ToolFailure('not_found', error.message);
       if (error instanceof InvalidInput) return new ToolFailure('too_large', error.message);

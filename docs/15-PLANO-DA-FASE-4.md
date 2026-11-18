@@ -48,7 +48,7 @@ O que já existe foi conferido no código em 2026-11-17, no commit `268f7d0` **[
   - a entrega (`workspace.ts`, `play-effects.ts`) usa um título com a primeira linha da necessidade, um corpo fixo e a mensagem de merge `Deliver play <id>`. Não há changelog, estrutura inicial, CI nem importação com detecção de convenções.
 - **Fila de ideias:** não há tabela `ideas`, chave `ideas.*` nem o ponto de julgamento `group_ideas`.
 - **`delivery.mode: ask` (N89):** o `play-effects.ts` passa `attended: false` fixo, e o `ask` vira `pr`. A presença do chat existe (`orchestration/wiring.ts`), mas só alimenta o `base_drift: ask`.
-- **Consultor (N86):** a política dele é só de leitura; o `http_get` não tem handler, e os adaptadores reais não declaram `inputTypes`, então só o agente falso aceita imagem.
+- **Consultor (N86):** era só de leitura e tinha adaptadores reais sem `inputTypes` (só o agente falso aceitava imagem); o P10 mudou isso (ver "Feito no passo" do P10).
 - **Testes de fuga:** só há partes soltas: o agente falso recusa caminho fora do cwd e symlink; o `.worktreeinclude` não segue symlink; há as sondas `shCRejectProbe` (Claude Code), `modeVetoProbe` e `pinnedModeProbe` (Codex) e a de permissão do OpenCode. Não há suíte comum aos três clientes.
 - **Máquina [V]:** Node 24.18.0; `bwrap` 0.13.1, `socat` e `rg` em `/usr/bin`; o Chromium revisão 1248 do Playwright já está no cache do usuário (`~/.cache/ms-playwright`).
 
@@ -330,6 +330,15 @@ Ordem em ondas **[proposta]**:
 - Os adaptadores reais declaram `inputTypes` com imagem quando o cliente aceita. Qual cliente aceita imagem pelo ACP está **[N]**: o passo confere no catálogo do cliente o que der sem rodar turno e deixa o resto para o teste real opcional.
 
 **Aceite:** com o agente falso, o consultor grava um arquivo na pasta do chat e não grava fora dela; usa o `http_get` num servidor local do teste; recebe uma imagem quando o adaptador declara.
+
+**Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[S]** fonte secundária, **[N]** não confirmado.
+- A política do papel `consultant` deixou de ser só de leitura: ele passa a ser papel de escrita (`edit` e `write`, como o Ator) **[proposta]**, mas só dentro do worktree da consulta; as cascas continuam só do Ator. `http_get` aparece se `roles.consultant.policy.network.allow` não for vazio, e as ferramentas `browser_*` só com a chave `browser` do papel (`read` ou `full`; padrão `none`) **[V]**.
+- O que o consultor escreve entra na pasta do chat depois de conferido **[proposta]**. A consulta roda num worktree em `play/<cenário>/attempts/consult-<n>/1`. Ao terminar, o daemon grava o que mudou e confere cada arquivo com o `confinePath` do P3 (um link simbólico para fora, `.git` e `attachments/` são recusados). Se tudo passa, tira um instantâneo da pasta do chat (o que o Produtor deixou solto) e faz o merge `--no-ff`, um de cada vez; `attachments/` fica em `.git/info/exclude`. Um conflito ou uma recusa deixa a branch e avisa o Diretor **[V]**.
+- Chave **[proposta]** `scenarios.consultant_writes: merge | keep | discard` (padrão `merge`). `keep` deixa o trabalho na branch sem mesclar e `discard` o descarta **[V]**.
+- A saída de `consult` ganhou `files` (o que entrou na pasta) e `notice` (o motivo de não ter entrado); o resultado vai também na resposta da decisão `chat.consult` (`answer.work`), sem evento novo **[proposta]**.
+- Imagem: `read_attachment` devolve um bloco `image` do MCP (`ToolWithImage`), e o resto (id, tipo, nome) vai em `structuredContent` **[V]**. Os três adaptadores reais declaram `inputTypes: ['image']`, o que o `initialize` do ACP mediu na Fase 0 (`promptCapabilities.image`) **[V: spike de 2026-11-14, não repetido neste passo]**: Claude Code **[V]**, Codex **[V]** e OpenCode **[V]**, todos pelo spike. **[N]** Que o bloco `image` devolvido por uma ferramenta MCP (e não no prompt) chegue ao modelo em cada cliente: a capacidade medida é a do prompt. Fica para o teste real opcional.
+- Aceite com o agente falso **[V]** (`consult-work-e2e.test.ts`): grava na pasta do chat; `../fora.txt` e caminho absoluto recusados pelo próprio agente falso; link simbólico para fora recusado pelo daemon (`refused`, branch mantida); `http_get` num servidor local com `network.allow: [127.0.0.1]` e recusado sem ele; imagem entregue só ao cliente `fake-vision`; arquivo solto e anexo na pasta não travam o merge; `keep` e `discard`.
+- **[N]** Não rodados: nenhum cliente real (regra N57).
 
 ### P11. Aceite da fase
 

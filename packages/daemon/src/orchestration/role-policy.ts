@@ -42,8 +42,12 @@ export interface PolicySettings {
   readonly rules: readonly PolicyRule[];
 }
 
-/** Roles that write in their worktree; every other role only reads (5.4, "Fronteira de cada papel"). */
-const WRITING_ROLES: ReadonlySet<string> = new Set(['actor']);
+/**
+ * Roles that write in their worktree; every other role only reads (5.4, "Fronteira de cada papel").
+ * [proposta] The consultant writes too (P10, N86): its worktree is cut from the chat folder, and
+ * what it writes there reaches the folder only through `scenarios.consultant_writes`, confined.
+ */
+const WRITING_ROLES: ReadonlySet<string> = new Set(['actor', 'consultant']);
 
 /**
  * Tools of the framework server that open the network. [proposta] They are listed for a role only

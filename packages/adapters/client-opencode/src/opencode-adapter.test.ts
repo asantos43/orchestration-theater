@@ -112,6 +112,7 @@ describe('OpenCodeAdapter', () => {
         configOptions: ['model', 'thought_level', 'mode'],
         headless: true,
         extensions: [],
+        inputTypes: ['image'],
       });
     });
 
