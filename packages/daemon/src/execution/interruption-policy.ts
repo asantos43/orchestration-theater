@@ -9,9 +9,9 @@ import type { InterruptionCause, ResumeForm } from '@otheater/protocol';
  * and the runner only carries the action out.
  *
  * Who executes what (Phase 5): `resume_native` is the runner's own (`session/load`, with the
- * backoff); `handoff` belongs to P18 and `wait_for_reset` to P19, so until they land the runner
- * parks the attempt and returns the action; `finish_session` and `ask_producer` belong to the
- * spending cap (P11); `director_judgment` is the Director's decision point (5.4).
+ * backoff); `handoff` belongs to P18 and `wait_for_reset` to P19 (the runner waits for the restore
+ * hook, then reloads the session in the same profile); `finish_session` and `ask_producer` belong
+ * to the spending cap (P11); `director_judgment` is the Director's decision point (5.4).
  */
 
 /** What the daemon does about an interruption. */
@@ -67,6 +67,12 @@ export interface InterruptionFacts {
   /** `roles.<role>.when_exhausted`: wait for the reset, or move to the next Executor. */
   readonly whenExhausted: WhenExhausted;
   readonly inFlight: InFlightMode;
+  /**
+   * `profiles.<id>.budget.on_exceeded` resolved to `wait` (P19): with `in_flight: handoff`, a spending
+   * cap that comes back within `resume.quota_wait_max` is waited for instead of passing the baton.
+   * Absent: the baton goes (`skip`, the default).
+   */
+  readonly waitForCap?: boolean;
   /** The conversation can be reloaded in place (`session/load`): it exists and its files do. */
   readonly reloadable: boolean;
   /**
@@ -204,7 +210,7 @@ function byCause(
     case 'quota_exhausted':
       return quota(facts, rules, make);
     case 'spend_cap':
-      return spendCap(facts, make);
+      return spendCap(facts, rules, make);
     case 'transient': {
       if (!facts.reloadable)
         return make('handoff', 'handoff', 'the conversation cannot be reloaded');
@@ -232,9 +238,23 @@ function byCause(
   }
 }
 
-function spendCap(facts: InterruptionFacts, make: Make): InterruptionDecision {
+function spendCap(
+  facts: InterruptionFacts,
+  rules: InterruptionRules,
+  make: Make,
+): InterruptionDecision {
   switch (facts.inFlight) {
     case 'handoff':
+      if (facts.waitForCap === true && facts.reloadable && facts.resetsAt !== null) {
+        const wait = Math.max(0, facts.resetsAt - facts.now);
+        if (wait <= rules.quotaWaitMaxMs) {
+          return make(
+            'wait_for_reset',
+            'native',
+            'the spending cap was hit and comes back soon; on_exceeded is wait',
+          );
+        }
+      }
       return make('handoff', 'handoff', 'the spending cap was hit; in_flight is handoff');
     case 'finish':
       return make('finish_session', null, 'the spending cap was hit; in_flight is finish');

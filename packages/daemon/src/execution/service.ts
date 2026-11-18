@@ -10,9 +10,9 @@ import type {
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import type { McpAccess } from '../mcp/access.js';
-import type { QuotaService } from '../quota/service.js';
 import type { CanAdmit, LocalInstanceResolver } from './admission.js';
-import { AttemptRunner } from './attempt-runner.js';
+import { AttemptRunner, type AttemptRunnerOptions } from './attempt-runner.js';
+import type { ExhaustionPort } from './exhaustion.js';
 import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
 import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
@@ -33,7 +33,9 @@ export interface ExecutionOptions {
   /** The framework MCP server, which hands each attempt's session its tools (5.3). */
   readonly mcp?: McpAccess;
   /** The quota of the profiles: a limit error of a session goes to it (P17, 5.16). */
-  readonly quota?: Pick<QuotaService, 'ingestLimitHit'>;
+  readonly quota?: AttemptRunnerOptions['quota'];
+  /** What the roles and the budget say when a profile runs out (P19): the wait for the reset needs it. */
+  readonly exhaustion?: ExhaustionPort;
   /** Free RAM for the admission of `pool.admission.mode: ram | ram_and_quota`. */
   readonly memory?: MemoryProbe;
   /** The quota hook of `ram_and_quota`; P15 wires it to the `QuotaService`. Default: always yes. */
@@ -77,6 +79,7 @@ export class Execution {
       ...(options.mcp === undefined ? {} : { mcp: options.mcp }),
       ...(options.quota === undefined ? {} : { quota: options.quota }),
       ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
+      ...(options.exhaustion === undefined ? {} : { exhaustion: options.exhaustion }),
     });
   }
 

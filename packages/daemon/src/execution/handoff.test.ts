@@ -170,7 +170,7 @@ function scripted(
       };
     },
     announce: (notice) => {
-      notices.push(notice);
+      if (notice.kind === 'handoff') notices.push(notice);
     },
     secretPaths: extra.secretPaths ?? [],
   };
@@ -805,7 +805,7 @@ describe('the handoff over the selector of P15', () => {
         }),
       prefixOf: () => prefix,
       announce: (notice) => {
-        notices.push(notice);
+        if (notice.kind === 'handoff') notices.push(notice);
       },
     });
   }

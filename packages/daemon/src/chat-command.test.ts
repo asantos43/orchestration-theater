@@ -85,6 +85,37 @@ describe('renderSystemMessage, the handoff', () => {
   });
 });
 
+describe('renderSystemMessage, the wait for the reset (P19)', () => {
+  const WAIT: ScenarioSystemMessagePayload = {
+    scenarioId: 's1',
+    kind: 'reset_wait',
+    playId: 'p1',
+    attemptId: 'p1/d1/1',
+    role: 'actor',
+    cause: 'quota_exhausted',
+    executor: 'opus@claude-code/a',
+    resetsAt: Date.UTC(2026, 10, 18, 15, 30),
+  };
+
+  it('says what is waited for, until when, in English', async () => {
+    const t = await createTranslator('en');
+    const [line] = renderSystemMessage(t, WAIT);
+    expect(line).toContain('attempt p1/d1/1 waits for');
+    expect(line).toContain('opus@claude-code/a');
+    expect(line).toContain('2026-11-18T15:30:00.000Z');
+  });
+
+  it('says it in Brazilian Portuguese, and without a date when none is known', async () => {
+    const t = await createTranslator('pt-BR');
+    const [dated] = renderSystemMessage(t, WAIT);
+    expect(dated).toContain('a tentativa p1/d1/1 espera');
+    const [capped] = renderSystemMessage(t, { ...WAIT, cause: 'spend_cap', resetsAt: null });
+    expect(capped).toContain('a tentativa p1/d1/1 espera');
+    expect(capped).not.toContain('até');
+    expect(capped).not.toBe(dated);
+  });
+});
+
 describe('renderSystemMessage, the wait of the strict cross-review (N135)', () => {
   const WAIT: ScenarioSystemMessagePayload = {
     scenarioId: 's1',

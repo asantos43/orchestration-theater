@@ -116,6 +116,24 @@ export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
  */
 export const PACKAGE_SUMMARIZE_MODES = ['deterministic', 'director_model'] as const;
 /** [proposta] (P18) How much of the diff of the worktree the package carries. */
+/**
+ * [proposta] (P19) `resume.quota_wait_deadline`: whether the wait for a reset counts against the time
+ * limit of the demand (`limits.demand_timeout`): `pause` stops the clock of the demand while the
+ * attempt waits (the wait is not work); `count` lets the deadline run, so a long wait ends as a timeout.
+ */
+export const QUOTA_WAIT_DEADLINE_MODES = ['pause', 'count'] as const;
+/**
+ * [proposta] (P19) `resume.quota_wait_counts`: whether the native resume after a wait for the reset
+ * counts in `resume.max_resumes`: `resume` counts it (a quota that comes and goes is bounded);
+ * `free` does not (only a handoff or a stuck agent ends the loop). It never costs an attempt of the demand.
+ */
+export const QUOTA_WAIT_COUNTS_MODES = ['resume', 'free'] as const;
+/**
+ * [proposta] (P19) `resume.quota_wait_missed`: what follows a wait that ended with no word that the
+ * profile came back (the reset did not come in time, `resume.quota_wait_grace` included): `handoff`
+ * passes the baton, `park` leaves the attempt parked for a decision.
+ */
+export const QUOTA_WAIT_MISSED_MODES = ['handoff', 'park'] as const;
 export const PACKAGE_DIFF_MODES = ['full', 'stat', 'none'] as const;
 /**
  * [proposta] (P18) What the handoff does in a role of short output (Reviewer, Screenwriter,
@@ -1206,6 +1224,18 @@ export const DaemonConfigSchema = z
          * `repeat` (5.16: not the first time, yes if it repeats), `never` or `always`.
          */
         client_crash_counts: z.enum(['repeat', 'never', 'always']).default('repeat'),
+        /**
+         * [proposta] (P19) How long after the reset the attempt keeps waiting for `quota.restored`
+         * before it looks at the profile itself (a hook that was missed): then it resumes if the profile
+         * is back and goes by `quota_wait_missed` if not.
+         */
+        quota_wait_grace: DurationSchema.prefault('1m'),
+        /** [proposta] (P19) See {@link QUOTA_WAIT_DEADLINE_MODES}. */
+        quota_wait_deadline: z.enum(QUOTA_WAIT_DEADLINE_MODES).default('pause'),
+        /** [proposta] (P19) See {@link QUOTA_WAIT_COUNTS_MODES}. */
+        quota_wait_counts: z.enum(QUOTA_WAIT_COUNTS_MODES).default('resume'),
+        /** [proposta] (P19) See {@link QUOTA_WAIT_MISSED_MODES}. */
+        quota_wait_missed: z.enum(QUOTA_WAIT_MISSED_MODES).default('handoff'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -1252,6 +1282,10 @@ export const DaemonConfigSchema = z
           transient_backoff: resume.transient_backoff,
           transient_exhausted: resume.transient_exhausted,
           client_crash_counts: resume.client_crash_counts,
+          quota_wait_grace: resume.quota_wait_grace,
+          quota_wait_deadline: resume.quota_wait_deadline,
+          quota_wait_counts: resume.quota_wait_counts,
+          quota_wait_missed: resume.quota_wait_missed,
           continue_prompt: resume.continue_prompt,
           package: resume.package,
         };

@@ -72,6 +72,8 @@ import {
   AttemptAbortedPayloadSchema,
   AttemptCheckpointFailedPayloadSchema,
   AttemptCheckpointPayloadSchema,
+  AttemptResetWaitEndedPayloadSchema,
+  AttemptResetWaitStartedPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
   SessionClosedPayloadSchema,
@@ -239,6 +241,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'session.handoff_failed',
     schemaVersion: 1,
     payload: SessionHandoffFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.reset_wait_started',
+    schemaVersion: 1,
+    payload: AttemptResetWaitStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.reset_wait_ended',
+    schemaVersion: 1,
+    payload: AttemptResetWaitEndedPayloadSchema,
   }),
   defineEventType({
     type: 'session.cancel_escalated',
@@ -587,6 +599,8 @@ export type SessionHandoffFailedPayload = DaemonEventPayloads['session.handoff_f
 export type SessionProcessesLeftPayload = DaemonEventPayloads['session.processes_left'];
 export type AttemptCheckpointFailedPayload = DaemonEventPayloads['attempt.checkpoint_failed'];
 export type AttemptAbortedPayload = DaemonEventPayloads['attempt.aborted'];
+export type AttemptResetWaitStartedPayload = DaemonEventPayloads['attempt.reset_wait_started'];
+export type AttemptResetWaitEndedPayload = DaemonEventPayloads['attempt.reset_wait_ended'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type PermissionAskedPayload = DaemonEventPayloads['permission.asked'];
@@ -630,6 +644,7 @@ export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 export type ScenarioRecoveryNotice = Extract<ScenarioSystemMessagePayload, { kind: 'recovery' }>;
 export type ScenarioHandoffNotice = Extract<ScenarioSystemMessagePayload, { kind: 'handoff' }>;
+export type ScenarioResetWaitNotice = Extract<ScenarioSystemMessagePayload, { kind: 'reset_wait' }>;
 export type ScenarioDirectorFailoverNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'director_failover' }

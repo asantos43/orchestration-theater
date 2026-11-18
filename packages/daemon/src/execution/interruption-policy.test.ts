@@ -109,6 +109,40 @@ const TABLE: readonly Row[] = [
     expect: { action: 'handoff', form: 'handoff', counts: false },
   },
   {
+    name: 'spend cap, on_exceeded wait: a cap back within quota_wait_max is waited for (P19)',
+    facts: factsOf('spend_cap', { waitForCap: true, resetsAt: NOW + 10 * MINUTE }),
+    expect: { action: 'wait_for_reset', form: 'native', counts: false },
+  },
+  {
+    name: 'spend cap, on_exceeded wait: a cap back after quota_wait_max is a handoff',
+    facts: factsOf('spend_cap', { waitForCap: true, resetsAt: NOW + 31 * MINUTE }),
+    expect: { action: 'handoff', form: 'handoff', counts: false },
+  },
+  {
+    name: 'spend cap, on_exceeded wait: no date for the cap is a handoff',
+    facts: factsOf('spend_cap', { waitForCap: true, resetsAt: null }),
+    expect: { action: 'handoff', form: 'handoff', counts: false },
+  },
+  {
+    name: 'spend cap, on_exceeded wait: a conversation that cannot be reloaded is a handoff',
+    facts: factsOf('spend_cap', {
+      waitForCap: true,
+      resetsAt: NOW + MINUTE,
+      reloadable: false,
+    }),
+    expect: { action: 'handoff', form: 'handoff', counts: false },
+  },
+  {
+    name: 'spend cap, on_exceeded skip: a near reset changes nothing',
+    facts: factsOf('spend_cap', { waitForCap: false, resetsAt: NOW + MINUTE }),
+    expect: { action: 'handoff', form: 'handoff', counts: false },
+  },
+  {
+    name: 'spend cap, in_flight finish: on_exceeded wait does not override the in-flight mode',
+    facts: factsOf('spend_cap', { inFlight: 'finish', waitForCap: true, resetsAt: NOW + MINUTE }),
+    expect: { action: 'finish_session', form: null, counts: false },
+  },
+  {
     name: 'spend cap, in_flight finish: the session ends by itself',
     facts: factsOf('spend_cap', { inFlight: 'finish' }),
     expect: { action: 'finish_session', form: null, counts: false },

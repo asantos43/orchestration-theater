@@ -33,6 +33,8 @@ describe('daemon event registry', () => {
       'session.resumed',
       'session.handoff',
       'session.handoff_failed',
+      'attempt.reset_wait_started',
+      'attempt.reset_wait_ended',
       'session.cancel_escalated',
       'session.processes_left',
       'session.closed',

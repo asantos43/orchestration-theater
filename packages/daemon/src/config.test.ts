@@ -253,6 +253,31 @@ describe('parseConfig, execution keys', () => {
     );
   });
 
+  it('takes the keys of the wait for the reset with the documented defaults (P19)', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      const { resume } = parseConfig(`resume:\n  preset: ${preset}\n`);
+      expect(resume).toMatchObject({
+        quota_wait_grace: 60_000,
+        quota_wait_deadline: 'pause',
+        quota_wait_counts: 'resume',
+        quota_wait_missed: 'handoff',
+      });
+    }
+    expect(
+      parseConfig(
+        'resume:\n  quota_wait_grace: 5m\n  quota_wait_deadline: count\n  quota_wait_counts: free\n  quota_wait_missed: park\n',
+      ).resume,
+    ).toMatchObject({
+      quota_wait_grace: 300_000,
+      quota_wait_deadline: 'count',
+      quota_wait_counts: 'free',
+      quota_wait_missed: 'park',
+    });
+    for (const key of ['quota_wait_deadline', 'quota_wait_counts', 'quota_wait_missed']) {
+      expect(() => parseConfig(`resume:\n  ${key}: sometimes\n`)).toThrow(new RegExp(key));
+    }
+  });
+
   it('takes resume.package with the deterministic summary as default (N126, P18)', () => {
     for (const preset of ['balanced', 'patient', 'agile']) {
       expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.package).toEqual({

@@ -13,7 +13,7 @@ import {
   type SelectionSettings,
   type WhenExhausted,
 } from '@otheater/core';
-import type { ScenarioHandoffNotice } from '@otheater/protocol';
+import type { ScenarioHandoffNotice, ScenarioResetWaitNotice } from '@otheater/protocol';
 import type { PackageSummarizer } from './continuation-package.js';
 import type { InFlightMode } from './interruption-policy.js';
 
@@ -77,7 +77,7 @@ export interface HandoffPort {
   /** The next Executor of the role, never one of `request.used`. */
   choose(request: HandoffRequest): Promise<HandoffChoice>;
   /** The system message of the handoff for the chat of the scenario (also in the event log). */
-  announce?(notice: ScenarioHandoffNotice): void;
+  announce?(notice: ScenarioHandoffNotice | ScenarioResetWaitNotice): void;
   /** The cheap model of `resume.package.summarize: director_model` (N126). */
   readonly summarizer?: PackageSummarizer | undefined;
   /** `security.secret_paths` resolved; the package leaves these paths out. */
@@ -98,7 +98,7 @@ export interface HandoffPortDeps {
   /** Turns the entry the selection chose into the profile, configuration and policy of a session. */
   launch(entry: ExecutorEntry, role: RoleId, request: HandoffRequest): Promise<HandoffTarget>;
   prefixOf(role: string | undefined): string | Promise<string>;
-  announce?(notice: ScenarioHandoffNotice): void;
+  announce?(notice: ScenarioHandoffNotice | ScenarioResetWaitNotice): void;
   readonly summarizer?: PackageSummarizer | undefined;
   readonly secretPaths?: readonly string[] | undefined;
   readonly home?: string | undefined;
@@ -134,7 +134,10 @@ export function createHandoffPort(deps: HandoffPortDeps): HandoffPort {
     },
     ...(deps.announce === undefined
       ? {}
-      : { announce: (notice: ScenarioHandoffNotice) => deps.announce?.(notice) }),
+      : {
+          announce: (notice: ScenarioHandoffNotice | ScenarioResetWaitNotice) =>
+            deps.announce?.(notice),
+        }),
     summarizer: deps.summarizer,
     secretPaths: deps.secretPaths,
     home: deps.home,

@@ -99,6 +99,12 @@
     "system": {
       "handoff": "Sistema: a tentativa {{attemptId}} passou o bastão de {{from}} para {{to}} ({{cause}}); o trabalho continua do estado guardado.",
       "selectionWait": "Sistema: o {{role}} espera um Executor que não seja do mesmo {{what}} do trabalho ({{crossCheck}}); não há outro disponível: {{on}}. Segue sozinho quando houver.",
+      "resetWait": "Sistema: a tentativa {{attemptId}} espera {{what}} de {{executor}} voltar, até {{until}}; ela retoma a mesma conversa sozinha.",
+      "resetWaitNoDate": "Sistema: a tentativa {{attemptId}} espera {{what}} de {{executor}} voltar; ela retoma a mesma conversa sozinha.",
+      "resetWaitWhat": {
+        "quota": "a cota",
+        "cap": "o teto de gasto"
+      },
       "directorFailover": {
         "switched": "Sistema: a sessão do Diretor em {{from}} falhou ({{cause}}); abriu uma sessão nova com {{to}}, com o resumo do estado, e o prompt em curso voltou à fila.",
         "waiting": "Sistema: a sessão do Diretor em {{from}} falhou ({{cause}}) e não há Executor disponível; a fila espera e o Diretor segue sozinho quando houver um livre{{until}}.",

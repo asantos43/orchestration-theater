@@ -149,6 +149,25 @@ export const ScenarioSelectionWaitNoticeSchema = z.strictObject({
   until: z.int().min(0).nullable(),
 });
 
+/**
+ * The `reset_wait` kind (Phase 5, P19, [proposta]): the attempt of a role waits for the quota or the
+ * spending cap of its own profile to come back, and resumes natively when it does (5.16). Ids,
+ * the cause and the dates only.
+ */
+export const ScenarioResetWaitNoticeSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('reset_wait'),
+  playId: z.string().min(1),
+  attemptId: z.string().min(1),
+  role: z.string().min(1).nullable(),
+  /** `quota_exhausted` or `spend_cap`. */
+  cause: z.string().min(1),
+  /** Executor id of the profile that waits. */
+  executor: z.string().min(1),
+  /** When the profile is due back, epoch ms; null when no source says. */
+  resetsAt: z.int().min(0).nullable(),
+});
+
 /** How a failover of the Director ended, for the Producer (`director_failover` kind). */
 export const DIRECTOR_FAILOVER_OUTCOMES = ['switched', 'waiting', 'unavailable'] as const;
 export type DirectorFailoverOutcome = (typeof DIRECTOR_FAILOVER_OUTCOMES)[number];
@@ -185,6 +204,7 @@ export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioRecoveryNoticeSchema,
   ScenarioHandoffNoticeSchema,
   ScenarioSelectionWaitNoticeSchema,
+  ScenarioResetWaitNoticeSchema,
   ScenarioDirectorFailoverNoticeSchema,
 ]);
 
@@ -208,6 +228,8 @@ export const PLAY_NOTICE_KINDS = [
   'finish_not_handled',
   /** P24: the deadline of a demand fired and could not be delivered to the machine (`detail`: the demand and why). */
   'deadline_not_delivered',
+  /** P19: the rules of exhaustion of the role and the budget could not be read; the attempt goes on with the defaults (`next`, `handoff`) (`detail`: why, masked). */
+  'exhaustion_not_read',
 ] as const;
 export type PlayNoticeKind = (typeof PLAY_NOTICE_KINDS)[number];
 
