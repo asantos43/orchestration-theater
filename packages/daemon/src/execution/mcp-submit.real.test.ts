@@ -9,7 +9,7 @@ import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
-import { transcriptOf } from './escape-fixture.js';
+import { permissionsOf, transcriptOf } from './escape-fixture.js';
 
 /**
  * The framework MCP server (architecture 5.3) with a REAL Executor (N57). Nothing here runs by
@@ -154,6 +154,10 @@ describe.each(CLIENT_IDS)(
             `[mcp-real] ${client}: sandbox=${sandboxed ? 'runtime' : 'off'} state=${outcome.state}${'cause' in outcome ? ` cause=${String(outcome.cause)}` : ''} tool-calls=${String(transcript.toolCalls.length)}\n${transcript.toolCalls.map((call) => `  ${call}`).join('\n')}`,
           );
           console.log(`[mcp-real] ${client}: reply:\n${transcript.reply.slice(0, 2000)}`);
+          const asks = permissionsOf(events, outcome.attemptId).map(
+            (ask) => `  ${ask.tool ?? '?'}:${ask.kind ?? '?'}:${ask.answer}:${ask.rule}:${ask.reason}`,
+          );
+          console.log(`[mcp-real] ${client}: asks=${String(asks.length)}\n${asks.join('\n')}`);
 
           expect(outcome).toMatchObject({ state: 'completed' });
           const submitted = events.filter((event) => event.type === 'attempt.submitted');

@@ -208,6 +208,7 @@ const inAttempt = (events: readonly EventEnvelope[], attemptId: string): EventEn
   events.filter((event) => event.attemptId === attemptId);
 
 export interface PermissionAnswer {
+  readonly tool: string | undefined;
   readonly kind: string | undefined;
   readonly answer: string;
   readonly rule: string;
@@ -227,6 +228,7 @@ export function permissionsOf(
     .map((event) => {
       const payload = event.payload as Record<string, unknown>;
       return {
+        tool: payload.tool as string | undefined,
         kind: payload.kind as string | undefined,
         answer: String(payload.answer),
         rule: String(payload.rule),
