@@ -192,6 +192,56 @@ describe('ClientAdapter.guarantee with the policy of version 2 (Phase 4, P1)', (
   });
 });
 
+describe('ClientAdapter secretEnv and profile set-up (Phase 5, P2)', () => {
+  const other: Profile = { client: 'fake', profile: 'q', id: 'fake/q', dir: '/profiles/fake/q' };
+
+  it('[proposta] adds the secrets of the profile on top of the profile environment, for that profile only', async () => {
+    const asked: string[] = [];
+    const { adapter, launcher } = setup({
+      env: { PROFILE_VAR: 'p' },
+      secretEnv: (p) => {
+        asked.push(p.id);
+        return Promise.resolve(
+          p.id === 'fake/p' ? { FAKE_API_KEY: 'sk-test-1', PROFILE_VAR: 'x' } : {},
+        );
+      },
+    });
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    await adapter.openSession(other, policy, '/work', new FakeSessionTransport());
+    expect(asked).toEqual(['fake/p', 'fake/q']);
+    expect(launcher.launched[0]?.options.env).toEqual({
+      PATH: '/bin',
+      FROM_BASE: 'base',
+      PROFILE_VAR: 'x',
+      FAKE_API_KEY: 'sk-test-1',
+    });
+    expect(launcher.launched[1]?.options.env).toEqual({
+      PATH: '/bin',
+      FROM_BASE: 'base',
+      PROFILE_VAR: 'p',
+    });
+  });
+
+  it('[proposta] setUpProfile runs the profile preparation without starting a process', async () => {
+    const { adapter, launcher } = setup();
+    await adapter.setUpProfile(profile, policy);
+    expect(adapter.prepared).toEqual([profile]);
+    expect(launcher.launched).toEqual([]);
+  });
+
+  it('the fake client answers probeLogin with the state the test gave, and records logouts', async () => {
+    const { adapter } = setup({
+      loginState: (p) => (p.id === 'fake/p' ? 'logged_in' : 'logged_out'),
+    });
+    await expect(adapter.probeLogin(profile)).resolves.toEqual({ state: 'logged_in', via: 'fake' });
+    await expect(adapter.probeLogin(other)).resolves.toEqual({ state: 'logged_out', via: 'fake' });
+    await adapter.logout(profile);
+    expect(adapter.loggedOut).toEqual([profile]);
+    const bare = setup().adapter;
+    await expect(bare.probeLogin(profile)).resolves.toEqual({ state: 'unknown', via: 'fake' });
+  });
+});
+
 describe('ClientAdapter.openSession', () => {
   it('prepares the profile, launches with base + profile environment and hands everything to the transport', async () => {
     const { adapter, launcher } = setup({ env: { PROFILE_VAR: 'p', FROM_BASE: 'override' } });

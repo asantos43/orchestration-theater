@@ -174,6 +174,16 @@ export interface LoginFlow {
   cancel(): Promise<void>;
 }
 
+/** Whether a profile holds a login, as far as the client says (never read from a credential file). */
+export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
+
+/** Result of `probeLogin`: the state and the way it was read (never a token, never a credential file). */
+export interface LoginProbeResult {
+  readonly state: LoginState;
+  /** `status_command`, `acp_session` or `account_list`. */
+  readonly via: string;
+}
+
 /** `multi-session` reuse: `shared` puts sessions of one profile on one process, `own` gives each its own. */
 export type ProcessReuse = 'shared' | 'own';
 
@@ -278,4 +288,16 @@ export interface ClientAdapterContract extends Adapter {
   checkConformance(profile: Profile): Promise<ConformanceReport>;
   login(profile: Profile): Promise<LoginFlow>;
   logout(profile: Profile): Promise<void>;
+  /**
+   * Phase 5 (P2). [proposta] Optional: whether the profile has a login, by the official way of the
+   * client and without reading any credential. A client that cannot tell leaves it out (the caller
+   * then treats the answer as `unknown`). `via` is the transport a client that asks over ACP uses.
+   */
+  probeLogin?(profile: Profile, via: SessionTransport): Promise<LoginProbeResult>;
+  /**
+   * Phase 5 (P2). [proposta] Optional: writes the settings of the profile directory (layer 1 in a
+   * file) under `policy`, as the base does before every session, so a profile can be set up when
+   * it is registered. Idempotent.
+   */
+  setUpProfile?(profile: Profile, policy: RolePolicy): Promise<void>;
 }

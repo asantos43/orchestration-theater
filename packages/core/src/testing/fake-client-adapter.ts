@@ -16,6 +16,8 @@ import {
   type ClientCapabilities,
   type Enforcement,
   type LoginFlow,
+  type LoginProbeResult,
+  type LoginState,
   type ProcessModel,
   type RolePolicy,
 } from '../ports/client-adapter.js';
@@ -105,6 +107,13 @@ export interface FakeClientAdapterOptions extends ClientAdapterOptions {
   readonly vetoedModes?: readonly string[] | Readonly<Record<string, string>>;
   /** Only when this transport asks for it, the veto is on (`modeVeto` receives the transport). Default every transport. */
   readonly vetoVia?: TransportId;
+  /**
+   * What `probeLogin` answers, per profile id (`profile.id`), or one state for every profile.
+   * Default `unknown`. A function is asked on every probe.
+   */
+  readonly loginState?: LoginState | ((profile: Profile) => LoginState);
+  /** Called by `logout`, to see which profile the caller logged out. */
+  readonly onLogout?: (profile: Profile) => void;
   /** The config options of the ACP setup of every session (`SessionSetup.configOptions`). Default none. */
   readonly setupConfig?: Readonly<Record<string, string>>;
 }
@@ -224,6 +233,8 @@ export class FakeClientAdapter extends ClientAdapter {
   readonly capabilities: ClientCapabilities;
   /** Profiles the base asked to prepare, in order. */
   readonly prepared: Profile[] = [];
+  /** Profiles `logout` was called for, in order. */
+  readonly loggedOut: Profile[] = [];
   /** The transport the base asked `command` for, in order. */
   readonly commandVia: TransportId[] = [];
   readonly #options: FakeClientAdapterOptions;
@@ -305,7 +316,19 @@ export class FakeClientAdapter extends ClientAdapter {
     return Promise.reject(new AdapterUnavailable('the fake client has no login'));
   }
 
-  logout(): Promise<void> {
+  logout(profile?: Profile): Promise<void> {
+    if (profile !== undefined) {
+      this.loggedOut.push(profile);
+      this.#options.onLogout?.(profile);
+    }
     return Promise.resolve();
+  }
+
+  probeLogin(profile: Profile): Promise<LoginProbeResult> {
+    const state = this.#options.loginState;
+    return Promise.resolve({
+      state: typeof state === 'function' ? state(profile) : (state ?? 'unknown'),
+      via: 'fake',
+    });
   }
 }
