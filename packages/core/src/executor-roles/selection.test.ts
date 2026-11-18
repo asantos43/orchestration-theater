@@ -708,7 +708,7 @@ describe('the Executors of the roles and the phase criterion', () => {
       workedBy: { provider: 'openai' },
     });
     expect(result.selected?.id).toBe(OPUS_A);
-    expect(reasonsOf({ ...result } as ReturnType<typeof select>)).toEqual([[SOL, 'same_provider']]);
+    expect(reasonsOf({ ...result })).toEqual([[SOL, 'same_provider']]);
   });
 });
 

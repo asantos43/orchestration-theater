@@ -380,7 +380,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   const conflictReason: SkipReason =
     settings.crossCheck === 'other_model' ? 'same_model' : 'same_provider';
   const conflicts = (item: ResolvedExecutor): boolean => {
-    if (!applied || worked === null) return false;
+    if (!applied) return false;
     if (settings.crossCheck === 'other_model') {
       return worked.model !== undefined && sameText(item.entry.model, worked.model);
     }
@@ -521,7 +521,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     crossCheck: {
       mode: settings.crossCheck,
       applied,
-      workedProvider: applied ? (worked?.provider ?? null) : null,
+      workedProvider: applied ? worked.provider : null,
       fellBack,
     },
     roundRobin,
