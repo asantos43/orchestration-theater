@@ -587,7 +587,7 @@ function emptyResult(
   return {
     role: role as SelectionResult['role'],
     selected: null,
-    wait: { mode: 'next', on: [], until: null },
+    wait: { mode: 'next', on: [], until: null, notify: false },
     skipped: [],
     strategy,
     retriedAfter: null,
@@ -596,6 +596,7 @@ function emptyResult(
       applied: false,
       workedProvider: null,
       fellBack: false,
+      blocked: false,
     },
     roundRobin: null,
   };

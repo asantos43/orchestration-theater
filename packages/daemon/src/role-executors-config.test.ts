@@ -81,6 +81,36 @@ executors:
     });
   });
 
+  it('reads preset_expand (N136): absent leaves the Executor out of the entry, false is kept', () => {
+    const { entries } = parseConfig(`
+executors:
+  claude-opus-high@claude-code/empresa:
+    client: claude-code
+    profile: empresa
+    model: claude-opus
+    effort: high
+  gemma4@opencode/local:
+    client: opencode
+    profile: local
+    model: gemma4
+    preset_expand: false
+  codex-sol-high@codex/conta-1:
+    client: codex
+    profile: conta-1
+    model: codex-sol
+    effort: high
+    preset_expand: true
+`).executors;
+    expect(entries['claude-opus-high@claude-code/empresa']?.presetExpand).toBeUndefined();
+    expect(entries['gemma4@opencode/local']?.presetExpand).toBe(false);
+    expect(entries['codex-sol-high@codex/conta-1']?.presetExpand).toBe(true);
+    expect(
+      refusal(
+        'executors:\n  gemma4@opencode/local:\n    client: opencode\n    profile: local\n    model: gemma4\n    preset_expand: never\n',
+      ),
+    ).toMatch(/executors\.gemma4@opencode\/local\.preset_expand/u);
+  });
+
   it('refuses a malformed name, naming the key', () => {
     expect(
       refusal('executors:\n  opus-high:\n    client: a\n    profile: b\n    model: m\n'),
@@ -206,6 +236,7 @@ describe('selection (5.7; P15)', () => {
       unregistered_profiles: 'allow',
       recheck_every: 30_000,
       director_wait: 'fail',
+      strict_unavailable: 'wait_notify',
     });
   });
 
@@ -221,6 +252,7 @@ selection:
   unregistered_profiles: refuse
   recheck_every: 2m
   director_wait: wait
+  strict_unavailable: fallback_prefer
 `);
     expect(selection).toEqual({
       strategy: 'round_robin',
@@ -232,6 +264,7 @@ selection:
       unregistered_profiles: 'refuse',
       recheck_every: 120_000,
       director_wait: 'wait',
+      strict_unavailable: 'fallback_prefer',
     });
   });
 
@@ -258,6 +291,9 @@ selection:
       'off',
     );
     expect(parseConfig('selection:\n  near_limit: skip\n').selection.near_limit).toBe('skip');
+    expect(
+      parseConfig('selection:\n  strict_unavailable: wait\n').selection.strict_unavailable,
+    ).toBe('wait');
   });
 
   it('refuses a mode it does not know, naming the key, and an unknown key', () => {
@@ -269,6 +305,9 @@ selection:
       /selection\.retry_diversity: /u,
     );
     expect(refusal('selection:\n  context_reserve: huge\n')).toMatch(/selection\.context_reserve/u);
+    expect(refusal('selection:\n  strict_unavailable: ask\n')).toMatch(
+      /selection\.strict_unavailable: .*"wait_notify"/u,
+    );
     expect(refusal('selection:\n  strategie: ordered\n')).toMatch(/selection/u);
   });
 });

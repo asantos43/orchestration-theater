@@ -411,6 +411,7 @@ export class ExecutorService {
       model: info.id,
       effort,
       provider: fixed ?? provider,
+      ...(config.executors.on_register === 'none' ? { presetExpand: false } : {}),
     };
     const before = this.#resolveLists(config, facts, [...Object.values(config.executors.entries)]);
     const explicitLists: Partial<Record<RoleId, string[]>> = {};
@@ -561,6 +562,9 @@ export class ExecutorService {
         model: info.id,
         ...(effort === null ? {} : { effort }),
         ...(fixed === undefined ? { provider } : {}),
+        // N136: `on_register: none` also keeps the Executor out of the expansion of presets; it
+        // enters only the roles that name it.
+        ...(config.executors.on_register === 'none' ? { preset_expand: false } : {}),
       });
       if (localConfig !== undefined) {
         editor.set(['profiles', profile.id, 'local'], {

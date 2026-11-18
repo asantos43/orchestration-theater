@@ -346,6 +346,33 @@ roles:
     expect((await rig.config()).roles.actor?.executors).toEqual([OTHER]);
   });
 
+  it('none also keeps it out of the expansion of the presets (N136)', async () => {
+    const rig = await setup(`executors:\n  on_register: none\n`);
+    const result = registered(await rig.service.add({ profileId: PROFILE, model: MINIMAX }));
+    const config = await rig.config();
+    expect(config.executors.entries[MINIMAX_ID]?.presetExpand).toBe(false);
+    expect(result.executor.roles).toEqual([]);
+    expect(await rig.service.list()).toMatchObject([{ id: MINIMAX_ID, roles: [] }]);
+  });
+
+  it('ask and preset_only leave preset_expand out, and the preset still reaches the Executor', async () => {
+    for (const mode of ['ask', 'preset_only']) {
+      const rig = await setup(`executors:\n  on_register: ${mode}\n`);
+      const result = registered(await rig.service.add({ profileId: PROFILE, model: MINIMAX }));
+      expect((await rig.config()).executors.entries[MINIMAX_ID]?.presetExpand).toBeUndefined();
+      expect(result.executor.roles).toContain('actor');
+    }
+  });
+
+  it('none with --role: it enters only the role the Producer named', async () => {
+    const rig = await setup(`executors:\n  on_register: none\n`);
+    const result = registered(
+      await rig.service.add({ profileId: PROFILE, model: MINIMAX, roles: [{ role: 'critic' }] }),
+    );
+    expect(result.executor.roles).toEqual(['critic']);
+    expect((await rig.config()).executors.entries[MINIMAX_ID]?.presetExpand).toBe(false);
+  });
+
   it('--role puts it where the Producer says, whatever the mode', async () => {
     const rig = await setup(base('ask'));
     const result = registered(

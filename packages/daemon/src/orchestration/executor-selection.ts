@@ -19,6 +19,7 @@ export function selectionSettingsOf(config: Pick<DaemonConfig, 'selection'>): Se
     unknownQuota: selection.unknown_quota,
     nearLimit: selection.near_limit,
     retryDiversity: selection.retry_diversity,
+    strictUnavailable: selection.strict_unavailable,
     contextReserve: selection.context_reserve,
   };
 }
@@ -61,6 +62,7 @@ export function executorSelectedPayload(
       applied: result.crossCheck.applied,
       workedProvider: result.crossCheck.workedProvider,
       fellBack: result.crossCheck.fellBack,
+      blocked: result.crossCheck.blocked,
     },
     skipped: result.skipped.map((skipped) => ({
       executor: skipped.executor,
@@ -69,7 +71,10 @@ export function executorSelectedPayload(
       detail: skipped.detail,
       untilReset: skipped.untilReset,
     })),
-    waiting: wait === null ? null : { mode: wait.mode, on: [...wait.on], until: wait.until },
+    waiting:
+      wait === null
+        ? null
+        : { mode: wait.mode, on: [...wait.on], until: wait.until, notify: wait.notify },
     occurredAt: context.now,
   };
 }
