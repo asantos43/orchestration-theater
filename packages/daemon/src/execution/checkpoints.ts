@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Clock, NormalizedUpdate, ToolKind, Vcs } from '@otheater/core';
 import { buildDaemonEvent, type CheckpointReason } from '@otheater/protocol';
+import { eventErrorText } from './continuation-package.js';
 import type { AttemptJournal } from './journal.js';
 
 /** Tool kinds that change files: the ones an edit batch counts. */
@@ -94,7 +95,21 @@ export class CheckpointTracker {
   async #take(reason: CheckpointReason, detail: string | undefined): Promise<string | undefined> {
     const { vcs, journal, worktree, branch, correlation, clock } = this.#options;
     const label = detail === undefined ? reason : `${reason}: ${detail}`;
-    const sha = await vcs.checkpoint(worktree, label);
+    let sha: string | undefined;
+    try {
+      sha = await vcs.checkpoint(worktree, label);
+    } catch (error) {
+      // The work since the last checkpoint is not protected: a hook may want to know (P18b).
+      await journal.write(
+        buildDaemonEvent('attempt.checkpoint_failed', {
+          reason,
+          branch,
+          error: eventErrorText(error, { secretPaths: [] }),
+          ...correlation,
+        }),
+      );
+      throw error;
+    }
     if (sha === undefined) return journal.record.lastCheckpoint ?? undefined;
     await journal.write(
       buildDaemonEvent('attempt.checkpoint', { sha, label, reason, branch, ...correlation }),
