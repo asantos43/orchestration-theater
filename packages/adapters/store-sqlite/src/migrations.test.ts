@@ -19,6 +19,9 @@ const PHASE_2 = Object.fromEntries(Object.entries(MIGRATIONS).filter(([name]) =>
 /** The migrations that existed before Phase 4 (0001 to 0007). */
 const PHASE_3 = Object.fromEntries(Object.entries(MIGRATIONS).filter(([name]) => name < '0008'));
 
+/** The migrations that existed before Phase 5 (0001 to 0008). */
+const PHASE_4 = Object.fromEntries(Object.entries(MIGRATIONS).filter(([name]) => name < '0009'));
+
 const PHASE_3_TABLES = [
   'scenarios',
   'scenario_repos',
@@ -241,7 +244,7 @@ describe.each(DRIVERS)('Phase 4 migration 0008_ideas on %s', (driver: SqliteDriv
             name: string;
           }[]
         ).map((row) => row.name);
-        expect(applied.at(-1)).toBe('0008_ideas');
+        expect(applied).toContain('0008_ideas');
         expect(applied).toEqual(Object.keys(MIGRATIONS));
       } finally {
         check.close();
@@ -251,3 +254,251 @@ describe.each(DRIVERS)('Phase 4 migration 0008_ideas on %s', (driver: SqliteDriv
     }
   });
 });
+
+const PHASE_5_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  profiles: [
+    'id',
+    'client',
+    'name',
+    'kind',
+    'provider',
+    'state',
+    'dir',
+    'secret_ref',
+    'notice_accepted_at',
+    'created_at',
+    'updated_at',
+    'removed_at',
+  ],
+  executors: [
+    'id',
+    'profile_id',
+    'model',
+    'effort',
+    'provider',
+    'validity',
+    'invalid_reason',
+    'created_at',
+    'updated_at',
+  ],
+  interruptions: [
+    'id',
+    'seq',
+    'session_id',
+    'play_id',
+    'cause',
+    'signals',
+    'resume_form',
+    'from_executor',
+    'to_executor',
+    'counted_as_attempt',
+    'created_at',
+    'updated_at',
+  ],
+  quota_snapshots: [
+    'profile_id',
+    'window',
+    'used_percent',
+    'resets_at',
+    'source',
+    'observed_at',
+    'updated_at',
+  ],
+  usage: [
+    'id',
+    'seq',
+    'session_id',
+    'play_id',
+    'profile_id',
+    'executor_id',
+    'model',
+    'input_tokens',
+    'output_tokens',
+    'cached_tokens',
+    'cost_usd',
+    'cost_kind',
+    'cost_source',
+    'pricing_version',
+    'occurred_at',
+    'created_at',
+    'updated_at',
+  ],
+  wakeups: [
+    'id',
+    'seq',
+    'profile_id',
+    'cause',
+    'at',
+    'state',
+    'os_trigger_id',
+    'created_at',
+    'updated_at',
+  ],
+};
+
+describe.each(DRIVERS)(
+  'Phase 5 migration 0009_profiles_executors_quota_usage on %s',
+  (driver: SqliteDriverName) => {
+    it('climbs from a Phase 4 database without losing a row and the new tables work', async () => {
+      const { dir, dispose } = await makeTempDir();
+      try {
+        const path = join(dir, 'phase4.db');
+        const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+        raw.exec('PRAGMA journal_mode = WAL');
+        const old = new Kysely<StoreDatabase>({
+          dialect: new ImmediateSqliteDialect({ database: raw }),
+        });
+        const migrator = new Migrator({
+          db: old,
+          provider: { getMigrations: () => Promise.resolve(PHASE_4) },
+        });
+        expect((await migrator.migrateToLatest()).error).toBeUndefined();
+        expect(Object.keys(PHASE_4).at(-1)).toBe('0008_ideas');
+        // The Phase 4 database holds rows of an event, a directive and an idea.
+        raw
+          .prepare(
+            `INSERT INTO events (type, timestamp, schema_version, payload) VALUES (?, ?, ?, ?)`,
+          )
+          .run(['test.kept', 1, 1, '{"n":1}']);
+        raw
+          .prepare(
+            `INSERT INTO directives (id, seq, scope, kind, text, roles, starts_at, timezone, state, origin, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(['O1', 1, 'global', 'instruction', 'kept', '[]', 1, 'UTC', 'active', 'chat', 1, 1]);
+        raw
+          .prepare(
+            `INSERT INTO ideas (id, seq, scenario_id, text, source, state, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(['I1', 1, 'scn-1', 'kept idea', 'chat', 'queued', 1, 1]);
+        await old.destroy();
+
+        const store = await SqliteStore.open({ path, driver }, clock);
+        try {
+          expect((await store.directives.get('O1'))?.text).toBe('kept');
+          expect((await store.ideas.get('I1'))?.text).toBe('kept idea');
+          expect((await store.events.readFrom(0, 10)).map((e) => e.type)).toEqual(['test.kept']);
+
+          await store.profiles.create({
+            client: 'claude-code',
+            name: 'work',
+            kind: 'token_plan',
+            provider: 'anthropic',
+            dir: 'profiles/claude-code/work',
+          });
+          await store.executors.create({
+            profileId: 'claude-code/work',
+            model: 'opus',
+            effort: 'high',
+            provider: 'anthropic',
+          });
+          await store.interruptions.create({
+            sessionId: 'ses-1',
+            cause: 'quota_exhausted',
+            signals: ['rate_limit'],
+            countedAsAttempt: true,
+          });
+          await store.quotaSnapshots.put({
+            profileId: 'claude-code/work',
+            window: '5h',
+            usedPercent: 99.5,
+            resetsAt: 9_000,
+            source: 'probe',
+          });
+          await store.usage.record({
+            sessionId: 'ses-1',
+            profileId: 'claude-code/work',
+            executorId: 'opus-high@claude-code/work',
+            model: 'opus',
+            inputTokens: 10,
+            cost: {
+              usd: 0.25,
+              kind: 'api_equivalent',
+              source: 'pricing_table',
+              pricingVersion: 'v1',
+            },
+          });
+          await store.wakeups.create({ profileId: 'claude-code/work', cause: 'quota', at: 9_000 });
+        } finally {
+          await store.close();
+        }
+
+        // Everything survived a reopen, with the booleans and the JSON decoded.
+        const again = await SqliteStore.open({ path, driver }, clock);
+        try {
+          expect(await again.interruptions.get('X1')).toMatchObject({
+            signals: ['rate_limit'],
+            countedAsAttempt: true,
+            resumeForm: null,
+          });
+          expect(await again.quotaSnapshots.get('claude-code/work', '5h')).toMatchObject({
+            usedPercent: 99.5,
+            resetsAt: 9_000,
+          });
+          expect(await again.usage.get('U1')).toMatchObject({
+            costUsd: 0.25,
+            pricingVersion: 'v1',
+            outputTokens: null,
+          });
+          expect((await again.wakeups.list({ dueBy: 9_000 })).map((w) => w.id)).toEqual(['W1']);
+          expect((await again.profiles.get('claude-code/work'))?.state).toBe('active');
+          expect((await again.executors.list()).map((e) => e.id)).toEqual([
+            'opus-high@claude-code/work',
+          ]);
+        } finally {
+          await again.close();
+        }
+
+        const check = await openRawDatabase(driver, path, { readonly: true, busyTimeoutMs: 1000 });
+        try {
+          for (const [table, expected] of Object.entries(PHASE_5_COLUMNS)) {
+            const columns = (
+              check.prepare(`PRAGMA table_info(${table})`).all([]) as { name: string }[]
+            )
+              .map((column) => column.name)
+              .sort();
+            expect(columns).toEqual([...expected].sort());
+          }
+          expect(check.prepare('PRAGMA foreign_key_check').all([])).toEqual([]);
+          const applied = (
+            check.prepare('SELECT name FROM kysely_migration ORDER BY name').all([]) as {
+              name: string;
+            }[]
+          ).map((row) => row.name);
+          expect(applied.at(-1)).toBe('0009_profiles_executors_quota_usage');
+          expect(applied).toEqual(Object.keys(MIGRATIONS));
+        } finally {
+          check.close();
+        }
+      } finally {
+        await dispose();
+      }
+    });
+
+    it('the database itself refuses a second scheduled wakeup of a profile and cause', async () => {
+      const { dir, dispose } = await makeTempDir();
+      try {
+        const path = join(dir, 'wakeups.db');
+        const store = await SqliteStore.open({ path, driver }, clock);
+        await store.close();
+        const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+        try {
+          const insert = raw.prepare(
+            `INSERT INTO wakeups (id, seq, profile_id, cause, at, state, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          );
+          insert.run(['W1', 1, 'codex/a', 'quota', 1, 'scheduled', 1, 1]);
+          expect(() => insert.run(['W2', 2, 'codex/a', 'quota', 2, 'scheduled', 1, 1])).toThrow();
+          // A settled wakeup of the same pair does not collide, and neither does another cause.
+          insert.run(['W3', 3, 'codex/a', 'quota', 2, 'fired', 1, 1]);
+          insert.run(['W4', 4, 'codex/a', 'budget', 2, 'scheduled', 1, 1]);
+        } finally {
+          raw.close();
+        }
+      } finally {
+        await dispose();
+      }
+    });
+  },
+);

@@ -40,6 +40,12 @@ export class InMemoryStore implements Store {
   readonly sessions: Store['sessions'];
   readonly directives: Store['directives'];
   readonly ideas: Store['ideas'];
+  readonly profiles: Store['profiles'];
+  readonly executors: Store['executors'];
+  readonly interruptions: Store['interruptions'];
+  readonly quotaSnapshots: Store['quotaSnapshots'];
+  readonly usage: Store['usage'];
+  readonly wakeups: Store['wakeups'];
   readonly #clock: Pick<Clock, 'now'>;
   readonly #committed: InMemoryEventLog;
   readonly #committedAttempts: InMemoryAttemptRegistry;
@@ -74,6 +80,12 @@ export class InMemoryStore implements Store {
     this.sessions = aggregates.sessions;
     this.directives = aggregates.directives;
     this.ideas = aggregates.ideas;
+    this.profiles = aggregates.profiles;
+    this.executors = aggregates.executors;
+    this.interruptions = aggregates.interruptions;
+    this.quotaSnapshots = aggregates.quotaSnapshots;
+    this.usage = aggregates.usage;
+    this.wakeups = aggregates.wakeups;
   }
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {

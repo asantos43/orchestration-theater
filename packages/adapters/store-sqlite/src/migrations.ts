@@ -444,6 +444,160 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  // The tables of Phase 5 (section 7, P1): profiles, Executors, interruptions, the last quota
+  // reading per window, the usage of each turn and the wakeups. No foreign keys, like the other
+  // aggregates: an Executor outlives its profile on purpose (it only turns `invalid`, 5.7), and
+  // the daemon keeps the other links.
+  '0009_profiles_executors_quota_usage': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('profiles')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('client', 'text', notNull)
+        .addColumn('name', 'text', notNull)
+        .addColumn('kind', 'text', notNull)
+        .addColumn('provider', 'text', notNull)
+        .addColumn('state', 'text', notNull)
+        .addColumn('dir', 'text', notNull)
+        .addColumn('secret_ref', 'text')
+        .addColumn('notice_accepted_at', 'integer')
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addColumn('removed_at', 'integer')
+        .execute();
+      // The profiles of a provider (the second-account notice) and of a state (the active ones).
+      await db.schema
+        .createIndex('profiles_provider')
+        .ifNotExists()
+        .on('profiles')
+        .columns(['provider', 'state'])
+        .execute();
+
+      await db.schema
+        .createTable('executors')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('profile_id', 'text', notNull)
+        .addColumn('model', 'text', notNull)
+        .addColumn('effort', 'text')
+        .addColumn('provider', 'text', notNull)
+        .addColumn('validity', 'text', notNull)
+        .addColumn('invalid_reason', 'text')
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .execute();
+      await db.schema
+        .createIndex('executors_profile')
+        .ifNotExists()
+        .on('executors')
+        .columns(['profile_id', 'validity'])
+        .execute();
+
+      await db.schema
+        .createTable('interruptions')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('session_id', 'text', notNull)
+        .addColumn('play_id', 'text')
+        .addColumn('cause', 'text', notNull)
+        .addColumn('signals', 'text', jsonColumn('signals'))
+        .addColumn('resume_form', 'text')
+        .addColumn('from_executor', 'text')
+        .addColumn('to_executor', 'text')
+        .addColumn('counted_as_attempt', 'integer', notNull)
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .execute();
+      await db.schema
+        .createIndex('interruptions_session')
+        .ifNotExists()
+        .on('interruptions')
+        .columns(['session_id', 'seq'])
+        .execute();
+      await db.schema
+        .createIndex('interruptions_play')
+        .ifNotExists()
+        .on('interruptions')
+        .columns(['play_id', 'seq'])
+        .execute();
+
+      // The latest reading of each window of each profile: one row per pair.
+      await db.schema
+        .createTable('quota_snapshots')
+        .ifNotExists()
+        .addColumn('profile_id', 'text', notNull)
+        .addColumn('window', 'text', notNull)
+        .addColumn('used_percent', 'real', notNull)
+        .addColumn('resets_at', 'integer')
+        .addColumn('source', 'text', notNull)
+        .addColumn('observed_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addPrimaryKeyConstraint('quota_snapshots_pk', ['profile_id', 'window'])
+        .execute();
+
+      await db.schema
+        .createTable('usage')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('session_id', 'text', notNull)
+        .addColumn('play_id', 'text')
+        .addColumn('profile_id', 'text', notNull)
+        .addColumn('executor_id', 'text', notNull)
+        .addColumn('model', 'text', notNull)
+        .addColumn('input_tokens', 'integer')
+        .addColumn('output_tokens', 'integer')
+        .addColumn('cached_tokens', 'integer')
+        .addColumn('cost_usd', 'real')
+        .addColumn('cost_kind', 'text')
+        .addColumn('cost_source', 'text')
+        .addColumn('pricing_version', 'text')
+        .addColumn('occurred_at', 'integer', notNull)
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .execute();
+      // Consumption of a profile within a window of time, and of a session.
+      await db.schema
+        .createIndex('usage_profile_time')
+        .ifNotExists()
+        .on('usage')
+        .columns(['profile_id', 'occurred_at'])
+        .execute();
+      await db.schema
+        .createIndex('usage_session')
+        .ifNotExists()
+        .on('usage')
+        .columns(['session_id', 'occurred_at'])
+        .execute();
+
+      await db.schema
+        .createTable('wakeups')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('profile_id', 'text', notNull)
+        .addColumn('cause', 'text', notNull)
+        .addColumn('at', 'integer', notNull)
+        .addColumn('state', 'text', notNull)
+        .addColumn('os_trigger_id', 'text')
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .execute();
+      // At most one scheduled wakeup per profile and cause (the registry checks it too).
+      await sql`
+        create unique index if not exists wakeups_one_scheduled
+        on wakeups (profile_id, cause) where state = 'scheduled'
+      `.execute(db);
+      await db.schema
+        .createIndex('wakeups_due')
+        .ifNotExists()
+        .on('wakeups')
+        .columns(['state', 'at'])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */
