@@ -7,6 +7,13 @@ export {
   type PosixLauncherConfig,
   type PosixLauncherConfigInput,
 } from './config.js';
+export {
+  parseMemAvailableMb,
+  parseSmapsRollupKb,
+  PosixMemoryProbe,
+  POSIX_MEMORY_PROBE_ADAPTER,
+  type PosixMemoryProbeDeps,
+} from './memory-probe.js';
 export { PosixProcessLauncher, type PosixLauncherDeps } from './launcher.js';
 export { KILL_SETTLE_MS, killProcessTree, type KillDeps, type KillTarget } from './kill-tree.js';
 export {
