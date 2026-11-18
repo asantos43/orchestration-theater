@@ -43,6 +43,7 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   quotaWaitDeadline: 'pause',
   quotaWaitCounts: 'resume',
   quotaWaitMissed: 'handoff',
+  onProfileRemoved: 'handoff',
   continuePrompt: 'carry on',
   package: DEFAULT_PACKAGE_SETTINGS,
 };

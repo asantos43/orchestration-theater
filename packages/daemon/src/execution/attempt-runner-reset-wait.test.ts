@@ -616,9 +616,25 @@ describe('AttemptRunner waiting for the reset (P19)', () => {
       expect(await r.runner.releaseProfile(PROFILE, 'handoff')).toBe(1);
       const outcome = await running;
       expect(outcome).toMatchObject({ state: 'completed' });
-      expect(outcome.handoffs[0]).toMatchObject({ from: ID_ONE, to: ID_TWO });
+      expect(outcome.handoffs[0]).toMatchObject({
+        from: ID_ONE,
+        to: ID_TWO,
+        cause: 'profile_removed',
+        countedAsAttempt: false,
+      });
       expect((await eventsOf(r, 'attempt.reset_wait_ended'))[0]?.payload).toMatchObject({
         outcome: 'left',
+      });
+      expect(sent.asked).toEqual(['profile_removed']);
+      const rows = await r.store.interruptions.list();
+      expect(rows.find((row) => row.cause === 'profile_removed')).toMatchObject({
+        resumeForm: 'handoff',
+        toExecutor: ID_TWO,
+        countedAsAttempt: false,
+      });
+      expect((await eventsOf(r, 'session.interrupted')).at(-1)?.payload).toMatchObject({
+        cause: 'profile_removed',
+        form: 'handoff',
       });
       expect(r.transport.loaded).toHaveLength(0);
     },
@@ -626,19 +642,25 @@ describe('AttemptRunner waiting for the reset (P19)', () => {
   );
 
   it(
-    'a forced leave during the wait leaves awaiting_resume with daemon_restart, which does not wait again',
+    'a forced leave during the wait leaves awaiting_resume with profile_removed, and the next start goes straight to the baton',
     async () => {
       const quota = quotaOf(10 * MINUTE);
-      const r = await rig({ quota: quota.service });
+      const sent = twoPort();
+      const r = await rig({ quota: quota.service, handoff: () => sent.port });
+      await seedPlay(r.store);
       const running = r.runner.run(specOf(r, '#script:quota-signal', WAIT));
       await untilWaiting(r);
       expect(await r.runner.releaseProfile(PROFILE, 'force')).toBe(1);
-      expect(await running).toMatchObject({ state: 'interrupted' });
+      expect(await running).toMatchObject({ state: 'interrupted', cause: 'profile_removed' });
       const record = await r.store.attempts.get('play-1/demand-1/1');
-      expect(record).toMatchObject({ state: 'awaiting_resume', cause: 'daemon_restart' });
+      expect(record).toMatchObject({ state: 'awaiting_resume', cause: 'profile_removed' });
       if (record === undefined) throw new Error('no record');
+      expect((await r.store.interruptions.list()).map((row) => row.cause)).toContain(
+        'profile_removed',
+      );
 
-      // The next start: the cause is not a reset wait, so the conversation is loaded at once.
+      // The next start: the cause is not a reset wait and the profile is gone, so no conversation
+      // is loaded on it: the baton goes to the next Executor at once (P21b).
       const next = new AttemptRunner({
         store: r.store,
         vcs: defaultVcs(),
@@ -648,6 +670,7 @@ describe('AttemptRunner waiting for the reset (P19)', () => {
         worktreeRoot: r.worktreeRoot,
         logger: pino({ level: 'silent' }),
         quota: quota.service,
+        handoff: sent.port,
       });
       const resumed = await next.resume(record, {
         profile: TEST_PROFILE,
@@ -655,8 +678,14 @@ describe('AttemptRunner waiting for the reset (P19)', () => {
         policy: TEST_POLICY,
       });
       expect(resumed).toMatchObject({ state: 'completed' });
+      expect(resumed.handoffs[0]).toMatchObject({
+        cause: 'profile_removed',
+        from: ID_ONE,
+        to: ID_TWO,
+        countedAsAttempt: false,
+      });
       expect(await eventsOf(r, 'attempt.reset_wait_started')).toHaveLength(1);
-      expect(r.transport.loaded).toHaveLength(1);
+      expect(r.transport.loaded).toHaveLength(0);
     },
     TEST_TIMEOUT_MS,
   );

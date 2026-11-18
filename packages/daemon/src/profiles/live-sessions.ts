@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AttemptRunner } from '../execution/attempt-runner.js';
+import type { DirectorSessions } from '../orchestration/director.js';
 import type { SessionPool } from '../execution/pool.js';
 import type { ProfileSessions } from './service.js';
 
 export interface LiveProfileSessionsOptions {
   readonly pool: Pick<SessionPool, 'sessionsOf' | 'endProcessesOf'>;
   readonly runner: Pick<AttemptRunner, 'attemptsOf' | 'leasedOn' | 'releaseProfile'>;
+  /**
+   * The Director sessions (P21b, N153). With it, a drain under `profiles.drain.director:
+   * failover` moves the Director that stands on the profile to another Executor.
+   */
+  readonly directors?: Pick<DirectorSessions, 'leaveProfile'>;
 }
 
 /**
@@ -21,11 +27,13 @@ export interface LiveProfileSessionsOptions {
  *   parked with its reason, never dropped.
  * - `release('force')`: the same attempts stop the way a daemon stop does (`awaiting_resume`),
  *   and every client process of the profile is ended, the sessions the pool holds for others too.
+ * - `releaseStanding` (P21b): the Director sessions on the profile move to another Executor (the
+ *   failover of P20, cause `profile_removed`), with the work in progress put back in the queue.
  * - `settle`: ends the client processes the profile still has (the idle ones the pool keeps for
  *   the next session) before its logout and its directory go.
  */
 export function liveProfileSessions(options: LiveProfileSessionsOptions): ProfileSessions {
-  const { pool, runner } = options;
+  const { pool, runner, directors } = options;
   return {
     count: (profileId) =>
       Promise.resolve(
@@ -37,6 +45,9 @@ export function liveProfileSessions(options: LiveProfileSessionsOptions): Profil
       if (how === 'force') await pool.endProcessesOf(profileId);
       return touched;
     },
+    ...(directors === undefined
+      ? {}
+      : { releaseStanding: (profileId: string) => directors.leaveProfile(profileId) }),
     settle: async (profileId) => {
       await pool.endProcessesOf(profileId);
     },

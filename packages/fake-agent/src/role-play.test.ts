@@ -4,7 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { directorQuotaFailure, playRolePlay, type RolePlayHost } from './role-play.js';
+import {
+  directorHangs,
+  directorQuotaFailure,
+  playRolePlay,
+  type RolePlayHost,
+} from './role-play.js';
 import { parseScriptSpec } from './scripts.js';
 
 interface Call {
@@ -384,6 +389,18 @@ describe('the role-play script', () => {
     expect((capped.calls[0]?.args as { group: { ideaIds: string[] } }).group.ideaIds).toEqual([
       'I1',
     ]);
+  });
+});
+
+describe('the hang of the Director (P21b)', () => {
+  it('hangs the first time and lets the prompt that comes back through', async () => {
+    const text = '#ot-director-hang\n#ot-chat hello';
+    expect(await directorHangs(text)).toBe(true);
+    expect(await directorHangs(text)).toBe(false);
+  });
+
+  it('does nothing without the marker', async () => {
+    expect(await directorHangs('#ot-chat hello')).toBe(false);
   });
 });
 

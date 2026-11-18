@@ -2,6 +2,7 @@
 import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
+  DRAIN_DIRECTOR_MODES,
   DRAIN_ON_TIMEOUT_MODES,
   REMOVED_DIR_MODES,
   SAME_PROVIDER_NOTICE_MODES,
@@ -12,7 +13,12 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
   it('[proposta] has the provisional defaults', () => {
     expect(parseConfig('').profiles).toEqual({
       same_provider_notice: 'once',
-      drain: { timeout: 600_000, on_timeout: 'handoff', removed_dir: 'delete' },
+      drain: {
+        timeout: 600_000,
+        on_timeout: 'handoff',
+        removed_dir: 'delete',
+        director: 'failover',
+      },
       api_key_env: {},
       entries: {},
     });
@@ -29,6 +35,12 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
         parseConfig(`profiles:\n  drain:\n    on_timeout: ${mode}\n`).profiles.drain.on_timeout,
       ).toBe(mode);
     }
+    for (const mode of DRAIN_DIRECTOR_MODES) {
+      expect(
+        parseConfig(`profiles:\n  drain:\n    director: ${mode}\n`).profiles.drain.director,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('profiles:\n  drain:\n    director: sometimes\n')).toThrow(/director/);
     for (const mode of REMOVED_DIR_MODES) {
       expect(
         parseConfig(`profiles:\n  drain:\n    removed_dir: ${mode}\n`).profiles.drain.removed_dir,

@@ -19,6 +19,7 @@ const RULES: InterruptionRules = {
   transientExhausted: 'last',
   clientCrashCounts: 'repeat',
   stuckSameErrorTimes: 3,
+  onProfileRemoved: 'handoff',
 };
 
 function factsOf(
@@ -345,6 +346,34 @@ const TABLE: readonly Row[] = [
     name: 'repeated: a quota that is a handoff anyway stays a handoff',
     facts: factsOf('quota_exhausted', { repeated: 9 }),
     expect: { cause: 'quota_exhausted', action: 'handoff', form: 'handoff', counts: false },
+  },
+  // ---- profile_removed (P21b, N152) ----
+  {
+    name: 'profile_removed: the baton goes to another Executor, uncounted',
+    facts: factsOf('profile_removed'),
+    expect: {
+      action: 'handoff',
+      form: 'handoff',
+      counts: false,
+      differentExecutor: true,
+    },
+  },
+  {
+    name: 'profile_removed: neither max_resumes, a repetition nor a free drop changes it',
+    facts: factsOf('profile_removed', { resumes: 9, repeated: 9, free: true, inFlight: 'stop' }),
+    rules: { maxResumes: 0 },
+    expect: { action: 'handoff', form: 'handoff', counts: false, differentExecutor: true },
+  },
+  {
+    name: 'profile_removed: never a reset wait, even with a quota that resets soon',
+    facts: factsOf('profile_removed', { whenExhausted: 'wait', resetsAt: NOW + MINUTE }),
+    expect: { action: 'handoff', form: 'handoff', counts: false, differentExecutor: true },
+  },
+  {
+    name: 'profile_removed: resume.on_profile_removed park leaves it to the Director',
+    facts: factsOf('profile_removed'),
+    rules: { onProfileRemoved: 'park' },
+    expect: { action: 'director_judgment', form: null, counts: false },
   },
 ];
 

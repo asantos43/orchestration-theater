@@ -253,7 +253,11 @@ interface Waiter {
   readonly wake: () => void;
 }
 
-/** A wait for the reset the daemon was in when it restarted: it is taken up before any session opens. */
+/**
+ * What the daemon takes up when it restarts, before any session opens: a wait for the reset the
+ * attempt was in (P19, `wait_for_reset`) or the baton of an attempt whose profile was removed with
+ * `profiles.drain.on_timeout: force` (P21b, `handoff` or `director_judgment`).
+ */
 interface WaitAgain {
   readonly ended: Extract<Ended, { kind: 'interrupted' }>;
   readonly decision: InterruptionDecision;
@@ -502,21 +506,26 @@ export class AttemptRunner {
   async resume(record: AttemptRecord, resolved: ResumeContext): Promise<AttemptOutcome> {
     this.#assertOpen();
     const waiting = record.state === 'awaiting_resume' && isResetWaitCause(record.cause);
+    // P21b: the profile of the session was removed (`force`); its conversation is not loaded again.
+    const removed = record.state === 'awaiting_resume' && record.cause === 'profile_removed';
+    const cause = removed ? 'profile_removed' : 'daemon_restart';
     const input: AttemptRecordInput = {
       ...attemptInputOf(record),
       state: 'resuming',
-      cause: 'daemon_restart',
+      cause,
     };
     const context = this.#context(input, { ...resolved, ...ids(record) }, '');
     const missing = await this.#missingToResume(record);
     if (waiting && missing === undefined) return this.#resumeWait(context, record);
+    // The baton needs no conversation, only the worktree.
+    if (removed && missing !== 'worktree_missing') return this.#resumeRemoved(context, record);
     const decision = decideInterruption(
-      { ...this.#facts(context, 'daemon_restart'), reloadable: missing === undefined },
+      { ...this.#facts(context, cause), reloadable: missing === undefined },
       this.#rules(),
     );
     if (missing !== undefined) {
       await context.journal.write(undefined, { state: 'interrupted', cause: missing });
-      await this.#settleRestartRow(context, decision, [`resolver:${missing}`]);
+      await this.#settleRestartRow(context, decision, [`resolver:${missing}`], cause);
       await context.journal.flush();
       return this.#outcome(context, 'interrupted', missing, undefined, true, decision);
     }
@@ -541,6 +550,26 @@ export class AttemptRunner {
       prompt: this.#options.settings.continuePrompt,
       cause: 'daemon_restart',
     });
+  }
+
+  /**
+   * The attempt waits to be resumed because its profile was removed (P21b, `drain.on_timeout:
+   * force`): the profile is gone, so nothing is loaded there. What the policy says for
+   * `profile_removed` is carried out at once: the baton to the next Executor of the role, or the
+   * attempt parked for the Director (`resume.on_profile_removed: park`).
+   */
+  #resumeRemoved(context: AttemptContext, record: AttemptRecord): Promise<AttemptOutcome> {
+    const decision = decideInterruption(this.#facts(context, 'profile_removed'), this.#rules());
+    const ended: Extract<Ended, { kind: 'interrupted' }> = {
+      kind: 'interrupted',
+      cause: 'profile_removed',
+      detail: 'the profile of the session was removed and the attempt was waiting to be resumed',
+      native: false,
+      kill: false,
+      signals: ['profile:leaving', 'resume:after_removal'],
+      sha: record.lastCheckpoint ?? undefined,
+    };
+    return this.#track(context, undefined, { ended, decision });
   }
 
   /**
@@ -681,11 +710,12 @@ export class AttemptRunner {
     context: AttemptContext,
     decision: InterruptionDecision,
     signals: readonly string[],
+    cause: InterruptionCause = 'daemon_restart',
   ): Promise<void> {
     const { sessionId, spec } = context;
     if (sessionId === undefined) return;
     const { store } = this.#options;
-    const rows = await store.interruptions.list({ sessionId, causes: ['daemon_restart'] });
+    const rows = await store.interruptions.list({ sessionId, causes: [cause] });
     const open = rows.filter((row) => row.resumeForm === null).at(-1);
     if (open !== undefined && decision.form !== null) {
       await store.interruptions.update(open.id, {
@@ -697,7 +727,7 @@ export class AttemptRunner {
     await store.interruptions.create({
       sessionId,
       playId: spec.playId,
-      cause: 'daemon_restart',
+      cause,
       signals: [...signals, `action:${decision.action}`],
       resumeForm: decision.form,
       fromExecutor: this.#executorId(context),
@@ -768,8 +798,12 @@ export class AttemptRunner {
     const { settings } = this.#options;
     let step: Step;
     if (wait !== undefined) {
-      // A wait the daemon was in when it restarted: pick it up before any session opens.
-      const waited = await this.#resetWait(context, wait.ended, wait.decision, true);
+      // What the daemon was in when it restarted (a wait for the reset, or the baton of a profile
+      // that was removed): pick it up before any session opens.
+      const waited =
+        wait.decision.action === 'wait_for_reset'
+          ? await this.#resetWait(context, wait.ended, wait.decision, true)
+          : await this.#removedProfile(context, wait.ended, wait.decision);
       if (waited.kind === 'done') return waited.outcome;
       step = waited.step;
     } else if (first !== undefined) {
@@ -793,7 +827,7 @@ export class AttemptRunner {
           // The policy of 5.16 decides first, so the event and the row carry what it decided.
           const { decision, free, signals } =
             ended.leaving === true
-              ? this.#leavingDecision(ended)
+              ? this.#leavingDecision(context, ended)
               : await this.#decide(context, ended);
           // A handoff chooses the next Executor and builds the package before the event is
           // written, so `session.interrupted` already says where the work goes.
@@ -933,7 +967,7 @@ export class AttemptRunner {
     if (how === 'force') return { kind: 'stopped', sha, leaving: true };
     return {
       kind: 'interrupted',
-      cause: 'daemon_restart',
+      cause: 'profile_removed',
       detail: 'the profile of the session is being removed',
       native: false,
       kill: true,
@@ -1367,6 +1401,7 @@ export class AttemptRunner {
       transientExhausted: settings.transientExhausted,
       clientCrashCounts: settings.clientCrashCounts,
       stuckSameErrorTimes: settings.stuckSameErrorTimes,
+      onProfileRemoved: settings.onProfileRemoved,
     };
   }
 
@@ -1500,30 +1535,21 @@ export class AttemptRunner {
   }
 
   /**
-   * The decision for a session whose profile is leaving (P21): not one of the table of 5.16, which
-   * has no row for it, so the cause is the one that is the same for the work, a loss that is no
-   * fault of the Executor (`daemon_restart`), and the action is the baton. It costs no attempt.
-   * [proposta] A cause of its own (`profile_removed`) waits for the owner's call on the table.
+   * The decision for a session whose profile is leaving (P21, P21b): the row of the table of 5.16
+   * for `profile_removed` (N152). By default the baton, no attempt spent, outside `max_resumes`,
+   * never a native resume on the profile that left and never the wait for its reset;
+   * `resume.on_profile_removed: park` leaves the attempt for the Director.
    */
-  #leavingDecision(ended: Extract<Ended, { kind: 'interrupted' }>): {
+  #leavingDecision(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+  ): {
     decision: InterruptionDecision;
     free: boolean;
     signals: readonly string[];
   } {
-    return {
-      decision: {
-        cause: 'daemon_restart',
-        action: 'handoff',
-        form: 'handoff',
-        countsAsAttempt: false,
-        delayMs: 0,
-        resetsAt: null,
-        differentExecutor: true,
-        reason: 'its profile is being removed; the work goes to the next Executor of the role',
-      },
-      free: false,
-      signals: [...ended.signals, 'action:handoff'],
-    };
+    const decision = decideInterruption(this.#facts(context, 'profile_removed'), this.#rules());
+    return { decision, free: false, signals: [...ended.signals, `action:${decision.action}`] };
   }
 
   /** What the `QuotaService` says about a limit error: the cause (quota or cap) and the reset. */
@@ -1801,6 +1827,36 @@ export class AttemptRunner {
         ended.detail,
         ended.sha,
         ['reset_wait:missed', 'action:handoff'],
+        handoff.target,
+      );
+      return { kind: 'step', step: await this.#handoff(context, decision, handoff) };
+    }
+    const wait = handoff?.wait ?? noHandoffPort(decision);
+    if (wait !== undefined) await this.#handoffFailed(context, decision, wait);
+    return { kind: 'done', outcome: await this.#parked(context, decision, wait) };
+  }
+
+  /**
+   * The baton of an attempt whose profile was removed while it waited to be resumed (P21b): the
+   * same code as a handoff the policy chose from the start. `park` (or a handoff nobody could take)
+   * leaves the attempt `interrupted` with `needsDecision`.
+   */
+  async #removedProfile(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+    decision: InterruptionDecision,
+  ): Promise<Waited> {
+    if (decision.action !== 'handoff') {
+      return { kind: 'done', outcome: await this.#parked(context, decision) };
+    }
+    const handoff = await this.#prepareHandoff(context, ended, decision);
+    if (handoff?.kind === 'ready') {
+      await this.#interruptionEvent(
+        context,
+        decision,
+        ended.detail,
+        ended.sha,
+        ended.signals,
         handoff.target,
       );
       return { kind: 'step', step: await this.#handoff(context, decision, handoff) };
@@ -2174,7 +2230,9 @@ export class AttemptRunner {
   ): Promise<void> {
     const { sessionId, sessionOpen, spec } = context;
     if (sessionId === undefined) return;
-    if (!sessionOpen) {
+    // The removal of the profile has a row of its own whatever the session was doing: a wait for
+    // the reset (P19) has closed the conversation, and its row says `quota_exhausted` (P21b).
+    if (!sessionOpen && decision.cause !== 'profile_removed') {
       // The conversation never opened (a native reload that failed): its row, written when the
       // session dropped, said `native`; the baton changes it to what really happened.
       if (target === undefined) return;
@@ -2266,10 +2324,11 @@ export class AttemptRunner {
     sha: string | undefined,
     leaving = false,
   ): Promise<AttemptOutcome> {
-    const decision = {
-      ...decideInterruption(this.#facts(context, 'daemon_restart'), this.#rules()),
-      form: null,
-    };
+    // A profile that left with `force` (P21b) is a cause of its own, and what follows is known: the
+    // baton, or the Director's judgment. A stop of the daemon does not know yet how it will continue.
+    const cause = leaving ? 'profile_removed' : 'daemon_restart';
+    const decided = decideInterruption(this.#facts(context, cause), this.#rules());
+    const decision = leaving ? decided : { ...decided, form: null };
     await this.#interruptionEvent(
       context,
       decision,
@@ -2277,12 +2336,9 @@ export class AttemptRunner {
       sha ?? context.journal.record.lastCheckpoint ?? undefined,
       [leaving ? 'profile:leaving' : 'daemon:stopping', `action:${decision.action}`],
     );
-    await this.#closed(context, 'interrupted', {
-      state: 'awaiting_resume',
-      cause: 'daemon_restart',
-    });
+    await this.#closed(context, 'interrupted', { state: 'awaiting_resume', cause });
     await context.journal.flush();
-    return this.#outcome(context, 'interrupted', 'daemon_restart', undefined, false, decision);
+    return this.#outcome(context, 'interrupted', cause, undefined, false, decision);
   }
 
   /**

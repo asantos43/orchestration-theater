@@ -108,7 +108,12 @@ describe('removing a profile with sessions in progress (P21)', () => {
         paths: dataPaths(data.dir),
         settings: {
           sameProviderNotice: 'off',
-          drain: { timeoutMs: 600_000, onTimeout: 'handoff', removedDir: 'delete' },
+          drain: {
+            timeoutMs: 600_000,
+            onTimeout: 'handoff',
+            removedDir: 'delete',
+            director: 'failover',
+          },
         },
         adapters: () => rig.adapter,
         transport: () => rig.transport,
@@ -173,7 +178,7 @@ describe('removing a profile with sessions in progress (P21)', () => {
       const outcome = await slow;
       expect(outcome.state).toBe('completed');
       expect(outcome).toMatchObject({
-        handoffs: [{ cause: 'daemon_restart', to: ID_TWO, countedAsAttempt: false }],
+        handoffs: [{ cause: 'profile_removed', to: ID_TWO, countedAsAttempt: false }],
       });
       expect(await rig.store.attempts.get(outcome.attemptId)).toMatchObject({
         profile: 'two',

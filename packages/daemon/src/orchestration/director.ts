@@ -28,7 +28,12 @@ import type { DataPaths } from '../paths.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { QuotaService } from '../quota/service.js';
 import { situationText } from '../situations.js';
-import { directorFailureOf, failoverApplies, type DirectorFailure } from './director-failover.js';
+import {
+  directorFailureOf,
+  failoverApplies,
+  PROFILE_REMOVED,
+  type DirectorFailure,
+} from './director-failover.js';
 import { resolveRolePolicy } from './role-policy.js';
 import type { RoleSelection, SelectedExecutor } from './role-selection.js';
 
@@ -87,8 +92,8 @@ interface PendingFailover {
   /** When the limit comes back, if the quota service knows. */
   readonly resetsAt: number | null;
   readonly detail: string | null;
-  /** The prompt of the queue that was in progress and went back to it. */
-  readonly requeued: string;
+  /** The prompt of the queue that was in progress and went back to it; null when none was. */
+  readonly requeued: string | null;
   /** The `waiting` notice was already written. */
   announcedWaiting: boolean;
 }
@@ -130,6 +135,13 @@ interface DirectorSession {
   readonly failedExecutors: Set<string>;
   /** The failover the opening in course belongs to; `undefined` for an ordinary wake. */
   failover: PendingFailover | undefined;
+  /**
+   * The profile of the open session is leaving (P21b, N153): whatever ends the turn in course is
+   * the removal, and the session is replaced by the failover with the cause `profile_removed`.
+   */
+  leaving: boolean;
+  /** Settled when the session that was on the leaving profile has let go of its lease. */
+  left: Deferred | undefined;
   /** The prefix of the role goes into the first prompt of the session. */
   prefixed: boolean;
   /** The session was opened again after a sleep: its first prompt carries the state summary. */
@@ -154,6 +166,9 @@ interface ParkingHooks {
   readonly signal: AbortSignal;
   readonly parked: () => void;
 }
+
+/** What the notice and the log say about a failover caused by the removal of the profile (P21b). */
+const LEAVING_ERROR = new Error('The profile of the Director session is being removed.');
 
 function textOf(update: NormalizedUpdate): string {
   return update.kind === 'agent_message_chunk' && update.content.type === 'text'
@@ -238,6 +253,60 @@ export class DirectorSessions {
       states: ['pending'],
     });
     return pending.length > 0;
+  }
+
+  /**
+   * P21b (N153, `profiles.drain.director: failover`): the Director of every scenario whose open
+   * session stands on `profileId` moves to the next Executor of its list, through the failover of
+   * P20 (cause `profile_removed`), so the removal of the profile is not held by it. A turn in
+   * course is cut with the session (the adapter process is ended) and its prompt stays in the
+   * queue; an idle Director just changes session. Resolves, with the number of sessions moved,
+   * once each one has let go of its lease on the profile; it does not wait for the new session,
+   * which may hold for an Executor (`selection.director_wait`). A sleeping Director has no lease
+   * and holds nothing: its next wake picks an Executor of a profile that is not leaving.
+   */
+  async leaveProfile(profileId: string): Promise<number> {
+    const standing = [...this.#opened.values()].filter(
+      (session) => session.lease?.profileId === profileId,
+    );
+    await Promise.all(standing.map((session) => this.#leave(session)));
+    return standing.length;
+  }
+
+  async #leave(session: DirectorSession): Promise<void> {
+    const { lease } = session;
+    if (lease === undefined) return;
+    if (session.left !== undefined) {
+      await session.left.promise;
+      return;
+    }
+    const left = deferred();
+    session.left = left;
+    session.leaving = true;
+    try {
+      if (session.active) {
+        // The turn fails with the session; `#turn` replaces it and puts the prompt back.
+        await lease.kill().catch((error: unknown) => {
+          this.#options.logger.warn(
+            { err: error, scenarioId: session.scenarioId },
+            'the Director process did not end',
+          );
+        });
+      } else {
+        await this.#failover(session, undefined, PROFILE_REMOVED, LEAVING_ERROR);
+      }
+    } finally {
+      // A turn that ended meanwhile did the replacing; a failover that did not run lets go too.
+      if (!session.active && session.lease === lease) this.#letGo(session);
+    }
+    await left.promise;
+  }
+
+  /** The session is no longer on the leaving profile (or never will be): `leaveProfile` goes on. */
+  #letGo(session: DirectorSession): void {
+    session.leaving = false;
+    session.left?.resolve();
+    session.left = undefined;
   }
 
   /** Ends every session. Idempotent. */
@@ -364,8 +433,9 @@ export class DirectorSessions {
           scenarioId: session.scenarioId,
         });
       }
+      const failing = session.failover !== undefined;
       await this.#settleFailover(session, 'switched', picked.executor.id);
-      if (park.held || slept) this.#arm(session);
+      if (park.held || slept || failing) this.#arm(session);
     } catch (error) {
       // A caller of `ensure` that stayed behind the opening sees the error; one that was released
       // when the wait began cannot, so the log keeps it.
@@ -524,6 +594,8 @@ export class DirectorSessions {
       executor: undefined,
       failedExecutors: new Set(),
       failover: undefined,
+      leaving: false,
+      left: undefined,
       prefixed: false,
       summaryNeeded: false,
     };
@@ -574,6 +646,9 @@ export class DirectorSessions {
     });
     try {
       await lease.session.prompt([{ type: 'text', text }]);
+      // A turn cut by the removal of its profile (P21b) may come back as if it had ended: what it
+      // said is not the answer, so the prompt goes back to the queue like after an error.
+      if (session.leaving) throw LEAVING_ERROR;
       session.prefixed = true;
       session.summaryNeeded = false;
       session.failed = false;
@@ -581,8 +656,9 @@ export class DirectorSessions {
     } catch (error) {
       session.failed = true;
       reply = `${reply}\n[${error instanceof Error ? error.message : String(error)}]`;
-      failure = directorFailureOf(error);
-      failedWith = error;
+      // The profile leaving is what ended the turn (P21b), whatever error the session ended with.
+      failure = session.leaving ? PROFILE_REMOVED : directorFailureOf(error);
+      failedWith = session.leaving ? LEAVING_ERROR : error;
       throw error;
     } finally {
       subscription.dispose();
@@ -604,12 +680,17 @@ export class DirectorSessions {
           );
         });
       }
+      // Whatever came of it, a leave waiting for this turn is not kept waiting.
+      if (session.leaving && session.lease === undefined) this.#letGo(session);
       this.#arm(session);
     }
   }
 
   /** Whether `scenarios.director_failover` replaces the session for this failure. */
   #answers(failure: DirectorFailure): boolean {
+    // The removal of the profile is governed by `profiles.drain.director`, which only calls
+    // `leaveProfile` when it is `failover`; `scenarios.director_failover` is for errors.
+    if (failure.cause === PROFILE_REMOVED.cause) return true;
     return failoverApplies(this.#options.config.scenarios.director_failover, failure.cause);
   }
 
@@ -624,7 +705,21 @@ export class DirectorSessions {
    */
   async #failover(
     session: DirectorSession,
-    item: PromptQueueItem,
+    item: PromptQueueItem | undefined,
+    failure: DirectorFailure,
+    error: unknown,
+  ): Promise<void> {
+    try {
+      await this.#replace(session, item, failure, error);
+    } finally {
+      // The lease of the leaving profile is gone, or the Director is closing: `leaveProfile` goes on.
+      if (session.leaving && session.lease === undefined) this.#letGo(session);
+    }
+  }
+
+  async #replace(
+    session: DirectorSession,
+    item: PromptQueueItem | undefined,
     failure: DirectorFailure,
     error: unknown,
   ): Promise<void> {
@@ -667,17 +762,20 @@ export class DirectorSessions {
       cause,
       resetsAt,
       detail: situationText(error),
-      requeued: item.id,
+      requeued: item?.id ?? null,
       announcedWaiting: false,
     };
     logger.warn(
-      { scenarioId: session.scenarioId, cause, from, prompt: item.id },
+      { scenarioId: session.scenarioId, cause, from, prompt: item?.id ?? null },
       'the Director session failed: opening another',
     );
     await lease?.release().catch((releaseError: unknown) => {
       logger.warn({ err: releaseError, scenarioId: session.scenarioId }, 'the lease did not go');
     });
     grant?.revoke();
+    // The leaving profile is let go of before the new session starts to open: that is all the
+    // removal waits for, never for an Executor to be found.
+    if (session.leaving) this.#letGo(session);
     // Not awaited: the failed turn ends first, so the pump stops and `dispatcher.resume` can start
     // it again once the session is open. A failure of the opening is told by `#settleFailover`.
     this.#wake(session).catch(() => undefined);
