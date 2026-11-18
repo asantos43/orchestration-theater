@@ -14,6 +14,7 @@ import {
   parseConfig,
   parseDuration,
   parseTimeOfDay,
+  sessionMbOf,
   sessionsPerProcessOf,
   VERIFY_MODES,
 } from './config.js';
@@ -182,9 +183,10 @@ describe('parseConfig, execution keys', () => {
       max_sessions: 4,
       idle: 120_000,
       shared_cancel: 'escalate',
-      'claude-code': {},
-      codex: { sessions_per_process: 6 },
-      opencode: { sessions_per_process: 4, process_model: 'per_profile' },
+      admission: { mode: 'slots', min_free_mb: 2048, recheck: 5000, unknown_ram: 'admit' },
+      'claude-code': { session_mb: 320 },
+      codex: { sessions_per_process: 6, session_mb: 150 },
+      opencode: { sessions_per_process: 4, session_mb: 520, process_model: 'per_profile' },
     });
     expect(config.limits).toEqual({
       preset: 'moderate',
@@ -418,6 +420,49 @@ describe('parseConfig, execution keys', () => {
       expect(parseConfig(`pool:\n  shared_cancel: ${mode}\n`).pool.shared_cancel).toBe(mode);
     }
     expect(() => parseConfig('pool:\n  shared_cancel: kill\n')).toThrow(/shared_cancel/);
+  });
+});
+
+describe('parseConfig, pool.admission and session_mb (Phase 5, P4)', () => {
+  it('defaults to the behaviour from before P4 (mode slots)', () => {
+    expect(parseConfig('').pool.admission.mode).toBe('slots');
+  });
+
+  it('takes the three modes of pool.admission.mode and rejects any other', () => {
+    for (const mode of ['slots', 'ram', 'ram_and_quota']) {
+      expect(parseConfig(`pool:\n  admission:\n    mode: ${mode}\n`).pool.admission.mode).toBe(
+        mode,
+      );
+    }
+    expect(() => parseConfig('pool:\n  admission:\n    mode: quota\n')).toThrow(/mode/);
+  });
+
+  it('reads min_free_mb, recheck and unknown_ram, and refuses nonsense', () => {
+    const admission = parseConfig(
+      'pool:\n  admission:\n    min_free_mb: 4096\n    recheck: 10s\n    unknown_ram: wait\n',
+    ).pool.admission;
+    expect(admission).toMatchObject({ min_free_mb: 4096, recheck: 10_000, unknown_ram: 'wait' });
+    expect(() => parseConfig('pool:\n  admission:\n    min_free_mb: -1\n')).toThrow(/min_free_mb/);
+    expect(() => parseConfig('pool:\n  admission:\n    recheck: 0s\n')).toThrow(/recheck/);
+    expect(() => parseConfig('pool:\n  admission:\n    unknown_ram: maybe\n')).toThrow(
+      /unknown_ram/,
+    );
+    expect(() => parseConfig('pool:\n  admission:\n    other: 1\n')).toThrow(InvalidInput);
+  });
+
+  it('has a session_mb per client from the N74 measurement, and takes a number or auto', () => {
+    const { pool } = parseConfig('');
+    expect(pool['claude-code'].session_mb).toBe(320);
+    expect(pool.codex.session_mb).toBe(150);
+    expect(pool.opencode.session_mb).toBe(520);
+    const set = parseConfig(
+      'pool:\n  codex:\n    session_mb: auto\n  opencode:\n    session_mb: 900\n',
+    ).pool;
+    expect(set.codex.session_mb).toBe('auto');
+    expect(set.opencode.session_mb).toBe(900);
+    expect(sessionMbOf(set, 'codex')).toBe('auto');
+    expect(() => parseConfig('pool:\n  codex:\n    session_mb: 0\n')).toThrow(/session_mb/);
+    expect(() => parseConfig('pool:\n  codex:\n    session_mb: big\n')).toThrow(/session_mb/);
   });
 });
 

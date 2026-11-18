@@ -2,6 +2,7 @@
 import type {
   ClientAdapter,
   Clock,
+  MemoryProbe,
   ProcessLauncher,
   SessionTransport,
   Store,
@@ -9,6 +10,7 @@ import type {
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import type { McpAccess } from '../mcp/access.js';
+import type { CanAdmit, LocalInstanceResolver } from './admission.js';
 import { AttemptRunner } from './attempt-runner.js';
 import { SessionPool } from './pool.js';
 import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
@@ -28,6 +30,12 @@ export interface ExecutionOptions {
   readonly resolver?: AttemptResolver;
   /** The framework MCP server, which hands each attempt's session its tools (5.3). */
   readonly mcp?: McpAccess;
+  /** Free RAM for the admission of `pool.admission.mode: ram | ram_and_quota`. */
+  readonly memory?: MemoryProbe;
+  /** The quota hook of `ram_and_quota`; P15 wires it to the `QuotaService`. Default: always yes. */
+  readonly canAdmit?: CanAdmit;
+  /** The local instance behind a profile: its `slots` are the vacancies of that profile. */
+  readonly localInstance?: LocalInstanceResolver;
 }
 
 /**
@@ -48,6 +56,9 @@ export class Execution {
       transport: options.transport,
       clock: options.clock,
       settings: options.settings.pool,
+      ...(options.memory === undefined ? {} : { memory: options.memory }),
+      ...(options.canAdmit === undefined ? {} : { canAdmit: options.canAdmit }),
+      ...(options.localInstance === undefined ? {} : { localInstance: options.localInstance }),
     });
     this.runner = new AttemptRunner({
       store: options.store,
