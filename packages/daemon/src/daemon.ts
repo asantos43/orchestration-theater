@@ -40,6 +40,7 @@ import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
+import { QuotaService, quotaSettingsOf } from './quota/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
@@ -149,6 +150,8 @@ export interface DaemonHandle {
   readonly producer: ProducerChannel | undefined;
   /** The orders (architecture 5.17): what is in force, the drafts and the rules. */
   readonly directives: DirectiveService;
+  /** The quota of the profiles (architecture 5.6): signals, readings, state and freshness. */
+  readonly quota: QuotaService;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -190,6 +193,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let composition: Composition | undefined;
   let mcp: FrameworkMcpServer | undefined;
   let directives: DirectiveService | undefined;
+  let quota: QuotaService | undefined;
   let browserTools: BrowserTools | undefined;
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
   // Producer channel wait here (5.21: "os comandos que mudam estado esperam").
@@ -221,6 +225,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         timezone: config.directives.timezone,
         expiringNoticeMs: config.directives.expiring_notice,
       },
+      logger: composition.logger,
+    });
+    quota = new QuotaService({
+      store: composition.store,
+      clock: composition.clock,
+      settings: quotaSettingsOf(config),
       logger: composition.logger,
     });
     const handlers = options.mcpHandlers ?? new ToolHandlers();
@@ -284,6 +294,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       mcp,
       browserTools,
       directives,
+      quota,
       lock,
       version,
       prompts,
@@ -294,6 +305,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   } catch (error) {
     gate.open();
     await directives?.stop().catch(() => undefined);
+    await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
     await composition?.close().catch(() => undefined);
@@ -310,6 +322,7 @@ interface RunInput {
   readonly mcp: FrameworkMcpServer;
   readonly browserTools: BrowserTools | undefined;
   readonly directives: DirectiveService;
+  readonly quota: QuotaService;
   readonly lock: InstanceLock;
   readonly version: string;
   readonly prompts: PromptSource;
@@ -327,6 +340,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcp,
     browserTools,
     directives,
+    quota,
     lock,
     version,
     prompts,
@@ -388,7 +402,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     launcher: composition.launcher,
     logger,
   });
-  const execution = buildExecution(options, config, composition, paths.worktrees, mcp);
+  const execution = buildExecution(options, config, composition, paths.worktrees, mcp, quota);
+  // The probes were handed over by `buildExecution`; the catch-up and the readings start here.
+  await quota.start();
   let attemptsInterrupted = 0;
   let attempts: { resuming: readonly string[] } = { resuming: [] };
   if (execution !== undefined) {
@@ -494,6 +510,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
+      await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
       await attempt('mcp', () => mcp.stop());
@@ -522,6 +539,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcpUrl: mcp.url,
     producer: orchestration?.channel,
     directives,
+    quota,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },
@@ -548,6 +566,7 @@ function buildExecution(
   composition: Composition,
   worktreeRoot: string,
   mcp: McpAccess,
+  quota: QuotaService,
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
@@ -580,6 +599,8 @@ function buildExecution(
     );
     return undefined;
   }
+  // Each client reads its own quota (the probes of P6 to P8); the service takes it from here.
+  for (const client of clients) quota.addProbe(client.id, client.quota);
   return new Execution({
     clients,
     launcher,
