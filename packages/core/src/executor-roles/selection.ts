@@ -21,6 +21,10 @@ import type { ProfileFact, ResolvedExecutor, ResolvedRole } from './resolve.js';
  *    the work aside, for the Reviewer and the Critic;
  * 5. the first Executor that is available wins; with none, the result says what to wait for
  *    (`next`: whichever frees first; `wait`: the reset of the first, with no demotion).
+ *
+ * A strict cross-review (`require_other_provider`, `other_model`) can leave the role with nobody
+ * while an Executor of the provider (or model) of the work is free: `selection.strict_unavailable`
+ * (N135) says what happens then.
  */
 
 /** `selection.strategy` (5.7, N130): the order among the accounts of one `<model>-<effort>`. */
@@ -57,6 +61,16 @@ export type NearLimitMode = (typeof NEAR_LIMIT_MODES)[number];
 export const RETRY_DIVERSITY_MODES = ['rotate', 'forward_only', 'off'] as const;
 export type RetryDiversityMode = (typeof RETRY_DIVERSITY_MODES)[number];
 
+/**
+ * `selection.strict_unavailable` (N135, decided by the owner on 2026-11-18): what a strict
+ * `selection.cross_check` does when the only Executors available are the ones it sets aside.
+ * `wait_notify` (default): the role waits and the result flags it (`wait.notify`, so the Producer
+ * is told); `fallback_prefer`: the strict mode gives way and behaves as `prefer_other_provider`
+ * (the others first, then the provider or model of the work); `wait`: the role waits, silently.
+ */
+export const STRICT_UNAVAILABLE_MODES = ['wait_notify', 'fallback_prefer', 'wait'] as const;
+export type StrictUnavailableMode = (typeof STRICT_UNAVAILABLE_MODES)[number];
+
 /** The settings of the selection, as the `selection` block of the configuration gives them. */
 export interface SelectionSettings {
   readonly strategy: SelectionStrategy;
@@ -64,6 +78,7 @@ export interface SelectionSettings {
   readonly unknownQuota: UnknownQuotaMode;
   readonly nearLimit: NearLimitMode;
   readonly retryDiversity: RetryDiversityMode;
+  readonly strictUnavailable: StrictUnavailableMode;
   /**
    * Tokens the client keeps in the window for its own system prompt and tools; the prompt of the
    * demand plus this must fit the window of the Executor (5.7, "com a folga do cliente"). 0 until
@@ -79,6 +94,7 @@ export const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   unknownQuota: 'allow',
   nearLimit: 'keep_order',
   retryDiversity: 'rotate',
+  strictUnavailable: 'wait_notify',
   contextReserve: 0,
 };
 
@@ -267,6 +283,12 @@ export interface SelectionWait {
   readonly on: readonly string[];
   /** The earliest known end among them (epoch ms); null when no source says. */
   readonly until: number | null;
+  /**
+   * N135: the wait is the strict cross-review's doing (an Executor of the provider or model of the
+   * work is available and set aside) and `strict_unavailable` is `wait_notify`: the caller tells
+   * the Producer. False with `wait` (silent) and for any other wait.
+   */
+  readonly notify: boolean;
 }
 
 export interface SelectionResult {
@@ -285,8 +307,16 @@ export interface SelectionResult {
     /** The role is cross-checked and there is somebody's work to compare with. */
     readonly applied: boolean;
     readonly workedProvider: string | null;
-    /** `prefer_other_provider` found nobody else and went back to the provider of the work. */
+    /**
+     * `prefer_other_provider` found nobody else and went back to the provider of the work; also
+     * true when a strict mode did the same under `strict_unavailable: fallback_prefer` (N135).
+     */
     readonly fellBack: boolean;
+    /**
+     * N135: a strict mode left the role with nobody although an Executor it set aside was
+     * available (`strict_unavailable` says whether the role waits or falls back).
+     */
+    readonly blocked: boolean;
   };
   /** `round_robin`: the cursor to keep for the group of the chosen Executor; null otherwise. */
   readonly roundRobin: { readonly group: string; readonly cursor: number } | null;
@@ -375,8 +405,14 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   const crossRole = (CROSS_CHECK_ROLES as readonly string[]).includes(role.role);
   const worked = input.workedBy ?? null;
   const applied = settings.crossCheck !== 'off' && crossRole && worked !== null;
-  const strict =
+  const strictMode =
     settings.crossCheck === 'require_other_provider' || settings.crossCheck === 'other_model';
+  // `fallback_prefer` (N135): a strict mode that gives way is `prefer_other_provider`, the others
+  // first and then the provider (or model) of the work.
+  const strict = strictMode && settings.strictUnavailable !== 'fallback_prefer';
+  const prefers =
+    settings.crossCheck === 'prefer_other_provider' ||
+    (strictMode && settings.strictUnavailable === 'fallback_prefer');
   const conflictReason: SkipReason =
     settings.crossCheck === 'other_model' ? 'same_model' : 'same_provider';
   const conflicts = (item: ResolvedExecutor): boolean => {
@@ -451,7 +487,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   // 6. The passes: `prefer` tries the others first and then goes back to the provider of the work;
   // the strict modes never use the ones that conflict; otherwise one pass over everything.
   const passes: Row[][] =
-    settings.crossCheck === 'prefer_other_provider' && applied
+    prefers && applied
       ? [rows.filter((row) => !row.conflict), rows.filter((row) => row.conflict)]
       : strict
         ? [rows.filter((row) => !row.conflict)]
@@ -459,6 +495,12 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   const pick = passes.flat().find((row) => row.verdict === null);
   const chosenIndex = pick === undefined ? -1 : rows.indexOf(pick);
   const fellBack = pick?.conflict === true;
+  // N135: nobody was chosen, and the strict cross-review set aside an Executor that was free.
+  const blocked =
+    strict &&
+    applied &&
+    pick === undefined &&
+    rows.some((row) => row.conflict && row.verdict === null);
 
   // What was passed over: every Executor before the chosen one in the order; with a fallback to
   // the provider of the work, also the other providers behind it, which were all unavailable.
@@ -496,6 +538,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
       mode: role.whenExhausted,
       on: waited.map((row) => row.item.id),
       until: ends.length === 0 ? null : Math.min(...ends),
+      notify: blocked && settings.strictUnavailable === 'wait_notify',
     };
   }
 
@@ -523,6 +566,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
       applied,
       workedProvider: applied ? worked.provider : null,
       fellBack,
+      blocked,
     },
     roundRobin,
   };

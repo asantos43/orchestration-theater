@@ -826,6 +826,7 @@ roles:
 
 selection:
   cross_check: prefer_other_provider   # prefer_other_provider | require_other_provider | other_model | off
+  strict_unavailable: wait_notify      # wait_notify | fallback_prefer | wait (N135): só vale com require_other_provider e other_model
 ```
 
 A tabela das predefinições usa os nomes sem conta, como elas são escritas:
@@ -850,6 +851,8 @@ A tabela das predefinições usa os nomes sem conta, como elas são escritas:
 - `off`: só a ordem da lista.
 O pulo entra no evento `executor.selected`, como os outros.
 
+**Modo estrito sem Executor que sirva** (`selection.strict_unavailable`, decidida em 2026-11-18, N135): nos modos `require_other_provider` e `other_model`, pode sobrar só o Executor do provedor (ou do modelo) de quem fez o trabalho. A chave diz o que fazer: `wait_notify` (padrão) espera e avisa o Produtor (o evento `executor.selected` leva `crossCheck.blocked: true` e `waiting.notify: true`); `fallback_prefer` cai para o comportamento de `prefer_other_provider` (os outros primeiro, depois o do trabalho, com `crossCheck.fellBack: true`); `wait` espera em silêncio (`waiting.notify: false`). Os três não mudam o que acontece nos modos `prefer_other_provider` e `off`.
+
 **Provedor de um Executor** (decidido em 2026-11-14, v0.23): na revisão cruzada, o provedor é a **família do modelo**, quem o treinou, e não o cliente nem a conta. O Gemma 4 conta como `google` mesmo servido pelo OpenCode numa instância local; o `minimax-m2` conta como `minimax`; o Haiku e o Sonnet contam como `anthropic`. Assim, um Revisor Gemma 4 local é de outro provedor em relação a um Autor Opus, e um Gemma 4 local e um Gemini na nuvem são do mesmo provedor.
 - o campo `provider` do Executor define o provedor. No Claude Code e no Codex, ele é fixo pelo cliente (`anthropic`, `openai`) e entra sozinho na descoberta automática dos modelos;
 - no OpenCode, o prefixo do modelo é a conta ou o gateway por onde ele é chamado, não quem o fez: `opencode/claude-opus-5-5` é da Anthropic pelo gateway do OpenCode, e um Gemma 4 pode vir de `google/`, de `openrouter/` ou de uma instância local (verificado localmente em 2026-11-14 com o `opencode models`, versão 1.19.5). Por isso o `provider` não é inferido pelo nome: ele vem do cadastro abaixo;
@@ -873,7 +876,7 @@ executors:
 
 - `ask` (padrão): o assistente termina perguntando em quais papéis e em que posição colocar o Executor. Vêm marcados os papéis cuja predefinição atual (`roles.preset`) já cita aquele `<modelo>-<esforço>` (ex.: `gemma4-medium` nos Atores da `economical`), e os outros vêm desmarcados;
 - `preset_only`: entra sem perguntar, só onde a predefinição cita o modelo, na posição que ela dá;
-- `none`: fica só no catálogo, até o Produtor acrescentá-lo a uma lista.
+- `none`: fica só no catálogo, até o Produtor acrescentá-lo a uma lista. Desde 2026-11-18 (N136) o cadastro também grava `executors.<nome>.preset_expand: false`: o Executor sai da expansão das predefinições (inclusive do fallback por API) e só entra nos papéis que o citam pelo nome. A chave `preset_expand` é booleana, padrão `true`, e pode ser mudada à mão em qualquer Executor.
 
 Vale para os Executores do OpenCode e também para os descobertos sozinhos no Claude Code e no Codex depois da primeira execução (um modelo novo, uma conta nova). Na seleção continuam os filtros de capacidade (anexos, 5.20; `toolcall`, na validação) e entra a capacidade mínima do papel (abaixo). O OTheater não roda modelos locais por código próprio: eles passam pelo OpenCode, como os outros, por ACP (P1, decisão do dono no mesmo dia).
 
@@ -1736,7 +1739,9 @@ resume:
   stuck:                       # agente travado: o que vier primeiro
     no_event_for: 10m
     same_error_times: 3
-  transient_backoff: [30s, 2m, 10m]   # erro transitório; esgotou, passa o bastão
+  transient_backoff: [30s, 2m, 10m]   # erro transitório; o que vem depois da lista é transient_exhausted
+  transient_exhausted: last    # last | handoff (N132): last repete o último recuo até max_resumes; handoff passa o bastão ao fim da lista
+  client_crash_counts: repeat  # repeat | never | always (N132): repeat só gasta tentativa a partir da segunda queda do cliente
 ```
 
 | Predefinição | Retomadas | Espera pelo reset | Checkpoint | Sem evento | Mesmo erro |
@@ -3602,6 +3607,9 @@ Decididas:
 - shell nativo do Codex na sandbox `runtime` (2026-11-18, seções 5.2 e 5.8 e Fase 4, N129): `clients.codex.inner_sandbox: keep | full_access_when_wrapped | nested`, padrão `keep`; a medida mostrou que o srt bloqueia namespace aninhado por padrão e que `allowNestedUserNamespaces` o permite, ao custo das proibições de escrita;
 - estratégia de seleção entre contas (2026-11-18, seção 5.7 e Fase 5, N130): `selection.strategy: ordered | most_headroom | round_robin`, padrão `ordered`;
 - continuação de sessão entre papéis (2026-11-18, seções 5.4 e 5.7, N131): `pipeline.session_reuse: off | when_same_executor | preferred`, padrão `when_same_executor`, nos pares Revisor → Roteirista e Autor → revisão do roteiro; a revisão independente (Autor → Revisor, Ator → Crítico) sempre abre sessão nova; implementação depois da Fase 5;
+- chaves da política de interrupção (2026-11-18, seção 5.16 e Fase 5, N132): `resume.transient_exhausted: last | handoff`, padrão `last`, e `resume.client_crash_counts: repeat | never | always`, padrão `repeat`; o dono pediu as duas como chave de configuração;
+- modo estrito sem Executor que sirva (2026-11-18, seção 5.7 e Fase 5, N135): `selection.strict_unavailable: wait_notify | fallback_prefer | wait`, padrão `wait_notify`, só para `require_other_provider` e `other_model`;
+- `on_register: none` e as predefinições (2026-11-18, seção 5.7 e Fase 5, N136): `none` grava `executors.<nome>.preset_expand: false` e tira o Executor da expansão das predefinições; a chave é booleana, padrão `true`;
 - uso do `ccusage` (2026-11-18, seções 5.6 e 6.2 e Fase 5, N118): versão fixa com mais de duas semanas e licença conferida, como biblioteca se exportar uma API, senão como CLI;
 - releitura do Claudexor (2026-11-18, seção 6.3 e Fase 5, N119): só os arquivos listados, no commit mais novo, sem clone, com o commit registrado nos cabeçalhos, no `THIRD_PARTY_NOTICES` e no `copied-code.json`;
 - tabela `pricing` inicial (2026-11-18, seção 5.6 e Fase 5, N125): os modelos da predefinição `quality`, cada preço com fonte pública e data, confirmados pelo dono ao abrir o P10;

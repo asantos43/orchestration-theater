@@ -13,6 +13,7 @@ import {
   RETRY_DIVERSITY_MODES,
   ROLE_PRESET_NAMES,
   SELECTION_STRATEGIES,
+  STRICT_UNAVAILABLE_MODES,
   UNKNOWN_QUOTA_MODES,
   WHEN_EXHAUSTED_MODES,
   parseContextSize,
@@ -156,6 +157,12 @@ const ExecutorEntryInputSchema = z.strictObject({
   model: z.string().min(1),
   effort: z.enum(EFFORT_LEVELS, oneOf('effort', EFFORT_LEVELS)).optional(),
   provider: z.string().min(1).optional(),
+  /**
+   * N136: `false` keeps the Executor out of the expansion of a preset; it is then only in the
+   * roles that name it. Default `true`. `ot executor add` writes `false` under
+   * `executors.on_register: none`.
+   */
+  preset_expand: z.boolean().optional(),
 });
 
 /** The `executors` block, after parsing: the two modes and the registered Executors. */
@@ -248,6 +255,7 @@ export const ExecutorsConfigSchema = z
         model: entry.model,
         effort,
         provider: providerOfClient(entry.client, entry.provider),
+        ...(entry.preset_expand === undefined ? {} : { presetExpand: entry.preset_expand }),
       };
     }
     return { cross_client, on_register, test_session, entries };
@@ -261,6 +269,10 @@ export const ExecutorsConfigSchema = z
  * `retry_diversity` is how a retry starts after the Executor that failed (`rotate`: the 5.7 rule,
  * wrapping around), `context_reserve` the tokens the client keeps for its own prompt and tools,
  * which the prompt of a demand must leave free in the window (0 until measured).
+ * `strict_unavailable` (N135, decided by the owner on 2026-11-18) is what a strict `cross_check`
+ * (`require_other_provider`, `other_model`) does when only the provider or the model of the work
+ * is available: `wait_notify` (default) waits and flags the wait, `fallback_prefer` goes back to
+ * the provider of the work as `prefer_other_provider` does, `wait` waits silently.
  */
 export const SelectionConfigSchema = z.strictObject({
   strategy: z
@@ -277,5 +289,8 @@ export const SelectionConfigSchema = z.strictObject({
     .enum(RETRY_DIVERSITY_MODES, oneOf('retry_diversity', RETRY_DIVERSITY_MODES))
     .default('rotate'),
   context_reserve: ContextSchema.default(0),
+  strict_unavailable: z
+    .enum(STRICT_UNAVAILABLE_MODES, oneOf('strict_unavailable', STRICT_UNAVAILABLE_MODES))
+    .default('wait_notify'),
 });
 export type SelectionConfig = z.infer<typeof SelectionConfigSchema>;

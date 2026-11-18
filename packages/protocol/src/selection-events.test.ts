@@ -23,6 +23,7 @@ const selected = {
     applied: false,
     workedProvider: null,
     fellBack: false,
+    blocked: false,
   },
   skipped: [skipped],
   waiting: null,
@@ -34,7 +35,7 @@ const waiting = {
   outcome: 'waiting',
   executor: null,
   profile: null,
-  waiting: { mode: 'next', on: [skipped.executor], until: 5_000 },
+  waiting: { mode: 'next', on: [skipped.executor], until: 5_000, notify: false },
 };
 
 describe('executor.selected event [proposta]', () => {
@@ -46,7 +47,7 @@ describe('executor.selected event [proposta]', () => {
 
   it('accepts a wait, with nothing to wait for and with no end known', () => {
     expect(validateEventPayload('executor.selected', 1, waiting)).toEqual(waiting);
-    const nothing = { ...waiting, waiting: { mode: 'next', on: [], until: null } };
+    const nothing = { ...waiting, waiting: { mode: 'next', on: [], until: null, notify: true } };
     expect(validateEventPayload('executor.selected', 1, nothing)).toEqual(nothing);
   });
 
