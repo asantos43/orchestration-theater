@@ -8,4 +8,6 @@ export * from './policy.js';
 export * from './prepare-profile.js';
 export * from './probes.js';
 export * from './quota-probe.js';
+export * from './quota-signal.js';
+export * from './quota-statusline.js';
 export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';

@@ -6,6 +6,11 @@ import { InvalidInput, type Profile, type RolePolicy } from '@otheater/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deniedTools } from './policy.js';
 import { PROFILE_SETTINGS_FILE, writeProfileSettings } from './prepare-profile.js';
+import {
+  STATUSLINE_SCRIPT,
+  STATUSLINE_SCRIPT_FILE,
+  statuslineSetting,
+} from './quota-statusline.js';
 
 const policy: RolePolicy = {
   nativeTools: ['read'],
@@ -39,7 +44,7 @@ async function read(): Promise<Record<string, unknown>> {
 
 describe('writeProfileSettings', () => {
   it('creates the directory and the three permission keys', async () => {
-    await writeProfileSettings(profile, policy);
+    await writeProfileSettings(profile, policy, { quotaStatusline: 'off' });
     expect(await read()).toEqual({
       permissions: {
         defaultMode: 'default',
@@ -100,6 +105,65 @@ describe('writeProfileSettings', () => {
     await writeFile(decoy, 'placeholder-not-a-credential');
     await writeProfileSettings(profile, policy);
     expect(await readFile(decoy, 'utf8')).toBe('placeholder-not-a-credential');
-    expect((await readdir(profile.dir)).sort()).toEqual(['decoy-other-file.json', 'settings.json']);
+    expect((await readdir(profile.dir)).sort()).toEqual([
+      'decoy-other-file.json',
+      STATUSLINE_SCRIPT_FILE,
+      'settings.json',
+    ]);
+  });
+});
+
+describe('writeProfileSettings, the quota statusline (P6)', () => {
+  const nodePath = '/opt/node/bin/node';
+
+  it('by default writes the statusLine command and the script next to the settings', async () => {
+    await writeProfileSettings(profile, policy, { nodePath });
+    const settings = await read();
+    expect(settings.statusLine).toEqual({
+      type: 'command',
+      command: `'${nodePath}' '${join(profile.dir, STATUSLINE_SCRIPT_FILE)}'`,
+    });
+    expect(await readFile(join(profile.dir, STATUSLINE_SCRIPT_FILE), 'utf8')).toBe(
+      STATUSLINE_SCRIPT,
+    );
+  });
+
+  it("replaces a statusLine that is not ours: the profile is OTheater's, not the user's", async () => {
+    await mkdir(profile.dir, { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ statusLine: { type: 'command', command: 'echo hi' } }),
+    );
+    await writeProfileSettings(profile, policy, { nodePath });
+    expect((await read()).statusLine).toMatchObject({
+      command: expect.stringContaining(STATUSLINE_SCRIPT_FILE) as string,
+    });
+  });
+
+  it('is idempotent with the statusline on', async () => {
+    await writeProfileSettings(profile, policy, { nodePath });
+    const first = await readFile(settingsPath, 'utf8');
+    await writeProfileSettings(profile, policy, { nodePath });
+    expect(await readFile(settingsPath, 'utf8')).toBe(first);
+  });
+
+  it('with `off` writes no script and takes out a statusLine of ours, keeping another', async () => {
+    await writeProfileSettings(profile, policy, { nodePath });
+    await writeProfileSettings(profile, policy, { quotaStatusline: 'off' });
+    expect(await read()).not.toHaveProperty('statusLine');
+
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ statusLine: { type: 'command', command: 'echo hi' } }),
+    );
+    await writeProfileSettings(profile, policy, { quotaStatusline: 'off' });
+    expect((await read()).statusLine).toEqual({ type: 'command', command: 'echo hi' });
+  });
+
+  it('quotes a path with a space or a quote for sh', async () => {
+    const setting = statuslineSetting("/tmp/it's here/p", '/opt/my node/node');
+    expect(setting.command).toBe(
+      "'/opt/my node/node' '/tmp/it'\\''s here/p/otheater-statusline.mjs'",
+    );
   });
 });
