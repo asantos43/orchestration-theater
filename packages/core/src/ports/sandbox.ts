@@ -44,6 +44,17 @@ export interface SandboxRequest {
    * Absent or empty: no bridge.
    */
   readonly loopbackPorts?: readonly number[];
+  /**
+   * [proposta, N129] Lets the command create user namespaces of its own inside the confinement,
+   * which a client with a sandbox of its own (Codex's `codex sandbox`, bubblewrap) needs to start.
+   * Per request, never global, and off when absent. It is NOT free: on Linux the library says the
+   * option gives up the write denies (`denyWrite` and the mandatory denies) against a hostile
+   * command, because a command that can make a namespace can undo them. The daemon sets it only
+   * for the client the owner chose (`clients.codex.inner_sandbox: nested`) and warns when it does.
+   * Optional, so the port version does not change: an adapter that ignores it leaves the nested
+   * sandbox unable to start, never the command more exposed.
+   */
+  readonly allowNestedUserNamespaces?: boolean;
 }
 
 /** Whether the mechanism of this machine works, found by trying it once (never by looking at the platform). */
