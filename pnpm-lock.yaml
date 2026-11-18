@@ -256,6 +256,22 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
+  packages/adapters/usage-ccusage:
+    dependencies:
+      '@otheater/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@otheater/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+
   packages/adapters/vault-file:
     dependencies:
       '@otheater/core':
@@ -354,6 +370,9 @@ importers:
       '@otheater/adapter-store-sqlite':
         specifier: workspace:*
         version: link:../adapters/store-sqlite
+      '@otheater/adapter-usage-ccusage':
+        specifier: workspace:*
+        version: link:../adapters/usage-ccusage
       '@otheater/adapter-vault-file':
         specifier: workspace:*
         version: link:../adapters/vault-file

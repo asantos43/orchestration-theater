@@ -129,6 +129,22 @@
       "source": "docs/13 N45; architecture 6.0 (v0.41)",
       "package": "opencode-ai",
       "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-18",
+      "reason": "ccusage 20.0.48 (MIT, published 2026-11-02): reads the consumption of the clients' logs. A CLI the user installs, run as a separate process by the usage-ccusage adapter, never imported or bundled.",
+      "source": "docs/13 N118 (2026-11-17, 2026-11-18); docs/16 P12",
+      "package": "ccusage",
+      "level": "C"
+    },
+    {
+      "decidedBy": "Anderson (owner)",
+      "date": "2026-11-18",
+      "reason": "Native binary of ccusage 20.0.48 for Linux x64 (MIT, no dependencies), the optional package its launcher starts. Same use as ccusage.",
+      "source": "docs/13 N118 (2026-11-17, 2026-11-18); docs/16 P12",
+      "package": "@ccusage/ccusage-linux-x64",
+      "level": "C"
     }
   ],
   "credentialAllowlist": [],
