@@ -76,7 +76,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | concluído (PR #114) |
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | concluído (PR #113) |
-| P15b | Revisão cruzada que cai no mesmo provedor (N150) | P15, P16 | P12, P19 | concluído (PR #PRNUM) |
+| P15b | Revisão cruzada que cai no mesmo provedor (N150) | P15, P16 | P12, P19 | concluído (PR #128) |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | concluído (PR #117) |
 | P16b | Espera do Diretor, vaga em voo e bastão ligado (N141 a N145) | P16, P18 | P19, P20 | concluído (PR #123) |
 | P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
@@ -506,7 +506,7 @@ Decisão do dono em 2026-11-18 (N150), a partir da pergunta dele sobre quem tem 
 
 **Aceite:** um teste por modo das duas chaves; o degrau mais alto sem cota descendo; o topo caindo em `any`; os modos estritos sem nenhum Executor que sirva, sem espera; duas contas do mesmo provedor; o aviso na carga; o payload do evento.
 
-**Como ficou (2026-11-18, PR #PRNUM) [V]:**
+**Como ficou (2026-11-18, PR #128) [V]:**
 
 Branch `fase-5/p15b-queda-no-mesmo-provedor`. Verificado localmente em 2026-11-18: `pnpm build`, `lint` e `format:check` limpos; vitest de `core`, `protocol` e `daemon` verde (2851 testes). O `pnpm check` completo roda antes do merge, como nos outros passos.
 
