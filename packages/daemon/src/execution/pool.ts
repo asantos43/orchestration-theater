@@ -486,6 +486,11 @@ export class SessionPool {
     return this.#closed;
   }
 
+  /** `#again` read afresh after an await (`#pump` may set it while a round is in flight). */
+  #runAgain(): boolean {
+    return this.#again;
+  }
+
   async #pumpAsync(): Promise<void> {
     try {
       do {
@@ -496,7 +501,7 @@ export class SessionPool {
           this.#admission.mode === 'ram_and_quota' ? await this.#quotaVerdicts() : undefined;
         if (this.#isClosed()) break;
         this.#scan(available, available === undefined, quota);
-      } while (this.#again);
+      } while (this.#runAgain());
     } finally {
       this.#pumping = false;
       this.#armRecheck();
