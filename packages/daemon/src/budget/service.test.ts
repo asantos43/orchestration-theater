@@ -303,6 +303,7 @@ const RULES: InterruptionRules = {
   transientExhausted: 'last',
   clientCrashCounts: 'repeat',
   stuckSameErrorTimes: 3,
+  onProfileRemoved: 'handoff',
 };
 
 function factsOf(cause: InterruptionCause, extra: Partial<InterruptionFacts>): InterruptionFacts {

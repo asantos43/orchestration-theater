@@ -134,6 +134,13 @@ export const QUOTA_WAIT_COUNTS_MODES = ['resume', 'free'] as const;
  * passes the baton, `park` leaves the attempt parked for a decision.
  */
 export const QUOTA_WAIT_MISSED_MODES = ['handoff', 'park'] as const;
+/**
+ * [proposta] (P21b, N152) `resume.on_profile_removed`: what an attempt does when the profile of its
+ * session is removed (cause `profile_removed`, architecture 5.16): `handoff` passes the baton to the
+ * next Executor of the role (no attempt of the demand spent, outside `resume.max_resumes`); `park`
+ * leaves the attempt `interrupted`, with `needsDecision`, for the Director to decide.
+ */
+export const ON_PROFILE_REMOVED_MODES = ['handoff', 'park'] as const;
 export const PACKAGE_DIFF_MODES = ['full', 'stat', 'none'] as const;
 /**
  * [proposta] (P18) What the handoff does in a role of short output (Reviewer, Screenwriter,
@@ -479,6 +486,16 @@ export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number]
  */
 export const DRAIN_ON_TIMEOUT_MODES = ['handoff', 'wait', 'force'] as const;
 export type DrainOnTimeoutMode = (typeof DRAIN_ON_TIMEOUT_MODES)[number];
+
+/**
+ * [proposta] (P21b, N153) `profiles.drain.director`: what a drain does with the Director (and the
+ * consultant) whose session stands on the profile that leaves: `failover` moves the Director to the
+ * next Executor of its list (the failover of P20, cause `profile_removed`) and closes the standing
+ * session of the consultant, so the removal is not held; `wait` is the behaviour before P21b: the
+ * session holds its lease and the removal waits for it (`Conflict`, until it sleeps or `force`).
+ */
+export const DRAIN_DIRECTOR_MODES = ['failover', 'wait'] as const;
+export type DrainDirectorMode = (typeof DRAIN_DIRECTOR_MODES)[number];
 
 /**
  * `profiles.drain.removed_dir` (Phase 5, P2 and P21; N127, decided 2026-11-18: default `delete`).
@@ -1236,6 +1253,8 @@ export const DaemonConfigSchema = z
         quota_wait_counts: z.enum(QUOTA_WAIT_COUNTS_MODES).default('resume'),
         /** [proposta] (P19) See {@link QUOTA_WAIT_MISSED_MODES}. */
         quota_wait_missed: z.enum(QUOTA_WAIT_MISSED_MODES).default('handoff'),
+        /** [proposta] (P21b, N152) See {@link ON_PROFILE_REMOVED_MODES}. */
+        on_profile_removed: z.enum(ON_PROFILE_REMOVED_MODES).default('handoff'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -1286,6 +1305,7 @@ export const DaemonConfigSchema = z
           quota_wait_deadline: resume.quota_wait_deadline,
           quota_wait_counts: resume.quota_wait_counts,
           quota_wait_missed: resume.quota_wait_missed,
+          on_profile_removed: resume.on_profile_removed,
           continue_prompt: resume.continue_prompt,
           package: resume.package,
         };
@@ -1488,6 +1508,8 @@ export const DaemonConfigSchema = z
             timeout: DurationSchema.or(z.literal(0)).prefault('10m'),
             on_timeout: z.enum(DRAIN_ON_TIMEOUT_MODES).default('handoff'),
             removed_dir: z.enum(REMOVED_DIR_MODES).default('delete'),
+            /** [proposta] (P21b, N153) See {@link DRAIN_DIRECTOR_MODES}. */
+            director: z.enum(DRAIN_DIRECTOR_MODES).default('failover'),
           })
           .prefault({}),
         /**

@@ -33,6 +33,7 @@ export interface ProfileSettings {
     readonly timeoutMs: number;
     readonly onTimeout: DaemonConfig['profiles']['drain']['on_timeout'];
     readonly removedDir: DaemonConfig['profiles']['drain']['removed_dir'];
+    readonly director: DaemonConfig['profiles']['drain']['director'];
   };
 }
 
@@ -44,6 +45,7 @@ export function profileSettingsOf(config: Pick<DaemonConfig, 'profiles'>): Profi
       timeoutMs: profiles.drain.timeout,
       onTimeout: profiles.drain.on_timeout,
       removedDir: profiles.drain.removed_dir,
+      director: profiles.drain.director,
     },
   };
 }
@@ -65,6 +67,13 @@ export interface ProfileSessions {
    * closes them. Returns how many were touched.
    */
   release(profileId: string, how: 'handoff' | 'force'): Promise<number>;
+  /**
+   * [proposta] (P21b, N153) Called when the drain starts, with `profiles.drain.director: failover`:
+   * moves what stands on the profile without working (the session of a Director) to another
+   * Executor, so the drain does not wait for it. Resolves with how many were moved, once they
+   * have let go of the profile. Optional.
+   */
+  releaseStanding?(profileId: string): Promise<number>;
   /**
    * Called by the removal once no session is left and before the logout: ends what a client may
    * still have running for the profile (an idle process the pool keeps). Optional.
@@ -377,11 +386,15 @@ export class ProfileService {
       );
     }
 
+    if (settings.drain.director === 'failover') await this.#leaveStanding(id);
+
     const deadline = clock.now() + timeoutMs;
     const poll = this.#o.pollMs ?? 1000;
     let left = await this.#sessions.count(id);
     while (left > 0 && clock.now() < deadline) {
       await clock.sleep(Math.max(1, Math.min(poll, deadline - clock.now())), options.signal);
+      // A Director that was opening its session when the drain began shows up here (P21b).
+      if (settings.drain.director === 'failover') await this.#leaveStanding(id);
       left = await this.#sessions.count(id);
     }
 
@@ -407,6 +420,18 @@ export class ProfileService {
     );
     this.#o.logger.info({ profile: id, outcome, sessions: touched }, 'profile drained');
     return { profile, outcome, sessions: touched };
+  }
+
+  /** `profiles.drain.director: failover`: the Director standing on the profile moves away (P21b). */
+  async #leaveStanding(id: string): Promise<void> {
+    try {
+      const moved = (await this.#sessions.releaseStanding?.(id)) ?? 0;
+      if (moved > 0)
+        this.#o.logger.info({ profile: id, moved }, 'Director sessions left the profile');
+    } catch (error) {
+      // The drain goes on: what did not move holds the profile until the timeout says what to do.
+      this.#o.logger.warn({ err: error, profile: id }, 'the Director could not leave the profile');
+    }
   }
 
   /**

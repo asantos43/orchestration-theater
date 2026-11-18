@@ -26,6 +26,13 @@ export interface DirectorFailure {
 }
 
 /**
+ * [proposta] (P21b, N153) The profile the Director stands on is being removed
+ * (`profiles.drain.director: failover`): not an error of the session but the drain's own order, so
+ * it is not read from an error. `DirectorSessions.leaveProfile` hands it to the failover.
+ */
+export const PROFILE_REMOVED: DirectorFailure = { cause: 'profile_removed' };
+
+/**
  * The cause of a failed turn, or `undefined` when no new session would help: an error the table
  * does not know (a refusal, a bug) fails the turn as before the failover existed.
  */

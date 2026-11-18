@@ -278,6 +278,20 @@ describe('parseConfig, execution keys', () => {
     }
   });
 
+  it('takes resume.on_profile_removed with the baton as default (P21b, N152)', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.on_profile_removed).toBe(
+        'handoff',
+      );
+    }
+    expect(parseConfig('resume:\n  on_profile_removed: park\n').resume.on_profile_removed).toBe(
+      'park',
+    );
+    expect(() => parseConfig('resume:\n  on_profile_removed: sometimes\n')).toThrow(
+      /on_profile_removed/,
+    );
+  });
+
   it('takes resume.package with the deterministic summary as default (N126, P18)', () => {
     for (const preset of ['balanced', 'patient', 'agile']) {
       expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.package).toEqual({

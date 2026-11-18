@@ -77,13 +77,19 @@ export async function reconcileAttempts(options: ReconcileOptions): Promise<Reco
 }
 
 async function park(store: Store, record: AttemptRecord): Promise<void> {
+  // A profile that was removed (`drain.on_timeout: force`, P21b) keeps its cause: the attempt does not
+  // wait for a restart of the daemon, it waits for another Executor.
+  const cause = record.cause === 'profile_removed' ? 'profile_removed' : 'daemon_restart';
   await store.transaction(async (tx) => {
     if (record.sessionId !== null) {
       await tx.events.append({
         ...buildDaemonEvent('session.interrupted', {
           sessionId: record.sessionId,
-          cause: 'daemon_restart',
-          detail: 'the daemon was not running and nothing knows how to resume this attempt',
+          cause,
+          detail:
+            cause === 'profile_removed'
+              ? 'the profile of the session was removed and nothing knows how to resume this attempt'
+              : 'the daemon was not running and nothing knows how to resume this attempt',
           ...(record.lastCheckpoint === null ? {} : { checkpointSha: record.lastCheckpoint }),
           playId: record.playId,
           demandId: record.demandId,
@@ -97,14 +103,14 @@ async function park(store: Store, record: AttemptRecord): Promise<void> {
       const signals = ['resolver:unknown', 'action:handoff'];
       const rows = await tx.interruptions.list({
         sessionId: record.sessionId,
-        causes: ['daemon_restart'],
+        causes: [cause],
       });
       const open = rows.filter((row) => row.resumeForm === null).at(-1);
       if (open === undefined) {
         await tx.interruptions.create({
           sessionId: record.sessionId,
           playId: record.playId,
-          cause: 'daemon_restart',
+          cause,
           signals,
           resumeForm: 'handoff',
           countedAsAttempt: false,
@@ -119,7 +125,7 @@ async function park(store: Store, record: AttemptRecord): Promise<void> {
     await tx.attempts.put({
       ...attemptInputOf(record),
       state: 'interrupted',
-      cause: 'daemon_restart',
+      cause,
     });
   });
 }

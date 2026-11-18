@@ -66,6 +66,8 @@ export interface Orchestration {
   readonly ideas: IdeaQueueService;
   /** The choice of the Executor of each role, and the demands waiting for one (P16). */
   readonly selection: RoleSelection;
+  /** The Director sessions of the scenarios (P21b: the removal of a profile moves them). */
+  readonly directors: DirectorSessions;
   /**
    * First step of the shutdown, before the execution stops: closes the door of the Producer
    * channel, frees the questions that wait for the Producer, and stops the plays from taking the
@@ -278,6 +280,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   let quiet: Promise<void> | undefined;
   return {
     runner,
+    directors,
     channel,
     scenarios,
     attachments,

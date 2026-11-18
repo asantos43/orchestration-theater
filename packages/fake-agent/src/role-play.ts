@@ -142,6 +142,17 @@ export async function directorQuotaFailure(
   return (await countOf('director-fail-judge')) >= times ? undefined : failure;
 }
 
+/**
+ * `#ot-director-hang` on a line of the prompt of the Director makes its turn hang until the session
+ * is cancelled or its process ends, the first time (P21b: the profile of the Director is removed
+ * while it works). The count is kept like the one of `directorQuotaFailure`, so the prompt that
+ * goes back to the queue is answered by the next session.
+ */
+export async function directorHangs(text: string): Promise<boolean> {
+  if (!/^#ot-director-hang[ \t]*$/m.test(text)) return false;
+  return (await countOf('director-hang')) === 0;
+}
+
 const VERIFY_OK = { name: 'check', command: 'node', args: ['-e', 'process.exit(0)'] };
 /** Passes until the file `news.txt` is there: the file `main` gets in `base_drift_verify`. */
 const VERIFY_NO_NEWS = {
