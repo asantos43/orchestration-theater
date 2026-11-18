@@ -6,6 +6,7 @@ import {
   assemblePrefix,
   Conflict,
   attemptBranch,
+  type Clock,
   type AttemptRecord,
   hasErrorCode,
   contractKey,
@@ -53,7 +54,13 @@ import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
 import { buildDeliveryArtifacts, changelogModeOf, planChangelog } from '../project/artifacts.js';
 import { CarrySchema, carryKey, INTEGRATION_ROUND_KEY, keptDemands, type Carry } from './carry.js';
-import { type CarriedWork, clarifyPrompt, judgePrompt, stagePrompt } from './prompts.js';
+import {
+  type CarriedWork,
+  clarifyPrompt,
+  deliveryAskPrompt,
+  judgePrompt,
+  stagePrompt,
+} from './prompts.js';
 import { resolveRolePolicy } from './role-policy.js';
 import { executorOf, sessionSettingsOf } from './roles.js';
 
@@ -134,10 +141,12 @@ export interface OrchestrationEffectsOptions {
   readonly logger: Logger;
   /**
    * Whether someone is watching the play now: a Producer chat polling its scenario
-   * (`ChatPresence`). [proposta] With nobody, `delivery.base_drift: ask` is `update` (N83). Absent
-   * means nobody. Not used for the `attended` of `delivery.mode: ask` (see `#deliver`).
+   * (`ChatPresence`). [proposta] With nobody, `delivery.base_drift: ask` is `update` (N83) and
+   * `delivery.mode: ask` is `pr` (N89). Absent means nobody.
    */
   readonly attended?: ((scope: PlayEffectScope) => boolean) | undefined;
+  /** The time of the question of `delivery.mode: ask` (`delivery.ask.timeout`). */
+  readonly clock: Clock;
 }
 
 /** How much of the diff of an earlier attempt goes into the prompt of the next one. */
@@ -175,6 +184,8 @@ export class OrchestrationEffects implements PlayEffects {
   readonly #generations = new Map<string, number>();
   readonly #wanted = new Map<string, Wanted>();
   readonly #inflight = new Set<string>();
+  /** The watchers of the question of `delivery.mode: ask` (N89), by play; not part of `idle()`. */
+  readonly #askWatchers = new Map<string, AbortController>();
   readonly #locks = new Map<string, Promise<unknown>>();
   #runner: PlayRunner | undefined;
   #closed = false;
@@ -201,6 +212,7 @@ export class OrchestrationEffects implements PlayEffects {
       case 'abort_work':
         this.#generations.set(scope.playId, generation + 1);
         this.#wanted.delete(scope.playId);
+        this.#stopAskWatcher(scope.playId);
         return;
       case 'run_stage':
         this.#spawn(`run_stage ${effect.stage}`, scope, async () => {
@@ -259,6 +271,8 @@ export class OrchestrationEffects implements PlayEffects {
   close(): void {
     this.#closed = true;
     this.#wanted.clear();
+    for (const watcher of this.#askWatchers.values()) watcher.abort();
+    this.#askWatchers.clear();
   }
 
   // ---- plumbing ----
@@ -1347,13 +1361,25 @@ export class OrchestrationEffects implements PlayEffects {
       configMode: config.delivery.mode,
       allowDirectMerge: config.delivery.allow_direct_merge,
       ...(warnings.length === 0 ? {} : { warnings }),
-      // [proposta] Not the presence of the chat: `delivery.mode: ask` would answer `ask_producer`,
-      // and no menu of the machine takes that answer yet (it is a decision of the owner, so the
-      // play would hang in DELIVERING). The play is not attended here and `ask` falls to a PR.
-      attended: false,
+      // [proposta] N89: the answer to the question of `ask` is the request of the Producer
+      ...(effect.deliveryChoice === null
+        ? {}
+        : {
+            requested: {
+              mode: effect.deliveryChoice === 'pr' ? 'pr' : 'direct_merge',
+              by: 'producer',
+            },
+          }),
+      // the real presence of the chat: with nobody, `delivery.mode: ask` falls to a PR
+      attended: this.#options.attended?.(scope) === true,
     });
     if (result.kind === 'delivered') {
       await this.#send(playId, generation, { type: 'DELIVERED' });
+      return;
+    }
+    if (result.kind === 'ask_producer') {
+      // the menu of the machine takes the answer (AWAITING_PRODUCER, `deliver_pr`/`deliver_merge`)
+      await this.#send(playId, generation, { type: 'DELIVERY_ASK' });
       return;
     }
     logger.error(
@@ -1458,11 +1484,11 @@ export class OrchestrationEffects implements PlayEffects {
     effect: Extract<PlayEffect, { type: 'ask_menu' }>,
     scope: PlayEffectScope,
   ): Promise<void> {
-    const { store } = this.#options;
+    const { store, directors, dispatcher } = this.#options;
     const { playId, scenarioId } = scope;
-    await this.#locked(playId, async () => {
+    const created = await this.#locked(playId, async () => {
       const all = await store.decisions.list({ playId, kinds: [DECISION_KINDS.menu] });
-      if (all.some((row: DecisionRecord) => row.state === 'pending')) return;
+      if (all.some((row: DecisionRecord) => row.state === 'pending')) return false;
       await store.decisions.create({
         id: `${playId}:menu:${String(all.length + 1)}`,
         scenarioId,
@@ -1470,6 +1496,81 @@ export class OrchestrationEffects implements PlayEffects {
         kind: DECISION_KINDS.menu,
         input: { playId, options: [...effect.options], reason: asJson(effect.reason) },
       });
+      return true;
+    });
+    const reason = effect.reason;
+    if (reason?.kind !== 'delivery_ask') return;
+    // N89: the Director tells the Producer (only when the question is new; a restart asks again)
+    if (created) {
+      await directors.ensure(scenarioId);
+      await dispatcher.submit({
+        scenarioId,
+        source: 'daemon',
+        text: deliveryAskPrompt(playId),
+      });
+    }
+    this.#watchDeliveryAsk(scope, reason.askedAt);
+  }
+
+  /**
+   * N89: the question of `delivery.mode: ask` does not wait for ever. A watcher (outside `idle()`,
+   * stopped by `abort_work` and `close()`) looks at the clock and at the presence, and when the
+   * time of `delivery.ask.timeout` is over, or the Producer left (`on_leave: pr`), it sends
+   * `DELIVERY_ASK_UNANSWERED`: the machine goes on with the PR. [proposta]
+   */
+  #watchDeliveryAsk(scope: PlayEffectScope, askedAt: number): void {
+    const { playId } = scope;
+    if (this.#closed || this.#askWatchers.has(playId)) return;
+    const { clock, config, logger, attended } = this.#options;
+    const { timeout, on_leave: onLeave } = config.delivery.ask;
+    const controller = new AbortController();
+    this.#askWatchers.set(playId, controller);
+    const step = Math.max(250, Math.floor(config.chat.presence_window / 3));
+    const verdict = async (): Promise<'timeout' | 'left' | undefined> => {
+      while (!controller.signal.aborted) {
+        if (timeout > 0 && clock.now() - askedAt >= timeout) return 'timeout';
+        if (onLeave === 'pr' && attended?.(scope) !== true) return 'left';
+        const remaining = timeout > 0 ? askedAt + timeout - clock.now() : step;
+        await clock.sleep(Math.max(1, Math.min(step, remaining)), controller.signal);
+      }
+      return undefined;
+    };
+    void verdict()
+      .then(async (cause) => {
+        if (cause === undefined || controller.signal.aborted) return;
+        await this.#unanswered(scope, cause);
+      })
+      .catch((error: unknown) => {
+        if (this.#closed || controller.signal.aborted) return;
+        logger.error({ err: error, playId }, 'the watcher of the delivery question failed');
+      })
+      .finally(() => {
+        if (this.#askWatchers.get(playId) === controller) this.#askWatchers.delete(playId);
+      });
+  }
+
+  #stopAskWatcher(playId: string): void {
+    this.#askWatchers.get(playId)?.abort();
+    this.#askWatchers.delete(playId);
+  }
+
+  /** Nobody answered the question of the delivery: the play goes on with the PR. */
+  async #unanswered(scope: PlayEffectScope, cause: 'timeout' | 'left'): Promise<void> {
+    const { store, logger } = this.#options;
+    const { playId } = scope;
+    if (this.#closed || this.#runner === undefined) return;
+    try {
+      await this.#runner.send(playId, { type: 'DELIVERY_ASK_UNANSWERED', cause });
+    } catch (error) {
+      // the Producer answered first (the play is no longer asking): nothing to do
+      if (error instanceof Conflict) return;
+      throw error;
+    }
+    logger.info({ playId, cause }, 'nobody answered the delivery question: opening the PR');
+    await this.#locked(playId, async () => {
+      for (const row of await store.decisions.list({ playId, kinds: [DECISION_KINDS.menu] })) {
+        if (row.state === 'pending') await store.decisions.cancel(row.id);
+      }
     });
   }
 }

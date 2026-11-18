@@ -32,7 +32,19 @@ export type ProducerReason =
       readonly kind: 'base_drift';
       readonly files: readonly string[];
       readonly reason: string;
+    }
+  | {
+      /**
+       * [proposta] `delivery.mode: ask` with someone watching (N89, P9): the Director asks whether
+       * to open the PR or merge. `askedAt` (epoch ms, from the event) is when the question was
+       * asked: it survives a restart, so the `delivery.ask.timeout` keeps counting.
+       */
+      readonly kind: 'delivery_ask';
+      readonly askedAt: number;
     };
+
+/** What the Producer (or the daemon, on timeout) chose for the delivery; see `deliveryChoice`. */
+export type DeliveryChoice = 'pr' | 'direct_merge';
 
 /** A judgment point that was opened in EXECUTING and waits for the answer of the Director. */
 export interface OpenJudgment {
@@ -85,6 +97,12 @@ export interface PlayContext {
    * snapshots written before P14, so it is read with `=== true`.
    */
   readonly driftAccepted?: boolean;
+  /**
+   * [proposta] The answer to the question of `delivery.mode: ask` (N89): the `deliver` effect
+   * carries it as the request of the Producer. `null` until answered. Missing in snapshots written
+   * before P9, so it is read as `?? null`.
+   */
+  readonly deliveryChoice?: DeliveryChoice | null;
   /** PLANNING was entered by a restart or a new need, not for the first time. */
   readonly restart: boolean;
   /** Sequence of the decisions this play recorded; makes their ids deterministic (`<play>:d<n>`). */

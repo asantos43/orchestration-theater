@@ -315,6 +315,41 @@ describe('the role-play script', () => {
     });
   });
 
+  it('the consultant writes in its directory, refuses a path that leaves it, and researches (P10)', async () => {
+    const run = host(
+      '#ot-role: consultant\n#ot-consult-ask: plan write:notes/p.md=the_plan write:../out.txt=x http:http://127.0.0.1:1/d',
+      { http_get: { status: 200, body: 'docs\n' } },
+    );
+    await playRolePlay(run.host);
+    expect(await readFile(join(sandbox, 'notes', 'p.md'), 'utf8')).toBe('the plan');
+    await expect(readFile(join(sandbox, '..', 'out.txt'), 'utf8')).rejects.toThrow();
+    expect(run.calls.map((call) => call.tool)).toEqual(['http_get', 'submit']);
+    const answer = JSON.stringify(run.calls[1]?.args);
+    expect(answer).toContain('write notes/p.md ok');
+    expect(answer).toContain('write ../out.txt refused');
+    expect(answer).toContain('http http://127.0.0.1:1/d 200 docs');
+  });
+
+  it('the consultant reports an image it was shown as an image block (P10)', async () => {
+    const run = host('#ot-role: consultant\n#ot-consult-ask: look\n#ot-attachments: A1');
+    const base = run.host;
+    await playRolePlay({
+      ...base,
+      call: (tool, args) =>
+        tool === 'read_attachment'
+          ? Promise.resolve({
+              isError: false,
+              text: '{}',
+              structured: { id: 'A1', kind: 'image', mime: 'image/png' },
+              images: [{ mimeType: 'image/png', bytes: 68 }],
+            })
+          : base.call(tool, args),
+    });
+    expect(JSON.stringify(run.calls.at(-1)?.args)).toContain(
+      'A1 is image/png, seen as image/png (68 bytes)',
+    );
+  });
+
   it('plays the Author grouping the queue: ideas of the first area go together', async () => {
     const run = host(
       [

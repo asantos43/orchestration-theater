@@ -48,7 +48,7 @@ O que já existe foi conferido no código em 2026-11-17, no commit `268f7d0` **[
   - a entrega (`workspace.ts`, `play-effects.ts`) usa um título com a primeira linha da necessidade, um corpo fixo e a mensagem de merge `Deliver play <id>`. Não há changelog, estrutura inicial, CI nem importação com detecção de convenções.
 - **Fila de ideias:** não há tabela `ideas`, chave `ideas.*` nem o ponto de julgamento `group_ideas`.
 - **`delivery.mode: ask` (N89):** o `play-effects.ts` passa `attended: false` fixo, e o `ask` vira `pr`. A presença do chat existe (`orchestration/wiring.ts`), mas só alimenta o `base_drift: ask`.
-- **Consultor (N86):** a política dele é só de leitura; o `http_get` não tem handler, e os adaptadores reais não declaram `inputTypes`, então só o agente falso aceita imagem.
+- **Consultor (N86):** era só de leitura e tinha adaptadores reais sem `inputTypes` (só o agente falso aceitava imagem); o P10 mudou isso (ver "Feito no passo" do P10).
 - **Testes de fuga:** só há partes soltas: o agente falso recusa caminho fora do cwd e symlink; o `.worktreeinclude` não segue symlink; há as sondas `shCRejectProbe` (Claude Code), `modeVetoProbe` e `pinnedModeProbe` (Codex) e a de permissão do OpenCode. Não há suíte comum aos três clientes.
 - **Máquina [V]:** Node 24.18.0; `bwrap` 0.13.1, `socat` e `rg` em `/usr/bin`; o Chromium revisão 1248 do Playwright já está no cache do usuário (`~/.cache/ms-playwright`).
 
@@ -88,8 +88,8 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | concluído (PR #82) |
 | P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | concluído (PR #77) |
 | P8 | Fila de ideias | P0 | P1, P3, P7 | concluído (PR #78) |
-| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | pendente |
-| P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
+| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #87) |
+| P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | concluído (PR #88) |
 | P11 | Aceite da fase | todos | nada | pendente |
 | Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`), aceita pelo dono; cliente real confirmado [V] (PR #86) |
 
@@ -340,6 +340,13 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com o agente falso, a peça com o Produtor presente pergunta e segue a resposta; sem o Produtor, entrega por PR, como hoje.
 
+**Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[N]** não confirmado.
+- `Workspace.deliver` já respondia `ask_producer`; o `#deliver` agora passa o `attended` real (a presença do chat) e, nesse caso, manda `DELIVERY_ASK`. A peça vai a AWAITING_PRODUCER com o motivo `delivery_ask` e o menu `deliver_pr`, `deliver_merge`, `cancel`; a resposta fica em `deliveryChoice` e volta ao `deliver` como pedido do Produtor (`requested.by: producer`). O Diretor recebe o aviso pela fila de prompts (`#ot-delivery-ask`) **[V]**.
+- Quem não responde: um vigia fora da máquina (parado por `abort_work` e `close()`) olha o relógio e a presença. Vencido `delivery.ask.timeout`, ou saindo o Produtor com `delivery.ask.on_leave: pr`, ele manda `DELIVERY_ASK_UNANSWERED` e a peça segue com o PR; a decisão fica registrada com `decidedBy: daemon` e o menu pendente é cancelado. O prazo conta a partir de `askedAt`, guardado no motivo, então sobrevive a um reinício **[V]**.
+- Chaves **[proposta]**: `delivery.ask.timeout` (padrão `10m`; `0` espera sem limite) e `delivery.ask.on_leave` (`pr`, padrão, ou `wait`).
+- Testes **[V]**: máquina (`delivery-ask.test.ts`), configuração e ponta a ponta com o agente falso (`delivery-ask-e2e.test.ts`: presente com `pr` e com `merge`, sem ninguém, saindo durante a pergunta, prazo vencido, `on_leave: wait`, sem `allow_direct_merge`).
+- **[N]** Rodada com um `ot chat` real e uma entrega real por merge.
+
 ### P10. Consultor: pasta do chat, pesquisa e imagem (N86)
 
 **Escopo:**
@@ -348,6 +355,15 @@ Ordem em ondas **[proposta]**:
 - Os adaptadores reais declaram `inputTypes` com imagem quando o cliente aceita. Qual cliente aceita imagem pelo ACP está **[N]**: o passo confere no catálogo do cliente o que der sem rodar turno e deixa o resto para o teste real opcional.
 
 **Aceite:** com o agente falso, o consultor grava um arquivo na pasta do chat e não grava fora dela; usa o `http_get` num servidor local do teste; recebe uma imagem quando o adaptador declara.
+
+**Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[S]** fonte secundária, **[N]** não confirmado.
+- A política do papel `consultant` deixou de ser só de leitura: ele passa a ser papel de escrita (`edit` e `write`, como o Ator) **[proposta]**, mas só dentro do worktree da consulta; as cascas continuam só do Ator. `http_get` aparece se `roles.consultant.policy.network.allow` não for vazio, e as ferramentas `browser_*` só com a chave `browser` do papel (`read` ou `full`; padrão `none`) **[V]**.
+- O que o consultor escreve entra na pasta do chat depois de conferido **[proposta]**. A consulta roda num worktree em `play/<cenário>/attempts/consult-<n>/1`. Ao terminar, o daemon grava o que mudou e confere cada arquivo com o `confinePath` do P3 (um link simbólico para fora, `.git` e `attachments/` são recusados). Se tudo passa, tira um instantâneo da pasta do chat (o que o Produtor deixou solto) e faz o merge `--no-ff`, um de cada vez; `attachments/` fica em `.git/info/exclude`. Um conflito ou uma recusa deixa a branch e avisa o Diretor **[V]**.
+- Chave **[proposta]** `scenarios.consultant_writes: merge | keep | discard` (padrão `merge`). `keep` deixa o trabalho na branch sem mesclar e `discard` o descarta **[V]**.
+- A saída de `consult` ganhou `files` (o que entrou na pasta) e `notice` (o motivo de não ter entrado); o resultado vai também na resposta da decisão `chat.consult` (`answer.work`), sem evento novo **[proposta]**.
+- Imagem: `read_attachment` devolve um bloco `image` do MCP (`ToolWithImage`), e o resto (id, tipo, nome) vai em `structuredContent` **[V]**. Os três adaptadores reais declaram `inputTypes: ['image']`, o que o `initialize` do ACP mediu na Fase 0 (`promptCapabilities.image`) **[V: spike de 2026-11-14, não repetido neste passo]**: Claude Code **[V]**, Codex **[V]** e OpenCode **[V]**, todos pelo spike. **[N]** Que o bloco `image` devolvido por uma ferramenta MCP (e não no prompt) chegue ao modelo em cada cliente: a capacidade medida é a do prompt. Fica para o teste real opcional.
+- Aceite com o agente falso **[V]** (`consult-work-e2e.test.ts`): grava na pasta do chat; `../fora.txt` e caminho absoluto recusados pelo próprio agente falso; link simbólico para fora recusado pelo daemon (`refused`, branch mantida); `http_get` num servidor local com `network.allow: [127.0.0.1]` e recusado sem ele; imagem entregue só ao cliente `fake-vision`; arquivo solto e anexo na pasta não travam o merge; `keep` e `discard`.
+- **[N]** Não rodados: nenhum cliente real (regra N57).
 
 ### P11. Aceite da fase
 

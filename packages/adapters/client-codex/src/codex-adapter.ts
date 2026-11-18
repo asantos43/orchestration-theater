@@ -117,6 +117,12 @@ export class CodexAdapter extends ClientAdapter {
     configOptions: ['model', 'thought_level', 'mode'],
     headless: true,
     extensions: [],
+    // The `initialize` of codex-acp 2.6.0 answers `promptCapabilities.image` [V: spike of Phase 0, 2026-11-14,
+    // recorded in spikes/acp-codex/README.md; not run again in P10]. That is what `inputTypes` says:
+    // the image reaches the model as an MCP `image` block of a tool result (`read_attachment`,
+    // `browser_screenshot`); that a client shows such a block to the model is [N] until the
+    // optional real test (P10).
+    inputTypes: ['image'],
   };
 
   readonly #command: { readonly cmd: string; readonly args: readonly string[] };

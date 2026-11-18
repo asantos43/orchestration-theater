@@ -360,7 +360,13 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
       /** Why the Director chose to consult, and what the Producer asked for ("use o forte"). */
       reason: text.optional(),
     }),
-    z.strictObject({ answer: text }),
+    z.strictObject({
+      answer: text,
+      /** [proposta] P10: the files the consultant wrote that now are in the chat folder. */
+      files: z.array(text).optional(),
+      /** [proposta] P10: why the consultant's files did not reach the folder, when they did not. */
+      notice: text.optional(),
+    }),
   ),
   tool('promote', DIRECTOR, json, z.strictObject({ draftId: id })),
   tool(

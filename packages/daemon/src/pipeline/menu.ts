@@ -11,7 +11,9 @@ import { MENU_OPTIONS, type MenuOption } from './definitions.js';
  * - `accept_as_is` only after a rejection of the Critic, and only while the Critic still counts;
  * - `redefine_need` and `cancel` always;
  * - [proposta] when the base drifted (`delivery.base_drift: ask`, N83) only `redo_on_new_base`,
- *   `deliver_with_conflict` and `cancel` hold.
+ *   `deliver_with_conflict` and `cancel` hold;
+ * - [proposta] when the delivery asks (`delivery.mode: ask`, N89) only `deliver_pr`,
+ *   `deliver_merge` and `cancel` hold.
  */
 export function availableMenu(context: PlayContext): MenuOption[] {
   return MENU_OPTIONS.filter((option) => isAvailable(option, context));
@@ -19,19 +21,24 @@ export function availableMenu(context: PlayContext): MenuOption[] {
 
 export function isAvailable(option: MenuOption, context: PlayContext): boolean {
   const drifted = context.producerReason?.kind === 'base_drift';
+  const delivering = context.producerReason?.kind === 'delivery_ask';
+  const special = drifted || delivering;
   switch (option) {
     case 'cancel':
       return true;
     case 'redefine_need':
-      return !drifted;
+      return !special;
     case 'raise_limit':
       return context.producerReason?.kind === 'limit';
     case 'deliver_ready':
-      return !drifted && context.approvedDemands.length > 0;
+      return !special && context.approvedDemands.length > 0;
     case 'accept_as_is':
-      return !drifted && context.criticRejected && !context.criticWaived;
+      return !special && context.criticRejected && !context.criticWaived;
     case 'redo_on_new_base':
     case 'deliver_with_conflict':
       return drifted;
+    case 'deliver_pr':
+    case 'deliver_merge':
+      return delivering;
   }
 }
