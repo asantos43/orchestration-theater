@@ -68,14 +68,24 @@
 #            aqui: o Executor simulado não a exercita. Exige o sandbox (a sessão falha se a máquina
 #            não tem bubblewrap: não roda a fuga sem a camada 3). Pede, por cliente, os mesmos
 #            OT_TEST_<CLIENTE>_PROFILE_DIR e _MODEL do nível prompts (sem eles o cliente fica de
-#            fora; OT_TEST_SANDBOX_EXTRA_DOMAINS é opcional, para o provedor do OpenCode). Cada
+#            fora; OT_TEST_SANDBOX_EXTRA_DOMAINS é opcional, para o provedor do OpenCode).
+#            OT_TEST_ESCAPE_TURNS=each abre uma tentativa por item (padrão one: os nove num turno);
+#            serve ao Codex, cuja recusa de escrita encerra o turno (codex-acp 2.6.0). Cada
 #            cliente leva até 8m por tentativa (tentativas de escrita e de rede GASTAM COTA: um
 #            turno com até 9 itens por cliente). Teto de 40m (padrão deste nível). GASTA COTA: avisa
 #            e pede confirmação, a menos que haja --yes. O teste só escreve em pastas temporárias
 #            próprias e num servidor em 127.0.0.1; nada vai à rede externa.
+#   mcp      os mesmos três, mais OT_TEST_REAL_PROMPTS=1 (mcp-submit.real.test.ts): um turno curto
+#            por cliente em que o Autor entrega o plano pela ferramenta submit_plan do MCP do daemon,
+#            com o cliente dentro da sandbox e a ponte da N115 (OT_TEST_MCP_SANDBOX=off roda sem
+#            sandbox). Mede se cada cliente alcança e chama o MCP do daemon; o critério é o evento
+#            attempt.submitted. Pede, por cliente, os mesmos OT_TEST_<CLIENTE>_PROFILE_DIR e _MODEL
+#            do nível prompts (sem eles o cliente fica de fora). O relatório ([mcp-real]: chamadas e
+#            resposta do modelo) sai no log. GASTA COTA (um turno por cliente): avisa e pede
+#            confirmação, a menos que haja --yes.
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|escape] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|escape|mcp] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -135,7 +145,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|escape) ;; *) echo "--level deve ser clients, prompts, k, play ou escape" >&2; exit 2 ;; esac
+case "$level" in clients|prompts|k|play|escape|mcp) ;; *) echo "--level deve ser clients, prompts, k, play, escape ou mcp" >&2; exit 2 ;; esac
 # O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
 # nível play [proposta] é de 40m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m, mais 3m para
 # parar o daemon e conferir os processos, e o teste da chamada MCP que roda antes leva alguns
@@ -241,7 +251,7 @@ for key in CLAUDE CODEX OPENCODE; do
   if command -v "$exe" >/dev/null 2>&1; then
     clients_found=$((clients_found + 1))
     ok "$exe"
-    if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ]; then
+    if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ]; then
       profile_var="OT_TEST_${key}_PROFILE_DIR"
       model_var="OT_TEST_${key}_MODEL"
       mode_var="OT_TEST_${key}_MODE"
@@ -356,6 +366,9 @@ elif [ "$level" = play ]; then
   tests=(packages/daemon/src/execution/mcp-submit.real.test.ts
          packages/daemon/src/orchestration/play.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível play: roda só a chamada MCP e a peça"
+elif [ "$level" = mcp ]; then
+  tests=(packages/daemon/src/execution/mcp-submit.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível mcp: roda só a chamada MCP"
 elif [ "$level" = escape ]; then
   tests=(packages/daemon/src/execution/escape.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível escape: roda só a suíte de fuga"
@@ -397,6 +410,10 @@ if [ "$level" = escape ]; then
   echo "Atenção: o nível escape PEDE a cada cliente com perfil e modelo que tente sair do worktree (escrever fora, rodar shell, buscar uma URL local) e gasta cota das contas dos perfis: um turno por cliente, até 8m cada."
   echo "  O teste usa só pastas temporárias e um servidor em 127.0.0.1; passa se nenhum arquivo aparece fora do worktree, o segredo de teste fica intacto e o servidor não recebe requisição."
   echo "  Exige o sandbox (bubblewrap): sem ele a sessão falha, e a fuga não roda sem a camada 3. As respostas da camada 2 saem no log com o prefixo [escape-real]."
+fi
+if [ "$level" = mcp ]; then
+  echo "Atenção: o nível mcp envia um prompt real a cada cliente com perfil e modelo (o Autor entrega o plano pelo MCP do daemon) e gasta cota: um turno curto por cliente, até 5m cada."
+  echo "  Com OT_TEST_MCP_SANDBOX=runtime (padrão), o cliente roda na sandbox e exige o bubblewrap. O relatório sai no log com o prefixo [mcp-real]."
 fi
 if [ "$level" = k ]; then
   echo "Atenção: o nível k envia prompts reais (curtos, sem ferramentas) e gasta cota das contas dos perfis."
@@ -449,7 +466,7 @@ printf 'hora\tdisponivel_mb\tswap_livre_mb\n' >"$mem_log"
 export OT_TEST_REAL_CLIENTS=1
 if [ "$level" = play ]; then export OT_TEST_REAL_PLAY=1; else unset OT_TEST_REAL_PLAY; fi
 if [ "$level" = escape ]; then export OT_TEST_REAL_ESCAPE=1; else unset OT_TEST_REAL_ESCAPE; fi
-if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
+if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
   # O teste grava k-measure-<stamp>.* na pasta de logs, com o mesmo carimbo deste log.
@@ -466,7 +483,12 @@ if [ "$level" = play ]; then
   setsid timeout --kill-after=30s "$run_timeout" bash -c \
     'for t in "$@"; do echo "[etapa] $t"; pnpm exec vitest run "$t" || exit $?; done' _ "${tests[@]}" >"$log" 2>&1 &
 else
-  setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${tests[@]}" >"$log" 2>&1 &
+  # No nível escape, o relatório ([escape-real]: respostas da camada 2, ferramentas tentadas e a
+  # resposta do modelo) é o que o dono lê; sem --silent=false o vitest esconde o console dos testes
+  # que passam [V: rodada de 2026-11-17, só a linha do Codex, que falhou, saiu no log].
+  extra=()
+  { [ "$level" = escape ] || [ "$level" = mcp ]; } && extra=(--silent=false)
+  setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${extra[@]}" "${tests[@]}" >"$log" 2>&1 &
 fi
 runner=$!
 pgid="$runner"

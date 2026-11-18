@@ -809,6 +809,7 @@ function opencode(
     isolation: section.isolation,
     ...(section.profile_config === undefined ? {} : { profileConfig: section.profile_config }),
     shellKeys: section.shell_keys,
+    internalTools: section.internal_tools,
     projectConfig: section.project_config,
     readOnlyMode: section.read_only_mode,
     profileDir: (ref) => profileDirOf(parts.paths, ref),

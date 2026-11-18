@@ -10,7 +10,7 @@ import type {
   ProcessLauncher,
   RolePolicy,
 } from '@otheater/core';
-import { FakeClock, InMemorySecretVault } from '@otheater/core/testing';
+import { InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, realClientFlags, testGit } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
 import { pathFinder, selectClients, type ClientSelection } from '../clients.js';
@@ -388,7 +388,8 @@ async function runCell(selection: ClientSelection, cell: Cell): Promise<CellOutc
   const daemon = await startDaemon({
     dataDir: tmp.dir,
     config,
-    overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher },
+    // The system clock: the deadline of the attempt (`timeoutMs`) sleeps on it, and a fake one never wakes.
+    overrides: { vault: new InMemorySecretVault(), launcher },
     clients: productionClients(config),
     logger: createSilentLogger(),
     version: '0.0.0-test',

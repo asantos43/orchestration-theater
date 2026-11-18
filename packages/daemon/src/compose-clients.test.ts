@@ -220,10 +220,11 @@ describe('productionClients', () => {
       expect(spec.env.OPENCODE_DISABLE_PROJECT_CONFIG).toBe('1');
       expect(spec.env.OPENCODE_PERMISSION).toBeTypeOf('string');
       expect(spec.env.XDG_DATA_HOME?.startsWith(profile.dir)).toBe(true);
-      expect(spec.env.XDG_STATE_HOME).toBeUndefined();
+      expect(spec.env.XDG_STATE_HOME?.startsWith(profile.dir)).toBe(true);
+      expect(spec.env.XDG_CACHE_HOME).toBeUndefined();
 
       const wide = parseConfig(
-        `${OPEN}clients:\n  opencode:\n    isolation: [data, config, state]\n    project_config: enabled\n    command: { cmd: /opt/opencode }\n`,
+        `${OPEN}clients:\n  opencode:\n    isolation: [data, config, state, cache]\n    project_config: enabled\n    command: { cmd: /opt/opencode }\n`,
       );
       const other = byId(
         productionClients(wide, { env: ENV, findExecutable: NOTHING })(t.parts),
@@ -232,7 +233,7 @@ describe('productionClients', () => {
       const wideSpec = await other.launchSpec(t.profile('opencode'), TEST_POLICY, t.dir);
       expect(wideSpec).toMatchObject({ cmd: '/opt/opencode', args: ['acp'] });
       expect(wideSpec.env.OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined();
-      expect(wideSpec.env.XDG_STATE_HOME?.startsWith(profile.dir)).toBe(true);
+      expect(wideSpec.env.XDG_CACHE_HOME?.startsWith(profile.dir)).toBe(true);
     } finally {
       await t.dispose();
     }
