@@ -205,7 +205,10 @@ export const NormalizedUpdateSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('rate_limit'),
     status: z.enum(RATE_LIMIT_STATUSES),
-    /** Window the client reports (`five_hour`, `seven_day`...). */
+    /**
+     * The window, in the name the daemon uses (`5h`, `7d`), not the client's own (`five_hour`,
+     * `seven_day`): the quota service keeps it as it comes, and a probe's windows are these names.
+     */
     window: z.string().min(1).optional(),
     usedPercent: z.number().min(0).optional(),
     resetsAt: z.int().min(0).optional(),

@@ -130,6 +130,11 @@ export interface NormalizedError {
 export interface SessionNormalizer {
   /** `null`: nothing to tell the daemon (a message the shell swallows). */
   normalizeUpdate(raw: RawUpdate): NormalizedUpdate | null;
+  /**
+   * [proposta] More updates the same raw message carries (the other windows of a Claude
+   * `rate_limit_event`), handed to the listeners after the main one, in order. Absent: none.
+   */
+  normalizeExtraUpdates?(raw: RawUpdate): readonly NormalizedUpdate[];
   normalizeError(raw: unknown): NormalizedError;
 }
 

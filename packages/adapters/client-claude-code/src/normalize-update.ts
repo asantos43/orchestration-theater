@@ -234,6 +234,22 @@ function percentOf(utilization: unknown, unit: UtilizationUnit): number | undefi
   return read.ok ? read.percent : undefined;
 }
 
+/** The windows of the Claude stream and of the statusline, in the names the whole daemon uses (`5h`, `7d`). */
+export const STATUSLINE_WINDOWS: Readonly<Record<string, string>> = {
+  five_hour: '5h',
+  seven_day: '7d',
+};
+
+/**
+ * Names of the windows of the Claude stream and of the statusline, as the daemon spells them. A
+ * name this table does not know goes through unchanged, so a new window is not lost.
+ */
+export function windowNameOf(claudeName: string): string {
+  return Object.hasOwn(STATUSLINE_WINDOWS, claudeName)
+    ? (STATUSLINE_WINDOWS[claudeName] ?? claudeName)
+    : claudeName;
+}
+
 /**
  * The `rate_limit_event` the adapter forwards in `usage_update._meta["_claude/rateLimit"]`:
  * `status`, `resetsAt` (epoch seconds), `rateLimitType` (the window that triggered it) and
@@ -251,7 +267,7 @@ function rateLimitOf(raw: unknown, unit: UtilizationUnit): NormalizedUpdate | un
   return {
     kind: 'rate_limit',
     status,
-    ...(window === undefined ? {} : { window }),
+    ...(window === undefined ? {} : { window: windowNameOf(window) }),
     ...(usedPercent === undefined ? {} : { usedPercent }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
@@ -318,6 +334,35 @@ export function readRateLimitEvent(
     ...(eventReset === undefined ? {} : { resetsAt: eventReset }),
     windows,
   };
+}
+
+/**
+ * [proposta] The windows of a `rate_limit_event` that the `rate_limit` update does not carry: the
+ * update keeps only the dominant window (`rateLimitType`), and the quota service needs every
+ * window of the client (`5h` and `7d`) fresh before it trusts a reading. Each of them becomes one
+ * more `rate_limit` update, in the daemon's window name. Only a window with a utilization the unit
+ * rule accepts is told. Their status is the event's, except `rejected`: the limit hit is the
+ * dominant window's and goes once, with the main update.
+ */
+export function rateLimitExtrasOf(
+  raw: unknown,
+  unit: UtilizationUnit = 'ignore',
+): readonly NormalizedUpdate[] {
+  const event = readRateLimitEvent(raw, unit);
+  if (event === undefined) return [];
+  const status = event.status === 'rejected' ? 'allowed' : event.status;
+  const extras: NormalizedUpdate[] = [];
+  for (const window of event.windows) {
+    if (window.name === event.dominant || window.percent === undefined) continue;
+    extras.push({
+      kind: 'rate_limit',
+      status,
+      window: windowNameOf(window.name),
+      usedPercent: window.percent,
+      ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
+    });
+  }
+  return extras;
 }
 
 function usageOf(update: Record<string, unknown>): NormalizedUpdate | null {

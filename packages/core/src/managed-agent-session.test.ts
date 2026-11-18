@@ -14,7 +14,7 @@ import {
   type SessionDriver,
   type SessionWarning,
 } from './managed-agent-session.js';
-import type { StopReason } from './normalized-update.js';
+import type { NormalizedUpdate, StopReason } from './normalized-update.js';
 import type {
   NormalizedError,
   SessionConfigOption,
@@ -65,7 +65,13 @@ class ScriptedDriver implements SessionDriver {
   }
 }
 
-function setup(options: { cancelGraceMs?: number; onWarning?: (w: SessionWarning) => void } = {}) {
+function setup(
+  options: {
+    cancelGraceMs?: number;
+    onWarning?: (w: SessionWarning) => void;
+    normalizer?: SessionNormalizer;
+  } = {},
+) {
   const driver = new ScriptedDriver();
   const process = new FakeLaunchedProcess(1, { cmd: 'x', args: [], cwd: '/', env: {} });
   const session = new ManagedAgentSession({
@@ -73,9 +79,10 @@ function setup(options: { cancelGraceMs?: number; onWarning?: (w: SessionWarning
     canLoad: true,
     driver,
     process,
-    normalizer,
+    normalizer: options.normalizer ?? normalizer,
     cancelGraceMs: 20,
-    ...options,
+    ...(options.cancelGraceMs === undefined ? {} : { cancelGraceMs: options.cancelGraceMs }),
+    ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
   });
   return { driver, process, session };
 }
@@ -95,6 +102,29 @@ describe('ManagedAgentSession', () => {
     driver.turns[0]?.resolve('end_turn');
     await expect(turn).resolves.toEqual({ stopReason: 'end_turn' });
     expect(seen).toEqual(['a', 'b']);
+  });
+
+  it('hands the extra updates of a message after its main update, even when the main is swallowed', () => {
+    const extra = (text: string): NormalizedUpdate => ({
+      kind: 'agent_message_chunk',
+      content: { type: 'text', text },
+    });
+    const { session } = setup({
+      normalizer: {
+        ...normalizer,
+        normalizeUpdate: (raw) => (raw === 'main' ? extra('main') : null),
+        normalizeExtraUpdates: () => [extra('x1'), extra('x2')],
+      },
+    });
+    const seen: string[] = [];
+    session.onUpdate((update) => {
+      if (update.kind === 'agent_message_chunk' && update.content.type === 'text') {
+        seen.push(update.content.text);
+      }
+    });
+    session.deliver('main');
+    session.deliver('swallowed');
+    expect(seen).toEqual(['main', 'x1', 'x2', 'x1', 'x2']);
   });
 
   it('swallows what the normalizer swallows and what makes it throw', () => {

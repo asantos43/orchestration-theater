@@ -359,6 +359,37 @@ describe('QuotaService, state of a profile (architecture 5.6)', () => {
     );
   });
 
+  it('leaves unknown only when every expected window came fresh from the stream, in the daemon names', async () => {
+    const { service } = setup();
+    service.bindSession('s1', WORK);
+    // A window of the client's own name is not one the probe expects: it counts for nothing.
+    await service.ingestUpdate('s1', {
+      kind: 'rate_limit',
+      status: 'allowed',
+      window: 'five_hour',
+      usedPercent: 10,
+    });
+    expect((await service.statusOf(WORK)).state).toBe('unknown');
+    // The daemon names (what the Claude adapter sends): one window is not enough...
+    await service.ingestUpdate('s1', {
+      kind: 'rate_limit',
+      status: 'allowed',
+      window: '5h',
+      usedPercent: 10,
+    });
+    const half = await service.statusOf(WORK);
+    expect(half.state).toBe('unknown');
+    expect(half.reason).toContain('7d');
+    // ...and with both fresh the state is a reading.
+    await service.ingestUpdate('s1', {
+      kind: 'rate_limit',
+      status: 'allowed',
+      window: '7d',
+      usedPercent: 3,
+    });
+    expect(await service.statusOf(WORK)).toMatchObject({ state: 'ok' });
+  });
+
   it('keeps the known reset time when a later hit does not carry one', async () => {
     const { service } = setup();
     await service.ingestLimitHit(WORK, { source: 'a', resetsAt: T0 + 40 * MIN });

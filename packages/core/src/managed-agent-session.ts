@@ -206,19 +206,22 @@ export class ManagedAgentSession implements AgentSession {
    * the normalizer swallows (`null`), or that makes it throw, reaches nobody.
    */
   deliver(raw: RawUpdate): void {
-    let update: NormalizedUpdate | null;
+    let updates: NormalizedUpdate[];
     try {
-      update = this.#normalizer.normalizeUpdate(raw);
+      const main = this.#normalizer.normalizeUpdate(raw);
+      const extras = this.#normalizer.normalizeExtraUpdates?.(raw) ?? [];
+      updates = main === null ? [...extras] : [main, ...extras];
     } catch (error) {
       this.#warn({ kind: 'normalizer_threw', error });
       return;
     }
-    if (update === null) return;
-    for (const listener of [...this.#listeners]) {
-      try {
-        listener(update);
-      } catch (error) {
-        this.#warn({ kind: 'listener_threw', error });
+    for (const update of updates) {
+      for (const listener of [...this.#listeners]) {
+        try {
+          listener(update);
+        } catch (error) {
+          this.#warn({ kind: 'listener_threw', error });
+        }
       }
     }
   }

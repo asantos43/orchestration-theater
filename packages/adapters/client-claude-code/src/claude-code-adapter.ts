@@ -35,7 +35,11 @@ import {
   type LoginRun,
 } from './official-login.js';
 import { normalizeClaudeError } from './normalize-error.js';
-import { normalizeClaudeUpdate, type UtilizationUnit } from './normalize-update.js';
+import {
+  normalizeClaudeUpdate,
+  rateLimitExtrasOf,
+  type UtilizationUnit,
+} from './normalize-update.js';
 import { ClaudeModelCatalog, EFFORT_OPTION_ID, MODEL_OPTION_ID } from './model-catalog.js';
 import type { ClaudeModelCatalogOptions } from './model-catalog.js';
 import { acpOptions, headlessArgs, SESSION_MODE, type SettingSourcesMode } from './policy.js';
@@ -254,6 +258,10 @@ export class ClaudeCodeAdapter extends ClientAdapter {
 
   protected normalizeUpdate(raw: RawUpdate): NormalizedUpdate | null {
     return normalizeClaudeUpdate(raw, { utilizationUnit: this.#utilization });
+  }
+
+  protected override normalizeExtraUpdates(raw: RawUpdate): readonly NormalizedUpdate[] {
+    return rateLimitExtrasOf(raw, this.#utilization);
   }
 
   protected normalizeError(raw: unknown): NormalizedError {

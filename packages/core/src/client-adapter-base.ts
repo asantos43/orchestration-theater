@@ -636,6 +636,15 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   protected abstract enforcement(policy: RolePolicy, via: TransportId): Enforcement;
   /** Agent shell: turns what the client sends into the normalized update; `null` swallows it. */
   protected abstract normalizeUpdate(raw: RawUpdate, via: TransportId): NormalizedUpdate | null;
+  /**
+   * More normalized updates that the same raw message carries, delivered after the one of
+   * {@link normalizeUpdate}. [proposta] None by default.
+   */
+  // The default ignores both arguments; a client that has extras reads them.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected normalizeExtraUpdates(raw: RawUpdate, via: TransportId): readonly NormalizedUpdate[] {
+    return [];
+  }
   /** Agent shell: quota (N42), login, stuck client. */
   protected abstract normalizeError(raw: unknown, via: TransportId): NormalizedError;
   /**
@@ -905,6 +914,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   #normalizer(via: TransportId): SessionNormalizer {
     return {
       normalizeUpdate: (raw) => this.normalizeUpdate(raw, via),
+      normalizeExtraUpdates: (raw) => this.normalizeExtraUpdates(raw, via),
       normalizeError: (raw) => this.normalizeError(raw, via),
     };
   }
