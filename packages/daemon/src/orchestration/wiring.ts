@@ -123,6 +123,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     logger,
     attended: ({ scenarioId }) => presence.attended(scenarioId),
+    clock: composition.clock,
   });
   // The queue of ideas hears the end of every play; it is built after the runner it needs.
   const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};

@@ -738,6 +738,7 @@ function menuTransitions() {
           criticRejected: false,
           deliverOnlyApproved: false,
           producerReason: null,
+          deliveryChoice: null,
           feedback: null,
           restart: true,
         })),
@@ -792,6 +793,25 @@ function menuTransitions() {
       ],
     },
     {
+      // [proposta] N89: the Producer answers the question of `delivery.mode: ask`
+      guard: chose('deliver_pr'),
+      target: 'DELIVERING' as const,
+      actions: [
+        ...choice('deliver_pr'),
+        abort('delivery_answered'),
+        patch(() => ({ deliveryChoice: 'pr' as const, producerReason: null })),
+      ],
+    },
+    {
+      guard: chose('deliver_merge'),
+      target: 'DELIVERING' as const,
+      actions: [
+        ...choice('deliver_merge'),
+        abort('delivery_answered'),
+        patch(() => ({ deliveryChoice: 'direct_merge' as const, producerReason: null })),
+      ],
+    },
+    {
       guard: chose('cancel'),
       target: 'CANCELLED' as const,
       actions: [...choice('cancel'), abort('cancelled'), patch(() => ({ producerReason: null }))],
@@ -812,6 +832,7 @@ const FRESH_CONTEXT = {
   producerReason: null,
   deliverOnlyApproved: false,
   driftAccepted: false,
+  deliveryChoice: null,
   restart: false,
   decisionSeq: 0,
 } as const;
@@ -947,6 +968,7 @@ export const playMachine = setup({
                   counters: withoutAnyAttempts(context.counters),
                   feedback: null,
                   driftAccepted: false,
+                  deliveryChoice: null,
                 };
               }),
             ],
@@ -1044,6 +1066,15 @@ export const playMachine = setup({
       entry: [enter('DELIVERING')],
       on: {
         DELIVERED: { target: 'DONE' },
+        // [proposta] N89: `delivery.mode: ask` with someone watching: the Producer chooses
+        DELIVERY_ASK: {
+          target: 'AWAITING_PRODUCER',
+          actions: [
+            patch(({ event }) => ({
+              producerReason: { kind: 'delivery_ask', askedAt: event.at },
+            })),
+          ],
+        },
         // N83: the base moved and does not merge cleanly into the integration
         BASE_DRIFT: [
           ...scriptReturn(({ event }) => event.type === 'BASE_DRIFT' && event.mode === 'update'),
@@ -1067,6 +1098,24 @@ export const playMachine = setup({
       entry: [enter('AWAITING_PRODUCER')],
       on: {
         PRODUCER_CHOSE: menuTransitions(),
+        // [proposta] N89: nobody answered (or the Producer left): the daemon chooses the PR
+        DELIVERY_ASK_UNANSWERED: {
+          guard: ({ context }) => context.producerReason?.kind === 'delivery_ask',
+          target: 'DELIVERING',
+          actions: [
+            abort('delivery_unanswered'),
+            ...recorded(({ event }) => ({
+              kind: 'menu_choice',
+              input: { reason: 'delivery_ask' },
+              answer: {
+                option: 'deliver_pr',
+                cause: event.type === 'DELIVERY_ASK_UNANSWERED' ? event.cause : 'timeout',
+              },
+              decidedBy: 'daemon',
+            })),
+            patch(() => ({ deliveryChoice: 'pr' as const, producerReason: null })),
+          ],
+        },
         // the demands that were still running when the counter ran out can still finish
         DEMAND_APPROVED: { guard: isKnownPending, actions: [approve()] },
       },

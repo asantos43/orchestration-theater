@@ -153,6 +153,19 @@ export function judgePrompt(playId: string, point: string): string {
   ].join('\n');
 }
 
+/**
+ * What the daemon tells the Director when the delivery asks (`delivery.mode: ask`, N89): the menu
+ * is a pending decision of the Producer, and the Director only says so in the chat. The Producer
+ * answers the menu, not the Director.
+ */
+export function deliveryAskPrompt(playId: string): string {
+  return [
+    '#ot-delivery-ask',
+    `#ot-play: ${playId}`,
+    `The work of the play ${playId} is ready to deliver, and the Producer chooses how: open the pull request or merge into the base. The question is a menu that only the Producer answers (do not answer it with \`decide\`). Tell the Producer in the chat, in one or two sentences, that the choice is waiting in the menu; if nobody answers, the play opens the pull request.`,
+  ].join('\n');
+}
+
 /** What the daemon tells the Director when the plan has open questions (decision `clarify`). */
 export function clarifyPrompt(playId: string): string {
   return [

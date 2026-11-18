@@ -4,9 +4,13 @@ import { availableMenu } from './menu.js';
 import { CRITICAL_EXCEPTIONS, MENU_OPTIONS, type MenuOption } from './definitions.js';
 import { limitsOf, Model, PRESETS } from './model-fixture.js';
 
-/** Every option except the two of a drifted base (N83), which hold only for that reason. */
+/** Every option except the ones of a drifted base (N83) and of the delivery question (N89). */
 const LIMIT_MENU = MENU_OPTIONS.filter(
-  (option) => option !== 'redo_on_new_base' && option !== 'deliver_with_conflict',
+  (option) =>
+    option !== 'redo_on_new_base' &&
+    option !== 'deliver_with_conflict' &&
+    option !== 'deliver_pr' &&
+    option !== 'deliver_merge',
 );
 
 function menuOf(model: Model): readonly MenuOption[] {
