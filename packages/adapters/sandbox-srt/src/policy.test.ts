@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import type { SandboxRequest } from '@otheater/core';
+import { InvalidInput } from '@otheater/core';
 import {
   allowedDomains,
+  bridgePorts,
+  bridgeScript,
   commandIdFor,
   filesystemRules,
   readDenies,
@@ -121,5 +124,40 @@ describe('commandIdFor', () => {
         '/tmp/ot',
       ),
     ).toBe(base);
+  });
+});
+
+describe('the bridge to the loopback servers of the daemon (N115)', () => {
+  it('allows the bridged ports as domains by itself, without repeats', () => {
+    expect(
+      allowedDomains(request({ domains: ['localhost:4321'], loopbackPorts: [4321, 9] })),
+    ).toEqual(['api.example.com', 'localhost:4321', 'localhost:9']);
+  });
+
+  it('reads the ports without repeats and refuses what is no port or what a relay holds', () => {
+    expect(bridgePorts(request())).toEqual([]);
+    expect(bridgePorts(request({ loopbackPorts: [4321, 4321, 80] }))).toEqual([4321, 80]);
+    for (const bad of [0, -1, 65_536, 1.5, Number.NaN, 3128, 1080]) {
+      expect(() => bridgePorts(request({ loopbackPorts: [bad] }))).toThrow(InvalidInput);
+    }
+  });
+
+  it('starts one listener per port, waits for it, and then replaces the shell by the command', () => {
+    const script = bridgeScript([4321, 80], 'cl ient', ["it's", 'a b']);
+    expect(script).toContain('_ot_listen 4321');
+    expect(script).toContain('_ot_ready 10E1 ||');
+    expect(script).toContain('_ot_listen 80');
+    expect(script).toContain('_ot_ready 0050 ||');
+    expect(script).toContain('proxyport=3128');
+    expect(script.endsWith(`exec 'cl ient' 'it'\\''s' 'a b'`)).toBe(true);
+    // TCP only: nothing here may need `socket(AF_UNIX)`, which the library's filter blocks.
+    expect(script).not.toMatch(/UNIX/);
+  });
+
+  it('puts the ports in the id, so the same request gives the same id and another list another', () => {
+    const secret = Buffer.alloc(32, 7);
+    const base = commandIdFor(secret, request({ loopbackPorts: [4321] }), '/tmp/ot');
+    expect(commandIdFor(secret, request({ loopbackPorts: [4321] }), '/tmp/ot')).toBe(base);
+    expect(commandIdFor(secret, request({ loopbackPorts: [4322] }), '/tmp/ot')).not.toBe(base);
   });
 });

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHAT_CHANNEL_MODES,
   RECOVERY_NOTICE_MODES,
+  SANDBOX_MCP_BRIDGE_MODES,
   SANDBOX_MODES,
   CLIENT_IDS,
   LIMIT_PRESETS,
@@ -593,12 +594,27 @@ describe('recovery', () => {
   });
 });
 
+describe('sandbox.mcp_bridge (N115)', () => {
+  it('bridges the MCP server of the daemon into the sandbox by default, and takes each mode', () => {
+    expect(parseConfig('').sandbox.mcp_bridge).toBe('proxy');
+    expect(SANDBOX_MCP_BRIDGE_MODES).toEqual(['proxy', 'off']);
+    for (const mode of SANDBOX_MCP_BRIDGE_MODES) {
+      expect(parseConfig(`sandbox:\n  mcp_bridge: ${mode}\n`).sandbox.mcp_bridge).toBe(mode);
+    }
+  });
+
+  it('rejects a mode that does not exist', () => {
+    expect(() => parseConfig('sandbox:\n  mcp_bridge: unix\n')).toThrow(/sandbox\.mcp_bridge/);
+  });
+});
+
 describe('sandbox and security.secret_paths', () => {
   it('turns layer 3 on by default where an adapter exists, with nothing extra', () => {
     expect(parseConfig('').sandbox).toEqual({
       mode: 'runtime',
       extra_write_paths: [],
       extra_domains: [],
+      mcp_bridge: 'proxy',
     });
     expect(parseConfig('').security.secret_paths).toEqual({ add: [], remove: [] });
     expect(SANDBOX_MODES).toEqual(['runtime', 'off']);

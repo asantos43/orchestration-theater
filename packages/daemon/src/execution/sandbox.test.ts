@@ -261,3 +261,70 @@ describe('the fake agent inside the sandbox of the daemon', () => {
     });
   }, 90_000);
 });
+
+/**
+ * N115: the framework MCP server listens on the loopback of the host, and a client inside the
+ * sandbox has a loopback of its own. The fake agent calls the tool with `fetch` (which ignores the
+ * proxy and obeys nothing but the address), so only a listener inside the sandbox on the same port
+ * lets the call arrive. Linux only: Seatbelt (macOS) was not measured.
+ */
+describe('the framework MCP server from inside the sandbox (N115)', () => {
+  const WITH_MCP: RolePolicy = {
+    ...POLICY,
+    mcpServers: ['otheater'],
+    mcpTools: { otheater: 'all' },
+  };
+  const SUBMIT =
+    '#script:submit {"tool":"submit_plan","output":{"plan":"do a, then b","openQuestions":[]}}\nsubmit';
+  const onLinux = process.platform === 'linux';
+
+  async function submitted(
+    extraConfig: string,
+    context: { skip: () => void },
+  ): Promise<{ submitted: number; text: string; failures: number } | undefined> {
+    if (sandboxIssue !== undefined || !onLinux) {
+      context.skip();
+      return undefined;
+    }
+    let outcome: { submitted: number; text: string; failures: number } | undefined;
+    await withOutside(async (outside) => {
+      await withDaemon(
+        outside,
+        async (daemon, repo, profile) => {
+          const runner = daemon.execution?.runner;
+          if (runner === undefined) throw new Error('the daemon has no execution');
+          expect(daemon.mcpUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+          const result = await runner.run({
+            ...specOf(repo, profile, 'mcp-bridge', SUBMIT),
+            policy: WITH_MCP,
+          });
+          const events = (await daemon.store.events.readFrom(0, 100_000)).filter(
+            (event) => event.attemptId === result.attemptId,
+          );
+          outcome = {
+            submitted: events.filter((event) => event.type === 'attempt.submitted').length,
+            failures: events.filter((event) => event.type === 'attempt.submit_failed').length,
+            text: chunksOf(events, result.attemptId),
+          };
+        },
+        extraConfig,
+      );
+    });
+    return outcome;
+  }
+
+  it('reaches the tool of the daemon at the same URL and the daemon records the submit', async (context) => {
+    const outcome = await submitted('', context);
+    if (outcome === undefined) return;
+    expect(outcome.submitted).toBe(1);
+    expect(outcome.text).toContain('submit 1');
+  }, 90_000);
+
+  it('with sandbox.mcp_bridge: off the same call never arrives (the behaviour before N115)', async (context) => {
+    const outcome = await submitted('sandbox:\n  mcp_bridge: off\n', context);
+    if (outcome === undefined) return;
+    expect(outcome.text).not.toContain('submit 1');
+    expect(outcome.submitted).toBe(0);
+    expect(outcome.failures).toBe(0);
+  }, 90_000);
+});

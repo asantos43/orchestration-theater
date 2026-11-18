@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createNetServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -315,6 +315,178 @@ real('SrtSandbox in the operating system', () => {
   it('lets the exit code of the command through', async () => {
     const outcome = await confined('exit 7');
     expect(outcome.code).toBe(7);
+  });
+});
+
+/**
+ * N115: a server of the daemon on the loopback of the HOST, reached at `127.0.0.1:<port>` from a
+ * command that has a network of its own. `curl` and the `fetch` of Node are the two clients that
+ * matter: `NO_PROXY` sends both to the loopback of the sandbox, and `fetch` ignores the proxy.
+ */
+real('SrtSandbox bridge to a loopback server of the daemon (N115)', () => {
+  let otherServer: Server;
+  let otherPort = 0;
+  let otherServed = 0;
+  /** Linux only: bubblewrap is what gives the command a loopback of its own. */
+  const onLinux = process.platform === 'linux';
+  const linux = it.skipIf(!onLinux);
+
+  beforeAll(async () => {
+    otherServer = createServer((_request, response) => {
+      otherServed += 1;
+      response.end('OTHER-HOST-SERVER');
+    });
+    await new Promise<void>((resolve) => otherServer.listen(0, '127.0.0.1', resolve));
+    otherPort = (otherServer.address() as AddressInfo).port;
+  });
+  afterAll(async () => {
+    await new Promise<void>((resolve) =>
+      otherServer.close(() => {
+        resolve();
+      }),
+    );
+  });
+
+  const fetchScript = (url: string): string =>
+    `node -e "fetch('${url}').then(r=>r.text()).then(t=>console.log('GOT',t),e=>{console.log('ERR',e.cause&&e.cause.code);process.exit(3)})"`;
+
+  linux(
+    'without the bridge the same domain rule is not enough: curl and fetch are refused',
+    async () => {
+      const before = served;
+      const domains = [`localhost:${String(port)}`];
+      const curl = await confined(`curl -sS -m 10 http://127.0.0.1:${String(port)}/`, { domains });
+      expect(curl.code).toBe(7);
+      expect(curl.stdout).not.toContain('HELLO-FROM-HOST');
+      const node = await confined(fetchScript(`http://127.0.0.1:${String(port)}/`), { domains });
+      expect(node.stdout).toContain('ERR ECONNREFUSED');
+      expect(served).toBe(before);
+    },
+  );
+
+  linux(
+    'with the bridge, curl and fetch reach the server at 127.0.0.1 and at localhost',
+    async () => {
+      const before = served;
+      const loopbackPorts = [port];
+      const url = (host: string) => `http://${host}:${String(port)}/x`;
+      const curl = await confined(`curl -sS -m 10 ${url('127.0.0.1')}`, { loopbackPorts });
+      expect(curl.code).toBe(0);
+      expect(curl.stdout).toBe('HELLO-FROM-HOST');
+      const node = await confined(fetchScript(url('127.0.0.1')), { loopbackPorts });
+      expect(node.stdout).toContain('GOT HELLO-FROM-HOST');
+      const name = await confined(`curl -sS -m 10 ${url('localhost')}`, { loopbackPorts });
+      expect(name.stdout).toBe('HELLO-FROM-HOST');
+      expect(served).toBe(before + 3);
+    },
+  );
+
+  linux('the bridge opens the port it names and no other port of the host', async () => {
+    const beforeOther = otherServed;
+    const loopbackPorts = [port];
+    const direct = await confined(`curl -sS -m 10 http://127.0.0.1:${String(otherPort)}/`, {
+      loopbackPorts,
+    });
+    expect(direct.code).toBe(7);
+    // Through the proxy (what a client that honours it does), the list of the command refuses it.
+    const proxied = await confined(
+      `curl -sS -m 10 --noproxy '' http://localhost:${String(otherPort)}/`,
+      { loopbackPorts },
+    );
+    expect(proxied.stdout).not.toContain('OTHER-HOST-SERVER');
+    expect(proxied.stdout + proxied.stderr).toMatch(
+      /not on the allow list|blocked|403|Received HTTP code/i,
+    );
+    // A port bridged by hand inside the command is no better: the proxy decides, not the listener.
+    const handmade = await confined(
+      `socat TCP4-LISTEN:${String(otherPort)},bind=127.0.0.1,fork PROXY:localhost:localhost:${String(otherPort)},proxyport=3128,proxyauth="$CLOUDSDK_PROXY_USERNAME:$CLOUDSDK_PROXY_PASSWORD" >/dev/null 2>&1 & sleep 0.5; curl -sS -m 10 http://127.0.0.1:${String(otherPort)}/`,
+      { loopbackPorts },
+    );
+    expect(handmade.stdout).not.toContain('OTHER-HOST-SERVER');
+    expect(otherServed).toBe(beforeOther);
+  });
+
+  linux('bridges several ports at once', async () => {
+    const before = served;
+    const beforeOther = otherServed;
+    const outcome = await confined(
+      `curl -sS -m 10 http://127.0.0.1:${String(port)}/; echo; curl -sS -m 10 http://127.0.0.1:${String(otherPort)}/`,
+      { loopbackPorts: [port, otherPort] },
+    );
+    expect(outcome.stdout).toContain('HELLO-FROM-HOST');
+    expect(outcome.stdout).toContain('OTHER-HOST-SERVER');
+    expect(served).toBe(before + 1);
+    expect(otherServed).toBe(beforeOther + 1);
+  });
+
+  linux(
+    'keeps the filter that blocks Unix sockets: the command cannot make one, bridge or not',
+    async () => {
+      const unix = join(root, 'host.sock');
+      const host = await new Promise<import('node:net').Server>((resolve) => {
+        const listener = createNetServer(() => undefined);
+        listener.listen(unix, () => {
+          resolve(listener);
+        });
+      });
+      try {
+        const outcome = await confined(
+          `node -e "require('net').connect('${unix}').on('connect',()=>{console.log('UNIX-CONNECTED');process.exit(0)}).on('error',e=>{console.log('UNIX',e.code);process.exit(3)})"`,
+          { loopbackPorts: [port] },
+        );
+        expect(outcome.stdout).not.toContain('UNIX-CONNECTED');
+        expect(outcome.stdout).toMatch(/UNIX (EPERM|EACCES)/);
+      } finally {
+        await new Promise<void>((resolve) =>
+          host.close(() => {
+            resolve();
+          }),
+        );
+      }
+    },
+  );
+
+  linux(
+    'does not change what the command is: arguments, exit status and the writes it may do',
+    async () => {
+      const loopbackPorts = [port];
+      const exit = await confined('exit 7', { loopbackPorts });
+      expect(exit.code).toBe(7);
+      const args = await execute(
+        await sandbox.wrap({
+          ...request('true'),
+          launch: {
+            cmd: 'printf',
+            args: ['%s|%s\\n', "it's", 'a b'],
+            cwd: dirs.wt,
+            env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dirs.home },
+          },
+          loopbackPorts,
+        }),
+      );
+      expect(args.stdout).toBe("it's|a b\n");
+      const write = await confined(`echo x > "${dirs.outside}/bridge.txt"; echo "rc=$?"`, {
+        loopbackPorts,
+      });
+      expect(write.stdout).toMatch(/rc=[1-9]/);
+      expect(() => readFileSync(join(dirs.outside, 'bridge.txt'))).toThrow();
+    },
+  );
+
+  it('refuses a port that is not a port, or that the relays of the library hold, with InvalidInput', async () => {
+    for (const bad of [0, 70_000, 1.5, 3128, 1080]) {
+      await expect(sandbox.wrap(request('true', { loopbackPorts: [bad] }))).rejects.toBeInstanceOf(
+        InvalidInput,
+      );
+    }
+  });
+
+  it('gives the same launch for the same request and another one for another port list', async () => {
+    const one = await sandbox.wrap(request('true', { loopbackPorts: [port] }));
+    const two = await sandbox.wrap(request('true', { loopbackPorts: [port] }));
+    expect(two).toEqual(one);
+    const none = await sandbox.wrap(request('true'));
+    expect(none.args).not.toEqual(one.args);
   });
 });
 
