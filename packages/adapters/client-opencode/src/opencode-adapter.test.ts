@@ -219,11 +219,11 @@ describe('OpenCodeAdapter', () => {
         FROM_BASE: 'base',
         XDG_DATA_HOME: join(profile.dir, 'data'),
         XDG_CONFIG_HOME: join(profile.dir, 'config'),
+        XDG_STATE_HOME: join(profile.dir, 'state'),
         OPENCODE_DB: join(profile.dir, 'db', 'opencode.db'),
         OPENCODE_DISABLE_PROJECT_CONFIG: '1',
         OPENCODE_PERMISSION: serializePermission(opencodePermission(reader)),
       });
-      expect(env).not.toHaveProperty('XDG_STATE_HOME');
       expect(env).not.toHaveProperty('XDG_CACHE_HOME');
     });
 
@@ -240,13 +240,13 @@ describe('OpenCodeAdapter', () => {
     });
 
     it('the project config can be left on, and the homes to isolate are a setting', async () => {
-      const adapter = make({ projectConfig: 'enabled', isolation: ['data', 'config', 'state'] });
+      const adapter = make({ projectConfig: 'enabled', isolation: ['data', 'config'] });
       await (
         await adapter.openSession(profile, reader, '/work', new FakeSessionTransport())
       ).close();
       const env = launcher.launched[0]?.options.env;
       expect(env).not.toHaveProperty('OPENCODE_DISABLE_PROJECT_CONFIG');
-      expect(env).toMatchObject({ XDG_STATE_HOME: join(profile.dir, 'state') });
+      expect(env).not.toHaveProperty('XDG_STATE_HOME');
     });
 
     it('the shell keys are a setting', async () => {

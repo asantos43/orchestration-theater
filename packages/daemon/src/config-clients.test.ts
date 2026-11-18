@@ -34,8 +34,9 @@ describe('clients.* and security.* of the config', () => {
     });
     expect(clients.opencode).toEqual({
       ...common,
-      isolation: ['data', 'config'],
+      isolation: ['data', 'config', 'state'],
       shell_keys: ['bash'],
+      internal_tools: ['todowrite', 'todoread'],
       project_config: 'disabled',
       read_only_mode: 'none',
       models_cache: 60_000,

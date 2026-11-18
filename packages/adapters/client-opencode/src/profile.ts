@@ -6,8 +6,10 @@ import { InvalidInput } from '@otheater/core';
 
 /**
  * The directories of OpenCode that can be moved into the profile through the XDG variables. The
- * login of the client lives in `data` (Phase 0, item 8 [V]); `config` holds its settings. `state`
- * and `cache` were not measured [N].
+ * login of the client lives in `data` (Phase 0, item 8 [V]); `config` holds its settings; `state`
+ * holds the lock files the client takes before it connects to an MCP server (Phase 4, measured
+ * 2026-11-17 [V]: with a read-only `state` the MCP servers of the session stay unavailable).
+ * `cache` was not measured [N].
  */
 export const ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as const;
 export type IsolatedHome = (typeof ISOLATED_HOMES)[number];
@@ -21,10 +23,13 @@ const XDG_VARIABLE: Readonly<Record<IsolatedHome, string>> = {
 
 /**
  * [proposta] key `clients.opencode.isolation`. Default: the two homes measured in Phase 0 (`data`
- * and `config`, plus the database). `state` and `cache` stay in the user's own directories: the
- * cache holds the model list the client downloads, and isolating it costs a download per profile.
+ * and `config`, plus the database) and `state`. Without `state` the client writes its locks in the
+ * user's own `~/.local/state/opencode`, which the sandbox (layer 3) keeps read-only, and then it
+ * reaches no MCP server, not even the daemon's (Phase 4 [V]). `cache` stays in the user's own
+ * directory: it holds the model list the client downloads, and isolating it costs a download per
+ * profile.
  */
-export const DEFAULT_ISOLATION: readonly IsolatedHome[] = ['data', 'config'];
+export const DEFAULT_ISOLATION: readonly IsolatedHome[] = ['data', 'config', 'state'];
 
 /**
  * What goes into `opencode.json` of the profile (the `config` home), when the setting is not

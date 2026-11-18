@@ -704,10 +704,16 @@ export const OpenCodeClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `opencode acp`. */
   command: ClientCommandSchema.optional(),
-  isolation: z.array(z.enum(OPENCODE_ISOLATED_HOMES)).default(['data', 'config']),
+  /**
+   * The homes moved into the profile. `state` is in the default (Phase 4 [V]): the client takes
+   * locks there before it reaches an MCP server, and the sandbox keeps the user's own read-only.
+   */
+  isolation: z.array(z.enum(OPENCODE_ISOLATED_HOMES)).default(['data', 'config', 'state']),
   /** The `opencode.json` of the profile: an object, `null` for no file, absent for the adapter's default. */
   profile_config: z.record(z.string(), z.unknown()).nullable().optional(),
   shell_keys: z.array(z.string().min(1)).min(1).default(['bash']),
+  /** Tools that change only the session (its to-do list): `allow` for every role; `[]` sends them to `ask`. */
+  internal_tools: z.array(z.string().min(1)).default(['todowrite', 'todoread']),
   project_config: z.enum(OPENCODE_PROJECT_CONFIG).default('disabled'),
   read_only_mode: z.enum(OPENCODE_READ_ONLY_MODES).default('none'),
   /** How long `opencode models` is reused (`models_cache`); `0` reads every time. */

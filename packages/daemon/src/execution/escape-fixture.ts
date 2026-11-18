@@ -208,6 +208,7 @@ const inAttempt = (events: readonly EventEnvelope[], attemptId: string): EventEn
   events.filter((event) => event.attemptId === attemptId);
 
 export interface PermissionAnswer {
+  readonly tool: string | undefined;
   readonly kind: string | undefined;
   readonly answer: string;
   readonly rule: string;
@@ -227,6 +228,7 @@ export function permissionsOf(
     .map((event) => {
       const payload = event.payload as Record<string, unknown>;
       return {
+        tool: payload.tool as string | undefined,
         kind: payload.kind as string | undefined,
         answer: String(payload.answer),
         rule: String(payload.rule),
@@ -278,6 +280,38 @@ export function toolCallsOf(
   return inAttempt(events, attemptId).filter(
     (event) => event.type === 'tool.called' && (event.payload as { tool?: string }).tool === tool,
   ).length;
+}
+
+/**
+ * What the client of an attempt said and tried, from its `session.update` events: the text of its
+ * reply (the `agent_message_chunk`s, joined) and its native tool calls (`tool_call`, with the last
+ * status a `tool_call_update` gave). A report for the owner of the real suite, never a criterion:
+ * an empty reply or no call tells that the model did not try, which a pass alone does not.
+ */
+export function transcriptOf(
+  events: readonly EventEnvelope[],
+  attemptId: string,
+): { readonly reply: string; readonly toolCalls: readonly string[] } {
+  let reply = '';
+  const calls = new Map<string, { title: string; kind: string; status: string }>();
+  for (const event of inAttempt(events, attemptId)) {
+    if (event.type !== 'session.update') continue;
+    const update = (event.payload as { update?: Record<string, unknown> }).update;
+    if (update === undefined) continue;
+    if (update.kind === 'agent_message_chunk') {
+      const content = update.content as { type?: string; text?: string } | undefined;
+      if (content?.type === 'text' && typeof content.text === 'string') reply += content.text;
+    } else if (update.kind === 'tool_call' || update.kind === 'tool_call_update') {
+      const id = String(update.toolCallId);
+      const call = calls.get(id) ?? { title: '', kind: '?', status: '?' };
+      if (typeof update.title === 'string' && update.title !== '') call.title = update.title;
+      if (typeof update.toolKind === 'string') call.kind = update.toolKind;
+      if (typeof update.status === 'string') call.status = update.status;
+      calls.set(id, call);
+    }
+  }
+  const toolCalls = [...calls.values()].map((call) => `${call.kind}:${call.status}:${call.title}`);
+  return { reply, toolCalls };
 }
 
 /** The prompt that plays the escape script with these steps. */
