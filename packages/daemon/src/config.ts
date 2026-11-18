@@ -1282,7 +1282,8 @@ export const DaemonConfigSchema = z
      * how old a reading may be and still authorize a route (a reading older than this makes the
      * state `unknown`; default 10 minutes). `probe.delivery` is how the service takes the probes of
      * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
-     * `read` calls where polling is on. N123 (the defaults of the probes) stays open.
+     * `read` calls where polling is on. The defaults follow N123, decided by the owner on
+     * 2026-11-18.
      */
     quota: z
       .strictObject({
