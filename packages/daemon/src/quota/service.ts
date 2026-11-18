@@ -52,6 +52,43 @@ export interface LimitHit {
   readonly cause?: QuotaCause | undefined;
 }
 
+/** The source a recheck of P9 gives its readings and its release of a limit (`quota.restored.reason`). */
+export const RECHECK_SOURCE = 'recheck';
+
+/** What a listener hears when a profile's announced state changes (P9 uses it for its wakeups). */
+export interface QuotaChange {
+  /** Complete id `<client>/<profile>`. */
+  readonly profile: string;
+  readonly status: QuotaStatus;
+  /** What was announced before; `undefined` the first time. */
+  readonly before: Pick<Announced, 'state' | 'cause' | 'untilReset'> | undefined;
+  readonly source: string;
+}
+
+export type QuotaChangeListener = (change: QuotaChange) => void;
+/** The `usage` update of the normalized stream of a session. */
+export type UsageUpdate = Extract<NormalizedUpdate, { kind: 'usage' }>;
+
+/**
+ * Optional, duck-typed on a probe (P8): a probe that counts consumption itself (the local ledger of
+ * OpenCode, which has no quota API) takes the `usage` updates of the sessions of its client here.
+ * Synchronous and cheap: it only writes down what it was told; the reading comes from `read` or
+ * from `watch`. [proposta]
+ */
+export interface UsageSink {
+  recordUsage(profile: ProfileRef, sessionId: string, usage: UsageUpdate): void;
+}
+
+/**
+ * Optional, duck-typed on a probe (P8): a client whose profiles are not all read the same way (the
+ * profiles of OpenCode with a MiniMax key and the ones with another provider) names the windows
+ * each profile reports, so a profile is not left `unknown` for a window its probe never reads.
+ * Without it the windows of `capabilities()` count for every profile of the client. [proposta]
+ */
+export interface ProfileWindows {
+  windowsOf(profile: ProfileRef): readonly string[];
+}
+
 /** What the service remembers of the last state it announced for a profile. */
 interface Announced {
   readonly signature: string;
@@ -77,15 +114,36 @@ export function parseResetsAt(value: number | string | undefined): number | null
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-/** Reads a limit error: the `-32001` of the agent shells, a normalized error, or a `QuotaExhausted`. */
-export function limitHitOf(error: unknown): LimitHit | undefined {
-  if (hasErrorCode(error, 'QUOTA_EXHAUSTED')) return { source: 'error:QuotaExhausted' };
+/** How deep `limitHitOf` follows the `cause` chain (typed error, normalized error, raw error). */
+const LIMIT_CAUSE_DEPTH = 3;
+
+/**
+ * Reads a limit error: the `-32001` of the agent shells, a normalized error, or a `QuotaExhausted`.
+ * The typed `QuotaExhausted` carries the `NormalizedError` in its `cause` (`typedErrorOf`), and that
+ * one carries the raw error; the reset time and the source are read down that chain (P8). The
+ * source is `limit_hit:<where>` (`429`, `message`, `structured`, `rate_limit_event`) when the
+ * adapter said where the limit came from, else the shape of the error that was read.
+ */
+export function limitHitOf(error: unknown, depth = LIMIT_CAUSE_DEPTH): LimitHit | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const fields = error as { kind?: unknown; code?: unknown; resetsAt?: unknown; data?: unknown };
+  const fields = error as {
+    kind?: unknown;
+    code?: unknown;
+    resetsAt?: unknown;
+    data?: unknown;
+    limitSource?: unknown;
+    cause?: unknown;
+  };
+  const inner = depth > 0 ? limitHitOf(fields.cause, depth - 1) : undefined;
+  if (hasErrorCode(error, 'QUOTA_EXHAUSTED')) {
+    return inner ?? { source: 'error:QuotaExhausted' };
+  }
   if (fields.kind === 'quota_exhausted') {
+    const known = typeof fields.limitSource === 'string' && fields.limitSource !== '';
+    const resetsAt = typeof fields.resetsAt === 'number' ? fields.resetsAt : inner?.resetsAt;
     return {
-      source: 'error:quota_exhausted',
-      ...(typeof fields.resetsAt === 'number' ? { resetsAt: fields.resetsAt } : {}),
+      source: known ? `limit_hit:${String(fields.limitSource)}` : 'error:quota_exhausted',
+      ...(resetsAt === undefined ? {} : { resetsAt }),
     };
   }
   if (fields.code === QUOTA_EXHAUSTED_CODE) {
@@ -121,6 +179,7 @@ export class QuotaService {
   readonly #bound = new Map<string, string>();
   readonly #announced = new Map<string, Announced>();
   readonly #planTypes = new Map<string, string>();
+  readonly #listeners = new Set<QuotaChangeListener>();
   readonly #stop = new AbortController();
   #wake = new AbortController();
   #queue: Promise<unknown> = Promise.resolve();
@@ -148,6 +207,25 @@ export class QuotaService {
     for (const ref of this.#tracked.values()) {
       if (ref.client === clientId) this.#startProbing(ref);
     }
+  }
+
+  /** The probe of a client, if the daemon gave it one (P9 reads it again, without cost). */
+  probeOf(clientId: string): QuotaProbe | undefined {
+    return this.#probes.get(clientId);
+  }
+
+  /**
+   * Hears every change of the announced state of a profile (after its events were written). The
+   * listener runs inside the service's own turn: it must not call the service and wait for it, only
+   * note the change and go (P9 queues its work). A listener that throws is logged and ignored.
+   */
+  onChange(listener: QuotaChangeListener): Disposable {
+    this.#listeners.add(listener);
+    return {
+      dispose: () => {
+        this.#listeners.delete(listener);
+      },
+    };
   }
 
   /** Starts to read the quota of a profile (it is known to the daemon). Idempotent. */
@@ -233,6 +311,7 @@ export class QuotaService {
 
   /** A `rate_limit` update of the normalized stream of a session (the `-32001`-free path). */
   async ingestUpdate(sessionId: string, update: NormalizedUpdate): Promise<boolean> {
+    if (update.kind === 'usage') return this.ingestUsage(sessionId, update);
     if (update.kind !== 'rate_limit') return false;
     const profile = await this.#profileOfSession(sessionId);
     if (profile === undefined) return false;
@@ -256,6 +335,27 @@ export class QuotaService {
       ],
       'client_signal',
     );
+    return true;
+  }
+
+  /**
+   * A `usage` update of a session (P8). It does not move the state by itself: it goes to the probe
+   * of the client when that probe counts consumption (`UsageSink`), and that probe tells the
+   * service the new reading. Resolves `false` when the session has no profile or its probe counts
+   * nothing.
+   */
+  async ingestUsage(sessionId: string, usage: UsageUpdate): Promise<boolean> {
+    const profile = await this.#profileOfSession(sessionId);
+    if (profile === undefined) return false;
+    const ref = parseProfileId(profile);
+    const probe = this.#probes.get(ref.client) as Partial<UsageSink> | undefined;
+    if (typeof probe?.recordUsage !== 'function') return false;
+    try {
+      probe.recordUsage(ref, sessionId, usage);
+    } catch (error) {
+      this.#options.logger.warn({ err: error, profile }, 'a quota probe could not take a usage');
+      return false;
+    }
     return true;
   }
 
@@ -302,6 +402,33 @@ export class QuotaService {
       });
       this.#poke();
       return this.#settle(profile, hit.source);
+    });
+  }
+
+  /**
+   * Lets go of a limit that no source gave an end to (P9, "Consulta sem horário"): the recheck
+   * interval passed and nothing that costs no tokens said it is over or still on, so the profile
+   * stops being `exhausted` and becomes what the readings say (usually `unknown`); the next real
+   * session is the test. A hit that has an end, or that is not there, is left alone.
+   */
+  async releaseLimit(target: ProfileTarget, cause: QuotaCause): Promise<QuotaStatus> {
+    const profile = formatProfileId(refOf(target));
+    const window = hitWindowOf(cause);
+    return this.#exclusive(async () => {
+      const now = this.#now;
+      const hit = await this.#options.store.quotaSnapshots.get(profile, window);
+      if (hit?.resetsAt === null) {
+        await this.#options.store.quotaSnapshots.put({
+          profileId: profile,
+          window,
+          usedPercent: 100,
+          resetsAt: now,
+          source: RECHECK_SOURCE,
+          observedAt: now,
+        });
+        this.#poke();
+      }
+      return this.#settle(profile, RECHECK_SOURCE);
     });
   }
 
@@ -443,6 +570,8 @@ export class QuotaService {
     const probe = this.#probes.get(parseProfileId(profile).client);
     if (probe === undefined) return [];
     try {
+      const own = (probe as Partial<ProfileWindows>).windowsOf;
+      if (typeof own === 'function') return own.call(probe, parseProfileId(profile));
       return probe.capabilities().windows;
     } catch {
       return [];
@@ -535,14 +664,29 @@ export class QuotaService {
     }
     if (was === 'exhausted' && status.state !== 'exhausted' && before !== undefined) {
       const timeCame = before.untilReset !== null && this.#now >= before.untilReset;
-      await events.append(
-        buildDaemonEvent('quota.restored', {
-          profile,
-          cause: before.cause ?? 'quota',
-          state: status.state,
-          reason: timeCame ? 'reset' : 'reading',
-        }),
-      );
+      const reason = timeCame ? 'reset' : source === RECHECK_SOURCE ? 'recheck' : 'reading';
+      // The spending cap has its own name (P9): `budget.restored`, not `quota.restored`.
+      if (before.cause === 'budget') {
+        await events.append(
+          buildDaemonEvent('budget.restored', { profile, state: status.state, reason }),
+        );
+      } else {
+        await events.append(
+          buildDaemonEvent('quota.restored', {
+            profile,
+            cause: before.cause ?? 'quota',
+            state: status.state,
+            reason,
+          }),
+        );
+      }
+    }
+    for (const listener of this.#listeners) {
+      try {
+        listener({ profile, status, before, source });
+      } catch (error) {
+        this.#options.logger.warn({ err: error, profile }, 'a quota change listener failed');
+      }
     }
   }
 

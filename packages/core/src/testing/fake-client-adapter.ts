@@ -213,6 +213,7 @@ export function normalizeFakeError(raw: unknown): NormalizedError {
       kind: 'quota_exhausted',
       message,
       ...(Number.isNaN(parsed) ? {} : { resetsAt: parsed }),
+      limitSource: 'structured',
       cause: raw,
     };
   }

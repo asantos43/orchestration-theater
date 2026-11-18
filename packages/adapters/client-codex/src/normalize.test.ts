@@ -172,6 +172,8 @@ describe('normalizeCodexError', () => {
     expect(result.resetsAt).toBeUndefined();
     expect(result.message).toContain('usage limit');
     expect(result.cause).toBe(errors.QUOTA_EXHAUSTED);
+    // The typed `codexErrorInfo` says it: the source is structured (P8).
+    expect(result.limitSource).toBe('structured');
   });
 
   it('uses a reset time when the error carries one', () => {

@@ -55,7 +55,7 @@ import {
   type IsolatedHome,
   type ProfileFilesOptions,
 } from './profile.js';
-import { OpenCodeQuotaProbe } from './quota-probe.js';
+import { OpenCodeQuotaProbe, type OpenCodeLedgerOptions } from './quota-probe.js';
 
 /** Version of OpenCode the Phase 0 measurements were made on (`opencode` 1.19.5 [V]). */
 export const OPENCODE_PINNED_VERSION = '1.19.5';
@@ -126,6 +126,11 @@ export interface OpenCodeAdapterOptions extends ClientAdapterOptions {
   readonly login?: OpenCodeLoginOptions;
   /** `pool.opencode.process_model` (N56). Default `per_profile`. */
   readonly processModel?: ProcessModelKey;
+  /**
+   * [proposta] keys `quota.opencode.*` (P8): the local accounting of the quota probe. Absent: the
+   * probe has no ledger and no reading, as before.
+   */
+  readonly ledger?: OpenCodeLedgerOptions;
   /** [proposta] key `clients.opencode.isolation`. Default {@link DEFAULT_ISOLATION}. */
   readonly isolation?: readonly IsolatedHome[];
   /** [proposta] key `clients.opencode.profile_config`: what goes into `opencode.json` of the profile; `null` writes none. */
@@ -176,7 +181,7 @@ interface Slot {
 export class OpenCodeAdapter extends ClientAdapter {
   readonly id = 'opencode';
   readonly processModel: ProcessModel;
-  readonly quota: QuotaProbe = new OpenCodeQuotaProbe();
+  readonly quota: QuotaProbe;
   readonly models: ModelCatalog;
   readonly capabilities: ClientCapabilities = {
     loadSession: true,
@@ -211,6 +216,7 @@ export class OpenCodeAdapter extends ClientAdapter {
         `pool.opencode.process_model must be one of ${PROCESS_MODEL_KEYS.join(', ')}: ${key}`,
       );
     }
+    this.quota = new OpenCodeQuotaProbe(options.ledger);
     this.#options = options;
     this.#launcher = options.launcher;
     this.#baseEnv = options.baseEnv;

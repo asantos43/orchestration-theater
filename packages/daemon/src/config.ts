@@ -106,6 +106,23 @@ export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
  */
 export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 /**
+ * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
+ * remaining quota of the MiniMax Token Plan with the key of the profile (`GET /v1/token_plan/remains`).
+ */
+export const QUOTA_MINIMAX_MODES = ['off', 'token_plan'] as const;
+/**
+ * [proposta] `quota.minimax.usage_count_means`: what `current_*_usage_count` of the Token Plan
+ * answer counts. Third-party notes [S] suggest what is LEFT (`remaining`, default); the real
+ * meaning depends on the owner's key [N].
+ */
+export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
+/**
+ * [proposta] `quota.opencode.mode` (P8): `off` (default) keeps the OpenCode probe without a
+ * reading; `ledger` adds up the usage events of the sessions the daemon runs and compares the
+ * sum with `limit_tokens` and `limit_usd`.
+ */
+export const QUOTA_OPENCODE_MODES = ['off', 'ledger'] as const;
+/**
  * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
  * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
  * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
@@ -180,6 +197,16 @@ export const CODEX_QUOTA_WATCH_MODES = ['off', 'resident'] as const;
 
 export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
 export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
+/**
+ * `clients.codex.inner_sandbox` (N129, owner's decision of 2026-11-18). What Codex does with its own
+ * sandbox when layer 3 (`srt`) wraps it: `keep` (default; the client keeps `workspace-write`, whose
+ * sandbox does not start inside the confinement, so its native shell fails and the roles with a shell
+ * use the shells of the daemon), `full_access_when_wrapped` (with layer 3 on, Codex opens with no
+ * sandbox of its own and `srt` is the only `os` layer), `nested` (with layer 3 on, `srt` lets this
+ * client make user namespaces and Codex keeps its sandbox; the write denies of `srt` get weaker for
+ * its process). Without layer 3 the last two behave as `keep`.
+ */
+export const CODEX_INNER_SANDBOX_MODES = ['keep', 'full_access_when_wrapped', 'nested'] as const;
 /** Modes the adapter never selects (`agent` hands the escalation to a reviewer, `agent-full-access` asks nothing). */
 export const CODEX_VETOED_MODES = ['agent', 'agent-full-access'] as const;
 export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as const;
@@ -780,6 +807,7 @@ export const CodexClientSchema = z.strictObject({
   modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
   credentials_store: z.enum(CODEX_CREDENTIALS_STORES).default('file'),
   approval_policy: z.enum(CODEX_APPROVAL_POLICIES).default('on-request'),
+  inner_sandbox: z.enum(CODEX_INNER_SANDBOX_MODES).default('keep'),
   suggested_effort: z.string().min(1).default('high'),
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
   /**
@@ -1112,6 +1140,17 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
+        /**
+         * [proposta] (P17) What follows the last step of `transient_backoff`: `last` keeps waiting
+         * the last step until `max_resumes` (the behaviour before P17); `handoff` passes the baton
+         * (the literal reading of architecture 5.16).
+         */
+        transient_exhausted: z.enum(['last', 'handoff']).default('last'),
+        /**
+         * [proposta] (P17) When a drop of the client process counts as an attempt of the demand:
+         * `repeat` (5.16: not the first time, yes if it repeats), `never` or `always`.
+         */
+        client_crash_counts: z.enum(['repeat', 'never', 'always']).default('repeat'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -1133,6 +1172,8 @@ export const DaemonConfigSchema = z
             same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
           },
           transient_backoff: resume.transient_backoff,
+          transient_exhausted: resume.transient_exhausted,
+          client_crash_counts: resume.client_crash_counts,
           continue_prompt: resume.continue_prompt,
         };
       }),
@@ -1346,6 +1387,12 @@ export const DaemonConfigSchema = z
      * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
      * `read` calls where polling is on. The defaults follow N123, decided by the owner on
      * 2026-11-18.
+     *
+     * `recheck_every` (P9, architecture 5.6, "Consulta sem horário de reset"): how long a profile
+     * that is exhausted with no known end waits before the daemon looks at it again, using only
+     * signals that never call the model. `15m` by default; `off` never looks again (the profile
+     * stays exhausted until a reading or a limit error says otherwise). A profile with no such
+     * signal goes from `exhausted` to `unknown` when the interval passes.
      */
     quota: z
       .strictObject({
@@ -1355,6 +1402,38 @@ export const DaemonConfigSchema = z
           .strictObject({
             delivery: z.enum(QUOTA_PROBE_DELIVERY_MODES).default('both'),
             poll_every: DurationSchema.prefault('5m'),
+          })
+          .prefault({}),
+        recheck_every: z
+          .union([z.literal('off'), DurationSchema])
+          .transform((value) => (value === 'off' ? null : value))
+          .prefault('15m'),
+        /**
+         * [proposta] (P8) The MiniMax Token Plan probe, a call the DAEMON makes with the key of the
+         * profile. Default `off`: no call leaves the machine until the owner turns it on.
+         * `base_url` and `allow_hosts` are the daemon network policy for this call (https only;
+         * `http` only for a loopback host); `timeout` is the deadline of the call.
+         */
+        minimax: z
+          .strictObject({
+            mode: z.enum(QUOTA_MINIMAX_MODES).default('off'),
+            base_url: z.url().default('https://api.minimax.io'),
+            allow_hosts: z.array(z.string().min(1)).default(['api.minimax.io', 'www.minimax.io']),
+            timeout: DurationSchema.prefault('10s'),
+            usage_count_means: z.enum(QUOTA_MINIMAX_USAGE_COUNT_MEANS).default('remaining'),
+          })
+          .prefault({}),
+        /**
+         * [proposta] (P8) The OpenCode probe: local accounting of the usage events of the sessions
+         * the daemon runs, over a rolling `window`. A limit left `null` is not measured; with both
+         * `null` the ledger has nothing to compare with and gives no reading.
+         */
+        opencode: z
+          .strictObject({
+            mode: z.enum(QUOTA_OPENCODE_MODES).default('off'),
+            window: DurationSchema.prefault('5h'),
+            limit_tokens: z.int().positive().nullable().default(null),
+            limit_usd: z.number().positive().nullable().default(null),
           })
           .prefault({}),
       })

@@ -9,6 +9,7 @@ import {
   assertValidPrompts,
   type Clock,
   type LockableSecretVault,
+  type ProfileRef,
   type PromptSource,
   type Registries,
   type RegistryEntries,
@@ -40,7 +41,14 @@ import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
-import { QuotaService, quotaSettingsOf } from './quota/index.js';
+import {
+  QuotaService,
+  quotaProbeOf,
+  quotaSettingsOf,
+  tapClient,
+  WakeupManager,
+  wakeupSettingsOf,
+} from './quota/index.js';
 import { UsageService, usageSettingsOf } from './usage/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
@@ -155,6 +163,11 @@ export interface DaemonHandle {
   readonly directives: DirectiveService;
   /** The quota of the profiles (architecture 5.6): signals, readings, state and freshness. */
   readonly quota: QuotaService;
+  /**
+   * The wakeups of exhausted profiles and the recheck (architecture 5.6; P9). The hooks of what
+   * waits for a profile (P19, P15, the scheduler) are plugged in here with `setHook`.
+   */
+  readonly wakeups: WakeupManager;
   /** The consumption and the cost in money of the turns (architecture 5.6; Phase 5, P10). */
   readonly usage: UsageService;
   status(): DaemonStatus;
@@ -416,8 +429,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     launcher: composition.launcher,
     logger,
   });
-  const execution = buildExecution(options, config, composition, paths.worktrees, mcp, quota);
-  // The probes were handed over by `buildExecution`; the catch-up and the readings start here.
+  const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
+  const execution = buildExecution(
+    options,
+    config,
+    composition,
+    paths.worktrees,
+    mcp,
+    quota,
+    quotaPrepare,
+  );
+  // The probes were handed over by `buildExecution`. The profiles the registry already has are
+  // tracked before the readings start, so a MiniMax profile is read without waiting for a session.
+  for (const prepare of quotaPrepare) {
+    for (const ref of await prepare()) quota.track(ref);
+  }
+  // The catch-up and the readings start here.
   await quota.start();
   let attemptsInterrupted = 0;
   let attempts: { resuming: readonly string[] } = { resuming: [] };
@@ -470,6 +497,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   gate.open();
   // The ideas of a group the restart lost go back to the queue, and the queues that can move do.
   await orchestration?.ideas.settle();
+  // P9: the wakeups of the exhausted profiles. What came due with the daemon stopped runs here, now
+  // that everything that waits for a profile is up (5.21). The steps that own a hook (P19, P15, 9b)
+  // plug it in with `wakeups.setHook` right here, before `start`, so a wakeup due at start-up finds it.
+  const wakeups = new WakeupManager({
+    store: composition.store,
+    clock,
+    quota,
+    settings: wakeupSettingsOf(config),
+    logger,
+    probes: (clientId) => quota.probeOf(clientId),
+  });
+  await wakeups.start();
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
@@ -527,6 +566,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
+      await attempt('wakeups', () => wakeups.stop());
       await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
@@ -557,6 +597,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     producer: orchestration?.channel,
     directives,
     quota,
+    wakeups,
     usage,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
@@ -585,6 +626,7 @@ function buildExecution(
   worktreeRoot: string,
   mcp: McpAccess,
   quota: QuotaService,
+  quotaPrepare: (() => Promise<readonly ProfileRef[]>)[],
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
@@ -595,7 +637,7 @@ function buildExecution(
   // Every process the clients start is written down, so the next daemon can find the orphans (5.21).
   const launcher = new TrackingLauncher(rawLauncher, composition.store, composition.clock, logger);
   const factory = options.clients ?? productionClients(config, options.clientSearch);
-  const clients = factory({
+  const built = factory({
     launcher,
     clock: composition.clock,
     transport: composition.transport,
@@ -618,14 +660,26 @@ function buildExecution(
           },
         }),
   });
-  if (clients.length === 0) {
+  if (built.length === 0) {
     logger.warn(
       'no client is enabled (none configured or found in PATH); the execution of attempts is off',
     );
     return undefined;
   }
-  // Each client reads its own quota (the probes of P6 to P8); the service takes it from here.
-  for (const client of clients) quota.addProbe(client.id, client.quota);
+  // The service listens to the sessions of every client (the limit error with its reset time, the
+  // usage events), and each client has its quota probe (P6 to P8); the service takes it from here.
+  const clients = built.map((client) => tapClient(client, quota, logger));
+  for (const client of clients) {
+    const wiring = quotaProbeOf(client, {
+      config,
+      store: composition.store,
+      vault: composition.vault,
+      clock: composition.clock,
+      logger,
+    });
+    quota.addProbe(client.id, wiring.probe);
+    if (wiring.prepare !== undefined) quotaPrepare.push(wiring.prepare);
+  }
   return new Execution({
     clients,
     launcher,
@@ -637,6 +691,7 @@ function buildExecution(
     worktreeRoot,
     logger,
     mcp,
+    quota,
     memory: composition.memory,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
