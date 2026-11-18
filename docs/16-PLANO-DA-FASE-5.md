@@ -65,8 +65,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
 | P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
-| P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
-| P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | pendente |
+| P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | concluído (PR #105) |
+| P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | concluído (PR #103) |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | pendente |
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | concluído (PR #104) |
@@ -236,6 +236,15 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com arquivos de fixture tirados da Fase 0 (sem credencial): a leitura vira janelas com o reset; um JSON sem `rate_limits` vira `unknown`; o valor fora da faixa é recusado com o motivo; o `rate_limit_event` falso vira sinal; o arquivo é lido sem seguir link simbólico para fora do perfil. A leitura real só no nível opcional `quota` (N122).
 
+**Como ficou (2026-11-18):**
+- `client-claude-code` ganhou `quota-statusline.ts` (o comando, o leitor seguro e o parser), `quota-probe.ts` (`ClaudeQuotaProbe`, no lugar do esqueleto) e `quota-signal.ts` (`quotaSignalsOf`). O `prepareProfile` grava `otheater-statusline.mjs` no diretório do perfil e põe `statusLine` no `settings.json` dele, com o `node` que roda o daemon. O comando lê o stdin, guarda só `used_percentage` e `resets_at` de `five_hour` e `seven_day` e grava `otheater-quota.json` (arquivo temporário e `rename`, modo 0600). Não imprime nada, não chama modelo nem rede (o teste confere os imports do script) e não troca a leitura anterior quando `rate_limits` não vem. [V: testes com o `node` de verdade sobre um stdin de exemplo, sem cliente]
+- Aceite, com fixtures de valores inventados (os JSONs brutos da Fase 0 não estão no repositório, só no `out/` ignorado, então só o formato é da Fase 0 [V]): a leitura vira as janelas `5h` e `7d` com o reset; um arquivo sem `rate_limits` ou sem janela aberta vira `AdapterUnavailable`, e o `QuotaService` deixa o perfil `unknown` (a sonda que rejeita com `AdapterUnavailable` já é coberta no `service.test.ts` do P5); 140% é recusado com o motivo e sem truncar; o `rate_limit_event` falso vira sinais `window` e `limit_hit` que o `QuotaService` aceita (`daemon/src/quota/claude-signal.test.ts`, com os parâmetros escritos à mão, porque o daemon só importa adaptador no `compose.ts`) e que levam o perfil a `exhausted` até o reset; o arquivo é lido sem seguir link simbólico (nem para dentro do perfil), link físico, diretório ou arquivo grande demais (`lstat`, `O_NOFOLLOW`, `nlink`, caminho real dentro do perfil, teto de 16 KiB). [V]
+- N123, o parser: `readUtilization` aceita fração e percentual, recusa o que sair de 0 a 100 (nunca trunca) e devolve a unidade que viu; o modo `auto` toma 0 a 1 como fração (1 vale 100%) e acima de 1 como percentual. A statusline do Claude fica no diretório do perfil. A janela vem do cliente como `five_hour`/`seven_day` e vai ao daemon como `5h`/`7d` (`windowNameOf`); a atualização `rate_limit` normalizada segue com o nome do cliente.
+- Chaves novas, **[proposta]**: `clients.claude-code.quota_statusline: file | off` (padrão `file`: é o que o escopo do passo pede; `off` não instala nada e remove só o comando nosso) e o modo `auto` em `clients.claude-code.utilization_unit` (padrão continua `ignore`, então o comportamento de hoje não muda; sem unidade, o `rate_limit_event` só vira o sinal `limit_hit`). Nenhum evento novo, então as contagens de `registries.test.ts` e `event-registry.test.ts` não mudam.
+- [proposta] `watch` olha o arquivo a cada 2 s (`watchEveryMs`) e entrega cada observação nova; a sonda declara `delivery: both` e `precision: approximate` (resolução de 1 ponto, [V] Fase 0).
+- [S] A statusline só roda com o diretório de trabalho confiável pelo cliente, e a do `--settings` vence a do usuário [V, Fase 0]. [N] O comando rodando dentro de um Claude Code real, o valor da `utilization` acima de 1% e a janela semanal por modelo não foram medidos: a leitura real fica para o nível opcional `quota` (N122). [N] Ligar o `quotaSignalsOf` ao fluxo vivo da sessão (o ponto onde o shell repassa `usage_update`) e o `bindSession` do pool ficam para o P15, como no P5.
+- O Claudexor (N119) foi lido só em `packages/harness-claude/src/quota.ts` (commit `8210f18`) para comparar o desenho; nada foi copiado nem adaptado, então não há cabeçalho, `THIRD_PARTY_NOTICES.md` nem entrada em `copied-code.json`.
+
 ### P7. Sonda de cota do Codex (§5.6)
 
 **Escopo:**
@@ -245,6 +254,16 @@ Ordem em ondas **[proposta]**:
 - Não conta cota nem chama modelo; se o arranque do cliente conta cota é **[N]** (pendência da Fase 0).
 
 **Aceite:** com um `app-server` falso que fala o protocolo: a leitura vira janelas com `resetsAt` e `planType`; a notificação `updated` atualiza o estado; sem login, `unknown`; o processo não deixa órfão no encerramento nem no tempo limite; nenhum arquivo de credencial é aberto.
+
+**Como ficou (2026-11-18):**
+- `CodexQuotaProbe` (`packages/adapters/client-codex/src/quota-probe.ts`) sobe um `codex app-server` por leitura, com `CODEX_HOME` e diretório de trabalho no perfil, manda `initialize`, `initialized` e `account/rateLimits/read` e encerra a árvore (grupo de processos) ao ter a resposta, no tempo limite e no `dispose` **[V, testes com um app-server falso e uma árvore com neto]**. Nunca chama `account/read` nem `account/rateLimits/consume*`.
+- Os tipos foram escritos à mão a partir da saída de `codex app-server generate-ts` (codex-cli 0.170.0, rodado uma vez, com `CODEX_HOME` vazio, sem login e sem rede) e guardados como fixture reduzida; a CI não roda o cliente **[V]**. Não foi copiado código do Claudexor (li só o `quota.ts` de referência, no commit `8210f18`), então `THIRD_PARTY_NOTICES.md` e `copied-code.json` não mudaram.
+- `account/rateLimits/read` vira janelas `5h` (300 min) e `7d` (10080 min), com `resetsAt` em milissegundos (o protocolo manda segundos) e `planType`; outra duração vira `Nd`, `Nh` ou `Nm`, e sem duração vale o nome do espaço (`primary`, `secondary`) **[V, fake]**; os nomes de outras durações são **[proposta]**.
+- Sem login: o erro de autenticação do `app-server` (ou o processo que sai dizendo isso) vira `AdapterUnavailable`, o `QuotaService` mantém o perfil `unknown` e `canUse` é falso; nunca `exhausted` **[V, teste de integração em `packages/daemon/src/quota/codex-probe.test.ts`]**. O texto real do erro nesta rota é **[N]**: a regex de `looksLikeAuthFailure` é um palpite, a partir do `-32000` "Authentication required" do ACP **[V, Fase 0]**.
+- `account/rateLimits/updated`: com `watch: resident`, o `watch` entrega a primeira leitura e funde cada notificação esparsa na última visão (janelas da notificação substituem as antigas, o plano é mantido) **[V, fake]**; a regra de fusão é **[N]**. Sem `watch`, nada é iniciado.
+- Nenhum arquivo de credencial é aberto: o código da sonda não importa `node:fs`, e um teste registra as operações de arquivo e confirma que só o `config.toml` do perfil (por `prepareProfile`) é tocado, com `auth.json` intacto **[V]**.
+- Chaves **[proposta]**, com padrão que não muda o comportamento de hoje: `clients.codex.quota.command` (padrão `codex app-server`), `clients.codex.quota.timeout` (`15s`), `clients.codex.quota.watch` (`off` ou `resident`; padrão `off`) e `clients.codex.quota.windows` (padrão vazio, para um plano de uma janela só não ficar `unknown`). Nenhum evento novo nem chave de registro: os testes de contagem não mudam.
+- Em aberto **[N]**: se subir o `app-server` conta cota; o comportamento de `updated` durante turnos reais (na Fase 0 não chegou sem turno); se `excludeResetCreditDetails` vale em versões antigas do cliente; a resposta de um perfil com chave de API (provavelmente sem janelas, que vira `AdapterUnavailable`); `ordinaryUsageAllowed === false` não é mapeado; a janela `limit_reached` (100%, sem reset) para um limite alcançado sem janela cheia é **[proposta]**; um `app-server` residente que morre não é reiniciado (o polling continua).
 
 ### P8. Sondas da MiniMax e do OpenCode e o erro de limite (§5.6)
 

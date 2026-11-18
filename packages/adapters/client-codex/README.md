@@ -25,7 +25,7 @@ schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.
 | `mapConfig` | `model`, `reasoning_effort`, `mode` (ids of the client; the veto is `modeVeto`) | [V] |
 | `modeVeto` | allow-list of modes (`allowedModes`); a refusal reason, or `null` | [V] |
 | `models` | `automatic`, family `openai`, built from the `session/new` config options; no model call | [V] |
-| `quota` | rejects with `AdapterUnavailable` (Phase 5) | n/a |
+| `quota` | `CodexQuotaProbe`: a short `codex app-server` per read, in the profile (`CODEX_HOME`); `account/rateLimits/read` becomes windows (`5h`, `7d`) with `resetsAt` and `planType`; no login is `AdapterUnavailable`, so the profile stays `unknown`; see Quota probe | [V] the protocol on codex-cli 0.170.0 (Phase 0 and the types); [N] the rest, see Quota probe |
 | `login`, `logout`, `probeLogin` | the official `codex login` / `codex logout` in the profile; see Official login and logout | [V] the commands exist in `--help`; [N] the rest |
 | `probes` | `codex-mode-veto` (offline), `codex-pinned-mode` (needs an injected `readSessionMode`) | [V] |
 
@@ -68,6 +68,40 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 `clients.codex.credentials_store` (`file`, `keyring`, `auto`), `clients.codex.approval_policy`
 (`on-request`, `untrusted`), `clients.codex.suggested_effort`.
 `clients.codex.version_source` (`auto`, `package_json`, `initialize`, `config`; see Client version).
+`clients.codex.quota.command`, `clients.codex.quota.timeout` (default `15s`), `clients.codex.quota.watch`
+(`off` by default, or `resident`), `clients.codex.quota.windows` (default none; see Quota probe).
+
+## Quota probe (Phase 5, P7)
+
+`adapter.quota` starts `codex app-server` with `CODEX_HOME` set to the profile directory and the
+profile directory as the working directory, sends `initialize`, `initialized` and
+`account/rateLimits/read`, and ends the process tree (process group) when it has the answer, when
+the timeout passes, or on dispose. It never calls `account/read` nor `account/rateLimits/consume*`,
+and no code of the probe imports `node:fs`: a test checks that only `config.toml` of the profile is
+touched (by `prepareProfile`) and that a credential file next to it is not. The profile directory comes from the
+`profileDir` option (the port's `ProfileRef` carries none); the daemon passes the one of the
+profile registry. Without it the probe refuses with `AdapterUnavailable`.
+
+- Windows: `windowDurationMins` 300 is `5h`, 10080 is `7d`, any other length is named by its unit
+  (`2d`, `90m`), a missing length by the slot (`primary`, `secondary`). `resetsAt` is epoch seconds
+  in the protocol and milliseconds in the reading [V].
+- No login: the read fails with `AdapterUnavailable`, and the `QuotaService` leaves the profile
+  `unknown` once the last reading is stale. It is never `exhausted` [V, fake app-server and
+  service test]. The text of the real error is [N]; the probe also matches a process that exits
+  saying "Authentication required".
+- `limit_reached`: a reached limit with no window at 100% becomes a window `limit_reached` at 100%
+  with no reset [proposta]. `ordinaryUsageAllowed` is not mapped [N].
+- `watch: resident` keeps one app-server open per watched profile (about 114 MB each, Phase 0 [V]),
+  delivers the first read and merges each sparse `account/rateLimits/updated` into the last view
+  [N, merge rule]. `off` (default) starts nothing. In Phase 0 `updated` did not arrive without a
+  model turn [V], so polling stays on in `resident` (delivery `both`). A resident process that
+  dies is not restarted by the probe.
+- Not confirmed [N]: whether starting the app-server counts quota; the behavior of `updated`
+  during real turns; whether `excludeResetCreditDetails` is accepted by older versions; what an
+  API-key profile answers (probably no windows, which is `AdapterUnavailable`).
+- `app-server-types.ts` is a reduced declaration made by hand from `codex app-server generate-ts`
+  (codex-cli 0.170.0, run once on 2026-11-18 with an empty `CODEX_HOME`) [V]; the parser trusts none
+  of it.
 
 ## Official login and logout (Phase 5, P3)
 

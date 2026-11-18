@@ -60,7 +60,8 @@ lacks is a warning, never an error. Ids ending in `[1m]` get a 1,000,000 token w
 | --- | --- | --- | --- |
 | `command` | `clients.claude-code.command` | any executable and arguments | `claude-agent-acp` [S: bin name of the package, not run] |
 | `settingSources` | `clients.claude-code.setting_sources` | `none`, `project`, `user` | `none` |
-| `utilizationUnit` | `clients.claude-code.utilization_unit` | `ignore`, `fraction`, `percent` | `ignore` |
+| `utilizationUnit` | `clients.claude-code.utilization_unit` | `ignore`, `fraction`, `percent`, `auto` (see Quota probe) | `ignore` |
+| `quotaStatusline` | `clients.claude-code.quota_statusline` | `file`, `off` | `file` |
 | `accountEnv` | `clients.claude-code.account_env` | `strip`, `keep` | `strip` |
 | `modelCatalog.source` | `clients.claude-code.model_catalog` | `session`, `reserve`, `session_or_reserve` | `session_or_reserve` |
 | `modelCatalog.cacheMs` | `clients.claude-code.model_catalog_cache_ms` | milliseconds, `0` for none | `300000` |
@@ -142,9 +143,39 @@ without a TTY, the exit codes, and the JSON of `auth status`. `LoginFlow` has no
 step where the client asks the owner to paste a code back is also [N]. The tests use a fake client
 (`src/testing/fake-official-client.ts`) that imitates the output; no real login ran.
 
+## Quota probe (Phase 5, P6)
+
+Two sources, both without calling a model or the network, and without a real client in the tests.
+
+- **Statusline file** (`ClaudeQuotaProbe`). `prepareProfile` writes `otheater-statusline.mjs` in the
+  profile directory and sets `statusLine` in the `settings.json` there to run it with the `node`
+  that runs the daemon (`quotaStatusline: file`; `off` installs nothing and removes our own command,
+  and a `statusLine` that is not ours is kept in that mode). The command reads the stdin of the
+  client, keeps only `used_percentage` and `resets_at` of `rate_limits.five_hour|seven_day`, writes
+  them with the time to `otheater-quota.json` (temporary file and rename, mode 0600), prints nothing,
+  and leaves the file alone when `rate_limits` is not there (the first call of a session) [V:
+  Phase 0, item 1]. `read` gives the windows `5h` and `7d` with the reset; a window past its reset is
+  dropped (the client drops it too) [S]. With no file, no `rate_limits`, no open window or a value
+  outside 0..100, `read` rejects with `AdapterUnavailable` and the reason, so the profile is
+  `unknown`; a value is never clamped. The file is read without following a link: `lstat`,
+  `O_NOFOLLOW`, a hard-link check, the real path inside the profile directory and a size cap.
+  `watch` polls the file every 2 s and delivers each new observation. The number is the one of the
+  last reply of a real session, so the freshness is the `QuotaService`'s to judge. The resolution is
+  about one point (`approximate`) [V]. The `--settings` `statusLine` wins over the user's [V], and the
+  workspace has to be trusted [S].
+- **Stream signal** (`quotaSignalsOf`). The `rate_limit_event` of a `usage_update` becomes the
+  signals of `_otheater/quota/signal`: a `window` signal for each window whose `utilization` the unit
+  rule accepts, with the window name of the daemon and the reset in ISO, and a `limit_hit` when the
+  status is `rejected`. The unit of `utilization` (N123) is [N] for a high value: `auto` takes 0..1
+  as a fraction and above 1 as a percentage and records the unit it saw; `fraction` and `percent`
+  fix it; `ignore` (the default, today's behavior) gives only the `limit_hit`. Whatever falls outside
+  0..100 is refused with the reason in every mode.
+
+[N]: the statusline on a real client of this machine was not run in the tests (that is the optional
+`quota` level, N122); the file and the signals are checked with fixtures whose values are invented.
+
 ## Not here yet
 
-- The `QuotaProbe` declares no window and `read` rejects (Phase 5).
 - Profiles that use an API key (needs the secret vault in `profileEnv`).
 
 ## Tests
