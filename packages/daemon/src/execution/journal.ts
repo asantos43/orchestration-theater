@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { AttemptRecord, AttemptRecordInput, Clock, NewEvent, Store } from '@otheater/core';
+import type {
+  AttemptRecord,
+  AttemptRecordInput,
+  Clock,
+  NewEvent,
+  NewInterruption,
+  Store,
+} from '@otheater/core';
 
 /** The fields of an attempt that change after it is created. */
 export type AttemptPatch = Partial<
@@ -55,8 +62,9 @@ export class AttemptJournal {
   /**
    * Queues `patch` (and `event`, if any, with the correlation of the attempt on its envelope).
    * Without arguments it writes the record as it is, which is how an attempt is first registered.
+   * An `interruption` row (P17) goes in the same transaction as the event that announces it.
    */
-  write(event?: NewEvent, patch: AttemptPatch = {}): Promise<void> {
+  write(event?: NewEvent, patch: AttemptPatch = {}, interruption?: NewInterruption): Promise<void> {
     this.#current = { ...this.#current, ...patch };
     const record = this.#current;
     const envelope =
@@ -66,6 +74,7 @@ export class AttemptJournal {
     const run = async (): Promise<void> => {
       this.#saved = await this.#store.transaction(async (tx) => {
         if (envelope !== undefined) await tx.events.append(envelope);
+        if (interruption !== undefined) await tx.interruptions.create(interruption);
         return tx.attempts.put(record);
       });
     };

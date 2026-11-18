@@ -665,6 +665,7 @@ function buildExecution(
     worktreeRoot,
     logger,
     mcp,
+    quota,
     memory: composition.memory,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });

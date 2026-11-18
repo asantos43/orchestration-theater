@@ -232,6 +232,27 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('resume:\n  max_free_resumes: -1\n')).toThrow(/max_free_resumes/);
   });
 
+  it('takes resume.transient_exhausted and resume.client_crash_counts with the behaviour of before as default', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      const { resume } = parseConfig(`resume:\n  preset: ${preset}\n`);
+      expect(resume.transient_exhausted).toBe('last');
+      expect(resume.client_crash_counts).toBe('repeat');
+    }
+    const set = parseConfig(
+      'resume:\n  transient_exhausted: handoff\n  client_crash_counts: always\n',
+    ).resume;
+    expect(set).toMatchObject({ transient_exhausted: 'handoff', client_crash_counts: 'always' });
+    expect(parseConfig('resume:\n  client_crash_counts: never\n').resume.client_crash_counts).toBe(
+      'never',
+    );
+    expect(() => parseConfig('resume:\n  transient_exhausted: forever\n')).toThrow(
+      /transient_exhausted/,
+    );
+    expect(() => parseConfig('resume:\n  client_crash_counts: sometimes\n')).toThrow(
+      /client_crash_counts/,
+    );
+  });
+
   it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {
     expect(parseConfig('').delivery).toEqual({
       mode: 'pr',

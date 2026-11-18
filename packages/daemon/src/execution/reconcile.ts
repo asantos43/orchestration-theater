@@ -92,6 +92,29 @@ async function park(store: Store, record: AttemptRecord): Promise<void> {
         playId: record.playId,
         attemptId: record.attemptId,
       });
+      // Nothing knows the Executor, so nothing can reload the conversation: the way on is a handoff
+      // (5.16). A restart is no failure of the agent, so it costs no attempt.
+      const signals = ['resolver:unknown', 'action:handoff'];
+      const rows = await tx.interruptions.list({
+        sessionId: record.sessionId,
+        causes: ['daemon_restart'],
+      });
+      const open = rows.filter((row) => row.resumeForm === null).at(-1);
+      if (open === undefined) {
+        await tx.interruptions.create({
+          sessionId: record.sessionId,
+          playId: record.playId,
+          cause: 'daemon_restart',
+          signals,
+          resumeForm: 'handoff',
+          countedAsAttempt: false,
+        });
+      } else {
+        await tx.interruptions.update(open.id, {
+          resumeForm: 'handoff',
+          signals: [...open.signals, ...signals],
+        });
+      }
     }
     await tx.attempts.put({
       ...attemptInputOf(record),
