@@ -16,9 +16,26 @@ const refusal = (yaml: string): string => {
 describe('the defaults', () => {
   it('change nothing: no Executor, no list, the modes of 5.7', () => {
     const config = parseConfig('');
-    expect(config.executors).toEqual({ cross_client: 'api_only', on_register: 'ask', entries: {} });
+    expect(config.executors).toEqual({
+      cross_client: 'api_only',
+      on_register: 'ask',
+      test_session: 'off',
+      entries: {},
+    });
     expect(config.roles).toEqual({});
     expect(config.orchestration.executor).toBeUndefined();
+  });
+});
+
+describe('executors.test_session (P14, [proposta])', () => {
+  it('is off by default and takes run', () => {
+    expect(parseConfig('').executors.test_session).toBe('off');
+    expect(parseConfig('executors:\n  test_session: run\n').executors.test_session).toBe('run');
+    expect(parseConfig('executors:\n  test_session: off\n').executors.test_session).toBe('off');
+  });
+
+  it('refuses a mode it does not know, naming the key', () => {
+    expect(refusal('executors:\n  test_session: always\n')).toMatch(/executors\.test_session: /u);
   });
 });
 

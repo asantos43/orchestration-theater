@@ -28,6 +28,13 @@ export interface ModelInfo {
   /** Context window in tokens; for a local model, per slot. */
   readonly contextWindow?: number;
   readonly cost?: ModelCost;
+  /** Can reason (OpenCode `capabilities.reasoning`); `undefined` when the catalog does not say. */
+  readonly reasoning?: boolean;
+  /**
+   * Where the model is called (OpenCode `api.url`). The cadastro reads it for a local model, to
+   * fill the `local` block of the profile (architecture 5.7 step 2, 5.9); it is not a secret.
+   */
+  readonly baseUrl?: string;
 }
 
 /** What `suggest` fills in for the setup assistant; the Producer confirms it (architecture 5.7). */

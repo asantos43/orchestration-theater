@@ -764,6 +764,7 @@ describe('profileSettingsOf', () => {
           same_provider_notice: 'always',
           drain: { timeout: 90_000, on_timeout: 'force', removed_dir: 'keep_backup' },
           api_key_env: {},
+          entries: {},
         },
       }),
     ).toEqual({

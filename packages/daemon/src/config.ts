@@ -24,6 +24,7 @@ import {
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { withProfileEntries } from './profile-entries-config.js';
 import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
@@ -1355,10 +1356,12 @@ export const DaemonConfigSchema = z
       .prefault({}),
     /**
      * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
-     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta].
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta]. Any other key is
+     * a profile (`opencode/local`) with its block (P14): today `local`, the local model server of
+     * 5.9, which the cadastro of an OpenCode Executor with a local model writes.
      */
-    profiles: z
-      .strictObject({
+    profiles: withProfileEntries(
+      z.strictObject({
         same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
         drain: z
           .strictObject({
@@ -1377,8 +1380,9 @@ export const DaemonConfigSchema = z
         api_key_env: z
           .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
           .default({}),
-      })
-      .prefault({}),
+      }),
+      ['same_provider_notice', 'drain', 'api_key_env'],
+    ).prefault({}),
     /**
      * The quota of each profile (architecture 5.6; P5). [proposta] `near_limit_at` is the fraction
      * of a window from which a profile is `near_limit` (architecture default 0.8). `stale_after` is
