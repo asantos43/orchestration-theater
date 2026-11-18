@@ -6,6 +6,7 @@ import {
   type AcpExtensionHandler,
   type ClientAdapterOptions,
   type ClientCapabilities,
+  type Clock,
   type ConformanceProbe,
   type Enforcement,
   type ExecutorConfig,
@@ -16,6 +17,7 @@ import {
   type Profile,
   type ProcessLauncher,
   type ProcessModel,
+  type ProfileRef,
   type QuotaProbe,
   type RawUpdate,
   type RolePolicy,
@@ -40,6 +42,7 @@ import { acpOptions, headlessArgs, SESSION_MODE, type SettingSourcesMode } from 
 import { shCRejectProbe, type ShCRejectProbeOptions } from './probes.js';
 import { writeProfileSettings } from './prepare-profile.js';
 import { ClaudeQuotaProbe } from './quota-probe.js';
+import type { QuotaStatuslineMode } from './quota-statusline.js';
 
 /** Id of this client, as `KNOWN_CLIENT_IDS` and the configuration name it. */
 export const CLAUDE_CODE_CLIENT_ID = 'claude-code';
@@ -104,8 +107,16 @@ export interface ClaudeCodeAdapterOptions extends Omit<ClientAdapterOptions, 'ad
   readonly command?: { readonly cmd: string; readonly args?: readonly string[] };
   /** [proposta] key `clients.claude-code.setting_sources`. Default `none`: the profile adds no plugin, skill or MCP. */
   readonly settingSources?: SettingSourcesMode;
-  /** [proposta] key `clients.claude-code.utilization_unit`. Default `ignore`: the unit is not confirmed. */
+  /** [proposta] key `clients.claude-code.utilization_unit`. Default `ignore`: the unit is not confirmed; `auto` is N123. */
   readonly utilizationUnit?: UtilizationUnit;
+  /** [proposta] key `clients.claude-code.quota_statusline`. Default `file`: the profile settings get the quota statusline (P6). */
+  readonly quotaStatusline?: QuotaStatuslineMode;
+  /** The directory of a profile, where the statusline command writes and the quota probe reads. Without it the probe reads nothing. */
+  readonly profileDir?: (profile: ProfileRef) => string;
+  /** Clock of the quota probe (the time a reading is held back to). Default: the system clock. */
+  readonly quotaClock?: Pick<Clock, 'now'>;
+  /** How often the quota probe looks at the file in `watch`, in ms. */
+  readonly quotaWatchEveryMs?: number;
   /** [proposta] key `clients.claude-code.account_env`. Default `strip`. */
   readonly accountEnv?: AccountEnvMode;
   /** [proposta] keys `clients.claude-code.login.*`. Default: {@link DEFAULT_LOGIN_COMMAND}, mode `browser`. */
@@ -132,7 +143,7 @@ export interface ClaudeCodeAdapterOptions extends Omit<ClientAdapterOptions, 'ad
 export class ClaudeCodeAdapter extends ClientAdapter {
   readonly id = CLAUDE_CODE_CLIENT_ID;
   readonly processModel: ProcessModel = 'process-per-session';
-  readonly quota: QuotaProbe = new ClaudeQuotaProbe();
+  readonly quota: QuotaProbe;
   readonly models: ModelCatalog;
   readonly capabilities: ClientCapabilities = {
     // `loadSession: true` and `mcpHttp` are in the `initialize` of the adapter. [V: Phase 0 item 2]
@@ -153,6 +164,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
   readonly #command: { cmd: string; args: string[] };
   readonly #sources: SettingSourcesMode;
   readonly #utilization: UtilizationUnit;
+  readonly #quotaStatusline: QuotaStatuslineMode;
   readonly #probe: ShCRejectProbeOptions | undefined;
   readonly #launcher: ProcessLauncher;
   readonly #baseEnv: Readonly<Record<string, string>>;
@@ -170,6 +182,14 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     };
     this.#sources = options.settingSources ?? 'none';
     this.#utilization = options.utilizationUnit ?? 'ignore';
+    this.#quotaStatusline = options.quotaStatusline ?? 'file';
+    this.quota = new ClaudeQuotaProbe({
+      ...(options.profileDir === undefined ? {} : { profileDir: options.profileDir }),
+      ...(options.quotaClock === undefined ? {} : { clock: options.quotaClock }),
+      ...(options.quotaWatchEveryMs === undefined
+        ? {}
+        : { watchEveryMs: options.quotaWatchEveryMs }),
+    });
     this.#probe = options.probe;
     this.#launcher = options.launcher;
     this.#baseEnv = applyAccountEnv(options.baseEnv, options.accountEnv);
@@ -193,7 +213,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
   }
 
   protected prepareProfile(profile: Profile, policy: RolePolicy): Promise<void> {
-    return writeProfileSettings(profile, policy);
+    return writeProfileSettings(profile, policy, { quotaStatusline: this.#quotaStatusline });
   }
 
   protected sessionSetup(policy: RolePolicy, via: TransportId): SessionSetup {

@@ -23,11 +23,13 @@ export const RATE_LIMIT_META_KEY = '_claude/rateLimit';
 export const MODEL_META_KEY = '_claude/model';
 
 /**
- * What `utilization` of a rate-limit window means. The unit was not confirmed in Phase 0 [N], so
- * the default does not guess: `ignore` leaves `usedPercent` out. [proposta] key
- * `clients.claude-code.utilization_unit`.
+ * What `utilization` of a rate-limit window means. The unit was not confirmed in Phase 0 [N]
+ * (the stream gave 0.01 at 1%, a fraction, and was never measured high), so the default does not
+ * guess: `ignore` leaves `usedPercent` out. `auto` (N123, 2026-11-18) takes 0..1 as a fraction and
+ * more than 1 up to 100 as a percentage, and records which one it saw. In every mode a value
+ * outside 0..100 is refused. [proposta] key `clients.claude-code.utilization_unit`.
  */
-export const UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as const;
+export const UTILIZATION_UNITS = ['ignore', 'fraction', 'percent', 'auto'] as const;
 export type UtilizationUnit = (typeof UTILIZATION_UNITS)[number];
 
 export interface ClaudeUpdateOptions {
@@ -196,12 +198,40 @@ function epochMs(seconds: unknown): number | undefined {
     : undefined;
 }
 
-function percentOf(utilization: unknown, unit: UtilizationUnit): number | undefined {
-  if (unit === 'ignore') return undefined;
-  if (typeof utilization !== 'number' || !Number.isFinite(utilization) || utilization < 0) {
-    return undefined;
+/** The unit a utilization was read as. */
+export type SeenUnit = 'fraction' | 'percent';
+
+export type UtilizationRead =
+  | { readonly ok: true; readonly percent: number; readonly seen: SeenUnit }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Turns a utilization into a percentage, 0..100, and says the unit it took it for (N123). A value
+ * that is not a finite number, or that falls outside 0..100 once converted, is refused with the
+ * reason; it is never clamped, because a clamped number reads as a measurement that was not made.
+ * `auto`: 0..1 is a fraction (so exactly 1 is 100%, the cautious side of the one ambiguous value)
+ * and above 1 is a percentage. With `ignore` there is no reading.
+ */
+export function readUtilization(value: unknown, unit: UtilizationUnit): UtilizationRead {
+  if (unit === 'ignore') return { ok: false, reason: 'the utilization unit is set to ignore' };
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { ok: false, reason: 'the utilization is not a finite number' };
   }
-  return unit === 'fraction' ? utilization * 100 : utilization;
+  if (value < 0) return { ok: false, reason: `the utilization ${String(value)} is below 0` };
+  const seen: SeenUnit = unit === 'auto' ? (value <= 1 ? 'fraction' : 'percent') : unit;
+  const percent = seen === 'fraction' ? value * 100 : value;
+  if (percent > 100) {
+    return {
+      ok: false,
+      reason: `the utilization ${String(value)} is above 100% read as a ${seen}`,
+    };
+  }
+  return { ok: true, percent, seen };
+}
+
+function percentOf(utilization: unknown, unit: UtilizationUnit): number | undefined {
+  const read = readUtilization(utilization, unit);
+  return read.ok ? read.percent : undefined;
 }
 
 /**
@@ -224,6 +254,69 @@ function rateLimitOf(raw: unknown, unit: UtilizationUnit): NormalizedUpdate | un
     ...(window === undefined ? {} : { window }),
     ...(usedPercent === undefined ? {} : { usedPercent }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
+  };
+}
+
+/** One window of a `rate_limit_event`, read with the unit rule of N123. */
+export interface RateLimitEventWindow {
+  /** As the client names it: `five_hour`, `seven_day`. */
+  readonly name: string;
+  /** Percentage, 0..100; absent when the unit is `ignore` or the value was refused. */
+  readonly percent?: number;
+  /** The unit the utilization was taken for. */
+  readonly seen?: SeenUnit;
+  /** Why the utilization was refused (outside 0..100, not a number). */
+  readonly refused?: string;
+  /** Epoch ms. */
+  readonly resetsAt?: number;
+}
+
+/** What a `rate_limit_event` says, window by window. */
+export interface RateLimitEvent {
+  readonly status: 'allowed' | 'warning' | 'rejected';
+  /** The window that triggered the event (`rateLimitType`), when it says. */
+  readonly dominant?: string;
+  /** Epoch ms of the event's own `resetsAt`. */
+  readonly resetsAt?: number;
+  /** The dominant window and every one of `unifiedWindows`, each once. */
+  readonly windows: readonly RateLimitEventWindow[];
+}
+
+/**
+ * The `rate_limit_event` of a `usage_update` (`_meta["_claude/rateLimit"]`), or `undefined` when
+ * the update has none (or one with no status). Unlike the `rate_limit` update, which keeps only
+ * the dominant window, this reads every window the event measured. [V: fields, Phase 0 item 9;
+ * N: the unit of `utilization` with a high value]
+ */
+export function readRateLimitEvent(
+  raw: unknown,
+  unit: UtilizationUnit = 'ignore',
+): RateLimitEvent | undefined {
+  const event = record(record(record(raw)?._meta)?.[RATE_LIMIT_META_KEY]);
+  const status = rateLimitStatus(event?.status);
+  if (event === undefined || status === undefined) return undefined;
+  const dominant = text(event.rateLimitType);
+  const unified = record(event.unifiedWindows) ?? {};
+  const eventReset = epochMs(event.resetsAt);
+  const names = [...(dominant === undefined ? [] : [dominant]), ...Object.keys(unified)];
+  const windows: RateLimitEventWindow[] = [];
+  for (const name of new Set(names)) {
+    const data = record(unified[name]);
+    const resetsAt = epochMs(data?.resetsAt) ?? (name === dominant ? eventReset : undefined);
+    const read =
+      data?.utilization === undefined ? undefined : readUtilization(data.utilization, unit);
+    windows.push({
+      name,
+      ...(read?.ok === true ? { percent: read.percent, seen: read.seen } : {}),
+      ...(read?.ok === false && unit !== 'ignore' ? { refused: read.reason } : {}),
+      ...(resetsAt === undefined ? {} : { resetsAt }),
+    });
+  }
+  return {
+    status,
+    ...(dominant === undefined ? {} : { dominant }),
+    ...(eventReset === undefined ? {} : { resetsAt: eventReset }),
+    windows,
   };
 }
 

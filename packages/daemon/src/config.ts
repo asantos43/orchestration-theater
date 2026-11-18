@@ -123,7 +123,20 @@ export const CLIENT_ENV_INHERIT = ['minimal', 'none', 'all'] as const;
 export const CLIENT_VERSION_SOURCES = ['auto', 'package_json', 'initialize', 'config'] as const;
 export type ClientVersionSourceMode = (typeof CLIENT_VERSION_SOURCES)[number];
 export const CLAUDE_SETTING_SOURCES = ['none', 'project', 'user'] as const;
-export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as const;
+/**
+ * `clients.claude-code.utilization_unit` (N123): how the `utilization` of a `rate_limit_event`
+ * is read. `ignore` (default) reads no number, `fraction` and `percent` fix the unit, and `auto`
+ * takes 0..1 as a fraction and above 1 as a percentage and records the unit it saw. A value
+ * outside 0..100 is refused with the reason in every mode.
+ */
+export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent', 'auto'] as const;
+/**
+ * `clients.claude-code.quota_statusline` (P6): `file` (default) installs, in the `settings.json`
+ * of each profile, a statusline command that keeps the quota windows in a file of the profile
+ * directory, and the quota probe reads it; `off` installs nothing (and removes our own command),
+ * so the probe has no reading and the profile stays `unknown` until a signal arrives.
+ */
+export const CLAUDE_QUOTA_STATUSLINES = ['file', 'off'] as const;
 export const CLAUDE_ACCOUNT_ENV = ['strip', 'keep'] as const;
 export const CLAUDE_MODEL_CATALOG_SOURCES = ['session', 'reserve', 'session_or_reserve'] as const;
 export const CODEX_PROCESS_MODELS = ['multi-session', 'process-per-session'] as const;
@@ -712,6 +725,7 @@ export const ClaudeCodeClientSchema = z.strictObject({
   command: ClientCommandSchema.optional(),
   setting_sources: z.enum(CLAUDE_SETTING_SOURCES).default('none'),
   utilization_unit: z.enum(CLAUDE_UTILIZATION_UNITS).default('ignore'),
+  quota_statusline: z.enum(CLAUDE_QUOTA_STATUSLINES).default('file'),
   account_env: z.enum(CLAUDE_ACCOUNT_ENV).default('strip'),
   model_catalog: z.enum(CLAUDE_MODEL_CATALOG_SOURCES).default('session_or_reserve'),
   model_catalog_cache: DurationSchema.or(z.literal(0)).prefault('5m'),
