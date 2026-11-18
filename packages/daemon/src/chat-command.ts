@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { JsonObject } from '@otheater/core';
 import type {
   IdeaQueueHeldPayload,
+  ScenarioDirectorFailoverNotice,
   ScenarioHandoffNotice,
   ScenarioResetWaitNotice,
   ScenarioSelectionWaitNotice,
@@ -97,6 +98,7 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
   if (notice.kind === 'handoff') return renderHandoffMessage(t, notice);
   if (notice.kind === 'selection_wait') return renderSelectionWaitMessage(t, notice);
   if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
+  if (notice.kind === 'director_failover') return renderDirectorFailoverMessage(t, notice);
   return renderRecoveryMessage(t, notice);
 }
 
@@ -133,6 +135,24 @@ function renderResetWaitMessage(t: TFunction, notice: ScenarioResetWaitNotice): 
           : 'chat.system.resetWaitWhat.quota',
       ),
       until: notice.resetsAt === null ? '' : new Date(notice.resetsAt).toISOString(),
+    }),
+  ];
+}
+
+/**
+ * The `director_failover` kind (Phase 5, P20, [proposta]): one line that says the session of the
+ * Director failed, why, and what became of it (a new session, a wait or nothing).
+ */
+function renderDirectorFailoverMessage(
+  t: TFunction,
+  notice: ScenarioDirectorFailoverNotice,
+): string[] {
+  return [
+    t(`chat.system.directorFailover.${notice.outcome}`, {
+      from: notice.fromExecutor ?? '-',
+      to: notice.toExecutor ?? '-',
+      cause: notice.cause,
+      until: notice.resetsAt === null ? '' : ` (${new Date(notice.resetsAt).toISOString()})`,
     }),
   ];
 }

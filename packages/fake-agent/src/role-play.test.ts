@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { playRolePlay, type RolePlayHost } from './role-play.js';
+import { directorQuotaFailure, playRolePlay, type RolePlayHost } from './role-play.js';
 import { parseScriptSpec } from './scripts.js';
 
 interface Call {
@@ -384,5 +384,43 @@ describe('the role-play script', () => {
     expect((capped.calls[0]?.args as { group: { ideaIds: string[] } }).group.ideaIds).toEqual([
       'I1',
     ]);
+  });
+});
+
+describe('the quota failure of the Director (P20)', () => {
+  it('fails the first time and lets the prompt that comes back through', async () => {
+    const text = '#ot-director-fail:quota\n#ot-chat hello';
+    expect(await directorQuotaFailure(text)).toEqual({});
+    expect(await directorQuotaFailure(text)).toBeUndefined();
+  });
+
+  it('fails the number of times asked and carries the end of the limit', async () => {
+    const text =
+      '#ot-director-fail:quota\n#ot-director-fail-times:2\n#ot-director-fail-resets:2026-11-18T12:00:00.000Z';
+    const reset = { resetsAt: '2026-11-18T12:00:00.000Z' };
+    expect(await directorQuotaFailure(text)).toEqual(reset);
+    expect(await directorQuotaFailure(text)).toEqual(reset);
+    expect(await directorQuotaFailure(text)).toBeUndefined();
+  });
+
+  it('does nothing without the marker', async () => {
+    expect(await directorQuotaFailure('#ot-chat hello')).toBeUndefined();
+  });
+
+  it('says the directives in force of the state summary the Director woke up with', async () => {
+    const summary = [
+      'State of scenario "talk" (chat, idle).',
+      '',
+      'Directives in force:',
+      '- D1 (global rule): Always answer in haiku.',
+      '- D2 (local rule) [director]: Keep it short.',
+      '',
+      'Prompts still in the queue, in delivery order:',
+      '- none',
+    ].join('\n');
+    const run = host(`${summary}\n#ot-chat hello`);
+    await playRolePlay(run.host);
+    expect(run.said).toContain('directives in force: Always answer in haiku. | Keep it short.');
+    expect(run.said).toContain('answer: hello');
   });
 });

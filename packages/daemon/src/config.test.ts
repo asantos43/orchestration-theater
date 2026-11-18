@@ -607,6 +607,18 @@ describe('parseConfig, scenarios (architecture 5.20)', () => {
     );
   });
 
+  it('director_failover defaults to next and takes next, quota_only and off (P20)', () => {
+    expect(parseConfig('').scenarios.director_failover).toBe('next');
+    for (const mode of ['next', 'quota_only', 'off'] as const) {
+      expect(
+        parseConfig(`scenarios:\n  director_failover: ${mode}\n`).scenarios.director_failover,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('scenarios:\n  director_failover: always\n')).toThrow(
+      /director_failover/,
+    );
+  });
+
   it('rejects a bad duration, a bad size and an unknown key', () => {
     expect(() => parseConfig('scenarios:\n  director_idle_after: soon\n')).toThrow(
       /director_idle_after/,
