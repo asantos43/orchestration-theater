@@ -197,6 +197,16 @@ export const CODEX_QUOTA_WATCH_MODES = ['off', 'resident'] as const;
 
 export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
 export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
+/**
+ * `clients.codex.inner_sandbox` (N129, owner's decision of 2026-11-18). What Codex does with its own
+ * sandbox when layer 3 (`srt`) wraps it: `keep` (default; the client keeps `workspace-write`, whose
+ * sandbox does not start inside the confinement, so its native shell fails and the roles with a shell
+ * use the shells of the daemon), `full_access_when_wrapped` (with layer 3 on, Codex opens with no
+ * sandbox of its own and `srt` is the only `os` layer), `nested` (with layer 3 on, `srt` lets this
+ * client make user namespaces and Codex keeps its sandbox; the write denies of `srt` get weaker for
+ * its process). Without layer 3 the last two behave as `keep`.
+ */
+export const CODEX_INNER_SANDBOX_MODES = ['keep', 'full_access_when_wrapped', 'nested'] as const;
 /** Modes the adapter never selects (`agent` hands the escalation to a reviewer, `agent-full-access` asks nothing). */
 export const CODEX_VETOED_MODES = ['agent', 'agent-full-access'] as const;
 export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as const;
@@ -797,6 +807,7 @@ export const CodexClientSchema = z.strictObject({
   modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
   credentials_store: z.enum(CODEX_CREDENTIALS_STORES).default('file'),
   approval_policy: z.enum(CODEX_APPROVAL_POLICIES).default('on-request'),
+  inner_sandbox: z.enum(CODEX_INNER_SANDBOX_MODES).default('keep'),
   suggested_effort: z.string().min(1).default('high'),
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
   /**

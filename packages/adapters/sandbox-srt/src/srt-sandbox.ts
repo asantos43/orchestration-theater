@@ -159,6 +159,8 @@ export class SrtSandbox implements Sandbox {
         allowWrite: [...rules.allowWrite],
         denyWrite: [...rules.denyWrite],
       },
+      // N129: per command, never in the global config, so only the session that asked gets it.
+      ...(request.allowNestedUserNamespaces === true ? { allowNestedUserNamespaces: true } : {}),
     };
     let wrapped: string;
     try {
