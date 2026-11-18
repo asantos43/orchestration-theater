@@ -18,6 +18,7 @@ describe('clients.* and security.* of the config', () => {
       ...common,
       setting_sources: 'none',
       utilization_unit: 'ignore',
+      quota_statusline: 'file',
       account_env: 'strip',
       model_catalog: 'session_or_reserve',
       model_catalog_cache: 300_000,

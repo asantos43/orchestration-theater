@@ -725,6 +725,8 @@ function claudeCode(
       : { command: { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args } }),
     settingSources: section.setting_sources,
     utilizationUnit: section.utilization_unit,
+    quotaStatusline: section.quota_statusline,
+    profileDir: (ref) => profileDirOf(parts.paths, ref),
     accountEnv: section.account_env,
     modelCatalog: {
       source: section.model_catalog,

@@ -81,15 +81,17 @@ export class ClaudeQuotaProbe implements QuotaProbe {
 
   watch(profile: ProfileRef, onChange: (reading: QuotaReading) => void): Disposable {
     this.#dirOf(profile);
-    let stopped = false;
+    const state = { stopped: false };
+    // A function, so the check after the await is not narrowed away by the one before it.
+    const isStopped = (): boolean => state.stopped;
     let busy = false;
     let last: number | undefined;
     const look = async (): Promise<void> => {
-      if (stopped || busy) return;
+      if (isStopped() || busy) return;
       busy = true;
       try {
         const reading = await this.read(profile);
-        if (stopped || reading.observedAt === last) return;
+        if (isStopped() || reading.observedAt === last) return;
         last = reading.observedAt;
         onChange(reading);
       } catch {
@@ -102,7 +104,7 @@ export class ClaudeQuotaProbe implements QuotaProbe {
     timer.unref();
     return {
       dispose: () => {
-        stopped = true;
+        state.stopped = true;
         clearInterval(timer);
       },
     };
