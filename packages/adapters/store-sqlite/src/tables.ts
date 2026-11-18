@@ -36,6 +36,7 @@ export class SqliteTable<R extends object> implements RecordTable<R> {
   readonly #db: QueryExecutorProvider;
   readonly #assertLive: () => void;
   readonly #json: ReadonlySet<string>;
+  readonly #boolean: ReadonlySet<string>;
 
   /**
    * @param db the connection of one view (a transaction, or the read-only connection)
@@ -46,6 +47,7 @@ export class SqliteTable<R extends object> implements RecordTable<R> {
     this.#db = db;
     this.#assertLive = assertLive;
     this.#json = new Set(spec.json);
+    this.#boolean = new Set(spec.boolean ?? []);
   }
 
   get(key: RecordKey): Promise<R | undefined> {
@@ -109,6 +111,14 @@ export class SqliteTable<R extends object> implements RecordTable<R> {
         if (values.length === 0) return [];
         conditions.push(sql`${sql.ref(columnOf(field))} in (${sql.join([...values])})`);
       }
+      for (const [field, bounds] of Object.entries(query.ranges ?? {})) {
+        if (bounds.gte !== undefined) {
+          conditions.push(sql`${sql.ref(columnOf(field))} >= ${bounds.gte}`);
+        }
+        if (bounds.lte !== undefined) {
+          conditions.push(sql`${sql.ref(columnOf(field))} <= ${bounds.lte}`);
+        }
+      }
       const where =
         conditions.length === 0 ? sql`` : sql`where ${sql.join(conditions, sql` and `)}`;
       const order =
@@ -150,8 +160,9 @@ export class SqliteTable<R extends object> implements RecordTable<R> {
     const record: Record<string, unknown> = {};
     for (const [column, value] of Object.entries(row)) {
       const field = fieldOf(column);
-      record[field] =
-        this.#json.has(field) && typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+      if (this.#json.has(field) && typeof value === 'string') record[field] = JSON.parse(value);
+      else if (this.#boolean.has(field) && typeof value === 'number') record[field] = value !== 0;
+      else record[field] = value;
     }
     return this.#spec.schema.parse(record);
   }
