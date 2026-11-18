@@ -10,9 +10,10 @@ import { InvalidInput } from '@otheater/core';
  * ALWAYS set, to the profile for the client asked and to an empty folder for the others.
  *
  * Facts about `ccusage` are [S] (README and `config-schema.json` of `ccusage@20.0.48`, read on
- * 2026-11-18) or [N] (not run: the native binary was not downloaded, see the README of this
- * package). The names `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_DATA_DIR` are the ones the
- * clients and `ccusage` document [N: not confirmed against v20].
+ * 2026-11-18) or [V] (run against `ccusage@20.0.48` on 2026-11-18, with fixtures only). That
+ * v20 reads `CLAUDE_CONFIG_DIR` is [V] (its error names the variable); that it reads `CODEX_HOME`
+ * and `OPENCODE_DATA_DIR` is [S]: empty folders there gave empty answers, which does not prove the
+ * variable was read.
  */
 
 /** The sub-command of `ccusage` that reads each client of the OTheater. */

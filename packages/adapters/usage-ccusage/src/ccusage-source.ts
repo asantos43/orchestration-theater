@@ -186,6 +186,11 @@ export class CcusageSource implements UsageSource {
     const resolved = this.#resolve();
     if (resolved === undefined)
       throw new AdapterUnavailable('the ccusage executable was not found');
+    // [V, ccusage 20.0.48, 2026-11-18] `ccusage claude` exits 1 when the config folder has no
+    // `projects/`, which is a profile that never ran a session: that is "no data", not a failure.
+    if (query.clientId === 'claude-code' && !isDirectory(join(query.profileDir, 'projects'))) {
+      return [];
+    }
     const args = [subcommand, 'daily', '--json', '--timezone', 'UTC'];
     if (this.#offline) args.push('--offline');
     if (query.sinceDay !== undefined) args.push('--since', query.sinceDay);
@@ -241,5 +246,13 @@ export class CcusageSource implements UsageSource {
       );
       child.stdin?.end();
     });
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
   }
 }

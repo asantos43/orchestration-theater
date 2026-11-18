@@ -9,7 +9,7 @@ import { CCUSAGE_PINNED_VERSION, CcusageSource } from './index.js';
 // path of the downloaded launcher (and its native platform package is installed beside it).
 // The tool only sees what the test writes: `HOME` and the client directories are a temp folder,
 // and the one fixture is a Claude Code log the test wrote itself, with no conversation text.
-// The shape of the real output is [N] until this test has run once against the binary.
+// [V] It ran against `ccusage@20.0.48` and its native `@ccusage/ccusage-linux-x64` on 2026-11-18.
 
 const bin = process.env.OT_CCUSAGE_BIN;
 

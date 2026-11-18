@@ -6,13 +6,14 @@ import { AdapterUnavailable, type UsageSourceEntry } from '@otheater/core';
  * and the model name. Everything else in the output (a session id, the path of a project, a
  * summary, anything the tool may add) is never looked at and never returned.
  *
- * [N] The shape is the one of `ccusage` up to the 17 line, which the owner's request relied on:
+ * The shape, [V] for `ccusage claude daily --json` 20.0.48 (run against a fixture on 2026-11-18):
  * `{ "daily": [ { "date", "inputTokens", "outputTokens", "cacheCreationTokens",
- * "cacheReadTokens", "totalCost", "modelBreakdowns": [ { "modelName", ..., "cost" } ] } ] }`.
- * The Codex source of that line names the fields `cachedInputTokens` and `costUSD` and keys the
- * models in an object (`models`). v20.0.48 was not run (its native binary was not downloaded), so
- * every name is accepted in its known spellings, and an output with no `daily` array is refused
- * instead of guessed. The first run against the real binary (`OT_CCUSAGE_BIN`) confirms or fixes it.
+ * "cacheReadTokens", "totalCost", "modelBreakdowns": [ { "modelName", ..., "cost" } ] } ],
+ * "totals": {...} }`. An empty Codex or OpenCode folder answers `{ "daily": [], ... }` [V]; the
+ * Codex totals name the cost `costUSD` [V]. The day rows of Codex and OpenCode with data were not
+ * run [N]: the older Codex source names `cachedInputTokens` and `costUSD` and keys the models in an
+ * object (`models`), so those spellings are accepted too, and an output with no `daily` array is
+ * refused instead of guessed.
  */
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -73,7 +74,7 @@ function breakdown(row: Row): { model: string; row: Row }[] {
 }
 
 /**
- * The entries of one `ccusage ... --json` output. An empty output is "no data" (`[]`) [N]; any
+ * The entries of one `ccusage ... --json` output. An empty output is "no data" (`[]`) [proposta]; any
  * other thing that is not the shape above rejects with `AdapterUnavailable`, with no part of the
  * output in the message.
  */

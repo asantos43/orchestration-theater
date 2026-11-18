@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AdapterUnavailable, InvalidInput } from '@otheater/core';
@@ -22,6 +22,8 @@ beforeEach(() => {
   binDir = join(root, 'bin');
   homeDir = join(root, 'adapter-home');
   profileDir = join(root, 'profile');
+  // A Claude profile that ran a session has `projects/`; without it the adapter reads nothing.
+  mkdirSync(join(profileDir, 'projects'), { recursive: true });
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -220,6 +222,17 @@ describe('CcusageSource.read', () => {
     await expect(
       source(bin, { timeoutMs: 300 }).read({ clientId: 'claude-code', profileDir }),
     ).rejects.toThrow(/did not answer/);
+  });
+
+  it('reads nothing, and runs nothing, for a Claude profile with no projects folder', async () => {
+    const bin = writeFakeCcusage(binDir, {
+      version: CCUSAGE_PINNED_VERSION,
+      outputs: { claude: OUT },
+    });
+    const empty = join(root, 'never-ran');
+    mkdirSync(empty, { recursive: true });
+    expect(await source(bin).read({ clientId: 'claude-code', profileDir: empty })).toEqual([]);
+    expect(fakeCalls(binDir).filter((call) => call.argv[0] === 'claude')).toEqual([]);
   });
 
   it('refuses a bad query before running anything', async () => {
