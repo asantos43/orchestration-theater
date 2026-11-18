@@ -52,6 +52,29 @@ export interface LimitHit {
   readonly cause?: QuotaCause | undefined;
 }
 
+/** The `usage` update of the normalized stream of a session. */
+export type UsageUpdate = Extract<NormalizedUpdate, { kind: 'usage' }>;
+
+/**
+ * Optional, duck-typed on a probe (P8): a probe that counts consumption itself (the local ledger of
+ * OpenCode, which has no quota API) takes the `usage` updates of the sessions of its client here.
+ * Synchronous and cheap: it only writes down what it was told; the reading comes from `read` or
+ * from `watch`. [proposta]
+ */
+export interface UsageSink {
+  recordUsage(profile: ProfileRef, sessionId: string, usage: UsageUpdate): void;
+}
+
+/**
+ * Optional, duck-typed on a probe (P8): a client whose profiles are not all read the same way (the
+ * profiles of OpenCode with a MiniMax key and the ones with another provider) names the windows
+ * each profile reports, so a profile is not left `unknown` for a window its probe never reads.
+ * Without it the windows of `capabilities()` count for every profile of the client. [proposta]
+ */
+export interface ProfileWindows {
+  windowsOf(profile: ProfileRef): readonly string[];
+}
+
 /** What the service remembers of the last state it announced for a profile. */
 interface Announced {
   readonly signature: string;
@@ -254,6 +277,7 @@ export class QuotaService {
 
   /** A `rate_limit` update of the normalized stream of a session (the `-32001`-free path). */
   async ingestUpdate(sessionId: string, update: NormalizedUpdate): Promise<boolean> {
+    if (update.kind === 'usage') return this.ingestUsage(sessionId, update);
     if (update.kind !== 'rate_limit') return false;
     const profile = await this.#profileOfSession(sessionId);
     if (profile === undefined) return false;
@@ -277,6 +301,27 @@ export class QuotaService {
       ],
       'client_signal',
     );
+    return true;
+  }
+
+  /**
+   * A `usage` update of a session (P8). It does not move the state by itself: it goes to the probe
+   * of the client when that probe counts consumption (`UsageSink`), and that probe tells the
+   * service the new reading. Resolves `false` when the session has no profile or its probe counts
+   * nothing.
+   */
+  async ingestUsage(sessionId: string, usage: UsageUpdate): Promise<boolean> {
+    const profile = await this.#profileOfSession(sessionId);
+    if (profile === undefined) return false;
+    const ref = parseProfileId(profile);
+    const probe = this.#probes.get(ref.client) as Partial<UsageSink> | undefined;
+    if (typeof probe?.recordUsage !== 'function') return false;
+    try {
+      probe.recordUsage(ref, sessionId, usage);
+    } catch (error) {
+      this.#options.logger.warn({ err: error, profile }, 'a quota probe could not take a usage');
+      return false;
+    }
     return true;
   }
 
@@ -464,6 +509,8 @@ export class QuotaService {
     const probe = this.#probes.get(parseProfileId(profile).client);
     if (probe === undefined) return [];
     try {
+      const own = (probe as Partial<ProfileWindows>).windowsOf;
+      if (typeof own === 'function') return own.call(probe, parseProfileId(profile));
       return probe.capabilities().windows;
     } catch {
       return [];
