@@ -71,6 +71,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | concluído (PR #110) |
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | concluído (PR #104) |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | concluído (PR #115) |
+| P11b | Ajustes do teto de gasto (N137 a N140) | P11 | P12, P15 | concluído (PR #119) |
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | concluído (PR #114) |
@@ -364,6 +365,16 @@ Pontos para o dono decidir ou confirmar:
 - [N] O teto não para um turno em curso: a sessão só informa o custo depois do turno, então o gasto pode passar do teto pelo custo de um turno (já dito na §5.6). O `in_flight` no meio da sessão (interromper antes de o cliente bater no limite) depende do pool (P15); aqui a política está ligada e testada, e `handoff` e `finish` seguem não executando até o P18 e o P19. [N]
 - [N] A seleção "segue para o próximo" é o `select` do teste (um auxiliar), porque a seleção por papel é o P15; o `BudgetAsker` (a pergunta ao Diretor) e a entrega da mensagem de sistema no chat também esperam o P15, o P16 e o P18, já que o aviso não pertence a um cenário e o chat só tem avisos ligados a cenário. Nada é ligado por padrão: o `daemon.budget.onWarning`, o `onExceeded` e o `asker` são os pontos de ligação.
 - [N] O que fica para o dono: (1) "subir o teto" não é oferecido no `ask` (é decisão de dinheiro); (2) custo desconhecido conta como "pode tentar" para o teto, e `budget.unknown_cost: block` é o modo estrito (um turno sem custo no período gasta o teto do perfil); (3) `budget.timezone` com padrão `America/Sao_Paulo` é a leitura proposta de "fuso do daemon"; (4) `ask_timeout` de 10 minutos é um palpite; (5) tirar ou subir o teto na configuração com um esgotamento por teto ativo não o solta antes da virada; (6) o orçamento por execução da §5.15 só existe como parâmetro de `headroom`, porque o agendador é da Fase 9b.
+
+**P11b. Ajustes do teto de gasto (N137 a N140, 2026-11-18).** Respostas do dono às perguntas do P11, em `daemon/src/budget/` e no protocolo.
+
+**Como ficou (2026-11-18):**
+- `budget.on_cap_change: release | keep` (padrão `release`; N137). Em `release`, o `BudgetService` solta o perfil `exhausted(budget)` cujo teto deixou de estar gasto (subiu ou saiu da configuração): `QuotaService.releaseBudgetHit` regrava a janela `budget_hit` com o fim em "agora" e fecha pelo mesmo caminho da virada, com `budget.restored` (motivo novo `config`, só no `budget.restored`) e os ganchos do P9. A busca dos perfis a soltar inclui os que ficaram sem teto (pelos instantâneos `budget_hit`). `keep` não faz nada.
+- [N] O daemon não tem recarga da configuração a quente. O `release` roda na partida (`BudgetService.start`, em cada perfil lido) e em cada turno gravado, e o novo `applySettings(settings)` é o gancho que uma recarga futura chama; hoje só os testes o chamam.
+- `budget.exceeded` (N138): registrado no protocolo (58 para 59) e no daemon (60 para 61), com `profile`, `executor`, `period`, `spentUsd`, `limitUsd` e `endsAt`. Sai uma vez por Executor e período, também depois de reiniciar (a semente vem do log). **[proposta]** O teto do perfil também o emite, com `executor: null`; a chave de uma vez por período inclui o limite.
+- Custo desconhecido (N139, revista pelo dono em 2026-11-18): `budget.unknown_cost: ignore` continua. Uma vez por modelo e por vida do daemon, saem um aviso de log (`warn`) e o evento novo `budget.unknown_cost` (`model`, `profile`, `executor` e `mode: ignore`). O aviso diz que o modelo não tem preço e que `pricing.<modelo>` resolve. O evento existe porque hooks e plugins leem eventos, não o log. Com ele, as contagens vão a 60 (protocolo) e 62 (daemon). **[proposta]** Vale só para perfil ou Executor com teto; reiniciar o daemon o repete uma vez por modelo, como o log. [V] (`budget/service.test.ts`)
+- N140: sem código; o `ask` continua sem "subir o teto".
+- Testes: `budget/service.test.ts` ganhou os blocos de `on_cap_change` (teto subido, subido mas ainda gasto, removido, partida com o teto já mudado, esgotamento por cota deixado quieto, `keep`), de `budget.exceeded` (perfil, Executor, dia e mês, depois de reiniciar, teto baixado, teto subido e gasto de novo) e do custo desconhecido (uma vez por modelo; sem aviso sem teto, com custo conhecido ou em `block`); mais os testes de configuração, de protocolo e de registro. [V]
 
 ### P12. `ccusage` como `UsageSource` (§5.6 e §6.2)
 
