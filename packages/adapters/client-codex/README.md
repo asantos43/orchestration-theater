@@ -41,6 +41,35 @@ never reaches the client [V], so a veto at the adapter is the only way to keep `
 by the daemon. The allowed modes are a list (`allowedModes`, [proposta] `clients.codex.modes`),
 default `read-only` and `workspace-write`; a vetoed mode in the list is refused at construction.
 
+The one exception is `agent-full-access` under `clients.codex.inner_sandbox: full_access_when_wrapped`
+(next section) and only while layer 3 wraps the client: the veto then lifts that mode alone, the
+session opens in it, and `agent` stays vetoed. Without layer 3 the mode stays vetoed.
+
+## The inner sandbox (N129) [proposta]
+
+`clients.codex.inner_sandbox` (`keep` default, `full_access_when_wrapped`, `nested`; option
+`innerSandbox` of the adapter) says what to do with Codex's own sandbox when layer 3 (`srt`) already
+wraps the process. Owner decision of 2026-11-18, after a measurement with srt 0.0.81 on Linux with
+bubblewrap [V locally]: inside srt, `codex sandbox` (and `unshare -Ur`, and a nested bwrap) fail by
+default and work with `allowNestedUserNamespaces: true`, an option that gives up srt's write denies
+against a hostile command (the library's own documentation).
+
+- `keep`: today's behavior. Codex opens in `workspace-write`; its sandbox does not start inside
+  layer 3, so roles with a shell use the daemon's shells.
+- `full_access_when_wrapped`: with layer 3 active, Codex opens in `danger-full-access` (the mode
+  `agent-full-access` over ACP; `sandbox_mode = "danger-full-access"` in the profile `config.toml`
+  and `--sandbox danger-full-access` headless), and srt, without nested namespaces, is the only `os`
+  layer. Without layer 3 it behaves as `keep`. `read-only` roles are left alone.
+- `nested`: with layer 3 active, the daemon opens srt with `allowNestedUserNamespaces: true` for the
+  Codex process only (an optional field of `SandboxRequest`, per request, the port version does not
+  change), and Codex keeps `workspace-write` and its own sandbox. The daemon logs a warning that
+  srt's write denies are weaker. Without layer 3 it behaves as `keep`. A Codex process is shared by
+  the sessions of a profile, so the flag applies to the whole process.
+
+[N] That `agent-full-access` leaves exactly layer 3's confinement is not confirmed until a real round
+with the client. The mode choice is tested without a real Codex; the nested namespaces are tested
+with the real bubblewrap in `packages/adapters/sandbox-srt` (skipped where the mechanism is missing).
+
 ## Things the owner must know
 
 - **`/tmp` is writable in `workspace-write`** [V]: no request reaches the client. A path outside
@@ -66,7 +95,8 @@ default `read-only` and `workspace-write`; a vetoed mode in the list is refused 
 
 `clients.codex.command`, `clients.codex.initial_mode`, `clients.codex.modes`,
 `clients.codex.credentials_store` (`file`, `keyring`, `auto`), `clients.codex.approval_policy`
-(`on-request`, `untrusted`), `clients.codex.suggested_effort`.
+(`on-request`, `untrusted`), `clients.codex.inner_sandbox` (`keep`, `full_access_when_wrapped`,
+`nested`; see The inner sandbox), `clients.codex.suggested_effort`.
 `clients.codex.version_source` (`auto`, `package_json`, `initialize`, `config`; see Client version).
 
 ## Official login and logout (Phase 5, P3)

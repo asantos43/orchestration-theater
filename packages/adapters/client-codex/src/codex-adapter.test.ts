@@ -364,6 +364,121 @@ describe('CodexAdapter.configOptionsFor', () => {
   });
 });
 
+/** N129: `clients.codex.inner_sandbox`. Nothing here starts a real client. */
+describe('CodexAdapter inner_sandbox (N129)', () => {
+  /** Layer 3 on: the sandbox lists fields and a wrapper confines the launch. */
+  const wrapped = {
+    sandbox: SANDBOX,
+    launchWrapper: ({ spec }: { spec: unknown }) => Promise.resolve(spec as never),
+  } as const;
+
+  async function tomlOf(adapter: CodexAdapter): Promise<string> {
+    const profile = await profileIn();
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    return readFile(join(profile.dir, CONFIG_FILE), 'utf8');
+  }
+
+  it('keep is the default: the client keeps its own sandbox, with or without layer 3', async () => {
+    for (const options of [{}, wrapped, { innerSandbox: 'keep' as const, ...wrapped }]) {
+      const { adapter } = build(options);
+      expect(adapter.innerSandbox).toBe('keep');
+      expect(adapter.initialMode).toBe('workspace-write');
+      expect(await tomlOf(adapter)).toContain('sandbox_mode = "workspace-write"');
+    }
+  });
+
+  it('full_access_when_wrapped with layer 3 opens with no sandbox of the client, in ACP and headless', async () => {
+    const { adapter } = build({ innerSandbox: 'full_access_when_wrapped', ...wrapped });
+    expect(adapter.initialMode).toBe('agent-full-access');
+    const acp = new FakeSessionTransport();
+    const profile = await profileIn();
+    await adapter.openSession(profile, policy, '/work', acp);
+    expect(acp.opened[0]?.setup).toEqual({
+      via: 'acp',
+      configOptions: { mode: 'agent-full-access' },
+    });
+    const toml = await readFile(join(profile.dir, CONFIG_FILE), 'utf8');
+    expect(toml).toContain('sandbox_mode = "danger-full-access"');
+    expect(toml).toContain('approval_policy = "on-request"');
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await adapter.openSession(await profileIn(), policy, '/work', headless);
+    expect(headless.opened[0]?.setup).toEqual({
+      via: 'headless',
+      args: ['exec', '--json', '--sandbox', 'danger-full-access'],
+      env: {},
+    });
+  });
+
+  it('full_access_when_wrapped lifts the veto of the full-access mode alone, and only then', async () => {
+    const { adapter } = build({ innerSandbox: 'full_access_when_wrapped', ...wrapped });
+    expect(adapter.configOptionsFor({ model: 'm', mode: 'agent-full-access' }).mode).toBe(
+      'agent-full-access',
+    );
+    expect(() => adapter.configOptionsFor({ model: 'm', mode: 'agent' })).toThrow(PermissionDenied);
+    const report = await adapter.checkConformance(await profileIn());
+    expect(report.probes.find((probe) => probe.id === MODE_VETO_PROBE_ID)?.ok).toBe(true);
+  });
+
+  it('full_access_when_wrapped pins and checks the full-access mode, not workspace-write', async () => {
+    const options = { innerSandbox: 'full_access_when_wrapped', ...wrapped } as const;
+    const right = build({
+      ...options,
+      readSessionMode: () => Promise.resolve('agent-full-access'),
+    });
+    expect((await right.adapter.checkConformance(await profileIn())).ok).toBe(true);
+    const stale = build({ ...options, readSessionMode: () => Promise.resolve('workspace-write') });
+    expect((await stale.adapter.checkConformance(await profileIn())).ok).toBe(false);
+  });
+
+  it('full_access_when_wrapped without layer 3 behaves as keep', async () => {
+    for (const options of [
+      { bare: true },
+      // A capabilities list with no field, or fields with no wrapper, is no layer 3 for the session.
+      { sandbox: { fields: [] } },
+      { sandbox: SANDBOX },
+    ]) {
+      const { adapter } = build({ innerSandbox: 'full_access_when_wrapped', ...options });
+      expect(adapter.initialMode).toBe('workspace-write');
+      expect(() => adapter.configOptionsFor({ model: 'm', mode: 'agent-full-access' })).toThrow(
+        PermissionDenied,
+      );
+      expect(
+        await tomlOf(
+          build({ innerSandbox: 'full_access_when_wrapped', ...options, unenforced: 'allow' })
+            .adapter,
+        ),
+      ).toContain('sandbox_mode = "workspace-write"');
+    }
+  });
+
+  it('full_access_when_wrapped leaves a read-only initial mode alone', () => {
+    const { adapter } = build({
+      innerSandbox: 'full_access_when_wrapped',
+      initialMode: 'read-only',
+      allowedModes: ['read-only'],
+      ...wrapped,
+    });
+    expect(adapter.initialMode).toBe('read-only');
+    expect(() => adapter.configOptionsFor({ model: 'm', mode: 'agent-full-access' })).toThrow(
+      PermissionDenied,
+    );
+  });
+
+  it('nested changes nothing in the adapter: the daemon asks layer 3 for the namespaces', async () => {
+    const { adapter } = build({ innerSandbox: 'nested', ...wrapped });
+    expect(adapter.innerSandbox).toBe('nested');
+    expect(adapter.initialMode).toBe('workspace-write');
+    expect(await tomlOf(adapter)).toContain('sandbox_mode = "workspace-write"');
+    expect(() => adapter.configOptionsFor({ model: 'm', mode: 'agent-full-access' })).toThrow(
+      PermissionDenied,
+    );
+  });
+
+  it('refuses a value it does not know', () => {
+    expect(() => build({ innerSandbox: 'off' as never })).toThrow(InvalidInput);
+  });
+});
+
 describe('CodexAdapter quota, login and the catalog', () => {
   it('has an honest quota probe that arrives in Phase 5', async () => {
     const { adapter } = build();
