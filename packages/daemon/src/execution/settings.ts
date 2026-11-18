@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SharedCancelMode } from '@otheater/core';
-import { type DaemonConfig, CLIENT_IDS, sessionsPerProcessOf } from '../config.js';
+import { type DaemonConfig, CLIENT_IDS, sessionMbOf, sessionsPerProcessOf } from '../config.js';
+import type { AdmissionSettings, SessionMb } from './admission.js';
 
 /** Pool constants (architecture 5.2). */
 export interface PoolSettings {
@@ -18,6 +19,15 @@ export interface PoolSettings {
   readonly idleMs: number;
   /** `pool.shared_cancel`: what a cancel does to a process shared by several sessions. */
   readonly sharedCancel: SharedCancelMode;
+  /** `pool.admission`; absent: `slots` (the behaviour from before P4). */
+  readonly admission?: AdmissionSettings;
+  /** `pool.<client>.session_mb` by adapter id; absent: the measured default of the client. */
+  readonly sessionMbByClient?: Readonly<Record<string, SessionMb>>;
+  /**
+   * Ids of the profiles in the Director's list, for `reserve_when: listed` on a local instance.
+   * [N] The daemon has no such list yet; the profiles of the Director are not wired here.
+   */
+  readonly directorProfiles?: readonly string[];
 }
 
 /** `K` of one client: its own value, or else the global one. */
@@ -61,6 +71,15 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
       maxSessions: config.pool.max_sessions,
       idleMs: config.pool.idle,
       sharedCancel: config.pool.shared_cancel,
+      admission: {
+        mode: config.pool.admission.mode,
+        minFreeMb: config.pool.admission.min_free_mb,
+        recheckMs: config.pool.admission.recheck,
+        unknownRam: config.pool.admission.unknown_ram,
+      },
+      sessionMbByClient: Object.fromEntries(
+        CLIENT_IDS.map((client) => [client, sessionMbOf(config.pool, client)]),
+      ),
     },
     timeoutMs: config.limits.demand_timeout,
     timeoutMaxMs: config.limits.demand_timeout_max,

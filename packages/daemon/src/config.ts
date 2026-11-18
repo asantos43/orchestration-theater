@@ -16,6 +16,13 @@ import {
 import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import {
+  ADMISSION_MODES,
+  DEFAULT_ADMISSION,
+  DEFAULT_SESSION_MB,
+  FALLBACK_SESSION_MB,
+  UNKNOWN_RAM_MODES,
+} from './execution/admission.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
@@ -603,6 +610,9 @@ export const CodexClientSchema = z.strictObject({
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
 });
 
+/** `pool.<client>.session_mb`: the cost of a session in MB, or `auto`. */
+const SessionMbSchema = z.union([z.literal('auto'), z.int().min(1)]);
+
 /**
  * `pool.<client>`: what the pool decides for one client alone. `sessions_per_process` (`K`) has a
  * default of its own only where a real measurement justified one (N74, owner's decision,
@@ -612,11 +622,24 @@ export const CodexClientSchema = z.strictObject({
 export const PoolClientSchema = z.strictObject({
   /** `K` of this client; absent: `pool.sessions_per_process`. */
   sessions_per_process: z.int().min(1).optional(),
+  /**
+   * [proposta] What one session of this client costs in MB, for the RAM admission
+   * (`pool.admission.mode: ram | ram_and_quota`, 5.9): a number, or `auto` (the pool measures the
+   * process tree of the client and keeps the largest share it saw). Each client has a default of
+   * its own, taken from the measurement of N74 (2026-11-16, PSS per session after a prompt, rounded up).
+   */
+  session_mb: SessionMbSchema.default(FALLBACK_SESSION_MB),
 });
 
-/** `pool.codex`: `K` defaults to 6 (N74, measured on 2026-11-16). */
+/** `pool.claude-code`: `session_mb` defaults to 320 (N74 measured 313.6 MB). */
+export const PoolClaudeCodeSchema = PoolClientSchema.extend({
+  session_mb: SessionMbSchema.default(DEFAULT_SESSION_MB['claude-code']),
+});
+
+/** `pool.codex`: `K` defaults to 6 (N74, measured on 2026-11-16); `session_mb` to 150 (N74: 150.1 MB). */
 export const PoolCodexSchema = PoolClientSchema.extend({
   sessions_per_process: z.int().min(1).default(6),
+  session_mb: SessionMbSchema.default(DEFAULT_SESSION_MB.codex),
 });
 
 /** `clients.opencode` (keys of `OpenCodeAdapterOptions`; `pool.opencode.process_model` is under `pool`). */
@@ -732,8 +755,25 @@ export const DaemonConfigSchema = z
          * `always_kill` ends it on every cancel; `release` only gives the slot back.
          */
         shared_cancel: z.enum(SHARED_CANCEL_MODES).default('escalate'),
+        /**
+         * The admission of sessions (architecture 5.9, P4). `mode`: `slots` (default, the behaviour
+         * before P4: only `max_sessions` and the slots of a local instance), `ram` (also the free RAM)
+         * or `ram_and_quota` (also the quota hook). Every key here is [proposta]; the default mode
+         * is `slots` so that nothing changes until the owner chooses another (see N118 to N129).
+         */
+        admission: z
+          .strictObject({
+            mode: z.enum(ADMISSION_MODES).default(DEFAULT_ADMISSION.mode),
+            /** RAM that must stay free after a session is admitted. */
+            min_free_mb: z.int().min(0).default(DEFAULT_ADMISSION.minFreeMb),
+            /** How often a waiting session looks again at RAM and quota. */
+            recheck: DurationSchema.prefault('5s'),
+            /** What a machine that cannot tell its free RAM means: `admit` (as `slots`) or `wait`. */
+            unknown_ram: z.enum(UNKNOWN_RAM_MODES).default(DEFAULT_ADMISSION.unknownRam),
+          })
+          .prefault({}),
         /** `K` of Claude Code alone; no default of its own (inherits the global key, 4). */
-        'claude-code': PoolClientSchema.prefault({}),
+        'claude-code': PoolClaudeCodeSchema.prefault({}),
         /** `K` of Codex alone; default 6 (N74, real measurement of 2026-11-16). */
         codex: PoolCodexSchema.prefault({}),
         /**
@@ -743,6 +783,7 @@ export const DaemonConfigSchema = z
          */
         opencode: PoolClientSchema.extend({
           sessions_per_process: z.int().min(1).default(4),
+          session_mb: SessionMbSchema.default(DEFAULT_SESSION_MB.opencode),
           process_model: z.enum(OPENCODE_PROCESS_MODELS).default('per_profile'),
         }).prefault({}),
       })
@@ -1160,4 +1201,9 @@ export async function loadConfig(configPath: string): Promise<DaemonConfig> {
  */
 export function sessionsPerProcessOf(pool: DaemonConfig['pool'], client: ClientId): number {
   return pool[client].sessions_per_process ?? pool.sessions_per_process;
+}
+
+/** `session_mb` of a client (`pool.<client>.session_mb`): a number of MB, or `auto`. */
+export function sessionMbOf(pool: DaemonConfig['pool'], client: ClientId): number | 'auto' {
+  return pool[client].session_mb;
 }
