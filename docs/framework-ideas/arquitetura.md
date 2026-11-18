@@ -908,7 +908,7 @@ Algoritmo, para cada demanda ou etapa:
    - há vaga no pool;
    - o controle de admissão permite;
    - o prompt da demanda, com a folga do cliente, cabe na janela de contexto do Executor (no modelo local, a janela por slot) (v0.24) **[proposta]**;
-2. pega o primeiro disponível;
+2. pega o primeiro disponível. Entre Executores do mesmo `<modelo>-<esforço>` em contas diferentes, a chave `selection.strategy: ordered | most_headroom | round_robin` (padrão `ordered`, N130, 2026-11-18) diz a ordem: `ordered` é a da lista, `most_headroom` põe primeiro o perfil com mais folga de cota, e `round_robin` reveza a cada demanda; a ordem entre modelos diferentes não muda;
 3. se ninguém estiver disponível:
    - `next`: espera o primeiro da lista que liberar;
    - `wait`: aguarda o reset do primeiro da lista, sem rebaixar;
@@ -3581,6 +3581,12 @@ Decididas:
 - escopo do assistente de configuração na Fase 5 (2026-11-17, seção 5.12 e Fase 5, N121): só serviços e CLI (`ot profile`, `ot executor`); a tela do assistente vai para a Fase 7 e o `ot init` para a Fase 10;
 - rodadas reais da Fase 5 (2026-11-17, Fase 5, N122): os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir;
 - a sandbox conta como a camada `os` para `nativeShell` e `nativeTools` (2026-11-17, seções 5.2 e 5.8 e Fase 4, N128): **decidida pelo dono** ("Sandbox conta") depois de uma rodada real de fuga em que o Codex terminou `interrupted/permission` antes de abrir a sessão **[V]**: o adaptador do Codex não dá camada de cliente a esses campos e o `sandbox-srt` declarava só `writeScope` e `network`, então, com `security.min_layers.default: 1` e `unenforced: refuse`, a garantia ficava curta. O `sandbox-srt` passa a declarar `nativeTools`, `nativeShell`, `writeScope` e `network` onde há mecanismo (Linux e macOS); no Windows (N94) e com `sandbox.mode: off` a lista é vazia e o `refuse` continua valendo. A camada `os` confina o shell e as ferramentas do cliente, não as remove;
+- padrões das sondas de cota (2026-11-18, seção 5.6 e Fase 5, N123): `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, parser de fração e percentual, statusline do Claude no diretório do perfil;
+- seleção com cota incerta (2026-11-18, seção 5.7 e Fase 5, N124): `selection.unknown_quota: allow` e `selection.near_limit: keep_order`;
+- pacote de continuação e failover (2026-11-18, seções 5.4 e 5.16 e Fase 5, N126): `resume.package.summarize: deterministic`, bastão sempre que a cota acaba, e a fila do Diretor em espera com aviso ao Produtor quando a lista inteira se esgota;
+- drenagem e remoção de perfil (2026-11-18, seção 5.6 e Fase 5, N127): `profiles.drain.timeout: 10m`, `profiles.drain.on_timeout: handoff`, `profiles.drain.removed_dir: delete`, com o logout antes;
+- shell nativo do Codex na sandbox `runtime` (2026-11-18, seções 5.2 e 5.8 e Fase 4, N129): `clients.codex.inner_sandbox: keep` como padrão, e uma rodada curta na Fase 5 mede se o `srt` permite namespace aninhado;
+- estratégia de seleção entre contas (2026-11-18, seção 5.7 e Fase 5, N130): `selection.strategy: ordered | most_headroom | round_robin`, padrão `ordered`;
 - porta do servidor MCP (2026-11-17, seção 5.3 e Fase 3, N81): `mcp.port: auto | <número>`, padrão `auto`; o sistema escolhe uma porta livre a cada subida, e o daemon entrega a URL às sessões;
 - evento fora do registro (2026-11-17, seção 5.18 e Fase 3, N80): `events.unknown_type: reject | warn`, padrão `reject`; com `reject`, o tipo fora do registro ou o payload fora do schema lança erro e nada é gravado; com `warn`, o evento é gravado e o log recebe um aviso;
 - plano da Fase 3 (2026-11-16, seção 10, N77): passos P0 a P13 em [docs/14](../14-PLANO-DA-FASE-3.md), com o marco interno 3a (peça ponta a ponta com o agente falso, reinício e `kill -9`);

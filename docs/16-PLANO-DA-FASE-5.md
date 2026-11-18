@@ -2,7 +2,7 @@
 
 Versão 1, de 2026-11-17. Este é o plano de passos da Fase 5 da [arquitetura](framework-ideas/arquitetura.md), §10, "Assinaturas, cotas e seleção". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
-O dono liberou o merge dos PRs da Fase 5 sem ok por PR, com a CI verde e squash (2026-11-17). As dez decisões que o plano levanta (N118 a N127) estão **abertas**: nenhuma foi tomada, e cada passo que depende de uma só abre depois dela ([docs/13](13-DECISOES-EM-ABERTO.md)).
+O dono liberou o merge dos PRs da Fase 5 sem ok por PR, com a CI verde e squash (2026-11-17). Das dez decisões que o plano levanta (N118 a N127), a N120, a N121 e a N122 foram decididas em 2026-11-17, e a N123, a N124, a N126 e a N127 em 2026-11-18, com a N130 (estratégia de seleção) e a N129 da Fase 4; seguem **abertas** a N118, a N119 e a N125, e cada passo que depende de uma só abre depois dela ([docs/13](13-DECISOES-EM-ABERTO.md)).
 
 ## Como usar
 
@@ -297,7 +297,7 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 - O seletor, em `core`, com o algoritmo da §5.7 para cada demanda ou etapa:
   1. percorre a lista na ordem;
   2. um Executor é **disponível** quando o perfil está `active` e saudável, o `QuotaService` diz que pode (P5), há vaga e a admissão permite (P4), e o prompt da demanda cabe na janela dele (no modelo local, a janela por slot) **[proposta]**;
-  3. pega o primeiro disponível;
+  3. pega o primeiro disponível, com `selection.strategy: ordered | most_headroom | round_robin` (padrão `ordered`, N130) entre Executores do mesmo `<modelo>-<esforço>` em contas diferentes;
   4. sem ninguém: `next` espera o primeiro que liberar, `wait` espera o reset do primeiro sem rebaixar;
   5. **retry com diversidade:** a nova tentativa de uma demanda que falhou começa pelo Executor seguinte ao da anterior.
 - **Revisão cruzada** `selection.cross_check: prefer_other_provider | require_other_provider | other_model | off` (padrão `prefer_other_provider`): o Revisor e o Crítico pulam os Executores do mesmo provedor de quem fez o trabalho. O `provider` `unknown` vale como diferente de todos.
@@ -415,17 +415,17 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 
 ## Decisões que surgem deste plano
 
-Todas **abertas**, com a recomendação marcada **[proposta]**. O dono decide por múltipla escolha ao abrir o passo que depende de cada uma ([docs/13](13-DECISOES-EM-ABERTO.md)):
+Cada uma traz a recomendação marcada **[proposta]**, e o estado de cada uma (aberta ou decidida) está no docs/13. O dono decide por múltipla escolha ao abrir o passo que depende de cada uma ([docs/13](13-DECISOES-EM-ABERTO.md)):
 
 - **N118:** o download do `ccusage` (P12) e a forma de uso. Opções: versão fixa como biblioteca, versão fixa como CLI, ou fora da v1. **Recomendação:** biblioteca, se ela exportar uma API (a conferir no registro npm ao abrir o P12), senão a CLI; versão com mais de duas semanas e licença conferida.
 - **N119:** a releitura do Claudexor no início da fase (§6.3). Opções: ler só os arquivos listados no commit mais novo, clonar o repositório inteiro em pasta temporária, ou manter a tag `v6.1.2`. **Recomendação:** ler só os arquivos listados, sem clone, registrando o novo commit nos cabeçalhos.
 - **N120 (decidida em 2026-11-17):** o plano neste documento, com o marco 5a no P16.
 - **N121 (decidida em 2026-11-17):** só serviços e a CLI (`ot profile`, `ot executor`); o assistente da primeira execução fica para a Fase 7 (tela) e a 10 (`ot init`).
 - **N122 (decidida em 2026-11-17):** os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir.
-- **N123:** os padrões das sondas: `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, a unidade de `utilization`, e a statusline gravada no diretório do perfil. **Recomendação:** os valores acima.
-- **N124:** a seleção com o estado incerto. `selection.unknown_quota: allow | skip` e `selection.near_limit: keep_order | last | skip`. **Recomendação:** `allow` (a sessão real é o teste, como na §5.6) e `keep_order` (a ordem da lista, como no algoritmo da §5.7).
+- **N123 (decidida em 2026-11-18, recomendação aceita):** os padrões das sondas: `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, a unidade de `utilization`, e a statusline gravada no diretório do perfil. **Recomendação:** os valores acima.
+- **N124 (decidida em 2026-11-18, recomendação aceita):** a seleção com o estado incerto. `selection.unknown_quota: allow | skip` e `selection.near_limit: keep_order | last | skip`. **Recomendação:** `allow` (a sessão real é o teste, como na §5.6) e `keep_order` (a ordem da lista, como no algoritmo da §5.7).
 - **N125:** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10.
-- **N126:** os detalhes do pacote de continuação e do failover: `resume.package.summarize: deterministic | director_model` (padrão `deterministic`), o tamanho máximo do pacote, o bastão sempre que a cota acaba (como a arquitetura) contra o predicado do Claudexor (só se nada foi entregue), e a fila do Diretor sem Executor. **Recomendação:** `deterministic`, bastão sempre (a arquitetura), fila em espera com aviso.
-- **N127:** a drenagem do perfil: `profiles.drain.timeout` (`10m`) e `profiles.drain.on_timeout: handoff | wait | force` (`handoff`), e o que fazer com o diretório removido (`delete` ou `keep_backup`). **Recomendação:** `handoff`, `10m` e `delete`, com o logout antes.
+- **N126 (decidida em 2026-11-18, recomendação aceita):** os detalhes do pacote de continuação e do failover: `resume.package.summarize: deterministic | director_model` (padrão `deterministic`), o tamanho máximo do pacote, o bastão sempre que a cota acaba (como a arquitetura) contra o predicado do Claudexor (só se nada foi entregue), e a fila do Diretor sem Executor. **Recomendação:** `deterministic`, bastão sempre (a arquitetura), fila em espera com aviso.
+- **N127 (decidida em 2026-11-18, recomendação aceita):** a drenagem do perfil: `profiles.drain.timeout` (`10m`) e `profiles.drain.on_timeout: handoff | wait | force` (`handoff`), e o que fazer com o diretório removido (`delete` ou `keep_backup`). **Recomendação:** `handoff`, `10m` e `delete`, com o logout antes.
 
 O que continua **[N]** depois deste plano, para o dono ou para uma rodada real: o segundo login em cada cliente (item 7), o esgotamento de cota com assinatura real e o `resetsAt` (item 4), a unidade de `utilization` com valor alto (item 10), o formato real da MiniMax (item 11), o bastão com n maior (item 6), a leitura dos termos da OpenAI (D3) e a confirmação da Anthropic sobre o uso de assinatura (Q4, N2, portão da Fase 10). Nenhum afirma o que os provedores permitem: cada um fica como pendência, sem fonte nem data.
