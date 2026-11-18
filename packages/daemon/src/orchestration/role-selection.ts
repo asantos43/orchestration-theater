@@ -605,9 +605,14 @@ export class RoleSelection {
     const value = entry?.value;
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
     if (typeof value.provider !== 'string') return null;
-    return typeof value.model === 'string'
-      ? { provider: value.provider, model: value.model }
-      : { provider: value.provider };
+    return {
+      provider: value.provider,
+      ...(typeof value.model === 'string' ? { model: value.model } : {}),
+      ...(typeof value.effort === 'string' || value.effort === null
+        ? { effort: value.effort }
+        : {}),
+      ...(typeof value.profile === 'string' ? { profile: value.profile } : {}),
+    };
   }
 
   /** `key` is the wait registry entry of the piece of work, or null for a selection that never waits. */
@@ -677,8 +682,10 @@ export class RoleSelection {
           key: workedKey(request.role),
           value: {
             executor: result.selected.id,
+            profile: `${result.selected.entry.client}/${result.selected.entry.profile}`,
             provider: result.selected.entry.provider,
             model: result.selected.entry.model,
+            effort: result.selected.entry.effort,
           },
           author: 'daemon',
         });
@@ -778,6 +785,9 @@ function emptyResult(
       applied: false,
       workedProvider: null,
       fellBack: false,
+      noneConfigured: false,
+      degraded: null,
+      sameAccount: false,
       blocked: false,
     },
     roundRobin: null,

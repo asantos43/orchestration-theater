@@ -321,3 +321,45 @@ describe('RoleSelection: the notice of the strict cross-review (N135, P16b)', ()
     await pending;
   });
 });
+
+describe('RoleSelection: the fall to the provider of the work in the event (P15b, N150)', () => {
+  const request = {
+    role: 'reviewer',
+    scenarioId: 'S1',
+    workedBy: { provider: 'fake', model: 'fake-model', effort: null, profile: 'fake/one' },
+    attempt: { playId: 'p1', demandId: 'd1', number: 1 },
+  } as const;
+
+  it('records the step, the account and that the list had another provider', async () => {
+    const { selection, store, out, setup } = rig();
+    await setup();
+    out.add('fake/two');
+    const picked = await selection.once(request);
+    expect(picked.kind).toBe('selected');
+    const [event] = await selectedEvents(store);
+    expect(event?.schemaVersion).toBe(2);
+    expect(event?.payload).toMatchObject({
+      executor: entry('one'),
+      crossCheck: {
+        applied: true,
+        fellBack: true,
+        degraded: 'same',
+        noneConfigured: false,
+        sameAccount: true,
+        blocked: false,
+      },
+    });
+  });
+
+  it('records no fall when the other provider is taken', async () => {
+    const { selection, store, setup } = rig();
+    await setup();
+    const picked = await selection.once(request);
+    expect(picked.kind).toBe('selected');
+    const [event] = await selectedEvents(store);
+    expect(event?.payload).toMatchObject({
+      executor: entry('two'),
+      crossCheck: { fellBack: false, degraded: null, sameAccount: false },
+    });
+  });
+});

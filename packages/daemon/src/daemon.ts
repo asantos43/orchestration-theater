@@ -57,6 +57,7 @@ import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.j
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
+import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
@@ -64,7 +65,7 @@ import { startOrchestration, type Orchestration } from './orchestration/wiring.j
 import type { HandoffPort } from './execution/handoff.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
-import { situationText, type SituationSink } from './situations.js';
+import { situationSubject, situationText, type SituationSink } from './situations.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -614,6 +615,21 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       subject: null,
       detail: situationText(warning),
     });
+  }
+
+  // P15b (N150): a strict cross-review that the lists of the Reviewer and the Critic cannot meet.
+  try {
+    for (const notice of await loadCrossCheckNotices(config, store)) {
+      logger.warn({ role: notice.role }, notice.message);
+      composition.situations.record('daemon.notice', {
+        kind: 'cross_check_unsatisfiable',
+        subject: situationSubject(notice.role),
+        detail: situationText(notice.message),
+      });
+    }
+  } catch (error) {
+    // The check is a courtesy: a list the resolution refuses fails again at the first selection.
+    logger.warn({ err: error }, 'the cross-review check of the role lists was not done');
   }
 
   state = 'running';

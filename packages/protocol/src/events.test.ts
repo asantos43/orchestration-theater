@@ -20,7 +20,7 @@ const started = {
 };
 
 describe('daemon event registry', () => {
-  it('lists the daemon and session event types, all at schemaVersion 1', () => {
+  it('lists the daemon and session event types, all at schemaVersion 1 but executor.selected (2, N150)', () => {
     expect(Object.keys(DAEMON_EVENT_TYPES)).toEqual([
       'daemon.started',
       'daemon.stopped',
@@ -101,7 +101,9 @@ describe('daemon event registry', () => {
       'recovery.notice',
       'scenario.notice',
     ]);
-    for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
+    for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
+      expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
+    }
     expect(isDaemonEventType('daemon.started')).toBe(true);
     expect(isDaemonEventType('play.created')).toBe(false);
     expect(isDaemonEventType('toString')).toBe(false);

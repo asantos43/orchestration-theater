@@ -3,7 +3,11 @@ import { z } from 'zod';
 
 /**
  * Payload of the `executor.selected` event (architecture 5.7, "Algoritmo", step 5; Phase 5, P15).
- * Registered in `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1; a strict object.
+ * Registered in `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 2; a strict object. Version 2
+ * (P15b, N150) adds `crossCheck.noneConfigured`, `crossCheck.degraded` and `crossCheck.sameAccount`:
+ * a new field of a strict payload is a new `schemaVersion` (events.ts). The registry holds one
+ * version per type and checks only on append, so the rows written at version 1 stay in the log as
+ * they were.
  * [proposta] The event name is the architecture's; the fields below are not. Every Executor is its
  * complete name `<model>-<effort>@<client>/<profile>`, and a profile is `<client>/<profile>`.
  * The reasons mirror `SKIP_REASONS` of `@otheater/core` (the protocol does not import it): the
@@ -30,6 +34,12 @@ export const EXECUTOR_SELECTED_SKIP_REASONS = [
 ] as const;
 
 export const EXECUTOR_SELECTED_STRATEGIES = ['ordered', 'most_headroom', 'round_robin'] as const;
+/** The step of the fall to the provider of the work (`@otheater/core` `FALLBACK_STEPS`, N150). */
+export const EXECUTOR_SELECTED_DEGRADED_STEPS = [
+  'stronger_model',
+  'higher_effort',
+  'same',
+] as const;
 export const EXECUTOR_SELECTED_CROSS_CHECK_MODES = [
   'prefer_other_provider',
   'require_other_provider',
@@ -84,6 +94,22 @@ export const ExecutorSelectedPayloadSchema = z
        * (N135): the role waits.
        */
       blocked: z.boolean(),
+      /**
+       * N150: a strict mode found nobody in the list of the role that could meet the cross-review
+       * (nothing to wait for), so it took the fall to the provider of the work at once.
+       */
+      noneConfigured: z.boolean(),
+      /**
+       * N150, `selection.same_provider_fallback`: the step that gave the Executor when the
+       * selection went back to the provider of the work (`fellBack`): `stronger_model`,
+       * `higher_effort` or `same` (any); null when it did not go back.
+       */
+      degraded: z.enum(EXECUTOR_SELECTED_DEGRADED_STEPS).nullable(),
+      /**
+       * N150, `selection.same_provider_account`: the Executor chosen is on the same account
+       * (profile) as who did the work.
+       */
+      sameAccount: z.boolean(),
     }),
     skipped: z.array(ExecutorSkippedSchema).max(256),
     waiting: z

@@ -238,7 +238,10 @@ describe('selection (5.7; P15)', () => {
       director_wait: 'wait',
       waiting_holds_slot: false,
       strict_unavailable: 'wait_notify',
+      same_provider_fallback: 'stronger_then_effort',
+      same_provider_account: 'prefer_other',
     });
+    expect(parseConfig('').models).toEqual({});
   });
 
   it('takes every key, and the reserve as a size', () => {
@@ -255,6 +258,8 @@ selection:
   director_wait: fail
   waiting_holds_slot: true
   strict_unavailable: fallback_prefer
+  same_provider_fallback: higher_effort
+  same_provider_account: strategy
 `);
     expect(selection).toEqual({
       strategy: 'round_robin',
@@ -268,7 +273,48 @@ selection:
       director_wait: 'fail',
       waiting_holds_slot: true,
       strict_unavailable: 'fallback_prefer',
+      same_provider_fallback: 'higher_effort',
+      same_provider_account: 'strategy',
     });
+  });
+
+  it('takes every mode of the fall to the provider of the work, and refuses the rest (N150)', () => {
+    for (const mode of ['stronger_then_effort', 'stronger_model', 'higher_effort', 'any']) {
+      expect(
+        parseConfig(`selection:\n  same_provider_fallback: ${mode}\n`).selection
+          .same_provider_fallback,
+      ).toBe(mode);
+    }
+    for (const mode of ['prefer_other', 'strategy']) {
+      expect(
+        parseConfig(`selection:\n  same_provider_account: ${mode}\n`).selection
+          .same_provider_account,
+      ).toBe(mode);
+    }
+    expect(refusal('selection:\n  same_provider_fallback: weaker\n')).toMatch(
+      /selection\.same_provider_fallback: /u,
+    );
+    expect(refusal('selection:\n  same_provider_account: any\n')).toMatch(
+      /selection\.same_provider_account: /u,
+    );
+  });
+
+  it('declares the tier of a model, optional, on one scale (N150)', () => {
+    const { models } = parseConfig(`
+models:
+  minimax-m3:
+    tier: medium
+  claude-opus:
+    tier: frontier
+  gemma: {}
+`);
+    expect(models).toEqual({
+      'minimax-m3': { tier: 'medium' },
+      'claude-opus': { tier: 'frontier' },
+      gemma: {},
+    });
+    expect(refusal('models:\n  gemma:\n    tier: huge\n')).toMatch(/models\.gemma\.tier: /u);
+    expect(refusal('models:\n  gemma:\n    rank: 3\n')).toMatch(/models\.gemma/u);
   });
 
   it('takes recheck_every as a duration or off, and refuses the rest (P16)', () => {
