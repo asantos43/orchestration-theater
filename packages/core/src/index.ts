@@ -56,3 +56,4 @@ export * from './prompts/index.js';
 export * from './directives/index.js';
 export * from './directives/index.js';
 export * from './shell-tools/index.js';
+export * from './executor-roles/index.js';

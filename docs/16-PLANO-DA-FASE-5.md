@@ -64,7 +64,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | concluído (PR #101) |
 | P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
-| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | pendente |
+| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | pendente |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
@@ -72,7 +72,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | pendente |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | pendente |
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
-| P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | pendente |
+| P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | pendente |
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | pendente |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | pendente |
@@ -214,6 +214,18 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com sondas simuladas e o agente falso: uma janela a 85% leva a `near_limit`; um `-32001` com `resetsAt` leva a `exhausted` com o horário; uma leitura velha vira `unknown` e `canUse` recusa; um sinal de outra sessão do mesmo perfil soma no mesmo estado; o estado de um perfil não muda o de outro; a cota continua `exhausted` depois de reiniciar o daemon (vem do `quota_snapshots`).
 
+**Como ficou (2026-11-18):**
+- `daemon/src/quota/` tem o `QuotaService` (`service.ts`), as regras puras de estado e frescor (`state.ts`) e a leitura das chaves (`settings.ts`). O estado é função pura das linhas de `quota_snapshots` e do relógio, então o reinício recalcula o mesmo estado. O daemon cria o serviço, entrega a ele a sonda de cada cliente (`ClientAdapter.quota`), chama `quota.start()` depois de montar a execução e o expõe em `DaemonHandle.quota`. [V]
+- Aceite, todos com sondas simuladas (`SimProbe`) e o formato de erro do agente falso (`code: -32001`, `data.type: 'QuotaExhausted'`), em `quota/service.test.ts` e `quota/state.test.ts`: janela a 85% vai a `near_limit` (e `canUse` continua `true`); `-32001` com `resetsAt` vai a `exhausted` até o horário; leitura velha vira `unknown` e `canUse` recusa; sinais de duas sessões do mesmo perfil somam no mesmo estado; o estado de um perfil não muda o de outro; `exhausted` continua depois de um novo serviço sobre o mesmo store, sem anunciar de novo. [V]
+- Eventos novos no `protocol` (`quota-events.ts`, `schemaVersion` 1): `quota.updated`, `quota.near_limit`, `quota.exhausted`, `quota.restored`. [proposta] Nomes e campos; a arquitetura só nomeia `quota.restored`. O que a hora muda sozinha (um reset, uma leitura que envelhece) também vira evento: um vigia acorda o serviço na próxima fronteira, e o início do daemon fecha o que o reinício perdeu (um `quota.restored` que faltou). [V]
+- Chaves novas, todas **[proposta]**, com os padrões da recomendação do plano (N123 continua aberta): `quota.near_limit_at: 0.8` (fração em (0, 1]), `quota.stale_after: 10m`, `quota.probe.delivery: both | push | poll` (padrão `both`) e `quota.probe.poll_every: 5m` (intervalo da leitura por `read`). `push` só assina `watch` e nunca lê; `poll` só lê; `both` faz os dois, e uma sonda sem `watch` cai no `read`. [V]
+- [proposta] Regra de frescor: uma linha é fresca se `agora - observedAt <= stale_after` e o reset dela, se houver, ainda não passou. Uma janela cheia (100% ou mais) com reset no futuro continua `exhausted` mesmo com a leitura velha (recusar é o lado seguro). Sem `resetsAt`, só vale enquanto fresca. Uma janela que a sonda declara em `capabilities().windows` e que não tem leitura fresca deixa o perfil `unknown`; uma sonda sem janelas declaradas não exige nenhuma.
+- [proposta] Um erro de limite vira uma linha de `quota_snapshots` na janela reservada `limit_hit` (causa `quota`) ou `budget_hit` (causa `budget`), a 100%, para sobreviver ao reinício como qualquer leitura. Com horário: `exhausted` até ele. Sem horário: `exhausted` até uma leitura fresca, mais nova que o erro, com folga em toda janela (o que a P9 consulta); um novo erro sem horário guarda o horário de um erro anterior ainda no futuro. A causa `budget` só termina no reset (ou fica até alguém limpar), e nenhum cliente a alimenta ainda: `ingestLimitHit` a recebe explicitamente.
+- [proposta] Sessão para perfil: `bindSession(sessionId, perfil)` (o pool liga ao abrir, P15) e, sem ele, a linha de `sessions` do store (`client`/`profile`, ou `clientSessionId`). A sessão do lançador (`launcher`) e a que não se resolve são recusadas com um aviso (o `ingest*` devolve `false`). O sinal `usage` é aceito e não muda o estado.
+- [S] Os formatos de `resetsAt` do sinal (texto ISO, segundos ou milissegundos) são aceitos por `parseResetsAt`; o texto que os clientes reais mandam e a unidade de `utilization` **[N]** não foram medidos.
+- [N] `planType` do `QuotaReading` vai só no evento `quota.updated`: a tabela `quota_snapshots` não tem coluna para ele, então não sobrevive ao reinício.
+- [N] Ligar o fluxo vivo das sessões (`_otheater/quota/signal`, o erro do prompt e o `rate_limit` normalizado) ao `ingest*`, o pool (P15) e as sondas reais (P6 a P8) ficam fora deste passo. Enquanto não houver sonda com leituras, um perfil fica `unknown` e `canUse` recusa: é o P15 que decide se tenta um perfil `unknown` (por `statusOf`), e o P9 que consulta o `exhausted` sem horário.
+
 ### P6. Sonda de cota do Claude Code (§5.6)
 
 **Escopo:**
@@ -298,6 +310,20 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 - O parse recusa nome de Executor mal formado, perfil repetido e lista vazia, com o nome da chave.
 
 **Aceite:** testes de esquema: a predefinição `quality` expande para as contas de uma máquina de exemplo (`claude-code/empresa`, `codex/conta-1`, `opencode/minimax-api`, `opencode/local`) na ordem da tabela da §5.7; um item sem conta é tirado da lista; o override do cenário substitui só o papel citado; `allowed_profiles` tira as contas de fora; `capability_check: block` recusa um Executor abaixo do mínimo e `warn` o aceita marcado; o formato antigo continua carregando.
+
+**Como ficou (2026-11-18):**
+- Funções puras em `core/src/executor-roles/` (`names`, `presets`, `resolve`): o nome `<modelo>-<esforço>@<cliente>/<perfil>` (e `<modelo>@...` sem esforço), a tabela de predefinições da §5.7, `resolveRoleExecutors` e `planRegistration`. O esquema de configuração está em `daemon/src/role-executors-config.ts` (chaves `executors.*` e `roles.*`) e a ligação com as camadas em `daemon/src/orchestration/role-executors.ts`. Nada chama a resolução ainda: o Diretor e o pipeline seguem lendo `orchestration.executor` até o P16. [V] (testes de `core` e do `daemon`)
+- Padrão que não muda o comportamento de hoje: sem `executors` e sem `roles.executors`, `parseConfig('')` só ganha `executors: {cross_client: api_only, on_register: ask, entries: {}}`, e `roles` continua vazio (os padrões são aplicados na resolução, para as camadas distinguirem "não dito"). [V]
+- Expansão: para cada item da predefinição (`<modelo>-<esforço>`), uma entrada por conta que o tem, o cliente oficial da família primeiro (anthropic: Claude Code; openai: Codex), depois a ordem das contas, depois o id. Item sem conta sai da lista, com aviso `no_account`. [V]
+- Camadas: configuração global, depois `configOverride` de cada cenário da cadeia `originScenarioId` (o mais antigo primeiro; o projeto é um cenário), depois o override de uma tarefa agendada, passado como argumento (o agendador é da Fase 6). Aceita chave pontilhada (`roles.author.executors`) e aninhada, como a política do papel da Fase 4. A lista de um papel dada numa camada substitui a de baixo só naquele papel; `when_exhausted` e `requires` valem chave a chave. [V]
+- `capability_check: block` lança `InvalidInput` para um item de lista escrita à mão e tira o item de uma expansão de predefinição; `warn` mantém o item com `shortfalls` e um aviso; capacidade desconhecida nunca reprova. [V]
+- `cross_client`: `api_only` aceita uma família fora do seu cliente só em perfil `api`; `off` recusa sempre; `any` aceita. Recusado vira `invalid` (`cross_client_refused`) numa lista escrita à mão. [V]
+- Compatibilidade: `orchestration.executor` e `orchestration.roles.<papel>` entram como lista de um item, abaixo das listas novas e acima da predefinição; o daemon avisa uma vez por chave antiga na partida (`deprecationWarnings`). [V]
+- [proposta] Duas chaves a mais, que a §5.7 não nomeia: `roles.preset_scope: all | unset_roles` (padrão `all`: um `preset` numa camada derruba as listas das camadas de baixo, "troca a base de todos os papéis"; `unset_roles` as mantém) e `roles.api_fallback: preset_models | all_registered | off` (padrão `preset_models`: o passo 3 da primeira execução, que põe no fim de cada lista os Executores de perfil `api` cujo `<modelo>-<esforço>` a predefinição cita em algum papel que não seja o Diretor; é o caso do minimax do exemplo).
+- [proposta] `k` vale 1000 tokens e `m` 1000000 (`128k` passa com um modelo que declara 128000). O `when_exhausted` dos papéis que a tabela não marca é `next` (o Crítico é `wait`, os Atores `next`).
+- [proposta] `executors.cross_client` e `executors.on_register` são só globais. `allowed_profiles` de uma camada posterior substitui a anterior (não faz interseção). "Perfil repetido" vale para `allowed_profiles` e um Executor repetido numa lista de papel também é recusado.
+- [N] O `provider` de `claude-code` e `codex` é fixo pelo cliente: um valor diferente é recusado. Isso bloqueia, por ora, o MiniMax por gateway do Claude Code; se o dono quiser permitir, é decisão dele.
+- [proposta] `planRegistration` devolve o que o `on_register` manda (`ask`: as opções por papel, marcadas onde a predefinição cita o modelo; `preset_only`: só essas posições; `none`: nada). Quem aplica é o comando `ot executor add` do P14.
 
 ### P14. Cadastro de Executores do OpenCode e validação de capacidade (§5.7)
 

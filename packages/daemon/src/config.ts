@@ -24,6 +24,7 @@ import {
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { ExecutorsConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -98,6 +99,12 @@ export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
+/**
+ * [proposta] `quota.probe.delivery`: how the `QuotaService` takes the readings of a probe. `both`
+ * (default) watches the probes that can push and also polls `read` on a timer; `push` only
+ * watches (a probe without `watch` is not used); `poll` only calls `read` on a timer.
+ */
+export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
@@ -971,6 +978,13 @@ export const DaemonConfigSchema = z
      */
     roles: RolesConfigSchema.prefault({}),
     /**
+     * The Executors and how they join the roles (architecture 5.7; Phase 5, P13): `executors.<id>`
+     * (`<model>-<effort>@<client>/<profile>`), `cross_client` (`api_only` default | `off` | `any`)
+     * and `on_register` (`ask` default | `preset_only` | `none`). The lists of the roles are under
+     * `roles`. See `role-executors-config.ts`; the pipeline reads them from P16.
+     */
+    executors: ExecutorsConfigSchema.prefault({}),
+    /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
      * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
@@ -1216,8 +1230,8 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     /**
-     * Profiles (architecture 5.6; Phase 5, P2). Every key is [proposta] and N127 (drain, second
-     * account notice) is still open: the defaults below are provisional.
+     * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta].
      */
     profiles: z
       .strictObject({
@@ -1239,6 +1253,26 @@ export const DaemonConfigSchema = z
         api_key_env: z
           .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
           .default({}),
+      })
+      .prefault({}),
+    /**
+     * The quota of each profile (architecture 5.6; P5). [proposta] `near_limit_at` is the fraction
+     * of a window from which a profile is `near_limit` (architecture default 0.8). `stale_after` is
+     * how old a reading may be and still authorize a route (a reading older than this makes the
+     * state `unknown`; default 10 minutes). `probe.delivery` is how the service takes the probes of
+     * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
+     * `read` calls where polling is on. N123 (the defaults of the probes) stays open.
+     */
+    quota: z
+      .strictObject({
+        near_limit_at: z.number().gt(0).max(1).default(0.8),
+        stale_after: DurationSchema.prefault('10m'),
+        probe: z
+          .strictObject({
+            delivery: z.enum(QUOTA_PROBE_DELIVERY_MODES).default('both'),
+            poll_every: DurationSchema.prefault('5m'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     ui: z

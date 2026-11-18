@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { NO_RULE, PERMISSION_RULE_ACTIONS, ROLE_IDS } from '@otheater/core';
 import { z } from 'zod';
+import { roleExecutorKeys, rolesBlockKeys } from './role-executors-config.js';
 
 /**
  * `roles.<role>.policy`: the tool policy of a role, as the configuration, a project and a scenario
@@ -231,19 +232,27 @@ export const RolePolicySettingsSchema = z.strictObject({
 });
 export type RolePolicySettings = z.output<typeof RolePolicySettingsSchema>;
 
-/** `roles.<role>`: today only the policy; `requires` and `preset` join it in their steps. */
+/**
+ * `roles.<role>`: the tool policy (Phase 4) and, from Phase 5 (P13, `role-executors-config.ts`),
+ * the Executors of the role: `executors`, `when_exhausted` and `requires`.
+ */
 export const RoleConfigSchema = z.strictObject({
   policy: RolePolicySettingsSchema.optional(),
+  ...roleExecutorKeys,
 });
 
 /**
- * The `roles` block: one optional entry per role of the registry. [proposta] An object with the
- * known roles, not a free map, so a typo in a role name is refused and the keys the architecture
- * reserves under `roles` (`preset`, `capability_check`) have room to come in.
+ * The `roles` block: one optional entry per role of the registry, and the keys that belong to the
+ * block (`preset`, `capability_check`, `allowed_profiles`...). [proposta] An object with the known
+ * roles, not a free map, so a typo in a role name is refused. Every key is optional and has no
+ * default here: a layer that says nothing leaves the layers below it alone (`resolveRoleExecutors`
+ * applies the defaults).
  */
-export const RolesConfigSchema = z.strictObject(
-  Object.fromEntries(ROLE_IDS.map((role) => [role, RoleConfigSchema.optional()])) as Record<
+export const RolesConfigSchema = z.strictObject({
+  ...(Object.fromEntries(ROLE_IDS.map((role) => [role, RoleConfigSchema.optional()])) as Record<
     (typeof ROLE_IDS)[number],
     z.ZodOptional<typeof RoleConfigSchema>
-  >,
-);
+  >),
+  ...rolesBlockKeys,
+});
+export type RolesConfig = z.output<typeof RolesConfigSchema>;
