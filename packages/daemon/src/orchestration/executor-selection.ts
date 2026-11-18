@@ -7,7 +7,7 @@ import type { QuotaStatus } from '../quota/state.js';
 /**
  * The daemon side of the selection of an Executor (architecture 5.7; Phase 5, P15): the pure
  * selector lives in `@otheater/core` (`selectExecutor`); here are the three small bridges to the
- * daemon. Nothing calls the selector from the pipeline yet (P16).
+ * daemon. The pipeline calls the selector through `role-selection.ts` (P16).
  */
 
 /** The `selection` block of the configuration as the settings of the selector. */

@@ -18,6 +18,7 @@ import type {
   IdeaCommandResult,
   IdeaView,
   PendingAsk,
+  WaitView,
 } from './orchestration/channel.js';
 import { ChannelClient, readChannelInfo } from './orchestration/channel-http.js';
 
@@ -196,6 +197,26 @@ export function renderQueueHeld(t: TFunction, held: IdeaQueueHeldPayload): strin
   }).split('\n');
 }
 
+/**
+ * What a demand that waits for an Executor says (P16): "esperando cota de claude-code/a, claude-code/b
+ * (actor, d1)", one line for each cause (quota, spending cap, slot, RAM, health).
+ */
+export function renderWait(t: TFunction, wait: WaitView): string[] {
+  const causes = new Map<string, string[]>();
+  for (const item of wait.on) {
+    const profiles = causes.get(item.reason) ?? [];
+    if (!profiles.includes(item.profile)) profiles.push(item.profile);
+    causes.set(item.reason, profiles);
+  }
+  const who = wait.demandId === null ? wait.role : `${wait.role}, ${wait.demandId}`;
+  return [...causes].map(([reason, profiles]) =>
+    t('chat.waiting', {
+      what: t(`chat.waitingFor_${reason}`, { profiles: profiles.join(', ') }),
+      who,
+    }),
+  );
+}
+
 function ideaLine(t: TFunction, idea: IdeaView): string {
   const links = [
     idea.playId === null ? '' : ` (${idea.playId}`,
@@ -308,6 +329,7 @@ export async function runChatCommand(
 
   const shown = new Set<string>();
   const states = new Map<string, string>();
+  const waitSaid = new Map<string, string>();
   /** The ask the next line answers, with the answers of its questions so far. */
   let current: { ask: PendingAsk; collected: string[] } | undefined;
   const waiting: PendingAsk[] = [];
@@ -321,6 +343,16 @@ export async function runChatCommand(
     for (const held of poll.queueHolds) {
       for (const line of renderQueueHeld(t, held)) out(line);
     }
+    // What waits for an Executor is said when it begins and again when its cause changes.
+    const waitNow = new Map<string, string>();
+    for (const wait of poll.waits) {
+      const key = `${wait.playId ?? ''}/${wait.demandId ?? wait.role}`;
+      const lines = renderWait(t, wait);
+      waitNow.set(key, lines.join('\n'));
+      if (waitSaid.get(key) !== waitNow.get(key)) for (const line of lines) out(line);
+    }
+    waitSaid.clear();
+    for (const [key, text] of waitNow) waitSaid.set(key, text);
     for (const reply of poll.replies) {
       out(t('chat.reply', { text: reply.text }));
       cursor = Math.max(cursor, reply.seq);

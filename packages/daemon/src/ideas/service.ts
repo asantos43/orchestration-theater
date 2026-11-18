@@ -28,7 +28,7 @@ import type { AttemptRunner } from '../execution/attempt-runner.js';
 import type { Logger } from '../logger.js';
 import { type PlayOpening, openPlayFromNeed } from '../orchestration/open-play.js';
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
-import { executorOf, sessionSettingsOf } from '../orchestration/roles.js';
+import type { RoleSelection } from '../orchestration/role-selection.js';
 import type { DataPaths } from '../paths.js';
 import { type IdeaSettings, ideaSettingsOf } from './settings.js';
 
@@ -51,6 +51,8 @@ export interface IdeaQueueServiceOptions {
   readonly paths: Pick<DataPaths, 'profiles'>;
   /** What opening a play needs; the same the Director's `open_play` uses. */
   readonly opening: PlayOpening;
+  /** The choice of the Executor of the Author (P16). */
+  readonly selection: Pick<RoleSelection, 'once'>;
   readonly logger: Logger;
   /** Told when the queue of a scenario stops (the channel shows it to the Producer). */
   readonly onHeld?: ((held: IdeaQueueHeldPayload) => void) | undefined;
@@ -391,13 +393,13 @@ export class IdeaQueueService {
     queued: readonly IdeaRecord[],
     maxPerPlay: number,
   ): Promise<IdeaGroupOutput | string> {
-    const { store, vcs, runner, registries, prompts, config, paths } = this.#options;
+    const { store, vcs, runner, registries, prompts, config, selection } = this.#options;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) return 'the scenario is gone';
-    const executor = executorOf(config, GROUPING_ROLE);
-    if (executor === undefined) {
-      return 'No Executor is configured for the author: set orchestration.executor or orchestration.roles.author.';
-    }
+    // P16: the selector picks the Executor; with nobody available the ideas stay in the queue
+    // with the reason ("waiting for quota of ...") and the next drain tries again.
+    const picked = await selection.once({ role: GROUPING_ROLE, scenarioId });
+    if (picked.kind !== 'selected') return picked.reason;
     const repos = await store.scenarioRepos.list(scenarioId);
     const prefix = assemblePrefix({
       role: GROUPING_ROLE,
@@ -414,7 +416,7 @@ export class IdeaQueueService {
       'Put every idea in exactly one list of the answer: the group, `leftOut`, `discarded`, `deferred` or `split`; always give the reason.',
       'Answer with `submit_idea_group`.',
     ].join('\n');
-    const { profile, executor: settings } = sessionSettingsOf(paths, executor);
+    const { profile, settings } = picked;
     const mark = await store.events.lastId();
     const outcome = await runner.run({
       playId: scenarioId,

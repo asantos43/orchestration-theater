@@ -7,8 +7,10 @@ import {
   type ClientAdapter,
   confinePath,
   type EventEnvelope,
+  type ExecutorConfig,
   type JsonObject,
   type PathHost,
+  type Profile,
   type PromptSource,
   type Registries,
   ShellToolRefusal,
@@ -21,7 +23,8 @@ import type { AttemptRunner } from '../execution/attempt-runner.js';
 import type { Logger } from '../logger.js';
 import { ToolFailure } from '../mcp/handlers.js';
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
-import { executorOf, sessionSettingsOf } from '../orchestration/roles.js';
+import type { RoleSelection } from '../orchestration/role-selection.js';
+import { sessionSettingsOf } from '../orchestration/roles.js';
 import type { DataPaths } from '../paths.js';
 import { nodePathHost } from '../tools/host.js';
 import { type AttachmentService, isImage } from './attachments.js';
@@ -73,6 +76,17 @@ export function chooseConsultant(
   return undefined;
 }
 
+/** What an Executor that is not accepted for an image says (the selector's `invalid` detail). */
+const IMAGE_REFUSAL = 'attachment_image_not_accepted';
+
+/** The Executor a consultation runs with and why it was chosen. */
+interface ConsultantExecutor {
+  readonly profile: Profile;
+  readonly settings: ExecutorConfig;
+  /** Why this one, for the event and the Director. */
+  readonly reason: string;
+}
+
 export interface ConsultServiceOptions {
   readonly store: Store;
   readonly vcs: Vcs;
@@ -84,6 +98,8 @@ export interface ConsultServiceOptions {
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly attachments: AttachmentService;
   readonly chatFlow: ChatFlow;
+  /** The choice of the Executor of the consultant (P16). */
+  readonly selection: Pick<RoleSelection, 'once'>;
   readonly logger: Logger;
   /** The file system the confinement of the consultant's files asks about. Default: the machine's. */
   readonly host?: PathHost | undefined;
@@ -168,7 +184,7 @@ export class ConsultService {
   }
 
   async consult(scenarioId: string, input: ConsultInput): Promise<JsonObject | ToolFailure> {
-    const { store, config, adapters, chatFlow, logger } = this.#options;
+    const { store, chatFlow, logger } = this.#options;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) return new ToolFailure('no_scenario', 'The scenario is gone.');
     const records: AttachmentRecord[] = [];
@@ -179,31 +195,14 @@ export class ConsultService {
       }
       records.push(record);
     }
-    const candidates = [
-      executorOf(config, CONSULTANT_ROLE),
-      ...config.scenarios.consultant_alternatives,
-    ].filter((executor): executor is PlayExecutor => executor !== undefined);
-    if (candidates.length === 0) {
-      return new ToolFailure(
-        'no_consultant',
-        'No Executor is configured for the consultant: set orchestration.executor or orchestration.roles.consultant.',
-      );
-    }
     const needsImage = records.some((record) => isImage(record.mime));
-    const choice = chooseConsultant(candidates, needsImage, (client) =>
-      acceptsImages(adapters, client),
-    );
-    if (choice === undefined) {
-      return new ToolFailure(
-        'no_executor_for_attachments',
-        'An attachment is an image and no Executor configured for the consultant accepts images. Add one to scenarios.consultant_alternatives, or answer without the image.',
-      );
-    }
+    const choice = await this.#choose(scenarioId, needsImage);
+    if (choice instanceof ToolFailure) return choice;
 
     const number =
       (await store.decisions.list({ scenarioId, kinds: [CHAT_DECISION_KINDS.consult] })).length + 1;
     const decisionId = `${scenarioId}:consult:${String(number)}`;
-    const executorName = `${choice.executor.client}/${choice.executor.profile}`;
+    const executorName = choice.profile.id;
     await store.decisions.create({
       id: decisionId,
       scenarioId,
@@ -221,14 +220,7 @@ export class ConsultService {
       reason: choice.reason,
     });
     try {
-      const answer = await this.#run(
-        scenarioId,
-        scenario.folder,
-        number,
-        choice.executor,
-        input,
-        records,
-      );
+      const answer = await this.#run(scenarioId, scenario.folder, number, choice, input, records);
       if ('answer' in answer) {
         const { work } = answer;
         const record: JsonObject = {
@@ -257,18 +249,67 @@ export class ConsultService {
     }
   }
 
+  /**
+   * The Executor of a consultation (P16): the selector with the role `consultant` (the list of the
+   * role, the override of the scenario, quota and slots) and, when it finds nobody, the
+   * alternatives of `scenarios.consultant_alternatives`. An image only goes to an Executor whose
+   * client accepts images (5.20). A consultation does not wait for quota: the Director is told
+   * who it waits for and can ask again, or go on without.
+   */
+  async #choose(
+    scenarioId: string,
+    needsImage: boolean,
+  ): Promise<ConsultantExecutor | ToolFailure> {
+    const { selection, adapters, config, paths } = this.#options;
+    const once = await selection.once({
+      role: CONSULTANT_ROLE,
+      scenarioId,
+      refuse: needsImage
+        ? (item) => (acceptsImages(adapters, item.entry.client) ? null : IMAGE_REFUSAL)
+        : undefined,
+    });
+    if (once.kind === 'selected') {
+      return {
+        profile: once.profile,
+        settings: once.settings,
+        reason: needsImage
+          ? 'chosen by the selector; it is the first that accepts images'
+          : 'chosen by the selector for the role',
+      };
+    }
+    const alternative = chooseConsultant(
+      config.scenarios.consultant_alternatives,
+      needsImage,
+      (client) => acceptsImages(adapters, client),
+    );
+    if (alternative !== undefined) {
+      const { profile, executor: settings } = sessionSettingsOf(paths, alternative.executor);
+      return { profile, settings, reason: alternative.reason };
+    }
+    if (once.kind === 'waiting')
+      return new ToolFailure('executor_waiting', `The consultant is ${once.reason}.`);
+    const imageOnly = once.result.skipped.some((item) => item.detail === IMAGE_REFUSAL);
+    if (needsImage && imageOnly) {
+      return new ToolFailure(
+        'no_executor_for_attachments',
+        'An attachment is an image and no Executor configured for the consultant accepts images. Add one to scenarios.consultant_alternatives, or answer without the image.',
+      );
+    }
+    return new ToolFailure('no_consultant', once.reason);
+  }
+
   /** Runs the Consultant; the answer, or the reason there is none. */
   async #run(
     scenarioId: string,
     folder: string,
     number: number,
-    executor: PlayExecutor,
+    executor: ConsultantExecutor,
     input: ConsultInput,
     records: readonly AttachmentRecord[],
   ): Promise<
     { readonly answer: string; readonly work: ConsultWork } | { readonly reason: string }
   > {
-    const { store, vcs, runner, registries, prompts, paths, config } = this.#options;
+    const { store, vcs, runner, registries, prompts, config } = this.#options;
     const repos = await store.scenarioRepos.list(scenarioId);
     const scenario = await store.scenarios.get(scenarioId);
     const base = repos[0]?.mainBranch ?? scenario?.baseBranch ?? 'main';
@@ -303,7 +344,7 @@ export class ConsultService {
       '',
       'Answer with `submit` as `{ "result": { "answer": "<your answer>" } }`.',
     ].join('\n');
-    const { profile, executor: settings } = sessionSettingsOf(paths, executor);
+    const { profile, settings } = executor;
     const mark = await store.events.lastId();
     const outcome = await runner.run({
       playId: scenarioId,
