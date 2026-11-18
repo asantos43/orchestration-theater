@@ -5,5 +5,6 @@ export * from './provider-probe.js';
 export * from './service.js';
 export * from './settings.js';
 export * from './state.js';
+export * from './wakeups.js';
 export * from './tap.js';
 export * from './wiring.js';
