@@ -479,7 +479,7 @@ export const DAEMON_EVENT_DEFINITIONS = [
   }),
   defineEventType({
     type: 'executor.selected',
-    schemaVersion: 1,
+    schemaVersion: 2,
     payload: ExecutorSelectedPayloadSchema,
   }),
   defineEventType({

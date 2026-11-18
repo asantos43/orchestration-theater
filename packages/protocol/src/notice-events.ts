@@ -28,7 +28,11 @@ const detail = z.string().min(1).max(512).nullable();
  *   (`subject`: the client id);
  * - `client_warning`: the adapter of a client warned (`subject`: the client id; `detail`: the kind of
  *   the warning of N69 and its text);
- * - `browser_warning`: the browser adapter warned.
+ * - `browser_warning`: the browser adapter warned;
+ * - `cross_check_unsatisfiable` (P15b, N150): with `selection.cross_check` strict, the list of the
+ *   Reviewer or of the Critic (`subject`: the role) has Executors of one provider only (or, with
+ *   `other_model`, of one model), so the cross-review cannot be met and falls to the provider of
+ *   the work (`detail` says which mode and what the fall takes).
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -41,6 +45,7 @@ export const DAEMON_NOTICE_KINDS = [
   'client_not_found',
   'client_warning',
   'browser_warning',
+  'cross_check_unsatisfiable',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

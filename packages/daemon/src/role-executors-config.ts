@@ -6,12 +6,15 @@ import {
   CROSS_CLIENT_MODES,
   EFFORT_LEVELS,
   FIXED_PROVIDER_OF_CLIENT,
+  MODEL_TIERS,
   NEAR_LIMIT_MODES,
   ON_REGISTER_MODES,
   PRESET_SCOPES,
   PROFILE_NAME_PATTERN,
   RETRY_DIVERSITY_MODES,
   ROLE_PRESET_NAMES,
+  SAME_PROVIDER_ACCOUNT_MODES,
+  SAME_PROVIDER_FALLBACK_MODES,
   SELECTION_STRATEGIES,
   STRICT_UNAVAILABLE_MODES,
   UNKNOWN_QUOTA_MODES,
@@ -318,6 +321,15 @@ const RecheckSchema = z
  * (`require_other_provider`, `other_model`) does when only the provider or the model of the work
  * is available: `wait_notify` (default) waits and flags the wait, `fallback_prefer` goes back to
  * the provider of the work as `prefer_other_provider` does, `wait` waits silently.
+ *
+ * `same_provider_fallback` (N150, decided by the owner on 2026-11-18) is what the Reviewer and the
+ * Critic take when the cross-review cannot be met and the choice goes back to the provider of who
+ * did the work: `stronger_then_effort` (default: a stronger model, then the same model with a higher
+ * effort, then any), `stronger_model`, `higher_effort` or `any` (the list, as before).
+ * `same_provider_account` (N150) says, inside each of those steps, whether the Executors of another
+ * account than the one of the work come first (`prefer_other`, default) or the account has no
+ * special treatment (`strategy`). The strength of the models for the "stronger" step is declared in `models.<model>.tier`
+ * (`ModelsConfigSchema`).
  */
 export const SelectionConfigSchema = z.strictObject({
   strategy: z
@@ -345,5 +357,28 @@ export const SelectionConfigSchema = z.strictObject({
   strict_unavailable: z
     .enum(STRICT_UNAVAILABLE_MODES, oneOf('strict_unavailable', STRICT_UNAVAILABLE_MODES))
     .default('wait_notify'),
+  same_provider_fallback: z
+    .enum(
+      SAME_PROVIDER_FALLBACK_MODES,
+      oneOf('same_provider_fallback', SAME_PROVIDER_FALLBACK_MODES),
+    )
+    .default('stronger_then_effort'),
+  same_provider_account: z
+    .enum(SAME_PROVIDER_ACCOUNT_MODES, oneOf('same_provider_account', SAME_PROVIDER_ACCOUNT_MODES))
+    .default('prefer_other'),
 });
+/**
+ * `models.<model>.tier` (N150, decided by the owner on 2026-11-18): the tier of a model on the one
+ * scale of every provider, `small` < `medium` < `large` < `frontier`, optional. The key is the name
+ * of the model, or a word of it (`opus`) [proposta]. It replaces the built-in tiers (Claude: haiku
+ * small, sonnet large, opus frontier; OpenAI: luna small, sol frontier); a model with no tier is
+ * never "stronger" and the step of the stronger model is skipped. Nothing is deduced from a price.
+ */
+export const ModelsConfigSchema = z.record(
+  z.string().min(1),
+  z.strictObject({
+    tier: z.enum(MODEL_TIERS, oneOf('tier', MODEL_TIERS)).optional(),
+  }),
+);
+export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 export type SelectionConfig = z.infer<typeof SelectionConfigSchema>;

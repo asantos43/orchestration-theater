@@ -3,6 +3,7 @@ import { InvalidInput } from '../errors.js';
 import type { RoleId } from '../registries/roles.js';
 import type { WhenExhausted } from './presets.js';
 import type { ProfileFact, ResolvedExecutor, ResolvedRole } from './resolve.js';
+import { effortStrength, strongerModel, type ModelTier } from './strength.js';
 
 /**
  * The selection of an Executor for a role (architecture 5.7, "Algoritmo"; Phase 5, P15), as a pure
@@ -25,6 +26,15 @@ import type { ProfileFact, ResolvedExecutor, ResolvedRole } from './resolve.js';
  * A strict cross-review (`require_other_provider`, `other_model`) can leave the role with nobody
  * while an Executor of the provider (or model) of the work is free: `selection.strict_unavailable`
  * (N135) says what happens then.
+ *
+ * When the cross-review cannot be met and the choice goes back to the provider of the work (P15b,
+ * N150), the Reviewer and the Critic do not take "any" of it: they go up a step
+ * (`selection.same_provider_fallback`): first a stronger model than the one of the work, then the
+ * same model with a higher effort, then any, each step in the order of the list. Inside each step
+ * the Executors of another account than the one of the work come first
+ * (`selection.same_provider_account`), to spare its quota and its slots. A role whose list has no
+ * Executor that could meet a strict cross-review at all does not wait for one that never comes: it
+ * takes this fall at once (`crossCheck.noneConfigured`).
  */
 
 /** `selection.strategy` (5.7, N130): the order among the accounts of one `<model>-<effort>`. */
@@ -42,6 +52,37 @@ export type CrossCheckMode = (typeof CROSS_CHECK_MODES)[number];
 
 /** The roles the cross-review applies to: the Reviewer and the Critic judge somebody's work (5.7). */
 export const CROSS_CHECK_ROLES = ['reviewer', 'critic'] as const satisfies readonly RoleId[];
+
+/**
+ * `selection.same_provider_fallback` (N150, decided by the owner on 2026-11-18): when the Reviewer
+ * or the Critic must go back to the provider of who did the work, which Executors of it come first.
+ * `stronger_then_effort` (default): a stronger model than the one of the work, then the same model
+ * with a higher effort, then any; `stronger_model`: the stronger model, then any; `higher_effort`:
+ * the higher effort, then any; `any`: the list, as before.
+ */
+export const SAME_PROVIDER_FALLBACK_MODES = [
+  'stronger_then_effort',
+  'stronger_model',
+  'higher_effort',
+  'any',
+] as const;
+export type SameProviderFallbackMode = (typeof SAME_PROVIDER_FALLBACK_MODES)[number];
+
+/**
+ * `selection.same_provider_account` (N150): inside each step of the fall to the provider of the
+ * work, `prefer_other` takes the Executors of another account (profile) than the one of the work
+ * first and uses that account last; `strategy` gives that account no special treatment.
+ */
+export const SAME_PROVIDER_ACCOUNT_MODES = ['prefer_other', 'strategy'] as const;
+export type SameProviderAccountMode = (typeof SAME_PROVIDER_ACCOUNT_MODES)[number];
+
+/**
+ * The step of the fall to the provider of the work that gave the Executor (`crossCheck.degraded`):
+ * a stronger model, the same model with a higher effort, or `same`, the last step: any Executor of
+ * that provider (what the selection did before N150).
+ */
+export const FALLBACK_STEPS = ['stronger_model', 'higher_effort', 'same'] as const;
+export type FallbackStep = (typeof FALLBACK_STEPS)[number];
 
 /** `selection.unknown_quota` [proposta, N124]: what to do with a profile whose quota is `unknown`. */
 export const UNKNOWN_QUOTA_MODES = ['allow', 'skip'] as const;
@@ -79,6 +120,16 @@ export interface SelectionSettings {
   readonly nearLimit: NearLimitMode;
   readonly retryDiversity: RetryDiversityMode;
   readonly strictUnavailable: StrictUnavailableMode;
+  /** N150: what the cross-review takes when it has to go back to the provider of the work. */
+  readonly sameProviderFallback: SameProviderFallbackMode;
+  /** N150: the account of the work inside each step of that fall. */
+  readonly sameProviderAccount: SameProviderAccountMode;
+  /**
+   * `models.<model>.tier` (N150): the tier a model is declared at, over the built-in table
+   * (`BUILTIN_MODEL_TIERS`). Keys in lower case. Only a tier declared on both sides makes a model
+   * "stronger"; a model with no tier never is.
+   */
+  readonly modelTiers: Readonly<Record<string, ModelTier>>;
   /**
    * Tokens the client keeps in the window for its own system prompt and tools; the prompt of the
    * demand plus this must fit the window of the Executor (5.7, "com a folga do cliente"). 0 until
@@ -95,6 +146,9 @@ export const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   nearLimit: 'keep_order',
   retryDiversity: 'rotate',
   strictUnavailable: 'wait_notify',
+  sameProviderFallback: 'stronger_then_effort',
+  sameProviderAccount: 'prefer_other',
+  modelTiers: {},
   contextReserve: 0,
 };
 
@@ -241,8 +295,12 @@ export async function gatherSelectionFacts(
 export interface WorkedBy {
   /** The provider of the Executor that did it (the family of the model, 5.7). */
   readonly provider: string;
-  /** Its model, for `other_model`. */
+  /** Its model, for `other_model` and for the step up (a stronger model). */
   readonly model?: string | undefined;
+  /** Its effort, for the step up (the same model with a higher effort); null: it has none. */
+  readonly effort?: string | null | undefined;
+  /** Its profile `<client>/<profile>`, for `selection.same_provider_account`. */
+  readonly profile?: string | undefined;
 }
 
 export interface SelectionInput {
@@ -317,6 +375,19 @@ export interface SelectionResult {
      * available (`strict_unavailable` says whether the role waits or falls back).
      */
     readonly blocked: boolean;
+    /**
+     * N150: a strict mode found no Executor in the list of the role that could meet the
+     * cross-review (not a lack of quota: there is none to wait for), so it did not wait and took
+     * the fall to the provider of the work at once.
+     */
+    readonly noneConfigured: boolean;
+    /**
+     * N150: the step of the fall to the provider of the work that gave the Executor; null when the
+     * selection did not go back to the provider (`fellBack` false).
+     */
+    readonly degraded: FallbackStep | null;
+    /** N150: the Executor chosen is on the same account (profile) as who did the work. */
+    readonly sameAccount: boolean;
   };
   /** `round_robin`: the cursor to keep for the group of the chosen Executor; null otherwise. */
   readonly roundRobin: { readonly group: string; readonly cursor: number } | null;
@@ -407,12 +478,6 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   const applied = settings.crossCheck !== 'off' && crossRole && worked !== null;
   const strictMode =
     settings.crossCheck === 'require_other_provider' || settings.crossCheck === 'other_model';
-  // `fallback_prefer` (N135): a strict mode that gives way is `prefer_other_provider`, the others
-  // first and then the provider (or model) of the work.
-  const strict = strictMode && settings.strictUnavailable !== 'fallback_prefer';
-  const prefers =
-    settings.crossCheck === 'prefer_other_provider' ||
-    (strictMode && settings.strictUnavailable === 'fallback_prefer');
   const conflictReason: SkipReason =
     settings.crossCheck === 'other_model' ? 'same_model' : 'same_provider';
   const conflicts = (item: ResolvedExecutor): boolean => {
@@ -427,6 +492,14 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
       sameText(item.entry.provider, worked.provider)
     );
   };
+  // N150: a strict mode whose list has nobody that could meet it never gets better by waiting.
+  const noneConfigured = applied && strictMode && list.length > 0 && list.every(conflicts);
+  // `fallback_prefer` (N135), or a list with nobody to wait for (N150): a strict mode that gives
+  // way is `prefer_other_provider`, the others first and then the provider (or model) of the work.
+  const strict = strictMode && settings.strictUnavailable !== 'fallback_prefer' && !noneConfigured;
+  const prefers =
+    settings.crossCheck === 'prefer_other_provider' ||
+    (strictMode && (settings.strictUnavailable === 'fallback_prefer' || noneConfigured));
 
   // 5. The availability of each Executor, by the order of the questions of 5.7.
   const verdictOf = (item: ResolvedExecutor): Verdict | null => {
@@ -484,17 +557,71 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     verdict: verdictOf(item),
   }));
 
-  // 6. The passes: `prefer` tries the others first and then goes back to the provider of the work;
-  // the strict modes never use the ones that conflict; otherwise one pass over everything.
-  const passes: Row[][] =
-    prefers && applied
-      ? [rows.filter((row) => !row.conflict), rows.filter((row) => row.conflict)]
-      : strict
-        ? [rows.filter((row) => !row.conflict)]
-        : [rows];
-  const pick = passes.flat().find((row) => row.verdict === null);
+  // 6. The order of the tries. `prefer` tries the others first and then goes back to the provider
+  // of the work, by the steps of `same_provider_fallback` (P15b); the strict modes never use the
+  // ones that conflict; otherwise one pass over everything.
+  const stepOf = new Map<Row, FallbackStep>();
+  const fallbackOrder = (conflicting: readonly Row[]): Row[] => {
+    if (worked === null) return [...conflicting];
+    const workedEffort = effortStrength(worked.effort);
+    // A model with no tier, or an effort with no level, is never higher: the unknown does not win.
+    const stronger = (row: Row): boolean =>
+      worked.model !== undefined &&
+      strongerModel(
+        row.item.entry,
+        { model: worked.model, provider: worked.provider },
+        settings.modelTiers,
+      );
+    const higherEffort = (row: Row): boolean => {
+      const effort = effortStrength(row.item.entry.effort);
+      return (
+        worked.model !== undefined &&
+        sameText(row.item.entry.model, worked.model) &&
+        workedEffort !== null &&
+        effort !== null &&
+        effort > workedEffort
+      );
+    };
+    const plan: readonly FallbackStep[] = {
+      stronger_then_effort: ['stronger_model', 'higher_effort', 'same'],
+      stronger_model: ['stronger_model', 'same'],
+      higher_effort: ['higher_effort', 'same'],
+      any: ['same'],
+    }[settings.sameProviderFallback] as readonly FallbackStep[];
+    const matches = (step: FallbackStep, row: Row): boolean =>
+      step === 'stronger_model'
+        ? stronger(row)
+        : step === 'higher_effort'
+          ? higherEffort(row)
+          : true;
+    const groups = new Map<FallbackStep, Row[]>(plan.map((step) => [step, []]));
+    for (const row of conflicting) {
+      const step = plan.find((candidate) => matches(candidate, row)) ?? 'same';
+      stepOf.set(row, step);
+      groups.get(step)?.push(row);
+    }
+    // Inside each step, the accounts other than the one of the work come first (stable).
+    const spare = settings.sameProviderAccount === 'prefer_other' && worked.profile !== undefined;
+    const ownAccount = (row: Row): boolean => profileIdOf(row.item) === worked.profile;
+    return plan.flatMap((step) => {
+      const group = groups.get(step) ?? [];
+      return spare
+        ? [...group.filter((row) => !ownAccount(row)), ...group.filter(ownAccount)]
+        : group;
+    });
+  };
+  const ordered: Row[] =
+    applied && (prefers || strict)
+      ? [
+          ...rows.filter((row) => !row.conflict),
+          ...(prefers ? fallbackOrder(rows.filter((row) => row.conflict)) : []),
+        ]
+      : rows;
+  const pick = ordered.find((row) => row.verdict === null);
   const chosenIndex = pick === undefined ? -1 : rows.indexOf(pick);
+  const pickPosition = pick === undefined ? -1 : ordered.indexOf(pick);
   const fellBack = pick?.conflict === true;
+  const degraded: FallbackStep | null = fellBack ? (stepOf.get(pick) ?? 'same') : null;
   // N135: nobody was chosen, and the strict cross-review set aside an Executor that was free.
   const blocked =
     strict &&
@@ -509,27 +636,32 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   );
   rows.forEach((row, index) => {
     if (row === pick) return;
-    const reached = chosenIndex === -1 || index < chosenIndex || (fellBack && !row.conflict);
+    const position = ordered.indexOf(row);
+    const reached =
+      chosenIndex === -1 || index < chosenIndex || (position !== -1 && position < pickPosition);
     if (!reached) return;
     // A conflicting Executor was set aside by the cross-review unless the selection went back to
     // the provider of the work (`prefer`) or found nobody at all after trying them.
     const setAside = row.conflict && (strict || (!fellBack && pick !== undefined));
-    const verdict: Verdict | null = setAside
+    let verdict: Verdict | null = setAside
       ? { reason: conflictReason, detail: null, untilReset: null }
       : row.verdict;
+    // P15b: an Executor of the provider of the work that is free but sits in a later step (a
+    // weaker model, or the account of the work) than the one chosen: it is not used, and says why.
+    if (verdict === null && row.conflict) {
+      verdict = { reason: conflictReason, detail: LATER_STEP_DETAIL, untilReset: null };
+    }
     if (verdict !== null) skipped.push(skip(row.item, profileIdOf(row.item), verdict));
   });
 
   // 7. With nobody: what to wait for (only the reasons that time can end).
   let wait: SelectionWait | null = null;
   if (pick === undefined) {
-    const temporary = passes
-      .flat()
-      .filter(
-        (row): row is Row & { verdict: Verdict } =>
-          row.verdict !== null &&
-          (TEMPORARY_SKIP_REASONS as readonly SkipReason[]).includes(row.verdict.reason),
-      );
+    const temporary = ordered.filter(
+      (row): row is Row & { verdict: Verdict } =>
+        row.verdict !== null &&
+        (TEMPORARY_SKIP_REASONS as readonly SkipReason[]).includes(row.verdict.reason),
+    );
     const waited = role.whenExhausted === 'wait' ? temporary.slice(0, 1) : temporary;
     const ends = waited.flatMap((row) =>
       row.verdict.untilReset === null ? [] : [row.verdict.untilReset],
@@ -567,10 +699,20 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
       workedProvider: applied ? worked.provider : null,
       fellBack,
       blocked,
+      noneConfigured,
+      degraded,
+      sameAccount:
+        applied &&
+        pick !== undefined &&
+        worked.profile !== undefined &&
+        profileIdOf(pick.item) === worked.profile,
     },
     roundRobin,
   };
 }
+
+/** The `detail` of an Executor of the provider of the work that is free but in a later step. */
+const LATER_STEP_DETAIL = 'kept for a later step of selection.same_provider_fallback';
 
 interface Verdict {
   readonly reason: SkipReason;

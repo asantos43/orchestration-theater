@@ -27,7 +27,11 @@ import {
 import { BUDGET_ON_CAP_CHANGE_MODES, BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
-import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
+import {
+  ExecutorsConfigSchema,
+  ModelsConfigSchema,
+  SelectionConfigSchema,
+} from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -1114,6 +1118,12 @@ export const DaemonConfigSchema = z
      * `role-executors-config.ts`; the pipeline reads them from P16.
      */
     selection: SelectionConfigSchema.prefault({}),
+    /**
+     * The tier of a model, optional, on one scale for every provider: `models.<model>.tier`
+     * (`small` | `medium` | `large` | `frontier`; N150). Feeds the "stronger model" step of
+     * `selection.same_provider_fallback`. See `role-executors-config.ts`.
+     */
+    models: ModelsConfigSchema.prefault({}),
     /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system

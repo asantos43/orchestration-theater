@@ -152,10 +152,15 @@ describe('acceptance: the daemon over the real SQLite', () => {
         });
         try {
           expect(fake.status()).toMatchObject({ state: 'running', startedAt: clock.now() });
-          expect((await allEvents(fake.store)).map((event) => event.type)).toEqual([
-            'daemon.started',
+          // The notices of the start-up (no client, no backup in this store) are recorded in the
+          // background, so the order among them and the recovery is not fixed: compare the set.
+          const types = (await allEvents(fake.store)).map((event) => event.type);
+          expect(types[0]).toBe('daemon.started');
+          expect([...types].sort()).toEqual([
+            'daemon.notice',
             'daemon.notice',
             'daemon.recovered',
+            'daemon.started',
           ]);
         } finally {
           await fake.stop();

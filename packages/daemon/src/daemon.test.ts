@@ -15,6 +15,7 @@ import {
   type StoreTransaction,
 } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
+import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
 import { MAX_PASSWORD_ATTEMPTS, startDaemon, unlockVault, type PasswordPrompt } from './daemon.js';
@@ -597,6 +598,52 @@ describe('startDaemon', () => {
       expect(notices.find((notice) => notice.kind === 'deprecated_config')?.detail).toMatch(
         /orchestration\.executor is deprecated/u,
       );
+      await daemon.stop();
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('daemon.notice cross_check_unsatisfiable: a strict cross-review the list of a role cannot meet is a log warning and an event (P15b, N150)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const clock = new FakeClock(AT);
+      const store = new InMemoryStore({ clock });
+      const warnings: string[] = [];
+      const logger = pino({ level: 'warn' }, { write: (line: string) => warnings.push(line) });
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
+        config: parseConfig(`
+executors:
+  claude-opus-high@claude-code/empresa: { client: claude-code, profile: empresa, model: claude-opus, effort: high }
+  claude-opus-high@claude-code/pessoal: { client: claude-code, profile: pessoal, model: claude-opus, effort: high }
+  codex-sol-high@codex/conta-1: { client: codex, profile: conta-1, model: codex-sol, effort: high }
+selection:
+  cross_check: require_other_provider
+roles:
+  reviewer: { executors: [claude-opus-high@claude-code/empresa, claude-opus-high@claude-code/pessoal] }
+  critic: { executors: [claude-opus-high@claude-code/empresa, codex-sol-high@codex/conta-1] }
+`),
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+        logger,
+      });
+      const noticeEvents = async () =>
+        (await store.events.readFrom(0, 20)).filter((event) => event.type === 'daemon.notice');
+      const unsatisfiable = async () =>
+        (await noticeEvents())
+          .map((event) => event.payload as { kind: string; subject: string | null; detail: string })
+          .filter((notice) => notice.kind === 'cross_check_unsatisfiable');
+      for (let turn = 0; turn < 200 && (await unsatisfiable()).length < 1; turn += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      const found = await unsatisfiable();
+      expect(found).toHaveLength(1);
+      expect(found[0]?.subject).toBe('reviewer');
+      expect(found[0]?.detail).toMatch(/one provider only \(anthropic\)/u);
+      expect(
+        warnings.some((line) => line.includes('list of reviewer has Executors of one provider')),
+      ).toBe(true);
       await daemon.stop();
     } finally {
       await tmp.dispose();

@@ -47,7 +47,13 @@ selection:
   near_limit: last
   retry_diversity: off
   strict_unavailable: fallback_prefer
+  same_provider_fallback: stronger_model
+  same_provider_account: strategy
   context_reserve: 4k
+models:
+  Minimax-M3:
+    tier: large
+  gemma: {}
 `),
       ),
     ).toEqual({
@@ -57,6 +63,9 @@ selection:
       nearLimit: 'last',
       retryDiversity: 'off',
       strictUnavailable: 'fallback_prefer',
+      sameProviderFallback: 'stronger_model',
+      sameProviderAccount: 'strategy',
+      modelTiers: { 'minimax-m3': 'large' },
       contextReserve: 4_000,
     });
   });
@@ -143,7 +152,7 @@ describe('executorSelectedPayload', () => {
         untilReset: 5_000,
       },
     ]);
-    expect(validateEventPayload('executor.selected', 1, payload)).toEqual(payload);
+    expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);
   });
 
   it('turns a wait into a valid event: no Executor, and what it waits for', () => {
@@ -155,13 +164,13 @@ describe('executorSelectedPayload', () => {
       playId: null,
       waiting: { mode: 'next', on: [A, B], until: 5_000, notify: false },
     });
-    expect(validateEventPayload('executor.selected', 1, payload)).toEqual(payload);
+    expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);
   });
 
   it('always carries the skipped list, empty when the first one was taken', () => {
     const payload = executorSelectedPayload(run({}), { playId: 'P1', now: 1 });
     expect(payload.executor).toBe(A);
     expect(payload.skipped).toEqual([]);
-    expect(validateEventPayload('executor.selected', 1, payload)).toEqual(payload);
+    expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);
   });
 });

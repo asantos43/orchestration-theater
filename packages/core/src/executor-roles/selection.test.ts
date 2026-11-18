@@ -363,6 +363,9 @@ describe('the cross-review (selection.cross_check)', () => {
       workedProvider: 'anthropic',
       fellBack: false,
       blocked: false,
+      noneConfigured: false,
+      degraded: null,
+      sameAccount: false,
     });
   });
 
@@ -422,9 +425,16 @@ describe('the cross-review (selection.cross_check)', () => {
       workedBy: workedByAnthropic,
       settings: { crossCheck: 'require_other_provider' },
     });
-    expect(result.selected).toBeNull();
-    expect(result.wait).toEqual({ mode: 'next', on: [], until: null, notify: true });
-    expect(result.crossCheck.blocked).toBe(true);
+    // N150: nobody in the list satisfies it, so it does not wait: it goes back to the provider of
+    // the work at once (the list order, both at the same level) and says why.
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(result.wait).toBeNull();
+    expect(result.crossCheck).toMatchObject({
+      blocked: false,
+      noneConfigured: true,
+      fellBack: true,
+      degraded: 'same',
+    });
   });
 
   it('other_model: another model of the same provider is enough', () => {
@@ -446,11 +456,11 @@ describe('the cross-review (selection.cross_check)', () => {
       workedBy: workedByAnthropic,
       settings: { crossCheck: 'other_model' },
     });
-    expect(result.selected).toBeNull();
-    expect(reasonsOf(result)).toEqual([
-      ['claude-opus-low@claude-code/pessoal', 'same_model'],
-      [OPUS_A, 'same_model'],
-    ]);
+    // N150: no other model in the list, so no wait: the list order, with the fall flagged.
+    expect(result.selected?.id).toBe('claude-opus-low@claude-code/pessoal');
+    expect(result.wait).toBeNull();
+    expect(result.crossCheck).toMatchObject({ noneConfigured: true, degraded: 'same' });
+    expect(reasonsOf(result)).toEqual([]);
   });
 
   it('off: only the order of the list', () => {
@@ -881,5 +891,356 @@ describe('the ports', () => {
         },
       ),
     ).rejects.toThrow('probe down');
+  });
+});
+
+describe('selection.same_provider_fallback: the cross-review back at the provider of the work (N150)', () => {
+  const OPUS_LOW_A = 'claude-opus-low@claude-code/empresa';
+  const OPUS_LOW_B = 'claude-opus-low@claude-code/pessoal';
+  const SONNET_MED_A = 'claude-sonnet-medium@claude-code/empresa';
+  const SONNET_MED_B = 'claude-sonnet-medium@claude-code/pessoal';
+  const SONNET_HIGH_A = 'claude-sonnet-high@claude-code/empresa';
+  const HAIKU_HIGH_A = 'claude-haiku-high@claude-code/empresa';
+  // The work: sonnet (large) at medium effort, on the account `empresa`.
+  const worked: WorkedBy = {
+    provider: 'anthropic',
+    model: 'claude-sonnet',
+    effort: 'medium',
+    profile: 'claude-code/empresa',
+  };
+  const dry = { quota: exhausted(9_000) };
+  // Nobody of another provider: every Executor of the list conflicts. The list order is the
+  // opposite of the steps, so a step that works is not the list order.
+  const only = (
+    mode: SelectionSettings['sameProviderFallback'],
+    facts: NonNullable<Setup['facts']> = {},
+    settings: Partial<SelectionSettings> = {},
+  ) =>
+    select({
+      list: [SONNET_MED_A, HAIKU_HIGH_A, SONNET_HIGH_A, OPUS_LOW_A].map((id) => executor(id)),
+      role: 'reviewer',
+      workedBy: worked,
+      facts,
+      settings: { sameProviderFallback: mode, ...settings },
+    });
+
+  it('defaults to stronger_then_effort and prefer_other', () => {
+    expect(DEFAULT_SELECTION_SETTINGS.sameProviderFallback).toBe('stronger_then_effort');
+    expect(DEFAULT_SELECTION_SETTINGS.sameProviderAccount).toBe('prefer_other');
+    expect(DEFAULT_SELECTION_SETTINGS.modelTiers).toEqual({});
+  });
+
+  it('stronger_then_effort: a stronger model first, even behind the others in the list', () => {
+    const result = only('stronger_then_effort');
+    expect(result.selected?.id).toBe(OPUS_LOW_A);
+    expect(result.wait).toBeNull();
+    expect(result.crossCheck).toMatchObject({
+      applied: true,
+      fellBack: true,
+      degraded: 'stronger_model',
+      noneConfigured: false,
+      blocked: false,
+    });
+  });
+
+  it('stronger_then_effort: a stronger model without quota goes down to the higher effort, no wait', () => {
+    const result = only('stronger_then_effort', { [OPUS_LOW_A]: dry });
+    expect(result.selected?.id).toBe(SONNET_HIGH_A);
+    expect(result.crossCheck.degraded).toBe('higher_effort');
+    // The reason of the step above is the real one, and the haiku and the same effort are kept
+    // for a later step, not for the quota.
+    expect(result.skipped.find((s) => s.executor === OPUS_LOW_A)).toMatchObject({
+      reason: 'quota',
+    });
+    expect(result.skipped.find((s) => s.executor === SONNET_MED_A)?.reason).toBe('same_provider');
+  });
+
+  it('stronger_then_effort: both steps up without quota go down to any, in the list order', () => {
+    const result = only('stronger_then_effort', { [OPUS_LOW_A]: dry, [SONNET_HIGH_A]: dry });
+    expect(result.selected?.id).toBe(SONNET_MED_A);
+    expect(result.crossCheck.degraded).toBe('same');
+    // The ones behind the pick in the list are not skipped; the two steps up carry the real reason.
+    expect(reasonsOf(result)).toEqual([
+      [SONNET_HIGH_A, 'quota'],
+      [OPUS_LOW_A, 'quota'],
+    ]);
+  });
+
+  it('stronger_model: skips the effort step and goes to any', () => {
+    expect(only('stronger_model').selected?.id).toBe(OPUS_LOW_A);
+    const down = only('stronger_model', { [OPUS_LOW_A]: dry });
+    expect(down.selected?.id).toBe(SONNET_MED_A);
+    expect(down.crossCheck.degraded).toBe('same');
+  });
+
+  it('higher_effort: the same model at a higher effort, even with a stronger model free', () => {
+    const result = only('higher_effort');
+    expect(result.selected?.id).toBe(SONNET_HIGH_A);
+    expect(result.crossCheck.degraded).toBe('higher_effort');
+    const down = only('higher_effort', { [SONNET_HIGH_A]: dry });
+    expect(down.selected?.id).toBe(SONNET_MED_A);
+    expect(down.crossCheck.degraded).toBe('same');
+  });
+
+  it('any: the list order, as before', () => {
+    const result = only('any');
+    expect(result.selected?.id).toBe(SONNET_MED_A);
+    expect(result.crossCheck).toMatchObject({ fellBack: true, degraded: 'same' });
+  });
+
+  it('the top: nothing stronger and no higher effort falls to any', () => {
+    const result = select({
+      list: [executor(SONNET_HIGH_A), executor('claude-opus-high@claude-code/empresa')],
+      role: 'critic',
+      workedBy: { provider: 'anthropic', model: 'claude-opus', effort: 'high' },
+    });
+    expect(result.selected?.id).toBe(SONNET_HIGH_A);
+    expect(result.crossCheck).toMatchObject({ fellBack: true, degraded: 'same' });
+  });
+
+  it('with another provider free, the fall does not happen and degraded is null', () => {
+    const result = select({
+      list: [executor(OPUS_LOW_A), executor(SOL)],
+      role: 'reviewer',
+      workedBy: worked,
+    });
+    expect(result.selected?.id).toBe(SOL);
+    expect(result.crossCheck).toMatchObject({
+      fellBack: false,
+      degraded: null,
+      sameAccount: false,
+    });
+  });
+
+  it('applies to the strict mode with fallback_prefer', () => {
+    const result = select({
+      list: [executor(SONNET_MED_A), executor(OPUS_LOW_A), executor(SOL)],
+      role: 'reviewer',
+      workedBy: worked,
+      facts: { [SOL]: dry },
+      settings: { crossCheck: 'require_other_provider', strictUnavailable: 'fallback_prefer' },
+    });
+    expect(result.selected?.id).toBe(OPUS_LOW_A);
+    expect(result.crossCheck).toMatchObject({
+      degraded: 'stronger_model',
+      noneConfigured: false,
+      blocked: false,
+    });
+  });
+
+  it('does not apply to the strict mode that waits, when another provider exists but is dry', () => {
+    const result = select({
+      list: [executor(SONNET_MED_A), executor(OPUS_LOW_A), executor(SOL)],
+      role: 'reviewer',
+      workedBy: worked,
+      facts: { [SOL]: dry },
+      settings: { crossCheck: 'require_other_provider', strictUnavailable: 'wait_notify' },
+    });
+    expect(result.selected).toBeNull();
+    expect(result.wait).toMatchObject({ on: [SOL], until: 9_000, notify: true });
+    expect(result.crossCheck).toMatchObject({
+      blocked: true,
+      noneConfigured: false,
+      degraded: null,
+    });
+  });
+
+  describe('noneConfigured: nobody in the list satisfies the cross-review, so nothing to wait for', () => {
+    it.each(['wait', 'wait_notify', 'fallback_prefer'] as const)(
+      'require_other_provider with strict_unavailable %s applies the fall at once',
+      (strictUnavailable) => {
+        const result = select({
+          list: [executor(SONNET_MED_A), executor(OPUS_LOW_A)],
+          role: 'reviewer',
+          workedBy: worked,
+          settings: { crossCheck: 'require_other_provider', strictUnavailable },
+        });
+        expect(result.selected?.id).toBe(OPUS_LOW_A);
+        expect(result.wait).toBeNull();
+        expect(result.crossCheck).toMatchObject({
+          noneConfigured: true,
+          blocked: false,
+          fellBack: true,
+          degraded: 'stronger_model',
+        });
+      },
+    );
+
+    it.each(['wait', 'wait_notify', 'fallback_prefer'] as const)(
+      'other_model with strict_unavailable %s applies the fall at once, by the effort',
+      (strictUnavailable) => {
+        // Every model of the list is the one of the work: no stronger model by definition, so the
+        // step of the higher effort, and then any [proposta].
+        const result = select({
+          list: [executor(SONNET_MED_B), executor(SONNET_HIGH_A)],
+          role: 'critic',
+          workedBy: worked,
+          settings: { crossCheck: 'other_model', strictUnavailable },
+        });
+        expect(result.selected?.id).toBe(SONNET_HIGH_A);
+        expect(result.wait).toBeNull();
+        expect(result.crossCheck).toMatchObject({
+          noneConfigured: true,
+          blocked: false,
+          degraded: 'higher_effort',
+        });
+      },
+    );
+
+    it('still waits when the whole fall is unavailable, with the real reasons', () => {
+      const result = select({
+        list: [executor(SONNET_MED_A), executor(OPUS_LOW_A)],
+        role: 'reviewer',
+        workedBy: worked,
+        facts: { [SONNET_MED_A]: dry, [OPUS_LOW_A]: { quota: exhausted(5_000) } },
+        settings: { crossCheck: 'require_other_provider' },
+      });
+      expect(result.selected).toBeNull();
+      expect(result.wait?.until).toBe(5_000);
+      expect(result.crossCheck.noneConfigured).toBe(true);
+      expect(reasonsOf(result)).toEqual([
+        [SONNET_MED_A, 'quota'],
+        [OPUS_LOW_A, 'quota'],
+      ]);
+    });
+
+    it('is not marked in prefer_other_provider, which never waits for it', () => {
+      const result = select({
+        list: [executor(SONNET_MED_A)],
+        role: 'reviewer',
+        workedBy: worked,
+      });
+      expect(result.crossCheck).toMatchObject({ noneConfigured: false, fellBack: true });
+    });
+
+    it('is not marked when the list is empty', () => {
+      const result = select({
+        list: [],
+        role: 'reviewer',
+        workedBy: worked,
+        settings: { crossCheck: 'require_other_provider' },
+      });
+      expect(result.crossCheck.noneConfigured).toBe(false);
+    });
+  });
+
+  describe('the strength of the model', () => {
+    const MINIMAX_M2 = 'minimax-m2-medium@opencode/minimax-api';
+    const MINIMAX_M3 = 'minimax-m3-medium@opencode/minimax-api';
+    const minimax = (
+      mode: SelectionSettings['sameProviderFallback'],
+      over: Partial<SelectionSettings> = {},
+    ) =>
+      select({
+        list: [executor(MINIMAX_M2, 'minimax'), executor(MINIMAX_M3, 'minimax')],
+        role: 'reviewer',
+        workedBy: { provider: 'minimax', model: 'minimax-m2', effort: 'medium' },
+        settings: { sameProviderFallback: mode, ...over },
+      });
+
+    it('a provider with no tiers skips the step of the stronger model', () => {
+      const result = minimax('stronger_then_effort');
+      // m3 is another model, not a higher effort of the same one: no step matches, so any.
+      expect(result.selected?.id).toBe(MINIMAX_M2);
+      expect(result.crossCheck.degraded).toBe('same');
+    });
+
+    it('a tier declared in the configuration makes a model stronger', () => {
+      const result = minimax('stronger_then_effort', {
+        modelTiers: { 'minimax-m2': 'medium', 'minimax-m3': 'large' },
+      });
+      expect(result.selected?.id).toBe(MINIMAX_M3);
+      expect(result.crossCheck.degraded).toBe('stronger_model');
+    });
+
+    it('the same tier is not stronger', () => {
+      const result = minimax('stronger_then_effort', {
+        modelTiers: { 'minimax-m2': 'large', 'minimax-m3': 'large' },
+      });
+      expect(result.selected?.id).toBe(MINIMAX_M2);
+      expect(result.crossCheck.degraded).toBe('same');
+    });
+
+    it('a tier on one side only is not enough', () => {
+      expect(
+        minimax('stronger_model', { modelTiers: { 'minimax-m3': 'frontier' } }).crossCheck.degraded,
+      ).toBe('same');
+      expect(
+        minimax('stronger_model', { modelTiers: { 'minimax-m2': 'small' } }).crossCheck.degraded,
+      ).toBe('same');
+    });
+
+    it('a tier of the configuration replaces the built-in one', () => {
+      // Built in: sonnet is large and opus is frontier. Declared: opus is large too, so it is not
+      // stronger and the fall goes down to the higher effort.
+      const result = only('stronger_then_effort', {}, { modelTiers: { opus: 'large' } });
+      expect(result.selected?.id).toBe(SONNET_HIGH_A);
+      expect(result.crossCheck.degraded).toBe('higher_effort');
+    });
+
+    it('the built-in ladders hold: haiku is not stronger than sonnet, opus is', () => {
+      // The haiku is first in the list and free: the weaker model is not a step up.
+      const list = [HAIKU_HIGH_A, SONNET_MED_A, OPUS_LOW_A].map((id) => executor(id));
+      const base = { list, role: 'reviewer', workedBy: worked } as const;
+      expect(select(base).selected?.id).toBe(OPUS_LOW_A);
+      const down = select({ ...base, facts: { [OPUS_LOW_A]: dry } });
+      expect(down.selected?.id).toBe(HAIKU_HIGH_A);
+      expect(down.crossCheck.degraded).toBe('same');
+    });
+  });
+
+  describe('selection.same_provider_account: several accounts of one provider', () => {
+    const twoAccounts = (
+      facts: NonNullable<Setup['facts']>,
+      mode: SelectionSettings['sameProviderAccount'],
+      list = [OPUS_LOW_A, OPUS_LOW_B],
+    ) =>
+      select({
+        list: list.map((id) => executor(id)),
+        role: 'reviewer',
+        workedBy: worked,
+        facts,
+        settings: { sameProviderAccount: mode },
+      });
+
+    it('another account of the provider does not satisfy the cross-review', () => {
+      const result = twoAccounts({}, 'prefer_other', [SONNET_MED_B]);
+      expect(result.crossCheck).toMatchObject({ fellBack: true, applied: true });
+    });
+
+    it('prefer_other: inside the step, the other account comes first', () => {
+      const result = twoAccounts({}, 'prefer_other');
+      expect(result.selected?.id).toBe(OPUS_LOW_B);
+      expect(result.crossCheck).toMatchObject({ degraded: 'stronger_model', sameAccount: false });
+    });
+
+    it('strategy: the account of the work has no special treatment', () => {
+      const result = twoAccounts({}, 'strategy');
+      expect(result.selected?.id).toBe(OPUS_LOW_A);
+      expect(result.crossCheck.sameAccount).toBe(true);
+    });
+
+    it('prefer_other: the preferred account without quota falls to the one of the work, same step', () => {
+      const result = twoAccounts({ [OPUS_LOW_B]: dry }, 'prefer_other');
+      expect(result.selected?.id).toBe(OPUS_LOW_A);
+      expect(result.crossCheck).toMatchObject({ degraded: 'stronger_model', sameAccount: true });
+      expect(result.skipped.find((s) => s.executor === OPUS_LOW_B)?.reason).toBe('quota');
+    });
+
+    it('the step comes before the account: a stronger model on the own account beats the same model elsewhere', () => {
+      const result = twoAccounts({}, 'prefer_other', [SONNET_MED_B, OPUS_LOW_A]);
+      expect(result.selected?.id).toBe(OPUS_LOW_A);
+      expect(result.crossCheck.degraded).toBe('stronger_model');
+    });
+
+    it('sameAccount is false when the account of the work is not known', () => {
+      const result = select({
+        list: [executor(OPUS_LOW_A), executor(OPUS_LOW_B)],
+        role: 'reviewer',
+        workedBy: { provider: 'anthropic', model: 'claude-sonnet', effort: 'medium' },
+      });
+      expect(result.selected?.id).toBe(OPUS_LOW_A);
+      expect(result.crossCheck.sameAccount).toBe(false);
+    });
   });
 });

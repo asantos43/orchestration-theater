@@ -11,7 +11,9 @@ import type { QuotaStatus } from '../quota/state.js';
  */
 
 /** The `selection` block of the configuration as the settings of the selector. */
-export function selectionSettingsOf(config: Pick<DaemonConfig, 'selection'>): SelectionSettings {
+export function selectionSettingsOf(
+  config: Pick<DaemonConfig, 'selection' | 'models'>,
+): SelectionSettings {
   const selection = config.selection;
   return {
     strategy: selection.strategy,
@@ -20,6 +22,13 @@ export function selectionSettingsOf(config: Pick<DaemonConfig, 'selection'>): Se
     nearLimit: selection.near_limit,
     retryDiversity: selection.retry_diversity,
     strictUnavailable: selection.strict_unavailable,
+    sameProviderFallback: selection.same_provider_fallback,
+    sameProviderAccount: selection.same_provider_account,
+    modelTiers: Object.fromEntries(
+      Object.entries(config.models).flatMap(([model, entry]) =>
+        entry.tier === undefined ? [] : [[model.toLowerCase(), entry.tier] as const],
+      ),
+    ),
     contextReserve: selection.context_reserve,
   };
 }
@@ -63,6 +72,9 @@ export function executorSelectedPayload(
       workedProvider: result.crossCheck.workedProvider,
       fellBack: result.crossCheck.fellBack,
       blocked: result.crossCheck.blocked,
+      noneConfigured: result.crossCheck.noneConfigured,
+      degraded: result.crossCheck.degraded,
+      sameAccount: result.crossCheck.sameAccount,
     },
     skipped: result.skipped.map((skipped) => ({
       executor: skipped.executor,

@@ -24,6 +24,9 @@ const selected = {
     workedProvider: null,
     fellBack: false,
     blocked: false,
+    noneConfigured: false,
+    degraded: null,
+    sameAccount: false,
   },
   skipped: [skipped],
   waiting: null,
@@ -40,15 +43,53 @@ const waiting = {
 
 describe('executor.selected event [proposta]', () => {
   it('accepts a selection, with the skipped list always present', () => {
-    expect(validateEventPayload('executor.selected', 1, selected)).toEqual(selected);
+    expect(validateEventPayload('executor.selected', 2, selected)).toEqual(selected);
     const first = { ...selected, skipped: [] };
-    expect(validateEventPayload('executor.selected', 1, first)).toEqual(first);
+    expect(validateEventPayload('executor.selected', 2, first)).toEqual(first);
+  });
+
+  it('records the step of the fall to the provider of the work, N150', () => {
+    for (const degraded of ['stronger_model', 'higher_effort', 'same', null]) {
+      const payload = {
+        ...selected,
+        crossCheck: {
+          ...selected.crossCheck,
+          mode: 'require_other_provider',
+          applied: true,
+          workedProvider: 'openai',
+          fellBack: degraded !== null,
+          noneConfigured: true,
+          degraded,
+          sameAccount: degraded === 'same',
+        },
+      };
+      expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);
+    }
+  });
+
+  it('refuses a step it does not know, a missing new field and the old version', () => {
+    const cross = (extra: object) => ({
+      ...selected,
+      crossCheck: { ...selected.crossCheck, ...extra },
+    });
+    expect(() =>
+      validateEventPayload('executor.selected', 2, cross({ degraded: 'weaker' })),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('executor.selected', 2, cross({ noneConfigured: 'yes' })),
+    ).toThrow();
+    const without: Partial<typeof selected.crossCheck> = { ...selected.crossCheck };
+    delete without.sameAccount;
+    expect(() =>
+      validateEventPayload('executor.selected', 2, { ...selected, crossCheck: without }),
+    ).toThrow();
+    expect(() => validateEventPayload('executor.selected', 1, selected)).toThrow();
   });
 
   it('accepts a wait, with nothing to wait for and with no end known', () => {
-    expect(validateEventPayload('executor.selected', 1, waiting)).toEqual(waiting);
+    expect(validateEventPayload('executor.selected', 2, waiting)).toEqual(waiting);
     const nothing = { ...waiting, waiting: { mode: 'next', on: [], until: null, notify: true } };
-    expect(validateEventPayload('executor.selected', 1, nothing)).toEqual(nothing);
+    expect(validateEventPayload('executor.selected', 2, nothing)).toEqual(nothing);
   });
 
   it('accepts every reason of 5.7 and the three the algorithm adds', () => {
@@ -66,13 +107,13 @@ describe('executor.selected event [proposta]', () => {
       'retry',
     ]) {
       const payload = { ...selected, skipped: [{ ...skipped, reason }] };
-      expect(validateEventPayload('executor.selected', 1, payload)).toEqual(payload);
+      expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);
     }
   });
 
   it('refuses an unknown reason, strategy or cross-check mode', () => {
     const bad = (patch: object) => () =>
-      validateEventPayload('executor.selected', 1, { ...selected, ...patch });
+      validateEventPayload('executor.selected', 2, { ...selected, ...patch });
     expect(bad({ skipped: [{ ...skipped, reason: 'tired' }] })).toThrow();
     expect(bad({ strategy: 'random' })).toThrow();
     expect(bad({ crossCheck: { ...selected.crossCheck, mode: 'strict' } })).toThrow();
@@ -80,35 +121,35 @@ describe('executor.selected event [proposta]', () => {
 
   it('refuses a selection without the Executor, and a wait with one', () => {
     expect(() =>
-      validateEventPayload('executor.selected', 1, { ...selected, executor: null, profile: null }),
+      validateEventPayload('executor.selected', 2, { ...selected, executor: null, profile: null }),
     ).toThrow();
     expect(() =>
-      validateEventPayload('executor.selected', 1, { ...waiting, executor: selected.executor }),
+      validateEventPayload('executor.selected', 2, { ...waiting, executor: selected.executor }),
     ).toThrow();
   });
 
   it('refuses a selection with a wait, and a wait without it', () => {
     expect(() =>
-      validateEventPayload('executor.selected', 1, { ...selected, waiting: waiting.waiting }),
+      validateEventPayload('executor.selected', 2, { ...selected, waiting: waiting.waiting }),
     ).toThrow();
     expect(() =>
-      validateEventPayload('executor.selected', 1, { ...waiting, waiting: null }),
+      validateEventPayload('executor.selected', 2, { ...waiting, waiting: null }),
     ).toThrow();
   });
 
   it('refuses a missing skipped list, a negative time and extra fields', () => {
     const missing: Partial<typeof selected> = { ...selected };
     delete missing.skipped;
-    expect(() => validateEventPayload('executor.selected', 1, missing)).toThrow();
+    expect(() => validateEventPayload('executor.selected', 2, missing)).toThrow();
     expect(() =>
-      validateEventPayload('executor.selected', 1, {
+      validateEventPayload('executor.selected', 2, {
         ...selected,
         skipped: [{ ...skipped, untilReset: -1 }],
       }),
     ).toThrow();
-    expect(() => validateEventPayload('executor.selected', 1, { ...selected, extra: 1 })).toThrow();
+    expect(() => validateEventPayload('executor.selected', 2, { ...selected, extra: 1 })).toThrow();
     expect(() =>
-      validateEventPayload('executor.selected', 1, {
+      validateEventPayload('executor.selected', 2, {
         ...selected,
         skipped: [{ ...skipped, extra: 1 }],
       }),
