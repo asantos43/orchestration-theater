@@ -59,7 +59,9 @@ import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
+import { createLateHandoff } from './orchestration/handoff-wiring.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
+import type { HandoffPort } from './execution/handoff.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
@@ -437,6 +439,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
   });
   const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
+  // The runner holds the baton port from the start; the orchestration binds the real one (P18, P16b).
+  const handoff = createLateHandoff();
   const execution = buildExecution(
     options,
     config,
@@ -445,6 +449,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcp,
     quota,
     quotaPrepare,
+    handoff.port,
   );
   // The probes were handed over by `buildExecution`. The profiles the registry already has are
   // tracked before the readings start, so a MiniMax profile is read without waiting for a session.
@@ -477,6 +482,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handlers: input.orchestrationHandlers,
       scenarioHandlers: input.scenarioHandlers,
       gate,
+      handoff,
+      home: homedir(),
     });
   }
   // The machines of the plays come back from their snapshots; the orders were recomputed by
@@ -654,6 +661,7 @@ function buildExecution(
   mcp: McpAccess,
   quota: QuotaService,
   quotaPrepare: (() => Promise<readonly ProfileRef[]>)[],
+  handoff: HandoffPort,
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
@@ -720,6 +728,7 @@ function buildExecution(
     mcp,
     quota,
     memory: composition.memory,
+    handoff,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }

@@ -118,3 +118,74 @@ export const ExecutorSelectedPayloadSchema = z
       });
     }
   });
+
+/**
+ * What a role waits on, one entry per Executor set aside (the `RoleWait.on` of the daemon): the
+ * Executor, its profile and why it is out for now. Shared by the four wait events below.
+ */
+export const SelectionWaitOnSchema = z.strictObject({
+  executor,
+  profile: z.string().min(1).max(256),
+  reason: z.enum(EXECUTOR_SELECTED_SKIP_REASONS),
+});
+
+/** How a wait ended: an Executor was chosen, nobody can come back by waiting, or it was cancelled. */
+export const SELECTION_WAIT_OUTCOMES = ['selected', 'unavailable', 'cancelled'] as const;
+export type SelectionWaitOutcome = (typeof SELECTION_WAIT_OUTCOMES)[number];
+
+const waitText = z.string().min(1).max(1024);
+const roleName = z.string().min(1).max(64);
+const idText = z.string().min(1).max(256);
+
+/**
+ * `scenario.director_waiting` (Phase 5, P16b, N141; [proposta] the name and the fields): the
+ * Director of a scenario has no Executor (`selection.director_wait: wait`) and its session is held
+ * until one is free. `executor.selected` with `outcome: waiting` says the same from the selection's
+ * side, for any role; this one is the Director's, so a hook or a plugin can follow it by scenario.
+ */
+export const ScenarioDirectorWaitingPayloadSchema = z.strictObject({
+  scenarioId: idText,
+  on: z.array(SelectionWaitOnSchema).max(256),
+  /** The earliest known end of the wait; null when no source says. */
+  until: epochMs.nullable(),
+  /** "waiting for quota of claude-code/a" (English: the log is not translated). */
+  message: waitText,
+  since: epochMs,
+});
+
+/** `scenario.director_resumed`: the Director's wait ended; `executor` is who it opens with. */
+export const ScenarioDirectorResumedPayloadSchema = z.strictObject({
+  scenarioId: idText,
+  outcome: z.enum(SELECTION_WAIT_OUTCOMES),
+  /** The Executor chosen; null unless `outcome` is `selected`. */
+  executor: executor.nullable(),
+  waitedMs: z.int().min(0),
+});
+
+/**
+ * `demand.waiting` (P16b, N142; [proposta]): a demand of a play has no Executor and waits.
+ * `holdsSlot` is `selection.waiting_holds_slot`: whether it still counts as in flight in its play.
+ */
+export const DemandWaitingPayloadSchema = z.strictObject({
+  scenarioId: idText.nullable(),
+  playId: idText,
+  demandId: idText,
+  role: roleName,
+  on: z.array(SelectionWaitOnSchema).max(256),
+  until: epochMs.nullable(),
+  message: waitText,
+  since: epochMs,
+  holdsSlot: z.boolean(),
+});
+
+/** `demand.resumed`: the wait of a demand ended (`selected`: the demand goes on with `executor`). */
+export const DemandResumedPayloadSchema = z.strictObject({
+  scenarioId: idText.nullable(),
+  playId: idText,
+  demandId: idText,
+  role: roleName,
+  outcome: z.enum(SELECTION_WAIT_OUTCOMES),
+  executor: executor.nullable(),
+  waitedMs: z.int().min(0),
+  holdsSlot: z.boolean(),
+});

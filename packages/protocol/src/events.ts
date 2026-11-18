@@ -19,7 +19,13 @@ import {
   QuotaRestoredPayloadSchema,
   QuotaUpdatedPayloadSchema,
 } from './quota-events.js';
-import { ExecutorSelectedPayloadSchema } from './selection-events.js';
+import {
+  DemandResumedPayloadSchema,
+  DemandWaitingPayloadSchema,
+  ExecutorSelectedPayloadSchema,
+  ScenarioDirectorResumedPayloadSchema,
+  ScenarioDirectorWaitingPayloadSchema,
+} from './selection-events.js';
 import { UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
@@ -49,6 +55,7 @@ import {
   ScenarioCreatedPayloadSchema,
   ScenarioDirectorSleptPayloadSchema,
   ScenarioDirectorWokePayloadSchema,
+  PlayNoticePayloadSchema,
 } from './scenario-events.js';
 import {
   AttemptCheckpointPayloadSchema,
@@ -424,6 +431,31 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ExecutorSelectedPayloadSchema,
   }),
+  defineEventType({
+    type: 'scenario.director_waiting',
+    schemaVersion: 1,
+    payload: ScenarioDirectorWaitingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.director_resumed',
+    schemaVersion: 1,
+    payload: ScenarioDirectorResumedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'demand.waiting',
+    schemaVersion: 1,
+    payload: DemandWaitingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'demand.resumed',
+    schemaVersion: 1,
+    payload: DemandResumedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'play.notice',
+    schemaVersion: 1,
+    payload: PlayNoticePayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -502,6 +534,10 @@ export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 export type ScenarioRecoveryNotice = Extract<ScenarioSystemMessagePayload, { kind: 'recovery' }>;
 export type ScenarioHandoffNotice = Extract<ScenarioSystemMessagePayload, { kind: 'handoff' }>;
+export type ScenarioSelectionWaitNotice = Extract<
+  ScenarioSystemMessagePayload,
+  { kind: 'selection_wait' }
+>;
 export type QuotaUpdatedPayload = DaemonEventPayloads['quota.updated'];
 export type QuotaNearLimitPayload = DaemonEventPayloads['quota.near_limit'];
 export type QuotaExhaustedPayload = DaemonEventPayloads['quota.exhausted'];
@@ -510,6 +546,11 @@ export type BudgetRestoredPayload = DaemonEventPayloads['budget.restored'];
 export type BudgetWarningPayload = DaemonEventPayloads['budget.warning'];
 export type UsageRecordedPayload = DaemonEventPayloads['usage.recorded'];
 export type ExecutorSelectedPayload = DaemonEventPayloads['executor.selected'];
+export type ScenarioDirectorWaitingPayload = DaemonEventPayloads['scenario.director_waiting'];
+export type ScenarioDirectorResumedPayload = DaemonEventPayloads['scenario.director_resumed'];
+export type DemandWaitingPayload = DaemonEventPayloads['demand.waiting'];
+export type DemandResumedPayload = DaemonEventPayloads['demand.resumed'];
+export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

@@ -9,13 +9,19 @@ import {
   type Profile,
   type ProfileFact,
   type ResolvedExecutor,
+  type ResolvedRoles,
   type SelectionPorts,
   type SelectionResult,
+  type SelectionSettings,
   type SkipReason,
   type Store,
   type WorkedBy,
 } from '@otheater/core';
-import { buildDaemonEvent } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type ScenarioSelectionWaitNotice,
+  type SelectionWaitOutcome,
+} from '@otheater/protocol';
 import type { DaemonConfig } from '../config.js';
 import { attemptIdOf } from '../execution/attempt-runner.js';
 import type { SessionPool } from '../execution/pool.js';
@@ -65,6 +71,12 @@ export interface RoleSelectionOptions {
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly clock: Clock;
   readonly logger: Logger;
+  /**
+   * The N135 notice (`selection.strict_unavailable: wait_notify`): called once for each wait of a
+   * scenario that the strict cross-review causes, after the `scenario.system_message` event is
+   * written. The daemon hands it to the Producer channel; absent, the event is the only record.
+   */
+  readonly onNotice?: ((notice: ScenarioSelectionWaitNotice) => void) | undefined;
 }
 
 /** What a caller asks for: the Executor of `role` for one piece of work. */
@@ -113,6 +125,27 @@ export interface RoleWait {
   readonly since: number;
   /** "waiting for quota of claude-code/a, claude-code/b" */
   readonly message: string;
+}
+
+/** How a wait that {@link RoleSelection.acquire} held ended. */
+export interface WaitEnd {
+  readonly outcome: SelectionWaitOutcome;
+  /** The Executor chosen (`outcome: selected`), or null. */
+  readonly executor: string | null;
+  readonly waitedMs: number;
+  /** The wait as it stood when it ended. */
+  readonly wait: RoleWait;
+}
+
+/**
+ * What a caller hears of the wait of its `acquire` (P16b): `started` once, when the first
+ * selection finds nobody and the call begins to wait; `ended` once, when it stops waiting for
+ * whatever reason. A call that finds an Executor at the first try hears neither. A callback that
+ * throws is logged and does not change the selection.
+ */
+export interface AcquireWatch {
+  readonly started?: (wait: RoleWait) => void | Promise<void>;
+  readonly ended?: (end: WaitEnd) => void | Promise<void>;
 }
 
 export type Acquired =
@@ -164,6 +197,15 @@ function unavailableText(role: string, result: SelectionResult): string {
     )
     .join('; ');
   return `No Executor of the ${role} can take the work: ${why}.`;
+}
+
+/** What one `acquire` remembers of its own wait. */
+interface AcquireRun {
+  /** When the wait began; undefined while nothing has waited. */
+  since: number | undefined;
+  last: RoleWait | undefined;
+  notified: boolean;
+  ended: boolean;
 }
 
 interface WaitState {
@@ -257,26 +299,121 @@ export class RoleSelection {
    */
   async acquire(
     request: RoleSelectionRequest,
-    options: { readonly signal?: AbortSignal } = {},
+    options: { readonly signal?: AbortSignal; readonly watch?: AcquireWatch } = {},
   ): Promise<Acquired | undefined> {
     const key = this.#waitKey(request);
+    const run: AcquireRun = { since: undefined, last: undefined, notified: false, ended: false };
+    let acquired: Acquired | undefined;
     try {
-      for (;;) {
-        if (this.#cancelled(options.signal)) return undefined;
-        const epoch = this.#epoch;
-        const result = await this.#selectKeeping(request, key);
-        if (result.selected !== null) {
-          return { kind: 'selected', ...this.#settingsOf(request, result.selected, result) };
-        }
-        if (waitOn(result).length === 0) {
-          return { kind: 'unavailable', reason: unavailableText(request.role, result), result };
-        }
-        if (epoch !== this.#epoch) continue; // somebody woke us while we were deciding
-        await this.#park(options.signal);
-      }
+      acquired = await this.#acquireLoop(request, key, options, run);
+      return acquired;
     } finally {
       this.#waits.delete(key);
+      await this.#ended(
+        options.watch,
+        run,
+        acquired === undefined ? 'cancelled' : acquired.kind,
+        acquired?.kind === 'selected' ? acquired.executor.id : null,
+      );
     }
+  }
+
+  async #acquireLoop(
+    request: RoleSelectionRequest,
+    key: string,
+    options: { readonly signal?: AbortSignal; readonly watch?: AcquireWatch },
+    run: AcquireRun,
+  ): Promise<Acquired | undefined> {
+    for (;;) {
+      if (this.#cancelled(options.signal)) return undefined;
+      const epoch = this.#epoch;
+      const result = await this.#selectKeeping(request, key);
+      if (result.selected !== null) {
+        return { kind: 'selected', ...this.#settingsOf(request, result.selected, result) };
+      }
+      if (waitOn(result).length === 0) {
+        return { kind: 'unavailable', reason: unavailableText(request.role, result), result };
+      }
+      const wait = this.#waits.get(key)?.wait;
+      if (wait !== undefined) {
+        run.last = wait;
+        if (run.since === undefined) {
+          run.since = wait.since;
+          await this.#guard('the wait watcher (started)', () => options.watch?.started?.(wait));
+        }
+        if (!run.notified && this.#asksNotice(result)) {
+          run.notified = true;
+          await this.#notice(request, result, wait);
+        }
+      }
+      if (epoch !== this.#epoch) continue; // somebody woke us while we were deciding
+      await this.#park(options.signal);
+    }
+  }
+
+  /** Tells the watcher the wait is over, once, when there was a wait. */
+  async #ended(
+    watch: AcquireWatch | undefined,
+    run: AcquireRun,
+    outcome: SelectionWaitOutcome,
+    executor: string | null,
+  ): Promise<void> {
+    if (run.since === undefined || run.last === undefined || run.ended) return;
+    run.ended = true;
+    const end: WaitEnd = {
+      outcome,
+      executor,
+      waitedMs: Math.max(0, this.#options.clock.now() - run.since),
+      wait: run.last,
+    };
+    await this.#guard('the wait watcher (ended)', () => watch?.ended?.(end));
+  }
+
+  /** A hook of the caller must not break the selection: its failure is logged. */
+  async #guard(what: string, call: () => unknown): Promise<void> {
+    try {
+      await call();
+    } catch (error) {
+      this.#options.logger.error({ err: error }, `${what} failed`);
+    }
+  }
+
+  /** N135: the wait is the strict cross-review's and the settings ask for the Producer to know. */
+  #asksNotice(result: SelectionResult): boolean {
+    const { config } = this.#options;
+    return (
+      result.wait?.notify === true ||
+      (result.crossCheck.blocked && config.selection.strict_unavailable === 'wait_notify')
+    );
+  }
+
+  /** Writes the `scenario.system_message` of N135 and hands it to the channel. */
+  async #notice(
+    request: RoleSelectionRequest,
+    result: SelectionResult,
+    wait: RoleWait,
+  ): Promise<void> {
+    const { scenarioId } = request;
+    if (scenarioId === undefined) return; // no chat to tell
+    const notice: ScenarioSelectionWaitNotice = {
+      scenarioId,
+      kind: 'selection_wait',
+      role: request.role,
+      playId: wait.playId,
+      demandId: wait.demandId,
+      crossCheck: result.crossCheck.mode,
+      workedProvider: result.crossCheck.workedProvider,
+      on: wait.on.map((item) => ({ ...item })),
+      until: wait.until,
+    };
+    await this.#guard('the notice of the wait', async () => {
+      await this.#options.store.events.append({
+        ...buildDaemonEvent('scenario.system_message', notice),
+        scenarioId,
+        ...(wait.playId === null ? {} : { playId: wait.playId }),
+      });
+      this.#options.onNotice?.(notice);
+    });
   }
 
   /** The session settings of an Executor of a selection (the profile and the model it runs with). */
@@ -290,14 +427,72 @@ export class RoleSelection {
 
   // ---- the decision ----
 
-  async #decide(request: RoleSelectionRequest): Promise<SelectionResult> {
+  /**
+   * The facts the selector reads and the lists of the roles for a scenario, as they are now. The
+   * same snapshot serves the selection of a demand and the handoff of an attempt (P18).
+   */
+  async #inputs(
+    scenarioId: string | undefined,
+    taskOverride: RoleSelectionRequest['taskOverride'],
+    director: boolean,
+  ): Promise<{ readonly ports: SelectionPorts; readonly resolved: ResolvedRoles }> {
     const { config, store, quota, pool, paths } = this.#options;
     const profiles = await this.#profileFacts();
     const resolved = await resolveScenarioRoleExecutors(
       { config, scenarios: store.scenarios },
       { profiles },
+      scenarioId,
+      taskOverride,
+    );
+    const ports: SelectionPorts = {
+      profile: (id) => profiles.find((profile) => profile.id === id),
+      // [proposta] No source tells the daemon that a profile is unhealthy yet: a login that lapsed
+      // shows as a failed attempt (P17), not as a probe.
+      health: () => true,
+      quota: async (id) => quotaFactOf(await quota.statusOf(id)),
+      admission: (executor) => ({
+        slot: pool.slotOf(
+          sessionSettingsOf(paths, {
+            client: executor.entry.client,
+            profile: executor.entry.profile,
+            model: executor.entry.model,
+          }).profile,
+          director,
+        ),
+        ram: 'ok',
+      }),
+      contextWindow: () => undefined,
+    };
+    return { ports, resolved };
+  }
+
+  /**
+   * What the handoff of an attempt (P18) needs to choose the next Executor with the same selector
+   * and the same facts: the ports, the settings and the lists of the roles of the scenario.
+   */
+  async selectorInputs(scenarioId: string | undefined): Promise<{
+    readonly ports: SelectionPorts;
+    readonly settings: SelectionSettings;
+    readonly roles: ResolvedRoles['roles'];
+  }> {
+    const { ports, resolved } = await this.#inputs(scenarioId, undefined, false);
+    return { ports, settings: selectionSettingsOf(this.#options.config), roles: resolved.roles };
+  }
+
+  /** The profile and the settings of the session of an Executor of a role (the handoff's launch). */
+  sessionOf(
+    role: string,
+    executor: ResolvedExecutor,
+  ): { readonly profile: Profile; readonly settings: ExecutorConfig } {
+    return this.#sessionOf(role, executor);
+  }
+
+  async #decide(request: RoleSelectionRequest): Promise<SelectionResult> {
+    const { config } = this.#options;
+    const { ports, resolved } = await this.#inputs(
       request.scenarioId,
       request.taskOverride,
+      request.role === 'director',
     );
     const role = (
       resolved.roles as Readonly<
@@ -319,26 +514,6 @@ export class RoleSelection {
             const reason = request.refuse?.(item) ?? null;
             return reason === null ? item : { ...item, validity: 'invalid', invalidReason: reason };
           });
-    const director = request.role === 'director';
-    const ports: SelectionPorts = {
-      profile: (id) => profiles.find((profile) => profile.id === id),
-      // [proposta] No source tells the daemon that a profile is unhealthy yet: a login that lapsed
-      // shows as a failed attempt (P17), not as a probe.
-      health: () => true,
-      quota: async (id) => quotaFactOf(await quota.statusOf(id)),
-      admission: (executor) => ({
-        slot: pool.slotOf(
-          sessionSettingsOf(paths, {
-            client: executor.entry.client,
-            profile: executor.entry.profile,
-            model: executor.entry.model,
-          }).profile,
-          director,
-        ),
-        ram: 'ok',
-      }),
-      contextWindow: () => undefined,
-    };
     const roundRobin = this.#cursors.get(this.#scopeOf(request));
     const previousExecutor = await this.#previousOf(request);
     const workedBy =
@@ -383,11 +558,18 @@ export class RoleSelection {
     executor: ResolvedExecutor,
     result: SelectionResult,
   ): SelectedExecutor {
+    return { executor, ...this.#sessionOf(request.role, executor), result };
+  }
+
+  #sessionOf(
+    role: string,
+    executor: ResolvedExecutor,
+  ): { readonly profile: Profile; readonly settings: ExecutorConfig } {
     const { config, paths } = this.#options;
     // `mode` is the one field of the old key the new name cannot carry.
     const legacy =
       executor.origin === 'legacy'
-        ? (config.orchestration.roles[request.role] ?? config.orchestration.executor)
+        ? (config.orchestration.roles[role] ?? config.orchestration.executor)
         : undefined;
     const { profile, executor: settings } = sessionSettingsOf(paths, {
       client: executor.entry.client,
@@ -396,7 +578,7 @@ export class RoleSelection {
       ...(executor.entry.effort === null ? {} : { effort: executor.entry.effort }),
       ...(legacy?.mode === undefined ? {} : { mode: legacy.mode }),
     });
-    return { executor, profile, settings, result };
+    return { profile, settings };
   }
 
   // ---- what the pipeline keeps ----

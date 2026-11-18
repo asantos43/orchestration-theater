@@ -5,7 +5,7 @@ import { parseConfig } from '../config.js';
 import { createSilentLogger } from '../logger.js';
 import { dataPaths } from '../paths.js';
 import type { QuotaStatus } from '../quota/state.js';
-import { describeWait, RoleSelection } from './role-selection.js';
+import { describeWait, RoleSelection, type AcquireWatch, type WaitEnd } from './role-selection.js';
 
 const entry = (profile: string): string => `fake-model@fake/${profile}`;
 
@@ -22,7 +22,7 @@ function status(profile: string, exhausted: boolean): QuotaStatus {
   };
 }
 
-function rig() {
+function rig(extra = '', onNotice?: (notice: unknown) => void) {
   const clock = new FakeClock();
   const store = new InMemoryStore({ clock });
   const out = new Set<string>();
@@ -30,13 +30,14 @@ function rig() {
 orchestration:
   executor: { client: fake, profile: one, model: fake-model }
 executors:
-  ${entry('one')}: { client: fake, profile: one, model: fake-model }
-  ${entry('two')}: { client: fake, profile: two, model: fake-model }
+  ${entry('one')}: { client: fake, profile: one, model: fake-model, provider: fake }
+  ${entry('two')}: { client: fake, profile: two, model: fake-model, provider: other }
 roles:
   actor: { executors: [${entry('one')}, ${entry('two')}] }
+  reviewer: { executors: [${entry('one')}, ${entry('two')}] }
 selection:
   recheck_every: off
-`);
+${extra}`);
   const selection = new RoleSelection({
     store,
     config,
@@ -50,6 +51,7 @@ selection:
     paths: dataPaths('/data'),
     clock,
     logger: createSilentLogger(),
+    ...(onNotice === undefined ? {} : { onNotice }),
   });
   const setup = async (): Promise<void> => {
     for (const name of ['one', 'two']) {
@@ -186,5 +188,136 @@ describe('RoleSelection', () => {
       attempt: { playId: 'p1', demandId: 'd1', number: 2 },
     });
     expect(second.kind === 'selected' && second.executor.id).toBe(entry('two'));
+  });
+});
+
+describe('RoleSelection: the watch of a wait (P16b)', () => {
+  it('tells the watcher once when the wait starts and once when it ends', async () => {
+    const { selection, out, setup } = rig();
+    await setup();
+    out.add('fake/one').add('fake/two');
+    const started: string[] = [];
+    const ended: WaitEnd[] = [];
+    const watch: AcquireWatch = {
+      started: (wait) => {
+        started.push(wait.message);
+      },
+      ended: (end) => {
+        ended.push(end);
+      },
+    };
+    const pending = selection.acquire({ role: 'actor' }, { watch });
+    for (let i = 0; i < 100 && started.length === 0; i += 1) await pause(5);
+    selection.wake();
+    await pause(20);
+    expect(started).toEqual(['waiting for quota of fake/one, fake/two']);
+    expect(ended).toEqual([]);
+    out.delete('fake/one');
+    selection.wake();
+    const got = await pending;
+    expect(got?.kind).toBe('selected');
+    expect(started).toHaveLength(1);
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).toMatchObject({ outcome: 'selected', executor: entry('one') });
+  });
+
+  it('does not call the watcher when an Executor is there at the first try', async () => {
+    const { selection, setup } = rig();
+    await setup();
+    const calls: string[] = [];
+    const got = await selection.acquire(
+      { role: 'actor' },
+      {
+        watch: {
+          started: () => {
+            calls.push('started');
+          },
+          ended: () => {
+            calls.push('ended');
+          },
+        },
+      },
+    );
+    expect(got?.kind).toBe('selected');
+    expect(calls).toEqual([]);
+  });
+
+  it('ends the watch with cancelled when the signal aborts, and survives a watcher that throws', async () => {
+    const { selection, out, setup } = rig();
+    await setup();
+    out.add('fake/one').add('fake/two');
+    const controller = new AbortController();
+    const ended: WaitEnd[] = [];
+    const pending = selection.acquire(
+      { role: 'actor' },
+      {
+        signal: controller.signal,
+        watch: {
+          started: () => {
+            throw new Error('the watcher broke');
+          },
+          ended: (end) => {
+            ended.push(end);
+          },
+        },
+      },
+    );
+    await pause(30);
+    controller.abort();
+    expect(await pending).toBeUndefined();
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).toMatchObject({ outcome: 'cancelled', executor: null });
+  });
+});
+
+describe('RoleSelection: the notice of the strict cross-review (N135, P16b)', () => {
+  const strict = '  cross_check: require_other_provider\n  strict_unavailable: wait_notify\n';
+  const request = {
+    role: 'reviewer',
+    scenarioId: 'S1',
+    workedBy: { provider: 'fake' },
+    attempt: { playId: 'p1', demandId: 'd1', number: 1 },
+  } as const;
+
+  it('writes the scenario.system_message and calls onNotice once per wait', async () => {
+    const notices: unknown[] = [];
+    const { selection, store, out, setup } = rig(strict, (notice) => notices.push(notice));
+    await setup();
+    out.add('fake/two');
+    const pending = selection.acquire(request);
+    for (let i = 0; i < 100 && notices.length === 0; i += 1) await pause(5);
+    selection.wake();
+    await pause(20);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      scenarioId: 'S1',
+      kind: 'selection_wait',
+      role: 'reviewer',
+      crossCheck: 'require_other_provider',
+      workedProvider: 'fake',
+    });
+    const messages = (await store.events.readFrom(0, 1000)).filter(
+      (event) => event.type === 'scenario.system_message',
+    );
+    expect(messages).toHaveLength(1);
+    selection.close();
+    expect(await pending).toBeUndefined();
+  });
+
+  it('says nothing with strict_unavailable: wait', async () => {
+    const notices: unknown[] = [];
+    const quiet = strict.replace('wait_notify', 'wait');
+    const { selection, store, out, setup } = rig(quiet, (notice) => notices.push(notice));
+    await setup();
+    out.add('fake/two');
+    const pending = selection.acquire(request);
+    await pause(40);
+    expect(notices).toEqual([]);
+    const messages = (await store.events.readFrom(0, 1000)).filter(
+      (event) => event.type === 'scenario.system_message',
+    );
+    expect(messages).toEqual([]);
+    selection.close();
+    await pending;
   });
 });

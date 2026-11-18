@@ -71,8 +71,9 @@ export const ScenarioChatTransitionedPayloadSchema = z.strictObject({
 
 /**
  * `scenario.system_message`: a message of the daemon for the chat of a scenario (architecture
- * 5.21, step 8). [proposta] Two kinds: `recovery`, what the reconciliation of a start-up did in this
- * scenario, and `handoff` (Phase 5, P18), an attempt that passed the baton to another Executor.
+ * 5.21, step 8). [proposta] Three kinds: `recovery`, what the reconciliation of a start-up did in this
+ * scenario, `handoff` (Phase 5, P18), an attempt that passed the baton to another Executor, and
+ * `selection_wait` (P16b, N135), a role that waits for an Executor the strict cross-review keeps out.
  * The payload is data, not text: each interface writes the words in the language of the Producer
  * (5.22), so the log stays in English.
  */
@@ -120,7 +121,62 @@ export const ScenarioHandoffNoticeSchema = z.strictObject({
   toExecutor: z.string().min(1),
 });
 
+/**
+ * The `selection_wait` kind (P16b, N135 and N143; [proposta]): a role waits for an Executor the
+ * strict cross-review keeps out (`selection.cross_check: require_other_provider | other_model`
+ * with `selection.strict_unavailable: wait_notify`). Ids and reasons only; `workedProvider` is the
+ * provider of the work under review that the role must not share.
+ */
+export const ScenarioSelectionWaitNoticeSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('selection_wait'),
+  role: z.string().min(1).max(64),
+  playId: z.string().min(1).nullable(),
+  demandId: z.string().min(1).nullable(),
+  /** `require_other_provider` or `other_model`. */
+  crossCheck: z.string().min(1),
+  workedProvider: z.string().min(1).nullable(),
+  /** The Executors set aside and why. */
+  on: z.array(
+    z.strictObject({
+      executor: z.string().min(1),
+      profile: z.string().min(1),
+      reason: z.string().min(1),
+    }),
+  ),
+  /** The earliest known end of the wait; null when no source says. */
+  until: z.int().min(0).nullable(),
+});
+
 export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioRecoveryNoticeSchema,
   ScenarioHandoffNoticeSchema,
+  ScenarioSelectionWaitNoticeSchema,
 ]);
+
+/** What a `play.notice` tells (P16b, [proposta]): a situation of the play the daemon used to only log. */
+export const PLAY_NOTICE_KINDS = [
+  /** An effect of the machine that nothing carries out yet (judgment point 2). */
+  'effect_not_implemented',
+  /** The Vcs adapter cannot rebase, so the dependents were not moved. */
+  'rebase_unsupported',
+  /** The diff of the earlier attempt could not be read; the new one starts without it. */
+  'old_diff_unreadable',
+  /** The base moved and `delivery.base_drift: deliver_and_warn` delivers anyway. */
+  'delivery_base_moved',
+  /** Nobody answered the delivery question; the play goes on with the PR. */
+  'delivery_unanswered',
+] as const;
+export type PlayNoticeKind = (typeof PLAY_NOTICE_KINDS)[number];
+
+/**
+ * `play.notice`: a situation of a play that is neither a wait nor a failure, written down so hooks
+ * and plugins can read it (the owner's order of 2026-11-18). [proposta] `detail` is a short text
+ * in English for the log (an effect type, an adapter id, a cause), never a path or a credential.
+ */
+export const PlayNoticePayloadSchema = z.strictObject({
+  scenarioId: scenarioId.nullable(),
+  playId: z.string().min(1),
+  kind: z.enum(PLAY_NOTICE_KINDS),
+  detail: z.string().max(500).nullable(),
+});
