@@ -55,6 +55,12 @@ export interface LimitHit {
 /** The source a recheck of P9 gives its readings and its release of a limit (`quota.restored.reason`). */
 export const RECHECK_SOURCE = 'recheck';
 
+/**
+ * The source a release of a spending cap gives its readings when the configuration changed
+ * (P11b, `budget.on_cap_change: release`): it is `budget.restored.reason` `config`.
+ */
+export const CONFIG_SOURCE = 'config';
+
 /** What a listener hears when a profile's announced state changes (P9 uses it for its wakeups). */
 export interface QuotaChange {
   /** Complete id `<client>/<profile>`. */
@@ -432,6 +438,32 @@ export class QuotaService {
     });
   }
 
+  /**
+   * Lets go of a spending-cap hit before the period ends, because the cap was raised or removed in
+   * the configuration (P11b, `budget.on_cap_change: release`). The profile becomes what the other
+   * readings say (usually `unknown`) and `budget.restored` says it with the reason `config`; the
+   * hooks of P9 run as at any other restore. Nothing happens when the profile has no such hit.
+   */
+  async releaseBudgetHit(target: ProfileTarget): Promise<QuotaStatus> {
+    const profile = formatProfileId(refOf(target));
+    return this.#exclusive(async () => {
+      const now = this.#now;
+      const hit = await this.#options.store.quotaSnapshots.get(profile, hitWindowOf('budget'));
+      if (hit !== undefined && (hit.resetsAt === null || hit.resetsAt > now)) {
+        await this.#options.store.quotaSnapshots.put({
+          profileId: profile,
+          window: hitWindowOf('budget'),
+          usedPercent: 100,
+          resetsAt: now,
+          source: CONFIG_SOURCE,
+          observedAt: now,
+        });
+        this.#poke();
+      }
+      return this.#settle(profile, CONFIG_SOURCE);
+    });
+  }
+
   /** A reading of a probe (`read` or `watch`). One that does not fit the schema is dropped. */
   async ingestReading(
     target: ProfileTarget,
@@ -668,7 +700,11 @@ export class QuotaService {
       // The spending cap has its own name (P9): `budget.restored`, not `quota.restored`.
       if (before.cause === 'budget') {
         await events.append(
-          buildDaemonEvent('budget.restored', { profile, state: status.state, reason }),
+          buildDaemonEvent('budget.restored', {
+            profile,
+            state: status.state,
+            reason: source === CONFIG_SOURCE && !timeCame ? 'config' : reason,
+          }),
         );
       } else {
         await events.append(

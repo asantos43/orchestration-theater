@@ -29,6 +29,15 @@ export type BudgetInFlight = (typeof BUDGET_IN_FLIGHT_MODES)[number];
 export const BUDGET_UNKNOWN_COST_MODES = ['ignore', 'block'] as const;
 export type BudgetUnknownCost = (typeof BUDGET_UNKNOWN_COST_MODES)[number];
 
+/**
+ * `budget.on_cap_change` [proposta, owner's answer of 2026-11-18]: what a cap that is `exhausted`
+ * does when the configuration is read again and the profile's cap is raised above the spending of
+ * the period, or removed. `release` (default) lets the profile go at once, with `budget.restored`
+ * and the reason `config`; `keep` holds it until the period turns.
+ */
+export const BUDGET_ON_CAP_CHANGE_MODES = ['release', 'keep'] as const;
+export type BudgetOnCapChange = (typeof BUDGET_ON_CAP_CHANGE_MODES)[number];
+
 const oneOf = (key: string, values: readonly string[]) => ({
   error: (issue: { input?: unknown }) =>
     `${key}: ${JSON.stringify(issue.input)} is not accepted; use ${values.map((v) => `"${v}"`).join(', ')}`,

@@ -20,6 +20,7 @@ import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { editsPrompt, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import { eventsOf, makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixture.js';
+import type { PackageSummarizer } from './continuation-package.js';
 import { createHandoffPort, type HandoffPort, type HandoffRequest } from './handoff.js';
 import { DEFAULT_PACKAGE_SETTINGS, type ExecutionSettings } from './settings.js';
 
@@ -520,6 +521,13 @@ describe('the handoff, when nobody can take the work', () => {
         handoffWait: { reason: 'no_port', on: [], until: null },
       });
       expect(r.transport.opened).toHaveLength(1);
+      const [failed] = await eventsOf(r, 'session.handoff_failed');
+      expect(failed?.payload).toMatchObject({
+        reason: 'no_port',
+        cause: 'quota_exhausted',
+        on: [],
+        until: null,
+      });
     },
     TEST_TIMEOUT_MS,
   );
@@ -541,6 +549,14 @@ describe('the handoff, when nobody can take the work', () => {
       // No target, so the event says only the form.
       expect(interrupted?.payload).toMatchObject({ form: 'handoff' });
       expect(interrupted?.payload).not.toHaveProperty('to.profile');
+      const failed = await eventsOf(r, 'session.handoff_failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toMatchObject({ reason: 'no_other_executor' });
+      // Written after the interruption, before the attempt is parked.
+      const types = (await eventsOf(r)).map((event) => event.type);
+      expect(types.indexOf('session.handoff_failed')).toBeGreaterThan(
+        types.indexOf('session.interrupted'),
+      );
     },
     TEST_TIMEOUT_MS,
   );
@@ -558,6 +574,179 @@ describe('the handoff, when nobody can take the work', () => {
         state: 'interrupted',
         handoffWait: { reason: 'selection_failed' },
       });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'the failure of the selection and of the package reach the event as masked text, never raw',
+    async () => {
+      const key = 'sk-abcdefghijklmnopqrstuvwx';
+      const choosing = await rig(() => ({
+        prefixOf: () => PREFIX,
+        choose: () => Promise.reject(new Error(`the catalog said no, key ${key}\n  at stack`)),
+      }));
+      await seed(choosing.store);
+      await choosing.runner.run(specOf(choosing, '#script:quota-signal', { role: 'actor' }));
+      const [selection] = await eventsOf(choosing, 'session.handoff_failed');
+      expect(selection?.payload).toMatchObject({ reason: 'selection_failed', on: [], until: null });
+      const text = (selection?.payload as { error?: string }).error ?? '';
+      expect(text).toContain('the catalog said no');
+      expect(text).not.toContain(key);
+      expect(text).not.toContain('\n');
+
+      // The package of the new session is built after the choice: its failure is `package_failed`.
+      const building = await rig(() => ({
+        ...scripted().port,
+        prefixOf: () => Promise.reject(new Error(`no prefix, token ${key}`)),
+      }));
+      await seed(building.store);
+      const outcome = await building.runner.run(
+        specOf(building, '#script:quota-signal', { role: 'actor' }),
+      );
+      expect(outcome.handoffWait?.reason).toBe('package_failed');
+      expect(outcome.handoffWait?.error).not.toContain(key);
+      const [pkg] = await eventsOf(building, 'session.handoff_failed');
+      expect(pkg?.payload).toMatchObject({ reason: 'package_failed', on: [], until: null });
+      expect((pkg?.payload as { error?: string }).error).toContain('no prefix');
+      expect(JSON.stringify(pkg?.payload)).not.toContain(key);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('session.handoff, the event of the baton passed (P18b)', () => {
+  const KEY = 'sk-abcdefghijklmnopqrstuvwx';
+
+  it(
+    'says who gave the baton to whom, the package and that the attempt was not spent',
+    async () => {
+      const r = await rig(() => scripted().port);
+      await seed(r.store);
+      const outcome = await r.runner.run(specOf(r, '#script:quota-signal', { role: 'actor' }));
+      expect(outcome.state).toBe('completed');
+      const events = await eventsOf(r, 'session.handoff');
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload).toEqual({
+        previousSessionId: 'fake-session-1',
+        role: 'actor',
+        cause: 'quota_exhausted',
+        from: { client: 'fake', profile: 'one', model: 'fake-model' },
+        to: { client: 'fake', profile: 'two', model: 'fake-model' },
+        countedAsAttempt: false,
+        packageChars: outcome.handoffs[0]?.packageChars,
+        packageLevel: 0,
+        packageCut: false,
+        summary: 'deterministic',
+        playId: PLAY,
+        demandId: 'demand-1',
+        attemptId: ATTEMPT,
+      });
+      expect(outcome.handoffs[0]).toMatchObject({ packageCut: false, summary: 'deterministic' });
+      // The order of the log: interrupted, the baton, then the new session; the chat message stays.
+      const types = (await eventsOf(r)).map((event) => event.type);
+      const order = ['session.interrupted', 'session.handoff', 'session.opened', 'session.resumed'];
+      const at = order.map((type) => types.lastIndexOf(type));
+      expect(at.every((place) => place >= 0)).toBe(true);
+      expect(at[0]).toBeLessThan(at[1] ?? -1);
+      expect(at[1]).toBeLessThan(at[2] ?? -1);
+      expect(at[2]).toBeLessThan(at[3] ?? -1);
+      expect(types).toContain('scenario.system_message');
+      expect(await eventsOf(r, 'session.handoff_failed')).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a stuck Executor: the event says the interruption counted as an attempt',
+    async () => {
+      const r = await rig(() => scripted().port, { stuckNoEventMs: 5000 });
+      await seed(r.store);
+      const running = r.runner.run(specOf(r, '#script:hang', { role: 'actor' }));
+      await until(
+        async () => (await eventsOf(r, 'session.update')).length > 0,
+        'the first session to hang',
+      );
+      await r.clock.advance(5000);
+      await running;
+      const [event] = await eventsOf(r, 'session.handoff');
+      expect(event?.payload).toMatchObject({ cause: 'stuck', countedAsAttempt: true });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a summarizer that fails leaves the deterministic package and says so, with masked text',
+    async () => {
+      const summarizer: PackageSummarizer = {
+        summarize: () => Promise.reject(new Error(`the cheap model is down, key ${KEY}`)),
+      };
+      const r = await rig(() => ({ ...scripted().port, summarizer }), {
+        package: { ...DEFAULT_PACKAGE_SETTINGS, summarize: 'director_model' },
+      });
+      await seed(r.store);
+      const outcome = await r.runner.run(specOf(r, '#script:quota-signal', { role: 'actor' }));
+      expect(outcome.state).toBe('completed');
+      const [event] = await eventsOf(r, 'session.handoff');
+      expect(event?.payload).toMatchObject({ summary: 'model_failed' });
+      const error = (event?.payload as { summaryError?: string }).summaryError ?? '';
+      expect(error).toContain('the cheap model is down');
+      expect(error).not.toContain(KEY);
+      expect(outcome.handoffs[0]).toMatchObject({ summary: 'model_failed' });
+      // The package went on, with the deterministic summary alone.
+      const text = await promptOf(r, 'fake-session-2');
+      expect(text).toContain('## What happened so far');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a summarizer that answers is `model`; one not wired is `model_unavailable`; an empty one fails',
+    async () => {
+      const director = { ...DEFAULT_PACKAGE_SETTINGS, summarize: 'director_model' } as const;
+      const wired: PackageSummarizer = { summarize: () => Promise.resolve('short story') };
+      const ok = await rig(() => ({ ...scripted().port, summarizer: wired }), {
+        package: director,
+      });
+      await seed(ok.store);
+      await ok.runner.run(specOf(ok, '#script:quota-signal', { role: 'actor' }));
+      const [used] = await eventsOf(ok, 'session.handoff');
+      expect(used?.payload).toMatchObject({ summary: 'model' });
+      expect(used?.payload).not.toHaveProperty('summaryError');
+
+      const missing = await rig(() => scripted().port, { package: director });
+      await seed(missing.store);
+      await missing.runner.run(specOf(missing, '#script:quota-signal', { role: 'actor' }));
+      const [none] = await eventsOf(missing, 'session.handoff');
+      expect(none?.payload).toMatchObject({ summary: 'model_unavailable' });
+
+      const blank: PackageSummarizer = { summarize: () => Promise.resolve('   ') };
+      const empty = await rig(() => ({ ...scripted().port, summarizer: blank }), {
+        package: director,
+      });
+      await seed(empty.store);
+      await empty.runner.run(specOf(empty, '#script:quota-signal', { role: 'actor' }));
+      const [nothing] = await eventsOf(empty, 'session.handoff');
+      expect(nothing?.payload).toMatchObject({
+        summary: 'model_failed',
+        summaryError: 'the model wrote an empty summary',
+      });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a package that does not fit resume.package.max_chars says it was cut and at which level',
+    async () => {
+      const r = await rig(() => scripted().port, {
+        package: { ...DEFAULT_PACKAGE_SETTINGS, maxChars: 400 },
+      });
+      await seed(r.store);
+      const outcome = await r.runner.run(specOf(r, '#script:quota-signal', { role: 'actor' }));
+      expect(outcome.state).toBe('completed');
+      const [event] = await eventsOf(r, 'session.handoff');
+      expect(event?.payload).toMatchObject({ packageLevel: 4, packageCut: true });
+      expect(outcome.handoffs[0]).toMatchObject({ packageLevel: 4, packageCut: true });
     },
     TEST_TIMEOUT_MS,
   );
@@ -593,9 +782,13 @@ describe('the handoff over the selector of P15', () => {
 
   const profiles: Record<string, Profile> = { one: TEST_PROFILE, two: TWO };
 
-  function over(prefix: string, notices: ScenarioHandoffNotice[] = []): HandoffPort {
+  function over(
+    prefix: string,
+    notices: ScenarioHandoffNotice[] = [],
+    selection: SelectionPorts = ports,
+  ): HandoffPort {
     return createHandoffPort({
-      selection: ports,
+      selection,
       settings: DEFAULT_SELECTION_SETTINGS,
       roleOf: (role) =>
         Promise.resolve({
@@ -663,6 +856,42 @@ describe('the handoff over the selector of P15', () => {
       await seed(r.store);
       const outcome = await r.runner.run(specOf(r, '#script:quota-signal', { role: 'wizard' }));
       expect(outcome).toMatchObject({ state: 'interrupted', handoffWait: { reason: 'no_role' } });
+      const [failed] = await eventsOf(r, 'session.handoff_failed');
+      expect(failed?.payload).toMatchObject({ reason: 'no_role', on: [], until: null });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'session.handoff_failed carries the wait of the selector: who it waits on and until when',
+    async () => {
+      const untilReset = 1_763_521_200_000;
+      const exhausted: SelectionPorts = {
+        ...ports,
+        quota: (profile) =>
+          profile === 'fake/two'
+            ? { state: 'exhausted', cause: 'quota', untilReset, headroom: 0 }
+            : { state: 'ok', cause: null, untilReset: null, headroom: 0.5 },
+      };
+      const r = await rig(() => over(PREFIX, [], exhausted));
+      await seed(r.store);
+      const outcome = await r.runner.run(specOf(r, '#script:quota-signal', { role: 'actor' }));
+      expect(outcome.handoffWait).toMatchObject({ reason: 'waiting', until: untilReset });
+      const [failed] = await eventsOf(r, 'session.handoff_failed');
+      expect(failed?.payload).toMatchObject({
+        sessionId: 'fake-session-1',
+        role: 'actor',
+        cause: 'quota_exhausted',
+        from: { client: 'fake', profile: 'one', model: 'fake-model' },
+        reason: 'waiting',
+        on: [ID_TWO],
+        until: untilReset,
+        playId: PLAY,
+        demandId: 'demand-1',
+        attemptId: ATTEMPT,
+      });
+      expect(failed?.payload).not.toHaveProperty('error');
+      expect(await eventsOf(r, 'session.handoff')).toHaveLength(0);
     },
     TEST_TIMEOUT_MS,
   );

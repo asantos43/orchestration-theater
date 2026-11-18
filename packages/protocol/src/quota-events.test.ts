@@ -40,6 +40,12 @@ describe('quota.* events [proposta]', () => {
     expect(validateEventPayload('quota.restored', 1, rechecked)).toEqual(rechecked);
     const budget = { profile: 'claude-code/work', state: 'ok', reason: 'reset' };
     expect(validateEventPayload('budget.restored', 1, budget)).toEqual(budget);
+    const changed = { ...budget, reason: 'config' };
+    expect(validateEventPayload('budget.restored', 1, changed)).toEqual(changed);
+    // `config` is a reason of the cap only: a quota is never released by a configuration change.
+    expect(() =>
+      validateEventPayload('quota.restored', 1, { ...restored, reason: 'config' }),
+    ).toThrow();
     expect(() =>
       validateEventPayload('budget.restored', 1, { ...budget, cause: 'budget' }),
     ).toThrow();
@@ -65,6 +71,49 @@ describe('quota.* events [proposta]', () => {
       validateEventPayload('budget.warning', 1, { ...warning, period: 'week' }),
     ).toThrow();
     expect(() => validateEventPayload('budget.warning', 1, { ...warning, extra: 1 })).toThrow();
+  });
+
+  it('accepts the payload of budget.exceeded for a profile cap and an Executor cap, and refuses the rest', () => {
+    const exceeded = {
+      profile: 'claude-code/api',
+      executor: null,
+      period: 'day',
+      spentUsd: 10.5,
+      limitUsd: 10,
+      endsAt: 1_763_521_200_000,
+    };
+    expect(validateEventPayload('budget.exceeded', 1, exceeded)).toEqual(exceeded);
+    const own = { ...exceeded, executor: 'claude-opus-high@claude-code/api', period: 'month' };
+    expect(validateEventPayload('budget.exceeded', 1, own)).toEqual(own);
+    expect(() =>
+      validateEventPayload('budget.exceeded', 1, { ...exceeded, limitUsd: 0 }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.exceeded', 1, { ...exceeded, period: 'week' }),
+    ).toThrow();
+    expect(() => validateEventPayload('budget.exceeded', 1, { ...exceeded, extra: 1 })).toThrow();
+    expect(() =>
+      validateEventPayload('budget.exceeded', 1, { ...exceeded, endsAt: undefined }),
+    ).toThrow();
+  });
+
+  it('accepts the payload of budget.unknown_cost and refuses the rest', () => {
+    const unknown = {
+      model: 'no-such-model',
+      profile: 'claude-code/api',
+      executor: 'claude-opus-high@claude-code/api',
+      mode: 'ignore',
+    };
+    expect(validateEventPayload('budget.unknown_cost', 1, unknown)).toEqual(unknown);
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, mode: 'block' }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, model: '' }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, extra: 1 }),
+    ).toThrow();
   });
 
   it('refuse an unknown state, an unknown cause and extra fields', () => {

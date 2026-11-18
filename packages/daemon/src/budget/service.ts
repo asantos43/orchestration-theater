@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
-import { tryParseExecutorId, type Clock, type Disposable, type Store } from '@otheater/core';
+import {
+  tryParseExecutorId,
+  type Clock,
+  type Disposable,
+  type Store,
+  type UsageRecord,
+} from '@otheater/core';
 import {
   buildDaemonEvent,
+  BudgetExceededPayloadSchema,
   BudgetWarningPayloadSchema,
+  type BudgetExceededPayload,
   type BudgetPeriod,
+  type BudgetUnknownCostPayload,
   type BudgetWarningPayload,
 } from '@otheater/protocol';
 import type { BudgetInFlight, BudgetOnExceeded } from '../budget-config.js';
 import type { Logger } from '../logger.js';
 import type { QuotaService } from '../quota/service.js';
+import { hitWindowOf } from '../quota/state.js';
 import type { UsageService } from '../usage/service.js';
 import { periodBounds } from './calendar.js';
 import type { BudgetSettings } from './settings.js';
@@ -21,12 +31,15 @@ const NANO = 1_000_000_000;
 const nano = (usd: number): number => Math.round(usd * NANO);
 
 export interface BudgetServiceOptions {
-  readonly store: Pick<Store, 'events'>;
+  readonly store: Pick<Store, 'events' | 'quotaSnapshots'>;
   readonly clock: Clock;
   readonly settings: BudgetSettings;
   readonly logger: Logger;
-  /** Where a spent cap becomes `exhausted(budget)`, and where the state is read back. */
-  readonly quota: Pick<QuotaService, 'ingestLimitHit'>;
+  /**
+   * Where a spent cap becomes `exhausted(budget)`, where the state is read back, and where a cap
+   * that was raised or removed lets the profile go (`budget.on_cap_change: release`).
+   */
+  readonly quota: Pick<QuotaService, 'ingestLimitHit' | 'statusOf' | 'releaseBudgetHit'>;
   /** Where the spending is summed, and the turns come from. */
   readonly usage: Pick<UsageService, 'totals' | 'onRecorded'>;
   /** Whoever answers `on_exceeded: ask`. Without one, nobody is watching: `ask` becomes `skip`. */
@@ -168,8 +181,14 @@ export class BudgetService {
   readonly #options: BudgetServiceOptions;
   readonly #listeners = new Set<BudgetExceededListener>();
   readonly #warningListeners = new Set<BudgetWarningListener>();
+  /** What the service reads: `applySettings` replaces it when the configuration is read again. */
+  #settings: BudgetSettings;
   /** The warnings already written: key to the end of the period they belong to. */
   readonly #warned = new Map<string, number>();
+  /** The `budget.exceeded` already written: key to the end of the period they belong to. */
+  readonly #exceededSent = new Map<string, number>();
+  /** The models whose unknown cost was already said in the log (once per life of the daemon). */
+  readonly #unknownCostModels = new Set<string>();
   /** The profiles whose cap is spent now, with the reset the last hit gave. */
   readonly #breached = new Map<string, BudgetExceeded>();
   readonly #answers = new Map<string, Promise<BudgetChoice>>();
@@ -179,13 +198,14 @@ export class BudgetService {
 
   constructor(options: BudgetServiceOptions) {
     this.#options = options;
+    this.#settings = options.settings;
   }
 
   // ---- settings ----
 
   /** What `profiles.<id>.budget` says for a profile; the defaults when it has no cap. */
   settingsOf(profile: string): { onExceeded: BudgetOnExceeded; inFlight: BudgetInFlight } {
-    const own = this.#options.settings.profiles.get(profile);
+    const own = this.#settings.profiles.get(profile);
     return {
       onExceeded: own?.onExceeded ?? DEFAULT_ON_EXCEEDED,
       inFlight: own?.inFlight ?? DEFAULT_IN_FLIGHT,
@@ -226,13 +246,25 @@ export class BudgetService {
   async start(): Promise<void> {
     if (this.#started) return;
     this.#started = true;
-    await this.#seedWarnings();
+    await this.#seedFromLog();
     this.#subscription = this.#options.usage.onRecorded((row) => {
+      void this.#enqueue(() => this.#noteUnknownCost(row));
       void this.#enqueue(() => this.#evaluate(row.profileId, [row.executorId]));
     });
-    for (const [profile, executors] of this.#subjects()) {
-      void this.#enqueue(() => this.#evaluate(profile, executors));
-    }
+    await this.#evaluateAll();
+    await this.flush();
+  }
+
+  /**
+   * The configuration was read again (P11b): the service takes the new caps and reads every capped
+   * profile against them. With `budget.on_cap_change: release`, a profile that is
+   * `exhausted(budget)` and whose cap now leaves room (or is gone) is released at once, with
+   * `budget.restored` and the reason `config`. [N] The daemon reads its configuration only on
+   * start-up today, where the same reading is `start`; this is the hook a reload plugs into.
+   */
+  async applySettings(settings: BudgetSettings): Promise<void> {
+    this.#settings = settings;
+    await this.#evaluateAll();
     await this.flush();
   }
 
@@ -320,7 +352,8 @@ export class BudgetService {
 
   async #choose(breach: BudgetExceeded): Promise<BudgetChoice> {
     if (breach.onExceeded !== 'ask') return { choice: breach.onExceeded, via: 'config' };
-    const { asker, settings, clock, logger } = this.#options;
+    const { asker, clock, logger } = this.#options;
+    const settings = this.#settings;
     if (asker === undefined) return { choice: 'skip', via: 'unattended' };
     const abort = new AbortController();
     const timeout = clock.sleep(settings.askTimeoutMs, abort.signal).then(
@@ -359,23 +392,46 @@ export class BudgetService {
     return run;
   }
 
-  /** The profiles that have a cap, with the Executors of those that have one of their own. */
-  #subjects(): Map<string, string[]> {
+  /** Queues the reading of every subject; a failure of one is logged and the others go on. */
+  async #evaluateAll(): Promise<void> {
+    try {
+      for (const [profile, executors] of await this.#subjects()) {
+        void this.#enqueue(() => this.#evaluate(profile, executors));
+      }
+    } catch (error) {
+      this.#options.logger.error({ err: error }, 'listing the profiles with a spending cap failed');
+    }
+  }
+
+  /**
+   * The profiles that have a cap, with the Executors of those that have one of their own; and,
+   * under `on_cap_change: release`, those that are `exhausted(budget)` with no cap left (the cap
+   * was removed while the daemon was stopped), so that they are released too.
+   */
+  async #subjects(): Promise<Map<string, string[]>> {
     const subjects = new Map<string, string[]>();
-    for (const profile of this.#options.settings.profiles.keys()) subjects.set(profile, []);
-    for (const executor of this.#options.settings.executors.keys()) {
+    for (const profile of this.#settings.profiles.keys()) subjects.set(profile, []);
+    for (const executor of this.#settings.executors.keys()) {
       const parsed = tryParseExecutorId(executor);
       if (typeof parsed === 'string') continue;
       const list = subjects.get(parsed.profileId) ?? [];
       list.push(executor);
       subjects.set(parsed.profileId, list);
     }
+    if (this.#settings.onCapChange === 'release') {
+      const now = this.#options.clock.now();
+      for (const row of await this.#options.store.quotaSnapshots.list()) {
+        if (row.window !== hitWindowOf('budget')) continue;
+        if (row.resetsAt !== null && row.resetsAt <= now) continue;
+        if (!subjects.has(row.profileId)) subjects.set(row.profileId, []);
+      }
+    }
     return subjects;
   }
 
   /** The caps that apply to a profile and, when given, to one Executor of it. */
   #capsOf(profile: string | undefined, executorId: string | undefined): Cap[] {
-    const { profiles, executors } = this.#options.settings;
+    const { profiles, executors } = this.#settings;
     const caps: Cap[] = [];
     const add = (
       scope: Cap['scope'],
@@ -401,7 +457,8 @@ export class BudgetService {
   }
 
   async #read(profile: string | undefined, executorId: string | undefined): Promise<Reading[]> {
-    const { clock, settings, usage } = this.#options;
+    const { clock, usage } = this.#options;
+    const settings = this.#settings;
     const now = clock.now();
     const readings: Reading[] = [];
     for (const cap of this.#capsOf(profile, executorId)) {
@@ -440,22 +497,84 @@ export class BudgetService {
     }
     this.#prune();
     await this.#warn(profile, readings);
+    await this.#announceExceeded(profile, readings);
     await this.#enforce(profile, profileReadings);
+  }
+
+  /** Forgets the warnings and the overruns of periods that have turned. */
+  #prune(): void {
+    const now = this.#options.clock.now();
+    for (const sent of [this.#warned, this.#exceededSent]) {
+      for (const [key, endsAt] of sent) {
+        if (endsAt <= now) sent.delete(key);
+      }
+    }
+  }
+
+  /**
+   * `budget.unknown_cost: ignore` leaves the turn out of the sum, so the cap is blind to it (N139,
+   * revised by the owner on 2026-11-18: the situation is an event too, not only a log line). Once
+   * per model per life of the daemon, the log says so with the way out (`pricing.<model>`) and the
+   * event `budget.unknown_cost` is written. Only a turn of a profile or Executor that has a cap
+   * matters; `block` has its own effect.
+   */
+  async #noteUnknownCost(row: UsageRecord): Promise<void> {
+    if (this.#settings.unknownCost !== 'ignore') return;
+    if (row.costUsd !== null && row.costKind !== null) return;
+    const { profiles, executors } = this.#settings;
+    if (!profiles.has(row.profileId) && !executors.has(row.executorId)) return;
+    if (this.#unknownCostModels.has(row.model)) return;
+    this.#unknownCostModels.add(row.model);
+    const payload: BudgetUnknownCostPayload = {
+      model: row.model,
+      profile: row.profileId,
+      executor: row.executorId,
+      mode: 'ignore',
+    };
+    try {
+      await this.#options.store.events.append(buildDaemonEvent('budget.unknown_cost', payload));
+    } catch (error) {
+      // Tried again on the next turn of the model.
+      this.#unknownCostModels.delete(row.model);
+      throw error;
+    }
+    this.#options.logger.warn(
+      { model: row.model, profile: row.profileId, executor: row.executorId },
+      `a turn of the model "${row.model}" has no known cost, so the spending cap does not count it (budget.unknown_cost: ignore); set pricing.${row.model} in the configuration to give the model a price`,
+    );
+  }
+
+  /**
+   * `budget.exceeded` (P11b, [proposta]): once per cap, period and limit. An Executor cap says it
+   * here and in the log; a profile cap also becomes `exhausted(budget)` in {@link #enforce}.
+   */
+  async #announceExceeded(profile: string, readings: readonly Reading[]): Promise<void> {
     for (const reading of readings) {
-      if (reading.scope === 'executor' && reading.remainingUsd === 0) {
+      if (reading.endsAt === null || reading.remainingUsd > 0) continue;
+      const key = `${reading.scope}|${reading.id}|${reading.period}|${String(reading.endsAt)}|${String(reading.limitUsd)}`;
+      if (this.#exceededSent.has(key)) continue;
+      this.#exceededSent.set(key, reading.endsAt);
+      const payload: BudgetExceededPayload = {
+        profile,
+        executor: reading.scope === 'executor' ? reading.id : null,
+        period: reading.period,
+        spentUsd: reading.spentUsd,
+        limitUsd: reading.limitUsd,
+        endsAt: reading.endsAt,
+      };
+      try {
+        await this.#options.store.events.append(buildDaemonEvent('budget.exceeded', payload));
+      } catch (error) {
+        // Written again on the next turn.
+        this.#exceededSent.delete(key);
+        throw error;
+      }
+      if (reading.scope === 'executor') {
         this.#options.logger.info(
           { executor: reading.id, period: reading.period },
           'the spending cap of an Executor is spent; the selection skips it until the period turns',
         );
       }
-    }
-  }
-
-  /** Forgets the warnings of periods that have turned. */
-  #prune(): void {
-    const now = this.#options.clock.now();
-    for (const [key, endsAt] of this.#warned) {
-      if (endsAt <= now) this.#warned.delete(key);
     }
   }
 
@@ -498,6 +617,7 @@ export class BudgetService {
     const spent = readings.filter((r) => r.remainingUsd === 0);
     if (spent.length === 0) {
       this.#breached.delete(profile);
+      await this.#release(profile);
       return;
     }
     const resetsAt = Math.max(...spent.map((r) => r.endsAt ?? 0));
@@ -520,7 +640,24 @@ export class BudgetService {
     }
   }
 
-  async #seedWarnings(): Promise<void> {
+  /**
+   * `budget.on_cap_change: release` (P11b): no cap of the profile is spent any more. A profile that
+   * is still `exhausted(budget)` can only be so because the cap was raised or removed (the period
+   * has not turned, or the quota would say so), so it is let go now. `keep` waits for the turn.
+   */
+  async #release(profile: string): Promise<void> {
+    if (this.#settings.onCapChange !== 'release') return;
+    const { quota, logger } = this.#options;
+    const status = await quota.statusOf(profile);
+    if (status.state !== 'exhausted' || status.cause !== 'budget') return;
+    await quota.releaseBudgetHit(profile);
+    logger.info(
+      { profile },
+      'the spending cap was raised or removed in the configuration: the profile is released before the period turns (budget.on_cap_change: release)',
+    );
+  }
+
+  async #seedFromLog(): Promise<void> {
     const { events } = this.#options.store;
     const now = this.#options.clock.now();
     let after = 0;
@@ -529,6 +666,17 @@ export class BudgetService {
       if (batch.length === 0) break;
       for (const event of batch) {
         after = event.id;
+        if (event.type === 'budget.exceeded') {
+          const parsed = BudgetExceededPayloadSchema.safeParse(event.payload);
+          if (!parsed.success || parsed.data.endsAt <= now) continue;
+          const { executor, profile, period, endsAt, limitUsd } = parsed.data;
+          const scope = executor === null ? 'profile' : 'executor';
+          this.#exceededSent.set(
+            `${scope}|${executor ?? profile}|${period}|${String(endsAt)}|${String(limitUsd)}`,
+            endsAt,
+          );
+          continue;
+        }
         if (event.type !== 'budget.warning') continue;
         const parsed = BudgetWarningPayloadSchema.safeParse(event.payload);
         if (!parsed.success || parsed.data.periodEndsAt <= now) continue;
