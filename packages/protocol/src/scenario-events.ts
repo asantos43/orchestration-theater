@@ -166,6 +166,14 @@ export const PLAY_NOTICE_KINDS = [
   'delivery_base_moved',
   /** Nobody answered the delivery question; the play goes on with the PR. */
   'delivery_unanswered',
+  /** P24: a play that was open when the daemon started could not be resumed (`detail`: why, masked). */
+  'play_not_resumed',
+  /** P24: an effect of the machine failed to start; the state is saved and `resume` asks again (`detail`: the effect type and why). */
+  'effect_not_started',
+  /** P24: the handler of the end of a play failed (`detail`: why, masked). */
+  'finish_not_handled',
+  /** P24: the deadline of a demand fired and could not be delivered to the machine (`detail`: the demand and why). */
+  'deadline_not_delivered',
 ] as const;
 export type PlayNoticeKind = (typeof PLAY_NOTICE_KINDS)[number];
 

@@ -12,7 +12,9 @@ import {
 import type { JsonObject } from '@otheater/core';
 import { z } from 'zod';
 import { createActor, initialTransition, transition, type SnapshotFrom } from 'xstate';
+import type { PlayNoticeKind } from '@otheater/protocol';
 import type { PlayLimits } from '../config.js';
+import { situationText, writeSituation } from '../situations.js';
 import type { PlayContext } from './context.js';
 import { PLAY_FLOW_ID, PLAY_FLOW_VERSION, isFinalState, type PlayState } from './definitions.js';
 import {
@@ -34,6 +36,8 @@ type PlaySnapshot = SnapshotFrom<typeof playMachine>;
 /** What the runner needs from a logger (pino fits). */
 export interface PlayRunnerLogger {
   warn(fields: Record<string, unknown>, message: string): void;
+  /** Where a `play.notice` that could not be written is logged; a logger without it uses `warn`. */
+  error?(fields: Record<string, unknown>, message: string): void;
 }
 
 export interface PlayRunnerOptions {
@@ -124,6 +128,7 @@ export class PlayRunner {
   readonly #queues = new Map<string, Promise<void>>();
   readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
   readonly #fired = new Set<Promise<void>>();
+  readonly #notices = new Set<Promise<void>>();
   #closed = false;
 
   constructor(options: PlayRunnerOptions) {
@@ -279,6 +284,7 @@ export class PlayRunner {
         } catch (error) {
           refused.push(play.id);
           this.#logger.warn({ playId: play.id, err: error }, 'play not resumed');
+          this.#notice('play_not_resumed', play.id, play.scenarioId, null, error);
         }
       }),
     );
@@ -295,7 +301,7 @@ export class PlayRunner {
   /** Resolves when no event of any play is being processed and no fired deadline is pending. */
   async idle(): Promise<void> {
     for (;;) {
-      const pending = [...this.#queues.values(), ...this.#fired];
+      const pending = [...this.#queues.values(), ...this.#fired, ...this.#notices];
       if (pending.length === 0) return;
       await Promise.allSettled(pending);
     }
@@ -358,6 +364,7 @@ export class PlayRunner {
           { playId: scope.playId, effect: effect.type, err: error },
           'play effect not started',
         );
+        this.#notice('effect_not_started', scope.playId, scope.scenarioId, effect.type, error);
       }
     }
   }
@@ -367,7 +374,37 @@ export class PlayRunner {
       this.#onFinish?.(play);
     } catch (error) {
       this.#logger.warn({ playId: play.id, err: error }, 'the end of the play was not handled');
+      this.#notice('finish_not_handled', play.id, play.scenarioId, null, error);
     }
+  }
+
+  /**
+   * Writes a `play.notice` next to a warning of the runner (P24, N146). It never waits and never
+   * rejects: the runner does not change because an event could not be written. `subject` (an effect
+   * type, a demand id) opens the `detail`, and the cause follows, masked and cut.
+   */
+  #notice(
+    kind: PlayNoticeKind,
+    playId: string,
+    scenarioId: string | null,
+    subject: string | null,
+    error: unknown,
+  ): void {
+    const why = situationText(error, 400);
+    const detail = [subject, why].filter((part) => part !== null).join(': ');
+    const task = writeSituation(
+      this.#store.events,
+      {
+        error: (fields, message) => {
+          if (this.#logger.error === undefined) this.#logger.warn(fields, message);
+          else this.#logger.error(fields, message);
+        },
+      },
+      'play.notice',
+      { scenarioId, playId, kind, detail: detail === '' ? null : detail.slice(0, 500) },
+      scenarioId === null ? { playId } : { scenarioId, playId },
+    ).finally(() => this.#notices.delete(task));
+    this.#notices.add(task);
   }
 
   /** Makes the timers of a play match `deadlines`: arms the new ones, drops the ones that left. */
@@ -410,6 +447,8 @@ export class PlayRunner {
       // A late deadline (the demand finished, the play left EXECUTING) is not an error.
       if (!(isOTheaterError(error) && error.code === 'CONFLICT')) {
         this.#logger.warn({ playId, demandId, err: error }, 'deadline not delivered');
+        const scenarioId = (await this.#store.plays.get(playId).catch(() => undefined))?.scenarioId;
+        this.#notice('deadline_not_delivered', playId, scenarioId ?? null, demandId, error);
       }
     }
   }

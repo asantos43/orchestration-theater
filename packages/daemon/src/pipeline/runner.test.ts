@@ -520,4 +520,104 @@ describe('PlayRunner', () => {
       expect(clock.pendingSleeps).toBe(0);
     });
   });
+
+  describe('play.notice of the warnings of the runner (P24, N146)', () => {
+    const minutes = (n: number) => n * 60_000;
+    const notices = async () =>
+      (await store.events.readFrom(0, 200)).filter((event) => event.type === 'play.notice');
+    const quiet = { warn: () => undefined };
+
+    it('effect_not_started: a failing effect is also an event of its play, with the effect and the cause', async () => {
+      runner = new PlayRunner({ store, clock, effects, logger: quiet });
+      await create();
+      effects.failWith = new Error('no session');
+      await runner.send('p1', { type: 'START' });
+      await runner.idle();
+      const found = await notices();
+      expect(found).toHaveLength(effects.dispatched.length);
+      expect(found[0]).toMatchObject({
+        scenarioId: 's1',
+        playId: 'p1',
+        payload: {
+          scenarioId: 's1',
+          playId: 'p1',
+          kind: 'effect_not_started',
+          detail: `${effects.types()[0] ?? '?'}: no session`,
+        },
+      });
+    });
+
+    it('finish_not_handled: an onFinish that throws is an event, and the play still ends', async () => {
+      runner = new PlayRunner({
+        store,
+        clock,
+        effects,
+        logger: quiet,
+        onFinish: () => {
+          throw new Error('the board is closed');
+        },
+      });
+      await create();
+      await runner.send('p1', { type: 'CANCEL' });
+      await runner.idle();
+      expect(await stateOf()).toBe('CANCELLED');
+      expect((await notices()).map((event) => event.payload)).toEqual([
+        {
+          scenarioId: 's1',
+          playId: 'p1',
+          kind: 'finish_not_handled',
+          detail: 'the board is closed',
+        },
+      ]);
+    });
+
+    it('deadline_not_delivered: a deadline that fails for a reason other than a late one is an event', async () => {
+      runner = new PlayRunner({ store, clock, effects, logger: quiet });
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      store.failNextCommit = true;
+      await clock.advance(minutes(5));
+      await runner.idle();
+      expect((await notices()).map((event) => event.payload)).toEqual([
+        { scenarioId: 's1', playId: 'p1', kind: 'deadline_not_delivered', detail: 'd1: disk full' },
+      ]);
+    });
+
+    it('play_not_resumed: a play of another version of the flow is refused, and the refusal is an event', async () => {
+      await create();
+      const saved = await store.plays.get('p1');
+      await runner.close();
+      await store.transaction(async (tx) => {
+        await tx.plays.create({
+          id: 'old',
+          scenarioId: 's1',
+          need: NEED,
+          flowId: PLAY_FLOW_ID,
+          flowVersion: PLAY_FLOW_VERSION + 1,
+          state: 'PLANNING',
+          snapshot: saved?.snapshot ?? null,
+          counters: {},
+        });
+      });
+      runner = new PlayRunner({ store, clock, effects, logger: quiet });
+      expect((await runner.resumeAll()).refused).toEqual(['old']);
+      await runner.idle();
+      const found = await notices();
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({
+        scenarioId: 's1',
+        playId: 'old',
+        payload: { scenarioId: 's1', playId: 'old', kind: 'play_not_resumed' },
+      });
+    });
+
+    it('a play that goes well writes no play.notice', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'CANCEL' });
+      await runner.idle();
+      expect(await notices()).toEqual([]);
+    });
+  });
 });

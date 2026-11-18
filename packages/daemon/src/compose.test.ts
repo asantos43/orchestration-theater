@@ -175,6 +175,63 @@ describe('compose: layer 3 (the sandbox)', () => {
     }
   });
 
+  /** What the daemon wrote as `daemon.notice` after the sink opened (P24, N146). */
+  async function noticesOf(composition: Awaited<ReturnType<typeof composed>>['composition']) {
+    composition.situations.open();
+    await composition.situations.idle();
+    return (await composition.store.events.readFrom(0, 1000))
+      .filter((event) => event.type === 'daemon.notice')
+      .map((event) => event.payload);
+  }
+
+  it('daemon.notice sandbox_unavailable: the missing layer 3 is also an event, with the reason (P24, N146)', async () => {
+    const sandbox = fakeSandbox({ ok: false, reason: 'no bubblewrap' });
+    const { composition, dispose } = await composed('', sandbox);
+    try {
+      expect(await noticesOf(composition)).toEqual([
+        { kind: 'sandbox_unavailable', subject: 'fake-sandbox', detail: 'no bubblewrap' },
+      ]);
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('daemon.notice sandbox_nested: a Codex launch with inner_sandbox: nested is an event naming the worktree (P24, N146)', async () => {
+    const sandbox = fakeSandbox({ ok: true });
+    const { composition, dispose } = await composed(
+      'clients:\n  codex:\n    inner_sandbox: nested\n',
+      sandbox,
+    );
+    try {
+      // The fake refuses to wrap: the warning comes before the wrap, which is what is under test.
+      await composition.sandbox
+        ?.launchWrapper()({
+          profile: { client: 'codex', profile: 'a', id: 'codex/a', dir: '/data/profiles/codex/a' },
+          policy: {
+            nativeTools: ['read'],
+            nativeShell: 'none',
+            mcpServers: [],
+            mcpTools: {},
+            onAsk: 'reject',
+            bypass: 'forbidden',
+            writeScope: 'worktree',
+            network: { allow: [] },
+          },
+          cwd: '/data/worktrees/w1',
+          via: 'acp',
+          spec: { cmd: 'codex-acp', args: [], cwd: '/data/worktrees/w1', env: {} },
+        })
+        .catch(() => undefined);
+      expect(await noticesOf(composition)).toEqual([
+        { kind: 'sandbox_nested', subject: 'codex', detail: '/data/worktrees/w1' },
+      ]);
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
   it('does not even ask the sandbox when sandbox.mode is off or the override is none', async () => {
     const sandbox = fakeSandbox({ ok: true });
     const off = await composed('sandbox:\n  mode: off\n', sandbox);

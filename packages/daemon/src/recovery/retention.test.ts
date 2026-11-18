@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, readdir, utimes, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BACKUP_MANIFEST_FORMAT_VERSION, type BackupManifest } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
-import { makeTempDataDir } from '../test-helpers.js';
+import { makeTempDataDir, RecordingSituations } from '../test-helpers.js';
 import { backupFolderName } from './backup.js';
 import {
   applyRetention,
@@ -227,6 +227,45 @@ describe('on disk', () => {
       await tmp.dispose();
     }
   });
+
+  // A folder that cannot be written to makes the removal fail; root ignores the mode, so it skips.
+  it.skipIf(process.getuid?.() === 0)(
+    'recovery.notice retention_remove_failed: an item that could not be removed is an event, and a clean rotation is quiet (P24, N146)',
+    async () => {
+      const tmp = await makeTempDataDir();
+      const backupDir = join(tmp.dir, 'backups');
+      try {
+        await makeBackup(backupDir, NOW - 1000);
+        const old = await makeBackup(backupDir, NOW - 5 * DAY);
+        const input = {
+          backupDir,
+          dataDir: tmp.dir,
+          policy: { mode: 'days', keepDays: 2 },
+        } as const;
+
+        const quiet = new RecordingSituations();
+        expect(await applyRetention({ ...input, now: NOW - 6 * DAY, situations: quiet })).toEqual(
+          [],
+        );
+        expect(quiet.recorded).toEqual([]);
+
+        await chmod(backupDir, 0o500);
+        const situations = new RecordingSituations();
+        const removed = await applyRetention({ ...input, now: NOW, situations });
+        expect(removed).toEqual([]);
+        expect(situations.of('recovery.notice')).toEqual([
+          {
+            kind: 'retention_remove_failed',
+            subject: old,
+            detail: expect.stringContaining('EACCES') as string,
+          },
+        ]);
+      } finally {
+        await chmod(backupDir, 0o700);
+        await tmp.dispose();
+      }
+    },
+  );
 
   it('keeps the only copy there is, however old', async () => {
     const tmp = await makeTempDataDir();

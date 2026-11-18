@@ -21,6 +21,7 @@ import {
 } from '@otheater/protocol';
 import type { Logger } from '../logger.js';
 import { TRACKED_PROFILE } from '../recovery/tracking-launcher.js';
+import type { SituationSink } from '../situations.js';
 import type { UsageSettings } from './settings.js';
 
 export type UsageProfileTarget = string | ProfileRef;
@@ -33,6 +34,8 @@ export interface UsageServiceOptions {
   readonly clock: Clock;
   readonly settings: UsageSettings;
   readonly logger: Logger;
+  /** Where the situations of the log are also written as `usage.notice` (P24, N146). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** What the service needs to know about a session to write its consumption. */
@@ -325,10 +328,20 @@ export class UsageService {
     const counts = [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens];
     if (counts.some((count) => count !== undefined && !isCount(count))) {
       this.#options.logger.warn({ sessionId }, 'a usage report had a bad token count; ignored');
+      this.#options.situations?.record('usage.notice', {
+        kind: 'bad_token_count',
+        sessionId,
+        profile: null,
+      });
       return undefined;
     }
     if (report.costUsd !== undefined && !(Number.isFinite(report.costUsd) && report.costUsd >= 0)) {
       this.#options.logger.warn({ sessionId }, 'a usage report had a bad cost; ignored');
+      this.#options.situations?.record('usage.notice', {
+        kind: 'bad_cost',
+        sessionId,
+        profile: null,
+      });
       return undefined;
     }
     const hasTokens = counts.some((count) => count !== undefined);
@@ -338,6 +351,11 @@ export class UsageService {
     const resolved = await this.#resolve(sessionId, report.model);
     if (resolved === undefined) {
       this.#options.logger.warn({ sessionId }, 'usage came from a session with no profile');
+      this.#options.situations?.record('usage.notice', {
+        kind: 'no_profile',
+        sessionId,
+        profile: null,
+      });
       return undefined;
     }
     if (report.model !== undefined) this.#models.set(sessionId, report.model);
@@ -383,6 +401,11 @@ export class UsageService {
           {},
           'usage.cost_source provider_billing has no adapter yet; working as client_then_pricing',
         );
+        this.#options.situations?.record('usage.notice', {
+          kind: 'provider_billing_unavailable',
+          sessionId: null,
+          profile: null,
+        });
       }
       return 'client_then_pricing';
     }
@@ -466,6 +489,11 @@ export class UsageService {
         { profile: profileId },
         'usage of a profile the store does not know; taken as a subscription',
       );
+      this.#options.situations?.record('usage.notice', {
+        kind: 'unknown_profile_kind',
+        sessionId: null,
+        profile: profileId,
+      });
     }
     return kind === 'api' ? 'real' : 'api_equivalent';
   }

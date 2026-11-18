@@ -173,6 +173,8 @@ export async function runProfileCommand(
     events: { registry: registries.events, unknownType: config.events.unknown_type },
     ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
   });
+  // No daemon in this process: there is no `daemon.started` to wait for, and `close` waits for the writes.
+  composition.situations.open();
   try {
     const adapters = new Map<string, ClientAdapter>();
     if (composition.launcher !== undefined) {
@@ -183,6 +185,7 @@ export async function runProfileCommand(
         transport: composition.transport,
         paths,
         logger: composition.logger,
+        situations: composition.situations,
       })) {
         adapters.set(adapter.id, adapter);
       }
@@ -196,6 +199,7 @@ export async function runProfileCommand(
       vaultBackend: backend,
       clock: composition.clock,
       logger: composition.logger,
+      situations: composition.situations,
       paths,
       settings: profileSettingsOf(config),
       adapters: (client) => adapters.get(client),
@@ -207,7 +211,12 @@ export async function runProfileCommand(
       action === 'remove' ? await composition.store.profiles.get(args[0] ?? '') : undefined;
     const needsVault = apiKey !== undefined || (removing?.secretRef ?? null) !== null;
     if (needsVault && isLockableSecretVault(composition.vault)) {
-      await unlockVault(composition.vault, deps.passwordPrompt, composition.logger);
+      await unlockVault(
+        composition.vault,
+        deps.passwordPrompt,
+        composition.logger,
+        composition.situations,
+      );
     }
 
     const first = args[0] ?? '';

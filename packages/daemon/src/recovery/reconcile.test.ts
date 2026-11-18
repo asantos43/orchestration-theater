@@ -13,6 +13,7 @@ import {
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { createSilentLogger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
+import { RecordingSituations } from '../test-helpers.js';
 import { PluginEffectRegistry } from '../workspace/plugin-effects.js';
 import { makeWorkspaceRig, type WorkspaceRig } from '../workspace/workspace-fixture.js';
 import {
@@ -285,6 +286,32 @@ describe('effects with an intent and no end', () => {
     const second = await reconcileBeforeResume(rig.deps());
     expect(second.pending).toHaveLength(1);
     expect(await rig.store.decisions.list({})).toHaveLength(1);
+  });
+
+  it('recovery.notice effect_unsettled: the effect that waits for the Producer is an event of its play, and a settled one is not (P24, N146)', async () => {
+    const key = `${PLAY}:mystery:1`;
+    await rig.store.sideEffects.intend({ ...prRecord(key, 'mystery') });
+    const situations = new RecordingSituations();
+    await reconcileBeforeResume(rig.deps({ situations }));
+    expect(situations.recorded).toEqual([
+      {
+        type: 'recovery.notice',
+        payload: {
+          kind: 'effect_unsettled',
+          subject: 'mystery',
+          detail: expect.any(String) as string,
+        },
+        correlation: { scenarioId: 'scenario-1', playId: PLAY },
+      },
+    ]);
+    // A second start does not ask again, so it does not say it again.
+    await reconcileBeforeResume(rig.deps({ situations }));
+    expect(situations.recorded).toHaveLength(1);
+
+    const settled = new RecordingSituations();
+    rig.launcher.plantOrphan(1, 1);
+    await reconcileBeforeResume(rig.deps({ situations: settled }));
+    expect(settled.recorded).toEqual([]);
   });
 
   it('asks the Producer when there is no code host to check against', async () => {

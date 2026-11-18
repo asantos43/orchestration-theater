@@ -2,7 +2,8 @@
 import { Secret, VaultLocked } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
-import { apiKeyRefOf, profileApiKey, profileProvider } from './secret-env.js';
+import { RecordingSituations } from '../test-helpers.js';
+import { apiKeyRefOf, profileApiKey, profileProvider, profileSecretEnv } from './secret-env.js';
 
 const KEY = 'sk-test-0000-not-a-real-key';
 const MM = { client: 'opencode', profile: 'mm' };
@@ -65,6 +66,33 @@ describe('profileApiKey (the key for a call the daemon makes itself)', () => {
     await store.profiles.update('opencode/mm', { state: 'removed' });
     expect(await keyOf(MM)).toBeUndefined();
     expect(JSON.stringify(warnings)).not.toContain(KEY);
+  });
+
+  it('profile.warning secret_missing: a key that left the vault is also an event, with no key in it (P24, N146)', async () => {
+    const { store, vault } = rig();
+    const ref = apiKeyRefOf('opencode', 'mm');
+    await store.profiles.create({
+      client: 'opencode',
+      name: 'mm',
+      kind: 'api',
+      provider: 'minimax',
+      dir: '/p/mm',
+      secretRef: ref,
+    });
+    const situations = new RecordingSituations();
+    expect(await profileApiKey({ store, vault, situations })(MM)).toBeUndefined();
+    expect(
+      await profileSecretEnv({ store, vault, situations })({
+        ...MM,
+        id: 'opencode/mm',
+        dir: '/p/mm',
+      }),
+    ).toEqual({});
+    expect(situations.of('profile.warning')).toEqual([
+      { profileId: 'opencode/mm', kind: 'secret_missing' },
+      { profileId: 'opencode/mm', kind: 'secret_missing' },
+    ]);
+    expect(JSON.stringify(situations.recorded)).not.toContain(KEY);
   });
 
   it('lets a locked vault reject, so the caller sees no reading', async () => {

@@ -34,6 +34,7 @@ import { LocalConfigSchema, type LocalConfig } from '@otheater/protocol';
 import { editConfigFile } from '../config-edit.js';
 import { loadConfig, type DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
+import { writeSituation } from '../situations.js';
 import type { TestSession, TestSessionResult } from './test-session.js';
 
 /**
@@ -602,6 +603,12 @@ export class ExecutorService {
       { executor: id, profile: profile.id, roles: placements.map((p) => p.role) },
       'executor registered',
     );
+    await writeSituation(this.#o.store.events, this.#o.logger, 'executor.changed', {
+      executorId: id,
+      change: 'registered',
+      profile: profile.id,
+      roles: placements.map((p) => p.role),
+    });
 
     const after = this.#resolveLists(await loadConfig(this.#o.configPath), facts, [
       ...Object.values((await loadConfig(this.#o.configPath)).executors.entries),
@@ -784,6 +791,12 @@ export class ExecutorService {
       });
     }
     this.#o.logger.info({ executor: id, roles: rolesChanged }, 'executor removed');
+    await writeSituation(this.#o.store.events, this.#o.logger, 'executor.changed', {
+      executorId: id,
+      change: 'removed',
+      profile: row?.profileId ?? null,
+      roles: rolesChanged,
+    });
     return { id, rolesChanged, rolesEmptied, inConfig };
   }
 

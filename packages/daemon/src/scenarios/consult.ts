@@ -21,6 +21,7 @@ import {
 import type { DaemonConfig, PlayExecutor } from '../config.js';
 import type { AttemptRunner } from '../execution/attempt-runner.js';
 import type { Logger } from '../logger.js';
+import { situationSubject, situationText, writeSituation } from '../situations.js';
 import { ToolFailure } from '../mcp/handlers.js';
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
 import type { RoleSelection } from '../orchestration/role-selection.js';
@@ -399,12 +400,26 @@ export class ConsultService {
     mode: 'merge' | 'keep' | 'discard',
     base: string,
   ): Promise<ConsultWork> {
-    const { vcs, logger } = this.#options;
+    const { vcs, logger, store } = this.#options;
     const { worktree, branch } = outcome;
     const drop = async (deleteBranch: boolean): Promise<void> => {
-      await vcs.removeWorktree(worktree, { force: true, deleteBranch }).catch((error: unknown) => {
-        logger.warn({ err: error, scenarioId, worktree }, 'the consultant worktree stayed');
-      });
+      await vcs
+        .removeWorktree(worktree, { force: true, deleteBranch })
+        .catch(async (error: unknown) => {
+          logger.warn({ err: error, scenarioId, worktree }, 'the consultant worktree stayed');
+          await writeSituation(
+            store.events,
+            logger,
+            'scenario.notice',
+            {
+              scenarioId,
+              kind: 'consult_worktree_stayed',
+              subject: situationSubject(branch),
+              detail: situationText(error),
+            },
+            { scenarioId },
+          );
+        });
     };
     try {
       if (mode === 'discard') {
@@ -426,6 +441,18 @@ export class ConsultService {
       if (refusal !== undefined) {
         await drop(false);
         logger.warn({ scenarioId, branch, reason: refusal }, 'the consultant files were refused');
+        await writeSituation(
+          store.events,
+          logger,
+          'scenario.notice',
+          {
+            scenarioId,
+            kind: 'consult_files_refused',
+            subject: situationSubject(branch),
+            detail: situationText(refusal),
+          },
+          { scenarioId },
+        );
         return { outcome: 'refused', files, branch, reason: refusal };
       }
       if (!supportsMerge(vcs)) {

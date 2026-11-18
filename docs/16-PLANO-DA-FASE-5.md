@@ -86,6 +86,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
+| P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -660,6 +661,45 @@ Ordem do dono, 2026-11-18: toda situação relevante da passagem de bastão gera
   - o `replay` presume que a instalação anterior continua válida; se o agente apagou `node_modules` por fora, use `tools.effects.replay: never` [N: sem detector de `node_modules` ausente];
   - um `restricted_shell` interrompido bloqueia só a mesma chamada (mesmo argv) até o Produtor responder; **não achei no código quem consuma a decisão `recovery_effect`** (lacuna anterior ao P22) [V: busca no código; N: se existe consumidor fora do repositório];
   - o aceite foi verificado só com o agente falso e processos de teste (`node`), nada real [V].
+
+### P24. Eventos dos avisos do daemon (N146, N149)
+
+Ordem do dono, 2026-11-18 (N146): toda situação de negócio que o daemon só escreve no log (`logger.warn` ou `logger.info`) também gera um **evento**, para que hooks e plugins possam estendê-la. O P18b cobriu o `attempt-runner.ts` e o `continuation-package.ts`; este passo cobre o resto do `packages/daemon/src`. O dono escolheu o passo próprio na auditoria (N149). Os nomes e os payloads são **[proposta]**.
+
+**Escopo:**
+- Classificar cada `logger.warn` e `logger.info` do código que não é teste: situação de negócio (vira evento), infraestrutura ou falha do próprio log de eventos (fica só log, com o motivo) ou já coberta por outro evento (fica só log, dizendo qual).
+- Cada evento usa `defineEventType`, `schemaVersion` 1, um `z.strictObject` com campos limitados, a correlação (cenário, peça, demanda, tentativa) quando existe, é gravado no mesmo ponto do log e nunca leva o texto cru do erro (`eventErrorText` mascara e corta em 300 caracteres), segredo, token ou caminho de segredo.
+- Poucos eventos, com `kind` ou `reason` em enum. Nada muda de comportamento: o log continua.
+- Fora do escopo, intocados: `attempt-runner.ts`, `continuation-package.ts`, `play-effects.ts`, `director.ts`, `orchestration/wiring.ts` e a lógica do `handoff.ts`.
+
+**Como ficou (2026-11-18):**
+- **`SituationLog`** (`daemon/src/situations.ts`) [proposta]: a fila ordenada que grava os eventos de situação no log de eventos. Fica fechada até o `open()`; os eventos da composição e do cofre (que nascem antes de o log aceitar escrita) saem depois de `daemon.started`. `idle()` espera as gravações e roda antes de `daemon.stopped` e antes de fechar o store. Uma gravação que falha só vai ao log (`a situation event was not written`), sem derrubar nada. [V] (`situations.test.ts`)
+- **`daemon.notice`** [proposta], `{kind, subject, detail}`: `vault_locked` (`no_prompt` ou `no_password`), `vault_wrong_password` (tentativa N de M, sem a senha), `backup_unsupported`, `deprecated_config`, `execution_off` (`no_launcher` ou `no_client`), `sandbox_unavailable`, `sandbox_nested`, `client_not_found`, `client_warning` (os avisos dos adaptadores de cliente; o `catalog_probe_exempt` respeita `security.catalog_probe_log`, e o evento é afinado como o log) e `browser_warning`. [V] (`daemon.test.ts`, `compose.test.ts`, `compose-clients.test.ts`, `client-warnings.test.ts`), exceto o `browser_warning` [N, sem teste próprio: o aviso nasce dentro do adaptador do Playwright].
+- **`recovery.notice`** [proposta]: `backup_rotation_failed`, `retention_remove_failed`, `process_not_tracked` e `effect_unsettled` (com a correlação do cenário e da peça). [V] (`backup.test.ts`, `retention.test.ts`, `tracking-launcher.test.ts`, `reconcile.test.ts`)
+- **`scenario.notice`** [proposta], `{scenarioId, kind, subject, detail}`: `ideas_setting_ignored`, `idea_not_returned`, `consult_worktree_stayed`, `consult_files_refused` e `conventions_not_confirmed`. [V] (`ideas/service-situations.test.ts`, `scenarios/consult-situations.test.ts`, `project/confirm.test.ts`; o `consult_files_refused` no `consult-work-e2e.test.ts`)
+- **`usage.notice`** [proposta]: `bad_token_count`, `bad_cost`, `no_profile`, `provider_billing_unavailable`, `unknown_profile_kind` e `cap_question_failed`. [V] (`usage/service.test.ts`, `budget/service.test.ts`)
+- **`profile.warning`** [proposta]: `login_probe_failed`, `logout_skipped`, `logout_failed`, `directory_undo_failed` e `secret_missing`. [V] (`profiles/service.test.ts`, `profiles/secret-env.test.ts`), exceto o `directory_undo_failed` [N, sem teste próprio: exige que o desfazer do diretório falhe depois de um erro anterior].
+- **`executor.changed`** [proposta]: Executor cadastrado ou removido (`registered | removed`, o id, os papéis e o perfil). Substitui os dois `logger.info` do serviço de Executores. [V] (`executors/service.test.ts`; o dry-run e a recusa não geram evento)
+- **`quota.probe_failed`** [proposta], `reason`: `push_unsupported`, `watch_failed`, `read_failed`, `no_key`, `rate_limited`, `unauthorized`, `no_reading`, `unknown_format`. A trava de uma vez por processo da sonda da MiniMax vale para o evento e para o log. O 429 não é travado. [V] (`quota/minimax-probe.test.ts`, `quota/service-situations.test.ts`), exceto o `read_failed` [N, exige um store que falha].
+- **`quota.signal_dropped`** [proposta], `reason`: `invalid_signal`, `no_profile`, `usage_not_taken`, `bad_reading`, `missed_update`, `missed_limit_error`. [V] (`quota/tap.test.ts`, `quota/service-situations.test.ts`), exceto o `missed_update` [N, exige um store que falha].
+- **`play.notice`** [proposta]: ganhou quatro `kind` (`play_not_resumed`, `effect_not_started`, `finish_not_handled`, `deadline_not_delivered`), escritos pelo `pipeline/runner.ts`. [V] (`pipeline/runner.test.ts`, cinco testes)
+- **Correlação e texto:** `scenarioId`, `playId` e `attemptId` vão no envelope quando o ponto os conhece; `subject` e `detail` passam por `situationText` (até 512 caracteres, 256 no `subject`) e o erro, por `eventErrorText`. Nenhum teste de payload acha segredo, token ou caminho de segredo. [V]
+- **Contagens:** 78 eventos no registro do daemon (eram 70) e 80 no protocolo (eram 72), oito tipos novos: `daemon.notice`, `recovery.notice`, `scenario.notice`, `usage.notice`, `profile.warning`, `executor.changed`, `quota.probe_failed` e `quota.signal_dropped`. [V] (`event-registry.test.ts`, `registries.test.ts`, `events.test.ts`)
+
+**Avisos que ficam só como log**, com o motivo:
+- **Já cobertos por outro evento:** `scheduled backup failed`, `backup failed` e `backup finished` (`daemon.backup`); `recovery before the resume done` e `attempts reconciled` (`daemon.recovered`); `daemon running` (`daemon.started`); `unknown_cost`, `exceeded` e `restored` do teto de gasto (`budget.*`); `profile registered`, `drained` e `removed` (`profile.*`); `clients.codex.inner_sandbox …` na partida (o `sandbox_unavailable` e o `sandbox_nested` dizem o que importa).
+- **Falha de um assinante interno** (o ouvinte de mudança de cota e os do teto e do consumo): um evento sobre isso seria escrito pelo mesmo caminho que falhou.
+- **Desligamento:** a sonda de cota que não parou limpa; o daemon já está parando.
+- **Rotina ou escolha de configuração:** `vault unlocked`, `sandbox is off`, `sandbox` e o `client` e `client version` da partida.
+- **Infraestrutura, falha do próprio log de eventos ou fora do escopo:** os manipuladores do navegador (`could not record a browser event`, `no screenshot after a browser action`), o servidor MCP, o `channel-http`, `tools/context`, `event-validation.ts` (`event stored although not valid`), o `attempt-runner.ts`, o `director.ts`, o `wiring.ts` (`no code host is set up`) e o `play-effects.ts`.
+
+**Pendências [N]:**
+- O `profile.warning` `secret_missing` não tem dedupe: um perfil com a mesma chave ausente gera um evento a cada partida de sessão.
+- Os eventos da composição e do cofre saem depois de `daemon.started`, porque nascem antes de o log aceitar escrita. Uma senha errada na última tentativa perde o seu `daemon.notice`: o daemon lança antes de o log abrir.
+- O runner de peças, as ideias, a consulta e a confirmação de convenções gravam direto em `store.events` (por `writeSituation`), porque o `orchestration/wiring.ts` estava fora do escopo; o `ExecutorService` e o `ProfileService` ficam nos comandos da CLI, que abrem as situações. Um passo futuro pode ligá-los todos ao `SituationLog` do daemon.
+- Sem teste próprio: `read_failed` e `missed_update` da cota, `directory_undo_failed` do perfil e `browser_warning`.
+- O `consult_files_refused` depende do build do agente falso do teste e2e.
+- Nenhum hook ou plugin escuta os eventos ainda: a assinatura é da Fase 6.
 
 ### P23. Aceite da fase
 

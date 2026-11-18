@@ -17,9 +17,9 @@ import {
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
-import { MAX_PASSWORD_ATTEMPTS, startDaemon, type PasswordPrompt } from './daemon.js';
+import { MAX_PASSWORD_ATTEMPTS, startDaemon, unlockVault, type PasswordPrompt } from './daemon.js';
 import { createSilentLogger } from './logger.js';
-import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, RecordingSituations } from './test-helpers.js';
 import { writeFile } from 'node:fs/promises';
 
 const AT = Date.UTC(2026, 10, 16, 15, 30, 5);
@@ -220,11 +220,17 @@ describe('startDaemon', () => {
         'override',
       ]);
       const started = await store.events.readFrom(0, 10);
-      expect(types(started)).toEqual(['daemon.started', 'daemon.recovered']);
+      expect(types(started)).toEqual(['daemon.started', 'daemon.notice', 'daemon.recovered']);
       expect(started[0]?.payload).toMatchObject({
         pid: process.pid,
         version: '9.9.9',
         adapters: { store: { id: 'override' } },
+      });
+      // P24 (N146): the execution that stays off is also an event, written after `daemon.started`.
+      expect(started[1]?.payload).toEqual({
+        kind: 'execution_off',
+        subject: expect.stringMatching(/^no_(launcher|client)$/) as string,
+        detail: null,
       });
 
       await clock.advance(1500);
@@ -261,8 +267,13 @@ describe('startDaemon', () => {
       });
       await clock.advance(2500);
       await daemon.stop('signal');
-      expect(types(log)).toEqual(['daemon.started', 'daemon.recovered', 'daemon.stopped']);
-      expect(log[2]?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
+      expect(types(log)).toEqual([
+        'daemon.started',
+        'daemon.notice',
+        'daemon.recovered',
+        'daemon.stopped',
+      ]);
+      expect(log[3]?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
     } finally {
       await tmp.dispose();
     }
@@ -382,6 +393,53 @@ describe('startDaemon', () => {
         passwordPrompt: prompt,
       });
     }
+
+    it('daemon.notice vault_locked / vault_wrong_password: what the daemon logs about the vault is also an event (P24, N146)', async () => {
+      const logger = createSilentLogger();
+      const notices = (situations: RecordingSituations) => situations.of('daemon.notice');
+
+      const noPrompt = new RecordingSituations();
+      await unlockVault(new FakeLockableVault(), undefined, logger, noPrompt);
+      expect(notices(noPrompt)).toEqual([
+        { kind: 'vault_locked', subject: 'no_prompt', detail: null },
+      ]);
+
+      const noPassword = new RecordingSituations();
+      await unlockVault(
+        new FakeLockableVault(),
+        () => Promise.resolve(undefined),
+        logger,
+        noPassword,
+      );
+      expect(notices(noPassword)).toEqual([
+        { kind: 'vault_locked', subject: 'no_password', detail: null },
+      ]);
+
+      // A wrong password, then the right one: one event, naming the attempt, and no password in it.
+      const wrongOnce = new RecordingSituations();
+      const answers = ['not the one', RIGHT];
+      await unlockVault(
+        new FakeLockableVault(),
+        () => Promise.resolve(new Secret(answers.shift() ?? '')),
+        logger,
+        wrongOnce,
+      );
+      expect(notices(wrongOnce)).toEqual([
+        {
+          kind: 'vault_wrong_password',
+          subject: null,
+          detail: `attempt 1 of ${String(MAX_PASSWORD_ATTEMPTS)}`,
+        },
+      ]);
+      expect(JSON.stringify(wrongOnce.recorded)).not.toContain('not the one');
+
+      // An unlocked vault says nothing.
+      const vault = new FakeLockableVault();
+      await vault.unlock(new Secret(RIGHT));
+      const quiet = new RecordingSituations();
+      await unlockVault(vault, undefined, logger, quiet);
+      expect(quiet.recorded).toEqual([]);
+    });
 
     it('unlocks with the right password and locks again on stop', async () => {
       const tmp = await makeTempDataDir();
@@ -505,6 +563,46 @@ describe('startDaemon', () => {
     }
   });
 
+  it('daemon.notice backup_unsupported and deprecated_config: what the start only logged is also an event (P24, N146)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const clock = new FakeClock(AT);
+      const store = new InMemoryStore({ clock });
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
+        config: parseConfig(
+          'orchestration:\n  executor: { client: claude-code, profile: a, model: claude-sonnet, effort: medium }\n',
+        ),
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+        logger: createSilentLogger(),
+      });
+      // The sink writes in the background (ordered): give it a bounded number of turns.
+      const noticeEvents = async () =>
+        (await store.events.readFrom(0, 20)).filter((event) => event.type === 'daemon.notice');
+      for (let turn = 0; turn < 200 && (await noticeEvents()).length < 3; turn += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      const notices = (await noticeEvents()).map(
+        (event) => event.payload as { kind: string; subject: string | null; detail: string | null },
+      );
+      expect(notices.map((notice) => notice.kind)).toEqual(
+        expect.arrayContaining(['backup_unsupported', 'deprecated_config']),
+      );
+      expect(notices.find((notice) => notice.kind === 'backup_unsupported')).toEqual({
+        kind: 'backup_unsupported',
+        subject: null,
+        detail: null,
+      });
+      expect(notices.find((notice) => notice.kind === 'deprecated_config')?.detail).toMatch(
+        /orchestration\.executor is deprecated/u,
+      );
+      await daemon.stop();
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
   describe('backups', () => {
     it('backs up on demand, records the event and keeps the data dir tidy', async () => {
       const tmp = await makeTempDataDir();
@@ -523,6 +621,7 @@ describe('startDaemon', () => {
         expect(await readdir(join(tmp.dir, 'backups'))).toHaveLength(1);
         expect(types(await store.events.readFrom(0, 10))).toEqual([
           'daemon.started',
+          'daemon.notice',
           'daemon.recovered',
           'daemon.backup',
         ]);

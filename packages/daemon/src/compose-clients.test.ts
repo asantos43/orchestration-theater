@@ -8,7 +8,12 @@ import { pathFinder, type ClientFactoryParts, type FindExecutable } from './clie
 import { DEFAULT_CLIENT_EXECUTABLES, productionClients } from './compose.js';
 import { parseConfig } from './config.js';
 import { dataPaths } from './paths.js';
-import { captureLogger, makeTempDataDir, TEST_POLICY } from './test-helpers.js';
+import {
+  captureLogger,
+  makeTempDataDir,
+  RecordingSituations,
+  TEST_POLICY,
+} from './test-helpers.js';
 
 const ALL_FOUND: FindExecutable = (command) => `/bin/${command}`;
 const NOTHING: FindExecutable = () => undefined;
@@ -114,6 +119,20 @@ describe('productionClients', () => {
       const adapters = productionClients(config, { env: ENV, findExecutable: NOTHING })(t.parts);
       expect(adapters.map((a) => a.id)).toEqual(['codex', 'opencode']);
       expect(t.lines.some((l) => l.level === 'warn' && l.fields.client === 'opencode')).toBe(true);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('daemon.notice client_not_found: enabled: true with no executable is also an event (P24, N146)', async () => {
+    const t = await setup();
+    try {
+      const situations = new RecordingSituations();
+      const config = parseConfig('clients:\n  opencode:\n    enabled: true\n');
+      productionClients(config, { env: ENV, findExecutable: NOTHING })({ ...t.parts, situations });
+      expect(situations.of('daemon.notice')).toEqual([
+        { kind: 'client_not_found', subject: 'opencode', detail: expect.any(String) as string },
+      ]);
     } finally {
       await t.dispose();
     }

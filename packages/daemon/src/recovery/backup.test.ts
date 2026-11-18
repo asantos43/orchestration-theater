@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   Transient,
@@ -12,7 +12,7 @@ import { BackupManifestSchema } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from '../config.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir } from '../test-helpers.js';
+import { makeTempDataDir, RecordingSituations } from '../test-helpers.js';
 import { BackupService, backupFolderName, createBackup, type StoreBackupFn } from './backup.js';
 
 const AT = Date.UTC(2026, 10, 16, 15, 30, 5);
@@ -286,6 +286,70 @@ describe('BackupService', () => {
         recordEvent: () => Promise.reject(new Error('log closed')),
       });
       expect((await backups.run('manual')).ok).toBe(true);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  // The copy is done and the folder then cannot be read, so the rotation cannot list it. Root
+  // ignores the mode, so it skips.
+  it.skipIf(process.getuid?.() === 0)(
+    'recovery.notice backup_rotation_failed: a rotation that fails is an event, and the copy is still ok (P24, N146)',
+    async () => {
+      const tmp = await makeTempDataDir();
+      const dir = join(tmp.dir, 'backups');
+      try {
+        const events: NewEvent[] = [];
+        const situations = new RecordingSituations();
+        const backups = new BackupService({
+          dataDir: tmp.dir,
+          settings: parseConfig('').backup,
+          clock: new FakeClock(AT),
+          logger: createSilentLogger(),
+          version: '0.0.0',
+          storeBackup: async (dest, options) => {
+            const result = await writeCopy(dest, options);
+            await chmod(dir, 0o300);
+            return result;
+          },
+          recordEvent: (event) => {
+            events.push(event);
+            return Promise.resolve();
+          },
+          situations,
+        });
+        const outcome = await backups.run('manual');
+        expect(outcome.ok).toBe(true);
+        expect(situations.of('recovery.notice')).toEqual([
+          {
+            kind: 'backup_rotation_failed',
+            subject: backupFolderName(AT),
+            detail: expect.stringContaining('EACCES') as string,
+          },
+        ]);
+        expect(events.map((event) => event.type)).toEqual(['daemon.backup']);
+      } finally {
+        await chmod(dir, 0o700);
+        await tmp.dispose();
+      }
+    },
+  );
+
+  it('a backup that rotates cleanly records no recovery.notice', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const situations = new RecordingSituations();
+      const backups = new BackupService({
+        dataDir: tmp.dir,
+        settings: parseConfig('').backup,
+        clock: new FakeClock(AT),
+        logger: createSilentLogger(),
+        version: '0.0.0',
+        storeBackup: writeCopy,
+        situations,
+      });
+      expect((await backups.run('manual')).ok).toBe(true);
+      expect(situations.recorded).toEqual([]);
     } finally {
       await tmp.dispose();
     }

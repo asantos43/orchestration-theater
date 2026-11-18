@@ -12,7 +12,9 @@ import {
 } from '@otheater/core';
 import { z } from 'zod';
 import type { Logger } from '../logger.js';
+import type { SituationSink } from '../situations.js';
 import { DaemonHttpError, daemonGet, type DaemonNetworkPolicy } from './daemon-http.js';
+import { recordProbeFailed } from './notices.js';
 import { parseResetsAt } from './service.js';
 
 /**
@@ -102,6 +104,8 @@ export interface MiniMaxProbeOptions {
   readonly keyOf: (profile: ProfileRef) => Promise<string | undefined>;
   readonly clock: Pick<Clock, 'now'>;
   readonly logger: Logger;
+  /** Where the failures are also written as `quota.probe_failed` (P24); the same gating as the log. */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** The paths and the types of a JSON value, never its values: `data.x:number`. Capped. */
@@ -163,6 +167,7 @@ export class MiniMaxQuotaProbe implements QuotaProbe {
     if (key === undefined || key === '') {
       this.#once(id, 'no_key', () => {
         logger.info({ profile: id }, 'the MiniMax profile has no key in the vault; not read');
+        recordProbeFailed(this.#options.situations, id, 'no_key');
       });
       throw new MiniMaxProbeError('no_key', 'The profile has no MiniMax key in the vault');
     }
@@ -193,11 +198,16 @@ export class MiniMaxQuotaProbe implements QuotaProbe {
       );
       this.#notBefore.set(id, clock.now() + backoff);
       logger.warn({ profile: id, backoffMs: backoff }, 'the MiniMax quota endpoint answered 429');
+      recordProbeFailed(this.#options.situations, id, 'rate_limited', {
+        status: 429,
+        backoffMs: backoff,
+      });
       throw new MiniMaxProbeError('rate_limited', 'The MiniMax endpoint answered 429');
     }
     if (answer.status === 401 || answer.status === 403) {
       this.#once(id, `http:${String(answer.status)}`, () => {
         logger.warn({ profile: id, status: answer.status }, 'MiniMax did not accept the key');
+        recordProbeFailed(this.#options.situations, id, 'unauthorized', { status: answer.status });
       });
       throw new MiniMaxProbeError('unauthorized', `MiniMax answered ${String(answer.status)}`);
     }
@@ -228,6 +238,10 @@ export class MiniMaxQuotaProbe implements QuotaProbe {
           { profile, statusCode: code, statusMsg: text },
           'MiniMax gave no reading (base_resp is not a success)',
         );
+        recordProbeFailed(this.#options.situations, profile, 'no_reading', {
+          status: code,
+          detail: text,
+        });
       });
       throw new MiniMaxProbeError(
         'no_reading',
@@ -290,6 +304,7 @@ export class MiniMaxQuotaProbe implements QuotaProbe {
         { profile, shape, why },
         'MiniMax answered a format the probe does not know; the reading is unknown',
       );
+      recordProbeFailed(this.#options.situations, profile, 'unknown_format', { detail: why });
     });
     throw new MiniMaxProbeError(
       'unknown_format',

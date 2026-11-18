@@ -19,6 +19,7 @@ import type { BudgetInFlight, BudgetOnExceeded } from '../budget-config.js';
 import type { Logger } from '../logger.js';
 import type { QuotaService } from '../quota/service.js';
 import { hitWindowOf } from '../quota/state.js';
+import { detailOf, type SituationSink } from '../situations.js';
 import type { UsageService } from '../usage/service.js';
 import { periodBounds } from './calendar.js';
 import type { BudgetSettings } from './settings.js';
@@ -44,6 +45,8 @@ export interface BudgetServiceOptions {
   readonly usage: Pick<UsageService, 'totals' | 'onRecorded'>;
   /** Whoever answers `on_exceeded: ask`. Without one, nobody is watching: `ask` becomes `skip`. */
   readonly asker?: BudgetAsker | undefined;
+  /** Where a question that failed is also written as `usage.notice` (P24, N146). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** The cap a reading comes from: a profile's, an Executor's, or the run budget of 5.15. */
@@ -376,6 +379,12 @@ export class BudgetService {
       return { choice: answer, via: 'asked' };
     } catch (error) {
       logger.warn({ err: error, profile: breach.profile }, 'asking about the spending cap failed');
+      this.#options.situations?.record('usage.notice', {
+        kind: 'cap_question_failed',
+        sessionId: null,
+        profile: breach.profile,
+        ...detailOf(error),
+      });
       return { choice: 'skip', via: 'unattended' };
     } finally {
       abort.abort();

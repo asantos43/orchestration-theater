@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
-import type {
-  AgentSession,
-  ClientAdapterContract,
-  ConfigValue,
-  ContentBlock,
-  Disposable,
-  PromptOutcome,
-  Profile,
-  ProfileRef,
-  SessionConfigOption,
-  UpdateListener,
+import {
+  formatProfileId,
+  type AgentSession,
+  type ClientAdapterContract,
+  type ConfigValue,
+  type ContentBlock,
+  type Disposable,
+  type PromptOutcome,
+  type Profile,
+  type ProfileRef,
+  type SessionConfigOption,
+  type UpdateListener,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
+import type { SituationSink } from '../situations.js';
+import { recordSignalDropped } from './notices.js';
 import { limitHitOf, type QuotaService } from './service.js';
 
 /** What the tap needs of the quota service; the service itself fits. */
@@ -25,12 +28,15 @@ export type QuotaSink = Pick<
  * every update of the stream (a `rate_limit` event, a `usage`) goes to the service, and a prompt
  * that fails with a limit error is taken in, with its reset time and its source, before the
  * error reaches the caller. It changes nothing for the caller: the same updates, the same
- * outcome, the same error. A failure of the service is logged and never reaches the session.
+ * outcome, the same error. A failure of the service is logged and never reaches the session; it
+ * is also a `quota.signal_dropped` when `situations` is given (P24).
  */
 export class QuotaTappedSession implements AgentSession {
   readonly #inner: AgentSession;
   readonly #quota: QuotaSink;
   readonly #logger: Pick<Logger, 'warn'>;
+  readonly #situations: SituationSink | undefined;
+  readonly #profile: string;
   readonly #subscription: Disposable;
 
   constructor(
@@ -38,10 +44,13 @@ export class QuotaTappedSession implements AgentSession {
     profile: ProfileRef,
     quota: QuotaSink,
     logger: Pick<Logger, 'warn'>,
+    situations?: SituationSink,
   ) {
     this.#inner = inner;
     this.#quota = quota;
     this.#logger = logger;
+    this.#situations = situations;
+    this.#profile = formatProfileId(profile);
     quota.bindSession(inner.sessionId, profile);
     this.#subscription = inner.onUpdate((update) => {
       quota.ingestUpdate(inner.sessionId, update).catch((error: unknown) => {
@@ -49,6 +58,11 @@ export class QuotaTappedSession implements AgentSession {
           { err: error, sessionId: inner.sessionId },
           'the quota service missed an update',
         );
+        recordSignalDropped(situations, 'missed_update', {
+          profile: this.#profile,
+          sessionId: inner.sessionId,
+          detail: error,
+        });
       });
     });
   }
@@ -71,6 +85,11 @@ export class QuotaTappedSession implements AgentSession {
     } catch (error) {
       await this.#quota.ingestError(this.#inner.sessionId, error).catch((failure: unknown) => {
         this.#logger.warn({ err: failure }, 'the quota service missed a limit error');
+        recordSignalDropped(this.#situations, 'missed_limit_error', {
+          profile: this.#profile,
+          sessionId: this.#inner.sessionId,
+          detail: failure,
+        });
       });
       throw error;
     }
@@ -113,12 +132,17 @@ export function tapClient<T extends ClientAdapterContract>(
   client: T,
   quota: QuotaSink,
   logger: Pick<Logger, 'warn'>,
+  situations?: SituationSink,
 ): T {
   const takeIn = async (profile: Profile, error: unknown): Promise<void> => {
     const hit = limitHitOf(error);
     if (hit === undefined) return;
     await quota.ingestLimitHit(profile, hit).catch((failure: unknown) => {
       logger.warn({ err: failure }, 'the quota service missed a limit error');
+      recordSignalDropped(situations, 'missed_limit_error', {
+        profile: formatProfileId(profile),
+        detail: failure,
+      });
     });
   };
   const tapped = {
@@ -127,7 +151,7 @@ export function tapClient<T extends ClientAdapterContract>(
     ): Promise<AgentSession> => {
       try {
         const session = await client.openSession(...args);
-        return new QuotaTappedSession(session, args[0], quota, logger);
+        return new QuotaTappedSession(session, args[0], quota, logger, situations);
       } catch (error) {
         await takeIn(args[0], error);
         throw error;
@@ -138,7 +162,7 @@ export function tapClient<T extends ClientAdapterContract>(
     ): Promise<AgentSession> => {
       try {
         const session = await client.loadSession(...args);
-        return new QuotaTappedSession(session, args[0], quota, logger);
+        return new QuotaTappedSession(session, args[0], quota, logger, situations);
       } catch (error) {
         await takeIn(args[0], error);
         throw error;

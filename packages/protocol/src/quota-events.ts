@@ -147,3 +147,71 @@ export const BudgetUnknownCostPayloadSchema = z.strictObject({
   executor: z.string().min(1).max(256),
   mode: z.enum(['ignore']),
 });
+
+/** Short text an event may carry: already masked and cut by the daemon, never a stack. */
+const detail = z.string().min(1).max(512);
+
+/**
+ * Why a probe of the quota could not read a profile (Phase 5, P24, N146, [proposta]): `no_key` (a
+ * MiniMax profile with no key in the vault), `rate_limited` (HTTP 429; `backoffMs` says how long the
+ * probe stays quiet), `unauthorized` (HTTP 401 or 403: the key was not accepted), `no_reading` (the
+ * answer is an envelope that is not a success), `unknown_format` (an answer the parser does not
+ * know), `read_failed` (any other failure of a read, the first one or the poll), `watch_failed` (the
+ * probe could not start watching) and `push_unsupported` (`quota.probe.delivery: push` and the probe
+ * cannot watch, so it is not used).
+ */
+export const QUOTA_PROBE_FAILURES = [
+  'no_key',
+  'rate_limited',
+  'unauthorized',
+  'no_reading',
+  'unknown_format',
+  'read_failed',
+  'watch_failed',
+  'push_unsupported',
+] as const;
+export type QuotaProbeFailure = (typeof QUOTA_PROBE_FAILURES)[number];
+
+/**
+ * `quota.probe_failed` (P24, N146, [proposta]): a probe gave no reading of a profile, so the state of
+ * the profile did not move (it goes `unknown` when the reading grows stale). It is the event beside
+ * the `warn` line of the log: one per failure the log writes (the MiniMax probe thins both out the
+ * same way). `status` is the HTTP status or the code of the envelope when there is one, `backoffMs`
+ * the wait of `rate_limited`, and `detail` what failed, masked and cut: never the key.
+ */
+export const QuotaProbeFailedPayloadSchema = z.strictObject({
+  profile,
+  reason: z.enum(QUOTA_PROBE_FAILURES),
+  status: z.int().optional(),
+  backoffMs: z.int().min(0).optional(),
+  detail: detail.optional(),
+});
+
+/**
+ * What the quota service dropped (P24, N146, [proposta]): `invalid_signal` (a `_otheater/quota/signal`
+ * that is not valid), `no_profile` (a signal or a limit error of a session that belongs to no known
+ * profile), `bad_reading` (a reading of a probe that does not fit the schema), `usage_not_taken` (the
+ * probe could not take a usage), `missed_update` and `missed_limit_error` (the service failed while
+ * it took an update or a limit error of a session, so the quota may be behind the truth).
+ */
+export const QUOTA_SIGNAL_DROPS = [
+  'invalid_signal',
+  'no_profile',
+  'bad_reading',
+  'usage_not_taken',
+  'missed_update',
+  'missed_limit_error',
+] as const;
+export type QuotaSignalDrop = (typeof QUOTA_SIGNAL_DROPS)[number];
+
+/**
+ * `quota.signal_dropped` (P24, N146, [proposta]): a signal, a reading or a limit error did not reach
+ * the quota state. `profile` and `sessionId` are null when the drop does not know them (an invalid
+ * signal has no session worth naming; a reading has no session).
+ */
+export const QuotaSignalDroppedPayloadSchema = z.strictObject({
+  profile: profile.nullable(),
+  sessionId: z.string().min(1).max(256).nullable(),
+  reason: z.enum(QUOTA_SIGNAL_DROPS),
+  detail: detail.optional(),
+});

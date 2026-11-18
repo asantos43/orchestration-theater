@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { BackupManifestSchema, type BackupManifest } from '@otheater/protocol';
 import type { BackupSettings } from '../config.js';
 import type { Logger } from '../logger.js';
+import { situationSubject, situationText, type SituationSink } from '../situations.js';
 
 const DAY_MS = 86_400_000;
 
@@ -187,6 +188,8 @@ export interface ApplyRetentionInput {
   readonly policy: RetentionPolicy;
   readonly now: number;
   readonly logger?: Logger | undefined;
+  /** Where an item that could not be removed is also written (`recovery.notice`, P24). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /**
@@ -203,6 +206,11 @@ export async function applyRetention(input: ApplyRetentionInput): Promise<string
       removed.push(name);
     } catch (error) {
       input.logger?.warn({ err: error, path }, 'retention could not remove an old item');
+      input.situations?.record('recovery.notice', {
+        kind: 'retention_remove_failed',
+        subject: situationSubject(name),
+        detail: situationText(error),
+      });
     }
   };
 

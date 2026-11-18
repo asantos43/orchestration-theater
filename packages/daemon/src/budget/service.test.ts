@@ -12,6 +12,7 @@ import {
 } from '../execution/interruption-policy.js';
 import { createSilentLogger, type Logger } from '../logger.js';
 import { QuotaService } from '../quota/service.js';
+import { RecordingSituations } from '../test-helpers.js';
 import {
   WakeupManager,
   wakeupSettingsOf,
@@ -143,6 +144,7 @@ async function settle(h: Pick<Harness, 'manager' | 'budget'>): Promise<void> {
 class World {
   readonly clock = new FakeClock(T0);
   readonly store = new InMemoryStore({ clock: this.clock });
+  readonly situations = new RecordingSituations();
   #profiles = false;
 
   /** One life of the daemon, over the store the earlier lives left. */
@@ -191,6 +193,7 @@ class World {
       quota,
       usage,
       asker,
+      situations: this.situations,
     });
     const manager = new WakeupManager({
       store,
@@ -611,6 +614,22 @@ describe('BudgetService, on_exceeded', () => {
   it('ask with an asker that fails becomes skip', async () => {
     const { h } = await over('ask', { ask: () => Promise.reject(new Error('the chat is gone')) });
     expect(await h.budget.resolveExceeded(API)).toEqual({ choice: 'skip', via: 'unattended' });
+  });
+
+  it('usage.notice cap_question_failed: an asker that fails is also an event (P24, N146)', async () => {
+    const { world, h } = await over('ask', {
+      ask: () => Promise.reject(new Error('the chat is gone')),
+    });
+    await h.budget.resolveExceeded(API);
+    expect(world.situations.of('usage.notice')).toEqual([
+      { kind: 'cap_question_failed', sessionId: null, profile: API, detail: 'the chat is gone' },
+    ]);
+  });
+
+  it('ask that is answered does not write a usage.notice (P24, N146)', async () => {
+    const { world, h } = await over('ask', { ask: () => Promise.resolve('skip') });
+    await h.budget.resolveExceeded(API);
+    expect(world.situations.recorded).toEqual([]);
   });
 
   it('ask that is not answered within budget.ask_timeout becomes skip', async () => {

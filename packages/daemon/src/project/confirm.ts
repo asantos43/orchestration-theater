@@ -13,6 +13,7 @@ import {
   type Store,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
+import { situationText, writeSituation } from '../situations.js';
 import type { QuestionBoard } from '../orchestration/handlers.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
 
@@ -224,7 +225,7 @@ export function applyConventionAnswers(
 }
 
 export interface ConventionConfirmerOptions {
-  readonly store: Pick<Store, 'decisions' | 'scenarios'>;
+  readonly store: Pick<Store, 'decisions' | 'scenarios' | 'events'>;
   readonly board: QuestionBoard;
   readonly logger: Logger;
 }
@@ -303,6 +304,18 @@ export class ConventionConfirmer {
       logger.warn(
         { scenarioId, err: error instanceof Error ? error.message : String(error) },
         'The conventions of the project were not confirmed',
+      );
+      await writeSituation(
+        store.events,
+        logger,
+        'scenario.notice',
+        {
+          scenarioId,
+          kind: 'conventions_not_confirmed',
+          subject: null,
+          detail: situationText(error),
+        },
+        { scenarioId },
       );
     } finally {
       this.#open.delete(scenarioId);

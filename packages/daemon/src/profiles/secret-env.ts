@@ -7,6 +7,7 @@ import {
   type Store,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
+import type { SituationSink } from '../situations.js';
 
 /**
  * Environment variable that carries the API key of each provider when the config says nothing
@@ -47,6 +48,8 @@ export interface SecretEnvOptions {
   /** `profiles.api_key_env`. */
   readonly apiKeyEnv?: Readonly<Record<string, string>>;
   readonly logger?: Pick<Logger, 'warn'>;
+  /** Where the warning is also written as `profile.warning` `secret_missing` (P24, N146). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /**
@@ -69,6 +72,10 @@ export function profileSecretEnv(
         { profile: record.id },
         'the API key of the profile is not in the vault',
       );
+      options.situations?.record('profile.warning', {
+        profileId: record.id,
+        kind: 'secret_missing',
+      });
       return {};
     }
     return { [apiKeyEnvName(record.provider, options.apiKeyEnv)]: secret.reveal() };
@@ -79,6 +86,8 @@ export interface ProfileLookupOptions {
   readonly store: Pick<Store, 'profiles'>;
   readonly vault: SecretVault;
   readonly logger?: Pick<Logger, 'warn'>;
+  /** Where the warning is also written as `profile.warning` `secret_missing` (P24, N146). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /**
@@ -103,6 +112,10 @@ export function profileApiKey(
         { profile: record.id },
         'the API key of the profile is not in the vault',
       );
+      options.situations?.record('profile.warning', {
+        profileId: record.id,
+        kind: 'secret_missing',
+      });
       return undefined;
     }
     return secret.reveal();
