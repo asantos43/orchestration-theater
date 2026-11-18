@@ -648,6 +648,7 @@ function commonOptions(
     ...(parts.sandbox === undefined
       ? {}
       : { sandbox: parts.sandbox.capabilities, launchWrapper: parts.sandbox.launchWrapper }),
+    ...(parts.secretEnv === undefined ? {} : { secretEnv: parts.secretEnv }),
     catalogProbe: config.security.catalog_probe,
     conformance: config.security.conformance,
     onWarning: (warning: ClientAdapterWarning) => {
