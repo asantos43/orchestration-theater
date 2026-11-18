@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import type { LaunchedProcess, SessionNormalizer, SessionOpenParams } from '@otheater/core';
 import { normalizeFakeError, normalizeFakeUpdate } from '@otheater/core/testing';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { AcpTransport, type AcpTransportWarning } from './acp-transport.js';
+import type { PermissionRequest } from '@otheater/core';
+import { AcpTransport, permissionRequestOf, type AcpTransportWarning } from './acp-transport.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
 import { removeDir } from './testing/remove-dir.js';
 
@@ -30,8 +31,31 @@ if (cfg.grandchild) {
   });
   record('grandchild', { pid: grandchild.pid });
 }
+// cfg.script: on session/prompt the stub plays these steps in order, then ends the turn. A step
+// { update } is sent as a session/update; a step { permission } is a session/request_permission
+// that the stub waits to be answered (the answer is recorded as "permission-answer").
+const waiting = new Map();
+let asked = 0;
+async function play(sessionId, promptId) {
+  for (const step of cfg.script) {
+    if (step.update) {
+      send({ method: 'session/update', params: { sessionId, update: step.update } });
+    } else if (step.permission) {
+      asked += 1;
+      const id = 'p' + asked;
+      const answered = new Promise((resolve) => waiting.set(id, resolve));
+      send({ id, method: 'session/request_permission', params: { sessionId, ...step.permission } });
+      record('permission-answer', (await answered).result);
+    }
+  }
+  send({ id: promptId, result: { stopReason: 'end_turn' } });
+}
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line);
+  if (message.method === undefined && waiting.has(message.id)) {
+    waiting.get(message.id)(message);
+    return;
+  }
   record(message.method, message.params);
   switch (message.method) {
     case 'initialize':
@@ -59,6 +83,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       send({ id: message.id, result: { configOptions: cfg.afterSet ?? [] } });
       return;
     case 'session/prompt':
+      if (cfg.script) {
+        void play(message.params.sessionId, message.id);
+        return;
+      }
       // With updateOnPrompt the client reports a changed option list, then never answers.
       if (cfg.updateOnPrompt) {
         send({
@@ -444,5 +472,192 @@ describe('AcpTransport against a stub agent', () => {
     await session.close();
     expect(await running).toBe('rejected');
     expect(launcher.aliveGroups()).toBe(0);
+  });
+});
+
+// The pair codex-acp 2.6.0 sends for an MCP call, as measured in the Phase 0 spike (2026-11-17).
+const MCP_TOOL_CALL = {
+  sessionUpdate: 'tool_call',
+  toolCallId: 'exec-1',
+  kind: 'execute',
+  title: 'mcp.spike.ping',
+  status: 'pending',
+  rawInput: { server: 'spike', tool: 'ping', arguments: {} },
+  _meta: { is_mcp_tool_call: true },
+};
+const CODEX_OPTIONS = [
+  { optionId: 'allow_once', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'allow_session', name: 'Allow for session', kind: 'allow_always' },
+  { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+  { optionId: 'cancel', name: 'Cancel', kind: 'reject_once' },
+];
+const MCP_REQUEST = {
+  toolCall: { toolCallId: 'exec-1', kind: 'execute', status: 'pending' },
+  options: CODEX_OPTIONS,
+  _meta: { is_mcp_tool_approval: true },
+};
+
+describe('AcpTransport, the tool call that a permission request leaves out', () => {
+  async function ask(script: unknown[], name: string): Promise<PermissionRequest[]> {
+    const seen: PermissionRequest[] = [];
+    const { open, record } = await params(name, { config: { script } });
+    const session = await new AcpTransport().open({
+      ...open,
+      onPermission: (request) => {
+        seen.push(request);
+        return { outcome: 'selected', optionId: 'allow_once' };
+      },
+    });
+    await session.prompt([{ type: 'text', text: 'go' }]);
+    const answers = (await recorded(record)).filter(
+      (entry) => entry.method === 'permission-answer',
+    );
+    expect(answers).toHaveLength(script.filter((step) => 'permission' in (step as object)).length);
+    await session.close();
+    return seen;
+  }
+
+  it('hands the policy the server and the tool of an MCP call, found in the tool_call', async () => {
+    const [request] = await ask(
+      [{ update: MCP_TOOL_CALL }, { permission: MCP_REQUEST }],
+      'mcp-merge',
+    );
+    expect(request).toMatchObject({
+      toolCallId: 'exec-1',
+      toolKind: 'execute',
+      title: 'mcp.spike.ping',
+      mcpTool: { server: 'spike', tool: 'ping' },
+    });
+    expect(request?.command).toBeUndefined();
+  });
+
+  it('a tool_call_update that arrives in between only overwrites what it brings', async () => {
+    const [request] = await ask(
+      [
+        { update: MCP_TOOL_CALL },
+        {
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'exec-1',
+            status: 'in_progress',
+            title: 'ping',
+          },
+        },
+        { permission: MCP_REQUEST },
+      ],
+      'mcp-update',
+    );
+    expect(request).toMatchObject({ title: 'ping', mcpTool: { server: 'spike', tool: 'ping' } });
+  });
+
+  it('forgets a call that ended: a later request with the same id has nothing to merge', async () => {
+    const [request] = await ask(
+      [
+        { update: MCP_TOOL_CALL },
+        {
+          update: { sessionUpdate: 'tool_call_update', toolCallId: 'exec-1', status: 'completed' },
+        },
+        { permission: MCP_REQUEST },
+      ],
+      'mcp-ended',
+    );
+    expect(request?.mcpTool).toBeUndefined();
+    expect(request?.title).toBeUndefined();
+  });
+
+  it('does not take the tool call of another id for its own', async () => {
+    const [request] = await ask(
+      [{ update: { ...MCP_TOOL_CALL, toolCallId: 'exec-2' } }, { permission: MCP_REQUEST }],
+      'mcp-other-id',
+    );
+    expect(request?.mcpTool).toBeUndefined();
+  });
+});
+
+describe('permissionRequestOf, the merge with the tool call seen before', () => {
+  const requestOf = (toolCall: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    ({ sessionId: 's', toolCall, options: CODEX_OPTIONS, ...extra }) as never;
+  const known = {
+    title: 'mcp.spike.ping',
+    kind: 'execute',
+    rawInput: { server: 'spike', tool: 'ping', arguments: {} },
+    meta: { is_mcp_tool_call: true },
+  };
+
+  it('takes what the request leaves out from the tool call', () => {
+    const merged = permissionRequestOf(requestOf({ toolCallId: 'a' }), known);
+    expect(merged).toMatchObject({
+      title: 'mcp.spike.ping',
+      toolKind: 'execute',
+      mcpTool: { server: 'spike', tool: 'ping' },
+    });
+  });
+
+  it('lets the request win where it brings a field', () => {
+    const merged = permissionRequestOf(
+      requestOf({
+        toolCallId: 'a',
+        title: 'Other',
+        kind: 'read',
+        rawInput: { server: 'x', tool: 'y' },
+      }),
+      known,
+    );
+    expect(merged).toMatchObject({
+      title: 'Other',
+      toolKind: 'read',
+      mcpTool: { server: 'x', tool: 'y' },
+    });
+  });
+
+  it('marks an MCP call by the request alone, with no tool_call seen', () => {
+    const merged = permissionRequestOf(
+      requestOf(
+        { toolCallId: 'a', kind: 'execute', rawInput: { server: 's', tool: 't' } },
+        { _meta: { is_mcp_tool_approval: true } },
+      ),
+    );
+    expect(merged.mcpTool).toEqual({ server: 's', tool: 't' });
+  });
+
+  it('leaves mcpTool out without the MCP mark, even when rawInput has the two names', () => {
+    const merged = permissionRequestOf(requestOf({ toolCallId: 'a', kind: 'execute' }), {
+      ...known,
+      meta: {},
+    });
+    expect(merged.mcpTool).toBeUndefined();
+    const none = permissionRequestOf(
+      requestOf({ toolCallId: 'a', kind: 'execute', rawInput: { server: 's', tool: 't' } }),
+    );
+    expect(none.mcpTool).toBeUndefined();
+    // A mark that is not exactly true does not count.
+    const loose = permissionRequestOf(
+      requestOf(
+        { toolCallId: 'a', kind: 'execute', rawInput: { server: 's', tool: 't' } },
+        { _meta: { is_mcp_tool_approval: 'true' } },
+      ),
+    );
+    expect(loose.mcpTool).toBeUndefined();
+  });
+
+  it('leaves mcpTool out when a name is missing, empty or not a string', () => {
+    for (const rawInput of [
+      { server: 's' },
+      { tool: 't' },
+      { server: '', tool: 't' },
+      { server: 's', tool: '' },
+      { server: 1, tool: 't' },
+    ]) {
+      const merged = permissionRequestOf(requestOf({ toolCallId: 'a', rawInput }), known);
+      expect(merged.mcpTool).toBeUndefined();
+    }
+  });
+
+  it('without a tool_call or a mark an execute stays what it was: no mcpTool, the command kept', () => {
+    const merged = permissionRequestOf(
+      requestOf({ toolCallId: 'a', kind: 'execute', rawInput: { command: 'ls' } }),
+    );
+    expect(merged).toMatchObject({ toolKind: 'execute', command: 'ls' });
+    expect(merged.mcpTool).toBeUndefined();
   });
 });

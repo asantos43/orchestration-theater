@@ -220,14 +220,20 @@ export class CodexAdapter extends ClientAdapter {
    *
    * Phase 4, P1 (policy v2): `mcpTools` and `nativeShell: 'shells'` are not translated. The
    * architecture says Codex has an enable setting per MCP server, and the profile file
-   * (`config.toml`) could carry one, but no key name, no way for a server that arrives by
-   * `session/new` to meet an entry of the file, and no way a call to an MCP tool is approved
-   * are confirmed [N]; this step writes no key of Codex it has no source for, and the fake agent
-   * cannot measure how Codex approves an MCP call. `mcpTools` has the `daemon` layer only: the
-   * framework server hands the session the tools of its role alone (the grant of the attempt
-   * carries the list of the policy), and a request that does reach `answerPermission` is
-   * rejected whatever the policy lists. `mcpServers` is the set of servers the session was opened
-   * with and nothing finer. The real optional test is where the measurement belongs.
+   * (`config.toml`) could carry one, but no key name and no way for a server that arrives by
+   * `session/new` to meet an entry of the file are confirmed [N]; this step writes no key of Codex
+   * it has no source for. How Codex approves an MCP call is measured [V] (spike s1b, codex-acp
+   * 2.6.0, and the real round of 2026-11-17): it sends `session/request_permission` for EVERY MCP
+   * call, with `kind: execute`, the same `toolCallId` as the `tool_call` that came before it, and
+   * `_meta.is_mcp_tool_approval`; the names (`rawInput.server` and `rawInput.tool`) are only in that
+   * `tool_call`, which the ACP transport merges into the request (`PermissionRequest.mcpTool`).
+   * Layer 2 (`decidePermission`) answers it with `allow_once` when the role lists the tool in
+   * `mcpServers` and `mcpTools`, whatever `onAsk` says, and with `reject` otherwise; never
+   * `allow_always`, which Codex may write to its profile [proposta]. So `mcpTools` has the `daemon`
+   * layer twice over: the framework server hands the session the tools of its role alone (the grant
+   * of the attempt carries the list of the policy), and a call outside the role is rejected in the
+   * answer. `mcpServers` is the set of servers the session was opened with and nothing finer. That
+   * a session of Codex really delivers a tool through this answer stays for the real optional test.
    */
   protected enforcement(_policy: RolePolicy, via: TransportId): Enforcement {
     if (via === 'headless') {

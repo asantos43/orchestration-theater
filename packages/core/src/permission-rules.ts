@@ -11,6 +11,8 @@ import type {
  * the `ClientAdapter` can call it for every client.
  *
  * Order of the decision, from the strongest to the weakest [proposta]:
+ * 0. a request that is an MCP tool call (`request.mcpTool`) is decided by the lists of the role
+ *    alone (Codex asks about every MCP call, so a role would never reach its own tools otherwise);
  * 1. what is always rejected (N99): a write outside the worktree, the shell of the client, the
  *    network outside `network.allow` and a change of mode (the way into a bypass). No rule opens
  *    these, and the daemon configuration refuses a rule that tries;
@@ -51,10 +53,19 @@ export const PERMISSION_REASONS = [
   'native_shell',
   'network_outside_allow',
   'mode_switch',
+  'mcp_tool_of_role',
+  'mcp_tool_outside_role',
 ] as const;
 export type PermissionReason = (typeof PERMISSION_REASONS)[number];
 
-/** The reasons for which a request is rejected whatever the rules say (N99). */
+/**
+ * The reasons for which a request is rejected whatever the rules say (N99). `mcp_tool_outside_role`
+ * is deliberately NOT here: the list is the N99 set the daemon configuration refuses a rule for
+ * (writes outside the worktree, the shell, the network, the mode), and a rule has no way to reach an
+ * MCP call anyway, because an MCP request is decided by `mcpServers`/`mcpTools` before the rules
+ * are read. The rejection is the fail-closed default of the role's list, not a prohibition that
+ * must be kept out of the configuration.
+ */
 export const ALWAYS_REJECTED_REASONS = [
   'write_outside_worktree',
   'write_target_unknown',
@@ -74,6 +85,12 @@ export interface PermissionPolicy {
   readonly onAsk: string;
   readonly rules?: readonly PermissionRule[];
   readonly network: { readonly allow: readonly string[] };
+  /**
+   * The MCP servers and tools of the role (`RolePolicy.mcpServers` and `mcpTools`), read for a
+   * request that carries `mcpTool`. A server with no entry has no tool allowed. [proposta]
+   */
+  readonly mcpServers?: readonly string[];
+  readonly mcpTools?: Readonly<Record<string, readonly string[] | 'all'>>;
 }
 
 /** What the answer needs besides the request and the policy. */
@@ -282,16 +299,40 @@ export function matchRule(
   });
 }
 
+/** True when the role lists the MCP tool: its server in `mcpServers` and the tool (or `all`) for that server. */
+function roleAllowsMcpTool(
+  tool: NonNullable<PermissionRequest['mcpTool']>,
+  policy: PermissionPolicy,
+): boolean {
+  if (!(policy.mcpServers ?? []).includes(tool.server)) return false;
+  const tools = policy.mcpTools;
+  if (tools === undefined || !Object.hasOwn(tools, tool.server)) return false;
+  const listed = tools[tool.server];
+  return listed === 'all' || (Array.isArray(listed) && listed.includes(tool.tool));
+}
+
 /**
- * What layer 2 decides for `request` under `policy`. `onAsk: 'reject'` (and any value this
- * function does not know) rejects everything; `rules` rejects what is always rejected, then follows
- * the first rule that matches.
+ * What layer 2 decides for `request` under `policy`. A request that is an MCP tool call
+ * (`request.mcpTool`) is decided first and by the lists of the role alone, whatever `onAsk` says:
+ * `allow` for a tool the role lists, `reject` for any other. The client asks about every MCP call
+ * (Codex does, [V] 2026-11-17), so without this the role could not use its own tools; and a request
+ * with `mcpTool` is never the native shell, whatever its kind says. For every other request,
+ * `onAsk: 'reject'` (and any value this function does not know) rejects everything; `rules`
+ * rejects what is always rejected, then follows the first rule that matches.
  */
 export function decidePermission(
   request: PermissionRequest,
   policy: PermissionPolicy,
   context: PermissionContext,
 ): PermissionDecision {
+  if (request.mcpTool !== undefined) {
+    const allowed = roleAllowsMcpTool(request.mcpTool, policy);
+    return {
+      decision: allowed ? 'allow' : 'reject',
+      rule: NO_RULE,
+      reason: allowed ? 'mcp_tool_of_role' : 'mcp_tool_outside_role',
+    };
+  }
   if (policy.onAsk !== 'rules') {
     return { decision: 'reject', rule: NO_RULE, reason: 'on_ask_reject' };
   }
