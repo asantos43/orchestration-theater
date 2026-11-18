@@ -99,6 +99,11 @@
     "system": {
       "handoff": "System: attempt {{attemptId}} passed the baton from {{from}} to {{to}} ({{cause}}); the work goes on from the saved state.",
       "selectionWait": "System: the {{role}} waits for an Executor that is not of the same {{what}} as the work ({{crossCheck}}); nothing else is available: {{on}}. It goes on by itself when one is.",
+      "directorFailover": {
+        "switched": "System: the Director's session of {{from}} failed ({{cause}}); a new session opened with {{to}}, with the state summary, and the prompt in progress went back to the queue.",
+        "waiting": "System: the Director's session of {{from}} failed ({{cause}}) and no Executor is available; the queue waits and the Director goes on by itself when one is free{{until}}.",
+        "unavailable": "System: the Director's session of {{from}} failed ({{cause}}) and no other Executor can take it; the queue is held until the next prompt tries again."
+      },
       "recovery": {
         "title": "System: the daemon restarted and reconciled this scenario.",
         "resumed": "  Resumed: {{items}}.",

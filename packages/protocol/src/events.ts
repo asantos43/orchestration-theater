@@ -630,6 +630,10 @@ export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 export type ScenarioRecoveryNotice = Extract<ScenarioSystemMessagePayload, { kind: 'recovery' }>;
 export type ScenarioHandoffNotice = Extract<ScenarioSystemMessagePayload, { kind: 'handoff' }>;
+export type ScenarioDirectorFailoverNotice = Extract<
+  ScenarioSystemMessagePayload,
+  { kind: 'director_failover' }
+>;
 export type ScenarioSelectionWaitNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'selection_wait' }

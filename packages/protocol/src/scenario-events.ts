@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ATTACHMENT_SOURCES } from '@otheater/core';
 import { z } from 'zod';
+import { InterruptionCauseSchema } from './session-events.js';
 
 /**
  * Payloads of the `scenario.*` events (architecture 5.20, "Eventos"). Registered in
@@ -148,10 +149,43 @@ export const ScenarioSelectionWaitNoticeSchema = z.strictObject({
   until: z.int().min(0).nullable(),
 });
 
+/** How a failover of the Director ended, for the Producer (`director_failover` kind). */
+export const DIRECTOR_FAILOVER_OUTCOMES = ['switched', 'waiting', 'unavailable'] as const;
+export type DirectorFailoverOutcome = (typeof DIRECTOR_FAILOVER_OUTCOMES)[number];
+
+/**
+ * The `director_failover` kind (Phase 5, P20; [proposta] the name and the fields): the session of
+ * the Director failed for `cause` (the P17 cause: `quota_exhausted`, `spend_cap`, `transient`,
+ * `client_crash`) and the daemon replaced it, so the work goes on.
+ * - `switched`: a new session is open with `toExecutor`; its first prompt carries the state summary
+ *   and the prompt that was in progress is back in the queue (`requeued`).
+ * - `waiting`: nobody is available (`selection.director_wait: wait`), the queue waits and resumes
+ *   by itself when an Executor is free (`scenario.director_resumed` says which one). `resetsAt` is
+ *   the earliest known end of the wait, when a source says.
+ * - `unavailable`: nobody can take it (`selection.director_wait: fail`, or no Executor of the
+ *   role is left that did not fail): the queue stops until the next prompt tries again.
+ * `fromExecutor` is null when the session had no Executor on record (a Director that came from
+ * before this field). `detail` is the error text, masked and cut.
+ */
+export const ScenarioDirectorFailoverNoticeSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('director_failover'),
+  outcome: z.enum(DIRECTOR_FAILOVER_OUTCOMES),
+  cause: InterruptionCauseSchema,
+  fromExecutor: z.string().min(1).max(256).nullable(),
+  /** The Executor of the new session; null unless `outcome` is `switched`. */
+  toExecutor: z.string().min(1).max(256).nullable(),
+  /** The prompt of the queue that was in progress and went back to it; null when none was. */
+  requeued: z.string().min(1).max(256).nullable(),
+  resetsAt: z.int().min(0).nullable(),
+  detail: z.string().min(1).max(512).nullable(),
+});
+
 export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioRecoveryNoticeSchema,
   ScenarioHandoffNoticeSchema,
   ScenarioSelectionWaitNoticeSchema,
+  ScenarioDirectorFailoverNoticeSchema,
 ]);
 
 /** What a `play.notice` tells (P16b, [proposta]): a situation of the play the daemon used to only log. */

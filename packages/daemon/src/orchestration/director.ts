@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { buildDaemonEvent } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type InterruptionCause,
+  type ScenarioDirectorFailoverNotice,
+} from '@otheater/protocol';
 import {
   AdapterUnavailable,
   assemblePrefix,
@@ -22,6 +26,9 @@ import type { Logger } from '../logger.js';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
+import type { QuotaService } from '../quota/service.js';
+import { situationText } from '../situations.js';
+import { directorFailureOf, failoverApplies, type DirectorFailure } from './director-failover.js';
 import { resolveRolePolicy } from './role-policy.js';
 import type { RoleSelection, SelectedExecutor } from './role-selection.js';
 
@@ -59,6 +66,31 @@ export interface DirectorSessionsOptions {
    * time, and the daemon of the previous steps, keep the old behaviour).
    */
   readonly clock?: Clock;
+  /**
+   * What the failover tells the quota service about a limit error, so the next selection leaves the
+   * exhausted profile out (P20). Without it the Executor that failed is excluded by the failover
+   * itself until a turn succeeds.
+   */
+  readonly quota?: Pick<QuotaService, 'ingestLimitHit'> | undefined;
+  /**
+   * The `director_failover` notice for the chat of the Producer (P20), called after the
+   * `scenario.system_message` event is written. The daemon hands it to the Producer channel.
+   */
+  readonly onNotice?: ((notice: ScenarioDirectorFailoverNotice) => void) | undefined;
+}
+
+/** The failover of a Director session that is being replaced (P20). */
+interface PendingFailover {
+  /** The Executor of the session that failed; null when no Executor was on record. */
+  readonly from: string | null;
+  readonly cause: InterruptionCause;
+  /** When the limit comes back, if the quota service knows. */
+  readonly resetsAt: number | null;
+  readonly detail: string | null;
+  /** The prompt of the queue that was in progress and went back to it. */
+  readonly requeued: string;
+  /** The `waiting` notice was already written. */
+  announcedWaiting: boolean;
 }
 
 interface DirectorSession {
@@ -88,6 +120,16 @@ interface DirectorSession {
   active: boolean;
   /** The last turn failed: the queue does not move until the session is opened again. */
   failed: boolean;
+  /** The Executor the open session runs with (complete name); `undefined` while it sleeps. */
+  executor: string | undefined;
+  /**
+   * The Executors whose session failed since the last turn that worked (P20), for the causes the
+   * quota does not explain (a provider error, a drop): the opening leaves them out, so a failover
+   * never goes back to what just failed. Cleared by a turn that works and when nobody is left.
+   */
+  readonly failedExecutors: Set<string>;
+  /** The failover the opening in course belongs to; `undefined` for an ordinary wake. */
+  failover: PendingFailover | undefined;
   /** The prefix of the role goes into the first prompt of the session. */
   prefixed: boolean;
   /** The session was opened again after a sleep: its first prompt carries the state summary. */
@@ -298,15 +340,17 @@ export class DirectorSessions {
     const { store, logger } = this.#options;
     const park = { held: false };
     try {
-      const { lease, grant } = await this.#acquire(session.scenarioId, {
+      const { lease, grant, picked } = await this.#acquire(session, {
         signal: session.abort.signal,
         parked: () => {
           park.held = true;
           parked();
+          this.#announceWaiting(session);
         },
       });
       session.lease = lease;
       session.grant = grant;
+      session.executor = picked.executor.id;
       const sleptAt = session.sleptAt ?? null;
       const slept = session.sleptAt !== undefined;
       session.sleptAt = undefined;
@@ -320,7 +364,8 @@ export class DirectorSessions {
           scenarioId: session.scenarioId,
         });
       }
-      if (park.held) this.#arm(session);
+      await this.#settleFailover(session, 'switched', picked.executor.id);
+      if (park.held || slept) this.#arm(session);
     } catch (error) {
       // A caller of `ensure` that stayed behind the opening sees the error; one that was released
       // when the wait began cannot, so the log keeps it.
@@ -330,6 +375,7 @@ export class DirectorSessions {
           'the Director did not open after its wait',
         );
       }
+      await this.#settleFailover(session, 'unavailable', null, error);
       throw error;
     }
   }
@@ -341,9 +387,23 @@ export class DirectorSessions {
    * `scenario.director_waiting` and `scenario.director_resumed` are its two ends. The Director
    * session that is already open keeps the Executor it has.
    */
-  async #pick(scenarioId: string, hooks: ParkingHooks | undefined): Promise<SelectedExecutor> {
+  async #pick(
+    session: DirectorSession,
+    hooks: ParkingHooks | undefined,
+  ): Promise<SelectedExecutor> {
     const { selection, config, store } = this.#options;
-    const request = { role: DIRECTOR_ROLE, scenarioId };
+    const { scenarioId, failedExecutors } = session;
+    // P20: a failover never goes back to the Executor that just failed (a provider error, a drop).
+    const request = {
+      role: DIRECTOR_ROLE,
+      scenarioId,
+      ...(failedExecutors.size === 0
+        ? {}
+        : {
+            refuse: (item: { readonly id: string }) =>
+              failedExecutors.has(item.id) ? 'director_failed' : null,
+          }),
+    };
     if (config.selection.director_wait === 'wait') {
       const acquired = await selection.acquire(request, {
         ...(hooks === undefined ? {} : { signal: hooks.signal }),
@@ -387,13 +447,14 @@ export class DirectorSessions {
 
   /** The pool lease and the MCP grant of the Director of a scenario. */
   async #acquire(
-    scenarioId: string,
+    session: DirectorSession,
     hooks?: ParkingHooks,
-  ): Promise<{ lease: SessionLease; grant: McpGrant }> {
+  ): Promise<{ lease: SessionLease; grant: McpGrant; picked: SelectedExecutor }> {
     const { store, execution, mcp, config, registries } = this.#options;
+    const { scenarioId } = session;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
-    const picked = await this.#pick(scenarioId, hooks);
+    const picked = await this.#pick(session, hooks);
     const repos = await store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
     const { profile, settings } = picked;
@@ -431,7 +492,7 @@ export class DirectorSessions {
         await lease.release().catch(() => undefined);
         throw error;
       }
-      return { lease, grant };
+      return { lease, grant, picked };
     } catch (error) {
       grant.revoke();
       throw error;
@@ -460,6 +521,9 @@ export class DirectorSessions {
       seq: 0,
       active: false,
       failed: false,
+      executor: undefined,
+      failedExecutors: new Set(),
+      failover: undefined,
       prefixed: false,
       summaryNeeded: false,
     };
@@ -502,6 +566,8 @@ export class DirectorSessions {
       text = `${session.prefix}\n${state}${body}`;
     }
     let reply = '';
+    let failure: DirectorFailure | undefined;
+    let failedWith: unknown;
     session.active = true;
     const subscription = lease.session.onUpdate((update) => {
       reply += textOf(update);
@@ -511,9 +577,12 @@ export class DirectorSessions {
       session.prefixed = true;
       session.summaryNeeded = false;
       session.failed = false;
+      session.failedExecutors.clear();
     } catch (error) {
       session.failed = true;
       reply = `${reply}\n[${error instanceof Error ? error.message : String(error)}]`;
+      failure = directorFailureOf(error);
+      failedWith = error;
       throw error;
     } finally {
       subscription.dispose();
@@ -525,7 +594,164 @@ export class DirectorSessions {
         if (session.replies.length > limit)
           session.replies.splice(0, session.replies.length - limit);
       }
+      // P20: replaced once the reply is kept; the error still goes up, so the prompt stays in the
+      // queue and the pump stops (`PromptDispatcher`): the new session restarts it.
+      if (failure !== undefined && this.#answers(failure)) {
+        await this.#failover(session, item, failure, failedWith).catch((error: unknown) => {
+          this.#options.logger.error(
+            { err: error, scenarioId: session.scenarioId },
+            'the Director could not be replaced',
+          );
+        });
+      }
       this.#arm(session);
+    }
+  }
+
+  /** Whether `scenarios.director_failover` replaces the session for this failure. */
+  #answers(failure: DirectorFailure): boolean {
+    return failoverApplies(this.#options.config.scenarios.director_failover, failure.cause);
+  }
+
+  /**
+   * P20 (architecture 5.4, "Failover do Orquestrador"): the session of the Director failed for a
+   * cause a new session can answer. The failed session goes back to the pool and a new one opens
+   * with the next Executor of the `director` role (the same opening as the wake of P9, so the
+   * `selection.director_wait` wait of P16b applies: with nobody available the queue waits and the
+   * Producer is told). Its first prompt carries the role prefix and the state summary, so the
+   * directives in force come with it. The prompt in progress stays in the queue, in its place;
+   * when the session is open the pump goes on with it.
+   */
+  async #failover(
+    session: DirectorSession,
+    item: PromptQueueItem,
+    failure: DirectorFailure,
+    error: unknown,
+  ): Promise<void> {
+    const { quota, logger } = this.#options;
+    session.idleTimer?.abort();
+    session.idleTimer = undefined;
+    if (session.abort.signal.aborted || session.waking !== undefined) return;
+    const { lease, grant } = session;
+    const from = session.executor ?? null;
+    const profile = lease?.profileId;
+    let cause = failure.cause;
+    let resetsAt: number | null = null;
+    let explained = false;
+    if (failure.cause === 'quota_exhausted' && profile !== undefined && quota !== undefined) {
+      try {
+        const status = await quota.ingestLimitHit(
+          profile,
+          failure.limitHit ?? { source: 'error:QuotaExhausted' },
+        );
+        explained = status.state === 'exhausted';
+        resetsAt = status.untilReset;
+        if (explained && status.cause === 'budget') cause = 'spend_cap';
+      } catch (quotaError) {
+        logger.warn(
+          { err: quotaError, scenarioId: session.scenarioId },
+          'the quota service did not answer the failover of the Director',
+        );
+      }
+    }
+    // What the quota explains the selection already leaves out; the rest is left out by the failover.
+    if (from !== null && !explained) session.failedExecutors.add(from);
+    session.lease = undefined;
+    session.grant = undefined;
+    session.executor = undefined;
+    session.prefixed = false;
+    session.summaryNeeded = true;
+    session.failed = false;
+    session.failover = {
+      from,
+      cause,
+      resetsAt,
+      detail: situationText(error),
+      requeued: item.id,
+      announcedWaiting: false,
+    };
+    logger.warn(
+      { scenarioId: session.scenarioId, cause, from, prompt: item.id },
+      'the Director session failed: opening another',
+    );
+    await lease?.release().catch((releaseError: unknown) => {
+      logger.warn({ err: releaseError, scenarioId: session.scenarioId }, 'the lease did not go');
+    });
+    grant?.revoke();
+    // Not awaited: the failed turn ends first, so the pump stops and `dispatcher.resume` can start
+    // it again once the session is open. A failure of the opening is told by `#settleFailover`.
+    this.#wake(session).catch(() => undefined);
+  }
+
+  /** The `waiting` notice of the failover in course: nobody is free, the queue waits (P16b). */
+  #announceWaiting(session: DirectorSession): void {
+    const { failover } = session;
+    if (failover === undefined || failover.announcedWaiting) return;
+    failover.announcedWaiting = true;
+    void this.#announce(session, failover, 'waiting', null);
+  }
+
+  /**
+   * Closes the failover in course: the new session is open (`switched`, and the queue goes on) or
+   * the opening failed (`unavailable`: the prompt waits for the next one to try again).
+   */
+  async #settleFailover(
+    session: DirectorSession,
+    outcome: 'switched' | 'unavailable',
+    to: string | null,
+    error?: unknown,
+  ): Promise<void> {
+    const { failover } = session;
+    if (failover === undefined) return;
+    session.failover = undefined;
+    if (session.abort.signal.aborted) return;
+    if (outcome === 'unavailable') {
+      session.failed = true;
+      session.failedExecutors.clear();
+    }
+    await this.#announce(session, failover, outcome, to, error);
+    if (outcome === 'switched') {
+      const { dispatcher } = this.#options;
+      void dispatcher.idle(session.scenarioId).then(() => {
+        dispatcher.resume(session.scenarioId);
+      });
+    }
+  }
+
+  /** The `scenario.system_message` of the failover, in the log and in the chat. Never throws. */
+  async #announce(
+    session: DirectorSession,
+    failover: PendingFailover,
+    outcome: ScenarioDirectorFailoverNotice['outcome'],
+    to: string | null,
+    error?: unknown,
+  ): Promise<void> {
+    const { store, logger, onNotice } = this.#options;
+    const { scenarioId } = session;
+    const detail =
+      error === undefined ? failover.detail : (situationText(error) ?? failover.detail);
+    const notice: ScenarioDirectorFailoverNotice = {
+      scenarioId,
+      kind: 'director_failover',
+      outcome,
+      cause: failover.cause,
+      fromExecutor: failover.from,
+      toExecutor: to,
+      requeued: failover.requeued,
+      resetsAt: failover.resetsAt,
+      detail,
+    };
+    try {
+      await store.events.append({
+        ...buildDaemonEvent('scenario.system_message', notice),
+        scenarioId,
+      });
+      onNotice?.(notice);
+    } catch (announceError) {
+      logger.warn(
+        { err: announceError, scenarioId },
+        'the failover notice of the Director was lost',
+      );
     }
   }
 }

@@ -114,3 +114,48 @@ describe('renderSystemMessage, the wait of the strict cross-review (N135)', () =
     expect(lines[0]).toContain('reviewer');
   });
 });
+
+describe('renderSystemMessage, the failover of the Director (P20)', () => {
+  const FAILOVER: ScenarioSystemMessagePayload = {
+    scenarioId: 's1',
+    kind: 'director_failover',
+    outcome: 'switched',
+    cause: 'quota_exhausted',
+    fromExecutor: 'fake-model@fake/one',
+    toExecutor: 'fake-model@fake/two',
+    requeued: 'q1',
+    resetsAt: null,
+    detail: null,
+  };
+
+  it('says which Executor took over and why, in English', async () => {
+    const t = await createTranslator('en');
+    const [line] = renderSystemMessage(t, FAILOVER);
+    expect(line).toContain('fake-model@fake/one');
+    expect(line).toContain('fake-model@fake/two');
+    expect(line).toContain('quota_exhausted');
+  });
+
+  it('says it waits, with the end of the limit, in Brazilian Portuguese', async () => {
+    const t = await createTranslator('pt-BR');
+    const lines = renderSystemMessage(t, {
+      ...FAILOVER,
+      outcome: 'waiting',
+      toExecutor: null,
+      resetsAt: Date.UTC(2026, 10, 18, 12),
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('Sistema:');
+    expect(lines[0]).toContain('2026-11-18T12:00:00.000Z');
+  });
+
+  it('says nobody can take it over', async () => {
+    const t = await createTranslator('en');
+    const [line] = renderSystemMessage(t, {
+      ...FAILOVER,
+      outcome: 'unavailable',
+      toExecutor: null,
+    });
+    expect(line).toContain('no other Executor');
+  });
+});
