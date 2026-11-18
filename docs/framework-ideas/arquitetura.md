@@ -3587,6 +3587,9 @@ Decididas:
 - drenagem e remoção de perfil (2026-11-18, seção 5.6 e Fase 5, N127): `profiles.drain.timeout: 10m`, `profiles.drain.on_timeout: handoff`, `profiles.drain.removed_dir: delete`, com o logout antes;
 - shell nativo do Codex na sandbox `runtime` (2026-11-18, seções 5.2 e 5.8 e Fase 4, N129): `clients.codex.inner_sandbox: keep` como padrão, e uma rodada curta na Fase 5 mede se o `srt` permite namespace aninhado;
 - estratégia de seleção entre contas (2026-11-18, seção 5.7 e Fase 5, N130): `selection.strategy: ordered | most_headroom | round_robin`, padrão `ordered`;
+- uso do `ccusage` (2026-11-18, seções 5.6 e 6.2 e Fase 5, N118): versão fixa com mais de duas semanas e licença conferida, como biblioteca se exportar uma API, senão como CLI;
+- releitura do Claudexor (2026-11-18, seção 6.3 e Fase 5, N119): só os arquivos listados, no commit mais novo, sem clone, com o commit registrado nos cabeçalhos, no `THIRD_PARTY_NOTICES` e no `copied-code.json`;
+- tabela `pricing` inicial (2026-11-18, seção 5.6 e Fase 5, N125): os modelos da predefinição `quality`, cada preço com fonte pública e data, confirmados pelo dono ao abrir o P10;
 - porta do servidor MCP (2026-11-17, seção 5.3 e Fase 3, N81): `mcp.port: auto | <número>`, padrão `auto`; o sistema escolhe uma porta livre a cada subida, e o daemon entrega a URL às sessões;
 - evento fora do registro (2026-11-17, seção 5.18 e Fase 3, N80): `events.unknown_type: reject | warn`, padrão `reject`; com `reject`, o tipo fora do registro ou o payload fora do schema lança erro e nada é gravado; com `warn`, o evento é gravado e o log recebe um aviso;
 - plano da Fase 3 (2026-11-16, seção 10, N77): passos P0 a P13 em [docs/14](../14-PLANO-DA-FASE-3.md), com o marco interno 3a (peça ponta a ponta com o agente falso, reinício e `kill -9`);

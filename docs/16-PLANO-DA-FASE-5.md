@@ -2,7 +2,7 @@
 
 Versão 1, de 2026-11-17. Este é o plano de passos da Fase 5 da [arquitetura](framework-ideas/arquitetura.md), §10, "Assinaturas, cotas e seleção". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
-O dono liberou o merge dos PRs da Fase 5 sem ok por PR, com a CI verde e squash (2026-11-17). Das dez decisões que o plano levanta (N118 a N127), a N120, a N121 e a N122 foram decididas em 2026-11-17, e a N123, a N124, a N126 e a N127 em 2026-11-18, com a N130 (estratégia de seleção) e a N129 da Fase 4; seguem **abertas** a N118, a N119 e a N125, e cada passo que depende de uma só abre depois dela ([docs/13](13-DECISOES-EM-ABERTO.md)).
+O dono liberou o merge dos PRs da Fase 5 sem ok por PR, com a CI verde e squash (2026-11-17). Das dez decisões que o plano levanta (N118 a N127), a N120, a N121 e a N122 foram decididas em 2026-11-17, e as outras sete (N118, N119 e N123 a N127) em 2026-11-18, com a N130 (estratégia de seleção) e a N129 da Fase 4. Nenhuma segue aberta ([docs/13](13-DECISOES-EM-ABERTO.md)).
 
 ## Como usar
 
@@ -461,14 +461,14 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 
 Cada uma traz a recomendação marcada **[proposta]**, e o estado de cada uma (aberta ou decidida) está no docs/13. O dono decide por múltipla escolha ao abrir o passo que depende de cada uma ([docs/13](13-DECISOES-EM-ABERTO.md)):
 
-- **N118:** o download do `ccusage` (P12) e a forma de uso. Opções: versão fixa como biblioteca, versão fixa como CLI, ou fora da v1. **Recomendação:** biblioteca, se ela exportar uma API (a conferir no registro npm ao abrir o P12), senão a CLI; versão com mais de duas semanas e licença conferida.
-- **N119:** a releitura do Claudexor no início da fase (§6.3). Opções: ler só os arquivos listados no commit mais novo, clonar o repositório inteiro em pasta temporária, ou manter a tag `v6.1.2`. **Recomendação:** ler só os arquivos listados, sem clone, registrando o novo commit nos cabeçalhos.
+- **N118 (decidida em 2026-11-18, recomendação aceita):** o download do `ccusage` (P12) e a forma de uso. Opções: versão fixa como biblioteca, versão fixa como CLI, ou fora da v1. **Recomendação:** biblioteca, se ela exportar uma API (a conferir no registro npm ao abrir o P12), senão a CLI; versão com mais de duas semanas e licença conferida.
+- **N119 (decidida em 2026-11-18, recomendação aceita):** a releitura do Claudexor no início da fase (§6.3). Opções: ler só os arquivos listados no commit mais novo, clonar o repositório inteiro em pasta temporária, ou manter a tag `v6.1.2`. **Recomendação:** ler só os arquivos listados, sem clone, registrando o novo commit nos cabeçalhos.
 - **N120 (decidida em 2026-11-17):** o plano neste documento, com o marco 5a no P16.
 - **N121 (decidida em 2026-11-17):** só serviços e a CLI (`ot profile`, `ot executor`); o assistente da primeira execução fica para a Fase 7 (tela) e a 10 (`ot init`).
 - **N122 (decidida em 2026-11-17):** os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir.
 - **N123 (decidida em 2026-11-18, recomendação aceita):** os padrões das sondas: `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, a unidade de `utilization`, e a statusline gravada no diretório do perfil. **Recomendação:** os valores acima.
 - **N124 (decidida em 2026-11-18, recomendação aceita):** a seleção com o estado incerto. `selection.unknown_quota: allow | skip` e `selection.near_limit: keep_order | last | skip`. **Recomendação:** `allow` (a sessão real é o teste, como na §5.6) e `keep_order` (a ordem da lista, como no algoritmo da §5.7).
-- **N125:** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10.
+- **N125 (decidida em 2026-11-18, recomendação aceita):** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10.
 - **N126 (decidida em 2026-11-18, recomendação aceita):** os detalhes do pacote de continuação e do failover: `resume.package.summarize: deterministic | director_model` (padrão `deterministic`), o tamanho máximo do pacote, o bastão sempre que a cota acaba (como a arquitetura) contra o predicado do Claudexor (só se nada foi entregue), e a fila do Diretor sem Executor. **Recomendação:** `deterministic`, bastão sempre (a arquitetura), fila em espera com aviso.
 - **N127 (decidida em 2026-11-18, recomendação aceita):** a drenagem do perfil: `profiles.drain.timeout` (`10m`) e `profiles.drain.on_timeout: handoff | wait | force` (`handoff`), e o que fazer com o diretório removido (`delete` ou `keep_backup`). **Recomendação:** `handoff`, `10m` e `delete`, com o logout antes.
 
