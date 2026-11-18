@@ -24,6 +24,7 @@ import type { DirectorReply, DirectorSessions } from './director.js';
 import type { QuestionBoard } from './handlers.js';
 import { DECISION_KINDS } from './play-effects.js';
 import type { ChatPresence } from './presence.js';
+import type { RoleSelection } from './role-selection.js';
 
 export interface ProducerChannelOptions {
   readonly store: Store;
@@ -40,6 +41,8 @@ export interface ProducerChannelOptions {
   readonly presence?: ChatPresence;
   /** Asks the Producer to confirm the conventions detected in an imported repository (P7). */
   readonly confirmer?: ConventionConfirmer;
+  /** The demands that wait for an Executor (P16): the poll shows them. */
+  readonly selection?: Pick<RoleSelection, 'waiting'>;
   /** `project.conventions`: only `ask` opens the question. Default `ask`. */
   readonly conventionsMode?: () => ConventionsMode;
 }
@@ -55,6 +58,17 @@ export interface OpenChatInput {
   readonly name?: string;
   /** Create the project in `repo` with the structure of the `software` profile (a `project`). */
   readonly newProject?: boolean;
+}
+
+/** A demand that waits for an Executor, as the chat shows it (P16). */
+export interface WaitView {
+  readonly role: string;
+  readonly playId: string | null;
+  readonly demandId: string | null;
+  /** The profiles it waits on, with the reason of each (`quota`, `budget`, `no_slot`, `ram`, `unhealthy`). */
+  readonly on: readonly { readonly profile: string; readonly reason: string }[];
+  /** The earliest known end (epoch ms), or null. */
+  readonly until: number | null;
 }
 
 /** What the Producer has to answer, as the chat shows it. */
@@ -135,6 +149,12 @@ export interface ChatPoll {
    * why it stopped, and `/idea drain`, `/idea requeue` or a new idea frees it. Each is handed out once.
    */
   readonly queueHolds: readonly IdeaQueueHeldPayload[];
+  /**
+   * What waits for an Executor of this scenario now (P16): "esperando cota de ...". It is the
+   * state of the moment, not a message handed out once: the chat shows each wait when it begins
+   * and again when its cause changes.
+   */
+  readonly waits: readonly WaitView[];
   /**
    * True while something is still going on that the Producer does not have to answer: the Director
    * has a turn or a prompt to go, or a play is in a state that moves by itself.
@@ -288,6 +308,13 @@ export class ProducerChannel {
       plays: open.map((play) => ({ id: play.id, state: play.state })),
       notices,
       queueHolds,
+      waits: (this.#options.selection?.waiting(scenarioId) ?? []).map((wait) => ({
+        role: wait.role,
+        playId: wait.playId,
+        demandId: wait.demandId,
+        on: wait.on.map((item) => ({ profile: item.profile, reason: item.reason })),
+        until: wait.until,
+      })),
       busy:
         (await directors.busy(scenarioId)) ||
         moving ||

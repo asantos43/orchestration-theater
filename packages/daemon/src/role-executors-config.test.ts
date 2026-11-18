@@ -185,6 +185,9 @@ describe('selection (5.7; P15)', () => {
       near_limit: 'keep_order',
       retry_diversity: 'rotate',
       context_reserve: 0,
+      unregistered_profiles: 'allow',
+      recheck_every: 30_000,
+      director_wait: 'fail',
     });
   });
 
@@ -197,6 +200,9 @@ selection:
   near_limit: last
   retry_diversity: forward_only
   context_reserve: 8k
+  unregistered_profiles: refuse
+  recheck_every: 2m
+  director_wait: wait
 `);
     expect(selection).toEqual({
       strategy: 'round_robin',
@@ -205,7 +211,21 @@ selection:
       near_limit: 'last',
       retry_diversity: 'forward_only',
       context_reserve: 8_000,
+      unregistered_profiles: 'refuse',
+      recheck_every: 120_000,
+      director_wait: 'wait',
     });
+  });
+
+  it('takes recheck_every as a duration or off, and refuses the rest (P16)', () => {
+    expect(parseConfig('selection:\n  recheck_every: 45s\n').selection.recheck_every).toBe(45_000);
+    expect(parseConfig('selection:\n  recheck_every: off\n').selection.recheck_every).toBe(0);
+    expect(refusal('selection:\n  recheck_every: soon\n')).toMatch(/selection\.recheck_every/u);
+    expect(refusal('selection:\n  recheck_every: 0s\n')).toMatch(/selection\.recheck_every/u);
+    expect(refusal('selection:\n  unregistered_profiles: maybe\n')).toMatch(
+      /selection\.unregistered_profiles: /u,
+    );
+    expect(refusal('selection:\n  director_wait: never\n')).toMatch(/selection\.director_wait: /u);
   });
 
   it('takes the other modes of the keys', () => {

@@ -5,6 +5,7 @@ import type { DaemonConfig } from '../config.js';
 import type { Execution } from '../execution/service.js';
 import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
+import type { QuotaService } from '../quota/service.js';
 import type { RecoveryGate } from '../recovery/gate.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { ConventionConfirmer } from '../project/confirm.js';
@@ -24,11 +25,14 @@ import { DirectorSessions } from './director.js';
 import type { OrchestrationHandlers } from './handlers.js';
 import { OrchestrationEffects } from './play-effects.js';
 import { ChatPresence } from './presence.js';
+import { RoleSelection } from './role-selection.js';
 
 export interface OrchestrationInput {
   readonly config: DaemonConfig;
   readonly composition: Composition;
   readonly execution: Execution;
+  /** What the choice of the Executor reads: the quota of each profile (P16). */
+  readonly quota: Pick<QuotaService, 'statusOf'>;
   readonly mcp: McpAccess;
   readonly registries: Registries;
   readonly prompts: PromptSource;
@@ -49,6 +53,8 @@ export interface Orchestration {
   readonly chatFlow: ChatFlow;
   /** The idea queue of the scenarios (5.20). */
   readonly ideas: IdeaQueueService;
+  /** The choice of the Executor of each role, and the demands waiting for one (P16). */
+  readonly selection: RoleSelection;
   /**
    * First step of the shutdown, before the execution stops: closes the door of the Producer
    * channel, frees the questions that wait for the Producer, and stops the plays from taking the
@@ -72,6 +78,15 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   const { config, composition, execution, mcp, registries, prompts, paths, handlers } = input;
   const { scenarioHandlers } = input;
   const { store, logger } = composition;
+  const selection = new RoleSelection({
+    store,
+    config,
+    quota: input.quota,
+    pool: execution.pool,
+    paths,
+    clock: composition.clock,
+    logger,
+  });
   const dispatcher = new PromptDispatcher({
     store,
     order: config.prompt_queue.order,
@@ -86,6 +101,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     dispatcher,
     prompts,
     registries,
+    selection,
     config,
     paths,
     logger,
@@ -119,6 +135,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     directors,
     prompts,
     registries,
+    selection,
     config,
     paths,
     logger,
@@ -143,7 +160,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
   });
   effects.bind(runner);
   const chatFlow = new ChatFlow({ store, logger });
-  handlers.bind({ store, runner, workspace, directors, config, logger, chatFlow });
+  handlers.bind({ store, runner, workspace, directors, config, logger, chatFlow, selection });
   const scenarios = new ScenarioService({
     store,
     vcs: composition.vcs,
@@ -172,6 +189,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     attachments,
     chatFlow,
+    selection,
     logger,
   });
   scenarioHandlers.bind({
@@ -191,6 +209,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     config,
     paths,
     opening: { store, runner, workspace, config },
+    selection,
     logger,
     onHeld: (held) => late.channel?.notifyQueueHeld(held),
   });
@@ -207,6 +226,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     logger,
     presence,
     confirmer,
+    selection,
     conventionsMode: () => config.project.conventions,
   });
   late.channel = channel;
@@ -229,12 +249,14 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     attachments,
     chatFlow,
     ideas,
+    selection,
     quiesce: () =>
       (quiet ??= (async () => {
         await server?.stop(paths.channel);
         handlers.board.abortAll('The daemon is stopping.');
         handlers.bind(undefined);
         scenarioHandlers.bind(undefined);
+        selection.close();
         effects.close();
         await runner.close();
         await directors.close();
