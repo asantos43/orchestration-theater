@@ -3,7 +3,9 @@ import type { Clock } from '../ports/clock.js';
 import type { StoreAggregates } from '../ports/store.js';
 import { BLACKBOARD_SPEC, TableBlackboard } from './blackboard.js';
 import { DIRECTIVES_SPEC, TableDirectiveRegistry } from './directives.js';
+import { EXECUTORS_SPEC, TableExecutorRegistry } from './executors.js';
 import { IDEAS_SPEC, TableIdeaRegistry } from './ideas.js';
+import { INTERRUPTIONS_SPEC, TableInterruptionRegistry } from './interruptions.js';
 import {
   DECISIONS_SPEC,
   DEMANDS_SPEC,
@@ -14,7 +16,9 @@ import {
   TablePlayRegistry,
   TableStageRegistry,
 } from './plays.js';
+import { PROFILES_SPEC, TableProfileRegistry } from './profiles.js';
 import { PROMPT_QUEUE_SPEC, TablePromptQueue } from './prompt-queue.js';
+import { QUOTA_SNAPSHOTS_SPEC, TableQuotaSnapshotRegistry } from './quota-snapshots.js';
 import type { TableFactory } from './record-table.js';
 import {
   ATTACHMENTS_SPEC,
@@ -26,19 +30,28 @@ import {
 } from './scenarios.js';
 import { SESSIONS_SPEC, TableSessionRegistry } from './sessions.js';
 import { SIDE_EFFECTS_SPEC, TableSideEffectRegistry } from './side-effects.js';
+import { TableUsageRegistry, USAGE_SPEC } from './usage.js';
+import { TableWakeupRegistry, WAKEUPS_SPEC } from './wakeups.js';
 
 export * from './blackboard.js';
 export * from './directives.js';
+export * from './executors.js';
 export * from './ideas.js';
+export * from './interruptions.js';
 export * from './plays.js';
+export * from './profiles.js';
 export * from './prompt-queue.js';
+export * from './quota-snapshots.js';
 export * from './record-table.js';
 export * from './scenarios.js';
+export * from './sequence.js';
 export * from './sessions.js';
 export * from './side-effects.js';
 export * from './support.js';
+export * from './usage.js';
+export * from './wakeups.js';
 
-/** Names of the tables the Phase 3 aggregates use, in the order the migrations create them. */
+/** Names of the tables the aggregates use (Phases 3 to 5), in the order the migrations create them. */
 export const AGGREGATE_TABLE_NAMES: readonly string[] = [
   SCENARIOS_SPEC.name,
   SCENARIO_REPOS_SPEC.name,
@@ -53,6 +66,12 @@ export const AGGREGATE_TABLE_NAMES: readonly string[] = [
   SESSIONS_SPEC.name,
   DIRECTIVES_SPEC.name,
   IDEAS_SPEC.name,
+  PROFILES_SPEC.name,
+  EXECUTORS_SPEC.name,
+  INTERRUPTIONS_SPEC.name,
+  QUOTA_SNAPSHOTS_SPEC.name,
+  USAGE_SPEC.name,
+  WAKEUPS_SPEC.name,
 ];
 
 /**
@@ -78,6 +97,12 @@ export function createStoreAggregates(
     sessions: new TableSessionRegistry(tables(SESSIONS_SPEC), clock),
     directives: new TableDirectiveRegistry(tables(DIRECTIVES_SPEC), clock),
     ideas: new TableIdeaRegistry(tables(IDEAS_SPEC), clock),
+    profiles: new TableProfileRegistry(tables(PROFILES_SPEC), clock),
+    executors: new TableExecutorRegistry(tables(EXECUTORS_SPEC), clock),
+    interruptions: new TableInterruptionRegistry(tables(INTERRUPTIONS_SPEC), clock),
+    quotaSnapshots: new TableQuotaSnapshotRegistry(tables(QUOTA_SNAPSHOTS_SPEC), clock),
+    usage: new TableUsageRegistry(tables(USAGE_SPEC), clock),
+    wakeups: new TableWakeupRegistry(tables(WAKEUPS_SPEC), clock),
   };
 }
 
@@ -101,6 +126,12 @@ export const AGGREGATE_READ_METHODS: Readonly<Record<AggregateName, readonly str
   sessions: ['get', 'list'],
   directives: ['get', 'list', 'inForce'],
   ideas: ['get', 'list'],
+  profiles: ['get', 'list'],
+  executors: ['get', 'list'],
+  interruptions: ['get', 'list'],
+  quotaSnapshots: ['get', 'list'],
+  usage: ['get', 'list'],
+  wakeups: ['get', 'list'],
 };
 
 /** The methods of each aggregate that write: each one is a single-call transaction outside one. */
@@ -118,6 +149,12 @@ export const AGGREGATE_WRITE_METHODS: Readonly<Record<AggregateName, readonly st
   sessions: ['open', 'update'],
   directives: ['create', 'extend', 'revoke', 'refreshStates'],
   ideas: ['create', 'transition'],
+  profiles: ['create', 'update'],
+  executors: ['create', 'update'],
+  interruptions: ['create', 'update'],
+  quotaSnapshots: ['put'],
+  usage: ['record', 'update'],
+  wakeups: ['create', 'update'],
 };
 
 type AnyMethod = (...args: unknown[]) => Promise<unknown>;

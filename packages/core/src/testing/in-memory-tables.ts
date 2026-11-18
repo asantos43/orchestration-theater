@@ -123,11 +123,20 @@ class MemoryTable<R extends object> implements RecordTable<R> {
     return this.run(() => {
       const eq = Object.entries(query.eq ?? {});
       const within = Object.entries(query.in ?? {});
+      const ranges = Object.entries(query.ranges ?? {});
       const matches = [...this.rows.values()].filter((row) => {
         const fields = row as Record<string, unknown>;
         return (
           eq.every(([field, value]) => fields[field] === value) &&
-          within.every(([field, values]) => values.includes(fields[field] as string | number))
+          within.every(([field, values]) => values.includes(fields[field] as string | number)) &&
+          ranges.every(([field, bounds]) => {
+            const value = fields[field];
+            if (typeof value !== 'number') return false;
+            return (
+              (bounds.gte === undefined || value >= bounds.gte) &&
+              (bounds.lte === undefined || value <= bounds.lte)
+            );
+          })
         );
       }) as R[];
       matches.sort((a, b) => {
