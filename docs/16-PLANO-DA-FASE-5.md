@@ -76,7 +76,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | concluído (PR #114) |
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | concluído (PR #113) |
-| P15b | Revisão cruzada que cai no mesmo provedor (N150) | P15, P16 | P12, P19 | em curso |
+| P15b | Revisão cruzada que cai no mesmo provedor (N150) | P15, P16 | P12, P19 | concluído (PR #PRNUM) |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | concluído (PR #117) |
 | P16b | Espera do Diretor, vaga em voo e bastão ligado (N141 a N145) | P16, P18 | P19, P20 | concluído (PR #123) |
 | P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
@@ -485,9 +485,66 @@ Decisão do dono em 2026-11-18 (N150), a partir da pergunta dele sobre quem tem 
 - `selection.same_provider_fallback: stronger_then_effort | stronger_model | higher_effort | any` (padrão `stronger_then_effort`): quando a revisão cruzada cai no mesmo provedor de quem fez o trabalho, o Revisor e o Crítico sobem um degrau: primeiro um modelo mais forte, depois o mesmo modelo com esforço maior, depois qualquer um. Um degrau sem Executor disponível desce para o seguinte, sem esperar.
 - Vale na queda do `prefer_other_provider`, no `fallback_prefer` da N135 e, nos modos estritos, quando nenhum Executor configurado satisfaz a revisão cruzada: aí o seletor não espera, aplica a chave e avisa (log e evento, na carga e na seleção).
 - `selection.same_provider_account: prefer_other | strategy` (padrão `prefer_other`): outra conta do mesmo provedor não satisfaz a revisão cruzada, mas, dentro de cada degrau, as contas diferentes da de quem fez o trabalho vêm primeiro.
-- Ordem de força dos modelos com padrões embutidos (Haiku < Sonnet < Opus; Luna < Sol) e substituível na configuração **[proposta]**; o degrau usado, a conta e o "nenhum configurado" vão no `executor.selected` **[proposta]**.
+- Força do modelo declarada, decidida pelo dono em 2026-11-18 (N150): `models.<modelo>.tier: small | medium | large | frontier`, opcional, com padrões embutidos só para o Claude (haiku `small`, sonnet `large`, opus `frontier`) e a OpenAI (luna `small`, sol `frontier`) **[proposta: os níveis padrão]**; "mais forte" só no mesmo provedor e com nível nos dois; sem nível, o degrau do modelo mais forte é pulado; nada vem do preço; o degrau usado, a conta e o "nenhum configurado" vão no `executor.selected` **[proposta]**.
 
 **Aceite:** um teste por modo das duas chaves; o degrau mais alto sem cota descendo; o topo caindo em `any`; os modos estritos sem nenhum Executor que sirva, sem espera; duas contas do mesmo provedor; o aviso na carga; o payload do evento.
+
+**Como ficou (2026-11-18, PR #PRNUM) [V]:**
+
+Branch `fase-5/p15b-queda-no-mesmo-provedor`. Verificado localmente em 2026-11-18: `pnpm build`, `lint` e `format:check` limpos; vitest de `core`, `protocol` e `daemon` verde (2851 testes). O `pnpm check` completo roda antes do merge, como nos outros passos.
+
+**O que ficou:**
+
+- **Duas chaves em `selection` e um bloco `models`.**
+  - `selection.same_provider_fallback: stronger_then_effort | stronger_model | higher_effort | any`, padrão `stronger_then_effort`.
+  - `selection.same_provider_account: prefer_other | strategy`, padrão `prefer_other`.
+  - `models.<modelo>.tier: small | medium | large | frontier`, opcional, em `config.ts` (raiz). Não havia bloco de modelos na configuração do daemon (o `ModelCatalog` é o catálogo dos clientes e não tem nível), então o bloco `models` é novo [proposta: o nome do bloco]. Chave desconhecida em `models.<modelo>` é recusada (`strictObject`).
+- **Os degraus** (`packages/core/src/executor-roles/selection.ts`). Quando a revisão cruzada volta ao provedor de quem fez o trabalho, os candidatos do mesmo provedor entram em degraus, nesta ordem:
+  1. `stronger_model`: um modelo mais forte que o do trabalho;
+  2. `higher_effort`: o mesmo modelo com esforço maior;
+  3. `same`: qualquer um, na ordem da lista (o comportamento anterior).
+  - `stronger_then_effort` usa os três; `stronger_model` usa 1 e 3; `higher_effort` usa 2 e 3; `any` usa só o 3.
+  - Dentro de cada degrau valem a ordem da lista, a disponibilidade, a `strategy` e o retry por diversidade, como antes. Um candidato de um degrau mais alto sem cota, sem vaga ou sem saúde é pulado com o motivo real e o seletor desce ao degrau seguinte, sem esperar por ele.
+  - Quem fica de fora por pertencer a um degrau que não foi usado aparece em `skipped` com o motivo de conflito (`same_provider` ou `same_model`) e o detalhe `kept for a later step of selection.same_provider_fallback` [proposta].
+- **Onde vale.**
+  - `prefer_other_provider`, quando ninguém de outro provedor está disponível (`crossCheck.fellBack`).
+  - `require_other_provider` e `other_model` com `strict_unavailable: fallback_prefer`.
+  - `require_other_provider` e `other_model`, com qualquer `strict_unavailable`, quando a lista resolvida do papel não tem nenhum Executor que satisfaça a revisão cruzada. Aí o seletor não espera: aplica a queda na hora e marca `crossCheck.noneConfigured: true`. Se a própria queda estiver toda indisponível (sem cota, por exemplo), a espera é a de sempre, pelos motivos reais, e `noneConfigured` continua marcado.
+  - `noneConfigured` só é marcado nos modos estritos. No `prefer_other_provider` nunca se espera, então não há o que marcar; lista vazia também não marca.
+- **Força do modelo** (`packages/core/src/executor-roles/strength.ts`). Decisão do dono de 2026-11-18 (N150): escala comum a todos os provedores, declarada por modelo e opcional, `small < medium < large < frontier`.
+  - Padrões embutidos só para as escadas que o próprio provedor publica: Claude, haiku = `small`, sonnet = `large`, opus = `frontier`; OpenAI, luna = `small`, sol = `frontier`. Os nomes dos níveis padrão são [proposta]. Os demais provedores (minimax, gemma, deepseek, grok etc.) ficam sem nível até o Produtor declarar.
+  - "Mais forte" só vale entre modelos do mesmo provedor, com nível declarado nos dois e o nível do candidato maior que o do trabalho. Mesmo nível não é mais forte. Sem nível num dos dois, o degrau `stronger_model` é pulado e a seleção vai ao esforço maior.
+  - Nada é deduzido de preço nem de fonte externa.
+  - Busca do nível de um modelo: `models.<chave>` pelo nome inteiro, depois por uma palavra do nome (o nome é separado em `-`, `.` e `_`, então `opus` cobre `claude-opus-5-5`), depois a tabela embutida do provedor por palavra [proposta: a busca por palavra]. As chaves de `models` não distinguem maiúsculas de minúsculas. Um nível declarado substitui o padrão.
+  - Esforço: a ordem que já existia, `low < medium < high` (`EFFORT_LEVELS`). Esforço do trabalho ou do candidato nulo ou desconhecido nunca é "maior" [proposta].
+- **Várias contas do mesmo provedor** (decisão do dono, N150).
+  - Outra conta do mesmo provedor não satisfaz a revisão cruzada, nem outra conta do mesmo modelo no `other_model`.
+  - Os degraus olham todas as contas do provedor: o Opus sem cota na conta A e com cota na conta B continua no mesmo degrau.
+  - Com `same_provider_account: prefer_other`, dentro de cada degrau vêm primeiro os Executores de um perfil diferente do de quem fez o trabalho (para poupar a cota e as vagas dele) e só depois o perfil dele, com a `strategy` valendo entre os preferidos. Se a conta preferida não tem cota, a seleção cai na do trabalho no mesmo degrau. O degrau pesa mais que a conta: um modelo mais forte na conta do trabalho vence o mesmo modelo noutra conta.
+  - Com `strategy` a conta do trabalho não tem tratamento especial.
+  - O aviso na carga conta provedores, não contas.
+- **Quem fez o trabalho.** O `RoleSelection` já guardava o provedor e o modelo no quadro (`selection/worked/<papel>`); passou a guardar também o esforço e o perfil. Trabalho gravado antes da mudança não tem esses dois campos: o degrau do esforço maior e a preferência por outra conta ficam sem efeito para ele, e os demais degraus valem.
+- **Evento `executor.selected`, `schemaVersion` 1 para 2.**
+  - O `crossCheck` ganha `noneConfigured: boolean`, `degraded: 'stronger_model' | 'higher_effort' | 'same' | null` (o degrau usado; `null` quando não houve queda) e `sameAccount: boolean` (a conta de quem fez o trabalho foi usada).
+  - Regra do repositório: o comentário de `packages/protocol/src/events.ts` diz que campo novo pede `schemaVersion` novo, então foi 2. O registro só valida na hora de gravar (`validateEventPayload`), então as linhas já gravadas com a versão 1 continuam legíveis. O #116 acrescentou `blocked` sem subir a versão; este passo segue a regra escrita, não aquele precedente [proposta: a escolha de subir a versão]. Quem grava o evento com `schemaVersion` 1 passa a ser recusado.
+  - Não há evento novo; as contagens de eventos não mudam.
+- **Aviso na carga.** Nova `kind` `cross_check_unsatisfiable` no `daemon.notice` (P24), com o papel em `subject` e o texto em `detail`, mais um aviso no log. Vale com `require_other_provider` (lista de `reviewer` ou `critic` com um provedor só) e com `other_model` (um modelo só).
+  - Conta todo Executor da lista resolvida, válido ou não, porque o aviso é sobre a forma da configuração [proposta].
+  - O provedor `unknown` conta como diferente de todos (5.7), então uma lista com um `unknown` não gera o aviso.
+  - Só lê a lista global; o override de um cenário não entra [proposta].
+  - Se a resolução recusar a lista (`roles.capability_check: block`), só um aviso de log, sem evento; a primeira seleção repete o erro [proposta].
+- **Leitura do `other_model`** [proposta]. Candidatos em conflito são, por definição, o mesmo modelo, então o degrau do modelo mais forte fica vazio ali. Valem o esforço maior e depois `any`. A preferência entre os outros modelos continua sendo a ordem da lista.
+- **Arquivos.** `packages/core/src/executor-roles/{selection,strength}.ts`; `packages/daemon/src/{config,role-executors-config,daemon}.ts`; `packages/daemon/src/orchestration/{executor-selection,role-selection,cross-check-notices}.ts`; `packages/protocol/src/{events,selection-events,notice-events}.ts`.
+
+**Testes:**
+
+- Cada modo da chave; o degrau mais alto sem cota descendo ao seguinte; o topo (nada mais forte) caindo em `any`; `noneConfigured` sem espera nos dois modos estritos e nos três `strict_unavailable`; `prefer_other` e `strategy` com dois perfis do mesmo provedor; a conta preferida sem cota caindo na do trabalho no mesmo degrau; provedor sem níveis pulando o degrau do modelo mais forte; nível igual não sobe; nível num lado só não basta; nível declarado substituindo o padrão; o payload do evento (versão 2, degraus, campo faltando, versão 1 recusada); o aviso na carga (função, carga com perfis e o `daemon.notice` pelo daemon); chaves de configuração.
+- O teste de aceitação do daemon (`acceptance.test.ts`) esperava a ordem exata dos eventos de partida no armazém em memória; as notificações de partida são gravadas em segundo plano, então ele passou a comparar o conjunto (a corrida já existia; o `await` a mais da checagem de carga a expôs).
+
+**Pendências:**
+
+- Nenhum Produtor tem os níveis dos modelos de fora do Claude e da OpenAI: o degrau do modelo mais forte só vale lá depois que ele declarar `models.<modelo>.tier`.
+- Nenhuma rodada real foi feita; o passo é lógica de seleção e está coberto por testes de unidade e de integração com falsos.
 
 ### P16. Seleção no pipeline: o fim do Executor fixo (§5.7)
 
@@ -745,7 +802,7 @@ Cada uma traz a recomendação marcada **[proposta]**, e o estado de cada uma (a
 - **N125 (decidida em 2026-11-18, recomendação aceita):** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10. A tabela inicial está no "Como ficou" do P10; o dono ainda confirma os valores.
 - **N126 (decidida em 2026-11-18, recomendação aceita):** os detalhes do pacote de continuação e do failover: `resume.package.summarize: deterministic | director_model` (padrão `deterministic`), o tamanho máximo do pacote, o bastão sempre que a cota acaba (como a arquitetura) contra o predicado do Claudexor (só se nada foi entregue), e a fila do Diretor sem Executor. **Recomendação:** `deterministic`, bastão sempre (a arquitetura), fila em espera com aviso.
 - **N127 (decidida em 2026-11-18, recomendação aceita):** a drenagem do perfil: `profiles.drain.timeout` (`10m`) e `profiles.drain.on_timeout: handoff | wait | force` (`handoff`), e o que fazer com o diretório removido (`delete` ou `keep_backup`). **Recomendação:** `handoff`, `10m` e `delete`, com o logout antes.
-- **N150 (decidida em 2026-11-18):** a revisão cruzada que cai no mesmo provedor (P15b): `selection.same_provider_fallback` (padrão `stronger_then_effort`) e `selection.same_provider_account` (padrão `prefer_other`); nos modos estritos sem nenhum Executor que sirva, cai na hora e avisa.
+- **N150 (decidida em 2026-11-18):** a revisão cruzada que cai no mesmo provedor (P15b): `selection.same_provider_fallback` (padrão `stronger_then_effort`) e `selection.same_provider_account` (padrão `prefer_other`); nos modos estritos sem nenhum Executor que sirva, cai na hora e avisa; a força do modelo é o nível declarado `models.<modelo>.tier` (`small | medium | large | frontier`), opcional.
 - **N151 (decidida em 2026-11-18, recomendações aceitas):** os padrões restantes do P15: `retry_diversity: rotate`, `context_reserve: 0`, os motivos extras e o agrupamento contíguo.
 
 O que continua **[N]** depois deste plano, para o dono ou para uma rodada real: o segundo login em cada cliente (item 7), o esgotamento de cota com assinatura real e o `resetsAt` (item 4), a unidade de `utilization` com valor alto (item 10), o formato real da MiniMax (item 11), o bastão com n maior (item 6), a leitura dos termos da OpenAI (D3) e a confirmação da Anthropic sobre o uso de assinatura (Q4, N2, portão da Fase 10). Nenhum afirma o que os provedores permitem: cada um fica como pendência, sem fonte nem data.
