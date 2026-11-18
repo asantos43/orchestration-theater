@@ -37,7 +37,10 @@ import {
  *    resumes natively on the same session when the clock passes the reset (item 5).
  * 4. The Critic rejects; the first judgment prompt makes `d1` run out: `d2` answers it (item 3).
  * 5. alpha, in its second round, is on `a2` and does not end by itself; the test removes `a2`
- *    with the session in progress and the baton passes to `a3` (item 2).
+ *    with the session in progress and the baton passes to `a3`, with the cause `profile_removed` and
+ *    no attempt spent (item 2).
+ * 6. At the end the Director, standing on `d2`, loses its profile too: `profiles.drain.director:
+ *    failover` (the default) moves it to `d3` with a `director_failover` notice (P21b, N153).
  */
 
 beforeAll(assertFakeAgentBuilt);
@@ -50,14 +53,14 @@ const entry = (profile: string): string => `fake-model@fake/${profile}`;
 
 /** The lists of the roles: the Director on `d1` and `d2`, the Actors on `a1`, `a2` and `a3`. */
 function rolesConfig(): string {
-  const registry = ['d1', 'd2', 'a1', 'a2', 'a3', 'x']
+  const registry = ['d1', 'd2', 'd3', 'a1', 'a2', 'a3', 'x']
     .map(
       (profile) =>
         `  ${entry(profile)}:\n    client: fake\n    profile: ${profile}\n    model: fake-model\n`,
     )
     .join('');
   const lists: Record<string, readonly string[]> = {
-    director: ['d1', 'd2'],
+    director: ['d1', 'd2', 'd3'],
     actor: ['a1', 'a2', 'a3'],
   };
   const roles = ROLES.map(
@@ -91,14 +94,14 @@ function fakes(): PlayFakes & { readonly clock: FakeClock } {
 }
 
 async function registerProfiles(harness: PlayHarness): Promise<void> {
-  for (const name of ['d1', 'd2', 'a1', 'a2', 'a3', 'x']) {
-    // The profile `a2` is the one the test removes: its directory is the one the daemon would
-    // have made, so the removal accepts it (`removeProfileDir` recomputes the path).
-    const dir =
-      name === 'a2'
-        ? profileDirOf(dataPaths(harness.dataDir), { client: 'fake', profile: name })
-        : `${harness.dataDir}/profiles-of-the-test/${name}`;
-    if (name === 'a2') await mkdir(dir, { recursive: true });
+  for (const name of ['d1', 'd2', 'd3', 'a1', 'a2', 'a3', 'x']) {
+    // The profiles `a2` and `d2` are the ones the test removes: their directory is the one the
+    // daemon would have made, so the removal accepts it (`removeProfileDir` recomputes the path).
+    const removable = name === 'a2' || name === 'd2';
+    const dir = removable
+      ? profileDirOf(dataPaths(harness.dataDir), { client: 'fake', profile: name })
+      : `${harness.dataDir}/profiles-of-the-test/${name}`;
+    if (removable) await mkdir(dir, { recursive: true });
     await harness.daemon.store.profiles.create({
       client: 'fake',
       name,
@@ -356,7 +359,8 @@ describe('the acceptance of Phase 5 with the fake agent (P23)', { timeout: 240_0
       expect(
         payloadOf(must(events.find((event) => event.type === 'profile.removed'))),
       ).toMatchObject({ profileId: 'fake/a2', loggedOut: true, dir: 'deleted' });
-      // The name of the cause is not asserted (it changes with P21b): the form and the Executors are.
+      // The cause is `profile_removed` (N152), not a restart of the daemon, from the first event to the
+      // resumption, and the baton is a handoff to the next Executor of the role.
       const leaving = playEvents.find(
         (event) =>
           event.type === 'session.interrupted' &&
@@ -368,8 +372,23 @@ describe('the acceptance of Phase 5 with the fake agent (P23)', { timeout: 240_0
         to: { client: 'fake', profile: 'a3' },
       });
       expect(profileOf(payloadOf(must(leaving)).to)).toBe('a3');
+      expect(payloadOf(must(leaving)).cause).toBe('profile_removed');
+      const ofAlphaTwo = (type: string): readonly EventEnvelope[] =>
+        ofType(playEvents, type).filter(
+          (event) => payloadOf(event).attemptId === `${play.id}/alpha/2`,
+        );
+      expect(ofAlphaTwo('session.handoff').map((event) => payloadOf(event).cause)).toEqual([
+        'profile_removed',
+      ]);
+      expect(ofAlphaTwo('session.resumed').map((event) => payloadOf(event).cause)).toEqual([
+        'profile_removed',
+      ]);
       const alphaTwo = attempts.find((a) => a.demandId === 'alpha' && a.attempt === 2);
       expect(alphaTwo).toMatchObject({ profile: 'a3', state: 'completed' });
+      // `resume.on_profile_removed: handoff` (the default) spends no attempt: the same attempt goes
+      // on, outside the count of resumes (`max_resumes`), and there is no attempt 3 of alpha.
+      expect(alphaTwo).toMatchObject({ resumes: 0, freeResumes: 0 });
+      expect(attempts.filter((a) => a.demandId === 'alpha').map((a) => a.attempt)).toEqual([1, 2]);
       expect(
         ofType(playEvents, 'attempt.submitted').filter(
           (event) => payloadOf(event).attemptId === `${play.id}/alpha/2`,
@@ -406,6 +425,33 @@ describe('the acceptance of Phase 5 with the fake agent (P23)', { timeout: 240_0
       expect(
         ofType(events, 'daemon.notice').filter((e) => payloadOf(e).kind !== 'deprecated_config'),
       ).toEqual([]);
+
+      // ---- Item 3, the Director on a profile that is being removed (P21b, N153): the default
+      // `profiles.drain.director: failover` moves it to the next Executor of its list, with a notice.
+      const standing = (await allEvents(harness))
+        .filter((event) => event.type === 'executor.selected')
+        .map((event) => payloadOf(event))
+        .filter((payload) => payload.role === 'director' && payload.executor !== null)
+        .map((payload) => String(payload.executor));
+      expect(standing.at(-1)).toBe(entry('d2'));
+      const removedDirector = await harness.daemon.profiles.remove('fake/d2', { timeoutMs: 0 });
+      expect(removedDirector.drain).toMatchObject({ outcome: 'finished' });
+      const directorNotice = await waitFor('the Director failover notice', async () =>
+        (await allEvents(harness))
+          .filter(
+            (event) => event.scenarioId === scenarioId && event.type === 'scenario.system_message',
+          )
+          .map((event) => payloadOf(event))
+          .find(
+            (payload) =>
+              payload.kind === 'director_failover' && payload.cause === 'profile_removed',
+          ),
+      );
+      expect(directorNotice).toMatchObject({
+        outcome: 'switched',
+        fromExecutor: entry('d2'),
+        toExecutor: entry('d3'),
+      });
     });
     // The daemon is stopped: the process of the Director went with it.
     expect(directorPid).toBeDefined();
