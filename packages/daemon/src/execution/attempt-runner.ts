@@ -27,12 +27,17 @@ import {
   buildDaemonEvent,
   type ExecutorPayload,
   type InterruptionCause,
+  type PackageSummary,
   type ScenarioHandoffNotice,
 } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
 import { CheckpointTracker } from './checkpoints.js';
-import { gatherContinuationPackage, renderContinuationPackage } from './continuation-package.js';
+import {
+  eventErrorText,
+  gatherContinuationPackage,
+  renderContinuationPackage,
+} from './continuation-package.js';
 import type { HandoffPort, HandoffRequest, HandoffTarget } from './handoff.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
 import {
@@ -109,6 +114,12 @@ export interface HandoffRecord {
   readonly packageChars: number;
   /** How much of the package was cut to fit `resume.package.max_chars` (0: nothing, 4: a hard cut). */
   readonly packageLevel: number;
+  /** The package lost its middle: `packageLevel` is the last one (P18b). */
+  readonly packageCut: boolean;
+  /** How the summary of the package was made; `model_failed` and `model_unavailable` are fallbacks (P18b). */
+  readonly summary: PackageSummary;
+  /** Why the cheap model did not contribute, masked (P18b). */
+  readonly summaryError: string | undefined;
 }
 
 /** Why a handoff the policy asked for did not happen, when no Executor was there to take it. */
@@ -119,6 +130,8 @@ export interface HandoffWait {
   readonly on: readonly string[];
   /** The earliest known end of the wait (epoch ms); null when no source says. */
   readonly until: number | null;
+  /** What failed (`selection_failed`, `package_failed`), masked and cut; never the raw message (P18b). */
+  readonly error?: string;
 }
 
 /** How an attempt ended for the caller. */
@@ -236,6 +249,9 @@ type Prepared =
       /** The package, as the first prompt of the new session. */
       readonly prompt: string;
       readonly level: number;
+      readonly cut: boolean;
+      readonly summary: PackageSummary;
+      readonly summaryError: string | undefined;
     }
   | {
       readonly kind: 'none';
@@ -558,7 +574,14 @@ export class AttemptRunner {
       await context.lease?.kill().catch(() => undefined);
       await context.lease?.release().catch(() => undefined);
       await context.journal
-        .write(undefined, { state: 'failed', cause: describe(error) })
+        .write(
+          buildDaemonEvent('attempt.aborted', {
+            ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+            error: eventErrorText(error, { secretPaths: [] }),
+            ...this.#correlation(context),
+          }),
+          { state: 'failed', cause: describe(error) },
+        )
         .catch(() => undefined);
       throw error;
     }
@@ -606,7 +629,9 @@ export class AttemptRunner {
           // so does a handoff nobody could take), and the outcome says which action the policy
           // chose.
           if (decision.action !== 'resume_native') {
-            return this.#parked(context, decision, handoff?.wait ?? noHandoffPort(decision));
+            const wait = handoff?.wait ?? noHandoffPort(decision);
+            if (wait !== undefined) await this.#handoffFailed(context, decision, wait);
+            return this.#parked(context, decision, wait);
           }
           const resumes = journal.record.resumes;
           // The allowance is recorded in the same write that parks the attempt, so a restart
@@ -743,6 +768,13 @@ export class AttemptRunner {
         this.#options.logger.error(
           { attemptId: context.attemptId, remaining: report.remaining },
           'processes left after the kill of the attempt',
+        );
+        await context.journal.write(
+          buildDaemonEvent('session.processes_left', {
+            ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+            pids: [...report.remaining],
+            ...this.#correlation(context),
+          }),
         );
       }
     }
@@ -1234,12 +1266,21 @@ export class AttemptRunner {
       used: [...context.used],
     };
     const logger = this.#options.logger;
+    const scope = { secretPaths: port.secretPaths ?? [], home: port.home };
     let choice: Awaited<ReturnType<HandoffPort['choose']>>;
     try {
       choice = await port.choose(request);
     } catch (error) {
       logger.warn({ err: error, attemptId: context.attemptId }, 'the handoff could not choose');
-      return { kind: 'none', wait: { reason: 'selection_failed', on: [], until: null } };
+      return {
+        kind: 'none',
+        wait: {
+          reason: 'selection_failed',
+          on: [],
+          until: null,
+          error: eventErrorText(error, scope),
+        },
+      };
     }
     if (choice.kind === 'none') {
       const { selection } = choice;
@@ -1298,12 +1339,20 @@ export class AttemptRunner {
         selection: choice.selection,
         prompt: rendered.text,
         level: rendered.level,
+        cut: rendered.cut,
+        summary: pkg.summary,
+        summaryError: pkg.summaryError,
       };
     } catch (error) {
       logger.warn({ err: error, attemptId: context.attemptId }, 'the continuation package failed');
       return {
         kind: 'none',
-        wait: { reason: 'package_failed', on: [], until: null },
+        wait: {
+          reason: 'package_failed',
+          on: [],
+          until: null,
+          error: eventErrorText(error, scope),
+        },
         ...(choice.selection === undefined ? {} : { selection: choice.selection }),
       };
     }
@@ -1343,6 +1392,9 @@ export class AttemptRunner {
       countedAsAttempt: decision.countsAsAttempt,
       packageChars: ready.prompt.length,
       packageLevel: ready.level,
+      packageCut: ready.cut,
+      summary: ready.summary,
+      summaryError: ready.summaryError,
     });
     // No conversation is left to reload: a restart now finds an attempt with no session.
     await journal.write(undefined, {
@@ -1362,6 +1414,23 @@ export class AttemptRunner {
         ),
       );
     }
+    // The event of the baton is the hook for plugins; the chat message below is for people.
+    await journal.write(
+      buildDaemonEvent('session.handoff', {
+        ...(previousSessionId === undefined ? {} : { previousSessionId }),
+        ...(context.spec.role === undefined ? {} : { role: context.spec.role }),
+        cause: decision.cause,
+        from,
+        to: executorPayloadOf(target),
+        countedAsAttempt: decision.countsAsAttempt,
+        packageChars: ready.prompt.length,
+        packageLevel: ready.level,
+        packageCut: ready.cut,
+        summary: ready.summary,
+        ...(ready.summaryError === undefined ? {} : { summaryError: ready.summaryError }),
+        ...this.#correlation(context),
+      }),
+    );
     await this.#announceHandoff(context, {
       cause: decision.cause,
       fromExecutor: fromId,
@@ -1373,6 +1442,32 @@ export class AttemptRunner {
       cause: decision.cause,
       handoff: { previousSessionId, from },
     };
+  }
+
+  /**
+   * `session.handoff_failed`: the policy chose a handoff and nobody took it (the attempt is parked
+   * right after). The reason and the wait are the ones of `AttemptOutcome.handoffWait`. The values
+   * are cut to what the schema accepts, so an odd port cannot stop the attempt with its answer.
+   */
+  async #handoffFailed(
+    context: AttemptContext,
+    decision: InterruptionDecision,
+    wait: HandoffWait,
+  ): Promise<void> {
+    const { sessionId, spec } = context;
+    await context.journal.write(
+      buildDaemonEvent('session.handoff_failed', {
+        ...(sessionId === undefined ? {} : { sessionId }),
+        ...(spec.role === undefined ? {} : { role: spec.role }),
+        cause: decision.cause,
+        from: this.#executor(context),
+        reason: wait.reason.slice(0, 64) || 'unknown',
+        on: wait.on.map((executor) => executor.slice(0, 256)),
+        until: wait.until === null ? null : Math.max(0, Math.trunc(wait.until)),
+        ...(wait.error === undefined ? {} : { error: wait.error }),
+        ...this.#correlation(context),
+      }),
+    );
   }
 
   /**

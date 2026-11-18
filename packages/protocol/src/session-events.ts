@@ -132,6 +132,110 @@ export const SessionResumedPayloadSchema = z.strictObject({
   ...correlation,
 });
 
+/** Short error text an event may carry: already masked by the daemon, never a stack. */
+const errorText = z.string().max(512);
+
+/**
+ * How the summary of the trajectory in a continuation package was made (Phase 5, P18b, N146).
+ * `deterministic`: only the summary of the events (the setting, or no model asked for);
+ * `model`: the cheap model of N126 wrote one next to it; `model_failed`: it was asked for and
+ * failed or answered nothing, so the package went on with the deterministic summary alone;
+ * `model_unavailable`: it was asked for and no port was wired to answer.
+ */
+export const PACKAGE_SUMMARIES = [
+  'deterministic',
+  'model',
+  'model_failed',
+  'model_unavailable',
+] as const;
+export const PackageSummarySchema = z.enum(PACKAGE_SUMMARIES);
+export type PackageSummary = z.infer<typeof PackageSummarySchema>;
+
+/**
+ * `session.handoff`: the baton passed (architecture 5.16; Phase 5, P18b, N146 and N147). Written
+ * when the runner has chosen the next Executor and built the continuation package, after
+ * `session.interrupted` and before the new session opens (`session.opened`, `session.resumed`).
+ * It is the hook for plugins: they do not need to read the chat message. [proposta] The name and
+ * the fields. `sessionId` is not here because the new session does not exist yet; the interrupted
+ * one is `previousSessionId`. The package facts are the ones of `AttemptOutcome.handoffs`.
+ */
+export const SessionHandoffPayloadSchema = z.strictObject({
+  /** The session the baton came from; absent when the previous Executor never opened one. */
+  previousSessionId: id.optional(),
+  role: id.optional(),
+  cause: InterruptionCauseSchema,
+  /** Executor that gives the baton. */
+  from: ExecutorPayloadSchema,
+  /** Executor that takes it. */
+  to: ExecutorPayloadSchema,
+  /** The policy counted the interruption as an attempt of the demand; the handoff itself spends none. */
+  countedAsAttempt: z.boolean(),
+  /** Size of the package, the first prompt of the new session, in characters. */
+  packageChars: z.int().min(0),
+  /** How much of the package was cut to fit `resume.package.max_chars` (0: nothing; the last: a hard cut). */
+  packageLevel: z.int().min(0),
+  /** The package lost its middle (`packageLevel` at its last value). */
+  packageCut: z.boolean(),
+  summary: PackageSummarySchema,
+  /** Why the cheap model did not contribute, when `summary` is `model_failed`; masked. */
+  summaryError: errorText.optional(),
+  ...correlation,
+});
+
+/**
+ * `session.handoff_failed`: the policy chose a handoff and nobody took it, so the attempt stays
+ * parked (`interrupted`; architecture 5.16, P18b, N146 and N147). `reason` is the one of
+ * `AttemptOutcome.handoffWait`: `no_port`, `no_role`, `no_other_executor`, `waiting`,
+ * `selection_failed`, `package_failed` (a custom port may say another). `on` and `until` are the
+ * wait of the selector: the Executors whose availability may come back (empty when none will) and
+ * the earliest known end of the wait (null when no source says). [proposta] The name and the fields.
+ */
+export const SessionHandoffFailedPayloadSchema = z.strictObject({
+  /** The session that was interrupted; absent when the error came before any session. */
+  sessionId: id.optional(),
+  role: id.optional(),
+  cause: InterruptionCauseSchema,
+  /** Executor that wanted to give the baton. */
+  from: ExecutorPayloadSchema,
+  reason: z.string().min(1).max(64),
+  on: z.array(z.string().min(1).max(256)),
+  until: z.int().min(0).nullable(),
+  /** What failed, for `selection_failed` and `package_failed`; masked (`scrubPackageText`) and cut. */
+  error: errorText.optional(),
+  ...correlation,
+});
+
+/**
+ * `attempt.checkpoint_failed`: a `wip(checkpoint)` commit could not be made (P18b, N146), so the
+ * work since the last checkpoint is not protected. [proposta]
+ */
+export const AttemptCheckpointFailedPayloadSchema = z.strictObject({
+  reason: CheckpointReasonSchema,
+  branch: z.string().min(1),
+  error: errorText,
+  ...correlation,
+});
+
+/**
+ * `attempt.aborted`: an error nobody planned for (the store, say) ended the attempt as `failed`
+ * and the process tree was killed (P18b, N146). [proposta]
+ */
+export const AttemptAbortedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  error: errorText,
+  ...correlation,
+});
+
+/**
+ * `session.processes_left`: the process tree of a session was killed and some processes are still
+ * alive (P18b, N146). `pids` are the ones that remain. [proposta]
+ */
+export const SessionProcessesLeftPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  pids: z.array(z.int().min(0)).min(1),
+  ...correlation,
+});
+
 /**
  * `session.cancel_escalated`: cancelling a session ended the shared adapter process it ran on
  * (`pool.shared_cancel`, `escalate` or `always_kill`). The other sessions of that process lost

@@ -282,6 +282,32 @@ describe('AttemptRunner, the timeout', () => {
   );
 });
 
+describe('AttemptRunner, a process that survives the kill (P18b)', () => {
+  it(
+    'a stuck process on a shared process, with a child left alive, is told in session.processes_left',
+    async () => {
+      const r = await rig({ stuckNoEventMs: 5000 }, true);
+      const running = r.runner.run(specOf(r, '#script:hang'));
+      await until(() => r.launcher.launched.length === 1, 'the process');
+      const process = r.launcher.launched[0];
+      if (process === undefined) throw new Error('no process');
+      process.leaveBehind = [4_999_999];
+      await untilHanging(r);
+      await r.clock.advance(5000);
+      expect((await running).cause).toBe('stuck');
+      const left = await eventsOf(r, 'session.processes_left');
+      expect(left).toHaveLength(1);
+      expect(left[0]?.payload).toMatchObject({
+        sessionId: 'fake-session-1',
+        pids: [4_999_999],
+        playId: 'play-1',
+        demandId: 'demand-1',
+      });
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe('AttemptRunner, checkpoints', () => {
   it(
     'takes one per batch of edits',
