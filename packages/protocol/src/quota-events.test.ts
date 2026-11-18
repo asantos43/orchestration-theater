@@ -45,6 +45,28 @@ describe('quota.* events [proposta]', () => {
     ).toThrow();
   });
 
+  it('accepts the payload of budget.warning and refuses a fraction out of range or extra fields', () => {
+    const warning = {
+      profile: 'claude-code/api',
+      executor: null,
+      period: 'day',
+      thresholdFraction: 0.8,
+      spentUsd: 4.1,
+      limitUsd: 5,
+      periodEndsAt: 1_763_521_200_000,
+    };
+    expect(validateEventPayload('budget.warning', 1, warning)).toEqual(warning);
+    const own = { ...warning, executor: 'claude-opus-high@claude-code/api', period: 'month' };
+    expect(validateEventPayload('budget.warning', 1, own)).toEqual(own);
+    expect(() =>
+      validateEventPayload('budget.warning', 1, { ...warning, thresholdFraction: 1.2 }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.warning', 1, { ...warning, period: 'week' }),
+    ).toThrow();
+    expect(() => validateEventPayload('budget.warning', 1, { ...warning, extra: 1 })).toThrow();
+  });
+
   it('refuse an unknown state, an unknown cause and extra fields', () => {
     expect(() =>
       validateEventPayload('quota.updated', 1, {

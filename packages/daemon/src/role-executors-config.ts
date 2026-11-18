@@ -13,6 +13,7 @@ import {
   RETRY_DIVERSITY_MODES,
   ROLE_PRESET_NAMES,
   SELECTION_STRATEGIES,
+  STRICT_UNAVAILABLE_MODES,
   UNKNOWN_QUOTA_MODES,
   WHEN_EXHAUSTED_MODES,
   parseContextSize,
@@ -24,6 +25,7 @@ import {
   type OnRegisterMode,
 } from '@otheater/core';
 import { z } from 'zod';
+import { ExecutorBudgetSchema, type ExecutorBudgetConfig } from './budget-config.js';
 
 /**
  * The Executors and the lists of the roles in the configuration (architecture 5.7; Phase 5, P13):
@@ -36,6 +38,15 @@ import { z } from 'zod';
  * path of the block. Nothing here changes what a play runs: the pipeline still reads
  * `orchestration.executor` until P16.
  */
+
+/**
+ * `executors.test_session` (P14, [proposta]): whether the cadastro runs the short test session of
+ * 5.7 (the model calls a tool and delivers a valid `submit`). `off` (default): no session is run,
+ * the validation of the catalog alone decides; `run`: the session runs (a call to the model, so it
+ * may spend quota) and its outcome is read per `roles.capability_check`.
+ */
+export const TEST_SESSION_MODES = ['off', 'run'] as const;
+export type TestSessionMode = (typeof TEST_SESSION_MODES)[number];
 
 const oneOf = (key: string, values: readonly string[]) => ({
   error: (issue: { input?: unknown }) =>
@@ -147,14 +158,25 @@ const ExecutorEntryInputSchema = z.strictObject({
   model: z.string().min(1),
   effort: z.enum(EFFORT_LEVELS, oneOf('effort', EFFORT_LEVELS)).optional(),
   provider: z.string().min(1).optional(),
+  /**
+   * N136: `false` keeps the Executor out of the expansion of a preset; it is then only in the
+   * roles that name it. Default `true`. `ot executor add` writes `false` under
+   * `executors.on_register: none`.
+   */
+  preset_expand: z.boolean().optional(),
+  /** The spending cap of this Executor, inside its profile's (5.6; P11). */
+  budget: ExecutorBudgetSchema.optional(),
 });
 
 /** The `executors` block, after parsing: the two modes and the registered Executors. */
 export interface ExecutorsConfig {
   readonly cross_client: CrossClientMode;
   readonly on_register: OnRegisterMode;
+  readonly test_session: TestSessionMode;
   /** The `executors.<id>` entries by id, with the provider settled (5.7). */
   readonly entries: Readonly<Record<string, ExecutorEntry>>;
+  /** The `executors.<id>.budget` of the Executors that have one, by Executor name (P11). */
+  readonly budgets: Readonly<Record<string, ExecutorBudgetConfig>>;
 }
 
 /**
@@ -171,7 +193,9 @@ export const ExecutorsConfigSchema = z
     };
     let cross_client: CrossClientMode = 'api_only';
     let on_register: OnRegisterMode = 'ask';
+    let test_session: TestSessionMode = 'off';
     const entries: Record<string, ExecutorEntry> = {};
+    const budgets: Record<string, ExecutorBudgetConfig> = {};
 
     for (const [key, value] of Object.entries(raw)) {
       if (key === 'cross_client') {
@@ -186,11 +210,17 @@ export const ExecutorsConfigSchema = z
         else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
         continue;
       }
+      if (key === 'test_session') {
+        const parsed = z.enum(TEST_SESSION_MODES, oneOf(key, TEST_SESSION_MODES)).safeParse(value);
+        if (parsed.success) test_session = parsed.data;
+        else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
+        continue;
+      }
       const name = tryParseExecutorId(key);
       if (typeof name === 'string') {
         issue(
           [key],
-          `${name}; the keys of executors are "cross_client", "on_register" and Executor names`,
+          `${name}; the keys of executors are "cross_client", "on_register", "test_session" and Executor names`,
         );
         continue;
       }
@@ -231,9 +261,11 @@ export const ExecutorsConfigSchema = z
         model: entry.model,
         effort,
         provider: providerOfClient(entry.client, entry.provider),
+        ...(entry.preset_expand === undefined ? {} : { presetExpand: entry.preset_expand }),
       };
+      if (entry.budget !== undefined) budgets[key] = entry.budget;
     }
-    return { cross_client, on_register, entries };
+    return { cross_client, on_register, test_session, entries, budgets };
   });
 
 /**
@@ -244,6 +276,10 @@ export const ExecutorsConfigSchema = z
  * `retry_diversity` is how a retry starts after the Executor that failed (`rotate`: the 5.7 rule,
  * wrapping around), `context_reserve` the tokens the client keeps for its own prompt and tools,
  * which the prompt of a demand must leave free in the window (0 until measured).
+ * `strict_unavailable` (N135, decided by the owner on 2026-11-18) is what a strict `cross_check`
+ * (`require_other_provider`, `other_model`) does when only the provider or the model of the work
+ * is available: `wait_notify` (default) waits and flags the wait, `fallback_prefer` goes back to
+ * the provider of the work as `prefer_other_provider` does, `wait` waits silently.
  */
 export const SelectionConfigSchema = z.strictObject({
   strategy: z
@@ -260,5 +296,8 @@ export const SelectionConfigSchema = z.strictObject({
     .enum(RETRY_DIVERSITY_MODES, oneOf('retry_diversity', RETRY_DIVERSITY_MODES))
     .default('rotate'),
   context_reserve: ContextSchema.default(0),
+  strict_unavailable: z
+    .enum(STRICT_UNAVAILABLE_MODES, oneOf('strict_unavailable', STRICT_UNAVAILABLE_MODES))
+    .default('wait_notify'),
 });
 export type SelectionConfig = z.infer<typeof SelectionConfigSchema>;

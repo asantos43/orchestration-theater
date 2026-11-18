@@ -46,6 +46,7 @@ selection:
   unknown_quota: skip
   near_limit: last
   retry_diversity: off
+  strict_unavailable: fallback_prefer
   context_reserve: 4k
 `),
       ),
@@ -55,6 +56,7 @@ selection:
       unknownQuota: 'skip',
       nearLimit: 'last',
       retryDiversity: 'off',
+      strictUnavailable: 'fallback_prefer',
       contextReserve: 4_000,
     });
   });
@@ -151,7 +153,7 @@ describe('executorSelectedPayload', () => {
       executor: null,
       profile: null,
       playId: null,
-      waiting: { mode: 'next', on: [A, B], until: 5_000 },
+      waiting: { mode: 'next', on: [A, B], until: 5_000, notify: false },
     });
     expect(validateEventPayload('executor.selected', 1, payload)).toEqual(payload);
   });

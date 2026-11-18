@@ -49,6 +49,7 @@ import {
   WakeupManager,
   wakeupSettingsOf,
 } from './quota/index.js';
+import { BudgetService, budgetSettingsOf } from './budget/index.js';
 import { UsageService, usageSettingsOf } from './usage/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
@@ -170,6 +171,12 @@ export interface DaemonHandle {
   readonly wakeups: WakeupManager;
   /** The consumption and the cost in money of the turns (architecture 5.6; Phase 5, P10). */
   readonly usage: UsageService;
+  /**
+   * The spending cap of the API profiles and Executors (architecture 5.6; Phase 5, P11). A spent
+   * profile cap is `exhausted(budget)` in `quota`; `budget` answers for the Executors and decides
+   * `on_exceeded` and `in_flight`.
+   */
+  readonly budget: BudgetService;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -500,6 +507,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P9: the wakeups of the exhausted profiles. What came due with the daemon stopped runs here, now
   // that everything that waits for a profile is up (5.21). The steps that own a hook (P19, P15, 9b)
   // plug it in with `wakeups.setHook` right here, before `start`, so a wakeup due at start-up finds it.
+  // P11: the spending cap re-reads the spending on every turn the usage writes. It starts first, so
+  // a cap that is spent (while the daemon was down, or by a lowered cap) is `exhausted(budget)`
+  // before the wakeups look at the profiles.
+  const budget = new BudgetService({
+    store: composition.store,
+    clock,
+    settings: budgetSettingsOf(config),
+    logger,
+    quota,
+    usage,
+  });
+  await budget.start();
   const wakeups = new WakeupManager({
     store: composition.store,
     clock,
@@ -567,6 +586,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
       await attempt('wakeups', () => wakeups.stop());
+      await attempt('budget', () => budget.stop());
       await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
@@ -599,6 +619,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     quota,
     wakeups,
     usage,
+    budget,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },

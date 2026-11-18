@@ -73,8 +73,17 @@ export const ExecutorSelectedPayloadSchema = z
       applied: z.boolean(),
       /** The provider of whoever did the work. */
       workedProvider: z.string().min(1).max(128).nullable(),
-      /** `prefer_other_provider` went back to the provider of the work: nobody else was available. */
+      /**
+       * The selection went back to the provider of the work: nobody else was available
+       * (`prefer_other_provider`, or a strict mode under `selection.strict_unavailable:
+       * fallback_prefer`).
+       */
       fellBack: z.boolean(),
+      /**
+       * A strict mode left the role with nobody although an Executor it set aside was available
+       * (N135): the role waits.
+       */
+      blocked: z.boolean(),
     }),
     skipped: z.array(ExecutorSkippedSchema).max(256),
     waiting: z
@@ -83,6 +92,11 @@ export const ExecutorSelectedPayloadSchema = z
         on: z.array(executor).max(256),
         /** The earliest known end of the wait; null when no source says. */
         until: epochMs.nullable(),
+        /**
+         * N135, `selection.strict_unavailable: wait_notify`: the wait is the strict cross-review's
+         * and the Producer is to be told. False with `wait` and for any other wait.
+         */
+        notify: z.boolean(),
       })
       .nullable(),
     occurredAt: epochMs,

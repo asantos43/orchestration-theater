@@ -26,6 +26,8 @@ import {
   type DirectivesOptions,
 } from './directives/command.js';
 import { startDaemon, type PasswordPrompt } from './daemon.js';
+import { isExecutorAction, runExecutorCommand, type ExecutorOptions } from './executors/command.js';
+import type { TestSession } from './executors/test-session.js';
 import {
   createTranslator,
   detectSystemLocale,
@@ -58,12 +60,22 @@ export interface CliDeps {
   readonly input?: NodeJS.ReadableStream | undefined;
   /** Builds the client adapters of `ot profile` (default: the real clients found in `PATH`). */
   readonly clients?: ClientFactory | undefined;
+  /** The short test session of `ot executor add` (none in the terminal: tests give a fake). */
+  readonly executorTestSession?: TestSession | undefined;
 }
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
-const COMMANDS = ['daemon', 'backup', 'restore', 'directives', 'chat', 'profile'] as const;
+const COMMANDS = [
+  'daemon',
+  'backup',
+  'restore',
+  'directives',
+  'chat',
+  'profile',
+  'executor',
+] as const;
 type Command = (typeof COMMANDS)[number];
 
 function isCommand(name: string): name is Command {
@@ -175,6 +187,21 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           profileOptions(values),
         );
       }
+      case 'executor': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingExecutorAction'));
+        if (!isExecutorAction(action))
+          return usageError(t('usage.unknownExecutorAction', { action }));
+        if (values['test-session'] === true && values['no-test-session'] === true)
+          return usageError(t('usage.executorSessionOne'));
+        return await runExecutorCommand(
+          context,
+          { clients: deps.clients, env: deps.env, testSession: deps.executorTestSession },
+          action,
+          args,
+          executorOptions(values),
+        );
+      }
       case 'chat': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         const type = values.type ?? 'project';
@@ -236,6 +263,16 @@ function parseCliArgs(argv: readonly string[]) {
       'accept-notice': { type: 'boolean' },
       'check-login': { type: 'boolean' },
       json: { type: 'boolean' },
+      // The options of `ot executor` (`role`, `all`, `json` are shared).
+      effort: { type: 'string' },
+      family: { type: 'string' },
+      as: { type: 'string' },
+      'local-url': { type: 'string' },
+      'local-server': { type: 'string' },
+      'test-session': { type: 'boolean' },
+      'no-test-session': { type: 'boolean' },
+      'dry-run': { type: 'boolean' },
+      profile: { type: 'string' },
     },
     allowPositionals: true,
     strict: true,
@@ -270,6 +307,27 @@ function profileOptions(values: ParsedValues): ProfileOptions {
     client: values.client,
     all: values.all === true,
     checkLogin: values['check-login'] === true,
+    json: values.json === true,
+  };
+}
+
+function executorOptions(values: ParsedValues): ExecutorOptions {
+  return {
+    effort: values.effort,
+    family: values.family,
+    as: values.as,
+    localUrl: values['local-url'],
+    localServer: values['local-server'],
+    roles: values.role ?? [],
+    testSession:
+      values['test-session'] === true
+        ? true
+        : values['no-test-session'] === true
+          ? false
+          : undefined,
+    dryRun: values['dry-run'] === true,
+    profile: values.profile,
+    all: values.all === true,
     json: values.json === true,
   };
 }
