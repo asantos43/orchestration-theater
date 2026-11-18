@@ -160,6 +160,8 @@ interface PendingLaunch {
 /** A process of the pool and the sessions on it. */
 interface PoolProcess {
   readonly key: string;
+  /** The profile whose directory the process runs in (a shared process never serves two profiles). */
+  readonly profileId: string;
   readonly process: LaunchedProcess;
   readonly shared: boolean;
   readonly sessions: Set<symbol>;
@@ -315,6 +317,29 @@ export class SessionPool {
    */
   wake(): void {
     this.#pump();
+  }
+
+  /**
+   * Sessions that hold a slot for the profile now (the Director's and the Actors', opening ones
+   * included). The profile service (P21) reads it to know when a draining profile is idle.
+   */
+  sessionsOf(profileId: string): number {
+    const load = this.#load.get(profileId);
+    return load === undefined ? 0 : load.directors + load.actors;
+  }
+
+  /**
+   * Ends every shared process of a profile that left (P21; a process of its own per session ends
+   * with its session): the idle ones, and the busy ones too, whose sessions lose their connection.
+   * Returns how many processes it ended. A process still being launched for the profile is not here
+   * yet; it ends when its sessions do, by the idle timer.
+   */
+  async endProcessesOf(profileId: string): Promise<number> {
+    const mine = [...this.#processes.values()]
+      .flat()
+      .filter((entry) => entry.profileId === profileId);
+    await Promise.all(mine.map((entry) => this.#end(entry)));
+    return mine.length;
   }
 
   /** Ends every process of the pool; sessions on them lose their connection. */
@@ -648,7 +673,10 @@ export class SessionPool {
       return { entry: await pending.ready, token };
     }
     const tokens = new Set([token]);
-    const launch: PendingLaunch = { ready: this.#launch(key, spec, tokens), tokens };
+    const launch: PendingLaunch = {
+      ready: this.#launch(key, request.profile.id, spec, tokens),
+      tokens,
+    };
     this.#launching.set(key, [...(this.#launching.get(key) ?? []), launch]);
     const settled = (): void => {
       this.#launched(key, launch);
@@ -657,10 +685,16 @@ export class SessionPool {
     return { entry: await launch.ready, token };
   }
 
-  async #launch(key: string, spec: LaunchOptions, sessions: Set<symbol>): Promise<PoolProcess> {
+  async #launch(
+    key: string,
+    profileId: string,
+    spec: LaunchOptions,
+    sessions: Set<symbol>,
+  ): Promise<PoolProcess> {
     const process = await this.#launcher.launch(spec);
     const entry: PoolProcess = {
       key,
+      profileId,
       process,
       shared: true,
       sessions,

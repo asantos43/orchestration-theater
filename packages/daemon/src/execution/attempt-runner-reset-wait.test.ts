@@ -604,4 +604,60 @@ describe('AttemptRunner waiting for the reset (P19)', () => {
     },
     TEST_TIMEOUT_MS,
   );
+  it(
+    'a profile released during the wait ends it and the baton goes (P21, handoff)',
+    async () => {
+      const quota = quotaOf(10 * MINUTE);
+      const sent = twoPort();
+      const r = await rig({ quota: quota.service, handoff: () => sent.port });
+      await seedPlay(r.store);
+      const running = r.runner.run(specOf(r, '#script:quota-signal', WAIT));
+      await untilWaiting(r);
+      expect(await r.runner.releaseProfile(PROFILE, 'handoff')).toBe(1);
+      const outcome = await running;
+      expect(outcome).toMatchObject({ state: 'completed' });
+      expect(outcome.handoffs[0]).toMatchObject({ from: ID_ONE, to: ID_TWO });
+      expect((await eventsOf(r, 'attempt.reset_wait_ended'))[0]?.payload).toMatchObject({
+        outcome: 'left',
+      });
+      expect(r.transport.loaded).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a forced leave during the wait leaves awaiting_resume with daemon_restart, which does not wait again',
+    async () => {
+      const quota = quotaOf(10 * MINUTE);
+      const r = await rig({ quota: quota.service });
+      const running = r.runner.run(specOf(r, '#script:quota-signal', WAIT));
+      await untilWaiting(r);
+      expect(await r.runner.releaseProfile(PROFILE, 'force')).toBe(1);
+      expect(await running).toMatchObject({ state: 'interrupted' });
+      const record = await r.store.attempts.get('play-1/demand-1/1');
+      expect(record).toMatchObject({ state: 'awaiting_resume', cause: 'daemon_restart' });
+      if (record === undefined) throw new Error('no record');
+
+      // The next start: the cause is not a reset wait, so the conversation is loaded at once.
+      const next = new AttemptRunner({
+        store: r.store,
+        vcs: defaultVcs(),
+        pool: r.pool,
+        clock: r.clock,
+        settings: r.settings,
+        worktreeRoot: r.worktreeRoot,
+        logger: pino({ level: 'silent' }),
+        quota: quota.service,
+      });
+      const resumed = await next.resume(record, {
+        profile: TEST_PROFILE,
+        executor: { model: 'fake-model' },
+        policy: TEST_POLICY,
+      });
+      expect(resumed).toMatchObject({ state: 'completed' });
+      expect(await eventsOf(r, 'attempt.reset_wait_started')).toHaveLength(1);
+      expect(r.transport.loaded).toHaveLength(1);
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

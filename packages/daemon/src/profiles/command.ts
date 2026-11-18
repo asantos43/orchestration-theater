@@ -16,6 +16,7 @@ import { unlockVault, type PasswordPrompt } from '../daemon.js';
 import { InstanceLock } from '../instance-lock.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
+import { roleListsOf } from './role-lists.js';
 import {
   ProfileService,
   profileSettingsOf,
@@ -204,6 +205,7 @@ export async function runProfileCommand(
       settings: profileSettingsOf(config),
       adapters: (client) => adapters.get(client),
       transport: () => composition.transport,
+      roleLists: roleListsOf(config, composition.store),
     });
 
     // A locked vault is opened only when the command touches a key.

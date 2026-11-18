@@ -242,6 +242,8 @@ export const RESET_WAIT_OUTCOMES = [
   'stopped',
   /** No word came by the reset plus `resume.quota_wait_grace` and the profile is still exhausted: the baton goes (or the attempt parks). */
   'missed',
+  /** The profile of the attempt is being removed (P21): the wait ends and the leave takes over. */
+  'left',
 ] as const;
 export const ResetWaitOutcomeSchema = z.enum(RESET_WAIT_OUTCOMES);
 export type ResetWaitOutcome = z.infer<typeof ResetWaitOutcomeSchema>;
