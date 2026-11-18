@@ -593,6 +593,32 @@ async function playQuotaSignal(
   throw new RequestError(QUOTA_EXHAUSTED_CODE, 'quota exhausted', data);
 }
 
+/**
+ * Reports the consumption of the turn as `usage` quota signals, then ends the turn normally: the
+ * consumption data a real client attaches to its answer (architecture 5.6).
+ */
+async function playUsageSignal(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'usage-signal' }>,
+): Promise<PromptResponse> {
+  const cost = script.costUsd === undefined ? {} : { costUsd: script.costUsd };
+  for (let sent = 0; sent < script.repeat; sent += 1) {
+    if (turn.signal.aborted) return CANCELLED;
+    const params: QuotaSignalParams = {
+      sessionId: turn.sessionId,
+      signal: {
+        kind: 'usage',
+        model: script.model,
+        inputTokens: script.inputTokens,
+        outputTokens: script.outputTokens,
+        ...cost,
+      },
+    };
+    await turn.client.notify(QUOTA_SIGNAL_METHOD, params);
+  }
+  return END_TURN;
+}
+
 function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
   switch (script.name) {
     case 'echo':
@@ -621,6 +647,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playDeaf(turn, script);
     case 'quota-signal':
       return playQuotaSignal(turn, script);
+    case 'usage-signal':
+      return playUsageSignal(turn, script);
   }
 }
 
