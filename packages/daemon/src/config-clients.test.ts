@@ -178,7 +178,7 @@ describe('clients.* and security.* of the config', () => {
     expect(parseConfig('').pool.opencode.process_model).toBe('per_profile');
     expect(
       parseConfig('pool:\n  opencode:\n    process_model: per_session\n').pool.opencode,
-    ).toEqual({ sessions_per_process: 4, process_model: 'per_session' });
+    ).toEqual({ sessions_per_process: 4, session_mb: 520, process_model: 'per_session' });
   });
 
   it('names the key of every mistake', () => {

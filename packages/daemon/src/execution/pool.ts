@@ -11,6 +11,7 @@ import {
   type LaunchOptions,
   type LaunchedProcess,
   type McpServerRef,
+  type MemoryProbe,
   type ProcessLauncher,
   type Profile,
   type RolePolicy,
@@ -20,6 +21,16 @@ import {
   endsSharedProcess,
   sharedProcessKey,
 } from '@otheater/core';
+import {
+  ALWAYS_ADMIT,
+  DEFAULT_ADMISSION,
+  defaultSessionMb,
+  slotFree,
+  type AdmissionSettings,
+  type CanAdmit,
+  type LocalInstanceResolver,
+  type ProfileLoad,
+} from './admission.js';
 import { type PoolSettings, sessionsPerProcessFor } from './settings.js';
 
 /** What a caller asks the pool for: one session of one `(client, profile)`. */
@@ -42,6 +53,11 @@ export interface PoolRequest {
    * how it resolves links (Phase 4, P2). Absent means nobody listens. [proposta]
    */
   readonly permissions?: SessionPermissions;
+  /**
+   * The session is the Director's (or a short judgement of it): on a local instance it may use the
+   * slots reserved for it (`reserve_for_director`), which any other session may not. [proposta]
+   */
+  readonly director?: boolean;
   /** Aborts the wait for admission. */
   readonly signal?: AbortSignal;
 }
@@ -97,6 +113,37 @@ export interface SessionPoolOptions {
   readonly transport: (adapter: ClientAdapter) => SessionTransport;
   readonly clock: Clock;
   readonly settings: PoolSettings;
+  /**
+   * Reads the free RAM for the admission by `pool.admission.mode: ram | ram_and_quota` and measures
+   * the process tree for `session_mb: auto`. Required by those two modes; `slots` never reads it.
+   */
+  readonly memory?: MemoryProbe;
+  /** The quota hook of `ram_and_quota` (P15 wires it to the `QuotaService`). Default: always yes. */
+  readonly canAdmit?: CanAdmit;
+  /** The `local` instance behind a profile, whose slots are the vacancies of that profile (5.9). */
+  readonly localInstance?: LocalInstanceResolver;
+}
+
+/** A session waiting for admission, and what it costs. */
+interface Waiter {
+  readonly request: PoolRequest;
+  readonly mb: number;
+  readonly resolve: (slot: Slot) => void;
+  readonly reject: (error: unknown) => void;
+}
+
+/**
+ * What an admitted session holds: a vacancy (`#sessions`, the load of its profile) and, until its
+ * open ends, the RAM it is about to take (`#startingMb`). Both go back through `#free` and
+ * `#started`, each at most once.
+ */
+interface Slot {
+  readonly profileId: string;
+  readonly director: boolean;
+  /** MB reserved while the session starts; `0` when the mode does not reserve RAM. */
+  readonly reservedMb: number;
+  starting: boolean;
+  freed: boolean;
 }
 
 const NO_KILL: KillReport = { found: 0, forced: false, remaining: [] };
@@ -184,8 +231,22 @@ export class SessionPool {
   readonly #processes = new Map<string, PoolProcess[]>();
   /** Shared processes still being launched, by the same key as `#processes`. */
   readonly #launching = new Map<string, PendingLaunch[]>();
-  readonly #waiters: { resolve: () => void; reject: (error: unknown) => void }[] = [];
+  /** Sessions waiting for admission, first in, first out. */
+  readonly #waiters: Waiter[] = [];
+  readonly #memory: MemoryProbe | undefined;
+  readonly #canAdmit: CanAdmit;
+  readonly #localInstance: LocalInstanceResolver | undefined;
+  /** Sessions holding a slot of their local instance, by profile id. */
+  readonly #load = new Map<string, ProfileLoad>();
+  /** What `session_mb: auto` learned per client: the largest share of a process tree seen. */
+  readonly #learnedMb = new Map<string, number>();
+  /** RAM promised to sessions that are still opening (MemAvailable has not dropped for them yet). */
+  #startingMb = 0;
   #sessions = 0;
+  #pumping = false;
+  #again = false;
+  /** Aborts the timer that looks at the queue again while a session waits for RAM or quota. */
+  #recheck: AbortController | undefined;
   #closed = false;
 
   constructor(options: SessionPoolOptions) {
@@ -199,6 +260,18 @@ export class SessionPool {
     this.#transport = options.transport;
     this.#clock = options.clock;
     this.#settings = options.settings;
+    this.#memory = options.memory;
+    this.#canAdmit = options.canAdmit ?? ALWAYS_ADMIT;
+    this.#localInstance = options.localInstance;
+    if (this.#admission.mode !== 'slots' && this.#memory === undefined) {
+      throw new InvalidInput(
+        `pool.admission.mode ${this.#admission.mode} needs a MemoryProbe to read the free RAM`,
+      );
+    }
+  }
+
+  get #admission(): AdmissionSettings {
+    return this.#settings.admission ?? DEFAULT_ADMISSION;
   }
 
   /** The adapter of a client id, or `AdapterUnavailable`. */
@@ -215,24 +288,40 @@ export class SessionPool {
   }
 
   /**
-   * Waits for a free slot (first in, first out), then opens or reloads the session. The slot is
+   * Waits for admission (first in, first out), then opens or reloads the session. What admission
+   * asks depends on `pool.admission.mode`: always a free vacancy (`pool.max_sessions`, and the
+   * slots of the local instance of the profile); in `ram` the free RAM too; in `ram_and_quota` the
+   * quota hook as well. A session that does not fit waits in the queue, with no error. The slot is
    * given back if the open fails.
    */
   async acquire(request: PoolRequest): Promise<SessionLease> {
     if (this.#closed) throw new AdapterUnavailable('the session pool is closed');
     const adapter = this.adapterOf(request.client);
-    await this.#admit(request.signal);
+    const slot = await this.#admit(request);
     try {
-      return await this.#open(adapter, request);
+      return await this.#open(adapter, request, slot);
     } catch (error) {
-      this.#free();
+      this.#free(slot);
       throw error;
+    } finally {
+      this.#started(slot);
     }
+  }
+
+  /**
+   * Looks at the queue again. Whoever changes what admission reads (the quota service after a reset,
+   * a test after it raised the RAM) calls this; the pool itself looks again when a session ends and
+   * every `pool.admission.recheck` while one waits.
+   */
+  wake(): void {
+    this.#pump();
   }
 
   /** Ends every process of the pool; sessions on them lose their connection. */
   async shutdown(): Promise<void> {
     this.#closed = true;
+    this.#recheck?.abort();
+    this.#recheck = undefined;
     for (const waiter of this.#waiters.splice(0)) {
       waiter.reject(new AdapterUnavailable('the session pool is closed'));
     }
@@ -243,38 +332,241 @@ export class SessionPool {
 
   // ---- admission ----
 
-  #admit(signal: AbortSignal | undefined): Promise<void> {
+  #admit(request: PoolRequest): Promise<Slot> {
+    const { signal } = request;
     if (signal?.aborted === true) return Promise.reject(cancelledBy(signal));
-    if (this.#sessions < this.#settings.maxSessions && this.#waiters.length === 0) {
-      this.#sessions += 1;
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve, reject) => {
-      const waiter = { resolve, reject };
+    return new Promise<Slot>((resolve, reject) => {
+      const waiter: Waiter = {
+        request,
+        mb: this.#costOf(request.client),
+        resolve: (slot) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve(slot);
+        },
+        reject,
+      };
       const onAbort = (): void => {
         const index = this.#waiters.indexOf(waiter);
         if (index >= 0) this.#waiters.splice(index, 1);
         reject(cancelledBy(signal));
-      };
-      waiter.resolve = () => {
-        signal?.removeEventListener('abort', onAbort);
-        resolve();
+        // Whoever was behind a session that waited for RAM may fit now.
+        this.#pump();
       };
       this.#waiters.push(waiter);
       signal?.addEventListener('abort', onAbort, { once: true });
+      this.#pump();
     });
   }
 
-  /** The slot passes straight to the first waiter, so `#sessions` stays the same. */
-  #free(): void {
-    const next = this.#waiters.shift();
-    if (next === undefined) this.#sessions -= 1;
-    else next.resolve();
+  /** A slot goes back: the vacancy and the load of its profile, then the queue gets its turn. */
+  #free(slot: Slot): void {
+    if (slot.freed) return;
+    slot.freed = true;
+    this.#sessions -= 1;
+    const load = this.#load.get(slot.profileId);
+    if (load !== undefined) {
+      if (slot.director) load.directors -= 1;
+      else load.actors -= 1;
+      if (load.directors + load.actors === 0) this.#load.delete(slot.profileId);
+    }
+    this.#started(slot);
+    this.#pump();
+  }
+
+  /** The open of the session ended, well or not: its RAM is in `MemAvailable` now, or never was. */
+  #started(slot: Slot): void {
+    if (!slot.starting) return;
+    slot.starting = false;
+    this.#startingMb -= slot.reservedMb;
+  }
+
+  /** `session_mb` of a client: the number written, or what `auto` learned, or the measured default. */
+  #costOf(client: string): number {
+    const written = this.#settings.sessionMbByClient?.[client];
+    if (typeof written === 'number') return written;
+    const base = defaultSessionMb(client);
+    return written === 'auto' ? (this.#learnedMb.get(client) ?? base) : base;
+  }
+
+  /** Whether `profile` is in the Director's list (`reserve_when: listed`). */
+  #listedForDirector(profileId: string): boolean {
+    return this.#settings.directorProfiles?.includes(profileId) ?? false;
+  }
+
+  /**
+   * Gives slots to the waiters that fit, in the order they arrived. A waiter blocked only by its
+   * own profile (no free slot on its local instance, or the quota says no) does not hold the others
+   * back; one blocked by RAM does, so a big session is not starved by small ones behind it.
+   * `available` is the free RAM, `undefined` when RAM is not asked (`slots`) or the probe cannot
+   * tell (`ramUnknown`); `quota` holds the verdict of `canAdmit` for each profile in the queue
+   * (`ram_and_quota` only).
+   */
+  #scan(
+    available: number | undefined,
+    ramUnknown: boolean,
+    quota: ReadonlyMap<string, boolean> | undefined,
+  ): void {
+    const { mode, minFreeMb, unknownRam } = this.#admission;
+    let headroom = available === undefined ? 0 : available - this.#startingMb - minFreeMb;
+    let ramBlocked = false;
+    for (let index = 0; index < this.#waiters.length;) {
+      if (this.#sessions >= this.#settings.maxSessions) return;
+      const waiter = this.#waiters[index];
+      if (waiter === undefined) return;
+      const { request } = waiter;
+      const profileId = request.profile.id;
+      const director = request.director === true;
+      const instance = this.#localInstance?.(request.profile);
+      const load = this.#load.get(profileId) ?? { directors: 0, actors: 0 };
+      if (
+        instance !== undefined &&
+        !slotFree(instance, load, director, this.#listedForDirector(profileId))
+      ) {
+        index += 1;
+        continue;
+      }
+      if (quota?.get(profileId) === false) {
+        index += 1;
+        continue;
+      }
+      let reservedMb = 0;
+      if (mode !== 'slots') {
+        if (ramUnknown) {
+          if (unknownRam === 'wait') {
+            index += 1;
+            continue;
+          }
+        } else {
+          if (ramBlocked || headroom < waiter.mb) {
+            ramBlocked = true;
+            index += 1;
+            continue;
+          }
+          headroom -= waiter.mb;
+          reservedMb = waiter.mb;
+        }
+      }
+      this.#waiters.splice(index, 1);
+      this.#sessions += 1;
+      this.#startingMb += reservedMb;
+      if (director) load.directors += 1;
+      else load.actors += 1;
+      this.#load.set(profileId, load);
+      waiter.resolve({
+        profileId,
+        director,
+        reservedMb,
+        starting: reservedMb > 0,
+        freed: false,
+      });
+    }
+  }
+
+  /**
+   * Runs the admission. In `slots` it needs nothing asynchronous and the queue is served before
+   * this returns. In the other modes it reads the RAM (and asks the quota) first; a call that
+   * arrives while that runs makes it run once more.
+   */
+  #pump(): void {
+    if (this.#closed) return;
+    if (this.#admission.mode === 'slots') {
+      this.#scan(undefined, false, undefined);
+      return;
+    }
+    if (this.#pumping) {
+      this.#again = true;
+      return;
+    }
+    this.#pumping = true;
+    void this.#pumpAsync();
+  }
+
+  /** `#closed` read afresh after an await (the flow analysis cannot see `shutdown` change it). */
+  #isClosed(): boolean {
+    return this.#closed;
+  }
+
+  async #pumpAsync(): Promise<void> {
+    try {
+      do {
+        this.#again = false;
+        if (this.#waiters.length === 0) break;
+        const available = await this.#readAvailable();
+        const quota =
+          this.#admission.mode === 'ram_and_quota' ? await this.#quotaVerdicts() : undefined;
+        if (this.#isClosed()) break;
+        this.#scan(available, available === undefined, quota);
+      } while (this.#again);
+    } finally {
+      this.#pumping = false;
+      this.#armRecheck();
+    }
+  }
+
+  async #readAvailable(): Promise<number | undefined> {
+    try {
+      return await this.#memory?.availableMb();
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** `canAdmit` for each profile in the queue, asked once per round. A rejection is a "no". */
+  async #quotaVerdicts(): Promise<ReadonlyMap<string, boolean>> {
+    const profiles = new Map<string, Profile>();
+    for (const waiter of this.#waiters) {
+      profiles.set(waiter.request.profile.id, waiter.request.profile);
+    }
+    const verdicts = new Map<string, boolean>();
+    await Promise.all(
+      [...profiles].map(async ([id, profile]) => {
+        try {
+          verdicts.set(id, await this.#canAdmit(profile));
+        } catch {
+          verdicts.set(id, false);
+        }
+      }),
+    );
+    return verdicts;
+  }
+
+  /** While anybody waits, RAM and quota change with no event of ours: look again after a while. */
+  #armRecheck(): void {
+    if (this.#recheck !== undefined || this.#closed || this.#waiters.length === 0) return;
+    const timer = new AbortController();
+    this.#recheck = timer;
+    void this.#clock.sleep(this.#admission.recheckMs, timer.signal).then(
+      () => {
+        if (this.#recheck === timer) this.#recheck = undefined;
+        this.#pump();
+      },
+      () => undefined,
+    );
+  }
+
+  /**
+   * `session_mb: auto`: after a shared process took a session, the tree of that process shared by
+   * its sessions is the cost of one. The largest share seen stands, so the estimate errs on the
+   * side of waiting. [N] A client that starts one process per session gives no pid to the pool,
+   * and the measure at the open comes before the first prompt, so it is a lower bound.
+   */
+  async #learn(client: string, entry: PoolProcess): Promise<void> {
+    if (this.#settings.sessionMbByClient?.[client] !== 'auto') return;
+    const probe = this.#memory;
+    if (probe?.treeMb === undefined) return;
+    try {
+      const mb = await probe.treeMb(entry.process.pid);
+      if (mb === undefined || !entry.alive) return;
+      const share = Math.ceil(mb / Math.max(1, entry.sessions.size));
+      if (share > (this.#learnedMb.get(client) ?? 0)) this.#learnedMb.set(client, share);
+    } catch {
+      // Never measured: the default of the client stands.
+    }
   }
 
   // ---- opening ----
 
-  async #open(adapter: ClientAdapter, request: PoolRequest): Promise<SessionLease> {
+  async #open(adapter: ClientAdapter, request: PoolRequest, slot: Slot): Promise<SessionLease> {
     const via = this.#transport(adapter);
     const { profile, policy, cwd, resumeSessionId } = request;
     const profileId = profile.id;
@@ -289,7 +581,7 @@ export class SessionPool {
         resumeSessionId === undefined
           ? await adapter.openSession(profile, policy, cwd, via, ...extra)
           : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via, ...extra);
-      return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined);
+      return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined, slot);
     }
     const { entry, token } = await this.#slotFor(adapter, request, via);
     try {
@@ -298,7 +590,8 @@ export class SessionPool {
         resumeSessionId === undefined
           ? await adapter.openSessionOn(lent, policy, cwd, via, ...extra)
           : await adapter.loadSessionOn(lent, policy, cwd, resumeSessionId, via, ...extra);
-      return this.#lease(session, adapter.id, profileId, via.id, entry, token);
+      void this.#learn(adapter.id, entry);
+      return this.#lease(session, adapter.id, profileId, via.id, entry, token, slot);
     } catch (error) {
       entry.sessions.delete(token);
       this.#startIdleIfEmpty(entry);
@@ -383,6 +676,7 @@ export class SessionPool {
     via: string,
     entry: PoolProcess | undefined,
     token: symbol | undefined,
+    slot: Slot,
   ): SessionLease {
     let released = false;
     const pid = entry?.process.pid ?? 0;
@@ -412,7 +706,7 @@ export class SessionPool {
             entry.sessions.delete(token);
             this.#startIdleIfEmpty(entry);
           }
-          this.#free();
+          this.#free(slot);
         }
       },
       kill: async () => {
