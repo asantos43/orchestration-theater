@@ -16,7 +16,7 @@ import pino from 'pino';
 import { defaultVcs } from '../compose.js';
 import { editingTransport, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import type { McpAccess } from '../mcp/access.js';
-import { AttemptRunner, type AttemptSpec } from './attempt-runner.js';
+import { AttemptRunner, type AttemptRunnerOptions, type AttemptSpec } from './attempt-runner.js';
 import { SessionPool } from './pool.js';
 import type { ExecutionSettings } from './settings.js';
 
@@ -75,6 +75,7 @@ export async function makeRig<P extends RigParts>(
   parts: P,
   overrides: Partial<ExecutionSettings> = {},
   mcp?: McpAccess,
+  quota?: AttemptRunnerOptions['quota'],
 ): Promise<Rig<P>> {
   const { repo, dispose: disposeRepo } = await makeRepo();
   const worktreeRoot = await mkdtemp(join(tmpdir(), 'otheater-attempt-wt-'));
@@ -96,6 +97,7 @@ export async function makeRig<P extends RigParts>(
     worktreeRoot,
     logger: pino({ level: 'silent' }),
     ...(mcp === undefined ? {} : { mcp }),
+    ...(quota === undefined ? {} : { quota }),
   });
   return {
     ...parts,
