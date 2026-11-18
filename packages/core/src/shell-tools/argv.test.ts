@@ -121,6 +121,16 @@ describe('validateArgv', () => {
       'a | b',
       'a || b',
       'x $? y',
+      // The operator glued to the words, with no blank (owner decision of 2026-11-17).
+      'true;touch x',
+      'a&&b',
+      'a||b',
+      'a|b',
+      'a&b',
+      'a|&b',
+      'ls;',
+      '&touch',
+      'x=1&y=2',
     ]) {
       expect(
         reasonOf(() => {
@@ -131,11 +141,50 @@ describe('validateArgv', () => {
     }
   });
 
+  it('refuses a glued operator in the script of sh -c, whatever the allowlist mode', () => {
+    for (const script of ['true;touch x', 'true&&touch x', 'true||touch x', 'true|touch x']) {
+      expect(
+        reasonOf(() => {
+          validateArgv(['sh', '-c', script]);
+        }),
+        script,
+      ).toBe('shell_syntax');
+    }
+    validateArgv(['sh', '-c', 'touch x']);
+  });
+
   it('does not mistake a pattern for shell syntax', () => {
-    validateArgv(['rg', 'a|b', 'src']);
     validateArgv(['rg', '^foo$', 'src']);
-    validateArgv(['rg', 'a;b', 'src']);
     validateArgv(['git', 'log', '--format=%H %s']);
+    validateArgv(['git', 'log', '--grep=fix', '--author=a@b.c']);
+    validateArgv(['node', '-e', 'console.log(1)']);
+    validateArgv(['echo', 'a-b', 'c_d', 'x:y', 'k=v', 'a,b', 'a.b']);
+  });
+
+  it('lets rg carry an operator character, because its arguments are patterns', () => {
+    validateArgv(['rg', 'a|b', 'src']);
+    validateArgv(['rg', 'a;b', 'src']);
+    validateArgv(['rg', '-e', 'foo&bar', '-e', 'x||y']);
+    // ...but expansion is still refused, and so is a bare operator or a redirection.
+    for (const arg of ['$(id)', '`id`', ';', '|', '>out']) {
+      expect(
+        reasonOf(() => {
+          validateArgv(['rg', arg, 'src']);
+        }),
+        arg,
+      ).toBe('shell_syntax');
+    }
+  });
+
+  it('does not extend the exception of rg to other programs', () => {
+    for (const program of ['git', 'ls', 'cat', 'node', 'env', 'xargs']) {
+      expect(
+        reasonOf(() => {
+          validateArgv([program, 'a|b']);
+        }),
+        program,
+      ).toBe('shell_syntax');
+    }
   });
 });
 

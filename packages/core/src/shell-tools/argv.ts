@@ -21,8 +21,24 @@ const REDIRECT_PREFIX = /^\d*(?:>>?|<<?<?|>&|<&)/;
 /** Command substitution and parameter expansion, with or without braces. */
 const EXPANSION = /`|\$\(|\$\{|\$[A-Za-z_?!#@*$0-9]/;
 
-/** A control operator between two words inside one argument (`ls ; rm x`, `a && b`, `a | b`). */
-const EMBEDDED_OPERATOR = /\s(?:;|&&|\|\||\||&)\s/;
+/**
+ * A control operator inside one argument, with or without blanks around it (`ls ; rm x`, `a && b`,
+ * `true;touch x`, `a|b`, `a&b`). Any `;`, `&` or `|` counts: `&&`, `||` and `|&` are made of them.
+ * Decided by the owner on 2026-11-17 ("recusar no validateArgv"): until then only an operator with a
+ * blank on each side was refused, so `sh -c 'true;touch x'` went through in `shell_allowlist.mode:
+ * any` (the sandbox, layer 3, was the only thing left to hold it). The price: a `;`, `&` or `|`
+ * that is plain text also stops (`git log --format=%h|%s`, a URL with `?a=1&b=2`); say it without
+ * the character (`%x7c`, `--data-urlencode`, `-e a -e b`).
+ */
+const EMBEDDED_OPERATOR = /[;&|]/;
+
+/**
+ * Programs whose arguments are patterns, never code, so an embedded operator is plain text there:
+ * `rg 'a|b'` is a regex alternation, not a pipe. `rg` can run another program only through `--pre`
+ * and `--pre-glob`, both refused by {@link assertNoForbiddenFlags} in every mode. Kept as short as
+ * it is: `git` (aliases, `-c`), `node -e`, `sh -c`, `env`, `xargs` read their arguments as code.
+ */
+const PATTERN_PROGRAMS: ReadonlySet<string> = new Set(['rg']);
 
 /** Longest argument and longest list accepted; a bound against absurd input. */
 export const ARGV_MAX_ITEMS = 256;
@@ -58,6 +74,7 @@ export function validateArgv(argv: readonly string[]): void {
       `the program must be a plain name from the allowlist, not a path or an expression: ${JSON.stringify(program)}`,
     );
   }
+  const patternProgram = PATTERN_PROGRAMS.has(program);
   for (const arg of argv.slice(1)) {
     if (OPERATOR_ARG.test(arg) || REDIRECT_PREFIX.test(arg)) {
       throw new ShellToolRefusal(
@@ -65,7 +82,7 @@ export function validateArgv(argv: readonly string[]): void {
         `there is no shell here: chaining and redirection are not available (${JSON.stringify(arg)})`,
       );
     }
-    if (EXPANSION.test(arg) || EMBEDDED_OPERATOR.test(arg)) {
+    if (EXPANSION.test(arg) || (!patternProgram && EMBEDDED_OPERATOR.test(arg))) {
       throw new ShellToolRefusal(
         'shell_syntax',
         `there is no shell here: expansion and chaining inside an argument are not available (${JSON.stringify(arg)})`,

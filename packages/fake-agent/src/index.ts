@@ -24,3 +24,9 @@ export {
   type Script,
   type ScriptName,
 } from './scripts.js';
+export {
+  escapeScriptSchema,
+  escapeStepSchema,
+  type EscapeScript,
+  type EscapeStep,
+} from './escape-scripts.js';

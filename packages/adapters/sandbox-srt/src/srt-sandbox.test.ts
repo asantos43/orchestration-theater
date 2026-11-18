@@ -144,11 +144,13 @@ describe('SrtSandbox without a mechanism', () => {
     );
   });
 
-  it('declares the Sandbox port and the two fields it guarantees where it works', () => {
+  it('declares the Sandbox port and the four fields it counts as the os layer where it works', () => {
     expect(sandbox.id).toBe('srt');
     expect(sandbox.implements).toEqual({ port: 'Sandbox', range: '^0.1.0' });
     if (process.platform === 'linux' || process.platform === 'darwin') {
-      expect(sandbox.capabilities()).toEqual({ fields: ['writeScope', 'network'] });
+      expect(sandbox.capabilities()).toEqual({
+        fields: ['nativeTools', 'nativeShell', 'writeScope', 'network'],
+      });
     }
   });
 });
