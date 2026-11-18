@@ -25,6 +25,7 @@ import {
   type QuotaExhaustedData,
   type QuotaSignalParams,
 } from '@otheater/protocol';
+import { playEscape } from './escape-scripts.js';
 import { McpHttpClient, type HttpMcpServer } from './mcp-client.js';
 import { playRolePlay } from './role-play.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
@@ -486,6 +487,68 @@ async function playProbe(
   return END_TURN;
 }
 
+/** The escape script (P5): the ACP side of its host; the steps are in `escape-scripts.ts`. */
+async function playEscapeScript(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'escape' }>,
+): Promise<PromptResponse> {
+  const clients = new Map<string, McpHttpClient | undefined>();
+  await playEscape(
+    {
+      cwd: turn.session.cwd,
+      signal: turn.signal,
+      say: (text) => message(turn, text),
+      ask: async ({ kind, title, locations, rawInput }) => {
+        const toolCallId = nextToolCallId(turn.session);
+        const places = locations?.map((path) => ({ path }));
+        await update(turn, {
+          sessionUpdate: 'tool_call',
+          toolCallId,
+          title,
+          kind,
+          status: 'pending',
+          ...(places === undefined ? {} : { locations: places }),
+          ...(rawInput === undefined ? {} : { rawInput }),
+        });
+        const permission: RequestPermissionResponse = await turn.client.request(
+          methods.client.session.requestPermission,
+          {
+            sessionId: turn.sessionId,
+            toolCall: {
+              toolCallId,
+              title,
+              kind,
+              status: 'pending',
+              ...(places === undefined ? {} : { locations: places }),
+              ...(rawInput === undefined ? {} : { rawInput }),
+            },
+            options: [ALLOW, REJECT],
+          },
+          { cancellationSignal: turn.signal, stopWaitingOnCancel: true },
+        );
+        if (permission.outcome.outcome === 'cancelled' || turn.signal.aborted) return 'cancelled';
+        return permission.outcome.optionId === ALLOW.optionId ? 'allowed' : 'rejected';
+      },
+      callTool: async (server, tool, args) => {
+        if (!clients.has(server)) clients.set(server, await mcpClientFor(turn, server));
+        const client = clients.get(server);
+        if (client === undefined) return undefined;
+        const outcome = await client.callTool(tool, { ...args });
+        await reportMcpCall(
+          turn,
+          `MCP ${server} ${tool}`,
+          outcome.isError ? 'failed' : 'completed',
+          outcome.text,
+        );
+        return { isError: outcome.isError, text: outcome.text };
+      },
+      tryConnect,
+    },
+    script,
+  );
+  return turn.signal.aborted ? CANCELLED : END_TURN;
+}
+
 async function playHang(turn: TurnContext): Promise<PromptResponse> {
   // The chunk tells the client the turn is running, so a cancel sent after it is never lost.
   await message(turn, 'hanging until session/cancel');
@@ -550,6 +613,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
     case 'probe':
       return playProbe(turn, script);
+    case 'escape':
+      return playEscapeScript(turn, script);
     case 'hang':
       return playHang(turn);
     case 'deaf':
