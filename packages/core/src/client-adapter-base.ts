@@ -229,6 +229,14 @@ export interface ClientAdapterOptions {
    * `process.env`; `profileEnv()` goes on top of it.
    */
   readonly baseEnv: Readonly<Record<string, string>>;
+  /**
+   * Phase 5 (P2). [proposta] The secrets of one profile as environment variables (an API key), read
+   * from the vault at the moment a client process starts and added after `profileEnv()`. They go
+   * only into the environment of that process: never into a file of the profile, never into a log
+   * (the launch spec is not logged) and never into another profile's process. Absent or empty:
+   * nothing is added.
+   */
+  readonly secretEnv?: (profile: Profile) => Promise<Readonly<Record<string, string>>>;
   /** Version of this adapter, the key of the conformance cache. Change it when the translation changes. */
   readonly adapterVersion: string;
   /**
@@ -335,6 +343,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
 
   readonly #launcher: ProcessLauncher;
   readonly #baseEnv: Readonly<Record<string, string>>;
+  readonly #secretEnv: ClientAdapterOptions['secretEnv'];
   #adapterVersion: string;
   #clientVersion: ClientVersion;
   readonly #versioning: ClientVersionOptions | undefined;
@@ -357,6 +366,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   protected constructor(options: ClientAdapterOptions) {
     this.#launcher = options.launcher;
     this.#baseEnv = options.baseEnv;
+    this.#secretEnv = options.secretEnv;
     this.#versioning = options.clientVersion;
     this.#clientVersion = options.clientVersion?.initial ?? {
       version: UNKNOWN_CLIENT_VERSION,
@@ -656,6 +666,11 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   abstract login(profile: Profile): Promise<LoginFlow>;
   abstract logout(profile: Profile): Promise<void>;
 
+  /** See {@link ClientAdapterContract.setUpProfile}: `prepareProfile` made public. */
+  setUpProfile(profile: Profile, policy: RolePolicy): Promise<void> {
+    return this.prepareProfile(profile, policy);
+  }
+
   // ---- internals ----
 
   async #start(
@@ -703,11 +718,12 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   ): Promise<LaunchOptions> {
     await this.prepareProfile(profile, policy);
     const { cmd, args } = this.command(profile, via);
+    const secrets = (await this.#secretEnv?.(profile)) ?? {};
     const spec: LaunchOptions = {
       cmd,
       args,
       cwd,
-      env: { ...this.#baseEnv, ...this.profileEnv(profile) },
+      env: { ...this.#baseEnv, ...this.profileEnv(profile), ...secrets },
     };
     return this.#launchWrapper === undefined
       ? spec

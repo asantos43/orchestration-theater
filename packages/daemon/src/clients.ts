@@ -5,6 +5,7 @@ import type {
   ClientAdapter,
   Clock,
   LaunchWrapper,
+  Profile,
   ProcessLauncher,
   SandboxCapabilities,
   SessionTransport,
@@ -31,6 +32,11 @@ export interface ClientFactoryParts {
    * factory that does not pass it on starts its clients unconfined.
    */
   readonly sandbox?: SandboxParts;
+  /**
+   * Phase 5 (P2): the API key of a profile as environment variables, read from the vault when a
+   * client process starts (`ClientAdapterOptions.secretEnv`). Absent: no profile has a key.
+   */
+  readonly secretEnv?: (profile: Profile) => Promise<Readonly<Record<string, string>>>;
 }
 
 /** What a client adapter takes of layer 3 (`ClientAdapterOptions.sandbox` and `.launchWrapper`). */

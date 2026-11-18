@@ -52,6 +52,7 @@ import { ScenarioHandlers } from './scenarios/handlers.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
+import { profileSecretEnv } from './profiles/secret-env.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
@@ -587,6 +588,13 @@ function buildExecution(
     transport: composition.transport,
     paths: dataPaths(options.dataDir),
     logger,
+    // The API key of a profile reaches only the process of that profile (Phase 5, P2).
+    secretEnv: profileSecretEnv({
+      store: composition.store,
+      vault: composition.vault,
+      apiKeyEnv: config.profiles.api_key_env,
+      logger,
+    }),
     ...(composition.sandbox === undefined
       ? {}
       : {
@@ -663,7 +671,7 @@ function adapterRef(
  * daemon does not start. With no prompt, or a prompt that answers `undefined`, the daemon starts
  * with the vault locked and a warning: what needs secrets fails later with `VaultLocked`.
  */
-async function unlockVault(
+export async function unlockVault(
   vault: LockableSecretVault,
   prompt: PasswordPrompt | undefined,
   logger: Logger,
