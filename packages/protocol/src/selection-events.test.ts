@@ -248,6 +248,53 @@ describe('the wait events of P16b [proposta]', () => {
   });
 });
 
+describe('the director_failover notice of P20 [proposta]', () => {
+  const notice = {
+    scenarioId: 'S1',
+    kind: 'director_failover',
+    outcome: 'switched',
+    cause: 'quota_exhausted',
+    fromExecutor: 'fake-model@fake/one',
+    toExecutor: 'fake-model@fake/two',
+    requeued: 'Q1',
+    resetsAt: null,
+    detail: 'out of quota',
+  };
+
+  it('accepts the three outcomes and a missing origin or destination', () => {
+    expect(validateEventPayload('scenario.system_message', 1, notice)).toEqual(notice);
+    const waiting = {
+      ...notice,
+      outcome: 'waiting',
+      toExecutor: null,
+      resetsAt: 1_700_000_000_000,
+    };
+    expect(validateEventPayload('scenario.system_message', 1, waiting)).toEqual(waiting);
+    const lone = {
+      ...notice,
+      outcome: 'unavailable',
+      fromExecutor: null,
+      toExecutor: null,
+      detail: null,
+    };
+    expect(validateEventPayload('scenario.system_message', 1, lone)).toEqual(lone);
+  });
+
+  it('refuses an unknown outcome or cause, a loose field and a text over the limit', () => {
+    const bad = (extra: object): void => {
+      expect(() =>
+        validateEventPayload('scenario.system_message', 1, { ...notice, ...extra }),
+      ).toThrow();
+    };
+    bad({ outcome: 'later' });
+    bad({ cause: 'weather' });
+    bad({ extra: true });
+    bad({ detail: 'x'.repeat(513) });
+    bad({ detail: '' });
+    bad({ toExecutor: 'x'.repeat(257) });
+  });
+});
+
 describe('the play notice of P16b [proposta]', () => {
   const notice = {
     scenarioId: 'S1',

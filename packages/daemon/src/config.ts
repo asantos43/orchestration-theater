@@ -130,6 +130,14 @@ export const PACKAGE_SHORT_OUTPUT_MODES = ['redo', 'continue'] as const;
  */
 export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 /**
+ * `scenarios.director_failover` (P20, [proposta]): what the daemon does when the session of the
+ * Director fails. `next` (default): a quota, a spending cap, a provider error or a drop opens a
+ * new session with the next Executor; `quota_only`: only the first two causes; `off`: nothing.
+ */
+export const DIRECTOR_FAILOVER_MODES = ['next', 'quota_only', 'off'] as const;
+export type DirectorFailoverMode = (typeof DIRECTOR_FAILOVER_MODES)[number];
+
+/**
  * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
  * remaining quota of the MiniMax Token Plan with the key of the profile (`GET /v1/token_plan/remains`).
  */
@@ -1362,6 +1370,11 @@ export const DaemonConfigSchema = z
      * its worktree of the chat folder: `merge` (default) puts them in the folder, after the check
      * that each stays inside it; `keep` leaves them on a branch `play/<scenario>/attempts/consult-<n>/1` for
      * the Producer to read; `discard` drops them (the consultant only answers).
+     * [proposta] `director_failover` (P20) is what the daemon does when the session of the
+     * Director fails: `next` (default) opens a new session with the next Executor of the `director`
+     * role when the cause is a quota or a spending cap (`quota_exhausted`, `spend_cap`), a provider
+     * error or a drop (`transient`, `client_crash`); `quota_only` does it for the first two causes
+     * only; `off` keeps the old behaviour (the queue stops until the next prompt tries again).
      */
     scenarios: z
       .strictObject({
@@ -1370,6 +1383,7 @@ export const DaemonConfigSchema = z
         attachment_read_max: SizeSchema.prefault('8MB'),
         consultant_alternatives: z.array(PlayExecutorSchema).default([]),
         consultant_writes: z.enum(['merge', 'keep', 'discard']).prefault('merge'),
+        director_failover: z.enum(DIRECTOR_FAILOVER_MODES).prefault('next'),
       })
       .prefault({}),
     /**

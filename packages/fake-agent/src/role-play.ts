@@ -97,6 +97,23 @@ async function countOf(key: string): Promise<number> {
   return before;
 }
 
+/**
+ * `#ot-director-fail:quota` on a line of the prompt of the Director makes its turn end with a quota
+ * error (the quota signals of `quota-signal` and the `-32001` error) the first time; `#ot-director-fail-times:<n>`
+ * makes it the first `n` times (P20, the failover of the Director). The count is kept in the state
+ * directory of the test, so the prompt that goes back to the queue and reaches the next session
+ * finds the failures already spent. `resetsAt` is the optional `#ot-director-fail-resets:<iso>`.
+ */
+export async function directorQuotaFailure(
+  text: string,
+): Promise<{ readonly resetsAt?: string } | undefined> {
+  if (markerOf(text, '#ot-director-fail:') !== 'quota') return undefined;
+  const times = Number(markerOf(text, '#ot-director-fail-times:')) || 1;
+  if ((await countOf('director-fail')) >= times) return undefined;
+  const resetsAt = markerOf(text, '#ot-director-fail-resets:');
+  return resetsAt === undefined || resetsAt === '' ? {} : { resetsAt };
+}
+
 const VERIFY_OK = { name: 'check', command: 'node', args: ['-e', 'process.exit(0)'] };
 /** Passes until the file `news.txt` is there: the file `main` gets in `base_drift_verify`. */
 const VERIFY_NO_NEWS = {
@@ -366,6 +383,20 @@ async function playIdeaGrouper(host: RolePlayHost, max: number): Promise<void> {
   });
 }
 
+/** The texts of the section "Directives in force:" of a state summary (P20: the failover carries them). */
+function directivesOf(text: string): string[] {
+  const lines = text.split('\n');
+  const start = lines.indexOf('Directives in force:');
+  if (start === -1) return [];
+  const texts: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() === '') break;
+    const found = /^- \S+ \([^)]*\)(?: \[[^\]]*\])?: (.*)$/.exec(line)?.[1];
+    if (found !== undefined) texts.push(found);
+  }
+  return texts;
+}
+
 /**
  * A turn of the Director of a generic chat: `#ot-chat <text>` is a simple question it answers
  * itself; `#ot-consult <question>` (with `#ot-attach A1 A2`) is a hard one it hands to the
@@ -376,6 +407,10 @@ async function playChat(host: RolePlayHost): Promise<boolean> {
   const { text } = host;
   const woke = /^State of scenario "[^"]*" \(([^,)]*),/m.exec(text)?.[1];
   const wake = woke === undefined ? [] : [`woke with the state of ${woke}`];
+  const directives = directivesOf(text);
+  if (woke !== undefined && directives.length > 0) {
+    wake.push(`directives in force: ${directives.join(' | ')}`);
+  }
   const consult = markerOf(text, '#ot-consult(?![-\\w])');
   if (consult !== undefined && consult !== '') {
     const attachments = attachmentIdsOf(markerOf(text, '#ot-attach(?![-\\w])'));

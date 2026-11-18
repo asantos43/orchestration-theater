@@ -32,8 +32,11 @@ export interface OrchestrationInput {
   readonly config: DaemonConfig;
   readonly composition: Composition;
   readonly execution: Execution;
-  /** What the choice of the Executor reads: the quota of each profile (P16). */
-  readonly quota: Pick<QuotaService, 'statusOf'>;
+  /**
+   * What the choice of the Executor reads: the quota of each profile (P16); and what the failover
+   * of the Director tells it about a limit error (P20).
+   */
+  readonly quota: Pick<QuotaService, 'statusOf' | 'ingestLimitHit'>;
   readonly mcp: McpAccess;
   readonly registries: Registries;
   readonly prompts: PromptSource;
@@ -118,6 +121,8 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     logger,
     clock: composition.clock,
+    quota: input.quota,
+    onNotice: (notice) => late.channel?.notify(notice),
   });
   const workspace =
     composition.codeHost === undefined
