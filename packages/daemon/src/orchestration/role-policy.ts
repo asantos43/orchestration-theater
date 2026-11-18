@@ -15,6 +15,7 @@ import {
   type POLICY_BROWSER_MODES,
   type POLICY_NATIVE_TOOLS,
   type PolicyRule,
+  type RolesConfig,
   type RolePolicySettings,
 } from '../role-policy-config.js';
 
@@ -218,7 +219,7 @@ function setDeep(target: Record<string, unknown>, path: readonly string[], value
  * the opening N99 forbids is refused, here as in the daemon configuration. Keys that do not start
  * with `roles` are the business of other readers and are left alone.
  */
-export function rolesOverrideOf(configOverride: JsonObject, source: string): RolePolicyLayers {
+export function parseRolesOverride(configOverride: JsonObject, source: string): RolesConfig {
   const tree: Record<string, unknown> = {};
   // The shorter paths first, so `roles.actor.policy.native_shell` refines a `roles` object next to it.
   const entries = Object.entries(configOverride).sort(
@@ -234,7 +235,12 @@ export function rolesOverrideOf(configOverride: JsonObject, source: string): Rol
       cause: parsed.error,
     });
   }
-  return parsed.data as RolePolicyLayers;
+  return parsed.data;
+}
+
+/** The policy layers of {@link parseRolesOverride}. */
+export function rolesOverrideOf(configOverride: JsonObject, source: string): RolePolicyLayers {
+  return parseRolesOverride(configOverride, source) as RolePolicyLayers;
 }
 
 /** `roles` as the configuration and an override carry it. */
@@ -254,7 +260,7 @@ export interface RolePolicyResolver {
 const MAX_ORIGIN_DEPTH = 8;
 
 /** The scenario and the ones it came from, oldest first. */
-async function scenarioChain(
+export async function scenarioChain(
   scenarios: Pick<ScenarioRegistry, 'get'>,
   scenarioId: string,
 ): Promise<ScenarioRecord[]> {

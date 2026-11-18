@@ -17,6 +17,7 @@ import { BACKUP_CONTENTS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { ExecutorsConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -822,6 +823,13 @@ export const DaemonConfigSchema = z
      * their `configOverride`. See `role-policy-config.ts`.
      */
     roles: RolesConfigSchema.prefault({}),
+    /**
+     * The Executors and how they join the roles (architecture 5.7; Phase 5, P13): `executors.<id>`
+     * (`<model>-<effort>@<client>/<profile>`), `cross_client` (`api_only` default | `off` | `any`)
+     * and `on_register` (`ask` default | `preset_only` | `none`). The lists of the roles are under
+     * `roles`. See `role-executors-config.ts`; the pipeline reads them from P16.
+     */
+    executors: ExecutorsConfigSchema.prefault({}),
     /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system

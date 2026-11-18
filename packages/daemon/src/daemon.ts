@@ -46,6 +46,7 @@ import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.j
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
+import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
 import type { ProducerChannel } from './orchestration/channel.js';
@@ -468,6 +469,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   } else {
     logger.warn('this store has no backup support; scheduled backups are off');
   }
+
+  // The old Executor keys keep working (P13); the notice says where the new ones are.
+  for (const warning of deprecationWarnings(config.orchestration)) logger.warn(warning);
 
   state = 'running';
   logger.info({ version, dataDir: paths.dataDir }, 'daemon running');
