@@ -19,6 +19,15 @@ export const GIT_COMMIT_EFFECT = 'git_commit';
 export const GIT_PUSH_EFFECT = 'git_push';
 export const OPEN_PR_EFFECT = 'open_pr';
 export const MERGE_BASE_EFFECT = 'merge_base';
+/** The three commands that run in the worktree (P22). [proposta] The names are the tools'. */
+export const INSTALL_DEPS_EFFECT = 'install_deps';
+export const RUN_TESTS_EFFECT = 'run_tests';
+export const RESTRICTED_SHELL_EFFECT = 'restricted_shell';
+export const COMMAND_EFFECTS: readonly string[] = [
+  INSTALL_DEPS_EFFECT,
+  RUN_TESTS_EFFECT,
+  RESTRICTED_SHELL_EFFECT,
+];
 
 export interface VerifierDeps {
   readonly vcs: Vcs & VcsHistory;
@@ -162,6 +171,21 @@ export async function verifyMergeBase(
 }
 
 /**
+ * A command of the worktree (`install_deps`, `run_tests`, `restricted_shell`): the world cannot say
+ * whether a command that started also finished, so the record says what is safe. Param
+ * `openPolicy`, written with the "before": `rerun` (the command comes from the project and
+ * converges, so running it again finishes whatever was half done) answers `not_done`; anything
+ * else is `ambiguous` and the Producer decides. Needs no code host.
+ */
+export function verifyCommand(record: SideEffectRecord): EffectVerdict {
+  if (text(record.params, 'openPolicy') === 'rerun') return { verdict: 'not_done' };
+  return {
+    verdict: 'ambiguous',
+    reason: `The command ${record.type} started and nothing says whether it finished, and it is not safe to run again by itself`,
+  };
+}
+
+/**
  * The verifier of a record, by its type (what the reconciliation of a restart uses for the
  * `pending` and `ambiguous` records of the workspace). A type that is not the workspace's is
  * `ambiguous`: the verifier of another tool owns it.
@@ -179,6 +203,10 @@ export function verifySideEffect(
       return verifyOpenPr(deps, record);
     case MERGE_BASE_EFFECT:
       return verifyMergeBase(deps, record);
+    case INSTALL_DEPS_EFFECT:
+    case RUN_TESTS_EFFECT:
+    case RESTRICTED_SHELL_EFFECT:
+      return Promise.resolve(verifyCommand(record));
     default:
       return Promise.resolve({
         verdict: 'ambiguous',
