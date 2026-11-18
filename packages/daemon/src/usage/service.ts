@@ -328,7 +328,7 @@ export class UsageService {
     let clientUsd: number | undefined;
     if (hasCost && !hasTokens) {
       // A cost with no tokens is the cumulative `usage_update` of ACP: only its growth is new.
-      const growth = this.#growth(sessionId, report.costUsd as number);
+      const growth = this.#growth(sessionId, report.costUsd);
       if (source === 'pricing_table' || growth === 0) return undefined; // nothing to price, or nothing grew
       clientUsd = growth;
     } else {

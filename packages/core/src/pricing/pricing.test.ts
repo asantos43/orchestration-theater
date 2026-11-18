@@ -9,6 +9,7 @@ import {
   mergePricing,
   normalizeModelId,
   priceTokens,
+  type ModelPrice,
 } from './index.js';
 
 describe('built-in pricing table', () => {
@@ -52,9 +53,14 @@ describe('normalizeModelId', () => {
 });
 
 describe('costOfTokens', () => {
-  const opus = BUILT_IN_MODEL_PRICES['claude-opus-5-5']!;
-  const haiku = BUILT_IN_MODEL_PRICES['claude-haiku-5-5']!;
-  const sol = BUILT_IN_MODEL_PRICES['gpt-6-sol']!;
+  const priceOf = (model: string): ModelPrice => {
+    const price = BUILT_IN_MODEL_PRICES[model];
+    if (price === undefined) throw new Error(`no built-in price for ${model}`);
+    return price;
+  };
+  const opus = priceOf('claude-opus-5-5');
+  const haiku = priceOf('claude-haiku-5-5');
+  const sol = priceOf('gpt-6-sol');
 
   it('is tokens times the price per million', () => {
     // 1M input at US$ 4 + 100k output at US$ 20 = 4 + 2

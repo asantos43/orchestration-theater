@@ -45,7 +45,8 @@ describe('usage.recorded event [proposta]', () => {
     ).toThrow();
     expect(() => validateEventPayload('usage.recorded', 1, { ...priced, costUsd: -1 })).toThrow();
     expect(() => validateEventPayload('usage.recorded', 1, { ...priced, extra: 1 })).toThrow();
-    const { costUsd: _omitted, ...missing } = priced;
+    const missing: Partial<typeof priced> = { ...priced };
+    delete missing.costUsd;
     expect(() => validateEventPayload('usage.recorded', 1, missing)).toThrow();
   });
 });
