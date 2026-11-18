@@ -18,9 +18,10 @@ import { parseRolesOverride, scenarioChain } from './role-policy.js';
 /**
  * The Executors of each role for the work of a scenario (architecture 5.7; Phase 5, P13): the
  * layers of configuration read like the tool policy of the role (`role-policy.ts`), and the pure
- * resolution of `@otheater/core` (`resolveRoleExecutors`). Nothing calls it yet: the Director and
- * the pipeline still run the Executor of `orchestration.executor` until P16, and the selection
- * (P15) and the account service (P2) join the facts below.
+ * resolution of `@otheater/core` (`resolveRoleExecutors`). The pipeline reads it through the
+ * selection service (`role-selection.ts`, P16): the Director, the Consultant, the Author of the
+ * ideas and every stage and demand of a play take their Executor from the lists it resolves, and
+ * the selector (P15) and the account service (P2) join the facts below.
  *
  * Layers, from the weakest to the strongest: the daemon configuration, then the `configOverride`
  * of each scenario along the `originScenarioId` chain, oldest first (a project is a scenario, and
@@ -69,18 +70,18 @@ export function legacyExecutorsOf(
 
 /**
  * The deprecation notices of the old format (Phase 5, P13, [proposta]): one line per old key in
- * use. The old keys keep working, as a list of one Executor, until P16 changes the pipeline.
+ * use. The old keys keep working, as a list of one Executor (the pipeline reads the lists since P16).
  */
 export function deprecationWarnings(orchestration: DaemonConfig['orchestration']): string[] {
   const out: string[] = [];
   if (orchestration.executor !== undefined) {
     out.push(
-      'orchestration.executor is deprecated: name the Executors of each role in roles.<role>.executors (a list, 5.7); it keeps working as a list of one item until the pipeline reads the lists',
+      'orchestration.executor is deprecated: name the Executors of each role in roles.<role>.executors (a list, 5.7); it keeps working as a list of one item',
     );
   }
   for (const role of Object.keys(orchestration.roles)) {
     out.push(
-      `orchestration.roles.${role} is deprecated: use roles.${role}.executors (a list, 5.7); it keeps working as a list of one item until the pipeline reads the lists`,
+      `orchestration.roles.${role} is deprecated: use roles.${role}.executors (a list, 5.7); it keeps working as a list of one item`,
     );
   }
   return out;

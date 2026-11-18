@@ -24,6 +24,7 @@ import {
   type ExecutorEntry,
   type OnRegisterMode,
 } from '@otheater/core';
+import { parseDurationText } from '@otheater/protocol';
 import { z } from 'zod';
 import { ExecutorBudgetSchema, type ExecutorBudgetConfig } from './budget-config.js';
 
@@ -35,8 +36,8 @@ import { ExecutorBudgetSchema, type ExecutorBudgetConfig } from './budget-config
  * `requires.context` (`32k`), are [proposta]; the architecture fixes the rest.
  *
  * Every error names its key (`roles.author.executors.1: ...`): `describeZodError` prefixes the
- * path of the block. Nothing here changes what a play runs: the pipeline still reads
- * `orchestration.executor` until P16.
+ * path of the block. Since P16 the pipeline reads these lists through the selector; a role with no
+ * list falls back to `orchestration.executor` and `orchestration.roles.<role>` (the old format).
  */
 
 /**
@@ -268,6 +269,29 @@ export const ExecutorsConfigSchema = z
     return { cross_client, on_register, test_session, entries, budgets };
   });
 
+/** `selection.unregistered_profiles` (P16, [proposta]). */
+export const UNREGISTERED_PROFILE_MODES = ['allow', 'refuse'] as const;
+/** `selection.director_wait` (P16, [proposta]). */
+export const DIRECTOR_WAIT_MODES = ['fail', 'wait'] as const;
+
+/** `selection.recheck_every`: a duration (`30s`, `2m`) in milliseconds, or `off` (0: only the wake). */
+const RecheckSchema = z
+  .union([z.literal('off'), z.string()], {
+    error: 'recheck_every: a duration such as "30s" or "2m", or "off"',
+  })
+  .transform((value, ctx) => {
+    if (value === 'off') return 0;
+    const ms = parseDurationText(value);
+    if (ms === undefined || ms <= 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${JSON.stringify(value)} is not a duration; use "30s", "2m" or "off"`,
+      });
+      return z.NEVER;
+    }
+    return ms;
+  });
+
 /**
  * `selection` (architecture 5.7; Phase 5, P15): how the daemon picks among the Executors of a role.
  * `strategy` (N130) and `cross_check` are the architecture's; the defaults are its defaults.
@@ -276,6 +300,15 @@ export const ExecutorsConfigSchema = z
  * `retry_diversity` is how a retry starts after the Executor that failed (`rotate`: the 5.7 rule,
  * wrapping around), `context_reserve` the tokens the client keeps for its own prompt and tools,
  * which the prompt of a demand must leave free in the window (0 until measured).
+ *
+ * P16 adds three [proposta] keys, so the pipeline hardcodes no default: `unregistered_profiles`
+ * (what a legacy `orchestration.executor` that names a profile the registry does not know does:
+ * `allow` treats it as an active token plan, which is what the pipeline did until P16; `refuse` marks
+ * it invalid), `recheck_every` (how often a demand with no Executor looks again on its own, besides
+ * the wake of P9 on `quota.restored`; `off` leaves it to the wake) and `director_wait` (what the
+ * Director's session does with no Executor: `fail` answers at once with the reason, `wait` holds
+ * the opening until one is free).
+ *
  * `strict_unavailable` (N135, decided by the owner on 2026-11-18) is what a strict `cross_check`
  * (`require_other_provider`, `other_model`) does when only the provider or the model of the work
  * is available: `wait_notify` (default) waits and flags the wait, `fallback_prefer` goes back to
@@ -296,6 +329,13 @@ export const SelectionConfigSchema = z.strictObject({
     .enum(RETRY_DIVERSITY_MODES, oneOf('retry_diversity', RETRY_DIVERSITY_MODES))
     .default('rotate'),
   context_reserve: ContextSchema.default(0),
+  unregistered_profiles: z
+    .enum(UNREGISTERED_PROFILE_MODES, oneOf('unregistered_profiles', UNREGISTERED_PROFILE_MODES))
+    .default('allow'),
+  recheck_every: RecheckSchema.default(30_000),
+  director_wait: z
+    .enum(DIRECTOR_WAIT_MODES, oneOf('director_wait', DIRECTOR_WAIT_MODES))
+    .default('fail'),
   strict_unavailable: z
     .enum(STRICT_UNAVAILABLE_MODES, oneOf('strict_unavailable', STRICT_UNAVAILABLE_MODES))
     .default('wait_notify'),

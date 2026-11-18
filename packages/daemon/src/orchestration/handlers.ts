@@ -26,6 +26,7 @@ import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
 import { openPlayFromNeed } from './open-play.js';
 import { DECISION_KINDS } from './play-effects.js';
+import type { RoleSelection, RoleWait } from './role-selection.js';
 
 /** The tools of the Director that the orchestration answers (P8). */
 export const ORCHESTRATION_TOOL_NAMES = [
@@ -88,6 +89,14 @@ export interface OrchestrationRuntime {
   readonly logger: Logger;
   /** The state machine of the `chat` flow (P12): told when a question to the Producer opens or ends. */
   readonly chatFlow?: ChatFlow | undefined;
+  /** The demands that wait for an Executor (P16), for what `status` says. */
+  readonly selection?: Pick<RoleSelection, 'waiting'> | undefined;
+}
+
+/** "the actor waiting for quota of claude-code/a (demand d1)", for the Director. */
+function waitLineOf(wait: RoleWait): string {
+  const demand = wait.demandId === null ? '' : ` (demand ${wait.demandId})`;
+  return `the ${wait.role} is ${wait.message}${demand}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,6 +211,11 @@ export class OrchestrationHandlers {
     scenarioId: string,
     playId: string | undefined,
   ): Promise<JsonObject | ToolFailure> {
+    const waits = (rt.selection?.waiting(scenarioId) ?? []).filter(
+      (wait) => playId === undefined || wait.playId === playId,
+    );
+    // [proposta] Said only while something waits: "waiting for quota of claude-code/a (the Actor)".
+    const waitingFor = waits.length === 0 ? {} : { waitingFor: waits.map(waitLineOf) };
     if (playId === undefined) {
       const plays = await rt.store.plays.list({ scenarioId });
       return {
@@ -211,6 +225,7 @@ export class OrchestrationHandlers {
           need: play.need,
           finished: play.finishedAt !== null,
         })),
+        ...waitingFor,
       };
     }
     const play = await rt.store.plays.get(playId);
@@ -230,6 +245,7 @@ export class OrchestrationHandlers {
         state: demand.state,
         dependsOn: demand.dependsOn,
       })),
+      ...waitingFor,
     };
   }
 
