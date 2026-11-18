@@ -310,6 +310,33 @@ export const DELIVERY_ASK_LEAVE_MODES = ['pr', 'wait'] as const;
 export type DeliveryAskLeaveMode = (typeof DELIVERY_ASK_LEAVE_MODES)[number];
 
 /**
+ * `profiles.same_provider_notice` (Phase 5, P2; N127 is open). [proposta] When registering a second
+ * subscription profile of the same provider: `once` warns until the Producer accepts it (the
+ * acceptance is recorded on the profile, `noticeAcceptedAt`, and a later profile of that provider is
+ * not warned again); `always` warns on every such profile; `off` never warns. An API profile never
+ * triggers it, in any mode.
+ */
+export const SAME_PROVIDER_NOTICE_MODES = ['once', 'always', 'off'] as const;
+export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number];
+
+/**
+ * `profiles.drain.on_timeout` (Phase 5, P2; N127 is open). [proposta] What happens to the sessions
+ * still running when `profiles.drain.timeout` ends: `handoff` takes them off the profile and back
+ * to the queue (the real handoff is P18/P20/P21; P2 only returns them to the queue); `wait` keeps
+ * the profile `draining` until they end; `force` closes them.
+ */
+export const DRAIN_ON_TIMEOUT_MODES = ['handoff', 'wait', 'force'] as const;
+export type DrainOnTimeoutMode = (typeof DRAIN_ON_TIMEOUT_MODES)[number];
+
+/**
+ * `profiles.drain.removed_dir` (Phase 5, P2; N127 is open). [proposta] What removal does with the
+ * directory of the profile, after the logout: `delete` removes it; `keep_backup` moves it aside
+ * (`<name>.removed-<epoch>`, next to it, inside `profiles/`) instead of deleting.
+ */
+export const REMOVED_DIR_MODES = ['delete', 'keep_backup'] as const;
+export type RemovedDirMode = (typeof REMOVED_DIR_MODES)[number];
+
+/**
  * What the daemon does with the conventions of a repository the Producer imports (architecture
  * 5.20; P7). `ask` (default): it detects them and asks the Producer to confirm or correct them,
  * in the chat, until they do; `detect`: it detects them and uses them as they are, without asking;
@@ -1065,6 +1092,32 @@ export const DaemonConfigSchema = z
     rescript: z
       .strictObject({
         reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
+      })
+      .prefault({}),
+    /**
+     * Profiles (architecture 5.6; Phase 5, P2). Every key is [proposta] and N127 (drain, second
+     * account notice) is still open: the defaults below are provisional.
+     */
+    profiles: z
+      .strictObject({
+        same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
+        drain: z
+          .strictObject({
+            /** How long a drain waits for the running sessions before `on_timeout` applies. */
+            timeout: DurationSchema.or(z.literal(0)).prefault('10m'),
+            on_timeout: z.enum(DRAIN_ON_TIMEOUT_MODES).default('handoff'),
+            removed_dir: z.enum(REMOVED_DIR_MODES).default('delete'),
+          })
+          .prefault({}),
+        /**
+         * The environment variable that carries the API key of a provider into the Executor process
+         * of an API profile, by provider id. A provider not listed uses its built-in name
+         * (`anthropic` -> `ANTHROPIC_API_KEY`, `openai` -> `OPENAI_API_KEY`, `minimax` ->
+         * `MINIMAX_API_KEY`, anything else `<PROVIDER>_API_KEY`).
+         */
+        api_key_env: z
+          .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
+          .default({}),
       })
       .prefault({}),
     ui: z
