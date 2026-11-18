@@ -827,6 +827,8 @@ roles:
 selection:
   cross_check: prefer_other_provider   # prefer_other_provider | require_other_provider | other_model | off
   strict_unavailable: wait_notify      # wait_notify | fallback_prefer | wait (N135): só vale com require_other_provider e other_model
+  same_provider_fallback: stronger_then_effort   # stronger_then_effort | stronger_model | higher_effort | any (N150)
+  same_provider_account: prefer_other  # prefer_other | strategy (N150)
 ```
 
 A tabela das predefinições usa os nomes sem conta, como elas são escritas:
@@ -852,6 +854,8 @@ A tabela das predefinições usa os nomes sem conta, como elas são escritas:
 O pulo entra no evento `executor.selected`, como os outros.
 
 **Modo estrito sem Executor que sirva** (`selection.strict_unavailable`, decidida em 2026-11-18, N135): nos modos `require_other_provider` e `other_model`, pode sobrar só o Executor do provedor (ou do modelo) de quem fez o trabalho. A chave diz o que fazer: `wait_notify` (padrão) espera e avisa o Produtor (o evento `executor.selected` leva `crossCheck.blocked: true` e `waiting.notify: true`); `fallback_prefer` cai para o comportamento de `prefer_other_provider` (os outros primeiro, depois o do trabalho, com `crossCheck.fellBack: true`); `wait` espera em silêncio (`waiting.notify: false`). Os três não mudam o que acontece nos modos `prefer_other_provider` e `off`.
+
+**Queda no mesmo provedor** (`selection.same_provider_fallback` e `selection.same_provider_account`, decididas em 2026-11-18, N150): quando a revisão cruzada cai no mesmo provedor de quem fez o trabalho (por exemplo, com uma assinatura só), o Revisor e o Crítico sobem um degrau. Com `stronger_then_effort` (padrão), primeiro um modelo mais forte que o do trabalho, depois o mesmo modelo com esforço maior, depois qualquer um; `stronger_model` e `higher_effort` usam só um dos degraus, e `any` pega qualquer um do mesmo provedor. Um degrau sem Executor disponível desce para o seguinte, sem esperar, e o degrau usado vai no `executor.selected`. Vale na queda do `prefer_other_provider`, no `fallback_prefer` e, nos modos estritos, quando nenhum Executor configurado satisfaz a revisão cruzada: aí não há espera, porque ela nunca terminaria, e sai um aviso (log e evento). Outra conta do mesmo provedor não satisfaz a revisão cruzada (o mesmo modelo continua o mesmo); com `same_provider_account: prefer_other` (padrão), dentro de cada degrau as contas diferentes da de quem fez o trabalho vêm primeiro, e com `strategy` vale só a `selection.strategy`. A ordem de força dos modelos é **[proposta]** do P15b.
 
 **Provedor de um Executor** (decidido em 2026-11-14, v0.23): na revisão cruzada, o provedor é a **família do modelo**, quem o treinou, e não o cliente nem a conta. O Gemma 4 conta como `google` mesmo servido pelo OpenCode numa instância local; o `minimax-m2` conta como `minimax`; o Haiku e o Sonnet contam como `anthropic`. Assim, um Revisor Gemma 4 local é de outro provedor em relação a um Autor Opus, e um Gemma 4 local e um Gemini na nuvem são do mesmo provedor.
 - o campo `provider` do Executor define o provedor. No Claude Code e no Codex, ele é fixo pelo cliente (`anthropic`, `openai`) e entra sozinho na descoberta automática dos modelos;
@@ -3609,8 +3613,9 @@ Decididas:
 - continuação de sessão entre papéis (2026-11-18, seções 5.4 e 5.7, N131): `pipeline.session_reuse: off | when_same_executor | preferred`, padrão `when_same_executor`, nos pares Revisor → Roteirista e Autor → revisão do roteiro; a revisão independente (Autor → Revisor, Ator → Crítico) sempre abre sessão nova; implementação depois da Fase 5;
 - chaves da política de interrupção (2026-11-18, seção 5.16 e Fase 5, N132): `resume.transient_exhausted: last | handoff`, padrão `last`, e `resume.client_crash_counts: repeat | never | always`, padrão `repeat`; o dono pediu as duas como chave de configuração;
 - modo estrito sem Executor que sirva (2026-11-18, seção 5.7 e Fase 5, N135): `selection.strict_unavailable: wait_notify | fallback_prefer | wait`, padrão `wait_notify`, só para `require_other_provider` e `other_model`;
+- queda no mesmo provedor (2026-11-18, seção 5.7 e Fase 5, N150): `selection.same_provider_fallback: stronger_then_effort | stronger_model | higher_effort | any`, padrão `stronger_then_effort`, e `selection.same_provider_account: prefer_other | strategy`, padrão `prefer_other`; nos modos estritos sem nenhum Executor configurado que sirva, cai na hora e avisa;
 - `on_register: none` e as predefinições (2026-11-18, seção 5.7 e Fase 5, N136): `none` grava `executors.<nome>.preset_expand: false` e tira o Executor da expansão das predefinições; a chave é booleana, padrão `true`;
-- uso do `ccusage` (2026-11-18, seções 5.6 e 6.2 e Fase 5, N118): versão fixa com mais de duas semanas e licença conferida, como biblioteca se exportar uma API, senão como CLI;
+- uso do `ccusage` (2026-11-18, seções 5.6 e 6.2 e Fase 5, N118): versão fixa com mais de duas semanas e licença conferida, como biblioteca se exportar uma API, senão como CLI; o dono aprovou em 2026-11-18 o `ccusage@20.0.48` como CLI;
 - releitura do Claudexor (2026-11-18, seção 6.3 e Fase 5, N119): só os arquivos listados, no commit mais novo, sem clone, com o commit registrado nos cabeçalhos, no `THIRD_PARTY_NOTICES` e no `copied-code.json`;
 - tabela `pricing` inicial (2026-11-18, seção 5.6 e Fase 5, N125): os modelos da predefinição `quality`, cada preço com fonte pública e data, confirmados pelo dono ao abrir o P10;
 - porta do servidor MCP (2026-11-17, seção 5.3 e Fase 3, N81): `mcp.port: auto | <número>`, padrão `auto`; o sistema escolhe uma porta livre a cada subida, e o daemon entrega a URL às sessões;
