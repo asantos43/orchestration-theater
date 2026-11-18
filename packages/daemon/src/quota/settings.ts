@@ -27,3 +27,43 @@ export function quotaSettingsOf(config: Pick<DaemonConfig, 'quota'>): QuotaSetti
     pollEveryMs: quota.probe.poll_every,
   };
 }
+
+/** What the daemon takes of `quota.minimax` to build the MiniMax probe (P8). [proposta] */
+export interface QuotaMinimaxSettings {
+  readonly mode: DaemonConfig['quota']['minimax']['mode'];
+  readonly baseUrl: string;
+  readonly allowHosts: readonly string[];
+  readonly timeoutMs: number;
+  readonly usageCountMeans: DaemonConfig['quota']['minimax']['usage_count_means'];
+}
+
+export function quotaMinimaxSettingsOf(config: Pick<DaemonConfig, 'quota'>): QuotaMinimaxSettings {
+  const section = config.quota.minimax;
+  return {
+    mode: section.mode,
+    baseUrl: section.base_url,
+    allowHosts: section.allow_hosts,
+    timeoutMs: section.timeout,
+    usageCountMeans: section.usage_count_means,
+  };
+}
+
+/** What the daemon takes of `quota.opencode` for the local ledger of the OpenCode probe (P8). [proposta] */
+export interface QuotaOpencodeSettings {
+  readonly mode: DaemonConfig['quota']['opencode']['mode'];
+  readonly windowMs: number;
+  readonly limitTokens: number | null;
+  readonly limitUsd: number | null;
+}
+
+export function quotaOpencodeSettingsOf(
+  config: Pick<DaemonConfig, 'quota'>,
+): QuotaOpencodeSettings {
+  const section = config.quota.opencode;
+  return {
+    mode: section.mode,
+    windowMs: section.window,
+    limitTokens: section.limit_tokens,
+    limitUsd: section.limit_usd,
+  };
+}

@@ -5,7 +5,7 @@ import {
   type ExecutorConfig,
   type ProbeContext,
 } from '@otheater/core';
-import { VETOED_MODES, type ModePolicy } from './modes.js';
+import { vetoedModes, type ModePolicy } from './modes.js';
 
 /**
  * Opens a fresh session through the adapter, reads the mode the client reports for it once the
@@ -56,7 +56,7 @@ export function modeVetoProbe(
     id: MODE_VETO_PROBE_ID,
     run() {
       const accepted: string[] = [];
-      for (const mode of [...VETOED_MODES, '__not-a-mode__']) {
+      for (const mode of [...vetoedModes(modes), '__not-a-mode__']) {
         try {
           configOptionsFor({ model: 'probe', mode });
           accepted.push(mode);

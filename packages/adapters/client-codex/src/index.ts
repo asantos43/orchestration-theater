@@ -21,9 +21,15 @@ export {
   CODEX_DEFAULT_MODE,
   DEFAULT_ALLOWED_MODES,
   DEFAULT_INITIAL_MODE,
+  FULL_ACCESS_MODE,
+  INNER_SANDBOX_MODES,
   VETOED_MODES,
+  fullAccessPolicy,
   modeRefusal,
   modePolicyOf,
+  sandboxOfMode,
+  vetoedModes,
+  type InnerSandboxMode,
   type ModePolicy,
 } from './modes.js';
 export { contentOf, normalizeCodexError, normalizeCodexUpdate } from './normalize.js';

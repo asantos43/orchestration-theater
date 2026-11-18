@@ -90,6 +90,7 @@ export function normalizeClaudeError(raw: unknown): NormalizedError {
       kind: 'quota_exhausted',
       message,
       ...(resetsAt === undefined ? {} : { resetsAt }),
+      limitSource: 'message',
       cause: raw,
     };
   }
