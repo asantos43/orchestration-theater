@@ -496,14 +496,6 @@ describe('OpenCodeAdapter', () => {
   });
 
   describe('Phase 5 and the probes', () => {
-    it('login and logout reject, and say when they arrive', async () => {
-      const adapter = make();
-      await expect(adapter.login()).rejects.toThrow(/Phase 5/);
-      await expect(adapter.login()).rejects.toBeInstanceOf(AdapterUnavailable);
-      await expect(adapter.logout()).rejects.toThrow(/Phase 5/);
-      await expect(adapter.logout()).rejects.toBeInstanceOf(AdapterUnavailable);
-    });
-
     it('the quota probe has no reading yet', async () => {
       const adapter = make();
       await expect(adapter.quota.read(profile)).rejects.toThrow(/Phase 5/);

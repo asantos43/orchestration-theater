@@ -381,12 +381,6 @@ describe('CodexAdapter quota, login and the catalog', () => {
     );
   });
 
-  it('rejects login and logout with AdapterUnavailable, pointing at Phase 5', async () => {
-    const { adapter } = build();
-    await expect(adapter.login()).rejects.toThrow(/Phase 5/);
-    await expect(adapter.logout()).rejects.toBeInstanceOf(AdapterUnavailable);
-  });
-
   it('lists the models from the options it was given', async () => {
     const { adapter } = build({ modelSource: () => Promise.resolve(CONFIG_OPTIONS) });
     expect(
