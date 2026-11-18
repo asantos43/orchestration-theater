@@ -161,6 +161,15 @@ describe('reconcileAttempts', () => {
         cause: 'daemon_restart',
       });
       expect(r.transport.loaded).toHaveLength(0);
+      // The row of the interruption says the way on is a handoff, and that it cost no attempt (P17).
+      const rows = await r.store.interruptions.list({ sessionId: 'fake-session-1' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        cause: 'daemon_restart',
+        resumeForm: 'handoff',
+        countedAsAttempt: false,
+      });
+      expect(rows[0]?.signals).toContain('action:handoff');
       // Parked is not picked up again.
       const again = await reconcileAttempts({
         store: r.store,

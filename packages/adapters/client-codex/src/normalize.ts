@@ -300,6 +300,7 @@ export function normalizeCodexError(raw: unknown): NormalizedError {
       kind: 'quota_exhausted',
       message,
       ...(resetsAt === undefined ? {} : { resetsAt }),
+      limitSource: 'structured',
       cause: raw,
     };
   }

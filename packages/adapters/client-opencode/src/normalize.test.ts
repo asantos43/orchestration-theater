@@ -206,6 +206,18 @@ describe('normalizeOpenCodeError', () => {
     );
   });
 
+  it('says where the limit came from: structured field, HTTP 429 or the message (P8)', () => {
+    expect(normalizeOpenCodeError({ code: -32001, message: 'out' }).limitSource).toBe('structured');
+    expect(
+      normalizeOpenCodeError({ message: 'x', data: { type: 'QuotaExhausted' } }).limitSource,
+    ).toBe('structured');
+    expect(normalizeOpenCodeError(new Error('HTTP 429 Too Many Requests')).limitSource).toBe('429');
+    expect(normalizeOpenCodeError(new Error('You exceeded your current quota')).limitSource).toBe(
+      'message',
+    );
+    expect(normalizeOpenCodeError(new Error('network down')).limitSource).toBeUndefined();
+  });
+
   it('takes resetsAt only from the field of the error, never from the text', () => {
     const iso = '2026-12-01T10:00:00.000Z';
     expect(

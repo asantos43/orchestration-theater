@@ -850,6 +850,17 @@ function opencode(
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
     // N56: the pool section decides how OpenCode shares its processes.
     processModel: config.pool.opencode.process_model,
+    // P8: the local accounting of the OpenCode quota, only when the owner turns it on.
+    ...(config.quota.opencode.mode === 'ledger'
+      ? {
+          ledger: {
+            clock: parts.clock,
+            windowMs: config.quota.opencode.window,
+            limitTokens: config.quota.opencode.limit_tokens,
+            limitUsd: config.quota.opencode.limit_usd,
+          },
+        }
+      : {}),
     isolation: section.isolation,
     ...(section.profile_config === undefined ? {} : { profileConfig: section.profile_config }),
     shellKeys: section.shell_keys,
