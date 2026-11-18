@@ -132,6 +132,8 @@ export interface OpenCodeAdapterOptions extends ClientAdapterOptions {
   readonly profileConfig?: ProfileFilesOptions['profileConfig'];
   /** [proposta] key `clients.opencode.shell_keys`. Default `['bash']` (1.19.5 [V]). */
   readonly shellKeys?: PermissionOptions['shellKeys'];
+  /** [proposta] key `clients.opencode.internal_tools`. Default `['todowrite', 'todoread']`. */
+  readonly internalTools?: PermissionOptions['internalTools'];
   /** [proposta] key `clients.opencode.project_config`. Default `disabled`. */
   readonly projectConfig?: ProjectConfigMode;
   /** [proposta] key `clients.opencode.read_only_mode`. Default `none`: the pinned permission is the measured mechanism. */
@@ -218,8 +220,10 @@ export class OpenCodeAdapter extends ClientAdapter {
       isolation: this.#isolation,
       ...(options.profileConfig === undefined ? {} : { profileConfig: options.profileConfig }),
     };
-    this.#permissionOptions =
-      options.shellKeys === undefined ? {} : { shellKeys: options.shellKeys };
+    this.#permissionOptions = {
+      ...(options.shellKeys === undefined ? {} : { shellKeys: options.shellKeys }),
+      ...(options.internalTools === undefined ? {} : { internalTools: options.internalTools }),
+    };
     this.#probe =
       options.permissionProbe === undefined
         ? UNCONFIGURED_PERMISSION_PROBE
