@@ -3,6 +3,9 @@ import { splitCommandLine, TRUNCATE_MODES, type JsonObject, type Store } from '@
 import { z } from 'zod';
 import {
   AllowlistEntrySchema,
+  EFFECT_OPEN_COMMAND_MODES,
+  EFFECT_RECORD_MODES,
+  EFFECT_REPLAY_MODES,
   HEAVY_TOOL_NAMES,
   HTTP_REDIRECT_MODES,
   SHELL_ALLOWLIST_MODES,
@@ -35,6 +38,14 @@ export const ToolsOverrideSchema = z.strictObject({
     .strictObject({
       test: ToolCommandSchema.optional(),
       install: ToolCommandSchema.optional(),
+    })
+    .optional(),
+  effects: z
+    .strictObject({
+      mode: z.enum(EFFECT_RECORD_MODES).optional(),
+      replay: z.enum(EFFECT_REPLAY_MODES).optional(),
+      open_command: z.enum(EFFECT_OPEN_COMMAND_MODES).optional(),
+      fingerprint_files: z.array(z.string().min(1)).optional(),
     })
     .optional(),
   http: z

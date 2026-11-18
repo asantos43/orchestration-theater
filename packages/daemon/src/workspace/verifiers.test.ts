@@ -11,6 +11,7 @@ import { FakeClock, FakeCodeHost, InMemoryStore } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  verifyCommand,
   verifyGitCommit,
   verifyGitPush,
   verifyMergeBase,
@@ -318,4 +319,38 @@ describe('verifiers of the workspace effects (architecture 5.21)', () => {
     },
     T,
   );
+});
+
+describe('verifiers of the commands (P22)', () => {
+  const record = (type: string, openPolicy?: string): SideEffectRecord => ({
+    idempotencyKey: `${PLAY}:${type}:a:1`,
+    type,
+    target: '/wt',
+    attemptId: null,
+    params: openPolicy === undefined ? { callHash: 'h' } : { callHash: 'h', openPolicy },
+    result: null,
+    state: 'pending',
+    verifier: null,
+    createdAt: 0,
+    updatedAt: 0,
+    resolvedAt: null,
+  });
+
+  it('says not_done for a command that is safe to run again', () => {
+    expect(verifyCommand(record('install_deps', 'rerun'))).toEqual({ verdict: 'not_done' });
+    expect(verifyCommand(record('run_tests', 'rerun'))).toEqual({ verdict: 'not_done' });
+  });
+
+  it('says ambiguous for a command that is not, or has no policy', () => {
+    for (const open of [record('restricted_shell', 'ask'), record('install_deps')]) {
+      expect(verifyCommand(open)).toMatchObject({ verdict: 'ambiguous' });
+    }
+  });
+
+  it('is what verifySideEffect answers for the three command types, with no code host', async () => {
+    const deps = {} as VerifierDeps;
+    for (const type of ['install_deps', 'run_tests', 'restricted_shell']) {
+      expect(await verifySideEffect(deps, record(type, 'rerun'))).toEqual({ verdict: 'not_done' });
+    }
+  });
 });

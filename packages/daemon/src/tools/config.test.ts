@@ -80,4 +80,37 @@ describe('the tools block of the config (N97, N98)', () => {
     expect(() => parseConfig('tools:\n  truncate: middle\n')).toThrow(/truncate/);
     expect(() => parseConfig('tools:\n  http:\n    redirects: follow\n')).toThrow(/redirects/);
   });
+
+  it('has the effects block defaults (P22) and takes its modes', () => {
+    const effects = parseConfig('').tools.effects;
+    expect(effects.mode).toBe('record');
+    expect(effects.replay).toBe('same_inputs');
+    expect(effects.open_command).toBe('rerun_safe');
+    expect(effects.fingerprint_files).toContain('package.json');
+    expect(effects.fingerprint_files).toContain('pnpm-lock.yaml');
+
+    const custom = parseConfig(
+      'tools:\n  effects:\n    mode: off\n    replay: never\n    open_command: ask\n    fingerprint_files: [deps.txt, sub/lock]\n',
+    ).tools.effects;
+    expect(custom).toEqual({
+      mode: 'off',
+      replay: 'never',
+      open_command: 'ask',
+      fingerprint_files: ['deps.txt', 'sub/lock'],
+    });
+  });
+
+  it('refuses a bad mode and a fingerprint file outside the worktree', () => {
+    expect(() => parseConfig('tools:\n  effects:\n    mode: all\n')).toThrow(/mode/);
+    expect(() => parseConfig('tools:\n  effects:\n    replay: always\n')).toThrow(/replay/);
+    expect(() => parseConfig('tools:\n  effects:\n    open_command: run\n')).toThrow(
+      /open_command/,
+    );
+    for (const bad of ['/etc/passwd', '../x', 'a/../../x', 'C:/x', '"\\\\x"']) {
+      expect(() => parseConfig(`tools:\n  effects:\n    fingerprint_files: [${bad}]\n`)).toThrow(
+        /fingerprint_files|worktree/,
+      );
+    }
+    expect(() => parseConfig('tools:\n  effects:\n    extra: 1\n')).toThrow(/extra/);
+  });
 });
