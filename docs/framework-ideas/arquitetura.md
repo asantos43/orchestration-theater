@@ -3153,7 +3153,7 @@ Também faz parte do aceite:
 **Marco: o framework passa a poder construir as próximas fases.**
 **Estimativa:** 2,5 semanas (era 2: entram a passagem de bastão e a idempotência).
 
-Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/16](../16-PLANO-DA-FASE-5.md) (N120). O marco interno 5a [proposta] fecha com a seleção no pipeline (P16); a retomada completa, o failover e a remoção de perfil fecham com o aceite da fase (P23).
+Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/16](../16-PLANO-DA-FASE-5.md) (N120, decidida em 2026-11-17). O marco interno 5a fecha com a seleção no pipeline (P16); a retomada completa, o failover e a remoção de perfil fecham com o aceite da fase (P23).
 
 ### Fase 6 — API do daemon e cliente compartilhado
 
@@ -3537,6 +3537,9 @@ Decididas:
 - MCP do daemon dentro da sandbox (2026-11-17, seção 5.8 e Fase 4, N115): **decidida, medida e implementada** (PR #85). Medido **[V]** em 2026-11-17: sem ponte o cliente confinado não alcança o servidor, e um ouvinte só por soquete Unix dentro da sandbox é barrado pelo seccomp (`socket(AF_UNIX)` dá `EPERM`); `allowAllUnixSockets` é global e abriria o D-Bus da sessão. Adotado: ouvinte TCP em `127.0.0.1:<porta do MCP>` dentro da sandbox, repassado pelo retransmissor e pelo proxy da própria biblioteca (que já usa soquete Unix, montado antes do seccomp), com a chave `sandbox.mcp_bridge: proxy | off` (padrão `proxy` no Linux), **aceitos pelo dono em 2026-11-17**. Confirmado com o cliente real **[V]** (2026-11-17, `claude-agent-acp` com Haiku: o `attempt.submitted` chega pela ponte). macOS não medido **[N]**;
 - `roles.<papel>.policy.browser` (2026-11-17, seções 5.2 e 5.19 e Fase 4, N116): `none` (padrão), `read` ou `full`; nenhum papel recebe as ferramentas `browser_*` de fábrica;
 - propostas restantes do P4 e do P6 (2026-11-17, seções 5.8 e 5.19 e Fase 4, N117): aceitas, com os limites medidos de cada uma; seguem [N] `file:` no Windows e no macOS, WebSocket e service workers fora da rota, a porta CDP, as portas do daemon com `local_urls: allow`, DNS rebinding e a política de `file://` do Chromium;
+- plano da Fase 5 (2026-11-17, Fase 5, N120): o plano de passos em docs/16, com o marco 5a fechando no P16 e o 5b no P23;
+- escopo do assistente de configuração na Fase 5 (2026-11-17, seção 5.12 e Fase 5, N121): só serviços e CLI (`ot profile`, `ot executor`); a tela do assistente vai para a Fase 7 e o `ot init` para a Fase 10;
+- rodadas reais da Fase 5 (2026-11-17, Fase 5, N122): os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir;
 - porta do servidor MCP (2026-11-17, seção 5.3 e Fase 3, N81): `mcp.port: auto | <número>`, padrão `auto`; o sistema escolhe uma porta livre a cada subida, e o daemon entrega a URL às sessões;
 - evento fora do registro (2026-11-17, seção 5.18 e Fase 3, N80): `events.unknown_type: reject | warn`, padrão `reject`; com `reject`, o tipo fora do registro ou o payload fora do schema lança erro e nada é gravado; com `warn`, o evento é gravado e o log recebe um aviso;
 - plano da Fase 3 (2026-11-16, seção 10, N77): passos P0 a P13 em [docs/14](../14-PLANO-DA-FASE-3.md), com o marco interno 3a (peça ponta a ponta com o agente falso, reinício e `kill -9`);

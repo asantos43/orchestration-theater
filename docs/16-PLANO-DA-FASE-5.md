@@ -15,7 +15,7 @@ O dono liberou o merge dos PRs da Fase 5 sem ok por PR, com a CI verde e squash 
   - o que mexe no mesmo arquivo corre em série: `execution/attempt-runner.ts` (P17, P18, P19), `orchestration/director.ts` (P16 e P20), `execution/pool.ts` (P4 e P21) e `store-sqlite/src/migrations.ts` (só o P1);
   - no máximo dois subagentes rodam a suíte completa ao mesmo tempo, por causa da memória da máquina.
 - **Nada real roda nos testes (N57), e nenhum teste faz login real nem lê credencial:**
-  - login, logout e cotas reais só existem nos testes reais opcionais (`OT_TEST_REAL_*`), que pulam sem as variáveis e só rodam com o ok do dono a cada rodada (N122);
+  - login, logout e cotas reais só existem nos testes reais opcionais (`OT_TEST_REAL_*`), que pulam sem as variáveis e rodam sem ok a cada rodada, sem provocar esgotamento (N122, decidida);
   - os testes de perfis e de cotas usam falsos: o agente falso, o cofre em memória e as sondas simuladas (`core/src/testing`);
   - nenhum arquivo de credencial é aberto. A trava da CI (`tools/verify/src/credentials.ts`) recusa em código próprio os nomes de arquivo de credencial e os endpoints `/api/oauth/` e `backend-api/codex` **[V]**.
 - **Nenhum download novo sem decisão do dono.** Cada download vira uma linha no docs/13 antes de entrar. Nesta fase há dois candidatos, o `ccusage` (N118) e a releitura do Claudexor (N119); nenhum foi feito.
@@ -93,7 +93,7 @@ Ordem em ondas **[proposta]**:
 6. P19, P20 e P21;
 7. P23.
 
-**Marco 5a [proposta, N120]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
+**Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
 **Estimativa:** 2,5 semanas para a fase inteira, como na §10 (1,5 a 2 com agentes; ≈ 6–18 h pelo ritmo medido nas Fases 1 a 3) **[proposta]**. Com 23 passos, contra 11 da Fase 4, é provável ficar na parte alta da faixa **[N]**.
 
@@ -359,7 +359,7 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
   - failover do Orquestrador sem perder a peça;
   - um Ator interrompido por cota esgotada retomado por passagem de bastão em outra assinatura, sem refazer commits nem instalações;
   - outro Ator, com regra `wait`, retomado de forma nativa depois do reset.
-- Os níveis reais opcionais, rodados só com o ok do dono a cada rodada (N122): `profiles` (login e logout de um segundo perfil por cliente, com o dono ao teclado) e `quota` (leitura real da cota dos três clientes e da MiniMax, **sem provocar esgotamento**). O resultado, com data e **[V]**, entra na §10.
+- Os níveis reais opcionais, rodados sem ok a cada rodada (N122, decidida): `profiles` (login e logout de um segundo perfil por cliente, com o dono ao teclado) e `quota` (leitura real da cota dos três clientes e da MiniMax, **sem provocar esgotamento**). O resultado, com data e **[V]**, entra na §10.
 - Atualiza o docs/13 (estado de cada Nxx), a §10 da arquitetura (a fase fechada, o resultado dos itens 4, 6, 7, 10 e 11 da Fase 0 que couberem) e a lista de portões.
 
 **Aceite:** todos os itens do critério de aceite da Fase 5 na §10, e o relato do que ficou [N]. **Marco: o framework passa a poder construir as próximas fases.**
@@ -370,9 +370,9 @@ Todas **abertas**, com a recomendação marcada **[proposta]**. O dono decide po
 
 - **N118:** o download do `ccusage` (P12) e a forma de uso. Opções: versão fixa como biblioteca, versão fixa como CLI, ou fora da v1. **Recomendação:** biblioteca, se ela exportar uma API (a conferir no registro npm ao abrir o P12), senão a CLI; versão com mais de duas semanas e licença conferida.
 - **N119:** a releitura do Claudexor no início da fase (§6.3). Opções: ler só os arquivos listados no commit mais novo, clonar o repositório inteiro em pasta temporária, ou manter a tag `v6.1.2`. **Recomendação:** ler só os arquivos listados, sem clone, registrando o novo commit nos cabeçalhos.
-- **N120:** o plano neste documento e o marco 5a. Opções: o plano e o marco no P16, o plano sem marco, ou o plano como a arquitetura (sem documento). **Recomendação:** o plano neste documento, com o marco 5a no P16.
-- **N121:** o escopo do assistente de configuração. Opções: só serviços e a CLI (`ot profile`, `ot executor`), o fluxo do assistente inteiro no daemon sem tela, ou só configuração à mão. **Recomendação:** serviços e CLI, com o assistente da primeira execução na Fase 7 (tela) e na 10 (`ot init`).
-- **N122:** as rodadas reais da fase. Opções: níveis `profiles` e `quota` sem provocar esgotamento, esses mais um esgotamento real com conta separada, ou só falsos. **Recomendação:** os dois níveis sem esgotamento real, cada rodada com o ok do dono; o esgotamento real fica para quando o dono quiser.
+- **N120 (decidida em 2026-11-17):** o plano neste documento, com o marco 5a no P16.
+- **N121 (decidida em 2026-11-17):** só serviços e a CLI (`ot profile`, `ot executor`); o assistente da primeira execução fica para a Fase 7 (tela) e a 10 (`ot init`).
+- **N122 (decidida em 2026-11-17):** os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir.
 - **N123:** os padrões das sondas: `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, a unidade de `utilization`, e a statusline gravada no diretório do perfil. **Recomendação:** os valores acima.
 - **N124:** a seleção com o estado incerto. `selection.unknown_quota: allow | skip` e `selection.near_limit: keep_order | last | skip`. **Recomendação:** `allow` (a sessão real é o teste, como na §5.6) e `keep_order` (a ordem da lista, como no algoritmo da §5.7).
 - **N125:** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10.
