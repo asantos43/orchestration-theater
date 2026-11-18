@@ -301,6 +301,15 @@ export const BASE_DRIFT_MODES = ['update', 'deliver_and_warn', 'ask'] as const;
 export type BaseDriftMode = (typeof BASE_DRIFT_MODES)[number];
 
 /**
+ * [proposta] What the daemon does when the Producer leaves while the question of
+ * `delivery.mode: ask` waits (N89, P9). `pr` (default, the safe side): once the chat is no longer
+ * present the play goes on with the PR; `wait`: it keeps waiting for the Producer to come back
+ * (until `delivery.ask.timeout`, if there is one).
+ */
+export const DELIVERY_ASK_LEAVE_MODES = ['pr', 'wait'] as const;
+export type DeliveryAskLeaveMode = (typeof DELIVERY_ASK_LEAVE_MODES)[number];
+
+/**
  * What the daemon does with the conventions of a repository the Producer imports (architecture
  * 5.20; P7). `ask` (default): it detects them and asks the Producer to confirm or correct them,
  * in the chat, until they do; `detect`: it detects them and uses them as they are, without asking;
@@ -1013,6 +1022,17 @@ export const DaemonConfigSchema = z
         allow_direct_merge: z.boolean().default(false),
         base_drift: z.enum(BASE_DRIFT_MODES).default('update'),
         changelog: z.enum(CHANGELOG_MODES).default('always'),
+        /**
+         * [proposta] The question of `mode: ask` (N89, P9). `timeout`: how long the Producer has to
+         * answer (`10m`); `0` waits with no limit. When it runs out, the play goes on with the PR.
+         * `on_leave`: see {@link DELIVERY_ASK_LEAVE_MODES}.
+         */
+        ask: z
+          .strictObject({
+            timeout: z.union([z.literal(0), DurationSchema]).prefault('10m'),
+            on_leave: z.enum(DELIVERY_ASK_LEAVE_MODES).default('pr'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
