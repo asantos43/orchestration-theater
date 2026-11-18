@@ -132,3 +132,18 @@ export const BudgetExceededPayloadSchema = z.strictObject({
   limitUsd: z.number().gt(0),
   endsAt: epochMs,
 });
+
+/**
+ * `budget.unknown_cost` (P11b, N139 revista em 2026-11-18): a turn of a capped profile or Executor
+ * had no known cost under `budget.unknown_cost: ignore`, so the cap did not count it. It is written
+ * once per model per life of the daemon, alongside the `warn` line of the log; `pricing.<model>`
+ * in the configuration gives the model a price. `executor` is the Executor of the turn and
+ * `profile` its profile. The daemon cannot tell a model without a price from a turn without tokens:
+ * both leave the cost unknown.
+ */
+export const BudgetUnknownCostPayloadSchema = z.strictObject({
+  model: z.string().min(1).max(256),
+  profile,
+  executor: z.string().min(1).max(256),
+  mode: z.enum(['ignore']),
+});

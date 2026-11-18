@@ -79,6 +79,7 @@ describe('daemon event registry', () => {
       'budget.restored',
       'budget.warning',
       'budget.exceeded',
+      'budget.unknown_cost',
       'usage.recorded',
       'executor.selected',
     ]);

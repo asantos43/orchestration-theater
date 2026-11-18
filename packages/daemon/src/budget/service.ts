@@ -12,6 +12,7 @@ import {
   BudgetWarningPayloadSchema,
   type BudgetExceededPayload,
   type BudgetPeriod,
+  type BudgetUnknownCostPayload,
   type BudgetWarningPayload,
 } from '@otheater/protocol';
 import type { BudgetInFlight, BudgetOnExceeded } from '../budget-config.js';
@@ -247,7 +248,7 @@ export class BudgetService {
     this.#started = true;
     await this.#seedFromLog();
     this.#subscription = this.#options.usage.onRecorded((row) => {
-      this.#noteUnknownCost(row);
+      void this.#enqueue(() => this.#noteUnknownCost(row));
       void this.#enqueue(() => this.#evaluate(row.profileId, [row.executorId]));
     });
     await this.#evaluateAll();
@@ -511,17 +512,32 @@ export class BudgetService {
   }
 
   /**
-   * [proposta] `budget.unknown_cost: ignore` leaves the turn out of the sum, so the cap is blind to
-   * it: the log says so once per model per life of the daemon, with the way out (`pricing.<model>`).
-   * Only a turn of a profile or Executor that has a cap matters; `block` has its own effect.
+   * `budget.unknown_cost: ignore` leaves the turn out of the sum, so the cap is blind to it (N139,
+   * revised by the owner on 2026-11-18: the situation is an event too, not only a log line). Once
+   * per model per life of the daemon, the log says so with the way out (`pricing.<model>`) and the
+   * event `budget.unknown_cost` is written. Only a turn of a profile or Executor that has a cap
+   * matters; `block` has its own effect.
    */
-  #noteUnknownCost(row: UsageRecord): void {
+  async #noteUnknownCost(row: UsageRecord): Promise<void> {
     if (this.#settings.unknownCost !== 'ignore') return;
     if (row.costUsd !== null && row.costKind !== null) return;
     const { profiles, executors } = this.#settings;
     if (!profiles.has(row.profileId) && !executors.has(row.executorId)) return;
     if (this.#unknownCostModels.has(row.model)) return;
     this.#unknownCostModels.add(row.model);
+    const payload: BudgetUnknownCostPayload = {
+      model: row.model,
+      profile: row.profileId,
+      executor: row.executorId,
+      mode: 'ignore',
+    };
+    try {
+      await this.#options.store.events.append(buildDaemonEvent('budget.unknown_cost', payload));
+    } catch (error) {
+      // Tried again on the next turn of the model.
+      this.#unknownCostModels.delete(row.model);
+      throw error;
+    }
     this.#options.logger.warn(
       { model: row.model, profile: row.profileId, executor: row.executorId },
       `a turn of the model "${row.model}" has no known cost, so the spending cap does not count it (budget.unknown_cost: ignore); set pricing.${row.model} in the configuration to give the model a price`,

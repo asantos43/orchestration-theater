@@ -1108,6 +1108,12 @@ describe('BudgetService, a turn of unknown cost under budget.unknown_cost: ignor
     expect(lines[0]).toContain('pricing.no-such-model');
     expect(lines[0]).toContain('no known cost');
     expect(lines[1]).toContain('pricing.other-model');
+    // The same situation is an event too, once per model (N139, revised on 2026-11-18).
+    const events = await eventsOf(world.store, 'budget.unknown_cost');
+    expect(events.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ model: 'no-such-model', profile: API, mode: 'ignore' }),
+      expect.objectContaining({ model: 'other-model', profile: API, mode: 'ignore' }),
+    ]);
     // The turns are still left out of the sum, as before.
     expect((await h.budget.headroom(opus(API))).binding).toMatchObject({
       spentUsd: 1,
@@ -1123,6 +1129,7 @@ describe('BudgetService, a turn of unknown cost under budget.unknown_cost: ignor
     );
     await spend(second, opus(API), undefined, 'no-such-model');
     expect(again.lines).toHaveLength(1);
+    expect(await eventsOf(world.store, 'budget.unknown_cost')).toHaveLength(3);
   });
 
   it('does not warn for a profile without a cap, for a known cost, or in the block mode', async () => {
@@ -1132,6 +1139,7 @@ describe('BudgetService, a turn of unknown cost under budget.unknown_cost: ignor
     await spend(h, opus(API2), undefined, 'no-such-model');
     await spend(h, opus(API), 1, 'no-such-model');
     expect(lines).toEqual([]);
+    expect(await eventsOf(world.store, 'budget.unknown_cost')).toEqual([]);
     const strict = new World();
     const other = capture();
     const s = await strict.boot(
@@ -1141,5 +1149,6 @@ describe('BudgetService, a turn of unknown cost under budget.unknown_cost: ignor
     );
     await spend(s, opus(API), undefined, 'no-such-model');
     expect(other.lines).toEqual([]);
+    expect(await eventsOf(strict.store, 'budget.unknown_cost')).toEqual([]);
   });
 });

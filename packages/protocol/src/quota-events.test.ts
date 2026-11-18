@@ -97,6 +97,25 @@ describe('quota.* events [proposta]', () => {
     ).toThrow();
   });
 
+  it('accepts the payload of budget.unknown_cost and refuses the rest', () => {
+    const unknown = {
+      model: 'no-such-model',
+      profile: 'claude-code/api',
+      executor: 'claude-opus-high@claude-code/api',
+      mode: 'ignore',
+    };
+    expect(validateEventPayload('budget.unknown_cost', 1, unknown)).toEqual(unknown);
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, mode: 'block' }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, model: '' }),
+    ).toThrow();
+    expect(() =>
+      validateEventPayload('budget.unknown_cost', 1, { ...unknown, extra: 1 }),
+    ).toThrow();
+  });
+
   it('refuse an unknown state, an unknown cause and extra fields', () => {
     expect(() =>
       validateEventPayload('quota.updated', 1, {

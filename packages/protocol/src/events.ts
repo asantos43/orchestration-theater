@@ -14,6 +14,7 @@ import {
 import {
   BudgetExceededPayloadSchema,
   BudgetRestoredPayloadSchema,
+  BudgetUnknownCostPayloadSchema,
   BudgetWarningPayloadSchema,
   QuotaExhaustedPayloadSchema,
   QuotaNearLimitPayloadSchema,
@@ -421,6 +422,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: BudgetExceededPayloadSchema,
   }),
   defineEventType({
+    type: 'budget.unknown_cost',
+    schemaVersion: 1,
+    payload: BudgetUnknownCostPayloadSchema,
+  }),
+  defineEventType({
     type: 'usage.recorded',
     schemaVersion: 1,
     payload: UsageRecordedPayloadSchema,
@@ -515,6 +521,7 @@ export type QuotaRestoredPayload = DaemonEventPayloads['quota.restored'];
 export type BudgetRestoredPayload = DaemonEventPayloads['budget.restored'];
 export type BudgetWarningPayload = DaemonEventPayloads['budget.warning'];
 export type BudgetExceededPayload = DaemonEventPayloads['budget.exceeded'];
+export type BudgetUnknownCostPayload = DaemonEventPayloads['budget.unknown_cost'];
 export type UsageRecordedPayload = DaemonEventPayloads['usage.recorded'];
 export type ExecutorSelectedPayload = DaemonEventPayloads['executor.selected'];
 
