@@ -1029,6 +1029,17 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
+        /**
+         * [proposta] (P17) What follows the last step of `transient_backoff`: `last` keeps waiting
+         * the last step until `max_resumes` (the behaviour before P17); `handoff` passes the baton
+         * (the literal reading of architecture 5.16).
+         */
+        transient_exhausted: z.enum(['last', 'handoff']).default('last'),
+        /**
+         * [proposta] (P17) When a drop of the client process counts as an attempt of the demand:
+         * `repeat` (5.16: not the first time, yes if it repeats), `never` or `always`.
+         */
+        client_crash_counts: z.enum(['repeat', 'never', 'always']).default('repeat'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -1050,6 +1061,8 @@ export const DaemonConfigSchema = z
             same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
           },
           transient_backoff: resume.transient_backoff,
+          transient_exhausted: resume.transient_exhausted,
+          client_crash_counts: resume.client_crash_counts,
           continue_prompt: resume.continue_prompt,
         };
       }),

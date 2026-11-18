@@ -34,6 +34,9 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   transientBackoffMs: [0],
   stuckNoEventMs: 0,
   stuckSameErrorTimes: 99,
+  quotaWaitMaxMs: 30 * 60_000,
+  transientExhausted: 'last',
+  clientCrashCounts: 'repeat',
   continuePrompt: 'carry on',
 };
 
