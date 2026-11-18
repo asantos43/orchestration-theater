@@ -52,6 +52,20 @@ export interface LimitHit {
   readonly cause?: QuotaCause | undefined;
 }
 
+/** The source a recheck of P9 gives its readings and its release of a limit (`quota.restored.reason`). */
+export const RECHECK_SOURCE = 'recheck';
+
+/** What a listener hears when a profile's announced state changes (P9 uses it for its wakeups). */
+export interface QuotaChange {
+  /** Complete id `<client>/<profile>`. */
+  readonly profile: string;
+  readonly status: QuotaStatus;
+  /** What was announced before; `undefined` the first time. */
+  readonly before: Pick<Announced, 'state' | 'cause' | 'untilReset'> | undefined;
+  readonly source: string;
+}
+
+export type QuotaChangeListener = (change: QuotaChange) => void;
 /** The `usage` update of the normalized stream of a session. */
 export type UsageUpdate = Extract<NormalizedUpdate, { kind: 'usage' }>;
 
@@ -165,6 +179,7 @@ export class QuotaService {
   readonly #bound = new Map<string, string>();
   readonly #announced = new Map<string, Announced>();
   readonly #planTypes = new Map<string, string>();
+  readonly #listeners = new Set<QuotaChangeListener>();
   readonly #stop = new AbortController();
   #wake = new AbortController();
   #queue: Promise<unknown> = Promise.resolve();
@@ -192,6 +207,25 @@ export class QuotaService {
     for (const ref of this.#tracked.values()) {
       if (ref.client === clientId) this.#startProbing(ref);
     }
+  }
+
+  /** The probe of a client, if the daemon gave it one (P9 reads it again, without cost). */
+  probeOf(clientId: string): QuotaProbe | undefined {
+    return this.#probes.get(clientId);
+  }
+
+  /**
+   * Hears every change of the announced state of a profile (after its events were written). The
+   * listener runs inside the service's own turn: it must not call the service and wait for it, only
+   * note the change and go (P9 queues its work). A listener that throws is logged and ignored.
+   */
+  onChange(listener: QuotaChangeListener): Disposable {
+    this.#listeners.add(listener);
+    return {
+      dispose: () => {
+        this.#listeners.delete(listener);
+      },
+    };
   }
 
   /** Starts to read the quota of a profile (it is known to the daemon). Idempotent. */
@@ -368,6 +402,33 @@ export class QuotaService {
       });
       this.#poke();
       return this.#settle(profile, hit.source);
+    });
+  }
+
+  /**
+   * Lets go of a limit that no source gave an end to (P9, "Consulta sem horário"): the recheck
+   * interval passed and nothing that costs no tokens said it is over or still on, so the profile
+   * stops being `exhausted` and becomes what the readings say (usually `unknown`); the next real
+   * session is the test. A hit that has an end, or that is not there, is left alone.
+   */
+  async releaseLimit(target: ProfileTarget, cause: QuotaCause): Promise<QuotaStatus> {
+    const profile = formatProfileId(refOf(target));
+    const window = hitWindowOf(cause);
+    return this.#exclusive(async () => {
+      const now = this.#now;
+      const hit = await this.#options.store.quotaSnapshots.get(profile, window);
+      if (hit?.resetsAt === null) {
+        await this.#options.store.quotaSnapshots.put({
+          profileId: profile,
+          window,
+          usedPercent: 100,
+          resetsAt: now,
+          source: RECHECK_SOURCE,
+          observedAt: now,
+        });
+        this.#poke();
+      }
+      return this.#settle(profile, RECHECK_SOURCE);
     });
   }
 
@@ -603,14 +664,29 @@ export class QuotaService {
     }
     if (was === 'exhausted' && status.state !== 'exhausted' && before !== undefined) {
       const timeCame = before.untilReset !== null && this.#now >= before.untilReset;
-      await events.append(
-        buildDaemonEvent('quota.restored', {
-          profile,
-          cause: before.cause ?? 'quota',
-          state: status.state,
-          reason: timeCame ? 'reset' : 'reading',
-        }),
-      );
+      const reason = timeCame ? 'reset' : source === RECHECK_SOURCE ? 'recheck' : 'reading';
+      // The spending cap has its own name (P9): `budget.restored`, not `quota.restored`.
+      if (before.cause === 'budget') {
+        await events.append(
+          buildDaemonEvent('budget.restored', { profile, state: status.state, reason }),
+        );
+      } else {
+        await events.append(
+          buildDaemonEvent('quota.restored', {
+            profile,
+            cause: before.cause ?? 'quota',
+            state: status.state,
+            reason,
+          }),
+        );
+      }
+    }
+    for (const listener of this.#listeners) {
+      try {
+        listener({ profile, status, before, source });
+      } catch (error) {
+        this.#options.logger.warn({ err: error, profile }, 'a quota change listener failed');
+      }
     }
   }
 

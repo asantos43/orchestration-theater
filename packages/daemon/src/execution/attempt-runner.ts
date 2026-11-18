@@ -6,6 +6,7 @@ import {
   attemptBranch,
   attemptInputOf,
   Cancelled,
+  formatExecutorId,
   hasErrorCode,
   mcpToolsOf,
   type AttemptRecord,
@@ -19,15 +20,24 @@ import {
   type StopReason,
   type Store,
   type Vcs,
+  type WhenExhausted,
 } from '@otheater/core';
 import { buildDaemonEvent, type ExecutorPayload, type InterruptionCause } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { CheckpointTracker } from './checkpoints.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
+import {
+  decideInterruption,
+  type InFlightMode,
+  type InterruptionDecision,
+  type InterruptionFacts,
+  type InterruptionRules,
+} from './interruption-policy.js';
 import { permissionEventsOf, resolveExistingPath } from './permission-log.js';
 import type { SessionLease, SessionPool } from './pool.js';
 import type { ExecutionSettings } from './settings.js';
 import type { Logger } from '../logger.js';
+import { limitHitOf, type LimitHit, type QuotaService } from '../quota/service.js';
 
 /** What an attempt needs to run (the Director fills it in from the demand and the role). */
 export interface AttemptSpec {
@@ -50,6 +60,10 @@ export interface AttemptSpec {
   readonly role?: string;
   /** Overrides `limits.demand_timeout`; never above `limits.demand_timeout_max`. */
   readonly timeoutMs?: number;
+  /** `roles.<role>.when_exhausted` (5.7): `wait` waits for a near reset, `next` (default) hands off. */
+  readonly whenExhausted?: WhenExhausted;
+  /** `profiles.<id>.budget.in_flight` (5.6); default `handoff`. Read by the policy of 5.16. */
+  readonly inFlight?: InFlightMode;
 }
 
 /** What the daemon must know again to resume an attempt it did not start (reconciliation). */
@@ -60,6 +74,8 @@ export interface ResumeContext {
   readonly executor: ExecutorConfig;
   readonly policy: RolePolicy;
   readonly timeoutMs?: number;
+  readonly whenExhausted?: WhenExhausted;
+  readonly inFlight?: InFlightMode;
 }
 
 export const ATTEMPT_RESULT_STATES = ['completed', 'failed', 'timed_out', 'interrupted'] as const;
@@ -84,6 +100,14 @@ export interface AttemptOutcome {
    * causa"): the Director hands it off to another Executor, waits for the quota or gives up.
    */
   readonly needsDecision: boolean;
+  /**
+   * What the policy of 5.16 decided for the last interruption of the attempt, when it was
+   * interrupted. A `handoff` (P18) or `wait_for_reset` (P19) action is not carried out here yet:
+   * the attempt is parked and the caller reads the action.
+   */
+  readonly decision: InterruptionDecision | undefined;
+  /** The end consumes an attempt of the demand: a failure of the agent, not a cause outside it. */
+  readonly countsAsAttempt: boolean;
 }
 
 /** How an attempt id is built from its parts. */
@@ -105,6 +129,11 @@ export interface AttemptRunnerOptions {
    * `otheater` gets its URL and a token of its own in the MCP servers of the session.
    */
   readonly mcp?: McpAccess;
+  /**
+   * The quota of the profiles (P5). A limit error of a session goes to it, and it says when the
+   * quota comes back; without it the reset time of an exhausted quota is unknown.
+   */
+  readonly quota?: Pick<QuotaService, 'ingestLimitHit'>;
 }
 
 /** What one go at a session came to. */
@@ -125,6 +154,10 @@ type Ended =
        * until the attempt has had `resume.max_free_resumes` of them; after that it counts.
        */
       readonly free?: boolean;
+      /** What the classification saw: names of signals, never a credential or a prompt. */
+      readonly signals: readonly string[];
+      /** The limit error behind a `quota_exhausted`, for the `QuotaService`. */
+      readonly limitHit?: LimitHit;
       readonly sha: string | undefined;
     }
   | { readonly kind: 'timeout'; readonly sha: string | undefined }
@@ -171,9 +204,14 @@ interface AttemptContext {
   pending: PendingUpdate[] | undefined;
   lastEventAt: number;
   lastError: { key: string; count: number } | undefined;
+  /** Drops of the client process of this attempt that cost no free allowance (`client_crash`). */
+  crashes: number;
 }
 
 const NEVER: Promise<never> = new Promise<never>(() => undefined);
+
+/** Signal of the `interruptions` row of a drop that cost no resume (`resume.max_free_resumes`). */
+const FREE_SIGNAL = 'free_resume';
 
 /**
  * Runs attempts (architecture 5.16): one attempt is one worktree and one branch, a session of an
@@ -186,11 +224,13 @@ const NEVER: Promise<never> = new Promise<never>(() => undefined);
  *   attempt branch, `session/cancel`, kill of the process tree. Nothing is left running.
  * - Checkpoints (`CheckpointTracker`): per batch of edits, per interval and on every
  *   interruption.
- * - A crash of the client, a transient error or a restart of the daemon resume the same
- *   conversation (`session/load`), with an exponential wait for the transient errors and
- *   `resume.max_resumes` as the limit. [proposta] The causes that need another Executor or a
- *   person (quota, refusal, permission, stuck) park the attempt as `interrupted` with
- *   `needsDecision`, because the handoff belongs to the Director.
+ * - What to do about an interruption is `decideInterruption` (the table of 5.16, a pure function);
+ *   each one also leaves a row in `interruptions` with the cause, the signals and the form. A
+ *   crash of the client, a transient error or a restart of the daemon resume the same
+ *   conversation (`session/load`), with the backoff the policy chose and `resume.max_resumes` as
+ *   the limit. The other actions (handoff, wait for the reset, the cap's `finish` and `stop`, the
+ *   Director's judgment) park the attempt as `interrupted` with `needsDecision`, and the outcome
+ *   carries the action: the handoff is P18's and the wait is P19's.
  */
 export class AttemptRunner {
   readonly #options: AttemptRunnerOptions;
@@ -263,19 +303,31 @@ export class AttemptRunner {
     };
     const context = this.#context(input, { ...resolved, ...ids(record) }, '');
     const missing = await this.#missingToResume(record);
+    const decision = decideInterruption(
+      { ...this.#facts(context, 'daemon_restart'), reloadable: missing === undefined },
+      this.#rules(),
+    );
     if (missing !== undefined) {
       await context.journal.write(undefined, { state: 'interrupted', cause: missing });
+      await this.#settleRestartRow(context, decision, [`resolver:${missing}`]);
       await context.journal.flush();
-      return this.#outcome(context, 'interrupted', missing, undefined, true);
+      return this.#outcome(context, 'interrupted', missing, undefined, true, decision);
     }
     // A daemon that was killed left no trace of the interruption: record it now, and commit what
     // the Executor had written (a graceful stop did both already).
     if (record.state !== 'awaiting_resume') {
       context.sessionOpen = true;
       const sha = await this.#checkpoint(context, 'daemon_restart');
-      await this.#interruptionEvent(context, 'daemon_restart', 'the daemon was not running', sha);
+      await this.#interruptionEvent(context, decision, 'the daemon was not running', sha, [
+        'daemon:not_running',
+        `action:${decision.action}`,
+      ]);
       await this.#closed(context, 'interrupted', { state: 'resuming', cause: 'daemon_restart' });
+    } else {
+      // The graceful stop wrote the row without knowing how the restart would continue.
+      await this.#settleRestartRow(context, decision, []);
     }
+    context.crashes = await this.#crashesOf(context);
     await context.journal.write(undefined, { state: 'resuming', cause: 'daemon_restart' });
     return this.#track(context, {
       resumeSessionId: record.sessionId ?? undefined,
@@ -343,6 +395,7 @@ export class AttemptRunner {
       pending: undefined,
       lastEventAt: clock.now(),
       lastError: undefined,
+      crashes: 0,
     };
   }
 
@@ -354,6 +407,51 @@ export class AttemptRunner {
       return 'worktree_missing';
     }
     return undefined;
+  }
+
+  /**
+   * Gives the `daemon_restart` row of the session the form the restart found: the row a graceful
+   * stop wrote has none yet; after a kill, or when the row is missing, it is created. Without a
+   * session there is no row (the table is keyed by session).
+   */
+  async #settleRestartRow(
+    context: AttemptContext,
+    decision: InterruptionDecision,
+    signals: readonly string[],
+  ): Promise<void> {
+    const { sessionId, spec } = context;
+    if (sessionId === undefined) return;
+    const { store } = this.#options;
+    const rows = await store.interruptions.list({ sessionId, causes: ['daemon_restart'] });
+    const open = rows.filter((row) => row.resumeForm === null).at(-1);
+    if (open !== undefined && decision.form !== null) {
+      await store.interruptions.update(open.id, {
+        resumeForm: decision.form,
+        signals: [...open.signals, ...signals, `action:${decision.action}`],
+      });
+      return;
+    }
+    await store.interruptions.create({
+      sessionId,
+      playId: spec.playId,
+      cause: 'daemon_restart',
+      signals: [...signals, `action:${decision.action}`],
+      resumeForm: decision.form,
+      fromExecutor: this.#executorId(context),
+      toExecutor: null,
+      countedAsAttempt: false,
+    });
+  }
+
+  /** The drops of the client this attempt had before (free ones excluded), read back after a restart. */
+  async #crashesOf(context: AttemptContext): Promise<number> {
+    const { sessionId } = context;
+    if (sessionId === undefined) return 0;
+    const rows = await this.#options.store.interruptions.list({
+      sessionId,
+      causes: ['client_crash'],
+    });
+    return rows.filter((row) => !row.signals.includes(FREE_SIGNAL)).length;
   }
 
   #track(context: AttemptContext, first: Step): Promise<AttemptOutcome> {
@@ -399,26 +497,22 @@ export class AttemptRunner {
           return this.#stopped(context, ended.sha);
         case 'interrupted': {
           const { journal } = context;
-          await this.#interrupted(context, ended);
-          // A casualty of another session's cancel resumes free of `max_resumes`, up to
-          // `resume.max_free_resumes` times per attempt; past that it is a drop like any other.
-          const free = ended.free === true && journal.record.freeResumes < settings.maxFreeResumes;
-          const sameTimes = free ? 0 : this.#repeated(context, `${ended.cause}:${ended.detail}`);
+          // The policy of 5.16 decides first, so the event and the row carry what it decided.
+          const { decision, free, signals } = await this.#decide(context, ended);
+          await this.#interrupted(context, ended, decision, signals);
+          // Only the resume in place is carried out here. A handoff (P18), a wait for the reset
+          // (P19), the cap's `finish` and `stop` (P11) and the Director's judgment stop the
+          // attempt, and the outcome says which action the policy chose.
+          if (decision.action !== 'resume_native') return this.#parked(context, decision);
           const resumes = journal.record.resumes;
-          if (!ended.native || (!free && resumes >= settings.maxResumes)) {
-            return this.#parked(context, ended.cause);
-          }
-          if (sameTimes >= settings.stuckSameErrorTimes) {
-            return this.#parked(context, 'stuck');
-          }
           // The allowance is recorded in the same write that parks the attempt, so a restart
           // from here on continues counting from what was granted (N67).
           await journal.write(undefined, {
             state: 'awaiting_resume',
-            cause: ended.cause,
+            cause: decision.cause,
             ...(free ? { freeResumes: journal.record.freeResumes + 1 } : {}),
           });
-          const waited = await this.#backoff(context, ended.cause, free ? 0 : resumes);
+          const waited = await this.#pause(context, decision.delayMs);
           if (waited === 'timeout') return this.#timedOut(context, ended.sha);
           if (waited === 'stopped') return this.#stopped(context, ended.sha);
           await journal.write(undefined, {
@@ -428,7 +522,7 @@ export class AttemptRunner {
           step = {
             resumeSessionId: context.sessionId,
             prompt: context.sessionId === undefined ? context.firstPrompt : settings.continuePrompt,
-            cause: ended.cause,
+            cause: decision.cause,
           };
         }
       }
@@ -670,6 +764,7 @@ export class AttemptRunner {
         detail: 'the model refused to continue',
         native: false,
         kill: false,
+        signals: ['stop_reason:refusal'],
         sha: undefined,
       };
     }
@@ -701,6 +796,7 @@ export class AttemptRunner {
           detail: `no event for ${String(limit)} ms`,
           native: false,
           kill: true,
+          signals: [`no_event_for:${String(limit)}ms`],
           sha: undefined,
         };
       }
@@ -810,26 +906,156 @@ export class AttemptRunner {
 
   // ---- errors ----
 
-  /** The policy by cause of architecture 5.16: what can be resumed in place and what cannot. */
+  /**
+   * The classification of an error into a cause (architecture 5.16): what the client or the pool
+   * reported. What to do about it is `decideInterruption`.
+   */
   #classify(error: unknown, resuming: boolean): Ended {
     const detail = describe(error);
-    const interrupted = (cause: InterruptionCause, native: boolean, kill: boolean): Ended => ({
+    const interrupted = (
+      cause: InterruptionCause,
+      native: boolean,
+      kill: boolean,
+      signals: readonly string[],
+      limitHit?: LimitHit,
+    ): Ended => ({
       kind: 'interrupted',
       cause,
       detail,
       native,
       kill,
+      signals,
+      ...(limitHit === undefined ? {} : { limitHit }),
       sha: undefined,
     });
-    if (hasErrorCode(error, 'TRANSIENT')) return interrupted('transient', true, false);
-    if (hasErrorCode(error, 'ADAPTER_UNAVAILABLE')) return interrupted('client_crash', true, true);
-    if (hasErrorCode(error, 'QUOTA_EXHAUSTED')) return interrupted('quota_exhausted', false, false);
-    if (hasErrorCode(error, 'PERMISSION_DENIED')) return interrupted('permission', false, false);
+    if (hasErrorCode(error, 'TRANSIENT')) {
+      return interrupted('transient', true, false, ['error_code:TRANSIENT']);
+    }
+    if (hasErrorCode(error, 'ADAPTER_UNAVAILABLE')) {
+      return interrupted('client_crash', true, true, ['error_code:ADAPTER_UNAVAILABLE']);
+    }
+    const limitHit = limitHitOf(error);
+    if (hasErrorCode(error, 'QUOTA_EXHAUSTED') || limitHit !== undefined) {
+      return interrupted(
+        'quota_exhausted',
+        false,
+        false,
+        [limitHit?.source ?? 'error_code:QUOTA_EXHAUSTED'],
+        limitHit,
+      );
+    }
+    if (hasErrorCode(error, 'PERMISSION_DENIED')) {
+      return interrupted('permission', false, false, ['error_code:PERMISSION_DENIED']);
+    }
     if (resuming && hasErrorCode(error, 'NOT_FOUND')) {
       // `session/load` of a conversation the client no longer has: only a handoff continues.
-      return interrupted('client_crash', false, false);
+      return interrupted('client_crash', false, false, [
+        'error_code:NOT_FOUND',
+        'session_load:failed',
+      ]);
     }
     return { kind: 'failed', message: detail };
+  }
+
+  // ---- the policy by cause (5.16) ----
+
+  /** The values of `resume.*` the policy reads. */
+  #rules(): InterruptionRules {
+    const { settings } = this.#options;
+    return {
+      maxResumes: settings.maxResumes,
+      quotaWaitMaxMs: settings.quotaWaitMaxMs,
+      transientBackoffMs: settings.transientBackoffMs,
+      transientExhausted: settings.transientExhausted,
+      clientCrashCounts: settings.clientCrashCounts,
+      stuckSameErrorTimes: settings.stuckSameErrorTimes,
+    };
+  }
+
+  /** The facts of an interruption nothing special is known about. */
+  #facts(context: AttemptContext, cause: InterruptionCause): InterruptionFacts {
+    const { spec, journal } = context;
+    return {
+      cause,
+      now: this.#options.clock.now(),
+      resetsAt: null,
+      whenExhausted: spec.whenExhausted ?? 'next',
+      inFlight: spec.inFlight ?? 'handoff',
+      reloadable: true,
+      free: false,
+      resumes: journal.record.resumes,
+      repeated: 0,
+      priorCrashes: context.crashes,
+    };
+  }
+
+  /**
+   * Gathers the facts of an interruption and asks the policy. `free` is whether the drop was a
+   * casualty of another session's cancel and the allowance (`resume.max_free_resumes`) has room:
+   * such a resume costs no `resume.max_resumes` and no attempt.
+   */
+  async #decide(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+  ): Promise<{ decision: InterruptionDecision; free: boolean; signals: readonly string[] }> {
+    const { journal } = context;
+    const free =
+      ended.free === true && journal.record.freeResumes < this.#options.settings.maxFreeResumes;
+    const repeated = free ? 0 : this.#repeated(context, `${ended.cause}:${ended.detail}`);
+    let cause = ended.cause;
+    let resetsAt: number | null = null;
+    let signals = ended.signals;
+    if (ended.cause === 'quota_exhausted') {
+      const quota = await this.#quotaOf(context, ended);
+      cause = quota.cause;
+      resetsAt = quota.resetsAt;
+      signals = [...signals, ...quota.signals];
+    }
+    // The conversation of an exhausted quota can be reloaded when there is one (the error came
+    // from a turn); the other causes know it from how they were classified.
+    const reloadable =
+      ended.native ||
+      ((cause === 'quota_exhausted' || cause === 'spend_cap') && context.sessionId !== undefined);
+    const decision = decideInterruption(
+      { ...this.#facts(context, cause), resetsAt, reloadable, free, repeated },
+      this.#rules(),
+    );
+    if (cause === 'client_crash' && !free) context.crashes += 1;
+    return {
+      decision,
+      free,
+      signals: [...signals, ...(free ? [FREE_SIGNAL] : []), `action:${decision.action}`],
+    };
+  }
+
+  /** What the `QuotaService` says about a limit error: the cause (quota or cap) and the reset. */
+  async #quotaOf(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+  ): Promise<{ cause: InterruptionCause; resetsAt: number | null; signals: string[] }> {
+    const { quota, logger } = this.#options;
+    const unknown = { cause: ended.cause, resetsAt: null, signals: [] };
+    if (quota === undefined) return unknown;
+    try {
+      const status = await quota.ingestLimitHit(
+        context.spec.profile.id,
+        ended.limitHit ?? { source: 'error:QuotaExhausted' },
+      );
+      return {
+        cause:
+          status.state === 'exhausted' && status.cause === 'budget' ? 'spend_cap' : ended.cause,
+        resetsAt: status.untilReset,
+        signals: [
+          `quota_state:${status.state}`,
+          ...(status.untilReset === null
+            ? []
+            : [`resets_at:${new Date(status.untilReset).toISOString()}`]),
+        ],
+      };
+    } catch (error) {
+      logger.warn({ err: error, attemptId: context.attemptId }, 'the quota service did not answer');
+      return unknown;
+    }
   }
 
   /** How many times in a row the same interruption came up. */
@@ -839,18 +1065,9 @@ export class AttemptRunner {
     return count;
   }
 
-  /** The wait before a native resume: exponential for a transient error, none for a crash. */
-  async #backoff(
-    context: AttemptContext,
-    cause: InterruptionCause,
-    resumes: number,
-  ): Promise<'ok' | 'timeout' | 'stopped'> {
-    const { settings, clock } = this.#options;
-    const list = settings.transientBackoffMs;
-    const ms =
-      cause === 'transient' && list.length > 0
-        ? (list[Math.min(resumes, list.length - 1)] ?? 0)
-        : 0;
+  /** The wait before a native resume (the backoff the policy chose); a stop or the deadline ends it. */
+  async #pause(context: AttemptContext, ms: number): Promise<'ok' | 'timeout' | 'stopped'> {
+    const { clock } = this.#options;
     const guard = new AbortController();
     try {
       const result = await Promise.race([
@@ -918,28 +1135,58 @@ export class AttemptRunner {
   async #interrupted(
     context: AttemptContext,
     ended: Extract<Ended, { kind: 'interrupted' }>,
+    decision: InterruptionDecision,
+    signals: readonly string[],
   ): Promise<void> {
-    await this.#interruptionEvent(context, ended.cause, ended.detail, ended.sha);
-    await this.#closed(context, 'interrupted', { state: 'interrupted', cause: ended.cause });
+    await this.#interruptionEvent(context, decision, ended.detail, ended.sha, signals);
+    await this.#closed(context, 'interrupted', { state: 'interrupted', cause: decision.cause });
   }
 
+  /**
+   * `session.interrupted` and the row of `interruptions`, in one transaction: the event carries the
+   * cause (and the reset time, when known), the row what the policy decided. Both need an opened
+   * session; an error before any session existed leaves neither.
+   */
   async #interruptionEvent(
     context: AttemptContext,
-    cause: InterruptionCause,
+    decision: InterruptionDecision,
     detail: string,
     sha: string | undefined,
+    signals: readonly string[],
   ): Promise<void> {
-    const { sessionId, sessionOpen } = context;
+    const { sessionId, sessionOpen, spec } = context;
     if (sessionId === undefined || !sessionOpen) return;
     await context.journal.write(
       buildDaemonEvent('session.interrupted', {
         sessionId,
-        cause,
+        cause: decision.cause,
         detail,
+        ...(decision.resetsAt === null ? {} : { resetsAt: decision.resetsAt }),
         ...(sha === undefined ? {} : { checkpointSha: sha }),
         ...this.#correlation(context),
       }),
+      undefined,
+      {
+        sessionId,
+        playId: spec.playId,
+        cause: decision.cause,
+        signals: [...signals],
+        resumeForm: decision.form,
+        fromExecutor: this.#executorId(context),
+        toExecutor: null,
+        countedAsAttempt: decision.countsAsAttempt,
+      },
     );
+  }
+
+  /** The Executor id of the row of `interruptions`: `<model>[-<effort>]@<client>/<profile>`. */
+  #executorId(context: AttemptContext): string {
+    const { profile, executor } = context.spec;
+    return formatExecutorId({
+      model: executor.model,
+      effort: executor.effort ?? null,
+      profileId: profile.id,
+    });
   }
 
   async #finished(context: AttemptContext, stopReason: StopReason): Promise<AttemptOutcome> {
@@ -951,41 +1198,57 @@ export class AttemptRunner {
   async #failed(context: AttemptContext, message: string): Promise<AttemptOutcome> {
     await this.#closed(context, 'failed', { state: 'failed', cause: message });
     await context.journal.flush();
+    // A failure of the agent is what an attempt of the demand is for.
     return this.#outcome(context, 'failed', message, undefined, false);
   }
 
   async #timedOut(context: AttemptContext, sha: string | undefined): Promise<AttemptOutcome> {
+    const decision = decideInterruption(this.#facts(context, 'timeout'), this.#rules());
     await this.#interruptionEvent(
       context,
-      'timeout',
+      decision,
       'the attempt reached its deadline',
       sha ?? context.journal.record.lastCheckpoint ?? undefined,
+      ['deadline', `action:${decision.action}`],
     );
     await this.#closed(context, 'interrupted', { state: 'timed_out', cause: 'timeout' });
     await context.journal.flush();
-    return this.#outcome(context, 'timed_out', 'timeout', undefined, true);
+    return this.#outcome(context, 'timed_out', 'timeout', undefined, true, decision);
   }
 
+  /**
+   * The daemon stops: the next start resumes the conversation, so the row says `native` once the
+   * restart is known to find it (`resume()` settles it; until then the form is not known).
+   */
   async #stopped(context: AttemptContext, sha: string | undefined): Promise<AttemptOutcome> {
+    const decision = {
+      ...decideInterruption(this.#facts(context, 'daemon_restart'), this.#rules()),
+      form: null,
+    };
     await this.#interruptionEvent(
       context,
-      'daemon_restart',
+      decision,
       'the daemon stopped',
       sha ?? context.journal.record.lastCheckpoint ?? undefined,
+      ['daemon:stopping', `action:${decision.action}`],
     );
     await this.#closed(context, 'interrupted', {
       state: 'awaiting_resume',
       cause: 'daemon_restart',
     });
     await context.journal.flush();
-    return this.#outcome(context, 'interrupted', 'daemon_restart', undefined, false);
+    return this.#outcome(context, 'interrupted', 'daemon_restart', undefined, false, decision);
   }
 
-  /** Stopped for a cause only a decision resolves; the registry keeps it as `interrupted`. */
-  async #parked(context: AttemptContext, cause: InterruptionCause): Promise<AttemptOutcome> {
-    await context.journal.write(undefined, { state: 'interrupted', cause });
+  /**
+   * Stopped for an action this runner does not carry out (a handoff, a wait for the reset, the
+   * cap's `finish` and `stop`, the Director's judgment). The registry keeps it as `interrupted`
+   * and the outcome says what the policy chose.
+   */
+  async #parked(context: AttemptContext, decision: InterruptionDecision): Promise<AttemptOutcome> {
+    await context.journal.write(undefined, { state: 'interrupted', cause: decision.cause });
     await context.journal.flush();
-    return this.#outcome(context, 'interrupted', cause, undefined, true);
+    return this.#outcome(context, 'interrupted', decision.cause, undefined, true, decision);
   }
 
   #outcome(
@@ -994,6 +1257,7 @@ export class AttemptRunner {
     cause: string | undefined,
     stopReason: StopReason | undefined,
     needsDecision: boolean,
+    decision?: InterruptionDecision,
   ): AttemptOutcome {
     const record = context.journal.record;
     return {
@@ -1007,6 +1271,8 @@ export class AttemptRunner {
       worktree: context.worktree,
       resumes: record.resumes,
       needsDecision,
+      decision,
+      countsAsAttempt: state === 'failed' || decision?.countsAsAttempt === true,
     };
   }
 }

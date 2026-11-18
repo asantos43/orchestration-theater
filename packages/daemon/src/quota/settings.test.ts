@@ -8,12 +8,14 @@ import {
   parseConfig,
 } from '../config.js';
 import { quotaMinimaxSettingsOf, quotaOpencodeSettingsOf, quotaSettingsOf } from './settings.js';
+import { wakeupSettingsOf } from './wakeups.js';
 
 describe('quota.* keys [proposta]', () => {
   it('defaults to 80% near the limit, 10 minutes of freshness and both ways of reading', () => {
     expect(parseConfig('').quota).toEqual({
       near_limit_at: 0.8,
       stale_after: 600_000,
+      recheck_every: 900_000,
       probe: { delivery: 'both', poll_every: 300_000 },
       minimax: {
         mode: 'off',
@@ -40,6 +42,18 @@ describe('quota.* keys [proposta]', () => {
     }
     const config = parseConfig('quota:\n  near_limit_at: 0.5\n  stale_after: 2m\n');
     expect(quotaSettingsOf(config)).toMatchObject({ nearLimitAt: 0.5, staleAfterMs: 120_000 });
+  });
+
+  it('takes quota.recheck_every as a duration, 15m by default, and off as no recheck [proposta]', () => {
+    expect(wakeupSettingsOf(parseConfig(''))).toEqual({ recheckEveryMs: 900_000 });
+    expect(wakeupSettingsOf(parseConfig('quota:\n  recheck_every: 2m\n'))).toEqual({
+      recheckEveryMs: 120_000,
+    });
+    expect(wakeupSettingsOf(parseConfig('quota:\n  recheck_every: off\n'))).toEqual({
+      recheckEveryMs: null,
+    });
+    expect(() => parseConfig('quota:\n  recheck_every: sometimes\n')).toThrow(/recheck_every/);
+    expect(() => parseConfig('quota:\n  recheck_every: 0\n')).toThrow(/recheck_every/);
   });
 
   it('refuses a fraction outside (0, 1], a bad delivery and an unknown key', () => {

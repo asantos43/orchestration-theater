@@ -12,6 +12,7 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  BudgetRestoredPayloadSchema,
   QuotaExhaustedPayloadSchema,
   QuotaNearLimitPayloadSchema,
   QuotaRestoredPayloadSchema,
@@ -402,6 +403,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: QuotaRestoredPayloadSchema,
   }),
   defineEventType({
+    type: 'budget.restored',
+    schemaVersion: 1,
+    payload: BudgetRestoredPayloadSchema,
+  }),
+  defineEventType({
     type: 'usage.recorded',
     schemaVersion: 1,
     payload: UsageRecordedPayloadSchema,
@@ -486,6 +492,7 @@ export type QuotaUpdatedPayload = DaemonEventPayloads['quota.updated'];
 export type QuotaNearLimitPayload = DaemonEventPayloads['quota.near_limit'];
 export type QuotaExhaustedPayload = DaemonEventPayloads['quota.exhausted'];
 export type QuotaRestoredPayload = DaemonEventPayloads['quota.restored'];
+export type BudgetRestoredPayload = DaemonEventPayloads['budget.restored'];
 export type UsageRecordedPayload = DaemonEventPayloads['usage.recorded'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {

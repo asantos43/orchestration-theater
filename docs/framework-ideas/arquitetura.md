@@ -3287,6 +3287,7 @@ Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/16
 - Permissões geradas dos manifestos; segredos no cofre.
 - `@otheater/sdk` para plugins + plugin de exemplo.
 - Painel declarativo (5.14) desenhado na aba Plugins da TUI; tipos de evento `plugin.<id>.*`.
+- Pipelines customizados por cenário (`flows.<id>` na configuração e por plugin, só com as etapas registradas), pelo mesmo validador; desenho a fechar ao abrir a fase (item 29 da seção 12, N133, aberta).
 
 **Critério de aceite:** a ferramenta do plugin aparece só nos papéis declarados e fica bloqueada nos demais; o painel do plugin de exemplo aparece na TUI sem nenhum código do plugin na interface.
 **Estimativa:** 1–1,5 semana.
@@ -3538,6 +3539,12 @@ Caminho crítico: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 11.
     - se a espera na `prompt_queue` e nos semáforos ganha span ou evento próprio;
     - como tratar a falta de dados de alguns clientes: o OpenCode sem tokens fora do `experimental.openTelemetry`, e o Codex com correlação por processo.
 28. *(Decidida em 2026-11-16: versão do cliente pelo `package.json` do pacote instalado, confirmada pelo `initialize`, ver "Decididas" e a seção 5.2.)*
+29. **Pipelines de trabalho customizados por cenário** (aberta em 2026-11-18, N133 do docs/13; fecha na Fase 9). Ideia do dono. O registro de fluxos (5.18), o id do fluxo no cenário (5.20) e os fluxos declarativos de plugin (5.14) já existem no desenho; falta o Produtor definir um fluxo sem plugin. Já escolhido pelo dono: a definição vem da configuração (`flows.<id>` em YAML, só com as etapas do registro) e de plugin, sem código do usuário no daemon, e o desenho fecha na Fase 9, com o mesmo validador do nível declarativo dos plugins. Falta decidir **[proposta]**:
+    - o formato de `flows.<id>` (etapas, papel, limites e transições por etapa) e a versão do esquema;
+    - a escolha por `scenario.flow: <id>`, com override por camada, como a política do papel;
+    - quais etapas podem faltar; os contadores dos laços, a verificação em código e a entrega continuam obrigatórios, e um fluxo nunca libera permissão (P3);
+    - a migração de snapshot de um fluxo customizado (5.4) e a interação com `pipeline.session_reuse` (N131);
+    - se a TUI ganha um editor de fluxos.
 30. **Cenários de outros daemons** (aberta em 2026-11-18, N134 do docs/13; o protocolo fecha na Fase 6). Ideia do dono. Hoje há um daemon por máquina (5.1), e o acesso remoto (5.12) liga um aparelho a um daemon. Já escolhido pelo dono: três níveis, cada um por chave própria, com o protocolo no `packages/client` da Fase 6, a tela na TUI (Fase 7) e os outros níveis depois da v1. Falta decidir **[proposta]**:
     - **cliente com vários daemons** (`client.daemons`): os cenários de todos os daemons pareados, agrupados por máquina, com cada ação indo ao daemon dono do cenário; o id global do daemon e do cenário;
     - **mover um cenário** entre daemons (`scenarios.transfer: off | export_import`): o que vai no pacote (fila, ordens, histórico, configuração) e o repositório por git;
