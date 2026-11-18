@@ -81,7 +81,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | pendente |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | pendente |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
-| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | pendente |
+| P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
 
 Ordem em ondas **[proposta]**:
