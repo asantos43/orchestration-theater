@@ -88,7 +88,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | concluído (PR #82) |
 | P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | concluído (PR #77) |
 | P8 | Fila de ideias | P0 | P1, P3, P7 | concluído (PR #78) |
-| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | pendente |
+| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #<n>) |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
 | P11 | Aceite da fase | todos | nada | pendente |
 | Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`); cliente real **[N]** |
@@ -321,6 +321,13 @@ Ordem em ondas **[proposta]**:
 - O `attended` fixo em `false` no `play-effects.ts` sai.
 
 **Aceite:** com o agente falso, a peça com o Produtor presente pergunta e segue a resposta; sem o Produtor, entrega por PR, como hoje.
+
+**Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[N]** não confirmado.
+- `Workspace.deliver` já respondia `ask_producer`; o `#deliver` agora passa o `attended` real (a presença do chat) e, nesse caso, manda `DELIVERY_ASK`. A peça vai a AWAITING_PRODUCER com o motivo `delivery_ask` e o menu `deliver_pr`, `deliver_merge`, `cancel`; a resposta fica em `deliveryChoice` e volta ao `deliver` como pedido do Produtor (`requested.by: producer`). O Diretor recebe o aviso pela fila de prompts (`#ot-delivery-ask`) **[V]**.
+- Quem não responde: um vigia fora da máquina (parado por `abort_work` e `close()`) olha o relógio e a presença. Vencido `delivery.ask.timeout`, ou saindo o Produtor com `delivery.ask.on_leave: pr`, ele manda `DELIVERY_ASK_UNANSWERED` e a peça segue com o PR; a decisão fica registrada com `decidedBy: daemon` e o menu pendente é cancelado. O prazo conta a partir de `askedAt`, guardado no motivo, então sobrevive a um reinício **[V]**.
+- Chaves **[proposta]**: `delivery.ask.timeout` (padrão `10m`; `0` espera sem limite) e `delivery.ask.on_leave` (`pr`, padrão, ou `wait`).
+- Testes **[V]**: máquina (`delivery-ask.test.ts`), configuração e ponta a ponta com o agente falso (`delivery-ask-e2e.test.ts`: presente com `pr` e com `merge`, sem ninguém, saindo durante a pergunta, prazo vencido, `on_leave: wait`, sem `allow_direct_merge`).
+- **[N]** Rodada com um `ot chat` real e uma entrega real por merge.
 
 ### P10. Consultor: pasta do chat, pesquisa e imagem (N86)
 
