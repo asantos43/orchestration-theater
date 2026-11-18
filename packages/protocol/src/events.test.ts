@@ -92,6 +92,14 @@ describe('daemon event registry', () => {
       'demand.waiting',
       'demand.resumed',
       'play.notice',
+      'quota.probe_failed',
+      'quota.signal_dropped',
+      'usage.notice',
+      'profile.warning',
+      'executor.changed',
+      'daemon.notice',
+      'recovery.notice',
+      'scenario.notice',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

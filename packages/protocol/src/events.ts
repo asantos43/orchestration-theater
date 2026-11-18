@@ -18,17 +18,25 @@ import {
   BudgetWarningPayloadSchema,
   QuotaExhaustedPayloadSchema,
   QuotaNearLimitPayloadSchema,
+  QuotaProbeFailedPayloadSchema,
   QuotaRestoredPayloadSchema,
+  QuotaSignalDroppedPayloadSchema,
   QuotaUpdatedPayloadSchema,
 } from './quota-events.js';
 import {
   DemandResumedPayloadSchema,
   DemandWaitingPayloadSchema,
+  ExecutorChangedPayloadSchema,
   ExecutorSelectedPayloadSchema,
   ScenarioDirectorResumedPayloadSchema,
   ScenarioDirectorWaitingPayloadSchema,
 } from './selection-events.js';
-import { UsageRecordedPayloadSchema } from './usage-events.js';
+import {
+  DaemonNoticePayloadSchema,
+  RecoveryNoticePayloadSchema,
+  ScenarioNoticePayloadSchema,
+} from './notice-events.js';
+import { UsageNoticePayloadSchema, UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
   PermissionAskedPayloadSchema,
@@ -49,6 +57,7 @@ import {
   ProfileDrainingPayloadSchema,
   ProfileNoticeAcceptedPayloadSchema,
   ProfileRemovedPayloadSchema,
+  ProfileWarningPayloadSchema,
 } from './profile-events.js';
 import {
   ScenarioAttachmentAddedPayloadSchema,
@@ -498,6 +507,46 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: PlayNoticePayloadSchema,
   }),
+  defineEventType({
+    type: 'quota.probe_failed',
+    schemaVersion: 1,
+    payload: QuotaProbeFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'quota.signal_dropped',
+    schemaVersion: 1,
+    payload: QuotaSignalDroppedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'usage.notice',
+    schemaVersion: 1,
+    payload: UsageNoticePayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.warning',
+    schemaVersion: 1,
+    payload: ProfileWarningPayloadSchema,
+  }),
+  defineEventType({
+    type: 'executor.changed',
+    schemaVersion: 1,
+    payload: ExecutorChangedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'daemon.notice',
+    schemaVersion: 1,
+    payload: DaemonNoticePayloadSchema,
+  }),
+  defineEventType({
+    type: 'recovery.notice',
+    schemaVersion: 1,
+    payload: RecoveryNoticePayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.notice',
+    schemaVersion: 1,
+    payload: ScenarioNoticePayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -600,6 +649,14 @@ export type ScenarioDirectorResumedPayload = DaemonEventPayloads['scenario.direc
 export type DemandWaitingPayload = DaemonEventPayloads['demand.waiting'];
 export type DemandResumedPayload = DaemonEventPayloads['demand.resumed'];
 export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
+export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
+export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];
+export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
+export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
+export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
+export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
+export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
+export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

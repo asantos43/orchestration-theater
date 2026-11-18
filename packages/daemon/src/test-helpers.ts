@@ -15,6 +15,8 @@ import {
   type UpdateListener,
 } from '@otheater/core';
 import pino, { type Logger } from 'pino';
+import type { DaemonEventPayloads, DaemonEventType } from '@otheater/protocol';
+import type { SituationCorrelation, SituationSink } from './situations.js';
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */
 export async function makeTempDataDir(): Promise<{ dir: string; dispose: () => Promise<void> }> {
@@ -163,3 +165,30 @@ export function captureLogger(): { logger: Logger; lines: LoggedLine[] } {
  * `PATH` and the test stays hermetic.
  */
 export const NO_CLIENTS = { env: { PATH: '' }, findExecutable: () => undefined } as const;
+
+/** What a {@link RecordingSituations} kept: the type, the payload and the correlation. */
+export interface RecordedSituation {
+  readonly type: string;
+  readonly payload: unknown;
+  readonly correlation: SituationCorrelation;
+}
+
+/**
+ * A {@link SituationSink} that keeps what it is given, for the tests of the places that record a
+ * situation (P24). `of(type)` is the payloads of one type, in order. Tests only.
+ */
+export class RecordingSituations implements SituationSink {
+  readonly recorded: RecordedSituation[] = [];
+
+  record<T extends DaemonEventType>(
+    type: T,
+    payload: DaemonEventPayloads[T],
+    correlation: SituationCorrelation = {},
+  ): void {
+    this.recorded.push({ type, payload, correlation });
+  }
+
+  of(type: string): unknown[] {
+    return this.recorded.filter((item) => item.type === type).map((item) => item.payload);
+  }
+}

@@ -630,4 +630,32 @@ describe('list, check and remove', () => {
     registered(await rig.service.add({ profileId: PROFILE, model: MINIMAX }));
     expect(await rig.store.executors.get(MINIMAX_ID)).toMatchObject({ validity: 'valid' });
   });
+
+  it('executor.changed: the register and the removal are events, with the roles they touched (P24, N146)', async () => {
+    const rig = await setup(`executors:\n  on_register: none\n`);
+    registered(
+      await rig.service.add({ profileId: PROFILE, model: MINIMAX, roles: [{ role: 'critic' }] }),
+    );
+    await rig.service.remove(MINIMAX_ID);
+    const changed = (await rig.store.events.readFrom(0, 100)).filter(
+      (event) => event.type === 'executor.changed',
+    );
+    expect(changed.map((event) => event.payload)).toEqual([
+      { executorId: MINIMAX_ID, change: 'registered', profile: PROFILE, roles: ['critic'] },
+      { executorId: MINIMAX_ID, change: 'removed', profile: PROFILE, roles: ['critic'] },
+    ]);
+  });
+
+  it('a dry run and a refused cadastro write no executor.changed', async () => {
+    const rig = await setup();
+    await rig.service.add({ profileId: PROFILE, model: MINIMAX, dryRun: true });
+    await rig.service
+      .add({ profileId: PROFILE, model: 'minimax/not-there' })
+      .catch(() => undefined);
+    expect(
+      (await rig.store.events.readFrom(0, 100)).filter(
+        (event) => event.type === 'executor.changed',
+      ),
+    ).toEqual([]);
+  });
 });

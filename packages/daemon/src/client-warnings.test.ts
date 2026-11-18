@@ -2,7 +2,7 @@
 import type { ClientAdapterWarning } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { clientWarningLog } from './client-warnings.js';
-import { captureLogger } from './test-helpers.js';
+import { captureLogger, RecordingSituations } from './test-helpers.js';
 
 const EXEMPT: ClientAdapterWarning = {
   kind: 'catalog_probe_exempt',
@@ -63,6 +63,53 @@ describe('clientWarningLog', () => {
       expect(kinds(lines)).toEqual(['unenforced', 'unenforced']);
     },
   );
+
+  it('daemon.notice client_warning: what is logged is also an event, and what the log thins out is thinned out (P24, N146)', () => {
+    const { logger } = captureLogger();
+    const situations = new RecordingSituations();
+    const log = clientWarningLog('once', logger, situations);
+    log(EXEMPT, '0.1.0');
+    log(EXEMPT, '0.1.0');
+    log(UNENFORCED, '0.1.0');
+    log(
+      {
+        kind: 'conformance_probe_threw',
+        clientId: 'codex',
+        probeId: 'p1',
+        error: new Error('boom sk-ant-api03-secretsecretsecretsecret'),
+      } as unknown as ClientAdapterWarning,
+      '0.1.0',
+    );
+    log(
+      {
+        kind: 'client_version_corrected',
+        clientId: 'codex',
+        from: { version: '2.6.0', source: 'package_json' },
+        to: { version: '2.7.0', source: 'initialize' },
+        adapterVersion: '0.1.0+codex.2.7.0',
+        agentName: 'codex-acp',
+      },
+      '0.1.0+codex.2.7.0',
+    );
+    const notices = situations.of('daemon.notice') as {
+      kind: string;
+      subject: string;
+      detail: string;
+    }[];
+    expect(notices.map((notice) => notice.kind)).toEqual(Array<string>(4).fill('client_warning'));
+    expect(notices.map((notice) => notice.subject)).toEqual(['codex', 'codex', 'codex', 'codex']);
+    expect(notices.map((notice) => notice.detail)).toEqual([
+      'catalog_probe_exempt: network',
+      'unenforced: network',
+      expect.stringContaining('conformance_probe_threw: p1: ') as string,
+      'client_version_corrected: 2.6.0 -> 2.7.0 (codex-acp)',
+    ]);
+    expect(JSON.stringify(notices)).not.toContain('secretsecret');
+    // `off` writes no catalog_probe_exempt, in the log or in the event.
+    const quiet = new RecordingSituations();
+    clientWarningLog('off', logger, quiet)(EXEMPT, '0.1.0');
+    expect(quiet.recorded).toEqual([]);
+  });
 
   it.each(['once', 'every', 'off'] as const)(
     '%s: client_version_corrected goes to the info level, every time, with no credential text',

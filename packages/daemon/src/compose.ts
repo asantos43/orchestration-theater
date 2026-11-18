@@ -96,6 +96,7 @@ import {
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
+import { SituationLog, situationSubject, situationText, type SituationSink } from './situations.js';
 import {
   describeZodError,
   sessionsPerProcessOf,
@@ -208,6 +209,11 @@ export interface Composition {
   readonly browser: BrowserSession | undefined;
   /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
   readonly codeHost: CodeHost | undefined;
+  /**
+   * P24 (N146): the sink of the situations that are also events (over the validated `store`).
+   * Closed until the daemon calls `open()` after `daemon.started`; wait for `idle()` before closing.
+   */
+  readonly situations: SituationLog;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -307,6 +313,7 @@ export function defaultBrowser(
   profilesDir: string,
   launcher: ProcessLauncher | undefined,
   logger: Logger,
+  situations?: SituationSink,
 ): BrowserSession | undefined {
   if (launcher === undefined) return undefined;
   const settings = config.browser;
@@ -320,6 +327,11 @@ export function defaultBrowser(
     timeoutMs: settings.timeout_ms,
     onWarning: (message) => {
       logger.warn({ adapter: session.id }, message);
+      situations?.record('daemon.notice', {
+        kind: 'browser_warning',
+        subject: situationSubject(session.id),
+        detail: situationText(message),
+      });
     },
   });
   checkAdapterRange(session, 'BrowserSession', BROWSER_SESSION_PORT_VERSION);
@@ -356,6 +368,7 @@ async function composeSandbox(
   paths: DataPaths,
   overrides: ComposeOverrides,
   logger: Logger,
+  situations?: SituationSink,
 ): Promise<SandboxWiring | undefined> {
   if (overrides.sandbox === 'none' || config.sandbox.mode === 'off') {
     logger.info(
@@ -370,6 +383,11 @@ async function composeSandbox(
     const availability = await sandbox.available();
     if (!availability.ok) {
       logger.warn({ reason: availability.reason }, 'sandbox is not available');
+      situations?.record('daemon.notice', {
+        kind: 'sandbox_unavailable',
+        subject: situationSubject(sandbox.id),
+        detail: situationText(availability.reason),
+      });
       return undefined;
     }
   } else {
@@ -380,6 +398,11 @@ async function composeSandbox(
         { reason: availability.reason, platform: process.platform },
         'layer 3 (sandbox) is missing here: writeScope and network have no guarantee, security.unenforced decides',
       );
+      situations?.record('daemon.notice', {
+        kind: 'sandbox_unavailable',
+        subject: situationSubject(process.platform),
+        detail: situationText(availability.reason),
+      });
       return undefined;
     }
     sandbox = new SrtSandbox();
@@ -395,6 +418,11 @@ async function composeSandbox(
         { client, worktree },
         'clients.codex.inner_sandbox is nested: the sandbox lets this client process make user namespaces, so its write denies (denyWrite and the mandatory denies) are weaker against a hostile command (documented by the library)',
       );
+      situations?.record('daemon.notice', {
+        kind: 'sandbox_nested',
+        subject: situationSubject(client),
+        detail: situationText(worktree),
+      });
     },
   });
 }
@@ -481,10 +509,14 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const launcher = overrides.launcher ?? defaultLauncher();
     const memory = overrides.memory ?? defaultMemoryProbe();
     const transport = overrides.transport ?? new AcpTransport();
-    const sandbox = await composeSandbox(config, paths, overrides, logger);
-    const browser = overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger);
+    // P24 (N146): what the daemon only wrote to the log is also an event. Closed until the daemon
+    // wrote `daemon.started`, so what compose notices below is written after it.
+    const situations = new SituationLog({ events: store.events, logger });
+    const sandbox = await composeSandbox(config, paths, overrides, logger, situations);
+    const browser =
+      overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
 
-    const opened = { store, vault, sandbox, browser };
+    const opened = { store, vault, sandbox, browser, situations };
     let closing: Promise<void> | undefined;
     return {
       clock,
@@ -500,6 +532,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       sandbox,
       browser,
       codeHost: overrides.codeHost,
+      situations,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
@@ -516,6 +549,7 @@ async function closeParts(
     vault: SecretVault | undefined;
     sandbox: SandboxWiring | undefined;
     browser?: BrowserSession | undefined;
+    situations?: SituationLog | undefined;
   },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
@@ -532,6 +566,8 @@ async function closeParts(
     failures.push(error);
   }
   try {
+    // The situations still being written use the store: they finish before it closes.
+    await parts.situations?.idle();
     await parts.store?.close();
   } catch (error) {
     failures.push(error);
@@ -908,7 +944,11 @@ export function productionClients(
   const find = options.findExecutable ?? pathFinder(env);
   return (parts) => {
     const adapters: ClientAdapter[] = [];
-    const warnings = clientWarningLog(config.security.catalog_probe_log, parts.logger);
+    const warnings = clientWarningLog(
+      config.security.catalog_probe_log,
+      parts.logger,
+      parts.situations,
+    );
     for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find)) {
       const { id, reason, executable } = selection;
       if (reason === 'forced_not_found') {
@@ -916,6 +956,11 @@ export function productionClients(
           { client: id, executable },
           'client is enabled but its executable is not in PATH; its sessions will fail to start',
         );
+        parts.situations?.record('daemon.notice', {
+          kind: 'client_not_found',
+          subject: situationSubject(id),
+          detail: situationText(executable),
+        });
       } else {
         parts.logger.info({ client: id, enabled: selection.enabled, reason, executable }, 'client');
       }

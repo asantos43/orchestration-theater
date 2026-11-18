@@ -171,6 +171,19 @@ describe('the consultant writes in the folder of the chat (P10)', { timeout: 120
         // Nothing of that consultation went in, not even the harmless file next to the link.
         expect(await exists(join(folder, 'ok.md'))).toBe(false);
         expect(await workOf(harness, scenarioId)).toMatchObject({ outcome: 'refused' });
+        // The refusal is also an event of the scenario (P24, N146): the branch and the reason.
+        const notices = (await harness.daemon.store.events.readFrom(0, 100_000)).filter(
+          (event) => event.type === 'scenario.notice',
+        );
+        expect(notices).toHaveLength(1);
+        expect(notices[0]).toMatchObject({
+          scenarioId,
+          payload: {
+            scenarioId,
+            kind: 'consult_files_refused',
+            detail: expect.stringContaining('leads out of the worktree') as string,
+          },
+        });
         const branches = await branchesOf(folder);
         expect(branches).toContain('main');
         expect(branches.some((branch) => branch.includes('consult-1'))).toBe(true);

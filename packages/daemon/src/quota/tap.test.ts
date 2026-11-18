@@ -16,8 +16,9 @@ import {
   type UpdateListener,
 } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSilentLogger } from '../logger.js';
+import { RecordingSituations } from '../test-helpers.js';
 import { QuotaService, type UsageSink, type UsageUpdate } from './service.js';
 import { tapClient } from './tap.js';
 
@@ -253,5 +254,66 @@ describe('tapClient', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(session.sessionId).toBe('s9');
     expect(probe.usages.map((u) => u.sessionId)).toEqual(['s9']);
+  });
+});
+
+describe('tapClient, what it also tells as events (P24, N146)', () => {
+  /** The same client, with a sink for the situations. */
+  function tappedWithSituations() {
+    const { service, client } = setup();
+    const situations = new RecordingSituations();
+    const tapped = tapClient(
+      client as unknown as ClientAdapterContract,
+      service,
+      createSilentLogger(),
+      situations,
+    );
+    return { service, client, tapped, situations };
+  }
+
+  it('quota.signal_dropped missed_update: the service fails to take an update', async () => {
+    const { service, client, tapped, situations } = tappedWithSituations();
+    vi.spyOn(service, 'ingestUpdate').mockRejectedValue(new Error('the store is gone'));
+    const inner = new ScriptedSession('s1');
+    client.next = () => Promise.resolve(inner);
+    await open(tapped);
+    inner.emit({ kind: 'usage', outputTokens: 3 });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(situations.of('quota.signal_dropped')).toEqual([
+      { reason: 'missed_update', profile: WORK, sessionId: 's1', detail: 'the store is gone' },
+    ]);
+  });
+
+  it('quota.signal_dropped missed_limit_error: the service fails to take the error of a prompt', async () => {
+    const { service, client, tapped, situations } = tappedWithSituations();
+    vi.spyOn(service, 'ingestError').mockRejectedValue(new Error('the store is gone'));
+    const inner = new ScriptedSession('s1');
+    client.next = () => Promise.resolve(inner);
+    const session = await open(tapped);
+    inner.outcome = () => Promise.reject(new QuotaExhausted('over'));
+    await expect(session.prompt(BLOCKS)).rejects.toBeInstanceOf(QuotaExhausted);
+    expect(situations.of('quota.signal_dropped')).toEqual([
+      { reason: 'missed_limit_error', profile: WORK, sessionId: 's1', detail: 'the store is gone' },
+    ]);
+  });
+
+  it('quota.signal_dropped missed_limit_error: the service fails to take the error of openSession', async () => {
+    const { service, client, tapped, situations } = tappedWithSituations();
+    vi.spyOn(service, 'ingestLimitHit').mockRejectedValue(new Error('the store is gone'));
+    client.next = () => Promise.reject(new QuotaExhausted('no quota to start'));
+    await expect(open(tapped)).rejects.toBeInstanceOf(QuotaExhausted);
+    expect(situations.of('quota.signal_dropped')).toEqual([
+      { reason: 'missed_limit_error', profile: WORK, sessionId: null, detail: 'the store is gone' },
+    ]);
+  });
+
+  it('says nothing when the service takes everything in', async () => {
+    const { client, tapped, situations } = tappedWithSituations();
+    const inner = new ScriptedSession('s1');
+    client.next = () => Promise.resolve(inner);
+    await open(tapped);
+    inner.emit({ kind: 'usage', outputTokens: 3 });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(situations.recorded).toEqual([]);
   });
 });

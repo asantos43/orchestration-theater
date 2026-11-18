@@ -189,3 +189,20 @@ export const DemandResumedPayloadSchema = z.strictObject({
   waitedMs: z.int().min(0),
   holdsSlot: z.boolean(),
 });
+
+/** What happened to an Executor in the configuration. */
+export const EXECUTOR_CHANGES = ['registered', 'removed'] as const;
+export type ExecutorChange = (typeof EXECUTOR_CHANGES)[number];
+
+/**
+ * `executor.changed` (Phase 5, P24, N146, [proposta]): an Executor was registered in the
+ * configuration (`executor add`) or taken out of it (`remove`). `executorId` is the complete name
+ * `<model>-<effort>@<client>/<profile>`, `profile` the `<client>/<profile>` it belongs to (null when
+ * the removal found no row to name it), and `roles` the roles whose list it entered or left.
+ */
+export const ExecutorChangedPayloadSchema = z.strictObject({
+  executorId: executor,
+  change: z.enum(EXECUTOR_CHANGES),
+  profile: z.string().min(1).max(256).nullable(),
+  roles: z.array(roleName).max(32),
+});

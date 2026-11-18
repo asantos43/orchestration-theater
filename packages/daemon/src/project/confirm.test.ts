@@ -161,6 +161,30 @@ describe('ConventionConfirmer', () => {
     expect(pending[0]?.id).not.toBe(first?.id);
   });
 
+  it('scenario.notice conventions_not_confirmed: a question that could not be answered is an event, an answered one is not (P24, N146)', async () => {
+    const notices = async () =>
+      (await store.events.readFrom(0, 1000)).filter((event) => event.type === 'scenario.notice');
+    await confirmer.ask('s1');
+    board.abortAll('The daemon is stopping.');
+    await confirmer.settled('s1');
+    expect((await notices()).map((event) => event.payload)).toEqual([
+      {
+        scenarioId: 's1',
+        kind: 'conventions_not_confirmed',
+        subject: null,
+        detail: 'The daemon is stopping.',
+      },
+    ]);
+    expect((await notices())[0]?.scenarioId).toBe('s1');
+
+    // An answered question writes nothing more.
+    await confirmer.ask('s1');
+    const [decision] = await store.decisions.list({ scenarioId: 's1', states: ['pending'] });
+    board.resolve(decision?.id ?? '', { answers: [] });
+    await confirmer.settled('s1');
+    expect(await notices()).toHaveLength(1);
+  });
+
   it('asks nothing for a scenario without conventions', async () => {
     await store.scenarios.update('s1', { conventions: null });
     expect(await confirmer.ask('s1')).toBe(false);

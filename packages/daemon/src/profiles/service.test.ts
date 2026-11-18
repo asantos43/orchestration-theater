@@ -22,7 +22,12 @@ import {
 } from '@otheater/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { dataPaths, type DataPaths } from '../paths.js';
-import { captureLogger, makeTempDataDir, type LoggedLine } from '../test-helpers.js';
+import {
+  captureLogger,
+  makeTempDataDir,
+  RecordingSituations,
+  type LoggedLine,
+} from '../test-helpers.js';
 import { apiKeyEnvName, apiKeyRefOf, profileSecretEnv } from './secret-env.js';
 import {
   ProfileService,
@@ -57,6 +62,7 @@ interface RigOptions {
   readonly login?: 'logged_in' | 'logged_out' | 'unknown';
   readonly vault?: InMemorySecretVault;
   readonly failLogout?: boolean;
+  readonly probeFails?: boolean;
   readonly sessions?: ProfileSessions;
 }
 
@@ -93,6 +99,7 @@ async function setup(options: RigOptions = {}) {
   });
   const vault = options.vault ?? new InMemorySecretVault();
   const { logger, lines } = captureLogger();
+  const situations = new RecordingSituations();
   const launcher = new FakeProcessLauncher();
   const transport = new FakeSessionTransport();
   const prepared: string[] = [];
@@ -108,7 +115,12 @@ async function setup(options: RigOptions = {}) {
         adapterVersion: '1.0.0',
         command: { cmd: 'fake-client', args: ['--acp'] },
         secretEnv: profileSecretEnv({ store, vault, logger }),
-        loginState: options.login ?? 'logged_in',
+        loginState:
+          options.probeFails === true
+            ? () => {
+                throw new Error('login probe exploded');
+              }
+            : (options.login ?? 'logged_in'),
         onPrepareProfile: (profile) => prepared.push(profile.id),
         onLogout: (profile) => {
           if (options.failLogout === true) throw new Error('logout exploded');
@@ -131,6 +143,7 @@ async function setup(options: RigOptions = {}) {
     vaultBackend: 'encrypted-file',
     clock,
     logger,
+    situations,
     paths,
     settings,
     adapters: (client) => adapters.get(client),
@@ -147,6 +160,7 @@ async function setup(options: RigOptions = {}) {
     paths,
     dataDir: dataDir.dir,
     lines,
+    situations,
     launcher,
     adapters,
     prepared,
@@ -719,6 +733,47 @@ describe('ProfileService.remove', () => {
       Conflict,
     );
     expect(await readFile(profile.dir, 'utf8')).toBe('not a directory');
+  });
+});
+
+describe('ProfileService, what it also tells as events (P24, N146)', () => {
+  it('profile.warning login_probe_failed: the probe of the login throws, the state is unknown', async () => {
+    const rig = await setup({ probeFails: true });
+    expect((await addSub(rig, 'claude-code', 'main')).login).toBe('unknown');
+    expect(rig.situations.of('profile.warning')).toEqual([
+      { profileId: 'claude-code/main', kind: 'login_probe_failed', detail: 'login probe exploded' },
+    ]);
+  });
+
+  it('profile.warning logout_failed: the logout throws and the removal goes on', async () => {
+    const rig = await setup({ failLogout: true });
+    await addSub(rig, 'claude-code', 'main');
+    await rig.service.remove('claude-code/main', { timeoutMs: 0 });
+    expect(rig.situations.of('profile.warning')).toEqual([
+      { profileId: 'claude-code/main', kind: 'logout_failed', detail: 'logout exploded' },
+    ]);
+  });
+
+  it('profile.warning logout_skipped: no adapter for the client of the profile', async () => {
+    const rig = await setup();
+    await rig.store.profiles.create({
+      client: 'ghost',
+      name: 'one',
+      kind: 'token_plan',
+      provider: 'anthropic',
+      dir: join(rig.paths.profiles, 'ghost', 'one'),
+    });
+    await rig.service.remove('ghost/one', { timeoutMs: 0 });
+    expect(rig.situations.of('profile.warning')).toEqual([
+      { profileId: 'ghost/one', kind: 'logout_skipped' },
+    ]);
+  });
+
+  it('says nothing when the login and the logout work', async () => {
+    const rig = await setup();
+    await addSub(rig, 'claude-code', 'main');
+    await rig.service.remove('claude-code/main', { timeoutMs: 0 });
+    expect(rig.situations.recorded).toEqual([]);
   });
 });
 

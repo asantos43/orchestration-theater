@@ -9,6 +9,7 @@ import type {
 } from '@otheater/core';
 import type { DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
+import type { SituationSink } from '../situations.js';
 import { profileApiKey, profileProvider } from '../profiles/secret-env.js';
 import { MiniMaxQuotaProbe } from './minimax-probe.js';
 import { ProviderQuotaProbe, type LedgerProbe } from './provider-probe.js';
@@ -20,6 +21,8 @@ export interface QuotaWiringDeps {
   readonly vault: SecretVault;
   readonly clock: Pick<Clock, 'now'>;
   readonly logger: Logger;
+  /** Where the probe writes what it only logged (`quota.probe_failed`, P24). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** The probe the service gets for a client, and what the daemon does before the service starts. */
@@ -64,9 +67,15 @@ export function quotaProbeOf(
             timeoutMs: minimaxSettings.timeoutMs,
           },
           usageCountMeans: minimaxSettings.usageCountMeans,
-          keyOf: profileApiKey({ store: deps.store, vault: deps.vault, logger: deps.logger }),
+          keyOf: profileApiKey({
+            store: deps.store,
+            vault: deps.vault,
+            logger: deps.logger,
+            situations: deps.situations,
+          }),
           clock: deps.clock,
           logger: deps.logger,
+          situations: deps.situations,
         })
       : undefined;
   if (ledger === undefined && minimax === undefined) return { probe: client.quota };

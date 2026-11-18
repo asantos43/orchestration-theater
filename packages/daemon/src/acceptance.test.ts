@@ -54,7 +54,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
       ]);
       expect(
         await allEvents(daemon.store).then((events) => events.map((event) => event.type)),
-      ).toEqual(['daemon.started', 'daemon.recovered']);
+      ).toEqual(['daemon.started', 'daemon.notice', 'daemon.recovered']);
 
       // 2. a second daemon on the same data dir is refused by the instance lock
       const twin = await open().catch((error: unknown) => error);
@@ -154,6 +154,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
           expect(fake.status()).toMatchObject({ state: 'running', startedAt: clock.now() });
           expect((await allEvents(fake.store)).map((event) => event.type)).toEqual([
             'daemon.started',
+            'daemon.notice',
             'daemon.recovered',
           ]);
         } finally {

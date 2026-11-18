@@ -18,10 +18,11 @@ import {
   type SessionTransport,
   type Store,
 } from '@otheater/core';
-import { buildDaemonEvent } from '@otheater/protocol';
+import { buildDaemonEvent, type ProfileWarningKind } from '@otheater/protocol';
 import type { DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
+import { detailOf, type SituationSink } from '../situations.js';
 import { createProfileDir, removeProfileDir, type DirRemoval } from './dirs.js';
 import { apiKeyRefOf } from './secret-env.js';
 
@@ -116,6 +117,8 @@ export interface ProfileServiceOptions {
   readonly sessions?: ProfileSessions;
   /** How often a drain looks at the sessions, in ms. Default 1000. */
   readonly pollMs?: number;
+  /** Where the warnings of the log are also written as `profile.warning` (P24, N146). */
+  readonly situations?: SituationSink | undefined;
 }
 
 export interface AddProfileInput {
@@ -485,8 +488,18 @@ export class ProfileService {
         { profile: profile.id, error: messageOf(error) },
         'login probe failed; the login state is unknown',
       );
+      this.#warning(profile.id, 'login_probe_failed', error);
       return 'unknown';
     }
+  }
+
+  /** The warning of the log as an event too (`profile.warning`, P24). Never throws. */
+  #warning(profileId: string, kind: ProfileWarningKind, error?: unknown): void {
+    this.#o.situations?.record('profile.warning', {
+      profileId,
+      kind,
+      ...(error === undefined ? {} : detailOf(error)),
+    });
   }
 
   /** The official logout, skipped when the client has no login; never throws. */
@@ -494,6 +507,7 @@ export class ProfileService {
     const adapter = this.#o.adapters(profile.client);
     if (adapter === undefined) {
       this.#o.logger.warn({ profile: profile.id }, 'no adapter for the client; logout skipped');
+      this.#warning(profile.id, 'logout_skipped');
       return false;
     }
     if ((await this.#probe(profile)) === 'logged_out') return false;
@@ -505,6 +519,7 @@ export class ProfileService {
         { profile: profile.id, error: messageOf(error) },
         'logout failed; the profile is removed anyway',
       );
+      this.#warning(profile.id, 'logout_failed', error);
       return false;
     }
   }
@@ -529,6 +544,7 @@ export class ProfileService {
           { profile: id, error: messageOf(error) },
           'could not undo the directory',
         );
+        this.#warning(id, 'directory_undo_failed', error);
       });
     }
   }

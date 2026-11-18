@@ -10,6 +10,7 @@ import {
   type Store,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
+import { situationText, type SituationSink } from '../situations.js';
 
 /** [proposta] The `profile` of a row written for a launched process: the launcher knows no profile. */
 export const TRACKED_PROFILE = 'launcher';
@@ -39,12 +40,20 @@ export class TrackingLauncher implements ProcessLauncher {
   readonly #store: TrackingStore;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  readonly #situations: SituationSink | undefined;
 
-  constructor(inner: ProcessLauncher, store: TrackingStore, clock: Clock, logger: Logger) {
+  constructor(
+    inner: ProcessLauncher,
+    store: TrackingStore,
+    clock: Clock,
+    logger: Logger,
+    situations?: SituationSink,
+  ) {
     this.#inner = inner;
     this.#store = store;
     this.#clock = clock;
     this.#logger = logger;
+    this.#situations = situations;
     this.id = inner.id;
     this.implements = inner.implements;
   }
@@ -71,6 +80,11 @@ export class TrackingLauncher implements ProcessLauncher {
     } catch (error) {
       // The process is already running; losing its row only costs the orphan search next time.
       this.#logger.warn({ err: error, pid: process.pid }, 'could not record a launched process');
+      this.#situations?.record('recovery.notice', {
+        kind: 'process_not_tracked',
+        subject: situationText(basename(opts.cmd), 256),
+        detail: situationText(error),
+      });
       return process;
     }
     void process.exited.then(async () => {

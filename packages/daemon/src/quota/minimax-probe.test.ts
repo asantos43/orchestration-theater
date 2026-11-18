@@ -6,6 +6,7 @@ import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSilentLogger, type Logger } from '../logger.js';
+import { RecordingSituations } from '../test-helpers.js';
 import {
   MINIMAX_DEFAULT_BACKOFF_MS,
   MiniMaxProbeError,
@@ -95,6 +96,7 @@ interface Setup {
   probe: MiniMaxQuotaProbe;
   service: QuotaService;
   lines: Lines;
+  situations: RecordingSituations;
 }
 
 function setup(
@@ -104,6 +106,7 @@ function setup(
   const clock = new FakeClock(T0);
   const store = new InMemoryStore({ clock });
   const { logger, lines } = capturingLogger();
+  const situations = new RecordingSituations();
   const probe = new MiniMaxQuotaProbe({
     baseUrl: base,
     network: { allowHosts: ['127.0.0.1'], timeoutMs: options.timeoutMs ?? 2000 },
@@ -111,6 +114,7 @@ function setup(
     keyOf: () => Promise.resolve('key' in options ? options.key : KEY),
     clock,
     logger,
+    situations,
   });
   const service = new QuotaService({
     store,
@@ -120,7 +124,7 @@ function setup(
   });
   service.addProbe('opencode', probe);
   services.push(service);
-  return { clock, store, probe, service, lines };
+  return { clock, store, probe, service, lines, situations };
 }
 
 describe('MiniMaxQuotaProbe: a good reading', () => {
@@ -406,6 +410,82 @@ describe('MiniMaxQuotaProbe: an earlier reading survives a failed one', () => {
     expect(await service.refresh(REF)).toMatchObject({ state: 'near_limit' });
     await clock.advance(6 * MIN);
     expect(await service.refresh(REF)).toMatchObject({ state: 'unknown' });
+  });
+});
+
+describe('MiniMaxQuotaProbe: what it also tells as events (P24, N146)', () => {
+  const PROFILE = 'opencode/mm';
+
+  it('quota.probe_failed rate_limited: the 429, with the wait, every time (it is not gated)', async () => {
+    const base = await serve((_req, res) => {
+      res.setHeader('retry-after', '120');
+      json(res, { error: 'slow' }, 429);
+    });
+    const { probe, clock, situations } = setup(base);
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'rate_limited' });
+    await clock.advance(121_000);
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'rate_limited' });
+    expect(situations.of('quota.probe_failed')).toEqual([
+      { profile: PROFILE, reason: 'rate_limited', status: 429, backoffMs: 120_000 },
+      { profile: PROFILE, reason: 'rate_limited', status: 429, backoffMs: 120_000 },
+    ]);
+  });
+
+  it('quota.probe_failed unauthorized: a 401 once, like the log', async () => {
+    const base = await serve((_req, res) => {
+      json(res, { error: 'no' }, 401);
+    });
+    const { probe, situations } = setup(base);
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'unauthorized' });
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'unauthorized' });
+    expect(situations.of('quota.probe_failed')).toEqual([
+      { profile: PROFILE, reason: 'unauthorized', status: 401 },
+    ]);
+  });
+
+  it('quota.probe_failed no_key: no key in the vault, once, and the key is never in the event', async () => {
+    const base = await serve((_req, res) => {
+      json(res, good(100, 90));
+    });
+    const { probe, situations } = setup(base, { key: undefined });
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'no_key' });
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'no_key' });
+    expect(situations.of('quota.probe_failed')).toEqual([{ profile: PROFILE, reason: 'no_key' }]);
+  });
+
+  it('quota.probe_failed no_reading: base_resp that is not a success, with the key masked out of the text', async () => {
+    const base = await serve((_req, res) => {
+      json(res, { base_resp: { status_code: 1004, status_msg: `login fail ${KEY}` } });
+    });
+    const { probe, situations } = setup(base);
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'no_reading' });
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'no_reading' });
+    expect(situations.of('quota.probe_failed')).toEqual([
+      { profile: PROFILE, reason: 'no_reading', status: 1004, detail: 'login fail [key]' },
+    ]);
+    expect(JSON.stringify(situations.recorded)).not.toContain(KEY);
+  });
+
+  it('quota.probe_failed unknown_format: a body it does not know, once per shape, with no values', async () => {
+    const base = await serve((_req, res) => {
+      json(res, { base_resp: { status_code: 0 }, data: { remains: 'secret-ish-value-42' } });
+    });
+    const { probe, situations } = setup(base);
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'unknown_format' });
+    await expect(probe.read(REF)).rejects.toMatchObject({ reason: 'unknown_format' });
+    expect(situations.of('quota.probe_failed')).toEqual([
+      { profile: PROFILE, reason: 'unknown_format', detail: 'data does not fit' },
+    ]);
+    expect(JSON.stringify(situations.recorded)).not.toContain('secret-ish-value-42');
+  });
+
+  it('says nothing on a good answer', async () => {
+    const base = await serve((_req, res) => {
+      json(res, good(100, 90));
+    });
+    const { probe, situations } = setup(base);
+    await probe.read(REF);
+    expect(situations.recorded).toEqual([]);
   });
 });
 

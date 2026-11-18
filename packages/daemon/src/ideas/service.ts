@@ -30,6 +30,7 @@ import { type PlayOpening, openPlayFromNeed } from '../orchestration/open-play.j
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
 import type { RoleSelection } from '../orchestration/role-selection.js';
 import type { DataPaths } from '../paths.js';
+import { situationSubject, situationText, writeSituation } from '../situations.js';
 import { type IdeaSettings, ideaSettingsOf } from './settings.js';
 
 /** The role that groups the queue. */
@@ -247,6 +248,18 @@ export class IdeaQueueService {
     const resolved = ideaSettingsOf(config.ideas, scenario.configOverride);
     for (const problem of resolved.problems) {
       logger.warn({ scenarioId, problem }, 'a key ideas.* of the scenario is not used');
+      await writeSituation(
+        store.events,
+        logger,
+        'scenario.notice',
+        {
+          scenarioId,
+          kind: 'ideas_setting_ignored',
+          subject: null,
+          detail: situationText(problem),
+        },
+        { scenarioId },
+      );
     }
     return resolved.settings;
   }
@@ -667,10 +680,22 @@ export class IdeaQueueService {
       });
       if (pending.some((decision) => decision.input.groupId === idea.groupId)) continue;
       await this.#giveBack(idea, null, 'the group was lost in a restart').catch(
-        (error: unknown) => {
+        async (error: unknown) => {
           logger.warn(
             { err: error, ideaId: idea.id },
             'an idea of a lost group was not given back',
+          );
+          await writeSituation(
+            store.events,
+            logger,
+            'scenario.notice',
+            {
+              scenarioId: idea.scenarioId,
+              kind: 'idea_not_returned',
+              subject: situationSubject(idea.id),
+              detail: situationText(error),
+            },
+            { scenarioId: idea.scenarioId },
           );
         },
       );

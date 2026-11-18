@@ -18,6 +18,7 @@ import {
 } from '@otheater/protocol';
 import type { BackupSettings } from '../config.js';
 import type { Logger } from '../logger.js';
+import { situationSubject, situationText, type SituationSink } from '../situations.js';
 import { dataPaths } from '../paths.js';
 import { applyRetention, latestBackupAt, policyFromSettings } from './retention.js';
 
@@ -166,6 +167,11 @@ export interface BackupServiceOptions {
   readonly storeBackup: StoreBackupFn;
   /** Where the `daemon.backup` event goes; none when this process does not own the store (`ot backup` beside a running daemon). */
   readonly recordEvent?: ((event: NewEvent) => Promise<unknown>) | undefined;
+  /**
+   * Where a rotation that failed and an old copy that could not be removed are also written, as
+   * `recovery.notice` (P24, N146). Like `recordEvent`, none when this process does not own the store.
+   */
+  readonly situations?: SituationSink | undefined;
 }
 
 /**
@@ -233,10 +239,16 @@ export class BackupService {
         policy: policyFromSettings(settings),
         now: clock.now(),
         logger,
+        situations: this.#options.situations,
       });
     } catch (error) {
       // The new copy is good; a rotation problem must not turn it into a failure.
       logger.warn({ err: error }, 'backup rotation failed; the new copy is kept');
+      this.#options.situations?.record('recovery.notice', {
+        kind: 'backup_rotation_failed',
+        subject: situationSubject(created.name),
+        detail: situationText(error),
+      });
     }
     logger.info(
       { trigger, path: created.dir, bytes: created.result.bytes, removed },

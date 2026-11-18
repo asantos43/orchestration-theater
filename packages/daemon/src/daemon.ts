@@ -64,6 +64,7 @@ import { startOrchestration, type Orchestration } from './orchestration/wiring.j
 import type { HandoffPort } from './execution/handoff.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
+import { situationText, type SituationSink } from './situations.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -259,12 +260,14 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       clock: composition.clock,
       settings: quotaSettingsOf(config),
       logger: composition.logger,
+      situations: composition.situations,
     });
     const usage = new UsageService({
       store: composition.store,
       clock: composition.clock,
       settings: usageSettingsOf(config),
       logger: composition.logger,
+      situations: composition.situations,
     });
     const handlers = options.mcpHandlers ?? new ToolHandlers();
     if (!handlers.has('propose_directive')) {
@@ -282,6 +285,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
               composition.store,
               composition.clock,
               composition.logger,
+              composition.situations,
             ),
       vcs: composition.vcs,
       codeHost: composition.codeHost,
@@ -411,7 +415,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   }
 
   if (isLockableSecretVault(vault)) {
-    await unlockVault(vault, options.passwordPrompt, logger);
+    await unlockVault(vault, options.passwordPrompt, logger, composition.situations);
   }
 
   await store.events.append(
@@ -426,6 +430,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       },
     }),
   );
+  // P24 (N146): what compose and the vault noticed before this point is written now, after
+  // `daemon.started`, and what comes later is written as it happens.
+  composition.situations.open();
 
   await directives.start();
 
@@ -437,6 +444,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     codeHost: composition.codeHost,
     launcher: composition.launcher,
     logger,
+    situations: composition.situations,
   });
   const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
   // The runner holds the baton port from the start; the orchestration binds the real one (P18, P16b).
@@ -525,6 +533,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
     quota,
     usage,
+    situations: composition.situations,
   });
   await budget.start();
   const wakeups = new WakeupManager({
@@ -556,6 +565,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       return store.backup(dest, backupOptions);
     },
     recordEvent: (event) => store.events.append(event),
+    situations: composition.situations,
   });
   const scheduler = new BackupScheduler({
     settings: config.backup,
@@ -568,10 +578,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     scheduler.start();
   } else {
     logger.warn('this store has no backup support; scheduled backups are off');
+    composition.situations.record('daemon.notice', {
+      kind: 'backup_unsupported',
+      subject: null,
+      detail: null,
+    });
   }
 
   // The old Executor keys keep working (P13); the notice says where the new ones are.
-  for (const warning of deprecationWarnings(config.orchestration)) logger.warn(warning);
+  for (const warning of deprecationWarnings(config.orchestration)) {
+    logger.warn(warning);
+    composition.situations.record('daemon.notice', {
+      kind: 'deprecated_config',
+      subject: null,
+      detail: situationText(warning),
+    });
+  }
 
   state = 'running';
   logger.info({ version, dataDir: paths.dataDir }, 'daemon running');
@@ -605,6 +627,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('effects', async () => orchestration?.drain());
       await attempt('mcp', () => mcp.stop());
       await attempt('browser', async () => browserTools?.close());
+      // The situations recorded so far are written before `daemon.stopped` closes the log.
+      await attempt('situations', () => composition.situations.idle());
       await attempt('daemon.stopped', () =>
         store.events.append(
           buildDaemonEvent('daemon.stopped', {
@@ -667,10 +691,21 @@ function buildExecution(
   const { launcher: rawLauncher } = composition;
   if (rawLauncher === undefined) {
     logger.warn('this platform has no process launcher yet; the execution of attempts is off');
+    composition.situations.record('daemon.notice', {
+      kind: 'execution_off',
+      subject: 'no_launcher',
+      detail: null,
+    });
     return undefined;
   }
   // Every process the clients start is written down, so the next daemon can find the orphans (5.21).
-  const launcher = new TrackingLauncher(rawLauncher, composition.store, composition.clock, logger);
+  const launcher = new TrackingLauncher(
+    rawLauncher,
+    composition.store,
+    composition.clock,
+    logger,
+    composition.situations,
+  );
   const factory = options.clients ?? productionClients(config, options.clientSearch);
   const built = factory({
     launcher,
@@ -678,12 +713,14 @@ function buildExecution(
     transport: composition.transport,
     paths: dataPaths(options.dataDir),
     logger,
+    situations: composition.situations,
     // The API key of a profile reaches only the process of that profile (Phase 5, P2).
     secretEnv: profileSecretEnv({
       store: composition.store,
       vault: composition.vault,
       apiKeyEnv: config.profiles.api_key_env,
       logger,
+      situations: composition.situations,
     }),
     ...(composition.sandbox === undefined
       ? {}
@@ -699,11 +736,16 @@ function buildExecution(
     logger.warn(
       'no client is enabled (none configured or found in PATH); the execution of attempts is off',
     );
+    composition.situations.record('daemon.notice', {
+      kind: 'execution_off',
+      subject: 'no_client',
+      detail: null,
+    });
     return undefined;
   }
   // The service listens to the sessions of every client (the limit error with its reset time, the
   // usage events), and each client has its quota probe (P6 to P8); the service takes it from here.
-  const clients = built.map((client) => tapClient(client, quota, logger));
+  const clients = built.map((client) => tapClient(client, quota, logger, composition.situations));
   for (const client of clients) {
     const wiring = quotaProbeOf(client, {
       config,
@@ -711,6 +753,7 @@ function buildExecution(
       vault: composition.vault,
       clock: composition.clock,
       logger,
+      situations: composition.situations,
     });
     quota.addProbe(client.id, wiring.probe);
     if (wiring.prepare !== undefined) quotaPrepare.push(wiring.prepare);
@@ -779,16 +822,27 @@ export async function unlockVault(
   vault: LockableSecretVault,
   prompt: PasswordPrompt | undefined,
   logger: Logger,
+  situations?: SituationSink,
 ): Promise<void> {
   if (!vault.isLocked) return;
   if (prompt === undefined) {
     logger.warn('the vault is locked and no password prompt is available; it stays locked');
+    situations?.record('daemon.notice', {
+      kind: 'vault_locked',
+      subject: 'no_prompt',
+      detail: null,
+    });
     return;
   }
   for (let attempt = 1; attempt <= MAX_PASSWORD_ATTEMPTS; attempt += 1) {
     const password = await prompt({ attempt, maxAttempts: MAX_PASSWORD_ATTEMPTS });
     if (password === undefined) {
       logger.warn('no master password given; the vault stays locked');
+      situations?.record('daemon.notice', {
+        kind: 'vault_locked',
+        subject: 'no_password',
+        detail: null,
+      });
       return;
     }
     try {
@@ -798,6 +852,11 @@ export async function unlockVault(
     } catch (error) {
       if (!hasErrorCode(error, 'PERMISSION_DENIED')) throw error;
       logger.warn({ attempt }, 'wrong master password');
+      situations?.record('daemon.notice', {
+        kind: 'vault_wrong_password',
+        subject: null,
+        detail: `attempt ${String(attempt)} of ${String(MAX_PASSWORD_ATTEMPTS)}`,
+      });
     }
   }
   throw new PermissionDenied(

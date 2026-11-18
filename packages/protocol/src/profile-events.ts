@@ -71,3 +71,30 @@ export const ProfileRemovedPayloadSchema = z.strictObject({
   /** Executors of the profile that became `invalid`. */
   executorsInvalidated: z.array(z.string().min(1)),
 });
+
+/**
+ * What a `profile.warning` tells (Phase 5, P24, N146, [proposta]): `login_probe_failed` (the probe of
+ * the login failed, so the state is `unknown`), `logout_skipped` (no adapter for the client, so no
+ * official logout), `logout_failed` (the official logout failed and the removal went on),
+ * `directory_undo_failed` (a profile directory a failed registration made could not be taken away) and
+ * `secret_missing` (a client process of an API profile starts and its key is not in the vault).
+ */
+export const PROFILE_WARNING_KINDS = [
+  'login_probe_failed',
+  'logout_skipped',
+  'logout_failed',
+  'directory_undo_failed',
+  'secret_missing',
+] as const;
+export type ProfileWarningKind = (typeof PROFILE_WARNING_KINDS)[number];
+
+/**
+ * `profile.warning` (P24, N146, [proposta]): something about a profile that did not go as the
+ * profile expects, and that the daemon used to only log. `detail` is masked and cut text, never the
+ * key and never a path.
+ */
+export const ProfileWarningPayloadSchema = z.strictObject({
+  profileId,
+  kind: z.enum(PROFILE_WARNING_KINDS),
+  detail: z.string().min(1).max(512).optional(),
+});

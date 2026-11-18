@@ -13,6 +13,7 @@ import type {
 import { CLIENT_IDS, type ClientId, type DaemonConfig } from './config.js';
 import type { Logger } from './logger.js';
 import type { DataPaths, Env } from './paths.js';
+import type { SituationSink } from './situations.js';
 
 /**
  * What a factory of clients may need to build its adapters. The daemon fills it in; a test
@@ -37,6 +38,11 @@ export interface ClientFactoryParts {
    * client process starts (`ClientAdapterOptions.secretEnv`). Absent: no profile has a key.
    */
   readonly secretEnv?: (profile: Profile) => Promise<Readonly<Record<string, string>>>;
+  /**
+   * P24 (N146): where the warnings of the adapters and the choice of a client that is not found are
+   * also written, as `daemon.notice`. Absent: only the log (tests).
+   */
+  readonly situations?: SituationSink;
 }
 
 /** What a client adapter takes of layer 3 (`ClientAdapterOptions.sandbox` and `.launchWrapper`). */

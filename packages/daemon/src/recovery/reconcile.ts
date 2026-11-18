@@ -13,6 +13,7 @@ import {
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
+import { situationSubject, situationText, type SituationSink } from '../situations.js';
 import type { PluginEffectRegistry } from '../workspace/plugin-effects.js';
 import { COMMAND_EFFECTS, verifyCommand, verifySideEffect } from '../workspace/verifiers.js';
 
@@ -33,6 +34,8 @@ export interface RecoveryDeps {
   readonly logger: Logger;
   /** The verifiers of the effects of plugins (P22 hook); none by default. */
   readonly pluginEffects?: PluginEffectRegistry | undefined;
+  /** Where an effect nobody could settle is also written (`recovery.notice`, P24). */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** An effect nobody could settle: it waits for the Producer. */
@@ -248,6 +251,15 @@ async function settleEffects(
     logger.warn(
       { playId: play.id, key: record.idempotencyKey },
       'recovery: an effect could not be settled; the Producer is asked',
+    );
+    deps.situations?.record(
+      'recovery.notice',
+      {
+        kind: 'effect_unsettled',
+        subject: situationSubject(record.type),
+        detail: situationText(verdict.reason),
+      },
+      { scenarioId: play.scenarioId, playId: play.id },
     );
   }
   return { resolved, pending };

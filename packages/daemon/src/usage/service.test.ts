@@ -3,6 +3,7 @@ import { builtInPricing, mergePricing, type EventEnvelope } from '@otheater/core
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
+import { RecordingSituations } from '../test-helpers.js';
 import { UNKNOWN_MODEL, UsageService } from './service.js';
 import type { UsageSettings } from './settings.js';
 
@@ -56,8 +57,15 @@ function setup(over: Partial<UsageSettings> = {}) {
       },
     },
   );
-  const service = new UsageService({ store, clock, settings: settingsOf(over), logger });
-  return { clock, store, service, warnings };
+  const situations = new RecordingSituations();
+  const service = new UsageService({
+    store,
+    clock,
+    settings: settingsOf(over),
+    logger,
+    situations,
+  });
+  return { clock, store, service, warnings, situations };
 }
 
 async function openProfiles(store: InMemoryStore): Promise<void> {
@@ -482,6 +490,64 @@ describe('UsageService, the display of a subscription (usage.subscription_displa
     const view = await service.subscriptionView(WORK);
     expect(view.prorated).toBeNull();
     expect(view.apiEquivalentUsd).toBeCloseTo(16, 9);
+  });
+});
+
+describe('UsageService, what it also tells as events (P24, N146)', () => {
+  it('usage.notice bad_token_count: a report with a count that is not a whole number', async () => {
+    const { service, store, situations } = setup();
+    await openProfiles(store);
+    service.bindSession('S1', { profile: API, executorId: opus(API) });
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1.5, 10));
+    expect(situations.of('usage.notice')).toEqual([
+      { kind: 'bad_token_count', sessionId: 'S1', profile: null },
+    ]);
+  });
+
+  it('usage.notice bad_cost: a report with a negative cost', async () => {
+    const { service, store, situations } = setup();
+    await openProfiles(store);
+    service.bindSession('S1', { profile: API, executorId: opus(API) });
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1, 10, -3));
+    expect(situations.of('usage.notice')).toEqual([
+      { kind: 'bad_cost', sessionId: 'S1', profile: null },
+    ]);
+  });
+
+  it('usage.notice no_profile: usage of a session that has no profile', async () => {
+    const { service, situations } = setup();
+    await service.ingestNotification(signal('nobody', 'claude-opus-5-5', 10, 10));
+    expect(situations.of('usage.notice')).toEqual([
+      { kind: 'no_profile', sessionId: 'nobody', profile: null },
+    ]);
+  });
+
+  it('usage.notice provider_billing_unavailable: once, like the log', async () => {
+    const { service, store, situations } = setup({ costSource: 'provider_billing' });
+    await openProfiles(store);
+    service.bindSession('S1', { profile: API, executorId: opus(API) });
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1000, 200, 0.5));
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1000, 200));
+    expect(situations.of('usage.notice')).toEqual([
+      { kind: 'provider_billing_unavailable', sessionId: null, profile: null },
+    ]);
+  });
+
+  it('usage.notice unknown_profile_kind: a profile the store does not know', async () => {
+    const { service, situations } = setup();
+    service.bindSession('S1', { profile: 'claude-code/ghost', executorId: 'x@claude-code/ghost' });
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1000, 200));
+    expect(situations.of('usage.notice')).toEqual([
+      { kind: 'unknown_profile_kind', sessionId: null, profile: 'claude-code/ghost' },
+    ]);
+  });
+
+  it('says nothing for a good report', async () => {
+    const { service, store, situations } = setup();
+    await openProfiles(store);
+    service.bindSession('S1', { profile: API, executorId: opus(API) });
+    await service.ingestNotification(signal('S1', 'claude-opus-5-5', 1000, 200));
+    expect(situations.recorded).toEqual([]);
   });
 });
 

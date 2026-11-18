@@ -24,6 +24,8 @@ import {
 } from '@otheater/protocol';
 import type { Logger } from '../logger.js';
 import { TRACKED_PROFILE } from '../recovery/tracking-launcher.js';
+import type { SituationSink } from '../situations.js';
+import { recordProbeFailed, recordSignalDropped } from './notices.js';
 import type { QuotaSettings } from './settings.js';
 import { authorizes, evaluateQuota, hitWindowOf, signatureOf, type QuotaStatus } from './state.js';
 
@@ -41,6 +43,11 @@ export interface QuotaServiceOptions {
   readonly clock: Clock;
   readonly settings: QuotaSettings;
   readonly logger: Logger;
+  /**
+   * Where a signal that was dropped and a probe that failed are also written as events
+   * (`quota.signal_dropped`, `quota.probe_failed`; P24, N146). Without it only the log tells.
+   */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** What a limit error says: when the quota comes back (if some source says), and who said it. */
@@ -270,6 +277,9 @@ export class QuotaService {
         { issues: parsed.error.issues.length },
         'a quota signal was not valid; ignored',
       );
+      recordSignalDropped(this.#options.situations, 'invalid_signal', {
+        detail: `${String(parsed.error.issues.length)} issue(s) in the signal`,
+      });
       return false;
     }
     return this.ingestSignal(parsed.data.sessionId, parsed.data.signal);
@@ -283,6 +293,7 @@ export class QuotaService {
         { sessionId },
         'a quota signal came from a session with no profile',
       );
+      recordSignalDropped(this.#options.situations, 'no_profile', { sessionId });
       return false;
     }
     if (signal.kind === 'usage') {
@@ -360,6 +371,11 @@ export class QuotaService {
       probe.recordUsage(ref, sessionId, usage);
     } catch (error) {
       this.#options.logger.warn({ err: error, profile }, 'a quota probe could not take a usage');
+      recordSignalDropped(this.#options.situations, 'usage_not_taken', {
+        profile,
+        sessionId,
+        detail: error,
+      });
       return false;
     }
     return true;
@@ -376,6 +392,10 @@ export class QuotaService {
     const profile = await this.#profileOfSession(sessionId);
     if (profile === undefined) {
       this.#options.logger.warn({ sessionId }, 'a limit error came from a session with no profile');
+      recordSignalDropped(this.#options.situations, 'no_profile', {
+        sessionId,
+        detail: 'a limit error',
+      });
       return false;
     }
     await this.ingestLimitHit(profile, hit);
@@ -474,6 +494,10 @@ export class QuotaService {
     const parsed = QuotaReadingSchema.safeParse(reading);
     if (!parsed.success) {
       this.#options.logger.warn({ profile }, 'a probe gave a reading that does not fit; dropped');
+      recordSignalDropped(this.#options.situations, 'bad_reading', {
+        profile,
+        detail: `${String(parsed.error.issues.length)} issue(s) in the reading from ${source}`,
+      });
       return this.statusOf(profile);
     }
     const { windows, observedAt, planType } = parsed.data;
@@ -809,6 +833,7 @@ export class QuotaService {
             { profile: id },
             'quota.probe.delivery is "push" but this probe cannot watch; it is not used',
           );
+          recordProbeFailed(this.#options.situations, id, 'push_unsupported');
         }
       } else {
         try {
@@ -817,17 +842,23 @@ export class QuotaService {
             probe.watch(ref, (reading) => {
               this.ingestReading(id, reading, 'probe').catch((error: unknown) => {
                 this.#options.logger.warn({ err: error, profile: id }, 'a pushed reading failed');
+                recordSignalDropped(this.#options.situations, 'missed_update', {
+                  profile: id,
+                  detail: error,
+                });
               });
             }),
           );
         } catch (error) {
           this.#options.logger.warn({ err: error, profile: id }, 'a quota probe could not watch');
+          recordProbeFailed(this.#options.situations, id, 'watch_failed', { detail: error });
         }
       }
     }
     if (delivery !== 'push') {
       void this.refresh(ref).catch((error: unknown) => {
         this.#options.logger.warn({ err: error, profile: id }, 'the first quota read failed');
+        recordProbeFailed(this.#options.situations, id, 'read_failed', { detail: error });
       });
     }
   }
@@ -846,6 +877,9 @@ export class QuotaService {
         [...this.#tracked.values()].map((ref) =>
           this.refresh(ref).catch((error: unknown) => {
             this.#options.logger.warn({ err: error }, 'a quota read failed');
+            recordProbeFailed(this.#options.situations, formatProfileId(ref), 'read_failed', {
+              detail: error,
+            });
           }),
         ),
       );
