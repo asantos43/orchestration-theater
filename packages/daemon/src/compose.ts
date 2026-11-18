@@ -22,7 +22,9 @@ import {
 } from '@otheater/adapter-client-opencode';
 import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system';
 import {
+  POSIX_MEMORY_PROBE_ADAPTER,
   POSIX_PROCESS_LAUNCHER_ADAPTER,
+  PosixMemoryProbe,
   PosixProcessLauncher,
 } from '@otheater/adapter-platform-posix';
 import { SRT_SANDBOX_ADAPTER, SrtSandbox } from '@otheater/adapter-sandbox-srt';
@@ -51,6 +53,7 @@ import {
   AdapterUnavailable,
   BROWSER_SESSION_PORT_VERSION,
   CLOCK_PORT_VERSION,
+  MEMORY_PROBE_PORT_VERSION,
   InvalidInput,
   isLockableSecretVault,
   PROCESS_LAUNCHER_PORT_VERSION,
@@ -67,6 +70,7 @@ import {
   type Clock,
   type CodeHost,
   type MinLayers,
+  type MemoryProbe,
   type ProcessLauncher,
   type Sandbox,
   type SandboxAvailability,
@@ -104,7 +108,14 @@ import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
 
 /** The ports the daemon composes. */
 export type PortName =
-  'Store' | 'SecretVault' | 'Clock' | 'Vcs' | 'ProcessLauncher' | 'Sandbox' | 'BrowserSession';
+  | 'Store'
+  | 'SecretVault'
+  | 'Clock'
+  | 'Vcs'
+  | 'ProcessLauncher'
+  | 'Sandbox'
+  | 'BrowserSession'
+  | 'MemoryProbe';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -126,6 +137,8 @@ export interface ComposeOverrides {
   readonly vcs?: Vcs;
   /** Starts the adapter processes (`PosixProcessLauncher` by default; none on Windows yet). */
   readonly launcher?: ProcessLauncher;
+  /** Reads the free RAM for `pool.admission.mode: ram` (`PosixMemoryProbe` by default). */
+  readonly memory?: MemoryProbe;
   /**
    * The browser of the agent (P6, 5.19). By default the Playwright adapter over a Chromium that
    * is a child of the launcher; tests hand in `FakeBrowserSession`.
@@ -178,6 +191,8 @@ export interface Composition {
    * the Job Object is wired): the execution of attempts is off there.
    */
   readonly launcher: ProcessLauncher | undefined;
+  /** Reads the free RAM; the session pool asks it only when `pool.admission.mode` is not `slots`. */
+  readonly memory: MemoryProbe;
   readonly transport: SessionTransport;
   /**
    * Layer 3, ready to use: `undefined` when `sandbox.mode` is `off`, the platform has no adapter
@@ -262,6 +277,12 @@ function storeSection(config: DaemonConfig, paths: DataPaths): SqliteStoreConfig
 export function defaultVcs(): Vcs {
   checkAdapterRange(GIT_VCS_ADAPTER, 'Vcs', VCS_PORT_VERSION);
   return new GitVcs();
+}
+
+/** The memory probe of this platform: `/proc/meminfo` on Linux, `os.freemem()` elsewhere [N]. */
+export function defaultMemoryProbe(): MemoryProbe {
+  checkAdapterRange(POSIX_MEMORY_PROBE_ADAPTER, 'MemoryProbe', MEMORY_PROBE_PORT_VERSION);
+  return new PosixMemoryProbe();
 }
 
 /** The process launcher of this platform, or `undefined` where there is none yet. */
@@ -446,6 +467,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
 
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
+    const memory = overrides.memory ?? defaultMemoryProbe();
     const transport = overrides.transport ?? new AcpTransport();
     const sandbox = await composeSandbox(config, paths, overrides, logger);
     const browser = overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger);
@@ -461,6 +483,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       adapters,
       vcs,
       launcher,
+      memory,
       transport,
       sandbox,
       browser,
