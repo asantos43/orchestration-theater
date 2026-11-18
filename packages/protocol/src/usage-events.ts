@@ -50,7 +50,11 @@ export const UsageRecordedPayloadSchema = z.strictObject({
  * (`usage.cost_source: provider_billing` has no adapter yet, so the service works as
  * `client_then_pricing`), `unknown_profile_kind` (a profile the store does not know; its usage is
  * taken as a subscription) and `cap_question_failed` (asking the Producer about a spent spending cap
- * failed, so the cap is skipped as in an unattended run).
+ * failed, so the cap is skipped as in an unattended run). The three of the  check (P12, N118):
+ *  and  (the adapter was enabled and could not start, so
+ * the daemon works with the signals alone),  (a read of one profile failed), and
+ *  (the consumption  read for a profile and a period differs from the
+ * one the `UsageService` recorded by more than the tolerance; `profile` names it).
  */
 export const USAGE_NOTICE_KINDS = [
   'bad_token_count',
@@ -59,6 +63,10 @@ export const USAGE_NOTICE_KINDS = [
   'provider_billing_unavailable',
   'unknown_profile_kind',
   'cap_question_failed',
+  'ccusage_unavailable',
+  'ccusage_wrong_version',
+  'ccusage_failed',
+  'ccusage_divergence',
 ] as const;
 export type UsageNoticeKind = (typeof USAGE_NOTICE_KINDS)[number];
 

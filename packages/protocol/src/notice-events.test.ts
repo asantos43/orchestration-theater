@@ -55,6 +55,14 @@ describe('the notice events of P24', () => {
     const notice = { kind: 'bad_cost', sessionId: 'S1', profile: null };
     expect(validateEventPayload('usage.notice', 1, notice)).toEqual(notice);
     const full = { ...notice, kind: 'cap_question_failed', profile: 'a/b', detail: 'x' };
+    for (const kind of [
+      'ccusage_unavailable',
+      'ccusage_wrong_version',
+      'ccusage_failed',
+      'ccusage_divergence',
+    ]) {
+      expect(validateEventPayload('usage.notice', 1, { ...full, kind })).toEqual({ ...full, kind });
+    }
     expect(validateEventPayload('usage.notice', 1, full)).toEqual(full);
     expect(() => validateEventPayload('usage.notice', 1, { ...notice, kind: 'x' })).toThrow();
     expect(() =>

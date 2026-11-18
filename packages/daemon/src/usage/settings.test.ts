@@ -17,6 +17,7 @@ describe('usage.* and pricing keys [proposta]', () => {
       cost_source: 'client_then_pricing',
       api_gateway: 'off',
       monthly_price_usd: {},
+      ccusage: expect.objectContaining({ enabled: false }) as unknown,
     });
     expect(config.pricing).toEqual({});
     const settings = usageSettingsOf(config);

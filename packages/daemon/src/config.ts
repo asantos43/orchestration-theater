@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
+import { isAbsolute } from 'node:path';
 import {
   DEFAULT_DIRECTIVE_TIMEZONE,
   DEFAULT_SUMMARY_MESSAGES,
@@ -168,6 +169,20 @@ export const USAGE_COST_SOURCE_MODES = [
   'pricing_table',
   'provider_billing',
 ] as const;
+/**
+ * [proposta] `usage.ccusage.command_mode` (P12, N118): how the `ccusage` executable is found.
+ * `explicit` (default) takes `command` as an absolute path and looks nowhere else; `path` takes
+ * `command` (default `ccusage`) as a name to search in `PATH`, which the owner has to choose.
+ */
+export const USAGE_CCUSAGE_COMMAND_MODES = ['explicit', 'path'] as const;
+/** [proposta] `usage.ccusage.pricing`: `offline` (default) never lets the tool call the network. */
+export const USAGE_CCUSAGE_PRICING_MODES = ['offline', 'online'] as const;
+/**
+ * [proposta] `usage.ccusage.compare`: what is set against the `UsageService`. `tokens` (default)
+ * compares input plus output tokens; `tokens_and_cost` also compares the cost, when both sides know it.
+ */
+export const USAGE_CCUSAGE_COMPARE_MODES = ['tokens', 'tokens_and_cost'] as const;
+
 /** `usage.api_gateway` (5.6): a gateway that meters the API traffic. Off in v1; no other mode yet. */
 export const USAGE_API_GATEWAY_MODES = ['off'] as const;
 
@@ -1529,6 +1544,53 @@ export const DaemonConfigSchema = z
         cost_source: z.enum(USAGE_COST_SOURCE_MODES).default('client_then_pricing'),
         api_gateway: z.enum(USAGE_API_GATEWAY_MODES).default('off'),
         monthly_price_usd: z.record(z.string().min(1), z.number().gt(0)).default({}),
+        /**
+         * The `ccusage` check (P12, N118: version 20.0.48 as a CLI of level C, a separate process the
+         * owner installs). Off by default. When on, it reads each profile directory of the three
+         * clients with the directory variables always set (never the logs of the owner's own
+         * clients) and sets the figures against the `UsageService`; a gap above `tolerance` is a
+         * warning and a `usage.notice`. Everything here is [proposta].
+         */
+        ccusage: z
+          .strictObject({
+            enabled: z.boolean().default(false),
+            command_mode: z.enum(USAGE_CCUSAGE_COMMAND_MODES).default('explicit'),
+            /** An absolute path (`explicit`) or a name (`path`, default `ccusage`). */
+            command: z.string().min(1).optional(),
+            /** The version `--version` must print; another one keeps the check off. */
+            version: z
+              .string()
+              .regex(/^\d+\.\d+\.\d+$/, 'expected a version such as 20.0.48')
+              .default('20.0.48'),
+            timeout: DurationSchema.prefault('30s'),
+            pricing: z.enum(USAGE_CCUSAGE_PRICING_MODES).default('offline'),
+            compare: z.enum(USAGE_CCUSAGE_COMPARE_MODES).default('tokens'),
+            /** The gap, as a fraction of the larger figure, above which the two disagree. */
+            tolerance: z.number().min(0).max(1).default(0.1),
+            /** A gap below these floors is never a divergence (a day with two turns). */
+            min_tokens: z.int().min(0).default(1000),
+            min_usd: z.number().min(0).default(0.5),
+            /** How often the profiles are compared; `0` compares once, at start-up. */
+            interval: DurationSchema.or(z.literal(0)).prefault('1h'),
+            /** How many days back (UTC, today included) each comparison reaches. */
+            window_days: z.int().min(1).max(90).default(7),
+          })
+          .refine(
+            (c) =>
+              !c.enabled ||
+              c.command_mode === 'path' ||
+              (c.command !== undefined && isAbsolute(c.command)),
+            {
+              path: ['command'],
+              message:
+                'usage.ccusage.command must be an absolute path when command_mode is explicit',
+            },
+          )
+          .refine((c) => c.command_mode === 'explicit' || !/[\\/]/.test(c.command ?? ''), {
+            path: ['command'],
+            message: 'usage.ccusage.command must be a bare name when command_mode is path',
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**

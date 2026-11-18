@@ -21,6 +21,7 @@ const alias = {
   '@otheater/adapter-client-codex': `${import.meta.dirname}/packages/adapters/client-codex/src/index.ts`,
   '@otheater/adapter-client-opencode': `${import.meta.dirname}/packages/adapters/client-opencode/src/index.ts`,
   '@otheater/adapter-local-ollama': `${import.meta.dirname}/packages/adapters/local-ollama/src/index.ts`,
+  '@otheater/adapter-usage-ccusage': `${import.meta.dirname}/packages/adapters/usage-ccusage/src/index.ts`,
   '@otheater/adapter-local-llama-cpp': `${import.meta.dirname}/packages/adapters/local-llama-cpp/src/index.ts`,
   '@otheater/adapter-browser-playwright': `${import.meta.dirname}/packages/adapters/browser-playwright/src/index.ts`,
   '@otheater/adapter-sandbox-srt': `${import.meta.dirname}/packages/adapters/sandbox-srt/src/index.ts`,

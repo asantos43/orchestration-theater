@@ -65,3 +65,33 @@ export function usageSettingsOf(config: Pick<DaemonConfig, 'usage' | 'pricing'>)
     pricing: mergePricing(builtInPricing(), overrides),
   };
 }
+
+/**
+ * What the `ccusage` check takes of `usage.ccusage` (P12, N118, [proposta]). The adapter's own
+ * options (command, mode, version, timeout, pricing) are read in `compose.ts`, where it is built.
+ */
+export interface UsageAuditSettings {
+  /** What is compared: input plus output tokens, and also the cost with `tokens_and_cost`. */
+  readonly compare: DaemonConfig['usage']['ccusage']['compare'];
+  /** The gap, as a fraction of the larger figure, above which the two figures disagree. */
+  readonly tolerance: number;
+  /** A gap below these floors is never a divergence. */
+  readonly minTokens: number;
+  readonly minUsd: number;
+  /** Milliseconds between comparisons; `0` compares once, at start-up. */
+  readonly intervalMs: number;
+  /** How many UTC days back, today included, a comparison reaches. */
+  readonly windowDays: number;
+}
+
+export function usageAuditSettingsOf(config: Pick<DaemonConfig, 'usage'>): UsageAuditSettings {
+  const c = config.usage.ccusage;
+  return {
+    compare: c.compare,
+    tolerance: c.tolerance,
+    minTokens: c.min_tokens,
+    minUsd: c.min_usd,
+    intervalMs: c.interval,
+    windowDays: c.window_days,
+  };
+}

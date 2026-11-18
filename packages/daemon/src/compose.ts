@@ -39,6 +39,7 @@ import {
   SqliteStoreConfigSchema,
   type SqliteStoreConfig,
 } from '@otheater/adapter-store-sqlite';
+import { CcusageSource } from '@otheater/adapter-usage-ccusage';
 import {
   EncryptedFileVault,
   EncryptedFileVaultConfigSchema,
@@ -62,6 +63,7 @@ import {
   SANDBOX_PORT_VERSION,
   SECRET_VAULT_PORT_VERSION,
   STORE_PORT_VERSION,
+  USAGE_SOURCE_PORT_VERSION,
   VCS_PORT_VERSION,
   type Adapter,
   type BrowserSession,
@@ -78,6 +80,7 @@ import {
   type SecretVault,
   type SessionTransport,
   type Store,
+  type UsageSource,
   type StoreBackupOptions,
   type StoreBackupResult,
   type Vcs,
@@ -117,7 +120,8 @@ export type PortName =
   | 'ProcessLauncher'
   | 'Sandbox'
   | 'BrowserSession'
-  | 'MemoryProbe';
+  | 'MemoryProbe'
+  | 'UsageSource';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -153,6 +157,11 @@ export interface ComposeOverrides {
    * `'none'` runs the daemon without it, whatever `sandbox.mode` says.
    */
   readonly sandbox?: Sandbox | 'none';
+  /**
+   * The source of the `ccusage` check (P12, N118). Used only when `usage.ccusage.enabled`; by
+   * default the `CcusageSource` adapter over the binary the config names. Tests hand in a fake.
+   */
+  readonly usageSource?: UsageSource;
   /**
    * The code host the plays deliver to (P8). [proposta] There is no default: the GitHub adapter
    * is not a dependency of the daemon package yet, so without this instance a play runs up to
@@ -209,6 +218,11 @@ export interface Composition {
   readonly browser: BrowserSession | undefined;
   /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
   readonly codeHost: CodeHost | undefined;
+  /**
+   * The `ccusage` source (P12, N118): set only when `usage.ccusage.enabled` and the adapter could
+   * be built. Whether it works (the version) is checked when the daemon starts the audit.
+   */
+  readonly usageSource: UsageSource | undefined;
   /**
    * P24 (N146): the sink of the situations that are also events (over the validated `store`).
    * Closed until the daemon calls `open()` after `daemon.started`; wait for `idle()` before closing.
@@ -427,6 +441,55 @@ async function composeSandbox(
   });
 }
 
+/**
+ * The `ccusage` source, when `usage.ccusage.enabled` (P12, N118): the adapter over the executable
+ * the config names, run with a home folder of the daemon's own (`<data>/scratch/ccusage-home`) so it
+ * never sees the owner's. A source that cannot be built is a warning and an event, not a failure of
+ * the start-up: the daemon works with the signals alone.
+ */
+function composeUsageSource(
+  config: DaemonConfig,
+  paths: DataPaths,
+  overrides: ComposeOverrides,
+  adapters: AdapterRecord[],
+  logger: Logger,
+  situations: SituationSink,
+): UsageSource | undefined {
+  const settings = config.usage.ccusage;
+  if (!settings.enabled) return undefined;
+  try {
+    let source: UsageSource;
+    if (overrides.usageSource !== undefined) {
+      source = overrides.usageSource;
+      adapters.push(overrideRecord('UsageSource', USAGE_SOURCE_PORT_VERSION));
+    } else {
+      source = new CcusageSource({
+        command: settings.command ?? 'ccusage',
+        commandMode: settings.command_mode,
+        homeDir: resolve(paths.scratch, 'ccusage-home'),
+        requiredVersion: settings.version,
+        timeoutMs: settings.timeout,
+        pricing: settings.pricing,
+      });
+      adapters.push(checkAdapterRange(source, 'UsageSource', USAGE_SOURCE_PORT_VERSION));
+    }
+    return source;
+  } catch (error) {
+    const detail = situationText(error, 400);
+    logger.warn(
+      { err: situationText(error, 200) },
+      'ccusage is enabled but its adapter was not built: the daemon works with the signals alone',
+    );
+    situations.record('usage.notice', {
+      kind: 'ccusage_unavailable',
+      sessionId: null,
+      profile: null,
+      ...(detail === null ? {} : { detail }),
+    });
+    return undefined;
+  }
+}
+
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
   return { port, id: 'override', range: `^${portVersion}`, portVersion };
 }
@@ -516,6 +579,8 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const browser =
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
 
+    const usageSource = composeUsageSource(config, paths, overrides, adapters, logger, situations);
+
     const opened = { store, vault, sandbox, browser, situations };
     let closing: Promise<void> | undefined;
     return {
@@ -532,6 +597,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       sandbox,
       browser,
       codeHost: overrides.codeHost,
+      usageSource,
       situations,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
