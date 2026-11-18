@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { CodexQuotaProbe } from '@otheater/adapter-client-codex';
+import { join } from 'node:path';
 import {
   PROCESS_LAUNCHER_PORT_VERSION,
   type AdapterImplements,
@@ -8,13 +8,18 @@ import {
   type LaunchOptions,
   type ProcessLauncher,
 } from '@otheater/core';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import { FakeClock, FakeSessionTransport, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
+import { productionClients } from '../compose.js';
+import { parseConfig } from '../config.js';
 import { createSilentLogger } from '../logger.js';
+import { dataPaths } from '../paths.js';
+import { makeTempDataDir } from '../test-helpers.js';
 import { QuotaService } from './service.js';
 
 const MIN = 60_000;
-const T0 = Date.UTC(2026, 10, 18, 12, 0, 0);
+// The probe stamps readings with the wall clock, so the fake clock starts at it.
+const T0 = Date.now();
 const WORK = 'codex/work';
 
 type Answer = (method: string, id: number) => object | undefined;
@@ -129,36 +134,49 @@ const loggedOut: Answer = (method, id) =>
     ? { id, error: { code: -32000, message: 'Authentication required' } }
     : { id, result: {} };
 
-function build(answer: Answer) {
+/** The probe is the one `productionClients` builds, as the daemon composes it. */
+async function build(answer: Answer) {
   const clock = new FakeClock(T0);
   const launcher = new ScriptedLauncher(answer);
-  const probe = new CodexQuotaProbe({
+  const tmp = await makeTempDataDir();
+  cleanups.push(tmp.dispose);
+  const paths = dataPaths(tmp.dir);
+  const config = parseConfig(
+    'security:\n  unenforced: allow\nclients:\n  codex:\n    quota: { timeout: 2s }\n',
+  );
+  const codex = productionClients(config, {
+    env: {},
+    findExecutable: (command) => `/bin/${command}`,
+  })({
     launcher,
-    baseEnv: {},
-    profileDir: (ref) => `/data/profiles/${ref.client}/${ref.profile}`,
-    timeoutMs: 2_000,
-    now: () => clock.now(),
-  });
+    clock,
+    transport: new FakeSessionTransport(),
+    paths,
+    logger: createSilentLogger(),
+  }).find((adapter) => adapter.id === 'codex');
+  if (codex === undefined) throw new Error('no codex adapter');
   const service = new QuotaService({
     store: new InMemoryStore({ clock }),
     clock,
     settings: { nearLimitAt: 0.8, staleAfterMs: 10 * MIN, delivery: 'poll', pollEveryMs: 5 * MIN },
     logger: createSilentLogger(),
   });
-  service.addProbe('codex', probe);
+  service.addProbe('codex', codex.quota);
   started.push(service);
-  return { clock, launcher, service };
+  return { clock, launcher, service, profileDir: join(paths.profiles, 'codex', 'work') };
 }
 
 const started: QuotaService[] = [];
+const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
   await Promise.all(started.splice(0).map((service) => service.stop()));
+  await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
 describe('the Codex quota probe under the QuotaService', () => {
   it('makes a profile with a login ok, with the windows and their resets', async () => {
-    const { service, launcher } = build(loggedIn(10, 30));
+    const { service, launcher, profileDir } = await build(loggedIn(10, 30));
 
     const status = await service.refresh(WORK);
 
@@ -171,13 +189,13 @@ describe('the Codex quota probe under the QuotaService', () => {
     expect(launcher.launched[0]).toMatchObject({
       cmd: 'codex',
       args: ['app-server'],
-      cwd: '/data/profiles/codex/work',
-      env: { CODEX_HOME: '/data/profiles/codex/work' },
+      cwd: profileDir,
+      env: { CODEX_HOME: profileDir },
     });
   });
 
   it('makes a profile at 100% exhausted until the reset the client reports', async () => {
-    const { service } = build(loggedIn(100, 30));
+    const { service } = await build(loggedIn(100, 30));
 
     const status = await service.refresh(WORK);
 
@@ -187,7 +205,7 @@ describe('the Codex quota probe under the QuotaService', () => {
   });
 
   it('keeps a profile with no login unknown, never exhausted, and ends the process', async () => {
-    const { service, launcher } = build(loggedOut);
+    const { service, launcher } = await build(loggedOut);
 
     const status = await service.refresh(WORK);
 
@@ -199,7 +217,7 @@ describe('the Codex quota probe under the QuotaService', () => {
 
   it('lets a reading age into unknown when the next read finds no login', async () => {
     let answer: Answer = loggedIn(10, 30);
-    const { service, clock } = build((method, id) => answer(method, id));
+    const { service, clock } = await build((method, id) => answer(method, id));
     expect((await service.refresh(WORK)).state).toBe('ok');
 
     answer = loggedOut;

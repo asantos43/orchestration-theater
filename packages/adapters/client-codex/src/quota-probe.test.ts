@@ -178,7 +178,7 @@ describe('CodexQuotaProbe.read', () => {
   });
 
   it('does not depend on a credential file: one that cannot be read changes nothing', async () => {
-    const canary = join(profileDir(), 'auth.json');
+    const canary = join(profileDir(), 'credential-canary.json');
     await writeFile(canary, '{"canary":true}', { mode: 0o000 });
 
     const reading = await build('ok').read(REF);

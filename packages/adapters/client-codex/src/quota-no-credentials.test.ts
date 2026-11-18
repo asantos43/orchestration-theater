@@ -61,7 +61,7 @@ describe('the quota probe and the credentials of the profile', () => {
   it('opens no file of the profile but its own config.toml, whatever else the profile holds', async () => {
     const dir = join(root, 'profiles', 'work');
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, 'auth.json'), '{"canary":"never-read"}');
+    await writeFile(join(dir, 'credential-canary.json'), '{"canary":"never-read"}');
     await writeFile(join(dir, 'client-state.bin'), 'state');
     const server = await writeFakeAppServer(join(root, 'bin'));
     const adapter = new CodexAdapter({
@@ -83,7 +83,9 @@ describe('the quota probe and the credentials of the profile', () => {
       expect(dirname(path)).toBe(dir);
       expect(basename(path)).toMatch(/^config\.toml(\.[0-9a-f]+\.tmp)?$/u);
     }
-    expect(await readFile(join(dir, 'auth.json'), 'utf8')).toBe('{"canary":"never-read"}');
+    expect(await readFile(join(dir, 'credential-canary.json'), 'utf8')).toBe(
+      '{"canary":"never-read"}',
+    );
     expect(launcher.aliveGroups()).toBe(0);
   });
 

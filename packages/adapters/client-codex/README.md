@@ -78,7 +78,7 @@ profile directory as the working directory, sends `initialize`, `initialized` an
 `account/rateLimits/read`, and ends the process tree (process group) when it has the answer, when
 the timeout passes, or on dispose. It never calls `account/read` nor `account/rateLimits/consume*`,
 and no code of the probe imports `node:fs`: a test checks that only `config.toml` of the profile is
-touched (by `prepareProfile`) and that `auth.json` is not. The profile directory comes from the
+touched (by `prepareProfile`) and that a credential file next to it is not. The profile directory comes from the
 `profileDir` option (the port's `ProfileRef` carries none); the daemon passes the one of the
 profile registry. Without it the probe refuses with `AdapterUnavailable`.
 
