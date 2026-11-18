@@ -149,6 +149,24 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com a `MemoryProbe` falsa: com RAM abaixo do mínimo, a sessão espera e entra quando a RAM sobe; com `slots: 2` na instância local, a terceira sessão do perfil espera; uma vaga reservada ao Diretor não é dada a um Ator; `mode: slots` mantém o comportamento de hoje; o gancho de cota recusa quando o falso diz "esgotado".
 
+**Como ficou (2026-11-18):**
+- **Porta e sonda** [V, testes locais]: `MemoryProbe` em `packages/core/src/ports/memory-probe.ts` (versão `0.1.0`; `availableMb()` e `treeMb(pid)` opcional, nenhum rejeita) e `FakeMemoryProbe` em `core/testing`. A implementação `PosixMemoryProbe` (`adapters/platform-posix`) lê `MemAvailable` de `/proc/meminfo` e soma o PSS da árvore por `smaps_rollup`. Fora do Linux ela usa `os.freemem()` **[N]**: não foi testada em macOS nem Windows. A porta ainda não está na tabela da §5.18 **[proposta]**.
+- **Chaves novas** (todas **[proposta]**; o dono decide qualquer padrão diferente):
+  - `pool.admission.mode: slots | ram | ram_and_quota`, padrão `slots` (o comportamento de antes do P4);
+  - `pool.admission.min_free_mb`, padrão `2048`;
+  - `pool.admission.recheck`, padrão `5s` (de quanto em quanto tempo a sessão que espera olha de novo a RAM e a cota);
+  - `pool.admission.unknown_ram: admit | wait`, padrão `admit` (o que fazer quando a sonda não sabe a RAM);
+  - `pool.<cliente>.session_mb` (número ou `auto`), padrão **320** para o Claude Code, **150** para o Codex e **520** para o OpenCode. Os números saem da medição do nível `k` de 2026-11-16 (PSS por sessão após um prompt, processo sozinho: 313,6, 150,1 e 521,9 MB) arredondados para cima [V, N74]. Cliente fora da tabela: 512.
+- **Admissão** [V, `execution/admission.test.ts`]: em `slots` a fila é servida de forma síncrona e a sonda nunca é lida; em `ram` e `ram_and_quota` a fila é FIFO, a sessão que não cabe espera sem erro, a RAM de sessões ainda abrindo é reservada (a `MemAvailable` ainda não caiu por elas), uma sessão grande que espera por RAM não é ultrapassada por pequenas, e o pool olha de novo ao fim de cada sessão, a cada `recheck` e em `pool.wake()`. Modo `ram` ou `ram_and_quota` sem sonda é `InvalidInput` na construção.
+- **Cota** [V]: gancho `canAdmit(perfil)` (padrão: sempre sim, até o P15 ligá-lo ao `QuotaService`). É consultado uma vez por perfil por rodada, só em `ram_and_quota`; uma exceção conta como "não". Um perfil sem cota não segura os outros.
+- **Modelo local** [V, no pool]: `slots` da instância viram a vaga do perfil, `reserve_for_director` e `reserve_when` seguem a §5.9; o Diretor (`PoolRequest.director`, passado por `orchestration/director.ts`) pode usar as vagas reservadas e o Ator não. A memória da instância não entra na conta por sessão.
+- **`session_mb: auto`** [V no teste com sonda falsa]: depois que um processo compartilhado recebe uma sessão, o pool mede a árvore e guarda a maior parcela por sessão. Cliente de um processo por sessão (Claude Code) não expõe o pid ao pool, então `auto` fica no padrão dele **[N]**.
+- **Duas filas** [V]: o semáforo de comandos pesados (`tools/semaphore.ts`) é outra instância e não se mistura com a fila do pool (teste dedicado).
+- **Ainda [N] / em aberto:**
+  - o daemon não liga `localInstance` nem a lista de perfis do Diretor (`directorProfiles`): não existe ainda a chave `profiles.*.local` no daemon. O pool e os testes cobrem o mecanismo; falta a ligação, que depende de decisão sobre onde o bloco `local` mora;
+  - o padrão `pool.admission.mode: slots` é do dono; trocar para `ram` ou `ram_and_quota` muda o comportamento;
+  - nenhuma rodada real com RAM de verdade foi feita (só a leitura do `/proc/meminfo` por teste com texto de exemplo).
+
 ### P5. `QuotaService`: sinais, estado do perfil e frescor (§5.6)
 
 **Escopo:**
