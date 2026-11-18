@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { BudgetInFlight, BudgetOnExceeded, BudgetUnknownCost } from '../budget-config.js';
+import type {
+  BudgetInFlight,
+  BudgetOnCapChange,
+  BudgetOnExceeded,
+  BudgetUnknownCost,
+} from '../budget-config.js';
 import type { DaemonConfig } from '../config.js';
 
 /** The caps of one subject (a profile or an Executor): what is spent per day and per month. */
@@ -24,6 +29,8 @@ export interface BudgetSettings {
   readonly timezone: string;
   /** `budget.unknown_cost`. */
   readonly unknownCost: BudgetUnknownCost;
+  /** `budget.on_cap_change`. */
+  readonly onCapChange: BudgetOnCapChange;
   /** `budget.ask_timeout` in ms: how long `on_exceeded: ask` waits before it becomes `skip`. */
   readonly askTimeoutMs: number;
   /** `profiles.<id>.budget`, by complete profile id. */
@@ -58,6 +65,7 @@ export function budgetSettingsOf(
   return {
     timezone: config.budget.timezone,
     unknownCost: config.budget.unknown_cost,
+    onCapChange: config.budget.on_cap_change,
     askTimeoutMs: config.budget.ask_timeout,
     profiles,
     executors,

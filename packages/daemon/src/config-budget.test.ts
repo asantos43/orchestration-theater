@@ -3,6 +3,7 @@ import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   BUDGET_IN_FLIGHT_MODES,
+  BUDGET_ON_CAP_CHANGE_MODES,
   BUDGET_ON_EXCEEDED_MODES,
   BUDGET_UNKNOWN_COST_MODES,
 } from './budget-config.js';
@@ -29,6 +30,7 @@ executors:
 budget:
   timezone: UTC
   unknown_cost: block
+  on_cap_change: keep
   ask_timeout: 5m
 `;
 
@@ -40,6 +42,7 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
     expect(config.budget).toEqual({
       timezone: 'America/Sao_Paulo',
       unknown_cost: 'ignore',
+      on_cap_change: 'release',
       ask_timeout: 600_000,
     });
   });
@@ -67,7 +70,12 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
       daily_usd: 2,
       warn_at: [0.8],
     });
-    expect(config.budget).toEqual({ timezone: 'UTC', unknown_cost: 'block', ask_timeout: 300_000 });
+    expect(config.budget).toEqual({
+      timezone: 'UTC',
+      unknown_cost: 'block',
+      on_cap_change: 'keep',
+      ask_timeout: 300_000,
+    });
   });
 
   it('keeps the fixed keys of profiles working beside the profiles', () => {
@@ -78,7 +86,7 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
     expect(Object.keys(config.profiles.entries)).toEqual(['claude-code/api']);
   });
 
-  it('takes every mode of on_exceeded, in_flight and unknown_cost', () => {
+  it('takes every mode of on_exceeded, in_flight, unknown_cost and on_cap_change', () => {
     for (const mode of BUDGET_ON_EXCEEDED_MODES) {
       const text = `profiles:\n  codex/api:\n    budget:\n      daily_usd: 1\n      on_exceeded: ${mode}\n`;
       expect(parseConfig(text).profiles.entries['codex/api']?.budget?.on_exceeded).toBe(mode);
@@ -89,6 +97,9 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
     }
     for (const mode of BUDGET_UNKNOWN_COST_MODES) {
       expect(parseConfig(`budget:\n  unknown_cost: ${mode}\n`).budget.unknown_cost).toBe(mode);
+    }
+    for (const mode of BUDGET_ON_CAP_CHANGE_MODES) {
+      expect(parseConfig(`budget:\n  on_cap_change: ${mode}\n`).budget.on_cap_change).toBe(mode);
     }
   });
 
@@ -107,6 +118,7 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
     expect(() => parseConfig(profile('warn_at: [0]'))).toThrow(InvalidInput);
     expect(() => parseConfig(profile('weekly_usd: 3'))).toThrow(InvalidInput);
     expect(() => parseConfig('budget:\n  unknown_cost: guess\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('budget:\n  on_cap_change: maybe\n')).toThrow(InvalidInput);
     expect(() => parseConfig('budget:\n  timezone: Mars/Olympus\n')).toThrow(InvalidInput);
     expect(() => parseConfig('budget:\n  ask_timeout: soon\n')).toThrow(InvalidInput);
   });
@@ -129,6 +141,7 @@ describe('profiles.<id>.budget, executors.<id>.budget and budget.* of the config
     expect(settings).toMatchObject({
       timezone: 'UTC',
       unknownCost: 'block',
+      onCapChange: 'keep',
       askTimeoutMs: 300_000,
     });
     expect(settings.profiles.get('claude-code/api')).toEqual({

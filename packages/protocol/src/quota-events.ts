@@ -69,6 +69,11 @@ export const QuotaExhaustedPayloadSchema = z.strictObject({
  */
 export const RESTORED_REASONS = ['reset', 'reading', 'recheck'] as const;
 export const RESTORED_STATES = ['ok', 'near_limit', 'unknown'] as const;
+/**
+ * Why a spending cap let the profile go (P11b, [proposta]): the reasons of a quota, and `config`,
+ * when `budget.on_cap_change: release` found the cap raised or removed in the configuration.
+ */
+export const BUDGET_RESTORED_REASONS = [...RESTORED_REASONS, 'config'] as const;
 
 export const QuotaRestoredPayloadSchema = z.strictObject({
   profile,
@@ -85,7 +90,7 @@ export const QuotaRestoredPayloadSchema = z.strictObject({
 export const BudgetRestoredPayloadSchema = z.strictObject({
   profile,
   state: z.enum(RESTORED_STATES),
-  reason: z.enum(RESTORED_REASONS),
+  reason: z.enum(BUDGET_RESTORED_REASONS),
 });
 
 /** The periods of a spending cap (architecture 5.6): the calendar day and the calendar month. */
@@ -108,4 +113,22 @@ export const BudgetWarningPayloadSchema = z.strictObject({
   spentUsd: z.number().min(0),
   limitUsd: z.number().gt(0),
   periodEndsAt: epochMs,
+});
+
+/**
+ * `budget.exceeded` (P11b, [proposta]): the spending of a cap passed its limit. It is written once
+ * per cap and period (and per limit, so a cap that was raised and spent again is told again).
+ * `executor` is the Executor name when the cap is `executors.<id>.budget` (the profile is then the
+ * one it belongs to) and null when it is the profile's own cap, which also puts the profile in
+ * `exhausted(budget)`. `spentUsd` and `limitUsd` are US$ (`spentUsd` is below the limit when
+ * `budget.unknown_cost: block` made the cap spent); `endsAt` is when the period turns and the
+ * count starts over.
+ */
+export const BudgetExceededPayloadSchema = z.strictObject({
+  profile,
+  executor: z.string().min(1).max(256).nullable(),
+  period: z.enum(BUDGET_PERIODS),
+  spentUsd: z.number().min(0),
+  limitUsd: z.number().gt(0),
+  endsAt: epochMs,
 });
