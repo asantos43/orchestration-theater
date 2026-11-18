@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { Profile, SecretVault, Store } from '@otheater/core';
+import {
+  formatProfileId,
+  type Profile,
+  type ProfileRef,
+  type SecretVault,
+  type Store,
+} from '@otheater/core';
 import type { Logger } from '../logger.js';
 
 /**
@@ -67,4 +73,45 @@ export function profileSecretEnv(
     }
     return { [apiKeyEnvName(record.provider, options.apiKeyEnv)]: secret.reveal() };
   };
+}
+
+export interface ProfileLookupOptions {
+  readonly store: Pick<Store, 'profiles'>;
+  readonly vault: SecretVault;
+  readonly logger?: Pick<Logger, 'warn'>;
+}
+
+/**
+ * The API key of a profile for a call the DAEMON makes itself (the MiniMax quota probe, P8), as
+ * opposed to {@link profileSecretEnv}, which puts it in the environment of an Executor process.
+ * `undefined` for an unknown profile, a `removed` one, one with no `secretRef` (a subscription
+ * profile: its login lives in the client, not in the vault) or a key that is not in the vault. A
+ * locked vault rejects with `VaultLocked`; the caller treats that as "no reading". The value is
+ * never logged: the caller puts it in one header and drops it.
+ */
+export function profileApiKey(
+  options: ProfileLookupOptions,
+): (profile: ProfileRef) => Promise<string | undefined> {
+  return async (ref) => {
+    const record = await options.store.profiles.get(formatProfileId(ref));
+    if (record === undefined || record.state === 'removed' || record.secretRef === null) {
+      return undefined;
+    }
+    const secret = await options.vault.get(record.secretRef);
+    if (secret === undefined) {
+      options.logger?.warn(
+        { profile: record.id },
+        'the API key of the profile is not in the vault',
+      );
+      return undefined;
+    }
+    return secret.reveal();
+  };
+}
+
+/** The provider of a profile (`minimax`, `openai`, ...), or `undefined` when it is not registered. */
+export function profileProvider(
+  options: Pick<ProfileLookupOptions, 'store'>,
+): (profile: ProfileRef) => Promise<string | undefined> {
+  return async (ref) => (await options.store.profiles.get(formatProfileId(ref)))?.provider;
 }

@@ -10,6 +10,7 @@ import type {
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
 import type { McpAccess } from '../mcp/access.js';
+import type { QuotaService } from '../quota/service.js';
 import type { CanAdmit, LocalInstanceResolver } from './admission.js';
 import { AttemptRunner } from './attempt-runner.js';
 import { SessionPool } from './pool.js';
@@ -30,6 +31,8 @@ export interface ExecutionOptions {
   readonly resolver?: AttemptResolver;
   /** The framework MCP server, which hands each attempt's session its tools (5.3). */
   readonly mcp?: McpAccess;
+  /** The quota of the profiles: a limit error of a session goes to it (P17, 5.16). */
+  readonly quota?: Pick<QuotaService, 'ingestLimitHit'>;
   /** Free RAM for the admission of `pool.admission.mode: ram | ram_and_quota`. */
   readonly memory?: MemoryProbe;
   /** The quota hook of `ram_and_quota`; P15 wires it to the `QuotaService`. Default: always yes. */
@@ -69,6 +72,7 @@ export class Execution {
       worktreeRoot: options.worktreeRoot,
       logger: options.logger,
       ...(options.mcp === undefined ? {} : { mcp: options.mcp }),
+      ...(options.quota === undefined ? {} : { quota: options.quota }),
     });
   }
 

@@ -36,6 +36,13 @@ describe('quota.* events [proposta]', () => {
       reason: 'reset',
     };
     expect(validateEventPayload('quota.restored', 1, restored)).toEqual(restored);
+    const rechecked = { ...restored, cause: 'quota', reason: 'recheck' };
+    expect(validateEventPayload('quota.restored', 1, rechecked)).toEqual(rechecked);
+    const budget = { profile: 'claude-code/work', state: 'ok', reason: 'reset' };
+    expect(validateEventPayload('budget.restored', 1, budget)).toEqual(budget);
+    expect(() =>
+      validateEventPayload('budget.restored', 1, { ...budget, cause: 'budget' }),
+    ).toThrow();
   });
 
   it('refuse an unknown state, an unknown cause and extra fields', () => {

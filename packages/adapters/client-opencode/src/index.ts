@@ -56,5 +56,11 @@ export {
   type IsolatedHome,
   type ProfileFilesOptions,
 } from './profile.js';
-export { OpenCodeQuotaProbe } from './quota-probe.js';
+export {
+  LEDGER_WINDOW_TOKENS,
+  LEDGER_WINDOW_USD,
+  OpenCodeQuotaProbe,
+  type OpenCodeLedgerOptions,
+  type OpenCodeUsage,
+} from './quota-probe.js';
 export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';

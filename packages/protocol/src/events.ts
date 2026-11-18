@@ -12,11 +12,13 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  BudgetRestoredPayloadSchema,
   QuotaExhaustedPayloadSchema,
   QuotaNearLimitPayloadSchema,
   QuotaRestoredPayloadSchema,
   QuotaUpdatedPayloadSchema,
 } from './quota-events.js';
+import { UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
   PermissionAskedPayloadSchema,
@@ -400,6 +402,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: QuotaRestoredPayloadSchema,
   }),
+  defineEventType({
+    type: 'budget.restored',
+    schemaVersion: 1,
+    payload: BudgetRestoredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'usage.recorded',
+    schemaVersion: 1,
+    payload: UsageRecordedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -480,6 +492,8 @@ export type QuotaUpdatedPayload = DaemonEventPayloads['quota.updated'];
 export type QuotaNearLimitPayload = DaemonEventPayloads['quota.near_limit'];
 export type QuotaExhaustedPayload = DaemonEventPayloads['quota.exhausted'];
 export type QuotaRestoredPayload = DaemonEventPayloads['quota.restored'];
+export type BudgetRestoredPayload = DaemonEventPayloads['budget.restored'];
+export type UsageRecordedPayload = DaemonEventPayloads['usage.recorded'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

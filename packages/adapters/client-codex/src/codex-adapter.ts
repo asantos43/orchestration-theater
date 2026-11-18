@@ -38,9 +38,12 @@ import {
   CODEX_CONFIG_IDS,
   DEFAULT_ALLOWED_MODES,
   DEFAULT_INITIAL_MODE,
-  SANDBOX_OF,
+  INNER_SANDBOX_MODES,
+  fullAccessPolicy,
   modeRefusal,
   modePolicyOf,
+  sandboxOfMode,
+  type InnerSandboxMode,
   type ModePolicy,
 } from './modes.js';
 import { normalizeCodexError, normalizeCodexUpdate } from './normalize.js';
@@ -108,6 +111,13 @@ export interface CodexAdapterOptions extends ClientAdapterOptions {
   readonly allowedModes?: readonly string[];
   /** `clients.codex.credentials_store`: `file` (default), `keyring` or `auto`, written to the profile's `config.toml`. */
   readonly credentialsStore?: CredentialsStore;
+  /**
+   * `clients.codex.inner_sandbox` (N129): `keep` (default), `full_access_when_wrapped` or `nested`.
+   * See {@link InnerSandboxMode}. Only `full_access_when_wrapped` changes this adapter, and only
+   * when layer 3 is on (`sandbox` with fields and a `launchWrapper`); `nested` is carried out by the
+   * daemon when it asks the sandbox to wrap the process.
+   */
+  readonly innerSandbox?: InnerSandboxMode;
   /** `clients.codex.approval_policy`: `on-request` (default) or `untrusted`. */
   readonly approvalPolicy?: ApprovalPolicy;
   /** `clients.codex.suggested_effort`: the effort the setup assistant proposes. Default `high`. */
@@ -177,6 +187,7 @@ export class CodexAdapter extends ClientAdapter {
 
   readonly #command: { readonly cmd: string; readonly args: readonly string[] };
   readonly #modes: ModePolicy;
+  readonly #innerSandbox: InnerSandboxMode;
   readonly #credentialsStore: CredentialsStore;
   readonly #approvalPolicy: ApprovalPolicy;
   readonly #readSessionMode: ReadSessionMode | undefined;
@@ -188,10 +199,21 @@ export class CodexAdapter extends ClientAdapter {
     super(options);
     this.#command = options.command ?? DEFAULT_CODEX_COMMAND;
     this.processModel = options.processModel ?? 'multi-session';
-    this.#modes = modePolicyOf(
+    this.#innerSandbox = options.innerSandbox ?? 'keep';
+    if (!INNER_SANDBOX_MODES.includes(this.#innerSandbox)) {
+      throw new InvalidInput(`codex: inner_sandbox ${this.#innerSandbox} is not supported`);
+    }
+    const configured = modePolicyOf(
       options.initialMode ?? DEFAULT_INITIAL_MODE,
       options.allowedModes ?? DEFAULT_ALLOWED_MODES,
     );
+    // Without layer 3 `full_access_when_wrapped` is `keep`: no sandbox of any kind is never chosen.
+    const wrapped =
+      options.launchWrapper !== undefined && (options.sandbox?.fields.length ?? 0) > 0;
+    this.#modes =
+      this.#innerSandbox === 'full_access_when_wrapped' && wrapped
+        ? fullAccessPolicy(configured)
+        : configured;
     this.#credentialsStore = options.credentialsStore ?? 'file';
     this.#approvalPolicy = options.approvalPolicy ?? 'on-request';
     if (!CREDENTIALS_STORES.includes(this.#credentialsStore)) {
@@ -230,6 +252,16 @@ export class CodexAdapter extends ClientAdapter {
     });
   }
 
+  /** The `clients.codex.inner_sandbox` the adapter was built with. */
+  get innerSandbox(): InnerSandboxMode {
+    return this.#innerSandbox;
+  }
+
+  /** The mode every session of this adapter is created in and pinned to (after `inner_sandbox`). */
+  get initialMode(): string {
+    return this.#modes.initial;
+  }
+
   /** The same command for both transports: the headless one starts `codex` from `setup.args`. */
   protected command(): { cmd: string; args: string[] } {
     return { cmd: this.#command.cmd, args: [...this.#command.args] };
@@ -249,7 +281,7 @@ export class CodexAdapter extends ClientAdapter {
 
   /** Writes `config.toml` in the profile directory and nothing else; credentials are never touched. */
   protected prepareProfile(profile: Profile): Promise<void> {
-    const sandboxMode = SANDBOX_OF[this.#modes.initial];
+    const sandboxMode = sandboxOfMode(this.#modes.initial);
     if (sandboxMode === undefined) {
       return Promise.reject(new InvalidInput(`codex: no sandbox for ${this.#modes.initial}`));
     }
@@ -270,7 +302,7 @@ export class CodexAdapter extends ClientAdapter {
     if (via !== 'headless') {
       return { via: 'acp', configOptions: { [CODEX_CONFIG_IDS.mode]: this.#modes.initial } };
     }
-    const sandbox = SANDBOX_OF[this.#modes.initial];
+    const sandbox = sandboxOfMode(this.#modes.initial);
     if (sandbox === undefined) {
       throw new InvalidInput(`codex: no sandbox for ${this.#modes.initial}`);
     }

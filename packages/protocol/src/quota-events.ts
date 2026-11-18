@@ -62,12 +62,28 @@ export const QuotaExhaustedPayloadSchema = z.strictObject({
 });
 
 /**
- * `quota.restored`: the profile left `exhausted`. `reason` is `reset` (the time came) or `reading`
- * (a fresh reading shows room). `state` is where it stands now.
+ * `quota.restored`: the profile left `exhausted`. `reason` is `reset` (the time came), `reading`
+ * (a fresh reading shows room) or `recheck` (no reset time was known and the recheck interval
+ * passed with no signal that costs nothing, so the profile is `unknown`; P9). `state` is where it
+ * stands now.
  */
+export const RESTORED_REASONS = ['reset', 'reading', 'recheck'] as const;
+export const RESTORED_STATES = ['ok', 'near_limit', 'unknown'] as const;
+
 export const QuotaRestoredPayloadSchema = z.strictObject({
   profile,
   cause: z.enum(QUOTA_CAUSES),
-  state: z.enum(['ok', 'near_limit', 'unknown']),
-  reason: z.enum(['reset', 'reading']),
+  state: z.enum(RESTORED_STATES),
+  reason: z.enum(RESTORED_REASONS),
+});
+
+/**
+ * `budget.restored` (P9, [proposta]): the profile left `exhausted` with the cause `budget`, because
+ * the period of the spending cap turned (or a fresh reading shows room). The same move as
+ * `quota.restored` for the cause `quota`; the cause is the name of the event, so it is not a field.
+ */
+export const BudgetRestoredPayloadSchema = z.strictObject({
+  profile,
+  state: z.enum(RESTORED_STATES),
+  reason: z.enum(RESTORED_REASONS),
 });

@@ -65,6 +65,26 @@ export interface SandboxWiringInput {
   /** Absolute home directory of the account (for `~` in `security.secret_paths`). */
   readonly home: string;
   readonly dataDir: string;
+  /**
+   * Called every time a client process is wrapped with `allowNestedUserNamespaces` (N129,
+   * `clients.codex.inner_sandbox: nested`), so the daemon can warn that the write denies of layer 3
+   * are weaker for that process.
+   */
+  readonly onNestedUserNamespaces?: (info: NestedUserNamespaces) => void;
+}
+
+/** What {@link SandboxWiringInput.onNestedUserNamespaces} is told. */
+export interface NestedUserNamespaces {
+  readonly client: ClientId;
+  readonly worktree: string;
+}
+
+/**
+ * N129: the clients whose process layer 3 opens to nested user namespaces, by `clients.<id>`.
+ * Only Codex has the key, and only the value `nested` asks for it.
+ */
+export function nestedUserNamespacesFor(config: DaemonConfig, client: string): boolean {
+  return client === 'codex' && config.clients.codex.inner_sandbox === 'nested';
 }
 
 const NO_NETWORK: Pick<RolePolicy, 'writeScope' | 'network'> = {
@@ -102,6 +122,8 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
           (PROVIDER_DOMAINS as Readonly<Record<string, readonly string[] | undefined>>)[
             profile.client
           ] ?? [];
+        const nested = nestedUserNamespacesFor(config, profile.client);
+        if (nested) input.onNestedUserNamespaces?.({ client: 'codex', worktree: cwd });
         return sandbox.wrap({
           launch: spec,
           policy,
@@ -111,6 +133,7 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
           secretPaths,
           domains: [...provider, ...extraDomains, ...own],
           ...(ports.length === 0 ? {} : { loopbackPorts: ports }),
+          ...(nested ? { allowNestedUserNamespaces: true } : {}),
         });
       },
     // [proposta] A command of the tools writes only in its worktree and reaches only the domains

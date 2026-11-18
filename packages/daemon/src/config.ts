@@ -106,6 +106,48 @@ export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
  * watches (a probe without `watch` is not used); `poll` only calls `read` on a timer.
  */
 export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
+/**
+ * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
+ * remaining quota of the MiniMax Token Plan with the key of the profile (`GET /v1/token_plan/remains`).
+ */
+export const QUOTA_MINIMAX_MODES = ['off', 'token_plan'] as const;
+/**
+ * [proposta] `quota.minimax.usage_count_means`: what `current_*_usage_count` of the Token Plan
+ * answer counts. Third-party notes [S] suggest what is LEFT (`remaining`, default); the real
+ * meaning depends on the owner's key [N].
+ */
+export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
+/**
+ * [proposta] `quota.opencode.mode` (P8): `off` (default) keeps the OpenCode probe without a
+ * reading; `ledger` adds up the usage events of the sessions the daemon runs and compares the
+ * sum with `limit_tokens` and `limit_usd`.
+ */
+export const QUOTA_OPENCODE_MODES = ['off', 'ledger'] as const;
+/**
+ * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
+ * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
+ * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
+ * by the use of the month.
+ */
+export const USAGE_SUBSCRIPTION_DISPLAY_MODES = [
+  'quota_and_equivalent',
+  'quota',
+  'prorated',
+] as const;
+/**
+ * [proposta] `usage.cost_source` (5.6, P10): where the cost of a turn comes from.
+ * `client_then_pricing` (default) takes the cost the client reports and prices the tokens with the
+ * `pricing` table when it reports none; `pricing_table` always prices the tokens; `provider_billing`
+ * would read the usage API of the provider ([a confirmar por provedor]): it is accepted here, but
+ * no adapter exists yet, so the service works as `client_then_pricing` and says so in the log.
+ */
+export const USAGE_COST_SOURCE_MODES = [
+  'client_then_pricing',
+  'pricing_table',
+  'provider_billing',
+] as const;
+/** `usage.api_gateway` (5.6): a gateway that meters the API traffic. Off in v1; no other mode yet. */
+export const USAGE_API_GATEWAY_MODES = ['off'] as const;
 
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
@@ -124,7 +166,20 @@ export const CLIENT_ENV_INHERIT = ['minimal', 'none', 'all'] as const;
 export const CLIENT_VERSION_SOURCES = ['auto', 'package_json', 'initialize', 'config'] as const;
 export type ClientVersionSourceMode = (typeof CLIENT_VERSION_SOURCES)[number];
 export const CLAUDE_SETTING_SOURCES = ['none', 'project', 'user'] as const;
-export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent'] as const;
+/**
+ * `clients.claude-code.utilization_unit` (N123): how the `utilization` of a `rate_limit_event`
+ * is read. `ignore` (default) reads no number, `fraction` and `percent` fix the unit, and `auto`
+ * takes 0..1 as a fraction and above 1 as a percentage and records the unit it saw. A value
+ * outside 0..100 is refused with the reason in every mode.
+ */
+export const CLAUDE_UTILIZATION_UNITS = ['ignore', 'fraction', 'percent', 'auto'] as const;
+/**
+ * `clients.claude-code.quota_statusline` (P6): `file` (default) installs, in the `settings.json`
+ * of each profile, a statusline command that keeps the quota windows in a file of the profile
+ * directory, and the quota probe reads it; `off` installs nothing (and removes our own command),
+ * so the probe has no reading and the profile stays `unknown` until a signal arrives.
+ */
+export const CLAUDE_QUOTA_STATUSLINES = ['file', 'off'] as const;
 export const CLAUDE_ACCOUNT_ENV = ['strip', 'keep'] as const;
 export const CLAUDE_MODEL_CATALOG_SOURCES = ['session', 'reserve', 'session_or_reserve'] as const;
 export const CODEX_PROCESS_MODELS = ['multi-session', 'process-per-session'] as const;
@@ -143,6 +198,16 @@ export const CODEX_QUOTA_WATCH_MODES = ['off', 'resident'] as const;
 
 export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
 export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
+/**
+ * `clients.codex.inner_sandbox` (N129, owner's decision of 2026-11-18). What Codex does with its own
+ * sandbox when layer 3 (`srt`) wraps it: `keep` (default; the client keeps `workspace-write`, whose
+ * sandbox does not start inside the confinement, so its native shell fails and the roles with a shell
+ * use the shells of the daemon), `full_access_when_wrapped` (with layer 3 on, Codex opens with no
+ * sandbox of its own and `srt` is the only `os` layer), `nested` (with layer 3 on, `srt` lets this
+ * client make user namespaces and Codex keeps its sandbox; the write denies of `srt` get weaker for
+ * its process). Without layer 3 the last two behave as `keep`.
+ */
+export const CODEX_INNER_SANDBOX_MODES = ['keep', 'full_access_when_wrapped', 'nested'] as const;
 /** Modes the adapter never selects (`agent` hands the escalation to a reviewer, `agent-full-access` asks nothing). */
 export const CODEX_VETOED_MODES = ['agent', 'agent-full-access'] as const;
 export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as const;
@@ -667,6 +732,20 @@ export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+const PriceRatesConfigSchema = z.strictObject({
+  input_per_mtok: z.number().min(0),
+  output_per_mtok: z.number().min(0),
+  cache_read_per_mtok: z.number().min(0).optional(),
+  cache_write_per_mtok: z.number().min(0).optional(),
+});
+
+/** One entry of `pricing` (architecture 5.6): the price of a model in US$ per million tokens. */
+export const ModelPriceConfigSchema = PriceRatesConfigSchema.extend({
+  cached_in_input: z.boolean().optional(),
+  long_context: PriceRatesConfigSchema.extend({ over_tokens: z.int().min(1) }).optional(),
+});
+export type ModelPriceConfig = z.infer<typeof ModelPriceConfigSchema>;
+
 /**
  * `command` of a client: the executable (a name looked up in `PATH`, or a path) and its arguments.
  * Without `args` the client's own default applies (`acp` for OpenCode, none for the others).
@@ -713,6 +792,7 @@ export const ClaudeCodeClientSchema = z.strictObject({
   command: ClientCommandSchema.optional(),
   setting_sources: z.enum(CLAUDE_SETTING_SOURCES).default('none'),
   utilization_unit: z.enum(CLAUDE_UTILIZATION_UNITS).default('ignore'),
+  quota_statusline: z.enum(CLAUDE_QUOTA_STATUSLINES).default('file'),
   account_env: z.enum(CLAUDE_ACCOUNT_ENV).default('strip'),
   model_catalog: z.enum(CLAUDE_MODEL_CATALOG_SOURCES).default('session_or_reserve'),
   model_catalog_cache: DurationSchema.or(z.literal(0)).prefault('5m'),
@@ -728,6 +808,7 @@ export const CodexClientSchema = z.strictObject({
   modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
   credentials_store: z.enum(CODEX_CREDENTIALS_STORES).default('file'),
   approval_policy: z.enum(CODEX_APPROVAL_POLICIES).default('on-request'),
+  inner_sandbox: z.enum(CODEX_INNER_SANDBOX_MODES).default('keep'),
   suggested_effort: z.string().min(1).default('high'),
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
   /**
@@ -1051,6 +1132,17 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         transient_backoff: z.array(DurationSchema).prefault(['30s', '2m', '10m']),
+        /**
+         * [proposta] (P17) What follows the last step of `transient_backoff`: `last` keeps waiting
+         * the last step until `max_resumes` (the behaviour before P17); `handoff` passes the baton
+         * (the literal reading of architecture 5.16).
+         */
+        transient_exhausted: z.enum(['last', 'handoff']).default('last'),
+        /**
+         * [proposta] (P17) When a drop of the client process counts as an attempt of the demand:
+         * `repeat` (5.16: not the first time, yes if it repeats), `never` or `always`.
+         */
+        client_crash_counts: z.enum(['repeat', 'never', 'always']).default('repeat'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -1072,6 +1164,8 @@ export const DaemonConfigSchema = z
             same_error_times: resume.stuck.same_error_times ?? preset.same_error_times,
           },
           transient_backoff: resume.transient_backoff,
+          transient_exhausted: resume.transient_exhausted,
+          client_crash_counts: resume.client_crash_counts,
           continue_prompt: resume.continue_prompt,
         };
       }),
@@ -1288,6 +1382,12 @@ export const DaemonConfigSchema = z
      * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
      * `read` calls where polling is on. The defaults follow N123, decided by the owner on
      * 2026-11-18.
+     *
+     * `recheck_every` (P9, architecture 5.6, "Consulta sem horário de reset"): how long a profile
+     * that is exhausted with no known end waits before the daemon looks at it again, using only
+     * signals that never call the model. `15m` by default; `off` never looks again (the profile
+     * stays exhausted until a reading or a limit error says otherwise). A profile with no such
+     * signal goes from `exhausted` to `unknown` when the interval passes.
      */
     quota: z
       .strictObject({
@@ -1299,8 +1399,64 @@ export const DaemonConfigSchema = z
             poll_every: DurationSchema.prefault('5m'),
           })
           .prefault({}),
+        recheck_every: z
+          .union([z.literal('off'), DurationSchema])
+          .transform((value) => (value === 'off' ? null : value))
+          .prefault('15m'),
+        /**
+         * [proposta] (P8) The MiniMax Token Plan probe, a call the DAEMON makes with the key of the
+         * profile. Default `off`: no call leaves the machine until the owner turns it on.
+         * `base_url` and `allow_hosts` are the daemon network policy for this call (https only;
+         * `http` only for a loopback host); `timeout` is the deadline of the call.
+         */
+        minimax: z
+          .strictObject({
+            mode: z.enum(QUOTA_MINIMAX_MODES).default('off'),
+            base_url: z.url().default('https://api.minimax.io'),
+            allow_hosts: z.array(z.string().min(1)).default(['api.minimax.io', 'www.minimax.io']),
+            timeout: DurationSchema.prefault('10s'),
+            usage_count_means: z.enum(QUOTA_MINIMAX_USAGE_COUNT_MEANS).default('remaining'),
+          })
+          .prefault({}),
+        /**
+         * [proposta] (P8) The OpenCode probe: local accounting of the usage events of the sessions
+         * the daemon runs, over a rolling `window`. A limit left `null` is not measured; with both
+         * `null` the ledger has nothing to compare with and gives no reading.
+         */
+        opencode: z
+          .strictObject({
+            mode: z.enum(QUOTA_OPENCODE_MODES).default('off'),
+            window: DurationSchema.prefault('5h'),
+            limit_tokens: z.int().positive().nullable().default(null),
+            limit_usd: z.number().positive().nullable().default(null),
+          })
+          .prefault({}),
       })
       .prefault({}),
+    /**
+     * Consumption and cost in money (architecture 5.6; P10). `monthly_price_usd` is the monthly
+     * price of the plan of a subscription profile, by profile id (`<client>/<profile>`), which the
+     * `prorated` display divides by the use of the month [proposta]: the architecture puts it "in
+     * the profile", and `profiles.<id>` does not exist as a block yet (P11 brings it with the cap).
+     */
+    usage: z
+      .strictObject({
+        subscription_display: z
+          .enum(USAGE_SUBSCRIPTION_DISPLAY_MODES)
+          .default('quota_and_equivalent'),
+        cost_source: z.enum(USAGE_COST_SOURCE_MODES).default('client_then_pricing'),
+        api_gateway: z.enum(USAGE_API_GATEWAY_MODES).default('off'),
+        monthly_price_usd: z.record(z.string().min(1), z.number().gt(0)).default({}),
+      })
+      .prefault({}),
+    /**
+     * The price of a model, in US$ per million tokens, by model id: it adds to or replaces the
+     * entry of the table that ships with the version (architecture 5.6, `pricing`). A model with
+     * no entry in either has an unknown cost, never US$ 0. `cached_in_input` says the client counts
+     * the cached tokens inside the input (OpenAI); `long_context` is a second card for a prompt
+     * above `over_tokens` [proposta].
+     */
+    pricing: z.record(z.string().min(1), ModelPriceConfigSchema).default({}),
     ui: z
       .strictObject({
         locale: z.enum(LOCALE_SETTINGS).default('auto'),

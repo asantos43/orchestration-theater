@@ -212,6 +212,24 @@ describe('QuotaService, state of a profile (architecture 5.6)', () => {
     expect((await service.statusOf(HOME)).state).toBe('exhausted');
   });
 
+  it('keeps the reset time and the source of a typed QuotaExhausted of an adapter (P8)', async () => {
+    const { service, store } = setup();
+    service.bindSession('s1', WORK);
+    const resetsAt = T0 + 45 * MIN;
+    // What `typedErrorOf` builds from the `NormalizedError` of an adapter.
+    const normalized = { kind: 'quota_exhausted', message: 'over', resetsAt, limitSource: '429' };
+    expect(await service.ingestError('s1', new QuotaExhausted('over', { cause: normalized }))).toBe(
+      true,
+    );
+    expect(await service.statusOf(WORK)).toMatchObject({
+      state: 'exhausted',
+      cause: 'quota',
+      untilReset: resetsAt,
+    });
+    const exhausted = (await quotaEvents(store)).find((e) => e.type === 'quota.exhausted');
+    expect(exhausted?.payload).toMatchObject({ source: 'limit_hit:429', untilReset: resetsAt });
+  });
+
   it('ignores an error that is not about the quota', async () => {
     const { service, store } = setup();
     service.bindSession('s1', WORK);
@@ -556,5 +574,87 @@ describe('helpers', () => {
     expect(limitHitOf({ code: -32001 })).toBeDefined();
     expect(limitHitOf('nope')).toBeUndefined();
     expect(limitHitOf({ code: 1 })).toBeUndefined();
+  });
+
+  it('reads the reset time and the source down the cause chain of a QuotaExhausted (P8)', () => {
+    const raw = {
+      code: -32001,
+      message: 'out',
+      data: { type: 'QuotaExhausted', resetsAt: 'later' },
+    };
+    const normalized = {
+      kind: 'quota_exhausted',
+      message: 'out',
+      resetsAt: 7,
+      limitSource: '429',
+      cause: raw,
+    };
+    expect(limitHitOf(new QuotaExhausted('out', { cause: normalized }))).toEqual({
+      source: 'limit_hit:429',
+      resetsAt: 7,
+    });
+    // The normalized error has no time of its own: the raw error under it still can.
+    const withoutTime = {
+      kind: 'quota_exhausted',
+      message: 'out',
+      limitSource: 'structured',
+      cause: raw,
+    };
+    expect(limitHitOf(new QuotaExhausted('out', { cause: withoutTime }))).toEqual({
+      source: 'limit_hit:structured',
+      resetsAt: 'later',
+    });
+    expect(limitHitOf({ kind: 'quota_exhausted', message: 'x' })).toEqual({
+      source: 'error:quota_exhausted',
+    });
+    const loop: { cause?: unknown; kind: string } = { kind: 'quota_exhausted' };
+    loop.cause = loop;
+    expect(limitHitOf(loop)).toBeDefined();
+  });
+});
+
+describe('QuotaService, what P9 builds on', () => {
+  it('says budget.restored (not quota.restored) when a cap ends', async () => {
+    const { service, store, clock } = setup();
+    await service.start();
+    await service.ingestLimitHit(WORK, { source: 'cap', cause: 'budget', resetsAt: T0 + 5 * MIN });
+    await clock.advance(5 * MIN + 2000);
+    await flush();
+    const all = await store.events.readFrom(0, 1000);
+    const restored = all.filter((e) => e.type === 'budget.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.payload).toMatchObject({
+      profile: WORK,
+      state: 'unknown',
+      reason: 'reset',
+    });
+    expect(all.map((e) => e.type)).not.toContain('quota.restored');
+  });
+
+  it('tells the listeners about a change of state, and survives one that throws', async () => {
+    const { service } = setup();
+    const seen: string[] = [];
+    service.onChange(() => {
+      throw new Error('a listener broke');
+    });
+    const listening = service.onChange((change) => {
+      seen.push(`${change.profile}:${change.before?.state ?? 'none'}>${change.status.state}`);
+    });
+    await service.ingestLimitHit(WORK, { source: 'test', resetsAt: T0 + 5 * MIN });
+    expect(seen).toEqual([`${WORK}:none>exhausted`]);
+    listening.dispose();
+    await service.ingestLimitHit(HOME, { source: 'test', resetsAt: T0 + 5 * MIN });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('lets go of a limit that has no end, as restored by recheck, and leaves one with an end alone', async () => {
+    const { service, store } = setup();
+    await service.ingestLimitHit(WORK, { source: 'test' });
+    await service.ingestLimitHit(HOME, { source: 'test', resetsAt: T0 + 50 * MIN });
+    expect((await service.releaseLimit(WORK, 'quota')).state).toBe('unknown');
+    expect((await service.releaseLimit(HOME, 'quota')).state).toBe('exhausted');
+    const restored = (await quotaEvents(store)).filter((e) => e.type === 'quota.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.payload).toMatchObject({ profile: WORK, reason: 'recheck' });
   });
 });

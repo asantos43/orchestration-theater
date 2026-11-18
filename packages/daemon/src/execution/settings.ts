@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SharedCancelMode } from '@otheater/core';
 import { type DaemonConfig, CLIENT_IDS, sessionMbOf, sessionsPerProcessOf } from '../config.js';
+import type { ClientCrashCounts, TransientExhausted } from './interruption-policy.js';
 import type { AdmissionSettings, SessionMb } from './admission.js';
 
 /** Pool constants (architecture 5.2). */
@@ -56,6 +57,12 @@ export interface ExecutionSettings {
   readonly stuckNoEventMs: number;
   /** `resume.stuck.same_error_times`. */
   readonly stuckSameErrorTimes: number;
+  /** `resume.quota_wait_max`: a reset nearer than this, with the rule `wait`, is waited for. */
+  readonly quotaWaitMaxMs: number;
+  /** `resume.transient_exhausted` [proposta]. */
+  readonly transientExhausted: TransientExhausted;
+  /** `resume.client_crash_counts` [proposta]. */
+  readonly clientCrashCounts: ClientCrashCounts;
   /** What the Executor is told when a conversation is reloaded. */
   readonly continuePrompt: string;
 }
@@ -90,6 +97,9 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     transientBackoffMs: config.resume.transient_backoff,
     stuckNoEventMs: config.resume.stuck.no_event_for,
     stuckSameErrorTimes: config.resume.stuck.same_error_times,
+    quotaWaitMaxMs: config.resume.quota_wait_max,
+    transientExhausted: config.resume.transient_exhausted,
+    clientCrashCounts: config.resume.client_crash_counts,
     continuePrompt: config.resume.continue_prompt,
   };
 }

@@ -496,9 +496,9 @@ describe('OpenCodeAdapter', () => {
   });
 
   describe('Phase 5 and the probes', () => {
-    it('the quota probe has no reading yet', async () => {
+    it('the quota probe has no reading without a configured ledger', async () => {
       const adapter = make();
-      await expect(adapter.quota.read(profile)).rejects.toThrow(/Phase 5/);
+      await expect(adapter.quota.read(profile)).rejects.toThrow(/no usage ledger configured/);
       await expect(adapter.quota.read(profile)).rejects.toBeInstanceOf(AdapterUnavailable);
     });
 
