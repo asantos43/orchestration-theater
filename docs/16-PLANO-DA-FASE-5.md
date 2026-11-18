@@ -85,7 +85,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | concluído (PR #131) |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | concluído (PR #129) |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | concluído (PR #130) |
-| P21b | Remoção de perfil: causa própria e failover do Diretor (N152, N153) | P19, P20, P21 | P23 | concluído (branch fase-5/p21b-remocao-causa-e-diretor) |
+| P21b | Remoção de perfil: causa própria e failover do Diretor (N152, N153) | P19, P20, P21 | P23 | concluído (PR #133) |
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
