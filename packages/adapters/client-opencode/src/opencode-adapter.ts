@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
-  AdapterUnavailable,
+  PermissionDenied,
   ClientAdapter,
   InvalidInput,
   type AcpExtensionHandler,
@@ -15,6 +15,7 @@ import {
   type NormalizedUpdate,
   type Profile,
   type ProfileRef,
+  type ProcessLauncher,
   type ProcessModel,
   type QuotaProbe,
   type RawUpdate,
@@ -22,6 +23,14 @@ import {
   type SessionSetup,
   type TransportId,
 } from '@otheater/core';
+import {
+  commandOf,
+  runCommand,
+  startOfficialLogin,
+  type LoginOptions,
+  type LoginProbeResult,
+  type LoginRun,
+} from './official-login.js';
 import { normalizeOpenCodeError, normalizeOpenCodeUpdate } from './normalize.js';
 import {
   OpenCodeModelCatalog,
@@ -91,12 +100,30 @@ export type ProjectConfigMode = 'disabled' | 'enabled';
  */
 export type ReadOnlyMode = 'plan' | 'none';
 
+/**
+ * [proposta] `clients.opencode.login`. The official login is `opencode auth login [url] [-p provider]
+ * [-m method]`, the logout `opencode auth logout [provider]` and the list of logins `opencode auth
+ * list` (opencode 1.19.5, `--help` read 2026-11-18) [V: the subcommands and flags exist]. The
+ * client asks for the provider with a menu and may need a terminal: that is why the default mode is
+ * `terminal` [N: whether it runs without a TTY, and what a code to paste would need].
+ */
+export interface OpenCodeLoginOptions extends LoginOptions {
+  /** `clients.opencode.login.provider`: `-p` of `auth login`, and the argument of `auth logout`. Default: none, the client asks. */
+  readonly provider?: string;
+  /** `clients.opencode.login.method`: `-m` of `auth login`. Default: none, the client asks. */
+  readonly method?: string;
+  /** `clients.opencode.login.list_command`: what the login probe runs. Default `opencode auth list`. */
+  readonly listCommand?: { readonly cmd: string; readonly args?: readonly string[] };
+}
+
 export interface OpenCodeAdapterOptions extends ClientAdapterOptions {
   /**
    * [proposta] key `clients.opencode.command`. Default `opencode acp`: the executable is a tool the
    * user installs (decision N45), never a dependency of this package.
    */
   readonly command?: { readonly cmd?: string; readonly args?: readonly string[] };
+  /** [proposta] keys `clients.opencode.login.*`. Default: `opencode auth login`, mode `terminal`. */
+  readonly login?: OpenCodeLoginOptions;
   /** `pool.opencode.process_model` (N56). Default `per_profile`. */
   readonly processModel?: ProcessModelKey;
   /** [proposta] key `clients.opencode.isolation`. Default {@link DEFAULT_ISOLATION}. */
@@ -168,6 +195,8 @@ export class OpenCodeAdapter extends ClientAdapter {
   readonly #files: ProfileFilesOptions;
   readonly #permissionOptions: PermissionOptions;
   readonly #probe: ConformanceProbe;
+  readonly #launcher: ProcessLauncher;
+  readonly #baseEnv: Readonly<Record<string, string>>;
   /** Per profile directory: the end of the queue of launches waiting for their turn. */
   readonly #queues = new Map<string, Promise<void>>();
   readonly #slots = new Map<string, Slot>();
@@ -181,6 +210,8 @@ export class OpenCodeAdapter extends ClientAdapter {
       );
     }
     this.#options = options;
+    this.#launcher = options.launcher;
+    this.#baseEnv = options.baseEnv;
     this.processModel = PROCESS_MODELS[key];
     this.#isolation = options.isolation ?? DEFAULT_ISOLATION;
     this.#files = {
@@ -318,20 +349,79 @@ export class OpenCodeAdapter extends ClientAdapter {
     return [this.#probe];
   }
 
-  login(): Promise<LoginFlow> {
-    return Promise.reject(
-      new AdapterUnavailable(
-        'opencode login arrives in Phase 5; until then run the official login of the client with the environment of the profile',
-      ),
+  /**
+   * Where the client commands run: the profile directories exist and the environment is the one of
+   * the profile (`XDG_*`, `OPENCODE_DB`), with no permission: it is not a session. The `auth` files
+   * are the client's own, and nothing here opens them.
+   */
+  async #loginRun(profile: Profile): Promise<LoginRun> {
+    await ensureProfileFiles(profile.dir, this.#files);
+    return {
+      launcher: this.#launcher,
+      cwd: profile.dir,
+      env: { ...this.#baseEnv, ...isolationEnv(profile.dir, this.#isolation) },
+    };
+  }
+
+  #executable(): string {
+    return this.#options.command?.cmd ?? 'opencode';
+  }
+
+  /**
+   * The official login (`opencode auth login`) inside the profile (architecture 5.6), in the mode
+   * `terminal` unless `login.mode` says another. The client may print a URL (`browser`) or a code
+   * (`device_code`); the flow carries what it printed. The token is written by the client and never
+   * read here. [N] what the command prints, and whether a menu of providers runs without a TTY.
+   */
+  async login(profile: Profile): Promise<LoginFlow> {
+    const options = this.#options.login ?? {};
+    const where = await this.#loginRun(profile);
+    const args = [
+      'auth',
+      'login',
+      ...(options.provider === undefined ? [] : ['-p', options.provider]),
+      ...(options.method === undefined ? [] : ['-m', options.method]),
+    ];
+    return startOfficialLogin(
+      where,
+      commandOf(options.command, { cmd: this.#executable(), args }),
+      options.mode ?? 'terminal',
+      options,
     );
   }
 
-  logout(): Promise<void> {
-    return Promise.reject(
-      new AdapterUnavailable(
-        'opencode logout arrives in Phase 5; until then run the official logout of the client with the environment of the profile',
-      ),
-    );
+  /** The official logout (`opencode auth logout [provider]`) in the profile. [N] without a provider the client asks. */
+  async logout(profile: Profile): Promise<void> {
+    const options = this.#options.login ?? {};
+    const command = commandOf(options.logoutCommand, {
+      cmd: this.#executable(),
+      args: ['auth', 'logout', ...(options.provider === undefined ? [] : [options.provider])],
+    });
+    const { code } = await runCommand(await this.#loginRun(profile), command);
+    if (code !== 0) {
+      throw new PermissionDenied(
+        `${this.id}: the logout ended with ${code === null ? 'a signal' : `code ${String(code)}`}`,
+      );
+    }
+  }
+
+  /**
+   * Whether the profile has a login, without reading a token: runs `opencode auth list` and counts
+   * what it says ("N credentials"). [N] the wording: an answer with no count is `unknown`, never
+   * `logged_in`. The list names the providers only; the secrets are not in it and are never read.
+   */
+  async probeLogin(profile: Profile): Promise<LoginProbeResult> {
+    const options = this.#options.login ?? {};
+    const command = commandOf(options.listCommand, {
+      cmd: this.#executable(),
+      args: ['auth', 'list'],
+    });
+    const { output } = await runCommand(await this.#loginRun(profile), command);
+    const count = credentialCountOf(output);
+    return {
+      state: count === undefined ? 'unknown' : count > 0 ? 'logged_in' : 'logged_out',
+      via: 'account_list',
+    };
   }
 
   /** Queue of the launches of one profile directory; resolves with the function that ends the turn. */
@@ -349,4 +439,12 @@ export class OpenCodeAdapter extends ClientAdapter {
     await previous;
     return release;
   }
+}
+
+/** The number in "N credentials" of `opencode auth list`; `undefined` when the line is not there. */
+function credentialCountOf(output: string): number | undefined {
+  // eslint-disable-next-line no-control-regex -- the escape character is what an ANSI sequence starts with
+  const plain = output.replaceAll(/\u001b\[[0-9;?]*[ -/]*[@-~]/gu, '');
+  const match = /\b(\d+)\s+credentials?\b/iu.exec(plain);
+  return match?.[1] === undefined ? undefined : Number(match[1]);
 }
