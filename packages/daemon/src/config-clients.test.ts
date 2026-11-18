@@ -32,6 +32,7 @@ describe('clients.* and security.* of the config', () => {
       inner_sandbox: 'keep',
       suggested_effort: 'high',
       model_catalog: 'session',
+      quota: { timeout: 15_000, watch: 'off', windows: [] },
     });
     expect(clients.opencode).toEqual({
       ...common,
@@ -109,6 +110,7 @@ describe('clients.* and security.* of the config', () => {
         '    inner_sandbox: nested',
         '    modes: [read-only]',
         '    initial_mode: read-only',
+        '    quota: { command: { cmd: /opt/codex, args: [app-server] }, timeout: 5s, watch: resident, windows: [5h] }',
         '  opencode:',
         '    enabled: auto',
         '    isolation: [data, config, state, cache]',
@@ -136,6 +138,12 @@ describe('clients.* and security.* of the config', () => {
       inner_sandbox: 'nested',
       modes: ['read-only'],
       initial_mode: 'read-only',
+      quota: {
+        command: { cmd: '/opt/codex', args: ['app-server'] },
+        timeout: 5_000,
+        watch: 'resident',
+        windows: ['5h'],
+      },
     });
     expect(config.clients.opencode).toMatchObject({
       isolation: ['data', 'config', 'state', 'cache'],
@@ -196,6 +204,10 @@ describe('clients.* and security.* of the config', () => {
       ['clients:\n  codex:\n    process_model: per_profile\n', /clients\.codex\.process_model/],
       ['clients:\n  codex:\n    inner_sandbox: both\n', /clients\.codex\.inner_sandbox/],
       ['clients:\n  codex:\n    modes: []\n', /clients\.codex\.modes/],
+      ['clients:\n  codex:\n    quota: { watch: always }\n', /clients\.codex\.quota\.watch/],
+      ['clients:\n  codex:\n    quota: { timeout: soon }\n', /clients\.codex\.quota\.timeout/],
+      ['clients:\n  codex:\n    quota: { windows: [""] }\n', /clients\.codex\.quota\.windows/],
+      ['clients:\n  codex:\n    quota: { speed: 1 }\n', /clients\.codex\.quota/],
       ['clients:\n  codex:\n    env_inherit: some\n', /clients\.codex\.env_inherit/],
       ['clients:\n  codex:\n    env_allow: ["A B"]\n', /clients\.codex\.env_allow/],
       ['clients:\n  codex:\n    env: { "1X": a }\n', /clients\.codex\.env/],

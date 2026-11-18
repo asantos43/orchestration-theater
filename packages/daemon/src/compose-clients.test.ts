@@ -207,6 +207,69 @@ describe('productionClients', () => {
     }
   });
 
+  it('starts the Codex quota probe as `codex app-server` in the profile directory, ended after the timeout', async () => {
+    const t = await setup();
+    try {
+      const config = parseConfig('clients:\n  codex:\n    quota: { timeout: 80ms }\n');
+      const codex = byId(
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'codex',
+      );
+      expect(codex.quota.capabilities()).toEqual({
+        windows: [],
+        delivery: 'poll',
+        precision: 'approximate',
+      });
+
+      await expect(codex.quota.read({ client: 'codex', profile: 'work' })).rejects.toThrow(
+        /did not answer in 80 ms/u,
+      );
+
+      const [process] = t.launcher.launched;
+      expect(process?.options).toMatchObject({ cmd: 'codex', args: ['app-server'] });
+      expect(process?.options.cwd).toBe(t.profile('codex').dir);
+      expect(process?.options.env.CODEX_HOME).toBe(t.profile('codex').dir);
+      expect(process?.alive).toBe(false);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('follows clients.codex.quota: command, watch and windows', async () => {
+    const t = await setup();
+    try {
+      const config = parseConfig(
+        [
+          'clients:',
+          '  codex:',
+          '    quota:',
+          '      command: { cmd: /opt/codex, args: [app-server, --listen, stdio] }',
+          '      timeout: 40ms',
+          '      watch: resident',
+          '      windows: [5h, 7d]',
+        ].join('\n'),
+      );
+      const codex = byId(
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        'codex',
+      );
+      expect(codex.quota.capabilities()).toEqual({
+        windows: ['5h', '7d'],
+        delivery: 'both',
+        precision: 'approximate',
+      });
+
+      await expect(codex.quota.read({ client: 'codex', profile: 'work' })).rejects.toThrow();
+
+      expect(t.launcher.launched[0]?.options).toMatchObject({
+        cmd: '/opt/codex',
+        args: ['app-server', '--listen', 'stdio'],
+      });
+    } finally {
+      await t.dispose();
+    }
+  });
+
   it('starts OpenCode with `opencode acp`, the isolated homes of its profile and project config off', async () => {
     const t = await setup();
     try {

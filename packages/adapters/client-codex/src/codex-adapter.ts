@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  AdapterUnavailable,
   ClientAdapter,
   InvalidInput,
   PermissionDenied,
@@ -54,7 +55,7 @@ import {
   type ApprovalPolicy,
   type CredentialsStore,
 } from './profile.js';
-import { CodexQuotaProbe } from './quota-probe.js';
+import { CodexQuotaProbe, type CodexQuotaProbeOptions } from './quota-probe.js';
 
 /** What starts the client: `codex-acp` (^2.6.0), which talks to `codex app-server`. */
 export const DEFAULT_CODEX_COMMAND = { cmd: 'codex-acp', args: [] as readonly string[] } as const;
@@ -123,11 +124,23 @@ export interface CodexAdapterOptions extends ClientAdapterOptions {
   readonly suggestedEffort?: string;
   /** [proposta] keys `clients.codex.login.*`. Default: `codex login` (`--device-auth` for `device_code`), mode `browser`. */
   readonly login?: LoginOptions;
+  /**
+   * [proposta] keys `clients.codex.quota.*`: how the quota probe starts `codex app-server`.
+   * `profileDir` is required to read at all: the port gives the probe only the names of the profile.
+   * Without it the probe rejects with `AdapterUnavailable` and the profile stays `unknown`.
+   */
+  readonly quota?: CodexQuotaOptions;
   /** Where the model catalog reads the config options of a profile (a `session/new`). Without it `models.list` rejects. */
   readonly modelSource?: CodexConfigSource;
   /** How the pinned-mode probe reads the mode of a fresh session. Without it the probe fails, honestly. */
   readonly readSessionMode?: ReadSessionMode;
 }
+
+/** What the composition root gives the quota probe: the location of the profiles and the three keys. */
+export type CodexQuotaOptions = Pick<
+  CodexQuotaProbeOptions,
+  'profileDir' | 'command' | 'timeoutMs' | 'watch' | 'windows' | 'now'
+>;
 
 const ALL_FIELDS_NONE: Enforcement = {
   nativeTools: [],
@@ -156,7 +169,7 @@ const ALL_FIELDS_NONE: Enforcement = {
 export class CodexAdapter extends ClientAdapter {
   readonly id = 'codex';
   readonly processModel: ProcessModel;
-  readonly quota: QuotaProbe = new CodexQuotaProbe();
+  readonly quota: QuotaProbe;
   readonly models: ModelCatalog;
   readonly capabilities: ClientCapabilities = {
     loadSession: true,
@@ -213,6 +226,24 @@ export class CodexAdapter extends ClientAdapter {
     this.#launcher = options.launcher;
     this.#baseEnv = options.baseEnv;
     this.#loginOptions = options.login ?? {};
+    this.quota = new CodexQuotaProbe({
+      launcher: options.launcher,
+      baseEnv: options.baseEnv,
+      profileDir:
+        options.quota?.profileDir ??
+        ((ref) => {
+          throw new AdapterUnavailable(
+            `codex: no directory for the profile ${ref.client}/${ref.profile} (the quota probe was not given one)`,
+          );
+        }),
+      ...(options.quota?.command === undefined ? {} : { command: options.quota.command }),
+      ...(options.quota?.timeoutMs === undefined ? {} : { timeoutMs: options.quota.timeoutMs }),
+      ...(options.quota?.watch === undefined ? {} : { watch: options.quota.watch }),
+      ...(options.quota?.windows === undefined ? {} : { windows: options.quota.windows }),
+      ...(options.quota?.now === undefined ? {} : { now: options.quota.now }),
+      prepare: (ref, dir) =>
+        this.prepareProfile({ ...ref, id: `${ref.client}/${ref.profile}`, dir }),
+    });
     this.models = new CodexModelCatalog({
       ...(options.modelSource === undefined ? {} : { source: options.modelSource }),
       ...(options.suggestedEffort === undefined

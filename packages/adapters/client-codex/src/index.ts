@@ -6,6 +6,7 @@ export {
   DEFAULT_LOGIN_COMMANDS,
   DEFAULT_LOGOUT_COMMAND,
   type CodexAdapterOptions,
+  type CodexQuotaOptions,
 } from './codex-adapter.js';
 export {
   CODEX_FAMILY,
@@ -49,5 +50,13 @@ export {
   type CredentialsStore,
   type ProfileConfig,
 } from './profile.js';
-export { CodexQuotaProbe } from './quota-probe.js';
+export {
+  CodexQuotaProbe,
+  DEFAULT_QUOTA_COMMAND,
+  DEFAULT_QUOTA_TIMEOUT_MS,
+  QUOTA_WATCH_MODES,
+  type CodexQuotaProbeOptions,
+  type QuotaWatchMode,
+} from './quota-probe.js';
+export { LIMIT_REACHED_WINDOW, windowNameOf } from './rate-limits.js';
 export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';

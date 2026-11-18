@@ -480,7 +480,7 @@ describe('CodexAdapter inner_sandbox (N129)', () => {
 });
 
 describe('CodexAdapter quota, login and the catalog', () => {
-  it('has an honest quota probe that arrives in Phase 5', async () => {
+  it('has a quota probe that polls, and says honestly it has no directory for a profile it was not given', async () => {
     const { adapter } = build();
     expect(adapter.quota.implements.port).toBe('QuotaProbe');
     expect(adapter.quota.capabilities()).toEqual({
@@ -488,9 +488,6 @@ describe('CodexAdapter quota, login and the catalog', () => {
       delivery: 'poll',
       precision: 'approximate',
     });
-    await expect(adapter.quota.read({ client: 'codex', profile: 'work' })).rejects.toThrow(
-      /Phase 5/,
-    );
     await expect(adapter.quota.read({ client: 'codex', profile: 'work' })).rejects.toBeInstanceOf(
       AdapterUnavailable,
     );

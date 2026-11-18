@@ -133,6 +133,13 @@ export const CODEX_PROCESS_MODELS = ['multi-session', 'process-per-session'] as 
  */
 export const CODEX_MODEL_CATALOG_SOURCES = ['session', 'none'] as const;
 
+/**
+ * [proposta] `clients.codex.quota.watch`: `off` reads the rate limits with one short `codex
+ * app-server` per read (the default: one resident app-server costs about 114 MB, Phase 0 [V]); `resident`
+ * keeps one per watched profile and takes its `account/rateLimits/updated` as well.
+ */
+export const CODEX_QUOTA_WATCH_MODES = ['off', 'resident'] as const;
+
 export const CODEX_CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
 export const CODEX_APPROVAL_POLICIES = ['on-request', 'untrusted'] as const;
 /**
@@ -733,6 +740,20 @@ export const CodexClientSchema = z.strictObject({
   inner_sandbox: z.enum(CODEX_INNER_SANDBOX_MODES).default('keep'),
   suggested_effort: z.string().min(1).default('high'),
   model_catalog: z.enum(CODEX_MODEL_CATALOG_SOURCES).default('session'),
+  /**
+   * [proposta] The quota probe (architecture 5.6): `command` starts the app-server (default `codex
+   * app-server`), `timeout` ends a read that does not answer, `watch` is `off` or `resident`, and
+   * `windows` is the list of window names the probe promises to report (default none: the ones the
+   * account has).
+   */
+  quota: z
+    .strictObject({
+      command: ClientCommandSchema.optional(),
+      timeout: DurationSchema.prefault('15s'),
+      watch: z.enum(CODEX_QUOTA_WATCH_MODES).default('off'),
+      windows: z.array(z.string().min(1)).default([]),
+    })
+    .prefault({}),
 });
 
 /** `pool.<client>.session_mb`: the cost of a session in MB, or `auto`. */

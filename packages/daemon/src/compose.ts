@@ -13,6 +13,7 @@ import {
   CODEX_ACP_PACKAGES,
   CodexAdapter,
   DEFAULT_CODEX_COMMAND,
+  DEFAULT_QUOTA_COMMAND,
   type CodexConfigSource,
 } from '@otheater/adapter-client-codex';
 import {
@@ -788,6 +789,20 @@ function codex(
     approvalPolicy: section.approval_policy,
     innerSandbox: section.inner_sandbox,
     suggestedEffort: section.suggested_effort,
+    quota: {
+      profileDir: (ref) => profileDirOf(parts.paths, ref),
+      ...(section.quota.command === undefined
+        ? {}
+        : {
+            command: {
+              cmd: section.quota.command.cmd,
+              args: section.quota.command.args ?? DEFAULT_QUOTA_COMMAND.args,
+            },
+          }),
+      timeoutMs: section.quota.timeout,
+      watch: section.quota.watch,
+      windows: section.quota.windows,
+    },
     ...(source === undefined ? {} : { modelSource: source }),
   });
   own.adapter = adapter;
