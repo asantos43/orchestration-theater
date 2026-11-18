@@ -1,6 +1,6 @@
 {
   "usage": {
-    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n  profile <action> [...]       Accounts of the clients (the daemon must be stopped); actions:\n                                 add <client> <name>, list, drain <client>/<name>, remove <client>/<name>\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nOptions of \"ot profile\":\n  --kind <kind>     add: token_plan (default, a subscription) or api (a key)\n  --provider <p>    add: the provider of the account (default: anthropic for claude-code, openai for codex)\n  --api-key-env <NAME>   add --kind api: the NAME of the environment variable that holds the key (never type the key as an argument)\n  --api-key-stdin   add --kind api: read the key from the first line of the standard input\n  --accept-notice   add: go on after the notice about a second subscription account of the same provider\n  --client <client> list: only this client\n  --all             list: also the removed profiles\n  --check-login     list: ask each client whether the profile has a login\n  --json            Print JSON instead of text\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
     "hint": "Run \"ot --help\" for usage.",
     "unknownCommand": "Unknown command \"{{command}}\".",
     "missingCommand": "No command given.",
@@ -16,7 +16,18 @@
     "directiveNeedsReason": "\"ot directives revoke\" needs --reason <text>.",
     "directiveNeedsScenario": "\"ot directives suspend\" needs --scenario <id>: the scenario that stops following the order.",
     "directiveKind": "--kind must be instruction, rule or suspension.",
-    "directiveTooMany": "Too many arguments for this action of \"ot directives\"."
+    "directiveTooMany": "Too many arguments for this action of \"ot directives\".",
+    "missingProfileAction": "\"ot profile\" needs an action: add, list, drain or remove.",
+    "unknownProfileAction": "Unknown action \"{{action}}\" for \"ot profile\".",
+    "profileKind": "--kind must be token_plan or api.",
+    "profileTooMany": "Too many arguments for this action of \"ot profile\".",
+    "profileNeedsClientName": "\"ot profile add\" needs the client and the profile name (for example: claude-code work).",
+    "profileNeedsProvider": "\"ot profile add\" needs --provider <provider> for this client.",
+    "profileKeyOne": "Use only one of --api-key-env and --api-key-stdin.",
+    "profileApiNeedsKey": "An API profile needs the key: --api-key-env <NAME> or --api-key-stdin.",
+    "profileKeyOnlyApi": "--api-key-env and --api-key-stdin are only for --kind api.",
+    "profileNoInput": "\"ot profile add --api-key-stdin\" needs a place to read the key from.",
+    "profileNeedsId": "This action needs the profile id (<client>/<name>, for example claude-code/work)."
   },
   "daemon": {
     "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
@@ -98,5 +109,28 @@
   },
   "errors": {
     "prefix": "Error: {{message}}"
+  },
+  "profile": {
+    "daemonRunning": "The daemon is running on this data directory. Stop it before changing profiles (the live control of a running daemon is not built yet).",
+    "keyEnvEmpty": "The environment variable {{name}} is empty or not set; no key to store.",
+    "keyStdinEmpty": "The standard input has no key on its first line.",
+    "needsNotice": "Another subscription account of {{provider}} is already registered ({{existing}}). OTheater does not check whether the terms of the provider allow more than one subscription account: read them before going on. Nothing was made. To register this profile anyway, run the command again with --accept-notice.",
+    "noticeAccepted": "Notice accepted and recorded: another subscription account of {{provider}} exists ({{existing}}).",
+    "added": "Profile {{id}} registered ({{kind}}, provider {{provider}}).",
+    "addedKey": "The key is in the vault ({{backend}}); it is given only to the processes of this profile.",
+    "addedLogin": "Login: {{state}}. If it is not logged in, log in with the client itself, using this profile's folder.",
+    "none": "No profiles.",
+    "line": "{{id}} [{{state}}] {{kind}} {{provider}}{{key}}{{login}} executors: {{valid}} valid, {{invalid}} invalid",
+    "drained_finished": "Profile {{id}} is draining: no new session; nothing was running.",
+    "drained_handoff": "Profile {{id}} is draining: no new session; {{sessions}} session(s) went back to the queue.",
+    "drained_forced": "Profile {{id}} is draining: no new session; {{sessions}} session(s) were stopped.",
+    "drained_still_running": "Profile {{id}} is draining: no new session; {{sessions}} session(s) are still running.",
+    "removed": "Profile {{id}} removed.",
+    "dir_deleted": "Its folder was deleted.",
+    "dir_backup": "Its folder was moved to the backup folder (profiles.drain.removed_dir: keep_backup).",
+    "dir_missing": "Its folder was already gone.",
+    "loggedOut": "The client logged out.",
+    "secretDeleted": "The key was removed from the vault.",
+    "executorsInvalid": "Executors now invalid: {{ids}}."
   }
 }

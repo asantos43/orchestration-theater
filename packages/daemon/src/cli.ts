@@ -18,6 +18,7 @@ import {
   type CommandContext,
 } from './commands.js';
 import type { ComposeOverrides } from './compose.js';
+import type { ClientFactory } from './clients.js';
 import { loadConfig } from './config.js';
 import {
   isDirectiveAction,
@@ -33,6 +34,7 @@ import {
   type LocaleSetting,
 } from './i18n.js';
 import { dataPaths, resolveDataDir, type Env } from './paths.js';
+import { isProfileAction, runProfileCommand, type ProfileOptions } from './profiles/command.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -54,12 +56,14 @@ export interface CliDeps {
   readonly cwd?: string | undefined;
   /** What the Producer types in `ot chat`, one message per line. */
   readonly input?: NodeJS.ReadableStream | undefined;
+  /** Builds the client adapters of `ot profile` (default: the real clients found in `PATH`). */
+  readonly clients?: ClientFactory | undefined;
 }
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
-const COMMANDS = ['daemon', 'backup', 'restore', 'directives', 'chat'] as const;
+const COMMANDS = ['daemon', 'backup', 'restore', 'directives', 'chat', 'profile'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function isCommand(name: string): name is Command {
@@ -153,6 +157,24 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           return usageError(t('usage.unknownDirectivesAction', { action }));
         return await runDirectivesCommand(context, action, args, directivesOptions(values));
       }
+      case 'profile': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingProfileAction'));
+        if (!isProfileAction(action))
+          return usageError(t('usage.unknownProfileAction', { action }));
+        return await runProfileCommand(
+          context,
+          {
+            clients: deps.clients,
+            env: deps.env,
+            input: deps.input,
+            passwordPrompt: deps.passwordPrompt?.(t),
+          },
+          action,
+          args,
+          profileOptions(values),
+        );
+      }
       case 'chat': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         const type = values.type ?? 'project';
@@ -206,6 +228,14 @@ function parseCliArgs(argv: readonly string[]) {
       forever: { type: 'boolean' },
       reason: { type: 'string' },
       all: { type: 'boolean' },
+      // The options of `ot profile` (`kind`, `all` are shared).
+      provider: { type: 'string' },
+      client: { type: 'string' },
+      'api-key-env': { type: 'string' },
+      'api-key-stdin': { type: 'boolean' },
+      'accept-notice': { type: 'boolean' },
+      'check-login': { type: 'boolean' },
+      json: { type: 'boolean' },
     },
     allowPositionals: true,
     strict: true,
@@ -227,6 +257,20 @@ function directivesOptions(values: ParsedValues): DirectivesOptions {
     forever: values.forever === true,
     reason: values.reason,
     all: values.all === true,
+  };
+}
+
+function profileOptions(values: ParsedValues): ProfileOptions {
+  return {
+    kind: values.kind,
+    provider: values.provider,
+    apiKeyEnv: values['api-key-env'],
+    apiKeyStdin: values['api-key-stdin'] === true,
+    acceptNotice: values['accept-notice'] === true,
+    client: values.client,
+    all: values.all === true,
+    checkLogin: values['check-login'] === true,
+    json: values.json === true,
   };
 }
 

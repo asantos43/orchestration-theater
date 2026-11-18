@@ -88,7 +88,7 @@ async function setup(options: RigOptions = {}) {
   });
   const store = new Proxy(inner, {
     get(target, prop) {
-      return prop === 'profiles' ? profilesTable : Reflect.get(target, prop);
+      return prop === 'profiles' ? profilesTable : (Reflect.get(target, prop) as unknown);
     },
   });
   const vault = options.vault ?? new InMemorySecretVault();
@@ -156,19 +156,26 @@ async function setup(options: RigOptions = {}) {
 
 type Rig = Awaited<ReturnType<typeof setup>>;
 
+/** The value, or a failed test when it is missing (a stand-in for a non-null assertion). */
+function must<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('expected a value');
+  return value;
+}
+
 /**
  * Lets the fake clock run while `work` waits: each time the service sleeps, time moves one step.
  * (The store answers on real ticks, so a single `advance` could come before the first sleep.)
  */
 async function settled<T>(rig: Rig, work: Promise<T>, stepMs = 1000): Promise<T> {
-  let done = false;
+  const state = { done: false };
+  const isDone = (): boolean => state.done;
   const guarded = work.finally(() => {
-    done = true;
+    state.done = true;
   });
   guarded.catch(() => undefined);
-  for (let i = 0; i < 2000 && !done; i += 1) {
+  for (let i = 0; i < 2000 && !isDone(); i += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
-    if (!done && rig.clock.pendingSleeps > 0) await rig.clock.advance(stepMs);
+    if (!isDone() && rig.clock.pendingSleeps > 0) await rig.clock.advance(stepMs);
   }
   return guarded;
 }
@@ -405,7 +412,7 @@ describe('the key reaches only its own profile (sweep)', () => {
       expect(JSON.stringify(env)).not.toContain(KEY);
     }
     // Another API profile gets its own key under its own variable, never this one.
-    const codexEnv = await envOf((await rig.store.profiles.get('codex/other-key'))!, 'codex');
+    const codexEnv = await envOf(must(await rig.store.profiles.get('codex/other-key')), 'codex');
     expect(codexEnv).toEqual({ PATH: '/bin', OPENAI_API_KEY: 'sk-test-OTHER-KEY' });
 
     const text = JSON.stringify([
@@ -446,8 +453,8 @@ describe('profileSecretEnv', () => {
     await addApi(rig, 'codex', 'key', 'openai');
     const env = profileSecretEnv({ store: rig.store, vault: rig.vault });
     const names = (id: string) => ({
-      client: id.split('/')[0]!,
-      profile: id.split('/')[1]!,
+      client: must(id.split('/')[0]),
+      profile: must(id.split('/')[1]),
       id,
       dir: '/x',
     });
@@ -464,7 +471,11 @@ describe('ProfileService.drain', () => {
     const ids: string[] = [];
     for (let i = 0; i < count; i += 1) {
       const id = `s-${profileId.replace('/', '-')}-${String(i)}`;
-      await rig.store.sessions.open({ id, client: profileId.split('/')[0]!, profile: profileId });
+      await rig.store.sessions.open({
+        id,
+        client: must(profileId.split('/')[0]),
+        profile: profileId,
+      });
       ids.push(id);
     }
     return ids;
@@ -492,7 +503,7 @@ describe('ProfileService.drain', () => {
     const drained = rig.service.drain('claude-code/main');
     while (rig.clock.pendingSleeps === 0) await new Promise<void>((r) => setImmediate(r));
     await rig.clock.advance(3000);
-    await rig.store.sessions.update(session!, { state: 'closed' });
+    await rig.store.sessions.update(must(session), { state: 'closed' });
     expect(await settled(rig, drained)).toMatchObject({ outcome: 'finished', sessions: 0 });
     const [event] = await eventsOf(rig, 'profile.draining');
     expect(event?.payload).toMatchObject({ activeSessions: 1, onTimeout: 'handoff' });
@@ -515,14 +526,14 @@ describe('ProfileService.drain', () => {
     const [id] = await withSessions(force, 'claude-code/main', 1);
     const run = force.service.drain('claude-code/main');
     expect(await settled(force, run)).toMatchObject({ outcome: 'forced', sessions: 1 });
-    expect((await force.store.sessions.get(id!))?.state).toBe('closed');
+    expect((await force.store.sessions.get(must(id)))?.state).toBe('closed');
 
     const wait = await setup({ timeoutMs: 2000, onTimeout: 'wait' });
     await addSub(wait, 'claude-code', 'main');
     const [kept] = await withSessions(wait, 'claude-code/main', 1);
     const waiting = wait.service.drain('claude-code/main');
     expect(await settled(wait, waiting)).toMatchObject({ outcome: 'still_running', sessions: 0 });
-    expect((await wait.store.sessions.get(kept!))?.state).toBe('active');
+    expect((await wait.store.sessions.get(must(kept)))?.state).toBe('active');
     expect((await wait.store.profiles.get('claude-code/main'))?.state).toBe('draining');
     // Calling it again waits again, without a second `profile.draining`.
     const again = wait.service.drain('claude-code/main');
@@ -729,7 +740,7 @@ describe('ProfileService.list', () => {
     expect(plain.map((s) => s.profile.id)).toEqual(['claude-code/main', 'codex/key']);
     expect(plain[0]).toMatchObject({ hasSecret: false, executors: { valid: 1, invalid: 0 } });
     expect(plain[1]).toMatchObject({ hasSecret: true });
-    expect('login' in plain[0]!).toBe(false);
+    expect('login' in must(plain[0])).toBe(false);
 
     const checked = await rig.service.list({ checkLogin: true });
     expect(checked.map((s) => s.login)).toEqual(['logged_in', null]);
