@@ -904,3 +904,6 @@ export function productionClients(
     return adapters;
   };
 }
+
+/** Re-exported for the tests of the Executor cadastro (only compose.ts may import adapters, 5.18). */
+export { OpenCodeModelCatalog } from '@otheater/adapter-client-opencode';
