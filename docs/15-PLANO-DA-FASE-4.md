@@ -261,6 +261,11 @@ Ordem em ondas **[proposta]**:
 2. `node` está na lista padrão de programas, então `node -e` é código arbitrário no worktree. Sem a camada 3 ele escreve em qualquer lugar (controle negativo no teste). É mais uma razão para manter `security.unenforced: refuse` como padrão.
 3. Quem roda o nível real `escape`, quando e com quais clientes (**[proposta]**: prompt de 9 tentativas e tempo limite de 40 minutos por rodada).
 
+**Decididas pelo dono (2026-11-17), por múltipla escolha:**
+1. o `validateArgv` recusa também o operador colado (`;`, `|`, `&` sem espaço). Feito no PR #91: num argumento de texto, `|`, `&` e `;` agora são recusados, o que muda o comportamento para quem passava esses caracteres como texto. Continua aberto se uma quebra de linha dentro de um argumento deve ser recusada também **[N]**;
+2. `security.unenforced: refuse` continua o padrão;
+3. o nível `escape` roda nos três clientes ("Rodar os três"). O dono autorizou as rodadas reais com Claude Code, Codex e OpenCode (este com os modelos da OpenAI do perfil de teste) sem ok por rodada, e o orquestrador as rodou. O resultado está no P11.
+
 ### P6. Navegador sem a tela (§5.19)
 
 **Escopo:**
@@ -343,7 +348,7 @@ Ordem em ondas **[proposta]**:
 **Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[N]** não confirmado.
 - `Workspace.deliver` já respondia `ask_producer`; o `#deliver` agora passa o `attended` real (a presença do chat) e, nesse caso, manda `DELIVERY_ASK`. A peça vai a AWAITING_PRODUCER com o motivo `delivery_ask` e o menu `deliver_pr`, `deliver_merge`, `cancel`; a resposta fica em `deliveryChoice` e volta ao `deliver` como pedido do Produtor (`requested.by: producer`). O Diretor recebe o aviso pela fila de prompts (`#ot-delivery-ask`) **[V]**.
 - Quem não responde: um vigia fora da máquina (parado por `abort_work` e `close()`) olha o relógio e a presença. Vencido `delivery.ask.timeout`, ou saindo o Produtor com `delivery.ask.on_leave: pr`, ele manda `DELIVERY_ASK_UNANSWERED` e a peça segue com o PR; a decisão fica registrada com `decidedBy: daemon` e o menu pendente é cancelado. O prazo conta a partir de `askedAt`, guardado no motivo, então sobrevive a um reinício **[V]**.
-- Chaves **[proposta]**: `delivery.ask.timeout` (padrão `10m`; `0` espera sem limite) e `delivery.ask.on_leave` (`pr`, padrão, ou `wait`).
+- Chaves `delivery.ask.timeout` (padrão `10m`; `0` espera sem limite) e `delivery.ask.on_leave` (`pr`, padrão, ou `wait`). **Decididas pelo dono em 2026-11-17**, iguais à proposta.
 - Testes **[V]**: máquina (`delivery-ask.test.ts`), configuração e ponta a ponta com o agente falso (`delivery-ask-e2e.test.ts`: presente com `pr` e com `merge`, sem ninguém, saindo durante a pergunta, prazo vencido, `on_leave: wait`, sem `allow_direct_merge`).
 - **[N]** Rodada com um `ot chat` real e uma entrega real por merge.
 
@@ -359,7 +364,7 @@ Ordem em ondas **[proposta]**:
 **Feito no passo (2026-11-17).** Marcas: **[V]** verificado localmente, **[S]** fonte secundária, **[N]** não confirmado.
 - A política do papel `consultant` deixou de ser só de leitura: ele passa a ser papel de escrita (`edit` e `write`, como o Ator) **[proposta]**, mas só dentro do worktree da consulta; as cascas continuam só do Ator. `http_get` aparece se `roles.consultant.policy.network.allow` não for vazio, e as ferramentas `browser_*` só com a chave `browser` do papel (`read` ou `full`; padrão `none`) **[V]**.
 - O que o consultor escreve entra na pasta do chat depois de conferido **[proposta]**. A consulta roda num worktree em `play/<cenário>/attempts/consult-<n>/1`. Ao terminar, o daemon grava o que mudou e confere cada arquivo com o `confinePath` do P3 (um link simbólico para fora, `.git` e `attachments/` são recusados). Se tudo passa, tira um instantâneo da pasta do chat (o que o Produtor deixou solto) e faz o merge `--no-ff`, um de cada vez; `attachments/` fica em `.git/info/exclude`. Um conflito ou uma recusa deixa a branch e avisa o Diretor **[V]**.
-- Chave **[proposta]** `scenarios.consultant_writes: merge | keep | discard` (padrão `merge`). `keep` deixa o trabalho na branch sem mesclar e `discard` o descarta **[V]**.
+- Chave `scenarios.consultant_writes: merge | keep | discard` (padrão `merge`), **decidida pelo dono em 2026-11-17**, igual à proposta. `keep` deixa o trabalho na branch sem mesclar e `discard` o descarta **[V]**.
 - A saída de `consult` ganhou `files` (o que entrou na pasta) e `notice` (o motivo de não ter entrado); o resultado vai também na resposta da decisão `chat.consult` (`answer.work`), sem evento novo **[proposta]**.
 - Imagem: `read_attachment` devolve um bloco `image` do MCP (`ToolWithImage`), e o resto (id, tipo, nome) vai em `structuredContent` **[V]**. Os três adaptadores reais declaram `inputTypes: ['image']`, o que o `initialize` do ACP mediu na Fase 0 (`promptCapabilities.image`) **[V: spike de 2026-11-14, não repetido neste passo]**: Claude Code **[V]**, Codex **[V]** e OpenCode **[V]**, todos pelo spike. **[N]** Que o bloco `image` devolvido por uma ferramenta MCP (e não no prompt) chegue ao modelo em cada cliente: a capacidade medida é a do prompt. Fica para o teste real opcional.
 - Aceite com o agente falso **[V]** (`consult-work-e2e.test.ts`): grava na pasta do chat; `../fora.txt` e caminho absoluto recusados pelo próprio agente falso; link simbólico para fora recusado pelo daemon (`refused`, branch mantida); `http_get` num servidor local com `network.allow: [127.0.0.1]` e recusado sem ele; imagem entregue só ao cliente `fake-vision`; arquivo solto e anexo na pasta não travam o merge; `keep` e `discard`.
