@@ -122,6 +122,7 @@ export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
  * sum with `limit_tokens` and `limit_usd`.
  */
 export const QUOTA_OPENCODE_MODES = ['off', 'ledger'] as const;
+/**
  * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
  * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
  * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
