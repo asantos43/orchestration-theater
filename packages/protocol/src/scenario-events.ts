@@ -71,11 +71,12 @@ export const ScenarioChatTransitionedPayloadSchema = z.strictObject({
 
 /**
  * `scenario.system_message`: a message of the daemon for the chat of a scenario (architecture
- * 5.21, step 8). [proposta] Only the `recovery` kind exists: what the reconciliation of a start-up
- * did in this scenario. The payload is data, not text: each interface writes the words in the
- * language of the Producer (5.22), so the log stays in English.
+ * 5.21, step 8). [proposta] Two kinds: `recovery`, what the reconciliation of a start-up did in this
+ * scenario, and `handoff` (Phase 5, P18), an attempt that passed the baton to another Executor.
+ * The payload is data, not text: each interface writes the words in the language of the Producer
+ * (5.22), so the log stays in English.
  */
-export const ScenarioSystemMessagePayloadSchema = z.strictObject({
+export const ScenarioRecoveryNoticeSchema = z.strictObject({
   scenarioId,
   kind: z.literal('recovery'),
   /** What the start-up took up again: plays (machine restored) and attempts (conversation reloaded). */
@@ -99,3 +100,27 @@ export const ScenarioSystemMessagePayloadSchema = z.strictObject({
     }),
   ),
 });
+
+/**
+ * The `handoff` kind: the session of `fromExecutor` stopped for `cause` and the attempt goes on
+ * with `toExecutor`, in a new session that opens with the continuation package (5.16). Ids and
+ * the cause only: no text of the package, no path, no credential.
+ */
+export const ScenarioHandoffNoticeSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('handoff'),
+  playId: z.string().min(1),
+  attemptId: z.string().min(1),
+  role: z.string().min(1).nullable(),
+  /** The interruption cause (`quota_exhausted`, `client_crash`...). */
+  cause: z.string().min(1),
+  /** Executor id (`<model>[-<effort>]@<client>/<profile>`) that passed the baton. */
+  fromExecutor: z.string().min(1),
+  /** Executor id that took it. */
+  toExecutor: z.string().min(1),
+});
+
+export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
+  ScenarioRecoveryNoticeSchema,
+  ScenarioHandoffNoticeSchema,
+]);

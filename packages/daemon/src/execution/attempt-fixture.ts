@@ -17,8 +17,9 @@ import { defaultVcs } from '../compose.js';
 import { editingTransport, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import type { McpAccess } from '../mcp/access.js';
 import { AttemptRunner, type AttemptRunnerOptions, type AttemptSpec } from './attempt-runner.js';
+import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
-import type { ExecutionSettings } from './settings.js';
+import { DEFAULT_PACKAGE_SETTINGS, type ExecutionSettings } from './settings.js';
 
 export const HOUR = 3_600_000;
 
@@ -38,6 +39,7 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   transientExhausted: 'last',
   clientCrashCounts: 'repeat',
   continuePrompt: 'carry on',
+  package: DEFAULT_PACKAGE_SETTINGS,
 };
 
 /** A real git repository with one commit, in a temporary directory. */
@@ -76,6 +78,7 @@ export async function makeRig<P extends RigParts>(
   overrides: Partial<ExecutionSettings> = {},
   mcp?: McpAccess,
   quota?: AttemptRunnerOptions['quota'],
+  handoff?: HandoffPort,
 ): Promise<Rig<P>> {
   const { repo, dispose: disposeRepo } = await makeRepo();
   const worktreeRoot = await mkdtemp(join(tmpdir(), 'otheater-attempt-wt-'));
@@ -98,6 +101,7 @@ export async function makeRig<P extends RigParts>(
     logger: pino({ level: 'silent' }),
     ...(mcp === undefined ? {} : { mcp }),
     ...(quota === undefined ? {} : { quota }),
+    ...(handoff === undefined ? {} : { handoff }),
   });
   return {
     ...parts,

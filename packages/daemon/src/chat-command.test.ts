@@ -57,3 +57,30 @@ describe('renderSystemMessage', () => {
     expect(lines[1]).toBe('  Resumed: play p1.');
   });
 });
+
+describe('renderSystemMessage, the handoff', () => {
+  const HANDOFF: ScenarioSystemMessagePayload = {
+    scenarioId: 's1',
+    kind: 'handoff',
+    playId: 'p1',
+    attemptId: 'p1/d1/1',
+    role: 'actor',
+    cause: 'quota_exhausted',
+    fromExecutor: 'opus@claude-code/a',
+    toExecutor: 'gpt@codex/b',
+  };
+
+  it('says who passed the baton to whom, in English', async () => {
+    const t = await createTranslator('en');
+    expect(renderSystemMessage(t, HANDOFF)).toEqual([
+      'System: attempt p1/d1/1 passed the baton from opus@claude-code/a to gpt@codex/b (quota_exhausted); the work goes on from the saved state.',
+    ]);
+  });
+
+  it('says it in Brazilian Portuguese', async () => {
+    const t = await createTranslator('pt-BR');
+    expect(renderSystemMessage(t, HANDOFF)).toEqual([
+      'Sistema: a tentativa p1/d1/1 passou o bastão de opus@claude-code/a para gpt@codex/b (quota_exhausted); o trabalho continua do estado guardado.',
+    ]);
+  });
+});

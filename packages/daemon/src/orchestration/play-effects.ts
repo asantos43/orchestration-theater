@@ -62,7 +62,7 @@ import {
   stagePrompt,
 } from './prompts.js';
 import { resolveRolePolicy } from './role-policy.js';
-import { executorOf, sessionSettingsOf } from './roles.js';
+import type { Acquired, RoleSelection, RoleSelectionRequest } from './role-selection.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -136,6 +136,8 @@ export interface OrchestrationEffectsOptions {
   readonly directors: DirectorSessions;
   readonly prompts: PromptSource;
   readonly registries: Registries;
+  /** The choice of the Executor of each role (P16); it replaces `orchestration.executor`. */
+  readonly selection: RoleSelection;
   readonly config: DaemonConfig;
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly logger: Logger;
@@ -187,6 +189,8 @@ export class OrchestrationEffects implements PlayEffects {
   /** The watchers of the question of `delivery.mode: ask` (N89), by play; not part of `idle()`. */
   readonly #askWatchers = new Map<string, AbortController>();
   readonly #locks = new Map<string, Promise<unknown>>();
+  /** What lets go of the work of a play that waits for an Executor (`abort_work`, `close()`). */
+  readonly #selectionWaits = new Map<string, AbortController>();
   #runner: PlayRunner | undefined;
   #closed = false;
 
@@ -213,6 +217,8 @@ export class OrchestrationEffects implements PlayEffects {
         this.#generations.set(scope.playId, generation + 1);
         this.#wanted.delete(scope.playId);
         this.#stopAskWatcher(scope.playId);
+        this.#selectionWaits.get(scope.playId)?.abort();
+        this.#selectionWaits.delete(scope.playId);
         return;
       case 'run_stage':
         this.#spawn(`run_stage ${effect.stage}`, scope, async () => {
@@ -273,9 +279,25 @@ export class OrchestrationEffects implements PlayEffects {
     this.#wanted.clear();
     for (const watcher of this.#askWatchers.values()) watcher.abort();
     this.#askWatchers.clear();
+    for (const wait of this.#selectionWaits.values()) wait.abort();
+    this.#selectionWaits.clear();
   }
 
   // ---- plumbing ----
+
+  /**
+   * The Executor of a role for one attempt of the play, waiting for one while there is hope (P16).
+   * `undefined`: the play was aborted or the daemon stopped meanwhile.
+   */
+  #acquire(request: RoleSelectionRequest, playId: string): Promise<Acquired | undefined> {
+    if (this.#closed) return Promise.resolve(undefined);
+    let controller = this.#selectionWaits.get(playId);
+    if (controller === undefined || controller.signal.aborted) {
+      controller = new AbortController();
+      this.#selectionWaits.set(playId, controller);
+    }
+    return this.#options.selection.acquire(request, { signal: controller.signal });
+  }
 
   #generationOf(playId: string): number {
     return this.#generations.get(playId) ?? 0;
@@ -477,15 +499,9 @@ export class OrchestrationEffects implements PlayEffects {
     effect: Extract<PlayEffect, { type: 'run_stage' }>,
     scope: PlayEffectScope,
   ): Promise<Submission | string | undefined> {
-    const { store, execution, config, paths, vcs } = this.#options;
+    const { store, execution, config, vcs } = this.#options;
     const { playId, scenarioId } = scope;
     const policy = await this.#policyOf(effect.role, scenarioId);
-    const executor = executorOf(config, effect.role);
-    if (executor === undefined) {
-      throw new AdapterUnavailable(
-        `No Executor is configured for the ${effect.role}: set orchestration.executor.`,
-      );
-    }
     const repo = await this.#repoOf(scenarioId);
     const need = await this.#needOf(playId);
     const plan = await this.#planText(playId);
@@ -500,6 +516,15 @@ export class OrchestrationEffects implements PlayEffects {
         : undefined;
     const demandId = stageDemandId(effect.stage);
     const attempt = await this.#nextAttempt(playId, demandId);
+    // A stage has no deadline, so it waits here for an Executor (P16); `abort_work` and the close
+    // of the daemon let it go.
+    const picked = await this.#acquire(
+      { role: effect.role, scenarioId, attempt: { playId, demandId, number: attempt } },
+      playId,
+    );
+    if (picked === undefined)
+      return `The ${effect.role} was cancelled while it waited for an Executor.`;
+    if (picked.kind === 'unavailable') throw new AdapterUnavailable(picked.reason);
     const base = effect.stage === 'CRITIQUING' ? integrationBranch(playId) : playBranch(playId);
     const body = stagePrompt({
       stage: effect.stage,
@@ -518,7 +543,7 @@ export class OrchestrationEffects implements PlayEffects {
       previousScript,
     });
     const prompt = `${await this.#prefix(effect.role)}\n${body}`;
-    const { profile, executor: settings } = sessionSettingsOf(paths, executor);
+    const { profile, settings } = picked;
     const mark = await store.events.lastId();
     const outcome = await execution.runner.run({
       playId,
@@ -900,7 +925,7 @@ export class OrchestrationEffects implements PlayEffects {
     generation: number,
     wanted: Wanted,
   ): Promise<void> {
-    const { store, execution, config, paths, vcs } = this.#options;
+    const { store, execution, vcs } = this.#options;
     const { playId, scenarioId } = scope;
     const limits = await this.#limitsOf(playId);
     const timeoutMin = demand.timeoutMin ?? Math.max(1, Math.ceil(limits.demand_timeout / 60_000));
@@ -911,6 +936,13 @@ export class OrchestrationEffects implements PlayEffects {
         demandId: demand.id,
         reason: clip(reason),
       });
+    // The Executor is chosen before the demand starts: `DEMAND_STARTED` arms the deadline, and the
+    // time a demand spends waiting for an Executor with quota must not count against it (P16).
+    const picked = await this.#acquire(
+      { role: 'actor', scenarioId, attempt: { playId, demandId: demand.id, number: attempt } },
+      playId,
+    );
+    if (picked === undefined) return; // abort_work or the daemon stopped while it waited
     await this.#send(playId, generation, {
       type: 'DEMAND_STARTED',
       demandId: demand.id,
@@ -929,12 +961,7 @@ export class OrchestrationEffects implements PlayEffects {
       return;
     }
     try {
-      const executor = executorOf(config, 'actor');
-      if (executor === undefined) {
-        throw new AdapterUnavailable(
-          'No Executor is configured for the actor: set orchestration.executor.',
-        );
-      }
+      if (picked.kind === 'unavailable') throw new AdapterUnavailable(picked.reason);
       const repo = await this.#repoOf(scenarioId);
       const need = await this.#needOf(playId);
       const plan = await this.#planText(playId);
@@ -964,7 +991,7 @@ export class OrchestrationEffects implements PlayEffects {
         `Outputs: ${demand.contract.outputs.join(', ')}`,
       ].join('\n');
       const prompt = `${await this.#prefix('actor', contract)}\n${body}`;
-      const { profile, executor: settings } = sessionSettingsOf(paths, executor);
+      const { profile, settings } = picked;
       const mark = await store.events.lastId();
       const outcome = await execution.runner.run({
         playId,

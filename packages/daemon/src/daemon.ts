@@ -469,6 +469,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       config,
       composition,
       execution,
+      quota,
       mcp,
       registries,
       prompts,
@@ -526,6 +527,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     settings: wakeupSettingsOf(config),
     logger,
     probes: (clientId) => quota.probeOf(clientId),
+  });
+  // P16: the demands that wait for an Executor look again when a profile comes back
+  // (`quota.restored`), once the wakeup has settled it.
+  wakeups.setHook('queued_demands', () => {
+    orchestration?.selection.wake();
   });
   await wakeups.start();
 

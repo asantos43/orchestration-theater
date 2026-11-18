@@ -23,7 +23,7 @@ import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access
 import type { DataPaths } from '../paths.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import { resolveRolePolicy } from './role-policy.js';
-import { executorOf, sessionSettingsOf } from './roles.js';
+import type { RoleSelection, SelectedExecutor } from './role-selection.js';
 
 /** The role the session of the Director plays. */
 export const DIRECTOR_ROLE = 'director';
@@ -49,6 +49,8 @@ export interface DirectorSessionsOptions {
   readonly dispatcher: PromptDispatcher;
   readonly prompts: PromptSource;
   readonly registries: Registries;
+  /** The choice of the Director's Executor (P16); it replaces `orchestration.executor`. */
+  readonly selection: RoleSelection;
   readonly config: DaemonConfig;
   readonly paths: Pick<DataPaths, 'profiles'>;
   readonly logger: Logger;
@@ -259,20 +261,36 @@ export class DirectorSessions {
     return session.waking;
   }
 
+  /**
+   * The Executor of the Director of a scenario (P16). With nobody available the opening fails
+   * with the reason ("waiting for quota of ...", `selection.director_wait: fail`) or holds until
+   * somebody is (`wait`); the Director session that is already open keeps the Executor it has.
+   */
+  async #pick(scenarioId: string): Promise<SelectedExecutor> {
+    const { selection, config } = this.#options;
+    const request = { role: DIRECTOR_ROLE, scenarioId };
+    if (config.selection.director_wait === 'wait') {
+      const acquired = await selection.acquire(request);
+      if (acquired === undefined) {
+        throw new AdapterUnavailable('The daemon is stopping: the Director did not open.');
+      }
+      if (acquired.kind === 'unavailable') throw new AdapterUnavailable(acquired.reason);
+      return acquired;
+    }
+    const once = await selection.once(request);
+    if (once.kind === 'selected') return once;
+    throw new AdapterUnavailable(once.reason);
+  }
+
   /** The pool lease and the MCP grant of the Director of a scenario. */
   async #acquire(scenarioId: string): Promise<{ lease: SessionLease; grant: McpGrant }> {
-    const { store, execution, mcp, config, paths, registries } = this.#options;
+    const { store, execution, mcp, config, registries } = this.#options;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
-    const executor = executorOf(config, DIRECTOR_ROLE);
-    if (executor === undefined) {
-      throw new AdapterUnavailable(
-        'No Executor is configured for the Director: set orchestration.executor (client, profile and model).',
-      );
-    }
+    const picked = await this.#pick(scenarioId);
     const repos = await store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
-    const { profile, executor: settings } = sessionSettingsOf(paths, executor);
+    const { profile, settings } = picked;
     const policy = await resolveRolePolicy(
       { config, scenarios: store.scenarios, tools: () => registries.tools.list() },
       DIRECTOR_ROLE,

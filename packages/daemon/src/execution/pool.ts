@@ -388,6 +388,22 @@ export class SessionPool {
     return written === 'auto' ? (this.#learnedMb.get(client) ?? base) : base;
   }
 
+  /**
+   * A side-effect-free look at the slot of a profile on its local instance (the `admission` port of
+   * the selector, P16). `full` when the instance has no slot for one more session of that kind; a
+   * profile with no local instance always has one. RAM and `max_sessions` are not asked here: the
+   * queue of the pool already holds a session blocked by them without freezing the others, so the
+   * selector does not turn them into a wait of its own.
+   */
+  slotOf(profile: Profile, director = false): 'free' | 'full' {
+    const instance = this.#localInstance?.(profile);
+    if (instance === undefined) return 'free';
+    const load = this.#load.get(profile.id) ?? { directors: 0, actors: 0 };
+    return slotFree(instance, load, director, this.#listedForDirector(profile.id))
+      ? 'free'
+      : 'full';
+  }
+
   /** Whether `profile` is in the Director's list (`reserve_when: listed`). */
   #listedForDirector(profileId: string): boolean {
     return this.#settings.directorProfiles?.includes(profileId) ?? false;
