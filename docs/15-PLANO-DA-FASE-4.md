@@ -88,7 +88,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P6 | Navegador sem a tela | P3 | P2, P4, P7 | concluído (PR #82) |
 | P7 | Perfil de projeto `software` | P0 | P1, P2, P3, P4, P6, P8 | concluído (PR #77) |
 | P8 | Fila de ideias | P0 | P1, P3, P7 | concluído (PR #78) |
-| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #<n>) |
+| P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #87) |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
 | P11 | Aceite da fase | todos | nada | pendente |
 | Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`); cliente real **[N]** |
