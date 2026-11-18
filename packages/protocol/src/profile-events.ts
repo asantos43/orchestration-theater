@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: MPL-2.0
+import { z } from 'zod';
+
+/**
+ * Payloads of the `profile.*` events (architecture 5.6, "Perfis"; Phase 5, P2). Registered in
+ * `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1. Every payload is a strict object.
+ * [proposta] The names and fields below. No payload carries a secret: an API key is never an event
+ * field, only whether the profile has one and which vault backend holds it.
+ */
+
+const profileId = z.string().min(1);
+
+/** `profile.added`: a profile was registered (its directory exists and the row is written). */
+export const ProfileAddedPayloadSchema = z.strictObject({
+  profileId,
+  client: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.enum(['token_plan', 'api']),
+  provider: z.string().min(1),
+  /** True when an API key went to the vault (the key itself never leaves it). */
+  hasSecret: z.boolean(),
+  /** The vault backend in use (`keyring`, `encrypted-file`...), `null` when no secret was stored. */
+  secretBackend: z.string().min(1).nullable(),
+  /** The answer of the login probe at registration: `logged_in`, `logged_out` or `unknown`. */
+  login: z.enum(['logged_in', 'logged_out', 'unknown']),
+  /** Another subscription profile of the same provider existed and the notice applied. */
+  sameProviderNotice: z.boolean(),
+});
+
+/** `profile.notice_accepted`: the Producer accepted the second-subscription notice of a provider. */
+export const ProfileNoticeAcceptedPayloadSchema = z.strictObject({
+  profileId,
+  provider: z.string().min(1),
+  /** The profiles of the same provider that triggered the notice. */
+  sameProvider: z.array(profileId),
+  /** The value of `profiles.same_provider_notice` at the time. */
+  mode: z.enum(['once', 'always']),
+});
+
+/** `profile.draining`: the profile left `active`; no new session is handed to it. */
+export const ProfileDrainingPayloadSchema = z.strictObject({
+  profileId,
+  /** Sessions still open on the profile when the drain started. */
+  activeSessions: z.int().min(0),
+  /** `profiles.drain.on_timeout` at the time. */
+  onTimeout: z.enum(['handoff', 'wait', 'force']),
+  timeoutMs: z.int().min(0),
+});
+
+/** `profile.drained`: the drain ended (see `outcome`); the profile may now be removed. */
+export const ProfileDrainedPayloadSchema = z.strictObject({
+  profileId,
+  /**
+   * `finished`: the sessions ended by themselves; `handoff`: the ones left went back to the
+   * queue; `forced`: the ones left were closed; `still_running`: `wait` kept the profile draining.
+   */
+  outcome: z.enum(['finished', 'handoff', 'forced', 'still_running']),
+  /** Sessions that went back to the queue (`handoff`) or were closed (`forced`). */
+  sessions: z.int().min(0),
+});
+
+/** `profile.removed`: the profile is `removed`; its Executors are `invalid`. */
+export const ProfileRemovedPayloadSchema = z.strictObject({
+  profileId,
+  /** The official logout ran (false when the client had no login or the logout failed). */
+  loggedOut: z.boolean(),
+  /** What happened to the directory: `deleted`, `backup` (moved aside) or `missing`. */
+  dir: z.enum(['deleted', 'backup', 'missing']),
+  /** The secret was taken out of the vault. */
+  secretDeleted: z.boolean(),
+  /** Executors of the profile that became `invalid`. */
+  executorsInvalidated: z.array(z.string().min(1)),
+});

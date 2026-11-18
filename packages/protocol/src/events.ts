@@ -26,6 +26,13 @@ import {
   IdeaReturnedPayloadSchema,
 } from './idea-events.js';
 import {
+  ProfileAddedPayloadSchema,
+  ProfileDrainedPayloadSchema,
+  ProfileDrainingPayloadSchema,
+  ProfileNoticeAcceptedPayloadSchema,
+  ProfileRemovedPayloadSchema,
+} from './profile-events.js';
+import {
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
@@ -320,6 +327,27 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: IdeaQueueHeldPayloadSchema,
   }),
+  defineEventType({ type: 'profile.added', schemaVersion: 1, payload: ProfileAddedPayloadSchema }),
+  defineEventType({
+    type: 'profile.notice_accepted',
+    schemaVersion: 1,
+    payload: ProfileNoticeAcceptedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.draining',
+    schemaVersion: 1,
+    payload: ProfileDrainingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.drained',
+    schemaVersion: 1,
+    payload: ProfileDrainedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.removed',
+    schemaVersion: 1,
+    payload: ProfileRemovedPayloadSchema,
+  }),
   defineEventType({
     type: 'scenario.created',
     schemaVersion: 1,
@@ -415,6 +443,11 @@ export type IdeaDeferredPayload = DaemonEventPayloads['idea.deferred'];
 export type IdeaDonePayload = DaemonEventPayloads['idea.done'];
 export type IdeaReturnedPayload = DaemonEventPayloads['idea.returned'];
 export type IdeaQueueHeldPayload = DaemonEventPayloads['idea.queue_held'];
+export type ProfileAddedPayload = DaemonEventPayloads['profile.added'];
+export type ProfileNoticeAcceptedPayload = DaemonEventPayloads['profile.notice_accepted'];
+export type ProfileDrainingPayload = DaemonEventPayloads['profile.draining'];
+export type ProfileDrainedPayload = DaemonEventPayloads['profile.drained'];
+export type ProfileRemovedPayload = DaemonEventPayloads['profile.removed'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
