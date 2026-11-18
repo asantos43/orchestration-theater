@@ -31,6 +31,7 @@
     "@otheater/adapter-sandbox-srt": "workspace:*",
     "@otheater/adapter-session-acp": "workspace:*",
     "@otheater/adapter-store-sqlite": "workspace:*",
+    "@otheater/adapter-usage-ccusage": "workspace:*",
     "@otheater/adapter-vault-file": "workspace:*",
     "@otheater/adapter-vault-keyring": "workspace:*",
     "@otheater/adapter-vcs-git": "workspace:*",

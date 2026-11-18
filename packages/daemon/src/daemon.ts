@@ -50,7 +50,7 @@ import {
   wakeupSettingsOf,
 } from './quota/index.js';
 import { BudgetService, budgetSettingsOf } from './budget/index.js';
-import { UsageService, usageSettingsOf } from './usage/index.js';
+import { UsageAudit, UsageService, usageAuditSettingsOf, usageSettingsOf } from './usage/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
@@ -174,6 +174,12 @@ export interface DaemonHandle {
   readonly wakeups: WakeupManager;
   /** The consumption and the cost in money of the turns (architecture 5.6; Phase 5, P10). */
   readonly usage: UsageService;
+  /**
+   * The check of the consumption against \`ccusage\` (Phase 5, P12, N118): \`undefined\` when
+   * \`usage.ccusage.enabled\` is off or its adapter could not be built; \`active\` says whether the
+   * version check passed. The daemon works the same either way.
+   */
+  readonly usageAudit: UsageAudit | undefined;
   /**
    * The spending cap of the API profiles and Executors (architecture 5.6; Phase 5, P11). A spent
    * profile cap is `exhausted(budget)` in `quota`; `budget` answers for the Executors and decides
@@ -536,6 +542,21 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     situations: composition.situations,
   });
   await budget.start();
+  // P12 (N118): the check of the consumption against ccusage. It is an audit: it starts in the
+  // background (the version check runs a process) and never holds the start-up or fails it.
+  const usageAudit =
+    composition.usageSource === undefined
+      ? undefined
+      : new UsageAudit({
+          source: composition.usageSource,
+          usage,
+          store: composition.store,
+          clock,
+          logger,
+          settings: usageAuditSettingsOf(config),
+          situations: composition.situations,
+        });
+  const usageAuditStarted = usageAudit?.start();
   const wakeups = new WakeupManager({
     store: composition.store,
     clock,
@@ -622,6 +643,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('directives', () => directives.stop());
       await attempt('wakeups', () => wakeups.stop());
       await attempt('budget', () => budget.stop());
+      await attempt('usage audit', async () => {
+        await usageAuditStarted;
+        await usageAudit?.stop();
+      });
       await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
@@ -656,6 +681,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     quota,
     wakeups,
     usage,
+    usageAudit,
     budget,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
