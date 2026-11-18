@@ -24,7 +24,7 @@ confirmed. Everything marked **[proposta]** is a default or a key the owner has 
 | `normalizeUpdate/Error` | the updates and errors measured in Phase 0 [V]; the stream of `run --format json` is not translated [N]                                 |
 | `models`                | `assisted`: `opencode models --verbose` in the profile directory, through the injected `ProcessLauncher`                                 |
 | `quota`                 | rejects with `AdapterUnavailable` ("arrives in Phase 5")                                                                                  |
-| `login` / `logout`      | reject with `AdapterUnavailable` ("arrives in Phase 5")                                                                                   |
+| `login` / `logout`      | the official `opencode auth login` / `auth logout` in the profile; `probeLogin` reads `auth list` (see Official login and logout)             |
 | `probes`                | the permission probe of the package (below)                                                                                              |
 
 ### The permission (the core of the adapter)
@@ -77,6 +77,39 @@ tests use a hand-made one. `parseModelsVerbose` keeps what it can read and count
   [proposta]), family, local, window and cost; it fills only what the catalog knows.
 - `validate`: profile, model, effort (`default` is always accepted [V]), tool calls and minimum
   context window; the severity of the window follows `roles.capability_check` (`contextSeverity`).
+
+## Official login and logout (Phase 5, P3)
+
+`login(profile)` creates the profile files (`ensureProfileFiles`), runs the official command with
+the isolation environment (`XDG_DATA_HOME`, `XDG_CONFIG_HOME`, ... inside the profile; no
+`OPENCODE_PERMISSION`) and returns a `LoginFlow`: the mode (`terminal` by default, because the
+command is an interactive menu), the first URL, a code for `device_code`, `complete()` (exit 0) and
+`cancel()` (`complete()` rejects with `Cancelled`). A refusal, a signal or the timeout reject with
+`PermissionDenied`. The adapter never reads a credentials file or any token; the output is never logged.
+
+| Command | Default | Source |
+| --- | --- | --- |
+| login | `opencode auth login [-p <provider>] [-m <method>]` (`url` argument not used) | [V] `auth login [url]` with `-p` and `-m` in `--help`; [proposta] the arguments |
+| logout | `opencode auth logout [<provider>]` | [V] exists in `--help`; [N] whether it prompts with no provider |
+| probe | `opencode auth list` | [V] exists in `--help`; [N] the output |
+
+`probeLogin(profile)` runs `auth list` and reads only a count ("N credentials"): `0` is
+`logged_out`, more is `logged_in`, no count is `unknown`.
+
+| Option | Key | Modes | Default |
+| --- | --- | --- | --- |
+| `login.mode` | `clients.opencode.login.mode` | `browser`, `device_code`, `terminal` | `terminal` |
+| `login.command` | `clients.opencode.login.command` | any executable and arguments (replaces the default of the mode) | `opencode auth login` |
+| `login.logoutCommand` | `clients.opencode.login.logout_command` | any executable and arguments | `opencode auth logout` |
+| `login.urlWaitMs` | `clients.opencode.login.url_wait_ms` | milliseconds `login()` waits for the URL (and the code) | `15000` |
+| `login.timeoutMs` | `clients.opencode.login.timeout_ms` | milliseconds of the whole flow before the client is ended | `600000` |
+| `login.provider` | `clients.opencode.login.provider` | a provider id (`-p`) | none |
+| `login.method` | `clients.opencode.login.method` | a method name (`-m`) | none |
+| `login.listCommand` | `clients.opencode.login.list_command` | any executable and arguments | `opencode auth list` |
+
+All of these are [proposta]. [N]: what the commands print, whether they run without a TTY (the menu
+may need one), the exit codes, the wording of `auth list`. `LoginFlow` has no input channel. The
+tests use a fake client; no real login ran.
 
 ## Options and keys
 

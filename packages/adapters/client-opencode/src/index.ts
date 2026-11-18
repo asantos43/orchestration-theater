@@ -7,6 +7,7 @@ export {
   opencodeAdapterVersion,
   PROCESS_MODEL_KEYS,
   type OpenCodeAdapterOptions,
+  type OpenCodeLoginOptions,
   type ProcessModelKey,
   type ProjectConfigMode,
   type ReadOnlyMode,
@@ -56,3 +57,4 @@ export {
   type ProfileFilesOptions,
 } from './profile.js';
 export { OpenCodeQuotaProbe } from './quota-probe.js';
+export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';
