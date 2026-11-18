@@ -27,9 +27,20 @@ const SEARCH_TOOLS = ['glob', 'grep', 'list'] as const;
  */
 const REMOVED_TOOLS = ['task', 'webfetch', 'websearch', 'skill'] as const;
 
+/**
+ * Tools of OpenCode that only touch the state of the session itself (its to-do list) and reach no
+ * file, process or network: they are `allow` for every role. Without this, the default `ask` sends
+ * them to layer 2, which rejects them with `no_rule`, and OpenCode ends the turn on the first
+ * `todowrite` [V: escape run with `openai/gpt-5.6-luna`, 2026-11-17]. `todoread` comes from the
+ * permission docs [S]. [proposta] key `clients.opencode.internal_tools`.
+ */
+export const DEFAULT_INTERNAL_TOOLS: readonly string[] = ['todowrite', 'todoread'];
+
 export interface PermissionOptions {
   /** Default {@link DEFAULT_SHELL_KEYS}. */
   readonly shellKeys?: readonly string[];
+  /** Default {@link DEFAULT_INTERNAL_TOOLS}; `[]` sends them to the default `ask`. */
+  readonly internalTools?: readonly string[];
 }
 
 /**
@@ -59,6 +70,7 @@ export function mcpToolPrefix(serverName: string): string {
  *   `opencode.json` of the worktree from loosening any of this.
  * - `writeScope: worktree`: `external_directory` is `deny` (the V2 docs say it is allowed by
  *   default [S]); layer 3 is the other half.
+ * - The internal tools ({@link DEFAULT_INTERNAL_TOOLS}) are `allow`: they change only the session.
  */
 export function opencodePermission(
   policy: RolePolicy,
@@ -72,6 +84,10 @@ export function opencodePermission(
   for (const key of options.shellKeys ?? DEFAULT_SHELL_KEYS) rules[key] = 'deny';
   rules.external_directory = 'deny';
   for (const tool of REMOVED_TOOLS) rules[tool] = 'deny';
+  for (const tool of options.internalTools ?? DEFAULT_INTERNAL_TOOLS) {
+    // A name that is also a native tool or the shell keeps the rule given above.
+    if (!(tool in rules)) rules[tool] = 'allow';
+  }
   for (const server of policy.mcpServers) {
     const prefix = mcpToolPrefix(server);
     const named = mcpToolsOf(policy, server);
@@ -88,7 +104,7 @@ export function serializePermission(rules: PermissionRules): string {
 
 /**
  * What `profileEnv` uses when no policy is at hand: nothing is allowed. A client started this way
- * can read nothing and change nothing, so a missing policy fails closed.
+ * can read nothing and change nothing outside its own session, so a missing policy fails closed.
  */
 export const DENY_ALL_POLICY: RolePolicy = {
   nativeTools: [],

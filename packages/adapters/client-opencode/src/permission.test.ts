@@ -2,6 +2,7 @@
 import type { RolePolicy } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_INTERNAL_TOOLS,
   DEFAULT_SHELL_KEYS,
   DENY_ALL_POLICY,
   mcpToolPrefix,
@@ -101,9 +102,32 @@ describe('opencodePermission', () => {
     expect(JSON.parse(text)).toEqual(opencodePermission(policy()));
   });
 
-  it('a policy with nothing allows nothing: the fail-closed one', () => {
+  it('a policy with nothing allows only the session-internal tools: the fail-closed one', () => {
     const rules = opencodePermission(DENY_ALL_POLICY);
-    expect(Object.entries(rules).filter(([, action]) => action === 'allow')).toEqual([]);
+    const allowed = Object.entries(rules).filter(([, action]) => action === 'allow');
+    expect(allowed.map(([key]) => key)).toEqual([...DEFAULT_INTERNAL_TOOLS]);
+    expect(opencodePermission(DENY_ALL_POLICY, { internalTools: [] })).not.toHaveProperty(
+      'todowrite',
+    );
+  });
+
+  it('the internal tools are allowed, after the deny rules, and are a setting', () => {
+    const rules = opencodePermission(policy());
+    expect(rules.todowrite).toBe('allow');
+    expect(rules.todoread).toBe('allow');
+    const keys = Object.keys(rules);
+    expect(keys.indexOf('todowrite')).toBeGreaterThan(keys.indexOf('external_directory'));
+    const custom = opencodePermission(policy(), { internalTools: ['todowrite'] });
+    expect(custom).not.toHaveProperty('todoread');
+  });
+
+  it('an internal tool never loosens a native tool, the shell or a removed tool', () => {
+    const rules = opencodePermission(policy({ nativeTools: [] }), {
+      internalTools: ['bash', 'read', 'task'],
+    });
+    expect(rules.bash).toBe('deny');
+    expect(rules.read).toBe('deny');
+    expect(rules.task).toBe('deny');
   });
 });
 
