@@ -176,6 +176,65 @@ roles:
   });
 });
 
+describe('selection (5.7; P15)', () => {
+  it('has the defaults of the architecture and of N124 when the block is absent', () => {
+    expect(parseConfig('').selection).toEqual({
+      strategy: 'ordered',
+      cross_check: 'prefer_other_provider',
+      unknown_quota: 'allow',
+      near_limit: 'keep_order',
+      retry_diversity: 'rotate',
+      context_reserve: 0,
+    });
+  });
+
+  it('takes every key, and the reserve as a size', () => {
+    const { selection } = parseConfig(`
+selection:
+  strategy: round_robin
+  cross_check: require_other_provider
+  unknown_quota: skip
+  near_limit: last
+  retry_diversity: forward_only
+  context_reserve: 8k
+`);
+    expect(selection).toEqual({
+      strategy: 'round_robin',
+      cross_check: 'require_other_provider',
+      unknown_quota: 'skip',
+      near_limit: 'last',
+      retry_diversity: 'forward_only',
+      context_reserve: 8_000,
+    });
+  });
+
+  it('takes the other modes of the keys', () => {
+    expect(parseConfig('selection:\n  strategy: most_headroom\n').selection.strategy).toBe(
+      'most_headroom',
+    );
+    expect(parseConfig('selection:\n  cross_check: other_model\n').selection.cross_check).toBe(
+      'other_model',
+    );
+    expect(parseConfig('selection:\n  cross_check: off\n').selection.cross_check).toBe('off');
+    expect(parseConfig('selection:\n  retry_diversity: off\n').selection.retry_diversity).toBe(
+      'off',
+    );
+    expect(parseConfig('selection:\n  near_limit: skip\n').selection.near_limit).toBe('skip');
+  });
+
+  it('refuses a mode it does not know, naming the key, and an unknown key', () => {
+    expect(refusal('selection:\n  strategy: random\n')).toMatch(/selection\.strategy: /u);
+    expect(refusal('selection:\n  cross_check: strict\n')).toMatch(/selection\.cross_check: /u);
+    expect(refusal('selection:\n  unknown_quota: maybe\n')).toMatch(/selection\.unknown_quota: /u);
+    expect(refusal('selection:\n  near_limit: first\n')).toMatch(/selection\.near_limit: /u);
+    expect(refusal('selection:\n  retry_diversity: always\n')).toMatch(
+      /selection\.retry_diversity: /u,
+    );
+    expect(refusal('selection:\n  context_reserve: huge\n')).toMatch(/selection\.context_reserve/u);
+    expect(refusal('selection:\n  strategie: ordered\n')).toMatch(/selection/u);
+  });
+});
+
 describe('the old format', () => {
   it('still loads next to the new keys', () => {
     const config = parseConfig(`
