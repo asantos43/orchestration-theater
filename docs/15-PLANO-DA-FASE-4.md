@@ -91,7 +91,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #87) |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | pendente |
 | P11 | Aceite da fase | todos | nada | pendente |
-| Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`); cliente real **[N]** |
+| Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`), aceita pelo dono; cliente real confirmado [V] (PR #86) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P7 e P8;
@@ -222,6 +222,7 @@ Ordem em ondas **[proposta]**:
 - Adaptador `adapters/sandbox-srt` sobre `@anthropic-ai/sandbox-runtime` 0.0.81 (Apache-2.0), com `bwrap` real nos testes **[V]**: escrita só no worktree, nas pastas do perfil e em `extra_write_paths`; rede negada, com os domínios do papel e do provedor; leitura negada nos caminhos de segredo. A biblioteca guarda um singleton por processo: um `SrtSandbox` aberto por processo **[V]**.
 - Daemon: `sandbox-wiring.ts` (sem adaptador), `compose.ts` e `clients.ts` passam o `SandboxCapabilities` à `guarantee()`; `run_tests`, `install_deps` e `restricted_shell` rodam confinados e não rodam se o sandbox não embrulha o comando. Sem adaptador (Windows) ou com `sandbox.mode: off`, vale `security.unenforced` (padrão `refuse`).
 - Chaves **[proposta]**: `sandbox.mode` (`runtime`, `off`; padrão `runtime`), `sandbox.extra_write_paths` (caminhos absolutos), `sandbox.extra_domains` e `security.secret_paths.{add,remove}`.
+- Chave `sandbox.mcp_bridge` (`proxy`, `off`; padrão `proxy` no Linux), da medição N115 (PR #85), aceita pelo dono em 2026-11-17 **[V]**.
 - Aceite com o agente falso por ACP real dentro do `bwrap` **[V]**: a escrita fora do worktree (`EROFS`), a conexão fora da lista (`ECONNREFUSED`, com `--unshare-net`) e a leitura de um `.ssh` falso e de um `.env` do worktree falham no sistema operacional; o servidor local do teste não viu nenhuma requisição; a `guarantee()` passa sem `unenforced: warn` e recusa (`interrupted`, `permission`) com `sandbox.mode: off`.
 - Um servidor em `localhost` dentro da sandbox não é alcançável de fora **[V]** (o loopback de dentro é outro, `--unshare-net`). Logo o navegador que fica fora não o alcança sem uma ponte **[S]**, o que o P6 precisa decidir.
 - Limites medidos: o glob de leitura negada (`<worktree>/**/.env`) é expandido ao embrulhar, no Linux; um `.env` criado depois do início da sessão não fica coberto **[V]**.
