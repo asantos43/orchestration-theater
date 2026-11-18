@@ -21,8 +21,8 @@ export const ProfileAddedPayloadSchema = z.strictObject({
   hasSecret: z.boolean(),
   /** The vault backend in use (`keyring`, `encrypted-file`...), `null` when no secret was stored. */
   secretBackend: z.string().min(1).nullable(),
-  /** The answer of the login probe at registration: `logged_in`, `logged_out` or `unknown`. */
-  login: z.enum(['logged_in', 'logged_out', 'unknown']),
+  /** The login probe at registration: `logged_in`, `logged_out`, `unknown`; `null` for an API profile (no login). */
+  login: z.enum(['logged_in', 'logged_out', 'unknown']).nullable(),
   /** Another subscription profile of the same provider existed and the notice applied. */
   sameProviderNotice: z.boolean(),
 });

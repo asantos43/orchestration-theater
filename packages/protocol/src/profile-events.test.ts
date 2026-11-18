@@ -20,6 +20,13 @@ describe('profile events (Phase 5, P2)', () => {
     expect(() => validateEventPayload('profile.added', 1, { ...added, apiKey: 'x' })).toThrow(
       InvalidInput,
     );
+    // An API profile has no login: `null`; anything else outside the three states is refused.
+    expect(validateEventPayload('profile.added', 1, { ...added, login: null })).toMatchObject({
+      login: null,
+    });
+    expect(() => validateEventPayload('profile.added', 1, { ...added, login: 'maybe' })).toThrow(
+      InvalidInput,
+    );
     const removed = {
       profileId: 'claude-code/work',
       loggedOut: true,
