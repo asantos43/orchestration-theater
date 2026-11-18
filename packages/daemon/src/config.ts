@@ -25,7 +25,7 @@ import {
 } from './execution/admission.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
-import { ExecutorsConfigSchema } from './role-executors-config.js';
+import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -1087,6 +1087,15 @@ export const DaemonConfigSchema = z
      * `roles`. See `role-executors-config.ts`; the pipeline reads them from P16.
      */
     executors: ExecutorsConfigSchema.prefault({}),
+    /**
+     * How the daemon picks among the Executors of a role (architecture 5.7; Phase 5, P15):
+     * `strategy` (`ordered` default | `most_headroom` | `round_robin`, N130), `cross_check`
+     * (`prefer_other_provider` default | `require_other_provider` | `other_model` | `off`) and,
+     * [proposta], `unknown_quota` (`allow` | `skip`), `near_limit` (`keep_order` | `last` | `skip`),
+     * `retry_diversity` (`rotate` | `forward_only` | `off`) and `context_reserve`. See
+     * `role-executors-config.ts`; the pipeline reads them from P16.
+     */
+    selection: SelectionConfigSchema.prefault({}),
     /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
