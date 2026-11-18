@@ -77,7 +77,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | concluído (PR #113) |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | concluído (PR #117) |
 | P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
-| P18 | Pacote de continuação e passagem de bastão | P15, P17, P22 | P16, P20 | pendente |
+| P18 | Pacote de continuação e passagem de bastão | P15, P17, P22 | P16, P20 | concluído (PR #118) |
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | pendente |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | pendente |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
