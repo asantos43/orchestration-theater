@@ -76,7 +76,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | pendente |
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | pendente |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | pendente |
-| P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | pendente |
+| P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
 | P18 | Pacote de continuação e passagem de bastão | P15, P17, P22 | P16, P20 | pendente |
 | P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | pendente |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | pendente |
