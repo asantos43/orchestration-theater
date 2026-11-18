@@ -37,6 +37,7 @@ import {
   type SessionWarning,
   type StopReason,
 } from '@otheater/core';
+import { ToolCallState, type ToolCallFields } from './tool-call-state.js';
 
 /** How long `initialize`, `session/new`, `session/load` and the config calls may take together. [proposta] */
 export const DEFAULT_START_TIMEOUT_MS = 30_000;
@@ -119,6 +120,12 @@ function stringOf(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+/** The marks codex-acp puts on an MCP tool call ([V] codex-acp 2.6.0, 2026-11-17). */
+function isMcpMarked(params: RequestPermissionRequest, meta: Readonly<Record<string, unknown>>) {
+  const own: unknown = params._meta;
+  return (isRecord(own) && own.is_mcp_tool_approval === true) || meta.is_mcp_tool_call === true;
+}
+
 /**
  * The reduction of a `session/request_permission` to what the policy needs (architecture 5.8,
  * layer 2). Besides the title and the kind, what the release rules read (Phase 4, P2): the tool
@@ -128,13 +135,27 @@ function stringOf(value: unknown): string | undefined {
  * `rawInput.command` ([V] in the Phase 0 spikes, Claude Code and OpenCode for `execute`); the tool
  * name from `_meta.claudeCode.toolName` [N]. A request that lacks the file of a write is rejected
  * (`write_target_unknown`), so what is not measured fails closed.
+ *
+ * `known` is what the session saw of the same `toolCallId` in its `tool_call` and
+ * `tool_call_update` messages: the `toolCall` of the request is a ToolCallUpdate, so a field it
+ * leaves out is the one the earlier message had, and what the request carries wins. [V] Codex
+ * (codex-acp 2.6.0, 2026-11-17) sends the title, `rawInput` and `_meta` of an MCP call only in the
+ * `tool_call`; the request has the id and `kind: execute`. `mcpTool` is filled only for a call
+ * marked as MCP (`is_mcp_tool_approval` on the request or `is_mcp_tool_call` on the merged tool
+ * call) whose `rawInput` names a server and a tool; anything else stays as it was (an `execute` is
+ * the native shell). [proposta]
  */
-function permissionRequestOf(params: RequestPermissionRequest): PermissionRequest {
+export function permissionRequestOf(
+  params: RequestPermissionRequest,
+  known?: ToolCallFields,
+): PermissionRequest {
   const { toolCall } = params;
-  const raw: unknown = toolCall.rawInput;
+  const own: unknown = toolCall.rawInput;
+  const raw: unknown = own ?? known?.rawInput;
   const rawInput = isRecord(raw) ? raw : {};
-  const meta: unknown = toolCall._meta;
-  const claude = isRecord(meta) && isRecord(meta.claudeCode) ? meta.claudeCode : {};
+  const ownMeta: unknown = toolCall._meta;
+  const meta: Record<string, unknown> = { ...known?.meta, ...(isRecord(ownMeta) ? ownMeta : {}) };
+  const claude = isRecord(meta.claudeCode) ? meta.claudeCode : {};
   const located = (toolCall.locations ?? []).map((location) => location.path);
   const fromRaw = RAW_PATH_KEYS.map((key) => stringOf(rawInput[key])).filter(
     (path): path is string => path !== undefined,
@@ -143,14 +164,23 @@ function permissionRequestOf(params: RequestPermissionRequest): PermissionReques
   const toolName = stringOf(claude.toolName);
   const command = stringOf(rawInput.command) ?? stringOf(rawInput.cmd);
   const url = stringOf(rawInput.url);
+  const title = typeof toolCall.title === 'string' ? toolCall.title : known?.title;
+  const toolKind = typeof toolCall.kind === 'string' ? toolCall.kind : known?.kind;
+  const server = stringOf(rawInput.server);
+  const tool = stringOf(rawInput.tool);
+  const mcpTool =
+    server !== undefined && tool !== undefined && isMcpMarked(params, meta)
+      ? { server, tool }
+      : undefined;
   return {
     toolCallId: toolCall.toolCallId,
-    ...(typeof toolCall.title === 'string' ? { title: toolCall.title } : {}),
-    ...(typeof toolCall.kind === 'string' ? { toolKind: toolCall.kind } : {}),
+    ...(title === undefined ? {} : { title }),
+    ...(toolKind === undefined ? {} : { toolKind }),
     ...(toolName === undefined ? {} : { toolName }),
     ...(locations.length === 0 ? {} : { locations }),
     ...(command === undefined ? {} : { command }),
     ...(url === undefined ? {} : { url }),
+    ...(mcpTool === undefined ? {} : { mcpTool }),
     options: params.options.map((option) => ({
       optionId: option.optionId,
       name: option.name,
@@ -233,6 +263,8 @@ interface Route {
   deliver: ((raw: unknown) => void) | undefined;
   readonly onPermission: SessionOpenParams['onPermission'];
   readonly extensions: ReadonlyMap<string, SessionExtensionHandler>;
+  /** The tool calls the client announced, so a permission request can be read with their fields. */
+  readonly toolCalls: ToolCallState;
   /** The open gave up (timeout, error): whatever the client still says about it is not delivered. */
   abandoned: boolean;
 }
@@ -459,6 +491,7 @@ export class AcpTransport implements SessionTransport {
       deliver: undefined,
       onPermission: params.onPermission,
       extensions: new Map((params.extensions ?? []).map((handler) => [handler.method, handler])),
+      toolCalls: new ToolCallState(),
       abandoned: false,
     };
     shared.retain();
@@ -514,7 +547,9 @@ export class AcpTransport implements SessionTransport {
         const route = routeOf(methods.client.session.requestPermission, request.sessionId);
         if (route === undefined) return CANCELLED;
         try {
-          const answer = route.onPermission(permissionRequestOf(request));
+          const answer = route.onPermission(
+            permissionRequestOf(request, route.toolCalls.get(request.toolCall.toolCallId)),
+          );
           return answer.outcome === 'selected'
             ? { outcome: { outcome: 'selected' as const, optionId: answer.optionId } }
             : CANCELLED;
@@ -525,9 +560,11 @@ export class AcpTransport implements SessionTransport {
         }
       })
       .onNotification(methods.client.session.update, ({ params: notification }) => {
-        routeOf(methods.client.session.update, notification.sessionId)?.deliver?.(
-          notification.update,
-        );
+        const route = routeOf(methods.client.session.update, notification.sessionId);
+        if (route === undefined) return;
+        // Remembered even before the session is delivered to (a load replays its history).
+        route.toolCalls.record(notification.update);
+        route.deliver?.(notification.update);
       })
       // `_otheater/*` is the only extension space the shell answers; the request names the session.
       .onRequest('*', async ({ method, params: request }) => {

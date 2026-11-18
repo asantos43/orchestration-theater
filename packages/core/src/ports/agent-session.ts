@@ -143,6 +143,16 @@ export interface PermissionRequest {
   readonly locations?: readonly string[];
   readonly command?: string;
   readonly url?: string;
+  /**
+   * The MCP tool the call is, when the client says so: the server and the tool as `rawInput` of the
+   * tool call names them (`{ server, tool }`), not as the client prefixes them in a title. Present
+   * only when the call is marked as an MCP call (`is_mcp_tool_approval` on the request or
+   * `is_mcp_tool_call` on the tool call) AND both names are non-empty strings. [V] Codex
+   * (codex-acp 2.6.0, 2026-11-17): the request itself carries only `toolCallId`, `kind: execute` and
+   * `status`; the names come from the earlier `tool_call` of the same id, which the transport
+   * merges in. [proposta] the name of this field.
+   */
+  readonly mcpTool?: { readonly server: string; readonly tool: string };
   readonly options: readonly PermissionOption[];
 }
 
