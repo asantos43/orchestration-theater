@@ -13,6 +13,7 @@ import {
 } from '@otheater/core';
 import {
   SessionUpdatePayloadSchema,
+  type PackageSummary,
   ToolCalledPayloadSchema,
   ToolFinishedPayloadSchema,
   type ToolOutcome,
@@ -114,6 +115,20 @@ export function scrubPackageText(text: string, scope: SecretScope): string {
   return masked.replace(PATH_TOKEN, (token) =>
     isSecretToken(token, scope) ? SECRET_PATH_MARK : token,
   );
+}
+
+const ERROR_TEXT_CHARS = 300;
+
+/**
+ * The text of an error as an event may carry it (P18b, N146): the message with the known secret
+ * formats and the paths of the secret list masked, on one line and cut. Never the stack and never
+ * the raw message: a hook or a plugin reads events, and the message of a client or a model may
+ * quote what it was given.
+ */
+export function eventErrorText(error: unknown, scope: SecretScope): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const flat = scrubPackageText(message, scope).replace(/\s+/g, ' ').trim();
+  return flat.length > ERROR_TEXT_CHARS ? `${flat.slice(0, ERROR_TEXT_CHARS)}...` : flat;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -396,6 +411,10 @@ export interface ContinuationPackage {
   readonly instruction: PackageInstruction;
   /** What the cheap model wrote (`summarize: director_model`); the deterministic summary stays. */
   readonly modelSummary: string | undefined;
+  /** How the summary was made; `model_failed` and `model_unavailable` are the fallbacks (P18b). */
+  readonly summary: PackageSummary;
+  /** Why the cheap model failed (masked), with `summary: model_failed`. */
+  readonly summaryError: string | undefined;
 }
 
 /** What the package needs besides the store: the repository, and the secret list. */
@@ -533,8 +552,11 @@ export async function gatherContinuationPackage(
     reason: request.reason,
     instruction,
     modelSummary: undefined,
+    summary: 'deterministic',
+    summaryError: undefined,
   };
-  if (settings.summarize !== 'director_model' || summarizer === undefined) return base;
+  if (settings.summarize !== 'director_model') return base;
+  if (summarizer === undefined) return { ...base, summary: 'model_unavailable' };
   try {
     const written = await summarizer.summarize({
       role: request.role,
@@ -545,10 +567,17 @@ export async function gatherContinuationPackage(
       secretPaths: deps.secretPaths,
       home: deps.home,
     });
-    return text.length === 0 ? base : { ...base, modelSummary: text.slice(0, MODEL_SUMMARY_CHARS) };
-  } catch {
-    // The cheap model is optional help: the deterministic summary is the source of truth.
-    return base;
+    return text.length === 0
+      ? { ...base, summary: 'model_failed', summaryError: 'the model wrote an empty summary' }
+      : { ...base, modelSummary: text.slice(0, MODEL_SUMMARY_CHARS), summary: 'model' };
+  } catch (error) {
+    // The cheap model is optional help: the deterministic summary is the source of truth. The
+    // event of the handoff says the model did not contribute, so a hook can see it.
+    return {
+      ...base,
+      summary: 'model_failed',
+      summaryError: eventErrorText(error, { secretPaths: deps.secretPaths, home: deps.home }),
+    };
   }
 }
 
@@ -774,6 +803,8 @@ export interface RenderedPackage {
   readonly text: string;
   /** The level of detail that fit `maxChars`: 0 is everything, 4 is a hard cut. */
   readonly level: number;
+  /** The middle was cut (the hard cut): `level` is the last one. */
+  readonly cut: boolean;
 }
 
 const CUT_MARK = '\n\n[... cut: the package reached resume.package.max_chars ...]\n\n';
@@ -790,12 +821,16 @@ export function renderContinuationPackage(
 ): RenderedPackage {
   for (const [index, level] of LEVELS.entries()) {
     const text = renderAt(pkg, level, options);
-    if (text.length <= options.maxChars) return { text, level: index };
+    if (text.length <= options.maxChars) return { text, level: index, cut: false };
   }
   const full = renderAt(pkg, LEVELS[3], options);
   const tailStart = full.lastIndexOf('## Why you are resuming');
   const tail = tailStart === -1 ? '' : full.slice(tailStart);
   const room = Math.max(0, options.maxChars - tail.length - CUT_MARK.length);
   const head = full.slice(0, tailStart === -1 ? options.maxChars : tailStart);
-  return { text: `${head.slice(0, room)}${CUT_MARK}${tail}`, level: LEVELS.length };
+  return {
+    text: `${head.slice(0, room)}${CUT_MARK}${tail}`,
+    level: LEVELS.length,
+    cut: true,
+  };
 }

@@ -16,7 +16,7 @@ import {
   type McpGrantInput,
 } from '../mcp/access.js';
 import { TEST_POLICY } from '../test-helpers.js';
-import { makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixture.js';
+import { eventsOf, makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixture.js';
 
 /**
  * How the runner hands the framework MCP server to a session (architecture 5.3): the grant of the
@@ -101,6 +101,30 @@ afterEach(async () => {
 afterAll(disposeTestGitIsolation);
 
 const TEST_TIMEOUT_MS = 30_000;
+
+describe('AttemptRunner, an error nobody planned for (P18b)', () => {
+  it('writes attempt.aborted with a masked error and marks the attempt failed', async () => {
+    const key = 'sk-abcdefghijklmnopqrstuvwx';
+    const access: McpAccess = {
+      url: 'http://127.0.0.1:1/mcp',
+      grant(): McpGrant {
+        throw new Error(`the token store broke, key ${key}`);
+      },
+    };
+    const r = await rig(access);
+    await expect(
+      r.runner.run(specOf(r, 'hello', { role: 'author', policy: WITH_FRAMEWORK })),
+    ).rejects.toThrow('the token store broke');
+    const aborted = await eventsOf(r, 'attempt.aborted');
+    expect(aborted).toHaveLength(1);
+    const payload = aborted[0]?.payload as { error: string };
+    expect(payload).toMatchObject({ playId: 'play-1', demandId: 'demand-1' });
+    expect(payload.error).toContain('the token store broke');
+    expect(payload.error).not.toContain(key);
+    const [record] = await r.store.attempts.list();
+    expect(record).toMatchObject({ state: 'failed' });
+  }, 30_000);
+});
 
 describe('AttemptRunner, framework MCP server', () => {
   it(

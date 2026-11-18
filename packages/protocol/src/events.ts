@@ -53,13 +53,18 @@ import {
   ScenarioDirectorWokePayloadSchema,
 } from './scenario-events.js';
 import {
+  AttemptAbortedPayloadSchema,
+  AttemptCheckpointFailedPayloadSchema,
   AttemptCheckpointPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
   SessionClosedPayloadSchema,
   SessionCancelEscalatedPayloadSchema,
+  SessionHandoffFailedPayloadSchema,
+  SessionHandoffPayloadSchema,
   SessionInterruptedPayloadSchema,
   SessionOpenedPayloadSchema,
+  SessionProcessesLeftPayloadSchema,
   SessionPromptFinishedPayloadSchema,
   SessionResumedPayloadSchema,
   SessionUpdatePayloadSchema,
@@ -210,9 +215,24 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: SessionResumedPayloadSchema,
   }),
   defineEventType({
+    type: 'session.handoff',
+    schemaVersion: 1,
+    payload: SessionHandoffPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.handoff_failed',
+    schemaVersion: 1,
+    payload: SessionHandoffFailedPayloadSchema,
+  }),
+  defineEventType({
     type: 'session.cancel_escalated',
     schemaVersion: 1,
     payload: SessionCancelEscalatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.processes_left',
+    schemaVersion: 1,
+    payload: SessionProcessesLeftPayloadSchema,
   }),
   defineEventType({
     type: 'session.closed',
@@ -233,6 +253,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'attempt.checkpoint',
     schemaVersion: 1,
     payload: AttemptCheckpointPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.checkpoint_failed',
+    schemaVersion: 1,
+    payload: AttemptCheckpointFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.aborted',
+    schemaVersion: 1,
+    payload: AttemptAbortedPayloadSchema,
   }),
   defineEventType({
     type: 'attempt.submitted',
@@ -471,6 +501,11 @@ export type SessionUpdatePayload = DaemonEventPayloads['session.update'];
 export type SessionPromptFinishedPayload = DaemonEventPayloads['session.prompt_finished'];
 export type SessionInterruptedPayload = DaemonEventPayloads['session.interrupted'];
 export type SessionResumedPayload = DaemonEventPayloads['session.resumed'];
+export type SessionHandoffPayload = DaemonEventPayloads['session.handoff'];
+export type SessionHandoffFailedPayload = DaemonEventPayloads['session.handoff_failed'];
+export type SessionProcessesLeftPayload = DaemonEventPayloads['session.processes_left'];
+export type AttemptCheckpointFailedPayload = DaemonEventPayloads['attempt.checkpoint_failed'];
+export type AttemptAbortedPayload = DaemonEventPayloads['attempt.aborted'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type PermissionAskedPayload = DaemonEventPayloads['permission.asked'];
