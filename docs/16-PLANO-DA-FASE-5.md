@@ -82,7 +82,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
 | P18 | Pacote de continuação e passagem de bastão | P15, P17, P22 | P16, P20 | concluído (PR #118) |
 | P18b | Eventos da passagem de bastão (N146, N147) | P18 | P19, P20 | concluído (PR #120) |
-| P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | concluído (branch fase-5/p19-espera-pelo-reset) |
+| P19 | Espera pelo reset e retomada nativa depois dele | P9, P18 | P20, P21 | concluído (PR #131) |
 | P20 | Failover do Orquestrador | P16, P17 | P18, P19, P21 | concluído (PR #129) |
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | concluído (PR #130) |
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
