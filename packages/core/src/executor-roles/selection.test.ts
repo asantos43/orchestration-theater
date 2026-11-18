@@ -257,14 +257,19 @@ describe('when nobody is available', () => {
   it('next: waits for whichever frees first, with the earliest known end', () => {
     const result = select({ list: list(), facts: dry, whenExhausted: 'next' });
     expect(result.selected).toBeNull();
-    expect(result.wait).toEqual({ mode: 'next', on: [OPUS_A, SOL, MINIMAX], until: 7_000 });
+    expect(result.wait).toEqual({
+      mode: 'next',
+      on: [OPUS_A, SOL, MINIMAX],
+      until: 7_000,
+      notify: false,
+    });
     expect(result.skipped).toHaveLength(3);
   });
 
   it('wait: waits for the reset of the first, with no demotion', () => {
     const result = select({ list: list(), facts: dry, whenExhausted: 'wait' });
     expect(result.selected).toBeNull();
-    expect(result.wait).toEqual({ mode: 'wait', on: [OPUS_A], until: 9_000 });
+    expect(result.wait).toEqual({ mode: 'wait', on: [OPUS_A], until: 9_000, notify: false });
   });
 
   it('wait: never waits for what time cannot fix (a draining first Executor)', () => {
@@ -273,7 +278,7 @@ describe('when nobody is available', () => {
       facts: { ...dry, [OPUS_A]: { profileState: 'draining' } },
       whenExhausted: 'wait',
     });
-    expect(result.wait).toEqual({ mode: 'wait', on: [SOL], until: 7_000 });
+    expect(result.wait).toEqual({ mode: 'wait', on: [SOL], until: 7_000, notify: false });
   });
 
   it('has nothing to wait for when every reason is permanent', () => {
@@ -281,7 +286,7 @@ describe('when nobody is available', () => {
       list: [executor(OPUS_A)],
       facts: { [OPUS_A]: { profileState: 'draining' } },
     });
-    expect(result.wait).toEqual({ mode: 'next', on: [], until: null });
+    expect(result.wait).toEqual({ mode: 'next', on: [], until: null, notify: false });
   });
 
   it('a wait with no end known has `until` null', () => {
@@ -289,7 +294,7 @@ describe('when nobody is available', () => {
       list: [executor(OPUS_A)],
       facts: { [OPUS_A]: { quota: exhausted(null) } },
     });
-    expect(result.wait).toEqual({ mode: 'next', on: [OPUS_A], until: null });
+    expect(result.wait).toEqual({ mode: 'next', on: [OPUS_A], until: null, notify: false });
   });
 });
 
@@ -357,6 +362,7 @@ describe('the cross-review (selection.cross_check)', () => {
       applied: true,
       workedProvider: 'anthropic',
       fellBack: false,
+      blocked: false,
     });
   });
 
@@ -400,11 +406,13 @@ describe('the cross-review (selection.cross_check)', () => {
       facts: { [SOL]: { quota: exhausted(4_000) } },
     });
     expect(result.selected).toBeNull();
-    expect(result.wait).toEqual({ mode: 'next', on: [SOL], until: 4_000 });
+    // Opus is free and set aside, so the wait is the cross-review's: it is flagged (N135).
+    expect(result.wait).toEqual({ mode: 'next', on: [SOL], until: 4_000, notify: true });
     expect(reasonsOf(result)).toEqual([
       [OPUS_A, 'same_provider'],
       [SOL, 'quota'],
     ]);
+    expect(result.crossCheck.blocked).toBe(true);
   });
 
   it('require_other_provider: waits for nothing when the list has no other provider', () => {
@@ -415,7 +423,8 @@ describe('the cross-review (selection.cross_check)', () => {
       settings: { crossCheck: 'require_other_provider' },
     });
     expect(result.selected).toBeNull();
-    expect(result.wait).toEqual({ mode: 'next', on: [], until: null });
+    expect(result.wait).toEqual({ mode: 'next', on: [], until: null, notify: true });
+    expect(result.crossCheck.blocked).toBe(true);
   });
 
   it('other_model: another model of the same provider is enough', () => {
@@ -491,6 +500,95 @@ describe('the cross-review (selection.cross_check)', () => {
     });
     expect(result.selected?.id).toBe(GEMMA);
     expect(reasonsOf(result)).toEqual([[viaOpencode.id, 'same_provider']]);
+  });
+});
+
+describe('selection.strict_unavailable: a strict cross-review with only the provider of the work free (N135)', () => {
+  const worked: WorkedBy = { provider: 'anthropic', model: 'claude-opus' };
+  const strictSetup = (strictUnavailable: SelectionSettings['strictUnavailable']): Setup => ({
+    list: [executor(OPUS_A), executor(SOL)],
+    role: 'reviewer',
+    workedBy: worked,
+    settings: { crossCheck: 'require_other_provider', strictUnavailable },
+    facts: { [SOL]: { quota: exhausted(4_000) } },
+  });
+
+  it('defaults to wait_notify', () => {
+    expect(DEFAULT_SELECTION_SETTINGS.strictUnavailable).toBe('wait_notify');
+  });
+
+  it('wait_notify waits and flags the wait, so the Producer is told', () => {
+    const result = select(strictSetup('wait_notify'));
+    expect(result.selected).toBeNull();
+    expect(result.wait).toEqual({ mode: 'next', on: [SOL], until: 4_000, notify: true });
+    expect(result.crossCheck).toMatchObject({ blocked: true, fellBack: false });
+    expect(reasonsOf(result)).toEqual([
+      [OPUS_A, 'same_provider'],
+      [SOL, 'quota'],
+    ]);
+  });
+
+  it('wait waits the same way, with no flag', () => {
+    const result = select(strictSetup('wait'));
+    expect(result.selected).toBeNull();
+    expect(result.wait).toEqual({ mode: 'next', on: [SOL], until: 4_000, notify: false });
+    expect(result.crossCheck.blocked).toBe(true);
+  });
+
+  it('fallback_prefer goes back to the provider of the work, as prefer_other_provider does', () => {
+    const result = select(strictSetup('fallback_prefer'));
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(result.wait).toBeNull();
+    expect(result.crossCheck).toMatchObject({
+      mode: 'require_other_provider',
+      blocked: false,
+      fellBack: true,
+    });
+    expect(reasonsOf(result)).toEqual([[SOL, 'quota']]);
+  });
+
+  it('fallback_prefer in other_model goes back to the same model', () => {
+    const result = select({
+      ...strictSetup('fallback_prefer'),
+      settings: { crossCheck: 'other_model', strictUnavailable: 'fallback_prefer' },
+      list: [executor(OPUS_A)],
+    });
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(result.crossCheck.fellBack).toBe(true);
+  });
+
+  it('fallback_prefer still prefers another provider while there is one', () => {
+    const result = select({
+      ...strictSetup('fallback_prefer'),
+      facts: {},
+    });
+    expect(result.selected?.id).toBe(SOL);
+    expect(result.crossCheck.fellBack).toBe(false);
+  });
+
+  it('does not flag a wait the cross-review does not cause', () => {
+    // The provider of the work is down as well: nothing is held back by the strict mode.
+    const result = select({
+      ...strictSetup('wait_notify'),
+      facts: { [SOL]: { quota: exhausted(4_000) }, [OPUS_A]: { healthy: false } },
+    });
+    expect(result.selected).toBeNull();
+    expect(result.wait?.notify).toBe(false);
+    expect(result.crossCheck.blocked).toBe(false);
+  });
+
+  it('does not touch prefer_other_provider, off or an Executor that is chosen', () => {
+    const chosen = select({ ...strictSetup('wait_notify'), facts: {} });
+    expect(chosen.selected?.id).toBe(SOL);
+    expect(chosen.crossCheck.blocked).toBe(false);
+    for (const crossCheck of ['prefer_other_provider', 'off'] as const) {
+      const result = select({
+        ...strictSetup('wait_notify'),
+        settings: { crossCheck, strictUnavailable: 'wait_notify' },
+      });
+      expect(result.selected?.id).toBe(OPUS_A);
+      expect(result.crossCheck.blocked).toBe(false);
+    }
   });
 });
 
