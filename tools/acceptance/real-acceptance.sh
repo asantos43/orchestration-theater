@@ -68,7 +68,9 @@
 #            aqui: o Executor simulado não a exercita. Exige o sandbox (a sessão falha se a máquina
 #            não tem bubblewrap: não roda a fuga sem a camada 3). Pede, por cliente, os mesmos
 #            OT_TEST_<CLIENTE>_PROFILE_DIR e _MODEL do nível prompts (sem eles o cliente fica de
-#            fora; OT_TEST_SANDBOX_EXTRA_DOMAINS é opcional, para o provedor do OpenCode). Cada
+#            fora; OT_TEST_SANDBOX_EXTRA_DOMAINS é opcional, para o provedor do OpenCode).
+#            OT_TEST_ESCAPE_TURNS=each abre uma tentativa por item (padrão one: os nove num turno);
+#            serve ao Codex, cuja recusa de escrita encerra o turno (codex-acp 2.6.0). Cada
 #            cliente leva até 8m por tentativa (tentativas de escrita e de rede GASTAM COTA: um
 #            turno com até 9 itens por cliente). Teto de 40m (padrão deste nível). GASTA COTA: avisa
 #            e pede confirmação, a menos que haja --yes. O teste só escreve em pastas temporárias
