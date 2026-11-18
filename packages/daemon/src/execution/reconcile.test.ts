@@ -183,6 +183,31 @@ describe('reconcileAttempts', () => {
   );
 
   it(
+    'parks what a removed profile left, with the cause profile_removed (P21b)',
+    async () => {
+      const { r, outcome, next } = await leftRunning();
+      const record = await r.store.attempts.get(outcome.attemptId);
+      if (record === undefined) throw new Error('no record');
+      await r.store.attempts.put({ ...attemptInputOf(record), cause: 'profile_removed' });
+      const report = await reconcileAttempts({
+        store: r.store,
+        runner: next,
+        resolver: undefined,
+        logger,
+      });
+      expect(report.parked).toEqual([outcome.attemptId]);
+      expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({
+        state: 'interrupted',
+        cause: 'profile_removed',
+      });
+      const rows = await r.store.interruptions.list({ sessionId: 'fake-session-1' });
+      expect(rows.map((row) => row.cause)).toContain('profile_removed');
+      expect(r.transport.loaded).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     'parks an attempt whose worktree is gone',
     async () => {
       const { r, outcome, next } = await leftRunning();

@@ -22,6 +22,8 @@ export const INTERRUPTION_CAUSE_NAMES = [
   'stuck',
   'refusal',
   'permission',
+  /** The profile of the session was removed (P21b, N152): an external cause, no fault of the Executor. */
+  'profile_removed',
 ] as const;
 export type InterruptionCauseName = (typeof INTERRUPTION_CAUSE_NAMES)[number];
 

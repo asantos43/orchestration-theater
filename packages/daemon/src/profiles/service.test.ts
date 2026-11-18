@@ -59,6 +59,7 @@ interface RigOptions {
   readonly notice?: ProfileSettings['sameProviderNotice'];
   readonly onTimeout?: ProfileSettings['drain']['onTimeout'];
   readonly removedDir?: ProfileSettings['drain']['removedDir'];
+  readonly director?: ProfileSettings['drain']['director'];
   readonly timeoutMs?: number;
   readonly login?: 'logged_in' | 'logged_out' | 'unknown';
   readonly vault?: InMemorySecretVault;
@@ -137,6 +138,7 @@ async function setup(options: RigOptions = {}) {
       timeoutMs: options.timeoutMs ?? 600_000,
       onTimeout: options.onTimeout ?? 'handoff',
       removedDir: options.removedDir ?? 'delete',
+      director: options.director ?? 'failover',
     },
   };
   const service = new ProfileService({
@@ -813,6 +815,48 @@ describe('ProfileService.remove with live sessions (P21)', () => {
     expect(drained?.payload).toMatchObject({ outcome: 'handoff', sessions: 2 });
   });
 
+  it('drain.director failover moves what stands on the profile before the wait (P21b)', async () => {
+    const calls: string[] = [];
+    const standing: ProfileSessions = {
+      ...live(0, calls),
+      releaseStanding: (id) => {
+        calls.push(`standing:${id}`);
+        return Promise.resolve(1);
+      },
+    };
+    const rig = await setup({ timeoutMs: 5000, sessions: standing });
+    await addSub(rig, 'claude-code', 'main');
+    const removed = await settled(rig, rig.service.remove('claude-code/main'));
+    expect(removed.profile.state).toBe('removed');
+    expect(calls[0]).toBe('standing:claude-code/main');
+  });
+
+  it('drain.director wait leaves what stands on the profile alone, as before (P21b)', async () => {
+    const calls: string[] = [];
+    const standing: ProfileSessions = {
+      ...live(0, calls),
+      releaseStanding: (id) => {
+        calls.push(`standing:${id}`);
+        return Promise.resolve(1);
+      },
+    };
+    const rig = await setup({ timeoutMs: 5000, director: 'wait', sessions: standing });
+    await addSub(rig, 'claude-code', 'main');
+    await settled(rig, rig.service.remove('claude-code/main'));
+    expect(calls.filter((call) => call.startsWith('standing'))).toEqual([]);
+  });
+
+  it('a Director that could not move does not stop the drain (P21b)', async () => {
+    const standing: ProfileSessions = {
+      ...live(0, []),
+      releaseStanding: () => Promise.reject(new Error('it did not move')),
+    };
+    const rig = await setup({ timeoutMs: 5000, sessions: standing });
+    await addSub(rig, 'claude-code', 'main');
+    const removed = await settled(rig, rig.service.remove('claude-code/main'));
+    expect(removed.profile.state).toBe('removed');
+  });
+
   it('on_timeout force ends them with force before the directory goes', async () => {
     const calls: string[] = [];
     const rig = await setup({ timeoutMs: 2000, onTimeout: 'force', sessions: live(1, calls) });
@@ -945,14 +989,19 @@ describe('profileSettingsOf', () => {
       profileSettingsOf({
         profiles: {
           same_provider_notice: 'always',
-          drain: { timeout: 90_000, on_timeout: 'force', removed_dir: 'keep_backup' },
+          drain: {
+            timeout: 90_000,
+            on_timeout: 'force',
+            removed_dir: 'keep_backup',
+            director: 'wait',
+          },
           api_key_env: {},
           entries: {},
         },
       }),
     ).toEqual({
       sameProviderNotice: 'always',
-      drain: { timeoutMs: 90_000, onTimeout: 'force', removedDir: 'keep_backup' },
+      drain: { timeoutMs: 90_000, onTimeout: 'force', removedDir: 'keep_backup', director: 'wait' },
     });
   });
 });

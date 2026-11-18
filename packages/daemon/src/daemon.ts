@@ -736,7 +736,13 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     roleLists: roleListsOf(config, store),
     ...(execution === undefined
       ? {}
-      : { sessions: liveProfileSessions({ pool: execution.pool, runner: execution.runner }) }),
+      : {
+          sessions: liveProfileSessions({
+            pool: execution.pool,
+            runner: execution.runner,
+            ...(orchestration === undefined ? {} : { directors: orchestration.directors }),
+          }),
+        }),
   });
 
   const handle: DaemonHandle = {

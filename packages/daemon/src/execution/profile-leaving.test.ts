@@ -9,7 +9,7 @@ import {
 import { type Profile } from '@otheater/core';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { TEST_POLICY } from '../test-helpers.js';
+import { TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import {
   eventsOf,
   makeRig,
@@ -57,10 +57,14 @@ const rigs: TestRig[] = [];
 async function rig(
   handoff?: HandoffPort,
   pool?: Partial<ExecutionSettings['pool']>,
+  onProfileRemoved?: ExecutionSettings['onProfileRemoved'],
 ): Promise<TestRig> {
   const made = await makeRig(
     fakes(),
-    pool === undefined ? {} : { pool: { ...QUIET_SETTINGS.pool, ...pool } },
+    {
+      ...(pool === undefined ? {} : { pool: { ...QUIET_SETTINGS.pool, ...pool } }),
+      ...(onProfileRemoved === undefined ? {} : { onProfileRemoved }),
+    },
     undefined,
     undefined,
     handoff,
@@ -165,7 +169,7 @@ describe('a profile that is being removed lets go of its attempts (P21)', () => 
       expect(outcome).toMatchObject({
         handoffs: [
           {
-            cause: 'daemon_restart',
+            cause: 'profile_removed',
             from: 'fake-model@fake/one',
             to: ID_TWO,
             countedAsAttempt: false,
@@ -222,12 +226,107 @@ describe('a profile that is being removed lets go of its attempts (P21)', () => 
 
       await r.runner.releaseProfile('fake/one', 'force');
       const outcome = await running;
-      expect(outcome).toMatchObject({ state: 'interrupted', cause: 'daemon_restart' });
+      expect(outcome).toMatchObject({ state: 'interrupted', cause: 'profile_removed' });
       expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({
         state: 'awaiting_resume',
+        cause: 'profile_removed',
       });
-      expect((await r.store.interruptions.list())[0]?.signals).toContain('profile:leaving');
+      const [row] = await r.store.interruptions.list();
+      expect(row).toMatchObject({ cause: 'profile_removed' });
+      expect(row?.signals).toContain('profile:leaving');
       expect(r.launcher.running).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'park (resume.on_profile_removed): the attempt stays interrupted and the Director decides',
+    async () => {
+      const r = await rig(toTwo(), undefined, 'park');
+      await seed(r);
+      const running = r.runner.run(specOf(r, '#script:hang', { role: 'actor' }));
+      await untilHanging(r);
+
+      await r.runner.releaseProfile('fake/one', 'handoff');
+      const outcome = await running;
+      expect(outcome).toMatchObject({
+        state: 'interrupted',
+        cause: 'profile_removed',
+        needsDecision: true,
+        handoffs: [],
+        decision: { action: 'director_judgment', countsAsAttempt: false },
+      });
+      expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({
+        state: 'interrupted',
+        cause: 'profile_removed',
+      });
+      expect(r.launcher.running).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'force, then resume(): straight to the baton, with no session/load on the profile that left',
+    async () => {
+      const r = await rig(toTwo());
+      await seed(r);
+      const running = r.runner.run(specOf(r, '#script:hang', { role: 'actor' }));
+      await untilHanging(r);
+      await r.runner.releaseProfile('fake/one', 'force');
+      const parked = await running;
+      const record = await r.store.attempts.get(parked.attemptId);
+      expect(record).toMatchObject({ state: 'awaiting_resume', cause: 'profile_removed' });
+      if (record === undefined) throw new Error('no record');
+
+      const resumed = await r.runner.resume(record, {
+        profile: TEST_PROFILE,
+        executor: { model: 'fake-model' },
+        policy: TEST_POLICY,
+      });
+      expect(resumed.state).toBe('completed');
+      expect(resumed.handoffs).toMatchObject([
+        {
+          cause: 'profile_removed',
+          from: 'fake-model@fake/one',
+          to: ID_TWO,
+          countedAsAttempt: false,
+        },
+      ]);
+      expect(resumed.resumes).toBe(0);
+      expect(r.transport.loaded).toHaveLength(0);
+      expect(await r.store.attempts.get(parked.attemptId)).toMatchObject({
+        profile: 'two',
+        state: 'completed',
+      });
+      const rows = await r.store.interruptions.list();
+      expect(rows.every((row) => !row.countedAsAttempt)).toBe(true);
+      expect(rows.map((row) => row.cause)).toContain('profile_removed');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'force, then resume() with park: the attempt stays interrupted for the Director',
+    async () => {
+      const r = await rig(toTwo(), undefined, 'park');
+      await seed(r);
+      const running = r.runner.run(specOf(r, '#script:hang', { role: 'actor' }));
+      await untilHanging(r);
+      await r.runner.releaseProfile('fake/one', 'force');
+      const parked = await running;
+      const record = await r.store.attempts.get(parked.attemptId);
+      if (record === undefined) throw new Error('no record');
+      const resumed = await r.runner.resume(record, {
+        profile: TEST_PROFILE,
+        executor: { model: 'fake-model' },
+        policy: TEST_POLICY,
+      });
+      expect(resumed).toMatchObject({
+        state: 'interrupted',
+        cause: 'profile_removed',
+        needsDecision: true,
+      });
+      expect(r.transport.loaded).toHaveLength(0);
     },
     TEST_TIMEOUT_MS,
   );

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { WhenExhausted } from '@otheater/core';
 import type { InterruptionCause, ResumeForm } from '@otheater/protocol';
+import type { ON_PROFILE_REMOVED_MODES } from '../config.js';
 
 /**
  * The policy by cause of architecture 5.16 ("Política por causa"), as a pure function: the facts
@@ -43,6 +44,13 @@ export type ClientCrashCounts = (typeof CLIENT_CRASH_COUNT_MODES)[number];
 export const TRANSIENT_EXHAUSTED_MODES = ['last', 'handoff'] as const;
 export type TransientExhausted = (typeof TRANSIENT_EXHAUSTED_MODES)[number];
 
+/**
+ * `resume.on_profile_removed` [proposta] (P21b, N152): what an attempt does when the profile of its
+ * session is removed. `handoff` passes the baton to the next Executor of the role; `park` leaves
+ * the attempt `interrupted` for the Director to decide.
+ */
+export type OnProfileRemoved = (typeof ON_PROFILE_REMOVED_MODES)[number];
+
 /** The values of `resume.*` the policy reads (durations in milliseconds). */
 export interface InterruptionRules {
   /** `resume.max_resumes`: past it, the case goes to the Director's judgment point. */
@@ -55,6 +63,8 @@ export interface InterruptionRules {
   readonly clientCrashCounts: ClientCrashCounts;
   /** `resume.stuck.same_error_times`. */
   readonly stuckSameErrorTimes: number;
+  /** `resume.on_profile_removed` (P21b). */
+  readonly onProfileRemoved: OnProfileRemoved;
 }
 
 /** What is known about one interruption. */
@@ -151,6 +161,22 @@ export function decideInterruption(
       return facts.reloadable
         ? make('resume_native', 'native', 'the conversation files are there')
         : make('handoff', 'handoff', 'the conversation cannot be reloaded');
+    case 'profile_removed':
+      // An external cause (P21b, N152): no attempt spent, no `max_resumes`, never a native resume
+      // on the profile that left and never the wait for its reset. The conversation stays where it
+      // was; the work goes on elsewhere, in a different Executor than the one that left.
+      return rules.onProfileRemoved === 'park'
+        ? make(
+            'director_judgment',
+            null,
+            'its profile was removed; resume.on_profile_removed is park',
+          )
+        : make(
+            'handoff',
+            'handoff',
+            'its profile is being removed; the work goes to the next Executor of the role',
+            { differentExecutor: true },
+          );
     default:
       break;
   }

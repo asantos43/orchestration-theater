@@ -37,7 +37,8 @@ export type ExecutorPayload = z.infer<typeof ExecutorPayloadSchema>;
 /**
  * Why a session stopped before its work was done (architecture 5.16, "Política por causa"). One
  * per row of the table, in the same order: quota, spending cap, transient error, client crash,
- * restart of the daemon or machine, timeout, stuck agent, model refusal, permission error.
+ * restart of the daemon or machine, timeout, stuck agent, model refusal, permission error and, last,
+ * the removal of the profile of the session (P21b, N152).
  */
 export const INTERRUPTION_CAUSES = [
   'quota_exhausted',
@@ -49,6 +50,7 @@ export const INTERRUPTION_CAUSES = [
   'stuck',
   'refusal',
   'permission',
+  'profile_removed',
 ] as const;
 export const InterruptionCauseSchema = z.enum(INTERRUPTION_CAUSES);
 export type InterruptionCause = z.infer<typeof InterruptionCauseSchema>;
