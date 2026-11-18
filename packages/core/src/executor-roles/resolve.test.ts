@@ -224,6 +224,55 @@ describe('the quality preset over the example machine (5.7)', () => {
   });
 });
 
+describe('executors.<id>.preset_expand (N136)', () => {
+  const OPUS = 'claude-opus-high@claude-code/empresa';
+  const withoutExpand = (id: string): ExecutorEntry[] =>
+    CATALOG.map((each) => (each.id === id ? { ...each, presetExpand: false } : each));
+
+  it('keeps the Executor out of the expansion of a preset', () => {
+    const result = resolve({ catalog: withoutExpand(OPUS) });
+    for (const role of ROLE_IDS) expect(idsOf(result, role)).not.toContain(OPUS);
+    expect(idsOf(result, 'author')).toEqual([
+      'codex-sol-high@codex/conta-1',
+      'minimax-m2-medium@opencode/minimax-api',
+    ]);
+    const left = result.notes.filter((note) => note.code === 'no_account');
+    expect(left.length).toBeGreaterThan(0);
+    for (const note of left) expect(note.message).toContain('preset_expand: false');
+  });
+
+  it('true is the same as absent', () => {
+    const catalog = CATALOG.map((each) => ({ ...each, presetExpand: true }));
+    for (const role of ROLE_IDS) {
+      expect(idsOf(resolve({ catalog }), role)).toEqual(idsOf(resolve(), role));
+    }
+  });
+
+  it('keeps it out of the API fallback too', () => {
+    const minimax = 'minimax-m2-medium@opencode/minimax-api';
+    const result = resolve({ catalog: withoutExpand(minimax) });
+    for (const role of ROLE_IDS) expect(idsOf(result, role)).not.toContain(minimax);
+  });
+
+  it('says so when every account that has the model is out of the expansion', () => {
+    const result = resolve({ catalog: withoutExpand('codex-luna-low@codex/conta-1') });
+    const note = result.notes.find(
+      (each) => each.role === 'director' && each.code === 'no_account',
+    );
+    expect(note?.message).toContain('preset_expand: false');
+  });
+
+  it('does not stop a role that names it', () => {
+    const result = resolve({
+      catalog: withoutExpand(OPUS),
+      layers: [{ author: { executors: [OPUS, 'codex-sol-high@codex/conta-1'] } }],
+    });
+    expect(idsOf(result, 'author')).toEqual([OPUS, 'codex-sol-high@codex/conta-1']);
+    expect(result.roles.author.executors[0]).toMatchObject({ validity: 'valid', origin: 'config' });
+    expect(idsOf(result, 'reviewer')).not.toContain(OPUS);
+  });
+});
+
 describe('a role written by hand beats the preset', () => {
   it('keeps the list as written and marks the source', () => {
     const result = resolve({

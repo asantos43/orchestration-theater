@@ -74,6 +74,11 @@ export interface ExecutorEntry {
   readonly model: string;
   readonly effort: string | null;
   readonly provider: string;
+  /**
+   * `executors.<id>.preset_expand` (N136): `false` keeps the Executor out of the expansion of a
+   * preset, so it is only in the roles that name it. Absent: `true`.
+   */
+  readonly presetExpand?: boolean | undefined;
   /** Absent: valid. The store marks one `invalid` when the model is not accepted any more. */
   readonly validity?: 'valid' | 'invalid' | undefined;
   readonly invalidReason?: string | null | undefined;
@@ -299,6 +304,9 @@ export function resolveRoleExecutors(input: ResolveInput): ResolvedRoles {
   };
 
   const usable = (entry: ExecutorEntry): boolean => invalidReasonOf(entry) === null;
+  // `preset_expand: false` (N136) takes the Executor out of every expansion: it stays in a list
+  // somebody wrote that names it.
+  const expandable = (entry: ExecutorEntry): boolean => entry.presetExpand !== false;
   // The Director's model is a cheap router, not a fallback for the roles that write or judge.
   const presetHeads = new Set(
     ROLE_IDS.filter((role) => role !== 'director').flatMap(
@@ -307,7 +315,10 @@ export function resolveRoleExecutors(input: ResolveInput): ResolvedRoles {
   );
 
   const apiEntries = input.catalog
-    .filter((entry) => usable(entry) && profiles.get(profileIdOf(entry))?.kind === 'api')
+    .filter(
+      (entry) =>
+        usable(entry) && expandable(entry) && profiles.get(profileIdOf(entry))?.kind === 'api',
+    )
     .filter((entry) => apiFallback === 'all_registered' || presetHeads.has(headOf(entry.id)))
     .sort(officialFirst);
 
@@ -392,16 +403,18 @@ export function resolveRoleExecutors(input: ResolveInput): ResolvedRoles {
       push(entry, 'legacy', invalidReasonOf(entry));
     } else {
       for (const head of ROLE_PRESETS[preset][role].heads) {
-        const candidates = input.catalog
-          .filter((entry) => headOf(entry.id) === head && usable(entry))
-          .sort(officialFirst);
+        const named = input.catalog.filter((entry) => headOf(entry.id) === head && usable(entry));
+        const candidates = named.filter(expandable).sort(officialFirst);
         if (candidates.length === 0) {
           notes.push({
             severity: 'info',
             code: 'no_account',
             role,
             executorId: null,
-            message: `roles.${role}: preset "${preset}" names "${head}" and no account of this machine has it; it is left out`,
+            message:
+              named.length > 0
+                ? `roles.${role}: preset "${preset}" names "${head}" and every account that has it is set to preset_expand: false; it is left out`
+                : `roles.${role}: preset "${preset}" names "${head}" and no account of this machine has it; it is left out`,
           });
         }
         for (const entry of candidates) push(entry, 'preset', null);
