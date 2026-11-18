@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
+import { mkdir } from 'node:fs/promises';
 import {
-  AdapterUnavailable,
   ClientAdapter,
+  PermissionDenied,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
   type ClientCapabilities,
@@ -13,6 +14,7 @@ import {
   type NormalizedError,
   type NormalizedUpdate,
   type Profile,
+  type ProcessLauncher,
   type ProcessModel,
   type QuotaProbe,
   type RawUpdate,
@@ -21,6 +23,15 @@ import {
   type TransportId,
 } from '@otheater/core';
 import { applyAccountEnv, type AccountEnvMode } from './account-env.js';
+import {
+  commandOf,
+  runCommand,
+  startOfficialLogin,
+  type CommandSpec,
+  type LoginOptions,
+  type LoginProbeResult,
+  type LoginRun,
+} from './official-login.js';
 import { normalizeClaudeError } from './normalize-error.js';
 import { normalizeClaudeUpdate, type UtilizationUnit } from './normalize-update.js';
 import { ClaudeModelCatalog, EFFORT_OPTION_ID, MODEL_OPTION_ID } from './model-catalog.js';
@@ -64,6 +75,28 @@ const REFUSED_MODES: Readonly<Record<string, string>> = {
   auto: 'a classifier answers the requests instead of layer 2 [N: not measured]',
 };
 
+/**
+ * The official login of Claude Code, from `claude auth --help` (claude 2.1.325, read 2026-11-18)
+ * [V: the subcommands and flags exist]; what they print and when they exit is [N]. Run inside the
+ * profile (`CLAUDE_CONFIG_DIR`); the adapter never opens the place the client keeps the token.
+ */
+export const DEFAULT_LOGIN_COMMAND: CommandSpec = {
+  cmd: 'claude',
+  args: ['auth', 'login', '--claudeai'],
+};
+export const DEFAULT_LOGOUT_COMMAND: CommandSpec = { cmd: 'claude', args: ['auth', 'logout'] };
+/** The login probe: `claude auth status --json` [V: the command and flag exist; the JSON shape is N]. */
+export const DEFAULT_STATUS_COMMAND: CommandSpec = {
+  cmd: 'claude',
+  args: ['auth', 'status', '--json'],
+};
+
+/** [proposta] `clients.claude-code.login`: the commands and the mode of the official login, and the probe. */
+export interface ClaudeCodeLoginOptions extends LoginOptions {
+  /** `clients.claude-code.login.status_command`: what the login probe runs; only its `loggedIn` field is read. */
+  readonly statusCommand?: { readonly cmd: string; readonly args?: readonly string[] };
+}
+
 export interface ClaudeCodeAdapterOptions extends Omit<ClientAdapterOptions, 'adapterVersion'> {
   /** Default {@link CLAUDE_CODE_ADAPTER_VERSION}. The daemon may add the version of the client it found. */
   readonly adapterVersion?: string;
@@ -75,6 +108,8 @@ export interface ClaudeCodeAdapterOptions extends Omit<ClientAdapterOptions, 'ad
   readonly utilizationUnit?: UtilizationUnit;
   /** [proposta] key `clients.claude-code.account_env`. Default `strip`. */
   readonly accountEnv?: AccountEnvMode;
+  /** [proposta] keys `clients.claude-code.login.*`. Default: {@link DEFAULT_LOGIN_COMMAND}, mode `browser`. */
+  readonly login?: ClaudeCodeLoginOptions;
   /** [proposta] key `clients.claude-code.model_catalog` and the reader of the session. */
   readonly modelCatalog?: ClaudeModelCatalogOptions;
   /**
@@ -119,6 +154,9 @@ export class ClaudeCodeAdapter extends ClientAdapter {
   readonly #sources: SettingSourcesMode;
   readonly #utilization: UtilizationUnit;
   readonly #probe: ShCRejectProbeOptions | undefined;
+  readonly #launcher: ProcessLauncher;
+  readonly #baseEnv: Readonly<Record<string, string>>;
+  readonly #loginOptions: ClaudeCodeLoginOptions;
 
   constructor(options: ClaudeCodeAdapterOptions) {
     super({
@@ -133,6 +171,9 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     this.#sources = options.settingSources ?? 'none';
     this.#utilization = options.utilizationUnit ?? 'ignore';
     this.#probe = options.probe;
+    this.#launcher = options.launcher;
+    this.#baseEnv = applyAccountEnv(options.baseEnv, options.accountEnv);
+    this.#loginOptions = options.login ?? {};
     this.models = new ClaudeModelCatalog(options.modelCatalog);
   }
 
@@ -216,11 +257,72 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     return this.#probe === undefined ? [] : [shCRejectProbe(this.#probe)];
   }
 
-  login(): Promise<LoginFlow> {
-    return Promise.reject(new AdapterUnavailable('claude-code login arrives in Phase 5'));
+  /** Where the client commands run: the profile directory, with the environment that points the client at it. */
+  async #loginRun(profile: Profile): Promise<LoginRun> {
+    await mkdir(profile.dir, { recursive: true, mode: 0o700 });
+    return {
+      launcher: this.#launcher,
+      cwd: profile.dir,
+      env: { ...this.#baseEnv, ...this.profileEnv(profile) },
+    };
   }
 
-  logout(): Promise<void> {
-    return Promise.reject(new AdapterUnavailable('claude-code logout arrives in Phase 5'));
+  /**
+   * The official login (`claude auth login`) inside the profile (architecture 5.6). The URL the
+   * client prints comes back in the flow for the Producer to open; the token is written by the
+   * client in the profile and is never read here. Mode `browser` by default; `device_code` also
+   * looks for a code in the output, and `terminal` hands the flow back at once. [N] what the
+   * command prints and whether it needs a terminal.
+   */
+  async login(profile: Profile): Promise<LoginFlow> {
+    const where = await this.#loginRun(profile);
+    return startOfficialLogin(
+      where,
+      commandOf(this.#loginOptions.command, DEFAULT_LOGIN_COMMAND),
+      this.#loginOptions.mode ?? 'browser',
+      this.#loginOptions,
+    );
+  }
+
+  /** The official logout (`claude auth logout`) in the profile; the client removes what it keeps. */
+  async logout(profile: Profile): Promise<void> {
+    const command = commandOf(this.#loginOptions.logoutCommand, DEFAULT_LOGOUT_COMMAND);
+    const { code } = await runCommand(await this.#loginRun(profile), command);
+    if (code !== 0) {
+      throw new PermissionDenied(
+        `${this.id}: the logout ended with ${code === null ? 'a signal' : `code ${String(code)}`}`,
+      );
+    }
+  }
+
+  /**
+   * Whether the profile has a login, without reading a token: runs the status command of the client
+   * (`claude auth status --json`) and reads only the boolean `loggedIn` of its answer. `session/new` of
+   * `claude-agent-acp` works without a login [V], so it cannot tell. [N] the JSON shape and the exit
+   * code of a logged-out profile: an answer without that boolean is `unknown`, never `logged_in`.
+   */
+  async probeLogin(profile: Profile): Promise<LoginProbeResult> {
+    const command = commandOf(this.#loginOptions.statusCommand, DEFAULT_STATUS_COMMAND);
+    const { output } = await runCommand(await this.#loginRun(profile), command);
+    const state = loggedInOf(output);
+    return {
+      state: state === undefined ? 'unknown' : state ? 'logged_in' : 'logged_out',
+      via: 'status_command',
+    };
+  }
+}
+
+/** The `loggedIn` boolean of the JSON the status command prints; `undefined` when there is none. */
+function loggedInOf(output: string): boolean | undefined {
+  const start = output.indexOf('{');
+  const end = output.lastIndexOf('}');
+  if (start < 0 || end < start) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(output.slice(start, end + 1));
+    if (typeof parsed !== 'object' || parsed === null) return undefined;
+    const flag = (parsed as { loggedIn?: unknown }).loggedIn;
+    return typeof flag === 'boolean' ? flag : undefined;
+  } catch {
+    return undefined;
   }
 }
