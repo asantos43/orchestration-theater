@@ -74,7 +74,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | pendente |
-| P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | pendente |
+| P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | concluído (PR #113) |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | pendente |
 | P17 | Interrupção: classificação da causa e política por causa | P1, P5 | P6 a P10, P14 | concluído (PR #109) |
 | P18 | Pacote de continuação e passagem de bastão | P15, P17, P22 | P16, P20 | pendente |
