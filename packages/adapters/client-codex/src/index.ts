@@ -3,6 +3,8 @@ export {
   CODEX_ACP_PACKAGES,
   CodexAdapter,
   DEFAULT_CODEX_COMMAND,
+  DEFAULT_LOGIN_COMMANDS,
+  DEFAULT_LOGOUT_COMMAND,
   type CodexAdapterOptions,
 } from './codex-adapter.js';
 export {
@@ -42,3 +44,4 @@ export {
   type ProfileConfig,
 } from './profile.js';
 export { CodexQuotaProbe } from './quota-probe.js';
+export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';

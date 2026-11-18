@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  AdapterUnavailable,
   PermissionDenied,
   type PermissionRequest,
   type Profile,
@@ -292,13 +291,7 @@ describe('configOptionsFor', () => {
   });
 });
 
-describe('login, logout and probes', () => {
-  it('reject with AdapterUnavailable, pointing at Phase 5', async () => {
-    const adapter = build();
-    await expect(adapter.login()).rejects.toBeInstanceOf(AdapterUnavailable);
-    await expect(adapter.logout()).rejects.toThrow('Phase 5');
-  });
-
+describe('conformance probes', () => {
   it('adds the sh -c probe to the conformance run only when it is configured', async () => {
     const without = await build().checkConformance(profile);
     expect(without.probes).toEqual([]);
