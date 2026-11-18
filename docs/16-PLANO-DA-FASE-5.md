@@ -71,7 +71,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | concluído (PR #110) |
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | concluído (PR #104) |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | concluído (PR #115) |
-| P11b | Ajustes do teto de gasto (N137 a N140) | P11 | P12, P15 | pendente |
+| P11b | Ajustes do teto de gasto (N137 a N140) | P11 | P12, P15 | concluído (PR #119) |
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | concluído (PR #114) |
