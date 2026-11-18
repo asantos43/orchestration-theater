@@ -66,7 +66,10 @@ import type { HandoffPort } from './execution/handoff.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { situationSubject, situationText, type SituationSink } from './situations.js';
+import { liveProfileSessions } from './profiles/live-sessions.js';
+import { roleListsOf } from './profiles/role-lists.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
+import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
@@ -187,6 +190,11 @@ export interface DaemonHandle {
    * `on_exceeded` and `in_flight`.
    */
   readonly budget: BudgetService;
+  /**
+   * The accounts (architecture 5.6; Phase 5, P2 and P21): add, list, drain and remove. With the
+   * execution on, a drain and a removal count and release the live sessions (the baton of P18).
+   */
+  readonly profiles: ProfileService;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -683,6 +691,32 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       markStopped();
     })());
 
+  // P21: the accounts, over the live sessions of the pool and the runner when there are any.
+  const profiles = new ProfileService({
+    store,
+    vault,
+    vaultBackend:
+      composition.adapters.find((adapter) => adapter.port === 'SecretVault')?.id ??
+      config.adapters.vault,
+    clock,
+    logger,
+    situations: composition.situations,
+    paths,
+    settings: profileSettingsOf(config),
+    adapters: (client) => {
+      try {
+        return execution?.pool.adapterOf(client);
+      } catch {
+        return undefined;
+      }
+    },
+    transport: () => composition.transport,
+    roleLists: roleListsOf(config, store),
+    ...(execution === undefined
+      ? {}
+      : { sessions: liveProfileSessions({ pool: execution.pool, runner: execution.runner }) }),
+  });
+
   const handle: DaemonHandle = {
     clock,
     // The store as the adapter built it; the daemon's own code appends through the validated one.
@@ -693,6 +727,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     execution,
     mcpUrl: mcp.url,
     producer: orchestration?.channel,
+    profiles,
     directives,
     quota,
     wakeups,

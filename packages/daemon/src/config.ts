@@ -442,7 +442,8 @@ export const DELIVERY_ASK_LEAVE_MODES = ['pr', 'wait'] as const;
 export type DeliveryAskLeaveMode = (typeof DELIVERY_ASK_LEAVE_MODES)[number];
 
 /**
- * `profiles.same_provider_notice` (Phase 5, P2; N127 is open). [proposta] When registering a second
+ * `profiles.same_provider_notice` (Phase 5, P2; N127 decided the drain keys on 2026-11-18, this one stays
+ * [proposta]). When registering a second
  * subscription profile of the same provider: `once` warns until the Producer accepts it (the
  * acceptance is recorded on the profile, `noticeAcceptedAt`, and a later profile of that provider is
  * not warned again); `always` warns on every such profile; `off` never warns. An API profile never
@@ -452,18 +453,20 @@ export const SAME_PROVIDER_NOTICE_MODES = ['once', 'always', 'off'] as const;
 export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number];
 
 /**
- * `profiles.drain.on_timeout` (Phase 5, P2; N127 is open). [proposta] What happens to the sessions
- * still running when `profiles.drain.timeout` ends: `handoff` takes them off the profile and back
- * to the queue (the real handoff is P18/P20/P21; P2 only returns them to the queue); `wait` keeps
- * the profile `draining` until they end; `force` closes them.
+ * `profiles.drain.on_timeout` (Phase 5, P2 and P21; N127, decided 2026-11-18: default `handoff`).
+ * What happens to the sessions still running when `profiles.drain.timeout` ends: `handoff` takes
+ * them off the profile and passes the baton (P18) to the next Executor of the role, so the demand
+ * is not lost; `wait` keeps the profile `draining` until they end; `force` stops them (their
+ * attempts stay `awaiting_resume`) and ends the client processes of the profile.
  */
 export const DRAIN_ON_TIMEOUT_MODES = ['handoff', 'wait', 'force'] as const;
 export type DrainOnTimeoutMode = (typeof DRAIN_ON_TIMEOUT_MODES)[number];
 
 /**
- * `profiles.drain.removed_dir` (Phase 5, P2; N127 is open). [proposta] What removal does with the
- * directory of the profile, after the logout: `delete` removes it; `keep_backup` moves it aside
- * (`<name>.removed-<epoch>`, next to it, inside `profiles/`) instead of deleting.
+ * `profiles.drain.removed_dir` (Phase 5, P2 and P21; N127, decided 2026-11-18: default `delete`).
+ * What removal does with the directory of the profile, after the logout: `delete` removes it;
+ * `keep_backup` moves it to `<data>/profiles/.removed/<client>-<name>-<epoch>` instead of deleting.
+ * Either way only a directory inside `<data>/profiles` is touched.
  */
 export const REMOVED_DIR_MODES = ['delete', 'keep_backup'] as const;
 export type RemovedDirMode = (typeof REMOVED_DIR_MODES)[number];

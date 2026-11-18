@@ -54,8 +54,8 @@ export type ProfileAdapter = Pick<ClientAdapterContract, 'logout' | 'probeLogin'
 /**
  * What the service needs to know about the live sessions of a profile, and to do to them when the
  * drain gives up waiting. [proposta] The default ({@link storeProfileSessions}) reads and writes
- * the `sessions` rows only; the pool of the daemon is what knows the live ones, so wiring this to
- * it is the job of P18/P20/P21 (the real handoff).
+ * the `sessions` rows only; the daemon hands the service {@link liveProfileSessions}
+ * (`live-sessions.ts`, P21), which counts and releases what the pool and the attempt runner hold.
  */
 export interface ProfileSessions {
   /** Sessions of the profile that are running now. */
@@ -65,6 +65,18 @@ export interface ProfileSessions {
    * closes them. Returns how many were touched.
    */
   release(profileId: string, how: 'handoff' | 'force'): Promise<number>;
+  /**
+   * Called by the removal once no session is left and before the logout: ends what a client may
+   * still have running for the profile (an idle process the pool keeps). Optional.
+   */
+  settle?(profileId: string): Promise<void>;
+}
+
+/** The list of the Executors of one role, as the removal needs it to see a role left empty. */
+export interface RoleListFact {
+  readonly role: string;
+  /** Each Executor of the list: the profile it runs under and whether it can be selected. */
+  readonly executors: readonly { readonly profileId: string; readonly valid: boolean }[];
 }
 
 /** {@link ProfileSessions} over the `sessions` table. Limits: see the interface. */
@@ -117,6 +129,11 @@ export interface ProfileServiceOptions {
   readonly sessions?: ProfileSessions;
   /** How often a drain looks at the sessions, in ms. Default 1000. */
   readonly pollMs?: number;
+  /**
+   * The lists of the roles as they are after a removal (P21): the daemon resolves them with the
+   * profiles already read from the store. Absent, no list is checked.
+   */
+  readonly roleLists?: () => Promise<readonly RoleListFact[]>;
   /** Where the warnings of the log are also written as `profile.warning` (P24, N146). */
   readonly situations?: SituationSink | undefined;
 }
@@ -393,23 +410,28 @@ export class ProfileService {
   }
 
   /**
-   * Removes a profile: drains it (when still `active`), takes its key out of the vault, logs the
+   * Removes a profile: drains it (a profile already `draining` is waited on again), takes its key
+   * out of the vault, logs the
    * client out (a subscription; a failure is logged and does not stop the removal), takes the
    * directory away (`profiles.drain.removed_dir`), makes its Executors `invalid` and marks it
    * `removed`. Every step is safe to repeat, so a failed removal is finished by calling it again.
-   * Refuses while sessions are still running on it.
+   * Refuses while sessions are still running on it. A role whose list is left with no Executor to
+   * select warns the Producer (`profile.warning`, `role_without_executor`; P21).
    */
   async remove(id: string, options: DrainOptions = {}): Promise<RemoveResult> {
     const { store, vault, clock, settings } = this.#o;
     let record = await this.#mustHave(id);
     if (record.state === 'removed') throw new Conflict(`Profile ${id} was already removed`);
 
-    let drained: DrainResult | null = null;
-    if (record.state === 'active') drained = await this.drain(id, options);
+    // The drain comes first, whatever the state: a profile left `draining` by `on_timeout: wait`
+    // is waited on again, and the sessions of the timeout are put back before anything is taken.
+    const drained: DrainResult = await this.drain(id, options);
     if ((await this.#sessions.count(id)) > 0) {
       throw new Conflict(`Profile ${id} still has running sessions; it stays draining`);
     }
     record = (await store.profiles.get(id)) ?? record;
+    await this.#sessions.settle?.(id);
+    const listsBefore = await this.#roleListsOf();
 
     // The vault first: a locked one stops the removal before anything is destroyed.
     let secretDeleted = false;
@@ -449,6 +471,7 @@ export class ProfileService {
       }),
     );
     this.#o.logger.info({ profile: id, dir, loggedOut, secretDeleted }, 'profile removed');
+    await this.#warnEmptyRoles(id, listsBefore);
     return {
       profile: removed,
       drain: drained,
@@ -457,6 +480,42 @@ export class ProfileService {
       secretDeleted,
       executorsInvalidated: invalidated,
     };
+  }
+
+  /** The lists of the roles now, or none when the service has no hook or the hook fails. */
+  async #roleListsOf(): Promise<readonly RoleListFact[]> {
+    if (this.#o.roleLists === undefined) return [];
+    try {
+      return await this.#o.roleLists();
+    } catch (error) {
+      this.#o.logger.warn(
+        { error: messageOf(error) },
+        'the lists of the roles could not be read around a removal',
+      );
+      return [];
+    }
+  }
+
+  /**
+   * After a removal: a role that had an Executor of the profile it could select and has none left
+   * (the list was only that profile, or the profile was what filled it) asks the Producer to name
+   * another: log and `profile.warning` (`role_without_executor`). Never throws: the profile is
+   * removed already.
+   */
+  async #warnEmptyRoles(id: string, before: readonly RoleListFact[]): Promise<void> {
+    if (before.length === 0) return;
+    const after = await this.#roleListsOf();
+    for (const list of before) {
+      const hadIt = list.executors.some((executor) => executor.profileId === id && executor.valid);
+      if (!hadIt) continue;
+      const now = after.find((candidate) => candidate.role === list.role);
+      if (now?.executors.some((executor) => executor.valid) === true) continue;
+      this.#o.logger.warn(
+        { profile: id, role: list.role },
+        'the role has no Executor left to select; the Producer must name another',
+      );
+      this.#warning(id, 'role_without_executor', `role ${list.role} has no valid Executor left`);
+    }
   }
 
   async #mustHave(id: string): Promise<ProfileRecord> {

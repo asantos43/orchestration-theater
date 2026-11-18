@@ -34,6 +34,7 @@ import {
   profileSettingsOf,
   type ProfileSettings,
   type ProfileSessions,
+  type RoleListFact,
 } from './service.js';
 
 const KEY = 'sk-test-0123456789-NEVER-LOGGED';
@@ -64,6 +65,7 @@ interface RigOptions {
   readonly failLogout?: boolean;
   readonly probeFails?: boolean;
   readonly sessions?: ProfileSessions;
+  readonly roleLists?: () => Promise<readonly RoleListFact[]>;
 }
 
 async function setup(options: RigOptions = {}) {
@@ -149,6 +151,7 @@ async function setup(options: RigOptions = {}) {
     adapters: (client) => adapters.get(client),
     transport: () => transport,
     ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
+    ...(options.roleLists === undefined ? {} : { roleLists: options.roleLists }),
     pollMs: 1000,
   });
   return {
@@ -774,6 +777,131 @@ describe('ProfileService, what it also tells as events (P24, N146)', () => {
     await addSub(rig, 'claude-code', 'main');
     await rig.service.remove('claude-code/main', { timeoutMs: 0 });
     expect(rig.situations.recorded).toEqual([]);
+  });
+});
+
+describe('ProfileService.remove with live sessions (P21)', () => {
+  /** A fake of the live sessions: `running` goes down when `release` is called. */
+  function live(initial: number, calls: string[]): ProfileSessions {
+    const state = { running: initial };
+    return {
+      count: () => Promise.resolve(state.running),
+      release: (id, how) => {
+        calls.push(`release:${id}:${how}`);
+        const touched = state.running;
+        state.running = 0;
+        return Promise.resolve(touched);
+      },
+      settle: (id) => {
+        calls.push(`settle:${id}`);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it('after the timeout the sessions leave by handoff, then the logout and the directory go', async () => {
+    const calls: string[] = [];
+    const rig = await setup({ timeoutMs: 5000, onTimeout: 'handoff', sessions: live(2, calls) });
+    const sub = await addSub(rig, 'claude-code', 'main');
+    expect(existsSync(sub.profile.dir)).toBe(true);
+    const removed = await settled(rig, rig.service.remove('claude-code/main'));
+    expect(removed.profile.state).toBe('removed');
+    expect(calls).toEqual(['release:claude-code/main:handoff', 'settle:claude-code/main']);
+    expect(existsSync(sub.profile.dir)).toBe(false);
+    expect(rig.loggedOut.get('claude-code/main')).toBe('out');
+    const [drained] = await eventsOf(rig, 'profile.drained');
+    expect(drained?.payload).toMatchObject({ outcome: 'handoff', sessions: 2 });
+  });
+
+  it('on_timeout force ends them with force before the directory goes', async () => {
+    const calls: string[] = [];
+    const rig = await setup({ timeoutMs: 2000, onTimeout: 'force', sessions: live(1, calls) });
+    const sub = await addSub(rig, 'claude-code', 'main');
+    await settled(rig, rig.service.remove('claude-code/main'));
+    expect(calls).toEqual(['release:claude-code/main:force', 'settle:claude-code/main']);
+    expect(existsSync(sub.profile.dir)).toBe(false);
+  });
+
+  it('on_timeout wait keeps the profile draining, its directory and its login', async () => {
+    const calls: string[] = [];
+    const rig = await setup({ timeoutMs: 2000, onTimeout: 'wait', sessions: live(1, calls) });
+    const sub = await addSub(rig, 'claude-code', 'main');
+    await expect(settled(rig, rig.service.remove('claude-code/main'))).rejects.toThrow(Conflict);
+    expect(calls).toEqual([]);
+    expect((await rig.store.profiles.get('claude-code/main'))?.state).toBe('draining');
+    expect(existsSync(sub.profile.dir)).toBe(true);
+    expect(rig.loggedOut.size).toBe(0);
+  });
+
+  it('removing a profile that is already draining drains it again, then removes it', async () => {
+    const calls: string[] = [];
+    const rig = await setup({ timeoutMs: 1000, onTimeout: 'handoff', sessions: live(1, calls) });
+    await addSub(rig, 'claude-code', 'main');
+    await settled(rig, rig.service.drain('claude-code/main'));
+    calls.length = 0;
+    const removed = await settled(rig, rig.service.remove('claude-code/main'));
+    expect(removed.profile.state).toBe('removed');
+  });
+
+  it('a role left with no valid Executor warns the Producer (log and event)', async () => {
+    const lists: RoleListFact[][] = [
+      [
+        {
+          role: 'actor',
+          executors: [
+            { profileId: 'claude-code/main', valid: true },
+            { profileId: 'codex/key', valid: false },
+          ],
+        },
+        { role: 'reviewer', executors: [{ profileId: 'codex/key', valid: true }] },
+      ],
+      [
+        {
+          role: 'actor',
+          executors: [
+            { profileId: 'claude-code/main', valid: false },
+            { profileId: 'codex/key', valid: false },
+          ],
+        },
+        { role: 'reviewer', executors: [{ profileId: 'codex/key', valid: true }] },
+      ],
+    ];
+    const rig = await setup({ roleLists: () => Promise.resolve(lists.shift() ?? []) });
+    await addSub(rig, 'claude-code', 'main');
+    await rig.service.remove('claude-code/main', { timeoutMs: 0 });
+    expect(rig.situations.of('profile.warning')).toEqual([
+      {
+        profileId: 'claude-code/main',
+        kind: 'role_without_executor',
+        detail: 'role actor has no valid Executor left',
+      },
+    ]);
+    expect(rig.lines.some((line) => line.level === 'warn' && line.fields.role === 'actor')).toBe(
+      true,
+    );
+  });
+
+  it('says nothing when every role keeps a valid Executor, or when the hook throws', async () => {
+    const keeps = await setup({
+      roleLists: () =>
+        Promise.resolve([
+          {
+            role: 'actor',
+            executors: [
+              { profileId: 'claude-code/main', valid: true },
+              { profileId: 'codex/key', valid: true },
+            ],
+          },
+        ]),
+    });
+    await addSub(keeps, 'claude-code', 'main');
+    await keeps.service.remove('claude-code/main', { timeoutMs: 0 });
+    expect(keeps.situations.of('profile.warning')).toEqual([]);
+
+    const throws = await setup({ roleLists: () => Promise.reject(new Error('lists exploded')) });
+    await addSub(throws, 'claude-code', 'main');
+    await throws.service.remove('claude-code/main', { timeoutMs: 0 });
+    expect((await throws.store.profiles.get('claude-code/main'))?.state).toBe('removed');
   });
 });
 
