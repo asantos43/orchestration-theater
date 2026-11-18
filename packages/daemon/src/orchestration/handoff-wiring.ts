@@ -9,7 +9,7 @@ import {
   type RoleId,
   type Store,
 } from '@otheater/core';
-import type { ScenarioHandoffNotice } from '@otheater/protocol';
+import type { ScenarioHandoffNotice, ScenarioResetWaitNotice } from '@otheater/protocol';
 import { secretPathEntries, type DaemonConfig } from '../config.js';
 import type { PackageSummarizer } from '../execution/continuation-package.js';
 import {
@@ -79,7 +79,8 @@ export interface DaemonHandoffDeps {
   readonly home: string;
   readonly dataDir: string;
   /** The message of the handoff for the chat of the scenario (the event is already written). */
-  readonly announce?: ((notice: ScenarioHandoffNotice) => void) | undefined;
+  readonly announce?:
+    ((notice: ScenarioHandoffNotice | ScenarioResetWaitNotice) => void) | undefined;
 }
 
 /**

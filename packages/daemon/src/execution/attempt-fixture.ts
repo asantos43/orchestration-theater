@@ -17,6 +17,7 @@ import { defaultVcs } from '../compose.js';
 import { editingTransport, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import type { McpAccess } from '../mcp/access.js';
 import { AttemptRunner, type AttemptRunnerOptions, type AttemptSpec } from './attempt-runner.js';
+import type { ExhaustionPort } from './exhaustion.js';
 import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
 import { DEFAULT_PACKAGE_SETTINGS, type ExecutionSettings } from './settings.js';
@@ -38,6 +39,10 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   quotaWaitMaxMs: 30 * 60_000,
   transientExhausted: 'last',
   clientCrashCounts: 'repeat',
+  quotaWaitGraceMs: 60_000,
+  quotaWaitDeadline: 'pause',
+  quotaWaitCounts: 'resume',
+  quotaWaitMissed: 'handoff',
   continuePrompt: 'carry on',
   package: DEFAULT_PACKAGE_SETTINGS,
 };
@@ -79,6 +84,7 @@ export async function makeRig<P extends RigParts>(
   mcp?: McpAccess,
   quota?: AttemptRunnerOptions['quota'],
   handoff?: HandoffPort,
+  exhaustion?: ExhaustionPort,
 ): Promise<Rig<P>> {
   const { repo, dispose: disposeRepo } = await makeRepo();
   const worktreeRoot = await mkdtemp(join(tmpdir(), 'otheater-attempt-wt-'));
@@ -102,6 +108,7 @@ export async function makeRig<P extends RigParts>(
     ...(mcp === undefined ? {} : { mcp }),
     ...(quota === undefined ? {} : { quota }),
     ...(handoff === undefined ? {} : { handoff }),
+    ...(exhaustion === undefined ? {} : { exhaustion }),
   });
   return {
     ...parts,

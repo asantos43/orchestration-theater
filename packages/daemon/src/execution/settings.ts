@@ -3,6 +3,9 @@ import type { SharedCancelMode } from '@otheater/core';
 import {
   type DaemonConfig,
   type PACKAGE_DIFF_MODES,
+  type QUOTA_WAIT_COUNTS_MODES,
+  type QUOTA_WAIT_DEADLINE_MODES,
+  type QUOTA_WAIT_MISSED_MODES,
   type PACKAGE_SHORT_OUTPUT_MODES,
   type PACKAGE_SUMMARIZE_MODES,
   CLIENT_IDS,
@@ -91,6 +94,14 @@ export interface ExecutionSettings {
   readonly transientExhausted: TransientExhausted;
   /** `resume.client_crash_counts` [proposta]. */
   readonly clientCrashCounts: ClientCrashCounts;
+  /** `resume.quota_wait_grace` [proposta] (P19): how long past the reset the wait trusts the hook. */
+  readonly quotaWaitGraceMs: number;
+  /** `resume.quota_wait_deadline` [proposta] (P19). */
+  readonly quotaWaitDeadline: (typeof QUOTA_WAIT_DEADLINE_MODES)[number];
+  /** `resume.quota_wait_counts` [proposta] (P19). */
+  readonly quotaWaitCounts: (typeof QUOTA_WAIT_COUNTS_MODES)[number];
+  /** `resume.quota_wait_missed` [proposta] (P19). */
+  readonly quotaWaitMissed: (typeof QUOTA_WAIT_MISSED_MODES)[number];
   /** What the Executor is told when a conversation is reloaded. */
   readonly continuePrompt: string;
   /** `resume.package.*`. */
@@ -130,6 +141,10 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     quotaWaitMaxMs: config.resume.quota_wait_max,
     transientExhausted: config.resume.transient_exhausted,
     clientCrashCounts: config.resume.client_crash_counts,
+    quotaWaitGraceMs: config.resume.quota_wait_grace,
+    quotaWaitDeadline: config.resume.quota_wait_deadline,
+    quotaWaitCounts: config.resume.quota_wait_counts,
+    quotaWaitMissed: config.resume.quota_wait_missed,
     continuePrompt: config.resume.continue_prompt,
     package: {
       summarize: config.resume.package.summarize,

@@ -99,6 +99,12 @@
     "system": {
       "handoff": "System: attempt {{attemptId}} passed the baton from {{from}} to {{to}} ({{cause}}); the work goes on from the saved state.",
       "selectionWait": "System: the {{role}} waits for an Executor that is not of the same {{what}} as the work ({{crossCheck}}); nothing else is available: {{on}}. It goes on by itself when one is.",
+      "resetWait": "System: attempt {{attemptId}} waits for {{what}} of {{executor}} to come back, until {{until}}; it resumes the same conversation by itself.",
+      "resetWaitNoDate": "System: attempt {{attemptId}} waits for {{what}} of {{executor}} to come back; it resumes the same conversation by itself.",
+      "resetWaitWhat": {
+        "quota": "the quota",
+        "cap": "the spending cap"
+      },
       "recovery": {
         "title": "System: the daemon restarted and reconciled this scenario.",
         "resumed": "  Resumed: {{items}}.",

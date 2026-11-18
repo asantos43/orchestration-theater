@@ -6,6 +6,7 @@ import type { JsonObject } from '@otheater/core';
 import type {
   IdeaQueueHeldPayload,
   ScenarioHandoffNotice,
+  ScenarioResetWaitNotice,
   ScenarioSelectionWaitNotice,
   ScenarioRecoveryNotice,
   ScenarioSystemMessagePayload,
@@ -95,6 +96,7 @@ function menuOptionsOf(ask: PendingAsk): string[] {
 export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessagePayload): string[] {
   if (notice.kind === 'handoff') return renderHandoffMessage(t, notice);
   if (notice.kind === 'selection_wait') return renderSelectionWaitMessage(t, notice);
+  if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
   return renderRecoveryMessage(t, notice);
 }
 
@@ -112,6 +114,25 @@ function renderSelectionWaitMessage(t: TFunction, notice: ScenarioSelectionWaitN
         notice.on.length === 0
           ? '-'
           : notice.on.map((item) => `${item.executor} (${item.reason})`).join(', '),
+    }),
+  ];
+}
+
+/**
+ * The `reset_wait` kind (Phase 5, P19, [proposta]): one line that says an Executor waits for its
+ * quota or its spending cap to come back, and until when when a source says.
+ */
+function renderResetWaitMessage(t: TFunction, notice: ScenarioResetWaitNotice): string[] {
+  return [
+    t(notice.resetsAt === null ? 'chat.system.resetWaitNoDate' : 'chat.system.resetWait', {
+      attemptId: notice.attemptId,
+      executor: notice.executor,
+      what: t(
+        notice.cause === 'spend_cap'
+          ? 'chat.system.resetWaitWhat.cap'
+          : 'chat.system.resetWaitWhat.quota',
+      ),
+      until: notice.resetsAt === null ? '' : new Date(notice.resetsAt).toISOString(),
     }),
   ];
 }

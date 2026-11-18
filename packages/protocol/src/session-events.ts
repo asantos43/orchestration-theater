@@ -205,6 +205,61 @@ export const SessionHandoffFailedPayloadSchema = z.strictObject({
   ...correlation,
 });
 
+/** Why an attempt waits for a quota or a spending cap to come back (P19; the two causes of the wait). */
+export const RESET_WAIT_CAUSES = ['quota_exhausted', 'spend_cap'] as const;
+export const ResetWaitCauseSchema = z.enum(RESET_WAIT_CAUSES);
+export type ResetWaitCause = z.infer<typeof ResetWaitCauseSchema>;
+
+/**
+ * `attempt.reset_wait_started`: the attempt went to `AWAITING_RESUME` to wait for the quota or the
+ * spending cap of its own profile (architecture 5.16, "Retomada quando a cota ou o teto voltam";
+ * Phase 5, P19, N146). Written with the record of the state, after `session.interrupted`. The wait
+ * ends with `attempt.reset_wait_ended`. [proposta] The name and the fields.
+ */
+export const AttemptResetWaitStartedPayloadSchema = z.strictObject({
+  /** The session that stopped and that a native resume loads again; absent when none opened. */
+  sessionId: id.optional(),
+  role: id.optional(),
+  cause: ResetWaitCauseSchema,
+  /** The Executor the attempt waits for: the resume is natural in the same profile. */
+  executor: ExecutorPayloadSchema,
+  /** When the quota or the cap is due back, epoch ms; null when no source says (a cap with no date). */
+  resetsAt: z.int().min(0).nullable(),
+  /** How long the wait may take at most, ms: the time to the reset plus `resume.quota_wait_grace`. */
+  maxWaitMs: z.int().min(0),
+  /** The wait comes from a daemon that restarted while the attempt was waiting. */
+  afterRestart: z.boolean(),
+  ...correlation,
+});
+
+/** How a wait for the reset ended (P19, [proposta]). */
+export const RESET_WAIT_OUTCOMES = [
+  /** `quota.restored` or `budget.restored` arrived: the session is loaded again, natively. */
+  'restored',
+  /** The time limit of the demand ran out during the wait (`resume.quota_wait_deadline: count`). */
+  'timeout',
+  /** The attempt was stopped or cancelled during the wait; the record stays waiting. */
+  'stopped',
+  /** No word came by the reset plus `resume.quota_wait_grace` and the profile is still exhausted: the baton goes (or the attempt parks). */
+  'missed',
+] as const;
+export const ResetWaitOutcomeSchema = z.enum(RESET_WAIT_OUTCOMES);
+export type ResetWaitOutcome = z.infer<typeof ResetWaitOutcomeSchema>;
+
+/**
+ * `attempt.reset_wait_ended`: the wait of `attempt.reset_wait_started` is over (P19, N146).
+ * `restored` is followed by `session.resumed` with `form: native`; the other outcomes by a handoff
+ * (`session.handoff`), a park (`session.handoff_failed`) or nothing, for `stopped`. [proposta]
+ */
+export const AttemptResetWaitEndedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  cause: ResetWaitCauseSchema,
+  outcome: ResetWaitOutcomeSchema,
+  /** How long the attempt waited, ms (on the clock of the daemon). */
+  waitedMs: z.int().min(0),
+  ...correlation,
+});
+
 /**
  * `attempt.checkpoint_failed`: a `wip(checkpoint)` commit could not be made (P18b, N146), so the
  * work since the last checkpoint is not protected. [proposta]

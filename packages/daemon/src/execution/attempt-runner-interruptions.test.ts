@@ -158,13 +158,17 @@ describe('AttemptRunner and the policy of 5.16, quota_exhausted', () => {
       const quota = quotaSaying(() => ({ untilReset: now + 10 * MINUTE }));
       const r = await rig({}, quota.service);
       now = r.clock.now();
-      const outcome = await r.runner.run(
-        specOf(r, '#script:quota-signal', { whenExhausted: 'wait' }),
+      const running = r.runner.run(specOf(r, '#script:quota-signal', { whenExhausted: 'wait' }));
+      // The attempt waits for the reset (P19); stopping the runner ends the wait and keeps the decision.
+      await until(
+        async () => (await eventsOf(r, 'attempt.reset_wait_started')).length > 0,
+        'the wait for the reset',
       );
+      await r.runner.stop();
+      const outcome = await running;
       expect(outcome).toMatchObject({
         state: 'interrupted',
         cause: 'quota_exhausted',
-        needsDecision: true,
         decision: { action: 'wait_for_reset', form: 'native', resetsAt: now + 10 * MINUTE },
       });
       expect((await eventsOf(r, 'session.interrupted'))[0]?.payload).toMatchObject({

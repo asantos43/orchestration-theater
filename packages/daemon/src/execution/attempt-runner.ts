@@ -28,7 +28,11 @@ import {
   type ExecutorPayload,
   type InterruptionCause,
   type PackageSummary,
+  type QuotaCause,
+  type ResetWaitCause,
+  type ResetWaitOutcome,
   type ScenarioHandoffNotice,
+  type ScenarioResetWaitNotice,
 } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
@@ -38,6 +42,7 @@ import {
   gatherContinuationPackage,
   renderContinuationPackage,
 } from './continuation-package.js';
+import type { ExhaustionPort, ExhaustionRules } from './exhaustion.js';
 import type { HandoffPort, HandoffRequest, HandoffTarget } from './handoff.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
 import {
@@ -190,7 +195,13 @@ export interface AttemptRunnerOptions {
    * The quota of the profiles (P5). A limit error of a session goes to it, and it says when the
    * quota comes back; without it the reset time of an exhausted quota is unknown.
    */
-  readonly quota?: Pick<QuotaService, 'ingestLimitHit'>;
+  readonly quota?: Pick<QuotaService, 'ingestLimitHit'> & Partial<Pick<QuotaService, 'statusOf'>>;
+  /**
+   * What the role and the budget of a profile say when it runs out (P19): `when_exhausted`,
+   * `in_flight` and the answer of `on_exceeded`. Without it the facts of the spec hold, and their
+   * defaults (`next`, `handoff`): no wait for the reset happens.
+   */
+  readonly exhaustion?: ExhaustionPort;
   /**
    * The handoff (P18): the next Executor of the role and what the continuation package needs.
    * Without it a `handoff` decision parks the attempt, as before.
@@ -224,6 +235,23 @@ type Ended =
     }
   | { readonly kind: 'timeout'; readonly sha: string | undefined }
   | { readonly kind: 'stopped'; readonly sha: string | undefined };
+
+/** An attempt that waits for a quota or a cap: what the runner holds to wake it (`restored`). */
+interface Waiter {
+  readonly cause: QuotaCause;
+  readonly wake: () => void;
+}
+
+/** A wait for the reset the daemon was in when it restarted: it is taken up before any session opens. */
+interface WaitAgain {
+  readonly ended: Extract<Ended, { kind: 'interrupted' }>;
+  readonly decision: InterruptionDecision;
+}
+
+/** What the wait for a reset came to: the next go, or the end of the attempt. */
+type Waited =
+  | { readonly kind: 'step'; readonly step: Step }
+  | { readonly kind: 'done'; readonly outcome: AttemptOutcome };
 
 type Raced = Ended | { readonly kind: 'error'; readonly error: unknown };
 
@@ -277,7 +305,8 @@ interface AttemptContext {
   readonly journal: AttemptJournal;
   readonly tracker: CheckpointTracker;
   readonly stop: AbortController;
-  readonly deadline: number;
+  /** Moves forward by the time spent waiting for a reset when `resume.quota_wait_deadline` is `pause`. */
+  deadline: number;
   readonly firstPrompt: string;
   /** The package the last handoff opened its session with: what a go with no conversation starts from. */
   handoffPrompt: string | undefined;
@@ -327,6 +356,8 @@ const FREE_SIGNAL = 'free_resume';
 export class AttemptRunner {
   readonly #options: AttemptRunnerOptions;
   readonly #running = new Map<string, { context: AttemptContext; done: Promise<unknown> }>();
+  /** The attempts waiting for a profile to come back (P19), by profile id `<client>/<profile>`. */
+  readonly #waiters = new Map<string, Set<Waiter>>();
   #stopping = false;
 
   constructor(options: AttemptRunnerOptions) {
@@ -336,6 +367,21 @@ export class AttemptRunner {
   /** Attempts in progress. */
   get active(): number {
     return this.#running.size;
+  }
+
+  /**
+   * The restore hook of the daemon (`awaiting_resume`, 5.6; Phase 5, P19): the quota or the
+   * spending cap of `profile` came back. Wakes the attempts that wait for it, and answers how many.
+   * Idempotent, as the hook must be: an attempt that is not waiting any more is not touched.
+   */
+  restored(profile: string, causes: readonly QuotaCause[]): number {
+    let woken = 0;
+    for (const waiter of this.#waiters.get(profile) ?? []) {
+      if (!causes.includes(waiter.cause)) continue;
+      waiter.wake();
+      woken += 1;
+    }
+    return woken;
   }
 
   /** Creates the worktree and the branch of the attempt and runs it to its end. */
@@ -388,6 +434,7 @@ export class AttemptRunner {
    */
   async resume(record: AttemptRecord, resolved: ResumeContext): Promise<AttemptOutcome> {
     this.#assertOpen();
+    const waiting = record.state === 'awaiting_resume' && isResetWaitCause(record.cause);
     const input: AttemptRecordInput = {
       ...attemptInputOf(record),
       state: 'resuming',
@@ -395,6 +442,7 @@ export class AttemptRunner {
     };
     const context = this.#context(input, { ...resolved, ...ids(record) }, '');
     const missing = await this.#missingToResume(record);
+    if (waiting && missing === undefined) return this.#resumeWait(context, record);
     const decision = decideInterruption(
       { ...this.#facts(context, 'daemon_restart'), reloadable: missing === undefined },
       this.#rules(),
@@ -426,6 +474,50 @@ export class AttemptRunner {
       prompt: this.#options.settings.continuePrompt,
       cause: 'daemon_restart',
     });
+  }
+
+  /**
+   * The daemon restarted while the attempt waited for the quota or the cap (architecture 5.21;
+   * Phase 5, P19): the wait starts again from the state of the profile, which the `QuotaService`
+   * rebuilt from its events. The registry keeps the cause of the wait, so nothing is lost if the
+   * daemon stops again before the profile comes back. A profile that is back resumes at once.
+   */
+  async #resumeWait(context: AttemptContext, record: AttemptRecord): Promise<AttemptOutcome> {
+    const { quota } = this.#options;
+    const cause = record.cause === 'spend_cap' ? 'spend_cap' : 'quota_exhausted';
+    let resetsAt: number | null = null;
+    if (quota?.statusOf !== undefined) {
+      try {
+        const status = await quota.statusOf(context.spec.profile.id);
+        if (status.state === 'exhausted') resetsAt = status.untilReset;
+      } catch (error) {
+        this.#options.logger.warn(
+          { err: error, attemptId: context.attemptId },
+          'the quota service did not answer after the restart',
+        );
+      }
+    }
+    context.crashes = await this.#crashesOf(context);
+    const decision: InterruptionDecision = {
+      cause,
+      action: 'wait_for_reset',
+      form: 'native',
+      countsAsAttempt: false,
+      delayMs: 0,
+      resetsAt,
+      differentExecutor: false,
+      reason: 'the daemon restarted while the attempt waited for the reset',
+    };
+    const ended: Extract<Ended, { kind: 'interrupted' }> = {
+      kind: 'interrupted',
+      cause,
+      detail: 'the daemon restarted while the attempt waited for the reset',
+      native: true,
+      kill: false,
+      signals: ['daemon:restart_during_wait'],
+      sha: record.lastCheckpoint ?? undefined,
+    };
+    return this.#track(context, undefined, { ended, decision });
   }
 
   /**
@@ -555,8 +647,12 @@ export class AttemptRunner {
     return rows.filter((row) => !row.signals.includes(FREE_SIGNAL)).length;
   }
 
-  #track(context: AttemptContext, first: Step): Promise<AttemptOutcome> {
-    const done = this.#guarded(context, first);
+  #track(
+    context: AttemptContext,
+    first: Step | undefined,
+    wait?: WaitAgain,
+  ): Promise<AttemptOutcome> {
+    const done = this.#guarded(context, first, wait);
     this.#running.set(context.attemptId, { context, done });
     return done.finally(() => {
       this.#running.delete(context.attemptId);
@@ -564,9 +660,13 @@ export class AttemptRunner {
   }
 
   /** Runs the attempt; an error nobody planned for (the store, say) still ends the process tree. */
-  async #guarded(context: AttemptContext, first: Step): Promise<AttemptOutcome> {
+  async #guarded(
+    context: AttemptContext,
+    first: Step | undefined,
+    wait: WaitAgain | undefined,
+  ): Promise<AttemptOutcome> {
     try {
-      const outcome = await this.#drive(context, first);
+      const outcome = await this.#drive(context, first, wait);
       await context.journal.flush();
       return outcome;
     } catch (error) {
@@ -589,9 +689,23 @@ export class AttemptRunner {
 
   // ---- the life of an attempt ----
 
-  async #drive(context: AttemptContext, first: Step): Promise<AttemptOutcome> {
+  async #drive(
+    context: AttemptContext,
+    first: Step | undefined,
+    wait: WaitAgain | undefined,
+  ): Promise<AttemptOutcome> {
     const { settings } = this.#options;
-    let step = first;
+    let step: Step;
+    if (wait !== undefined) {
+      // A wait the daemon was in when it restarted: pick it up before any session opens.
+      const waited = await this.#resetWait(context, wait.ended, wait.decision, true);
+      if (waited.kind === 'done') return waited.outcome;
+      step = waited.step;
+    } else if (first !== undefined) {
+      step = first;
+    } else {
+      throw new Error('an attempt needs a first step or a wait to take up');
+    }
     for (;;) {
       const ended = await this.#once(context, step);
       switch (ended.kind) {
@@ -624,10 +738,17 @@ export class AttemptRunner {
             step = await this.#handoff(context, decision, handoff);
             continue;
           }
-          // The resume in place and the handoff are carried out here. A wait for the reset (P19),
-          // the cap's `finish` and `stop` (P11) and the Director's judgment stop the attempt (and
-          // so does a handoff nobody could take), and the outcome says which action the policy
-          // chose.
+          // The wait for the reset (P19): the registry says `awaiting_resume` until the restore
+          // hook, then the same conversation is loaded again in the same profile.
+          if (decision.action === 'wait_for_reset') {
+            const waited = await this.#resetWait(context, ended, decision, false);
+            if (waited.kind === 'done') return waited.outcome;
+            step = waited.step;
+            continue;
+          }
+          // The resume in place, the wait for the reset and the handoff are carried out here. The
+          // cap's `finish` and `stop` (P11) and the Director's judgment stop the attempt (and so
+          // does a handoff nobody could take), and the outcome says which action the policy chose.
           if (decision.action !== 'resume_native') {
             const wait = handoff?.wait ?? noHandoffPort(decision);
             if (wait !== undefined) await this.#handoffFailed(context, decision, wait);
@@ -1158,19 +1279,35 @@ export class AttemptRunner {
     let cause = ended.cause;
     let resetsAt: number | null = null;
     let signals = ended.signals;
+    let exhaustion: ExhaustionRules = {};
     if (ended.cause === 'quota_exhausted') {
       const quota = await this.#quotaOf(context, ended);
       cause = quota.cause;
       resetsAt = quota.resetsAt;
       signals = [...signals, ...quota.signals];
+      // What the role and the budget say about running out (P19); the spec, when it has the value, wins.
+      const rules = await this.#exhaustionOf(context);
+      exhaustion = rules.rules;
+      signals = [...signals, ...rules.signals];
     }
     // The conversation of an exhausted quota can be reloaded when there is one (the error came
     // from a turn); the other causes know it from how they were classified.
     const reloadable =
       ended.native ||
       ((cause === 'quota_exhausted' || cause === 'spend_cap') && context.sessionId !== undefined);
+    const facts = this.#facts(context, cause);
     const decision = decideInterruption(
-      { ...this.#facts(context, cause), resetsAt, reloadable, free, repeated },
+      {
+        ...facts,
+        whenExhausted:
+          context.spec.whenExhausted ?? exhaustion.whenExhausted ?? facts.whenExhausted,
+        inFlight: context.spec.inFlight ?? exhaustion.inFlight ?? facts.inFlight,
+        waitForCap: exhaustion.waitForCap === true,
+        resetsAt,
+        reloadable,
+        free,
+        repeated,
+      },
       this.#rules(),
     );
     if (cause === 'client_crash' && !free) context.crashes += 1;
@@ -1179,6 +1316,63 @@ export class AttemptRunner {
       free,
       signals: [...signals, ...(free ? [FREE_SIGNAL] : []), `action:${decision.action}`],
     };
+  }
+
+  /**
+   * What the role and the budget of the profile say when it runs out (P19). A port that fails
+   * leaves the defaults and a `play.notice`: the attempt must not stop because of it.
+   */
+  async #exhaustionOf(
+    context: AttemptContext,
+  ): Promise<{ rules: ExhaustionRules; signals: readonly string[] }> {
+    const port = this.#options.exhaustion;
+    if (port === undefined) return { rules: {}, signals: [] };
+    const { spec } = context;
+    try {
+      const rules = await port.rulesOf({
+        playId: spec.playId,
+        role: spec.role,
+        profile: spec.profile,
+      });
+      return { rules, signals: [] };
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'the exhaustion rules were not read',
+      );
+      await this.#notice(
+        context,
+        'exhaustion_not_read',
+        eventErrorText(error, { secretPaths: [] }),
+      );
+      return { rules: {}, signals: ['exhaustion_rules:failed'] };
+    }
+  }
+
+  /** A `play.notice` of the attempt's play (N146); it never stops the attempt. */
+  async #notice(
+    context: AttemptContext,
+    kind: 'exhaustion_not_read',
+    detail: string,
+  ): Promise<void> {
+    const { store, logger } = this.#options;
+    const { playId } = context.spec;
+    try {
+      const play = await store.plays.get(playId);
+      const scenarioId = play?.scenarioId ?? null;
+      await store.events.append({
+        ...buildDaemonEvent('play.notice', {
+          scenarioId,
+          playId,
+          kind,
+          detail: detail.slice(0, 500),
+        }),
+        ...(scenarioId === null ? {} : { scenarioId }),
+        playId,
+      });
+    } catch (error) {
+      logger.error({ err: error, playId, kind }, 'a play notice was not written');
+    }
   }
 
   /** What the `QuotaService` says about a limit error: the cause (quota or cap) and the reset. */
@@ -1237,6 +1431,245 @@ export class AttemptRunner {
       return result;
     } finally {
       guard.abort();
+    }
+  }
+
+  // ---- the wait for the reset (P19) ----
+
+  /**
+   * The attempt waits for its profile to come back, then loads the same conversation again
+   * (architecture 5.16, "Retomada quando a cota ou o teto voltam"). The registry says
+   * `awaiting_resume` with the cause; the wakeup was recorded by the `WakeupManager` when the limit
+   * hit reached the `QuotaService` (P9), and `restored()` is what its hook calls. A hook that never
+   * comes is covered by the clock: past the reset plus `resume.quota_wait_grace` the profile is read
+   * and the wait ends as `restored` or `missed`. The wait costs no attempt of the demand.
+   */
+  async #resetWait(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+    decision: InterruptionDecision,
+    afterRestart: boolean,
+  ): Promise<Waited> {
+    const { clock, settings } = this.#options;
+    const { journal, spec } = context;
+    const cause: ResetWaitCause = decision.cause === 'spend_cap' ? 'spend_cap' : 'quota_exhausted';
+    const quotaCause: QuotaCause = cause === 'spend_cap' ? 'budget' : 'quota';
+    const profile = spec.profile.id;
+    const started = clock.now();
+    const { resetsAt } = decision;
+    const maxWaitMs =
+      resetsAt === null
+        ? settings.quotaWaitMaxMs
+        : Math.max(0, resetsAt - started) + settings.quotaWaitGraceMs;
+    // Registered before anything is written, so a restore that comes meanwhile is not lost.
+    let wake: () => void = () => undefined;
+    const woken = new Promise<'restored'>((resolve) => {
+      wake = () => {
+        resolve('restored');
+      };
+    });
+    const waiter: Waiter = { cause: quotaCause, wake };
+    const waiters = this.#waiters.get(profile) ?? new Set<Waiter>();
+    waiters.add(waiter);
+    this.#waiters.set(profile, waiters);
+    const timers = new AbortController();
+    let outcome: ResetWaitOutcome;
+    try {
+      await journal.write(
+        buildDaemonEvent('attempt.reset_wait_started', {
+          ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+          ...(spec.role === undefined ? {} : { role: spec.role }),
+          cause,
+          executor: this.#executor(context),
+          resetsAt: resetsAt === null ? null : Math.max(0, Math.trunc(resetsAt)),
+          maxWaitMs: Math.trunc(maxWaitMs),
+          afterRestart,
+          ...this.#correlation(context),
+        }),
+        { state: 'awaiting_resume', cause: decision.cause },
+      );
+      if (!afterRestart) {
+        await this.#announceResetWait(context, {
+          cause,
+          executor: this.#executorId(context),
+          resetsAt,
+        });
+      }
+      outcome = (await this.#profileBack(context, profile))
+        ? 'restored'
+        : await this.#awaitReset(context, {
+            woken,
+            maxWaitMs,
+            profile,
+            signal: timers.signal,
+          });
+    } finally {
+      timers.abort();
+      waiters.delete(waiter);
+      if (waiters.size === 0 && this.#waiters.get(profile) === waiters)
+        this.#waiters.delete(profile);
+    }
+    const waitedMs = Math.max(0, clock.now() - started);
+    // The wait is not work: by default the time limit of the demand does not run during it.
+    if (settings.quotaWaitDeadline === 'pause') context.deadline += waitedMs;
+    const endedEvent = buildDaemonEvent('attempt.reset_wait_ended', {
+      ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+      cause,
+      outcome,
+      waitedMs,
+      ...this.#correlation(context),
+    });
+    switch (outcome) {
+      case 'restored': {
+        const resumes = journal.record.resumes;
+        await journal.write(endedEvent, {
+          state: 'resuming',
+          resumes: settings.quotaWaitCounts === 'resume' ? resumes + 1 : resumes,
+        });
+        return {
+          kind: 'step',
+          step: {
+            resumeSessionId: context.sessionId,
+            prompt:
+              context.sessionId === undefined
+                ? (context.handoffPrompt ?? context.firstPrompt)
+                : settings.continuePrompt,
+            cause: decision.cause,
+          },
+        };
+      }
+      case 'stopped':
+        // The record stays `awaiting_resume` with this cause: the next start takes the wait up again.
+        await journal.write(endedEvent);
+        await journal.flush();
+        return {
+          kind: 'done',
+          outcome: this.#outcome(
+            context,
+            'interrupted',
+            decision.cause,
+            undefined,
+            false,
+            decision,
+          ),
+        };
+      case 'timeout':
+        await journal.write(endedEvent);
+        return { kind: 'done', outcome: await this.#timedOut(context, ended.sha) };
+      case 'missed':
+        await journal.write(endedEvent);
+        return this.#missedReset(context, ended, decision);
+    }
+  }
+
+  /** The race of the wait: the restore hook, the time (reset plus grace), a stop and, if asked, the deadline. */
+  async #awaitReset(
+    context: AttemptContext,
+    wait: {
+      readonly woken: Promise<'restored'>;
+      readonly maxWaitMs: number;
+      readonly profile: string;
+      readonly signal: AbortSignal;
+    },
+  ): Promise<ResetWaitOutcome> {
+    const { clock, settings } = this.#options;
+    const first = await Promise.race([
+      wait.woken,
+      this.#after(wait.maxWaitMs, 'due' as const, wait.signal),
+      new Promise<'stopped'>((resolve) => {
+        const onStop = (): void => {
+          resolve('stopped');
+        };
+        if (context.stop.signal.aborted) onStop();
+        else context.stop.signal.addEventListener('abort', onStop, { once: true });
+      }),
+      settings.quotaWaitDeadline === 'count'
+        ? this.#after(context.deadline - clock.now(), 'timeout' as const, wait.signal)
+        : NEVER,
+    ]);
+    if (first === 'due')
+      return (await this.#profileBack(context, wait.profile)) ? 'restored' : 'missed';
+    return first;
+  }
+
+  /** Whether the profile can be used again. Without a `QuotaService` that can say, the answer is no. */
+  async #profileBack(context: AttemptContext, profile: string): Promise<boolean> {
+    const { quota, logger } = this.#options;
+    if (quota?.statusOf === undefined) return false;
+    try {
+      return (await quota.statusOf(profile)).state !== 'exhausted';
+    } catch (error) {
+      logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'the quota service did not answer during the wait',
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The reset did not come: `resume.quota_wait_missed` says whether the baton goes (the default) or
+   * the attempt is parked for a decision. The same code as a handoff the policy chose from the
+   * start, with the reason the wait gave.
+   */
+  async #missedReset(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+    waiting: InterruptionDecision,
+  ): Promise<Waited> {
+    if (this.#options.settings.quotaWaitMissed === 'park') {
+      return { kind: 'done', outcome: await this.#parked(context, waiting) };
+    }
+    const decision: InterruptionDecision = {
+      ...waiting,
+      action: 'handoff',
+      form: 'handoff',
+      reason: 'the reset did not come in time',
+    };
+    const handoff = await this.#prepareHandoff(context, ended, decision);
+    if (handoff?.kind === 'ready') {
+      await this.#interruptionEvent(
+        context,
+        decision,
+        ended.detail,
+        ended.sha,
+        ['reset_wait:missed', 'action:handoff'],
+        handoff.target,
+      );
+      return { kind: 'step', step: await this.#handoff(context, decision, handoff) };
+    }
+    const wait = handoff?.wait ?? noHandoffPort(decision);
+    if (wait !== undefined) await this.#handoffFailed(context, decision, wait);
+    return { kind: 'done', outcome: await this.#parked(context, decision, wait) };
+  }
+
+  /** The system message of the wait for the chat of the scenario; it never stops the wait. */
+  async #announceResetWait(
+    context: AttemptContext,
+    facts: { cause: ResetWaitCause; executor: string; resetsAt: number | null },
+  ): Promise<void> {
+    const { store, logger, handoff } = this.#options;
+    const { spec } = context;
+    try {
+      const play = await store.plays.get(spec.playId);
+      if (play === undefined) return;
+      const notice: ScenarioResetWaitNotice = {
+        scenarioId: play.scenarioId,
+        kind: 'reset_wait',
+        playId: spec.playId,
+        attemptId: context.attemptId,
+        role: spec.role ?? null,
+        cause: facts.cause,
+        executor: facts.executor,
+        resetsAt: facts.resetsAt === null ? null : Math.max(0, Math.trunc(facts.resetsAt)),
+      };
+      await store.events.append({
+        ...buildDaemonEvent('scenario.system_message', notice),
+        scenarioId: play.scenarioId,
+      });
+      handoff?.announce?.(notice);
+    } catch (error) {
+      logger.warn({ err: error, attemptId: context.attemptId }, 'the wait message was not sent');
     }
   }
 
@@ -1760,6 +2193,11 @@ function retarget(spec: AttemptContext['spec'], target: HandoffTarget): AttemptC
 
 function ids(record: AttemptRecord): { playId: string; demandId: string; attempt: number } {
   return { playId: record.playId, demandId: record.demandId, attempt: record.attempt };
+}
+
+/** The causes an attempt waits for the reset under (the registry keeps one while it waits). */
+function isResetWaitCause(cause: string | null): boolean {
+  return cause === 'quota_exhausted' || cause === 'spend_cap';
 }
 
 function causeOf(ended: Ended): string {

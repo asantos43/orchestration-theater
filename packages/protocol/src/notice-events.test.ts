@@ -148,8 +148,9 @@ describe('the notice events of P24', () => {
     ).toThrow();
   });
 
-  it('play.notice: has the four kinds of the pipeline', () => {
+  it('play.notice: has the kinds of the pipeline and the one of the exhaustion rules (P19)', () => {
     for (const kind of [
+      'exhaustion_not_read',
       'play_not_resumed',
       'effect_not_started',
       'finish_not_handled',

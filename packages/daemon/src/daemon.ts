@@ -60,8 +60,10 @@ import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
+import { createDaemonExhaustion } from './orchestration/exhaustion-wiring.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
+import { createLateExhaustion, type ExhaustionPort } from './execution/exhaustion.js';
 import type { HandoffPort } from './execution/handoff.js';
 import type { ProducerChannel } from './orchestration/channel.js';
 import { dataPaths, ensureDataDir } from './paths.js';
@@ -456,6 +458,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
   // The runner holds the baton port from the start; the orchestration binds the real one (P18, P16b).
   const handoff = createLateHandoff();
+  // The rules of exhaustion (P19) come from the roles and the budget, which exist later: the runner
+  // holds the port from the start and the daemon binds the real one once the budget is up.
+  const exhaustion = createLateExhaustion();
   const execution = buildExecution(
     options,
     config,
@@ -465,6 +470,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     quota,
     quotaPrepare,
     handoff.port,
+    exhaustion.port,
   );
   // The probes were handed over by `buildExecution`. The profiles the registry already has are
   // tracked before the readings start, so a MiniMax profile is read without waiting for a session.
@@ -543,6 +549,16 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     situations: composition.situations,
   });
   await budget.start();
+  if (orchestration !== undefined) {
+    exhaustion.bind(
+      createDaemonExhaustion({
+        store: composition.store,
+        selection: orchestration.selection,
+        budget,
+        logger,
+      }),
+    );
+  }
   // P12 (N118): the check of the consumption against ccusage. It is an audit: it starts in the
   // background (the version check runs a process) and never holds the start-up or fails it.
   const usageAudit =
@@ -570,6 +586,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // (`quota.restored`), once the wakeup has settled it.
   wakeups.setHook('queued_demands', () => {
     orchestration?.selection.wake();
+  });
+  // P19: the attempts that wait for the reset (`AWAITING_RESUME`) resume the same conversation. The
+  // hook may run more than once for a restoration; waking an attempt that is not waiting does nothing.
+  wakeups.setHook('awaiting_resume', ({ profile, causes }) => {
+    execution?.runner.restored(profile, causes);
   });
   await wakeups.start();
 
@@ -659,6 +680,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('directives', () => directives.stop());
       await attempt('wakeups', () => wakeups.stop());
       await attempt('budget', () => budget.stop());
+      exhaustion.bind(undefined);
       await attempt('usage audit', async () => {
         await usageAuditStarted;
         await usageAudit?.stop();
@@ -728,6 +750,7 @@ function buildExecution(
   quota: QuotaService,
   quotaPrepare: (() => Promise<readonly ProfileRef[]>)[],
   handoff: HandoffPort,
+  exhaustion: ExhaustionPort,
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
@@ -814,6 +837,7 @@ function buildExecution(
     quota,
     memory: composition.memory,
     handoff,
+    exhaustion,
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }
