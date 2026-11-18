@@ -268,6 +268,45 @@ describe('startDaemon', () => {
     }
   });
 
+  it('runs at start-up the wakeup that came due while stopped, and keeps the one that did not (P9)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const clock = new FakeClock(AT);
+      const store = new InMemoryStore({ clock });
+      for (const [profile, resetsAt] of [
+        ['claude-code/old', AT - 60_000],
+        ['claude-code/later', AT + 3_600_000],
+      ] as const) {
+        await store.quotaSnapshots.put({
+          profileId: profile,
+          window: 'limit_hit',
+          usedPercent: 100,
+          resetsAt,
+          source: 'test',
+          observedAt: AT - 3_600_000,
+        });
+        await store.wakeups.create({ profileId: profile, cause: 'quota', at: resetsAt });
+      }
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
+        config: MANUAL,
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+        logger: createSilentLogger(),
+      });
+      expect(daemon.wakeups.running).toBe(true);
+      const rows = await store.wakeups.list({});
+      expect(rows.map((row) => [row.profileId, row.state])).toEqual([
+        ['claude-code/old', 'fired'],
+        ['claude-code/later', 'scheduled'],
+      ]);
+      await daemon.stop('shutdown');
+      expect(daemon.wakeups.running).toBe(false);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
   it('refuses a second daemon on the same data dir and lets go of the lock on stop', async () => {
     const tmp = await makeTempDataDir();
     try {

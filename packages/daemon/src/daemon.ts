@@ -40,7 +40,7 @@ import { InstanceLock } from './instance-lock.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
-import { QuotaService, quotaSettingsOf } from './quota/index.js';
+import { QuotaService, quotaSettingsOf, WakeupManager, wakeupSettingsOf } from './quota/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
@@ -154,6 +154,11 @@ export interface DaemonHandle {
   readonly directives: DirectiveService;
   /** The quota of the profiles (architecture 5.6): signals, readings, state and freshness. */
   readonly quota: QuotaService;
+  /**
+   * The wakeups of exhausted profiles and the recheck (architecture 5.6; P9). The hooks of what
+   * waits for a profile (P19, P15, the scheduler) are plugged in here with `setHook`.
+   */
+  readonly wakeups: WakeupManager;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -458,6 +463,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   gate.open();
   // The ideas of a group the restart lost go back to the queue, and the queues that can move do.
   await orchestration?.ideas.settle();
+  // P9: the wakeups of the exhausted profiles. What came due with the daemon stopped runs here, now
+  // that everything that waits for a profile is up (5.21). The steps that own a hook (P19, P15, 9b)
+  // plug it in with `wakeups.setHook` right here, before `start`, so a wakeup due at start-up finds it.
+  const wakeups = new WakeupManager({
+    store: composition.store,
+    clock,
+    quota,
+    settings: wakeupSettingsOf(config),
+    logger,
+    probes: (clientId) => quota.probeOf(clientId),
+  });
+  await wakeups.start();
 
   const storeCanBackUp = hasStoreMaintenance(store);
   const service = new BackupService({
@@ -515,6 +532,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
+      await attempt('wakeups', () => wakeups.stop());
       await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
@@ -545,6 +563,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     producer: orchestration?.channel,
     directives,
     quota,
+    wakeups,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },

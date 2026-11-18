@@ -1263,6 +1263,12 @@ export const DaemonConfigSchema = z
      * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
      * `read` calls where polling is on. The defaults follow N123, decided by the owner on
      * 2026-11-18.
+     *
+     * `recheck_every` (P9, architecture 5.6, "Consulta sem horário de reset"): how long a profile
+     * that is exhausted with no known end waits before the daemon looks at it again, using only
+     * signals that never call the model. `15m` by default; `off` never looks again (the profile
+     * stays exhausted until a reading or a limit error says otherwise). A profile with no such
+     * signal goes from `exhausted` to `unknown` when the interval passes.
      */
     quota: z
       .strictObject({
@@ -1274,6 +1280,10 @@ export const DaemonConfigSchema = z
             poll_every: DurationSchema.prefault('5m'),
           })
           .prefault({}),
+        recheck_every: z
+          .union([z.literal('off'), DurationSchema])
+          .transform((value) => (value === 'off' ? null : value))
+          .prefault('15m'),
       })
       .prefault({}),
     ui: z
