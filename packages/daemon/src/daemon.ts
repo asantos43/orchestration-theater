@@ -41,6 +41,7 @@ import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
 import { QuotaService, quotaSettingsOf, WakeupManager, wakeupSettingsOf } from './quota/index.js';
+import { UsageService, usageSettingsOf } from './usage/index.js';
 import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
@@ -159,6 +160,8 @@ export interface DaemonHandle {
    * waits for a profile (P19, P15, the scheduler) are plugged in here with `setHook`.
    */
   readonly wakeups: WakeupManager;
+  /** The consumption and the cost in money of the turns (architecture 5.6; Phase 5, P10). */
+  readonly usage: UsageService;
   status(): DaemonStatus;
   /** One backup now, queued behind any running one. Rejects when the store cannot make copies. */
   backup(trigger?: BackupTrigger): Promise<BackupOutcome>;
@@ -240,6 +243,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       settings: quotaSettingsOf(config),
       logger: composition.logger,
     });
+    const usage = new UsageService({
+      store: composition.store,
+      clock: composition.clock,
+      settings: usageSettingsOf(config),
+      logger: composition.logger,
+    });
     const handlers = options.mcpHandlers ?? new ToolHandlers();
     if (!handlers.has('propose_directive')) {
       registerDirectiveTools(handlers, directives, composition.store);
@@ -302,6 +311,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       browserTools,
       directives,
       quota,
+      usage,
       lock,
       version,
       prompts,
@@ -330,6 +340,7 @@ interface RunInput {
   readonly browserTools: BrowserTools | undefined;
   readonly directives: DirectiveService;
   readonly quota: QuotaService;
+  readonly usage: UsageService;
   readonly lock: InstanceLock;
   readonly version: string;
   readonly prompts: PromptSource;
@@ -348,6 +359,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     browserTools,
     directives,
     quota,
+    usage,
     lock,
     version,
     prompts,
@@ -564,6 +576,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     directives,
     quota,
     wakeups,
+    usage,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },
