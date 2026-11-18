@@ -4,6 +4,7 @@ import {
   parseProfileId,
   priceTokens,
   type Clock,
+  type Disposable,
   type NormalizedUpdate,
   type ProfileKind,
   type ProfileRef,
@@ -23,6 +24,9 @@ import { TRACKED_PROFILE } from '../recovery/tracking-launcher.js';
 import type { UsageSettings } from './settings.js';
 
 export type UsageProfileTarget = string | ProfileRef;
+
+/** Hears each turn the service wrote (P11: the spending cap re-reads the spending on it). */
+export type UsageRecordedListener = (row: UsageRecord) => void;
 
 export interface UsageServiceOptions {
   readonly store: Pick<Store, 'transaction' | 'usage' | 'sessions' | 'profiles' | 'attempts'>;
@@ -186,6 +190,7 @@ export class UsageService {
   /** The cumulative cost last seen per session, to turn an ACP `usage_update` into a turn. */
   readonly #cumulative = new Map<string, number>();
   readonly #models = new Map<string, string>();
+  readonly #listeners = new Set<UsageRecordedListener>();
   #queue: Promise<unknown> = Promise.resolve();
   #warnedProviderBilling = false;
 
@@ -235,6 +240,20 @@ export class UsageService {
   ingestUpdate(sessionId: string, update: NormalizedUpdate): Promise<UsageRecord | undefined> {
     if (update.kind !== 'usage') return Promise.resolve(undefined);
     return this.#ingest(sessionId, update);
+  }
+
+  /**
+   * Hears every turn after it is written (and `usage.recorded` with it). The listener is called at
+   * once and must not wait for the service: `totals` waits for the queue this runs in, so a
+   * listener that awaited it from here would never return. It starts its own work and returns.
+   */
+  onRecorded(listener: UsageRecordedListener): Disposable {
+    this.#listeners.add(listener);
+    return {
+      dispose: () => {
+        this.#listeners.delete(listener);
+      },
+    };
   }
 
   /** Resolves when everything taken in so far has been written. */
@@ -337,7 +356,15 @@ export class UsageService {
 
     const kind = await this.#kindOf(resolved.profileId);
     const cost = this.#costOf(model, report, clientUsd, source, kind);
-    return this.#write(sessionId, resolved, model, report, cost);
+    const row = await this.#write(sessionId, resolved, model, report, cost);
+    for (const listener of this.#listeners) {
+      try {
+        listener(row);
+      } catch (error) {
+        this.#options.logger.warn({ err: error, sessionId }, 'a usage listener failed');
+      }
+    }
+    return row;
   }
 
   /** The growth of a cumulative cost since the last report of the session (a lower one starts over). */

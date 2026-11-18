@@ -2,15 +2,21 @@
 import { parseProfileId } from '@otheater/core';
 import { LocalConfigSchema, type LocalConfig } from '@otheater/protocol';
 import { z } from 'zod';
+import { ProfileBudgetSchema, type ProfileBudgetConfig } from './budget-config.js';
 
 /**
- * `profiles.<client>/<profile>` (architecture 5.9; Phase 5, P14): the block of one profile. Today
- * it has one key, `local`, the local model server behind the profile. The cadastro of an OpenCode
+ * `profiles.<client>/<profile>` (architecture 5.6 and 5.9; Phase 5, P11 and P14): the block of one
+ * profile. `budget` is the spending cap of an API profile (P11, see `budget-config.ts`); `local` is
+ * the local model server behind the profile. The cadastro of an OpenCode
  * Executor whose model runs on this machine writes it (5.7, step 2); nothing reads it yet (the
  * admission and the pool still take the instance from the resolver they are given).
  */
-export const ProfileEntrySchema = z.strictObject({ local: LocalConfigSchema.optional() });
+export const ProfileEntrySchema = z.strictObject({
+  budget: ProfileBudgetSchema.optional(),
+  local: LocalConfigSchema.optional(),
+});
 export interface ProfileEntry {
+  readonly budget?: ProfileBudgetConfig | undefined;
   readonly local?: LocalConfig | undefined;
 }
 

@@ -21,6 +21,7 @@ describe('the defaults', () => {
       on_register: 'ask',
       test_session: 'off',
       entries: {},
+      budgets: {},
     });
     expect(config.roles).toEqual({});
     expect(config.orchestration.executor).toBeUndefined();

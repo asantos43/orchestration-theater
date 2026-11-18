@@ -24,6 +24,7 @@ import {
   type OnRegisterMode,
 } from '@otheater/core';
 import { z } from 'zod';
+import { ExecutorBudgetSchema, type ExecutorBudgetConfig } from './budget-config.js';
 
 /**
  * The Executors and the lists of the roles in the configuration (architecture 5.7; Phase 5, P13):
@@ -156,6 +157,8 @@ const ExecutorEntryInputSchema = z.strictObject({
   model: z.string().min(1),
   effort: z.enum(EFFORT_LEVELS, oneOf('effort', EFFORT_LEVELS)).optional(),
   provider: z.string().min(1).optional(),
+  /** The spending cap of this Executor, inside its profile's (5.6; P11). */
+  budget: ExecutorBudgetSchema.optional(),
 });
 
 /** The `executors` block, after parsing: the two modes and the registered Executors. */
@@ -165,6 +168,8 @@ export interface ExecutorsConfig {
   readonly test_session: TestSessionMode;
   /** The `executors.<id>` entries by id, with the provider settled (5.7). */
   readonly entries: Readonly<Record<string, ExecutorEntry>>;
+  /** The `executors.<id>.budget` of the Executors that have one, by Executor name (P11). */
+  readonly budgets: Readonly<Record<string, ExecutorBudgetConfig>>;
 }
 
 /**
@@ -183,6 +188,7 @@ export const ExecutorsConfigSchema = z
     let on_register: OnRegisterMode = 'ask';
     let test_session: TestSessionMode = 'off';
     const entries: Record<string, ExecutorEntry> = {};
+    const budgets: Record<string, ExecutorBudgetConfig> = {};
 
     for (const [key, value] of Object.entries(raw)) {
       if (key === 'cross_client') {
@@ -249,8 +255,9 @@ export const ExecutorsConfigSchema = z
         effort,
         provider: providerOfClient(entry.client, entry.provider),
       };
+      if (entry.budget !== undefined) budgets[key] = entry.budget;
     }
-    return { cross_client, on_register, test_session, entries };
+    return { cross_client, on_register, test_session, entries, budgets };
   });
 
 /**
