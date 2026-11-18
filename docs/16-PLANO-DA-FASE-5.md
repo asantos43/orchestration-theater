@@ -86,7 +86,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | pendente |
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | pendente |
-| P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (branch `fase-5/p24-eventos-dos-avisos`) |
+| P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
