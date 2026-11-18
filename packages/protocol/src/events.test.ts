@@ -67,6 +67,10 @@ describe('daemon event registry', () => {
       'scenario.director_woke',
       'scenario.chat_transitioned',
       'scenario.system_message',
+      'quota.updated',
+      'quota.near_limit',
+      'quota.exhausted',
+      'quota.restored',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

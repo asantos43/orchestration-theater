@@ -99,6 +99,12 @@ export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
+/**
+ * [proposta] `quota.probe.delivery`: how the `QuotaService` takes the readings of a probe. `both`
+ * (default) watches the probes that can push and also polls `read` on a timer; `push` only
+ * watches (a probe without `watch` is not used); `poll` only calls `read` on a timer.
+ */
+export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
@@ -1194,6 +1200,26 @@ export const DaemonConfigSchema = z
     rescript: z
       .strictObject({
         reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
+      })
+      .prefault({}),
+    /**
+     * The quota of each profile (architecture 5.6; P5). [proposta] `near_limit_at` is the fraction
+     * of a window from which a profile is `near_limit` (architecture default 0.8). `stale_after` is
+     * how old a reading may be and still authorize a route (a reading older than this makes the
+     * state `unknown`; default 10 minutes). `probe.delivery` is how the service takes the probes of
+     * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
+     * `read` calls where polling is on. N123 (the defaults of the probes) stays open.
+     */
+    quota: z
+      .strictObject({
+        near_limit_at: z.number().gt(0).max(1).default(0.8),
+        stale_after: DurationSchema.prefault('10m'),
+        probe: z
+          .strictObject({
+            delivery: z.enum(QUOTA_PROBE_DELIVERY_MODES).default('both'),
+            poll_every: DurationSchema.prefault('5m'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     ui: z

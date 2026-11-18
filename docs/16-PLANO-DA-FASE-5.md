@@ -64,7 +64,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | pendente |
 | P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
-| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | pendente |
+| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | pendente |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
@@ -202,6 +202,18 @@ Ordem em ondas **[proposta]**:
 - Referência: os parsers e o veredito com frescor do Claudexor (`harness-claude/src/quota.ts`, `harness-codex/src/quota.ts`, `orchestrator/src/account-pool.ts`), com atribuição (N119).
 
 **Aceite:** com sondas simuladas e o agente falso: uma janela a 85% leva a `near_limit`; um `-32001` com `resetsAt` leva a `exhausted` com o horário; uma leitura velha vira `unknown` e `canUse` recusa; um sinal de outra sessão do mesmo perfil soma no mesmo estado; o estado de um perfil não muda o de outro; a cota continua `exhausted` depois de reiniciar o daemon (vem do `quota_snapshots`).
+
+**Como ficou (2026-11-18):**
+- `daemon/src/quota/` tem o `QuotaService` (`service.ts`), as regras puras de estado e frescor (`state.ts`) e a leitura das chaves (`settings.ts`). O estado é função pura das linhas de `quota_snapshots` e do relógio, então o reinício recalcula o mesmo estado. O daemon cria o serviço, entrega a ele a sonda de cada cliente (`ClientAdapter.quota`), chama `quota.start()` depois de montar a execução e o expõe em `DaemonHandle.quota`. [V]
+- Aceite, todos com sondas simuladas (`SimProbe`) e o formato de erro do agente falso (`code: -32001`, `data.type: 'QuotaExhausted'`), em `quota/service.test.ts` e `quota/state.test.ts`: janela a 85% vai a `near_limit` (e `canUse` continua `true`); `-32001` com `resetsAt` vai a `exhausted` até o horário; leitura velha vira `unknown` e `canUse` recusa; sinais de duas sessões do mesmo perfil somam no mesmo estado; o estado de um perfil não muda o de outro; `exhausted` continua depois de um novo serviço sobre o mesmo store, sem anunciar de novo. [V]
+- Eventos novos no `protocol` (`quota-events.ts`, `schemaVersion` 1): `quota.updated`, `quota.near_limit`, `quota.exhausted`, `quota.restored`. [proposta] Nomes e campos; a arquitetura só nomeia `quota.restored`. O que a hora muda sozinha (um reset, uma leitura que envelhece) também vira evento: um vigia acorda o serviço na próxima fronteira, e o início do daemon fecha o que o reinício perdeu (um `quota.restored` que faltou). [V]
+- Chaves novas, todas **[proposta]**, com os padrões da recomendação do plano (N123 continua aberta): `quota.near_limit_at: 0.8` (fração em (0, 1]), `quota.stale_after: 10m`, `quota.probe.delivery: both | push | poll` (padrão `both`) e `quota.probe.poll_every: 5m` (intervalo da leitura por `read`). `push` só assina `watch` e nunca lê; `poll` só lê; `both` faz os dois, e uma sonda sem `watch` cai no `read`. [V]
+- [proposta] Regra de frescor: uma linha é fresca se `agora - observedAt <= stale_after` e o reset dela, se houver, ainda não passou. Uma janela cheia (100% ou mais) com reset no futuro continua `exhausted` mesmo com a leitura velha (recusar é o lado seguro). Sem `resetsAt`, só vale enquanto fresca. Uma janela que a sonda declara em `capabilities().windows` e que não tem leitura fresca deixa o perfil `unknown`; uma sonda sem janelas declaradas não exige nenhuma.
+- [proposta] Um erro de limite vira uma linha de `quota_snapshots` na janela reservada `limit_hit` (causa `quota`) ou `budget_hit` (causa `budget`), a 100%, para sobreviver ao reinício como qualquer leitura. Com horário: `exhausted` até ele. Sem horário: `exhausted` até uma leitura fresca, mais nova que o erro, com folga em toda janela (o que a P9 consulta); um novo erro sem horário guarda o horário de um erro anterior ainda no futuro. A causa `budget` só termina no reset (ou fica até alguém limpar), e nenhum cliente a alimenta ainda: `ingestLimitHit` a recebe explicitamente.
+- [proposta] Sessão para perfil: `bindSession(sessionId, perfil)` (o pool liga ao abrir, P15) e, sem ele, a linha de `sessions` do store (`client`/`profile`, ou `clientSessionId`). A sessão do lançador (`launcher`) e a que não se resolve são recusadas com um aviso (o `ingest*` devolve `false`). O sinal `usage` é aceito e não muda o estado.
+- [S] Os formatos de `resetsAt` do sinal (texto ISO, segundos ou milissegundos) são aceitos por `parseResetsAt`; o texto que os clientes reais mandam e a unidade de `utilization` **[N]** não foram medidos.
+- [N] `planType` do `QuotaReading` vai só no evento `quota.updated`: a tabela `quota_snapshots` não tem coluna para ele, então não sobrevive ao reinício.
+- [N] Ligar o fluxo vivo das sessões (`_otheater/quota/signal`, o erro do prompt e o `rate_limit` normalizado) ao `ingest*`, o pool (P15) e as sondas reais (P6 a P8) ficam fora deste passo. Enquanto não houver sonda com leituras, um perfil fica `unknown` e `canUse` recusa: é o P15 que decide se tenta um perfil `unknown` (por `statusOf`), e o P9 que consulta o `exhausted` sem horário.
 
 ### P6. Sonda de cota do Claude Code (§5.6)
 
