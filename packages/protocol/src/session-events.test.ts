@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { InvalidInput, parseNewEvent } from '@otheater/core';
+import {
+  InvalidInput,
+  INTERRUPTION_CAUSE_NAMES,
+  parseNewEvent,
+  RESUME_FORM_NAMES,
+} from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { buildDaemonEvent, DAEMON_EVENT_TYPES, validateEventPayload } from './events.js';
 import { INTERRUPTION_CAUSES, RESUME_FORMS, CHECKPOINT_REASONS } from './session-events.js';
@@ -146,5 +151,12 @@ describe('session and checkpoint events', () => {
     ]);
     expect([...RESUME_FORMS]).toEqual(['native', 'handoff']);
     expect([...CHECKPOINT_REASONS]).toEqual(['edit_batch', 'interval', 'interruption']);
+  });
+});
+
+describe('the interruption vocabulary of the store', () => {
+  it('matches the wire vocabulary of the events', () => {
+    expect([...INTERRUPTION_CAUSE_NAMES]).toEqual([...INTERRUPTION_CAUSES]);
+    expect([...RESUME_FORM_NAMES]).toEqual([...RESUME_FORMS]);
   });
 });

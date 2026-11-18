@@ -126,6 +126,30 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.ideas;
   }
 
+  get profiles(): Store['profiles'] {
+    return this.inner.profiles;
+  }
+
+  get executors(): Store['executors'] {
+    return this.inner.executors;
+  }
+
+  get interruptions(): Store['interruptions'] {
+    return this.inner.interruptions;
+  }
+
+  get quotaSnapshots(): Store['quotaSnapshots'] {
+    return this.inner.quotaSnapshots;
+  }
+
+  get usage(): Store['usage'] {
+    return this.inner.usage;
+  }
+
+  get wakeups(): Store['wakeups'] {
+    return this.inner.wakeups;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }

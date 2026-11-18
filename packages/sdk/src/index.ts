@@ -40,6 +40,15 @@ export {
   sampleSideEffect,
 } from './conformance/coordination-aggregates.js';
 export { describeIdeaAggregatesConformance, sampleIdea } from './conformance/idea-aggregates.js';
+export {
+  describeProfileAggregatesConformance,
+  sampleExecutor,
+  sampleInterruption,
+  sampleProfile,
+  sampleQuotaSnapshot,
+  sampleUsage,
+  sampleWakeup,
+} from './conformance/profile-aggregates.js';
 export { describeAggregateTransactionsConformance } from './conformance/aggregate-transactions.js';
 export {
   describeSecretVaultConformance,
