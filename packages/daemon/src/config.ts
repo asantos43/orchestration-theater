@@ -24,6 +24,7 @@ import {
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { ExecutorsConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
@@ -98,6 +99,12 @@ export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
+/**
+ * [proposta] `quota.probe.delivery`: how the `QuotaService` takes the readings of a probe. `both`
+ * (default) watches the probes that can push and also polls `read` on a timer; `push` only
+ * watches (a probe without `watch` is not used); `poll` only calls `read` on a timer.
+ */
+export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
 
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
@@ -315,6 +322,33 @@ export type BaseDriftMode = (typeof BASE_DRIFT_MODES)[number];
  */
 export const DELIVERY_ASK_LEAVE_MODES = ['pr', 'wait'] as const;
 export type DeliveryAskLeaveMode = (typeof DELIVERY_ASK_LEAVE_MODES)[number];
+
+/**
+ * `profiles.same_provider_notice` (Phase 5, P2; N127 is open). [proposta] When registering a second
+ * subscription profile of the same provider: `once` warns until the Producer accepts it (the
+ * acceptance is recorded on the profile, `noticeAcceptedAt`, and a later profile of that provider is
+ * not warned again); `always` warns on every such profile; `off` never warns. An API profile never
+ * triggers it, in any mode.
+ */
+export const SAME_PROVIDER_NOTICE_MODES = ['once', 'always', 'off'] as const;
+export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number];
+
+/**
+ * `profiles.drain.on_timeout` (Phase 5, P2; N127 is open). [proposta] What happens to the sessions
+ * still running when `profiles.drain.timeout` ends: `handoff` takes them off the profile and back
+ * to the queue (the real handoff is P18/P20/P21; P2 only returns them to the queue); `wait` keeps
+ * the profile `draining` until they end; `force` closes them.
+ */
+export const DRAIN_ON_TIMEOUT_MODES = ['handoff', 'wait', 'force'] as const;
+export type DrainOnTimeoutMode = (typeof DRAIN_ON_TIMEOUT_MODES)[number];
+
+/**
+ * `profiles.drain.removed_dir` (Phase 5, P2; N127 is open). [proposta] What removal does with the
+ * directory of the profile, after the logout: `delete` removes it; `keep_backup` moves it aside
+ * (`<name>.removed-<epoch>`, next to it, inside `profiles/`) instead of deleting.
+ */
+export const REMOVED_DIR_MODES = ['delete', 'keep_backup'] as const;
+export type RemovedDirMode = (typeof REMOVED_DIR_MODES)[number];
 
 /**
  * What the daemon does with the conventions of a repository the Producer imports (architecture
@@ -944,6 +978,13 @@ export const DaemonConfigSchema = z
      */
     roles: RolesConfigSchema.prefault({}),
     /**
+     * The Executors and how they join the roles (architecture 5.7; Phase 5, P13): `executors.<id>`
+     * (`<model>-<effort>@<client>/<profile>`), `cross_client` (`api_only` default | `off` | `any`)
+     * and `on_register` (`ask` default | `preset_only` | `none`). The lists of the roles are under
+     * `roles`. See `role-executors-config.ts`; the pipeline reads them from P16.
+     */
+    executors: ExecutorsConfigSchema.prefault({}),
+    /**
      * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
      * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
      * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
@@ -1186,6 +1227,53 @@ export const DaemonConfigSchema = z
     rescript: z
       .strictObject({
         reuse: z.enum(RESCRIPT_REUSE_MODES).default('keep_unchanged'),
+      })
+      .prefault({}),
+    /**
+     * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta].
+     */
+    profiles: z
+      .strictObject({
+        same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
+        drain: z
+          .strictObject({
+            /** How long a drain waits for the running sessions before `on_timeout` applies. */
+            timeout: DurationSchema.or(z.literal(0)).prefault('10m'),
+            on_timeout: z.enum(DRAIN_ON_TIMEOUT_MODES).default('handoff'),
+            removed_dir: z.enum(REMOVED_DIR_MODES).default('delete'),
+          })
+          .prefault({}),
+        /**
+         * The environment variable that carries the API key of a provider into the Executor process
+         * of an API profile, by provider id. A provider not listed uses its built-in name
+         * (`anthropic` -> `ANTHROPIC_API_KEY`, `openai` -> `OPENAI_API_KEY`, `minimax` ->
+         * `MINIMAX_API_KEY`, anything else `<PROVIDER>_API_KEY`).
+         */
+        api_key_env: z
+          .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
+          .default({}),
+      })
+      .prefault({}),
+    /**
+     * The quota of each profile (architecture 5.6; P5). [proposta] `near_limit_at` is the fraction
+     * of a window from which a profile is `near_limit` (architecture default 0.8). `stale_after` is
+     * how old a reading may be and still authorize a route (a reading older than this makes the
+     * state `unknown`; default 10 minutes). `probe.delivery` is how the service takes the probes of
+     * the clients: see {@link QUOTA_PROBE_DELIVERY_MODES}; `probe.poll_every` is the gap between two
+     * `read` calls where polling is on. The defaults follow N123, decided by the owner on
+     * 2026-11-18.
+     */
+    quota: z
+      .strictObject({
+        near_limit_at: z.number().gt(0).max(1).default(0.8),
+        stale_after: DurationSchema.prefault('10m'),
+        probe: z
+          .strictObject({
+            delivery: z.enum(QUOTA_PROBE_DELIVERY_MODES).default('both'),
+            poll_every: DurationSchema.prefault('5m'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     ui: z

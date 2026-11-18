@@ -12,6 +12,12 @@ import {
   DirectiveValidityChangedPayloadSchema,
 } from './directive-events.js';
 import {
+  QuotaExhaustedPayloadSchema,
+  QuotaNearLimitPayloadSchema,
+  QuotaRestoredPayloadSchema,
+  QuotaUpdatedPayloadSchema,
+} from './quota-events.js';
+import {
   PermissionAnsweredPayloadSchema,
   PermissionAskedPayloadSchema,
 } from './permission-events.js';
@@ -25,6 +31,13 @@ import {
   IdeaQueueHeldPayloadSchema,
   IdeaReturnedPayloadSchema,
 } from './idea-events.js';
+import {
+  ProfileAddedPayloadSchema,
+  ProfileDrainedPayloadSchema,
+  ProfileDrainingPayloadSchema,
+  ProfileNoticeAcceptedPayloadSchema,
+  ProfileRemovedPayloadSchema,
+} from './profile-events.js';
 import {
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
@@ -145,7 +158,7 @@ export const DaemonRecoveredPayloadSchema = z.strictObject({
 });
 
 /**
- * The definitions of the 32 event types the daemon writes. This list is what the daemon hands to
+ * The definitions of the 36 event types the daemon writes. This list is what the daemon hands to
  * the event registry at start-up; `DAEMON_EVENT_TYPES` below is derived from it.
  */
 export const DAEMON_EVENT_DEFINITIONS = [
@@ -320,6 +333,27 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: IdeaQueueHeldPayloadSchema,
   }),
+  defineEventType({ type: 'profile.added', schemaVersion: 1, payload: ProfileAddedPayloadSchema }),
+  defineEventType({
+    type: 'profile.notice_accepted',
+    schemaVersion: 1,
+    payload: ProfileNoticeAcceptedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.draining',
+    schemaVersion: 1,
+    payload: ProfileDrainingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.drained',
+    schemaVersion: 1,
+    payload: ProfileDrainedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.removed',
+    schemaVersion: 1,
+    payload: ProfileRemovedPayloadSchema,
+  }),
   defineEventType({
     type: 'scenario.created',
     schemaVersion: 1,
@@ -349,6 +383,22 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'scenario.system_message',
     schemaVersion: 1,
     payload: ScenarioSystemMessagePayloadSchema,
+  }),
+  defineEventType({ type: 'quota.updated', schemaVersion: 1, payload: QuotaUpdatedPayloadSchema }),
+  defineEventType({
+    type: 'quota.near_limit',
+    schemaVersion: 1,
+    payload: QuotaNearLimitPayloadSchema,
+  }),
+  defineEventType({
+    type: 'quota.exhausted',
+    schemaVersion: 1,
+    payload: QuotaExhaustedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'quota.restored',
+    schemaVersion: 1,
+    payload: QuotaRestoredPayloadSchema,
   }),
 ] as const;
 
@@ -415,12 +465,21 @@ export type IdeaDeferredPayload = DaemonEventPayloads['idea.deferred'];
 export type IdeaDonePayload = DaemonEventPayloads['idea.done'];
 export type IdeaReturnedPayload = DaemonEventPayloads['idea.returned'];
 export type IdeaQueueHeldPayload = DaemonEventPayloads['idea.queue_held'];
+export type ProfileAddedPayload = DaemonEventPayloads['profile.added'];
+export type ProfileNoticeAcceptedPayload = DaemonEventPayloads['profile.notice_accepted'];
+export type ProfileDrainingPayload = DaemonEventPayloads['profile.draining'];
+export type ProfileDrainedPayload = DaemonEventPayloads['profile.drained'];
+export type ProfileRemovedPayload = DaemonEventPayloads['profile.removed'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
 export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];
 export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat_transitioned'];
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
+export type QuotaUpdatedPayload = DaemonEventPayloads['quota.updated'];
+export type QuotaNearLimitPayload = DaemonEventPayloads['quota.near_limit'];
+export type QuotaExhaustedPayload = DaemonEventPayloads['quota.exhausted'];
+export type QuotaRestoredPayload = DaemonEventPayloads['quota.restored'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

@@ -61,10 +61,10 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #90) |
 | P1 | Esquema do store da fase: perfis, Executores, interrupções, cota, consumo e despertares | P0 | P3, P4, P22 | concluído (PR #96) |
-| P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | pendente |
-| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | pendente |
+| P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | concluído (PR #101) |
+| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | concluído (PR #95) |
-| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | pendente |
+| P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | pendente |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
@@ -72,7 +72,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | pendente |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | pendente |
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
-| P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | pendente |
+| P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
 | P14 | Cadastro de Executores do OpenCode e validação de capacidade | P13 | P6 a P10, P17 | pendente |
 | P15 | Seleção por papel: algoritmo, retry por diversidade e eventos | P4, P5, P13 | P11, P12 | pendente |
 | P16 | Seleção no pipeline: o fim do Executor fixo | P15 | P18, P19, P21 | pendente |
@@ -137,6 +137,17 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com o cofre em memória e o agente falso: criar três perfis (dois do mesmo cliente), um deles de API; o aviso aparece uma vez na segunda assinatura e nunca na chave de API; `drain` não entrega sessão nova; `remove` apaga o diretório e deixa os Executores `invalid`; a chave nunca aparece no ambiente de outro perfil nem no log (teste de varredura). Os testes reais ficam em N122.
 
+**Como ficou (2026-11-18):**
+- [V] `ProfileService` em `packages/daemon/src/profiles/`: `add`, `list`, `drain` e `remove`, com 28 testes (cofre em memória, adaptador falso, sem processo real). O aceite passa: três perfis (dois do mesmo cliente, um de API), o aviso uma vez na segunda assinatura e nunca na chave de API, `drain` sem sessão nova, `remove` apaga o diretório e deixa os Executores `invalid`, e a varredura não acha a chave no ambiente de outro perfil, nos eventos, no store, no log nem em arquivo.
+- [V] A chave de API vai ao `SecretVault` (referência `profile/<cliente>/<nome>/api-key`) e entra só no ambiente do processo daquele perfil, por `ClientAdapterOptions.secretEnv`, resolvido a cada lançamento a partir da linha do perfil e do cofre. O daemon liga isso em `buildExecution`; o evento `profile.added` e o comando dizem o backend do cofre, nunca a chave.
+- [V] Protocolo: eventos `profile.*` (o registro do protocolo foi de 45 para 50 tipos e o do daemon de 47 para 52; os dois testes de contagem são ponto provável de conflito com os outros passos da onda). A porta do cliente ganhou `probeLogin`, `setUpProfile` e `secretEnv` como métodos opcionais.
+- [V] `ot profile add | list | drain | remove` com texto e `--json`, sem tela (N121). A chave nunca é argumento: vem de `--api-key-env <NOME>` (nome da variável) ou de `--api-key-stdin`. O comando segue o padrão de `ot directives`: toma o lock do diretório de dados, então com o daemon rodando ele recusa (código 1).
+- [proposta] Chaves novas, todas em `config.yaml`: `profiles.same_provider_notice: once | always | off` (padrão `once`); `profiles.drain.timeout` (padrão `10m`); `profiles.drain.on_timeout: handoff | wait | force` (padrão `handoff`); `profiles.drain.removed_dir: delete | keep_backup` (padrão `delete`, com o logout antes); `profiles.api_key_env` (mapa provedor para nome da variável; os padrões `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` e `MINIMAX_API_KEY` são proposta). Os padrões da drenagem e do aviso são os da N127, que o dono decidiu em 2026-11-18 com esses mesmos padrões.
+- [proposta] O aviso de segunda assinatura é neutro quanto aos termos do provedor: diz que o OTheater não confere o que eles permitem e manda o dono lê-los (fonte e data dos termos ficam para quem decidir a N127). O aceite fica em `noticeAcceptedAt` e no evento `profile.notice_accepted`.
+- [proposta] A remoção confere que o diretório gravado é o que o nome do perfil dá, nunca segue link simbólico e só apaga dentro de `<dados>/profiles`; `keep_backup` move para `<dados>/profiles/.removed/`. Falha no logout não impede a remoção; uma remoção interrompida no meio termina na repetição.
+- [N] **Drenagem ao vivo.** O `pool.ts` não tem API por perfil e não foi tocado. `ProfileService.acceptsSessions(perfil)` é o gancho de disponibilidade para o pool (P21, P4). O `ProfileSessions` padrão só mexe nas linhas do store: não conta nem para processo vivo. A contagem por perfil e o `handoff`/`force` de sessões vivas dependem de P21, P18 e P20; aqui o `handoff` só devolve as sessões à fila. Pelo `ot`, a drenagem usa tempo limite 0 (o comando segura o lock, então as linhas `active` são sobras); o controle de um daemon em execução pede o canal próprio do daemon, que não existe.
+- [N] Se cada cliente real lê a chave pelas variáveis acima (e se o `probeLogin` real dá o estado certo num perfil de API) só se sabe nos testes reais do nível `profiles` (N122). O login de uma assinatura é feito pelo próprio cliente, na pasta do perfil; `ot profile add` apenas diz o estado.
+
 ### P3. Login e logout oficiais nos três adaptadores (§5.2 e §5.6)
 
 **Escopo:**
@@ -148,6 +159,13 @@ Ordem em ondas **[proposta]**:
 - As chaves de API continuam pelo cofre e por variável de ambiente (P2).
 
 **Aceite:** com o cliente falso (processo que imita a saída do login), cada adaptador devolve o `LoginFlow` no modo certo, resolve ao fim, cancela com `Cancelled` e faz o logout; a sonda de login diz "sem login" num perfil vazio e "com login" depois do fluxo falso; nenhum teste lê arquivo de credencial; a CI de credenciais passa. O login e o logout reais, com uma segunda conta, só no nível opcional `profiles` (N122).
+
+**Como ficou (2026-11-18):**
+- `login()`, `logout()` e `probeLogin()` nos três adaptadores (`official-login.ts`, igual nos três pacotes pela regra `adapter-isolation`). O `LoginFlow` do núcleo não mudou. `login()` devolve o fluxo quando viu o que o modo precisa (URL; URL e código no `device_code`; o `terminal` não espera), quando o processo terminou ou após `urlWaitMs`. `complete()` resolve no código 0; `PermissionDenied` em saída diferente de zero, sinal ou tempo esgotado; `cancel()` mata a árvore e `complete()` rejeita com `Cancelled`. A saída do cliente nunca é registrada e nenhum token é lido. [V] nos testes com o cliente falso (`src/testing/fake-official-client.ts`); nenhum login nem logout real rodou.
+- O que a ajuda de cada cliente disse (só `--help`) [V]: Claude Code `auth login [--claudeai|--console|--email|--sso]`, `auth logout`, `auth status [--json|--text]`; Codex `login [--device-auth|--with-api-key|--with-access-token]`, `login status`, `logout`; OpenCode `auth list|login [url] [-p -m]|logout [provider]`.
+- Padrões [proposta]: Claude `claude auth login --claudeai` (modo `browser`), `claude auth logout`; Codex `codex login` (`browser` e `terminal`) e `codex login --device-auth` (`device_code`), `codex logout`; OpenCode `opencode auth login [-p provider] [-m method]` (modo `terminal`), `opencode auth logout [provider]`. Chaves, todas [proposta]: `clients.<id>.login.mode`, `.command`, `.logout_command`, `.url_wait_ms` (15000), `.timeout_ms` (600000); `clients.claude-code.login.status_command`; `clients.opencode.login.provider`, `.method`, `.list_command`.
+- Sonda de login: Claude lê o booleano `loggedIn` de `claude auth status --json`, porque o `session/new` do Claude funciona sem login [V]; Codex abre uma sessão com política que nega tudo e `-32000 "Authentication required"` é "sem login" [V, Fase 0]; OpenCode lê a contagem de `auth list`. Resultado `logged_in | logged_out | unknown`; o que não dá para ler é `unknown`, nunca "sem login" por palpite.
+- Em aberto [N]: o que cada comando imprime (formato da URL e do código do dispositivo); se rodam sem TTY (o menu do OpenCode); os códigos de saída; o JSON de `claude auth status --json`; a redação de `opencode auth list`; se `opencode auth logout` sem provedor pergunta. O `LoginFlow` não tem canal de entrada, então um passo em que o cliente pede para colar um código é [N]. A conferência real, com uma segunda conta, fica no nível `profiles` (N122).
 
 ### P4. Admissão por RAM, vagas e cota (§5.9)
 
@@ -195,6 +213,18 @@ Ordem em ondas **[proposta]**:
 - Referência: os parsers e o veredito com frescor do Claudexor (`harness-claude/src/quota.ts`, `harness-codex/src/quota.ts`, `orchestrator/src/account-pool.ts`), com atribuição (N119).
 
 **Aceite:** com sondas simuladas e o agente falso: uma janela a 85% leva a `near_limit`; um `-32001` com `resetsAt` leva a `exhausted` com o horário; uma leitura velha vira `unknown` e `canUse` recusa; um sinal de outra sessão do mesmo perfil soma no mesmo estado; o estado de um perfil não muda o de outro; a cota continua `exhausted` depois de reiniciar o daemon (vem do `quota_snapshots`).
+
+**Como ficou (2026-11-18):**
+- `daemon/src/quota/` tem o `QuotaService` (`service.ts`), as regras puras de estado e frescor (`state.ts`) e a leitura das chaves (`settings.ts`). O estado é função pura das linhas de `quota_snapshots` e do relógio, então o reinício recalcula o mesmo estado. O daemon cria o serviço, entrega a ele a sonda de cada cliente (`ClientAdapter.quota`), chama `quota.start()` depois de montar a execução e o expõe em `DaemonHandle.quota`. [V]
+- Aceite, todos com sondas simuladas (`SimProbe`) e o formato de erro do agente falso (`code: -32001`, `data.type: 'QuotaExhausted'`), em `quota/service.test.ts` e `quota/state.test.ts`: janela a 85% vai a `near_limit` (e `canUse` continua `true`); `-32001` com `resetsAt` vai a `exhausted` até o horário; leitura velha vira `unknown` e `canUse` recusa; sinais de duas sessões do mesmo perfil somam no mesmo estado; o estado de um perfil não muda o de outro; `exhausted` continua depois de um novo serviço sobre o mesmo store, sem anunciar de novo. [V]
+- Eventos novos no `protocol` (`quota-events.ts`, `schemaVersion` 1): `quota.updated`, `quota.near_limit`, `quota.exhausted`, `quota.restored`. [proposta] Nomes e campos; a arquitetura só nomeia `quota.restored`. O que a hora muda sozinha (um reset, uma leitura que envelhece) também vira evento: um vigia acorda o serviço na próxima fronteira, e o início do daemon fecha o que o reinício perdeu (um `quota.restored` que faltou). [V]
+- Chaves novas, todas **[proposta]**, com os padrões da recomendação do plano (N123, decidida pelo dono em 2026-11-18 com esses valores): `quota.near_limit_at: 0.8` (fração em (0, 1]), `quota.stale_after: 10m`, `quota.probe.delivery: both | push | poll` (padrão `both`) e `quota.probe.poll_every: 5m` (intervalo da leitura por `read`). `push` só assina `watch` e nunca lê; `poll` só lê; `both` faz os dois, e uma sonda sem `watch` cai no `read`. [V]
+- [proposta] Regra de frescor: uma linha é fresca se `agora - observedAt <= stale_after` e o reset dela, se houver, ainda não passou. Uma janela cheia (100% ou mais) com reset no futuro continua `exhausted` mesmo com a leitura velha (recusar é o lado seguro). Sem `resetsAt`, só vale enquanto fresca. Uma janela que a sonda declara em `capabilities().windows` e que não tem leitura fresca deixa o perfil `unknown`; uma sonda sem janelas declaradas não exige nenhuma.
+- [proposta] Um erro de limite vira uma linha de `quota_snapshots` na janela reservada `limit_hit` (causa `quota`) ou `budget_hit` (causa `budget`), a 100%, para sobreviver ao reinício como qualquer leitura. Com horário: `exhausted` até ele. Sem horário: `exhausted` até uma leitura fresca, mais nova que o erro, com folga em toda janela (o que a P9 consulta); um novo erro sem horário guarda o horário de um erro anterior ainda no futuro. A causa `budget` só termina no reset (ou fica até alguém limpar), e nenhum cliente a alimenta ainda: `ingestLimitHit` a recebe explicitamente.
+- [proposta] Sessão para perfil: `bindSession(sessionId, perfil)` (o pool liga ao abrir, P15) e, sem ele, a linha de `sessions` do store (`client`/`profile`, ou `clientSessionId`). A sessão do lançador (`launcher`) e a que não se resolve são recusadas com um aviso (o `ingest*` devolve `false`). O sinal `usage` é aceito e não muda o estado.
+- [S] Os formatos de `resetsAt` do sinal (texto ISO, segundos ou milissegundos) são aceitos por `parseResetsAt`; o texto que os clientes reais mandam e a unidade de `utilization` **[N]** não foram medidos.
+- [N] `planType` do `QuotaReading` vai só no evento `quota.updated`: a tabela `quota_snapshots` não tem coluna para ele, então não sobrevive ao reinício.
+- [N] Ligar o fluxo vivo das sessões (`_otheater/quota/signal`, o erro do prompt e o `rate_limit` normalizado) ao `ingest*`, o pool (P15) e as sondas reais (P6 a P8) ficam fora deste passo. Enquanto não houver sonda com leituras, um perfil fica `unknown` e `canUse` recusa: é o P15 que decide se tenta um perfil `unknown` (por `statusOf`), e o P9 que consulta o `exhausted` sem horário.
 
 ### P6. Sonda de cota do Claude Code (§5.6)
 
@@ -280,6 +310,20 @@ Trava na **N118**. Sem a decisão, o passo não abre, e a fase fecha com o consu
 - O parse recusa nome de Executor mal formado, perfil repetido e lista vazia, com o nome da chave.
 
 **Aceite:** testes de esquema: a predefinição `quality` expande para as contas de uma máquina de exemplo (`claude-code/empresa`, `codex/conta-1`, `opencode/minimax-api`, `opencode/local`) na ordem da tabela da §5.7; um item sem conta é tirado da lista; o override do cenário substitui só o papel citado; `allowed_profiles` tira as contas de fora; `capability_check: block` recusa um Executor abaixo do mínimo e `warn` o aceita marcado; o formato antigo continua carregando.
+
+**Como ficou (2026-11-18):**
+- Funções puras em `core/src/executor-roles/` (`names`, `presets`, `resolve`): o nome `<modelo>-<esforço>@<cliente>/<perfil>` (e `<modelo>@...` sem esforço), a tabela de predefinições da §5.7, `resolveRoleExecutors` e `planRegistration`. O esquema de configuração está em `daemon/src/role-executors-config.ts` (chaves `executors.*` e `roles.*`) e a ligação com as camadas em `daemon/src/orchestration/role-executors.ts`. Nada chama a resolução ainda: o Diretor e o pipeline seguem lendo `orchestration.executor` até o P16. [V] (testes de `core` e do `daemon`)
+- Padrão que não muda o comportamento de hoje: sem `executors` e sem `roles.executors`, `parseConfig('')` só ganha `executors: {cross_client: api_only, on_register: ask, entries: {}}`, e `roles` continua vazio (os padrões são aplicados na resolução, para as camadas distinguirem "não dito"). [V]
+- Expansão: para cada item da predefinição (`<modelo>-<esforço>`), uma entrada por conta que o tem, o cliente oficial da família primeiro (anthropic: Claude Code; openai: Codex), depois a ordem das contas, depois o id. Item sem conta sai da lista, com aviso `no_account`. [V]
+- Camadas: configuração global, depois `configOverride` de cada cenário da cadeia `originScenarioId` (o mais antigo primeiro; o projeto é um cenário), depois o override de uma tarefa agendada, passado como argumento (o agendador é da Fase 6). Aceita chave pontilhada (`roles.author.executors`) e aninhada, como a política do papel da Fase 4. A lista de um papel dada numa camada substitui a de baixo só naquele papel; `when_exhausted` e `requires` valem chave a chave. [V]
+- `capability_check: block` lança `InvalidInput` para um item de lista escrita à mão e tira o item de uma expansão de predefinição; `warn` mantém o item com `shortfalls` e um aviso; capacidade desconhecida nunca reprova. [V]
+- `cross_client`: `api_only` aceita uma família fora do seu cliente só em perfil `api`; `off` recusa sempre; `any` aceita. Recusado vira `invalid` (`cross_client_refused`) numa lista escrita à mão. [V]
+- Compatibilidade: `orchestration.executor` e `orchestration.roles.<papel>` entram como lista de um item, abaixo das listas novas e acima da predefinição; o daemon avisa uma vez por chave antiga na partida (`deprecationWarnings`). [V]
+- [proposta] Duas chaves a mais, que a §5.7 não nomeia: `roles.preset_scope: all | unset_roles` (padrão `all`: um `preset` numa camada derruba as listas das camadas de baixo, "troca a base de todos os papéis"; `unset_roles` as mantém) e `roles.api_fallback: preset_models | all_registered | off` (padrão `preset_models`: o passo 3 da primeira execução, que põe no fim de cada lista os Executores de perfil `api` cujo `<modelo>-<esforço>` a predefinição cita em algum papel que não seja o Diretor; é o caso do minimax do exemplo).
+- [proposta] `k` vale 1000 tokens e `m` 1000000 (`128k` passa com um modelo que declara 128000). O `when_exhausted` dos papéis que a tabela não marca é `next` (o Crítico é `wait`, os Atores `next`).
+- [proposta] `executors.cross_client` e `executors.on_register` são só globais. `allowed_profiles` de uma camada posterior substitui a anterior (não faz interseção). "Perfil repetido" vale para `allowed_profiles` e um Executor repetido numa lista de papel também é recusado.
+- [N] O `provider` de `claude-code` e `codex` é fixo pelo cliente: um valor diferente é recusado. Isso bloqueia, por ora, o MiniMax por gateway do Claude Code; se o dono quiser permitir, é decisão dele.
+- [proposta] `planRegistration` devolve o que o `on_register` manda (`ask`: as opções por papel, marcadas onde a predefinição cita o modelo; `preset_only`: só essas posições; `none`: nada). Quem aplica é o comando `ot executor add` do P14.
 
 ### P14. Cadastro de Executores do OpenCode e validação de capacidade (§5.7)
 

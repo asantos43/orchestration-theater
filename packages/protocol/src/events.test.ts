@@ -61,12 +61,21 @@ describe('daemon event registry', () => {
       'idea.done',
       'idea.returned',
       'idea.queue_held',
+      'profile.added',
+      'profile.notice_accepted',
+      'profile.draining',
+      'profile.drained',
+      'profile.removed',
       'scenario.created',
       'scenario.attachment_added',
       'scenario.director_slept',
       'scenario.director_woke',
       'scenario.chat_transitioned',
       'scenario.system_message',
+      'quota.updated',
+      'quota.near_limit',
+      'quota.exhausted',
+      'quota.restored',
     ]);
     for (const entry of Object.values(DAEMON_EVENT_TYPES)) expect(entry.schemaVersion).toBe(1);
     expect(isDaemonEventType('daemon.started')).toBe(true);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
-  AdapterUnavailable,
   ClientAdapter,
   InvalidInput,
+  PermissionDenied,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
   type ClientCapabilities,
@@ -14,13 +14,24 @@ import {
   type NormalizedError,
   type NormalizedUpdate,
   type Profile,
+  type ProcessLauncher,
   type ProcessModel,
   type QuotaProbe,
   type RawUpdate,
   type RolePolicy,
   type SessionSetup,
+  type SessionTransport,
   type TransportId,
 } from '@otheater/core';
+import {
+  commandOf,
+  runCommand,
+  startOfficialLogin,
+  type CommandSpec,
+  type LoginOptions,
+  type LoginProbeResult,
+  type LoginRun,
+} from './official-login.js';
 import { CodexModelCatalog, type CodexConfigSource } from './model-catalog.js';
 import {
   CODEX_CONFIG_IDS,
@@ -44,6 +55,30 @@ import { CodexQuotaProbe } from './quota-probe.js';
 
 /** What starts the client: `codex-acp` (^2.6.0), which talks to `codex app-server`. */
 export const DEFAULT_CODEX_COMMAND = { cmd: 'codex-acp', args: [] as readonly string[] } as const;
+
+/**
+ * The official login of Codex, from `codex login --help` (codex-cli, read 2026-11-18) [V: the
+ * subcommand and the flags exist]; what they print and when they exit is [N]. `--device-auth` is the
+ * mode `device_code`; the others use the browser. Run inside the profile (`CODEX_HOME`).
+ */
+export const DEFAULT_LOGIN_COMMANDS: Readonly<Record<LoginFlow['mode'], CommandSpec>> = {
+  browser: { cmd: 'codex', args: ['login'] },
+  device_code: { cmd: 'codex', args: ['login', '--device-auth'] },
+  terminal: { cmd: 'codex', args: ['login'] },
+};
+export const DEFAULT_LOGOUT_COMMAND: CommandSpec = { cmd: 'codex', args: ['logout'] };
+
+/** Nothing is allowed: the session of the login probe only exists to be refused or to be closed. */
+const LOGIN_PROBE_POLICY: RolePolicy = {
+  nativeTools: [],
+  nativeShell: 'none',
+  mcpServers: [],
+  mcpTools: {},
+  onAsk: 'reject',
+  bypass: 'forbidden',
+  writeScope: 'worktree',
+  network: { allow: [] },
+};
 
 /**
  * Names of the npm package that holds the ACP adapter `command` starts: the one whose
@@ -76,6 +111,8 @@ export interface CodexAdapterOptions extends ClientAdapterOptions {
   readonly approvalPolicy?: ApprovalPolicy;
   /** `clients.codex.suggested_effort`: the effort the setup assistant proposes. Default `high`. */
   readonly suggestedEffort?: string;
+  /** [proposta] keys `clients.codex.login.*`. Default: `codex login` (`--device-auth` for `device_code`), mode `browser`. */
+  readonly login?: LoginOptions;
   /** Where the model catalog reads the config options of a profile (a `session/new`). Without it `models.list` rejects. */
   readonly modelSource?: CodexConfigSource;
   /** How the pinned-mode probe reads the mode of a fresh session. Without it the probe fails, honestly. */
@@ -130,6 +167,9 @@ export class CodexAdapter extends ClientAdapter {
   readonly #credentialsStore: CredentialsStore;
   readonly #approvalPolicy: ApprovalPolicy;
   readonly #readSessionMode: ReadSessionMode | undefined;
+  readonly #launcher: ProcessLauncher;
+  readonly #baseEnv: Readonly<Record<string, string>>;
+  readonly #loginOptions: LoginOptions;
 
   constructor(options: CodexAdapterOptions) {
     super(options);
@@ -148,6 +188,9 @@ export class CodexAdapter extends ClientAdapter {
       throw new InvalidInput(`codex: approval_policy ${this.#approvalPolicy} is not supported`);
     }
     this.#readSessionMode = options.readSessionMode;
+    this.#launcher = options.launcher;
+    this.#baseEnv = options.baseEnv;
+    this.#loginOptions = options.login ?? {};
     this.models = new CodexModelCatalog({
       ...(options.modelSource === undefined ? {} : { source: options.modelSource }),
       ...(options.suggestedEffort === undefined
@@ -285,11 +328,79 @@ export class CodexAdapter extends ClientAdapter {
     ];
   }
 
-  login(): Promise<LoginFlow> {
-    return Promise.reject(new AdapterUnavailable('codex: login arrives in Phase 5'));
+  /**
+   * Where the client commands run: the profile directory with `CODEX_HOME` pointing at it. The
+   * `config.toml` goes in first, so the client keeps the login in the profile's file and not in a
+   * keyring shared by every profile (`credentials_store`).
+   */
+  async #loginRun(profile: Profile): Promise<LoginRun> {
+    await this.prepareProfile(profile);
+    return {
+      launcher: this.#launcher,
+      cwd: profile.dir,
+      env: { ...this.#baseEnv, ...this.profileEnv(profile) },
+    };
   }
 
-  logout(): Promise<void> {
-    return Promise.reject(new AdapterUnavailable('codex: logout arrives in Phase 5'));
+  /**
+   * The official login (`codex login`, `--device-auth` in the mode `device_code`) inside the profile
+   * (architecture 5.6). The URL and the code the client prints come back in the flow; the token is
+   * written by the client and never read here. [N] what the command prints and whether it needs a
+   * terminal.
+   */
+  async login(profile: Profile): Promise<LoginFlow> {
+    const mode = this.#loginOptions.mode ?? 'browser';
+    const where = await this.#loginRun(profile);
+    return startOfficialLogin(
+      where,
+      commandOf(this.#loginOptions.command, DEFAULT_LOGIN_COMMANDS[mode]),
+      mode,
+      this.#loginOptions,
+    );
+  }
+
+  /** The official logout (`codex logout`) in the profile; the client removes what it keeps. */
+  async logout(profile: Profile): Promise<void> {
+    const command = commandOf(this.#loginOptions.logoutCommand, DEFAULT_LOGOUT_COMMAND);
+    const { code } = await runCommand(await this.#loginRun(profile), command);
+    if (code !== 0) {
+      throw new PermissionDenied(
+        `${this.id}: the logout ended with ${code === null ? 'a signal' : `code ${String(code)}`}`,
+      );
+    }
+  }
+
+  /**
+   * Whether the profile has a login, without reading a token: a `session/new` through `via`. An empty
+   * profile answers `-32000` "Authentication required" [V: Phase 0, item 6], which is `logged_out`;
+   * a session that opens is `logged_in` and is closed at once. Any other failure goes up as it is:
+   * it says nothing about the login. `cwd` is where the throwaway session is opened (default: the profile directory).
+   */
+  async probeLogin(
+    profile: Profile,
+    via: SessionTransport,
+    cwd: string = profile.dir,
+  ): Promise<LoginProbeResult> {
+    let session;
+    try {
+      session = await this.openSession(profile, LOGIN_PROBE_POLICY, cwd, via, {
+        purpose: 'catalog-probe',
+      });
+    } catch (error) {
+      if (this.#isAuthRequired(error)) return { state: 'logged_out', via: 'acp_session' };
+      throw error;
+    }
+    await session.close();
+    return { state: 'logged_in', via: 'acp_session' };
+  }
+
+  #isAuthRequired(error: unknown): boolean {
+    const kindOf = (cause: unknown): string | undefined =>
+      typeof cause === 'object' && cause !== null && 'kind' in cause
+        ? String(cause.kind)
+        : undefined;
+    if (error instanceof PermissionDenied && kindOf(error.cause) === 'auth_required') return true;
+    const raw = error instanceof Error && error.cause !== undefined ? error.cause : error;
+    return normalizeCodexError(raw).kind === 'auth_required';
   }
 }

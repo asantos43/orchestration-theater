@@ -1,6 +1,6 @@
 {
   "usage": {
-    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)\n  --type <tipo>     project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)\n  --new-project     Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software\n\nNo chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar):\na próxima mensagem que você enviar o cita como A<n> para o Diretor.\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n  profile <ação> [...]         Contas dos clientes (o daemon precisa estar parado); ações:\n                                 add <cliente> <nome>, list, drain <cliente>/<nome>, remove <cliente>/<nome>\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)\n  --type <tipo>     project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)\n  --new-project     Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software\n\nOpções de \"ot profile\":\n  --kind <tipo>     add: token_plan (padrão, uma assinatura) ou api (uma chave)\n  --provider <p>    add: o provedor da conta (padrão: anthropic para claude-code, openai para codex)\n  --api-key-env <NOME>   add --kind api: o NOME da variável de ambiente que guarda a chave (nunca digite a chave como argumento)\n  --api-key-stdin   add --kind api: lê a chave da primeira linha da entrada padrão\n  --accept-notice   add: segue depois do aviso sobre uma segunda conta de assinatura do mesmo provedor\n  --client <cliente> list: só este cliente\n  --all             list: também os perfis removidos\n  --check-login     list: pergunta a cada cliente se o perfil tem login\n  --json            Imprime JSON em vez de texto\n\nNo chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar):\na próxima mensagem que você enviar o cita como A<n> para o Diretor.\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
     "hint": "Rode \"ot --help\" para ver o uso.",
     "unknownCommand": "Comando desconhecido: \"{{command}}\".",
     "missingCommand": "Nenhum comando informado.",
@@ -16,7 +16,18 @@
     "directiveNeedsReason": "\"ot directives revoke\" precisa de --reason <texto>.",
     "directiveNeedsScenario": "\"ot directives suspend\" precisa de --scenario <id>: o cenário que deixa de seguir a ordem.",
     "directiveKind": "--kind deve ser instruction, rule ou suspension.",
-    "directiveTooMany": "Argumentos demais para esta ação de \"ot directives\"."
+    "directiveTooMany": "Argumentos demais para esta ação de \"ot directives\".",
+    "missingProfileAction": "\"ot profile\" precisa de uma ação: add, list, drain ou remove.",
+    "unknownProfileAction": "Ação desconhecida \"{{action}}\" para \"ot profile\".",
+    "profileKind": "--kind deve ser token_plan ou api.",
+    "profileTooMany": "Argumentos demais para esta ação de \"ot profile\".",
+    "profileNeedsClientName": "\"ot profile add\" precisa do cliente e do nome do perfil (por exemplo: claude-code trabalho).",
+    "profileNeedsProvider": "\"ot profile add\" precisa de --provider <provedor> para este cliente.",
+    "profileKeyOne": "Use só um entre --api-key-env e --api-key-stdin.",
+    "profileApiNeedsKey": "Um perfil de API precisa da chave: --api-key-env <NOME> ou --api-key-stdin.",
+    "profileKeyOnlyApi": "--api-key-env e --api-key-stdin servem só para --kind api.",
+    "profileNoInput": "\"ot profile add --api-key-stdin\" precisa de um lugar de onde ler a chave.",
+    "profileNeedsId": "Esta ação precisa do id do perfil (<cliente>/<nome>, por exemplo claude-code/trabalho)."
   },
   "daemon": {
     "running": "Daemon do OTheater em execução (pid {{pid}}), dados em {{dataDir}}. Pressione Ctrl+C para parar.",
@@ -98,5 +109,28 @@
   },
   "errors": {
     "prefix": "Erro: {{message}}"
+  },
+  "profile": {
+    "daemonRunning": "O daemon está rodando neste diretório de dados. Pare-o antes de mexer nos perfis (o controle ao vivo de um daemon em execução ainda não existe).",
+    "keyEnvEmpty": "A variável de ambiente {{name}} está vazia ou não existe; não há chave para guardar.",
+    "keyStdinEmpty": "A entrada padrão não tem uma chave na primeira linha.",
+    "needsNotice": "Já existe outra conta de assinatura de {{provider}} registrada ({{existing}}). O OTheater não confere se os termos do provedor permitem mais de uma conta de assinatura: leia-os antes de seguir. Nada foi feito. Para registrar este perfil mesmo assim, rode o comando de novo com --accept-notice.",
+    "noticeAccepted": "Aviso aceito e registrado: existe outra conta de assinatura de {{provider}} ({{existing}}).",
+    "added": "Perfil {{id}} registrado ({{kind}}, provedor {{provider}}).",
+    "addedKey": "A chave está no cofre ({{backend}}); ela só é entregue aos processos deste perfil.",
+    "addedLogin": "Login: {{state}}. Se não estiver logado, entre pelo próprio cliente, usando a pasta deste perfil.",
+    "none": "Nenhum perfil.",
+    "line": "{{id}} [{{state}}] {{kind}} {{provider}}{{key}}{{login}} executores: {{valid}} válidos, {{invalid}} inválidos",
+    "drained_finished": "O perfil {{id}} está drenando: nenhuma sessão nova; nada estava rodando.",
+    "drained_handoff": "O perfil {{id}} está drenando: nenhuma sessão nova; {{sessions}} sessão(ões) voltaram para a fila.",
+    "drained_forced": "O perfil {{id}} está drenando: nenhuma sessão nova; {{sessions}} sessão(ões) foram interrompidas.",
+    "drained_still_running": "O perfil {{id}} está drenando: nenhuma sessão nova; {{sessions}} sessão(ões) ainda rodam.",
+    "removed": "Perfil {{id}} removido.",
+    "dir_deleted": "A pasta dele foi apagada.",
+    "dir_backup": "A pasta dele foi movida para a pasta de cópia (profiles.drain.removed_dir: keep_backup).",
+    "dir_missing": "A pasta dele já não existia.",
+    "loggedOut": "O cliente fez logout.",
+    "secretDeleted": "A chave saiu do cofre.",
+    "executorsInvalid": "Executores agora inválidos: {{ids}}."
   }
 }
