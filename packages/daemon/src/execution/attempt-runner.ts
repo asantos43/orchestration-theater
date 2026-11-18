@@ -216,6 +216,12 @@ type Ended =
        * until the attempt has had `resume.max_free_resumes` of them; after that it counts.
        */
       readonly free?: boolean;
+      /**
+       * The profile of the session is leaving (P21, `profiles.drain.on_timeout: handoff`): the
+       * session was ended for it and the policy of 5.16 is not asked, the work goes to the next
+       * Executor of the role (`#leavingDecision`).
+       */
+      readonly leaving?: boolean;
       /** What the classification saw: names of signals, never a credential or a prompt. */
       readonly signals: readonly string[];
       /** The limit error behind a `quota_exhausted`, for the `QuotaService`. */
@@ -223,7 +229,12 @@ type Ended =
       readonly sha: string | undefined;
     }
   | { readonly kind: 'timeout'; readonly sha: string | undefined }
-  | { readonly kind: 'stopped'; readonly sha: string | undefined };
+  | {
+      readonly kind: 'stopped';
+      readonly sha: string | undefined;
+      /** The stop is the one of a profile that left with `on_timeout: force` (P21), not the daemon's. */
+      readonly leaving?: boolean;
+    };
 
 type Raced = Ended | { readonly kind: 'error'; readonly error: unknown };
 
@@ -298,6 +309,15 @@ interface AttemptContext {
   lastError: { key: string; count: number } | undefined;
   /** Drops of the client process of this attempt that cost no free allowance (`client_crash`). */
   crashes: number;
+  /**
+   * Ends the current go when its profile leaves (P21, `releaseProfile`). A new one for each go: the
+   * handoff that follows opens its session in another profile, which has not left.
+   */
+  leave: AbortController;
+  /** The profile this attempt gave up (P21): its session is closed and none will open there again. */
+  left: string | undefined;
+  /** Whoever waits for the attempt to leave its profile (`releaseProfile`). */
+  leftWaiters: (() => void)[];
 }
 
 const NEVER: Promise<never> = new Promise<never>(() => undefined);
@@ -327,6 +347,8 @@ const FREE_SIGNAL = 'free_resume';
 export class AttemptRunner {
   readonly #options: AttemptRunnerOptions;
   readonly #running = new Map<string, { context: AttemptContext; done: Promise<unknown> }>();
+  /** The profiles released (P21) and how: a go that would open a session on one does not. */
+  readonly #leaving = new Map<string, 'handoff' | 'force'>();
   #stopping = false;
 
   constructor(options: AttemptRunnerOptions) {
@@ -336,6 +358,51 @@ export class AttemptRunner {
   /** Attempts in progress. */
   get active(): number {
     return this.#running.size;
+  }
+
+  /**
+   * Attempts that count for a profile that is draining (P21): the ones whose Executor is in that
+   * profile and that have not given it up. An attempt between two goes (the backoff of a resume)
+   * counts too, which a count of the pool's leases would miss.
+   */
+  attemptsOf(profileId: string): number {
+    return this.#onProfile(profileId).length;
+  }
+
+  /** How many of those hold a lease of the pool now (the pool counts the same sessions). */
+  leasedOn(profileId: string): number {
+    return this.#onProfile(profileId).filter((context) => context.lease !== undefined).length;
+  }
+
+  #onProfile(profileId: string): AttemptContext[] {
+    return [...this.#running.values()]
+      .map((entry) => entry.context)
+      .filter((context) => context.spec.profile.id === profileId && context.left !== profileId);
+  }
+
+  /**
+   * A profile is leaving (P21, the drain timed out): every attempt on it stops using it, after the
+   * checkpoint and the end of its session. `handoff` hands the work to the next Executor of the
+   * role (the baton of P18, no attempt of the demand spent); `force` stops the attempt the way the
+   * daemon's stop does, leaving it `awaiting_resume` for the reconciliation. Resolves, with the
+   * number of attempts touched, when each one has let go of the profile; the handoff itself goes on
+   * after that, on the Executor that takes it. A go that would open a session on the profile later
+   * (the end of a backoff) is turned away at its start.
+   */
+  async releaseProfile(profileId: string, how: 'handoff' | 'force'): Promise<number> {
+    this.#leaving.set(profileId, how);
+    const mine = this.#onProfile(profileId);
+    for (const context of mine) context.leave.abort();
+    await Promise.all(
+      mine.map(
+        (context) =>
+          new Promise<void>((resolve) => {
+            if (context.left === profileId) resolve();
+            else context.leftWaiters.push(resolve);
+          }),
+      ),
+    );
+    return mine.length;
   }
 
   /** Creates the worktree and the branch of the attempt and runs it to its end. */
@@ -497,6 +564,9 @@ export class AttemptRunner {
       lastEventAt: clock.now(),
       lastError: undefined,
       crashes: 0,
+      leave: new AbortController(),
+      left: undefined,
+      leftWaiters: [],
     };
   }
 
@@ -560,6 +630,7 @@ export class AttemptRunner {
     this.#running.set(context.attemptId, { context, done });
     return done.finally(() => {
       this.#running.delete(context.attemptId);
+      this.#settleLeft(context);
     });
   }
 
@@ -602,11 +673,14 @@ export class AttemptRunner {
         case 'timeout':
           return this.#timedOut(context, ended.sha);
         case 'stopped':
-          return this.#stopped(context, ended.sha);
+          return this.#stopped(context, ended.sha, ended.leaving === true);
         case 'interrupted': {
           const { journal } = context;
           // The policy of 5.16 decides first, so the event and the row carry what it decided.
-          const { decision, free, signals } = await this.#decide(context, ended);
+          const { decision, free, signals } =
+            ended.leaving === true
+              ? this.#leavingDecision(ended)
+              : await this.#decide(context, ended);
           // A handoff chooses the next Executor and builds the package before the event is
           // written, so `session.interrupted` already says where the work goes.
           const handoff =
@@ -665,6 +739,14 @@ export class AttemptRunner {
   async #once(context: AttemptContext, step: Step): Promise<Ended> {
     const { pool } = this.#options;
     const { spec } = context;
+    // Each go listens to its own signal: the baton that follows a leave opens in another profile.
+    context.leave = new AbortController();
+    const leaving = this.#leaving.get(spec.profile.id);
+    if (leaving !== undefined) {
+      // The profile was released while the attempt was between two goes (the backoff of a resume).
+      this.#markLeft(context);
+      return this.#leavingEnded(leaving, undefined);
+    }
     // A new token for each go, also for the reload of a conversation (`session/load`): the MCP
     // servers of a session are the ones of the call that opens it, so the old token is gone.
     const grant = this.#grant(context);
@@ -683,12 +765,17 @@ export class AttemptRunner {
           },
           resolvePath: resolveExistingPath,
         },
-        signal: context.stop.signal,
+        signal: AbortSignal.any([context.stop.signal, context.leave.signal]),
       });
     } catch (error) {
       grant?.revoke();
       if (context.stop.signal.aborted && hasErrorCode(error, 'CANCELLED')) {
         return { kind: 'stopped', sha: await this.#checkpoint(context, 'stopped') };
+      }
+      if (context.leave.signal.aborted && hasErrorCode(error, 'CANCELLED')) {
+        // The profile left while the session waited for a slot: no session to close.
+        this.#markLeft(context);
+        return this.#leavingEnded(this.#leaving.get(spec.profile.id) ?? 'handoff', undefined);
       }
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
@@ -714,7 +801,35 @@ export class AttemptRunner {
     await lease.release().catch(() => undefined);
     grant?.revoke();
     context.lease = undefined;
+    if ((ended.kind === 'interrupted' || ended.kind === 'stopped') && ended.leaving === true) {
+      this.#markLeft(context);
+    }
     return ended;
+  }
+
+  /** How a go ends when its profile leaves: the baton (`handoff`) or the stop of the daemon (`force`). */
+  #leavingEnded(how: 'handoff' | 'force', sha: string | undefined): Ended {
+    if (how === 'force') return { kind: 'stopped', sha, leaving: true };
+    return {
+      kind: 'interrupted',
+      cause: 'daemon_restart',
+      detail: 'the profile of the session is being removed',
+      native: false,
+      kill: true,
+      leaving: true,
+      signals: ['profile:leaving'],
+      sha,
+    };
+  }
+
+  /** The attempt let go of the profile of its Executor: whoever waits in `releaseProfile` goes on. */
+  #markLeft(context: AttemptContext): void {
+    context.left = context.spec.profile.id;
+    this.#settleLeft(context);
+  }
+
+  #settleLeft(context: AttemptContext): void {
+    for (const resolve of context.leftWaiters.splice(0)) resolve();
   }
 
   /**
@@ -752,16 +867,18 @@ export class AttemptRunner {
     } else if (ended.kind === 'failed') {
       await this.#checkpoint(context, 'failed');
     }
-    const cancelled = ended.kind === 'timeout' || ended.kind === 'stopped';
+    const cancelled = ended.kind === 'timeout' || ended.kind === 'stopped' || isLeaving(ended);
     if (cancelled) {
       await lease.session.cancel().catch(() => undefined);
       await this.#escalation(context, lease);
     }
     // A shared process is not ours to end after a cancel: `pool.shared_cancel` decided already,
     // and it is gone for the sessions that fell with another session's cancel.
-    const kill =
-      (cancelled && !lease.shared) ||
-      (ended.kind === 'interrupted' && ended.kill && !lease.casualty);
+    // A profile that leaves takes its processes with it, shared or not (P21).
+    const kill = isLeaving(ended)
+      ? !lease.casualty
+      : (cancelled && !lease.shared) ||
+        (ended.kind === 'interrupted' && ended.kill && !lease.casualty);
     if (kill) {
       const report = await lease.kill().catch(() => undefined);
       if (report !== undefined && report.remaining.length > 0) {
@@ -824,7 +941,7 @@ export class AttemptRunner {
     const { clock } = this.#options;
     const { session } = lease;
     const sessionId = session.sessionId;
-    const { journal } = context;
+    const { journal, spec } = context;
     try {
       if (step.resumeSessionId === undefined) await this.#configure(context, lease);
       context.sessionId = sessionId;
@@ -897,6 +1014,13 @@ export class AttemptRunner {
         };
         if (context.stop.signal.aborted) onStop();
         else context.stop.signal.addEventListener('abort', onStop, { once: true });
+      }),
+      new Promise<Raced>((resolve) => {
+        const onLeave = (): void => {
+          resolve(this.#leavingEnded(this.#leaving.get(spec.profile.id) ?? 'handoff', undefined));
+        };
+        if (context.leave.signal.aborted) onLeave();
+        else context.leave.signal.addEventListener('abort', onLeave, { once: true, signal });
       }),
     ]);
 
@@ -1178,6 +1302,33 @@ export class AttemptRunner {
       decision,
       free,
       signals: [...signals, ...(free ? [FREE_SIGNAL] : []), `action:${decision.action}`],
+    };
+  }
+
+  /**
+   * The decision for a session whose profile is leaving (P21): not one of the table of 5.16, which
+   * has no row for it, so the cause is the one that is the same for the work, a loss that is no
+   * fault of the Executor (`daemon_restart`), and the action is the baton. It costs no attempt.
+   * [proposta] A cause of its own (`profile_removed`) waits for the owner's call on the table.
+   */
+  #leavingDecision(ended: Extract<Ended, { kind: 'interrupted' }>): {
+    decision: InterruptionDecision;
+    free: boolean;
+    signals: readonly string[];
+  } {
+    return {
+      decision: {
+        cause: 'daemon_restart',
+        action: 'handoff',
+        form: 'handoff',
+        countsAsAttempt: false,
+        delayMs: 0,
+        resetsAt: null,
+        differentExecutor: true,
+        reason: 'its profile is being removed; the work goes to the next Executor of the role',
+      },
+      free: false,
+      signals: [...ended.signals, 'action:handoff'],
     };
   }
 
@@ -1661,7 +1812,11 @@ export class AttemptRunner {
    * The daemon stops: the next start resumes the conversation, so the row says `native` once the
    * restart is known to find it (`resume()` settles it; until then the form is not known).
    */
-  async #stopped(context: AttemptContext, sha: string | undefined): Promise<AttemptOutcome> {
+  async #stopped(
+    context: AttemptContext,
+    sha: string | undefined,
+    leaving = false,
+  ): Promise<AttemptOutcome> {
     const decision = {
       ...decideInterruption(this.#facts(context, 'daemon_restart'), this.#rules()),
       form: null,
@@ -1669,9 +1824,9 @@ export class AttemptRunner {
     await this.#interruptionEvent(
       context,
       decision,
-      'the daemon stopped',
+      leaving ? 'the profile of the session was removed (drain: force)' : 'the daemon stopped',
       sha ?? context.journal.record.lastCheckpoint ?? undefined,
-      ['daemon:stopping', `action:${decision.action}`],
+      [leaving ? 'profile:leaving' : 'daemon:stopping', `action:${decision.action}`],
     );
     await this.#closed(context, 'interrupted', {
       state: 'awaiting_resume',
@@ -1723,6 +1878,11 @@ export class AttemptRunner {
       handoffWait,
     };
   }
+}
+
+/** The go ended because its profile left (P21). */
+function isLeaving(ended: Ended): boolean {
+  return (ended.kind === 'interrupted' || ended.kind === 'stopped') && ended.leaving === true;
 }
 
 /** The wait an attempt is left with when the policy chose a handoff and the runner has no port for it. */

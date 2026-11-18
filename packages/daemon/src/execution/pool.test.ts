@@ -565,3 +565,31 @@ describe('SessionPool, framework MCP server', () => {
     );
   });
 });
+
+describe('SessionPool, the profile that leaves (P21)', () => {
+  it('sessionsOf counts the sessions of one profile, per profile', async () => {
+    const { pool, request } = setup({ shared: false });
+    expect(pool.sessionsOf('fake/one')).toBe(0);
+    const one = await pool.acquire(request());
+    const two = await pool.acquire(request(OTHER_PROFILE));
+    expect(pool.sessionsOf('fake/one')).toBe(1);
+    expect(pool.sessionsOf('fake/two')).toBe(1);
+    // A process of its own per session: there is no shared process to end.
+    expect(await pool.endProcessesOf('fake/one')).toBe(0);
+    await one.release();
+    await two.release();
+    expect(pool.sessionsOf('fake/one')).toBe(0);
+    expect(pool.sessionsOf('fake/two')).toBe(0);
+  });
+
+  it('endProcessesOf ends the shared processes of that profile only, idle ones included', async () => {
+    const { pool, launcher, request } = setup({ shared: true, idleMs: 3_600_000 });
+    await (await pool.acquire(request())).release();
+    const other = await pool.acquire(request(OTHER_PROFILE));
+    expect(launcher.running).toHaveLength(2);
+    expect(await pool.endProcessesOf('fake/one')).toBe(1);
+    expect(launcher.running).toHaveLength(1);
+    expect(await pool.endProcessesOf('fake/one')).toBe(0);
+    await other.release();
+  });
+});
