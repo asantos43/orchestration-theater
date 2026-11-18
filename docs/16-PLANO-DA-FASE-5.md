@@ -69,7 +69,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | concluído (PR #103) |
 | P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | pendente |
-| P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | pendente |
+| P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | concluído (PR #104) |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | pendente |
 | P12 | `ccusage` como `UsageSource` (trava na N118) | P10 | P11, P15 | pendente |
 | P13 | Executores e papéis na configuração | P1 | P2, P5, P4 | concluído (PR #99) |
@@ -296,6 +296,32 @@ Ordem em ondas **[proposta]**:
 
 **Aceite:** com sinais de consumo do agente falso: o custo real de um perfil de API bate com tokens × tabela; o custo do cliente vence o da tabela em `client_then_pricing`; `pricing_table` ignora o do cliente; modelo sem preço vira `unknown` e a soma do período o marca; o equivalente em API de uma assinatura não é somado ao gasto real; a consulta por sessão, Executor, perfil e período devolve a mesma soma.
 
+**Como ficou (2026-11-18):**
+- Preços e contas em `core/src/pricing/` (`table.ts`: a tabela que vem com a versão, `normalizeModelId`, `mergePricing`; `price.ts`: `findPrice`, `costOfTokens`, `priceTokens`). O serviço está em `daemon/src/usage/` (`settings.ts`, `service.ts`) e o daemon o expõe como `usage`, ao lado de `quota`. O evento `usage.recorded` **[proposta]** está no protocolo (`protocol/src/usage-events.ts`) com a tabela `usage` do P1 como armazenamento. [V] (testes de `core`, `protocol` e `daemon`)
+- Chaves novas, todas **[proposta]** na forma e com o nome da §5.6: `usage.subscription_display` (`quota_and_equivalent` padrão, `quota`, `prorated`), `usage.cost_source` (`client_then_pricing` padrão, `pricing_table`, `provider_billing`), `usage.api_gateway` (só `off`), `usage.monthly_price_usd` (mapa `<cliente>/<perfil>` para a mensalidade em US$) e `pricing.<modelo>` (`input_per_mtok`, `output_per_mtok`, `cache_read_per_mtok`, `cache_write_per_mtok`, `cached_in_input`, `long_context`). A mensalidade mora em `usage.monthly_price_usd` porque o bloco `profiles.<id>` ainda não existe na configuração (o P11 o traz com o teto); a §5.6 a põe "no perfil". [V] (`usage/settings.test.ts`)
+- Como o cliente conta: o sinal `usage` (e um `usage` normalizado com tokens) é uma chamada ao modelo, e o `costUsd` dele é o custo dessa chamada. Um `usage` com custo e sem tokens é o `usage_update` do ACP, cujo `cost.amount` é **acumulado** na sessão [V na SDK do ACP]: o turno vale o crescimento desde o anterior, e um valor que não cresceu não grava turno. Só contadores de contexto não gravam nada. [V] (`usage/service.test.ts`)
+- Fonte do custo: `client_then_pricing` usa o custo do cliente e, sem ele, tokens × tabela; `pricing_table` usa sempre a tabela; `provider_billing` é aceito na configuração, não tem adaptador e funciona como `client_then_pricing`, com um aviso no log. Custo que não se calcula (sem preço, sem contagem de tokens) grava `NULL` (`unknown`), nunca US$ 0, e a soma devolve `unknownCostTurns` e `complete: false`. [V]
+- Tipo do custo: `real` em perfil de API, `api_equivalent` em assinatura (e em perfil que o store não conhece, por segurança). `totals` e `breakdown` (por sessão, peça, perfil e Executor, com filtro de período) somam em nano-dólares inteiros: qualquer corte do mesmo conjunto dá a mesma soma, e o equivalente nunca entra em `realUsd`. `subscriptionView` aplica `usage.subscription_display`; em `prorated` o mês é o mês civil em UTC do fim do período **[proposta]**. [V]
+- Teste com o agente falso: o script novo `usage-signal` (`fake-agent`, opções `model`, `inputTokens`, `outputTokens`, `costUsd`, `repeat`) manda sinais `usage` e `daemon/src/usage/fake-agent-signals.test.ts` os leva ao serviço pelo processo real do agente, por stdio. [V]
+- [N] A ligação das sessões ao serviço ainda não existe: nenhum adaptador repassa o sinal `_otheater/quota/signal` ao daemon (o mesmo vale para a cota, P5), e o `AttemptRunner` não foi mexido (é compartilhado pelos P17 a P19). O serviço tem `bindSession` e os métodos `ingestNotification`, `ingestSignal` e `ingestUpdate` para o pool (P15) e o repasse chamarem; sem `bindSession`, ele acha a sessão no store e usa o Executor `<modelo>@<cliente>/<perfil>`.
+- [N] Limites conhecidos: o cliente que mande custo acumulado e tokens por chamada seria contado duas vezes; depois de uma reinicialização do daemon, o primeiro acumulado vale inteiro; a coluna `cached_tokens` guarda só a leitura de cache (a escrita entra no preço e não é gravada); a escrita de cache da Claude é a de 5 minutos; o preço de contexto longo da OpenAI não está na tabela.
+- Claudexor (N119): nenhum arquivo foi lido nem código adaptado neste passo; só a regra de que custo desconhecido nunca vale US$ 0 foi seguida. Sem entradas novas em `THIRD_PARTY_NOTICES.md` e `copied-code.json`.
+
+**Tabela `pricing` inicial (N125, para o dono confirmar).** Preços em US$ por milhão de tokens, lidos nas páginas oficiais dos provedores em 2026-11-18 [S] (WebFetch; preço muda, e o dono ainda confirma). A versão da tabela é `2026-11-18`.
+
+| Modelo (id na tabela) | Entrada | Saída | Leitura de cache | Escrita de cache | Fonte | Consulta |
+|---|---|---|---|---|---|---|
+| `claude-opus-5-5` | 4 | 20 | 0,20 | 5 (5 min) | https://platform.claude.com/docs/en/about-claude/pricing | 2026-11-18 |
+| `claude-sonnet-5-5` | 2 | 10 | 0,10 | 2,50 (5 min) | https://platform.claude.com/docs/en/about-claude/pricing | 2026-11-18 |
+| `claude-haiku-5-5` | 0,10 (acima de 100k tokens de prompt: 0,50) | 0,50 (acima: 2,50) | 0,01 (acima: 0,05) | 0,125 (acima: 0,625) | https://platform.claude.com/docs/en/about-claude/pricing | 2026-11-18 |
+| `gpt-6-sol` | 2 | 10 | 0,20 (dentro da entrada) | n/d | https://developers.openai.com/api/docs/pricing | 2026-11-18 |
+| `gpt-6-luna` | 0,10 | 0,50 | 0,01 (dentro da entrada) | n/d | https://developers.openai.com/api/docs/pricing | 2026-11-18 |
+
+Pontos para o dono decidir ou confirmar:
+- `codex-sol` e `codex-luna` da predefinição `quality` estão precificados como `gpt-6-sol` e `gpt-6-luna` (a §5.7 marca a correspondência **[a confirmar]**); a página da OpenAI lista também modelos mais novos (`gpt-6.1`, `gpt-6.2`) que ficaram de fora até a correspondência ser confirmada.
+- Ficam de fora, com custo `unknown`: `minimax-m2` (a página oficial da MiniMax lista M3 e M3.1-Flash, não M2) e `gemma4` (modelo local, sem preço de API). Um `pricing.minimax-m2` na configuração resolve o caso sem esperar uma versão.
+- O Haiku 5.5 tem uma segunda faixa de preço acima de 100k tokens de prompt (o serviço a aplica); a OpenAI pode ter faixa de contexto longo, que a página não detalhava **[N]**.
+
 ### P11. Teto de gasto em API (§5.6)
 
 **Escopo:**
@@ -500,7 +526,7 @@ Cada uma traz a recomendação marcada **[proposta]**, e o estado de cada uma (a
 - **N122 (decidida em 2026-11-17):** os níveis `profiles` e `quota` sem provocar esgotamento e sem ok a cada rodada; o esgotamento real só se o dono pedir.
 - **N123 (decidida em 2026-11-18, recomendação aceita):** os padrões das sondas: `quota.near_limit_at: 0.8`, `quota.stale_after: 10m`, `quota.probe.delivery: both`, a unidade de `utilization`, e a statusline gravada no diretório do perfil. **Recomendação:** os valores acima.
 - **N124 (decidida em 2026-11-18, recomendação aceita):** a seleção com o estado incerto. `selection.unknown_quota: allow | skip` e `selection.near_limit: keep_order | last | skip`. **Recomendação:** `allow` (a sessão real é o teste, como na §5.6) e `keep_order` (a ordem da lista, como no algoritmo da §5.7).
-- **N125 (decidida em 2026-11-18, recomendação aceita):** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10.
+- **N125 (decidida em 2026-11-18, recomendação aceita):** a tabela `pricing` inicial. Opções: vazia até o dono preencher, os modelos da predefinição `quality` com valores de fonte pública datada e confirmados pelo dono, ou só o custo do cliente. **Recomendação:** os modelos da `quality`, cada preço com fonte e data, confirmados pelo dono ao abrir o P10. A tabela inicial está no "Como ficou" do P10; o dono ainda confirma os valores.
 - **N126 (decidida em 2026-11-18, recomendação aceita):** os detalhes do pacote de continuação e do failover: `resume.package.summarize: deterministic | director_model` (padrão `deterministic`), o tamanho máximo do pacote, o bastão sempre que a cota acaba (como a arquitetura) contra o predicado do Claudexor (só se nada foi entregue), e a fila do Diretor sem Executor. **Recomendação:** `deterministic`, bastão sempre (a arquitetura), fila em espera com aviso.
 - **N127 (decidida em 2026-11-18, recomendação aceita):** a drenagem do perfil: `profiles.drain.timeout` (`10m`) e `profiles.drain.on_timeout: handoff | wait | force` (`handoff`), e o que fazer com o diretório removido (`delete` ou `keep_backup`). **Recomendação:** `handoff`, `10m` e `delete`, com o logout antes.
 
