@@ -87,3 +87,25 @@ export const BudgetRestoredPayloadSchema = z.strictObject({
   state: z.enum(RESTORED_STATES),
   reason: z.enum(RESTORED_REASONS),
 });
+
+/** The periods of a spending cap (architecture 5.6): the calendar day and the calendar month. */
+export const BUDGET_PERIODS = ['day', 'month'] as const;
+export type BudgetPeriod = (typeof BUDGET_PERIODS)[number];
+
+/**
+ * `budget.warning` (P11, [proposta]): the spending of a profile (or of one Executor) in a period
+ * passed one of the `warn_at` fractions of its cap. It is written once per threshold and period.
+ * `executor` is the Executor name when the cap that warned is `executors.<id>.budget`, and null
+ * when it is the profile's. `thresholdFraction` is the `warn_at` entry that was crossed (0.8 for
+ * 80%); `spentUsd` and `limitUsd` are US$; `periodEndsAt` is when the period turns and the count
+ * starts over.
+ */
+export const BudgetWarningPayloadSchema = z.strictObject({
+  profile,
+  executor: z.string().min(1).max(256).nullable(),
+  period: z.enum(BUDGET_PERIODS),
+  thresholdFraction: z.number().gt(0).max(1),
+  spentUsd: z.number().min(0),
+  limitUsd: z.number().gt(0),
+  periodEndsAt: epochMs,
+});

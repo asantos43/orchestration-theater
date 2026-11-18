@@ -23,7 +23,9 @@ import {
   FALLBACK_SESSION_MB,
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
+import { BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { withProfileEntries } from './profile-entries-config.js';
 import { ExecutorsConfigSchema, SelectionConfigSchema } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
@@ -1355,10 +1357,13 @@ export const DaemonConfigSchema = z
       .prefault({}),
     /**
      * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
-     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta].
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta]. Any other key is
+     * a profile (`opencode/local`) with its block: `budget`, the spending cap of an API profile
+     * (P11, see `budget-config.ts`), and `local`, the local model server of 5.9, which the cadastro
+     * of an OpenCode Executor with a local model writes (P14).
      */
-    profiles: z
-      .strictObject({
+    profiles: withProfileEntries(
+      z.strictObject({
         same_provider_notice: z.enum(SAME_PROVIDER_NOTICE_MODES).default('once'),
         drain: z
           .strictObject({
@@ -1377,6 +1382,25 @@ export const DaemonConfigSchema = z
         api_key_env: z
           .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
           .default({}),
+      }),
+      ['same_provider_notice', 'drain', 'api_key_env'],
+    ).prefault({}),
+    /**
+     * The spending cap, for every profile and Executor that has one (architecture 5.6; P11).
+     * [proposta] `timezone` is the zone whose midnight and day 1 turn the period (the daemon's own;
+     * default `America/Sao_Paulo`, as `directives.timezone`); `unknown_cost` is what a turn of
+     * unknown cost does to the cap (see {@link BUDGET_UNKNOWN_COST_MODES}); `ask_timeout` is how
+     * long `on_exceeded: ask` waits for the Producer before it becomes `skip`.
+     */
+    budget: z
+      .strictObject({
+        timezone: z
+          .string()
+          .min(1)
+          .refine(isKnownTimezone, 'expected an IANA time zone such as America/Sao_Paulo')
+          .default(DEFAULT_DIRECTIVE_TIMEZONE),
+        unknown_cost: z.enum(BUDGET_UNKNOWN_COST_MODES).default('ignore'),
+        ask_timeout: DurationSchema.prefault('10m'),
       })
       .prefault({}),
     /**
