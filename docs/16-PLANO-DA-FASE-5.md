@@ -62,7 +62,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P0 | Plano e decisões (este documento) | nada | nada | pendente (este PR) |
 | P1 | Esquema do store da fase: perfis, Executores, interrupções, cota, consumo e despertares | P0 | P3, P4, P22 | pendente |
 | P2 | Perfis: serviço, cofre e ciclo de vida | P1 | P3, P4, P5, P13, P22 | pendente |
-| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | pendente |
+| P3 | Login e logout oficiais nos três adaptadores | P0 | P1, P2, P4, P22 | concluído (PR #98) |
 | P4 | Admissão por RAM, vagas e cota | P0 | P1, P2, P3, P22 | pendente |
 | P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | pendente |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | pendente |
