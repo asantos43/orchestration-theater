@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { OpenCodeQuotaProbe } from '@otheater/adapter-client-opencode';
 import {
   AdapterUnavailable,
   QUOTA_PROBE_PORT_VERSION,
@@ -12,13 +11,23 @@ import {
   type QuotaProbe,
   type QuotaReading,
 } from '@otheater/core';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import {
+  FakeClock,
+  FakeProcessLauncher,
+  FakeSessionTransport,
+  InMemoryStore,
+} from '@otheater/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSilentLogger } from '../logger.js';
 import { MiniMaxQuotaProbe } from './minimax-probe.js';
-import { ProviderQuotaProbe } from './provider-probe.js';
+import { ProviderQuotaProbe, type LedgerProbe } from './provider-probe.js';
+import { realLedger } from './test-clients.js';
 import { QuotaService, type UsageSink } from './service.js';
 
+const FAKES = () => ({
+  launcher: new FakeProcessLauncher(),
+  transport: new FakeSessionTransport(),
+});
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0);
@@ -193,18 +202,13 @@ function rig(options: { limitTokens?: number; minimaxBase?: string } = {}): {
   clock: FakeClock;
   store: InMemoryStore;
   service: QuotaService;
-  ledger: OpenCodeQuotaProbe;
+  ledger: LedgerProbe;
   probe: ProviderQuotaProbe;
 } {
   const clock = new FakeClock(T0);
   const store = new InMemoryStore({ clock });
   const logger = createSilentLogger();
-  const ledger = new OpenCodeQuotaProbe({
-    clock,
-    windowMs: 5 * HOUR,
-    limitTokens: options.limitTokens ?? 1000,
-    limitUsd: null,
-  });
+  const ledger = realLedger(clock, { limitTokens: options.limitTokens ?? 1000 }, FAKES());
   const minimax =
     options.minimaxBase === undefined
       ? undefined

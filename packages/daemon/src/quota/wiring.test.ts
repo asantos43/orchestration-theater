@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { OpenCodeQuotaProbe } from '@otheater/adapter-client-opencode';
 import { Secret, type ProfileRef } from '@otheater/core';
-import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
+import {
+  FakeClock,
+  FakeProcessLauncher,
+  FakeSessionTransport,
+  InMemorySecretVault,
+  InMemoryStore,
+} from '@otheater/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../config.js';
 import { createSilentLogger } from '../logger.js';
 import { apiKeyRefOf } from '../profiles/secret-env.js';
+import { builtClients, clientOf } from './test-clients.js';
+import type { LedgerProbe } from './provider-probe.js';
 import { quotaProbeOf, type QuotaWiringDeps } from './wiring.js';
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0);
@@ -48,9 +55,20 @@ async function serve(seenAuth: string[]): Promise<string> {
   return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
 }
 
-function rig(yaml: string): QuotaWiringDeps & { store: InMemoryStore; vault: InMemorySecretVault } {
+type Rig = QuotaWiringDeps & {
+  store: InMemoryStore;
+  vault: InMemorySecretVault;
+  /** The adapters the daemon builds for this config (the real ones; nothing is launched). */
+  clients: ReturnType<typeof builtClients>;
+};
+
+function rig(yaml: string): Rig {
   const clock = new FakeClock(T0);
   return {
+    clients: builtClients(yaml, clock, {
+      launcher: new FakeProcessLauncher(),
+      transport: new FakeSessionTransport(),
+    }),
     config: parseConfig(yaml),
     store: new InMemoryStore({ clock }),
     vault: new InMemorySecretVault(),
@@ -59,21 +77,14 @@ function rig(yaml: string): QuotaWiringDeps & { store: InMemoryStore; vault: InM
   };
 }
 
-function opencodeClient(deps: QuotaWiringDeps, ledger: boolean) {
-  return {
-    id: 'opencode',
-    quota: new OpenCodeQuotaProbe(
-      ledger
-        ? { clock: deps.clock, windowMs: 3_600_000, limitTokens: 1000, limitUsd: null }
-        : undefined,
-    ),
-  };
+function opencodeClient(deps: Rig) {
+  return clientOf(deps.clients, 'opencode');
 }
 
 describe('quotaProbeOf', () => {
   it('leaves the probe of every client as it is with the defaults (both modes off)', () => {
     const deps = rig('');
-    const client = opencodeClient(deps, false);
+    const client = opencodeClient(deps);
     const wiring = quotaProbeOf(client, deps);
     expect(wiring.probe).toBe(client.quota);
     expect(wiring.prepare).toBeUndefined();
@@ -81,14 +92,14 @@ describe('quotaProbeOf', () => {
 
   it('never touches a client other than OpenCode, even with the modes on', () => {
     const deps = rig('quota:\n  minimax:\n    mode: token_plan\n  opencode:\n    mode: ledger\n');
-    const claude = { id: 'claude-code', quota: new OpenCodeQuotaProbe() };
+    const claude = clientOf(deps.clients, 'claude-code');
     expect(quotaProbeOf(claude, deps).probe).toBe(claude.quota);
   });
 
   it('keeps the plain probe when the ledger is on but the client has no ledger', () => {
     const deps = rig('quota:\n  opencode:\n    mode: ledger\n');
     // The client brought a probe that has no `recordUsage` to count with.
-    const { quota } = opencodeClient(deps, false);
+    const { quota } = opencodeClient(deps);
     const bare = {
       id: 'opencode',
       quota: {
@@ -102,12 +113,12 @@ describe('quotaProbeOf', () => {
   });
 
   it('puts the ledger of the client behind the composite when quota.opencode.mode is ledger', async () => {
-    const deps = rig('quota:\n  opencode:\n    mode: ledger\n');
-    const client = opencodeClient(deps, true);
+    const deps = rig('quota:\n  opencode:\n    mode: ledger\n    limit_tokens: 1000\n');
+    const client = opencodeClient(deps);
     const wiring = quotaProbeOf(client, deps);
     expect(wiring.probe).not.toBe(client.quota);
     const profile = { client: 'opencode', profile: 'oai' };
-    (wiring.probe as unknown as OpenCodeQuotaProbe).recordUsage(profile, 's1', {
+    (wiring.probe as unknown as LedgerProbe).recordUsage(profile, 's1', {
       kind: 'usage',
       outputTokens: 500,
     });
@@ -141,7 +152,7 @@ describe('quotaProbeOf', () => {
     });
     await deps.store.profiles.update('opencode/gone', { state: 'draining' });
     await deps.store.profiles.update('opencode/gone', { state: 'removed' });
-    const wiring = quotaProbeOf(opencodeClient(deps, false), deps);
+    const wiring = quotaProbeOf(opencodeClient(deps), deps);
     const refs = await wiring.prepare?.();
     expect(refs).toEqual([{ client: 'opencode', profile: 'mm' }]);
     const reading = await wiring.probe.read({ client: 'opencode', profile: 'mm' });
@@ -165,7 +176,7 @@ describe('quotaProbeOf', () => {
       dir: '/p/mm',
       secretRef: ref,
     });
-    const wiring = quotaProbeOf(opencodeClient(deps, false), deps);
+    const wiring = quotaProbeOf(opencodeClient(deps), deps);
     await expect(wiring.probe.read({ client: 'opencode', profile: 'mm' })).rejects.toThrow(
       /allowlist/,
     );
