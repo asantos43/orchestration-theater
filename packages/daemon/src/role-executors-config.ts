@@ -32,6 +32,15 @@ import { z } from 'zod';
  * `orchestration.executor` until P16.
  */
 
+/**
+ * `executors.test_session` (P14, [proposta]): whether the cadastro runs the short test session of
+ * 5.7 (the model calls a tool and delivers a valid `submit`). `off` (default): no session is run,
+ * the validation of the catalog alone decides; `run`: the session runs (a call to the model, so it
+ * may spend quota) and its outcome is read per `roles.capability_check`.
+ */
+export const TEST_SESSION_MODES = ['off', 'run'] as const;
+export type TestSessionMode = (typeof TEST_SESSION_MODES)[number];
+
 const oneOf = (key: string, values: readonly string[]) => ({
   error: (issue: { input?: unknown }) =>
     `${key}: ${JSON.stringify(issue.input)} is not accepted; use ${values.map((v) => `"${v}"`).join(', ')}`,
@@ -148,6 +157,7 @@ const ExecutorEntryInputSchema = z.strictObject({
 export interface ExecutorsConfig {
   readonly cross_client: CrossClientMode;
   readonly on_register: OnRegisterMode;
+  readonly test_session: TestSessionMode;
   /** The `executors.<id>` entries by id, with the provider settled (5.7). */
   readonly entries: Readonly<Record<string, ExecutorEntry>>;
 }
@@ -166,6 +176,7 @@ export const ExecutorsConfigSchema = z
     };
     let cross_client: CrossClientMode = 'api_only';
     let on_register: OnRegisterMode = 'ask';
+    let test_session: TestSessionMode = 'off';
     const entries: Record<string, ExecutorEntry> = {};
 
     for (const [key, value] of Object.entries(raw)) {
@@ -181,11 +192,17 @@ export const ExecutorsConfigSchema = z
         else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
         continue;
       }
+      if (key === 'test_session') {
+        const parsed = z.enum(TEST_SESSION_MODES, oneOf(key, TEST_SESSION_MODES)).safeParse(value);
+        if (parsed.success) test_session = parsed.data;
+        else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
+        continue;
+      }
       const name = tryParseExecutorId(key);
       if (typeof name === 'string') {
         issue(
           [key],
-          `${name}; the keys of executors are "cross_client", "on_register" and Executor names`,
+          `${name}; the keys of executors are "cross_client", "on_register", "test_session" and Executor names`,
         );
         continue;
       }
@@ -228,5 +245,5 @@ export const ExecutorsConfigSchema = z
         provider: providerOfClient(entry.client, entry.provider),
       };
     }
-    return { cross_client, on_register, entries };
+    return { cross_client, on_register, test_session, entries };
   });
