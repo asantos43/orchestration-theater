@@ -67,7 +67,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P5 | `QuotaService`: sinais, estado do perfil e frescor | P1 | P2, P13, P4 | concluído (PR #100) |
 | P6 | Sonda de cota do Claude Code | P5 | P7, P8, P9, P10, P14, P17 | concluído (PR #105) |
 | P7 | Sonda de cota do Codex | P5 | P6, P8, P9, P10, P14, P17 | concluído (PR #103) |
-| P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | pendente |
+| P8 | Sondas da MiniMax e do OpenCode e o erro de limite | P5 | P6, P7, P9, P10, P14, P17 | concluído (PR #108) |
 | P9 | Despertares e reconsulta (`wakeups`) | P5 | P6, P7, P8, P10, P14, P17 | pendente |
 | P10 | Consumo e custo em moeda | P5 | P6, P7, P8, P9, P14, P17 | pendente |
 | P11 | Teto de gasto em API | P9, P10 | P12, P15 | pendente |
