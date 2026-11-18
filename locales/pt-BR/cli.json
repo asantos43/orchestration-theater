@@ -97,6 +97,7 @@
     "ideaGroupOptions": "Digite: approve | edit <nova necessidade> | keep <ids na ordem> | refuse [motivo].",
     "ideaGroupBad": "Essa não é uma das opções. Digite: approve, edit <nova necessidade>, keep <ids> ou refuse [motivo].",
     "system": {
+      "handoff": "Sistema: a tentativa {{attemptId}} passou o bastão de {{from}} para {{to}} ({{cause}}); o trabalho continua do estado guardado.",
       "recovery": {
         "title": "Sistema: o daemon reiniciou e reconciliou este cenário.",
         "resumed": "  Retomado: {{items}}.",

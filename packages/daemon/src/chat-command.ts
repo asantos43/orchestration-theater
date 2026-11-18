@@ -3,7 +3,12 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { JsonObject } from '@otheater/core';
-import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
+import type {
+  IdeaQueueHeldPayload,
+  ScenarioHandoffNotice,
+  ScenarioRecoveryNotice,
+  ScenarioSystemMessagePayload,
+} from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
 import { dataPaths } from './paths.js';
@@ -87,6 +92,27 @@ function menuOptionsOf(ask: PendingAsk): string[] {
  * settled and what waits for the Producer; a line with nothing in it is left out.
  */
 export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessagePayload): string[] {
+  return notice.kind === 'handoff'
+    ? renderHandoffMessage(t, notice)
+    : renderRecoveryMessage(t, notice);
+}
+
+/**
+ * The `handoff` kind (Phase 5, P18, [proposta]): one line that says which Executor passed the baton
+ * to which one, and why.
+ */
+function renderHandoffMessage(t: TFunction, notice: ScenarioHandoffNotice): string[] {
+  return [
+    t('chat.system.handoff', {
+      attemptId: notice.attemptId,
+      cause: notice.cause,
+      from: notice.fromExecutor,
+      to: notice.toExecutor,
+    }),
+  ];
+}
+
+function renderRecoveryMessage(t: TFunction, notice: ScenarioRecoveryNotice): string[] {
   const lines = [t('chat.system.recovery.title')];
   const resumed = notice.resumed.map((item) =>
     t(

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Store } from '@otheater/core';
-import { buildDaemonEvent, type ScenarioSystemMessagePayload } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type ScenarioRecoveryNotice,
+  type ScenarioSystemMessagePayload,
+} from '@otheater/protocol';
 import type { RecoveryNoticeMode } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { RecoveryReport } from './reconcile.js';
@@ -19,7 +23,7 @@ export interface RecoveryNoticeInput {
 }
 
 type Draft = {
-  -readonly [K in 'resumed' | 'settled' | 'waiting']: ScenarioSystemMessagePayload[K];
+  -readonly [K in 'resumed' | 'settled' | 'waiting']: ScenarioRecoveryNotice[K];
 };
 
 /**

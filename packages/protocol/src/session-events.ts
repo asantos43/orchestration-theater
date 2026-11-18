@@ -106,6 +106,15 @@ export const SessionInterruptedPayloadSchema = z.strictObject({
   resetsAt: z.int().min(0).optional(),
   /** Last checkpoint commit of the attempt, if any. */
   checkpointSha: z.string().min(1).optional(),
+  /**
+   * How the policy of 5.16 continues it, when it does (Phase 5, P18, [proposta]): `native` or
+   * `handoff`. Absent when nothing continues the session (the attempt is parked).
+   */
+  form: ResumeFormSchema.optional(),
+  /** Executor of the interrupted session, with `form`. */
+  from: ExecutorPayloadSchema.optional(),
+  /** Executor that takes over, with `form`: the same as `from` on a native resume. */
+  to: ExecutorPayloadSchema.optional(),
   ...correlation,
 });
 
