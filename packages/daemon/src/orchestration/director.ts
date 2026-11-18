@@ -295,6 +295,7 @@ export class DirectorSessions {
         policy,
         cwd,
         mcpServers: [grant.server],
+        director: true,
       });
       try {
         grant.bind(lease.session.sessionId);
