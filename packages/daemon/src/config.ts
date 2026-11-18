@@ -624,7 +624,11 @@ export const OpenCodeClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `opencode acp`. */
   command: ClientCommandSchema.optional(),
-  isolation: z.array(z.enum(OPENCODE_ISOLATED_HOMES)).default(['data', 'config']),
+  /**
+   * The homes moved into the profile. `state` is in the default (Phase 4 [V]): the client takes
+   * locks there before it reaches an MCP server, and the sandbox keeps the user's own read-only.
+   */
+  isolation: z.array(z.enum(OPENCODE_ISOLATED_HOMES)).default(['data', 'config', 'state']),
   /** The `opencode.json` of the profile: an object, `null` for no file, absent for the adapter's default. */
   profile_config: z.record(z.string(), z.unknown()).nullable().optional(),
   shell_keys: z.array(z.string().min(1)).min(1).default(['bash']),

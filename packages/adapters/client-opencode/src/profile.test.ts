@@ -26,9 +26,10 @@ describe('isolationEnv', () => {
     expect(isolationEnv(dir)).toEqual({
       XDG_DATA_HOME: layout.homes.data,
       XDG_CONFIG_HOME: layout.homes.config,
+      XDG_STATE_HOME: layout.homes.state,
       OPENCODE_DB: layout.db,
     });
-    expect(DEFAULT_ISOLATION).toEqual(['data', 'config']);
+    expect(DEFAULT_ISOLATION).toEqual(['data', 'config', 'state']);
   });
 
   it('isolates only the homes it is asked to, but always the database', () => {

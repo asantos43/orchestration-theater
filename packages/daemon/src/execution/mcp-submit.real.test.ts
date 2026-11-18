@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Profile, RolePolicy } from '@otheater/core';
-import { FakeClock, InMemorySecretVault } from '@otheater/core/testing';
+import { InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, realClientFlags } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultLauncher, productionClients } from '../compose.js';
@@ -24,8 +24,8 @@ import { permissionsOf, transcriptOf } from './escape-fixture.js';
  *   client lists (a cheap one is enough; the test does not guess it);
  * - `OT_TEST_CLAUDE_MODE` (optional): the mode id of the Claude session;
  * - `OT_TEST_MCP_SANDBOX` (optional): `runtime` (default) runs the client inside the sandbox, with
- *   the bridge of N115 (`sandbox.mcp_bridge: proxy`); `off` runs it without one, with
- *   `security.unenforced: warn`, as before Phase 4;
+ *   the bridge of N115 (`sandbox.mcp_bridge: proxy`); `off` runs it without one (`sandbox.mode: off`;
+ *   the default of `sandbox.mode` is `runtime`) and with `security.unenforced: warn`, as before Phase 4;
  * - `OT_TEST_SANDBOX_EXTRA_DOMAINS` (optional): hosts added to the sandbox list, comma-separated
  *   (OpenCode with an OpenAI model needs the OpenAI hosts; `PROVIDER_DOMAINS` lists only its own).
  *
@@ -68,7 +68,7 @@ const EXTRA_DOMAINS = (process.env.OT_TEST_SANDBOX_EXTRA_DOMAINS ?? '')
 const CONFIG = parseConfig(
   sandboxed
     ? `backup:\n  when: manual\nsandbox:\n  mode: runtime\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`
-    : 'backup:\n  when: manual\nsecurity:\n  unenforced: warn\n',
+    : 'backup:\n  when: manual\nsandbox:\n  mode: off\nsecurity:\n  unenforced: warn\n',
 );
 
 const AUTHOR: RolePolicy = {
@@ -110,7 +110,8 @@ describe.each(CLIENT_IDS)(
         const daemon = await startDaemon({
           dataDir: tmp.dir,
           config: CONFIG,
-          overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
+          // The system clock: the deadline of the attempt (`timeoutMs`) sleeps on it, and a fake one never wakes.
+          overrides: { vault: new InMemorySecretVault(), launcher: real },
           clients: productionClients(CONFIG),
           logger: createSilentLogger(),
           version: '0.0.0-test',
@@ -155,7 +156,8 @@ describe.each(CLIENT_IDS)(
           );
           console.log(`[mcp-real] ${client}: reply:\n${transcript.reply.slice(0, 2000)}`);
           const asks = permissionsOf(events, outcome.attemptId).map(
-            (ask) => `  ${ask.tool ?? '?'}:${ask.kind ?? '?'}:${ask.answer}:${ask.rule}:${ask.reason}`,
+            (ask) =>
+              `  ${ask.tool ?? '?'}:${ask.kind ?? '?'}:${ask.answer}:${ask.rule}:${ask.reason}`,
           );
           console.log(`[mcp-real] ${client}: asks=${String(asks.length)}\n${asks.join('\n')}`);
 
