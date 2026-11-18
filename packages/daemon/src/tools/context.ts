@@ -17,6 +17,7 @@ import type { CommandConfiner } from '../sandbox-wiring.js';
 import { ToolFailure, type ToolCall } from '../mcp/handlers.js';
 import type { Env } from '../paths.js';
 import { Semaphore } from './semaphore.js';
+import { StepGate } from './step-gate.js';
 import { resolveToolSettings, type ToolSettings } from './settings.js';
 
 /** What the work tools need of the daemon (architecture 5.8). */
@@ -64,6 +65,8 @@ export interface ToolDone {
 /** The state the six tools share: the semaphores of the heavy commands. */
 export class ToolsContext {
   readonly deps: ToolsDeps;
+  /** Picks the step of each recorded command call (P22). */
+  readonly effectGate = new StepGate();
   readonly #global: Semaphore;
   readonly #byScenario = new Map<string, Semaphore>();
 

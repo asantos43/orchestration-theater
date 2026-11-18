@@ -45,10 +45,32 @@ function isOpen(step: Step): boolean {
  * verifier is asked what happened. Anything else is a new step: an agent that clicks the same
  * button twice on purpose clicks it twice.
  */
-export function stepFor(steps: readonly Step[], hash: string): number {
+export function stepFor(
+  steps: readonly Step[],
+  hash: string,
+  /** A step a call of this process is running right now: it is not an interrupted one. */
+  busy: (step: number) => boolean = () => false,
+): number {
   const open = steps.find(
-    (step) => isOpen(step) && step.records.some((record) => callHashOf(record) === hash),
+    (step) =>
+      isOpen(step) &&
+      !busy(step.step) &&
+      step.records.some((record) => callHashOf(record) === hash),
   );
   if (open !== undefined) return open.step;
   return (steps[steps.length - 1]?.step ?? 0) + 1;
+}
+
+/** The hash a step record carries (`params.callHash`), if it has one. */
+export function callHashOfStep(step: Step): string | undefined {
+  for (const record of step.records) {
+    const hash = callHashOf(record);
+    if (hash !== undefined) return hash;
+  }
+  return undefined;
+}
+
+/** The result of the run that finished the step (`done`), if one did. */
+export function doneRecordOf(step: Step): SideEffectRecord | undefined {
+  return step.records.find((record) => record.state === 'done');
 }
