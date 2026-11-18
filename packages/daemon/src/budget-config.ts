@@ -34,7 +34,7 @@ const oneOf = (key: string, values: readonly string[]) => ({
     `${key}: ${JSON.stringify(issue.input)} is not accepted; use ${values.map((v) => `"${v}"`).join(', ')}`,
 });
 
-const UsdSchema = z.number({ error: 'a cap in US$, such as 5 or 12.5' }).gt(0).finite();
+const UsdSchema = z.number({ error: 'a cap in US$, such as 5 or 12.5' }).gt(0);
 
 /**
  * `warn_at`: the fractions of the cap that warn (0.8 is 80%). `[]` turns the warning off. Sorted

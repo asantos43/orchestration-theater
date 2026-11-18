@@ -228,10 +228,10 @@ export class BudgetService {
     this.#started = true;
     await this.#seedWarnings();
     this.#subscription = this.#options.usage.onRecorded((row) => {
-      this.#enqueue(() => this.#evaluate(row.profileId, [row.executorId]));
+      void this.#enqueue(() => this.#evaluate(row.profileId, [row.executorId]));
     });
     for (const [profile, executors] of this.#subjects()) {
-      this.#enqueue(() => this.#evaluate(profile, executors));
+      void this.#enqueue(() => this.#evaluate(profile, executors));
     }
     await this.flush();
   }
@@ -299,7 +299,7 @@ export class BudgetService {
   resolveExceeded(profile: string): Promise<BudgetChoice> | undefined {
     const breach = this.exceededOf(profile);
     if (breach === undefined) return undefined;
-    const key = `${profile}|${breach.resetsAt}`;
+    const key = `${profile}|${String(breach.resetsAt)}`;
     let answer = this.#answers.get(key);
     if (answer === undefined) {
       answer = this.#choose(breach);
@@ -464,7 +464,7 @@ export class BudgetService {
       if (reading.endsAt === null) continue;
       for (const fraction of reading.warnAt) {
         if (nano(reading.spentUsd) < nano(reading.limitUsd * fraction)) continue;
-        const key = `${reading.scope}|${reading.id}|${reading.period}|${reading.endsAt}|${fraction}`;
+        const key = `${reading.scope}|${reading.id}|${reading.period}|${String(reading.endsAt)}|${String(fraction)}`;
         if (this.#warned.has(key)) continue;
         this.#warned.set(key, reading.endsAt);
         const payload: BudgetWarningPayload = {
@@ -535,7 +535,7 @@ export class BudgetService {
         const { executor, profile, period, periodEndsAt, thresholdFraction } = parsed.data;
         const scope = executor === null ? 'profile' : 'executor';
         this.#warned.set(
-          `${scope}|${executor ?? profile}|${period}|${periodEndsAt}|${thresholdFraction}`,
+          `${scope}|${executor ?? profile}|${period}|${String(periodEndsAt)}|${String(thresholdFraction)}`,
           periodEndsAt,
         );
       }

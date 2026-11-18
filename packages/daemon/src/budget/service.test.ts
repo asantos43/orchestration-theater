@@ -69,8 +69,8 @@ function yamlOf(spec: Spec): string {
   const lines: string[] = [];
   const budget = (l: ProfileSpec, pad: string): string[] => {
     const out = [`${pad}budget:`];
-    if (l.daily !== undefined) out.push(`${pad}  daily_usd: ${l.daily}`);
-    if (l.monthly !== undefined) out.push(`${pad}  monthly_usd: ${l.monthly}`);
+    if (l.daily !== undefined) out.push(`${pad}  daily_usd: ${String(l.daily)}`);
+    if (l.monthly !== undefined) out.push(`${pad}  monthly_usd: ${String(l.monthly)}`);
     if (l.warnAt !== undefined) out.push(`${pad}  warn_at: [${l.warnAt.join(', ')}]`);
     if (l.onExceeded !== undefined) out.push(`${pad}  on_exceeded: ${l.onExceeded}`);
     if (l.inFlight !== undefined) out.push(`${pad}  in_flight: ${l.inFlight}`);
@@ -89,8 +89,8 @@ function yamlOf(spec: Spec): string {
       const cut = head.lastIndexOf('-');
       lines.push(
         `  "${id}":`,
-        `    client: ${client}`,
-        `    profile: ${profile}`,
+        `    client: ${String(client)}`,
+        `    profile: ${String(profile)}`,
         `    model: ${head.slice(0, cut)}`,
         `    effort: ${head.slice(cut + 1)}`,
         ...budget(l, '    '),
@@ -562,7 +562,7 @@ describe('BudgetService, on_exceeded', () => {
     const { h } = await over('skip');
     const answer = await h.budget.resolveExceeded(API);
     expect(answer).toEqual({ choice: 'skip', via: 'config' });
-    expect(whenExhaustedOf(answer!.choice)).toBe('next');
+    expect(whenExhaustedOf(answer?.choice ?? 'wait')).toBe('next');
     expect(await select(h, [API, API2])).toEqual({ profile: API2, waiting: false });
   });
 
@@ -570,7 +570,7 @@ describe('BudgetService, on_exceeded', () => {
     const { h } = await over('wait');
     const answer = await h.budget.resolveExceeded(API);
     expect(answer).toEqual({ choice: 'wait', via: 'config' });
-    expect(whenExhaustedOf(answer!.choice)).toBe('wait');
+    expect(whenExhaustedOf(answer?.choice ?? 'skip')).toBe('wait');
     expect(await select(h, [API, API2])).toEqual({ profile: API, waiting: true });
   });
 
