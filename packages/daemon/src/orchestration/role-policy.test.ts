@@ -54,11 +54,13 @@ const toolsOf = (policy: RolePolicy): readonly string[] => {
 };
 
 describe('the default policy of each role', () => {
-  it('is the policy of before the configuration: read and search, the Actor also writes and has the daemon shells (owner decision, 2026-11-17), the other roles have none, no network', async () => {
+  it('is the policy of before the configuration: read and search, the Actor and the consultant also write (the consultant in the chat folder, P10) and only the Actor has the daemon shells (owner decision, 2026-11-17), no network', async () => {
     for (const role of ROLE_IDS) {
       const policy = await resolveRolePolicy(resolver(), role);
       expect(policy.nativeTools).toEqual(
-        role === 'actor' ? ['read', 'search', 'edit', 'write'] : ['read', 'search'],
+        role === 'actor' || role === 'consultant'
+          ? ['read', 'search', 'edit', 'write']
+          : ['read', 'search'],
       );
       expect(policy).toMatchObject({
         nativeShell: role === 'actor' ? 'shells' : 'none',
@@ -179,6 +181,21 @@ describe('roles.<role>.policy in the configuration', () => {
     expect(() => parseConfig('roles:\n  actor:\n    policy:\n      browser: sometimes\n')).toThrow(
       InvalidInput,
     );
+  });
+
+  it('the consultant has no browser tool by default: it asks for one with the browser key (P10)', async () => {
+    const tools = toolsOf(await resolveRolePolicy(resolver(), 'consultant'));
+    for (const name of ['browser_open', 'browser_read', 'browser_click']) {
+      expect(tools).not.toContain(name);
+    }
+    const read = toolsOf(
+      await resolveRolePolicy(
+        resolver('roles:\n  consultant:\n    policy:\n      browser: read\n'),
+        'consultant',
+      ),
+    );
+    expect(read).toContain('browser_read');
+    expect(read).not.toContain('browser_click');
   });
 
   it('the native tools key gives a role the write tools, or takes them away', async () => {

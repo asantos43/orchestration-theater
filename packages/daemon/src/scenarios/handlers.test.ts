@@ -6,7 +6,7 @@ import type { ClientAdapter, ToolDefinition } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../config.js';
-import { ToolFailure, ToolHandlers, type ToolCall } from '../mcp/handlers.js';
+import { ToolFailure, ToolHandlers, ToolWithImage, type ToolCall } from '../mcp/handlers.js';
 import { AttachmentService } from './attachments.js';
 import type { ConsultService } from './consult.js';
 import { ScenarioHandlers } from './handlers.js';
@@ -201,7 +201,13 @@ describe('the scenario handlers', () => {
         playId: 's1',
       },
     );
-    expect(given).toMatchObject({ kind: 'image', mime: 'image/png', encoding: 'base64' });
+    // An image goes back as an MCP `image` block, not as base64 text in the value (P10).
+    expect(given).toBeInstanceOf(ToolWithImage);
+    const { value, image } = given as ToolWithImage;
+    expect(value).toMatchObject({ id: 'A2', kind: 'image', mime: 'image/png' });
+    expect(value).not.toHaveProperty('content');
+    expect(image.mimeType).toBe('image/png');
+    expect(Buffer.from(image.data, 'base64').length).toBeGreaterThan(0);
   });
 
   it('read_attachment gives a text attachment to the Director of the scenario (N85)', async () => {

@@ -470,6 +470,18 @@ describe('parseConfig, scenarios (architecture 5.20)', () => {
     ).toBe(7_200_000);
   });
 
+  it('consultant_writes defaults to merge and takes merge, keep and discard (P10)', () => {
+    expect(parseConfig('').scenarios.consultant_writes).toBe('merge');
+    for (const mode of ['merge', 'keep', 'discard'] as const) {
+      expect(
+        parseConfig(`scenarios:\n  consultant_writes: ${mode}\n`).scenarios.consultant_writes,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('scenarios:\n  consultant_writes: always\n')).toThrow(
+      /consultant_writes/,
+    );
+  });
+
   it('rejects a bad duration, a bad size and an unknown key', () => {
     expect(() => parseConfig('scenarios:\n  director_idle_after: soon\n')).toThrow(
       /director_idle_after/,

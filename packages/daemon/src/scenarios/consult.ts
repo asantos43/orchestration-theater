@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   assemblePrefix,
   type AttachmentRecord,
   type ClientAdapter,
+  confinePath,
   type EventEnvelope,
   type JsonObject,
+  type PathHost,
   type PromptSource,
   type Registries,
+  ShellToolRefusal,
   type Store,
+  supportsMerge,
   type Vcs,
 } from '@otheater/core';
 import type { DaemonConfig, PlayExecutor } from '../config.js';
@@ -17,6 +23,7 @@ import { ToolFailure } from '../mcp/handlers.js';
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
 import { executorOf, sessionSettingsOf } from '../orchestration/roles.js';
 import type { DataPaths } from '../paths.js';
+import { nodePathHost } from '../tools/host.js';
 import { type AttachmentService, isImage } from './attachments.js';
 import { CHAT_DECISION_KINDS, type ChatFlow } from './chat-flow.js';
 
@@ -78,6 +85,44 @@ export interface ConsultServiceOptions {
   readonly attachments: AttachmentService;
   readonly chatFlow: ChatFlow;
   readonly logger: Logger;
+  /** The file system the confinement of the consultant's files asks about. Default: the machine's. */
+  readonly host?: PathHost | undefined;
+}
+
+/**
+ * What became of the files the consultant wrote in its worktree (`scenarios.consultant_writes`):
+ * `none` it wrote nothing, `merged` they are in the chat folder now, `kept` they wait on `branch`,
+ * `discarded` they were dropped on purpose, `conflict` the merge would conflict (they wait on
+ * `branch`), `refused` a path left the folder or touched what is the daemon's (they wait on `branch`).
+ */
+export interface ConsultWork {
+  readonly outcome: 'none' | 'merged' | 'kept' | 'discarded' | 'conflict' | 'refused';
+  readonly files: readonly string[];
+  readonly branch?: string;
+  readonly reason?: string;
+}
+
+/** Paths of the chat folder the consultant never changes: the copies of the attachments and git's own. */
+const RESERVED_ROOTS: readonly string[] = ['attachments', '.git'];
+
+function isReserved(file: string): boolean {
+  const first = file.split('/')[0] ?? '';
+  return RESERVED_ROOTS.includes(first);
+}
+
+/** What the Director is told when the consultant's files did not reach the folder; `undefined` when nothing is amiss. */
+function noticeOf(work: ConsultWork): string | undefined {
+  const where = work.branch === undefined ? '' : ` They are on the branch ${work.branch}.`;
+  switch (work.outcome) {
+    case 'kept':
+      return `The files the consultant wrote were not put in the chat folder (scenarios.consultant_writes is "keep").${where}`;
+    case 'conflict':
+      return `The files the consultant wrote conflict with the chat folder and were not merged (${work.reason ?? 'conflict'}).${where}`;
+    case 'refused':
+      return `The files the consultant wrote were refused (${work.reason ?? 'a path is not allowed'}).${where}`;
+    default:
+      return undefined;
+  }
 }
 
 export interface ConsultInput {
@@ -105,15 +150,21 @@ function answerOf(output: unknown): string | undefined {
  * role `consultant`, on the question; the answer comes back as the result of the call. The
  * Director's call stays open until then, so the chat is CONSULTING: `chat.consult` is a pending
  * decision and `scenario.chat_transitioned` records IDLE -> CONSULTING -> IDLE. [proposta] The
- * Consultant runs the way any attempt does (its own worktree of the scenario folder, read-only
- * tools, `submit(result)` to finish), under the id `<scenario>/consult-<n>/1`; the worktree is
- * removed after the answer.
+ * Consultant runs the way any attempt does (its own worktree of the scenario folder, `submit(result)`
+ * to finish), under the id `<scenario>/consult-<n>/1`. It writes only there; after the answer the
+ * worktree is removed and what it wrote goes where `scenarios.consultant_writes` says (P10, N86):
+ * `merge` (default) into the chat folder, only after each changed path is confined to the folder
+ * (`confinePath` of the shell tools) and none is reserved (`attachments/`, `.git`).
  */
 export class ConsultService {
   readonly #options: ConsultServiceOptions;
+  readonly #host: PathHost;
+  /** One merge into a chat folder at a time (a folder is one git working tree). */
+  #merges: Promise<unknown> = Promise.resolve();
 
   constructor(options: ConsultServiceOptions) {
     this.#options = options;
+    this.#host = options.host ?? nodePathHost();
   }
 
   async consult(scenarioId: string, input: ConsultInput): Promise<JsonObject | ToolFailure> {
@@ -178,10 +229,21 @@ export class ConsultService {
         input,
         records,
       );
-      if (typeof answer === 'string') {
-        await store.decisions.decide(decisionId, { answer: { answer }, decidedBy: 'daemon' });
+      if ('answer' in answer) {
+        const { work } = answer;
+        const record: JsonObject = {
+          answer: answer.answer,
+          work: { ...work, files: [...work.files] },
+        };
+        await store.decisions.decide(decisionId, { answer: record, decidedBy: 'daemon' });
         await chatFlow.sync(scenarioId, 'consult_answered', { decisionId });
-        return { answer };
+        const merged = work.outcome === 'merged' && work.files.length > 0;
+        const notice = noticeOf(work);
+        return {
+          answer: answer.answer,
+          ...(merged ? { files: [...work.files] } : {}),
+          ...(notice === undefined ? {} : { notice }),
+        };
       }
       await store.decisions.cancel(decisionId).catch(() => undefined);
       await chatFlow.sync(scenarioId, 'consult_failed', { decisionId, reason: answer.reason });
@@ -203,10 +265,16 @@ export class ConsultService {
     executor: PlayExecutor,
     input: ConsultInput,
     records: readonly AttachmentRecord[],
-  ): Promise<string | { readonly reason: string }> {
+  ): Promise<
+    { readonly answer: string; readonly work: ConsultWork } | { readonly reason: string }
+  > {
     const { store, vcs, runner, registries, prompts, paths, config } = this.#options;
     const repos = await store.scenarioRepos.list(scenarioId);
     const scenario = await store.scenarios.get(scenarioId);
+    const base = repos[0]?.mainBranch ?? scenario?.baseBranch ?? 'main';
+    // The commit the consultant starts from: what its changes are measured against, even when
+    // another consultation merges into the folder in the meantime.
+    const baseSha = repos[0] === undefined ? await vcs.headOf(folder) : undefined;
     const prefix = assemblePrefix({
       role: CONSULTANT_ROLE,
       rolePrompt: await prompts.get(CONSULTANT_ROLE),
@@ -242,7 +310,7 @@ export class ConsultService {
       demandId: `consult-${String(number)}`,
       attempt: 1,
       repo: repos[0]?.path ?? folder,
-      base: repos[0]?.mainBranch ?? scenario?.baseBranch ?? 'main',
+      base: baseSha ?? base,
       profile,
       executor: settings,
       policy: await resolveRolePolicy(
@@ -253,18 +321,117 @@ export class ConsultService {
       prompt: `${prefix}\n${body}`,
       role: CONSULTANT_ROLE,
     });
-    await vcs.removeWorktree(outcome.worktree, { force: true }).catch(() => undefined);
+    const submission =
+      outcome.state === 'completed' ? await this.#submissionOf(outcome.attemptId, mark) : undefined;
+    const answer = submission?.kind === 'submitted' ? answerOf(submission.output) : undefined;
+    // The work is taken only from a consultation that answered; any other leaves nothing behind.
+    const work = await this.#takeWork(
+      scenarioId,
+      folder,
+      outcome,
+      answer === undefined ? 'discard' : config.scenarios.consultant_writes,
+      baseSha ?? base,
+    );
     if (outcome.state !== 'completed') {
       return {
         reason: `The consultant session ${outcome.state}${outcome.cause === undefined ? '' : `: ${outcome.cause}`}.`,
       };
     }
-    const submission = await this.#submissionOf(outcome.attemptId, mark);
     if (submission === undefined) {
       return { reason: 'The consultant ended its turn without calling `submit`.' };
     }
     if (submission.kind === 'failed') return { reason: submission.errors };
-    return answerOf(submission.output) ?? { reason: 'The consultant submitted an empty answer.' };
+    return answer === undefined
+      ? { reason: 'The consultant submitted an empty answer.' }
+      : { answer, work };
+  }
+
+  /**
+   * Puts the worktree of the consultant to rest and moves what it wrote where `mode` says. The
+   * worktree is always removed; the branch stays only when the work waits on it (`keep`, a
+   * conflict, a refusal). Never throws: a failure here must not lose the answer.
+   */
+  async #takeWork(
+    scenarioId: string,
+    folder: string,
+    outcome: { readonly worktree: string; readonly branch: string; readonly attemptId: string },
+    mode: 'merge' | 'keep' | 'discard',
+    base: string,
+  ): Promise<ConsultWork> {
+    const { vcs, logger } = this.#options;
+    const { worktree, branch } = outcome;
+    const drop = async (deleteBranch: boolean): Promise<void> => {
+      await vcs.removeWorktree(worktree, { force: true, deleteBranch }).catch((error: unknown) => {
+        logger.warn({ err: error, scenarioId, worktree }, 'the consultant worktree stayed');
+      });
+    };
+    try {
+      if (mode === 'discard') {
+        await drop(true);
+        return { outcome: 'discarded', files: [] };
+      }
+      await vcs.commitAll(worktree, `consult: ${outcome.attemptId}`);
+      const stat = await vcs.diffStat(worktree, base);
+      const files = stat.files.map((file) => file.path);
+      if (files.length === 0) {
+        await drop(true);
+        return { outcome: 'none', files: [] };
+      }
+      if (mode === 'keep') {
+        await drop(false);
+        return { outcome: 'kept', files, branch };
+      }
+      const refusal = await this.#refusalOf(worktree, files);
+      if (refusal !== undefined) {
+        await drop(false);
+        logger.warn({ scenarioId, branch, reason: refusal }, 'the consultant files were refused');
+        return { outcome: 'refused', files, branch, reason: refusal };
+      }
+      if (!supportsMerge(vcs)) {
+        await drop(false);
+        return { outcome: 'kept', files, branch, reason: 'the Vcs adapter cannot merge' };
+      }
+      const merged = await this.#serialized(async () => {
+        await excludeAttachments(folder);
+        await vcs.commitAll(folder, `chat: state of the folder before ${outcome.attemptId}`);
+        return vcs.merge(folder, branch, { message: `consult: ${outcome.attemptId}` });
+      });
+      if (merged.kind === 'conflict') {
+        await drop(false);
+        return { outcome: 'conflict', files, branch, reason: merged.files.join(', ') };
+      }
+      await drop(true);
+      return { outcome: 'merged', files };
+    } catch (error) {
+      logger.error({ err: error, scenarioId, branch }, 'the consultant work could not be taken');
+      await drop(false);
+      return {
+        outcome: 'refused',
+        files: [],
+        branch,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /** Why the changed paths cannot reach the folder, or `undefined` when each is allowed. */
+  async #refusalOf(worktree: string, files: readonly string[]): Promise<string | undefined> {
+    for (const file of files) {
+      if (isReserved(file)) return `"${file}" is reserved (${RESERVED_ROOTS.join(', ')})`;
+      try {
+        await confinePath(this.#host, worktree, join(worktree, file));
+      } catch (error) {
+        if (error instanceof ShellToolRefusal) return `"${file}": ${error.message}`;
+        throw error;
+      }
+    }
+    return undefined;
+  }
+
+  #serialized<T>(step: () => Promise<T>): Promise<T> {
+    const run = this.#merges.then(step, step);
+    this.#merges = run.catch(() => undefined);
+    return run;
   }
 
   async #submissionOf(
@@ -292,4 +459,18 @@ export class ConsultService {
       }
     }
   }
+}
+
+/**
+ * Keeps `attachments/` out of git in the chat folder (`.git/info/exclude`), so the copies the
+ * daemon makes never make the folder dirty for a merge nor end up in the history. Idempotent.
+ */
+async function excludeAttachments(folder: string): Promise<void> {
+  const info = join(folder, '.git', 'info');
+  const file = join(info, 'exclude');
+  const line = '/attachments/';
+  const current = await readFile(file, 'utf8').catch(() => '');
+  if (current.split('\n').includes(line)) return;
+  await mkdir(info, { recursive: true });
+  await appendFile(file, `${current === '' || current.endsWith('\n') ? '' : '\n'}${line}\n`);
 }

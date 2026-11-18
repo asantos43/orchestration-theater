@@ -995,6 +995,10 @@ export const DaemonConfigSchema = z
      * limited). [proposta] `attachment_read_max` is how much of an attachment `read_attachment`
      * returns in one call; `consultant_alternatives` are the Executors tried after the consultant's
      * own when the first cannot take the attachments (an image needs a client that accepts images).
+     * [proposta] `consultant_writes` (P10, N86) is what becomes of the files the consultant wrote in
+     * its worktree of the chat folder: `merge` (default) puts them in the folder, after the check
+     * that each stays inside it; `keep` leaves them on a branch `play/<scenario>/attempts/consult-<n>/1` for
+     * the Producer to read; `discard` drops them (the consultant only answers).
      */
     scenarios: z
       .strictObject({
@@ -1002,6 +1006,7 @@ export const DaemonConfigSchema = z
         attachment_max_size: SizeSchema.or(z.literal(0)).prefault('50MB'),
         attachment_read_max: SizeSchema.prefault('8MB'),
         consultant_alternatives: z.array(PlayExecutorSchema).default([]),
+        consultant_writes: z.enum(['merge', 'keep', 'discard']).prefault('merge'),
       })
       .prefault({}),
     /**

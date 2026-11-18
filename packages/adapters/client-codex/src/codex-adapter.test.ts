@@ -71,6 +71,7 @@ describe('CodexAdapter identity', () => {
       configOptions: ['model', 'thought_level', 'mode'],
       headless: true,
       extensions: [],
+      inputTypes: ['image'],
     });
     expect(adapter.models.discovery).toBe('automatic');
   });

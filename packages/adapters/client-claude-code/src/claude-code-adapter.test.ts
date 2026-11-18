@@ -71,6 +71,7 @@ describe('identity', () => {
       configOptions: ['mode', 'model', 'thought_level'],
       headless: true,
       extensions: [],
+      inputTypes: ['image'],
     });
   });
 
