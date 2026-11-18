@@ -18,7 +18,8 @@ import { pathFinder, selectClients, type ClientSelection } from '../clients.js';
 import { DEFAULT_CLIENT_EXECUTABLES, defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig, type ClientId } from '../config.js';
 import { startDaemon } from '../daemon.js';
-import { createSilentLogger } from '../logger.js';
+import { createLogger, createSilentLogger } from '../logger.js';
+import { Writable } from 'node:stream';
 import { dataPaths, profileDirOf } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeRepo } from '../execution/attempt-fixture.js';
@@ -92,7 +93,8 @@ const MODE_ENV: Readonly<Record<ClientId, string>> = {
 const SOURCE: Readonly<Record<ClientId, string>> = {
   'claude-code': 'statusline file (P6) after one short turn, plus the rate_limit_event of the turn',
   codex: 'app-server account/rateLimits/read (no turn)',
-  opencode: 'local ledger (quota.opencode.mode: ledger) after one short turn',
+  opencode:
+    'local ledger (quota.opencode.mode: ledger) after one short turn; the OpenCode usage_update carries context counters and a cost, not input/output tokens, so a subscription model leaves the ledger at 0% [V: 2026-11-18]',
 };
 const NEEDS_TURN: Readonly<Record<ClientId, boolean>> = {
   'claude-code': true,
@@ -234,11 +236,18 @@ function expectValid(entry: Entry): void {
   }
 }
 
+// `sandbox.mode: off` on purpose [V: 2026-11-18, runs 1 to 3]: the default sandbox (runtime) refuses
+// a profile reached through a symlink (Claude: "Authentication required", cause `permission`) and
+// blocks the OpenAI host (OpenCode: "403 host is not on the allow list", ends `stuck`). This test
+// points at the owner's profile through a link and only reads quota, so it runs the clients
+// without the sandbox; the sandbox has its own real level (`mcp`).
 const CONFIG = parseConfig(`
 backup:
   when: manual
 security:
   unenforced: warn
+sandbox:
+  mode: off
 clients:
   claude-code:
     utilization_unit: auto
@@ -310,14 +319,33 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
       const link = profileDirOf(dataPaths(tmp.dir), ref);
       await mkdir(dirname(link), { recursive: true });
       await symlink(profileSource, link, 'dir');
-      const profile: Profile = { client: id, profile: 'real', id: `${id}/real`, dir: link };
+      const profile: Profile = {
+        client: id,
+        profile: 'real',
+        id: `${id}/real`,
+        dir: link,
+      };
+      // The warnings of the daemon, kept to explain a turn that did not end well.
+      const warnings: string[] = [];
+      const daemonLog = createLogger({
+        level: 'warn',
+        destination: 'stderr',
+        logFile: '',
+        clock: new SystemClock(),
+        stream: new Writable({
+          write(chunk: Buffer, _encoding, done) {
+            warnings.push(chunk.toString('utf8'));
+            done();
+          },
+        }),
+      });
       const daemon = await startDaemon({
         dataDir: tmp.dir,
         config: CONFIG,
         // The clock is the real one: the probes stamp their readings with the wall clock.
         overrides: { vault: new InMemorySecretVault(), launcher },
         clients: productionClients(CONFIG),
-        logger: createSilentLogger(),
+        logger: daemonLog.logger,
         version: '0.0.0-test',
       });
       const target: ProfileTarget = ref;
@@ -354,7 +382,26 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
               prompt: PROMPT,
               timeoutMs: TURN_TIMEOUT_MS,
             });
-            console.log(`[quota-real] ${id}: the turn ended ${outcome.state}`);
+            console.log(
+              `[quota-real] ${id}: the turn ended ${outcome.state} (cause ${(outcome.cause ?? 'none').slice(0, 200)}, stop ${outcome.stopReason ?? 'none'})`,
+            );
+            if (outcome.state !== 'completed') {
+              for (const line of warnings.slice(0, 20)) {
+                console.log(
+                  `[quota-real] ${id}: daemon log ${line.split(profileSource).join('<profile>').slice(0, 600).trim()}`,
+                );
+              }
+              // What the turn did before it ended: the types and a cut of each payload (the
+              // events carry no credential; the profile path is hidden).
+              const events = await daemon.store.events.readFrom(0, 100_000);
+              for (const event of events.filter((one) => one.attemptId === outcome.attemptId)) {
+                const text = JSON.stringify(event.payload)
+                  .split(profileSource)
+                  .join('<profile>')
+                  .slice(0, 400);
+                console.log(`[quota-real] ${id}: event ${event.type} ${text}`);
+              }
+            }
           } finally {
             await dispose();
           }

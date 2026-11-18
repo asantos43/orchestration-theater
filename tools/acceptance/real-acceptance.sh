@@ -487,7 +487,7 @@ if [ "$level" = play ]; then
   echo "  Se o Diretor responde só com texto e não abre peça, a peça falha em cerca de 90 s (antes esperava os 25m)."
 fi
 if [ "$level" = quota ]; then
-  echo "Atenção: o nível quota LÊ a cota real pela sonda do daemon e NÃO provoca esgotamento. Gasta um turno curtíssimo no Claude Code e outro no OpenCode (o modelo de OT_TEST_CLAUDE_MODEL e OT_TEST_OPENCODE_MODEL; um Haiku basta); o Codex é lido pelo app-server, sem turno."
+  echo "Atenção: o nível quota LÊ a cota real pela sonda do daemon e NÃO provoca esgotamento. Roda os clientes com sandbox.mode: off (o sandbox padrão recusa o perfil apontado por link e o host da OpenAI; verificado em 2026-11-18). Gasta um turno curtíssimo no Claude Code e outro no OpenCode (o modelo de OT_TEST_CLAUDE_MODEL e OT_TEST_OPENCODE_MODEL; um Haiku basta); o Codex é lido pelo app-server, sem turno."
   echo "  O Claude Code grava o statusline do P6 no perfil apontado (o daemon instala o comando no settings.json do perfil, como em qualquer sessão); o teste só aponta o perfil por um link numa pasta temporária e nunca o copia nem lê arquivo de credencial."
   if [ -n "${OT_TEST_MINIMAX_KEY_ENV:-}" ]; then echo "  MiniMax: lê o Token Plan com a chave da variável $OT_TEST_MINIMAX_KEY_ENV (o valor nunca sai)."; else echo "  MiniMax: fora (sem OT_TEST_MINIMAX_KEY_ENV)."; fi
   echo "  O relatório sem segredo (cliente, janelas, percentual 0..100, resetsAt, estado, motivo do unknown) vai para ${OT_TEST_QUOTA_OUT:-$log_dir/quota-<hora>.json}; as linhas saem no log com o prefixo [quota-real]."
