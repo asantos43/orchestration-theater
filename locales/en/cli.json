@@ -82,6 +82,7 @@
     "ideaGroupOptions": "Type: approve | edit <new need> | keep <ids in order> | refuse [reason].",
     "ideaGroupBad": "That is not one of the options. Type: approve, edit <new need>, keep <ids> or refuse [reason].",
     "system": {
+      "handoff": "System: attempt {{attemptId}} passed the baton from {{from}} to {{to}} ({{cause}}); the work goes on from the saved state.",
       "recovery": {
         "title": "System: the daemon restarted and reconciled this scenario.",
         "resumed": "  Resumed: {{items}}.",

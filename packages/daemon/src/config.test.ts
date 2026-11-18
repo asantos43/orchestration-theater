@@ -253,6 +253,40 @@ describe('parseConfig, execution keys', () => {
     );
   });
 
+  it('takes resume.package with the deterministic summary as default (N126, P18)', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.package).toEqual({
+        summarize: 'deterministic',
+        max_chars: 48_000,
+        diff: 'stat',
+        diff_max_chars: 12_000,
+        short_output_roles: ['reviewer', 'scriptwriter', 'critic'],
+        short_output: 'redo',
+      });
+    }
+    const set = parseConfig(
+      'resume:\n  package:\n    summarize: director_model\n    diff: full\n    short_output: continue\n    short_output_roles: [author]\n    max_chars: 9000\n',
+    ).resume.package;
+    expect(set).toMatchObject({
+      summarize: 'director_model',
+      diff: 'full',
+      short_output: 'continue',
+      short_output_roles: ['author'],
+      max_chars: 9000,
+      diff_max_chars: 12_000,
+    });
+    expect(parseConfig('resume:\n  package:\n    diff: none\n').resume.package.diff).toBe('none');
+    expect(() => parseConfig('resume:\n  package:\n    summarize: gpt\n')).toThrow(/summarize/);
+    expect(() => parseConfig('resume:\n  package:\n    diff: patch\n')).toThrow(/diff/);
+    expect(() => parseConfig('resume:\n  package:\n    short_output: skip\n')).toThrow(
+      /short_output/,
+    );
+    expect(() => parseConfig('resume:\n  package:\n    short_output_roles: [wizard]\n')).toThrow(
+      /short_output_roles/,
+    );
+    expect(() => parseConfig('resume:\n  package:\n    max_chars: 10\n')).toThrow(/max_chars/);
+  });
+
   it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {
     expect(parseConfig('').delivery).toEqual({
       mode: 'pr',

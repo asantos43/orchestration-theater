@@ -32,6 +32,9 @@ const good: Record<string, unknown> = {
     cause: 'quota_exhausted',
     resetsAt: 1_700_000_000_000,
     checkpointSha: 'abc123',
+    form: 'handoff',
+    from: executor,
+    to: { client: 'codex', profile: 'conta-1', model: 'gpt' },
     ...correlation,
   },
   'session.resumed': {
@@ -116,6 +119,8 @@ describe('session and checkpoint events', () => {
       ['session.update', { sessionId: 's1', update: { kind: 'nope' } }],
       ['session.prompt_finished', { sessionId: 's1', stopReason: 'stop' }],
       ['session.interrupted', { sessionId: 's1', cause: 'cosmic_rays' }],
+      ['session.interrupted', { sessionId: 's1', cause: 'stuck', form: 'restart' }],
+      ['session.interrupted', { sessionId: 's1', cause: 'stuck', to: { client: 'codex' } }],
       ['session.resumed', { ...(good['session.resumed'] as object), form: 'restart' }],
       [
         'session.cancel_escalated',

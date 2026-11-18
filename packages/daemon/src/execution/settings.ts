@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SharedCancelMode } from '@otheater/core';
-import { type DaemonConfig, CLIENT_IDS, sessionMbOf, sessionsPerProcessOf } from '../config.js';
+import {
+  type DaemonConfig,
+  type PACKAGE_DIFF_MODES,
+  type PACKAGE_SHORT_OUTPUT_MODES,
+  type PACKAGE_SUMMARIZE_MODES,
+  CLIENT_IDS,
+  sessionMbOf,
+  sessionsPerProcessOf,
+} from '../config.js';
 import type { ClientCrashCounts, TransientExhausted } from './interruption-policy.js';
 import type { AdmissionSettings, SessionMb } from './admission.js';
 
@@ -36,6 +44,26 @@ export function sessionsPerProcessFor(settings: PoolSettings, client: string): n
   return settings.sessionsPerProcessByClient?.[client] ?? settings.sessionsPerProcess;
 }
 
+/** `resume.package.*` (architecture 5.16, Phase 5, P18): the continuation package of a handoff. */
+export interface PackageSettings {
+  readonly summarize: (typeof PACKAGE_SUMMARIZE_MODES)[number];
+  readonly maxChars: number;
+  readonly diff: (typeof PACKAGE_DIFF_MODES)[number];
+  readonly diffMaxChars: number;
+  readonly shortOutputRoles: readonly string[];
+  readonly shortOutput: (typeof PACKAGE_SHORT_OUTPUT_MODES)[number];
+}
+
+/** The defaults of `resume.package.*` (the configuration has the same ones). */
+export const DEFAULT_PACKAGE_SETTINGS: PackageSettings = {
+  summarize: 'deterministic',
+  maxChars: 48_000,
+  diff: 'stat',
+  diffMaxChars: 12_000,
+  shortOutputRoles: ['reviewer', 'scriptwriter', 'critic'],
+  shortOutput: 'redo',
+};
+
 /** Everything the execution of attempts reads from the configuration, in milliseconds. */
 export interface ExecutionSettings {
   readonly pool: PoolSettings;
@@ -65,6 +93,8 @@ export interface ExecutionSettings {
   readonly clientCrashCounts: ClientCrashCounts;
   /** What the Executor is told when a conversation is reloaded. */
   readonly continuePrompt: string;
+  /** `resume.package.*`. */
+  readonly package: PackageSettings;
 }
 
 /** The execution constants of a validated configuration. */
@@ -101,5 +131,13 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     transientExhausted: config.resume.transient_exhausted,
     clientCrashCounts: config.resume.client_crash_counts,
     continuePrompt: config.resume.continue_prompt,
+    package: {
+      summarize: config.resume.package.summarize,
+      maxChars: config.resume.package.max_chars,
+      diff: config.resume.package.diff,
+      diffMaxChars: config.resume.package.diff_max_chars,
+      shortOutputRoles: config.resume.package.short_output_roles,
+      shortOutput: config.resume.package.short_output,
+    },
   };
 }

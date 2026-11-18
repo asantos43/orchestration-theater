@@ -17,14 +17,23 @@ import {
   type PermissionOutcome,
   type Profile,
   type RolePolicy,
+  type SelectionResult,
   type StopReason,
   type Store,
   type Vcs,
   type WhenExhausted,
 } from '@otheater/core';
-import { buildDaemonEvent, type ExecutorPayload, type InterruptionCause } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type ExecutorPayload,
+  type InterruptionCause,
+  type ScenarioHandoffNotice,
+} from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
+import { executorSelectedPayload } from '../orchestration/executor-selection.js';
 import { CheckpointTracker } from './checkpoints.js';
+import { gatherContinuationPackage, renderContinuationPackage } from './continuation-package.js';
+import type { HandoffPort, HandoffRequest, HandoffTarget } from './handoff.js';
 import { AttemptJournal, type AttemptPatch } from './journal.js';
 import {
   decideInterruption,
@@ -70,6 +79,11 @@ export interface AttemptSpec {
 export interface ResumeContext {
   /** The role again, for the framework tools of the resumed session (see `AttemptSpec.role`). */
   readonly role?: string;
+  /**
+   * The ref the attempt branch was cut from. The continuation package of a handoff shows the
+   * difference against it; without it the package says the difference is not known.
+   */
+  readonly base?: string;
   readonly profile: Profile;
   readonly executor: ExecutorConfig;
   readonly policy: RolePolicy;
@@ -80,6 +94,32 @@ export interface ResumeContext {
 
 export const ATTEMPT_RESULT_STATES = ['completed', 'failed', 'timed_out', 'interrupted'] as const;
 export type AttemptResultState = (typeof ATTEMPT_RESULT_STATES)[number];
+
+/** One passing of the baton inside an attempt (architecture 5.16; Phase 5, P18). */
+export interface HandoffRecord {
+  readonly cause: string;
+  /** Executor ids, `<model>[-<effort>]@<client>/<profile>`. */
+  readonly from: string;
+  readonly to: string;
+  /** The conversation the baton came from; undefined when the previous Executor never opened one. */
+  readonly previousSessionId: string | undefined;
+  /** The policy counted the interruption as an attempt of the demand (`stuck`); the handoff itself spends none. */
+  readonly countedAsAttempt: boolean;
+  /** Size of the first prompt of the new session, in characters. */
+  readonly packageChars: number;
+  /** How much of the package was cut to fit `resume.package.max_chars` (0: nothing, 4: a hard cut). */
+  readonly packageLevel: number;
+}
+
+/** Why a handoff the policy asked for did not happen, when no Executor was there to take it. */
+export interface HandoffWait {
+  /** `no_port`, `no_role`, `no_other_executor`, `waiting`, `selection_failed`, `package_failed`. */
+  readonly reason: string;
+  /** The Executors whose availability may come back (the wait of the selector); empty when none will. */
+  readonly on: readonly string[];
+  /** The earliest known end of the wait (epoch ms); null when no source says. */
+  readonly until: number | null;
+}
 
 /** How an attempt ended for the caller. */
 export interface AttemptOutcome {
@@ -108,6 +148,10 @@ export interface AttemptOutcome {
   readonly decision: InterruptionDecision | undefined;
   /** The end consumes an attempt of the demand: a failure of the agent, not a cause outside it. */
   readonly countsAsAttempt: boolean;
+  /** The batons passed inside this attempt, in order (P18). A handoff spends no attempt of the demand. */
+  readonly handoffs: readonly HandoffRecord[];
+  /** Set when the policy chose a handoff and no Executor took it: the attempt is parked. */
+  readonly handoffWait: HandoffWait | undefined;
 }
 
 /** How an attempt id is built from its parts. */
@@ -134,6 +178,11 @@ export interface AttemptRunnerOptions {
    * quota comes back; without it the reset time of an exhausted quota is unknown.
    */
   readonly quota?: Pick<QuotaService, 'ingestLimitHit'>;
+  /**
+   * The handoff (P18): the next Executor of the role and what the continuation package needs.
+   * Without it a `handoff` decision parks the attempt, as before.
+   */
+  readonly handoff?: HandoffPort;
 }
 
 /** What one go at a session came to. */
@@ -171,7 +220,28 @@ interface Step {
   readonly prompt: string;
   /** Why the conversation is being reloaded. */
   readonly cause: InterruptionCause | undefined;
+  /** Set when the session is the new one of a handoff, with `prompt` the continuation package. */
+  readonly handoff?: {
+    readonly previousSessionId: string | undefined;
+    readonly from: ExecutorPayload;
+  };
 }
+
+/** What `#prepareHandoff` came to: a target with its package, or why nobody takes the work. */
+type Prepared =
+  | {
+      readonly kind: 'ready';
+      readonly target: HandoffTarget;
+      readonly selection: SelectionResult | undefined;
+      /** The package, as the first prompt of the new session. */
+      readonly prompt: string;
+      readonly level: number;
+    }
+  | {
+      readonly kind: 'none';
+      readonly wait: HandoffWait;
+      readonly selection?: SelectionResult;
+    };
 
 interface PendingUpdate {
   readonly sessionId: string;
@@ -180,7 +250,8 @@ interface PendingUpdate {
 
 interface AttemptContext {
   readonly attemptId: string;
-  readonly spec: ResumeContext & {
+  /** Changes when the baton passes: the profile, the configuration and the policy of the new Executor. */
+  spec: ResumeContext & {
     readonly playId: string;
     readonly demandId: string;
     readonly attempt: number;
@@ -192,6 +263,11 @@ interface AttemptContext {
   readonly stop: AbortController;
   readonly deadline: number;
   readonly firstPrompt: string;
+  /** The package the last handoff opened its session with: what a go with no conversation starts from. */
+  handoffPrompt: string | undefined;
+  /** The Executors that worked on the attempt, in order; the next handoff never picks one of them. */
+  readonly used: string[];
+  readonly handoffs: HandoffRecord[];
   sessionId: string | undefined;
   /** `session.opened` was recorded and `session.closed` was not yet. */
   sessionOpen: boolean;
@@ -389,6 +465,15 @@ export class AttemptRunner {
       stop: new AbortController(),
       deadline: clock.now() + timeoutMs,
       firstPrompt,
+      handoffPrompt: undefined,
+      used: [
+        formatExecutorId({
+          model: spec.executor.model,
+          effort: spec.executor.effort ?? null,
+          profileId: spec.profile.id,
+        }),
+      ],
+      handoffs: [],
       sessionId: record.sessionId ?? undefined,
       sessionOpen: false,
       lease: undefined,
@@ -499,11 +584,30 @@ export class AttemptRunner {
           const { journal } = context;
           // The policy of 5.16 decides first, so the event and the row carry what it decided.
           const { decision, free, signals } = await this.#decide(context, ended);
-          await this.#interrupted(context, ended, decision, signals);
-          // Only the resume in place is carried out here. A handoff (P18), a wait for the reset
-          // (P19), the cap's `finish` and `stop` (P11) and the Director's judgment stop the
-          // attempt, and the outcome says which action the policy chose.
-          if (decision.action !== 'resume_native') return this.#parked(context, decision);
+          // A handoff chooses the next Executor and builds the package before the event is
+          // written, so `session.interrupted` already says where the work goes.
+          const handoff =
+            decision.action === 'handoff'
+              ? await this.#prepareHandoff(context, ended, decision)
+              : undefined;
+          await this.#interrupted(
+            context,
+            ended,
+            decision,
+            signals,
+            handoff?.kind === 'ready' ? handoff.target : undefined,
+          );
+          if (handoff?.kind === 'ready') {
+            step = await this.#handoff(context, decision, handoff);
+            continue;
+          }
+          // The resume in place and the handoff are carried out here. A wait for the reset (P19),
+          // the cap's `finish` and `stop` (P11) and the Director's judgment stop the attempt (and
+          // so does a handoff nobody could take), and the outcome says which action the policy
+          // chose.
+          if (decision.action !== 'resume_native') {
+            return this.#parked(context, decision, handoff?.wait ?? noHandoffPort(decision));
+          }
           const resumes = journal.record.resumes;
           // The allowance is recorded in the same write that parks the attempt, so a restart
           // from here on continues counting from what was granted (N67).
@@ -521,7 +625,10 @@ export class AttemptRunner {
           });
           step = {
             resumeSessionId: context.sessionId,
-            prompt: context.sessionId === undefined ? context.firstPrompt : settings.continuePrompt,
+            prompt:
+              context.sessionId === undefined
+                ? (context.handoffPrompt ?? context.firstPrompt)
+                : settings.continuePrompt,
             cause: decision.cause,
           };
         }
@@ -703,7 +810,21 @@ export class AttemptRunner {
         }),
         { state: 'executing', cause: null, sessionId, lastEventAt: now },
       );
-      if (step.resumeSessionId !== undefined) {
+      if (step.handoff !== undefined) {
+        await journal.write(
+          buildDaemonEvent('session.resumed', {
+            sessionId,
+            ...(step.handoff.previousSessionId === undefined
+              ? {}
+              : { previousSessionId: step.handoff.previousSessionId }),
+            form: 'handoff',
+            from: step.handoff.from,
+            to: this.#executor(context),
+            ...(step.cause === undefined ? {} : { cause: step.cause }),
+            ...this.#correlation(context),
+          }),
+        );
+      } else if (step.resumeSessionId !== undefined) {
         await journal.write(
           buildDaemonEvent('session.resumed', {
             sessionId,
@@ -1087,6 +1208,204 @@ export class AttemptRunner {
     }
   }
 
+  // ---- the handoff (P18) ----
+
+  /**
+   * Chooses the next Executor of the role and builds the continuation package, before anything of
+   * the interruption is written. Returns undefined when the runner has no port (the attempt is
+   * parked, as it always was). A port with nobody to take the work, an error of the selection or
+   * of the package leave the attempt parked, with the reason in `AttemptOutcome.handoffWait`.
+   */
+  async #prepareHandoff(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+    decision: InterruptionDecision,
+  ): Promise<Prepared | undefined> {
+    const port = this.#options.handoff;
+    if (port === undefined) return undefined;
+    const { journal, spec } = context;
+    const request: HandoffRequest = {
+      attemptId: context.attemptId,
+      playId: spec.playId,
+      demandId: spec.demandId,
+      role: spec.role,
+      cause: decision.cause,
+      from: this.#executorId(context),
+      used: [...context.used],
+    };
+    const logger = this.#options.logger;
+    let choice: Awaited<ReturnType<HandoffPort['choose']>>;
+    try {
+      choice = await port.choose(request);
+    } catch (error) {
+      logger.warn({ err: error, attemptId: context.attemptId }, 'the handoff could not choose');
+      return { kind: 'none', wait: { reason: 'selection_failed', on: [], until: null } };
+    }
+    if (choice.kind === 'none') {
+      const { selection } = choice;
+      return {
+        kind: 'none',
+        wait: {
+          reason: choice.reason,
+          on: selection?.wait?.on ?? [],
+          until: selection?.wait?.until ?? null,
+        },
+        ...(selection === undefined ? {} : { selection }),
+      };
+    }
+    // The package reads the log of the attempt: what the session wrote must be in it.
+    await journal.flush();
+    try {
+      const { settings } = this.#options;
+      const to = choice.target.executorId;
+      const pkg = await gatherContinuationPackage(
+        {
+          store: this.#options.store,
+          vcs: this.#options.vcs,
+          secretPaths: port.secretPaths ?? [],
+          home: port.home,
+        },
+        {
+          attemptId: context.attemptId,
+          playId: spec.playId,
+          demandId: spec.demandId,
+          role: spec.role,
+          worktree: context.worktree,
+          branch: context.branch,
+          base: spec.base,
+          checkpoint: ended.sha ?? journal.record.lastCheckpoint ?? null,
+          firstPrompt: context.firstPrompt,
+          prefix: await port.prefixOf(spec.role),
+          reason: {
+            cause: decision.cause,
+            policy: decision.reason,
+            detail: ended.detail,
+            from: request.from,
+            to,
+          },
+          settings: settings.package,
+        },
+        port.summarizer,
+      );
+      const rendered = renderContinuationPackage(pkg, {
+        maxChars: settings.package.maxChars,
+        secretPaths: port.secretPaths ?? [],
+        home: port.home,
+      });
+      return {
+        kind: 'ready',
+        target: choice.target,
+        selection: choice.selection,
+        prompt: rendered.text,
+        level: rendered.level,
+      };
+    } catch (error) {
+      logger.warn({ err: error, attemptId: context.attemptId }, 'the continuation package failed');
+      return {
+        kind: 'none',
+        wait: { reason: 'package_failed', on: [], until: null },
+        ...(choice.selection === undefined ? {} : { selection: choice.selection }),
+      };
+    }
+  }
+
+  /**
+   * Passes the baton (architecture 5.16): the registry goes `interrupted` (written by the caller),
+   * `awaiting_resume`, then `resuming` with the profile of the new Executor and no conversation,
+   * and the next go opens a session with the package as its prompt (`executing`). The attempt is
+   * the same (same id, same worktree and branch, same `attempt + step` keys of the effects), so no
+   * attempt of the demand is spent and `resume.max_resumes` is not touched. The Executor that
+   * gives the baton never gets it back: it stays in `context.used`.
+   */
+  async #handoff(
+    context: AttemptContext,
+    decision: InterruptionDecision,
+    ready: Extract<Prepared, { kind: 'ready' }>,
+  ): Promise<Step> {
+    const { journal } = context;
+    const { target } = ready;
+    const from = this.#executor(context);
+    const fromId = this.#executorId(context);
+    const previousSessionId = context.sessionId;
+    await journal.write(undefined, { state: 'awaiting_resume', cause: decision.cause });
+    context.spec = retarget(context.spec, target);
+    context.used.push(target.executorId);
+    context.sessionId = undefined;
+    context.handoffPrompt = ready.prompt;
+    // The counters of the allowance belong to the Executor that stopped.
+    context.lastError = undefined;
+    context.crashes = 0;
+    context.handoffs.push({
+      cause: decision.cause,
+      from: fromId,
+      to: target.executorId,
+      previousSessionId,
+      countedAsAttempt: decision.countsAsAttempt,
+      packageChars: ready.prompt.length,
+      packageLevel: ready.level,
+    });
+    // No conversation is left to reload: a restart now finds an attempt with no session.
+    await journal.write(undefined, {
+      state: 'resuming',
+      client: target.profile.client,
+      profile: target.profile.profile,
+      sessionId: null,
+    });
+    if (ready.selection !== undefined) {
+      await journal.write(
+        buildDaemonEvent(
+          'executor.selected',
+          executorSelectedPayload(ready.selection, {
+            playId: context.spec.playId,
+            now: this.#options.clock.now(),
+          }),
+        ),
+      );
+    }
+    await this.#announceHandoff(context, {
+      cause: decision.cause,
+      fromExecutor: fromId,
+      toExecutor: target.executorId,
+    });
+    return {
+      resumeSessionId: undefined,
+      prompt: ready.prompt,
+      cause: decision.cause,
+      handoff: { previousSessionId, from },
+    };
+  }
+
+  /**
+   * The system message of the handoff for the chat of the scenario: one `scenario.system_message`
+   * in the log and the same payload to the port, which shows it. It never stops the handoff.
+   */
+  async #announceHandoff(
+    context: AttemptContext,
+    facts: { cause: string; fromExecutor: string; toExecutor: string },
+  ): Promise<void> {
+    const { store, logger, handoff } = this.#options;
+    const { spec } = context;
+    try {
+      const play = await store.plays.get(spec.playId);
+      if (play === undefined) return;
+      const notice: ScenarioHandoffNotice = {
+        scenarioId: play.scenarioId,
+        kind: 'handoff',
+        playId: spec.playId,
+        attemptId: context.attemptId,
+        role: spec.role ?? null,
+        ...facts,
+      };
+      await store.events.append({
+        ...buildDaemonEvent('scenario.system_message', notice),
+        scenarioId: play.scenarioId,
+      });
+      handoff?.announce?.(notice);
+    } catch (error) {
+      logger.warn({ err: error, attemptId: context.attemptId }, 'the handoff message was not sent');
+    }
+  }
+
   // ---- ends ----
 
   async #checkpoint(context: AttemptContext, detail: string): Promise<string | undefined> {
@@ -1137,15 +1456,18 @@ export class AttemptRunner {
     ended: Extract<Ended, { kind: 'interrupted' }>,
     decision: InterruptionDecision,
     signals: readonly string[],
+    to?: HandoffTarget,
   ): Promise<void> {
-    await this.#interruptionEvent(context, decision, ended.detail, ended.sha, signals);
+    await this.#interruptionEvent(context, decision, ended.detail, ended.sha, signals, to);
     await this.#closed(context, 'interrupted', { state: 'interrupted', cause: decision.cause });
   }
 
   /**
    * `session.interrupted` and the row of `interruptions`, in one transaction: the event carries the
    * cause (and the reset time, when known), the row what the policy decided. Both need an opened
-   * session; an error before any session existed leaves neither.
+   * session; an error before any session existed leaves neither. The event says the form the
+   * policy chose and the Executors: `from` is the one that stopped, `to` the one the work goes to
+   * (the same one for a native resume, the chosen one for a handoff; absent when it is not known).
    */
   async #interruptionEvent(
     context: AttemptContext,
@@ -1153,14 +1475,38 @@ export class AttemptRunner {
     detail: string,
     sha: string | undefined,
     signals: readonly string[],
+    target?: HandoffTarget,
   ): Promise<void> {
     const { sessionId, sessionOpen, spec } = context;
-    if (sessionId === undefined || !sessionOpen) return;
+    if (sessionId === undefined) return;
+    if (!sessionOpen) {
+      // The conversation never opened (a native reload that failed): its row, written when the
+      // session dropped, said `native`; the baton changes it to what really happened.
+      if (target === undefined) return;
+      const last = (await this.#options.store.interruptions.list({ sessionId })).at(-1);
+      if (last === undefined) return;
+      await this.#options.store.interruptions.update(last.id, {
+        resumeForm: 'handoff',
+        toExecutor: target.executorId,
+        countedAsAttempt: decision.countsAsAttempt,
+        signals: [...last.signals, `action:${decision.action}`],
+      });
+      return;
+    }
+    const to =
+      target === undefined
+        ? decision.form === 'native'
+          ? this.#executor(context)
+          : undefined
+        : executorPayloadOf(target);
     await context.journal.write(
       buildDaemonEvent('session.interrupted', {
         sessionId,
         cause: decision.cause,
         detail,
+        ...(decision.form === null ? {} : { form: decision.form }),
+        from: this.#executor(context),
+        ...(to === undefined ? {} : { to }),
         ...(decision.resetsAt === null ? {} : { resetsAt: decision.resetsAt }),
         ...(sha === undefined ? {} : { checkpointSha: sha }),
         ...this.#correlation(context),
@@ -1173,7 +1519,7 @@ export class AttemptRunner {
         signals: [...signals],
         resumeForm: decision.form,
         fromExecutor: this.#executorId(context),
-        toExecutor: null,
+        toExecutor: target?.executorId ?? null,
         countedAsAttempt: decision.countsAsAttempt,
       },
     );
@@ -1245,10 +1591,14 @@ export class AttemptRunner {
    * cap's `finish` and `stop`, the Director's judgment). The registry keeps it as `interrupted`
    * and the outcome says what the policy chose.
    */
-  async #parked(context: AttemptContext, decision: InterruptionDecision): Promise<AttemptOutcome> {
+  async #parked(
+    context: AttemptContext,
+    decision: InterruptionDecision,
+    wait?: HandoffWait,
+  ): Promise<AttemptOutcome> {
     await context.journal.write(undefined, { state: 'interrupted', cause: decision.cause });
     await context.journal.flush();
-    return this.#outcome(context, 'interrupted', decision.cause, undefined, true, decision);
+    return this.#outcome(context, 'interrupted', decision.cause, undefined, true, decision, wait);
   }
 
   #outcome(
@@ -1258,6 +1608,7 @@ export class AttemptRunner {
     stopReason: StopReason | undefined,
     needsDecision: boolean,
     decision?: InterruptionDecision,
+    handoffWait?: HandoffWait,
   ): AttemptOutcome {
     const record = context.journal.record;
     return {
@@ -1273,8 +1624,43 @@ export class AttemptRunner {
       needsDecision,
       decision,
       countsAsAttempt: state === 'failed' || decision?.countsAsAttempt === true,
+      handoffs: [...context.handoffs],
+      handoffWait,
     };
   }
+}
+
+/** The wait an attempt is left with when the policy chose a handoff and the runner has no port for it. */
+function noHandoffPort(decision: InterruptionDecision): HandoffWait | undefined {
+  return decision.action === 'handoff' ? { reason: 'no_port', on: [], until: null } : undefined;
+}
+
+function executorPayloadOf(target: HandoffTarget): ExecutorPayload {
+  const { profile, executor } = target;
+  return {
+    client: profile.client,
+    profile: profile.profile,
+    model: executor.model,
+    ...(executor.effort === undefined ? {} : { effort: executor.effort }),
+    ...(executor.mode === undefined ? {} : { mode: executor.mode }),
+  };
+}
+
+/** The spec of the attempt with the Executor of the handoff in place of the one that stopped. */
+function retarget(spec: AttemptContext['spec'], target: HandoffTarget): AttemptContext['spec'] {
+  return {
+    playId: spec.playId,
+    demandId: spec.demandId,
+    attempt: spec.attempt,
+    ...(spec.role === undefined ? {} : { role: spec.role }),
+    ...(spec.base === undefined ? {} : { base: spec.base }),
+    ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
+    profile: target.profile,
+    executor: target.executor,
+    policy: target.policy,
+    ...(target.whenExhausted === undefined ? {} : { whenExhausted: target.whenExhausted }),
+    ...(target.inFlight === undefined ? {} : { inFlight: target.inFlight }),
+  };
 }
 
 function ids(record: AttemptRecord): { playId: string; demandId: string; attempt: number } {

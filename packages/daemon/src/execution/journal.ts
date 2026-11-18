@@ -12,6 +12,8 @@ import type {
 export type AttemptPatch = Partial<
   Pick<
     AttemptRecordInput,
+    | 'client'
+    | 'profile'
     | 'state'
     | 'cause'
     | 'sessionId'

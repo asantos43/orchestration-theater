@@ -10,6 +10,7 @@ import {
   parseAllowEntry,
   ProjectCommandSchema,
   PROMPT_ORDER_MODES,
+  ROLE_IDS,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
@@ -99,6 +100,22 @@ export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
+
+/**
+ * `resume.package.summarize` (N126, decided 2026-11-18): who writes the long summary of the
+ * continuation package. `deterministic` (default) builds it from the events and spends no quota;
+ * `director_model` also asks the cheap model of the Director through a port, and the deterministic
+ * summary stays in the package as the source of truth.
+ */
+export const PACKAGE_SUMMARIZE_MODES = ['deterministic', 'director_model'] as const;
+/** [proposta] (P18) How much of the diff of the worktree the package carries. */
+export const PACKAGE_DIFF_MODES = ['full', 'stat', 'none'] as const;
+/**
+ * [proposta] (P18) What the handoff does in a role of short output (Reviewer, Screenwriter,
+ * Critic): `redo` gives the work again to the new Executor with the partial notes; `continue`
+ * treats it like any other role.
+ */
+export const PACKAGE_SHORT_OUTPUT_MODES = ['redo', 'continue'] as const;
 /**
  * [proposta] `quota.probe.delivery`: how the `QuotaService` takes the readings of a probe. `both`
  * (default) watches the probes that can push and also polls `read` on a timer; `push` only
@@ -1156,6 +1173,29 @@ export const DaemonConfigSchema = z
           .string()
           .min(1)
           .default('Continue the task from where you stopped. Do not start over.'),
+        /** The continuation package of a handoff (architecture 5.16, Phase 5, P18). */
+        package: z
+          .strictObject({
+            /** N126 (decided): see {@link PACKAGE_SUMMARIZE_MODES}. */
+            summarize: z.enum(PACKAGE_SUMMARIZE_MODES).default('deterministic'),
+            /**
+             * [proposta] Largest size of the package text, in characters (about four per token).
+             * Past it the package gives up detail in a fixed order (the diff text, then the long
+             * lists); the demand, the orders and the instruction stay.
+             */
+            max_chars: z.int().min(2000).default(48_000),
+            /** [proposta] How much of the diff goes in: see {@link PACKAGE_DIFF_MODES}. */
+            diff: z.enum(PACKAGE_DIFF_MODES).default('stat'),
+            /** [proposta] Largest size of the diff text, with `diff: full`. */
+            diff_max_chars: z.int().min(0).default(12_000),
+            /** [proposta] Roles of short output; see {@link PACKAGE_SHORT_OUTPUT_MODES}. */
+            short_output_roles: z
+              .array(z.enum(ROLE_IDS))
+              .default(['reviewer', 'scriptwriter', 'critic']),
+            /** [proposta] What the handoff does in those roles. */
+            short_output: z.enum(PACKAGE_SHORT_OUTPUT_MODES).default('redo'),
+          })
+          .prefault({}),
       })
       .prefault({})
       .transform((resume) => {
@@ -1175,6 +1215,7 @@ export const DaemonConfigSchema = z
           transient_exhausted: resume.transient_exhausted,
           client_crash_counts: resume.client_crash_counts,
           continue_prompt: resume.continue_prompt,
+          package: resume.package,
         };
       }),
     /**
