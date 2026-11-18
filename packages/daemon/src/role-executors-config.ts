@@ -2,13 +2,18 @@
 import {
   API_FALLBACK_MODES,
   CAPABILITY_CHECK_MODES,
+  CROSS_CHECK_MODES,
   CROSS_CLIENT_MODES,
   EFFORT_LEVELS,
   FIXED_PROVIDER_OF_CLIENT,
+  NEAR_LIMIT_MODES,
   ON_REGISTER_MODES,
   PRESET_SCOPES,
   PROFILE_NAME_PATTERN,
+  RETRY_DIVERSITY_MODES,
   ROLE_PRESET_NAMES,
+  SELECTION_STRATEGIES,
+  UNKNOWN_QUOTA_MODES,
   WHEN_EXHAUSTED_MODES,
   parseContextSize,
   parseProfileId,
@@ -230,3 +235,30 @@ export const ExecutorsConfigSchema = z
     }
     return { cross_client, on_register, entries };
   });
+
+/**
+ * `selection` (architecture 5.7; Phase 5, P15): how the daemon picks among the Executors of a role.
+ * `strategy` (N130) and `cross_check` are the architecture's; the defaults are its defaults.
+ * [proposta] `unknown_quota` and `near_limit` are the keys N124 decided (`allow` and `keep_order`),
+ * and `retry_diversity` and `context_reserve` are keys this passage adds so no default is hardcoded:
+ * `retry_diversity` is how a retry starts after the Executor that failed (`rotate`: the 5.7 rule,
+ * wrapping around), `context_reserve` the tokens the client keeps for its own prompt and tools,
+ * which the prompt of a demand must leave free in the window (0 until measured).
+ */
+export const SelectionConfigSchema = z.strictObject({
+  strategy: z
+    .enum(SELECTION_STRATEGIES, oneOf('strategy', SELECTION_STRATEGIES))
+    .default('ordered'),
+  cross_check: z
+    .enum(CROSS_CHECK_MODES, oneOf('cross_check', CROSS_CHECK_MODES))
+    .default('prefer_other_provider'),
+  unknown_quota: z
+    .enum(UNKNOWN_QUOTA_MODES, oneOf('unknown_quota', UNKNOWN_QUOTA_MODES))
+    .default('allow'),
+  near_limit: z.enum(NEAR_LIMIT_MODES, oneOf('near_limit', NEAR_LIMIT_MODES)).default('keep_order'),
+  retry_diversity: z
+    .enum(RETRY_DIVERSITY_MODES, oneOf('retry_diversity', RETRY_DIVERSITY_MODES))
+    .default('rotate'),
+  context_reserve: ContextSchema.default(0),
+});
+export type SelectionConfig = z.infer<typeof SelectionConfigSchema>;
