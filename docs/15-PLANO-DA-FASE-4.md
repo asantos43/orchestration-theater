@@ -201,12 +201,12 @@ Ordem em ondas **[proposta]**:
 ### P4. Camada 3: porta `Sandbox` e `sandbox-runtime` (§5.8)
 
 **Escopo:**
-- Porta `Sandbox` em `core` **[proposta]**: recebe a política do papel e o comando do Executor e devolve o comando embrulhado. Também declara o `SandboxCapabilities` da máquina (`writeScope`, `network`).
+- Porta `Sandbox` em `core` **[proposta]**: recebe a política do papel e o comando do Executor e devolve o comando embrulhado. Também declara o `SandboxCapabilities` da máquina (`nativeTools`, `nativeShell`, `writeScope`, `network`; os dois primeiros desde a N128, porque a sandbox conta como a camada `os` do shell e das ferramentas de um cliente que não consegue removê-los, como o Codex).
 - Adaptador `adapters/sandbox-srt` sobre o `sandbox-runtime` 0.0.81 (N93), para Linux e macOS:
   - escrita só no worktree, nas pastas do perfil do cliente e numa pasta temporária própria;
   - rede negada por padrão, com a lista de domínios do papel e os do provedor do cliente;
   - leitura negada nos caminhos de segredo (a mesma lista do `browser.secret_paths`, P6) **[proposta]**.
-- O `compose.ts` passa o `SandboxCapabilities` à `guarantee()`. Com a camada 3 ativa, `writeScope` e `network` deixam de precisar de `security.unenforced: warn`.
+- O `compose.ts` passa o `SandboxCapabilities` à `guarantee()`. Com a camada 3 ativa, `nativeTools`, `nativeShell`, `writeScope` e `network` deixam de precisar de `security.unenforced: warn` (N128; antes só `writeScope` e `network`, e o Codex terminava `interrupted/permission` na rodada real de 2026-11-17 **[V]**). Sem sandbox, o `refuse` continua.
 - As cascas (P3) também rodam dentro da sandbox.
 - Chaves **[proposta]**: `sandbox.mode: runtime | off`, padrão `runtime` onde houver adaptador; `sandbox.extra_write_paths` e `sandbox.extra_domains`.
 - **Windows:** fica como portão (N94), e a fase fecha em Linux. O passo só garante que o daemon no Windows diga que a camada 3 falta e siga o `security.unenforced`, que por padrão recusa. A medição dos itens 9 e 12 da Fase 0 fica para quando houver uma máquina Windows.

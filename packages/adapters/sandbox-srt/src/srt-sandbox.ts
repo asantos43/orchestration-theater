@@ -103,9 +103,19 @@ export class SrtSandbox implements Sandbox {
     return this.#tempDir;
   }
 
+  /**
+   * The fields of the `RolePolicy` this sandbox counts as the `os` layer where it works (the order
+   * is the one of `ROLE_POLICY_FIELDS`). Besides `writeScope` and `network`, which it confines
+   * directly, it counts for `nativeTools` and `nativeShell`: a client with no way to remove its
+   * shell or its native tools (Codex) is confined by the operating system instead, as architecture
+   * 5.2 already says ("Codex: ['os']", "Claude no Linux: nativeShell -> ['client', 'os']"). Owner's
+   * decision of 2026-11-17 ("Sandbox conta", N128). It is not a guarantee that the tool is removed:
+   * the command still runs, only inside the confinement. Without a mechanism (Windows, N94) the
+   * list is empty and `security.unenforced: refuse` keeps refusing.
+   */
   capabilities(): SandboxCapabilities {
     return SUPPORTED_PLATFORMS.includes(this.#platform)
-      ? { fields: ['writeScope', 'network'] }
+      ? { fields: ['nativeTools', 'nativeShell', 'writeScope', 'network'] }
       : { fields: [] };
   }
 
