@@ -105,6 +105,31 @@ export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
  * watches (a probe without `watch` is not used); `poll` only calls `read` on a timer.
  */
 export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
+/**
+ * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
+ * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
+ * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
+ * by the use of the month.
+ */
+export const USAGE_SUBSCRIPTION_DISPLAY_MODES = [
+  'quota_and_equivalent',
+  'quota',
+  'prorated',
+] as const;
+/**
+ * [proposta] `usage.cost_source` (5.6, P10): where the cost of a turn comes from.
+ * `client_then_pricing` (default) takes the cost the client reports and prices the tokens with the
+ * `pricing` table when it reports none; `pricing_table` always prices the tokens; `provider_billing`
+ * would read the usage API of the provider ([a confirmar por provedor]): it is accepted here, but
+ * no adapter exists yet, so the service works as `client_then_pricing` and says so in the log.
+ */
+export const USAGE_COST_SOURCE_MODES = [
+  'client_then_pricing',
+  'pricing_table',
+  'provider_billing',
+] as const;
+/** `usage.api_gateway` (5.6): a gateway that meters the API traffic. Off in v1; no other mode yet. */
+export const USAGE_API_GATEWAY_MODES = ['off'] as const;
 
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
@@ -658,6 +683,20 @@ export type PlayExecutor = z.infer<typeof PlayExecutorSchema>;
 export const PagesPerStepSchema = z.union([z.literal('all'), z.int().min(1)]);
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+const PriceRatesConfigSchema = z.strictObject({
+  input_per_mtok: z.number().min(0),
+  output_per_mtok: z.number().min(0),
+  cache_read_per_mtok: z.number().min(0).optional(),
+  cache_write_per_mtok: z.number().min(0).optional(),
+});
+
+/** One entry of `pricing` (architecture 5.6): the price of a model in US$ per million tokens. */
+export const ModelPriceConfigSchema = PriceRatesConfigSchema.extend({
+  cached_in_input: z.boolean().optional(),
+  long_context: PriceRatesConfigSchema.extend({ over_tokens: z.int().min(1) }).optional(),
+});
+export type ModelPriceConfig = z.infer<typeof ModelPriceConfigSchema>;
 
 /**
  * `command` of a client: the executable (a name looked up in `PATH`, or a path) and its arguments.
@@ -1275,6 +1314,30 @@ export const DaemonConfigSchema = z
           .prefault({}),
       })
       .prefault({}),
+    /**
+     * Consumption and cost in money (architecture 5.6; P10). `monthly_price_usd` is the monthly
+     * price of the plan of a subscription profile, by profile id (`<client>/<profile>`), which the
+     * `prorated` display divides by the use of the month [proposta]: the architecture puts it "in
+     * the profile", and `profiles.<id>` does not exist as a block yet (P11 brings it with the cap).
+     */
+    usage: z
+      .strictObject({
+        subscription_display: z
+          .enum(USAGE_SUBSCRIPTION_DISPLAY_MODES)
+          .default('quota_and_equivalent'),
+        cost_source: z.enum(USAGE_COST_SOURCE_MODES).default('client_then_pricing'),
+        api_gateway: z.enum(USAGE_API_GATEWAY_MODES).default('off'),
+        monthly_price_usd: z.record(z.string().min(1), z.number().gt(0)).default({}),
+      })
+      .prefault({}),
+    /**
+     * The price of a model, in US$ per million tokens, by model id: it adds to or replaces the
+     * entry of the table that ships with the version (architecture 5.6, `pricing`). A model with
+     * no entry in either has an unknown cost, never US$ 0. `cached_in_input` says the client counts
+     * the cached tokens inside the input (OpenAI); `long_context` is a second card for a prompt
+     * above `over_tokens` [proposta].
+     */
+    pricing: z.record(z.string().min(1), ModelPriceConfigSchema).default({}),
     ui: z
       .strictObject({
         locale: z.enum(LOCALE_SETTINGS).default('auto'),

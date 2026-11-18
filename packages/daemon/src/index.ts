@@ -19,5 +19,6 @@ export * from './recovery/backup.js';
 export * from './recovery/restore.js';
 export * from './recovery/retention.js';
 export * from './recovery/schedule.js';
+export * from './usage/index.js';
 export * from './version.js';
 export * from './workspace/index.js';
