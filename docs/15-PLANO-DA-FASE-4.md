@@ -90,7 +90,7 @@ Aprovadas pelo dono em 2026-11-17 (N93). A versão é fixa, e as duas foram publ
 | P8 | Fila de ideias | P0 | P1, P3, P7 | concluído (PR #78) |
 | P9 | `delivery.mode: ask` com alguém olhando (N89) | P7 | P5, P10 | concluído (PR #87) |
 | P10 | Consultor: pasta do chat, pesquisa e imagem (N86) | P3, P6 | P5, P9 | concluído (PR #88) |
-| P11 | Aceite da fase | todos | nada | pendente |
+| P11 | Aceite da fase | todos | nada | concluído (2026-11-18; resultado na §10 da arquitetura) |
 | Medição N115 | MCP do daemon alcançável por um cliente confinado (rodada real curta; se falhar, ponte por soquete Unix) | P4 | P2, P6, P7, P8 | **concluído (PR #85)**: medido em 2026-11-17 [V], ponte pelo proxy da biblioteca (`sandbox.mcp_bridge`), aceita pelo dono; cliente real confirmado [V] (PR #86) |
 
 Ordem em ondas **[proposta]**:
@@ -377,6 +377,19 @@ Ordem em ondas **[proposta]**:
 - O nível `escape` real nos três clientes, rodado pelo dono ou com o ok dele para cada rodada. O resultado, com data e **[V]**, entra na §10.
 
 **Aceite:** todos os itens do critério de aceite da Fase 4 na §10.
+
+**Como ficou (2026-11-18, [V]):**
+- **Fuga real:** a suíte passou nos três clientes, com a sandbox `runtime` e `unenforced: refuse`. Claude Code (Haiku) e OpenCode (`openai/gpt-5.6-luna`) rodaram em 2026-11-17, com os nove pedidos num turno. O Codex (`gpt-5.6-luna`) rodou em 2026-11-18, com uma tentativa por pedido (`OT_TEST_ESCAPE_TURNS=each`), porque o `cancel` do `codex-acp` 2.6.0 encerra o turno. Em todos, nada ficou fora do worktree, o servidor do teste não recebeu nenhum pedido e o controle foi criado.
+- **Nível `mcp`:** passou nos três clientes, o Codex depois do PR #93.
+- **Navegador, perfil `software` e fila de ideias:** passaram com o agente falso no P6 (`browser/acceptance.test.ts`), no P7 (`orchestration/project-profile-e2e.test.ts`) e no P8 (`ideas/ideas-e2e.test.ts`), e rodam na CI.
+- **Defeitos encontrados e corrigidos:**
+  - a garantia curta do Codex, resolvida pela N128;
+  - o lock do OpenCode em `state`, resolvido pelo isolamento padrão `data`, `config` e `state`;
+  - `sandbox.mode: off` nos testes reais;
+  - o `FakeClock`, que travava o prazo da tentativa;
+  - a aprovação MCP do Codex (PR #93).
+- **Pergunta nova:** dentro da sandbox `runtime`, o shell nativo do Codex não roda nenhum comando (o Codex diz que não consegue criar um user namespace; a causa exata está **[N]**). A pergunta é a N129.
+- O detalhe por cliente está na §10 da arquitetura. A Fase 4 está fechada.
 
 ## Decisões que surgem deste plano
 

@@ -41,8 +41,9 @@ import { permissionsOf, transcriptOf } from './escape-fixture.js';
  * reply of the model are printed (`[mcp-real]`), so a failure says what the client saw.
  *
  * [V] Claude Code with the Haiku, `acceptEdits` and the sandbox: passed on 2026-11-17 (N115).
- * Codex and OpenCode: [N] until a run of the `mcp` level. Nothing here reads or prints a
- * credential, and the token of the session only travels to the client.
+ * OpenCode with an OpenAI model and the sandbox: passed on 2026-11-17. Codex with an OpenAI model
+ * and the sandbox: passed on 2026-11-18, after its MCP approval went through layer 2 (PR #93).
+ * Nothing here reads or prints a credential, and the token of the session only travels to the client.
  */
 
 const flags = realClientFlags();

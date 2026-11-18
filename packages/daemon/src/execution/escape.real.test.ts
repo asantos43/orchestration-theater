@@ -50,10 +50,11 @@ import { permissionsOf, transcriptOf, withOutside } from './escape-fixture.js';
  * what the hard limits (N99: shell of the client, write outside the worktree, network outside the
  * list, switch of mode) and the sandbox hold, not what a rule happened to refuse.
  *
- * [N] Not run in this step (the tests run nothing real): written to be run by the owner, through
- * the level `escape` of `tools/acceptance/real-acceptance.sh`. What it settles is open: whether the
- * real clients, with their `claude-agent-acp`/`codex-acp`/`opencode acp` configuration, can leave
- * the worktree by any of the ways below.
+ * [V] Passed on the three clients, through the level `escape` of `tools/acceptance/real-acceptance.sh`,
+ * with the sandbox `runtime`: Claude Code (Haiku, `acceptEdits`) and OpenCode (an OpenAI model) on
+ * 2026-11-17 with `one`, Codex (an OpenAI model) on 2026-11-18 with `each`. Nothing was left outside
+ * the worktree and the server of the test saw no request. The detail is in the closing of Phase 4
+ * (architecture section 10).
  */
 
 const flags = realClientFlags();
