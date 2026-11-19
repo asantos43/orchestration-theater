@@ -232,8 +232,15 @@ describe('several sessions on one fake agent process, end to end', () => {
 
   it('one session ending while the other goes on, then the last one ends the process', async () => {
     const r = await started();
-    const a = await r.adapter.openSession(profile, policy, r.cwd, r.via);
-    const b = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+    // The fake agent answers the cancel; a grace long enough for a loaded runner keeps the kill of
+    // a deaf client (the 300 ms of the rig) out of this test, which is about the answer.
+    const via = new AcpTransport({
+      cancelGraceMs: 10_000,
+      killGraceMs: 1000,
+      startTimeoutMs: 10_000,
+    });
+    const a = await r.adapter.openSession(profile, policy, r.cwd, via);
+    const b = await r.adapter.openSession(profile, policy, r.cwd, via);
     expect(r.alive()).toBe(1);
     const seenB: string[] = [];
     b.onUpdate((update) => seenB.push(text(update)));

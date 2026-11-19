@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { InvalidInput } from '@otheater/core';
 
@@ -116,15 +116,46 @@ export async function ensureProfileFiles(
   await mkdir(layout.dbDir, { recursive: true, mode: 0o700 });
   if (profileConfig === null || !homes.includes('config')) return;
   const text = `${JSON.stringify(profileConfig, null, 2)}\n`;
-  let current: string | undefined;
-  try {
-    current = await readFile(layout.configFile, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  if (current === text) return;
+  if ((await currentText(layout.configFile)) === text) return;
   await mkdir(join(layout.homes.config, 'opencode'), { recursive: true, mode: 0o700 });
   const temporary = `${layout.configFile}.${randomUUID()}.tmp`;
   await writeFile(temporary, text, { mode: 0o600 });
-  await rename(temporary, layout.configFile);
+  try {
+    await replaceWith(temporary, layout.configFile, text);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+async function currentText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return undefined;
+  }
+}
+
+/** Codes of a rename that Windows refuses while another call holds the target open for a moment. */
+const BUSY = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RENAME_TRIES = 10;
+
+/**
+ * Puts `temporary` in place of `target`. Two calls on one profile at once (a logout and a probe,
+ * say) write the same text: on Windows the rename of one fails while the other reads or renames
+ * the target (EPERM, seen on the CI 2026-11-19), so a busy target is tried again, and a target that
+ * already holds the text is done.
+ */
+async function replaceWith(temporary: string, target: string, text: string): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await rename(temporary, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (!BUSY.has(code) || attempt >= RENAME_TRIES) throw error;
+    }
+    if ((await currentText(target).catch(() => undefined)) === text) return;
+    await new Promise((resolve) => setTimeout(resolve, 20 * attempt));
+  }
 }

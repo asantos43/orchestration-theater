@@ -407,7 +407,10 @@ describe('AcpTransport, several sessions on one process', () => {
 
   it('cancel of one session ends its turn; the other turn and the process go on', async () => {
     const r = rig();
-    const { transport } = transportOf();
+    // The stub answers the cancel, and this test is about that answer: with the 100 ms grace of the
+    // other tests a loaded runner (seen on main, 2026-11-19) answers late, the transport kills the
+    // tree as it should for a deaf client, and the other session dies with it.
+    const { transport } = transportOf({ cancelGraceMs: 10_000 });
     const a = await openOn(transport, r);
     const b = await openOn(transport, r);
     const runningA = a.prompt(plain('hang'));
