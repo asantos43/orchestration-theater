@@ -952,8 +952,9 @@ function opencode(
       : { command: { cmd: command.cmd, args: command.args ?? OPENCODE_DEFAULT_ARGS } }),
     // N56: the pool section decides how OpenCode shares its processes.
     processModel: config.pool.opencode.process_model,
-    // P8: the local accounting of the OpenCode quota, only when the owner turns it on.
-    ...(config.quota.opencode.mode === 'ledger'
+    // P8: the local accounting of the OpenCode quota (`ledger`, and `auto` for the profiles with
+    // no `codex_link`, P25); with no limit configured it stays without windows.
+    ...(config.quota.opencode.mode === 'ledger' || config.quota.opencode.mode === 'auto'
       ? {
           ledger: {
             clock: parts.clock,

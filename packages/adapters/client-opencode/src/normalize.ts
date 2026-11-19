@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   NormalizedUpdateSchema,
+  PROMPT_USAGE_UPDATE,
   TOOL_KINDS,
   type ContentBlock,
   type NormalizedError,
@@ -176,10 +177,35 @@ function usageUpdate(update: Record<string, unknown>): NormalizedUpdate | null {
   };
 }
 
+/**
+ * [proposta] (P25) The `usage` of the answer of `session/prompt` (ACP `Usage`: `inputTokens`,
+ * `outputTokens`, `cachedReadTokens`, `cachedWriteTokens`, `thoughtTokens`, `totalTokens`), taken
+ * as the total of the turn [S/N]. The thought tokens have no field of their own here; they are
+ * left out (they are part of `totalTokens`, which is not kept).
+ */
+function promptUsageUpdate(update: Record<string, unknown>): NormalizedUpdate | null {
+  const usage = record(update.usage);
+  if (usage === undefined) return null;
+  const inputTokens = count(usage.inputTokens);
+  const outputTokens = count(usage.outputTokens);
+  const cacheReadTokens = count(usage.cachedReadTokens);
+  const cacheWriteTokens = count(usage.cachedWriteTokens);
+  if (inputTokens === undefined && outputTokens === undefined) return null;
+  return {
+    kind: 'usage',
+    origin: 'prompt_response',
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+  };
+}
+
 function convert(update: Record<string, unknown>): NormalizedUpdate | null {
   if (update.method === QUOTA_SIGNAL_METHOD || update.sessionUpdate === QUOTA_SIGNAL_METHOD) {
     return quotaSignalUpdate(update);
   }
+  if (update.sessionUpdate === PROMPT_USAGE_UPDATE) return promptUsageUpdate(update);
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
     case 'agent_thought_chunk': {
@@ -309,6 +335,13 @@ const QUOTA_EXHAUSTED_CODE = -32001;
 const QUOTA_PATTERN =
   /\b429\b|rate[ _-]?limit|too many requests|quota|usage limit|insufficient[ _](credits?|balance|funds)|credit balance|exceeded (your|the) (current )?(limit|quota)/i;
 const HTTP_429 = /\b429\b|too many requests/i;
+/**
+ * P25 (N156): the 429 of the ChatGPT subscription seen through OpenCode, when the account (or the
+ * seat of a workplace) ran out: `subscription_sharing_usage_limit_exceeded` and
+ * `subscription_sharing_workplace_individual_usage_limit_exceeded` [S: reported by users; the
+ * exact wording was not measured here]. It is an exhausted quota in every `quota.opencode.mode`.
+ */
+const SHARING_PATTERN = /subscription_sharing_[a-z_]*usage_limit_exceeded/i;
 const AUTH_PATTERN =
   /\b401\b|unauthori[sz]ed|not logged in|login required|authentication (required|failed)|no (api )?(key|credentials?)\b|api key|invalid (token|key|credentials?)|please (log ?in|authenticate)|auth login/i;
 const PERMISSION_PATTERN =
@@ -343,6 +376,18 @@ function dataText(data: unknown): string {
     .slice(0, 2000);
 }
 
+/** `data` as JSON, bounded: the code of a provider error may sit in a nested object. */
+function jsonText(data: unknown): string {
+  if (data === undefined || data === null || typeof data === 'string') return '';
+  try {
+    // JSON.stringify gives undefined for a value it cannot write (a function), whatever its type says.
+    const text = JSON.stringify(data) as string | undefined;
+    return typeof text === 'string' ? text.slice(0, 4000) : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * `normalizeError` of the OpenCode adapter (architecture 5.2, N42). What is verified [V]: a killed
  * process ends a pending prompt with "ACP connection closed", and `session/load` of a missing id
@@ -355,6 +400,16 @@ export function normalizeOpenCodeError(raw: unknown): NormalizedError {
   const { message, code, data } = describe(raw);
   const fields = record(data);
   const haystack = `${message} ${dataText(data)}`;
+  if (SHARING_PATTERN.test(haystack) || SHARING_PATTERN.test(jsonText(data))) {
+    const resetsAt = epochMs(fields?.resetsAt);
+    return {
+      kind: 'quota_exhausted',
+      message,
+      ...(resetsAt === undefined ? {} : { resetsAt }),
+      limitSource: '429',
+      cause: raw,
+    };
+  }
   if (
     code === QUOTA_EXHAUSTED_CODE ||
     fields?.type === 'QuotaExhausted' ||

@@ -113,6 +113,21 @@ export type ConfigValue = z.infer<typeof ConfigValueSchema>;
 
 export const RATE_LIMIT_STATUSES = ['allowed', 'warning', 'rejected'] as const;
 
+/**
+ * [proposta] (P25, N156) The raw update an ACP driver delivers to its own session when the answer
+ * of `session/prompt` carries `usage` (the token counts of the turn, an unstable field of ACP the
+ * stable client does not check): `{ sessionUpdate: PROMPT_USAGE_UPDATE, usage }`. A normalizer
+ * that knows it turns it into a `usage` with `origin: 'prompt_response'`; the others ignore it.
+ */
+export const PROMPT_USAGE_UPDATE = '_otheater/prompt_usage';
+
+/**
+ * [proposta] Where a `usage` came from, when it is not the stream of the client: `prompt_response`
+ * is the total of a turn the answer of the prompt gave (P25). The usage service skips it (the
+ * client's own `usage_update` of the same turn already brought its cost); the quota ledger counts it.
+ */
+export const USAGE_ORIGINS = ['prompt_response'] as const;
+
 const messageChunk = {
   content: ContentBlockSchema,
   messageId: nonEmpty.optional(),
@@ -129,7 +144,8 @@ const messageChunk = {
  * - `plan`: the agent's plan, always the full list (ACP `plan`).
  * - `usage`: tokens and cost of a turn or a model call. [proposta] Besides the token counters it
  *   may carry the context window use (`contextUsed`, `contextSize`), which is what the ACP
- *   `usage_update` reports; at least one numeric field is required.
+ *   `usage_update` reports; at least one numeric field is required. `origin` says when it is
+ *   not the stream of the client (see {@link USAGE_ORIGINS}).
  * - `available_commands`: the `/` commands of the client (ACP `available_commands_update`).
  * - `config_changed`: the session config options that now have another value (ACP
  *   `config_option_update` and `current_mode_update`, which the normalizer turns into this).
@@ -167,6 +183,7 @@ export const NormalizedUpdateSchema = z.discriminatedUnion('kind', [
       contextUsed: z.int().min(0).optional(),
       contextSize: z.int().min(0).optional(),
       costUsd: z.number().min(0).optional(),
+      origin: z.enum(USAGE_ORIGINS).optional(),
     })
     .refine(
       (u) =>

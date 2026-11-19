@@ -253,6 +253,21 @@ describe('UsageService, the cost of a turn (architecture 5.6)', () => {
     expect(row?.costUsd).toBeCloseTo(1.28, 9);
     expect(row?.cachedTokens).toBe(400_000);
   });
+
+  it('skips the tokens of the PromptResponse: the quota ledger counts them, the cost stays once (N156)', async () => {
+    const { service, store } = setup();
+    await openProfiles(store);
+    service.bindSession('S1', { profile: CODEX, executorId: 'codex-sol-high@codex/home' });
+    const row = await service.ingestUpdate('S1', {
+      kind: 'usage',
+      origin: 'prompt_response',
+      model: 'gpt-6-sol',
+      inputTokens: 1_000_000,
+      outputTokens: 10,
+    } as never);
+    expect(row).toBeUndefined();
+    expect((await service.totals()).turns).toBe(0);
+  });
 });
 
 describe('UsageService, the ACP usage_update (a cumulative cost)', () => {

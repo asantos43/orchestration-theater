@@ -89,7 +89,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | concluído (PR #134) |
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
-| P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
+| P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | concluído (PR #140) |
 | P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | concluído (PR #139) |
 | P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | concluído (PR #135) |
 | P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | concluído (PR #136) |
@@ -911,6 +911,14 @@ O que é: com o login do ChatGPT, o OpenCode gasta a mesma franquia do ChatGPT e
 
 Aceite: testes de unidade da sonda e do erro; o nível real `quota` com o vínculo mostra 5h/7d para o OpenCode.
 
+**Como ficou (2026-11-19):**
+- Chave `quota.opencode.mode` com os modos `auto` | `codex_link` | `ledger` | `off` (os nomes deixam de ser proposta; `off` mantém a sonda sem leitura, como antes do P8). O padrão passou de `off` para `auto`. O perfil OpenCode declara o vínculo em `profiles.opencode/<perfil>.codex_link: <perfil Codex>` (por exemplo `chatgpt` para `codex/chatgpt`); o campo só vale num perfil `opencode/...`, e um nome que não forma um id de perfil Codex é recusado na carga. [V] (`config-profiles.test.ts`, `settings.test.ts`)
+- Sonda (`ProviderQuotaProbe`, daemon): em `auto` e `codex_link`, o perfil vinculado é lido pela sonda do Codex do perfil vinculado, com as janelas 5h/7d dele; em `codex_link`, os perfis sem vínculo ficam sem leitura; em `auto`, eles vão ao ledger. Em `auto`, o ledger só entra se houver `limit_tokens` ou `limit_usd`; sem limite ele não tem o que dizer. O daemon não lê credencial: o vínculo é o que o Produtor declara [N: o OpenCode não mostra a conta]. Um vínculo sem o Codex ligado gera `logger.warn` e um `daemon.notice` `client_warning` (`codex_link_without_codex`), e o perfil fica com a sonda do próprio cliente. [V] (`provider-probe.test.ts`, 5 testes; `wiring.test.ts`, 4 testes)
+- Ledger (`client-opencode`): conta os tokens do `usage` do PromptResponse quando vierem e, na falta deles, a variação do `used` do contexto entre turnos da mesma sessão. O transporte ACP entrega o `usage` do response como uma atualização `prompt_usage`; o normalizador do OpenCode a transforma em `usage` com `origin: 'prompt_response'`, e o serviço de uso a pula para não contar o custo duas vezes. [V] (`quota-probe.test.ts`, `acp-transport.test.ts`, `normalize.test.ts`, `service.test.ts`). Se o OpenCode manda os tokens no PromptResponse com assinatura segue [N] até a rodada real.
+- Erro de limite: em todos os modos, o 429 `subscription_sharing_usage_limit_exceeded` e o `subscription_sharing_workplace_individual_usage_limit_exceeded` viram `exhausted`, pela mensagem, pelo `data` ou por um objeto aninhado, com o `resetsAt` quando vier. [V] (`normalize.test.ts`)
+- Conta no seletor (`@otheater/core`): o fato do perfil ganhou `account`. O daemon põe `codex/<vínculo>` como a conta de um perfil OpenCode vinculado, e o seletor compara contas, não perfis, na troca entre contas do P26 (passo 6b) e na retenção da conta que trabalhou (P15b). Assim, com `profiles.rotate_on_exhaustion.openai: off`, o OpenCode vinculado a um perfil Codex esgotado não é "outra conta": a seleção pode usá-lo sem `rotated`, porque a cota é a mesma e vem da mesma sonda. Sem vínculo, ele segue como outra conta do provedor. [V] (`selection.test.ts`, `role-selection.test.ts`)
+- Fica [N]: o nível real `quota` com o vínculo (mostrar 5h/7d para o OpenCode pede um perfil OpenCode com login do ChatGPT, cujo login só aparece num terminal de verdade); vai para o dono ao teclado ou para o primeiro uso.
+
 ### P26. Troca entre contas da OpenAI desligada por padrão (N157)
 
 O que é: os Terms of Use da OpenAI (em vigor desde 2026-01-01, acesso em 2026-11-18 [S]) proíbem contornar limites e compartilhar a conta, e não tratam de várias contas da mesma pessoa [N] (risco R21). Chave `profiles.rotate_on_exhaustion.openai` (`off` | `on`) [proposta], padrão `off`: um perfil da OpenAI (Codex, ou OpenCode com login do ChatGPT) esgotado não passa a outra conta da OpenAI; a seleção (P15), o bastão (P18) e o failover do Diretor (P20) esperam o reset ou passam a outro provedor. Com `on`, a troca volta, com aviso no `daemon.notice`. Os outros provedores não mudam.
@@ -923,7 +931,7 @@ Aceite: testes da seleção, do bastão e do failover com duas contas da OpenAI 
 - A razão `rotation` entrou no `executor.selected` e o tipo `account_rotated` no `daemon.notice`, os dois sem subir o `schemaVersion` (alargar um enum mantém a versão, como no P15b). [V] (`selection-events.test.ts`)
 - Com `on`, a troca gera o aviso: `logger.warn` e um `daemon.notice` `account_rotated`, com o papel em `subject`, o provedor, a conta que esgotou e a que assumiu em `detail`, e o play e a tentativa no envelope. A seleção de papel (P15), o bastão (P18) e o failover do Diretor (P20) usam o mesmo caminho: o bastão passa os Executores já usados como `earlier`, e o Diretor passa o que caiu. [V]
 - Testes com duas contas da OpenAI e uma da Anthropic, nos dois modos: a seleção (`selection.test.ts`, `role-selection.test.ts`), o bastão (`handoff.test.ts`, 4 testes: `off` vai a outro provedor, `off` sem outro provedor espera o reset, `on` troca, uma conta com cota não retém ninguém) e o failover do Diretor (`director-failover-e2e.test.ts`: no `off` o Diretor vai da primeira conta OpenAI para a Anthropic, sem aviso; no `on` vai para a segunda conta OpenAI, com o `account_rotated`). [V]
-- A conta do OpenCode com login do ChatGPT só é tratada como a mesma do Codex depois do P25, com o vínculo declarado no perfil [N: até lá, conta pelo provedor do modelo].
+- A conta do OpenCode com login do ChatGPT é tratada como a mesma do Codex desde o P25, quando o perfil declara o vínculo (`codex_link`); sem vínculo, segue como outra conta do provedor do modelo. [V]
 
 ### P27. Login com código colado do navegador (N158)
 

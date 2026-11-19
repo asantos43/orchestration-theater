@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { Secret, type ProfileRef } from '@otheater/core';
+import {
+  QUOTA_PROBE_PORT_VERSION,
+  Secret,
+  type ProfileRef,
+  type QuotaProbe,
+  type QuotaReading,
+} from '@otheater/core';
 import {
   FakeClock,
   FakeProcessLauncher,
@@ -81,8 +87,83 @@ function opencodeClient(deps: Rig) {
   return clientOf(deps.clients, 'opencode');
 }
 
+/** The probe of Codex, as the daemon hands it: it says which profile it was asked about. */
+function codexStub(): QuotaProbe & { readonly reads: string[] } {
+  const reads: string[] = [];
+  return {
+    id: 'codex',
+    implements: { port: 'QuotaProbe', range: `^${QUOTA_PROBE_PORT_VERSION}` },
+    reads,
+    capabilities: () => ({ windows: ['5h', '7d'], delivery: 'poll', precision: 'exact' }),
+    read: (profile: ProfileRef): Promise<QuotaReading> => {
+      reads.push(`${profile.client}/${profile.profile}`);
+      return Promise.resolve({
+        observedAt: T0,
+        windows: [{ window: '5h', usedPercent: 40 }],
+      });
+    },
+  };
+}
+
+describe('quotaProbeOf, codex_link (P25, N156)', () => {
+  const LINKED = 'profiles:\n  opencode/oai:\n    codex_link: chatgpt\n';
+
+  it('auto: reads a linked OpenCode profile at the probe of Codex, for the linked profile', async () => {
+    const deps = rig(LINKED);
+    const codexQuota = codexStub();
+    const wiring = quotaProbeOf(opencodeClient(deps), { ...deps, codexQuota });
+    const reading = await wiring.probe.read({ client: 'opencode', profile: 'oai' });
+    expect(codexQuota.reads).toEqual(['codex/chatgpt']);
+    expect(reading.windows).toEqual([{ window: '5h', usedPercent: 40 }]);
+  });
+
+  it('ledger: ignores the link, as P8 did', async () => {
+    const deps = rig(`${LINKED}quota:\n  opencode:\n    mode: ledger\n`);
+    const codexQuota = codexStub();
+    const client = opencodeClient(deps);
+    const wiring = quotaProbeOf(client, { ...deps, codexQuota });
+    expect(wiring.probe.capabilities().windows).not.toContain('7d');
+    await wiring.probe.read({ client: 'opencode', profile: 'oai' }).catch(() => undefined);
+    expect(codexQuota.reads).toEqual([]);
+  });
+
+  it('auto with a limit and no link: the ledger, as the mode ledger', async () => {
+    const deps = rig('quota:\n  opencode:\n    limit_tokens: 1000\n');
+    const client = opencodeClient(deps);
+    const wiring = quotaProbeOf(client, deps);
+    expect(wiring.probe).not.toBe(client.quota);
+    const profile = { client: 'opencode', profile: 'oai' };
+    (wiring.probe as unknown as LedgerProbe).recordUsage(profile, 's1', {
+      kind: 'usage',
+      outputTokens: 250,
+    });
+    expect((await wiring.probe.read(profile)).windows[0]).toMatchObject({ usedPercent: 25 });
+  });
+
+  it('a link with Codex off: warns, says it as an event, and keeps the plain probe', () => {
+    const deps = rig(`${LINKED}quota:\n  opencode:\n    mode: codex_link\n`);
+    const events: { type: string; payload: unknown }[] = [];
+    const client = opencodeClient(deps);
+    const wiring = quotaProbeOf(client, {
+      ...deps,
+      situations: { record: (type, payload) => events.push({ type, payload }) },
+    });
+    expect(wiring.probe).toBe(client.quota);
+    expect(events).toEqual([
+      {
+        type: 'daemon.notice',
+        payload: {
+          kind: 'client_warning',
+          subject: 'opencode',
+          detail: 'codex_link_without_codex',
+        },
+      },
+    ]);
+  });
+});
+
 describe('quotaProbeOf', () => {
-  it('leaves the probe of every client as it is with the defaults (both modes off)', () => {
+  it('leaves the probe of every client as it is with the defaults (nothing to route)', () => {
     const deps = rig('');
     const client = opencodeClient(deps);
     const wiring = quotaProbeOf(client, deps);

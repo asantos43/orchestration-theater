@@ -242,6 +242,9 @@ export class UsageService {
   /** A `usage` update of the normalized stream of a session (the ACP `usage_update` among them). */
   ingestUpdate(sessionId: string, update: NormalizedUpdate): Promise<UsageRecord | undefined> {
     if (update.kind !== 'usage') return Promise.resolve(undefined);
+    // P25: the total of a turn from the answer of the prompt is for the quota ledger only; the
+    // client's own `usage_update` of the same turn already brought its cost (no double count).
+    if (update.origin === 'prompt_response') return Promise.resolve(undefined);
     return this.#ingest(sessionId, update);
   }
 

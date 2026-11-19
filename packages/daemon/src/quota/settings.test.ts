@@ -24,7 +24,7 @@ describe('quota.* keys [proposta]', () => {
         timeout: 10_000,
         usage_count_means: 'remaining',
       },
-      opencode: { mode: 'off', window: 18_000_000, limit_tokens: null, limit_usd: null },
+      opencode: { mode: 'auto', window: 18_000_000, limit_tokens: null, limit_usd: null },
     });
     expect(quotaSettingsOf(parseConfig(''))).toEqual({
       nearLimitAt: 0.8,
@@ -65,7 +65,7 @@ describe('quota.* keys [proposta]', () => {
 });
 
 describe('quota.minimax and quota.opencode keys [proposta] (P8)', () => {
-  it('are off by default, so no call leaves the machine and no ledger runs', () => {
+  it('leave MiniMax off and OpenCode on auto by default, so no call leaves the machine (N156)', () => {
     expect(quotaMinimaxSettingsOf(parseConfig(''))).toEqual({
       mode: 'off',
       baseUrl: 'https://api.minimax.io',
@@ -74,7 +74,7 @@ describe('quota.minimax and quota.opencode keys [proposta] (P8)', () => {
       usageCountMeans: 'remaining',
     });
     expect(quotaOpencodeSettingsOf(parseConfig(''))).toEqual({
-      mode: 'off',
+      mode: 'auto',
       windowMs: 5 * 3_600_000,
       limitTokens: null,
       limitUsd: null,

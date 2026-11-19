@@ -247,6 +247,11 @@ export interface ExecutorFacts {
    * (N157). Absent: `token_plan`, as an unregistered profile of the old keys is.
    */
   readonly profileKind?: ProfileFact['kind'] | undefined;
+  /**
+   * The account the profile spends (`ProfileFact.account`), for the rotation (N157) and the
+   * account of the work (P15b). Absent: the profile is its own account.
+   */
+  readonly account?: string | undefined;
   /** The profile answers (a local server is up, a login holds). */
   readonly healthy: boolean;
   readonly quota: QuotaFact;
@@ -262,7 +267,9 @@ export interface SelectionPorts {
   /** The registered profile `<client>/<profile>`, or undefined. */
   profile(
     profileId: string,
-  ): Awaitable<(Pick<ProfileFact, 'state'> & Partial<Pick<ProfileFact, 'kind'>>) | undefined>;
+  ): Awaitable<
+    (Pick<ProfileFact, 'state'> & Partial<Pick<ProfileFact, 'kind' | 'account'>>) | undefined
+  >;
   health(profileId: string): Awaitable<boolean>;
   /** The `QuotaService.statusOf` of the profile (never `canUse`: `unknown` is the policy's call). */
   quota(profileId: string): Awaitable<QuotaFact>;
@@ -283,6 +290,7 @@ export async function gatherSelectionFacts(
     Promise<{
       state: ExecutorFacts['profileState'];
       kind: ExecutorFacts['profileKind'];
+      account: string | undefined;
       healthy: boolean;
       quota: QuotaFact;
     }>
@@ -296,7 +304,13 @@ export async function gatherSelectionFacts(
           ports.health(profileId),
           ports.quota(profileId),
         ]);
-        return { state: profile?.state ?? 'missing', kind: profile?.kind, healthy, quota };
+        return {
+          state: profile?.state ?? 'missing',
+          kind: profile?.kind,
+          account: profile?.account,
+          healthy,
+          quota,
+        };
       })();
       byProfile.set(profileId, known);
     }
@@ -316,6 +330,7 @@ export async function gatherSelectionFacts(
         facts.set(executor.id, {
           profileState: profile.state,
           ...(profile.kind === undefined ? {} : { profileKind: profile.kind }),
+          ...(profile.account === undefined ? {} : { account: profile.account }),
           healthy: profile.healthy,
           quota: profile.quota,
           admission,
@@ -489,6 +504,13 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     }
   }
   const factsOf = (item: ResolvedExecutor): ExecutorFacts | undefined => facts.get(item.id);
+  // The account an Executor spends: two profiles on one subscription (an OpenCode profile with
+  // `codex_link` and its Codex profile, N156) are one account for the rotation and P15b.
+  const accountOf = (item: ResolvedExecutor): string => factsOf(item)?.account ?? profileIdOf(item);
+  const accountOfProfile = (profile: string): string => {
+    const item = list.find((candidate) => profileIdOf(candidate) === profile);
+    return item === undefined ? profile : accountOf(item);
+  };
 
   // 1. `selection.strategy`, inside each run of one `<model>-<effort>`.
   const cursorOf = (head: string): number => input.roundRobin?.get(head) ?? 0;
@@ -661,7 +683,9 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     }
     // Inside each step, the accounts other than the one of the work come first (stable).
     const spare = settings.sameProviderAccount === 'prefer_other' && worked.profile !== undefined;
-    const ownAccount = (row: Row): boolean => profileIdOf(row.item) === worked.profile;
+    const workedAccount =
+      worked.profile === undefined ? undefined : accountOfProfile(worked.profile);
+    const ownAccount = (row: Row): boolean => accountOf(row.item) === workedAccount;
     return plan.flatMap((step) => {
       const group = groups.get(step) ?? [];
       return spare
@@ -693,14 +717,18 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   };
   const exhaustedBy = new Map<
     string,
-    { readonly profile: string; readonly until: number | null }
+    { readonly profile: string; readonly account: string; readonly until: number | null }
   >();
   const noteRanOut = (item: ResolvedExecutor | undefined): void => {
     if (item === undefined) return;
     const fact = ranOut(item);
     const provider = providerOf(item);
     if (fact === undefined || provider === 'unknown' || exhaustedBy.has(provider)) return;
-    exhaustedBy.set(provider, { profile: profileIdOf(item), until: fact.quota.untilReset });
+    exhaustedBy.set(provider, {
+      profile: profileIdOf(item),
+      account: accountOf(item),
+      until: fact.quota.untilReset,
+    });
   };
   for (const item of earlier) noteRanOut(item);
   noteRanOut(
@@ -715,7 +743,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     item: ResolvedExecutor,
   ): { readonly profile: string; readonly until: number | null } | undefined => {
     const exhausted = exhaustedBy.get(providerOf(item));
-    if (exhausted === undefined || exhausted.profile === profileIdOf(item)) return undefined;
+    if (exhausted === undefined || exhausted.account === accountOf(item)) return undefined;
     return (factsOf(item)?.profileKind ?? 'token_plan') === 'token_plan' ? exhausted : undefined;
   };
   for (const row of rows) {
@@ -824,7 +852,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
         applied &&
         pick !== undefined &&
         worked.profile !== undefined &&
-        profileIdOf(pick.item) === worked.profile,
+        accountOf(pick.item) === accountOfProfile(worked.profile),
     },
     roundRobin,
     rotated,

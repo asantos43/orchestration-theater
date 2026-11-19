@@ -98,7 +98,7 @@ const SOURCE: Readonly<Record<ClientId, string>> = {
   'claude-code': 'statusline file (P6) after one short turn, plus the rate_limit_event of the turn',
   codex: 'app-server account/rateLimits/read (no turn)',
   opencode:
-    'local ledger (quota.opencode.mode: ledger) after one short turn; the OpenCode usage_update carries context counters and a cost, not input/output tokens, so a subscription model leaves the ledger at 0% [V: 2026-11-18]',
+    'local ledger (quota.opencode.mode: ledger) after one short turn; the OpenCode usage_update carries context counters and a cost, not input/output tokens, so a subscription model left the ledger at 0% [V: 2026-11-18]; since P25 the ledger also counts the growth of the context and the tokens of the PromptResponse, when OpenCode sends them [N]',
 };
 const NEEDS_TURN: Readonly<Record<ClientId, boolean>> = {
   'claude-code': true,

@@ -20,6 +20,7 @@ import {
   isOTheaterError,
   ManagedAgentSession,
   NotFound,
+  PROMPT_USAGE_UPDATE,
   typedErrorOf,
   type AgentInfo,
   type ConfigValue,
@@ -370,6 +371,16 @@ class AcpDriver implements SessionDriver {
         sessionId: this.#sessionId,
         prompt,
       });
+      // P25 (N156): the token counts of the turn, when the client gives them (an unstable field
+      // of ACP; [N] whether OpenCode sends it). The normalizer of the client decides what it is.
+      const usage = (response as { usage?: unknown }).usage;
+      if (typeof usage === 'object' && usage !== null && !Array.isArray(usage)) {
+        try {
+          this.#route.deliver?.({ sessionUpdate: PROMPT_USAGE_UPDATE, usage });
+        } catch {
+          // A listener that fails must not fail a turn that ended well.
+        }
+      }
       return response.stopReason;
     } catch (error) {
       throw this.#classified(error);
