@@ -552,7 +552,11 @@ export class RoleSelection {
   noteRotation(
     role: string,
     result: SelectionResult,
-    correlation: { readonly scenarioId?: string; readonly playId?: string; readonly attemptId?: string } = {},
+    correlation: {
+      readonly scenarioId?: string;
+      readonly playId?: string;
+      readonly attemptId?: string;
+    } = {},
   ): void {
     const rotated = result.rotated;
     if (rotated === null || result.selected === null) return;

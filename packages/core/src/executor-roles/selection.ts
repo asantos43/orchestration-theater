@@ -691,7 +691,10 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
       ? fact
       : undefined;
   };
-  const exhaustedBy = new Map<string, { readonly profile: string; readonly until: number | null }>();
+  const exhaustedBy = new Map<
+    string,
+    { readonly profile: string; readonly until: number | null }
+  >();
   const noteRanOut = (item: ResolvedExecutor | undefined): void => {
     if (item === undefined) return;
     const fact = ranOut(item);
@@ -708,7 +711,9 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   noteRanOut(ordered.find((row) => row.verdict === null || ranOut(row.item) !== undefined)?.item);
   const modeOf = (provider: string): RotateOnExhaustionMode =>
     settings.rotateOnExhaustion[provider] ?? 'on';
-  const otherAccount = (item: ResolvedExecutor): { readonly profile: string; readonly until: number | null } | undefined => {
+  const otherAccount = (
+    item: ResolvedExecutor,
+  ): { readonly profile: string; readonly until: number | null } | undefined => {
     const exhausted = exhaustedBy.get(providerOf(item));
     if (exhausted === undefined || exhausted.profile === profileIdOf(item)) return undefined;
     return (factsOf(item)?.profileKind ?? 'token_plan') === 'token_plan' ? exhausted : undefined;

@@ -1399,7 +1399,11 @@ describe('profiles.rotate_on_exhaustion: another account of the provider that ra
     });
     expect(result.selected?.id).toBe(SOL_2);
     expect(reasonsOf(result)).toEqual([[SOL, 'quota']]);
-    expect(result.rotated).toEqual({ provider: 'openai', from: 'codex/conta-1', to: 'codex/conta-2' });
+    expect(result.rotated).toEqual({
+      provider: 'openai',
+      from: 'codex/conta-1',
+      to: 'codex/conta-2',
+    });
   });
 
   it('off for another provider holds it the same way', () => {
@@ -1417,7 +1421,8 @@ describe('profiles.rotate_on_exhaustion: another account of the provider that ra
 
   it('the ports give the kind of the profile to the facts', async () => {
     const ports: SelectionPorts = {
-      profile: (id) => (id === 'opencode/openai-api' ? { state: 'active', kind: 'api' } : { state: 'active' }),
+      profile: (id) =>
+        id === 'opencode/openai-api' ? { state: 'active', kind: 'api' } : { state: 'active' },
       health: () => true,
       quota: () => OK,
       admission: () => FREE,

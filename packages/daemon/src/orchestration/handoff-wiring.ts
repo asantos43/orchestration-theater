@@ -131,7 +131,11 @@ export function createDaemonHandoff(deps: DaemonHandoffDeps): HandoffPort {
       });
       const choice = await port.choose(request);
       // P26 (N157): a baton that passed to another account of the provider that ran out says so.
-      if (choice.kind === 'selected' && choice.selection !== undefined && request.role !== undefined) {
+      if (
+        choice.kind === 'selected' &&
+        choice.selection !== undefined &&
+        request.role !== undefined
+      ) {
         selection.noteRotation(request.role, choice.selection, {
           ...(scenarioId === undefined ? {} : { scenarioId }),
           playId: request.playId,
