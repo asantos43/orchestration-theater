@@ -236,7 +236,9 @@ describe('the fake agent inside the sandbox of the daemon', () => {
 
         // Network: a raw connection to the host's loopback does not get out (own loopback, no
         // route), and the server of the host never saw a request.
-        expect(text).toMatch(/probe connect 127\.0\.0\.1:\d+: failed (ECONNREFUSED|ENETUNREACH)/);
+        expect(text).toMatch(
+          /probe connect 127\.0\.0\.1:\d+: failed (ECONNREFUSED|ENETUNREACH|EPERM)/,
+        );
         expect(outside.requests()).toBe(0);
       });
     });
