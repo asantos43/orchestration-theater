@@ -19,8 +19,11 @@ import type { QuotaProbe } from './quota-probe.js';
  * `0.3.1` (Phase 5, P27, N158): `LoginFlow.submitCode`, optional, for the code the browser shows
  * at the end of a sign-in that does not come back to the machine by itself. An adapter of `0.3.0`
  * simply leaves it out. [proposta]
+ * `0.3.2` (Phase 5, P28a, N159): `profileCli`, optional, the official CLI of the client inside one
+ * profile, for `ot profile exec`. An adapter of `0.3.1` leaves it out, and `exec` refuses that
+ * client. [proposta]
  */
-export const CLIENT_ADAPTER_PORT_VERSION = '0.3.1';
+export const CLIENT_ADAPTER_PORT_VERSION = '0.3.2';
 
 /**
  * The tools of one MCP server that a role may call: the names, or `all` for a server whose tools
@@ -312,4 +315,35 @@ export interface ClientAdapterContract extends Adapter {
    * it is registered. Idempotent.
    */
   setUpProfile?(profile: Profile, policy: RolePolicy): Promise<void>;
+  /**
+   * Phase 5 (P28a, N159). [proposta] Optional: the official CLI of the client inside `profile`, for
+   * a person at a terminal (`ot profile exec`): the executable, the environment that points it at
+   * the profile, and how the common commands and options are written for this client. Creates the
+   * profile directories, as the login does; never opens what the client keeps there.
+   */
+  profileCli?(profile: Profile): Promise<ProfileCli>;
+}
+
+/**
+ * The official CLI of a client inside one profile (P28a, N159). The daemon starts `cmd` with
+ * `args`, then the translated arguments, in the terminal of the person, with `env` over the
+ * environment it inherits. No secret is here: the API key of an API profile comes from the vault
+ * when the command runs. [proposta]
+ */
+export interface ProfileCli {
+  /** The executable of the official CLI (`claude`, `codex`, `opencode`), not the ACP adapter. */
+  readonly cmd: string;
+  /** Arguments that always go first, before the translated ones. Usually none. */
+  readonly args: readonly string[];
+  /** What points the CLI at the profile (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, the `XDG_*`). */
+  readonly env: Readonly<Record<string, string>>;
+  /**
+   * Names taken out of the inherited environment, compared in upper case: what would point the
+   * client at another account or another profile (`ANTHROPIC_API_KEY`, `CODEX_HOME`, ...).
+   */
+  readonly unsetEnv: readonly string[];
+  /** The common commands this client has (`login`, `logout`, `status`, `run`): its own tokens. */
+  readonly commands: Readonly<Record<string, readonly string[]>>;
+  /** The common options this client has (`model`): its own tokens; the value goes after them. */
+  readonly options: Readonly<Record<string, readonly string[]>>;
 }

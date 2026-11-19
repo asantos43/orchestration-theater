@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import {
   ClientAdapter,
   PermissionDenied,
+  type ProfileCli,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
   type ClientCapabilities,
@@ -24,7 +25,7 @@ import {
   type SessionSetup,
   type TransportId,
 } from '@otheater/core';
-import { applyAccountEnv, type AccountEnvMode } from './account-env.js';
+import { ACCOUNT_ENV_NAMES, applyAccountEnv, type AccountEnvMode } from './account-env.js';
 import {
   commandOf,
   runCommand,
@@ -92,6 +93,13 @@ export const DEFAULT_LOGIN_COMMAND: CommandSpec = {
   args: ['auth', 'login', '--claudeai'],
 };
 export const DEFAULT_LOGOUT_COMMAND: CommandSpec = { cmd: 'claude', args: ['auth', 'logout'] };
+/**
+ * The common commands of `ot profile exec` (P28a, N159), from `claude --help` and `claude auth
+ * --help` (claude 2.1.325, read 2026-11-19) [V: the subcommands and flags exist]. `status` asks for
+ * `--text`, since the JSON is the default. `login` and `logout` are the commands of the login above.
+ */
+export const PROFILE_CLI_STATUS_ARGS: readonly string[] = ['auth', 'status', '--text'];
+export const PROFILE_CLI_RUN_ARGS: readonly string[] = ['-p'];
 /** The login probe: `claude auth status --json` [V: the command and flag exist; the JSON shape is N]. */
 export const DEFAULT_STATUS_COMMAND: CommandSpec = {
   cmd: 'claude',
@@ -173,6 +181,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
   readonly #launcher: ProcessLauncher;
   readonly #baseEnv: Readonly<Record<string, string>>;
   readonly #loginOptions: ClaudeCodeLoginOptions;
+  readonly #accountEnv: AccountEnvMode;
 
   constructor(options: ClaudeCodeAdapterOptions) {
     super({
@@ -198,6 +207,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     this.#launcher = options.launcher;
     this.#baseEnv = applyAccountEnv(options.baseEnv, options.accountEnv);
     this.#loginOptions = options.login ?? {};
+    this.#accountEnv = options.accountEnv ?? 'strip';
     this.models = new ClaudeModelCatalog(options.modelCatalog);
   }
 
@@ -321,6 +331,31 @@ export class ClaudeCodeAdapter extends ClientAdapter {
         `${this.id}: the logout ended with ${code === null ? 'a signal' : `code ${String(code)}`}`,
       );
     }
+  }
+
+  /**
+   * The official CLI in the profile, for `ot profile exec` (P28a, N159): `claude` with
+   * `CLAUDE_CONFIG_DIR`. Unless `account_env` is `keep`, the account variables of the terminal
+   * ({@link ACCOUNT_ENV_NAMES}) go away, as they do for the sessions, so the CLI uses the login of the
+   * profile; the key of an API profile comes back from the vault.
+   */
+  override async profileCli(profile: Profile): Promise<ProfileCli> {
+    await this.#loginRun(profile);
+    const login = commandOf(this.#loginOptions.command, DEFAULT_LOGIN_COMMAND);
+    const logout = commandOf(this.#loginOptions.logoutCommand, DEFAULT_LOGOUT_COMMAND);
+    return {
+      cmd: login.cmd,
+      args: [],
+      env: this.profileEnv(profile),
+      unsetEnv: ['CLAUDE_CONFIG_DIR', ...(this.#accountEnv === 'keep' ? [] : ACCOUNT_ENV_NAMES)],
+      commands: {
+        login: [...login.args],
+        logout: [...logout.args],
+        status: [...PROFILE_CLI_STATUS_ARGS],
+        run: [...PROFILE_CLI_RUN_ARGS],
+      },
+      options: { model: ['--model'] },
+    };
   }
 
   /**

@@ -998,6 +998,9 @@ describe('profileSettingsOf', () => {
           api_key_env: {},
           rotate_on_exhaustion: { openai: 'off' },
           entries: {},
+          commands: {},
+          options: {},
+          exec: { env_inherit: 'terminal' },
         },
       }),
     ).toEqual({

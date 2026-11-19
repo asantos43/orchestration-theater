@@ -281,3 +281,31 @@ describe('codex login: what is launched', () => {
     await flow.cancel();
   });
 });
+
+describe('codex profileCli (P28a, N159)', () => {
+  it('is the official CLI in the profile, after its config.toml, with the common words', async () => {
+    const adapter = new CodexAdapter({
+      launcher: new FakeProcessLauncher(),
+      baseEnv: { OPENAI_API_KEY: 'sk-test' },
+      sandbox: SANDBOX,
+      adapterVersion: '2.6.0',
+      login: { mode: 'device_code' },
+    });
+    const profile = profileOf('a');
+    const cli = await adapter.profileCli(profile);
+    expect(cli.cmd).toBe('codex');
+    expect(cli.env).toEqual({ CODEX_HOME: profile.dir });
+    expect(cli.unsetEnv).toEqual(['CODEX_HOME', 'CODEX_API_KEY', 'OPENAI_API_KEY']);
+    expect(cli.commands).toEqual({
+      login: [...DEFAULT_LOGIN_COMMANDS.device_code.args],
+      logout: [...DEFAULT_LOGOUT_COMMAND.args],
+      status: ['login', 'status'],
+      run: ['exec'],
+    });
+    expect(cli.options).toEqual({ model: ['--model'] });
+    // The same config.toml the login writes, so the CLI keeps its credentials in the profile.
+    expect(await readFile(join(profile.dir, CONFIG_FILE), 'utf8')).toContain(
+      'cli_auth_credentials_store',
+    );
+  });
+});

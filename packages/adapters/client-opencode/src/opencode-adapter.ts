@@ -14,6 +14,7 @@ import {
   type NormalizedError,
   type NormalizedUpdate,
   type Profile,
+  type ProfileCli,
   type ProfileRef,
   type ProcessLauncher,
   type ProcessModel,
@@ -99,6 +100,27 @@ export type ProjectConfigMode = 'disabled' | 'enabled';
  * `OPENCODE_PERMISSION` was not measured [N]); `none` leaves the client's default mode.
  */
 export type ReadOnlyMode = 'plan' | 'none';
+
+/**
+ * What the terminal may hold that points OpenCode at another profile or account, taken out for
+ * `ot profile exec` (P28a, N159): the variables of OpenCode itself and the keys of the providers
+ * OpenCode reads from the environment. The XDG homes the profile isolates are set by `env`; the
+ * others stay the terminal's. [proposta] The list of providers is not
+ * complete: `profiles.exec.env_inherit: client` starts from the minimal environment instead.
+ */
+export const PROFILE_CLI_UNSET_ENV: readonly string[] = [
+  'OPENCODE_DB',
+  'OPENCODE_CONFIG',
+  'OPENCODE_CONFIG_DIR',
+  'OPENCODE_CONFIG_CONTENT',
+  'OPENCODE_PERMISSION',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'MINIMAX_API_KEY',
+  'OPENROUTER_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_GENERATIVE_AI_API_KEY',
+];
 
 /**
  * [proposta] `clients.opencode.login`. The official login is `opencode auth login [url] [-p provider]
@@ -431,6 +453,48 @@ export class OpenCodeAdapter extends ClientAdapter {
     return {
       state: count === undefined ? 'unknown' : count > 0 ? 'logged_in' : 'logged_out',
       via: 'account_list',
+    };
+  }
+
+  /**
+   * The official CLI in the profile, for `ot profile exec` (P28a, N159): `opencode` with the
+   * isolation of the profile (`XDG_*`, `OPENCODE_DB`), and no pinned permission nor project config
+   * turned off: a person at the terminal uses OpenCode as usual. The commands are those of the login
+   * above, `opencode auth list` and `opencode run` (opencode 1.19.6, `--help` read 2026-11-19) [V].
+   */
+  override async profileCli(profile: Profile): Promise<ProfileCli> {
+    const options = this.#options.login ?? {};
+    await this.#loginRun(profile);
+    const provider = options.provider === undefined ? [] : [options.provider];
+    const login = commandOf(options.command, {
+      cmd: this.#executable(),
+      args: [
+        'auth',
+        'login',
+        ...(options.provider === undefined ? [] : ['-p', options.provider]),
+        ...(options.method === undefined ? [] : ['-m', options.method]),
+      ],
+    });
+    const logout = commandOf(options.logoutCommand, {
+      cmd: this.#executable(),
+      args: ['auth', 'logout', ...provider],
+    });
+    const list = commandOf(options.listCommand, {
+      cmd: this.#executable(),
+      args: ['auth', 'list'],
+    });
+    return {
+      cmd: this.#executable(),
+      args: [],
+      env: isolationEnv(profile.dir, this.#isolation),
+      unsetEnv: [...PROFILE_CLI_UNSET_ENV],
+      commands: {
+        login: [...login.args],
+        logout: [...logout.args],
+        status: [...list.args],
+        run: ['run'],
+      },
+      options: { model: ['--model'] },
     };
   }
 
