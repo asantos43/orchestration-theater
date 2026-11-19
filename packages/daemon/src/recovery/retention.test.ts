@@ -228,8 +228,9 @@ describe('on disk', () => {
     }
   });
 
-  // A folder that cannot be written to makes the removal fail; root ignores the mode, so it skips.
-  it.skipIf(process.getuid?.() === 0)(
+  // A folder that cannot be written to makes the removal fail; root ignores the mode, and Windows
+  // has no such mode bits, so both skip.
+  it.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'recovery.notice retention_remove_failed: an item that could not be removed is an event, and a clean rotation is quiet (P24, N146)',
     async () => {
       const tmp = await makeTempDataDir();

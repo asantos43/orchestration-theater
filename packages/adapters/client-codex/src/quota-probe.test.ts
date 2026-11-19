@@ -34,7 +34,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await launcher.killAll();
-  await rm(root, { recursive: true, force: true });
+  // Windows may hold the folder for a moment after the process it was the cwd of exits.
+  await rm(root, { recursive: true, force: true, maxRetries: 10 });
 });
 
 function profileDir(): string {
@@ -283,8 +284,12 @@ describe('CodexQuotaProbe.watch', () => {
   });
 });
 
-/** The working directory the process reports is the real path of the profile directory. */
+/**
+ * The working directory the process reports: the real path of the profile directory (macOS puts
+ * the temp folder behind a link), or the path as given on Windows, which keeps a short 8.3 name.
+ */
 async function realCwd(): Promise<string> {
+  if (process.platform === 'win32') return profileDir();
   const { realpath } = await import('node:fs/promises');
   return realpath(profileDir());
 }

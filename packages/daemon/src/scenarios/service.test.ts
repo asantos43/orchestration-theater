@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { InvalidInput, type Vcs } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -50,10 +50,13 @@ describe('creating scenarios by type', () => {
       id: projectScenarioId('/work/app'),
       kind: 'project',
       flowId: 'play',
-      folder: '/work/app',
+      // The service resolves the folder: on Windows it gains the drive of the current folder.
+      folder: resolve('/work/app'),
       baseBranch: 'main',
     });
-    expect(await store.scenarioRepos.list(scenario.id)).toMatchObject([{ path: '/work/app' }]);
+    expect(await store.scenarioRepos.list(scenario.id)).toMatchObject([
+      { path: resolve('/work/app') },
+    ]);
     const again = await service().create({ type: 'project', repo: '/work/app' });
     expect(again).toMatchObject({ created: false });
   });
