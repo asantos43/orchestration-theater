@@ -76,11 +76,12 @@ interface Setup {
   readonly previousExecutor?: string | null;
   readonly workedBy?: WorkedBy | null;
   readonly roundRobin?: ReadonlyMap<string, number>;
+  readonly earlier?: ResolvedExecutor[];
 }
 
 function select(setup: Setup) {
   const map = new Map<string, ExecutorFacts>();
-  for (const item of setup.list) {
+  for (const item of [...setup.list, ...(setup.earlier ?? [])]) {
     if (item.validity === 'valid') map.set(item.id, facts(setup.facts?.[item.id]));
   }
   const input: SelectionInput = {
@@ -95,6 +96,7 @@ function select(setup: Setup) {
     previousExecutor: setup.previousExecutor,
     workedBy: setup.workedBy,
     roundRobin: setup.roundRobin,
+    earlier: setup.earlier,
   };
   return selectExecutor(input);
 }
@@ -1242,5 +1244,192 @@ describe('selection.same_provider_fallback: the cross-review back at the provide
       expect(result.selected?.id).toBe(OPUS_LOW_A);
       expect(result.crossCheck.sameAccount).toBe(false);
     });
+  });
+});
+
+describe('profiles.rotate_on_exhaustion: another account of the provider that ran out (N157)', () => {
+  const SOL_2 = 'codex-sol-high@codex/conta-2';
+  const SOL_1_LOW = 'codex-sol-low@codex/conta-1';
+  const GPT_CHAT = 'gpt-5-high@opencode/chatgpt';
+  const GPT_API = 'gpt-5-high@opencode/openai-api';
+  const RESET = 1_800_000_000_000;
+  const openai = (id: string): ResolvedExecutor => executor(id, 'openai');
+
+  it('is off for OpenAI by default and on for every other provider', () => {
+    expect(DEFAULT_SELECTION_SETTINGS.rotateOnExhaustion).toEqual({ openai: 'off' });
+  });
+
+  it('off: the work does not pass to another OpenAI subscription; it goes to another provider', () => {
+    const result = select({
+      list: [executor(SOL), executor(SOL_2), executor(OPUS_A)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(reasonsOf(result)).toEqual([
+      [SOL, 'quota'],
+      [SOL_2, 'rotation'],
+    ]);
+    const held = result.skipped.find((skipped) => skipped.executor === SOL_2);
+    expect(held?.detail).toBe(
+      'profiles.rotate_on_exhaustion.openai is off and codex/conta-1 is exhausted',
+    );
+    expect(held?.untilReset).toBe(RESET);
+    expect(result.rotated).toBeNull();
+  });
+
+  it('off: with no other provider the role waits for the reset of the account that ran out', () => {
+    const result = select({
+      list: [executor(SOL), executor(SOL_2)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected).toBeNull();
+    expect(result.wait).toEqual({ mode: 'next', on: [SOL, SOL_2], until: RESET, notify: false });
+    const waited = select({
+      list: [executor(SOL), executor(SOL_2)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+      whenExhausted: 'wait',
+    });
+    expect(waited.wait?.on).toEqual([SOL]);
+  });
+
+  it('off: an OpenCode profile with the ChatGPT login counts as an OpenAI subscription', () => {
+    const result = select({
+      list: [executor(SOL), openai(GPT_CHAT), executor(OPUS_A)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(reasonsOf(result)).toEqual([
+      [SOL, 'quota'],
+      [GPT_CHAT, 'rotation'],
+    ]);
+  });
+
+  it('off: an API profile of OpenAI is not held, and an exhausted API profile holds nobody', () => {
+    const api = select({
+      list: [executor(SOL), openai(GPT_API)],
+      facts: { [SOL]: { quota: exhausted(RESET) }, [GPT_API]: { profileKind: 'api' } },
+    });
+    expect(api.selected?.id).toBe(GPT_API);
+    const apiRanOut = select({
+      list: [openai(GPT_API), executor(SOL)],
+      facts: { [GPT_API]: { profileKind: 'api', quota: exhausted(RESET) } },
+    });
+    expect(apiRanOut.selected?.id).toBe(SOL);
+  });
+
+  it('off: a spending cap (budget) holds nobody', () => {
+    const result = select({
+      list: [executor(SOL), executor(SOL_2)],
+      facts: { [SOL]: { quota: exhausted(RESET, 'budget') } },
+    });
+    expect(result.selected?.id).toBe(SOL_2);
+  });
+
+  it('off: another model of the same account is not another account', () => {
+    const result = select({
+      list: [executor(SOL), executor(SOL_1_LOW), executor(SOL_2)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    // The same profile is exhausted too in real life; here only the rule is under test.
+    expect(result.selected?.id).toBe(SOL_1_LOW);
+  });
+
+  it('off: an account first in the order is not held by an exhausted one behind it', () => {
+    const result = select({
+      list: [executor(SOL_2), executor(SOL)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected?.id).toBe(SOL_2);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('off: the account that ran out on the attempt before holds the retry (P15)', () => {
+    // retry_diversity: rotate puts SOL_2 first; the account that failed still holds it.
+    const result = select({
+      list: [executor(SOL), executor(SOL_2), executor(OPUS_A)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+      previousExecutor: SOL,
+    });
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(reasonsOf(result)).toContainEqual([SOL_2, 'rotation']);
+  });
+
+  it('off: an Executor that already worked and left the list holds the baton (P18) and the failover (P20)', () => {
+    const result = select({
+      list: [executor(SOL_2), executor(OPUS_A)],
+      earlier: [executor(SOL)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected?.id).toBe(OPUS_A);
+    expect(reasonsOf(result)).toEqual([[SOL_2, 'rotation']]);
+    // An earlier Executor whose account did not run out holds nobody.
+    const fine = select({ list: [executor(SOL_2), executor(OPUS_A)], earlier: [executor(SOL)] });
+    expect(fine.selected?.id).toBe(SOL_2);
+  });
+
+  it('off: the facts of an earlier Executor are required', () => {
+    expect(() =>
+      selectExecutor({
+        role: { role: 'author', executors: [executor(SOL_2)], whenExhausted: 'next' },
+        facts: new Map([[SOL_2, facts()]]),
+        settings: DEFAULT_SELECTION_SETTINGS,
+        earlier: [executor(SOL)],
+      }),
+    ).toThrow(InvalidInput);
+  });
+
+  it('off: other providers are not held by default', () => {
+    const result = select({
+      list: [executor(OPUS_A), executor(OPUS_B)],
+      facts: { [OPUS_A]: { quota: exhausted(RESET) } },
+    });
+    expect(result.selected?.id).toBe(OPUS_B);
+    expect(result.rotated).toEqual({
+      provider: 'anthropic',
+      from: 'claude-code/empresa',
+      to: 'claude-code/pessoal',
+    });
+  });
+
+  it('on: the work rotates to another OpenAI account and the result says so', () => {
+    const result = select({
+      list: [executor(SOL), executor(SOL_2), executor(OPUS_A)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+      settings: { rotateOnExhaustion: { openai: 'on' } },
+    });
+    expect(result.selected?.id).toBe(SOL_2);
+    expect(reasonsOf(result)).toEqual([[SOL, 'quota']]);
+    expect(result.rotated).toEqual({
+      provider: 'openai',
+      from: 'codex/conta-1',
+      to: 'codex/conta-2',
+    });
+  });
+
+  it('off for another provider holds it the same way', () => {
+    const result = select({
+      list: [executor(OPUS_A), executor(OPUS_B), executor(SOL)],
+      facts: { [OPUS_A]: { quota: exhausted(RESET) } },
+      settings: { rotateOnExhaustion: { anthropic: 'off' } },
+    });
+    expect(result.selected?.id).toBe(SOL);
+    expect(reasonsOf(result)).toEqual([
+      [OPUS_A, 'quota'],
+      [OPUS_B, 'rotation'],
+    ]);
+  });
+
+  it('the ports give the kind of the profile to the facts', async () => {
+    const ports: SelectionPorts = {
+      profile: (id) =>
+        id === 'opencode/openai-api' ? { state: 'active', kind: 'api' } : { state: 'active' },
+      health: () => true,
+      quota: () => OK,
+      admission: () => FREE,
+      contextWindow: () => undefined,
+    };
+    const gathered = await gatherSelectionFacts(ports, [openai(GPT_API), executor(SOL)]);
+    expect(gathered.get(GPT_API)?.profileKind).toBe('api');
+    expect(gathered.get(SOL)?.profileKind).toBeUndefined();
   });
 });

@@ -113,6 +113,10 @@ function roleIdOf(role: string | undefined): RoleId | undefined {
  * work on the attempt yet (the attempt that passed the baton never gets it back, even when its
  * quota comes back first), and the selector orders the rest by the strategy of the configuration.
  * The previous Executor is no longer in the list, so `retry_diversity` has nothing to rotate past.
+ * The ones that worked go to the selector as `earlier` (P26, N157): with
+ * `profiles.rotate_on_exhaustion.<provider>: off`, an account of theirs that ran out holds the
+ * other subscription accounts of its provider, and the baton waits for the reset or goes to
+ * another provider.
  */
 export function createHandoffPort(deps: HandoffPortDeps): HandoffPort {
   return {
@@ -123,10 +127,12 @@ export function createHandoffPort(deps: HandoffPortDeps): HandoffPort {
       const resolved = await deps.roleOf(role, request);
       const executors = resolved.executors.filter((item) => !request.used.includes(item.id));
       if (executors.length === 0) return { kind: 'none', reason: 'no_other_executor' };
+      const earlier = resolved.executors.filter((item) => request.used.includes(item.id));
       const selection = await selectExecutorFromPorts(deps.selection, {
         role: { role: resolved.role, executors, whenExhausted: resolved.whenExhausted },
         settings: deps.settings,
         previousExecutor: request.from,
+        ...(earlier.length === 0 ? {} : { earlier }),
       });
       if (selection.selected === null) return { kind: 'none', reason: 'waiting', selection };
       const target = await deps.launch(selection.selected.entry, role, request);

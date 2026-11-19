@@ -20,6 +20,7 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
         director: 'failover',
       },
       api_key_env: {},
+      rotate_on_exhaustion: { openai: 'off' },
       entries: {},
     });
   });

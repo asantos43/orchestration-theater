@@ -463,6 +463,7 @@ export class DirectorSessions {
   ): Promise<SelectedExecutor> {
     const { selection, config, store } = this.#options;
     const { scenarioId, failedExecutors } = session;
+    const leaving = session.failover?.from ?? null;
     // P20: a failover never goes back to the Executor that just failed (a provider error, a drop).
     const request = {
       role: DIRECTOR_ROLE,
@@ -473,6 +474,9 @@ export class DirectorSessions {
             refuse: (item: { readonly id: string }) =>
               failedExecutors.has(item.id) ? 'director_failed' : null,
           }),
+      // P26 (N157): the Executor the failover leaves holds the other accounts of its provider when
+      // its account ran out and `profiles.rotate_on_exhaustion.<provider>` is `off`.
+      ...(leaving === null ? {} : { earlier: [leaving] }),
     };
     if (config.selection.director_wait === 'wait') {
       const acquired = await selection.acquire(request, {

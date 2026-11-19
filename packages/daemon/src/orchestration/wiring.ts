@@ -103,6 +103,7 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     clock: composition.clock,
     logger,
     onNotice: (notice) => late.channel?.notify(notice),
+    situations: composition.situations,
   });
   const dispatcher = new PromptDispatcher({
     store,

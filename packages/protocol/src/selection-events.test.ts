@@ -92,7 +92,7 @@ describe('executor.selected event [proposta]', () => {
     expect(validateEventPayload('executor.selected', 2, nothing)).toEqual(nothing);
   });
 
-  it('accepts every reason of 5.7 and the three the algorithm adds', () => {
+  it('accepts every reason of 5.7 and the four the algorithm adds', () => {
     for (const reason of [
       'quota',
       'budget',
@@ -105,6 +105,7 @@ describe('executor.selected event [proposta]', () => {
       'same_model',
       'unhealthy',
       'retry',
+      'rotation',
     ]) {
       const payload = { ...selected, skipped: [{ ...skipped, reason }] };
       expect(validateEventPayload('executor.selected', 2, payload)).toEqual(payload);

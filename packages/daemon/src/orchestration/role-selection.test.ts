@@ -363,3 +363,113 @@ describe('RoleSelection: the fall to the provider of the work in the event (P15b
     });
   });
 });
+
+describe('RoleSelection: profiles.rotate_on_exhaustion (P26, N157)', () => {
+  function rotationRig(extra = '') {
+    const clock = new FakeClock();
+    const store = new InMemoryStore({ clock });
+    const out = new Set<string>();
+    const notices: { type: string; payload: unknown; correlation: unknown }[] = [];
+    const config = parseConfig(`
+orchestration:
+  executor: { client: fake, profile: one, model: fake-model }
+executors:
+  cross_client: any
+  ${entry('one')}: { client: fake, profile: one, model: fake-model, provider: openai }
+  ${entry('two')}: { client: fake, profile: two, model: fake-model, provider: openai }
+  ${entry('three')}: { client: fake, profile: three, model: fake-model, provider: anthropic }
+roles:
+  actor: { executors: [${entry('one')}, ${entry('two')}, ${entry('three')}] }
+selection:
+  recheck_every: off
+${extra}`);
+    const selection = new RoleSelection({
+      store,
+      config,
+      quota: {
+        statusOf: (target) => {
+          const id = typeof target === 'string' ? target : `${target.client}/${target.profile}`;
+          return Promise.resolve(status(id, out.has(id)));
+        },
+      },
+      pool: { slotOf: () => 'free' },
+      paths: dataPaths('/data'),
+      clock,
+      logger: createSilentLogger(),
+      situations: {
+        record: (type, payload, correlation) => {
+          notices.push({ type, payload, correlation });
+        },
+      },
+    });
+    const setup = async (): Promise<void> => {
+      for (const name of ['one', 'two', 'three']) {
+        await store.profiles.create({
+          client: 'fake',
+          name,
+          kind: 'token_plan',
+          provider: 'fake',
+          dir: `/p/${name}`,
+          secretRef: null,
+        });
+      }
+    };
+    return { selection, store, out, notices, setup };
+  }
+
+  it('off by default: an exhausted OpenAI account does not pass the work to the other one', async () => {
+    const { selection, out, notices, setup } = rotationRig();
+    await setup();
+    out.add('fake/one');
+    const picked = await selection.once({ role: 'actor' });
+    expect(picked.kind === 'selected' ? picked.executor.id : null).toBe(entry('three'));
+    if (picked.kind !== 'selected') return;
+    expect(picked.result.skipped).toMatchObject([
+      { profile: 'fake/one', reason: 'quota' },
+      { profile: 'fake/two', reason: 'rotation' },
+    ]);
+    expect(notices).toEqual([]);
+  });
+
+  it('on: the work rotates and a daemon.notice account_rotated says so', async () => {
+    const { selection, out, notices, setup } = rotationRig(`
+profiles:
+  rotate_on_exhaustion: { openai: on }`);
+    await setup();
+    out.add('fake/one');
+    const picked = await selection.once({
+      role: 'actor',
+      attempt: { playId: 'play-1', demandId: 'demand-1', number: 1 },
+    });
+    expect(picked.kind === 'selected' ? picked.executor.id : null).toBe(entry('two'));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      type: 'daemon.notice',
+      payload: { kind: 'account_rotated', subject: 'actor' },
+      correlation: { playId: 'play-1', attemptId: 'play-1/demand-1/1' },
+    });
+    expect(JSON.stringify(notices[0]?.payload)).toContain('fake/one ran out, so fake/two');
+  });
+
+  it('off: an Executor the caller refuses (the failover of P20) holds the others through earlier', async () => {
+    const { selection, out, setup } = rotationRig();
+    await setup();
+    out.add('fake/one');
+    const refuse = (executor: { readonly id: string }) =>
+      executor.id === entry('one') ? 'director_failed' : null;
+    // The refused copy is invalid, so only `earlier` tells the selector whose account ran out.
+    const without = await selection.once({ role: 'actor', refuse });
+    expect(without.kind === 'selected' ? without.executor.id : null).toBe(entry('two'));
+    const withEarlier = await selection.once({ role: 'actor', refuse, earlier: [entry('one')] });
+    expect(withEarlier.kind === 'selected' ? withEarlier.executor.id : null).toBe(entry('three'));
+  });
+
+  it('the config key is read per provider, in lower case, over the default', () => {
+    const config = parseConfig(`
+profiles:
+  rotate_on_exhaustion: { OpenAI: on, anthropic: off }`);
+    expect(config.profiles.rotate_on_exhaustion).toEqual({ openai: 'on', anthropic: 'off' });
+    expect(parseConfig('').profiles.rotate_on_exhaustion).toEqual({ openai: 'off' });
+    expect(() => parseConfig('profiles:\n  rotate_on_exhaustion: { openai: maybe }')).toThrow();
+  });
+});

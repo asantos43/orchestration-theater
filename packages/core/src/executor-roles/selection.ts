@@ -112,6 +112,22 @@ export type RetryDiversityMode = (typeof RETRY_DIVERSITY_MODES)[number];
 export const STRICT_UNAVAILABLE_MODES = ['wait_notify', 'fallback_prefer', 'wait'] as const;
 export type StrictUnavailableMode = (typeof STRICT_UNAVAILABLE_MODES)[number];
 
+/**
+ * `profiles.rotate_on_exhaustion.<provider>` (N157, decided by the owner on 2026-11-18; the names
+ * are [proposta]): whether the work of a subscription account that ran out of quota may pass to
+ * another subscription account of the same provider. `off`: it may not; the role waits for the
+ * reset or goes to another provider (the risk R21 of the terms of OpenAI). `on`: it may, and the
+ * selection says so (`rotated`), so the daemon writes a `daemon.notice`. An API profile, a spending
+ * cap (`budget`) and the same account (another model of the same profile) are never held.
+ */
+export const ROTATE_ON_EXHAUSTION_MODES = ['off', 'on'] as const;
+export type RotateOnExhaustionMode = (typeof ROTATE_ON_EXHAUSTION_MODES)[number];
+
+/** The providers held by default (N157): OpenAI. A provider not listed is `on`. */
+export const DEFAULT_ROTATE_ON_EXHAUSTION: Readonly<Record<string, RotateOnExhaustionMode>> = {
+  openai: 'off',
+};
+
 /** The settings of the selection, as the `selection` block of the configuration gives them. */
 export interface SelectionSettings {
   readonly strategy: SelectionStrategy;
@@ -136,6 +152,11 @@ export interface SelectionSettings {
    * somebody measures it [proposta].
    */
   readonly contextReserve: number;
+  /**
+   * `profiles.rotate_on_exhaustion` (N157), by provider in lower case; a provider not listed is
+   * `on`. See {@link ROTATE_ON_EXHAUSTION_MODES}.
+   */
+  readonly rotateOnExhaustion: Readonly<Record<string, RotateOnExhaustionMode>>;
 }
 
 /** The defaults of `selection`: the 5.7 behaviour, and N124's `allow` and `keep_order`. */
@@ -150,12 +171,14 @@ export const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   sameProviderAccount: 'prefer_other',
   modelTiers: {},
   contextReserve: 0,
+  rotateOnExhaustion: DEFAULT_ROTATE_ON_EXHAUSTION,
 };
 
 /**
  * Why an Executor was passed over. The first eight are the ones 5.7 names [proposta]; `unhealthy`,
- * `same_model` and `retry` are the cases the algorithm has and the list of 5.7 does not name.
- * `quota` covers a profile out of quota, one whose quota is unknown or near its limit when the
+ * `same_model` and `retry` are the cases the algorithm has and the list of 5.7 does not name;
+ * `rotation` (N157) is a subscription account held because another account of its provider ran out
+ * and `profiles.rotate_on_exhaustion` is `off` for that provider. `quota` covers a profile out of quota, one whose quota is unknown or near its limit when the
  * settings say to skip (`detail` tells which).
  */
 export const SKIP_REASONS = [
@@ -170,6 +193,7 @@ export const SKIP_REASONS = [
   'same_model',
   'unhealthy',
   'retry',
+  'rotation',
 ] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
@@ -177,6 +201,7 @@ export type SkipReason = (typeof SKIP_REASONS)[number];
  * The reasons that can pass with time: a wait for a reset or for a vacancy may end with this
  * Executor (`wait` and `next` only look at these). The others (a profile draining, an Executor
  * invalid, a prompt too big, the same provider, a retry that excludes it) never change by waiting.
+ * `rotation` ends with the reset of the account that ran out.
  */
 export const TEMPORARY_SKIP_REASONS = [
   'quota',
@@ -184,6 +209,7 @@ export const TEMPORARY_SKIP_REASONS = [
   'no_slot',
   'ram',
   'unhealthy',
+  'rotation',
 ] as const satisfies readonly SkipReason[];
 
 // ---------------------------------------------------------------------------------------------
@@ -216,6 +242,11 @@ export interface AdmissionFact {
 export interface ExecutorFacts {
   /** `missing` when the profile of the Executor is not registered. */
   readonly profileState: ProfileFact['state'] | 'missing';
+  /**
+   * A subscription (`token_plan`) or an API key (`api`), for `profiles.rotate_on_exhaustion`
+   * (N157). Absent: `token_plan`, as an unregistered profile of the old keys is.
+   */
+  readonly profileKind?: ProfileFact['kind'] | undefined;
   /** The profile answers (a local server is up, a login holds). */
   readonly healthy: boolean;
   readonly quota: QuotaFact;
@@ -229,7 +260,9 @@ type Awaitable<T> = T | Promise<T>;
 /** The ports the selection reads, one question each. The daemon wires them to P2, P4 and P5. */
 export interface SelectionPorts {
   /** The registered profile `<client>/<profile>`, or undefined. */
-  profile(profileId: string): Awaitable<Pick<ProfileFact, 'state'> | undefined>;
+  profile(
+    profileId: string,
+  ): Awaitable<(Pick<ProfileFact, 'state'> & Partial<Pick<ProfileFact, 'kind'>>) | undefined>;
   health(profileId: string): Awaitable<boolean>;
   /** The `QuotaService.statusOf` of the profile (never `canUse`: `unknown` is the policy's call). */
   quota(profileId: string): Awaitable<QuotaFact>;
@@ -247,7 +280,12 @@ export async function gatherSelectionFacts(
 ): Promise<Map<string, ExecutorFacts>> {
   const byProfile = new Map<
     string,
-    Promise<{ state: ExecutorFacts['profileState']; healthy: boolean; quota: QuotaFact }>
+    Promise<{
+      state: ExecutorFacts['profileState'];
+      kind: ExecutorFacts['profileKind'];
+      healthy: boolean;
+      quota: QuotaFact;
+    }>
   >();
   const profileFacts = (profileId: string) => {
     let known = byProfile.get(profileId);
@@ -258,7 +296,7 @@ export async function gatherSelectionFacts(
           ports.health(profileId),
           ports.quota(profileId),
         ]);
-        return { state: profile?.state ?? 'missing', healthy, quota };
+        return { state: profile?.state ?? 'missing', kind: profile?.kind, healthy, quota };
       })();
       byProfile.set(profileId, known);
     }
@@ -277,6 +315,7 @@ export async function gatherSelectionFacts(
         ]);
         facts.set(executor.id, {
           profileState: profile.state,
+          ...(profile.kind === undefined ? {} : { profileKind: profile.kind }),
           healthy: profile.healthy,
           quota: profile.quota,
           admission,
@@ -313,6 +352,13 @@ export interface SelectionInput {
   readonly promptTokens?: number | undefined;
   /** The Executor of the attempt that failed, when this is a retry. */
   readonly previousExecutor?: string | null | undefined;
+  /**
+   * Executors that already worked on this piece of work and are not in the list any more (the
+   * attempt that passed the baton, P18; the Director session that failed, P20). Only
+   * `profiles.rotate_on_exhaustion` reads them: an exhausted subscription account among them holds
+   * the other accounts of its provider. Every one that is not `invalid` needs facts too.
+   */
+  readonly earlier?: readonly ResolvedExecutor[] | undefined;
   /** Who did the work under review; absent: there is nothing to cross-check. */
   readonly workedBy?: WorkedBy | null | undefined;
   /**
@@ -391,6 +437,17 @@ export interface SelectionResult {
   };
   /** `round_robin`: the cursor to keep for the group of the chosen Executor; null otherwise. */
   readonly roundRobin: { readonly group: string; readonly cursor: number } | null;
+  /**
+   * N157, `profiles.rotate_on_exhaustion: on`: the Executor chosen is on another subscription
+   * account of the provider of one that ran out (`from`), so the work rotated between accounts. The
+   * daemon writes a `daemon.notice`. Null in every other case, `off` included (the accounts held
+   * are in `skipped`, reason `rotation`).
+   */
+  readonly rotated: {
+    readonly provider: string;
+    readonly from: string;
+    readonly to: string;
+  } | null;
 }
 
 /** `<model>-<effort>` of an Executor id: what stands before the `@`. */
@@ -425,7 +482,8 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   const profileIdOf = (item: ResolvedExecutor): string =>
     `${item.entry.client}/${item.entry.profile}`;
 
-  for (const item of list) {
+  const earlier = input.earlier ?? [];
+  for (const item of [...list, ...earlier]) {
     if (item.validity === 'valid' && !facts.has(item.id)) {
       throw new InvalidInput(`selection: no facts for Executor "${item.id}" of role ${role.role}`);
     }
@@ -549,7 +607,8 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
   interface Row {
     readonly item: ResolvedExecutor;
     readonly conflict: boolean;
-    readonly verdict: Verdict | null;
+    /** Not readonly: `profiles.rotate_on_exhaustion` (step 6b) may hold an available one. */
+    verdict: Verdict | null;
   }
   const rows: Row[] = order.map((item) => ({
     item,
@@ -617,6 +676,59 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
           ...(prefers ? fallbackOrder(rows.filter((row) => row.conflict)) : []),
         ]
       : rows;
+
+  // 6b. `profiles.rotate_on_exhaustion` (N157): the account that ran out. It is the account of an
+  // Executor that already worked on this piece (the baton, the failover, the retry), or the account
+  // the order would have chosen had its quota not run out. With `off`, every other subscription
+  // account of its provider is held until its reset; with `on`, the pick says it rotated.
+  const providerOf = (item: ResolvedExecutor): string => item.entry.provider.toLowerCase();
+  const ranOut = (item: ResolvedExecutor): ExecutorFacts | undefined => {
+    const fact = item.validity === 'valid' ? factsOf(item) : undefined;
+    return fact !== undefined &&
+      (fact.profileKind ?? 'token_plan') === 'token_plan' &&
+      fact.quota.state === 'exhausted' &&
+      fact.quota.cause !== 'budget'
+      ? fact
+      : undefined;
+  };
+  const exhaustedBy = new Map<
+    string,
+    { readonly profile: string; readonly until: number | null }
+  >();
+  const noteRanOut = (item: ResolvedExecutor | undefined): void => {
+    if (item === undefined) return;
+    const fact = ranOut(item);
+    const provider = providerOf(item);
+    if (fact === undefined || provider === 'unknown' || exhaustedBy.has(provider)) return;
+    exhaustedBy.set(provider, { profile: profileIdOf(item), until: fact.quota.untilReset });
+  };
+  for (const item of earlier) noteRanOut(item);
+  noteRanOut(
+    input.previousExecutor === undefined || input.previousExecutor === null
+      ? undefined
+      : list.find((item) => item.id === input.previousExecutor),
+  );
+  noteRanOut(ordered.find((row) => row.verdict === null || ranOut(row.item) !== undefined)?.item);
+  const modeOf = (provider: string): RotateOnExhaustionMode =>
+    settings.rotateOnExhaustion[provider] ?? 'on';
+  const otherAccount = (
+    item: ResolvedExecutor,
+  ): { readonly profile: string; readonly until: number | null } | undefined => {
+    const exhausted = exhaustedBy.get(providerOf(item));
+    if (exhausted === undefined || exhausted.profile === profileIdOf(item)) return undefined;
+    return (factsOf(item)?.profileKind ?? 'token_plan') === 'token_plan' ? exhausted : undefined;
+  };
+  for (const row of rows) {
+    if (row.verdict !== null || modeOf(providerOf(row.item)) !== 'off') continue;
+    const exhausted = otherAccount(row.item);
+    if (exhausted === undefined) continue;
+    row.verdict = {
+      reason: 'rotation',
+      detail: `profiles.rotate_on_exhaustion.${providerOf(row.item)} is off and ${exhausted.profile} is exhausted`,
+      untilReset: exhausted.until,
+    };
+  }
+
   const pick = ordered.find((row) => row.verdict === null);
   const chosenIndex = pick === undefined ? -1 : rows.indexOf(pick);
   const pickPosition = pick === undefined ? -1 : ordered.indexOf(pick);
@@ -686,6 +798,13 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
     }
   }
 
+  // N157: with `on`, the pick is on another subscription account of a provider that ran out.
+  const rotatedFrom = pick === undefined ? undefined : otherAccount(pick.item);
+  const rotated: SelectionResult['rotated'] =
+    pick === undefined || rotatedFrom === undefined
+      ? null
+      : { provider: providerOf(pick.item), from: rotatedFrom.profile, to: profileIdOf(pick.item) };
+
   return {
     role: role.role,
     selected: pick?.item ?? null,
@@ -708,6 +827,7 @@ export function selectExecutor(input: SelectionInput): SelectionResult {
         profileIdOf(pick.item) === worked.profile,
     },
     roundRobin,
+    rotated,
   };
 }
 
@@ -735,6 +855,9 @@ export async function selectExecutorFromPorts(
   ports: SelectionPorts,
   input: Omit<SelectionInput, 'facts'>,
 ): Promise<SelectionResult> {
-  const facts = await gatherSelectionFacts(ports, input.role.executors);
+  const facts = await gatherSelectionFacts(ports, [
+    ...input.role.executors,
+    ...(input.earlier ?? []),
+  ]);
   return selectExecutor({ ...input, facts });
 }

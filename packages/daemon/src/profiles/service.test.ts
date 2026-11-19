@@ -996,6 +996,7 @@ describe('profileSettingsOf', () => {
             director: 'wait',
           },
           api_key_env: {},
+          rotate_on_exhaustion: { openai: 'off' },
           entries: {},
         },
       }),

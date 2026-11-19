@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import {
   DEFAULT_DIRECTIVE_TIMEZONE,
+  DEFAULT_ROTATE_ON_EXHAUSTION,
   DEFAULT_SUMMARY_MESSAGES,
   DEFAULT_SHELL_ALLOWLIST,
   DELIVERY_MODES,
@@ -12,6 +13,7 @@ import {
   ProjectCommandSchema,
   PROMPT_ORDER_MODES,
   ROLE_IDS,
+  ROTATE_ON_EXHAUSTION_MODES,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
@@ -1494,7 +1496,8 @@ export const DaemonConfigSchema = z
       .prefault({}),
     /**
      * Profiles (architecture 5.6; Phase 5, P2). The drain defaults follow N127, decided by the
-     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta]. Any other key is
+     * owner on 2026-11-18; `same_provider_notice` and `api_key_env` are [proposta];
+     * `rotate_on_exhaustion` is N157 (owner, 2026-11-18; P26). Any other key is
      * a profile (`opencode/local`) with its block: `budget`, the spending cap of an API profile
      * (P11, see `budget-config.ts`), and `local`, the local model server of 5.9, which the cadastro
      * of an OpenCode Executor with a local model writes (P14).
@@ -1521,8 +1524,26 @@ export const DaemonConfigSchema = z
         api_key_env: z
           .record(z.string().min(1), z.string().regex(ENV_NAME, 'expected a variable name'))
           .default({}),
+        /**
+         * N157 (owner, 2026-11-18; P26): whether a subscription profile of a provider that ran out
+         * passes the work to another subscription account of the same provider, by provider id
+         * (`off` | `on`). With `off`, the selection (P15), the baton (P18) and the failover of the
+         * Director (P20) wait for the reset or go to another provider; with `on`, the work rotates
+         * and a `daemon.notice` `account_rotated` says so. Default `openai: off` (the terms of
+         * OpenAI forbid rotating accounts to dodge the limits; risk R21), every other provider
+         * `on`. API profiles and the spending cap are outside the rule.
+         */
+        rotate_on_exhaustion: z
+          .record(z.string().min(1), z.enum(ROTATE_ON_EXHAUSTION_MODES))
+          .transform((modes) => ({
+            ...DEFAULT_ROTATE_ON_EXHAUSTION,
+            ...Object.fromEntries(
+              Object.entries(modes).map(([provider, mode]) => [provider.toLowerCase(), mode]),
+            ),
+          }))
+          .prefault({}),
       }),
-      ['same_provider_notice', 'drain', 'api_key_env'],
+      ['same_provider_notice', 'drain', 'api_key_env', 'rotate_on_exhaustion'],
     ).prefault({}),
     /**
      * The spending cap, for every profile and Executor that has one (architecture 5.6; P11).
