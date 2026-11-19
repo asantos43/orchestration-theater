@@ -30,6 +30,15 @@ export const SrtSandboxConfigSchema = z.strictObject({
    * a longer wrap in a big worktree.
    */
   mandatoryDenySearchDepth: z.number().int().min(1).max(10).default(3),
+  /**
+   * macOS only (N161): folders whose Unix sockets a confined command may connect to, for the MCP
+   * server of the daemon, which Seatbelt keeps off the loopback (EPERM). Absolute. The library
+   * reads this list once, for every command of the process, not per command; the folder is not
+   * writable from inside, so a command can reach a socket there but not create one. Ignored on
+   * Linux, where the seccomp filter of the library refuses Unix sockets and the bridge is TCP (N115).
+   * Default: none.
+   */
+  unixSocketDirs: z.array(z.string().min(1)).max(8).default([]),
 });
 
 /** What the user may write (defaults optional). */
