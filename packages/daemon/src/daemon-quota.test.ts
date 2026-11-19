@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
 import { startDaemon, type DaemonHandle } from './daemon.js';
 import { createSilentLogger } from './logger.js';
+import { itWithLauncher } from './launcher-fixture.js';
 import { apiKeyRefOf } from './profiles/secret-env.js';
 import { makeTempDataDir } from './test-helpers.js';
 
@@ -74,47 +75,52 @@ async function until(check: () => Promise<boolean>): Promise<void> {
 }
 
 describe('startDaemon with the P8 quota probes', () => {
-  it('reads a registered MiniMax profile at start, with its vault key, and no session open', async () => {
-    const tmp = await makeTempDataDir();
-    try {
-      const calls: string[] = [];
-      const base = await fakeMiniMax(calls, 15);
-      const clock = new FakeClock(T0);
-      const store = new InMemoryStore({ clock });
-      const vault = new InMemorySecretVault();
-      const ref = apiKeyRefOf('opencode', 'mm');
-      await vault.set(ref, new Secret(KEY));
-      await store.profiles.create({
-        client: 'opencode',
-        name: 'mm',
-        kind: 'api',
-        provider: 'minimax',
-        dir: '/p/mm',
-        secretRef: ref,
-      });
-      const daemon = await startDaemon({
-        dataDir: tmp.dir,
-        clientSearch: ALL_FOUND,
-        config: parseConfig(
-          'backup:\n  when: manual\nsecurity:\n  unenforced: allow\n' +
-            `quota:\n  minimax:\n    mode: token_plan\n    base_url: ${base}\n    allow_hosts: ['127.0.0.1']\n`,
-        ),
-        overrides: { clock, store, vault },
-        logger: createSilentLogger(),
-        version: '9.9.9',
-      });
-      daemons.push(daemon);
-      const profile = { client: 'opencode', profile: 'mm' };
-      await until(async () => (await daemon.quota.statusOf(profile)).state !== 'unknown');
-      const status = await daemon.quota.statusOf(profile);
-      // 15 left of 100 (`usage_count_means: remaining`): 85% used, so near the limit.
-      expect(status.state).toBe('near_limit');
-      expect(status.windows[0]).toMatchObject({ window: '5h', usedPercent: 85 });
-      expect(calls[0]).toBe(`GET /v1/token_plan/remains Bearer ${KEY}`);
-    } finally {
-      await cleanUp(tmp);
-    }
-  });
+  // The quota probes come from the clients, which exist only with a process launcher (not on
+  // Windows yet, N94 and N58): there the daemon reads no quota.
+  itWithLauncher(
+    'reads a registered MiniMax profile at start, with its vault key, and no session open',
+    async () => {
+      const tmp = await makeTempDataDir();
+      try {
+        const calls: string[] = [];
+        const base = await fakeMiniMax(calls, 15);
+        const clock = new FakeClock(T0);
+        const store = new InMemoryStore({ clock });
+        const vault = new InMemorySecretVault();
+        const ref = apiKeyRefOf('opencode', 'mm');
+        await vault.set(ref, new Secret(KEY));
+        await store.profiles.create({
+          client: 'opencode',
+          name: 'mm',
+          kind: 'api',
+          provider: 'minimax',
+          dir: '/p/mm',
+          secretRef: ref,
+        });
+        const daemon = await startDaemon({
+          dataDir: tmp.dir,
+          clientSearch: ALL_FOUND,
+          config: parseConfig(
+            'backup:\n  when: manual\nsecurity:\n  unenforced: allow\n' +
+              `quota:\n  minimax:\n    mode: token_plan\n    base_url: ${base}\n    allow_hosts: ['127.0.0.1']\n`,
+          ),
+          overrides: { clock, store, vault },
+          logger: createSilentLogger(),
+          version: '9.9.9',
+        });
+        daemons.push(daemon);
+        const profile = { client: 'opencode', profile: 'mm' };
+        await until(async () => (await daemon.quota.statusOf(profile)).state !== 'unknown');
+        const status = await daemon.quota.statusOf(profile);
+        // 15 left of 100 (`usage_count_means: remaining`): 85% used, so near the limit.
+        expect(status.state).toBe('near_limit');
+        expect(status.windows[0]).toMatchObject({ window: '5h', usedPercent: 85 });
+        expect(calls[0]).toBe(`GET /v1/token_plan/remains Bearer ${KEY}`);
+      } finally {
+        await cleanUp(tmp);
+      }
+    },
+  );
 
   it('makes no call and keeps the probe of the client with the defaults (nothing to route)', async () => {
     const tmp = await makeTempDataDir();
