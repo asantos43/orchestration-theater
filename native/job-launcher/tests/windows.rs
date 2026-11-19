@@ -23,13 +23,14 @@ fn launcher() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ot-job-launcher"))
 }
 
-/// `target/<profile>/examples/helper.exe`, next to the test binary's `deps` folder.
+/// `target/<profile>/examples/helper.exe`, in the folder of the launcher binary. The final
+/// artifacts (binaries and examples) share that folder; the test binary may live elsewhere, under
+/// `build/` in the newer build-dir layout of Cargo, so its own path is no guide.
 fn helper() -> PathBuf {
-    let exe = std::env::current_exe().expect("current exe");
-    let profile_dir = exe
+    let launcher = PathBuf::from(env!("CARGO_BIN_EXE_ot-job-launcher"));
+    let profile_dir = launcher
         .parent()
-        .and_then(|deps| deps.parent())
-        .expect("target/<profile>/deps/<test>.exe");
+        .expect("target/<profile>/ot-job-launcher.exe");
     let path = profile_dir.join("examples").join("helper.exe");
     assert!(
         path.exists(),
