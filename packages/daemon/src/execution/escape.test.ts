@@ -79,6 +79,9 @@ beforeAll(async () => {
 });
 afterAll(disposeTestGitIsolation);
 
+/** `touch` by its absolute path: `/bin/touch` on Linux, `/usr/bin/touch` on macOS. */
+const TOUCH = existsSync('/bin/touch') ? '/bin/touch' : '/usr/bin/touch';
+
 /** Layer 2 without layer 3: the checks are the daemon's own, so any machine can run them. */
 const NO_SANDBOX = { config: 'sandbox:\n  mode: off\n', unenforced: true } as const;
 
@@ -605,7 +608,7 @@ describe('layer 3: what the operating system holds', () => {
             // The control: the worktree is writable, and a program of the system runs in it.
             { label: 'inside write', kind: 'write', path: 'inside.txt', via: 'direct' },
             { label: 'inside program', kind: 'spawn', argv: ['sh', '-c', 'touch inside-sh.txt'] },
-            { label: 'inside by path', kind: 'spawn', argv: ['/bin/touch', 'inside-bin.txt'] },
+            { label: 'inside by path', kind: 'spawn', argv: [TOUCH, 'inside-bin.txt'] },
             // Native writes with no question, by path traversal, absolute path and symlink.
             { label: 'dotdot', kind: 'write', path: '../escaped-dotdot.txt', via: 'direct' },
             { label: 'absolute', kind: 'write', path: out('abs.txt'), via: 'direct' },
@@ -615,7 +618,7 @@ describe('layer 3: what the operating system holds', () => {
             { label: 'file-link', kind: 'write', path: 'evil-file', via: 'direct' },
             // Programs the client runs: in sh -c, by path, chained, with a substitution.
             { label: 'sh -c', kind: 'spawn', argv: ['sh', '-c', `touch ${out('s1')}`] },
-            { label: 'by path', kind: 'spawn', argv: ['/bin/touch', out('s2')] },
+            { label: 'by path', kind: 'spawn', argv: [TOUCH, out('s2')] },
             { label: 'glued chain', kind: 'spawn', argv: ['sh', '-c', `true;touch ${out('s3')}`] },
             {
               label: 'substitution',
@@ -660,8 +663,9 @@ describe('layer 3: what the operating system holds', () => {
         expect(await secretIntact(outside)).toBe(true);
 
         // The network: no route, a denied proxy, and the server of the host saw nothing at all.
-        expect(seen.text).toMatch(/escape raw connect: failed (ECONNREFUSED|ENETUNREACH)/);
-        expect(seen.text).toMatch(/escape direct get: failed (ECONNREFUSED|ENETUNREACH)/);
+        // bubblewrap (Linux) has no route; Seatbelt (macOS) refuses the connect with EPERM.
+        expect(seen.text).toMatch(/escape raw connect: failed (ECONNREFUSED|ENETUNREACH|EPERM)/);
+        expect(seen.text).toMatch(/escape direct get: failed (ECONNREFUSED|ENETUNREACH|EPERM)/);
         expect(seen.text).not.toMatch(/escape proxy get: ok/);
         expect(seen.text).not.toMatch(/escape proxy get, other host: ok/);
         expect(outside.requests()).toBe(0);
@@ -674,7 +678,8 @@ describe('layer 3: what the operating system holds', () => {
   }, 120_000);
 
   it('confines what an allowed program does: node -e with a hidden path, a child, a socket', async (context) => {
-    if (sandboxIssue !== undefined) {
+    // The tool is the daemon's MCP server, reached through the loopback bridge of N115: Linux only.
+    if (sandboxIssue !== undefined || process.platform !== 'linux') {
       context.skip();
       return;
     }
@@ -720,7 +725,8 @@ describe('layer 3: what the operating system holds', () => {
   }, 120_000);
 
   it('holds a program that the any mode lets through; the argv rules stop the operators', async (context) => {
-    if (sandboxIssue !== undefined) {
+    // Same as above: the MCP server of the daemon needs the bridge of N115 (Linux only).
+    if (sandboxIssue !== undefined || process.platform !== 'linux') {
       context.skip();
       return;
     }
