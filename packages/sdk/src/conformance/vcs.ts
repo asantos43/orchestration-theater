@@ -83,8 +83,13 @@ export function testGit(cwd: string, ...args: string[]): Promise<string> {
         },
       },
       (error, stdout, stderr) => {
-        if (error !== null) reject(new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`));
-        else resolve(stdout.replace(/\n$/, ''));
+        if (error === null) {
+          resolve(stdout.replace(/\n$/, ''));
+          return;
+        }
+        // A git killed by the deadline leaves no stderr: say so, or the failure has no reason.
+        const why = error.killed ? 'killed after 20 s' : `exit ${String(error.code ?? '?')}`;
+        reject(new Error(`git ${args.join(' ')} failed (${why}): ${stderr.trim()}`));
       },
     );
   });
