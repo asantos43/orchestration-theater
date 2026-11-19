@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { EventEnvelope } from '@otheater/core';
 import { isCheckpointMessage } from '@otheater/core';
@@ -180,8 +181,17 @@ describe('acceptance: sessions run by the daemon', () => {
         const worktrees = [streamed, timedOut, resumed].map((outcome) => outcome.worktree);
         expect(new Set(worktrees).size).toBe(3);
         expect(worktrees.every((path) => path.startsWith(join(tmp.dir, 'worktrees')))).toBe(true);
-        const listed = await testGit(repo, 'worktree', 'list', '--porcelain');
-        for (const path of worktrees) expect(listed).toContain(path);
+        // Compared by real path: on Windows git prints the long form with `/` (`C:/Users/...`), and
+        // the temporary folder can come in the short 8.3 form with `\` (`C:\Users\RUNNER~1\...`).
+        const listed = await Promise.all(
+          (await testGit(repo, 'worktree', 'list', '--porcelain'))
+            .split('\n')
+            .filter((line) => line.startsWith('worktree '))
+            .map((line) => line.slice('worktree '.length))
+            // A registered worktree whose folder is already gone stays as git printed it.
+            .map((path) => realpath(path).catch(() => path)),
+        );
+        for (const path of worktrees) expect(listed).toContain(await realpath(path));
         expect(await testGit(timedOut.worktree, 'ls-files')).toBe('README.md\ntimed.txt');
         expect(await testGit(resumed.worktree, 'ls-files')).toBe('README.md\ncrash.txt');
 
