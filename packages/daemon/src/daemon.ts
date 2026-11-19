@@ -339,6 +339,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       logger: composition.logger,
       version,
       gate,
+      // macOS with `sandbox.mcp_bridge: unix` (N161): the confined client reaches the server here.
+      ...(composition.sandbox?.mcpSocket === undefined
+        ? {}
+        : { socketPath: composition.sandbox.mcpSocket }),
     });
     return await run({
       options,

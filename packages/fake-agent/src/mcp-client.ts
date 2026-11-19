@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createInterface } from 'node:readline';
 
 /** An HTTP MCP server the session was given (`mcpServers` of `session/new` and `session/load`). */
 export interface HttpMcpServer {
@@ -7,6 +9,19 @@ export interface HttpMcpServer {
   /** The headers as the client must send them, `Authorization: Bearer <token>` among them. */
   readonly headers: Readonly<Record<string, string>>;
 }
+
+/**
+ * An MCP server the client starts as a process and talks to over stdio, one JSON-RPC message per
+ * line: what the daemon hands a confined client on macOS (the shim of N161).
+ */
+export interface StdioMcpServer {
+  readonly name: string;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+}
+
+export type SessionMcpServer = HttpMcpServer | StdioMcpServer;
 
 /** What a `tools/call` came back with. */
 export interface McpToolOutcome {
@@ -49,29 +64,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * A minimal MCP client over Streamable HTTP, written with `fetch` alone (no client package): what
- * the fake agent needs to play the part of an Executor that calls the framework tools. One
- * instance talks to one server with the headers the session was given.
- */
-export class McpHttpClient {
+/** How one message reaches the server: the answer of a request, `undefined` for a notification. */
+interface McpTransport {
+  post(payload: Record<string, unknown>, protocol: string): Promise<unknown>;
+  close(): Promise<void>;
+}
+
+class HttpTransport implements McpTransport {
   readonly #server: HttpMcpServer;
-  #id = 0;
   #sessionId: string | undefined;
-  #protocol = LATEST_PROTOCOL;
 
   constructor(server: HttpMcpServer) {
     this.#server = server;
   }
 
-  async #post(payload: Record<string, unknown>): Promise<unknown> {
+  async post(payload: Record<string, unknown>, protocol: string): Promise<unknown> {
     const response = await fetch(this.#server.url, {
       method: 'POST',
       headers: {
         ...this.#server.headers,
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
-        'mcp-protocol-version': this.#protocol,
+        'mcp-protocol-version': protocol,
         ...(this.#sessionId === undefined ? {} : { 'mcp-session-id': this.#sessionId }),
       },
       body: JSON.stringify(payload),
@@ -86,6 +100,111 @@ export class McpHttpClient {
       );
     }
     return bodyOf(text);
+  }
+
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+/** Time a server process gets to end by itself once its stdin is closed. */
+const STDIO_CLOSE_MS = 5_000;
+
+class StdioTransport implements McpTransport {
+  readonly #child: ChildProcessWithoutNullStreams;
+  readonly #waiting = new Map<unknown, (answer: unknown) => void>();
+  readonly #exited: Promise<void>;
+  #failure: McpClientError | undefined;
+  #stderr = '';
+
+  constructor(server: StdioMcpServer) {
+    this.#child = spawn(server.command, [...server.args], {
+      env: { ...process.env, ...server.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    this.#child.stderr.on('data', (chunk: Buffer) => {
+      this.#stderr = (this.#stderr + chunk.toString('utf8')).slice(-2_000);
+    });
+    createInterface({ input: this.#child.stdout, crlfDelay: Infinity }).on('line', (line) => {
+      let message: unknown;
+      try {
+        message = JSON.parse(line) as unknown;
+      } catch {
+        return;
+      }
+      if (!isRecord(message) || !('id' in message)) return;
+      const resolve = this.#waiting.get(message.id);
+      if (resolve === undefined) return;
+      this.#waiting.delete(message.id);
+      resolve(message);
+    });
+    this.#exited = new Promise<void>((resolve) => {
+      const end = (why: string): void => {
+        this.#failure ??= new McpClientError(
+          `MCP server process ${why}${this.#stderr === '' ? '' : `: ${this.#stderr.trim()}`}`,
+          undefined,
+        );
+        for (const settle of this.#waiting.values()) settle(undefined);
+        this.#waiting.clear();
+        resolve();
+      };
+      this.#child.on('error', (error) => {
+        end(`failed to start (${error.message})`);
+      });
+      this.#child.on('exit', (code, signal) => {
+        end(`ended (${signal ?? `exit ${String(code)}`})`);
+      });
+    });
+    // A server that went away must not end the agent with an EPIPE.
+    this.#child.stdin.on('error', () => undefined);
+  }
+
+  post(payload: Record<string, unknown>): Promise<unknown> {
+    if (this.#failure !== undefined) return Promise.reject(this.#failure);
+    const line = `${JSON.stringify(payload)}\n`;
+    if (!('id' in payload)) {
+      this.#child.stdin.write(line);
+      return Promise.resolve(undefined);
+    }
+    return new Promise((resolve, reject) => {
+      this.#waiting.set(payload.id, (answer) => {
+        if (answer === undefined)
+          reject(this.#failure ?? new McpClientError('no answer', undefined));
+        else resolve(answer);
+      });
+      this.#child.stdin.write(line);
+    });
+  }
+
+  async close(): Promise<void> {
+    this.#child.stdin.end();
+    const timer = setTimeout(() => this.#child.kill('SIGKILL'), STDIO_CLOSE_MS);
+    await this.#exited;
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * A minimal MCP client (no client package): what the fake agent needs to play the part of an
+ * Executor that calls the framework tools. One instance talks to one server: over Streamable HTTP
+ * with `fetch` and the headers the session was given, or over stdio to a process it starts (the
+ * shim of N161). `close` ends that process; for HTTP it does nothing.
+ */
+export class McpClient {
+  readonly #transport: McpTransport;
+  #id = 0;
+  #protocol = LATEST_PROTOCOL;
+
+  constructor(server: SessionMcpServer) {
+    this.#transport = 'url' in server ? new HttpTransport(server) : new StdioTransport(server);
+  }
+
+  #post(payload: Record<string, unknown>): Promise<unknown> {
+    return this.#transport.post(payload, this.#protocol);
+  }
+
+  close(): Promise<void> {
+    return this.#transport.close();
   }
 
   async #request(method: string, params: Record<string, unknown>): Promise<unknown> {

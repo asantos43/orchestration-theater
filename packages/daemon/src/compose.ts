@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { PlaywrightBrowserSession } from '@otheater/adapter-browser-playwright';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
@@ -102,6 +103,7 @@ import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
 import { SituationLog, situationSubject, situationText, type SituationSink } from './situations.js';
 import {
   describeZodError,
+  resolveMcpBridge,
   sessionsPerProcessOf,
   type ClientId,
   type DaemonConfig,
@@ -391,11 +393,21 @@ async function composeSandbox(
     );
     return undefined;
   }
+  // N161: with the unix bridge the folder of the MCP socket exists before the sandbox, which takes
+  // it as the one folder whose sockets a client may connect to. Its own short folder in the temp
+  // of the system (macOS limits the path of a socket to 104 bytes), mode 0700 by `mkdtemp`, and
+  // the real path (on macOS `/var` is `/private/var`, and Seatbelt reads the real one).
+  const unix = resolveMcpBridge(config.sandbox.mcp_bridge, process.platform) === 'unix';
+  const socketDir = unix ? realpathSync(mkdtempSync(join(tmpdir(), 'ot-mcp-'))) : undefined;
+  const dropSocketDir = (): void => {
+    if (socketDir !== undefined) rmSync(socketDir, { recursive: true, force: true });
+  };
   let sandbox: Sandbox;
   if (overrides.sandbox !== undefined) {
     sandbox = overrides.sandbox;
     const availability = await sandbox.available();
     if (!availability.ok) {
+      dropSocketDir();
       logger.warn({ reason: availability.reason }, 'sandbox is not available');
       situations?.record('daemon.notice', {
         kind: 'sandbox_unavailable',
@@ -408,6 +420,7 @@ async function composeSandbox(
     checkAdapterRange(SRT_SANDBOX_ADAPTER, 'Sandbox', SANDBOX_PORT_VERSION);
     const availability = await probeSandbox();
     if (!availability.ok) {
+      dropSocketDir();
       logger.warn(
         { reason: availability.reason, platform: process.platform },
         'layer 3 (sandbox) is missing here: writeScope and network have no guarantee, security.unenforced decides',
@@ -419,7 +432,7 @@ async function composeSandbox(
       });
       return undefined;
     }
-    sandbox = new SrtSandbox();
+    sandbox = new SrtSandbox(socketDir === undefined ? {} : { unixSocketDirs: [socketDir] });
   }
   logger.info({ sandbox: sandbox.id, fields: sandbox.capabilities().fields }, 'sandbox');
   return buildSandboxWiring({
@@ -427,6 +440,7 @@ async function composeSandbox(
     config,
     home: homedir(),
     dataDir: paths.dataDir,
+    ...(socketDir === undefined ? {} : { mcpSocketDir: socketDir }),
     onNestedUserNamespaces: ({ client, worktree }) => {
       logger.warn(
         { client, worktree },

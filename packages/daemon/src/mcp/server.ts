@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
+import { rmSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { serve } from '@hono/node-server';
+import { createAdaptorServer, serve } from '@hono/node-server';
 import {
   AdapterUnavailable,
   askProducerInput,
@@ -27,6 +28,7 @@ import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
 import { notImplemented, ToolFailure, ToolHandlers, ToolWithImage } from './handlers.js';
 import { describeIssues, isSubmitTool, runSubmit, type ToolReply } from './submit.js';
+import { SHIM_AUTHORIZATION_ENV, SHIM_SOCKET_ENV, STDIO_SHIM_PATH } from './stdio-shim.js';
 import { bearerToken, GrantBook, type GrantRecord } from './tokens.js';
 
 /** The only path of the server; everything else is a 404. */
@@ -50,6 +52,12 @@ export interface FrameworkMcpOptions {
   readonly version: string;
   /** Calls wait here while the reconciliation of the start-up runs (5.21). Default: no wait. */
   readonly gate?: Pick<RecoveryGate, 'wait'>;
+  /**
+   * A Unix socket to listen on too, absolute (N161, `sandbox.mcp_bridge: unix`). Each grant then
+   * carries the stdio shim that a confined client starts to reach the server through it. The folder
+   * must exist; a file already at the path is removed first. Default: no socket.
+   */
+  readonly socketPath?: string;
 }
 
 /**
@@ -112,10 +120,47 @@ function rejected(status: number, message: string, headers: Record<string, strin
   });
 }
 
+function closeServer(server: HttpServer): Promise<void> {
+  return new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
+    server.closeAllConnections();
+  });
+}
+
+/** The same app on a Unix socket (N161): the stdio shim of a confined client posts here. */
+function listenUnix(
+  fetch: (request: Request) => Response | Promise<Response>,
+  socketPath: string,
+): Promise<HttpServer> {
+  // A socket left by a daemon that died would make the listen fail with EADDRINUSE.
+  rmSync(socketPath, { force: true });
+  const server = createAdaptorServer({ fetch }) as HttpServer;
+  return new Promise<HttpServer>((resolve, reject) => {
+    const onError = (error: NodeJS.ErrnoException): void => {
+      reject(
+        new AdapterUnavailable(
+          `The MCP server could not listen on the socket ${socketPath}: ${error.message}`,
+        ),
+      );
+    };
+    server.once('error', onError);
+    server.listen(socketPath, () => {
+      server.off('error', onError);
+      resolve(server);
+    });
+  });
+}
+
 /**
  * The framework MCP server (architecture 5.3): the tools of each role, over Streamable HTTP, on
  * `127.0.0.1` only. It lives and dies with the daemon.
  *
+ * - With `socketPath` (N161, macOS) the same app also listens on a Unix socket, and each grant
+ *   carries the stdio shim (`stdio-shim.ts`) that a client confined by Seatbelt starts to reach the
+ *   server through the socket: Seatbelt refuses it the loopback of the host. The checks below are
+ *   the same on both ways; the shim sends `Host: 127.0.0.1`.
  * - Host and Origin are checked against localhost before anything else (DNS rebinding).
  * - Every call carries `Authorization: Bearer <token>`; the token is one session of one attempt
  *   and is bound to its role (`GrantBook`). Without a valid token the answer is 401.
@@ -130,16 +175,33 @@ export class FrameworkMcpServer implements McpAccess {
   readonly #handlers: ToolHandlers;
   readonly #book: GrantBook;
   readonly #http: HttpServer;
+  readonly #unix: HttpServer | undefined;
   readonly #mcp: McpHttpHandler;
   #url: string;
   #stopped: Promise<void> | undefined;
 
-  private constructor(options: FrameworkMcpOptions, http: HttpServer, port: number) {
+  private constructor(
+    options: FrameworkMcpOptions,
+    http: HttpServer,
+    port: number,
+    unix: HttpServer | undefined,
+  ) {
     this.#options = options;
     this.#handlers = options.handlers ?? new ToolHandlers();
     this.#http = http;
+    this.#unix = unix;
     this.#url = `http://${MCP_HOST}:${String(port)}${MCP_PATH}`;
-    this.#book = new GrantBook(() => this.#url);
+    const socketPath = unix === undefined ? undefined : options.socketPath;
+    this.#book = new GrantBook(
+      () => this.#url,
+      socketPath === undefined
+        ? undefined
+        : (authorization) => ({
+            command: process.execPath,
+            args: [STDIO_SHIM_PATH],
+            env: { [SHIM_SOCKET_ENV]: socketPath, [SHIM_AUTHORIZATION_ENV]: authorization },
+          }),
+    );
     this.#mcp = this.#createHandler();
   }
 
@@ -179,14 +241,31 @@ export class FrameworkMcpServer implements McpAccess {
       server.once('error', onError);
     });
     const address = http.address() as AddressInfo;
-    const current = new FrameworkMcpServer(options, http, address.port);
+    let unix: HttpServer | undefined;
+    if (options.socketPath !== undefined) {
+      try {
+        unix = await listenUnix(app.fetch, options.socketPath);
+      } catch (error) {
+        await closeServer(http);
+        throw error;
+      }
+    }
+    const current = new FrameworkMcpServer(options, http, address.port, unix);
     ready.server = current;
-    options.logger.info({ url: current.url }, 'MCP framework server listening');
+    options.logger.info(
+      { url: current.url, ...(unix === undefined ? {} : { socket: options.socketPath }) },
+      'MCP framework server listening',
+    );
     return current;
   }
 
   get url(): string {
     return this.#url;
+  }
+
+  /** The Unix socket the server also listens on; `undefined` without one (N161). */
+  get socketPath(): string | undefined {
+    return this.#unix === undefined ? undefined : this.#options.socketPath;
   }
 
   /** The grants alive now (tests and the daemon status read it). */
@@ -203,12 +282,12 @@ export class FrameworkMcpServer implements McpAccess {
     this.#stopped ??= (async () => {
       this.#book.revokeAll();
       await this.#mcp.close().catch(() => undefined);
-      await new Promise<void>((resolve) => {
-        this.#http.close(() => {
-          resolve();
-        });
-        this.#http.closeAllConnections();
-      });
+      await Promise.all([
+        closeServer(this.#http),
+        this.#unix === undefined ? undefined : closeServer(this.#unix),
+      ]);
+      const socketPath = this.socketPath;
+      if (socketPath !== undefined) rmSync(socketPath, { force: true });
     })();
     return this.#stopped;
   }

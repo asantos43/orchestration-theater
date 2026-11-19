@@ -297,6 +297,33 @@ describe('AcpTransport against a stub agent', () => {
     await session.close();
   });
 
+  it('sends a server with stdio as a process to start, also to a client without HTTP MCP (N161)', async () => {
+    const { open, record } = await params('new-stdio', {
+      mcpServers: [
+        {
+          name: 'otheater',
+          url: 'http://127.0.0.1:9/mcp',
+          headers: { Authorization: 'Bearer t' },
+          stdio: { command: '/usr/bin/node', args: ['/x/shim.js'], env: { OT_A: 'b' } },
+        },
+      ],
+    });
+    const session = await new AcpTransport().open(open);
+    const created = (await recorded(record)).find((entry) => entry.method === 'session/new');
+    expect(created?.params).toMatchObject({
+      mcpServers: [
+        {
+          name: 'otheater',
+          command: '/usr/bin/node',
+          args: ['/x/shim.js'],
+          env: [{ name: 'OT_A', value: 'b' }],
+        },
+      ],
+    });
+    expect((created?.params as { mcpServers: object[] }).mcpServers[0]).not.toHaveProperty('url');
+    await session.close();
+  });
+
   describe('config options', () => {
     const effort = (current: string) => ({
       type: 'select',

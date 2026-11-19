@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -13,7 +13,7 @@ import {
 } from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeAgent } from './agent.js';
-import { McpClientError, McpHttpClient } from './mcp-client.js';
+import { McpClient, McpClientError } from './mcp-client.js';
 import { parseScriptSpec } from './scripts.js';
 
 interface Seen {
@@ -180,10 +180,10 @@ describe('mcp scripts: parsing', () => {
   });
 });
 
-describe('McpHttpClient', () => {
+describe('McpClient', () => {
   it('runs initialize, tools/list and tools/call with the headers of the session', async () => {
     const s = await stub();
-    const client = new McpHttpClient({
+    const client = new McpClient({
       name: 'otheater',
       url: s.url,
       headers: { Authorization: 'Bearer abc' },
@@ -204,13 +204,98 @@ describe('McpHttpClient', () => {
 
   it('reads an event-stream answer and reports an HTTP failure', async () => {
     const sse = await stub(true);
-    const viaSse = new McpHttpClient({ name: 'otheater', url: sse.url, headers: {} });
+    const viaSse = new McpClient({ name: 'otheater', url: sse.url, headers: {} });
     await viaSse.initialize();
     expect(await viaSse.listTools()).toEqual(['submit', 'a_tool']);
     sse.status = 401;
     const failure = await viaSse.listTools().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(McpClientError);
     expect((failure as McpClientError).status).toBe(401);
+  });
+});
+
+/**
+ * A stub of the stdio shim (N161): a Node script that answers the same three methods, one JSON-RPC
+ * line per line, and puts its `OT_TEST_TOKEN` in the reply of a call, to show the env got there.
+ */
+const STDIO_STUB = `
+const rl = require('readline').createInterface({ input: process.stdin });
+const seen = [];
+rl.on('line', (line) => {
+  const m = JSON.parse(line);
+  seen.push(m.method);
+  if (m.id === undefined) return;
+  if (process.env.OT_TEST_EXIT === m.method) process.exit(4);
+  let result = {};
+  if (m.method === 'initialize') result = { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: {} };
+  else if (m.method === 'tools/list') result = { tools: [{ name: 'submit' }, { name: 'a_tool' }] };
+  else if (m.method === 'tools/call')
+    result = { content: [{ type: 'text', text: JSON.stringify({ token: process.env.OT_TEST_TOKEN, seen }) }] };
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n');
+});
+`;
+
+async function stdioStub(): Promise<string> {
+  const path = join(sandbox, 'stdio-stub.cjs');
+  await writeFile(path, STDIO_STUB);
+  return path;
+}
+
+describe('McpClient over stdio (N161)', () => {
+  it('starts the process with its env, and runs initialize, tools/list and tools/call', async () => {
+    const path = await stdioStub();
+    const client = new McpClient({
+      name: 'otheater',
+      command: process.execPath,
+      args: [path],
+      env: { OT_TEST_TOKEN: 'tok-stdio' },
+    });
+    try {
+      await client.initialize();
+      expect(await client.listTools()).toEqual(['submit', 'a_tool']);
+      const outcome = await client.callTool('a_tool', {});
+      expect(JSON.parse(outcome.text)).toEqual({
+        token: 'tok-stdio',
+        seen: ['initialize', 'notifications/initialized', 'tools/list', 'tools/call'],
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('reports a process that ends before it answers, with its exit', async () => {
+    const path = await stdioStub();
+    const client = new McpClient({
+      name: 'otheater',
+      command: process.execPath,
+      args: [path],
+      env: { OT_TEST_EXIT: 'tools/list' },
+    });
+    try {
+      await client.initialize();
+      const failure = await client.listTools().catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(McpClientError);
+      expect((failure as McpClientError).message).toContain('exit 4');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('the mcp-call script reaches a stdio server of the session', async () => {
+    const path = await stdioStub();
+    const { chunks } = await run(
+      [
+        {
+          name: 'otheater',
+          command: process.execPath,
+          args: [path],
+          env: [{ name: 'OT_TEST_TOKEN', value: 'from-acp' }],
+        },
+      ],
+      '#script:mcp-call {"tool":"a_tool"}\n',
+    );
+    expect(chunks).toContain('tools: a_tool, submit');
+    expect(chunks.join('')).toContain('"token":"from-acp"');
   });
 });
 

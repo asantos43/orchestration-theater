@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { LaunchOptions, Profile, RolePolicy, Sandbox, SandboxRequest } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
@@ -6,6 +9,7 @@ import {
   buildSandboxWiring,
   loopbackPort,
   loopbackRule,
+  MCP_SOCKET_NAME,
   PROVIDER_DOMAINS,
 } from './sandbox-wiring.js';
 
@@ -189,6 +193,7 @@ describe('buildSandboxWiring', () => {
         config: parseConfig(yaml),
         home: '/home/u',
         dataDir: '/data',
+        platform: 'linux',
       }).launchWrapper(() => ['http://127.0.0.1:4321/mcp', 'https://elsewhere.example/x'])({
         profile: PROFILE,
         policy: POLICY,
@@ -202,6 +207,45 @@ describe('buildSandboxWiring', () => {
     expect((await run('sandbox:\n  mcp_bridge: off\n'))?.loopbackPorts).toBeUndefined();
     // The domain rule stays in both modes: `off` is the behaviour before N115.
     expect((await run('sandbox:\n  mcp_bridge: off\n'))?.domains).toContain('localhost:4321');
+  });
+
+  it('with the unix bridge (N161): a socket in the folder it was given, no TCP bridge, and close removes the folder', async () => {
+    const sandbox = new RecordingSandbox();
+    const dir = mkdtempSync(join(tmpdir(), 'ot-wiring-'));
+    const built = buildSandboxWiring({
+      sandbox,
+      config: parseConfig(''),
+      home: '/home/u',
+      dataDir: '/data',
+      platform: 'darwin',
+      mcpSocketDir: dir,
+    });
+    expect(built.mcpSocket).toBe(join(dir, MCP_SOCKET_NAME));
+    await built.launchWrapper(() => ['http://127.0.0.1:4321/mcp'])({
+      profile: PROFILE,
+      policy: POLICY,
+      cwd: '/data/worktrees/w1',
+      via: 'acp',
+      spec: LAUNCH,
+    });
+    expect(sandbox.requests[0]?.loopbackPorts).toBeUndefined();
+    await built.close();
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('has no socket with the other bridges or without a folder, and refuses unix on Linux', () => {
+    const of = (yaml: string, platform: NodeJS.Platform) =>
+      buildSandboxWiring({
+        sandbox: new RecordingSandbox(),
+        config: parseConfig(yaml),
+        home: '/home/u',
+        dataDir: '/data',
+        platform,
+      });
+    expect(of('', 'linux').mcpSocket).toBeUndefined();
+    expect(of('sandbox:\n  mcp_bridge: proxy\n', 'darwin').mcpSocket).toBeUndefined();
+    expect(of('', 'darwin').mcpSocket).toBeUndefined();
+    expect(() => of('sandbox:\n  mcp_bridge: unix\n', 'linux')).toThrow(/macOS only/);
   });
 
   it('gives a client nothing from the daemon when there is no loopback server', async () => {

@@ -7,6 +7,7 @@ import {
   CHAT_CHANNEL_MODES,
   RECOVERY_NOTICE_MODES,
   SANDBOX_MCP_BRIDGE_MODES,
+  resolveMcpBridge,
   SANDBOX_MODES,
   CLIENT_IDS,
   LIMIT_PRESETS,
@@ -773,17 +774,26 @@ describe('recovery', () => {
   });
 });
 
-describe('sandbox.mcp_bridge (N115)', () => {
+describe('sandbox.mcp_bridge (N115, N161)', () => {
   it('bridges the MCP server of the daemon into the sandbox by default, and takes each mode', () => {
-    expect(parseConfig('').sandbox.mcp_bridge).toBe('proxy');
-    expect(SANDBOX_MCP_BRIDGE_MODES).toEqual(['proxy', 'off']);
+    expect(parseConfig('').sandbox.mcp_bridge).toBe('auto');
+    expect(SANDBOX_MCP_BRIDGE_MODES).toEqual(['auto', 'proxy', 'unix', 'off']);
     for (const mode of SANDBOX_MCP_BRIDGE_MODES) {
       expect(parseConfig(`sandbox:\n  mcp_bridge: ${mode}\n`).sandbox.mcp_bridge).toBe(mode);
     }
   });
 
   it('rejects a mode that does not exist', () => {
-    expect(() => parseConfig('sandbox:\n  mcp_bridge: unix\n')).toThrow(/sandbox\.mcp_bridge/);
+    expect(() => parseConfig('sandbox:\n  mcp_bridge: socket\n')).toThrow(/sandbox\.mcp_bridge/);
+  });
+
+  it('resolves auto per platform, and refuses unix where the sandbox blocks Unix sockets', () => {
+    expect(resolveMcpBridge('auto', 'darwin')).toBe('unix');
+    expect(resolveMcpBridge('auto', 'linux')).toBe('proxy');
+    expect(resolveMcpBridge('proxy', 'darwin')).toBe('proxy');
+    expect(resolveMcpBridge('off', 'linux')).toBe('off');
+    expect(resolveMcpBridge('unix', 'darwin')).toBe('unix');
+    expect(() => resolveMcpBridge('unix', 'linux')).toThrow(/macOS only/);
   });
 });
 
@@ -793,7 +803,7 @@ describe('sandbox and security.secret_paths', () => {
       mode: 'runtime',
       extra_write_paths: [],
       extra_domains: [],
-      mcp_bridge: 'proxy',
+      mcp_bridge: 'auto',
     });
     expect(parseConfig('').security.secret_paths).toEqual({ add: [], remove: [] });
     expect(SANDBOX_MODES).toEqual(['runtime', 'off']);

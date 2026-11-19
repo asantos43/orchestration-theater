@@ -269,7 +269,9 @@ describeWithLauncher('the fake agent inside the sandbox of the daemon', () => {
  * N115: the framework MCP server listens on the loopback of the host, and a client inside the
  * sandbox has a loopback of its own. The fake agent calls the tool with `fetch` (which ignores the
  * proxy and obeys nothing but the address), so only a listener inside the sandbox on the same port
- * lets the call arrive. Linux only: Seatbelt (macOS) was not measured.
+ * lets the call arrive. On macOS (N161) Seatbelt refuses the loopback of the host: the grant
+ * carries the stdio shim instead, which reaches the server over the Unix socket of the daemon, and
+ * the same submit arrives. With `off` there is no bridge on either system, and nothing arrives.
  */
 describeWithLauncher('the framework MCP server from inside the sandbox (N115)', () => {
   const WITH_MCP: RolePolicy = {
@@ -279,13 +281,13 @@ describeWithLauncher('the framework MCP server from inside the sandbox (N115)', 
   };
   const SUBMIT =
     '#script:submit {"tool":"submit_plan","output":{"plan":"do a, then b","openQuestions":[]}}\nsubmit';
-  const onLinux = process.platform === 'linux';
+  const bridged = process.platform === 'linux' || process.platform === 'darwin';
 
   async function submitted(
     extraConfig: string,
     context: { skip: () => void },
   ): Promise<{ submitted: number; text: string; failures: number } | undefined> {
-    if (sandboxIssue !== undefined || !onLinux) {
+    if (sandboxIssue !== undefined || !bridged) {
       context.skip();
       return undefined;
     }
