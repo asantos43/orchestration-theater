@@ -309,14 +309,35 @@ export const CONFORMANCE_MODES = ['on_version_change', 'every_start', 'off'] as 
  */
 export const SANDBOX_MODES = ['runtime', 'off'] as const;
 /**
- * `sandbox.mcp_bridge` (N115): how a confined client reaches the MCP server of the daemon, which
- * listens on the loopback of the host (a sandbox on Linux has its own loopback). `proxy`: a listener
- * inside the sandbox on the same port forwards to the host over the proxy of the sandbox library
- * (TCP only, the Unix-socket filter stays on); `off`: no listener, only the `localhost:<port>`
- * domain rule, which a client that honours `NO_PROXY` cannot use.
+ * `sandbox.mcp_bridge` (N115, N161): how a confined client reaches the MCP server of the daemon,
+ * which listens on the loopback of the host (a sandbox on Linux has its own loopback, and Seatbelt
+ * on macOS refuses the loopback of the host with `EPERM`).
+ *
+ * - `proxy` (Linux): a listener inside the sandbox on the same port forwards to the host over the
+ *   proxy of the sandbox library (TCP only, the Unix-socket filter stays on).
+ * - `unix` (macOS): the server also listens on a Unix socket in a folder of the daemon, which
+ *   Seatbelt lets the client connect to (and nothing else of that kind); the client gets the server
+ *   as a stdio process, a shim that carries each message over that socket.
+ * - `auto` (default): `unix` on macOS, `proxy` elsewhere.
+ * - `off`: no bridge, only the `localhost:<port>` domain rule, which a client that honours
+ *   `NO_PROXY` cannot use.
  */
-export const SANDBOX_MCP_BRIDGE_MODES = ['proxy', 'off'] as const;
+export const SANDBOX_MCP_BRIDGE_MODES = ['auto', 'proxy', 'unix', 'off'] as const;
 export type SandboxMcpBridgeMode = (typeof SANDBOX_MCP_BRIDGE_MODES)[number];
+
+/** The bridge `sandbox.mcp_bridge` stands for on this platform; `auto` resolved. Pure. */
+export function resolveMcpBridge(
+  mode: SandboxMcpBridgeMode,
+  platform: NodeJS.Platform,
+): Exclude<SandboxMcpBridgeMode, 'auto'> {
+  if (mode === 'auto') return platform === 'darwin' ? 'unix' : 'proxy';
+  if (mode === 'unix' && platform !== 'darwin') {
+    throw new InvalidInput(
+      'sandbox.mcp_bridge: unix works on macOS only (the sandbox of Linux blocks Unix sockets, N115); use proxy or auto',
+    );
+  }
+  return mode;
+}
 
 /**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
@@ -1423,8 +1444,8 @@ export const DaemonConfigSchema = z
           .array(z.string().min(1).startsWith('/', 'expected an absolute path'))
           .default([]),
         extra_domains: z.array(z.string().min(1)).default([]),
-        /** [proposta, N115] `proxy` (default) bridges the MCP server of the daemon into the sandbox; `off` does not. */
-        mcp_bridge: z.enum(SANDBOX_MCP_BRIDGE_MODES).default('proxy'),
+        /** [proposta, N115, N161] `auto` (default): `unix` on macOS, `proxy` elsewhere; `off`: no bridge. */
+        mcp_bridge: z.enum(SANDBOX_MCP_BRIDGE_MODES).default('auto'),
       })
       .prefault({}),
     tools: ToolsConfigSchema,

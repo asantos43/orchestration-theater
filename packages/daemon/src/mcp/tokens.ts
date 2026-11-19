@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { McpStdioLaunch } from '@otheater/core';
 import { FRAMEWORK_MCP_NAME, type McpGrant, type McpGrantInput } from './access.js';
 
 /** How many calls of one `submit*` tool a grant has made, valid and invalid. */
@@ -39,9 +40,15 @@ function digest(token: string): string {
 export class GrantBook {
   readonly #byDigest = new Map<string, GrantRecord>();
   readonly #url: () => string;
+  readonly #stdio: ((authorization: string) => McpStdioLaunch) | undefined;
 
-  constructor(url: () => string) {
+  /**
+   * `stdio`, when the server also listens on a Unix socket (N161): the process that reaches it for
+   * a session, given the `Authorization` value of the grant. The grant then carries both ways.
+   */
+  constructor(url: () => string, stdio?: (authorization: string) => McpStdioLaunch) {
     this.#url = url;
+    this.#stdio = stdio;
   }
 
   get size(): number {
@@ -60,13 +67,15 @@ export class GrantBook {
     };
     this.#byDigest.set(key, record);
     const url = this.#url();
+    const authorization = `Bearer ${token}`;
     return {
       role: input.role,
       attemptId: input.attemptId,
       server: {
         name: FRAMEWORK_MCP_NAME,
         url,
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: authorization },
+        ...(this.#stdio === undefined ? {} : { stdio: this.#stdio(authorization) }),
       },
       bind: (sessionId) => {
         record.sessionId = sessionId;

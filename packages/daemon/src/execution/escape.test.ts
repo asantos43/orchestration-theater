@@ -81,6 +81,8 @@ beforeAll(async () => {
 afterAll(disposeTestGitIsolation);
 
 /** `touch` by its absolute path: `/bin/touch` on Linux, `/usr/bin/touch` on macOS. */
+/** The confined client reaches the MCP server of the daemon: N115 on Linux, N161 on macOS. */
+const MCP_BRIDGED = process.platform === 'linux' || process.platform === 'darwin';
 const TOUCH = existsSync('/bin/touch') ? '/bin/touch' : '/usr/bin/touch';
 
 /** Layer 2 without layer 3: the checks are the daemon's own, so any machine can run them. */
@@ -695,8 +697,9 @@ describeWithLauncher('layer 3: what the operating system holds', () => {
   }, 120_000);
 
   it('confines what an allowed program does: node -e with a hidden path, a child, a socket', async (context) => {
-    // The tool is the daemon's MCP server, reached through the loopback bridge of N115: Linux only.
-    if (sandboxIssue !== undefined || process.platform !== 'linux') {
+    // The tool is the daemon's MCP server: through the loopback bridge of N115 on Linux, through
+    // the Unix socket and the stdio shim of N161 on macOS.
+    if (sandboxIssue !== undefined || !MCP_BRIDGED) {
       context.skip();
       return;
     }
@@ -742,8 +745,8 @@ describeWithLauncher('layer 3: what the operating system holds', () => {
   }, 120_000);
 
   it('holds a program that the any mode lets through; the argv rules stop the operators', async (context) => {
-    // Same as above: the MCP server of the daemon needs the bridge of N115 (Linux only).
-    if (sandboxIssue !== undefined || process.platform !== 'linux') {
+    // Same as above: the MCP server of the daemon needs a bridge (N115 on Linux, N161 on macOS).
+    if (sandboxIssue !== undefined || !MCP_BRIDGED) {
       context.skip();
       return;
     }

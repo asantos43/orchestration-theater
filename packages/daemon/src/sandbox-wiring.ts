@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   resolveSecretPaths,
   type LaunchOptions,
@@ -7,7 +9,7 @@ import {
   type Sandbox,
   type SandboxCapabilities,
 } from '@otheater/core';
-import { secretPathEntries, type ClientId, type DaemonConfig } from './config.js';
+import { resolveMcpBridge, secretPathEntries, type ClientId, type DaemonConfig } from './config.js';
 
 /**
  * [proposta, N] The domains each client needs to work at all (its API and its login). Not measured
@@ -36,8 +38,16 @@ export interface SandboxWiring {
   launchWrapper(loopback?: () => readonly string[]): LaunchWrapper;
   /** The same confinement for the commands of the tools. */
   readonly confineCommand: CommandConfiner;
+  /**
+   * With `sandbox.mcp_bridge` resolved to `unix` (N161): the Unix socket the framework MCP server
+   * also listens on, in the one folder the sandbox lets a client connect to. Else `undefined`.
+   */
+  readonly mcpSocket: string | undefined;
   close(): Promise<void>;
 }
+
+/** Name of the socket of the framework MCP server in its folder (short: macOS allows 104 bytes). */
+export const MCP_SOCKET_NAME = 'mcp.sock';
 
 /** The port of a URL that names the loopback, else `undefined`. Pure. */
 export function loopbackPort(url: string): number | undefined {
@@ -71,6 +81,13 @@ export interface SandboxWiringInput {
    * are weaker for that process.
    */
   readonly onNestedUserNamespaces?: (info: NestedUserNamespaces) => void;
+  /** Default `process.platform`; resolves `sandbox.mcp_bridge: auto`. */
+  readonly platform?: NodeJS.Platform;
+  /**
+   * The folder of the MCP socket, already made and already in the `unixSocketDirs` of the sandbox,
+   * when the bridge is `unix`. The wiring owns it from here: `close()` removes it.
+   */
+  readonly mcpSocketDir?: string;
 }
 
 /** What {@link SandboxWiringInput.onNestedUserNamespaces} is told. */
@@ -104,7 +121,10 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
   });
   const extraWritePaths = config.sandbox.extra_write_paths;
   const extraDomains = config.sandbox.extra_domains;
-  const bridge = config.sandbox.mcp_bridge === 'proxy';
+  const mode = resolveMcpBridge(config.sandbox.mcp_bridge, input.platform ?? process.platform);
+  const bridge = mode === 'proxy';
+  // Without a folder (a caller that made none, the tests) the unix bridge is no bridge, like `off`.
+  const socketDir = mode === 'unix' ? input.mcpSocketDir : undefined;
   return {
     capabilities: sandbox.capabilities(),
     launchWrapper:
@@ -148,6 +168,13 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
         secretPaths,
         domains: extraDomains,
       }),
-    close: () => sandbox.close(),
+    mcpSocket: socketDir === undefined ? undefined : join(socketDir, MCP_SOCKET_NAME),
+    close: async () => {
+      try {
+        await sandbox.close();
+      } finally {
+        if (socketDir !== undefined) rmSync(socketDir, { recursive: true, force: true });
+      }
+    },
   };
 }

@@ -178,11 +178,27 @@ export interface PermissionRequest {
 export type PermissionAnswer =
   { readonly outcome: 'selected'; readonly optionId: string } | { readonly outcome: 'cancelled' };
 
-/** MCP server handed to the session; HTTP only (architecture 5.2, `session/new`). */
+/**
+ * MCP server handed to the session (architecture 5.2, `session/new`): HTTP at `url`, with the
+ * `headers` to send. `stdio`, when present, is a second way to the same server: a process the
+ * client starts and talks to over its standard streams (N161, the shim of the framework server on
+ * macOS, where Seatbelt refuses a confined client the loopback of the host). A transport that can
+ * start an MCP process uses `stdio` and ignores `url`; one that cannot uses `url`.
+ */
 export interface McpServerRef {
   readonly name: string;
   readonly url: string;
   readonly headers?: Readonly<Record<string, string>>;
+  readonly stdio?: McpStdioLaunch;
+}
+
+/** How a client starts an MCP server that speaks over stdio (ACP `McpServerStdio`). */
+export interface McpStdioLaunch {
+  /** Absolute path of the executable. */
+  readonly command: string;
+  readonly args: readonly string[];
+  /** Added to the environment the client gives the process; the secrets of the server go here. */
+  readonly env: Readonly<Record<string, string>>;
 }
 
 /**

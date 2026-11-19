@@ -26,7 +26,7 @@ import {
   type QuotaSignalParams,
 } from '@otheater/protocol';
 import { playEscape } from './escape-scripts.js';
-import { McpHttpClient, type HttpMcpServer } from './mcp-client.js';
+import { McpClient, type SessionMcpServer } from './mcp-client.js';
 import { directorHangs, directorQuotaFailure, playRolePlay } from './role-play.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
 
@@ -56,8 +56,8 @@ interface Session {
   /** Aborted by `session/cancel`; present only while a prompt is running. */
   turn: AbortController | undefined;
   toolCalls: number;
-  /** The HTTP MCP servers of `session/new` or `session/load`, with the headers to send. */
-  mcpServers: HttpMcpServer[];
+  /** The MCP servers of `session/new` or `session/load`: HTTP with its headers, or stdio. */
+  mcpServers: SessionMcpServer[];
 }
 
 interface TurnContext {
@@ -318,14 +318,24 @@ async function playWriteFile(
   return END_TURN;
 }
 
-function httpServersOf(servers: readonly McpServer[] | undefined): HttpMcpServer[] {
-  const found: HttpMcpServer[] = [];
+function mcpServersOf(servers: readonly McpServer[] | undefined): SessionMcpServer[] {
+  const found: SessionMcpServer[] = [];
   for (const server of servers ?? []) {
-    if (!('url' in server)) continue;
+    if ('url' in server) {
+      // SSE is not spoken here: the framework server is Streamable HTTP.
+      if ('type' in server && server.type === 'sse') continue;
+      found.push({
+        name: server.name,
+        url: server.url,
+        headers: Object.fromEntries(server.headers.map((header) => [header.name, header.value])),
+      });
+      continue;
+    }
     found.push({
       name: server.name,
-      url: server.url,
-      headers: Object.fromEntries(server.headers.map((header) => [header.name, header.value])),
+      command: server.command,
+      args: server.args,
+      env: Object.fromEntries(server.env.map((variable) => [variable.name, variable.value])),
     });
   }
   return found;
@@ -356,15 +366,20 @@ async function reportMcpCall(
 }
 
 /** The client of the named MCP server of the session, or a message that says why there is none. */
-async function mcpClientFor(turn: TurnContext, server: string): Promise<McpHttpClient | undefined> {
+async function mcpClientFor(turn: TurnContext, server: string): Promise<McpClient | undefined> {
   const found = turn.session.mcpServers.find((candidate) => candidate.name === server);
   if (found === undefined) {
     const names = turn.session.mcpServers.map((candidate) => candidate.name).join(', ');
     await message(turn, `no MCP server "${server}" in this session (has: ${names || 'none'})`);
     return undefined;
   }
-  const client = new McpHttpClient(found);
-  await client.initialize();
+  const client = new McpClient(found);
+  try {
+    await client.initialize();
+  } catch (error) {
+    await client.close();
+    throw error;
+  }
   return client;
 }
 
@@ -380,8 +395,9 @@ async function playMcpCall(
   script: Extract<Script, { name: 'mcp-call' }>,
 ): Promise<PromptResponse> {
   const title = `MCP ${script.server}${script.tool === undefined ? '' : ` ${script.tool}`}`;
+  let client: McpClient | undefined;
   try {
-    const client = await mcpClientFor(turn, script.server);
+    client = await mcpClientFor(turn, script.server);
     if (client === undefined) return END_TURN;
     if (script.list) await message(turn, `tools: ${(await client.listTools()).sort().join(', ')}`);
     if (script.tool !== undefined) {
@@ -391,6 +407,8 @@ async function playMcpCall(
     }
   } catch (error) {
     await mcpFailed(turn, title, error);
+  } finally {
+    await client?.close();
   }
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
@@ -406,9 +424,11 @@ async function playRolePlayScript(
   }
   // The quota error of an Actor that ran out midway (`exhaust`) must reach the client as it is.
   let exhausted: Error | undefined;
+  let opened: McpClient | undefined;
   try {
-    const client = await mcpClientFor(turn, script.server);
-    if (client === undefined) return END_TURN;
+    opened = await mcpClientFor(turn, script.server);
+    if (opened === undefined) return END_TURN;
+    const client = opened;
     await playRolePlay({
       text: turn.text,
       cwd: turn.session.cwd,
@@ -440,6 +460,8 @@ async function playRolePlayScript(
   } catch (error) {
     if (exhausted !== undefined) throw exhausted;
     await mcpFailed(turn, `MCP ${script.server}`, error);
+  } finally {
+    await opened?.close();
   }
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
@@ -449,8 +471,9 @@ async function playSubmit(
   script: Extract<Script, { name: 'submit' }>,
 ): Promise<PromptResponse> {
   const title = `MCP ${script.server} ${script.tool}`;
+  let client: McpClient | undefined;
   try {
-    const client = await mcpClientFor(turn, script.server);
+    client = await mcpClientFor(turn, script.server);
     if (client === undefined) return END_TURN;
     for (let call = 1; call <= script.repeat; call += 1) {
       if (turn.signal.aborted) return CANCELLED;
@@ -461,6 +484,8 @@ async function playSubmit(
     }
   } catch (error) {
     await mcpFailed(turn, title, error);
+  } finally {
+    await client?.close();
   }
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
@@ -512,60 +537,66 @@ async function playEscapeScript(
   turn: TurnContext,
   script: Extract<Script, { name: 'escape' }>,
 ): Promise<PromptResponse> {
-  const clients = new Map<string, McpHttpClient | undefined>();
-  await playEscape(
-    {
-      cwd: turn.session.cwd,
-      signal: turn.signal,
-      say: (text) => message(turn, text),
-      ask: async ({ kind, title, locations, rawInput }) => {
-        const toolCallId = nextToolCallId(turn.session);
-        const places = locations?.map((path) => ({ path }));
-        await update(turn, {
-          sessionUpdate: 'tool_call',
-          toolCallId,
-          title,
-          kind,
-          status: 'pending',
-          ...(places === undefined ? {} : { locations: places }),
-          ...(rawInput === undefined ? {} : { rawInput }),
-        });
-        const permission: RequestPermissionResponse = await turn.client.request(
-          methods.client.session.requestPermission,
-          {
-            sessionId: turn.sessionId,
-            toolCall: {
-              toolCallId,
-              title,
-              kind,
-              status: 'pending',
-              ...(places === undefined ? {} : { locations: places }),
-              ...(rawInput === undefined ? {} : { rawInput }),
+  const clients = new Map<string, McpClient | undefined>();
+  try {
+    await playEscape(
+      {
+        cwd: turn.session.cwd,
+        signal: turn.signal,
+        say: (text) => message(turn, text),
+        ask: async ({ kind, title, locations, rawInput }) => {
+          const toolCallId = nextToolCallId(turn.session);
+          const places = locations?.map((path) => ({ path }));
+          await update(turn, {
+            sessionUpdate: 'tool_call',
+            toolCallId,
+            title,
+            kind,
+            status: 'pending',
+            ...(places === undefined ? {} : { locations: places }),
+            ...(rawInput === undefined ? {} : { rawInput }),
+          });
+          const permission: RequestPermissionResponse = await turn.client.request(
+            methods.client.session.requestPermission,
+            {
+              sessionId: turn.sessionId,
+              toolCall: {
+                toolCallId,
+                title,
+                kind,
+                status: 'pending',
+                ...(places === undefined ? {} : { locations: places }),
+                ...(rawInput === undefined ? {} : { rawInput }),
+              },
+              options: [ALLOW, REJECT],
             },
-            options: [ALLOW, REJECT],
-          },
-          { cancellationSignal: turn.signal, stopWaitingOnCancel: true },
-        );
-        if (permission.outcome.outcome === 'cancelled' || turn.signal.aborted) return 'cancelled';
-        return permission.outcome.optionId === ALLOW.optionId ? 'allowed' : 'rejected';
+            { cancellationSignal: turn.signal, stopWaitingOnCancel: true },
+          );
+          if (permission.outcome.outcome === 'cancelled' || turn.signal.aborted) return 'cancelled';
+          return permission.outcome.optionId === ALLOW.optionId ? 'allowed' : 'rejected';
+        },
+        callTool: async (server, tool, args) => {
+          if (!clients.has(server)) clients.set(server, await mcpClientFor(turn, server));
+          const client = clients.get(server);
+          if (client === undefined) return undefined;
+          const outcome = await client.callTool(tool, { ...args });
+          await reportMcpCall(
+            turn,
+            `MCP ${server} ${tool}`,
+            outcome.isError ? 'failed' : 'completed',
+            outcome.text,
+          );
+          return { isError: outcome.isError, text: outcome.text };
+        },
+        tryConnect,
       },
-      callTool: async (server, tool, args) => {
-        if (!clients.has(server)) clients.set(server, await mcpClientFor(turn, server));
-        const client = clients.get(server);
-        if (client === undefined) return undefined;
-        const outcome = await client.callTool(tool, { ...args });
-        await reportMcpCall(
-          turn,
-          `MCP ${server} ${tool}`,
-          outcome.isError ? 'failed' : 'completed',
-          outcome.text,
-        );
-        return { isError: outcome.isError, text: outcome.text };
-      },
-      tryConnect,
-    },
-    script,
-  );
+      script,
+    );
+  } finally {
+    await Promise.all(
+      [...clients.values()].flatMap((client) => (client === undefined ? [] : [client.close()])),
+    );
+  }
   return turn.signal.aborted ? CANCELLED : END_TURN;
 }
 
@@ -687,7 +718,7 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       config: new Map(),
       turn: undefined,
       toolCalls: 0,
-      mcpServers: httpServersOf(mcpServers),
+      mcpServers: mcpServersOf(mcpServers),
     });
   };
   const find = (sessionId: string): Session => {
@@ -699,7 +730,8 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
   return agent({ name: FAKE_AGENT_NAME })
     .onRequest(methods.agent.initialize, () => ({
       protocolVersion: PROTOCOL_VERSION,
-      // `mcpCapabilities.http`: the client takes the framework MCP server of 5.3 (HTTP only).
+      // `mcpCapabilities.http`: the client takes the framework MCP server of 5.3 over HTTP; stdio,
+      // the shim of N161, every ACP agent takes.
       agentCapabilities: {
         loadSession: true,
         promptCapabilities: {},

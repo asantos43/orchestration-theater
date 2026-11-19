@@ -740,20 +740,33 @@ export class AcpTransport implements SessionTransport {
     known.sessionId = sessionId;
   }
 
-  /** The HTTP MCP servers of the role, in ACP form; refuses what the client said it cannot take. */
+  /**
+   * The MCP servers of the role, in ACP form. A server with `stdio` goes as a process the client
+   * starts (every ACP agent takes stdio); one without goes as HTTP, which the client has to have
+   * announced (`mcpCapabilities.http`), or the session is refused.
+   */
   #mcpServers(params: SessionOpenParams, http: boolean | null | undefined): McpServer[] {
-    if (params.mcpServers.length === 0) return [];
-    if (http !== true) {
-      throw new AdapterUnavailable(
-        'the role names MCP servers and the client did not announce HTTP MCP support',
-      );
-    }
-    return params.mcpServers.map((server) => ({
-      type: 'http' as const,
-      name: server.name,
-      url: server.url,
-      headers: Object.entries(server.headers ?? {}).map(([name, value]) => ({ name, value })),
-    }));
+    return params.mcpServers.map((server): McpServer => {
+      if (server.stdio !== undefined) {
+        return {
+          name: server.name,
+          command: server.stdio.command,
+          args: [...server.stdio.args],
+          env: Object.entries(server.stdio.env).map(([name, value]) => ({ name, value })),
+        };
+      }
+      if (http !== true) {
+        throw new AdapterUnavailable(
+          'the role names MCP servers and the client did not announce HTTP MCP support',
+        );
+      }
+      return {
+        type: 'http' as const,
+        name: server.name,
+        url: server.url,
+        headers: Object.entries(server.headers ?? {}).map(([name, value]) => ({ name, value })),
+      };
+    });
   }
 
   #typedStartError(
