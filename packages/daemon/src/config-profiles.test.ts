@@ -25,8 +25,20 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
       commands: {},
       options: {},
       exec: { env_inherit: 'terminal' },
+      shims: { prefix: '', mode: 'auto' },
       entries: {},
     });
+  });
+
+  it('reads the commands by profile: the prefix and every mode, and refuses a prefix with a slash (P28b)', () => {
+    for (const mode of ['auto', 'manual', 'off'] as const) {
+      expect(
+        parseConfig(['profiles:', '  shims:', "    prefix: 'ot-'", `    mode: ${mode}`].join('\n'))
+          .profiles.shims,
+      ).toEqual({ prefix: 'ot-', mode });
+    }
+    expect(() => parseConfig(['profiles:', '  shims:', "    prefix: 'a/b'"].join('\n'))).toThrow();
+    expect(() => parseConfig(['profiles:', '  shims:', '    mode: always'].join('\n'))).toThrow();
   });
 
   it('reads the common words of profile exec by name and client, and every env_inherit mode (P28a)', () => {

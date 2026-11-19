@@ -75,6 +75,12 @@ export interface DataPaths {
    * talks to (P8, N78). Mode 0600; removed when the daemon stops.
    */
   readonly channel: string;
+  /**
+   * The commands by profile (P28b, N159): one small script per profile (`codex-personal`) that only
+   * calls `ot profile exec`. The person puts this folder in `PATH`, by hand or with
+   * `ot profile shims path --install`.
+   */
+  readonly bin: string;
 }
 
 export function dataPaths(dataDir: string): DataPaths {
@@ -93,6 +99,7 @@ export function dataPaths(dataDir: string): DataPaths {
     profiles: resolve(root, 'profiles'),
     scratch: resolve(root, 'scratch'),
     channel: resolve(root, 'channel.json'),
+    bin: resolve(root, 'bin'),
   };
 }
 
