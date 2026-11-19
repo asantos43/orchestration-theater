@@ -12,6 +12,7 @@ import { makeRepo } from '../execution/attempt-fixture.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
 import { attemptTestSession, type TestSession } from './test-session.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The short test session of the cadastro (architecture 5.7, step 4) on the REAL attempt runner of a
@@ -97,7 +98,7 @@ const REQUEST = {
   executorId: 'fake-model-medium@fake/one',
 } as const;
 
-describe('attemptTestSession on the fake agent', () => {
+describeWithLauncher('attemptTestSession on the fake agent', () => {
   it('approves a model that calls the tool submit and ends', async () => {
     await withSession(
       '#script:submit {"tool":"submit","output":{"result":{"ok":true}}}\nx',

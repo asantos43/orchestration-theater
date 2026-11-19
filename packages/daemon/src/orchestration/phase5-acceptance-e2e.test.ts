@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -19,6 +19,7 @@ import {
   type PlayFakes,
   type PlayHarness,
 } from './e2e-fixture.js';
+import { itWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The acceptance of Phase 5 with the fake agent (P23): the five items of the criterion in one play
@@ -136,7 +137,7 @@ const indexOfType = (
 const profileOf = (value: unknown): unknown => (value as { profile?: unknown }).profile;
 
 describe('the acceptance of Phase 5 with the fake agent (P23)', { timeout: 240_000 }, () => {
-  it('runs the five items in one play', async () => {
+  itWithLauncher('runs the five items in one play', async () => {
     const set = fakes();
     let directorPid: number | undefined;
     await withDaemon(set, { extra: rolesConfig() }, async (harness) => {

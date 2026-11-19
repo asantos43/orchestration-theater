@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -15,6 +15,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The selection in the pipeline (P16): a whole play with the fake agent, two profiles of the same
@@ -112,7 +113,7 @@ async function stateOf(harness: PlayHarness, playId: string): Promise<string | u
 
 const HOUR = 3_600_000;
 
-describe('the selection in the pipeline (P16)', { timeout: 180_000 }, () => {
+describeWithLauncher('the selection in the pipeline (P16)', { timeout: 180_000 }, () => {
   it('sends the new demands to the other profile when one runs out midway, and says why', async () => {
     await withSelectionDaemon({ extra: rolesConfig({}) }, async (harness) => {
       const { playId } = await openPlay(harness, 'execution_failure');

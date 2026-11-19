@@ -9,7 +9,7 @@ import {
   type ProcessLauncher,
 } from '@otheater/core';
 import { InMemoryStore } from '@otheater/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import { defaultLauncher, defaultVcs } from '../compose.js';
 import {
   makeToolsRig,
@@ -19,6 +19,7 @@ import {
 } from '../tools/tools-fixture.js';
 import { applyConventionAnswers } from './confirm.js';
 import { detectConventions } from './detect.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 let root: string;
 const rigs: ToolsRig[] = [];
@@ -71,7 +72,7 @@ async function pnpmRepository(): Promise<string> {
   return repo;
 }
 
-describe('the conventions are what run_tests and install_deps run', () => {
+describeWithLauncher('the conventions are what run_tests and install_deps run', () => {
   it('runs the test command detected in the repository (pnpm test)', async () => {
     const detected = await detectConventions({ vcs: defaultVcs(), repo: await pnpmRepository() });
     expect(detected.commands).toEqual({ test: 'pnpm test', install: 'pnpm install' });
@@ -135,7 +136,7 @@ describe('the conventions are what run_tests and install_deps run', () => {
   });
 });
 
-describe('ProjectConventionsSchema is the one shape of the commands', () => {
+describeWithLauncher('ProjectConventionsSchema is the one shape of the commands', () => {
   it('accepts a command as a line or as an argv, and the tools read both', async () => {
     const detected = await detectConventions({ vcs: defaultVcs(), repo: await pnpmRepository() });
     const argvForm = { ...detected, commands: { test: ['cargo', 'test'], install: 'cargo fetch' } };

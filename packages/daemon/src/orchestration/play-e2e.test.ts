@@ -18,6 +18,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher, itWithLauncher } from '../launcher-fixture.js';
 
 /**
  * A whole play (architecture 5.4) with the fake agent in every role and the fake code host: the
@@ -58,7 +59,7 @@ async function stateOf(harness: PlayHarness, playId: string): Promise<string | u
   return (await harness.daemon.store.plays.get(playId))?.state;
 }
 
-describe('a play with the fake agent (P8)', { timeout: 120_000 }, () => {
+describeWithLauncher('a play with the fake agent (P8)', { timeout: 120_000 }, () => {
   it('reaches DONE on the approved outcome, with a pull request on the code host', async () => {
     await withPlayDaemon({}, async (harness) => {
       const playId = await openPlay(harness, 'approved');
@@ -158,46 +159,50 @@ describe('ot chat with the fake Director (P8)', { timeout: 120_000 }, () => {
     }
   });
 
-  it('sends messages, shows replies, answers a question and takes the menu of a stopped play', async () => {
-    await withPlayDaemon({ limits: '  attempts_per_demand: 2' }, async (harness) => {
-      const input = new PassThrough();
-      const out: string[] = [];
-      const err: string[] = [];
-      const finished = main(['chat', '--repo', harness.rig.repo, '--data-dir', harness.dataDir], {
-        env: {},
-        platform: process.platform,
-        homedir: harness.dataDir,
-        out: (line) => out.push(line),
-        err: (line) => err.push(line),
-        systemLocale: 'en',
-        input,
+  itWithLauncher(
+    'sends messages, shows replies, answers a question and takes the menu of a stopped play',
+    async () => {
+      await withPlayDaemon({ limits: '  attempts_per_demand: 2' }, async (harness) => {
+        const input = new PassThrough();
+        const out: string[] = [];
+        const err: string[] = [];
+        const finished = main(['chat', '--repo', harness.rig.repo, '--data-dir', harness.dataDir], {
+          env: {},
+          platform: process.platform,
+          homedir: harness.dataDir,
+          out: (line) => out.push(line),
+          err: (line) => err.push(line),
+          systemLocale: 'en',
+          input,
+        });
+        const seen = (text: string) => () =>
+          Promise.resolve(out.some((line) => line.includes(text)));
+
+        // A question of the Director, answered by the Producer through the chat.
+        input.write('#ot-ask What color is the sky?\n');
+        await waitFor('the question', seen('The Director asks: What color is the sky?'));
+        input.write('blue\n');
+        await waitFor('the reply that carries the answer', seen('Director: answer:'));
+
+        // A play that runs out of a counter: the menu comes to the chat.
+        input.write('#ot-play write alpha #outcome:exhausted\n');
+        await waitFor('the menu', seen('needs you'));
+        expect(out.some((line) => /Play play-[0-9a-f]{8}: EXECUTING/.test(line))).toBe(true);
+        input.write('nonsense\n');
+        await waitFor('the refusal', seen('That is not one of the options'));
+        input.write('cancel not worth it\n');
+        await waitFor('the end of the play', seen('ended.'));
+
+        input.end();
+        const code = await finished;
+        expect(code).toBe(0);
+        expect(err).toEqual([]);
+        expect(out[0]).toContain('Chat open on scenario');
+        const [scenarioId] = (await harness.daemon.store.scenarios.list()).map((s) => s.id);
+        const plays = await harness.plays(scenarioId ?? '');
+        expect(plays.map((play) => play.state)).toEqual(['CANCELLED']);
+        expect(harness.codeHost.pullRequests()).toHaveLength(0);
       });
-      const seen = (text: string) => () => Promise.resolve(out.some((line) => line.includes(text)));
-
-      // A question of the Director, answered by the Producer through the chat.
-      input.write('#ot-ask What color is the sky?\n');
-      await waitFor('the question', seen('The Director asks: What color is the sky?'));
-      input.write('blue\n');
-      await waitFor('the reply that carries the answer', seen('Director: answer:'));
-
-      // A play that runs out of a counter: the menu comes to the chat.
-      input.write('#ot-play write alpha #outcome:exhausted\n');
-      await waitFor('the menu', seen('needs you'));
-      expect(out.some((line) => /Play play-[0-9a-f]{8}: EXECUTING/.test(line))).toBe(true);
-      input.write('nonsense\n');
-      await waitFor('the refusal', seen('That is not one of the options'));
-      input.write('cancel not worth it\n');
-      await waitFor('the end of the play', seen('ended.'));
-
-      input.end();
-      const code = await finished;
-      expect(code).toBe(0);
-      expect(err).toEqual([]);
-      expect(out[0]).toContain('Chat open on scenario');
-      const [scenarioId] = (await harness.daemon.store.scenarios.list()).map((s) => s.id);
-      const plays = await harness.plays(scenarioId ?? '');
-      expect(plays.map((play) => play.state)).toEqual(['CANCELLED']);
-      expect(harness.codeHost.pullRequests()).toHaveLength(0);
-    });
-  });
+    },
+  );
 });

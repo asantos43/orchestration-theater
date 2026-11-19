@@ -2,7 +2,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { PlayRecord } from '@otheater/core';
 import {
   FakeClientAdapter,
@@ -24,6 +24,7 @@ import {
 } from '../orchestration/e2e-fixture.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * A daemon that is stopped in the middle of a play and started again on the same data folder (the
@@ -48,7 +49,7 @@ orchestration:
     model: fake-model
 `;
 
-describe('a restart in the middle of a play (P9)', { timeout: 180_000 }, () => {
+describeWithLauncher('a restart in the middle of a play (P9)', { timeout: 180_000 }, () => {
   it('resumes the play from its snapshot and takes it to the end', async () => {
     const tmp = await makeTempDataDir();
     const stateDir = await mkdtemp(join(tmpdir(), 'otheater-restart-'));

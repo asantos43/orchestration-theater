@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -14,6 +14,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * `delivery.mode: ask` with someone watching (architecture 5.5, N89, P9), end to end with the fake
@@ -86,7 +87,7 @@ async function deliveryOf(harness: PlayHarness, playId: string) {
     | undefined;
 }
 
-describe('delivery.mode: ask (N89)', { timeout: 120_000 }, () => {
+describeWithLauncher('delivery.mode: ask (N89)', { timeout: 120_000 }, () => {
   it('with the Producer present, asks and opens the PR when the answer is deliver_pr', async () => {
     await withPlayDaemon(new FakeClock(), { extra: `${ASK}${PRESENT}` }, async (harness) => {
       const { scenarioId, playId } = await openPlay(harness);

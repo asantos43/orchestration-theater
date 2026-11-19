@@ -22,6 +22,7 @@ import {
 } from '../tools/tools-fixture.js';
 import type { AskApproval } from './approval.js';
 import { BrowserTools } from './handlers.js';
+import { NO_LAUNCHER } from '../launcher-fixture.js';
 
 /**
  * Acceptance of P6 (architecture 5.19) with a REAL Chromium, built the way the daemon builds it:
@@ -182,8 +183,8 @@ const titleOf = async (run: Run): Promise<string> =>
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 200));
 
-// Windows has no process launcher yet (5.9): no browser, so nothing to run there.
-describe.skipIf(process.platform === 'win32')(
+// No process launcher on this platform yet (5.9, Windows): no browser, so nothing to run there.
+describe.skipIf(NO_LAUNCHER)(
   'the browser of an agent, with a real Chromium',
   { timeout: 90_000 },
   () => {

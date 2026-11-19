@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -21,6 +21,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The Director on the profile that is being removed (P21b, N153): with `profiles.drain.director:
@@ -131,7 +132,7 @@ async function directorExecutors(harness: PlayHarness): Promise<string[]> {
     .map((payload) => String(payload.executor));
 }
 
-describe('the Director on the profile that leaves (P21b)', { timeout: 180_000 }, () => {
+describeWithLauncher('the Director on the profile that leaves (P21b)', { timeout: 180_000 }, () => {
   it('an idle Director moves to the next Executor and the removal finishes', async () => {
     await withLeavingDaemon({ extra: rolesConfig(['one', 'two']) }, async ({ harness }) => {
       const scenarioId = await harness.openGenericChat('talk');
