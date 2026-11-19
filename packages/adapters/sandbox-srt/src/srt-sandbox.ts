@@ -95,7 +95,9 @@ export class SrtSandbox implements Sandbox {
     this.#platform = deps.platform ?? process.platform;
     const uid = deps.uid ?? (typeof process.getuid === 'function' ? process.getuid() : 0);
     this.#tempDir = this.config.tempDir ?? join(tmpdir(), `otheater-sandbox-${String(uid)}`);
-    assertAbsolute('tempDir', this.#tempDir);
+    // The POSIX path rule holds only where there is a mechanism: on Windows (N94) the sandbox is
+    // built so that it can say it has none, and a drive-letter folder must not stop that.
+    if (SUPPORTED_PLATFORMS.includes(this.#platform)) assertAbsolute('tempDir', this.#tempDir);
   }
 
   /** The temporary folder the commands write to (and see as `TMPDIR`). */
@@ -126,14 +128,14 @@ export class SrtSandbox implements Sandbox {
 
   async wrap(request: SandboxRequest): Promise<LaunchOptions> {
     this.#assertOpen();
-    assertAbsolute('worktree', request.worktree);
-    for (const dir of [...request.profileDirs, ...request.extraWritePaths]) {
-      assertAbsolute('writable path', dir);
-    }
     if (!SUPPORTED_PLATFORMS.includes(this.#platform)) {
       throw new AdapterUnavailable(
         `sandbox-srt has no mechanism for ${this.#platform} (layer 3 is missing there, N94)`,
       );
+    }
+    assertAbsolute('worktree', request.worktree);
+    for (const dir of [...request.profileDirs, ...request.extraWritePaths]) {
+      assertAbsolute('writable path', dir);
     }
     // Only bubblewrap gives the command a network of its own; Seatbelt has no such loopback, and
     // nothing was measured there (N115), so a `loopbackPorts` is a domain rule and no listener.

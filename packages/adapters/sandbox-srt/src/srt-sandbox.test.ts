@@ -135,10 +135,25 @@ describe('SrtSandbox without a mechanism', () => {
     await windows.close();
   });
 
+  it('accepts a Windows folder there, so it can say what is missing instead of failing', async () => {
+    const windows = new SrtSandbox(
+      { tempDir: 'C:\\Users\\x\\AppData\\Local\\Temp\\otheater-sandbox-0' },
+      { platform: 'win32' },
+    );
+    const result = await windows.available();
+    expect(result.ok).toBe(false);
+    await expect(
+      windows.wrap(request('true', { worktree: 'C:\\work\\wt' })),
+    ).rejects.toBeInstanceOf(AdapterUnavailable);
+    await windows.close();
+  });
+
   it('rejects a bad configuration and a relative path in the request', async () => {
     expect(() => new SrtSandbox({ mandatoryDenySearchDepth: 0 })).toThrow(InvalidInput);
     expect(() => new SrtSandbox({ nonsense: 1 } as never)).toThrow(InvalidInput);
-    expect(() => new SrtSandbox({ tempDir: 'relative' })).toThrow(InvalidInput);
+    expect(() => new SrtSandbox({ tempDir: 'relative' }, { platform: 'linux' })).toThrow(
+      InvalidInput,
+    );
     await expect(sandbox.wrap(request('true', { worktree: 'relative/wt' }))).rejects.toBeInstanceOf(
       InvalidInput,
     );
