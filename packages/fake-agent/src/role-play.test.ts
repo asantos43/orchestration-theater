@@ -35,16 +35,23 @@ afterEach(async () => {
 function host(
   text: string,
   replies: Record<string, unknown> = {},
-): { host: RolePlayHost; calls: Call[]; said: string[] } {
+  signal: AbortSignal = new AbortController().signal,
+): { host: RolePlayHost; calls: Call[]; said: string[]; exhausted: (string | undefined)[] } {
   const calls: Call[] = [];
   const said: string[] = [];
+  const exhausted: (string | undefined)[] = [];
   return {
     calls,
     said,
+    exhausted,
     host: {
       text,
       cwd: sandbox,
-      signal: new AbortController().signal,
+      signal,
+      exhaust: (resetsAt) => {
+        exhausted.push(resetsAt);
+        return Promise.reject(new Error('quota exhausted'));
+      },
       say: (line) => {
         said.push(line);
         return Promise.resolve();
@@ -199,6 +206,25 @@ describe('the role-play script', () => {
       decisionId: 'd1',
       payload: { failures: [{ kind: 'structural' }] },
     });
+  });
+
+  it('plays the judgment, not the play, when a baton package carries the first prompt (P23)', async () => {
+    const handed = host(
+      '## Task\n\n#ot-play need #outcome:approved\n\n#ot-judge\n#ot-play: play-1\n#ot-point: classify_critique',
+      {
+        next_action: {
+          decisions: [
+            {
+              id: 'd1',
+              kind: 'judge.classify_critique',
+              input: { reason: '[outcome:approved]', demandIds: ['alpha'] },
+            },
+          ],
+        },
+      },
+    );
+    await playRolePlay(handed.host);
+    expect(handed.calls.map((call) => call.tool)).toEqual(['next_action', 'decide']);
   });
 
   it('classifies an execution failure with the first demand', async () => {
@@ -439,5 +465,93 @@ describe('the quota failure of the Director (P20)', () => {
     await playRolePlay(run.host);
     expect(run.said).toContain('directives in force: Always answer in haiku. | Keep it short.');
     expect(run.said).toContain('answer: hello');
+  });
+});
+
+describe('the quota failure armed for the judgment point (P23)', () => {
+  const arm =
+    '#ot-director-fail:quota\n#ot-director-fail-on:judge\n#ot-director-fail-resets:2026-11-18T12:00:00.000Z\n#ot-play need';
+  const judge = '#ot-judge\n#ot-play: play-1\n#ot-point: judge.classify_critique';
+
+  it('lets the turn that arms it go through and fails the first judge prompt only', async () => {
+    expect(await directorQuotaFailure(arm)).toBeUndefined();
+    expect(await directorQuotaFailure('#ot-chat hello')).toBeUndefined();
+    expect(await directorQuotaFailure(judge)).toEqual({ resetsAt: '2026-11-18T12:00:00.000Z' });
+    expect(await directorQuotaFailure(judge)).toBeUndefined();
+  });
+
+  it('does nothing at a judge prompt when nothing was armed', async () => {
+    expect(await directorQuotaFailure(judge)).toBeUndefined();
+  });
+});
+
+describe('the tokens of the Actor (P23)', () => {
+  const prompt = (need: string, demand = 'alpha', attempt = 1): string =>
+    `${stagePrompt('EXECUTING', need)}\n#ot-demand: ${demand}\n#ot-attempt: ${String(attempt)}\n`;
+
+  it('commits and installs after writing the file, with the calls the effects registry replays', async () => {
+    const run = host(prompt('go #actor-effects:alpha'));
+    await playRolePlay(run.host);
+    expect(run.calls.map((call) => call.tool)).toEqual(['git_commit', 'install_deps', 'submit']);
+    expect(run.calls[0]?.args).toEqual({ message: 'alpha: write alpha.txt' });
+    const other = host(prompt('go #actor-effects:alpha', 'beta'));
+    await playRolePlay(other.host);
+    expect(other.calls.map((call) => call.tool)).toEqual(['submit']);
+  });
+
+  it('runs out of quota once, after its effects, and carries the end of the limit', async () => {
+    const need = 'go #actor-effects:alpha #actor-quota:alpha=2026-11-18T18:00:00.000Z';
+    const first = host(prompt(need));
+    await expect(playRolePlay(first.host)).rejects.toThrow('quota exhausted');
+    expect(first.exhausted).toEqual(['2026-11-18T18:00:00.000Z']);
+    expect(first.calls.map((call) => call.tool)).toEqual(['git_commit', 'install_deps']);
+    // The next session of the attempt finds the failure spent and finishes.
+    const second = host(prompt(need));
+    await playRolePlay(second.host);
+    expect(second.exhausted).toEqual([]);
+    expect(second.calls.map((call) => call.tool)).toEqual(['git_commit', 'install_deps', 'submit']);
+  });
+
+  it('fails only in the attempt the token names', async () => {
+    const need = 'go #actor-quota:alpha=2026-11-18T18:00:00.000Z@2';
+    const first = host(prompt(need, 'alpha', 1));
+    await playRolePlay(first.host);
+    expect(first.exhausted).toEqual([]);
+    const second = host(prompt(need, 'alpha', 2));
+    await expect(playRolePlay(second.host)).rejects.toThrow('quota exhausted');
+  });
+
+  it('waits for the cancel once, writes nothing, and goes on at the next session', async () => {
+    const need = 'go #actor-hang:alpha@2';
+    const cancel = new AbortController();
+    const hanging = host(prompt(need, 'alpha', 2), {}, cancel.signal);
+    const turn = playRolePlay(hanging.host);
+    await new Promise((done) => setTimeout(done, 50));
+    cancel.abort();
+    await turn;
+    expect(hanging.calls).toEqual([]);
+    await expect(readFile(join(sandbox, 'alpha.txt'), 'utf8')).rejects.toThrow();
+    const next = host(prompt(need, 'alpha', 2));
+    await playRolePlay(next.host);
+    expect(next.calls.map((call) => call.tool)).toEqual(['submit']);
+  });
+
+  it('plays the prompt of the Actor again at a turn with no marker in the same worktree (native resume)', async () => {
+    const need = 'go #actor-effects:alpha #actor-quota:alpha=2026-11-18T18:00:00.000Z';
+    const first = host(prompt(need));
+    await expect(playRolePlay(first.host)).rejects.toThrow('quota exhausted');
+    const resumed = host('Carry on with the task where you stopped.');
+    await playRolePlay(resumed.host);
+    expect(resumed.calls.map((call) => call.tool)).toEqual([
+      'git_commit',
+      'install_deps',
+      'submit',
+    ]);
+    const stranger = await mkdtemp(join(tmpdir(), 'fake-agent-stranger-'));
+    const nothing = host('Carry on with the task where you stopped.');
+    await playRolePlay({ ...nothing.host, cwd: stranger });
+    expect(nothing.calls).toEqual([]);
+    expect(nothing.said).toEqual(['fake agent: nothing to do']);
+    await rm(stranger, { recursive: true, force: true });
   });
 });

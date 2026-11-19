@@ -3,7 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { AdapterUnavailable, Transient, type QuotaReading, type QuotaWindow } from '@otheater/core';
-import { readUtilization } from './normalize-update.js';
+import { readUtilization, STATUSLINE_WINDOWS, windowNameOf } from './normalize-update.js';
 
 /**
  * The quota source of a Claude Code subscription (architecture 5.6, P6): the statusline. Claude
@@ -31,21 +31,8 @@ export const STATUSLINE_QUOTA_MAX_BYTES = 16 * 1024;
 export const QUOTA_STATUSLINE_MODES = ['file', 'off'] as const;
 export type QuotaStatuslineMode = (typeof QUOTA_STATUSLINE_MODES)[number];
 
-/** The windows the statusline has, in the names the whole daemon uses (`5h`, `7d`). */
-export const STATUSLINE_WINDOWS: Readonly<Record<string, string>> = {
-  five_hour: '5h',
-  seven_day: '7d',
-};
-
-/**
- * Names of the windows of the Claude stream and of the statusline, as the daemon spells them. A
- * name this table does not know goes through unchanged, so a new window is not lost.
- */
-export function windowNameOf(claudeName: string): string {
-  return Object.hasOwn(STATUSLINE_WINDOWS, claudeName)
-    ? (STATUSLINE_WINDOWS[claudeName] ?? claudeName)
-    : claudeName;
-}
+// The window names live with the stream parser, which needs them too; the statusline keeps them in its API.
+export { STATUSLINE_WINDOWS, windowNameOf };
 
 /**
  * The statusline command. It reads stdin, keeps `used_percentage` and `resets_at` of the two

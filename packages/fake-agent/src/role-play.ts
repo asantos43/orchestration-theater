@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -55,6 +56,11 @@ export interface RolePlayHost {
   readonly signal: AbortSignal;
   /** Says something to the client (a message chunk). */
   say(text: string): Promise<void>;
+  /**
+   * Ends the turn the way a client does when its plan runs out: the quota signals, then the quota
+   * error, with `resetsAt` (an ISO time) when the limit says when it ends. It never returns.
+   */
+  exhaust(resetsAt?: string): Promise<never>;
   /** Calls a tool of the framework server and reports the call as a tool call of the turn. */
   call(
     tool: string,
@@ -97,21 +103,43 @@ async function countOf(key: string): Promise<number> {
   return before;
 }
 
+/** The file that keeps what an armed failure of the Director is waiting for (P23). */
+const ARMED_FILE = 'director-fail-armed.json';
+
 /**
  * `#ot-director-fail:quota` on a line of the prompt of the Director makes its turn end with a quota
  * error (the quota signals of `quota-signal` and the `-32001` error) the first time; `#ot-director-fail-times:<n>`
  * makes it the first `n` times (P20, the failover of the Director). The count is kept in the state
  * directory of the test, so the prompt that goes back to the queue and reaches the next session
  * finds the failures already spent. `resetsAt` is the optional `#ot-director-fail-resets:<iso>`.
+ *
+ * [proposal] P23: `#ot-director-fail-on:judge` beside the marker arms the failure for later. The
+ * turn that carries it goes on as usual (it opens the play), and the failure falls on the first
+ * prompt of a judgment point (`#ot-judge`, which does not carry the text of the Producer), the
+ * number of times asked.
  */
 export async function directorQuotaFailure(
   text: string,
 ): Promise<{ readonly resetsAt?: string } | undefined> {
-  if (markerOf(text, '#ot-director-fail:') !== 'quota') return undefined;
-  const times = Number(markerOf(text, '#ot-director-fail-times:')) || 1;
-  if ((await countOf('director-fail')) >= times) return undefined;
-  const resetsAt = markerOf(text, '#ot-director-fail-resets:');
-  return resetsAt === undefined || resetsAt === '' ? {} : { resetsAt };
+  if (markerOf(text, '#ot-director-fail:') === 'quota') {
+    const times = Number(markerOf(text, '#ot-director-fail-times:')) || 1;
+    const resetsAt = markerOf(text, '#ot-director-fail-resets:');
+    const failure = resetsAt === undefined || resetsAt === '' ? {} : { resetsAt };
+    if (markerOf(text, '#ot-director-fail-on:') === 'judge') {
+      await mkdir(stateDir(), { recursive: true });
+      await writeFile(join(stateDir(), ARMED_FILE), JSON.stringify({ times, failure }));
+      return undefined;
+    }
+    return (await countOf('director-fail')) >= times ? undefined : failure;
+  }
+  if (!/^#ot-judge\b/m.test(text)) return undefined;
+  const armed = await readFile(join(stateDir(), ARMED_FILE), 'utf8').catch(() => undefined);
+  if (armed === undefined) return undefined;
+  const { times, failure } = JSON.parse(armed) as {
+    times: number;
+    failure: { readonly resetsAt?: string };
+  };
+  return (await countOf('director-fail-judge')) >= times ? undefined : failure;
 }
 
 /**
@@ -199,7 +227,63 @@ async function submit(
   await host.say(`${tool}: ${reply.isError ? 'refused' : 'accepted'} ${reply.text}`);
 }
 
+/**
+ * [proposal] P23: tokens in the need steer one Actor, by demand id (the need is in every prompt of
+ * the play, and the package of a baton pass carries it too):
+ * - `#actor-effects:<id>`: after writing its file the Actor commits it (`git_commit`) and installs
+ *   (`install_deps`), the two calls the effects registry of P22 replays;
+ * - `#actor-quota:<id>=<iso>[@<attempt>]`: after its effects the Actor's first turn (of that
+ *   attempt, when `@` is there) ends with a quota error that says the limit ends at `<iso>`;
+ * - `#actor-hang:<id>@<attempt>`: the first turn of that attempt writes nothing and waits for the
+ *   cancel, as a session that is still working when its profile is taken away.
+ * What a token does once is counted in the state directory, so the next session of the attempt (a
+ * baton pass or a native resume) goes on with the work.
+ */
+function actorToken(
+  text: string,
+  kind: string,
+  demandId: string,
+): { readonly value?: string; readonly attempt?: number } | undefined {
+  const match = new RegExp(`#actor-${kind}:${demandId}(?:=([^\\s@]+))?(?:@(\\d+))?(?=\\s|$)`).exec(
+    text,
+  );
+  if (match === null) return undefined;
+  return {
+    ...(match[1] === undefined ? {} : { value: match[1] }),
+    ...(match[2] === undefined ? {} : { attempt: Number(match[2]) }),
+  };
+}
+
+/** Where the prompt of an Actor is kept for a native resume (its prompt has no marker): per worktree. */
+function memoryFile(cwd: string): string {
+  return join(
+    stateDir(),
+    `resume-${createHash('sha256').update(cwd).digest('hex').slice(0, 16)}.txt`,
+  );
+}
+
 async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
+  await mkdir(stateDir(), { recursive: true });
+  await writeFile(memoryFile(host.cwd), host.text);
+  const attempt = Number(markerOf(host.text, '#ot-attempt:')) || 1;
+  const hang = actorToken(host.text, 'hang', demandId);
+  if (hang !== undefined && (hang.attempt ?? attempt) === attempt) {
+    if ((await countOf(`actor-hang-${demandId}-${String(attempt)}`)) === 0) {
+      await host.say(`fake agent: ${demandId} is working and does not end by itself`);
+      await new Promise<void>((done) => {
+        if (host.signal.aborted) done();
+        else
+          host.signal.addEventListener(
+            'abort',
+            () => {
+              done();
+            },
+            { once: true },
+          );
+      });
+      return;
+    }
+  }
   // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
   const carried = host.text.includes('## Work of the earlier attempt')
     ? `took over earlier work, diff ${host.text.includes('```diff') ? 'given' : 'not given'}\n`
@@ -208,7 +292,34 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
     join(host.cwd, `${demandId}.txt`),
     `${demandId}: written by the fake Actor\n${carried}`,
   );
+  if (actorToken(host.text, 'effects', demandId) !== undefined) {
+    const commit = await host.call('git_commit', { message: `${demandId}: write ${demandId}.txt` });
+    await host.say(`git_commit: ${commit.isError ? 'refused' : 'done'} ${commit.text}`);
+    const install = await host.call('install_deps', {});
+    await host.say(`install_deps: ${install.isError ? 'refused' : 'done'} ${install.text}`);
+  }
+  const quota = actorToken(host.text, 'quota', demandId);
+  if (quota !== undefined && (quota.attempt ?? attempt) === attempt) {
+    if ((await countOf(`actor-quota-${demandId}-${String(attempt)}`)) === 0) {
+      await host.exhaust(quota.value);
+    }
+  }
   await submit(host, 'submit', { result: { file: `${demandId}.txt` } });
+}
+
+/**
+ * A turn with no marker is the native resume of an Actor ("carry on", `resume.continue_prompt`):
+ * the session is the one that started the work, so the fake agent plays that prompt again, in the
+ * worktree it ran in. The tokens that were spent stay spent. Returns false when there is none.
+ */
+async function resumeActor(host: RolePlayHost): Promise<boolean> {
+  const before = await readFile(memoryFile(host.cwd), 'utf8').catch(() => undefined);
+  if (before === undefined) return false;
+  const demandId = markerOf(before, '#ot-demand:');
+  if (demandId === undefined || demandId === '') return false;
+  await host.say(`fake agent: resuming ${demandId} where it stopped`);
+  await playActor({ ...host, text: before }, demandId);
+  return true;
 }
 
 /**
@@ -477,6 +588,12 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
     return;
   }
   if (await playChat(host)) return;
+  // The package of a baton pass carries the first prompt of the session (`## Task`): a judgment
+  // that is handed to another Director must not open the play again (P23).
+  if (/^#ot-judge\b/m.test(text)) {
+    await playJudge(host);
+    return;
+  }
   const need = markerOf(text, '#ot-play(?!:)');
   if (need !== undefined && need !== '') {
     const reply = await host.call('open_play', { need });
@@ -488,13 +605,10 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
     await ask(host, question);
     return;
   }
-  if (/^#ot-judge\b/m.test(text)) {
-    await playJudge(host);
-    return;
-  }
   if (/^#ot-clarify\b/m.test(text)) {
     await playClarify(host);
     return;
   }
+  if (await resumeActor(host)) return;
   await host.say('fake agent: nothing to do');
 }

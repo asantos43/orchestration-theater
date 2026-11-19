@@ -404,6 +404,8 @@ async function playRolePlayScript(
   if (failure !== undefined) {
     return playQuotaSignal(turn, { name: 'quota-signal', usedPercent: 100, ...failure });
   }
+  // The quota error of an Actor that ran out midway (`exhaust`) must reach the client as it is.
+  let exhausted: Error | undefined;
   try {
     const client = await mcpClientFor(turn, script.server);
     if (client === undefined) return END_TURN;
@@ -412,6 +414,18 @@ async function playRolePlayScript(
       cwd: turn.session.cwd,
       signal: turn.signal,
       say: (text) => message(turn, text),
+      exhaust: async (resetsAt) => {
+        try {
+          return await playQuotaSignal(turn, {
+            name: 'quota-signal',
+            usedPercent: 100,
+            ...(resetsAt === undefined ? {} : { resetsAt }),
+          });
+        } catch (error) {
+          if (error instanceof Error) exhausted = error;
+          throw error;
+        }
+      },
       call: async (tool, args) => {
         const outcome = await client.callTool(tool, args);
         await reportMcpCall(
@@ -424,6 +438,7 @@ async function playRolePlayScript(
       },
     });
   } catch (error) {
+    if (exhausted !== undefined) throw exhausted;
     await mcpFailed(turn, `MCP ${script.server}`, error);
   }
   return turn.signal.aborted ? CANCELLED : END_TURN;

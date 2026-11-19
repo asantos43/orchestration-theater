@@ -6,7 +6,9 @@
 # do processModel (k-measure.real.test.ts) e a peça inteira da Fase 3
 # (packages/daemon/src/execution/mcp-submit.real.test.ts, depois
 # packages/daemon/src/orchestration/play.real.test.ts) e a suíte de fuga da Fase 4
-# (packages/daemon/src/execution/escape.real.test.ts). Feito para o dono rodar (N57): o script nunca
+# (packages/daemon/src/execution/escape.real.test.ts), a leitura real da cota
+# (packages/daemon/src/quota/quota.real.test.ts) e o login de um segundo perfil
+# (packages/daemon/src/profiles/profiles.real.test.ts). Feito para o dono rodar (N57): o script nunca
 # faz login, nunca lê nem imprime credencial e nunca baixa nada. Só Linux: usa /proc/meminfo,
 # setsid e o timeout do coreutils (o teste pula no Windows; lá o aceite roda na CI).
 #
@@ -84,8 +86,36 @@
 #            resposta do modelo) sai no log. GASTA COTA (um turno por cliente): avisa e pede
 #            confirmação, a menos que haja --yes.
 #
+#   quota    a leitura REAL da cota de cada cliente (Fase 5, P23; arquitetura 5.6), pela sonda que o
+#            daemon já usa, sem provocar esgotamento: OT_TEST_REAL_QUOTA=1 (quota.real.test.ts).
+#            Codex: `codex app-server` (`account/rateLimits/read`), sem turno. Claude Code:
+#            statusline do P6, o que exige UM turno curtíssimo (OT_TEST_CLAUDE_MODEL; um Haiku
+#            basta). OpenCode: contabilidade local do daemon (`quota.opencode.mode: ledger`) depois
+#            de UM turno curto (OT_TEST_OPENCODE_MODEL; OT_TEST_OPENCODE_LIMIT_TOKENS, padrão
+#            1000000 [proposta]). Pede, por cliente, OT_TEST_<CLIENTE>_PROFILE_DIR (perfil já
+#            logado; o teste só aponta para ele, com um link, e nunca o copia nem o lê; o Codex só
+#            precisa dele, os outros dois também do _MODEL; sem eles o cliente fica de fora).
+#            MiniMax: só com OT_TEST_MINIMAX_KEY_ENV, que leva o NOME de uma variável de ambiente
+#            que tem a chave (nunca a chave); sem ela, o teste diz que pulou. A chave nunca é
+#            impressa, gravada nem registrada. O teste grava um JSON sem segredo (cliente, janelas,
+#            percentual 0..100, `resetsAt`, estado e o motivo de um `unknown`) em OT_TEST_QUOTA_OUT
+#            (padrão: a pasta de logs, quota-<hora>.json). O critério: cada leitura vira `ok`,
+#            `near_limit` ou `unknown` com motivo (`exhausted` só se uma janela de fato marca 100%).
+#            GASTA UM POUCO DE COTA (um turno curto no Claude Code e outro no OpenCode): avisa e
+#            pede confirmação, a menos que haja --yes.
+#   profiles o login de um SEGUNDO perfil por cliente, com o dono ao teclado (Fase 5, P23; N122):
+#            OT_TEST_REAL_PROFILES=1 e OT_TEST_PROFILES_CLIENTS (lista, sem padrão: claude-code,
+#            codex e/ou opencode) (profiles.real.test.ts). Para cada cliente da lista o teste cria o
+#            perfil `second` num diretório de dados TEMPORÁRIO (nunca os perfis do dono), chama o
+#            login oficial do adaptador (P3), mostra o modo, a URL e o código, ESPERA o dono
+#            terminar o login (OT_TEST_PROFILES_LOGIN_TIMEOUT_MS, padrão 600000), confere pela sonda
+#            que o perfil está `logged_in`, remove o perfil (logout oficial, diretório apagado) e
+#            confere que nenhum processo sobra. O script nunca faz login: quem faz é o dono, no
+#            navegador. O log aparece na tela enquanto o teste roda (é onde saem a URL e o código).
+#            Não gasta cota. Teto de 40m (padrão deste nível; o login de cada cliente espera até 10 min).
+#
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|escape|mcp] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -104,7 +134,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play e escape), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -145,14 +175,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|escape|mcp) ;; *) echo "--level deve ser clients, prompts, k, play, escape ou mcp" >&2; exit 2 ;; esac
+case "$level" in clients|prompts|k|play|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
 # O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
 # nível play [proposta] é de 40m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m, mais 3m para
 # parar o daemon e conferir os processos, e o teste da chamada MCP que roda antes leva alguns
 # minutos (teto de 5m na tentativa). O do nível escape [proposta] também: até 8m por cliente, com
 # três clientes, mais o sandbox subindo e parando.
 if [ -z "$run_timeout" ]; then
-  case "$level" in k|play|escape) run_timeout=40m ;; *) run_timeout=20m ;; esac
+  case "$level" in k|play|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -251,7 +281,7 @@ for key in CLAUDE CODEX OPENCODE; do
   if command -v "$exe" >/dev/null 2>&1; then
     clients_found=$((clients_found + 1))
     ok "$exe"
-    if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ]; then
+    if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = quota ]; then
       profile_var="OT_TEST_${key}_PROFILE_DIR"
       model_var="OT_TEST_${key}_MODEL"
       mode_var="OT_TEST_${key}_MODE"
@@ -261,6 +291,14 @@ for key in CLAUDE CODEX OPENCODE; do
         if [ -d "$profile" ]; then
           clients_ready=$((clients_ready + 1))
           ok "  $profile_var definida (pasta existe), $model_var=$model${!mode_var:+, $mode_var=${!mode_var}}"
+        else
+          fail "  $profile_var aponta para uma pasta que não existe"
+        fi
+      elif [ "$level" = quota ] && [ -n "$profile" ] && [ "$key" = CODEX ]; then
+        # O Codex lê a cota pelo app-server, sem turno: o modelo não é preciso.
+        if [ -d "$profile" ]; then
+          clients_ready=$((clients_ready + 1))
+          ok "  $profile_var definida (pasta existe); o Codex não precisa de $model_var neste nível"
         else
           fail "  $profile_var aponta para uma pasta que não existe"
         fi
@@ -275,12 +313,44 @@ for key in CLAUDE CODEX OPENCODE; do
     warn "$exe não está no PATH: o teste o deixa de fora"
   fi
 done
-[ "$clients_found" -gt 0 ] || fail "nenhum cliente no PATH: o aceite não tem o que testar"
+if [ "$clients_found" -eq 0 ] && { [ "$level" != quota ] || [ -z "${OT_TEST_MINIMAX_KEY_ENV:-}" ]; }; then
+  fail "nenhum cliente no PATH: o aceite não tem o que testar"
+fi
 if [ "$level" = prompts ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -eq 0 ]; then
   fail "nenhum cliente com perfil e modelo: no nível prompts só o Executor simulado rodaria"
 fi
 if [ "$level" = k ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -eq 0 ]; then
   fail "nenhum cliente com perfil e modelo: no nível k não haveria o que medir"
+fi
+if [ "$level" = quota ] && [ -n "${OT_TEST_MINIMAX_KEY_ENV:-}" ]; then
+  case "$OT_TEST_MINIMAX_KEY_ENV" in
+    *[!A-Za-z0-9_]*|[0-9]*) fail "OT_TEST_MINIMAX_KEY_ENV deve ser o NOME de uma variável de ambiente (letras, dígitos e _), não a chave" ;;
+    *)
+      if [ -n "${!OT_TEST_MINIMAX_KEY_ENV:-}" ]; then ok "MiniMax: a variável $OT_TEST_MINIMAX_KEY_ENV tem valor (não é impresso)"
+      else warn "MiniMax: a variável $OT_TEST_MINIMAX_KEY_ENV está vazia ou não existe: o teste pula o MiniMax"; fi
+      ;;
+  esac
+fi
+if [ "$level" = quota ] && [ "$clients_ready" -eq 0 ] && [ -z "${OT_TEST_MINIMAX_KEY_ENV:-}" ]; then
+  fail "nenhum cliente com perfil (e modelo, no Claude Code e no OpenCode) e sem MiniMax: o nível quota não teria o que ler"
+fi
+if [ "$level" = profiles ]; then
+  if [ -z "${OT_TEST_PROFILES_CLIENTS:-}" ]; then
+    fail "o nível profiles exige OT_TEST_PROFILES_CLIENTS (lista: claude-code, codex, opencode); o login é do dono, cliente por cliente"
+  else
+    IFS=, read -r -a wanted_clients <<<"${OT_TEST_PROFILES_CLIENTS// /}"
+    for name in "${wanted_clients[@]}"; do
+      case "$name" in
+        claude-code) exe=claude-agent-acp ;;
+        codex) exe=codex-acp ;;
+        opencode) exe=opencode ;;
+        *) fail "OT_TEST_PROFILES_CLIENTS: cliente desconhecido: $name"; continue ;;
+      esac
+      if command -v "$exe" >/dev/null 2>&1; then ok "login pedido para $name ($exe no PATH)"; else fail "login pedido para $name, mas $exe não está no PATH"; fi
+    done
+  fi
+  if [ ! -t 0 ] && [ "$dry_run" != 1 ]; then fail "o nível profiles precisa do dono ao teclado (terminal); --yes não basta, o login é feito por ele"; fi
+  case "${OT_TEST_PROFILES_LOGIN_TIMEOUT_MS:-0}" in *[!0-9]*) fail "OT_TEST_PROFILES_LOGIN_TIMEOUT_MS deve ser um inteiro em milissegundos" ;; esac
 fi
 if [ "$level" = escape ] && [ "$clients_found" -gt 0 ] && [ "$clients_ready" -eq 0 ]; then
   fail "nenhum cliente com perfil e modelo: no nível escape não haveria quem tentar a fuga"
@@ -372,6 +442,12 @@ elif [ "$level" = mcp ]; then
 elif [ "$level" = escape ]; then
   tests=(packages/daemon/src/execution/escape.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível escape: roda só a suíte de fuga"
+elif [ "$level" = quota ]; then
+  tests=(packages/daemon/src/quota/quota.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível quota: roda só a leitura da cota"
+elif [ "$level" = profiles ]; then
+  tests=(packages/daemon/src/profiles/profiles.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível profiles: roda só o login do segundo perfil"
 elif [ "$with_adapters" = 1 ]; then
   tests+=(packages/adapters/client-claude-code/src/claude-code.real.test.ts
           packages/adapters/client-codex/src/codex.real.test.ts
@@ -387,6 +463,10 @@ echo "Checagens: tudo certo."
 if [ "$level" = play ]; then
   echo "Vai rodar, nesta ordem (para no primeiro que falhar), com OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PLAY=1:"
   for t in "${tests[@]}"; do echo "  vitest run $t"; done
+elif [ "$level" = quota ]; then
+  echo "Vai rodar: OT_TEST_REAL_QUOTA=1 OT_TEST_QUOTA_OUT=$log_dir/quota-<hora>.json vitest run --silent=false ${tests[*]}"
+elif [ "$level" = profiles ]; then
+  echo "Vai rodar: OT_TEST_REAL_PROFILES=1 OT_TEST_PROFILES_CLIENTS=${OT_TEST_PROFILES_CLIENTS:-} vitest run --silent=false ${tests[*]}"
 else
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1$([ "$level" != clients ] && echo ' OT_TEST_REAL_PROMPTS=1')$([ "$level" = k ] && echo ' OT_TEST_REAL_MEASURE_K=1')$([ "$level" = escape ] && echo ' OT_TEST_REAL_ESCAPE=1') vitest run ${tests[*]}"
 fi
@@ -405,6 +485,16 @@ if [ "$level" = play ]; then
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."
   echo "  O resumo (estados, tentativas, tempo, tokens, respostas do Diretor) sai no log com o prefixo [play-real]."
   echo "  Se o Diretor responde só com texto e não abre peça, a peça falha em cerca de 90 s (antes esperava os 25m)."
+fi
+if [ "$level" = quota ]; then
+  echo "Atenção: o nível quota LÊ a cota real pela sonda do daemon e NÃO provoca esgotamento. Roda os clientes com sandbox.mode: off (o sandbox padrão recusa o perfil apontado por link e o host da OpenAI; verificado em 2026-11-18). Gasta um turno curtíssimo no Claude Code e outro no OpenCode (o modelo de OT_TEST_CLAUDE_MODEL e OT_TEST_OPENCODE_MODEL; um Haiku basta); o Codex é lido pelo app-server, sem turno."
+  echo "  O Claude Code grava o statusline do P6 no perfil apontado (o daemon instala o comando no settings.json do perfil, como em qualquer sessão); o teste só aponta o perfil por um link numa pasta temporária e nunca o copia nem lê arquivo de credencial."
+  if [ -n "${OT_TEST_MINIMAX_KEY_ENV:-}" ]; then echo "  MiniMax: lê o Token Plan com a chave da variável $OT_TEST_MINIMAX_KEY_ENV (o valor nunca sai)."; else echo "  MiniMax: fora (sem OT_TEST_MINIMAX_KEY_ENV)."; fi
+  echo "  O relatório sem segredo (cliente, janelas, percentual 0..100, resetsAt, estado, motivo do unknown) vai para ${OT_TEST_QUOTA_OUT:-$log_dir/quota-<hora>.json}; as linhas saem no log com o prefixo [quota-real]."
+fi
+if [ "$level" = profiles ]; then
+  echo "Atenção: o nível profiles pede o LOGIN DE UM SEGUNDO PERFIL por cliente, e o login é SEU (N122): o teste mostra a URL e/ou o código na tela (linhas [profiles-real]) e espera você terminar no navegador, por até ${OT_TEST_PROFILES_LOGIN_TIMEOUT_MS:-600000} ms por cliente."
+  echo "  O perfil \`second\` nasce numa pasta de dados TEMPORÁRIA e é removido no fim (logout oficial, pasta apagada); os perfis do dono não são tocados. Use uma conta que possa ser usada num segundo login. O teste não lê arquivo de credencial e não gasta cota."
 fi
 if [ "$level" = escape ]; then
   echo "Atenção: o nível escape PEDE a cada cliente com perfil e modelo que tente sair do worktree (escrever fora, rodar shell, buscar uma URL local) e gasta cota das contas dos perfis: um turno por cliente, até 8m cada."
@@ -466,6 +556,16 @@ printf 'hora\tdisponivel_mb\tswap_livre_mb\n' >"$mem_log"
 export OT_TEST_REAL_CLIENTS=1
 if [ "$level" = play ]; then export OT_TEST_REAL_PLAY=1; else unset OT_TEST_REAL_PLAY; fi
 if [ "$level" = escape ]; then export OT_TEST_REAL_ESCAPE=1; else unset OT_TEST_REAL_ESCAPE; fi
+if [ "$level" = quota ]; then
+  export OT_TEST_REAL_QUOTA=1
+  # O teste grava o relatório JSON (sem segredo) na pasta de logs, com o mesmo carimbo deste log,
+  # a menos que o dono tenha apontado outro caminho.
+  quota_out="${OT_TEST_QUOTA_OUT:-$log_dir/quota-$stamp.json}"
+  export OT_TEST_QUOTA_OUT="$quota_out"
+else
+  unset OT_TEST_REAL_QUOTA
+fi
+if [ "$level" = profiles ]; then export OT_TEST_REAL_PROFILES=1; else unset OT_TEST_REAL_PROFILES; fi
 if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
@@ -487,11 +587,18 @@ else
   # resposta do modelo) é o que o dono lê; sem --silent=false o vitest esconde o console dos testes
   # que passam [V: rodada de 2026-11-17, só a linha do Codex, que falhou, saiu no log].
   extra=()
-  { [ "$level" = escape ] || [ "$level" = mcp ]; } && extra=(--silent=false)
+  { [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = quota ] || [ "$level" = profiles ]; } && extra=(--silent=false)
   setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${extra[@]}" "${tests[@]}" >"$log" 2>&1 &
 fi
 runner=$!
 pgid="$runner"
+
+# No nível profiles o dono precisa ver a URL e o código na hora: o log vai para a tela enquanto roda.
+tailer=""
+if [ "$level" = profiles ]; then
+  tail -n +1 -F "$log" 2>/dev/null &
+  tailer=$!
+fi
 
 aborted=0
 lowest="$baseline"
@@ -513,13 +620,17 @@ set +e
 wait "$runner"
 status=$?
 set -e
+if [ -n "$tailer" ]; then sleep 1; kill "$tailer" 2>/dev/null || true; wait "$tailer" 2>/dev/null || true; fi
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[escape-real\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"
 echo "Amostras de memória: $mem_log"
+if [ "$level" = quota ]; then
+  echo "Relatório da cota: $quota_out"
+fi
 if [ "$level" = k ]; then
   echo "Medição de K: $log_dir/k-measure-$stamp.tsv (.json e .txt na mesma pasta)"
   if [ -f "$log_dir/k-measure-$stamp.txt" ]; then

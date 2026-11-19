@@ -2,7 +2,13 @@
 import { NormalizedUpdateSchema } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { RATE_LIMIT_UPDATE, UPDATE_FIXTURES } from './fixtures/updates.js';
-import { normalizeClaudeUpdate, readRateLimitEvent, readUtilization } from './normalize-update.js';
+import {
+  normalizeClaudeUpdate,
+  rateLimitExtrasOf,
+  readRateLimitEvent,
+  readUtilization,
+  windowNameOf,
+} from './normalize-update.js';
 
 describe('normalizeClaudeUpdate: fixtures', () => {
   it.each(UPDATE_FIXTURES.map((fixture) => [fixture.name, fixture] as const))(
@@ -21,10 +27,21 @@ describe('normalizeClaudeUpdate: rate limit', () => {
     expect(result).toEqual({
       kind: 'rate_limit',
       status: 'warning',
-      window: 'five_hour',
+      window: '5h',
       resetsAt: 1_800_000_000_000,
     });
     expect(NormalizedUpdateSchema.safeParse(result).success).toBe(true);
+  });
+
+  it('names the window the way the daemon does: five_hour is 5h, a new name goes through', () => {
+    expect(windowNameOf('five_hour')).toBe('5h');
+    expect(windowNameOf('seven_day')).toBe('7d');
+    expect(windowNameOf('seven_day_opus')).toBe('seven_day_opus');
+    const result = normalizeClaudeUpdate({
+      sessionUpdate: 'usage_update',
+      _meta: { '_claude/rateLimit': { status: 'allowed', rateLimitType: 'seven_day' } },
+    });
+    expect(result).toMatchObject({ kind: 'rate_limit', window: '7d' });
   });
 
   it('leaves usedPercent out by default, since the unit of utilization is not confirmed', () => {
@@ -166,5 +183,78 @@ describe('readRateLimitEvent', () => {
     expect(readRateLimitEvent(event, 'auto')?.windows).toEqual([
       { name: 'five_hour', refused: expect.stringContaining('above 100') as string },
     ]);
+  });
+});
+
+describe('rateLimitExtrasOf: the other windows of the event', () => {
+  it('turns each window that is not the dominant one into a rate_limit update in the daemon name', () => {
+    const extras = rateLimitExtrasOf(RATE_LIMIT_UPDATE, 'fraction');
+    expect(extras).toEqual([
+      {
+        kind: 'rate_limit',
+        status: 'warning',
+        window: '7d',
+        usedPercent: 12,
+        resetsAt: 1_800_400_000_000,
+      },
+    ]);
+    for (const extra of extras) {
+      expect(NormalizedUpdateSchema.safeParse(extra).success).toBe(true);
+    }
+  });
+
+  it('with the dominant one the event gives 5h and 7d, each once', () => {
+    const main = normalizeClaudeUpdate(RATE_LIMIT_UPDATE, { utilizationUnit: 'fraction' });
+    const all = [main, ...rateLimitExtrasOf(RATE_LIMIT_UPDATE, 'fraction')];
+    expect(
+      all.map((update) => (update?.kind === 'rate_limit' ? update.window : undefined)),
+    ).toEqual(['5h', '7d']);
+  });
+
+  it('tells nothing for a unit that is ignored, a refused value, or an event with one window', () => {
+    expect(rateLimitExtrasOf(RATE_LIMIT_UPDATE)).toEqual([]);
+    expect(rateLimitExtrasOf({ sessionUpdate: 'usage_update', used: 1 }, 'fraction')).toEqual([]);
+    const refused = {
+      sessionUpdate: 'usage_update',
+      _meta: {
+        '_claude/rateLimit': {
+          status: 'allowed',
+          rateLimitType: 'five_hour',
+          unifiedWindows: { five_hour: { utilization: 0.1 }, seven_day: { utilization: 300 } },
+        },
+      },
+    };
+    expect(rateLimitExtrasOf(refused, 'fraction')).toEqual([]);
+  });
+
+  it('a rejected event tells the limit hit once: the other windows are allowed', () => {
+    const rejected = {
+      sessionUpdate: 'usage_update',
+      _meta: {
+        '_claude/rateLimit': {
+          status: 'rejected',
+          rateLimitType: 'five_hour',
+          unifiedWindows: { five_hour: { utilization: 1 }, seven_day: { utilization: 0.4 } },
+        },
+      },
+    };
+    expect(rateLimitExtrasOf(rejected, 'fraction')).toEqual([
+      { kind: 'rate_limit', status: 'allowed', window: '7d', usedPercent: 40 },
+    ]);
+  });
+
+  it('with no dominant window every window of the event comes as an extra', () => {
+    const none = {
+      sessionUpdate: 'usage_update',
+      _meta: {
+        '_claude/rateLimit': {
+          status: 'allowed',
+          unifiedWindows: { five_hour: { utilization: 0.2 }, seven_day: { utilization: 0.3 } },
+        },
+      },
+    };
+    expect(
+      rateLimitExtrasOf(none, 'fraction').map((u) => (u.kind === 'rate_limit' ? u.window : '')),
+    ).toEqual(['5h', '7d']);
   });
 });
