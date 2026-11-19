@@ -89,6 +89,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
 | P23 | Aceite da fase | todos | nada | concluído (branch fase-5/p23-aceite-da-fase) |
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
+| P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
+| P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | pendente |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -97,7 +99,8 @@ Ordem em ondas **[proposta]**:
 4. P11, P12 (só depois da N118) e P15;
 5. P16 e P18;
 6. P19, P20 e P21;
-7. P23.
+7. P23;
+8. P25 e P26, depois do aceite (N155 a N157).
 
 **Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
@@ -892,6 +895,22 @@ Ordem do dono, 2026-11-18 (N146): toda situação de negócio que o daemon só e
   - o `force` da remoção com a tentativa em `awaiting_resume` (vai direto ao bastão, sem entrar na espera do P19) **não entrou no integrado**: exigiria reiniciar o daemon no meio da peça (o `force` deixa `awaiting_resume` com `profile_removed` e o bastão sai na retomada seguinte), o que não é barato. Segue coberto por `attempt-runner-reset-wait.test.ts` ("a forced leave during the wait ...") e por `profile-leaving.test.ts` ("force, then resume(): straight to the baton") [V: testes de unidade do P21b];
   - o nível `profiles` real não rodou [N]: o login é do dono (N122).
 - **Fechamento da fase** [N]: a atualização do docs/13, da §10 da arquitetura, do resultado dos itens 4, 6, 7, 10 e 11 da Fase 0 e da lista de portões fica com o coordenador (este passo não edita esses dois documentos); o resultado da rodada real `quota` (2026-11-18, acima) e o da `profiles`, com data e [V], entram na §10 (a `profiles` depois que o dono a rodar).
+
+### P25. Cota do OpenCode com assinatura: vínculo com o Codex (N156)
+
+O que é: com o login do ChatGPT, o OpenCode gasta a mesma franquia do ChatGPT e do Codex (ajuda da OpenAI, artigo 20001542, acesso em 2026-11-18 [S]), mas não repassa o percentual, só o erro 429 `subscription_sharing_usage_limit_exceeded` (`packages/core/src/plugin/provider/chatgpt.ts` do sst/opencode, branch `dev`, lido em 2026-11-18 [V]). Chave `quota.opencode.mode` (`auto` | `codex_link` | `ledger`) [proposta nos nomes]:
+- `codex_link`: o perfil OpenCode declara o perfil Codex da mesma conta ChatGPT (campo do perfil, nome [proposta]); a cota 5h/7d vem da sonda do Codex desse perfil. O vínculo é declarado: o daemon não lê credencial, e o OpenCode não mostra a conta sem ela [N];
+- `ledger`: os tokens do `usage` do PromptResponse quando vierem [N: se o OpenCode os manda], senão a variação do `used` do contexto entre turnos;
+- `auto` (padrão): `codex_link` se houver vínculo, senão `ledger`;
+- em todos os modos, o 429 de compartilhamento (e o `..._workplace_individual_...`) vira `exhausted` pelo erro de limite. O teto semanal por app, que o usuário pode pôr nas configurações do ChatGPT, só aparece por esse erro [S].
+
+Aceite: testes de unidade da sonda e do erro; o nível real `quota` com o vínculo mostra 5h/7d para o OpenCode.
+
+### P26. Troca entre contas da OpenAI desligada por padrão (N157)
+
+O que é: os Terms of Use da OpenAI (em vigor desde 2026-01-01, acesso em 2026-11-18 [S]) proíbem contornar limites e compartilhar a conta, e não tratam de várias contas da mesma pessoa [N] (risco R21). Chave `profiles.rotate_on_exhaustion.openai` (`off` | `on`) [proposta], padrão `off`: um perfil da OpenAI (Codex, ou OpenCode com login do ChatGPT) esgotado não passa a outra conta da OpenAI; a seleção (P15), o bastão (P18) e o failover do Diretor (P20) esperam o reset ou passam a outro provedor. Com `on`, a troca volta, com aviso no `daemon.notice`. Os outros provedores não mudam.
+
+Aceite: testes da seleção, do bastão e do failover com duas contas da OpenAI e uma de outro provedor, nos dois modos.
 
 ## Decisões que surgem deste plano
 
