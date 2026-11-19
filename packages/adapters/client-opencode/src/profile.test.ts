@@ -69,6 +69,16 @@ describe('ensureProfileFiles', () => {
     expect(files).toEqual(['opencode.json']);
   });
 
+  it('takes several calls on one profile at once, and leaves no temporary file behind', async () => {
+    // A logout and a probe of one profile run together; on Windows the rename of one met the other.
+    await Promise.all(Array.from({ length: 8 }, () => ensureProfileFiles(dir)));
+    const files = await readdir(join(profileLayout(dir).homes.config, 'opencode'));
+    expect(files).toEqual(['opencode.json']);
+    expect(JSON.parse(await readFile(profileLayout(dir).configFile, 'utf8'))).toEqual(
+      DEFAULT_PROFILE_CONFIG,
+    );
+  });
+
   it('rewrites a config that differs, and writes none with `null`', async () => {
     await ensureProfileFiles(dir, { profileConfig: { autoupdate: true } });
     expect(JSON.parse(await readFile(profileLayout(dir).configFile, 'utf8'))).toEqual({
