@@ -12,7 +12,18 @@ set -euo pipefail
 
 OLLAMA_DIR="${OT_OLLAMA_DIR:-$HOME/.local/opt/ollama-v0.40.16}"
 PORT="${OT_OLLAMA_PORT:-47510}"
+# Contexto padrão do servidor. Teto de 32K (dono, 2026-11-19): mais que isso esta máquina não aguenta.
 CTX="${OT_CTX:-32768}"
+(( CTX >= 512 && CTX <= 32768 )) || { echo "OT_CTX=$CTX fora de 512..32768" >&2; exit 2; }
+# Tipo do cache de KV: f16 (padrão do Ollama), q8_0 ou q4_0. Os quantizados cortam a memória do
+# contexto pela metade ou por quatro e exigem flash attention, que o script liga junto.
+KV_CACHE="${OT_OLLAMA_KV_CACHE:-f16}"
+case "$KV_CACHE" in f16|q8_0|q4_0) ;; *) echo "OT_OLLAMA_KV_CACHE=$KV_CACHE: use f16, q8_0 ou q4_0" >&2; exit 2;; esac
+FLASH="${OT_OLLAMA_FLASH_ATTENTION:-}"
+[[ $KV_CACHE != f16 && -z $FLASH ]] && FLASH=1
+# Modelos carregados ao mesmo tempo. Padrão 1 (ordem do dono, 2026-11-19): esta máquina não
+# aguenta dois modelos locais juntos; trocar de modelo descarrega o anterior.
+MAX_LOADED="${OT_OLLAMA_MAX_LOADED:-1}"
 GGUF="${OT_GGUF:-$HOME/.cache/llama.cpp/gemma-4-E4B-it-Q4_0.gguf}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/out"
@@ -27,11 +38,14 @@ running() { [[ -f $PIDF ]] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
 case "${1:-start}" in
   start)
     if running; then echo "já está rodando, PID $(cat "$PIDF")"; exit 0; fi
+    [[ -n $FLASH ]] && export OLLAMA_FLASH_ATTENTION="$FLASH"
     OLLAMA_MODELS="$HOME/.ollama/models" OLLAMA_IGPU_ENABLE=1 OLLAMA_CONTEXT_LENGTH="$CTX" \
-      OLLAMA_NO_CLOUD=1 OLLAMA_KEEP_ALIVE=60m nohup "$BIN" serve >"$LOG" 2>&1 &
+      OLLAMA_MAX_LOADED_MODELS="$MAX_LOADED" OLLAMA_NUM_PARALLEL=1 OLLAMA_NO_CLOUD=1 OLLAMA_KEEP_ALIVE=60m \
+      OLLAMA_KV_CACHE_TYPE="$KV_CACHE" nohup "$BIN" serve >"$LOG" 2>&1 &
     echo $! >"$PIDF"
     for _ in $(seq 20); do grep -q 'inference compute' "$LOG" && break; sleep 0.5; done
     grep 'inference compute' "$LOG" | sed -E 's/.*(library=[^ ]+).*(description="[^"]*").*/\1 \2/' || true
+    echo "cache de KV $KV_CACHE${FLASH:+, flash attention $FLASH}"
     echo "PID $(cat "$PIDF"); API OpenAI em http://$OLLAMA_HOST/v1; log em $LOG"
     ;;
   stop)
