@@ -70,6 +70,9 @@ describe('acceptance: sessions run by the daemon', () => {
         executor: { model: 'fake-model' },
         policy: TEST_POLICY,
       });
+      // Every daemon opened here is stopped before the directory goes: on Windows an open
+      // `daemon.lock` cannot be deleted, and that error would hide the one of the test.
+      const opened: DaemonHandle[] = [];
       const open = (): Promise<DaemonHandle> =>
         startDaemon({
           dataDir: tmp.dir,
@@ -91,6 +94,9 @@ describe('acceptance: sessions run by the daemon', () => {
           resolveAttempt: resolver,
           logger: createSilentLogger(),
           version: '0.0.0-test',
+        }).then((daemon) => {
+          opened.push(daemon);
+          return daemon;
         });
       const spec = (demandId: string, prompt: string, timeoutMs?: number): AttemptSpec => ({
         playId: 'play-1',
@@ -211,6 +217,7 @@ describe('acceptance: sessions run by the daemon', () => {
           await next.stop();
         }
       } finally {
+        await Promise.all(opened.map((daemon) => daemon.stop()));
         await disposeRepo();
         await tmp.dispose();
       }

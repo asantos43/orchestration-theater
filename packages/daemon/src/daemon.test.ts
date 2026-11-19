@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.js';
 import { MAX_PASSWORD_ATTEMPTS, startDaemon, unlockVault, type PasswordPrompt } from './daemon.js';
 import { createSilentLogger } from './logger.js';
-import { makeTempDataDir, NO_CLIENTS, RecordingSituations } from './test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, RecordingSituations, startNotices } from './test-helpers.js';
 import { writeFile } from 'node:fs/promises';
 
 const AT = Date.UTC(2026, 10, 16, 15, 30, 5);
@@ -221,14 +221,19 @@ describe('startDaemon', () => {
         'override',
       ]);
       const started = await store.events.readFrom(0, 10);
-      expect(types(started)).toEqual(['daemon.started', 'daemon.notice', 'daemon.recovered']);
+      expect(types(started)).toEqual([
+        'daemon.started',
+        ...(await startNotices()),
+        'daemon.recovered',
+      ]);
       expect(started[0]?.payload).toMatchObject({
         pid: process.pid,
         version: '9.9.9',
         adapters: { store: { id: 'override' } },
       });
-      // P24 (N146): the execution that stays off is also an event, written after `daemon.started`.
-      expect(started[1]?.payload).toEqual({
+      // P24 (N146): the execution that stays off is also an event, written after `daemon.started`
+      // (the last notice before the recovery: a missing sandbox, if any, comes first).
+      expect(started.at(-2)?.payload).toEqual({
         kind: 'execution_off',
         subject: expect.stringMatching(/^no_(launcher|client)$/) as string,
         detail: null,
@@ -270,11 +275,11 @@ describe('startDaemon', () => {
       await daemon.stop('signal');
       expect(types(log)).toEqual([
         'daemon.started',
-        'daemon.notice',
+        ...(await startNotices()),
         'daemon.recovered',
         'daemon.stopped',
       ]);
-      expect(log[3]?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
+      expect(log.at(-1)?.payload).toEqual({ reason: 'signal', uptimeMs: 2500 });
     } finally {
       await tmp.dispose();
     }
@@ -578,10 +583,17 @@ describe('startDaemon', () => {
         overrides: { clock, store, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
       });
-      // The sink writes in the background (ordered): give it a bounded number of turns.
+      // The sink writes in the background (ordered): give it a bounded number of turns. It waits
+      // for the two kinds, not for a count: the platform may add its own (no sandbox on Windows).
       const noticeEvents = async () =>
         (await store.events.readFrom(0, 20)).filter((event) => event.type === 'daemon.notice');
-      for (let turn = 0; turn < 200 && (await noticeEvents()).length < 3; turn += 1) {
+      const kindsOf = async () =>
+        new Set((await noticeEvents()).map((event) => (event.payload as { kind: string }).kind));
+      const both = async () => {
+        const kinds = await kindsOf();
+        return kinds.has('backup_unsupported') && kinds.has('deprecated_config');
+      };
+      for (let turn = 0; turn < 200 && !(await both()); turn += 1) {
         await new Promise((resolve) => setImmediate(resolve));
       }
       const notices = (await noticeEvents()).map(
@@ -668,7 +680,7 @@ roles:
         expect(await readdir(join(tmp.dir, 'backups'))).toHaveLength(1);
         expect(types(await store.events.readFrom(0, 10))).toEqual([
           'daemon.started',
-          'daemon.notice',
+          ...(await startNotices()),
           'daemon.recovered',
           'daemon.backup',
         ]);

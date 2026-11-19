@@ -20,6 +20,15 @@ afterEach(async () => {
   await Promise.all(daemons.splice(0).map((daemon) => daemon.stop('shutdown')));
 });
 
+/**
+ * Stops the daemons of the test, then removes its directory: on Windows an open `daemon.lock`
+ * (or the journal of the store) cannot be deleted while a daemon still holds it.
+ */
+async function cleanUp(tmp: { dispose: () => Promise<void> }): Promise<void> {
+  await Promise.all(daemons.splice(0).map((daemon) => daemon.stop('shutdown')));
+  await tmp.dispose();
+}
+
 class FakeSource implements UsageSource {
   readonly id = 'fake-ccusage';
   readonly implements = { port: 'UsageSource', range: '^0.1.0' } as const;
@@ -89,7 +98,7 @@ describe('startDaemon with the ccusage check (P12, N118)', () => {
     try {
       expect(daemon.usageAudit).toBeUndefined();
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 
@@ -109,7 +118,7 @@ describe('startDaemon with the ccusage check (P12, N118)', () => {
       expect(daemon.usageAudit?.active).toBe(false);
       expect(source.queries).toEqual([]);
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 
@@ -122,7 +131,7 @@ describe('startDaemon with the ccusage check (P12, N118)', () => {
         expect.objectContaining({ kind: 'ccusage_unavailable' }),
       ]);
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 
@@ -147,7 +156,7 @@ describe('startDaemon with the ccusage check (P12, N118)', () => {
       ]);
       expect(daemon.usageAudit?.active).toBe(true);
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 });
