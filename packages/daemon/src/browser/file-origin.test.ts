@@ -17,7 +17,7 @@ let refusals: FileRefusal[];
 const fakeSecret =
   (root: string) =>
   (path: string): boolean =>
-    path.startsWith(`${root}/.ssh`) || path.endsWith('.env');
+    path.startsWith(join(root, '.ssh')) || path.endsWith('.env');
 
 beforeEach(async () => {
   home = await realpath(await mkdtemp(join(tmpdir(), 'otheater-fake-home-')));

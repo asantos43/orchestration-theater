@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { JsonObject, JsonValue } from '@otheater/core';
 import { FakeBrowserSession, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -407,12 +408,12 @@ describe('file:// URLs, enforced by the daemon', () => {
   });
 
   it('opens a file of the worktree: the browser gets the daemon origin, the agent sees file:///', async () => {
-    const s = await setup({ isSecret: (path) => path.startsWith(`${home}/.ssh`) });
+    const s = await setup({ isSecret: (path) => path.startsWith(join(home, '.ssh')) });
     await s.rig.write('page.html', '<h1>hi</h1>');
     const path = join(s.rig.worktree, 'page.html');
-    s.session.addPage(`file://${path}`, { title: 'never' }); // the fake is asked for another URL
-    const opened = (await s.call('browser_open', { url: `file://${path}` })) as JsonObject;
-    expect(opened.url).toBe(`file://${path}`);
+    s.session.addPage(pathToFileURL(path).href, { title: 'never' }); // the fake is asked for another URL
+    const opened = (await s.call('browser_open', { url: pathToFileURL(path).href })) as JsonObject;
+    expect(opened.url).toBe(pathToFileURL(path).href);
     const asked = s.session.calls.find((c) => c.method === 'open')?.args[0] as string;
     expect(asked).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/files\/[A-Za-z0-9_-]+\//);
     // the token is not in anything the agent or the log sees
@@ -423,9 +424,9 @@ describe('file:// URLs, enforced by the daemon', () => {
   });
 
   it('refuses a path of the secret list (fake list, temporary HOME) and never opens the browser on it', async () => {
-    const s = await setup({ isSecret: (path) => path.startsWith(`${home}/.ssh`) });
+    const s = await setup({ isSecret: (path) => path.startsWith(join(home, '.ssh')) });
     const failure = await s.fail('browser_open', {
-      url: `file://${join(home, '.ssh', 'id_fake')}`,
+      url: pathToFileURL(join(home, '.ssh', 'id_fake')).href,
     });
     expect(failure).toBeInstanceOf(ToolRefusal);
     expect(failure.code).toBe('secret_path');
@@ -440,7 +441,7 @@ describe('file:// URLs, enforced by the daemon', () => {
     const s = await setup();
     await s.rig.write('page.html', 'x');
     const failure = await s.fail('browser_open', {
-      url: `file://${join(s.rig.worktree, 'page.html')}`,
+      url: pathToFileURL(join(s.rig.worktree, 'page.html')).href,
     });
     expect(failure.code).toBe('secret_list_unavailable');
   });
@@ -449,29 +450,36 @@ describe('file:// URLs, enforced by the daemon', () => {
     const deny = await setup({ configOverride: { browser: { file_urls: 'deny' } } });
     await deny.rig.write('a.html', 'x');
     expect(
-      (await deny.fail('browser_open', { url: `file://${join(deny.rig.worktree, 'a.html')}` }))
-        .code,
+      (
+        await deny.fail('browser_open', {
+          url: pathToFileURL(join(deny.rig.worktree, 'a.html')).href,
+        })
+      ).code,
     ).toBe('file_urls_denied');
 
     const any = await setup({ configOverride: { browser: { file_urls: 'any' } } });
     await expect(
-      any.call('browser_open', { url: `file://${join(home, '.ssh', 'id_fake')}` }),
+      any.call('browser_open', { url: pathToFileURL(join(home, '.ssh', 'id_fake')).href }),
     ).resolves.toMatchObject({ untrusted: true });
 
     const scoped = await setup({ configOverride: { browser: { file_urls: 'scenario' } } });
     await scoped.rig.write('a.html', 'x');
     await expect(
-      scoped.call('browser_open', { url: `file://${join(scoped.rig.worktree, 'a.html')}` }),
+      scoped.call('browser_open', { url: pathToFileURL(join(scoped.rig.worktree, 'a.html')).href }),
     ).resolves.toMatchObject({ untrusted: true });
     expect(
-      (await scoped.fail('browser_open', { url: `file://${join(home, '.ssh', 'id_fake')}` })).code,
+      (
+        await scoped.fail('browser_open', {
+          url: pathToFileURL(join(home, '.ssh', 'id_fake')).href,
+        })
+      ).code,
     ).toBe('outside_scenario');
   });
 
   it('a missing file is file_not_found, not a refusal', async () => {
     const s = await setup({ configOverride: { browser: { file_urls: 'any' } } });
     const failure = await s.fail('browser_open', {
-      url: `file://${join(s.rig.worktree, 'missing.html')}`,
+      url: pathToFileURL(join(s.rig.worktree, 'missing.html')).href,
     });
     expect(failure.code).toBe('file_not_found');
     expect(failure).not.toBeInstanceOf(ToolRefusal);

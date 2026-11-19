@@ -12,7 +12,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -387,6 +387,20 @@ describe('unusual file names', () => {
   });
 });
 
+describe('executable files', () => {
+  it('commitAll records the paths it is given as executable, though the disk has no execute bit', async () => {
+    const vcs = new GitVcs();
+    const path = join(wt, 'exec');
+    await vcs.createWorktree({ repo, path, branch: 'play/1/exec', base: 'main' });
+    await mkdir(join(path, 'scripts'), { recursive: true });
+    await writeFile(join(path, 'scripts', 'run.sh'), '#!/bin/sh\n', { mode: 0o644 });
+    await writeFile(join(path, 'plain.txt'), 'x\n', { mode: 0o644 });
+    expect(await vcs.commitAll(path, 'scripts', { executable: ['scripts/run.sh'] })).toBeDefined();
+    expect(await testGit(path, 'ls-files', '-s', 'scripts/run.sh')).toMatch(/^100755 /);
+    expect(await testGit(path, 'ls-files', '-s', 'plain.txt')).toMatch(/^100644 /);
+  });
+});
+
 describe('init', () => {
   it('turns a plain folder into a repository with one empty commit, and worktrees work from it', async () => {
     const vcs = new GitVcs();
@@ -419,7 +433,10 @@ describe('init', () => {
     const inner = join(repo, 'inner');
     const made = await vcs.init(inner);
     expect(made.head).not.toBe(await vcs.headOf(repo));
-    expect(await testGit(inner, 'rev-parse', '--show-toplevel')).toBe(await realpath(inner));
+    // git prints forward slashes on Windows; resolve gives the platform's spelling.
+    expect(resolve(await testGit(inner, 'rev-parse', '--show-toplevel'))).toBe(
+      await realpath(inner),
+    );
     await expect(vcs.init(join(root, 'x'), { branch: '-bad' })).rejects.toThrow(/start with/);
     await expect(vcs.init('relative/path')).rejects.toThrow(/absolute/);
   });

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { accessSync, constants, statSync } from 'node:fs';
-import { delimiter, join, win32 } from 'node:path';
+import { posix, win32 } from 'node:path';
 import type {
   ClientAdapter,
   Clock,
@@ -104,10 +104,11 @@ export function searchPath(command: string, options: PathSearchOptions): string 
   if (command.includes('/') || (windows && command.includes('\\'))) {
     return candidates(command).find((candidate) => isExecutable(candidate));
   }
-  const separator = windows ? ';' : delimiter;
+  // The rules of the platform asked for, not of the host: a test of `linux` on Windows too.
+  const separator = windows ? win32.delimiter : posix.delimiter;
   for (const dir of (options.path ?? '').split(separator)) {
     if (dir === '') continue;
-    const joined = windows ? win32.join(dir, command) : join(dir, command);
+    const joined = windows ? win32.join(dir, command) : posix.join(dir, command);
     const found = candidates(joined).find((candidate) => isExecutable(candidate));
     if (found !== undefined) return found;
   }

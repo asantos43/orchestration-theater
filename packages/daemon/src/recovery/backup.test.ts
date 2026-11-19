@@ -292,8 +292,8 @@ describe('BackupService', () => {
   });
 
   // The copy is done and the folder then cannot be read, so the rotation cannot list it. Root
-  // ignores the mode, so it skips.
-  it.skipIf(process.getuid?.() === 0)(
+  // ignores the mode and Windows has no such mode, so both skip.
+  it.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'recovery.notice backup_rotation_failed: a rotation that fails is an event, and the copy is still ok (P24, N146)',
     async () => {
       const tmp = await makeTempDataDir();

@@ -87,34 +87,39 @@ describe.each(DRIVERS)('backup on %s', (driver) => {
       }
     });
 
-    it('finishes and is consistent while writes keep happening, without an uncommitted transaction', async () => {
-      const ctx = await openTempStore(driver);
-      try {
-        for (let n = 0; n < 200; n++) await ctx.store.events.append(event(n));
-        const writer = startBoundedWriter(ctx.store);
-        const dest = join(ctx.dir, 'live.db');
-        let result;
+    // The slower Windows runner needs more than the default 5 s for the concurrent writes.
+    it(
+      'finishes and is consistent while writes keep happening, without an uncommitted transaction',
+      { timeout: 30_000 },
+      async () => {
+        const ctx = await openTempStore(driver);
         try {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          result = await ctx.store.backup(dest, { method });
-        } finally {
-          await writer.stop();
-        }
+          for (let n = 0; n < 200; n++) await ctx.store.events.append(event(n));
+          const writer = startBoundedWriter(ctx.store);
+          const dest = join(ctx.dir, 'live.db');
+          let result;
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            result = await ctx.store.backup(dest, { method });
+          } finally {
+            await writer.stop();
+          }
 
-        const copied = await readBackup(driver, dest);
-        expect(result.bytes).toBeGreaterThan(0);
-        expect(result.restarts).toBe(0);
-        expect(copied.length).toBeGreaterThanOrEqual(200);
-        // The writer commits 3 events at a time: a snapshot never holds part of a transaction.
-        expect((copied.length - 200) % 3).toBe(0);
-        // A prefix of the live log: same rows, no gaps.
-        const live = await ctx.store.events.readFrom(0, 100_000);
-        expect(copied).toEqual(live.slice(0, copied.length));
-        expect(copied.map((e) => e.id)).toEqual(copied.map((_e, i) => i + 1));
-      } finally {
-        await ctx.dispose();
-      }
-    });
+          const copied = await readBackup(driver, dest);
+          expect(result.bytes).toBeGreaterThan(0);
+          expect(result.restarts).toBe(0);
+          expect(copied.length).toBeGreaterThanOrEqual(200);
+          // The writer commits 3 events at a time: a snapshot never holds part of a transaction.
+          expect((copied.length - 200) % 3).toBe(0);
+          // A prefix of the live log: same rows, no gaps.
+          const live = await ctx.store.events.readFrom(0, 100_000);
+          expect(copied).toEqual(live.slice(0, copied.length));
+          expect(copied.map((e) => e.id)).toEqual(copied.map((_e, i) => i + 1));
+        } finally {
+          await ctx.dispose();
+        }
+      },
+    );
 
     it('refuses to overwrite an existing file', async () => {
       const ctx = await openTempStore(driver);

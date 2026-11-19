@@ -53,10 +53,12 @@ export async function createSoftwareProject(
     branch: requested,
     message: 'chore: initial commit',
   });
+  const executable: string[] = [];
   for (const file of softwareTemplate({
     name: input.name ?? basename(folder),
     mainBranch: branch,
   })) {
+    if (file.executable === true) executable.push(file.path);
     const path = join(folder, file.path);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, file.content);
@@ -65,6 +67,7 @@ export async function createSoftwareProject(
   const head = await vcs.commitAll(
     folder,
     `chore: scaffold the project from the software profile\n\nProfile: software (template ${String(SOFTWARE_TEMPLATE_VERSION)})`,
+    { executable },
   );
   if (head === undefined) throw new Error(`The template left nothing to commit in "${folder}"`);
   return { folder, branch, head, conventions: profileConventions(branch) };

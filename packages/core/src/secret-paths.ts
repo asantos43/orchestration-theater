@@ -9,7 +9,8 @@ import { InvalidInput } from './errors.js';
  * Pure: no file system, no `node:path` (rule `core-only-zod`). The caller gives the home directory
  * and the data directory and passes REAL paths (symlinks already resolved) to {@link isSecretPath}.
  * [proposta] Only the POSIX spelling is known: the macOS and Windows equivalents are `[a definir]`
- * in the architecture.
+ * in the architecture. A Windows path (`C:\Users\x`, `C:/Users/x`) is read as absolute, with `/`
+ * for `\`, and compared without case: NTFS does not tell `.SSH` from `.ssh` by default.
  *
  * An entry is one of:
  * - `~` or `~/...`: relative to the home directory (`~/.ssh`);
@@ -61,15 +62,28 @@ export interface SecretPathsOptions {
   readonly remove?: readonly string[] | undefined;
 }
 
+/** A Windows drive at the start (`C:` or `C:/...`), after `\` became `/`. */
+const DRIVE = /^[A-Za-z]:(?:\/|$)/;
+
+/** Whether a path (with `/` only) is absolute: POSIX `/...` or a Windows drive `C:/...`. */
+function isAbsolutePath(text: string): boolean {
+  return text.startsWith('/') || DRIVE.test(text);
+}
+
+/** Whether a path (with `/` only) is the root of a file system: `/`, `C:` or `C:/`. */
+function isRoot(text: string): boolean {
+  return text === '/' || /^[A-Za-z]:\/?$/.test(text);
+}
+
 function trimSlashes(path: string): string {
   let end = path.length;
-  while (end > 1 && path[end - 1] === '/') end -= 1;
+  while (end > 1 && path[end - 1] === '/' && !/^[A-Za-z]:\/$/.test(path.slice(0, end))) end -= 1;
   return path.slice(0, end);
 }
 
 function assertAbsolute(name: string, value: string): string {
   const clean = trimSlashes(value.replaceAll('\\', '/'));
-  if (!clean.startsWith('/') || clean === '/') {
+  if (!isAbsolutePath(clean) || isRoot(clean)) {
     throw new InvalidInput(`${name} must be an absolute path other than the root (got "${value}")`);
   }
   return clean;
@@ -92,9 +106,9 @@ function expandEntry(entry: string, home: string, dataDir: string | undefined): 
   if (text.startsWith('<data>/')) {
     return dataDir === undefined ? undefined : trimSlashes(`${dataDir}/${text.slice(7)}`);
   }
-  if (text.startsWith('/')) {
+  if (isAbsolutePath(text)) {
     const clean = trimSlashes(text);
-    if (clean === '/')
+    if (isRoot(clean))
       throw new InvalidInput('a secret path cannot be the root of the file system');
     return clean;
   }
@@ -135,34 +149,50 @@ export function resolveSecretPaths(options: SecretPathsOptions): readonly string
   return list;
 }
 
-/** Splits a path into its segments, resolving `.` and `..` (an absolute path never climbs above `/`). */
-function segmentsOf(path: string): { readonly absolute: boolean; readonly parts: string[] } {
-  const text = path.replaceAll('\\', '/');
-  const absolute = text.startsWith('/');
+/**
+ * Splits a path into its segments, resolving `.` and `..` (an absolute path never climbs above its
+ * root). A Windows drive is the first segment, in lower case, and marks the path as `drive`.
+ */
+function segmentsOf(path: string): {
+  readonly absolute: boolean;
+  readonly drive: boolean;
+  readonly parts: string[];
+} {
+  let text = path.replaceAll('\\', '/');
+  const drive = DRIVE.test(text);
+  const absolute = drive || text.startsWith('/');
   const parts: string[] = [];
+  if (drive) {
+    parts.push(text.slice(0, 2).toLowerCase());
+    text = text.slice(2);
+  }
+  const floor = parts.length;
   for (const part of text.split('/')) {
     if (part === '' || part === '.') continue;
     if (part === '..') {
-      if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop();
+      if (parts.length > floor && parts[parts.length - 1] !== '..') parts.pop();
       else if (!absolute) parts.push('..');
       continue;
     }
     parts.push(part);
   }
-  return { absolute, parts };
+  return { absolute, drive, parts };
 }
 
 const GLOB_SPECIAL = /[.+^${}()|[\]\\]/g;
 
-/** Whether one path segment matches one entry segment (`*` and `?` only). */
-function segmentMatches(pattern: string, segment: string): boolean {
-  if (!pattern.includes('*') && !pattern.includes('?')) return pattern === segment;
+/** Whether one path segment matches one entry segment (`*` and `?` only); `fold` ignores case. */
+function segmentMatches(pattern: string, segment: string, fold = false): boolean {
+  if (!pattern.includes('*') && !pattern.includes('?')) {
+    return fold ? pattern.toLowerCase() === segment.toLowerCase() : pattern === segment;
+  }
   const source = pattern.replace(GLOB_SPECIAL, '\\$&').replaceAll('*', '.*').replaceAll('?', '.');
-  return new RegExp(`^${source}$`, 'su').test(segment);
+  return new RegExp(`^${source}$`, fold ? 'sui' : 'su').test(segment);
 }
 
 /**
- * Whether `path` is a secret: it is an entry of `list` or lies inside one. Case-sensitive. The path
+ * Whether `path` is a secret: it is an entry of `list` or lies inside one. Case-sensitive, except
+ * for a Windows path (drive letter), which is compared without case. The path
  * is compared as it is written (after resolving `.` and `..`): the caller passes the real path,
  * because this function does not follow symlinks. A relative path matches only the bare names.
  */
@@ -170,13 +200,15 @@ export function isSecretPath(path: string, list: readonly string[]): boolean {
   const target = segmentsOf(path);
   if (target.parts.length === 0) return false;
   for (const entry of list) {
-    if (!entry.includes('/')) {
-      if (target.parts.some((part) => segmentMatches(entry, part))) return true;
+    const fold = target.drive;
+    if (!entry.replaceAll('\\', '/').includes('/')) {
+      if (target.parts.some((part) => segmentMatches(entry, part, fold))) return true;
       continue;
     }
-    const pattern = segmentsOf(entry).parts;
-    if (!target.absolute || target.parts.length < pattern.length) continue;
-    if (pattern.every((part, index) => segmentMatches(part, target.parts[index] ?? '')))
+    const { drive, parts: pattern } = segmentsOf(entry);
+    if (!target.absolute || drive !== target.drive || target.parts.length < pattern.length)
+      continue;
+    if (pattern.every((part, index) => segmentMatches(part, target.parts[index] ?? '', fold)))
       return true;
   }
   return false;
