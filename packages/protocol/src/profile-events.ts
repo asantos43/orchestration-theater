@@ -80,8 +80,10 @@ export const ProfileRemovedPayloadSchema = z.strictObject({
  * `secret_missing` (a client process of an API profile starts and its key is not in the vault) and
  * `role_without_executor` (P21: a profile was removed and a role's list has no Executor left to
  * select; `detail` names the role), `exec_draining` (P28a: `ot profile exec` ran the client of a
- * profile that is draining) and `exec_refused` (P28a: `ot profile exec` did not run it; `detail` says
- * why: `removed`, `no_client` or `no_profile_cli`).
+ * profile that is draining), `exec_refused` (P28a: `ot profile exec` did not run it; `detail` says
+ * why: `removed`, `no_client` or `no_profile_cli`), `shim_conflict` (P28b: the command of the profile
+ * was not made because another program in `PATH` has that name; `detail` is the name) and
+ * `shim_failed` (P28b: the commands could not be written; `detail` is the error code).
  */
 export const PROFILE_WARNING_KINDS = [
   'login_probe_failed',
@@ -92,6 +94,8 @@ export const PROFILE_WARNING_KINDS = [
   'role_without_executor',
   'exec_draining',
   'exec_refused',
+  'shim_conflict',
+  'shim_failed',
 ] as const;
 export type ProfileWarningKind = (typeof PROFILE_WARNING_KINDS)[number];
 
@@ -104,6 +108,31 @@ export const ProfileWarningPayloadSchema = z.strictObject({
   profileId,
   kind: z.enum(PROFILE_WARNING_KINDS),
   detail: z.string().min(1).max(512).optional(),
+});
+
+/** A command by profile, as a name: never a path. */
+const shimName = z.string().regex(/^[A-Za-z0-9._-]{1,160}$/);
+
+/**
+ * `profile.shims.synced` (P28b, N159, [proposta]): the commands by profile in `<data>/bin` were made
+ * to match the profiles. `trigger` says what asked it (`add`, `remove` or the `sync` command); the
+ * lists are command names. Recorded only when something changed or there was a conflict.
+ */
+export const ProfileShimsSyncedPayloadSchema = z.strictObject({
+  trigger: z.enum(['add', 'remove', 'sync']),
+  written: z.array(shimName),
+  removed: z.array(shimName),
+  conflicts: z.array(shimName),
+  binOnPath: z.boolean(),
+});
+
+/**
+ * `profile.shims.rc_changed` (P28b, N159, [proposta]): `ot profile shims path --install` or
+ * `--uninstall` wrote the shell's rc file (`added`, `replaced`, `removed`). Never the path of the file.
+ */
+export const ProfileShimsRcChangedPayloadSchema = z.strictObject({
+  shell: z.enum(['zsh', 'bash', 'fish']),
+  change: z.enum(['added', 'replaced', 'removed']),
 });
 
 /**

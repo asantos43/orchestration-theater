@@ -38,6 +38,8 @@ import {
 import { dataPaths, resolveDataDir, type Env } from './paths.js';
 import { isProfileAction, runProfileCommand, type ProfileOptions } from './profiles/command.js';
 import { runProfileExec, type ExecSignals, type ExecSpawn } from './profiles/exec.js';
+import { runProfileShims, type ShimsOptions } from './profiles/shims-command.js';
+import type { OtLauncher } from './profiles/shims.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -67,6 +69,13 @@ export interface CliDeps {
   readonly execSpawn?: ExecSpawn | undefined;
   /** The signals while `ot profile exec` runs (default: the process's). */
   readonly execSignals?: ExecSignals | undefined;
+  /**
+   * What the commands by profile call (P28b): Node and the entry of `ot`, both absolute. Without
+   * it, `ot profile shims sync` refuses and `add`/`remove` write no script.
+   */
+  readonly otLauncher?: OtLauncher | undefined;
+  /** Asks a yes or no in the terminal (`ot profile shims path --install`); none without a terminal. */
+  readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
 }
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
@@ -191,6 +200,19 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
             args,
           );
         }
+        const shimHost = {
+          launcher: deps.otLauncher,
+          platform: deps.platform,
+          homedir: deps.homedir,
+        };
+        if (action === 'shims') {
+          return await runProfileShims(
+            context,
+            { env: deps.env, host: shimHost, confirm: deps.confirm },
+            args,
+            shimsOptions(values),
+          );
+        }
         if (!isProfileAction(action))
           return usageError(t('usage.unknownProfileAction', { action }));
         return await runProfileCommand(
@@ -200,6 +222,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
             env: deps.env,
             input: deps.input,
             passwordPrompt: deps.passwordPrompt?.(t),
+            shims: shimHost,
           },
           action,
           args,
@@ -282,6 +305,11 @@ function parseCliArgs(argv: readonly string[]) {
       'accept-notice': { type: 'boolean' },
       'check-login': { type: 'boolean' },
       json: { type: 'boolean' },
+      // The options of `ot profile shims` (`json` is shared).
+      install: { type: 'boolean' },
+      uninstall: { type: 'boolean' },
+      shell: { type: 'string' },
+      yes: { type: 'boolean', short: 'y' },
       // The options of `ot executor` (`role`, `all`, `json` are shared).
       effort: { type: 'string' },
       family: { type: 'string' },
@@ -326,6 +354,16 @@ function profileOptions(values: ParsedValues): ProfileOptions {
     client: values.client,
     all: values.all === true,
     checkLogin: values['check-login'] === true,
+    json: values.json === true,
+  };
+}
+
+function shimsOptions(values: ParsedValues): ShimsOptions {
+  return {
+    install: values.install === true,
+    uninstall: values.uninstall === true,
+    shell: values.shell,
+    yes: values.yes === true,
     json: values.json === true,
   };
 }
@@ -433,6 +471,30 @@ function terminalPasswordPrompt(t: TFunction): PasswordPrompt {
   };
 }
 
+/** Node and the real path of this entry, for the commands by profile; `undefined` if unknown. */
+function otLauncherOf(): OtLauncher | undefined {
+  const invoked = process.argv[1];
+  if (invoked === undefined) return undefined;
+  try {
+    return { node: process.execPath, entry: realpathSync(invoked) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** A yes or no on stderr; only `y` or `yes` (or `s`, `sim`) count as yes. */
+async function terminalConfirm(question: string): Promise<boolean> {
+  const lines = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = await new Promise<string>((resolve) => {
+      lines.question(`${question} [y/N] `, resolve);
+    });
+    return /^(y|yes|s|sim)$/i.test(answer.trim());
+  } finally {
+    lines.close();
+  }
+}
+
 /**
  * Whether the command line is `ot [--data-dir <dir>] profile exec ...`: there the client in the
  * terminal owns Ctrl+C (`profiles/exec.ts`), so `entry` neither aborts nor exits on it.
@@ -481,6 +543,8 @@ async function entry(): Promise<void> {
     cwd: process.cwd(),
     input: process.stdin,
     passwordPrompt: process.stdin.isTTY ? terminalPasswordPrompt : undefined,
+    otLauncher: otLauncherOf(),
+    confirm: process.stdin.isTTY ? terminalConfirm : undefined,
   });
   process.exitCode = code;
   process.off('SIGINT', onSignal);

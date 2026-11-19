@@ -59,6 +59,8 @@ import {
   ProfileRemovedPayloadSchema,
   ProfileExecEndedPayloadSchema,
   ProfileExecStartedPayloadSchema,
+  ProfileShimsRcChangedPayloadSchema,
+  ProfileShimsSyncedPayloadSchema,
   ProfileWarningPayloadSchema,
 } from './profile-events.js';
 import {
@@ -552,6 +554,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ProfileExecEndedPayloadSchema,
   }),
   defineEventType({
+    type: 'profile.shims.synced',
+    schemaVersion: 1,
+    payload: ProfileShimsSyncedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.shims.rc_changed',
+    schemaVersion: 1,
+    payload: ProfileShimsRcChangedPayloadSchema,
+  }),
+  defineEventType({
     type: 'executor.changed',
     schemaVersion: 1,
     payload: ExecutorChangedPayloadSchema,
@@ -686,6 +698,8 @@ export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];
+export type ProfileShimsSyncedPayload = DaemonEventPayloads['profile.shims.synced'];
+export type ProfileShimsRcChangedPayload = DaemonEventPayloads['profile.shims.rc_changed'];
 export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];

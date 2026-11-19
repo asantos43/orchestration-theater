@@ -100,6 +100,8 @@ describe('daemon event registry', () => {
       'profile.warning',
       'profile.exec.started',
       'profile.exec.ended',
+      'profile.shims.synced',
+      'profile.shims.rc_changed',
       'executor.changed',
       'daemon.notice',
       'recovery.notice',

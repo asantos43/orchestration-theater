@@ -63,6 +63,7 @@ describe('dataPaths', () => {
       lock: join(root, 'daemon.lock'),
       lockInfo: join(root, 'daemon.lock.json'),
       backups: join(root, 'backups'),
+      bin: join(root, 'bin'),
       logs: join(root, 'logs'),
       logFile: join(root, 'logs', 'daemon.log'),
       scenarios: join(root, 'scenarios'),
