@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { delimiter, isAbsolute, join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import {
   AdapterUnavailable,
   InvalidInput,
@@ -52,7 +52,7 @@ export interface CcusageSourceOptions {
   readonly timeoutMs?: number;
   /** Default `offline`: no call to a price list on the network. */
   readonly pricing?: PricingMode;
-  /** The parent environment, read for `PATH` only. Default `process.env`. */
+  /** The parent environment, read for `PATH` (and `PATHEXT` on Windows) only. Default `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -66,13 +66,39 @@ function isExecutable(path: string): boolean {
   }
 }
 
-/** The first executable called `name` in the folders of `pathVariable`, or `undefined`. */
-export function findOnPath(name: string, pathVariable: string | undefined): string | undefined {
+export interface FindOnPathOptions {
+  /** Default `process.platform`. */
+  readonly platform?: NodeJS.Platform;
+  /** Value of `PATHEXT`, for Windows. Default `.COM;.EXE`. */
+  readonly pathext?: string;
+}
+
+/**
+ * The first executable called `name` in the folders of `pathVariable`, or `undefined`.
+ *
+ * On Windows the name is tried with the extensions of `PATHEXT` that start without a shell
+ * (`.EXE`, `.COM`), never bare: the tool runs through `execFile` with no shell, so a `.cmd` (the
+ * npm shim) cannot be started, and the bare `ccusage` beside it is the shim for a POSIX shell.
+ */
+export function findOnPath(
+  name: string,
+  pathVariable: string | undefined,
+  options: FindOnPathOptions = {},
+): string | undefined {
   if (pathVariable === undefined) return undefined;
-  for (const folder of pathVariable.split(delimiter)) {
+  const windows = (options.platform ?? process.platform) === 'win32';
+  const names = windows
+    ? (options.pathext ?? '.COM;.EXE')
+        .split(';')
+        .filter((ext) => /^\.(exe|com)$/i.test(ext))
+        // Windows ignores the case of a name; the lower case gives the usual `ccusage.exe`.
+        .map((ext) => `${name}${ext.toLowerCase()}`)
+    : [name];
+  for (const folder of pathVariable.split(windows ? ';' : ':')) {
     if (folder.length === 0 || !isAbsolute(folder)) continue;
-    const candidate = join(folder, name);
-    if (isExecutable(candidate)) return candidate;
+    for (const candidate of names.map((file) => join(folder, file))) {
+      if (isExecutable(candidate)) return candidate;
+    }
   }
   return undefined;
 }
@@ -203,7 +229,8 @@ export class CcusageSource implements UsageSource {
   /** The absolute path to run, or `undefined` when there is none. */
   #resolve(): string | undefined {
     if (this.#mode === 'explicit') return isExecutable(this.#command) ? this.#command : undefined;
-    return findOnPath(this.#command, this.#parent.PATH);
+    const pathext = this.#parent.PATHEXT;
+    return findOnPath(this.#command, this.#parent.PATH, pathext === undefined ? {} : { pathext });
   }
 
   async #run(

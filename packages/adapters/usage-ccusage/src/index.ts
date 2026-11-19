@@ -6,6 +6,7 @@ export {
   DEFAULT_TIMEOUT_MS,
   PRICING_MODES,
   findOnPath,
+  type FindOnPathOptions,
   versionOf,
   type CcusageSourceOptions,
   type CommandMode,

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { tmpdir } from 'node:os';
 import { isOTheaterError } from '@otheater/core';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -359,7 +360,7 @@ describe('ToolRunner', () => {
       launcher: new SpawnLauncher(),
       parentEnv: { PATH: process.env.PATH ?? '' },
     });
-    const out = await runner.run('git', ['rev-parse', '--verify', '--quiet', 'nope'], '/tmp');
+    const out = await runner.run('git', ['rev-parse', '--verify', '--quiet', 'nope'], tmpdir());
     expect(out.code).not.toBe(0);
   });
 });
