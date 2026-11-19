@@ -87,7 +87,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P21 | Remoção de perfil com sessões em curso | P2, P16, P18 | P19, P20 | concluído (PR #130) |
 | P21b | Remoção de perfil: causa própria e failover do Diretor (N152, N153) | P19, P20, P21 | P23 | concluído (PR #133) |
 | P22 | Idempotência dos efeitos na retomada | P0 | P1 a P4 | concluído (PR #97) |
-| P23 | Aceite da fase | todos | nada | concluído (branch fase-5/p23-aceite-da-fase) |
+| P23 | Aceite da fase | todos | nada | concluído (PR #134) |
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
 | P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
 | P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | pendente |
