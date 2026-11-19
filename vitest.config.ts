@@ -27,6 +27,15 @@ const alias = {
   '@otheater/adapter-sandbox-srt': `${import.meta.dirname}/packages/adapters/sandbox-srt/src/index.ts`,
 };
 
+// Per-test and per-hook deadlines. The Windows runner of the CI is several times slower than Linux
+// for processes and git (and the files run in parallel), so the vitest defaults (5 s and 10 s)
+// fail tests there that are only slow. `OT_TEST_TIMEOUT_MS` sets both, on any platform.
+const fromEnv = Number(process.env.OT_TEST_TIMEOUT_MS);
+const override = Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : undefined;
+const windows = process.platform === 'win32';
+const testTimeout = override ?? (windows ? 30_000 : 5_000);
+const hookTimeout = override ?? (windows ? 60_000 : 10_000);
+
 export default defineConfig({
   test: {
     projects: [
@@ -36,6 +45,8 @@ export default defineConfig({
           name: 'packages',
           include: ['packages/**/src/**/*.test.ts', 'tools/**/src/**/*.test.ts'],
           exclude: ['**/node_modules/**', '**/dist/**', 'spikes/**'],
+          testTimeout,
+          hookTimeout,
         },
       },
     ],

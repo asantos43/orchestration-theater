@@ -93,9 +93,18 @@ export class NodeProcessLauncher implements ProcessLauncher {
     return this.pids.filter(treeAlive).length;
   }
 
-  /** Ends, at once and without grace, every tree this launcher started (a crash, or a cleanup). */
+  /**
+   * Ends, at once and without grace, every tree this launcher started (a crash, or a cleanup), and
+   * waits until the kernel no longer lists them (a killed child is a zombie until it is reaped, and
+   * on Windows the root can outlive the end of `taskkill` for a moment).
+   */
   async killAll(): Promise<void> {
-    await Promise.all(this.pids.map((pid) => hardKill(pid)));
+    await Promise.all(
+      this.pids.map(async (pid) => {
+        await hardKill(pid);
+        await waitGone(pid, 2000);
+      }),
+    );
   }
 }
 
