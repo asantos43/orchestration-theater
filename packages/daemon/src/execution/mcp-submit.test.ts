@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { EventEnvelope, RolePolicy } from '@otheater/core';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
@@ -12,6 +12,7 @@ import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The framework MCP server (architecture 5.3) end to end: the fake agent over the REAL ACP stdio
@@ -115,7 +116,7 @@ function specOf(
   return spec;
 }
 
-describe('framework MCP server over the real ACP stdio transport', () => {
+describeWithLauncher('framework MCP server over the real ACP stdio transport', () => {
   it('hands the session its URL and token, and a valid submit is recorded as attempt.submitted', async () => {
     await withDaemon(async (daemon, repo) => {
       const runner = daemon.execution?.runner;

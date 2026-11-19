@@ -14,7 +14,7 @@ import {
 } from '@otheater/core';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { defaultLauncher, probeSandbox, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
@@ -22,6 +22,7 @@ import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * Layer 3 end to end (architecture 5.8): the fake agent over the REAL ACP stdio transport runs
@@ -197,7 +198,7 @@ function specOf(repo: string, profile: Profile, demandId: string, prompt: string
   };
 }
 
-describe('the fake agent inside the sandbox of the daemon', () => {
+describeWithLauncher('the fake agent inside the sandbox of the daemon', () => {
   it('writes in its worktree and in nothing else, reads nothing secret and reaches nothing outside', async (context) => {
     if (sandboxIssue !== undefined) {
       context.skip();
@@ -270,7 +271,7 @@ describe('the fake agent inside the sandbox of the daemon', () => {
  * proxy and obeys nothing but the address), so only a listener inside the sandbox on the same port
  * lets the call arrive. Linux only: Seatbelt (macOS) was not measured.
  */
-describe('the framework MCP server from inside the sandbox (N115)', () => {
+describeWithLauncher('the framework MCP server from inside the sandbox (N115)', () => {
   const WITH_MCP: RolePolicy = {
     ...POLICY,
     mcpServers: ['otheater'],

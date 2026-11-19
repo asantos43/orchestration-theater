@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +18,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from '../orchestration/e2e-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The chat tests of architecture section 10 with the fake agent (P12): a simple question is
@@ -101,7 +102,7 @@ const PNG = Buffer.from(
   'base64',
 );
 
-describe('the chat flow with the fake agent (P12)', { timeout: 120_000 }, () => {
+describeWithLauncher('the chat flow with the fake agent (P12)', { timeout: 120_000 }, () => {
   it('answers a simple question with the Director alone', async () => {
     await withChatDaemon({}, async (harness) => {
       const scenarioId = await harness.openGenericChat('talk');

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -19,6 +19,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The failover of the Director (P20): the fake agent ends the first turn of the Director with a
@@ -128,7 +129,7 @@ async function promptsOf(harness: PlayHarness, scenarioId: string) {
   return harness.daemon.store.promptQueue.list({ scenarioId });
 }
 
-describe('the failover of the Director (P20)', { timeout: 180_000 }, () => {
+describeWithLauncher('the failover of the Director (P20)', { timeout: 180_000 }, () => {
   it('opens the next Executor when the quota runs out mid-turn, with the directives, and answers the prompt', async () => {
     await withFailoverDaemon({ extra: rolesConfig(['one', 'two']) }, async (harness) => {
       await harness.daemon.directives.create({ text: 'Always answer in haiku.', scope: 'global' });
@@ -276,7 +277,7 @@ describe('the failover of the Director (P20)', { timeout: 180_000 }, () => {
   });
 });
 
-describe(
+describeWithLauncher(
   'the failover of the Director and profiles.rotate_on_exhaustion (P26, N157)',
   { timeout: 180_000 },
   () => {

@@ -13,6 +13,7 @@ import {
 import { InMemoryStore } from '@otheater/core/testing';
 import type { ProcessLauncher } from '@otheater/core';
 import { defaultLauncher } from '../compose.js';
+import { describeWithLauncher, itWithLauncher } from '../launcher-fixture.js';
 
 const rigs: ToolsRig[] = [];
 
@@ -32,14 +33,14 @@ afterEach(async () => {
 const NODE = 'node';
 
 describe('restricted_shell in the mode list (the default)', () => {
-  it('runs an allowed command in the worktree and answers its output', async () => {
+  itWithLauncher('runs an allowed command in the worktree and answers its output', async () => {
     const rig = await rigOf();
     const reply = await rig.call('restricted_shell', { argv: ['ls'] });
     expect(reply).toMatchObject({ exitCode: 0, timedOut: false, truncated: false });
     expect((reply as { stdout: string }).stdout).toContain('README.md');
   });
 
-  it('answers a non-zero exit as a normal result, with the stderr', async () => {
+  itWithLauncher('answers a non-zero exit as a normal result, with the stderr', async () => {
     const rig = await rigOf();
     const reply = await rig.call('restricted_shell', { argv: ['cat', 'missing.txt'] });
     expect(reply).toMatchObject({ timedOut: false });
@@ -84,7 +85,7 @@ describe('restricted_shell in the mode list (the default)', () => {
     );
   });
 
-  it('keeps every path argument inside the worktree, symlinks included', async () => {
+  itWithLauncher('keeps every path argument inside the worktree, symlinks included', async () => {
     const rig = await rigOf();
     expect((await rig.fail('restricted_shell', { argv: ['cat', '/etc/passwd'] })).code).toBe(
       'path_escapes',
@@ -113,31 +114,39 @@ describe('restricted_shell in the mode list (the default)', () => {
     expect(failure.code).toBe('no_worktree');
   });
 
-  it('answers unavailable on a platform with no launcher', async () => {
+  it('answers unavailable on a platform with no launcher, after the rules', async () => {
     const rig = await rigOf({ launcher: undefined });
     expect((await rig.fail('restricted_shell', { argv: ['ls'] })).code).toBe('unavailable');
+    // A refused call keeps its own code there too: the rules do not need a process.
+    const refused = await rig.fail('restricted_shell', { argv: ['git', 'push'] });
+    expect(refused).toBeInstanceOf(ToolRefusal);
+    expect(refused.code).toBe('program_not_allowed');
+    expect((await rig.fail('run_tests', {})).code).toBe('no_command');
   });
 });
 
 describe('restricted_shell in the other modes', () => {
-  it('any lets a program of the PATH run, and still applies the argv rules', async () => {
-    const rig = await rigOf({ tools: '  shell_allowlist:\n    mode: any' });
-    await rig.write('hello.js', "process.stdout.write('hello')");
-    expect(await rig.call('restricted_shell', { argv: ['wc', '-c', 'hello.js'] })).toMatchObject({
-      exitCode: 0,
-    });
-    expect((await rig.fail('restricted_shell', { argv: ['wc', '/etc/passwd'] })).code).toBe(
-      'path_escapes',
-    );
-    expect((await rig.fail('restricted_shell', { argv: ['ls', '&&', 'ls'] })).code).toBe(
-      'shell_syntax',
-    );
-    expect((await rig.fail('restricted_shell', { argv: ['rg', '--pre=x', 'a'] })).code).toBe(
-      'forbidden_flag',
-    );
-  });
+  itWithLauncher(
+    'any lets a program of the PATH run, and still applies the argv rules',
+    async () => {
+      const rig = await rigOf({ tools: '  shell_allowlist:\n    mode: any' });
+      await rig.write('hello.js', "process.stdout.write('hello')");
+      expect(await rig.call('restricted_shell', { argv: ['wc', '-c', 'hello.js'] })).toMatchObject({
+        exitCode: 0,
+      });
+      expect((await rig.fail('restricted_shell', { argv: ['wc', '/etc/passwd'] })).code).toBe(
+        'path_escapes',
+      );
+      expect((await rig.fail('restricted_shell', { argv: ['ls', '&&', 'ls'] })).code).toBe(
+        'shell_syntax',
+      );
+      expect((await rig.fail('restricted_shell', { argv: ['rg', '--pre=x', 'a'] })).code).toBe(
+        'forbidden_flag',
+      );
+    },
+  );
 
-  it('profile lets only the commands of the project conventions run', async () => {
+  itWithLauncher('profile lets only the commands of the project conventions run', async () => {
     const rig = await rigOf({
       tools: '  shell_allowlist:\n    mode: profile',
       conventions: { commands: { lint: 'ls -a', test: ['cat', 'README.md'] } },
@@ -159,7 +168,7 @@ describe('restricted_shell in the other modes', () => {
     expect((await rig.fail('restricted_shell', { argv: ['ls'] })).code).toBe('program_not_allowed');
   });
 
-  it('the scenario overrides the mode and the list of the project', async () => {
+  itWithLauncher('the scenario overrides the mode and the list of the project', async () => {
     const rig = await rigOf({
       tools: '  shell_allowlist:\n    list: [ls]',
       configOverride: { 'tools.shell_allowlist.list': ['cat'] },
@@ -172,7 +181,7 @@ describe('restricted_shell in the other modes', () => {
 });
 
 describe('run_tests and install_deps', () => {
-  it('take the command from the project, never from the model', async () => {
+  itWithLauncher('take the command from the project, never from the model', async () => {
     const rig = await rigOf({
       tools: '  commands:\n    test: [cat, README.md]\n    install: [ls, -a]',
     });
@@ -182,22 +191,25 @@ describe('run_tests and install_deps', () => {
     await expect(rig.call('run_tests', { command: ['rm', '-rf', '.'] })).rejects.toThrow();
   });
 
-  it('prefer the override of the scenario, then the conventions, then the global config', async () => {
-    const global = '  commands:\n    test: [echo, global]';
-    const conventions = { commands: { test: ['echo', 'conventions'] } };
-    const globalOnly = await rigOf({ tools: global });
-    expect(await globalOnly.call('run_tests', {})).toMatchObject({ stdout: 'global\n' });
-    const withConventions = await rigOf({ tools: global, conventions });
-    expect(await withConventions.call('run_tests', {})).toMatchObject({
-      stdout: 'conventions\n',
-    });
-    const overridden = await rigOf({
-      tools: global,
-      conventions,
-      configOverride: { tools: { commands: { test: 'echo scenario' } } },
-    });
-    expect(await overridden.call('run_tests', {})).toMatchObject({ stdout: 'scenario\n' });
-  });
+  itWithLauncher(
+    'prefer the override of the scenario, then the conventions, then the global config',
+    async () => {
+      const global = '  commands:\n    test: [echo, global]';
+      const conventions = { commands: { test: ['echo', 'conventions'] } };
+      const globalOnly = await rigOf({ tools: global });
+      expect(await globalOnly.call('run_tests', {})).toMatchObject({ stdout: 'global\n' });
+      const withConventions = await rigOf({ tools: global, conventions });
+      expect(await withConventions.call('run_tests', {})).toMatchObject({
+        stdout: 'conventions\n',
+      });
+      const overridden = await rigOf({
+        tools: global,
+        conventions,
+        configOverride: { tools: { commands: { test: 'echo scenario' } } },
+      });
+      expect(await overridden.call('run_tests', {})).toMatchObject({ stdout: 'scenario\n' });
+    },
+  );
 
   it('answer no_command when nothing names the command', async () => {
     const rig = await rigOf();
@@ -210,13 +222,18 @@ describe('run_tests and install_deps', () => {
     expect((await rig.fail('run_tests', {})).code).toBe('invalid_command');
   });
 
-  it('append the target of run_tests as one argument, inside the worktree', async () => {
-    const rig = await rigOf({ tools: '  commands:\n    test: [cat]' });
-    await rig.write('t.txt', 'target\n');
-    expect(await rig.call('run_tests', { target: 't.txt' })).toMatchObject({ stdout: 'target\n' });
-    expect((await rig.fail('run_tests', { target: '../x' })).code).toBe('path_escapes');
-    expect((await rig.fail('run_tests', { target: '--version' })).code).toBe('forbidden_flag');
-  });
+  itWithLauncher(
+    'append the target of run_tests as one argument, inside the worktree',
+    async () => {
+      const rig = await rigOf({ tools: '  commands:\n    test: [cat]' });
+      await rig.write('t.txt', 'target\n');
+      expect(await rig.call('run_tests', { target: 't.txt' })).toMatchObject({
+        stdout: 'target\n',
+      });
+      expect((await rig.fail('run_tests', { target: '../x' })).code).toBe('path_escapes');
+      expect((await rig.fail('run_tests', { target: '--version' })).code).toBe('forbidden_flag');
+    },
+  );
 
   it('refuse an override of the scenario that does not validate, and never widen', async () => {
     const rig = await rigOf({ configOverride: { tools: { timeout_ms: 'soon' } } });
@@ -226,7 +243,7 @@ describe('run_tests and install_deps', () => {
   });
 });
 
-describe('timeout and truncation (N98)', () => {
+describeWithLauncher('timeout and truncation (N98)', () => {
   it('ends a command that runs out of time and answers timedOut', async () => {
     const rig = await rigOf({
       tools: '  timeout_ms: 400\n  shell_allowlist:\n    mode: any',
@@ -291,7 +308,7 @@ describe('timeout and truncation (N98)', () => {
   });
 });
 
-describe('the semaphore of the heavy commands', () => {
+describeWithLauncher('the semaphore of the heavy commands', () => {
   async function slowRig(extra = ''): Promise<ToolsRig> {
     const rig = await rigOf({
       tools: `  heavy_concurrency: 1\n  commands:\n    test: [node, slow.js]\n    install: [node, slow.js]${extra}`,
@@ -373,7 +390,7 @@ describe('the semaphore of the heavy commands', () => {
   });
 });
 
-describe('tool.called and tool.finished', () => {
+describeWithLauncher('tool.called and tool.finished', () => {
   it('record every call, in order, with the correlation of the attempt', async () => {
     const rig = await rigOf();
     await rig.call('restricted_shell', { argv: ['ls'] });
@@ -422,7 +439,7 @@ describe('tool.called and tool.finished', () => {
   });
 });
 
-describe('the commands inside the sandbox (layer 3, P4)', () => {
+describeWithLauncher('the commands inside the sandbox (layer 3, P4)', () => {
   it('runs the launch the sandbox hands back, with the worktree of the call', async () => {
     const seen: { cmd: string; worktree: string }[] = [];
     const rig = await rigOf({
