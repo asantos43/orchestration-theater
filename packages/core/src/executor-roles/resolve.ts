@@ -90,6 +90,12 @@ export interface ProfileFact {
   readonly id: string;
   readonly kind: 'token_plan' | 'api';
   readonly state: 'active' | 'draining' | 'removed';
+  /**
+   * The account the profile spends, `<client>/<name>` of the profile that owns it, when it is not
+   * the profile itself: an OpenCode profile with `codex_link` spends the subscription of its Codex
+   * profile (N156). Absent: the profile is its own account.
+   */
+  readonly account?: string | undefined;
 }
 
 /** What a model can do, as a catalog reports it; a missing field is not known and never fails. */

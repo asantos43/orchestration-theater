@@ -97,6 +97,23 @@ describe('profiles.<client>/<profile> of the config (Phase 5, P14)', () => {
     expect(() => parseConfig('profiles:\n  banana:\n    local: {}\n')).toThrow(/banana/u);
   });
 
+  it('takes codex_link on an OpenCode profile (P25, N156)', () => {
+    const { profiles } = parseConfig('profiles:\n  opencode/oai:\n    codex_link: chatgpt\n');
+    expect(profiles.entries['opencode/oai']).toEqual({ codex_link: 'chatgpt' });
+  });
+
+  it('refuses codex_link outside an OpenCode profile, and a name that is not a profile name', () => {
+    expect(() => parseConfig('profiles:\n  codex/main:\n    codex_link: other\n')).toThrow(
+      /only for an opencode/u,
+    );
+    expect(() => parseConfig('profiles:\n  opencode/oai:\n    codex_link: codex/main\n')).toThrow(
+      /name of a Codex profile/u,
+    );
+    expect(() => parseConfig('profiles:\n  opencode/oai:\n    codex_link: ""\n')).toThrow(
+      InvalidInput,
+    );
+  });
+
   it('refuses an unknown key inside a profile and a bad local block', () => {
     expect(() => parseConfig('profiles:\n  opencode/local:\n    dir: /x\n')).toThrow(InvalidInput);
     expect(() =>

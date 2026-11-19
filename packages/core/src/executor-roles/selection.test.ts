@@ -1432,4 +1432,49 @@ describe('profiles.rotate_on_exhaustion: another account of the provider that ra
     expect(gathered.get(GPT_API)?.profileKind).toBe('api');
     expect(gathered.get(SOL)?.profileKind).toBeUndefined();
   });
+
+  it('an OpenCode profile linked to the Codex account that ran out is that account, not another one (N156)', () => {
+    const linked = { account: 'codex/conta-1' };
+    const off = select({
+      list: [executor(SOL), openai(GPT_CHAT), executor(OPUS_A)],
+      facts: {
+        [SOL]: { quota: exhausted(RESET) },
+        [GPT_CHAT]: { ...linked, quota: exhausted(RESET) },
+      },
+    });
+    expect(reasonsOf(off)).toEqual([
+      [SOL, 'quota'],
+      [GPT_CHAT, 'quota'],
+    ]);
+    // A reading of the link that lags behind: the account is the same, so nothing rotated.
+    const on = select({
+      list: [executor(SOL), openai(GPT_CHAT), executor(SOL_2)],
+      facts: { [SOL]: { quota: exhausted(RESET) }, [GPT_CHAT]: linked },
+      settings: { rotateOnExhaustion: { openai: 'on' } },
+    });
+    expect(on.selected?.id).toBe(GPT_CHAT);
+    expect(on.rotated).toBeNull();
+    // Without the link it is another account, and off holds it.
+    const unlinked = select({
+      list: [executor(SOL), openai(GPT_CHAT), executor(OPUS_A)],
+      facts: { [SOL]: { quota: exhausted(RESET) } },
+    });
+    expect(reasonsOf(unlinked)).toContainEqual([GPT_CHAT, 'rotation']);
+  });
+
+  it('the ports give the account of the profile to the facts (N156)', async () => {
+    const ports: SelectionPorts = {
+      profile: (id) =>
+        id === 'opencode/chatgpt'
+          ? { state: 'active', account: 'codex/conta-1' }
+          : { state: 'active' },
+      health: () => true,
+      quota: () => OK,
+      admission: () => FREE,
+      contextWindow: () => undefined,
+    };
+    const gathered = await gatherSelectionFacts(ports, [openai(GPT_CHAT), executor(SOL)]);
+    expect(gathered.get(GPT_CHAT)?.account).toBe('codex/conta-1');
+    expect(gathered.get(SOL)).not.toHaveProperty('account');
+  });
 });

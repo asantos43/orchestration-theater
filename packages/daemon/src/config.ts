@@ -176,11 +176,16 @@ export const QUOTA_MINIMAX_MODES = ['off', 'token_plan'] as const;
  */
 export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
 /**
- * [proposta] `quota.opencode.mode` (P8): `off` (default) keeps the OpenCode probe without a
- * reading; `ledger` adds up the usage events of the sessions the daemon runs and compares the
- * sum with `limit_tokens` and `limit_usd`.
+ * `quota.opencode.mode` (P8; P25, N156). `auto` (default): a profile that declares
+ * `profiles.<id>.codex_link` is read as `codex_link`, every other one as `ledger`. `codex_link`:
+ * only the linked profiles have a reading, the 5h and 7d windows of the probe of Codex for the
+ * Codex profile of the same ChatGPT account (the daemon reads no credential for it). `ledger`:
+ * the usage of the sessions the daemon runs (the tokens of the answer of each prompt, or else the
+ * growth of the context use) and their cost, compared with `limit_tokens` and `limit_usd`, for
+ * every profile. [proposta] `off` keeps the probe without a reading, as before P8. In every mode
+ * the 429 `subscription_sharing_*usage_limit_exceeded` is an exhausted quota.
  */
-export const QUOTA_OPENCODE_MODES = ['off', 'ledger'] as const;
+export const QUOTA_OPENCODE_MODES = ['auto', 'codex_link', 'ledger', 'off'] as const;
 /**
  * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
  * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
@@ -1616,7 +1621,7 @@ export const DaemonConfigSchema = z
          */
         opencode: z
           .strictObject({
-            mode: z.enum(QUOTA_OPENCODE_MODES).default('off'),
+            mode: z.enum(QUOTA_OPENCODE_MODES).default('auto'),
             window: DurationSchema.prefault('5h'),
             limit_tokens: z.int().positive().nullable().default(null),
             limit_usd: z.number().positive().nullable().default(null),

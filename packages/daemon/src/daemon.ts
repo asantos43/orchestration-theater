@@ -852,9 +852,12 @@ function buildExecution(
   // The service listens to the sessions of every client (the limit error with its reset time, the
   // usage events), and each client has its quota probe (P6 to P8); the service takes it from here.
   const clients = built.map((client) => tapClient(client, quota, logger, composition.situations));
+  // P25: an OpenCode profile linked to a Codex one is read through the probe of Codex.
+  const codexQuota = clients.find((client) => client.id === 'codex')?.quota;
   for (const client of clients) {
     const wiring = quotaProbeOf(client, {
       config,
+      codexQuota,
       store: composition.store,
       vault: composition.vault,
       clock: composition.clock,

@@ -3,6 +3,7 @@ import { NormalizedUpdateSchema, typedErrorOf } from '@otheater/core';
 import { AdapterUnavailable, PermissionDenied, QuotaExhausted, Transient } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import { ACP_UPDATES } from './fixtures/updates.js';
+import { PROMPT_USAGE_UPDATE } from '@otheater/core';
 import {
   normalizeOpenCodeError,
   normalizeOpenCodeUpdate,
@@ -197,7 +198,65 @@ describe('normalizeOpenCodeUpdate', () => {
   });
 });
 
+describe('the usage of the PromptResponse (P25, N156)', () => {
+  it('becomes a usage with the tokens, marked as coming from the PromptResponse', () => {
+    const update = acp({
+      sessionUpdate: PROMPT_USAGE_UPDATE,
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 300,
+        totalTokens: 1500,
+        cachedReadTokens: 800,
+        cachedWriteTokens: 10,
+      },
+    });
+    expect(update).toEqual({
+      kind: 'usage',
+      origin: 'prompt_response',
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheReadTokens: 800,
+      cacheWriteTokens: 10,
+    });
+    expect(NormalizedUpdateSchema.safeParse(update).success).toBe(true);
+  });
+
+  it('drops a usage with neither input nor output tokens, or none at all', () => {
+    expect(acp({ sessionUpdate: PROMPT_USAGE_UPDATE, usage: { totalTokens: 5 } })).toBeNull();
+    expect(acp({ sessionUpdate: PROMPT_USAGE_UPDATE, usage: 'x' })).toBeNull();
+    expect(acp({ sessionUpdate: PROMPT_USAGE_UPDATE })).toBeNull();
+  });
+});
+
 describe('normalizeOpenCodeError', () => {
+  it('maps the 429 of a shared ChatGPT subscription to quota_exhausted from a 429 (N156)', () => {
+    const inMessage = normalizeOpenCodeError(
+      new Error('429: {"error":{"code":"subscription_sharing_usage_limit_exceeded"}}'),
+    );
+    expect(inMessage).toMatchObject({ kind: 'quota_exhausted', limitSource: '429' });
+    const inData = normalizeOpenCodeError({
+      code: -32603,
+      message: 'Internal error',
+      data: { error: { code: 'subscription_sharing_workplace_individual_usage_limit_exceeded' } },
+    });
+    expect(inData).toMatchObject({ kind: 'quota_exhausted', limitSource: '429' });
+    const nested = normalizeOpenCodeError({
+      message: 'provider error',
+      data: { cause: { body: { detail: { type: 'SUBSCRIPTION_SHARING_USAGE_LIMIT_EXCEEDED' } } } },
+    });
+    expect(nested.kind).toBe('quota_exhausted');
+    const iso = '2026-11-20T03:00:00.000Z';
+    expect(
+      normalizeOpenCodeError({
+        message: 'subscription_sharing_usage_limit_exceeded',
+        data: { resetsAt: iso },
+      }),
+    ).toMatchObject({ resetsAt: Date.parse(iso) });
+    expect(normalizeOpenCodeError(new Error('subscription_sharing is on')).kind).not.toBe(
+      'quota_exhausted',
+    );
+  });
+
   it('maps the quota error of the shells (code and data type) to quota_exhausted', () => {
     const byCode = normalizeOpenCodeError({ code: -32001, message: 'out of quota' });
     expect(byCode).toMatchObject({ kind: 'quota_exhausted', message: 'out of quota' });

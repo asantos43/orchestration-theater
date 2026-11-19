@@ -14,10 +14,19 @@ import { ProfileBudgetSchema, type ProfileBudgetConfig } from './budget-config.j
 export const ProfileEntrySchema = z.strictObject({
   budget: ProfileBudgetSchema.optional(),
   local: LocalConfigSchema.optional(),
+  codex_link: z.string().min(1).optional(),
 });
 export interface ProfileEntry {
   readonly budget?: ProfileBudgetConfig | undefined;
   readonly local?: LocalConfig | undefined;
+  /**
+   * P25 (N156): the Codex profile (its name, `chatgpt` for `codex/chatgpt`) of the same ChatGPT
+   * account as this OpenCode profile. With `quota.opencode.mode` `auto` or `codex_link`, the quota
+   * of this profile is read through the probe of Codex for that profile, and the selector takes
+   * the two as one account. Only an `opencode/...` profile may have it. What the owner declares
+   * is trusted: the daemon does not check that the two are the same account.
+   */
+  readonly codex_link?: string | undefined;
 }
 
 /**
@@ -55,6 +64,21 @@ export function withProfileEntries<O extends object>(base: z.ZodType<O>, known: 
             issue([key, ...inner.path.map(String)], inner.message);
           }
           continue;
+        }
+        if (parsed.data.codex_link !== undefined) {
+          if (parseProfileId(key).client !== 'opencode') {
+            issue([key, 'codex_link'], 'codex_link is only for an opencode/<profile> profile');
+            continue;
+          }
+          try {
+            parseProfileId(`codex/${parsed.data.codex_link}`);
+          } catch {
+            issue(
+              [key, 'codex_link'],
+              'codex_link is the name of a Codex profile (chatgpt for codex/chatgpt)',
+            );
+            continue;
+          }
         }
         entries[key] = parsed.data;
       }

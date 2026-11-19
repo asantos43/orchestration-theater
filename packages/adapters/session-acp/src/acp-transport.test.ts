@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { LaunchedProcess, SessionNormalizer, SessionOpenParams } from '@otheater/core';
 import { normalizeFakeError, normalizeFakeUpdate } from '@otheater/core/testing';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { PermissionRequest } from '@otheater/core';
+import { PROMPT_USAGE_UPDATE, type PermissionRequest } from '@otheater/core';
 import { AcpTransport, permissionRequestOf, type AcpTransportWarning } from './acp-transport.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
 import { removeDir } from './testing/remove-dir.js';
@@ -48,7 +48,7 @@ async function play(sessionId, promptId) {
       record('permission-answer', (await answered).result);
     }
   }
-  send({ id: promptId, result: { stopReason: 'end_turn' } });
+  send({ id: promptId, result: { stopReason: 'end_turn', ...(cfg.usage === undefined ? {} : { usage: cfg.usage }) } });
 }
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line);
@@ -496,6 +496,40 @@ const MCP_REQUEST = {
   options: CODEX_OPTIONS,
   _meta: { is_mcp_tool_approval: true },
 };
+
+describe('AcpTransport, the usage of the PromptResponse (P25, N156)', () => {
+  async function turn(name: string, usage: unknown): Promise<unknown[]> {
+    const raws: unknown[] = [];
+    const { open } = await params(name, {
+      config: { script: [], ...(usage === undefined ? {} : { usage }) },
+    });
+    const session = await new AcpTransport().open({
+      ...open,
+      normalizer: {
+        normalizeUpdate: (raw) => {
+          raws.push(raw);
+          return normalizeFakeUpdate(raw);
+        },
+        normalizeError: normalizeFakeError,
+      },
+    });
+    await expect(session.prompt([{ type: 'text', text: 'go' }])).resolves.toMatchObject({
+      stopReason: 'end_turn',
+    });
+    await session.close();
+    return raws;
+  }
+
+  it('hands the usage of the answer to the normalizer of the client, as an update', async () => {
+    const usage = { inputTokens: 10, outputTokens: 2, totalTokens: 12 };
+    expect(await turn('usage-on', usage)).toEqual([{ sessionUpdate: PROMPT_USAGE_UPDATE, usage }]);
+  });
+
+  it('says nothing when the answer has no usage, or one that is not an object', async () => {
+    expect(await turn('usage-none', undefined)).toEqual([]);
+    expect(await turn('usage-list', [1, 2])).toEqual([]);
+  });
+});
 
 describe('AcpTransport, the tool call that a permission request leaves out', () => {
   async function ask(script: unknown[], name: string): Promise<PermissionRequest[]> {

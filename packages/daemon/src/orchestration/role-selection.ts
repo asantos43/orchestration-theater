@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   hasErrorCode,
+  parseProfileId,
   selectExecutorFromPorts,
   type Clock,
   type ExecutorConfig,
@@ -28,6 +29,7 @@ import type { SessionPool } from '../execution/pool.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
 import type { QuotaService } from '../quota/service.js';
+import { codexLinkOf } from '../quota/wiring.js';
 import { situationSubject, situationText, type SituationSink } from '../situations.js';
 import { executorSelectedPayload, quotaFactOf, selectionSettingsOf } from './executor-selection.js';
 import { resolveScenarioRoleExecutors } from './role-executors.js';
@@ -576,11 +578,20 @@ export class RoleSelection {
    */
   async #profileFacts(): Promise<ProfileFact[]> {
     const { store, config } = this.#options;
-    const facts: ProfileFact[] = (await store.profiles.list()).map((record) => ({
-      id: record.id,
-      kind: record.kind,
-      state: record.state,
-    }));
+    // An OpenCode profile with `codex_link` spends the subscription of its Codex profile (N156).
+    const accountOf = (id: string): string | undefined => {
+      const link = codexLinkOf(config, parseProfileId(id));
+      return link === undefined ? undefined : `codex/${link}`;
+    };
+    const facts: ProfileFact[] = (await store.profiles.list()).map((record) => {
+      const account = accountOf(record.id);
+      return {
+        id: record.id,
+        kind: record.kind,
+        state: record.state,
+        ...(account === undefined ? {} : { account }),
+      };
+    });
     if (config.selection.unregistered_profiles === 'refuse') return facts;
     const known = new Set(facts.map((fact) => fact.id));
     const legacy = [config.orchestration.executor, ...Object.values(config.orchestration.roles)];
@@ -589,7 +600,13 @@ export class RoleSelection {
       const id = `${executor.client}/${executor.profile}`;
       if (known.has(id)) continue;
       known.add(id);
-      facts.push({ id, kind: 'token_plan', state: 'active' });
+      const account = accountOf(id);
+      facts.push({
+        id,
+        kind: 'token_plan',
+        state: 'active',
+        ...(account === undefined ? {} : { account }),
+      });
     }
     return facts;
   }

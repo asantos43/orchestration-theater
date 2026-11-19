@@ -87,8 +87,30 @@ describe('OpenCodeQuotaProbe ledger', () => {
   it('ignores numbers that are not usable, and a usage with nothing to add', async () => {
     const { probe } = make({ limitTokens: 100 });
     probe.recordUsage(WORK, 's1', { kind: 'usage', inputTokens: Number.NaN, outputTokens: 0 });
-    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 500, contextSize: 1000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextSize: 1000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: Number.NaN });
     expect((await probe.read(WORK)).windows[0]?.usedPercent).toBe(0);
+  });
+
+  it('without tokens, counts how much the context grew; a drop counts nothing (N156)', async () => {
+    const { probe } = make({ limitTokens: 1000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 100, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 250, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 50, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 80, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's2', { kind: 'usage', contextUsed: 20, contextSize: 10_000 });
+    // 100 + 150 + 0 + 30 in s1, 20 in s2.
+    expect((await probe.read(WORK)).windows[0]?.usedPercent).toBe(30);
+  });
+
+  it('the tokens of a session make its context not count, so nothing counts twice (N156)', async () => {
+    const { probe } = make({ limitTokens: 1000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 400, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', inputTokens: 300, outputTokens: 100 });
+    probe.recordUsage(WORK, 's1', { kind: 'usage', contextUsed: 800, contextSize: 10_000 });
+    probe.recordUsage(WORK, 's2', { kind: 'usage', contextUsed: 100, contextSize: 10_000 });
+    // s1: only the 400 tokens; s2: its 100 of context.
+    expect((await probe.read(WORK)).windows[0]?.usedPercent).toBe(50);
   });
 
   it('rolls: what is older than the window leaves, and resetsAt is when the oldest leaves', async () => {

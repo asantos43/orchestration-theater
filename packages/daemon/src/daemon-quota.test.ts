@@ -107,7 +107,7 @@ describe('startDaemon with the P8 quota probes', () => {
     }
   });
 
-  it('makes no call and keeps the probe of the client with the defaults (both modes off)', async () => {
+  it('makes no call and keeps the probe of the client with the defaults (nothing to route)', async () => {
     const tmp = await makeTempDataDir();
     try {
       const calls: string[] = [];

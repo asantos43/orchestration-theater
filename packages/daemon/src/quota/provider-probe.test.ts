@@ -168,6 +168,76 @@ describe('ProviderQuotaProbe routing', () => {
   });
 });
 
+describe('ProviderQuotaProbe codex_link (P25, N156)', () => {
+  const LINKS: Record<string, string> = { 'opencode/oai': 'work' };
+  const linkOf = (ref: ProfileRef): string | undefined => LINKS[`${ref.client}/${ref.profile}`];
+
+  it('reads a linked profile at the Codex probe, with the linked Codex profile', async () => {
+    const ledger = new StubProbe('ledger', ['ledger_tokens']);
+    const codex = new StubProbe('codex', ['5h', '7d']);
+    const probe = new ProviderQuotaProbe({ ledger, codex, linkOf, providerOf });
+    await probe.read(OAI);
+    await probe.read({ client: 'opencode', profile: 'plain' });
+    expect(codex.reads).toEqual(['codex/work']);
+    expect(ledger.reads).toEqual(['opencode/plain']);
+    expect(probe.windowsOf(OAI)).toEqual(['5h', '7d']);
+  });
+
+  it('keeps a MiniMax profile on MiniMax even with a link, and the usage on the ledger', async () => {
+    const ledger = new StubProbe('ledger', ['ledger_tokens']);
+    const minimax = new StubProbe('minimax', ['5h']);
+    const codex = new StubProbe('codex', ['5h', '7d']);
+    const probe = new ProviderQuotaProbe({
+      ledger,
+      minimax,
+      codex,
+      linkOf: () => 'work',
+      providerOf,
+    });
+    await probe.read(MM);
+    expect(minimax.reads).toEqual(['opencode/mm']);
+    expect(codex.reads).toEqual([]);
+    probe.recordUsage(OAI, 's1', { kind: 'usage', outputTokens: 1 });
+    expect(ledger.usages).toEqual(['oai:s1']);
+    expect(codex.usages).toEqual([]);
+  });
+
+  it('without the Codex probe, a linked profile stays on the ledger', async () => {
+    const ledger = new StubProbe('ledger', ['ledger_tokens']);
+    const probe = new ProviderQuotaProbe({ ledger, linkOf, providerOf });
+    await probe.read(OAI);
+    expect(ledger.reads).toEqual(['opencode/oai']);
+  });
+
+  it('with only the Codex probe, says exact; a profile with no link has no source', async () => {
+    const codex = new StubProbe('codex', ['5h', '7d']);
+    const probe = new ProviderQuotaProbe({ codex, linkOf, providerOf });
+    expect(probe.capabilities()).toEqual({
+      windows: ['5h', '7d'],
+      delivery: 'both',
+      precision: 'exact',
+    });
+    await expect(probe.read({ client: 'opencode', profile: 'plain' })).rejects.toBeInstanceOf(
+      AdapterUnavailable,
+    );
+  });
+
+  it('watches the linked Codex profile, and the ledger for the others', async () => {
+    const ledger = new StubProbe('ledger', ['ledger_tokens']);
+    const codex = new StubProbe('codex', ['5h', '7d']);
+    const probe = new ProviderQuotaProbe({ ledger, codex, linkOf, providerOf });
+    await probe.warm([OAI]);
+    const seen: string[] = [];
+    probe.watch?.(OAI, () => seen.push('oai'));
+    probe.watch?.({ client: 'opencode', profile: 'plain' }, () => seen.push('plain'));
+    expect(codex.pushers).toHaveLength(1);
+    expect(ledger.pushers).toHaveLength(1);
+    codex.pushers[0]?.({ observedAt: T0, windows: [] });
+    ledger.pushers[0]?.({ observedAt: T0, windows: [] });
+    expect(seen).toEqual(['oai', 'plain']);
+  });
+});
+
 // ---- the aceite of P8, through the real QuotaService ----
 
 const servers: Server[] = [];

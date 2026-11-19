@@ -464,6 +464,66 @@ profiles:
     expect(withEarlier.kind === 'selected' ? withEarlier.executor.id : null).toBe(entry('three'));
   });
 
+  it('an OpenCode profile with codex_link is the account of its Codex profile (P25, N156)', async () => {
+    const rigOf = (link: string) => {
+      const clock = new FakeClock();
+      const store = new InMemoryStore({ clock });
+      const config = parseConfig(`
+orchestration:
+  executor: { client: codex, profile: one, model: fake-model }
+executors:
+  cross_client: any
+  fake-model@codex/one: { client: codex, profile: one, model: fake-model, provider: openai }
+  fake-model@opencode/chat: { client: opencode, profile: chat, model: fake-model, provider: openai }
+roles:
+  actor: { executors: [fake-model@codex/one, fake-model@opencode/chat] }
+selection:
+  recheck_every: off
+${link}`);
+      const selection = new RoleSelection({
+        store,
+        config,
+        quota: {
+          statusOf: (target) => {
+            const id = typeof target === 'string' ? target : `${target.client}/${target.profile}`;
+            return Promise.resolve(status(id, id === 'codex/one'));
+          },
+        },
+        pool: { slotOf: () => 'free' },
+        paths: dataPaths('/data'),
+        clock,
+        logger: createSilentLogger(),
+      });
+      return { selection, store };
+    };
+    const create = async (store: InMemoryStore): Promise<void> => {
+      for (const [client, name] of [
+        ['codex', 'one'],
+        ['opencode', 'chat'],
+      ] as const) {
+        await store.profiles.create({
+          client,
+          name,
+          kind: 'token_plan',
+          provider: 'openai',
+          dir: `/p/${name}`,
+          secretRef: null,
+        });
+      }
+    };
+    // Unlinked, the OpenCode profile is another OpenAI account, and off holds it.
+    const plain = rigOf('');
+    await create(plain.store);
+    const held = await plain.selection.once({ role: 'actor' });
+    expect(held.kind).not.toBe('selected');
+    // Linked, it is the same account: the rotation does not hold it (its quota is the judge).
+    const linked = rigOf('profiles:\n  opencode/chat:\n    codex_link: one\n');
+    await create(linked.store);
+    const picked = await linked.selection.once({ role: 'actor' });
+    expect(picked.kind === 'selected' ? picked.executor.id : null).toBe('fake-model@opencode/chat');
+    if (picked.kind === 'selected') expect(picked.result.rotated).toBeNull();
+  });
+
   it('the config key is read per provider, in lower case, over the default', () => {
     const config = parseConfig(`
 profiles:
