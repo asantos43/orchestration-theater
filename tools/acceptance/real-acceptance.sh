@@ -113,6 +113,9 @@
 #            confere que nenhum processo sobra. O script nunca faz login: quem faz é o dono, no
 #            navegador. O log aparece na tela enquanto o teste roda (é onde saem a URL e o código).
 #            Não gasta cota. Teto de 40m (padrão deste nível; o login de cada cliente espera até 10 min).
+#            O código que o navegador mostra para colar vai do terminal ao teste por um FIFO (P27b).
+#            Um login que pede terminal (OpenCode) é pulado na hora e fica [N], a menos que
+#            OT_TEST_PROFILES_TERMINAL_LOGIN=wait (P27c). Ctrl+C para o teste inteiro (P27c).
 #
 # Uso:
 #   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
@@ -494,6 +497,7 @@ if [ "$level" = quota ]; then
 fi
 if [ "$level" = profiles ]; then
   echo "Atenção: o nível profiles pede o LOGIN DE UM SEGUNDO PERFIL por cliente, e o login é SEU (N122): o teste mostra a URL e/ou o código na tela (linhas [profiles-real]) e espera você terminar no navegador, por até ${OT_TEST_PROFILES_LOGIN_TIMEOUT_MS:-600000} ms por cliente."
+  echo "  Um cliente cujo login pede um terminal (OpenCode: \`opencode auth login\`) é pulado na hora e fica [N] (OT_TEST_PROFILES_TERMINAL_LOGIN=wait espera mesmo assim). Ctrl+C para o teste inteiro."
   echo "  Se o navegador terminar numa página com um código para colar (Claude Code), cole o código aqui e aperte Enter: o script o repassa ao login por um FIFO temporário e ele não vai ao log."
   echo "  O perfil \`second\` nasce numa pasta de dados TEMPORÁRIA e é removido no fim (logout oficial, pasta apagada); os perfis do dono não são tocados. Use uma conta que possa ser usada num segundo login. O teste não lê arquivo de credencial e não gasta cota."
 fi
@@ -630,6 +634,26 @@ if [ "$level" = profiles ]; then
   tail -n +1 -F "$log" 2>/dev/null &
   tailer=$!
 fi
+
+# Ctrl+C (ou TERM) para o teste também: sem isto, só o script morria, e o teste, num grupo próprio
+# (setsid), seguia em segundo plano até o próprio teto, com o tail do log preso na tela [V, 2026-11-19].
+on_interrupt() {
+  trap - INT TERM
+  echo
+  echo "Interrompido: parando o teste (grupo $pgid)."
+  kill -TERM -- "-$pgid" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$runner" 2>/dev/null || break; sleep 1; done
+  kill -KILL -- "-$pgid" 2>/dev/null || true
+  if [ -n "$tailer" ]; then kill "$tailer" 2>/dev/null || true; fi
+  cleanup_code_fifo
+  if [ "$level" = profiles ]; then
+    echo "  Um teste interrompido não roda a própria limpeza: pode sobrar uma pasta otheater-daemon-* em ${TMPDIR:-/tmp} com o perfil temporário (e um login, se ele terminou). Confira e apague a pasta, se houver."
+  fi
+  echo "Log completo: $log"
+  echo "Resultado: INTERROMPIDO."
+  exit 130
+}
+trap on_interrupt INT TERM
 
 aborted=0
 lowest="$baseline"

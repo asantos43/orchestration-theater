@@ -92,7 +92,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
 | P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | pendente |
 | P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | concluído (PR #135) |
-| P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | em andamento |
+| P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | concluído (PR #136) |
+| P27c | Login que pede terminal pulado na hora e Ctrl+C que para o teste | P27b | P25, P26 | em andamento |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -102,7 +103,7 @@ Ordem em ondas **[proposta]**:
 5. P16 e P18;
 6. P19, P20 e P21;
 7. P23;
-8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158) e o P27b vêm antes, porque a rodada do nível `profiles` depende deles.
+8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158), o P27b e o P27c vêm antes, porque a rodada do nível `profiles` depende deles.
 
 **Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
@@ -931,6 +932,18 @@ Aceite:
 - testes com o cliente falso (cenário `callback-first`, no Codex) e das funções `signInUrl` e `isLoopbackUrl`;
 - o repasse do terminal ao FIFO, testado num pseudoterminal [V, 2026-11-19];
 - depois, o dono roda de novo o nível `profiles`.
+
+### P27c. Login que pede terminal pulado na hora e Ctrl+C que para o teste
+
+O que é: a terceira rodada do nível `profiles` (2026-11-19) mostrou mais duas falhas [V].
+
+1. O login padrão do OpenCode (`opencode auth login`, modo `terminal`) é um menu de provedores que só aparece num terminal de verdade. Sob `setsid`, ele não mostra nada, e o teste esperava os 10 minutos inteiros. Agora o teste cancela o login e pula o cliente na hora, e o item fica [N]. Quem roda à mão num terminal pode usar `OT_TEST_PROFILES_TERMINAL_LOGIN=wait` para esperar mesmo assim. O perfil do OpenCode, pela N156, vem do vínculo com o perfil Codex (P25), e não de um login próprio.
+2. O Ctrl+C parava só o script: o teste, num grupo de processos próprio, seguia em segundo plano até o próprio teto, e o `tail` do log ficava preso. Agora o script captura INT e TERM e manda TERM ao grupo do teste. Se o grupo não terminar em 10 s, manda KILL. Também para o `tail`, limpa o FIFO e sai com 130. Ele avisa que um teste interrompido não roda a própria limpeza: pode sobrar uma pasta `otheater-daemon-*` na pasta temporária.
+
+Aceite:
+- o Ctrl+C num pseudoterminal encerra o grupo e o `tail`, e o script sai com 130 [V, 2026-11-19];
+- o check local completo passa;
+- depois, o dono roda o nível `profiles` com `claude-code,codex`.
 
 ## Decisões que surgem deste plano
 
