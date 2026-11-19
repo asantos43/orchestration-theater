@@ -94,8 +94,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | concluído (PR #135) |
 | P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | concluído (PR #136) |
 | P27c | Login que pede terminal pulado na hora e Ctrl+C que para o teste | P27b | P25, P26 | concluído (PR #137) |
-| P28a | `ot profile exec`, com as palavras comuns (N159) | P3, P2 | nada | em curso |
-| P28b | Scripts por perfil no PATH (N159) | P28a | nada | pendente |
+| P28a | `ot profile exec`, com as palavras comuns (N159) | P3, P2 | nada | concluído (PR #142) |
+| P28b | Scripts por perfil no PATH (N159) | P28a | nada | em curso |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -977,6 +977,14 @@ Aceite:
 ### P28b. Scripts por perfil no PATH (N159)
 
 O que é: para cada perfil, um script `<prefixo><cliente>-<perfil>` na pasta `bin` do daemon que só chama `ot profile exec <id> -- "$@"`, com os caminhos absolutos do Node e do `ot` (`.cmd` no Windows). Nenhum segredo vai para o script. O `profile add` cria o script, o `profile remove` o apaga, e `ot profile shims sync` refaz todos. O prefixo é configurável e vazio por padrão. Um nome que já existe no PATH não é criado e gera `profile.warning` (`shim_conflict`). `ot profile shims path` explica como pôr a pasta no PATH e deixa escolher: `--install` grava um bloco marcado no rc do shell (zsh, bash ou fish), com confirmação ou `--yes`, e `--uninstall` o tira; sem eles, só mostra a linha para pôr à mão.
+
+Como ficou [V, testes de 2026-11-19]:
+- a pasta é `<dados>/bin`, e o modo vem de `profiles.shims.mode`: `auto` (padrão; o `add` e o `remove` sincronizam), `manual` (só o `ot profile shims sync`) ou `off` (nenhum script; o `sync` recusa). O prefixo vem de `profiles.shims.prefix` (letras, números, `.`, `_` e `-`, até 32);
+- cada script traz uma linha marcadora, e o `sync` só apaga arquivos com ela; um arquivo da pessoa na pasta fica;
+- uma falha ao escrever o script não falha o `add` nem o `remove`: vira `profile.warning` `shim_failed` e uma linha no stderr;
+- eventos novos: `profile.shims.synced` (o gatilho, o que foi escrito, removido e recusado, e se a pasta está no PATH), só quando algo mudou, e `profile.shims.rc_changed` (o shell e a mudança no rc);
+- o `--install` sem terminal e sem `--yes` recusa sem escrever. O rc é reescrito no lugar, e um link (de um gerenciador de dotfiles) continua link;
+- no Windows o `ot` não muda o PATH: o `path` explica como pôr a pasta pelas Variáveis de Ambiente, e o `--install` recusa [proposta].
 
 Aceite: testes com um HOME temporário (criação, remoção, conflito, o bloco no rc posto e tirado sem tocar no resto); o check local completo passa.
 

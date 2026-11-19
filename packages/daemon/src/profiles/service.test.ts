@@ -1001,6 +1001,7 @@ describe('profileSettingsOf', () => {
           commands: {},
           options: {},
           exec: { env_inherit: 'terminal' },
+          shims: { prefix: '', mode: 'auto' },
         },
       }),
     ).toEqual({

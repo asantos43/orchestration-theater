@@ -495,6 +495,18 @@ export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number]
 export const PROFILE_EXEC_ENV_INHERIT_MODES = ['terminal', 'client'] as const;
 export type ProfileExecEnvInheritMode = (typeof PROFILE_EXEC_ENV_INHERIT_MODES)[number];
 
+/**
+ * `profiles.shims.mode` (P28b, N159; owner, 2026-11-19, [proposta] for the modes): the commands by
+ * profile in `<data>/bin`. `auto` (default) writes and removes them as profiles are added and removed;
+ * `manual` writes them only on `ot profile shims sync`; `off` writes none (the ones already there
+ * stay until a sync in another mode).
+ */
+export const PROFILE_SHIMS_MODES = ['auto', 'manual', 'off'] as const;
+export type ProfileShimsMode = (typeof PROFILE_SHIMS_MODES)[number];
+
+/** `profiles.shims.prefix`: empty by default (owner, N159); letters, digits, `.`, `_` and `-`. */
+export const SHIM_PREFIX = /^[A-Za-z0-9._-]*$/;
+
 /** A common name of `ot profile exec`, or a client id: lower case, digits and `-`. */
 const CommonNameSchema = z.string().regex(COMMON_NAME, 'expected lower case, digits and -');
 
@@ -1583,6 +1595,21 @@ export const DaemonConfigSchema = z
             env_inherit: z.enum(PROFILE_EXEC_ENV_INHERIT_MODES).default('terminal'),
           })
           .prefault({}),
+        /**
+         * The commands by profile (P28b, N159; owner, 2026-11-19): `<prefix><client>-<profile>` in
+         * `<data>/bin`. A name some other program already has in `PATH` is not created (warning
+         * `shim_conflict`). See {@link PROFILE_SHIMS_MODES}.
+         */
+        shims: z
+          .strictObject({
+            prefix: z
+              .string()
+              .max(32)
+              .regex(SHIM_PREFIX, 'expected letters, digits, ., _ or -')
+              .default(''),
+            mode: z.enum(PROFILE_SHIMS_MODES).default('auto'),
+          })
+          .prefault({}),
       }),
       [
         'same_provider_notice',
@@ -1592,6 +1619,7 @@ export const DaemonConfigSchema = z
         'commands',
         'options',
         'exec',
+        'shims',
       ],
     ).prefault({}),
     /**

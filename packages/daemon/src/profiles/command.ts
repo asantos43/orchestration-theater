@@ -17,6 +17,7 @@ import { InstanceLock } from '../instance-lock.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
 import { roleListsOf } from './role-lists.js';
+import { syncAfterProfileChange, type ShimHost } from './shims-command.js';
 import {
   ProfileService,
   profileSettingsOf,
@@ -63,6 +64,11 @@ export interface ProfileCommandDeps {
   readonly input?: NodeJS.ReadableStream | undefined;
   /** Asks the master password when the vault is locked. */
   readonly passwordPrompt?: PasswordPrompt | undefined;
+  /**
+   * Where `ot` runs from, for the commands by profile (P28b): with it, `add` and `remove` keep
+   * `<data>/bin` in step when `profiles.shims.mode` is `auto`. Without it (tests), they do not.
+   */
+  readonly shims?: ShimHost | undefined;
 }
 
 /** [proposta] The provider of an account of a client whose account has only one possible provider. */
@@ -234,7 +240,20 @@ export async function runProfileCommand(
           ...(apiKey === undefined ? {} : { apiKey }),
           acceptNotice: options.acceptNotice,
         });
-        return reportAdd(context, options, service, result);
+        const code = reportAdd(context, options, service, result);
+        if (result.status !== 'needs_notice') {
+          await syncAfterProfileChange(context, {
+            composition,
+            paths,
+            config,
+            env: deps.env,
+            host: deps.shims,
+            trigger: 'add',
+            profileId: result.profile.id,
+            quiet: options.json,
+          });
+        }
+        return code;
       }
       case 'list': {
         const list = await service.list({
@@ -252,7 +271,18 @@ export async function runProfileCommand(
       }
       case 'remove': {
         const result = await service.remove(first, { timeoutMs: 0 });
-        return reportRemove(context, options, result);
+        const code = reportRemove(context, options, result);
+        await syncAfterProfileChange(context, {
+          composition,
+          paths,
+          config,
+          env: deps.env,
+          host: deps.shims,
+          trigger: 'remove',
+          profileId: result.profile.id,
+          quiet: options.json,
+        });
+        return code;
       }
     }
   } finally {
