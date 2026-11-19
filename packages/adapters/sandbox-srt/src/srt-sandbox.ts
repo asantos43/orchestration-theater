@@ -97,7 +97,10 @@ export class SrtSandbox implements Sandbox {
     this.#tempDir = this.config.tempDir ?? join(tmpdir(), `otheater-sandbox-${String(uid)}`);
     // The POSIX path rule holds only where there is a mechanism: on Windows (N94) the sandbox is
     // built so that it can say it has none, and a drive-letter folder must not stop that.
-    if (SUPPORTED_PLATFORMS.includes(this.#platform)) assertAbsolute('tempDir', this.#tempDir);
+    if (SUPPORTED_PLATFORMS.includes(this.#platform)) {
+      assertAbsolute('tempDir', this.#tempDir);
+      for (const dir of this.config.unixSocketDirs) assertAbsolute('unixSocketDirs', dir);
+    }
   }
 
   /** The temporary folder the commands write to (and see as `TMPDIR`). */
@@ -235,8 +238,14 @@ export class SrtSandbox implements Sandbox {
     this.#previousTmpdir = process.env.CLAUDE_CODE_TMPDIR;
     process.env.CLAUDE_CODE_TMPDIR = this.#tempDir;
     this.#tmpdirSet = true;
+    // N161: the library takes the Unix sockets from this global config only (0.0.81 reads
+    // `allowUnixSockets` from it, never from the config of a command), and only Seatbelt has them.
+    const unixSockets =
+      this.#platform === 'darwin' && this.config.unixSocketDirs.length > 0
+        ? { allowUnixSockets: [...this.config.unixSocketDirs] }
+        : {};
     await SandboxManager.initialize({
-      network: { allowedDomains: [], deniedDomains: [] },
+      network: { allowedDomains: [], deniedDomains: [], ...unixSockets },
       filesystem: {
         denyRead: [],
         allowRead: [],
