@@ -21,6 +21,15 @@ const ALL_FOUND = {
 const servers: Server[] = [];
 const daemons: DaemonHandle[] = [];
 
+/**
+ * Stops the daemons of the test, then removes its directory: on Windows an open `daemon.lock`
+ * cannot be deleted while a daemon still holds it.
+ */
+async function cleanUp(tmp: { dispose: () => Promise<void> }): Promise<void> {
+  await Promise.all(daemons.splice(0).map((daemon) => daemon.stop('shutdown')));
+  await tmp.dispose();
+}
+
 afterEach(async () => {
   await Promise.all(daemons.splice(0).map((daemon) => daemon.stop('shutdown')));
   await Promise.all(
@@ -103,7 +112,7 @@ describe('startDaemon with the P8 quota probes', () => {
       expect(status.windows[0]).toMatchObject({ window: '5h', usedPercent: 85 });
       expect(calls[0]).toBe(`GET /v1/token_plan/remains Bearer ${KEY}`);
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 
@@ -136,7 +145,7 @@ describe('startDaemon with the P8 quota probes', () => {
       });
       expect(calls).toEqual([]);
     } finally {
-      await tmp.dispose();
+      await cleanUp(tmp);
     }
   });
 });

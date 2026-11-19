@@ -16,7 +16,18 @@ import {
 } from '@otheater/core';
 import pino, { type Logger } from 'pino';
 import type { DaemonEventPayloads, DaemonEventType } from '@otheater/protocol';
+import { probeSandbox } from './compose.js';
 import type { SituationCorrelation, SituationSink } from './situations.js';
+
+/**
+ * The `daemon.notice` events a start with the default sandbox and no client writes on this
+ * platform: the execution that stays off and, where layer 3 is missing (Windows, 5.9), first the
+ * `sandbox_unavailable` of the composition.
+ */
+export async function startNotices(): Promise<'daemon.notice'[]> {
+  const layer3 = await probeSandbox();
+  return layer3.ok ? ['daemon.notice'] : ['daemon.notice', 'daemon.notice'];
+}
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */
 export async function makeTempDataDir(): Promise<{ dir: string; dispose: () => Promise<void> }> {
