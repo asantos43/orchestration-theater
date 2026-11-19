@@ -105,6 +105,20 @@ export class InstanceLock {
   }
 }
 
+/**
+ * Runs a set-up step while `lock` is held and frees the lock when the step fails, so a command whose
+ * composition throws does not keep the data directory locked (nor the `daemon.lock` file open,
+ * which Windows refuses to delete). The caller frees the lock itself when the step succeeds.
+ */
+export async function releaseOnFailure<T>(lock: InstanceLock, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    await lock.release().catch(() => undefined);
+    throw error;
+  }
+}
+
 /** The holder's info, or `undefined` when there is none (or it is unreadable). */
 export async function readLockInfo(infoPath: string): Promise<InstanceLockInfo | undefined> {
   try {
