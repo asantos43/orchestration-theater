@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # A branch of a PR runs only the pull_request event: an unfiltered push ran the same tree twice
+  # (N163). Main still runs on push, after each merge.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
