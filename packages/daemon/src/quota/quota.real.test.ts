@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import type {
   LaunchedProcess,
   LaunchOptions,
+  NormalizedUpdate,
   Profile,
   ProcessLauncher,
   ProfileRef,
@@ -13,7 +14,7 @@ import type {
 import { InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
-import { pathFinder, selectClients, type ClientSelection } from '../clients.js';
+import { pathFinder, selectClients, type ClientFactory, type ClientSelection } from '../clients.js';
 import {
   composeClock,
   DEFAULT_CLIENT_EXECUTABLES,
@@ -58,6 +59,15 @@ import type { QuotaStatus } from './state.js';
  *   `Authorization` header of the Token Plan call, and never to the output, the log or an
  *   assertion message. `OT_TEST_MINIMAX_USAGE_COUNT_MEANS` (`remaining` or `used`, default
  *   `remaining`) is `quota.minimax.usage_count_means`.
+ * - OpenCode linked to Codex (P25, N156): only with `OT_TEST_OPENCODE_CODEX_LINK=1` and both
+ *   `OT_TEST_OPENCODE_PROFILE_DIR` and `OT_TEST_CODEX_PROFILE_DIR`. The profile `opencode/real`
+ *   declares `codex_link: real`, `quota.opencode.mode` is `auto` (the default) with no ledger
+ *   limit, and the reading must come from the probe of Codex for `codex/real`, with no turn. The
+ *   link is what the owner declares: the test cannot tell that both profiles are the same ChatGPT
+ *   account [N].
+ * - For the OpenCode turn, the report also counts what the answers of `session/prompt` carried
+ *   (`promptUsage`: how many answers had a `usage`, and their input and output tokens), to tell
+ *   whether OpenCode sends the tokens there (P25 [N] until this run).
  * - `OT_TEST_QUOTA_OUT`: where the JSON report goes (default a file in the temporary directory;
  *   the path is printed). It has no secret: client, windows, percentages (0..100, the unit of
  *   `QuotaWindow.usedPercent`), reset times, state and the reason of an `unknown`.
@@ -98,7 +108,7 @@ const SOURCE: Readonly<Record<ClientId, string>> = {
   'claude-code': 'statusline file (P6) after one short turn, plus the rate_limit_event of the turn',
   codex: 'app-server account/rateLimits/read (no turn)',
   opencode:
-    'local ledger (quota.opencode.mode: ledger) after one short turn; the OpenCode usage_update carries context counters and a cost, not input/output tokens, so a subscription model left the ledger at 0% [V: 2026-11-18]; since P25 the ledger also counts the growth of the context and the tokens of the PromptResponse, when OpenCode sends them [N]',
+    'local ledger (quota.opencode.mode: ledger) after one short turn; the OpenCode usage_update carries context counters and a cost, not input/output tokens, so a subscription model left the ledger at 0% [V: 2026-11-18]; since P25 the ledger also counts the growth of the context and the tokens of the PromptResponse, when OpenCode sends them (promptUsage says whether it did)',
 };
 const NEEDS_TURN: Readonly<Record<ClientId, boolean>> = {
   'claude-code': true,
@@ -139,6 +149,42 @@ interface Entry {
   }[];
   readonly untilReset?: string | null;
   readonly observedAt?: string | null;
+  /** OpenCode: what the answers of `session/prompt` carried (P25). */
+  readonly promptUsage?: PromptUsageSeen;
+}
+
+/** The `usage` of the answers of `session/prompt` that OpenCode sent, counted. No secret. */
+interface PromptUsageSeen {
+  answers: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * The client factory of the daemon, with the normalizer of OpenCode watched: each `usage` that
+ * came from the answer of a prompt (`origin: 'prompt_response'`) is counted in `seen`. The
+ * update itself goes on unchanged.
+ */
+function watchingPromptUsage(factory: ClientFactory, seen: PromptUsageSeen): ClientFactory {
+  return (parts) =>
+    factory(parts).map((adapter) => {
+      if (adapter.id !== 'opencode') return adapter;
+      // `normalizeUpdate` is protected; the base calls it through `this`, so an own property wins.
+      const open = adapter as unknown as {
+        normalizeUpdate: (raw: unknown, via: unknown) => NormalizedUpdate | null;
+      };
+      const inner = open.normalizeUpdate.bind(adapter);
+      open.normalizeUpdate = (raw, via) => {
+        const update = inner(raw, via);
+        if (update?.kind === 'usage' && update.origin === 'prompt_response') {
+          seen.answers += 1;
+          seen.inputTokens += update.inputTokens ?? 0;
+          seen.outputTokens += update.outputTokens ?? 0;
+        }
+        return update;
+      };
+      return adapter;
+    });
 }
 
 const entries: Entry[] = [];
@@ -267,6 +313,29 @@ quota:
     limit_tokens: ${value('OT_TEST_OPENCODE_LIMIT_TOKENS') ?? '1000000'}
 `);
 
+/**
+ * The configuration of the linked case (P25): the same, with `quota.opencode.mode: auto` (the
+ * default) and no ledger limit, and the profile `opencode/real` linked to `codex/real`.
+ */
+const CONFIG_LINK = parseConfig(`
+backup:
+  when: manual
+security:
+  unenforced: warn
+sandbox:
+  mode: off
+clients:
+  codex:
+    process_model: process-per-session
+quota:
+  opencode:
+    mode: auto
+profiles:
+  opencode/real:
+    codex_link: real
+`);
+const LINK_SETTLE_MS = 60_000;
+
 /** The clients the daemon's own search finds in PATH (no process is started to ask). */
 const found: readonly ClientSelection[] = enabled
   ? selectClients(CONFIG, DEFAULT_CLIENT_EXECUTABLES, pathFinder(process.env)).filter(
@@ -274,6 +343,13 @@ const found: readonly ClientSelection[] = enabled
     )
   : [];
 const ready = found.filter((selection) => value(PROFILE_ENV[selection.id]) !== undefined);
+const linkReady =
+  enabled &&
+  value('OT_TEST_OPENCODE_CODEX_LINK') === '1' &&
+  found.some((selection) => selection.id === 'opencode') &&
+  found.some((selection) => selection.id === 'codex') &&
+  value(PROFILE_ENV.opencode) !== undefined &&
+  value(PROFILE_ENV.codex) !== undefined;
 
 async function until<T>(
   read: () => Promise<T>,
@@ -343,12 +419,13 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
           },
         }),
       });
+      const promptUsage: PromptUsageSeen = { answers: 0, inputTokens: 0, outputTokens: 0 };
       const daemon = await startDaemon({
         dataDir: tmp.dir,
         config: CONFIG,
         // The clock is the real one: the probes stamp their readings with the wall clock.
         overrides: { vault: new InMemorySecretVault(), launcher },
-        clients: productionClients(CONFIG),
+        clients: watchingPromptUsage(productionClients(CONFIG), promptUsage),
         logger: daemonLog.logger,
         version: '0.0.0-test',
       });
@@ -425,6 +502,13 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
               ? 'percent 0..100 (utilization_unit: auto; fractions up to 1 are scaled)'
               : 'percent 0..100',
         });
+        if (id === 'opencode') {
+          const withUsage: Entry = { ...entry, promptUsage };
+          entries.push(withUsage);
+          console.log(`[quota-real] ${JSON.stringify(withUsage)}`);
+          expectValid(withUsage);
+          return;
+        }
         entries.push(entry);
         console.log(`[quota-real] ${JSON.stringify(entry)}`);
         expectValid(entry);
@@ -435,6 +519,85 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
         await tmp.dispose();
       }
       expect(pids.filter(alive), `${id}: processes left`).toEqual([]);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it.skipIf(!linkReady)(
+    'opencode with codex_link: reads the windows of the linked Codex profile, with no turn (P25, OT_TEST_OPENCODE_CODEX_LINK=1)',
+    async () => {
+      const opencodeSource = value(PROFILE_ENV.opencode);
+      const codexSource = value(PROFILE_ENV.codex);
+      if (opencodeSource === undefined || codexSource === undefined) {
+        throw new Error('unreachable: linkReady');
+      }
+      const tmp = await makeTempDataDir();
+      const real = defaultLauncher();
+      if (real === undefined) throw new Error('this platform has no process launcher');
+      const { launcher, pids } = recording(real);
+      const ref: ProfileRef = { client: 'opencode', profile: 'real' };
+      // Both profiles are the owner's, reached through links; only the links go at the end.
+      const links: string[] = [];
+      for (const [client, source] of [
+        ['opencode', opencodeSource],
+        ['codex', codexSource],
+      ] as const) {
+        const link = profileDirOf(dataPaths(tmp.dir), { client, profile: 'real' });
+        await mkdir(dirname(link), { recursive: true });
+        await symlink(source, link, 'dir');
+        links.push(link);
+      }
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        config: CONFIG_LINK,
+        overrides: { vault: new InMemorySecretVault(), launcher },
+        clients: productionClients(CONFIG_LINK),
+        logger: createSilentLogger(),
+        version: '0.0.0-test',
+      });
+      const source =
+        'probe of Codex for codex/real, through codex_link of opencode/real (quota.opencode.mode: auto, no ledger limit)';
+      try {
+        const read = async (): Promise<{ status: QuotaStatus; unknownReason: string | null }> => {
+          const status = await daemon.quota.refresh(ref);
+          if (status.state !== 'unknown') return { status, unknownReason: null };
+          const probe = daemon.quota.probeOf('opencode');
+          if (probe === undefined) return { status, unknownReason: 'OpenCode has no quota probe' };
+          try {
+            await probe.read(ref);
+            return { status, unknownReason: status.reason };
+          } catch (error) {
+            return {
+              status,
+              unknownReason: reasonOf(error, ...links, opencodeSource, codexSource, tmp.dir),
+            };
+          }
+        };
+        const settled = await until(
+          read,
+          (current) => current.status.state !== 'unknown',
+          LINK_SETTLE_MS,
+        );
+        const entry = toEntry('opencode (codex_link)', settled.status, {
+          source,
+          turn: false,
+          unknownReason: settled.unknownReason,
+          unit: 'percent 0..100',
+        });
+        entries.push(entry);
+        console.log(`[quota-real] ${JSON.stringify(entry)}`);
+        expectValid(entry);
+        // [proposta] The point of the link: OpenCode gets the windows of Codex, not an unknown.
+        expect(entry.state, 'opencode (codex_link) has no reading').not.toBe('unknown');
+        expect(entry.windows?.length ?? 0, 'opencode (codex_link) has no window').toBeGreaterThan(
+          0,
+        );
+      } finally {
+        await daemon.stop();
+        for (const link of links) await unlink(link).catch(() => undefined);
+        await tmp.dispose();
+      }
+      expect(pids.filter(alive), 'opencode (codex_link): processes left').toEqual([]);
     },
     TEST_TIMEOUT_MS,
   );
