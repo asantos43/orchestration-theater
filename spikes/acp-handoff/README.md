@@ -495,9 +495,65 @@ Dados brutos em `out/cont-codex-opencode-gpt61sol-{min,full}.r{1,2,3}.json` e `*
 - Nenhum modelo mais forte para os destinos Claude e Codex (usaram o modelo mais barato de sempre), então "destino fraco" só foi separado no OpenCode.
 - Retomada nativa com sessões antigas (pós-retenção): não testada.
 
+## Rodada 3 (2026-11-19): n=5 nas 6 direções base e destino OpenCode com gpt-6-luna (item 6 da Fase 5)
+
+Objetivo: o item 6 dos portões da Fase 5 (bastão com n maior). As 6 direções base vão a n=5 por variante, e o destino OpenCode é medido com `openai/gpt-6-luna`, um modelo da conta OpenAI do dono, no lugar do `google/gemini-3.1-flash-lite`. **n=5 continua não sendo estatística**: as execuções foram na mesma máquina, na mesma hora e contra serviços que variam. Tudo abaixo é **[V]** (medido aqui) salvo marca em contrário.
+
+### Como foi feito
+
+- **Script**: novo `src/rep7.sh` (`x`, `y` ou `todos`). O fluxo Y cobre os destinos Claude e Codex, e o fluxo X o destino OpenCode, os dois em paralelo. Foram 48 execuções novas; a primeira terminou às 11:39 e a última às 12:24 (UTC-3). `cont.ts`, `acp.ts` e os pacotes não mudaram. Mesmas origens restauradas por `restore-origins.ts`, mesmo vigia de 600 000 ms e mesmo `timeout -k 10 700` das rodadas anteriores.
+- **Par novo `-luna`**: Codex→OpenCode e Claude→OpenCode com `OT_MODEL=openai/gpt-6-luna`, r1 a r5, min e full, nas mesmas origens das células base (`codex-opencode.restored` e `claude-codex.restored`). O OpenCode é o do PATH, com o **perfil do dono** (que inclui a skill `delegate` e o comando `kit`), como na célula do gpt-6.1-sol.
+- **`agg.ts`** ganhou o rótulo `-luna`.
+- **Codex→OpenCode base ficou com n=4**, não 5. A cópia sem sufixo desse par (`cont-codex-opencode-{min,full}.json`) é o r2 duplicado (mesmo tamanho e mesmo horário), e o `agg.ts` já a descartava. O par tinha r1 a r3, e o `rep7.sh` só acrescentou o r4, porque contou a cópia como uma execução. Não refiz o r5.
+
+### Agregado por célula (direções base e `-luna`)
+
+| Par | Variante | n | ok em n | Mediana do tempo | Faixa do tempo | Linhas perdidas (soma) | Escritas a mais (soma; por execução) |
+|---|---|---|---|---|---|---|---|
+| Claude→Codex | full | 5 | 4 de 5 | 24,5 s | 22,2 a 25,6 s | 0 | 1 (0, 0, 1, 0, 0) |
+| Claude→Codex | min | 5 | 3 de 5 | 20,7 s | 4,7 a 26,2 s | 0 | 0 (0, 0, 0, 0, 0) |
+| Claude→OpenCode (flash-lite) | full | 5 | 5 de 5 | 88,1 s | 16,2 a 232,5 s | 2 | 3 (2, 0, 1, 0, 0) |
+| Claude→OpenCode (flash-lite) | min | 5 | 5 de 5 | 78,9 s | 59,7 a 318,8 s | 2 | 10 (2, 1, 7, 0, 0) |
+| Claude→OpenCode (gpt-6-luna) | full | 5 | 5 de 5 | 59,4 s | 47,9 a 235,8 s | 0 | 2§ (1, 1, 0, 0, 0) |
+| Claude→OpenCode (gpt-6-luna) | min | 5 | 5 de 5 | 50,8 s | 32,0 a 59,8 s | 0 | 2§ (0, 1, 0, 0, 1) |
+| Codex→Claude | full | 5 | 5 de 5 | 18,2 s | 15,8 a 22,2 s | 0 | 1 (0, 0, 0, 0, 1) |
+| Codex→Claude | min | 5 | 5 de 5 | 19,2 s | 18,2 a 22,6 s | 0 | 3 (0, 0, 0, 1, 2) |
+| Codex→OpenCode (flash-lite) | full | 4 | 3 de 4 | 104,7 s | 58,6 a 179,6 s | 0 | 7 (2, 2, 1, 2) |
+| Codex→OpenCode (flash-lite) | min | 4 | 1 de 4 | 136,5 s | 45,3 a 184,4 s | 3 | 8 (1, 2, 4, 1) |
+| Codex→OpenCode (gpt-6-luna) | full | 5 | 4 de 5 | 53,8 s | 41,9 a 71,8 s | 0 | 3§ (1, 0, 0, 1, 1) |
+| Codex→OpenCode (gpt-6-luna) | min | 5 | 3 de 5 | 68,3 s | 42,3 a 222,0 s | 0 | 3§ (1, 0, 0, 0, 2) |
+| OpenCode→Claude | full | 5 | 5 de 5 | 20,0 s | 17,7 a 26,6 s | 3 | 1 (0, 0, 1, 0, 0) |
+| OpenCode→Claude | min | 5 | 5 de 5 | 30,3 s | 18,7 a 39,1 s | 3 | 5 (1, 1, 1, 0, 2) |
+| OpenCode→Codex | full | 5 | 4 de 5 | 23,1 s | 18,4 a 26,8 s | 0 | 0 (0, 0, 0, 0, 0) |
+| OpenCode→Codex | min | 5 | 3 de 5 | 18,9 s | 3,1 a 35,8 s | 6 | 0 (0, 0, 0, 0, 0) |
+
+As células da origem 2, do 3.5-flash, do Gemma local e do gpt-6.1-sol não mudaram nesta rodada (ver a Rodada 2). "ok em n" segue o critério de antes: testes próprios verdes, aceitação 5/5 e 6 passos. § = como no gpt-6.1-sol, a escrita de um subagente do OpenCode não aparece no fluxo ACP. 11 das 20 execuções com o gpt-6-luna acionaram o `kit` do perfil do dono, então a contagem de escritas dessas células é um piso.
+
+### Leitura
+
+- **Total das direções base com o flash-lite no OpenCode**, somando as rodadas 1 a 3 e a origem 2: **full 32 de 35, min 27 de 35**. A direção "full >= min" se mantém, e a diferença de 5 em 35 ficou parecida com a de 5 em 21 da Rodada 2.
+- **Por destino:**
+  - Claude: full 12 de 12, min 12 de 12. Continua sem falha, nos dois pacotes, com 18 a 30 s de mediana.
+  - Codex: full 10 de 12, min 7 de 12. O "full 7 de 7" da Rodada 2 não se sustentou. As duas falhas novas do full (Claude→Codex r5 e OpenCode→Codex r4) foram testes próprios vermelhos (10/11 e 6/7) com a aceitação em 5/5.
+  - OpenCode com o flash-lite: full 10 de 11, min 8 de 11. As 4 falhas continuam todas no par Codex→OpenCode, origem 1; o Claude→OpenCode deu 10 de 10.
+- **Recusa "workspace outside the writable roots" do Codex**: 3 de 12 com o min (Claude→Codex r2, OpenCode→Codex r2 e r5; 3 a 5 s, nenhuma ferramenta) e 0 de 12 com o full. A recusa só aparece com o min nas três rodadas. Com n=12 ainda pode ser acaso **[N]**, mas vale a recomendação de usar o full quando o destino for o Codex.
+- **gpt-6-luna no lugar do flash-lite (mesmas origens e mesmos pacotes):**
+  - Claude→OpenCode: 10 de 10 nos dois modelos. O luna foi mais rápido (mediana de 51 a 59 s, contra 79 a 88 s do flash-lite) e não perdeu linhas.
+  - Codex→OpenCode, a origem difícil: luna 7 de 10 (full 4 de 5, min 3 de 5) contra 4 de 8 do flash-lite (full 3 de 4, min 1 de 4).
+  - **As 3 falhas do luna são outro tipo de falha**: nenhuma edição e 2 de 6 passos, ou seja, o modelo parou sem continuar.
+    - Na full r2, seguiu o fluxo do `kit` do perfil do dono e parou porque `kit wt new` não achou o repositório principal.
+    - Na min r2, disse que o caminho do worktree não estava acessível para as ferramentas de edição.
+    - Na min r1, delegou a um executor do `kit` que respondeu "DONE", mas a aceitação no worktree da continuação ficou em 0/5. **[N]**: não investiguei onde o executor escreveu.
+  - Todas as 3 falhas estão entre as 11 execuções que acionaram o `kit`; nas 9 que não acionaram, nenhuma falhou. Isso é compatível com "o perfil do dono atrapalha o destino", e não com "o modelo é fraco", mas **[N]**: não houve rodada com um perfil enxuto.
+  - Leitura **[N]**: o modelo explica parte das falhas do flash-lite na origem difícil, e o harness (o perfil com delegação) explica as do luna. No produto, o perfil do Executor que recebe o bastão não deve carregar instruções que mandem delegar ou mudar de pasta.
+- **Perda de linhas**: nenhuma perda funcional nova. As somas de 2 a 6 são reescritas textuais com a aceitação em 5/5, como na Rodada 2.
+- **Tempo**: os destinos Claude e Codex continuam estáveis, de 16 a 36 s fora as recusas. O OpenCode continua variando muito no mesmo pacote (16 a 319 s com o flash-lite; 32 a 236 s com o luna).
+
+Dados brutos em `out/cont-*.r{4,5}.json`, `out/cont-codex-claude-*.r3.json`, `out/cont-opencode-codex-*.r3.json`, `out/cont-claude-opencode-*.r3.json`, `out/cont-*-luna-*.r{1..5}.json` e nos `*.wire.jsonl` correspondentes (todos ignorados pelo git).
+
 ## Formato do pacote de continuação **[proposta]**
 
-Baseado no que funcionou melhor (variante full: 20 de 21 execuções corretas nas duas rodadas, ver Rodada 2; na rodada 1 eram 4 de 4). Seções nesta ordem; tudo gerado pelo harness a partir do que registrou, nada da memória do modelo:
+Baseado no que funcionou melhor (variante full: 32 de 35 execuções corretas nas três rodadas, ver Rodada 3; 20 de 21 na Rodada 2 e 4 de 4 na rodada 1). Seções nesta ordem; tudo gerado pelo harness a partir do que registrou, nada da memória do modelo:
 
 1. **Cabeçalho**: quem é você, que não vê a conversa anterior, e que os arquivos do cwd já têm o trabalho feito.
 2. **Demanda, contrato e ordens**, texto original, ainda em vigor.
@@ -509,11 +565,11 @@ Baseado no que funcionou melhor (variante full: 20 de 21 execuções corretas na
 8. **O que falta**, derivado do checklist.
 9. **Instrução final**: "continue deste estado; não refaça o que está marcado como concluído; não reescreva código anterior sem um teste que prove o erro".
 
-Notas: os caminhos absolutos do cwd de origem devem ser normalizados para relativos (feito em `package.ts`); o tamanho foi de ~1,0 a 1,2 mil tokens estimados para esta tarefa pequena, e cresce com o diff e com os comandos, então o resumo de trajetória precisa de teto (aqui: comando 120 caracteres, saída 160, mensagem 400) **[N: tetos ainda sem teste com tarefas grandes]**. A variante min (itens 1 a 3 mais a instrução) bastou para o Claude como destino (7 de 7), mas foi pior com o Codex (3 de 7) e com o OpenCode/flash-lite (5 de 7) (Rodada 2); usá-la como padrão seria apostar no destino.
+Notas: os caminhos absolutos do cwd de origem devem ser normalizados para relativos (feito em `package.ts`); o tamanho foi de ~1,0 a 1,2 mil tokens estimados para esta tarefa pequena, e cresce com o diff e com os comandos, então o resumo de trajetória precisa de teto (aqui: comando 120 caracteres, saída 160, mensagem 400) **[N: tetos ainda sem teste com tarefas grandes]**. A variante min (itens 1 a 3 mais a instrução) bastou para o Claude como destino (12 de 12), mas foi pior com o Codex (7 de 12, com 3 recusas de "writable roots") e com o OpenCode/flash-lite (8 de 11) (Rodada 3); usá-la como padrão seria apostar no destino.
 
 ## Pendências (não medido)
 
-- **Estatística**: n de 2 a 3 por célula, uma tarefa pequena (6 passos), uma máquina. Faltam mais repetições e tarefas maiores, com mais passos e diffs grandes. Qualquer proporção acima é indicativa, não estatística.
+- **Estatística**: n=5 nas 6 direções base desde a Rodada 3 (n=4 no Codex→OpenCode base) e n de 1 a 3 nas outras células, uma tarefa pequena (6 passos), uma máquina. Faltam mais repetições e tarefas maiores, com mais passos e diffs grandes. Qualquer proporção acima é indicativa, não estatística.
 - **Origem versus destino no OpenCode**: as 3 falhas do flash-lite foram na mesma origem (par B, origem 1). Separar efeito da origem e do modelo pedindo mais origens "difíceis" (progresso fora de ordem) e o 3.5-flash com n maior (a cota diária do tier grátis impediu).
 - **Codex com o min**: recusas "writable roots" (2 de 7) e testes próprios vermelhos (2 de 7). Falta saber se a recusa depende do pacote, do modo `workspace-write` ou do acaso, e se vale mandar sempre o full para o Codex.
 - **Interrupção por cota ou contexto**: aqui foi SIGKILL após N edições. O caso real (cota esgotada, ver spike `quota-exhaustion`) e o pacote com "por que parou" real não foram combinados. O detector de edições por tipo de ferramenta é cego a escritas por shell (Codex); o produto deve medir pelo diff.
@@ -552,6 +608,8 @@ SPIKE_SCRATCH=<pasta> ./src/rep5.sh min r1 full r1 min r2 full r2   # OPENCODE_C
 SPIKE_SCRATCH=<pasta> ./src/rep6.sh opencode/glm-5.3-flash-free glm min r1 full r1 min r2 full r2 min r3 full r3
 # Controle de harness com o modelo do Codex (login do ChatGPT no OpenCode): rotulo gpt61sol
 SPIKE_SCRATCH=<pasta> ./src/rep6.sh openai/gpt-6.1-sol gpt61sol min r1 full r1 min r2 full r2 min r3 full r3
+# Rodada 3 (item 6 da Fase 5): direcoes base ate n=5 e o par -luna (openai/gpt-6-luna)
+SPIKE_SCRATCH=<pasta> ./src/rep7.sh [x|y|todos]
 ```
 
 Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o par), `OT_TAG` (sufixo `.rN` da execução), `OT_MODEL` (modelo do OpenCode, ex. `google/gemini-3.5-flash`), `OT_WATCHDOG_MS` (vigia da execução em ms, padrão 600000). Variáveis de `native.ts`: `OT_CWD2=wt|plain|same` (cwd novo da retomada: worktree irmã, pasta fora do git, ou o mesmo como controle), `OT_CLI_TIMEOUT` (ms, padrão 180000), `OT_NTAG` (sufixo para repetir sem colidir). O OpenCode usa `opencode acp`; o `opencode serve` do dono não é usado.
@@ -560,4 +618,4 @@ Variáveis de `cont.ts`: `OT_ORIGIN` (qual `origin-<nome>.json` ler; padrão = o
 
 ## Arquivos
 
-`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`). Destino local: `src/rep5.sh`, `OT_WATCHDOG_MS` em `cont.ts`, rótulo "(gemma local)" em `agg.ts`. Modelos free: `src/rep6.sh` (modelo, rótulo, lista variante/tag), rótulos dos 5 modelos e exclusão por provedor ("excluída (provedor)") em `agg.ts`. Controle com gpt-6.1-sol: rótulo "(gpt-6.1-sol)" em `agg.ts` e `gpt61sol` na lista de rótulos do `rep6.sh`.
+`src/task.ts` (tarefa, worktrees, detector de progresso, avaliação), `src/acp.ts` (cliente ACP, trajetória, kill da árvore), `src/origin.ts`, `src/package.ts`, `src/cont.ts`, `src/reeval.ts`, `src/native.ts`, `src/run-all.sh`, `src/rep2.sh`, `fixtures/accept.test.mjs`. Rodada 2: `src/restore-origins.ts`, `src/rep3.sh`, `src/rep4.sh`, `src/origin2.sh`, `src/agg.ts` (e ajustes em `cont.ts` e `native.ts`). Destino local: `src/rep5.sh`, `OT_WATCHDOG_MS` em `cont.ts`, rótulo "(gemma local)" em `agg.ts`. Modelos free: `src/rep6.sh` (modelo, rótulo, lista variante/tag), rótulos dos 5 modelos e exclusão por provedor ("excluída (provedor)") em `agg.ts`. Controle com gpt-6.1-sol: rótulo "(gpt-6.1-sol)" em `agg.ts` e `gpt61sol` na lista de rótulos do `rep6.sh`. Rodada 3: `src/rep7.sh` e o rótulo `-luna` em `agg.ts`.
