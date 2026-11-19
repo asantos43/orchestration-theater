@@ -526,13 +526,16 @@ real('SrtSandbox nested user namespaces (N129)', () => {
   });
 
   // The option exists only for the Linux mechanism (bubblewrap); on macOS the launch is the same.
-  it.runIf(process.platform === 'linux')('gives another launch for the request that asks', async () => {
-    const plain = await sandbox.wrap(request('true'));
-    const asked = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
-    expect(asked.args).not.toEqual(plain.args);
-    const again = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
-    expect(again).toEqual(asked);
-  });
+  it.runIf(process.platform === 'linux')(
+    'gives another launch for the request that asks',
+    async () => {
+      const plain = await sandbox.wrap(request('true'));
+      const asked = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
+      expect(asked.args).not.toEqual(plain.args);
+      const again = await sandbox.wrap(request('true', { allowNestedUserNamespaces: true }));
+      expect(again).toEqual(asked);
+    },
+  );
 });
 
 real('SrtSandbox after close', () => {
