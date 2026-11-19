@@ -11,11 +11,15 @@ import type {
   RolePolicy,
 } from '@otheater/core';
 import { InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
-import { SystemClock } from '@otheater/adapter-clock-system';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
 import { pathFinder, selectClients, type ClientSelection } from '../clients.js';
-import { DEFAULT_CLIENT_EXECUTABLES, defaultLauncher, productionClients } from '../compose.js';
+import {
+  composeClock,
+  DEFAULT_CLIENT_EXECUTABLES,
+  defaultLauncher,
+  productionClients,
+} from '../compose.js';
 import { parseConfig, type ClientId } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createLogger, createSilentLogger } from '../logger.js';
@@ -331,7 +335,7 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
         level: 'warn',
         destination: 'stderr',
         logFile: '',
-        clock: new SystemClock(),
+        clock: composeClock(),
         stream: new Writable({
           write(chunk: Buffer, _encoding, done) {
             warnings.push(chunk.toString('utf8'));
@@ -454,7 +458,7 @@ describe.skipIf(!enabled)('real quota: the reading of each client (OT_TEST_REAL_
       return;
     }
     const means = value('OT_TEST_MINIMAX_USAGE_COUNT_MEANS') === 'used' ? 'used' : 'remaining';
-    const clock = new SystemClock();
+    const clock = composeClock();
     const probe = new MiniMaxQuotaProbe({
       baseUrl: CONFIG.quota.minimax.base_url,
       network: { allowHosts: CONFIG.quota.minimax.allow_hosts, timeoutMs: 20_000 },
