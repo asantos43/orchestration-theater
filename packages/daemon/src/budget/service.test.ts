@@ -735,6 +735,8 @@ describe('BudgetService, the turn of the day and of the month', () => {
     expect((await h.quota.statusOf(API)).state).not.toBe('exhausted');
   });
 
+  // Days of a fake clock: every lap of the daemon loops in the window runs, about 1 s on Linux and
+  // past the default 5 s on the Windows runner of the CI.
   it('returns the profile to usable on day 1, with budget.restored, after a monthly cap', async () => {
     const world = new World();
     const h = await world.boot({ profiles: { [API]: { daily: 50, monthly: 20 } } });
@@ -759,7 +761,7 @@ describe('BudgetService, the turn of the day and of the month', () => {
       ['day', 0],
       ['month', 0],
     ]);
-  });
+  }, 30_000);
 
   it('says budget.restored once when the day turned while the daemon was stopped', async () => {
     const world = new World();

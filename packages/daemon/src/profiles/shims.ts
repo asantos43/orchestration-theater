@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { constants as fsConstants } from 'node:fs';
 import { access, chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, delimiter as posixDelimiter, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { Env } from '../paths.js';
 
 /**
@@ -79,7 +79,9 @@ export function shimContent(
 /** The folders of `PATH`, in order, without the empty ones. */
 export function pathEntriesOf(env: Env, platform: ShimPlatform): string[] {
   const raw = env.PATH ?? env.Path ?? '';
-  return raw.split(platform === 'win32' ? ';' : posixDelimiter).filter((entry) => entry !== '');
+  // The separator is the one of the platform asked, not of the host: `path.delimiter` is `;` on a
+  // Windows host, and a POSIX PATH split there would come out whole.
+  return raw.split(platform === 'win32' ? ';' : ':').filter((entry) => entry !== '');
 }
 
 async function isExecutable(file: string, platform: ShimPlatform): Promise<boolean> {
