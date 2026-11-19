@@ -120,6 +120,12 @@ describe('codex login', () => {
     await expect(flow.complete()).resolves.toBeUndefined();
   });
 
+  it('browser: shows the sign-in URL, not the callback server printed before it (P27b)', async () => {
+    const flow = await build('callback-first').login(profileOf('a'));
+    expect(flow.url).toBe('https://auth.example.test/oauth/authorize?state=abc123');
+    await expect(flow.complete()).resolves.toBeUndefined();
+  });
+
   it('paste: the code the browser shows goes to the login, and a good one signs in (P27)', async () => {
     const flow = await build('paste').login(profileOf('a'));
     await flow.submitCode?.('good-code#state');

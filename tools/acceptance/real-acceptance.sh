@@ -494,6 +494,7 @@ if [ "$level" = quota ]; then
 fi
 if [ "$level" = profiles ]; then
   echo "Atenção: o nível profiles pede o LOGIN DE UM SEGUNDO PERFIL por cliente, e o login é SEU (N122): o teste mostra a URL e/ou o código na tela (linhas [profiles-real]) e espera você terminar no navegador, por até ${OT_TEST_PROFILES_LOGIN_TIMEOUT_MS:-600000} ms por cliente."
+  echo "  Se o navegador terminar numa página com um código para colar (Claude Code), cole o código aqui e aperte Enter: o script o repassa ao login por um FIFO temporário e ele não vai ao log."
   echo "  O perfil \`second\` nasce numa pasta de dados TEMPORÁRIA e é removido no fim (logout oficial, pasta apagada); os perfis do dono não são tocados. Use uma conta que possa ser usada num segundo login. O teste não lê arquivo de credencial e não gasta cota."
 fi
 if [ "$level" = escape ]; then
@@ -565,7 +566,37 @@ if [ "$level" = quota ]; then
 else
   unset OT_TEST_REAL_QUOTA
 fi
-if [ "$level" = profiles ]; then export OT_TEST_REAL_PROFILES=1; else unset OT_TEST_REAL_PROFILES; fi
+# O teste roda sob setsid, sem terminal: no nível profiles, o código que o navegador mostra (Claude
+# Code: "Paste code here if prompted") é lido aqui, do terminal do dono, e passa por um FIFO (P27b).
+# A linha não vai ao log nem a arquivo; o FIFO fica numa pasta 0700 e some no fim.
+code_dir=""
+code_fifo=""
+cleanup_code_fifo() {
+  if [ -n "$code_fifo" ]; then
+    exec 3>&-
+    rm -f "$code_fifo"
+    rmdir "$code_dir" 2>/dev/null || true
+    code_fifo=""
+  fi
+}
+if [ "$level" = profiles ]; then
+  export OT_TEST_REAL_PROFILES=1
+  if { : </dev/tty; } 2>/dev/null; then
+    code_dir="$(mktemp -d "${TMPDIR:-/tmp}/otheater-login-code.XXXXXX")"
+    chmod 700 "$code_dir"
+    code_fifo="$code_dir/code"
+    mkfifo -m 600 "$code_fifo"
+    # Leitura e escrita: abrir um FIFO assim não espera o outro lado.
+    exec 3<>"$code_fifo"
+    trap cleanup_code_fifo EXIT
+    export OT_TEST_PROFILES_CODE_FIFO="$code_fifo"
+  else
+    unset OT_TEST_PROFILES_CODE_FIFO
+    echo "Sem terminal: um login que pede para colar um código não termina nesta rodada."
+  fi
+else
+  unset OT_TEST_REAL_PROFILES OT_TEST_PROFILES_CODE_FIFO
+fi
 if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
@@ -614,13 +645,23 @@ while kill -0 "$runner" 2>/dev/null; do
     aborted=1
     break
   fi
-  sleep 2
+  if [ -n "$code_fifo" ]; then
+    # Espera até 2 s por uma linha do terminal; com o modo canônico, o que está sendo digitado fica
+    # no terminal até o Enter.
+    if IFS= read -r -t 2 code_line </dev/tty; then
+      printf '%s\n' "$code_line" >&3
+      code_line=""
+    fi
+  else
+    sleep 2
+  fi
 done
 set +e
 wait "$runner"
 status=$?
 set -e
 if [ -n "$tailer" ]; then sleep 1; kill "$tailer" 2>/dev/null || true; wait "$tailer" 2>/dev/null || true; fi
+cleanup_code_fifo
 
 echo
 grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
