@@ -48,6 +48,11 @@ import { makeTempDataDir } from '../test-helpers.js';
 
 const enabled = process.env.OT_TEST_REAL_PROFILES === '1' && process.platform !== 'win32';
 const LOGIN_TIMEOUT_MS = Number(process.env.OT_TEST_PROFILES_LOGIN_TIMEOUT_MS ?? '') || 600_000;
+/**
+ * `OT_TEST_PROFILES_TERMINAL_LOGIN`: `skip` (default) skips a client whose login asks for a terminal
+ * at once; `wait` shows the login and waits, for a run by hand in a real terminal.
+ */
+const TERMINAL_LOGIN = process.env.OT_TEST_PROFILES_TERMINAL_LOGIN === 'wait' ? 'wait' : 'skip';
 const TEST_TIMEOUT_MS = LOGIN_TIMEOUT_MS + 5 * 60_000;
 
 const PROVIDER: Readonly<Record<ClientId, string>> = {
@@ -184,9 +189,10 @@ describe.skipIf(!enabled)(
       expect(missing, 'asked for, but not in PATH (or not enabled)').toEqual([]);
     });
 
-    it.each(found.map((selection) => [selection.id] as const))(
+    it.for(found.map((selection) => selection.id))(
       '%s: a second profile logs in with the owner, is checked, logs out and is removed',
-      async (id) => {
+      { timeout: TEST_TIMEOUT_MS },
+      async (id, context) => {
         const tmp = await makeTempDataDir();
         const real = defaultLauncher();
         if (real === undefined) throw new Error('this platform has no process launcher');
@@ -224,6 +230,16 @@ describe.skipIf(!enabled)(
           if (flow.code !== undefined)
             console.log(`[profiles-real] ${id}: type the code ${flow.code}`);
           if (flow.mode === 'terminal') {
+            if (TERMINAL_LOGIN === 'skip') {
+              // The test runs with no terminal (the acceptance script uses `setsid`): a login that
+              // draws its own screen (OpenCode: `opencode auth login`, a menu of providers) shows
+              // nothing and would only wait out the timeout [V, 2026-11-19].
+              await flow.cancel();
+              console.log(
+                `[profiles-real] ${id}: skipped: the login asks for a terminal, and this test has none (record it as [N]; OT_TEST_PROFILES_TERMINAL_LOGIN=wait waits anyway)`,
+              );
+              context.skip();
+            }
             console.log(
               `[profiles-real] ${id}: the client asks for a terminal; if nothing shows, this client cannot be logged in by this test (record it as [N])`,
             );
@@ -267,7 +283,6 @@ describe.skipIf(!enabled)(
         }
         expect(pids.filter(alive), `${id}: processes left`).toEqual([]);
       },
-      TEST_TIMEOUT_MS,
     );
   },
 );
