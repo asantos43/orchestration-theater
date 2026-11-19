@@ -64,10 +64,10 @@ export async function makeGithubRig(options: RigOptions = {}): Promise<GithubRig
   await testGit(repo, 'remote', 'add', 'origin', remote);
   await testGit(repo, 'push', '--quiet', 'origin', 'main');
 
-  const launcher = new SpawnLauncher();
+  const launcher = new SpawnLauncher({ nodeScripts: [ghBinary] });
   const codeHost = new GithubCodeHost({
     launcher,
-    parentEnv: { PATH: process.env.PATH ?? '', HOME: home, ...options.parentEnv },
+    parentEnv: { ...windowsEnv(), PATH: process.env.PATH ?? '', HOME: home, ...options.parentEnv },
     config: {
       ghBinary,
       ...options.config,
@@ -143,6 +143,19 @@ export async function makeGithubRig(options: RigOptions = {}): Promise<GithubRig
       await rm(root, { recursive: true, force: true });
     },
   };
+}
+
+/**
+ * What Windows needs to start a process (inherited by default, see `DEFAULT_INHERITED_ENV`), when
+ * the host has it; nothing on the other systems.
+ */
+function windowsEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of ['SystemRoot', 'windir', 'TEMP', 'TMP']) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
 }
 
 /** The harness of the `CodeHost` conformance suite over a rig. */
