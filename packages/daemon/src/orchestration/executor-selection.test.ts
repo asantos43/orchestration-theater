@@ -50,6 +50,8 @@ selection:
   same_provider_fallback: stronger_model
   same_provider_account: strategy
   context_reserve: 4k
+profiles:
+  rotate_on_exhaustion: { openai: on, MiniMax: off }
 models:
   Minimax-M3:
     tier: large
@@ -67,6 +69,7 @@ models:
       sameProviderAccount: 'strategy',
       modelTiers: { 'minimax-m3': 'large' },
       contextReserve: 4_000,
+      rotateOnExhaustion: { openai: 'on', minimax: 'off' },
     });
   });
 });

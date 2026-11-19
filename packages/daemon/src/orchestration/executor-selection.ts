@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { DEFAULT_ROTATE_ON_EXHAUSTION } from '@otheater/core';
 import type { QuotaFact, SelectionResult, SelectionSettings } from '@otheater/core';
 import type { ExecutorSelectedPayload } from '@otheater/protocol';
 import type { DaemonConfig } from '../config.js';
@@ -12,7 +13,9 @@ import type { QuotaStatus } from '../quota/state.js';
 
 /** The `selection` block of the configuration as the settings of the selector. */
 export function selectionSettingsOf(
-  config: Pick<DaemonConfig, 'selection' | 'models'>,
+  config: Pick<DaemonConfig, 'selection' | 'models'> & {
+    readonly profiles?: Pick<DaemonConfig['profiles'], 'rotate_on_exhaustion'> | undefined;
+  },
 ): SelectionSettings {
   const selection = config.selection;
   return {
@@ -30,6 +33,7 @@ export function selectionSettingsOf(
       ),
     ),
     contextReserve: selection.context_reserve,
+    rotateOnExhaustion: config.profiles?.rotate_on_exhaustion ?? DEFAULT_ROTATE_ON_EXHAUSTION,
   };
 }
 

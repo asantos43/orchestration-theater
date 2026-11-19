@@ -924,3 +924,130 @@ describe('the handoff and the secrets', () => {
     TEST_TIMEOUT_MS,
   );
 });
+
+describe('the handoff and profiles.rotate_on_exhaustion (P26, N157)', () => {
+  const CONTA_1 = 'gpt-5@codex/conta-1';
+  const CONTA_2 = 'gpt-5@codex/conta-2';
+  const OPUS = 'opus@claude-code/pessoal';
+  const RESET = 1_763_521_200_000;
+
+  function resolved(id: string, provider: string): ResolvedExecutor {
+    const parsed = parseExecutorId(id);
+    return {
+      id,
+      entry: {
+        id,
+        client: parsed.client,
+        profile: parsed.profile,
+        model: parsed.model,
+        effort: parsed.effort,
+        provider,
+      },
+      validity: 'valid',
+      invalidReason: null,
+      shortfalls: [],
+      origin: 'config',
+    };
+  }
+
+  const ports: SelectionPorts = {
+    profile: () => ({ state: 'active', kind: 'token_plan' }),
+    health: () => true,
+    quota: (profile) =>
+      profile === 'codex/conta-1'
+        ? { state: 'exhausted', cause: 'quota', untilReset: RESET, headroom: 0 }
+        : { state: 'ok', cause: null, untilReset: null, headroom: 0.5 },
+    admission: () => ({ slot: 'free', ram: 'ok' }),
+    contextWindow: () => 200_000,
+  };
+
+  function port(mode: 'off' | 'on', withOtherProvider: boolean): HandoffPort {
+    return createHandoffPort({
+      selection: ports,
+      settings: { ...DEFAULT_SELECTION_SETTINGS, rotateOnExhaustion: { openai: mode } },
+      roleOf: (role) =>
+        Promise.resolve({
+          role,
+          executors: [
+            resolved(CONTA_1, 'openai'),
+            resolved(CONTA_2, 'openai'),
+            ...(withOtherProvider ? [resolved(OPUS, 'anthropic')] : []),
+          ],
+          whenExhausted: 'next',
+        }),
+      launch: (entry) =>
+        Promise.resolve({
+          executorId: entry.id,
+          profile: TEST_PROFILE,
+          executor: { model: entry.model },
+          policy: TEST_POLICY,
+        }),
+      prefixOf: () => PREFIX,
+    });
+  }
+
+  const request: HandoffRequest = {
+    attemptId: ATTEMPT,
+    playId: PLAY,
+    demandId: 'demand-1',
+    role: 'actor',
+    cause: 'quota_exhausted',
+    from: CONTA_1,
+    used: [CONTA_1],
+  };
+
+  it('off: the baton skips the other OpenAI account and goes to another provider', async () => {
+    const choice = await port('off', true).choose(request);
+    expect(choice.kind).toBe('selected');
+    if (choice.kind !== 'selected') return;
+    expect(choice.target.executorId).toBe(OPUS);
+    expect(choice.selection?.skipped).toMatchObject([
+      { executor: CONTA_2, reason: 'rotation', untilReset: RESET },
+    ]);
+    expect(choice.selection?.rotated).toBeNull();
+  });
+
+  it('off: with no other provider the baton waits for the reset of the account that ran out', async () => {
+    const choice = await port('off', false).choose(request);
+    expect(choice).toMatchObject({ kind: 'none', reason: 'waiting' });
+    expect(choice.selection?.wait).toMatchObject({ on: [CONTA_2], until: RESET });
+  });
+
+  it('on: the baton passes to the other OpenAI account and the selection says it rotated', async () => {
+    const choice = await port('on', true).choose(request);
+    expect(choice.kind).toBe('selected');
+    if (choice.kind !== 'selected') return;
+    expect(choice.target.executorId).toBe(CONTA_2);
+    expect(choice.selection?.rotated).toEqual({
+      provider: 'openai',
+      from: 'codex/conta-1',
+      to: 'codex/conta-2',
+    });
+  });
+
+  it('off: a baton passed for another cause by an account with quota holds nobody', async () => {
+    const fine: SelectionPorts = {
+      ...ports,
+      quota: () => ({ state: 'ok', cause: null, untilReset: null, headroom: 0.5 }),
+    };
+    const choice = await createHandoffPort({
+      selection: fine,
+      settings: DEFAULT_SELECTION_SETTINGS,
+      roleOf: (role) =>
+        Promise.resolve({
+          role,
+          executors: [resolved(CONTA_1, 'openai'), resolved(CONTA_2, 'openai')],
+          whenExhausted: 'next',
+        }),
+      launch: (entry) =>
+        Promise.resolve({
+          executorId: entry.id,
+          profile: TEST_PROFILE,
+          executor: { model: entry.model },
+          policy: TEST_POLICY,
+        }),
+      prefixOf: () => PREFIX,
+    }).choose({ ...request, cause: 'stuck' });
+    expect(choice.kind === 'selected' ? choice.target.executorId : null).toBe(CONTA_2);
+  });
+});

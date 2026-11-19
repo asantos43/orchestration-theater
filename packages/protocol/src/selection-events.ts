@@ -12,8 +12,11 @@ import { z } from 'zod';
  * complete name `<model>-<effort>@<client>/<profile>`, and a profile is `<client>/<profile>`.
  * The reasons mirror `SKIP_REASONS` of `@otheater/core` (the protocol does not import it): the
  * eight of 5.7 (`quota`, `budget`, `draining`, `invalid`, `no_slot`, `ram`, `context`,
- * `same_provider`) and three the algorithm needs [proposta]: `unhealthy`, `same_model` (`other_model`
- * cross-review) and `retry` (an Executor the retry with diversity left behind).
+ * `same_provider`) and four the algorithm needs [proposta]: `unhealthy`, `same_model` (`other_model`
+ * cross-review), `retry` (an Executor the retry with diversity left behind) and `rotation` (P26,
+ * N157: `profiles.rotate_on_exhaustion.<provider>` is `off` and another subscription account of that
+ * provider ran out, so this one waits for its reset). A wider enum keeps `schemaVersion` 2, as the
+ * `cross_check_unsatisfiable` kind of `daemon.notice` kept version 1 (P15b).
  */
 
 const executor = z.string().min(1).max(256);
@@ -31,6 +34,7 @@ export const EXECUTOR_SELECTED_SKIP_REASONS = [
   'same_model',
   'unhealthy',
   'retry',
+  'rotation',
 ] as const;
 
 export const EXECUTOR_SELECTED_STRATEGIES = ['ordered', 'most_headroom', 'round_robin'] as const;

@@ -28,6 +28,7 @@ import type { SessionPool } from '../execution/pool.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
 import type { QuotaService } from '../quota/service.js';
+import { situationSubject, situationText, type SituationSink } from '../situations.js';
 import { executorSelectedPayload, quotaFactOf, selectionSettingsOf } from './executor-selection.js';
 import { resolveScenarioRoleExecutors } from './role-executors.js';
 import { sessionSettingsOf } from './roles.js';
@@ -77,6 +78,8 @@ export interface RoleSelectionOptions {
    * written. The daemon hands it to the Producer channel; absent, the event is the only record.
    */
   readonly onNotice?: ((notice: ScenarioSelectionWaitNotice) => void) | undefined;
+  /** Where the `daemon.notice` `account_rotated` (P26, N157) goes; absent, only the log. */
+  readonly situations?: SituationSink | undefined;
 }
 
 /** What a caller asks for: the Executor of `role` for one piece of work. */
@@ -98,6 +101,13 @@ export interface RoleSelectionRequest {
   readonly workedBy?: WorkedBy | null | undefined;
   /** A requirement of the caller on top of the list: a reason to leave an Executor out, or null. */
   readonly refuse?: ((executor: ResolvedExecutor) => string | null) | undefined;
+  /**
+   * The Executors (complete names) that already worked on this piece and are not to be chosen
+   * again, such as the Director that failed (P20): the account of one that ran out holds the other
+   * accounts of its provider when `profiles.rotate_on_exhaustion` is `off` (P26, N157). An id the
+   * list of the role does not have is ignored.
+   */
+  readonly earlier?: readonly string[] | undefined;
 }
 
 /** What the caller runs the session with. */
@@ -518,6 +528,9 @@ export class RoleSelection {
     const previousExecutor = await this.#previousOf(request);
     const workedBy =
       request.workedBy !== undefined ? request.workedBy : await this.#workedByOf(request);
+    const earlier = (request.earlier ?? []).flatMap((id) =>
+      role.executors.filter((item) => item.id === id),
+    );
     return selectExecutorFromPorts(ports, {
       role: { role: role.role, executors, whenExhausted: role.whenExhausted },
       settings: selectionSettingsOf(config),
@@ -525,7 +538,31 @@ export class RoleSelection {
       previousExecutor,
       workedBy,
       roundRobin,
+      ...(earlier.length === 0 ? {} : { earlier }),
     });
+  }
+
+  /**
+   * The notice of a rotation (P26, N157): with `profiles.rotate_on_exhaustion.<provider>: on`, a
+   * selection that passed the work from a subscription account that ran out to another account of
+   * the same provider says so in the log and in a `daemon.notice` `account_rotated`. A result that
+   * did not rotate says nothing. The handoff (P18), which chooses with the selector directly, calls
+   * it too.
+   */
+  noteRotation(
+    role: string,
+    result: SelectionResult,
+    correlation: { readonly scenarioId?: string; readonly playId?: string; readonly attemptId?: string } = {},
+  ): void {
+    const rotated = result.rotated;
+    if (rotated === null || result.selected === null) return;
+    const message = `${rotated.provider}: ${rotated.from} ran out, so ${rotated.to} took the work of the ${role} (profiles.rotate_on_exhaustion.${rotated.provider} is on)`;
+    this.#options.logger.warn({ role, ...rotated }, message);
+    this.#options.situations?.record(
+      'daemon.notice',
+      { kind: 'account_rotated', subject: situationSubject(role), detail: situationText(message) },
+      correlation,
+    );
   }
 
   /**
@@ -659,6 +696,15 @@ export class RoleSelection {
     } else {
       this.#waits.delete(key);
     }
+    this.noteRotation(request.role, result, {
+      ...(request.scenarioId === undefined ? {} : { scenarioId: request.scenarioId }),
+      ...(attempt === undefined
+        ? {}
+        : {
+            playId: attempt.playId,
+            attemptId: attemptIdOf(attempt.playId, attempt.demandId, attempt.number),
+          }),
+    });
     try {
       if (result.selected !== null && attempt !== undefined) {
         const value: JsonObject = {
@@ -791,5 +837,6 @@ function emptyResult(
       blocked: false,
     },
     roundRobin: null,
+    rotated: null,
   };
 }

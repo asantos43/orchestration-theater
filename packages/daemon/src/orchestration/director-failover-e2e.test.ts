@@ -275,3 +275,63 @@ describe('the failover of the Director (P20)', { timeout: 180_000 }, () => {
     );
   });
 });
+
+describe('the failover of the Director and profiles.rotate_on_exhaustion (P26, N157)', { timeout: 180_000 }, () => {
+  /** `one` and `two` are two OpenAI accounts, `three` is another provider. */
+  function rotationConfig(rest = ''): string {
+    const providers: Record<string, string> = { one: 'openai', two: 'openai', three: 'anthropic' };
+    const registry = Object.entries(providers)
+      .map(
+        ([profile, provider]) =>
+          `  ${entry(profile)}:\n    client: fake\n    profile: ${profile}\n    model: fake-model\n    provider: ${provider}\n`,
+      )
+      .join('');
+    const roles = ROLES.map(
+      (role) =>
+        `  ${role}:\n    executors: [${(role === 'director' ? ['one', 'two', 'three'] : ['three']).map(entry).join(', ')}]\n`,
+    ).join('');
+    return `executors:\n  cross_client: any\n${registry}roles:\n${roles}selection:\n  recheck_every: off\n${rest}`;
+  }
+
+  async function notices(harness: PlayHarness) {
+    return (await harness.daemon.store.events.readFrom(0, 100_000))
+      .filter((event) => event.type === 'daemon.notice')
+      .map((event) => event.payload as { kind: string; subject: string | null; detail: string | null })
+      .filter((payload) => payload.kind === 'account_rotated');
+  }
+
+  it('off (the default): the Director skips the other OpenAI account and goes to another provider', async () => {
+    await withFailoverDaemon({ extra: rotationConfig() }, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      await harness.producer.send(scenarioId, '#ot-director-fail:quota\n#ot-chat hello');
+      await waitForReply(harness, scenarioId, 'answer: hello');
+      const switched = await waitFor('the switched notice', async () =>
+        (await failovers(harness, scenarioId)).find((item) => item.outcome === 'switched'),
+      );
+      expect(switched).toMatchObject({ fromExecutor: entry('one'), toExecutor: entry('three') });
+      expect(await directorExecutors(harness)).toEqual([entry('one'), entry('three')]);
+      expect(await notices(harness)).toEqual([]);
+    });
+  });
+
+  it('on: the Director rotates to the other OpenAI account, and a daemon.notice says so', async () => {
+    await withFailoverDaemon(
+      { extra: rotationConfig('profiles:\n  rotate_on_exhaustion:\n    openai: on\n') },
+      async (harness) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        await harness.producer.send(scenarioId, '#ot-director-fail:quota\n#ot-chat hello');
+        await waitForReply(harness, scenarioId, 'answer: hello');
+        const switched = await waitFor('the switched notice', async () =>
+          (await failovers(harness, scenarioId)).find((item) => item.outcome === 'switched'),
+        );
+        expect(switched).toMatchObject({ fromExecutor: entry('one'), toExecutor: entry('two') });
+        const [rotated] = await waitFor('the account_rotated notice', async () => {
+          const found = await notices(harness);
+          return found.length > 0 ? found : undefined;
+        });
+        expect(rotated).toMatchObject({ kind: 'account_rotated', subject: 'director' });
+        expect(rotated?.detail).toContain('fake/one ran out, so fake/two');
+      },
+    );
+  });
+});

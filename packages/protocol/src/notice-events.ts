@@ -32,7 +32,11 @@ const detail = z.string().min(1).max(512).nullable();
  * - `cross_check_unsatisfiable` (P15b, N150): with `selection.cross_check` strict, the list of the
  *   Reviewer or of the Critic (`subject`: the role) has Executors of one provider only (or, with
  *   `other_model`, of one model), so the cross-review cannot be met and falls to the provider of
- *   the work (`detail` says which mode and what the fall takes).
+ *   the work (`detail` says which mode and what the fall takes);
+ * - `account_rotated` (P26, N157): `profiles.rotate_on_exhaustion.<provider>` is `on` and a
+ *   subscription account of that provider ran out, so the work passed to another account of the
+ *   same provider (`subject`: the role; `detail`: the provider, the profile that ran out and the
+ *   profile that took the work; the envelope carries the play and the attempt) [proposta].
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -46,6 +50,7 @@ export const DAEMON_NOTICE_KINDS = [
   'client_warning',
   'browser_warning',
   'cross_check_unsatisfiable',
+  'account_rotated',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 
