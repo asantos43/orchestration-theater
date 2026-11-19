@@ -9,7 +9,7 @@ import { main } from './cli.js';
 import { parseConfig } from './config.js';
 import { startDaemon } from './daemon.js';
 import { createSilentLogger } from './logger.js';
-import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, startNotices } from './test-helpers.js';
 
 /**
  * The Phase 1 acceptance criterion that fits step 5 (architecture 5.21): the daemon starts over
@@ -54,7 +54,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
       ]);
       expect(
         await allEvents(daemon.store).then((events) => events.map((event) => event.type)),
-      ).toEqual(['daemon.started', 'daemon.notice', 'daemon.recovered']);
+      ).toEqual(['daemon.started', ...(await startNotices()), 'daemon.recovered']);
 
       // 2. a second daemon on the same data dir is refused by the instance lock
       const twin = await open().catch((error: unknown) => error);
@@ -152,12 +152,13 @@ describe('acceptance: the daemon over the real SQLite', () => {
         });
         try {
           expect(fake.status()).toMatchObject({ state: 'running', startedAt: clock.now() });
-          // The notices of the start-up (no client, no backup in this store) are recorded in the
-          // background, so the order among them and the recovery is not fixed: compare the set.
+          // The notices of the start-up (no client, no backup in this store, and no sandbox where
+          // the platform has none) are recorded in the background, so the order among them and the
+          // recovery is not fixed: compare the set.
           const types = (await allEvents(fake.store)).map((event) => event.type);
           expect(types[0]).toBe('daemon.started');
           expect([...types].sort()).toEqual([
-            'daemon.notice',
+            ...(await startNotices()),
             'daemon.notice',
             'daemon.recovered',
             'daemon.started',
