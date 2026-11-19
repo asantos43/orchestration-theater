@@ -3,7 +3,7 @@ import { AdapterUnavailable, hasErrorCode, hasStoreMaintenance } from '@otheater
 import type { TFunction } from 'i18next';
 import { compose, composeClock, composeStoreFileTools, type ComposeOverrides } from './compose.js';
 import { loadConfig } from './config.js';
-import { InstanceLock } from './instance-lock.js';
+import { InstanceLock, releaseOnFailure } from './instance-lock.js';
 import { createSilentLogger } from './logger.js';
 import { dataPaths, ensureDataDir } from './paths.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
@@ -49,10 +49,13 @@ export async function runBackupCommand(context: CommandContext): Promise<number>
 
   let outcome: BackupOutcome;
   if (lock !== undefined) {
-    const composition = await compose(config, {
-      dataDir: paths.dataDir,
-      ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
-    });
+    const held = lock;
+    const composition = await releaseOnFailure(held, () =>
+      compose(config, {
+        dataDir: paths.dataDir,
+        ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
+      }),
+    );
     try {
       const { store } = composition;
       if (!hasStoreMaintenance(store)) {

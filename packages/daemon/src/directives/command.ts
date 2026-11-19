@@ -3,7 +3,7 @@ import { hasErrorCode, type DirectiveRecord, type DirectiveState } from '@otheat
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, type CommandContext } from '../commands.js';
 import { compose } from '../compose.js';
 import { loadConfig } from '../config.js';
-import { InstanceLock } from '../instance-lock.js';
+import { InstanceLock, releaseOnFailure } from '../instance-lock.js';
 import { dataPaths, ensureDataDir } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
 import { DirectiveService, summarizeDirective, type DirectiveInput } from './service.js';
@@ -129,11 +129,13 @@ export async function runDirectivesCommand(
     throw error;
   }
   const registries = buildDaemonRegistries();
-  const composition = await compose(config, {
-    dataDir: paths.dataDir,
-    events: { registry: registries.events, unknownType: config.events.unknown_type },
-    ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
-  });
+  const composition = await releaseOnFailure(lock, () =>
+    compose(config, {
+      dataDir: paths.dataDir,
+      events: { registry: registries.events, unknownType: config.events.unknown_type },
+      ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
+    }),
+  );
   try {
     const service = new DirectiveService({
       store: composition.store,

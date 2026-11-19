@@ -4,7 +4,7 @@ import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, type CommandContext } from '../comman
 import { compose, productionClients } from '../compose.js';
 import { loadConfig } from '../config.js';
 import type { ClientFactory } from '../clients.js';
-import { InstanceLock } from '../instance-lock.js';
+import { InstanceLock, releaseOnFailure } from '../instance-lock.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
 import {
@@ -154,11 +154,13 @@ export async function runExecutorCommand(
     throw error;
   }
   const registries = buildDaemonRegistries();
-  const composition = await compose(config, {
-    dataDir: paths.dataDir,
-    events: { registry: registries.events, unknownType: config.events.unknown_type },
-    ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
-  });
+  const composition = await releaseOnFailure(lock, () =>
+    compose(config, {
+      dataDir: paths.dataDir,
+      events: { registry: registries.events, unknownType: config.events.unknown_type },
+      ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
+    }),
+  );
   try {
     const adapters = new Map<string, ClientAdapter>();
     if (composition.launcher !== undefined) {

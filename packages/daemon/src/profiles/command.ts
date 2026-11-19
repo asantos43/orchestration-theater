@@ -13,7 +13,7 @@ import { compose, productionClients } from '../compose.js';
 import { loadConfig } from '../config.js';
 import type { ClientFactory } from '../clients.js';
 import { unlockVault, type PasswordPrompt } from '../daemon.js';
-import { InstanceLock } from '../instance-lock.js';
+import { InstanceLock, releaseOnFailure } from '../instance-lock.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
 import { roleListsOf } from './role-lists.js';
@@ -175,11 +175,13 @@ export async function runProfileCommand(
     throw error;
   }
   const registries = buildDaemonRegistries();
-  const composition = await compose(config, {
-    dataDir: paths.dataDir,
-    events: { registry: registries.events, unknownType: config.events.unknown_type },
-    ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
-  });
+  const composition = await releaseOnFailure(lock, () =>
+    compose(config, {
+      dataDir: paths.dataDir,
+      events: { registry: registries.events, unknownType: config.events.unknown_type },
+      ...(context.overrides === undefined ? {} : { overrides: context.overrides }),
+    }),
+  );
   // No daemon in this process: there is no `daemon.started` to wait for, and `close` waits for the writes.
   composition.situations.open();
   try {
