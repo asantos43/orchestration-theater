@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Cancelled, PermissionDenied, type Profile } from '@otheater/core';
 import { FakeProcessLauncher } from '@otheater/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OpenCodeAdapter,
   opencodeAdapterVersion,
@@ -200,7 +200,13 @@ describe('opencode login: what is launched', () => {
     // Nothing ends by itself in the fake launcher: the commands are ended by their timeout, so only the launch is looked at.
     void adapter.logout(profileOf('a')).catch(() => undefined);
     void adapter.probeLogin(profileOf('a')).catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Both launches are awaited, not a fixed pause: a loaded Windows runner may take past 100 ms.
+    await vi.waitFor(
+      () => {
+        expect(fake.launched).toHaveLength(2);
+      },
+      { timeout: 10_000, interval: 10 },
+    );
     expect(fake.launched.map((process) => process.options.args)).toContainEqual([
       'auth',
       'logout',
