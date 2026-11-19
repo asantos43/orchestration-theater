@@ -112,3 +112,35 @@ describe('isSecretPath', () => {
     expect(isSecretPath('/srv/x/f', custom)).toBe(false);
   });
 });
+
+describe('Windows paths', () => {
+  const list = resolveSecretPaths({ home: 'C:\\Users\\ana', dataDir: 'D:\\ot\\data' });
+
+  it('expands ~ and <data> over a drive, with / for \\', () => {
+    expect(list).toContain('C:/Users/ana/.ssh');
+    expect(list).toContain('D:/ot/data');
+  });
+
+  it('finds a secret written with \\ or with /, and without case', () => {
+    expect(isSecretPath('C:\\Users\\ana\\.ssh\\id_ed25519', list)).toBe(true);
+    expect(isSecretPath('C:/Users/ana/.ssh', list)).toBe(true);
+    expect(isSecretPath('c:\\users\\ANA\\.SSH\\id', list)).toBe(true);
+    expect(isSecretPath('D:\\ot\\data\\profiles\\x', list)).toBe(true);
+    expect(isSecretPath('C:\\work\\app\\.ENV', list)).toBe(true);
+  });
+
+  it('does not mix drives, nor a drive with a POSIX path, and does not climb above the drive', () => {
+    expect(isSecretPath('E:\\Users\\ana\\.ssh', list)).toBe(false);
+    expect(isSecretPath('/Users/ana/.ssh', list)).toBe(false);
+    expect(isSecretPath('C:\\..\\..\\Users\\ana\\.ssh', list)).toBe(true);
+    expect(isSecretPath('C:\\Users\\ana\\work', list)).toBe(false);
+  });
+
+  it('refuses the root of a drive as an entry or as the home', () => {
+    expect(() => resolveSecretPaths({ home: 'C:\\Users\\ana', add: ['C:\\'] })).toThrow(
+      InvalidInput,
+    );
+    expect(() => resolveSecretPaths({ home: 'C:\\' })).toThrow(InvalidInput);
+    expect(() => resolveSecretPaths({ home: 'C:' })).toThrow(InvalidInput);
+  });
+});

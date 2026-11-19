@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdtemp, readFile, readlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { playEscape, type EscapeHost, type EscapeScript } from './escape-scripts.js';
 import { parseScriptSpec, SCRIPT_NAMES, ScriptError } from './scripts.js';
@@ -101,7 +101,10 @@ describe('playEscape', () => {
       'escape mcp: failed NO_SERVER',
       'escape connect: failed ECONNREFUSED',
     ]);
-    expect(await readlink(join(cwd, 'l'))).toBe('/elsewhere');
+    // Windows stores a rooted link target with the drive of the current folder.
+    expect(await readlink(join(cwd, 'l'))).toBe(
+      process.platform === 'win32' ? resolve('/elsewhere') : '/elsewhere',
+    );
   });
 
   it('never runs the command or the fetch of a request that was not allowed', async () => {

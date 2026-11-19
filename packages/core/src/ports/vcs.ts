@@ -41,6 +41,12 @@ export interface RemoveWorktreeOptions {
 export interface CommitOptions {
   /** Create a commit even when nothing changed. Default false. */
   readonly allowEmpty?: boolean;
+  /**
+   * Paths, relative to the worktree, that the commit records as executable (mode 100755) whatever
+   * the file system says. Where the file system keeps no execute bit (Windows), this is the only
+   * way a script is born executable.
+   */
+  readonly executable?: readonly string[];
 }
 
 /** One file of a {@link DiffStat}; counts are `undefined` for a binary file. */
