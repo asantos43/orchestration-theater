@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Store } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { main, type CliDeps } from './cli.js';
@@ -133,6 +134,34 @@ describe('ot backup and restore', () => {
       );
       const [name] = await readdir(join(tmp.dir, 'backups'));
       expect(name).toMatch(/^otheater-/);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('frees the lock when the composition fails, so the next command can run (Windows: EBUSY)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      // A store that breaks as soon as the composition touches it.
+      const broken = new Proxy({} as Store, {
+        get: () => {
+          throw new Error('store down');
+        },
+      });
+      for (const args of [
+        ['backup'],
+        ['executor', 'list'],
+        ['profile', 'list'],
+        ['directives', 'list'],
+      ]) {
+        const result = await ot([...args, '--data-dir', tmp.dir], tmp.dir, {
+          overrides: { store: broken, vault: new InMemorySecretVault() },
+        });
+        expect(result.code, args.join(' ')).toBe(1);
+        const paths = dataPaths(tmp.dir);
+        const again = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+        await again.release();
+      }
     } finally {
       await tmp.dispose();
     }
