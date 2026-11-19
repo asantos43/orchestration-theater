@@ -154,9 +154,17 @@ describe('SrtSandbox without a mechanism', () => {
     expect(() => new SrtSandbox({ tempDir: 'relative' }, { platform: 'linux' })).toThrow(
       InvalidInput,
     );
-    await expect(sandbox.wrap(request('true', { worktree: 'relative/wt' }))).rejects.toBeInstanceOf(
+    // The path rule is POSIX and holds where there is a mechanism: the sandbox is built for Linux
+    // here (nothing starts before the rule). On Windows the wrap stops before, with
+    // AdapterUnavailable, so a drive-letter path is never judged by a POSIX rule.
+    const posix = new SrtSandbox(
+      { tempDir: '/nonexistent/otheater-srt-tmp' },
+      { platform: 'linux' },
+    );
+    await expect(posix.wrap(request('true', { worktree: 'relative/wt' }))).rejects.toBeInstanceOf(
       InvalidInput,
     );
+    await posix.close();
   });
 
   it('declares the Sandbox port and the four fields it counts as the os layer where it works', () => {
