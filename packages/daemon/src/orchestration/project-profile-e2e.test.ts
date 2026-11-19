@@ -10,7 +10,7 @@ import {
   InMemorySecretVault,
 } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect } from 'vitest';
 import {
   assertFakeAgentBuilt,
   waitFor,
@@ -19,6 +19,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { itWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The `software` profile (P7) end to end, with the fake agent in every role: an imported
@@ -99,125 +100,137 @@ async function makeItConventional(repo: string): Promise<void> {
 }
 
 describe('the software profile with the fake agent (P7)', { timeout: 120_000 }, () => {
-  it('keeps the changelog format and the commit pattern of an imported repository', async () => {
-    await withPlayDaemon({}, async (harness) => {
-      await makeItConventional(harness.rig.repo);
-      const playId = await deliver(harness);
+  itWithLauncher(
+    'keeps the changelog format and the commit pattern of an imported repository',
+    async () => {
+      await withPlayDaemon({}, async (harness) => {
+        await makeItConventional(harness.rig.repo);
+        const playId = await deliver(harness);
 
-      const scenario = (await harness.daemon.store.scenarios.list())[0];
-      expect(parseConventions(scenario?.conventions)).toMatchObject({
-        source: 'detected',
-        changelog: { format: 'conventional-changelog', file: 'CHANGELOG.md' },
-        commit: { style: 'conventional' },
+        const scenario = (await harness.daemon.store.scenarios.list())[0];
+        expect(parseConventions(scenario?.conventions)).toMatchObject({
+          source: 'detected',
+          changelog: { format: 'conventional-changelog', file: 'CHANGELOG.md' },
+          commit: { style: 'conventional' },
+        });
+
+        const [pull] = harness.codeHost.pullRequests();
+        expect(pull?.title).toMatch(/^feat: /);
+
+        const changelog = await delivered(harness, playId, 'show', '<branch>:CHANGELOG.md');
+        // The entry is in the format of the file: its own sections and bullets, above the old release.
+        expect(changelog).toContain('## Unreleased');
+        expect(changelog).toContain('### Features');
+        expect(changelog).toMatch(/^\* write alpha and beta/m);
+        expect(changelog.indexOf('## Unreleased')).toBeLessThan(changelog.indexOf('## [1.1.0]'));
+        expect(changelog).toContain('* a feature from before');
+        expect(changelog).not.toContain('keepachangelog');
+
+        const subjects = (await delivered(harness, playId, 'log', '--format=%s', '<branch>'))
+          .trim()
+          .split('\n');
+        expect(subjects).toContain(`docs(changelog): add the entry of play ${playId}`);
       });
+    },
+  );
 
-      const [pull] = harness.codeHost.pullRequests();
-      expect(pull?.title).toMatch(/^feat: /);
+  itWithLauncher(
+    'creates CHANGELOG.md at the first delivery of an imported repository that has none',
+    async () => {
+      await withPlayDaemon({}, async (harness) => {
+        const playId = await deliver(harness);
 
-      const changelog = await delivered(harness, playId, 'show', '<branch>:CHANGELOG.md');
-      // The entry is in the format of the file: its own sections and bullets, above the old release.
-      expect(changelog).toContain('## Unreleased');
-      expect(changelog).toContain('### Features');
-      expect(changelog).toMatch(/^\* write alpha and beta/m);
-      expect(changelog.indexOf('## Unreleased')).toBeLessThan(changelog.indexOf('## [1.1.0]'));
-      expect(changelog).toContain('* a feature from before');
-      expect(changelog).not.toContain('keepachangelog');
+        const changelog = await delivered(harness, playId, 'show', '<branch>:CHANGELOG.md');
+        expect(changelog).toContain('# Changelog');
+        expect(changelog).toContain('keepachangelog.com');
+        expect(changelog).toContain('## [Unreleased]');
+        expect(changelog).toContain('write alpha and beta');
+        const subjects = (await delivered(harness, playId, 'log', '--format=%s', '<branch>'))
+          .trim()
+          .split('\n');
+        expect(subjects).toContain(`Add the changelog entry of play ${playId}`);
+        // The repository has no Conventional Commits, so the title is the plain first line.
+        expect(harness.codeHost.pullRequests()[0]?.title).not.toMatch(/^[a-z]+: /);
+      });
+    },
+  );
 
-      const subjects = (await delivered(harness, playId, 'log', '--format=%s', '<branch>'))
-        .trim()
-        .split('\n');
-      expect(subjects).toContain(`docs(changelog): add the entry of play ${playId}`);
-    });
-  });
-
-  it('creates CHANGELOG.md at the first delivery of an imported repository that has none', async () => {
-    await withPlayDaemon({}, async (harness) => {
-      const playId = await deliver(harness);
-
-      const changelog = await delivered(harness, playId, 'show', '<branch>:CHANGELOG.md');
-      expect(changelog).toContain('# Changelog');
-      expect(changelog).toContain('keepachangelog.com');
-      expect(changelog).toContain('## [Unreleased]');
-      expect(changelog).toContain('write alpha and beta');
-      const subjects = (await delivered(harness, playId, 'log', '--format=%s', '<branch>'))
-        .trim()
-        .split('\n');
-      expect(subjects).toContain(`Add the changelog entry of play ${playId}`);
-      // The repository has no Conventional Commits, so the title is the plain first line.
-      expect(harness.codeHost.pullRequests()[0]?.title).not.toMatch(/^[a-z]+: /);
-    });
-  });
-
-  it('touches no changelog with delivery.changelog never', async () => {
+  itWithLauncher('touches no changelog with delivery.changelog never', async () => {
     await withPlayDaemon({ extra: 'delivery:\n  changelog: never' }, async (harness) => {
       const playId = await deliver(harness);
       await expect(delivered(harness, playId, 'show', '<branch>:CHANGELOG.md')).rejects.toThrow();
     });
   });
 
-  it('asks the Producer to confirm the detection, and saves the answer as confirmed', async () => {
-    await withPlayDaemon({ conventions: 'ask' }, async (harness) => {
-      const { scenarioId } = await harness.producer.openChat({ repo: harness.rig.repo });
-      const ask = await waitFor('the question', async () =>
-        (await harness.producer.poll(scenarioId, 0)).asks.find(
-          (item) => item.kind === 'producer_question',
-        ),
-      );
-      expect(JSON.stringify(ask.input)).toContain('Which changelog format');
-
-      await harness.producer.answer(ask.id, {
-        answers: ['No changelog', 'Free text', 'make check', 'No command'],
-      });
-      const saved = await waitFor('the confirmed conventions', async () => {
-        const conventions = parseConventions(
-          (await harness.daemon.store.scenarios.get(scenarioId))?.conventions,
+  itWithLauncher(
+    'asks the Producer to confirm the detection, and saves the answer as confirmed',
+    async () => {
+      await withPlayDaemon({ conventions: 'ask' }, async (harness) => {
+        const { scenarioId } = await harness.producer.openChat({ repo: harness.rig.repo });
+        const ask = await waitFor('the question', async () =>
+          (await harness.producer.poll(scenarioId, 0)).asks.find(
+            (item) => item.kind === 'producer_question',
+          ),
         );
-        return conventions?.confirmed === true ? conventions : undefined;
-      });
-      expect(saved).toMatchObject({
-        source: 'producer',
-        changelog: { format: 'none' },
-        commit: { style: 'free' },
-        commands: { test: 'make check' },
-      });
-      // Confirmed once: opening the chat again asks nothing.
-      await harness.producer.openChat({ repo: harness.rig.repo });
-      expect(
-        (await harness.producer.poll(scenarioId, 0)).asks.filter(
-          (item) => item.kind === 'producer_question',
-        ),
-      ).toEqual([]);
-    });
-  });
+        expect(JSON.stringify(ask.input)).toContain('Which changelog format');
 
-  it('is born with the structure and the CI of the profile when the project is new', async () => {
-    const parent = await realpath(await mkdtemp(join(tmpdir(), 'otheater-new-project-')));
-    try {
-      await withPlayDaemon({}, async (harness) => {
-        const repo = join(parent, 'fresh');
-        const { scenarioId } = await harness.producer.openChat({ repo, newProject: true });
-        for (const file of [
-          'README.md',
-          'CHANGELOG.md',
-          'scripts/test.sh',
-          '.github/workflows/ci.yml',
-        ]) {
-          expect((await stat(join(repo, file))).isFile()).toBe(true);
-        }
-        expect(await readFile(join(repo, '.github', 'workflows', 'ci.yml'), 'utf8')).toContain(
-          'scripts/test.sh',
-        );
-        expect((await testGit(repo, 'status', '--porcelain')).trim()).toBe('');
-        const scenario = await harness.daemon.store.scenarios.get(scenarioId);
-        expect(scenario).toMatchObject({ folder: repo, baseBranch: 'main', profile: 'software' });
-        expect(parseConventions(scenario?.conventions)).toMatchObject({
-          source: 'profile',
-          ci: 'github-actions',
-          changelog: { format: 'keep-a-changelog' },
+        await harness.producer.answer(ask.id, {
+          answers: ['No changelog', 'Free text', 'make check', 'No command'],
         });
+        const saved = await waitFor('the confirmed conventions', async () => {
+          const conventions = parseConventions(
+            (await harness.daemon.store.scenarios.get(scenarioId))?.conventions,
+          );
+          return conventions?.confirmed === true ? conventions : undefined;
+        });
+        expect(saved).toMatchObject({
+          source: 'producer',
+          changelog: { format: 'none' },
+          commit: { style: 'free' },
+          commands: { test: 'make check' },
+        });
+        // Confirmed once: opening the chat again asks nothing.
+        await harness.producer.openChat({ repo: harness.rig.repo });
+        expect(
+          (await harness.producer.poll(scenarioId, 0)).asks.filter(
+            (item) => item.kind === 'producer_question',
+          ),
+        ).toEqual([]);
       });
-    } finally {
-      await rm(parent, { recursive: true, force: true });
-    }
-  });
+    },
+  );
+
+  itWithLauncher(
+    'is born with the structure and the CI of the profile when the project is new',
+    async () => {
+      const parent = await realpath(await mkdtemp(join(tmpdir(), 'otheater-new-project-')));
+      try {
+        await withPlayDaemon({}, async (harness) => {
+          const repo = join(parent, 'fresh');
+          const { scenarioId } = await harness.producer.openChat({ repo, newProject: true });
+          for (const file of [
+            'README.md',
+            'CHANGELOG.md',
+            'scripts/test.sh',
+            '.github/workflows/ci.yml',
+          ]) {
+            expect((await stat(join(repo, file))).isFile()).toBe(true);
+          }
+          expect(await readFile(join(repo, '.github', 'workflows', 'ci.yml'), 'utf8')).toContain(
+            'scripts/test.sh',
+          );
+          expect((await testGit(repo, 'status', '--porcelain')).trim()).toBe('');
+          const scenario = await harness.daemon.store.scenarios.get(scenarioId);
+          expect(scenario).toMatchObject({ folder: repo, baseBranch: 'main', profile: 'software' });
+          expect(parseConventions(scenario?.conventions)).toMatchObject({
+            source: 'profile',
+            ci: 'github-actions',
+            changelog: { format: 'keep-a-changelog' },
+          });
+        });
+      } finally {
+        await rm(parent, { recursive: true, force: true });
+      }
+    },
+  );
 });

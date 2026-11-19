@@ -117,13 +117,14 @@ async function execute(
 ): Promise<ToolDone> {
   const worktree = worktreeOf(call);
   const { launcher, clock, confine } = context.deps;
+  // The rules come first: a refused call is refused on every platform, with its own code.
+  const argv = await argvOf(context, call, settings, worktree);
   if (launcher === undefined) {
     throw new ToolFailure(
       'unavailable',
       'This platform has no process launcher: no command can run.',
     );
   }
-  const argv = await argvOf(context, call, settings, worktree);
   const { timeout_ms, output_max_bytes, truncate } = settings.config;
   const run = async (): Promise<ToolDone> => {
     const result = await runCommand(

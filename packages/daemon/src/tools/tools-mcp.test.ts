@@ -20,6 +20,7 @@ import {
 } from '../orchestration/role-policy.js';
 import { buildDaemonRegistries } from '../registries.js';
 import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The work tools end to end (architecture 5.8): the fake agent over the REAL ACP stdio transport
@@ -151,7 +152,7 @@ function payloadsOf(events: readonly EventEnvelope[], type: string): Record<stri
     .map((event) => event.payload as Record<string, unknown>);
 }
 
-describe('the work tools through the framework MCP server', () => {
+describeWithLauncher('the work tools through the framework MCP server', () => {
   it('lists the tools of the actor and runs restricted_shell in the worktree of the attempt', async () => {
     await withDaemon(async (daemon, repo) => {
       const { text, events } = await runTool(daemon, repo, 'shell-ok', 'restricted_shell', {

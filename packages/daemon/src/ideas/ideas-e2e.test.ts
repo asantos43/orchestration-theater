@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -18,6 +18,7 @@ import {
 import { parseConfig } from '../config.js';
 import { createSilentLogger } from '../logger.js';
 import { IDEA_GROUP_DECISION, IdeaQueueService, type IdeaQueueServiceOptions } from './service.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The idea queue (architecture 5.20, N91) with the fake agent as the Author and as every role of
@@ -80,7 +81,7 @@ async function eventTypes(harness: PlayHarness, prefix: string): Promise<string[
     .filter((type) => type.startsWith(prefix));
 }
 
-describe('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => {
+describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => {
   it('four ideas, two in the same area, become three plays; each waits for approval and ends linked to its play and PR', async () => {
     await withPlayDaemon({ extra: 'ideas:\n  drain: manual' }, async (harness) => {
       const scenarioId = await harness.openChat();

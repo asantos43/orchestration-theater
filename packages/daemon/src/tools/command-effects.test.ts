@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { InMemoryStore } from '@otheater/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { effectsOf, openEffectsOf } from '../workspace/effects-of.js';
 import {
   ATTEMPT_ID,
@@ -12,6 +12,7 @@ import {
   type ToolsRig,
   type ToolsRigOptions,
 } from './tools-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 const rigs: ToolsRig[] = [];
 
@@ -54,7 +55,7 @@ async function recordsOf(rig: ToolsRig, type = 'install_deps') {
   return rig.store.sideEffects.list({ attemptId: ATTEMPT_ID, types: [type] });
 }
 
-describe('install_deps under the effect protocol', () => {
+describeWithLauncher('install_deps under the effect protocol', () => {
   it('writes the before and the after under the key of the attempt and the step', async () => {
     const rig = await installRig();
     expect(await rig.call('install_deps', {})).toMatchObject({
@@ -156,7 +157,7 @@ describe('install_deps under the effect protocol', () => {
   });
 });
 
-describe('an install the daemon lost in the middle', () => {
+describeWithLauncher('an install the daemon lost in the middle', () => {
   /** A step left open: a "before" of the same call, with the hash a first run wrote. */
   async function leaveOpen(rig: ToolsRig, state: 'pending' | 'ambiguous' = 'pending') {
     await rig.call('install_deps', {});
@@ -204,7 +205,7 @@ describe('an install the daemon lost in the middle', () => {
   });
 });
 
-describe('restricted_shell and run_tests', () => {
+describeWithLauncher('restricted_shell and run_tests', () => {
   it('records a shell command and answers an open one of the same argv as ambiguous', async () => {
     const rig = await rigOf();
     const argv = ['ls'];
@@ -261,7 +262,7 @@ describe('restricted_shell and run_tests', () => {
   });
 });
 
-describe('effectsOf', () => {
+describeWithLauncher('effectsOf', () => {
   it('lists what was done, apart from what is open or failed', async () => {
     const rig = await installRig();
     await rig.write('package.json', '{"v":1}');

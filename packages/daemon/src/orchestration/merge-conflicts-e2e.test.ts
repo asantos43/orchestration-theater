@@ -15,6 +15,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from './e2e-fixture.js';
+import { describeWithLauncher, itWithLauncher } from '../launcher-fixture.js';
 
 /**
  * The merge conflicts of a play (architecture 5.5, N83 and N84), end to end with the fake agent
@@ -76,7 +77,7 @@ function returnsFromDelivery(path: readonly string[]): number {
   return path.filter((state, i) => state === 'SCRIPTING' && path[i - 1] === 'DELIVERING').length;
 }
 
-describe('the base moves while the play runs (N83)', { timeout: 120_000 }, () => {
+describeWithLauncher('the base moves while the play runs (N83)', { timeout: 120_000 }, () => {
   it('update, no conflict: merges the base into the integration and delivers', async () => {
     await withPlayDaemon({}, async (harness) => {
       const playId = await openPlay(harness, 'base_drift');
@@ -177,21 +178,24 @@ describe('a new script keeps what did not change (N84)', { timeout: 120_000 }, (
     );
   }
 
-  it('keep_unchanged: alpha does not run again, beta runs with the old diff in context', async () => {
-    await withPlayDaemon({}, async (harness) => {
-      const playId = await openPlay(harness, 'rescript');
-      await delivered(harness, playId);
-      expect(await attemptsOf(harness, playId, 'alpha')).toHaveLength(1);
-      expect((await attemptsOf(harness, playId, 'beta')).length).toBe(2);
-      const alpha = await onIntegration(harness, playId, 'alpha.txt');
-      expect(alpha).not.toContain('earlier work');
-      const beta = await onIntegration(harness, playId, 'beta.txt');
-      expect(beta).toContain('took over earlier work, diff given');
-      expect(harness.codeHost.pullRequests()).toHaveLength(1);
-    });
-  });
+  itWithLauncher(
+    'keep_unchanged: alpha does not run again, beta runs with the old diff in context',
+    async () => {
+      await withPlayDaemon({}, async (harness) => {
+        const playId = await openPlay(harness, 'rescript');
+        await delivered(harness, playId);
+        expect(await attemptsOf(harness, playId, 'alpha')).toHaveLength(1);
+        expect((await attemptsOf(harness, playId, 'beta')).length).toBe(2);
+        const alpha = await onIntegration(harness, playId, 'alpha.txt');
+        expect(alpha).not.toContain('earlier work');
+        const beta = await onIntegration(harness, playId, 'beta.txt');
+        expect(beta).toContain('took over earlier work, diff given');
+        expect(harness.codeHost.pullRequests()).toHaveLength(1);
+      });
+    },
+  );
 
-  it('redo_all: everything runs again', async () => {
+  itWithLauncher('redo_all: everything runs again', async () => {
     await withPlayDaemon({ extra: 'rescript:\n  reuse: redo_all' }, async (harness) => {
       const playId = await openPlay(harness, 'rescript');
       await delivered(harness, playId);
@@ -200,27 +204,32 @@ describe('a new script keeps what did not change (N84)', { timeout: 120_000 }, (
     });
   });
 
-  it('from_previous: alpha is kept and beta starts from its old branch, without a diff', async () => {
-    await withPlayDaemon({ extra: 'rescript:\n  reuse: from_previous' }, async (harness) => {
-      const playId = await openPlay(harness, 'rescript');
-      await delivered(harness, playId);
-      expect(await attemptsOf(harness, playId, 'alpha')).toHaveLength(1);
-      const beta = await attemptsOf(harness, playId, 'beta');
-      expect(beta).toHaveLength(2);
-      const [first, second] = beta;
-      // the second attempt is cut from the branch of the first (it holds its commit)
-      const ancestor = await testGit(
-        harness.rig.repo,
-        'merge-base',
-        '--is-ancestor',
-        first?.branch ?? '',
-        second?.branch ?? '',
-      ).then(
-        () => true,
-        () => false,
-      );
-      expect(ancestor).toBe(true);
-      expect(await onIntegration(harness, playId, 'beta.txt')).toContain('took over earlier work');
-    });
-  });
+  itWithLauncher(
+    'from_previous: alpha is kept and beta starts from its old branch, without a diff',
+    async () => {
+      await withPlayDaemon({ extra: 'rescript:\n  reuse: from_previous' }, async (harness) => {
+        const playId = await openPlay(harness, 'rescript');
+        await delivered(harness, playId);
+        expect(await attemptsOf(harness, playId, 'alpha')).toHaveLength(1);
+        const beta = await attemptsOf(harness, playId, 'beta');
+        expect(beta).toHaveLength(2);
+        const [first, second] = beta;
+        // the second attempt is cut from the branch of the first (it holds its commit)
+        const ancestor = await testGit(
+          harness.rig.repo,
+          'merge-base',
+          '--is-ancestor',
+          first?.branch ?? '',
+          second?.branch ?? '',
+        ).then(
+          () => true,
+          () => false,
+        );
+        expect(ancestor).toBe(true);
+        expect(await onIntegration(harness, playId, 'beta.txt')).toContain(
+          'took over earlier work',
+        );
+      });
+    },
+  );
 });

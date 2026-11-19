@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import type { RolePolicy } from '@otheater/core';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { probeSandbox } from '../compose.js';
 import {
   BASE_POLICY,
@@ -23,6 +23,7 @@ import {
   type Outside,
   type Rig,
 } from './escape-fixture.js';
+import { describeWithLauncher } from '../launcher-fixture.js';
 
 installFakes({
   clock: () => new FakeClock(),
@@ -128,160 +129,169 @@ async function attempt(
   };
 }
 
-describe('layer 2: the native tools of the client are answered by the role policy', () => {
-  it('rejects a write that leaves the worktree, whichever way it is spelled, even under a rule that allows edits', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const abs = join(outside.outsideDir, 'abs.txt');
-        const seen = await attempt(
-          rig,
-          'write-escape',
-          [
-            { label: 'inside', kind: 'write', path: 'inside.txt' },
-            { label: 'dotdot', kind: 'write', path: '../escaped-dotdot.txt' },
-            { label: 'nested', kind: 'write', path: 'docs/../../escaped-nested.txt' },
-            { label: 'absolute', kind: 'write', path: abs },
-            { kind: 'symlink', link: 'evil-dir', target: outside.outsideDir },
-            { label: 'dir-link', kind: 'write', path: 'evil-dir/through-dir-link.txt' },
-            { label: 'dir-link-new', kind: 'write', path: 'evil-dir/sub/new.txt' },
-            { kind: 'symlink', link: 'evil-file', target: join(outside.outsideDir, 'secret.txt') },
-            { label: 'file-link', kind: 'write', path: 'evil-file' },
-          ],
-          RULES([{ id: 'any-edit', action: 'allow', kind: 'edit' }]),
-        );
-        expect(seen.result).toMatchObject({ state: 'completed' });
+describeWithLauncher(
+  'layer 2: the native tools of the client are answered by the role policy',
+  () => {
+    it('rejects a write that leaves the worktree, whichever way it is spelled, even under a rule that allows edits', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
+          const abs = join(outside.outsideDir, 'abs.txt');
+          const seen = await attempt(
+            rig,
+            'write-escape',
+            [
+              { label: 'inside', kind: 'write', path: 'inside.txt' },
+              { label: 'dotdot', kind: 'write', path: '../escaped-dotdot.txt' },
+              { label: 'nested', kind: 'write', path: 'docs/../../escaped-nested.txt' },
+              { label: 'absolute', kind: 'write', path: abs },
+              { kind: 'symlink', link: 'evil-dir', target: outside.outsideDir },
+              { label: 'dir-link', kind: 'write', path: 'evil-dir/through-dir-link.txt' },
+              { label: 'dir-link-new', kind: 'write', path: 'evil-dir/sub/new.txt' },
+              {
+                kind: 'symlink',
+                link: 'evil-file',
+                target: join(outside.outsideDir, 'secret.txt'),
+              },
+              { label: 'file-link', kind: 'write', path: 'evil-file' },
+            ],
+            RULES([{ id: 'any-edit', action: 'allow', kind: 'edit' }]),
+          );
+          expect(seen.result).toMatchObject({ state: 'completed' });
 
-        // Layer 2 answered: the write inside by the rule, every escape by N99, over the rule.
-        expect(seen.permissions.map((p) => [p.answer, p.reason, p.overruledRule])).toEqual([
-          ['allow', 'rule', undefined],
-          ...Array.from({ length: 6 }, () => ['reject', 'write_outside_worktree', 'any-edit']),
-        ]);
-        expect(seen.permissions[0]?.rule).toBe('any-edit');
+          // Layer 2 answered: the write inside by the rule, every escape by N99, over the rule.
+          expect(seen.permissions.map((p) => [p.answer, p.reason, p.overruledRule])).toEqual([
+            ['allow', 'rule', undefined],
+            ...Array.from({ length: 6 }, () => ['reject', 'write_outside_worktree', 'any-edit']),
+          ]);
+          expect(seen.permissions[0]?.rule).toBe('any-edit');
 
-        // The disk: the allowed write landed; nothing landed outside; the secret is untouched.
-        expect(existsSync(join(seen.worktree, 'inside.txt'))).toBe(true);
-        expect(existsSync(join(seen.parent, 'escaped-dotdot.txt'))).toBe(false);
-        expect(existsSync(join(seen.parent, 'escaped-nested.txt'))).toBe(false);
-        expect(await outsideFiles(outside)).toEqual(['secret.txt']);
-        expect(await secretIntact(outside)).toBe(true);
+          // The disk: the allowed write landed; nothing landed outside; the secret is untouched.
+          expect(existsSync(join(seen.worktree, 'inside.txt'))).toBe(true);
+          expect(existsSync(join(seen.parent, 'escaped-dotdot.txt'))).toBe(false);
+          expect(existsSync(join(seen.parent, 'escaped-nested.txt'))).toBe(false);
+          expect(await outsideFiles(outside)).toEqual(['secret.txt']);
+          expect(await secretIntact(outside)).toBe(true);
+        });
       });
-    });
-  }, 90_000);
+    }, 90_000);
 
-  it('rejects the native shell of the client in every spelling, even under a rule that allows it', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const out = (name: string): string => join(outside.outsideDir, name);
-        const seen = await attempt(
-          rig,
-          'shell-escape',
-          [
-            { kind: 'native_shell', command: `touch ${out('n1')}` },
-            { kind: 'native_shell', command: `bash -c 'touch ${out('n2')}'` },
-            { kind: 'native_shell', command: `/bin/touch ${out('n3')}` },
-            { kind: 'native_shell', command: `true; touch ${out('n4')}` },
-            { kind: 'native_shell', command: `echo $(touch ${out('n5')})` },
-            { kind: 'native_shell', command: `true | touch ${out('n6')}` },
-            { kind: 'native_shell', command: 'touch inside-shell.txt' },
-          ],
-          RULES([{ id: 'any-exec', action: 'allow', kind: 'execute' }]),
-        );
-        expect(seen.result).toMatchObject({ state: 'completed' });
-        expect(seen.permissions).toHaveLength(7);
-        for (const answer of seen.permissions) {
-          expect(answer).toMatchObject({
-            kind: 'execute',
-            answer: 'reject',
-            reason: 'native_shell',
-            overruledRule: 'any-exec',
-          });
-        }
-        // Not even the harmless command inside the worktree ran: the shell of the client is never
-        // available, in the worktree or out of it.
-        expect(existsSync(join(seen.worktree, 'inside-shell.txt'))).toBe(false);
-        expect(await outsideFiles(outside)).toEqual(['secret.txt']);
+    it('rejects the native shell of the client in every spelling, even under a rule that allows it', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
+          const out = (name: string): string => join(outside.outsideDir, name);
+          const seen = await attempt(
+            rig,
+            'shell-escape',
+            [
+              { kind: 'native_shell', command: `touch ${out('n1')}` },
+              { kind: 'native_shell', command: `bash -c 'touch ${out('n2')}'` },
+              { kind: 'native_shell', command: `/bin/touch ${out('n3')}` },
+              { kind: 'native_shell', command: `true; touch ${out('n4')}` },
+              { kind: 'native_shell', command: `echo $(touch ${out('n5')})` },
+              { kind: 'native_shell', command: `true | touch ${out('n6')}` },
+              { kind: 'native_shell', command: 'touch inside-shell.txt' },
+            ],
+            RULES([{ id: 'any-exec', action: 'allow', kind: 'execute' }]),
+          );
+          expect(seen.result).toMatchObject({ state: 'completed' });
+          expect(seen.permissions).toHaveLength(7);
+          for (const answer of seen.permissions) {
+            expect(answer).toMatchObject({
+              kind: 'execute',
+              answer: 'reject',
+              reason: 'native_shell',
+              overruledRule: 'any-exec',
+            });
+          }
+          // Not even the harmless command inside the worktree ran: the shell of the client is never
+          // available, in the worktree or out of it.
+          expect(existsSync(join(seen.worktree, 'inside-shell.txt'))).toBe(false);
+          expect(await outsideFiles(outside)).toEqual(['secret.txt']);
+        });
       });
-    });
-  }, 90_000);
+    }, 90_000);
 
-  it('rejects the native fetch to a host outside network.allow and a switch of mode, over the rules', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const url = `http://127.0.0.1:${String(outside.port)}/`;
-        const seen = await attempt(
-          rig,
-          'fetch-escape',
-          [
-            { kind: 'native_fetch', url },
-            { kind: 'native_fetch', url: `http://localhost:${String(outside.port)}/` },
-            { kind: 'native_fetch', url: 'not a url' },
-            { kind: 'switch_mode', mode: 'bypassPermissions' },
-          ],
-          RULES([
-            { id: 'any-fetch', action: 'allow', kind: 'fetch' },
-            { id: 'any-switch', action: 'allow', kind: 'switch_mode' },
-          ]),
-        );
-        expect(seen.result).toMatchObject({ state: 'completed' });
-        expect(seen.permissions.map((p) => [p.answer, p.reason, p.overruledRule, p.host])).toEqual([
-          ['reject', 'network_outside_allow', 'any-fetch', '127.0.0.1'],
-          ['reject', 'network_outside_allow', 'any-fetch', 'localhost'],
-          ['reject', 'network_outside_allow', 'any-fetch', undefined],
-          ['reject', 'mode_switch', 'any-switch', undefined],
-        ]);
-        expect(outside.requests()).toBe(0);
+    it('rejects the native fetch to a host outside network.allow and a switch of mode, over the rules', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
+          const url = `http://127.0.0.1:${String(outside.port)}/`;
+          const seen = await attempt(
+            rig,
+            'fetch-escape',
+            [
+              { kind: 'native_fetch', url },
+              { kind: 'native_fetch', url: `http://localhost:${String(outside.port)}/` },
+              { kind: 'native_fetch', url: 'not a url' },
+              { kind: 'switch_mode', mode: 'bypassPermissions' },
+            ],
+            RULES([
+              { id: 'any-fetch', action: 'allow', kind: 'fetch' },
+              { id: 'any-switch', action: 'allow', kind: 'switch_mode' },
+            ]),
+          );
+          expect(seen.result).toMatchObject({ state: 'completed' });
+          expect(
+            seen.permissions.map((p) => [p.answer, p.reason, p.overruledRule, p.host]),
+          ).toEqual([
+            ['reject', 'network_outside_allow', 'any-fetch', '127.0.0.1'],
+            ['reject', 'network_outside_allow', 'any-fetch', 'localhost'],
+            ['reject', 'network_outside_allow', 'any-fetch', undefined],
+            ['reject', 'mode_switch', 'any-switch', undefined],
+          ]);
+          expect(outside.requests()).toBe(0);
+        });
       });
-    });
-  }, 90_000);
+    }, 90_000);
 
-  it('lets the fetch through only to a host that network.allow names (the control of the test above)', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const seen = await attempt(
-          rig,
-          'fetch-allowed',
-          [
-            { kind: 'native_fetch', url: `http://127.0.0.1:${String(outside.port)}/` },
-            { kind: 'native_fetch', url: `http://localhost:${String(outside.port)}/` },
-          ],
-          RULES([{ id: 'any-fetch', action: 'allow', kind: 'fetch' }], ['127.0.0.1']),
-        );
-        expect(seen.permissions.map((p) => [p.answer, p.reason, p.host])).toEqual([
-          ['allow', 'rule', '127.0.0.1'],
-          ['reject', 'network_outside_allow', 'localhost'],
-        ]);
-        // Only the allowed host was reached: one request, from the first step.
-        expect(outside.requests()).toBe(1);
+    it('lets the fetch through only to a host that network.allow names (the control of the test above)', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
+          const seen = await attempt(
+            rig,
+            'fetch-allowed',
+            [
+              { kind: 'native_fetch', url: `http://127.0.0.1:${String(outside.port)}/` },
+              { kind: 'native_fetch', url: `http://localhost:${String(outside.port)}/` },
+            ],
+            RULES([{ id: 'any-fetch', action: 'allow', kind: 'fetch' }], ['127.0.0.1']),
+          );
+          expect(seen.permissions.map((p) => [p.answer, p.reason, p.host])).toEqual([
+            ['allow', 'rule', '127.0.0.1'],
+            ['reject', 'network_outside_allow', 'localhost'],
+          ]);
+          // Only the allowed host was reached: one request, from the first step.
+          expect(outside.requests()).toBe(1);
+        });
       });
-    });
-  }, 90_000);
+    }, 90_000);
 
-  it('with the default onAsk: reject nothing is released, not even a write inside the worktree', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const seen = await attempt(
-          rig,
-          'on-ask-reject',
-          [
-            { kind: 'write', path: 'inside.txt' },
-            { kind: 'write', path: join(outside.outsideDir, 'abs.txt') },
-            { kind: 'native_shell', command: 'touch inside-shell.txt' },
-            { kind: 'native_fetch', url: `http://127.0.0.1:${String(outside.port)}/` },
-            { kind: 'switch_mode' },
-          ],
-          BASE_POLICY,
-        );
-        expect(seen.permissions.map((p) => [p.answer, p.reason, p.rule])).toEqual(
-          Array.from({ length: 5 }, () => ['reject', 'on_ask_reject', 'none']),
-        );
-        expect(existsSync(join(seen.worktree, 'inside.txt'))).toBe(false);
-        expect(existsSync(join(seen.worktree, 'inside-shell.txt'))).toBe(false);
-        expect(await outsideFiles(outside)).toEqual(['secret.txt']);
-        expect(outside.requests()).toBe(0);
+    it('with the default onAsk: reject nothing is released, not even a write inside the worktree', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
+          const seen = await attempt(
+            rig,
+            'on-ask-reject',
+            [
+              { kind: 'write', path: 'inside.txt' },
+              { kind: 'write', path: join(outside.outsideDir, 'abs.txt') },
+              { kind: 'native_shell', command: 'touch inside-shell.txt' },
+              { kind: 'native_fetch', url: `http://127.0.0.1:${String(outside.port)}/` },
+              { kind: 'switch_mode' },
+            ],
+            BASE_POLICY,
+          );
+          expect(seen.permissions.map((p) => [p.answer, p.reason, p.rule])).toEqual(
+            Array.from({ length: 5 }, () => ['reject', 'on_ask_reject', 'none']),
+          );
+          expect(existsSync(join(seen.worktree, 'inside.txt'))).toBe(false);
+          expect(existsSync(join(seen.worktree, 'inside-shell.txt'))).toBe(false);
+          expect(await outsideFiles(outside)).toEqual(['secret.txt']);
+          expect(outside.requests()).toBe(0);
+        });
       });
-    });
-  }, 90_000);
-});
+    }, 90_000);
+  },
+);
 
 /**
  * The shells of the daemon (`nativeShell: 'shells'`): the Executor never gets the shell of its
@@ -296,7 +306,7 @@ interface ShellCase {
   readonly code?: string;
 }
 
-describe('the shells of the daemon: argv rules and confinement to the worktree', () => {
+describeWithLauncher('the shells of the daemon: argv rules and confinement to the worktree', () => {
   it('refuses chains, pipes, substitutions, programs by path, paths that climb, symlinks and flags that write', async () => {
     await withOutside(async (outside) => {
       await withFakeDaemon(
@@ -521,46 +531,20 @@ describe('the shells of the daemon: argv rules and confinement to the worktree',
  * runs code; the argv rules read paths, not code): it is the reason `security.unenforced` refuses
  * a session with no layer 3 by default, and the reason the sandbox section below exists.
  */
-describe('the limit of the rules: without layer 3 an allowed program writes anywhere', () => {
-  it('lets node -e write outside the worktree when the sandbox is off and unenforced is warn', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(NO_SANDBOX, async (rig) => {
-        const target = join(outside.outsideDir, 'by-node.txt');
-        const seen = await attempt(
-          rig,
-          'node-no-sandbox',
-          [
-            {
-              kind: 'mcp',
-              label: 'node writes a path hidden in code',
-              tool: 'restricted_shell',
-              arguments: {
-                argv: ['node', '-e', `require("fs").writeFileSync(${JSON.stringify(target)},"x")`],
-              },
-            },
-          ],
-          SHELLS_POLICY,
-        );
-        // The rules let it pass (a plain relative-looking argument) and nothing else holds: this is
-        // the control that says why layer 3 is not optional.
-        expect(seen.tools.map((t) => t.outcome)).toEqual(['ok']);
-        expect(existsSync(target)).toBe(true);
-      });
-    });
-  }, 90_000);
-
-  it('does not start the same session with the defaults (unenforced: refuse), so the escape above never runs', async () => {
-    await withOutside(async (outside) => {
-      await withFakeDaemon(
-        { config: 'sandbox:\n  mode: off\n', unenforced: false },
-        async (rig) => {
+describeWithLauncher(
+  'the limit of the rules: without layer 3 an allowed program writes anywhere',
+  () => {
+    it('lets node -e write outside the worktree when the sandbox is off and unenforced is warn', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(NO_SANDBOX, async (rig) => {
           const target = join(outside.outsideDir, 'by-node.txt');
           const seen = await attempt(
             rig,
-            'node-refused',
+            'node-no-sandbox',
             [
               {
                 kind: 'mcp',
+                label: 'node writes a path hidden in code',
                 tool: 'restricted_shell',
                 arguments: {
                   argv: [
@@ -573,14 +557,47 @@ describe('the limit of the rules: without layer 3 an allowed program writes anyw
             ],
             SHELLS_POLICY,
           );
-          expect(seen.result).toMatchObject({ state: 'interrupted', cause: 'permission' });
-          expect(seen.tools).toEqual([]);
-          expect(existsSync(target)).toBe(false);
-        },
-      );
-    });
-  }, 90_000);
-});
+          // The rules let it pass (a plain relative-looking argument) and nothing else holds: this is
+          // the control that says why layer 3 is not optional.
+          expect(seen.tools.map((t) => t.outcome)).toEqual(['ok']);
+          expect(existsSync(target)).toBe(true);
+        });
+      });
+    }, 90_000);
+
+    it('does not start the same session with the defaults (unenforced: refuse), so the escape above never runs', async () => {
+      await withOutside(async (outside) => {
+        await withFakeDaemon(
+          { config: 'sandbox:\n  mode: off\n', unenforced: false },
+          async (rig) => {
+            const target = join(outside.outsideDir, 'by-node.txt');
+            const seen = await attempt(
+              rig,
+              'node-refused',
+              [
+                {
+                  kind: 'mcp',
+                  tool: 'restricted_shell',
+                  arguments: {
+                    argv: [
+                      'node',
+                      '-e',
+                      `require("fs").writeFileSync(${JSON.stringify(target)},"x")`,
+                    ],
+                  },
+                },
+              ],
+              SHELLS_POLICY,
+            );
+            expect(seen.result).toMatchObject({ state: 'interrupted', cause: 'permission' });
+            expect(seen.tools).toEqual([]);
+            expect(existsSync(target)).toBe(false);
+          },
+        );
+      });
+    }, 90_000);
+  },
+);
 
 /**
  * Layer 3: the sandbox of the daemon. Everything here is something the client does BY ITSELF (a
@@ -589,7 +606,7 @@ describe('the limit of the rules: without layer 3 an allowed program writes anyw
  * operating system. The config has no `security.unenforced: warn`: the session starts only
  * because the sandbox counts as the layer of `writeScope` and `network`.
  */
-describe('layer 3: what the operating system holds', () => {
+describeWithLauncher('layer 3: what the operating system holds', () => {
   const DENIED = /failed (EROFS|EACCES|EPERM|ENOENT)/;
 
   it('stops a write, a program and a connection the client starts by itself', async (context) => {
