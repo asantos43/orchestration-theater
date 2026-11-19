@@ -179,7 +179,10 @@ const WINDOWS = process.platform === 'win32';
  */
 function killTreeNow(pid: number): void {
   if (WINDOWS) {
-    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     return;
   }
   try {
