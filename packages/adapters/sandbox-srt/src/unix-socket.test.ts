@@ -168,13 +168,17 @@ real('SrtSandbox Unix sockets of the daemon on macOS (N161)', () => {
 });
 
 describe('SrtSandbox unixSocketDirs (N161)', () => {
+  // A POSIX temp folder of its own: as darwin, the default one of a Windows host (`C:\...`) is not
+  // absolute for the sandbox, which would refuse it before the list of folders.
+  const posix = { tempDir: '/tmp/ot-us' };
+
   it('refuses a relative folder', () => {
-    expect(() => new SrtSandbox({ unixSocketDirs: ['rel/dir'] }, { platform: 'darwin' })).toThrow(
-      /unixSocketDirs must be an absolute path/,
-    );
+    expect(
+      () => new SrtSandbox({ ...posix, unixSocketDirs: ['rel/dir'] }, { platform: 'darwin' }),
+    ).toThrow(/unixSocketDirs must be an absolute path/);
   });
 
   it('accepts no folder by default', () => {
-    expect(new SrtSandbox({}, { platform: 'darwin' }).config.unixSocketDirs).toEqual([]);
+    expect(new SrtSandbox(posix, { platform: 'darwin' }).config.unixSocketDirs).toEqual([]);
   });
 });
