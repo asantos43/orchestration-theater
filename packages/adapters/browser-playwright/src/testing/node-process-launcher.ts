@@ -37,10 +37,12 @@ export class NodeProcessLauncher implements ProcessLauncher {
   /** Root pids launched, in order. */
   readonly pids: number[] = [];
   /**
-   * Roots whose `exit` was seen. Windows hands a freed pid to a new process soon after, so there a
-   * probe by pid alone may find (and `taskkill` may end) someone else.
+   * Each root launched, with whether its `exit` was seen. Windows hands a freed pid to a new process
+   * soon after, so there a probe by pid alone may find (and `taskkill` may end) someone else. The
+   * mark belongs to the launch, not to the pid: a new root that got the pid of one that exited is
+   * alive (keyed by pid, a loaded runner saw it as dead, 2026-11-19).
    */
-  private readonly exitedRoots = new Set<number>();
+  private readonly roots: { readonly pid: number; exited: boolean }[] = [];
 
   capabilities(): LauncherCapabilities {
     return {
@@ -77,11 +79,13 @@ export class NodeProcessLauncher implements ProcessLauncher {
           return;
         }
         this.pids.push(pid);
+        const root = { pid, exited: false };
+        this.roots.push(root);
         // A write after the child is gone (EPIPE) must not become an unhandled error.
         child.stdin.on('error', () => undefined);
         const exited = new Promise<ProcessExit>((done) => {
           child.once('exit', (code, signal) => {
-            this.exitedRoots.add(pid);
+            root.exited = true;
             done({ code, signal });
           });
         });
@@ -91,7 +95,7 @@ export class NodeProcessLauncher implements ProcessLauncher {
           stdout: Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
           stderr: Readable.toWeb(child.stderr) as ReadableStream<Uint8Array>,
           exited,
-          killTree: (options) => killTree(pid, () => this.alive(pid), options),
+          killTree: (options) => killTree(pid, () => this.alive(root), options),
         });
       });
     });
@@ -99,12 +103,12 @@ export class NodeProcessLauncher implements ProcessLauncher {
 
   /** How many launched trees still have a live member (a zombie not yet reaped counts as live). */
   aliveGroups(): number {
-    return this.pids.filter((pid) => this.alive(pid)).length;
+    return this.roots.filter((root) => this.alive(root)).length;
   }
 
   /** `treeAlive`, except that on Windows a root whose `exit` was seen is gone, whatever its pid now names. */
-  private alive(pid: number): boolean {
-    return !(WINDOWS && this.exitedRoots.has(pid)) && treeAlive(pid);
+  private alive(root: { readonly pid: number; readonly exited: boolean }): boolean {
+    return !(WINDOWS && root.exited) && treeAlive(root.pid);
   }
 
   /**
@@ -113,10 +117,10 @@ export class NodeProcessLauncher implements ProcessLauncher {
    */
   async killAll(): Promise<void> {
     await Promise.all(
-      this.pids.map(async (pid) => {
-        if (!this.alive(pid)) return;
-        await hardKill(pid);
-        await waitGone(() => this.alive(pid), 2000);
+      this.roots.map(async (root) => {
+        if (!this.alive(root)) return;
+        await hardKill(root.pid);
+        await waitGone(() => this.alive(root), 2000);
       }),
     );
   }
