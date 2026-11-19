@@ -16,8 +16,11 @@ import type { QuotaProbe } from './quota-probe.js';
  * `0.3.0` (Phase 4, P1): `RolePolicy` is version 2 (`nativeShell: 'shells'`, `onAsk: 'rules'`,
  * `mcpTools`). A client adapter written for version 1 would read `shells` as no shell and an MCP
  * server as whole, so the range `^0.2.0` no longer vouches for it. [proposta]
+ * `0.3.1` (Phase 5, P27, N158): `LoginFlow.submitCode`, optional, for the code the browser shows
+ * at the end of a sign-in that does not come back to the machine by itself. An adapter of `0.3.0`
+ * simply leaves it out. [proposta]
  */
-export const CLIENT_ADAPTER_PORT_VERSION = '0.3.0';
+export const CLIENT_ADAPTER_PORT_VERSION = '0.3.1';
 
 /**
  * The tools of one MCP server that a role may call: the names, or `all` for a server whose tools
@@ -169,6 +172,15 @@ export interface LoginFlow {
   readonly url?: string;
   /** Code the Producer types there (`device_code`). */
   readonly code?: string;
+  /**
+   * Hands the client's own login the code the browser shows at the end of a sign-in that does not
+   * come back to the machine by itself (P27, N158; Claude Code prints `Paste code here if
+   * prompted`). The code goes to the standard input of the login, one line, and is never logged or
+   * kept. Absent when the adapter cannot hand a code. Rejects with `InvalidInput` for an empty code
+   * or one with a line break, and with `AdapterUnavailable` once the login ended. Whether the code
+   * was accepted is told by `complete()`. [proposta]
+   */
+  submitCode?(code: string): Promise<void>;
   /** Resolves when the login finished; rejects with `Cancelled` or `PermissionDenied`. */
   complete(): Promise<void>;
   cancel(): Promise<void>;
