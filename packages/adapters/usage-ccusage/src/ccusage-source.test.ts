@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AdapterUnavailable, InvalidInput } from '@otheater/core';
@@ -18,7 +18,8 @@ let homeDir: string;
 let profileDir: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'ot-ccusage-'));
+  // The real path: on macOS the temp folder is a link (/var -> /private/var) and the child sees the real one.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ot-ccusage-')));
   binDir = join(root, 'bin');
   homeDir = join(root, 'adapter-home');
   profileDir = join(root, 'profile');

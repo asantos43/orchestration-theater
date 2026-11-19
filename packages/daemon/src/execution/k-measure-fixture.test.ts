@@ -168,7 +168,8 @@ describe('sampleTree', () => {
   });
 });
 
-describe('linuxProcFs', () => {
+// The real /proc exists only on Linux.
+describe.runIf(process.platform === 'linux')('linuxProcFs', () => {
   it('reads the own process on the real /proc, and nothing for a pid that does not exist', () => {
     const fs = linuxProcFs();
     expect(fs.pids()).toContain(process.pid);
