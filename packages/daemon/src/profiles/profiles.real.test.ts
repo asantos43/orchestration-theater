@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
+import { openSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { ReadStream } from 'node:tty';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from '@otheater/core';
 import { InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
@@ -23,6 +26,10 @@ import { makeTempDataDir } from '../test-helpers.js';
  *   `device_code`, the code; both are meant to be shown to the person) and waits for the owner to
  *   finish it, up to `OT_TEST_PROFILES_LOGIN_TIMEOUT_MS` (default 10 minutes). The agent that wrote
  *   this test never logs in and never ran it.
+ * - When the browser ends on a page with a code to paste (Claude Code: `Paste code here if
+ *   prompted`), the owner pastes it in the terminal and presses Enter: the test reads one line from
+ *   `/dev/tty` and hands it to `LoginFlow.submitCode` (P27, N158). The line is never printed or
+ *   logged; a login that comes back to the machine by itself never needs it.
  * - The profile lives in a temporary data directory (`profiles/<client>/second`), never in the
  *   owner's own profiles, and the daemon is pointed at that directory only. The test reads no
  *   credential file: the only thing it learns is "has a login or not", from the login probe (P2).
@@ -74,6 +81,38 @@ function alive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Reads one line the owner types in the terminal, from `/dev/tty` (the test workers have no stdin),
+ * and hands it to `submit`. Returns a function that stops the reading. Nothing read is printed.
+ */
+function codeFromTerminal(submit: (code: string) => Promise<void>): () => void {
+  let fd: number;
+  try {
+    fd = openSync('/dev/tty', 'r');
+  } catch {
+    console.log(
+      '[profiles-real] no terminal to read a pasted code from; only a login that comes back by itself can finish',
+    );
+    return () => undefined;
+  }
+  const input = new ReadStream(fd);
+  const lines = createInterface({ input, terminal: false });
+  lines.once('line', (line) => {
+    lines.close();
+    input.destroy();
+    if (line.trim() === '') return;
+    submit(line).catch((error: unknown) => {
+      console.log(
+        `[profiles-real] the code was not handed to the login: ${(error as Error).message}`,
+      );
+    });
+  });
+  return () => {
+    lines.close();
+    input.destroy();
+  };
 }
 
 function recording(inner: ProcessLauncher): { launcher: ProcessLauncher; pids: number[] } {
@@ -147,10 +186,18 @@ describe.skipIf(!enabled)(
               `[profiles-real] ${id}: the client asks for a terminal; if nothing shows, this client cannot be logged in by this test (record it as [N])`,
             );
           }
+          let stopReading = (): void => undefined;
+          if (flow.submitCode !== undefined && flow.mode !== 'terminal') {
+            const submit = flow.submitCode.bind(flow);
+            console.log(
+              `[profiles-real] ${id}: if the browser shows a code to paste, paste it here and press Enter (it goes to the client's login and is never logged)`,
+            );
+            stopReading = codeFromTerminal(submit);
+          }
           const outcome = await Promise.race([
             flow.complete().then(() => 'done' as const),
             sleep(LOGIN_TIMEOUT_MS).then(() => 'timeout' as const),
-          ]);
+          ]).finally(stopReading);
           if (outcome === 'timeout') {
             await flow.cancel();
             throw new Error(`${id}: the login did not finish in ${String(LOGIN_TIMEOUT_MS)} ms`);

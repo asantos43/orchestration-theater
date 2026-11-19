@@ -4,6 +4,7 @@
 import {
   AdapterUnavailable,
   Cancelled,
+  InvalidInput,
   PermissionDenied,
   type LaunchedProcess,
   type LoginFlow,
@@ -183,7 +184,10 @@ export async function runCommand(
  * `login()` returns when the client printed what the mode needs (the URL, and the code for
  * `device_code`), when it ended, or after `urlWaitMs`; `terminal` does not wait. `complete()`
  * resolves when the client exits with code 0, rejects with `PermissionDenied` for another exit or
- * a login that outlived `timeoutMs`, and with `Cancelled` after `cancel()`.
+ * a login that outlived `timeoutMs`, and with `Cancelled` after `cancel()`. `submitCode()` writes
+ * the code the browser shows to the standard input of the login, one line (P27, N158): the client
+ * reads it where it asks for it (Claude Code: `Paste code here if prompted >`), and the code is
+ * never logged or kept here.
  */
 export async function startOfficialLogin(
   where: LoginRun,
@@ -262,6 +266,21 @@ export async function startOfficialLogin(
     mode,
     ...(url === undefined ? {} : { url }),
     ...(code === undefined ? {} : { code }),
+    submitCode: async (given: string) => {
+      const line = given.trim();
+      if (line === '' || /[\r\n]/u.test(line)) {
+        throw new InvalidInput('the login code must be one non-empty line');
+      }
+      if (ended) throw new AdapterUnavailable(`${command.cmd}: the login already ended`);
+      const writer = process.stdin.getWriter();
+      try {
+        await writer.write(new TextEncoder().encode(`${line}\n`));
+      } catch {
+        throw new AdapterUnavailable(`${command.cmd}: the login no longer reads its input`);
+      } finally {
+        writer.releaseLock();
+      }
+    },
     complete: () => completion,
     cancel: async () => {
       if (ended) return;

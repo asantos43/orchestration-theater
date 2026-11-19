@@ -14,8 +14,9 @@ import { join } from 'node:path';
  * The "login" it keeps is a marker file of its own in that directory: it is the fake client's state,
  * not a credential, and no test reads it (the tests ask the probe, which is what a real login would
  * be read through). The scenario is chosen by `FAKE_SCENARIO` in the environment of the process:
- * `browser`, `device`, `terminal`, `quiet`, `silent`, `fail`, `hang`; `FAKE_DELAY_MS` (default 120)
- * is how long the "user" takes to sign in.
+ * `browser`, `device`, `terminal`, `quiet`, `silent`, `fail`, `hang`, `paste`; `FAKE_DELAY_MS`
+ * (default 120) is how long the "user" takes to sign in. `paste` prints the URL and then waits for
+ * a code on its standard input, like Claude Code: `good-code#state` signs in, anything else fails.
  */
 export const FAKE_CLIENT_SOURCE = String.raw`
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -49,6 +50,22 @@ async function login() {
     say('and enter the code ABCD-1234\n');
   } else if (scenario === 'terminal') {
     say('Select a provider (use the arrow keys)\n');
+  }
+  if (scenario === 'paste') {
+    say('If the browser did not open, visit: https://auth.example.test/authorize?state=abc123\n');
+    say('Paste code here if prompted > ');
+    let typed = '';
+    for await (const chunk of process.stdin) {
+      typed += String(chunk);
+      if (typed.includes('\n')) break;
+    }
+    if (typed.split('\n')[0] !== 'good-code#state') {
+      process.stderr.write("Login failed: That code wasn't accepted.\n");
+      process.exit(1);
+    }
+    writeFileSync(marker, 'signed-in\n');
+    say('Logged in\n');
+    process.exit(0);
   }
   if (scenario === 'hang') {
     setInterval(() => undefined, 1000);

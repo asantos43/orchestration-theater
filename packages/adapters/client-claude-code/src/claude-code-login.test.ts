@@ -2,7 +2,13 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Cancelled, PermissionDenied, type Profile } from '@otheater/core';
+import {
+  AdapterUnavailable,
+  Cancelled,
+  InvalidInput,
+  PermissionDenied,
+  type Profile,
+} from '@otheater/core';
 import { FakeProcessLauncher } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -96,6 +102,36 @@ describe('claude-code login', () => {
     expect(flow.url).toBeUndefined();
     await expect(flow.complete()).resolves.toBeUndefined();
     expect((await adapter.probeLogin(profile)).state).toBe('logged_in');
+  });
+
+  it('paste: the code the browser shows goes to the login, and a good one signs in (P27)', async () => {
+    const adapter = build('paste');
+    const profile = profileOf('a');
+    const flow = await adapter.login(profile);
+    expect(flow.url).toBe('https://auth.example.test/authorize?state=abc123');
+    expect('submitCode' in flow).toBe(true);
+    await flow.submitCode?.('  good-code#state  ');
+    await expect(flow.complete()).resolves.toBeUndefined();
+    expect((await adapter.probeLogin(profile)).state).toBe('logged_in');
+  });
+
+  it('paste: a code the client refuses ends the login with PermissionDenied', async () => {
+    const flow = await build('paste').login(profileOf('a'));
+    await flow.submitCode?.('wrong-code');
+    await expect(flow.complete()).rejects.toBeInstanceOf(PermissionDenied);
+  });
+
+  it('paste: an empty code or one with a line break is refused before it reaches the client', async () => {
+    const flow = await build('paste').login(profileOf('a'));
+    await expect(flow.submitCode?.('   ')).rejects.toBeInstanceOf(InvalidInput);
+    await expect(flow.submitCode?.('a\nb')).rejects.toBeInstanceOf(InvalidInput);
+    await flow.cancel();
+  });
+
+  it('paste: once the login ended, a code is refused with AdapterUnavailable', async () => {
+    const flow = await build('browser').login(profileOf('a'));
+    await flow.complete();
+    await expect(flow.submitCode?.('good-code#state')).rejects.toBeInstanceOf(AdapterUnavailable);
   });
 
   it('cancel() ends the client tree and complete() rejects with Cancelled', async () => {

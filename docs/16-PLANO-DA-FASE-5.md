@@ -91,6 +91,7 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
 | P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
 | P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | pendente |
+| P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | em andamento |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -100,7 +101,7 @@ Ordem em ondas **[proposta]**:
 5. P16 e P18;
 6. P19, P20 e P21;
 7. P23;
-8. P25 e P26, depois do aceite (N155 a N157).
+8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158) vem antes, porque a rodada do nível `profiles` depende dele.
 
 **Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
@@ -911,6 +912,12 @@ Aceite: testes de unidade da sonda e do erro; o nível real `quota` com o víncu
 O que é: os Terms of Use da OpenAI (em vigor desde 2026-01-01, acesso em 2026-11-18 [S]) proíbem contornar limites e compartilhar a conta, e não tratam de várias contas da mesma pessoa [N] (risco R21). Chave `profiles.rotate_on_exhaustion.openai` (`off` | `on`) [proposta], padrão `off`: um perfil da OpenAI (Codex, ou OpenCode com login do ChatGPT) esgotado não passa a outra conta da OpenAI; a seleção (P15), o bastão (P18) e o failover do Diretor (P20) esperam o reset ou passam a outro provedor. Com `on`, a troca volta, com aviso no `daemon.notice`. Os outros provedores não mudam.
 
 Aceite: testes da seleção, do bastão e do failover com duas contas da OpenAI e uma de outro provedor, nos dois modos.
+
+### P27. Login com código colado do navegador (N158)
+
+O que é: o nível `profiles` mostrou que o login do Claude Code pode terminar no navegador com um código para colar (`Paste code here if prompted >`), e o fluxo de login não tinha como entregá-lo ao processo do cliente [V, 2026-11-18]. A porta `ClientAdapter` vai para a 0.3.1 com o membro opcional `LoginFlow.submitCode(code)` [proposta]. Os três adaptadores escrevem o código, numa linha, na entrada padrão do login oficial. Um código vazio ou com quebra de linha é recusado com `InvalidInput`, e o login já terminado responde `AdapterUnavailable`. O código nunca é gravado nem registrado. No teste real do nível `profiles`, o dono cola o código no terminal e aperta Enter: o teste lê uma linha de `/dev/tty` e a entrega ao fluxo.
+
+Aceite: testes com o cliente falso (cenário `paste`): o código certo faz o login, o errado termina com `PermissionDenied`, o vazio é recusado antes de chegar ao cliente, e o código depois do fim é recusado. Depois, o dono roda de novo o nível `profiles`.
 
 ## Decisões que surgem deste plano
 

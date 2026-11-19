@@ -89,6 +89,12 @@ describe('opencode login', () => {
     await expect(flow.complete()).resolves.toBeUndefined();
   });
 
+  it('paste: the code the browser shows goes to the login, and a good one signs in (P27)', async () => {
+    const flow = await build('paste').login(profileOf('a'));
+    await flow.submitCode?.('good-code#state');
+    await expect(flow.complete()).resolves.toBeUndefined();
+  });
+
   it('cancel() ends the client tree and complete() rejects with Cancelled', async () => {
     const adapter = build('hang', { mode: 'browser' });
     const profile = profileOf('a');
