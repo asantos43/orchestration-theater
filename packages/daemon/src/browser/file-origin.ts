@@ -205,7 +205,10 @@ export class FileOrigin {
     const segments = path
       .split(/[\\/]+/)
       .filter((segment) => segment !== '')
-      .map((segment) => encodeURIComponent(segment));
+      // A Windows drive stays as it is (`C:`), so the agent sees `file:///C:/...` back, not `C%3A`.
+      .map((segment, index) =>
+        index === 0 && /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment),
+      );
     return `${this.origin}${FILES_PREFIX}${known.token}/${segments.join('/')}${suffix}`;
   }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { copyFile, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, normalize } from 'node:path';
+import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import {
   Conflict,
   InvalidInput,
@@ -199,6 +199,13 @@ export class GitVcs
     if (message.trim() === '') throw new InvalidInput('A commit message cannot be empty');
     const root = await this.#worktreeRoot(worktree);
     await this.#git.run(root, ['add', '-A', '--']);
+    const executable = opts.executable ?? [];
+    if (executable.length > 0) {
+      const paths = executable.map((path) =>
+        relative(root, resolve(worktree, path)).split(sep).join('/'),
+      );
+      await this.#git.run(root, ['update-index', '--chmod=+x', '--', ...paths]);
+    }
     const staged = await this.#git.try(root, ['diff', '--cached', '--quiet']);
     if (staged.code === 0 && opts.allowEmpty !== true) return undefined;
     if (staged.code > 1) {

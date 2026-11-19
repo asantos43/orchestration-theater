@@ -48,7 +48,10 @@ describe('createSoftwareProject', () => {
     expect(ci).toContain('./scripts/test.sh');
     expect(ci).toContain('branches: ["main"]');
     expect(await readFile(join(folder, 'README.md'), 'utf8')).toContain('# shiny');
-    expect((await stat(join(folder, 'scripts', 'test.sh'))).mode & 0o111).not.toBe(0);
+    // Windows keeps no execute bit on disk; what matters there is the mode git records below.
+    if (process.platform !== 'win32') {
+      expect((await stat(join(folder, 'scripts', 'test.sh'))).mode & 0o111).not.toBe(0);
+    }
 
     // Git has the script as executable, and the work tree is clean: everything is committed.
     expect(await testGit(folder, 'ls-files', '-s', 'scripts/test.sh')).toMatch(/^100755 /);
