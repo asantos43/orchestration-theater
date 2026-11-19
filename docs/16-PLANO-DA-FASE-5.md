@@ -91,7 +91,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P24 | Eventos dos avisos do daemon (N149) | P16b, P18b | P19, P20, P21 | concluído (PR #124) |
 | P25 | Cota do OpenCode com assinatura: vínculo com o Codex (N156) | P8, P23 | P26 | pendente |
 | P26 | Troca entre contas da OpenAI desligada por padrão (N157) | P15, P23 | P25 | pendente |
-| P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | em andamento |
+| P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | concluído (PR #135) |
+| P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | em andamento |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -101,7 +102,7 @@ Ordem em ondas **[proposta]**:
 5. P16 e P18;
 6. P19, P20 e P21;
 7. P23;
-8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158) vem antes, porque a rodada do nível `profiles` depende dele.
+8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158) e o P27b vêm antes, porque a rodada do nível `profiles` depende deles.
 
 **Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
@@ -918,6 +919,18 @@ Aceite: testes da seleção, do bastão e do failover com duas contas da OpenAI 
 O que é: o nível `profiles` mostrou que o login do Claude Code pode terminar no navegador com um código para colar (`Paste code here if prompted >`), e o fluxo de login não tinha como entregá-lo ao processo do cliente [V, 2026-11-18]. A porta `ClientAdapter` vai para a 0.3.1 com o membro opcional `LoginFlow.submitCode(code)` [proposta]. Os três adaptadores escrevem o código, numa linha, na entrada padrão do login oficial. Um código vazio ou com quebra de linha é recusado com `InvalidInput`, e o login já terminado responde `AdapterUnavailable`. O código nunca é gravado nem registrado. No teste real do nível `profiles`, o dono cola o código no terminal e aperta Enter: o teste lê uma linha de `/dev/tty` e a entrega ao fluxo.
 
 Aceite: testes com o cliente falso (cenário `paste`): o código certo faz o login, o errado termina com `PermissionDenied`, o vazio é recusado antes de chegar ao cliente, e o código depois do fim é recusado. Depois, o dono roda de novo o nível `profiles`.
+
+### P27b. URL de login certa no Codex e código colado pelo script do aceite
+
+O que é: a segunda rodada do nível `profiles` (2026-11-19) mostrou duas falhas [V].
+
+1. O teste roda sob `setsid`, sem terminal de controle: abrir `/dev/tty` dá `ENXIO`, e o código colado pelo dono não chegava ao login. Agora o script `tools/acceptance/real-acceptance.sh` lê a linha do próprio terminal e a passa ao teste por um FIFO numa pasta `0700`, com a variável `OT_TEST_PROFILES_CODE_FIFO`. O FIFO some no fim. A linha não vai ao log nem a arquivo. O teste lê o FIFO uma vez para o arquivo inteiro, e uma linha vai a um login no máximo. Rodado à mão, sem o script, o teste lê `/dev/tty`.
+2. O Codex imprime primeiro o servidor de retorno local (`Starting local login server on http://localhost:1455`) e só depois a URL de login [V: strings do binário do Codex, 2026-11-19]. O fluxo pegava a primeira URL e mostrava o servidor local, que não faz login de ninguém. Agora o fluxo de login prefere a primeira URL que não é da própria máquina (`localhost`, `127.0.0.1` ou `[::1]`). Só fica com a URL local se `urlWaitMs` passar sem outra.
+
+Aceite:
+- testes com o cliente falso (cenário `callback-first`, no Codex) e das funções `signInUrl` e `isLoopbackUrl`;
+- o repasse do terminal ao FIFO, testado num pseudoterminal [V, 2026-11-19];
+- depois, o dono roda de novo o nível `profiles`.
 
 ## Decisões que surgem deste plano
 

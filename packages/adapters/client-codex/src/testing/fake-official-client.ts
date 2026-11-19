@@ -14,9 +14,10 @@ import { join } from 'node:path';
  * The "login" it keeps is a marker file of its own in that directory: it is the fake client's state,
  * not a credential, and no test reads it (the tests ask the probe, which is what a real login would
  * be read through). The scenario is chosen by `FAKE_SCENARIO` in the environment of the process:
- * `browser`, `device`, `terminal`, `quiet`, `silent`, `fail`, `hang`, `paste`; `FAKE_DELAY_MS`
+ * `browser`, `callback-first`, `device`, `terminal`, `quiet`, `silent`, `fail`, `hang`, `paste`; `FAKE_DELAY_MS`
  * (default 120) is how long the "user" takes to sign in. `paste` prints the URL and then waits for
  * a code on its standard input, like Claude Code: `good-code#state` signs in, anything else fails.
+ * `callback-first` prints its callback server on this machine before the sign-in URL, like Codex.
  */
 export const FAKE_CLIENT_SOURCE = String.raw`
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -44,6 +45,11 @@ async function login() {
     say('\u001b[1mOpen this URL to sign in:\u001b[0m\n');
     await wait(20);
     say('https://auth.example.test/authorize?state=abc123.\n');
+  } else if (scenario === 'callback-first') {
+    say('Starting local login server on http://localhost:1455.\n');
+    await wait(30);
+    say('If your browser did not open, navigate to this URL to authenticate:\n\n');
+    say('https://auth.example.test/oauth/authorize?state=abc123\n');
   } else if (scenario === 'device') {
     say('Visit https://auth.example.test/device\n');
     await wait(20);

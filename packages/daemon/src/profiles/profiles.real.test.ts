@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { openSync } from 'node:fs';
-import { createInterface } from 'node:readline';
+import { constants, openSync } from 'node:fs';
+import { Socket } from 'node:net';
+import { createInterface, type Interface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ReadStream } from 'node:tty';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from '@otheater/core';
@@ -27,9 +28,11 @@ import { makeTempDataDir } from '../test-helpers.js';
  *   finish it, up to `OT_TEST_PROFILES_LOGIN_TIMEOUT_MS` (default 10 minutes). The agent that wrote
  *   this test never logs in and never ran it.
  * - When the browser ends on a page with a code to paste (Claude Code: `Paste code here if
- *   prompted`), the owner pastes it in the terminal and presses Enter: the test reads one line from
- *   `/dev/tty` and hands it to `LoginFlow.submitCode` (P27, N158). The line is never printed or
- *   logged; a login that comes back to the machine by itself never needs it.
+ *   prompted`), the owner pastes it in the terminal and presses Enter: the acceptance script reads
+ *   the line from its terminal and passes it through a FIFO (`OT_TEST_PROFILES_CODE_FIFO`, P27b),
+ *   and the test hands it to `LoginFlow.submitCode` (P27, N158); run by hand, the test reads
+ *   `/dev/tty`. The line is never printed or logged; a login that comes back to the machine by
+ *   itself never needs it.
  * - The profile lives in a temporary data directory (`profiles/<client>/second`), never in the
  *   owner's own profiles, and the daemon is pointed at that directory only. The test reads no
  *   credential file: the only thing it learns is "has a login or not", from the login probe (P2).
@@ -84,34 +87,73 @@ function alive(pid: number): boolean {
 }
 
 /**
- * Reads one line the owner types in the terminal, from `/dev/tty` (the test workers have no stdin),
- * and hands it to `submit`. Returns a function that stops the reading. Nothing read is printed.
+ * The lines the owner types, read once for the whole file: from the FIFO the acceptance script fills
+ * from its terminal (`OT_TEST_PROFILES_CODE_FIFO`; the script runs this test under `setsid`, so the
+ * test has no terminal of its own [V: ENXIO on `/dev/tty`, 2026-11-19]), else from `/dev/tty`.
+ * `null` once neither opens. Nothing read is printed or logged.
+ */
+let typed: { input: Socket | ReadStream; lines: Interface } | null | undefined;
+/** The login waiting for a pasted code, if any; a line goes to one login at most. */
+let waitingLogin: ((code: string) => Promise<void>) | undefined;
+
+function openTyped(): boolean {
+  if (typed !== undefined) return typed !== null;
+  const fifo = process.env.OT_TEST_PROFILES_CODE_FIFO;
+  try {
+    const input =
+      fifo !== undefined && fifo !== ''
+        ? // O_RDWR keeps the FIFO open without a writer, and O_NONBLOCK keeps the open from waiting.
+          new Socket({
+            fd: openSync(fifo, constants.O_RDWR | constants.O_NONBLOCK),
+            readable: true,
+            writable: false,
+          })
+        : new ReadStream(openSync('/dev/tty', 'r'));
+    const lines = createInterface({ input, terminal: false });
+    lines.on('line', (line) => {
+      if (line.trim() === '') return;
+      const submit = waitingLogin;
+      waitingLogin = undefined;
+      if (submit === undefined) {
+        console.log(
+          '[profiles-real] a line came while no login was waiting for a code; it was dropped',
+        );
+        return;
+      }
+      submit(line).catch((error: unknown) => {
+        console.log(
+          `[profiles-real] the code was not handed to the login: ${(error as Error).message}`,
+        );
+      });
+    });
+    typed = { input, lines };
+  } catch {
+    typed = null;
+  }
+  return typed !== null;
+}
+
+afterAll(() => {
+  if (typed) {
+    typed.lines.close();
+    typed.input.destroy();
+  }
+});
+
+/**
+ * Hands the next line the owner types to `submit` (P27, N158). Returns a function that stops
+ * waiting.
  */
 function codeFromTerminal(submit: (code: string) => Promise<void>): () => void {
-  let fd: number;
-  try {
-    fd = openSync('/dev/tty', 'r');
-  } catch {
+  if (!openTyped()) {
     console.log(
       '[profiles-real] no terminal to read a pasted code from; only a login that comes back by itself can finish',
     );
     return () => undefined;
   }
-  const input = new ReadStream(fd);
-  const lines = createInterface({ input, terminal: false });
-  lines.once('line', (line) => {
-    lines.close();
-    input.destroy();
-    if (line.trim() === '') return;
-    submit(line).catch((error: unknown) => {
-      console.log(
-        `[profiles-real] the code was not handed to the login: ${(error as Error).message}`,
-      );
-    });
-  });
+  waitingLogin = submit;
   return () => {
-    lines.close();
-    input.destroy();
+    if (waitingLogin === submit) waitingLogin = undefined;
   };
 }
 

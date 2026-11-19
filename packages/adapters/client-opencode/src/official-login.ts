@@ -87,6 +87,30 @@ export function firstUrl(text: string): string | undefined {
   return match?.[0].replace(/[.,;:)\]}]+$/u, '');
 }
 
+const LOOPBACK_URL = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:[/?#]|$)/iu;
+
+/** A URL on this machine (`localhost`, `127.0.0.1`, `[::1]`): the client's own callback server. */
+export function isLoopbackUrl(url: string): boolean {
+  return LOOPBACK_URL.test(url);
+}
+
+/**
+ * The URL where the person signs in: the first URL of `text` that is not on this machine, else the
+ * first URL. Codex prints its callback server (`Starting local login server on
+ * http://localhost:1455`) before the sign-in URL [V: strings of the codex binary, 2026-11-19], and
+ * opening the callback server signs nobody in.
+ */
+export function signInUrl(text: string): string | undefined {
+  const plain = text.replaceAll(ANSI, '');
+  let first: string | undefined;
+  for (const match of plain.matchAll(new RegExp(URL_PATTERN, 'gu'))) {
+    const url = match[0].replace(/[.,;:)\]}]+$/u, '');
+    if (!isLoopbackUrl(url)) return url;
+    first ??= url;
+  }
+  return first;
+}
+
 /** The first device code of `text`, looked for outside the URLs. */
 export function firstCode(text: string): string | undefined {
   const plain = text.replaceAll(ANSI, '').replaceAll(new RegExp(URL_PATTERN, 'gu'), ' ');
@@ -209,12 +233,14 @@ export async function startOfficialLogin(
   let ended = false;
   const hasEnded = (): boolean => ended;
   let wake = (): void => undefined;
+  // A callback server on this machine is not what the person opens: wait for the sign-in URL, and
+  // fall back to the callback server only when `urlWaitMs` passes without one.
+  const hasUrl = (): boolean => url !== undefined && !isLoopbackUrl(url);
   const hasWhatItNeeds = (): boolean =>
-    mode === 'terminal' ||
-    (mode === 'device_code' ? url !== undefined && code !== undefined : url !== undefined);
+    mode === 'terminal' || (mode === 'device_code' ? hasUrl() && code !== undefined : hasUrl());
   const watch = (text: string): void => {
     seen = (seen + text).slice(-OUTPUT_CAP);
-    url ??= firstUrl(seen);
+    if (!hasUrl()) url = signInUrl(seen) ?? url;
     code ??= firstCode(seen);
     if (hasWhatItNeeds()) wake();
   };
