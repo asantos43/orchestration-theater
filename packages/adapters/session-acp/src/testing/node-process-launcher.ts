@@ -33,6 +33,11 @@ export class NodeProcessLauncher implements ProcessLauncher {
   };
   /** Root pids launched, in order. */
   readonly pids: number[] = [];
+  /**
+   * Roots whose `exit` was seen. Windows hands a freed pid to a new process soon after, so there a
+   * probe by pid alone may find (and `taskkill` may end) someone else.
+   */
+  private readonly exitedRoots = new Set<number>();
 
   capabilities(): LauncherCapabilities {
     return {
@@ -73,6 +78,7 @@ export class NodeProcessLauncher implements ProcessLauncher {
         child.stdin.on('error', () => undefined);
         const exited = new Promise<ProcessExit>((done) => {
           child.once('exit', (code, signal) => {
+            this.exitedRoots.add(pid);
             done({ code, signal });
           });
         });
@@ -82,7 +88,7 @@ export class NodeProcessLauncher implements ProcessLauncher {
           stdout: Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
           stderr: Readable.toWeb(child.stderr) as ReadableStream<Uint8Array>,
           exited,
-          killTree: (options) => killTree(pid, options),
+          killTree: (options) => killTree(pid, () => this.alive(pid), options),
         });
       });
     });
@@ -90,7 +96,12 @@ export class NodeProcessLauncher implements ProcessLauncher {
 
   /** How many launched trees still have a live member (a zombie not yet reaped counts as live). */
   aliveGroups(): number {
-    return this.pids.filter(treeAlive).length;
+    return this.pids.filter((pid) => this.alive(pid)).length;
+  }
+
+  /** `treeAlive`, except that on Windows a root whose `exit` was seen is gone, whatever its pid now names. */
+  private alive(pid: number): boolean {
+    return !(WINDOWS && this.exitedRoots.has(pid)) && treeAlive(pid);
   }
 
   /**
@@ -101,8 +112,9 @@ export class NodeProcessLauncher implements ProcessLauncher {
   async killAll(): Promise<void> {
     await Promise.all(
       this.pids.map(async (pid) => {
+        if (!this.alive(pid)) return;
         await hardKill(pid);
-        await waitGone(pid, 2000);
+        await waitGone(() => this.alive(pid), 2000);
       }),
     );
   }
@@ -130,13 +142,13 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-async function waitGone(pid: number, ms: number): Promise<boolean> {
+async function waitGone(alive: () => boolean, ms: number): Promise<boolean> {
   const until = Date.now() + ms;
   while (Date.now() < until) {
-    if (!treeAlive(pid)) return true;
+    if (!alive()) return true;
     await sleep(10);
   }
-  return !treeAlive(pid);
+  return !alive();
 }
 
 /** `taskkill /PID <pid> /T /F`: resolves when it ends; an exit code of failure means "not found". */
@@ -169,20 +181,24 @@ async function hardKill(pid: number): Promise<void> {
   else signalGroup(pid, 'SIGKILL');
 }
 
-async function killTree(pid: number, options?: KillOptions): Promise<KillReport> {
-  if (!treeAlive(pid)) return { found: 0, forced: false, remaining: [] };
+async function killTree(
+  pid: number,
+  alive: () => boolean,
+  options?: KillOptions,
+): Promise<KillReport> {
+  if (!alive()) return { found: 0, forced: false, remaining: [] };
   if (WINDOWS) {
     // No polite signal for a console process on Windows (`taskkill` without `/F` only asks windows
     // to close), so the kill is forced from the start.
     await taskkillTree(pid);
-    const gone = await waitGone(pid, 2000);
+    const gone = await waitGone(alive, 2000);
     return { found: 1, forced: true, remaining: gone ? [] : [pid] };
   }
   signalGroup(pid, 'SIGTERM');
-  if (await waitGone(pid, options?.graceMs ?? DEFAULT_KILL_GRACE_MS)) {
+  if (await waitGone(alive, options?.graceMs ?? DEFAULT_KILL_GRACE_MS)) {
     return { found: 1, forced: false, remaining: [] };
   }
   signalGroup(pid, 'SIGKILL');
-  const gone = await waitGone(pid, 2000);
+  const gone = await waitGone(alive, 2000);
   return { found: 1, forced: true, remaining: gone ? [] : [pid] };
 }

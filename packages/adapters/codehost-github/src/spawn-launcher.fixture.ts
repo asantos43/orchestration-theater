@@ -60,8 +60,12 @@ export class SpawnLauncher implements ProcessLauncher {
     });
     const pid = child.pid;
     if (pid === undefined) throw new AdapterUnavailable(`cannot start ${opts.cmd}`);
+    // Windows hands a freed pid to a new process soon after: once the root exited, `taskkill` by its
+    // pid could end someone else.
+    let rootExited = false;
     const exited = new Promise<ProcessExit>((resolve) => {
       child.once('exit', (code, signal) => {
+        rootExited = true;
         resolve({ code, signal });
       });
     });
@@ -76,6 +80,7 @@ export class SpawnLauncher implements ProcessLauncher {
       killTree: (): Promise<KillReport> => {
         let found = 0;
         if (process.platform === 'win32') {
+          if (rootExited) return Promise.resolve({ found, forced: false, remaining: [] });
           // No process groups on Windows: `taskkill /T` ends the process and what it started.
           const kill = spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
             windowsHide: true,
