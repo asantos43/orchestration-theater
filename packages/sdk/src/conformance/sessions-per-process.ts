@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 
@@ -47,8 +47,9 @@ type Json = Record<string, unknown>;
 
 /**
  * Starts the command, runs `initialize`, makes `sessions` calls to `session/new` one after the
- * other on the same process and reports what the client answered. The process (its whole group)
- * is killed by pid at the end. Requests the client makes of us get the safest answer: a permission
+ * other on the same process and reports what the client answered. The process (its whole tree)
+ * is killed by pid at the end: its process group on POSIX, and `taskkill /T /F` on Windows, which
+ * has no process groups. Requests the client makes of us get the safest answer: a permission
  * request is `cancelled`, anything else is `method not found`.
  */
 export async function probeSessionsPerProcess(
@@ -58,7 +59,10 @@ export async function probeSessionsPerProcess(
   const child = spawn(probe.cmd, [...(probe.args ?? [])], {
     cwd: probe.cwd,
     env: { ...probe.env },
-    detached: true,
+    // POSIX: a group of its own, for the group kill at the end. Windows: `detached` would open a
+    // console of its own and gives no group.
+    detached: !WINDOWS,
+    windowsHide: true,
     stdio: ['pipe', 'pipe', 'ignore'],
   });
   const state = { alive: true };
@@ -161,14 +165,27 @@ export async function probeSessionsPerProcess(
     };
   } finally {
     const pid = child.pid;
-    if (pid !== undefined) {
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {
-        // Already gone.
-      }
-    }
+    if (pid !== undefined && state.alive) killTreeNow(pid);
     await gone;
+  }
+}
+
+const WINDOWS = process.platform === 'win32';
+
+/**
+ * Forced kill of the tree rooted at `pid`. POSIX: `kill(-pid)` reaches the group the child leads.
+ * Windows: a negative pid is not a group there (the kill would throw and leave the process alive),
+ * so the system `taskkill /PID <pid> /T /F` ends the root and its descendants.
+ */
+function killTreeNow(pid: number): void {
+  if (WINDOWS) {
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    // Already gone.
   }
 }
 

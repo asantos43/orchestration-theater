@@ -75,6 +75,8 @@ describe('the orders on a running daemon', () => {
     }
   });
 
+  // Days of a fake clock: every lap of the daemon loops in the window runs, about 1 s on Linux and
+  // past the default 5 s on the Windows runner of the CI.
   it('an order with a future start only enters after the start', async () => {
     const tmp = await makeTempDataDir();
     const clock = new FakeClock(T0);
@@ -92,7 +94,7 @@ describe('the orders on a running daemon', () => {
     } finally {
       await tmp.dispose();
     }
-  });
+  }, 30_000);
 
   it('an order that ends while the daemon is stopped stays out of the sessions opened after the restart', async () => {
     const tmp = await makeTempDataDir();
