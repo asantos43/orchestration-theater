@@ -54,8 +54,43 @@ jobs:
       - run: cargo test --locked
         working-directory: native/job-launcher
 
+  # Decides whether a pull request runs the Windows and macOS jobs (owner, 2026-11-19): by default
+  # only when it touches code, so a PR of docs or spikes stays on linux alone. The repository
+  # variable OT_CROSS_CI picks the mode: `code` (default), `always` or `manual` (dispatch only).
+  # On a pull request the checkout is the merge commit, so HEAD^1 is the tip of the base branch.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      cross: ${{ steps.decide.outputs.cross }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_CROSS_CI || 'code' }}
+        run: |
+          case "$MODE" in
+            always) cross=true ;;
+            manual) cross=false ;;
+            code)
+              changed=$(git diff --name-only HEAD^1 HEAD)
+              echo "$changed"
+              if printf '%s\n' "$changed" | grep -qvE '^(docs/|spikes/|\.claude/|[^/]+\.md$|LICENSE$|$)'; then
+                cross=true
+              else
+                cross=false
+              fi ;;
+            *) echo "::error::OT_CROSS_CI=$MODE: use code, always or manual"; exit 1 ;;
+          esac
+          echo "cross=$cross (mode $MODE)"
+          echo "cross=$cross" >> "$GITHUB_OUTPUT"
+
   cross:
-    if: github.event_name == 'workflow_dispatch'
+    needs: [changes]
+    # `!cancelled()`: on a dispatch the job `changes` is skipped, and a skipped need would skip this one.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.cross == 'true') }}
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +114,9 @@ jobs:
 
   # Real test of the Windows Job Object launcher (N58): only here the integration tests run.
   windows-launcher:
-    if: github.event_name == 'workflow_dispatch'
+    needs: [changes]
+    # `!cancelled()`: on a dispatch the job `changes` is skipped, and a skipped need would skip this one.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.cross == 'true') }}
     runs-on: windows-latest
     defaults:
       run:
