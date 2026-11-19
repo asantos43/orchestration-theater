@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DRAIN_DIRECTOR_MODES,
   DRAIN_ON_TIMEOUT_MODES,
+  PROFILE_EXEC_ENV_INHERIT_MODES,
   REMOVED_DIR_MODES,
   SAME_PROVIDER_NOTICE_MODES,
   parseConfig,
@@ -21,8 +22,39 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
       },
       api_key_env: {},
       rotate_on_exhaustion: { openai: 'off' },
+      commands: {},
+      options: {},
+      exec: { env_inherit: 'terminal' },
       entries: {},
     });
+  });
+
+  it('reads the common words of profile exec by name and client, and every env_inherit mode (P28a)', () => {
+    const profiles = parseConfig(
+      [
+        'profiles:',
+        '  commands:',
+        '    review:',
+        '      codex: [review]',
+        '    run:',
+        '      my-client: []',
+        '  options:',
+        '    effort:',
+        '      codex: [-c, model_reasoning_effort]',
+      ].join('\n'),
+    ).profiles;
+    expect(profiles.commands).toEqual({ review: { codex: ['review'] }, run: { 'my-client': [] } });
+    expect(profiles.options).toEqual({ effort: { codex: ['-c', 'model_reasoning_effort'] } });
+    for (const mode of PROFILE_EXEC_ENV_INHERIT_MODES) {
+      expect(parseConfig(`profiles:\n  exec:\n    env_inherit: ${mode}\n`).profiles.exec).toEqual({
+        env_inherit: mode,
+      });
+    }
+    expect(() => parseConfig('profiles:\n  exec:\n    env_inherit: all\n')).toThrow(/env_inherit/);
+    // A name out of the pattern, an option with no token, an empty token.
+    expect(() => parseConfig('profiles:\n  commands:\n    Review:\n      codex: [r]\n')).toThrow();
+    expect(() => parseConfig('profiles:\n  options:\n    effort:\n      codex: []\n')).toThrow();
+    expect(() => parseConfig("profiles:\n  commands:\n    x:\n      codex: ['']\n")).toThrow();
   });
 
   it('takes every mode of every key', () => {

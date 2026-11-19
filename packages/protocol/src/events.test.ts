@@ -98,6 +98,8 @@ describe('daemon event registry', () => {
       'quota.signal_dropped',
       'usage.notice',
       'profile.warning',
+      'profile.exec.started',
+      'profile.exec.ended',
       'executor.changed',
       'daemon.notice',
       'recovery.notice',

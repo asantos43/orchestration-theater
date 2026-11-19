@@ -37,6 +37,7 @@ import {
 } from './i18n.js';
 import { dataPaths, resolveDataDir, type Env } from './paths.js';
 import { isProfileAction, runProfileCommand, type ProfileOptions } from './profiles/command.js';
+import { runProfileExec, type ExecSignals, type ExecSpawn } from './profiles/exec.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -62,6 +63,10 @@ export interface CliDeps {
   readonly clients?: ClientFactory | undefined;
   /** The short test session of `ot executor add` (none in the terminal: tests give a fake). */
   readonly executorTestSession?: TestSession | undefined;
+  /** Starts the CLI of `ot profile exec` (default: the real one, in this terminal). */
+  readonly execSpawn?: ExecSpawn | undefined;
+  /** The signals while `ot profile exec` runs (default: the process's). */
+  readonly execSignals?: ExecSignals | undefined;
 }
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
@@ -172,6 +177,20 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
       case 'profile': {
         const [action, ...args] = rest;
         if (action === undefined) return usageError(t('usage.missingProfileAction'));
+        if (action === 'exec') {
+          return await runProfileExec(
+            context,
+            {
+              clients: deps.clients,
+              env: deps.env,
+              cwd: deps.cwd,
+              passwordPrompt: deps.passwordPrompt?.(t),
+              spawn: deps.execSpawn,
+              signals: deps.execSignals,
+            },
+            args,
+          );
+        }
         if (!isProfileAction(action))
           return usageError(t('usage.unknownProfileAction', { action }));
         return await runProfileCommand(
@@ -414,7 +433,28 @@ function terminalPasswordPrompt(t: TFunction): PasswordPrompt {
   };
 }
 
+/**
+ * Whether the command line is `ot [--data-dir <dir>] profile exec ...`: there the client in the
+ * terminal owns Ctrl+C (`profiles/exec.ts`), so `entry` neither aborts nor exits on it.
+ */
+export function isProfileExecArgv(argv: readonly string[]): boolean {
+  const words: string[] = [];
+  for (let at = 0; words.length < 2; at += 1) {
+    const token = argv[at];
+    if (token === undefined || token === '--') break;
+    if (token === '--data-dir') {
+      at += 1;
+      continue;
+    }
+    if (token.startsWith('-')) continue;
+    words.push(token);
+  }
+  return words[0] === 'profile' && words[1] === 'exec';
+}
+
 async function entry(): Promise<void> {
+  const argv = process.argv.slice(2);
+  const exec = isProfileExecArgv(argv);
   const controller = new AbortController();
   let signals = 0;
   const onSignal = (): void => {
@@ -423,9 +463,11 @@ async function entry(): Promise<void> {
     if (signals > 1) process.exit(EXIT_FAILED);
     controller.abort(new Error('terminated by signal'));
   };
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
-  const code = await main(process.argv.slice(2), {
+  if (!exec) {
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+  }
+  const code = await main(argv, {
     env: process.env,
     platform: process.platform,
     homedir: homedir(),

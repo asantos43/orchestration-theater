@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import {
+  COMMON_NAME,
   DEFAULT_DIRECTIVE_TIMEZONE,
   DEFAULT_ROTATE_ON_EXHAUSTION,
   DEFAULT_SUMMARY_MESSAGES,
@@ -483,6 +484,25 @@ export type DeliveryAskLeaveMode = (typeof DELIVERY_ASK_LEAVE_MODES)[number];
  */
 export const SAME_PROVIDER_NOTICE_MODES = ['once', 'always', 'off'] as const;
 export type SameProviderNoticeMode = (typeof SAME_PROVIDER_NOTICE_MODES)[number];
+
+/**
+ * `profiles.exec.env_inherit` (P28a, N159) [proposta]: the environment `ot profile exec` gives the
+ * official CLI. `terminal` (default) is the environment of the person's terminal, without what the
+ * adapter says points at another account or profile (`ProfileCli.unsetEnv`), plus the variables of
+ * the profile and, for an API profile, its key from the vault. `client` starts instead from the
+ * minimal environment the daemon gives an Executor (`clients.*.env` included), the strict mode.
+ */
+export const PROFILE_EXEC_ENV_INHERIT_MODES = ['terminal', 'client'] as const;
+export type ProfileExecEnvInheritMode = (typeof PROFILE_EXEC_ENV_INHERIT_MODES)[number];
+
+/** A common name of `ot profile exec`, or a client id: lower case, digits and `-`. */
+const CommonNameSchema = z.string().regex(COMMON_NAME, 'expected lower case, digits and -');
+
+/** `profiles.commands` and `profiles.options`: by common name, then by client id, the tokens. */
+const commonWordsSchema = (minTokens: number) =>
+  z
+    .record(CommonNameSchema, z.record(CommonNameSchema, z.array(z.string().min(1)).min(minTokens)))
+    .default({});
 
 /**
  * `profiles.drain.on_timeout` (Phase 5, P2 and P21; N127, decided 2026-11-18: default `handoff`).
@@ -1547,8 +1567,32 @@ export const DaemonConfigSchema = z
             ),
           }))
           .prefault({}),
+        /**
+         * The common commands and options of `ot profile exec` and of the commands by profile
+         * (P28a, N159; owner, 2026-11-19), added or rewritten by client: `commands.<name>.<client>`
+         * and `options.<name>.<client>` are the tokens of that client (`commands.review.codex:
+         * [review]`). The built-in ones are `login`, `logout`, `status`, `run` and `--model`; a
+         * name configured here is common for every client, and one that has no tokens for it is
+         * refused there. An option takes one value, which goes after its tokens.
+         */
+        commands: commonWordsSchema(0),
+        options: commonWordsSchema(1),
+        /** `ot profile exec` (P28a). See {@link PROFILE_EXEC_ENV_INHERIT_MODES}. */
+        exec: z
+          .strictObject({
+            env_inherit: z.enum(PROFILE_EXEC_ENV_INHERIT_MODES).default('terminal'),
+          })
+          .prefault({}),
       }),
-      ['same_provider_notice', 'drain', 'api_key_env', 'rotate_on_exhaustion'],
+      [
+        'same_provider_notice',
+        'drain',
+        'api_key_env',
+        'rotate_on_exhaustion',
+        'commands',
+        'options',
+        'exec',
+      ],
     ).prefault({}),
     /**
      * The spending cap, for every profile and Executor that has one (architecture 5.6; P11).

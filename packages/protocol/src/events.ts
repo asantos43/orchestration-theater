@@ -57,6 +57,8 @@ import {
   ProfileDrainingPayloadSchema,
   ProfileNoticeAcceptedPayloadSchema,
   ProfileRemovedPayloadSchema,
+  ProfileExecEndedPayloadSchema,
+  ProfileExecStartedPayloadSchema,
   ProfileWarningPayloadSchema,
 } from './profile-events.js';
 import {
@@ -540,6 +542,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ProfileWarningPayloadSchema,
   }),
   defineEventType({
+    type: 'profile.exec.started',
+    schemaVersion: 1,
+    payload: ProfileExecStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.exec.ended',
+    schemaVersion: 1,
+    payload: ProfileExecEndedPayloadSchema,
+  }),
+  defineEventType({
     type: 'executor.changed',
     schemaVersion: 1,
     payload: ExecutorChangedPayloadSchema,
@@ -672,6 +684,8 @@ export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
 export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];
 export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
+export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
+export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];
 export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];

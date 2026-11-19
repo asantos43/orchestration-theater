@@ -41,7 +41,7 @@ describe('port versions', () => {
   });
 
   it('moves the ClientAdapter port to 0.3.0 with the policy v2 (Phase 4, P1)', () => {
-    expect(CLIENT_ADAPTER_PORT_VERSION).toBe('0.3.1');
+    expect(CLIENT_ADAPTER_PORT_VERSION).toBe('0.3.2');
   });
 });
 

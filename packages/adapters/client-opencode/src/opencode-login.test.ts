@@ -10,7 +10,7 @@ import {
   opencodeAdapterVersion,
   type OpenCodeLoginOptions,
 } from './opencode-adapter.js';
-import { isolationEnv } from './profile.js';
+import { DEFAULT_ISOLATION, isolationEnv } from './profile.js';
 import { writeFakeClient } from './testing/fake-official-client.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
 
@@ -224,5 +224,34 @@ describe('opencode login: what is launched', () => {
     const flow = await adapter.login(profileOf('a'));
     expect(fake.launched[0]?.options.cmd).toBe('/opt/opencode');
     await flow.cancel();
+  });
+});
+
+describe('opencode profileCli (P28a, N159)', () => {
+  it('is the official CLI with the isolation of the profile, and the login options', async () => {
+    const adapter = new OpenCodeAdapter({
+      launcher: new FakeProcessLauncher(),
+      baseEnv: { OPENAI_API_KEY: 'sk-test' },
+      adapterVersion: opencodeAdapterVersion(),
+      sandbox: ALL_OS,
+      profileDir: (ref) => join(root, 'profiles', ref.profile),
+      login: { provider: 'openai', method: 'ChatGPT Pro/Plus (browser)' },
+    });
+    const profile = profileOf('a');
+    const cli = await adapter.profileCli(profile);
+    expect(cli.cmd).toBe('opencode');
+    // No pinned permission and no project config turned off: a person uses it as usual.
+    expect(cli.env).toEqual(isolationEnv(profile.dir, DEFAULT_ISOLATION));
+    expect(Object.keys(cli.env)).not.toContain('OPENCODE_PERMISSION');
+    expect(cli.unsetEnv).toEqual(
+      expect.arrayContaining(['OPENCODE_DB', 'OPENCODE_PERMISSION', 'OPENAI_API_KEY']),
+    );
+    expect(cli.commands).toEqual({
+      login: ['auth', 'login', '-p', 'openai', '-m', 'ChatGPT Pro/Plus (browser)'],
+      logout: ['auth', 'logout', 'openai'],
+      status: ['auth', 'list'],
+      run: ['run'],
+    });
+    expect(cli.options).toEqual({ model: ['--model'] });
   });
 });

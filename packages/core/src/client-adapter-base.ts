@@ -42,6 +42,7 @@ import {
   type GuaranteeReport,
   type LoginFlow,
   type ProbeResult,
+  type ProfileCli,
   type ProcessModel,
   type RolePolicy,
   type RolePolicyField,
@@ -674,6 +675,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   protected abstract probes(): ConformanceProbe[];
   abstract login(profile: Profile): Promise<LoginFlow>;
   abstract logout(profile: Profile): Promise<void>;
+  /** See {@link ClientAdapterContract.profileCli}: optional, an adapter that has it overrides it. */
+  profileCli?(profile: Profile): Promise<ProfileCli>;
 
   /** See {@link ClientAdapterContract.setUpProfile}: `prepareProfile` made public. */
   setUpProfile(profile: Profile, policy: RolePolicy): Promise<void> {

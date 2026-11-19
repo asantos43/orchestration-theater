@@ -15,6 +15,7 @@ import {
   type NormalizedError,
   type NormalizedUpdate,
   type Profile,
+  type ProfileCli,
   type ProcessLauncher,
   type ProcessModel,
   type QuotaProbe,
@@ -71,6 +72,24 @@ export const DEFAULT_LOGIN_COMMANDS: Readonly<Record<LoginFlow['mode'], CommandS
   terminal: { cmd: 'codex', args: ['login'] },
 };
 export const DEFAULT_LOGOUT_COMMAND: CommandSpec = { cmd: 'codex', args: ['logout'] };
+
+/**
+ * The common commands of `ot profile exec` (P28a, N159), from `codex --help`, `codex login --help`
+ * and `codex exec --help` (codex-cli, read 2026-11-19) [V: the subcommands and flags exist].
+ * `login` and `logout` are the commands of the login above.
+ */
+export const PROFILE_CLI_STATUS_ARGS: readonly string[] = ['login', 'status'];
+export const PROFILE_CLI_RUN_ARGS: readonly string[] = ['exec'];
+/**
+ * What the terminal may hold that points Codex at another account or profile, taken out for
+ * `ot profile exec`. [proposta] `CODEX_API_KEY` and `OPENAI_API_KEY` are the names the Codex docs
+ * give for a key [S]; the key of an API profile comes back from the vault.
+ */
+export const PROFILE_CLI_UNSET_ENV: readonly string[] = [
+  'CODEX_HOME',
+  'CODEX_API_KEY',
+  'OPENAI_API_KEY',
+];
 
 /** Nothing is allowed: the session of the login probe only exists to be refused or to be closed. */
 const LOGIN_PROBE_POLICY: RolePolicy = {
@@ -420,6 +439,30 @@ export class CodexAdapter extends ClientAdapter {
       mode,
       this.#loginOptions,
     );
+  }
+
+  /**
+   * The official CLI in the profile, for `ot profile exec` (P28a, N159): `codex` with `CODEX_HOME`,
+   * after the `config.toml` of the profile, as the login does.
+   */
+  override async profileCli(profile: Profile): Promise<ProfileCli> {
+    await this.#loginRun(profile);
+    const mode = this.#loginOptions.mode ?? 'browser';
+    const login = commandOf(this.#loginOptions.command, DEFAULT_LOGIN_COMMANDS[mode]);
+    const logout = commandOf(this.#loginOptions.logoutCommand, DEFAULT_LOGOUT_COMMAND);
+    return {
+      cmd: login.cmd,
+      args: [],
+      env: this.profileEnv(profile),
+      unsetEnv: [...PROFILE_CLI_UNSET_ENV],
+      commands: {
+        login: [...login.args],
+        logout: [...logout.args],
+        status: [...PROFILE_CLI_STATUS_ARGS],
+        run: [...PROFILE_CLI_RUN_ARGS],
+      },
+      options: { model: ['--model'] },
+    };
   }
 
   /** The official logout (`codex logout`) in the profile; the client removes what it keeps. */

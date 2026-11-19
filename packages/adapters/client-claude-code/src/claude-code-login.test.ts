@@ -233,3 +233,46 @@ describe('claude-code login: what is launched', () => {
     await flow.cancel();
   });
 });
+
+describe('claude-code profileCli (P28a, N159)', () => {
+  it('is the official CLI in the profile, with the common words of its help', async () => {
+    const adapter = new ClaudeCodeAdapter({
+      launcher: new FakeProcessLauncher(),
+      baseEnv: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-test' },
+      sandbox: { fields: ['writeScope', 'network'] },
+    });
+    const profile = profileOf('a');
+    const cli = await adapter.profileCli(profile);
+    expect(cli.cmd).toBe('claude');
+    expect(cli.args).toEqual([]);
+    // Only the variable of the profile: the rest of the environment is the terminal's.
+    expect(cli.env).toEqual({ CLAUDE_CONFIG_DIR: profile.dir });
+    expect(cli.unsetEnv).toEqual(
+      expect.arrayContaining(['CLAUDE_CONFIG_DIR', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']),
+    );
+    expect(cli.commands).toEqual({
+      login: ['auth', 'login', '--claudeai'],
+      logout: ['auth', 'logout'],
+      status: ['auth', 'status', '--text'],
+      run: ['-p'],
+    });
+    expect(cli.options).toEqual({ model: ['--model'] });
+    if (process.platform !== 'win32') {
+      expect((await stat(profile.dir)).mode & 0o777).toBe(0o700);
+    }
+  });
+
+  it('follows the login commands of the options, and accountEnv keep leaves the keys', async () => {
+    const adapter = new ClaudeCodeAdapter({
+      launcher: new FakeProcessLauncher(),
+      baseEnv: {},
+      accountEnv: 'keep',
+      sandbox: { fields: ['writeScope', 'network'] },
+      login: { command: { cmd: '/opt/claude', args: ['auth', 'login', '--console'] } },
+    });
+    const cli = await adapter.profileCli(profileOf('a'));
+    expect(cli.cmd).toBe('/opt/claude');
+    expect(cli.commands.login).toEqual(['auth', 'login', '--console']);
+    expect(cli.unsetEnv).toEqual(['CLAUDE_CONFIG_DIR']);
+  });
+});

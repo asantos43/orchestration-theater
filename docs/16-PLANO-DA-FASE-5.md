@@ -94,6 +94,8 @@ O que já está no repositório e a fase reaproveita: `@napi-rs/keyring` (cofre)
 | P27 | Login com código colado do navegador (N158) | P3, P23 | P25, P26 | concluído (PR #135) |
 | P27b | URL de login certa no Codex e código colado pelo script do aceite | P27 | P25, P26 | concluído (PR #136) |
 | P27c | Login que pede terminal pulado na hora e Ctrl+C que para o teste | P27b | P25, P26 | concluído (PR #137) |
+| P28a | `ot profile exec`, com as palavras comuns (N159) | P3, P2 | nada | em curso |
+| P28b | Scripts por perfil no PATH (N159) | P28a | nada | pendente |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P4 e P22;
@@ -104,6 +106,7 @@ Ordem em ondas **[proposta]**:
 6. P19, P20 e P21;
 7. P23;
 8. P25 e P26, depois do aceite (N155 a N157). O P27 (N158), o P27b e o P27c vêm antes, porque a rodada do nível `profiles` depende deles.
+9. P28a e depois P28b (N159, ideia do dono em 2026-11-19).
 
 **Marco 5a [N120, decidida]:** perfis, cota, consumo, teto e seleção, com o Diretor redistribuindo quando um perfil esgota (simulado). São o P1 ao P11, o P13 ao P16 e o primeiro item do critério de aceite. Fecha com o P16. O marco 5b (retomada completa, failover e remoção) fecha com o P23.
 
@@ -962,6 +965,20 @@ Aceite:
 - o Ctrl+C num pseudoterminal encerra o grupo e o `tail`, e o script sai com 130 [V, 2026-11-19];
 - o check local completo passa;
 - depois, o dono roda o nível `profiles` com `claude-code,codex`.
+
+### P28a. `ot profile exec`, com as palavras comuns (N159)
+
+O que é: o comando que roda o CLI oficial de um cliente dentro de um perfil, no terminal: `ot profile exec <cliente>/<perfil> [--] [args...]`. A porta `ClientAdapter` vai para a 0.3.2 com o membro opcional `profileCli(profile)` [proposta], que os três adaptadores implementam. As palavras `login`, `logout`, `status`, `run` e `--model` são traduzidas para as de cada cliente (mapa na arquitetura, seção 5.6 [V, 2026-11-19]), e `profiles.commands` e `profiles.options` acrescentam outras, por cliente. A comum vence; depois de `--`, tudo vai como está. O ambiente segue `profiles.exec.env_inherit` (`terminal`, padrão, ou `client`), sem as variáveis que o adaptador diz apontarem para outra conta, e com a chave do cofre num perfil de API. Eventos: `profile.exec.started` e `profile.exec.ended`, e `profile.warning` com `exec_refused` (perfil removido, cliente desconhecido, cliente sem `profileCli`) e `exec_draining`. O `exec` não pega a trava da instância e roda com o daemon de pé [proposta]. O código de saída é o do CLI, ou 128 mais o sinal; 127 se o comando não existe.
+
+Aceite:
+- testes da tradução no core e do `exec` com um cliente falso: tradução, `--`, chave de API fora dos eventos, os dois modos de ambiente, uma palavra da configuração, as recusas, a drenagem e os códigos de saída;
+- o check local completo passa.
+
+### P28b. Scripts por perfil no PATH (N159)
+
+O que é: para cada perfil, um script `<prefixo><cliente>-<perfil>` na pasta `bin` do daemon que só chama `ot profile exec <id> -- "$@"`, com os caminhos absolutos do Node e do `ot` (`.cmd` no Windows). Nenhum segredo vai para o script. O `profile add` cria o script, o `profile remove` o apaga, e `ot profile shims sync` refaz todos. O prefixo é configurável e vazio por padrão. Um nome que já existe no PATH não é criado e gera `profile.warning` (`shim_conflict`). `ot profile shims path` explica como pôr a pasta no PATH e deixa escolher: `--install` grava um bloco marcado no rc do shell (zsh, bash ou fish), com confirmação ou `--yes`, e `--uninstall` o tira; sem eles, só mostra a linha para pôr à mão.
+
+Aceite: testes com um HOME temporário (criação, remoção, conflito, o bloco no rc posto e tirado sem tocar no resto); o check local completo passa.
 
 ## Decisões que surgem deste plano
 

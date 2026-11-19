@@ -79,7 +79,9 @@ export const ProfileRemovedPayloadSchema = z.strictObject({
  * `directory_undo_failed` (a profile directory a failed registration made could not be taken away),
  * `secret_missing` (a client process of an API profile starts and its key is not in the vault) and
  * `role_without_executor` (P21: a profile was removed and a role's list has no Executor left to
- * select; `detail` names the role).
+ * select; `detail` names the role), `exec_draining` (P28a: `ot profile exec` ran the client of a
+ * profile that is draining) and `exec_refused` (P28a: `ot profile exec` did not run it; `detail` says
+ * why: `removed`, `no_client` or `no_profile_cli`).
  */
 export const PROFILE_WARNING_KINDS = [
   'login_probe_failed',
@@ -88,6 +90,8 @@ export const PROFILE_WARNING_KINDS = [
   'directory_undo_failed',
   'secret_missing',
   'role_without_executor',
+  'exec_draining',
+  'exec_refused',
 ] as const;
 export type ProfileWarningKind = (typeof PROFILE_WARNING_KINDS)[number];
 
@@ -100,4 +104,36 @@ export const ProfileWarningPayloadSchema = z.strictObject({
   profileId,
   kind: z.enum(PROFILE_WARNING_KINDS),
   detail: z.string().min(1).max(512).optional(),
+});
+
+/**
+ * The command of `ot profile exec` (P28a, N159), for the events: the common command that was
+ * translated (`login`, `status`, a configured one) or `native` when the arguments went to the client
+ * as they were. The arguments themselves are never in an event: they may hold a prompt.
+ */
+const execCommand = z.string().regex(/^(native|[a-z][a-z0-9-]*)$/);
+
+/**
+ * `profile.exec.started` (P28a, N159, [proposta]): `ot profile exec` (or a command by profile, such
+ * as `codex-personal`) started the official CLI of a profile in the terminal. `envInherit` is the
+ * mode of `profiles.exec.env_inherit`; `apiKey` says whether the key of an API profile went in.
+ */
+export const ProfileExecStartedPayloadSchema = z.strictObject({
+  profileId,
+  command: execCommand,
+  envInherit: z.enum(['terminal', 'client']),
+  apiKey: z.boolean(),
+});
+
+/**
+ * `profile.exec.ended` (P28a, N159, [proposta]): the CLI ended. `exitCode` is its code, or `null`
+ * when a signal ended it (`signal`), or when it could not start (`startFailed`).
+ */
+export const ProfileExecEndedPayloadSchema = z.strictObject({
+  profileId,
+  command: execCommand,
+  exitCode: z.number().int().nullable(),
+  signal: z.string().min(1).max(32).nullable(),
+  startFailed: z.boolean(),
+  durationMs: z.number().int().nonnegative(),
 });
