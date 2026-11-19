@@ -2903,7 +2903,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 | Contratos | `@otheater/core`: portas (interfaces) + schemas zod, semver por porta; suítes de conformidade em `@otheater/sdk` (5.18) |
 | Montagem | Composição manual num ponto de montagem (`compose.ts`), sem container de injeção nem decorators |
 | Monorepo | pnpm workspaces |
-| CI | GitHub Actions: Linux a cada push; Windows e macOS nos PRs que mexem em código e por disparo manual, pela chave `OT_CROSS_CI` (N49, N162) |
+| CI | GitHub Actions: Linux em cada PR e a cada push na `main`; Windows e macOS nos PRs que mexem em código e por disparo manual, pela chave `OT_CROSS_CI` (N49, N162, N163) |
 | Regra de dependência | dependency-cruiser (N49) |
 | i18n | i18next + `react-i18next` (N49) |
 | ACP | `@agentclientprotocol/sdk` 2.x + adaptadores como processos externos |
@@ -3060,7 +3060,7 @@ A Fase 1 pode começar. Nenhuma medição a mais foi feita antes dela.
 
 ### Fase 1 — Fundação
 
-- Monorepo, lint, testes, CI, `THIRD_PARTY_NOTICES`. A CI é o GitHub Actions: Linux a cada push, Windows e macOS nos PRs que mexem em código (N162, 2026-11-19; a chave `OT_CROSS_CI` escolhe `code`, `always` ou `manual`) e por disparo manual, que também serve aos portões 9, 12 e 13 da Fase 0 (N49).
+- Monorepo, lint, testes, CI, `THIRD_PARTY_NOTICES`. A CI é o GitHub Actions: Linux em cada PR e a cada push na `main` (N163, 2026-11-19), Windows e macOS nos PRs que mexem em código (N162, 2026-11-19; a chave `OT_CROSS_CI` escolhe `code`, `always` ou `manual`) e por disparo manual, que também serve aos portões 9, 12 e 13 da Fase 0 (N49).
 - Automação de licenças da seção 6.0 na CI: verificador da árvore de dependências contra a lista permitida, geração do `THIRD_PARTY_NOTICES` (com os `NOTICE` dos pacotes Apache) e verificação de cabeçalho nos arquivos copiados. O verificador precisa ler árvores pnpm (seguir os links de `node_modules/.pnpm`) e reprovar quando não acha nenhum pacote: o do spike de licenças aprovava 0 pacotes em silêncio nesse caso **[V]**. A mesma verificação traz a trava de credenciais da seção 6.3 **[proposta]**.
 - `packages/core` com as primeiras portas (`Store`, `EventLog`, `Clock`, `SecretVault`), os erros tipados e as funções puras iniciais; `packages/protocol` com os primeiros schemas da API.
 - `packages/sdk` com o esqueleto das suítes de conformidade.
@@ -3677,6 +3677,7 @@ Decididas:
 - comando por perfil (2026-11-19, seção 5.6 e Fase 5, N159): `ot profile exec <cliente>/<perfil>` com as palavras comuns `login`, `logout`, `status`, `run` e `--model`, extensíveis por `profiles.commands` e `profiles.options`; a comum vence, e o original fica depois de `--`; scripts `<prefixo><cliente>-<perfil>` que só repassam ao `ot`, com prefixo vazio por padrão, recusa de nome que já existe no PATH e escolha entre alterar o rc do shell ou mostrar a linha; passos P28a e P28b;
 - MCP do daemon na sandbox do macOS (2026-11-19, seção 5.8, N161): por soquete Unix do daemon, liberado por caminho no Seatbelt, com um shim stdio dentro da sandbox; medido no cross do macOS no mesmo dia, e o Seatbelt libera só o soquete da pasta listada [V]; implementado na v0.78, com `sandbox.mcp_bridge: auto | proxy | unix | off` (padrão `auto`), e confirmado no cross do macOS (run 44609563234) [V];
 - Windows e macOS na CI (2026-11-19, Fase 1, N162): os jobs `cross` e `windows-launcher` rodam nos PRs que mexem em código; PRs só de docs, spikes e `.claude/` ficam no linux; chave `OT_CROSS_CI` com `code` (padrão), `always` e `manual`;
+- Push da CI só na `main` (2026-11-19, Fase 1, N163): a branch de um PR roda só o evento `pull_request`, que antes rodava junto com o `push` sem filtro;
 - shell nativo do Codex na sandbox `runtime` (2026-11-18, seções 5.2 e 5.8 e Fase 4, N129): `clients.codex.inner_sandbox: keep | full_access_when_wrapped | nested`, padrão `keep`; a medida mostrou que o srt bloqueia namespace aninhado por padrão e que `allowNestedUserNamespaces` o permite, ao custo das proibições de escrita;
 - estratégia de seleção entre contas (2026-11-18, seção 5.7 e Fase 5, N130): `selection.strategy: ordered | most_headroom | round_robin`, padrão `ordered`;
 - continuação de sessão entre papéis (2026-11-18, seções 5.4 e 5.7, N131): `pipeline.session_reuse: off | when_same_executor | preferred`, padrão `when_same_executor`, nos pares Revisor → Roteirista e Autor → revisão do roteiro; a revisão independente (Autor → Revisor, Ator → Crítico) sempre abre sessão nova; implementação depois da Fase 5;
