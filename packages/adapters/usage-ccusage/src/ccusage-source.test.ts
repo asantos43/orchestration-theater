@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { AdapterUnavailable, InvalidInput } from '@otheater/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CCUSAGE_PINNED_VERSION, CcusageSource, findOnPath, versionOf } from './index.js';
@@ -34,22 +34,29 @@ const OUT = dailyJson([
   { date: '2026-11-17', models: [{ name: 'm', input: 10, output: 5, cost: 0.25 }] },
 ]);
 
+/**
+ * The fake is a Node script with a shebang. Windows starts only an `.exe` or a `.com` without a
+ * shell, and the adapter runs the tool with no shell, so the tests that run the fake are skipped
+ * there; the lookup on Windows is checked on every platform below.
+ */
+const itRunsFake = it.skipIf(process.platform === 'win32');
+
 function source(bin: string, extra: Partial<ConstructorParameters<typeof CcusageSource>[0]> = {}) {
   return new CcusageSource({ command: bin, homeDir, env: { PATH: process.env.PATH }, ...extra });
 }
 
 describe('CcusageSource.check', () => {
-  it('is ok with the pinned version', async () => {
+  itRunsFake('is ok with the pinned version', async () => {
     const bin = writeFakeCcusage(binDir, { version: CCUSAGE_PINNED_VERSION });
     expect(await source(bin).check()).toEqual({ ok: true, version: CCUSAGE_PINNED_VERSION });
   });
 
-  it('reads the version out of a longer line', async () => {
+  itRunsFake('reads the version out of a longer line', async () => {
     const bin = writeFakeCcusage(binDir, { version: `ccusage v${CCUSAGE_PINNED_VERSION}` });
     expect((await source(bin).check()).ok).toBe(true);
   });
 
-  it('is wrong_version for another version, naming both', async () => {
+  itRunsFake('is wrong_version for another version, naming both', async () => {
     const bin = writeFakeCcusage(binDir, { version: '20.0.49' });
     const status = await source(bin).check();
     expect(status.ok).toBe(false);
@@ -65,68 +72,74 @@ describe('CcusageSource.check', () => {
     expect(status).toMatchObject({ ok: false, reason: 'not_found' });
   });
 
-  it('is failed when the tool does not say a version', async () => {
+  itRunsFake('is failed when the tool does not say a version', async () => {
     const bin = writeFakeCcusage(binDir, { version: 'no numbers here' });
     expect(await source(bin).check()).toMatchObject({ ok: false, reason: 'failed' });
   });
 
-  it('runs --version with no variable of the user and no client directory of the user', async () => {
-    const bin = writeFakeCcusage(binDir, { version: CCUSAGE_PINNED_VERSION });
-    await source(bin).check();
-    const [call] = fakeCalls(binDir);
-    expect(call?.argv).toEqual(['--version']);
-    expect(call?.cwd).toBe(homeDir);
-    expect(call?.env.HOME).toBe(homeDir);
-    expect(call?.env.CLAUDE_CONFIG_DIR?.startsWith(homeDir)).toBe(true);
-    expect(call?.env.CODEX_HOME?.startsWith(homeDir)).toBe(true);
-    expect(call?.env.OPENCODE_DATA_DIR?.startsWith(homeDir)).toBe(true);
-  });
+  itRunsFake(
+    'runs --version with no variable of the user and no client directory of the user',
+    async () => {
+      const bin = writeFakeCcusage(binDir, { version: CCUSAGE_PINNED_VERSION });
+      await source(bin).check();
+      const [call] = fakeCalls(binDir);
+      expect(call?.argv).toEqual(['--version']);
+      expect(call?.cwd).toBe(homeDir);
+      expect(call?.env.HOME).toBe(homeDir);
+      expect(call?.env.CLAUDE_CONFIG_DIR?.startsWith(homeDir)).toBe(true);
+      expect(call?.env.CODEX_HOME?.startsWith(homeDir)).toBe(true);
+      expect(call?.env.OPENCODE_DATA_DIR?.startsWith(homeDir)).toBe(true);
+    },
+  );
 });
 
 describe('CcusageSource.read', () => {
-  it('points CLAUDE_CONFIG_DIR at the profile and everything else at the adapter home', async () => {
-    const bin = writeFakeCcusage(binDir, {
-      version: CCUSAGE_PINNED_VERSION,
-      outputs: { claude: OUT },
-    });
-    const entries = await source(bin).read({
-      clientId: 'claude-code',
-      profileDir,
-      sinceDay: '2026-11-10',
-      untilDay: '2026-11-18',
-    });
-    expect(entries).toEqual([
-      {
-        day: '2026-11-17',
-        model: 'm',
-        inputTokens: 10,
-        outputTokens: 5,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0.25,
-      },
-    ]);
-    const calls = fakeCalls(binDir);
-    const run = calls[calls.length - 1];
-    expect(run?.argv).toEqual([
-      'claude',
-      'daily',
-      '--json',
-      '--timezone',
-      'UTC',
-      '--offline',
-      '--since',
-      '2026-11-10',
-      '--until',
-      '2026-11-18',
-    ]);
-    expect(run?.env.CLAUDE_CONFIG_DIR).toBe(profileDir);
-    expect(run?.env.HOME).toBe(homeDir);
-    expect(run?.env.CODEX_HOME?.startsWith(homeDir)).toBe(true);
-    expect(run?.env.OPENCODE_DATA_DIR?.startsWith(homeDir)).toBe(true);
-  });
+  itRunsFake(
+    'points CLAUDE_CONFIG_DIR at the profile and everything else at the adapter home',
+    async () => {
+      const bin = writeFakeCcusage(binDir, {
+        version: CCUSAGE_PINNED_VERSION,
+        outputs: { claude: OUT },
+      });
+      const entries = await source(bin).read({
+        clientId: 'claude-code',
+        profileDir,
+        sinceDay: '2026-11-10',
+        untilDay: '2026-11-18',
+      });
+      expect(entries).toEqual([
+        {
+          day: '2026-11-17',
+          model: 'm',
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0.25,
+        },
+      ]);
+      const calls = fakeCalls(binDir);
+      const run = calls[calls.length - 1];
+      expect(run?.argv).toEqual([
+        'claude',
+        'daily',
+        '--json',
+        '--timezone',
+        'UTC',
+        '--offline',
+        '--since',
+        '2026-11-10',
+        '--until',
+        '2026-11-18',
+      ]);
+      expect(run?.env.CLAUDE_CONFIG_DIR).toBe(profileDir);
+      expect(run?.env.HOME).toBe(homeDir);
+      expect(run?.env.CODEX_HOME?.startsWith(homeDir)).toBe(true);
+      expect(run?.env.OPENCODE_DATA_DIR?.startsWith(homeDir)).toBe(true);
+    },
+  );
 
-  it('points CODEX_HOME at the profile for codex', async () => {
+  itRunsFake('points CODEX_HOME at the profile for codex', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       outputs: { codex: OUT },
@@ -139,20 +152,23 @@ describe('CcusageSource.read', () => {
     expect(run?.env.CLAUDE_CONFIG_DIR?.startsWith(homeDir)).toBe(true);
   });
 
-  it('points the XDG folders and OPENCODE_DATA_DIR into the profile for opencode', async () => {
-    const bin = writeFakeCcusage(binDir, {
-      version: CCUSAGE_PINNED_VERSION,
-      outputs: { opencode: OUT },
-    });
-    await source(bin).read({ clientId: 'opencode', profileDir });
-    const calls = fakeCalls(binDir);
-    const run = calls[calls.length - 1];
-    expect(run?.env.XDG_DATA_HOME).toBe(join(profileDir, 'data'));
-    expect(run?.env.OPENCODE_DATA_DIR).toBe(join(profileDir, 'data', 'opencode'));
-    expect(run?.env.HOME).toBe(homeDir);
-  });
+  itRunsFake(
+    'points the XDG folders and OPENCODE_DATA_DIR into the profile for opencode',
+    async () => {
+      const bin = writeFakeCcusage(binDir, {
+        version: CCUSAGE_PINNED_VERSION,
+        outputs: { opencode: OUT },
+      });
+      await source(bin).read({ clientId: 'opencode', profileDir });
+      const calls = fakeCalls(binDir);
+      const run = calls[calls.length - 1];
+      expect(run?.env.XDG_DATA_HOME).toBe(join(profileDir, 'data'));
+      expect(run?.env.OPENCODE_DATA_DIR).toBe(join(profileDir, 'data', 'opencode'));
+      expect(run?.env.HOME).toBe(homeDir);
+    },
+  );
 
-  it('does not pass --offline when pricing is online', async () => {
+  itRunsFake('does not pass --offline when pricing is online', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       outputs: { claude: OUT },
@@ -162,15 +178,18 @@ describe('CcusageSource.read', () => {
     expect(calls[calls.length - 1]?.argv).not.toContain('--offline');
   });
 
-  it('checks the version once, before the first read, and refuses a wrong one', async () => {
-    const bin = writeFakeCcusage(binDir, { version: '1.2.3', outputs: { claude: OUT } });
-    await expect(source(bin).read({ clientId: 'claude-code', profileDir })).rejects.toBeInstanceOf(
-      AdapterUnavailable,
-    );
-    expect(fakeCalls(binDir).every((call) => call.argv[0] === '--version')).toBe(true);
-  });
+  itRunsFake(
+    'checks the version once, before the first read, and refuses a wrong one',
+    async () => {
+      const bin = writeFakeCcusage(binDir, { version: '1.2.3', outputs: { claude: OUT } });
+      await expect(
+        source(bin).read({ clientId: 'claude-code', profileDir }),
+      ).rejects.toBeInstanceOf(AdapterUnavailable);
+      expect(fakeCalls(binDir).every((call) => call.argv[0] === '--version')).toBe(true);
+    },
+  );
 
-  it('does not check the version again after a good check', async () => {
+  itRunsFake('does not check the version again after a good check', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       outputs: { claude: OUT },
@@ -187,7 +206,7 @@ describe('CcusageSource.read', () => {
     ).rejects.toBeInstanceOf(AdapterUnavailable);
   });
 
-  it('puts neither stdout nor stderr of a failing run in the error', async () => {
+  itRunsFake('puts neither stdout nor stderr of a failing run in the error', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       exitCode: 3,
@@ -202,7 +221,7 @@ describe('CcusageSource.read', () => {
     expect(String(error)).not.toContain('secret');
   });
 
-  it('rejects output that is not understood, without echoing it', async () => {
+  itRunsFake('rejects output that is not understood, without echoing it', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       outputs: { claude: 'secret words' },
@@ -214,7 +233,7 @@ describe('CcusageSource.read', () => {
     expect(String(error)).not.toContain('secret');
   });
 
-  it('gives up after the timeout', async () => {
+  itRunsFake('gives up after the timeout', async () => {
     const bin = writeFakeCcusage(binDir, {
       version: CCUSAGE_PINNED_VERSION,
       outputs: { claude: OUT },
@@ -225,16 +244,19 @@ describe('CcusageSource.read', () => {
     ).rejects.toThrow(/did not answer/);
   });
 
-  it('reads nothing, and runs nothing, for a Claude profile with no projects folder', async () => {
-    const bin = writeFakeCcusage(binDir, {
-      version: CCUSAGE_PINNED_VERSION,
-      outputs: { claude: OUT },
-    });
-    const empty = join(root, 'never-ran');
-    mkdirSync(empty, { recursive: true });
-    expect(await source(bin).read({ clientId: 'claude-code', profileDir: empty })).toEqual([]);
-    expect(fakeCalls(binDir).filter((call) => call.argv[0] === 'claude')).toEqual([]);
-  });
+  itRunsFake(
+    'reads nothing, and runs nothing, for a Claude profile with no projects folder',
+    async () => {
+      const bin = writeFakeCcusage(binDir, {
+        version: CCUSAGE_PINNED_VERSION,
+        outputs: { claude: OUT },
+      });
+      const empty = join(root, 'never-ran');
+      mkdirSync(empty, { recursive: true });
+      expect(await source(bin).read({ clientId: 'claude-code', profileDir: empty })).toEqual([]);
+      expect(fakeCalls(binDir).filter((call) => call.argv[0] === 'claude')).toEqual([]);
+    },
+  );
 
   it('refuses a bad query before running anything', async () => {
     const bin = writeFakeCcusage(binDir, {
@@ -252,7 +274,7 @@ describe('CcusageSource.read', () => {
     expect(fakeCalls(binDir)).toEqual([]);
   });
 
-  it('check can be repeated after the tool is fixed', async () => {
+  itRunsFake('check can be repeated after the tool is fixed', async () => {
     const bin = writeFakeCcusage(binDir, { version: '1.0.0' });
     const s = source(bin);
     expect((await s.check()).ok).toBe(false);
@@ -272,29 +294,49 @@ describe('command modes', () => {
     ).toThrow(InvalidInput);
   });
 
-  it('finds the tool on PATH only in path mode, and runs it by its absolute path', async () => {
-    writeFakeCcusage(binDir, { version: CCUSAGE_PINNED_VERSION });
-    const viaPath = new CcusageSource({
-      command: 'ccusage',
-      commandMode: 'path',
-      homeDir,
-      env: { PATH: `${binDir}:${process.env.PATH ?? ''}` },
-    });
-    expect((await viaPath.check()).ok).toBe(true);
-    const noPath = new CcusageSource({
-      command: 'ccusage',
-      commandMode: 'path',
-      homeDir,
-      env: { PATH: join(root, 'empty') },
-    });
-    expect(await noPath.check()).toMatchObject({ ok: false, reason: 'not_found' });
-  });
+  itRunsFake(
+    'finds the tool on PATH only in path mode, and runs it by its absolute path',
+    async () => {
+      writeFakeCcusage(binDir, { version: CCUSAGE_PINNED_VERSION });
+      const viaPath = new CcusageSource({
+        command: 'ccusage',
+        commandMode: 'path',
+        homeDir,
+        env: { PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}` },
+      });
+      expect((await viaPath.check()).ok).toBe(true);
+      const noPath = new CcusageSource({
+        command: 'ccusage',
+        commandMode: 'path',
+        homeDir,
+        env: { PATH: join(root, 'empty') },
+      });
+      expect(await noPath.check()).toMatchObject({ ok: false, reason: 'not_found' });
+    },
+  );
 
-  it('findOnPath skips relative folders and non-executables', () => {
+  itRunsFake('findOnPath skips relative folders and non-executables', () => {
     writeFakeCcusage(binDir, {});
     expect(findOnPath('ccusage', `relative:${binDir}`)).toBe(join(binDir, 'ccusage'));
     expect(findOnPath('fake-ccusage.json', binDir)).toBeUndefined();
     expect(findOnPath('ccusage', undefined)).toBeUndefined();
+  });
+
+  it('findOnPath on Windows tries only the extensions that start without a shell', () => {
+    // The npm shims: `ccusage` (for a POSIX shell) and `ccusage.cmd`; neither runs without a shell.
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, 'ccusage'), '', { mode: 0o755 });
+    writeFileSync(join(binDir, 'ccusage.cmd'), '', { mode: 0o755 });
+    const windows = { platform: 'win32', pathext: '.COM;.EXE;.BAT;.CMD' } as const;
+    expect(findOnPath('ccusage', binDir, windows)).toBeUndefined();
+    const other = join(root, 'other');
+    mkdirSync(other, { recursive: true });
+    writeFileSync(join(other, 'ccusage.exe'), '', { mode: 0o755 });
+    // `;` separates the folders on Windows, and a relative folder is skipped there too.
+    expect(findOnPath('ccusage', `relative;${binDir};${other}`, windows)).toBe(
+      join(other, 'ccusage.exe'),
+    );
+    expect(findOnPath('ccusage', other, { platform: 'win32', pathext: '.CMD' })).toBeUndefined();
   });
 });
 
