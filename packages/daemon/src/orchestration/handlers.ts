@@ -16,8 +16,9 @@ import type { Logger } from '../logger.js';
 import { producerQuestionErrors } from '../mcp/ask-producer.js';
 import { ToolFailure, type ToolCall, type ToolHandlers } from '../mcp/handlers.js';
 import {
+  answerGuide,
+  answerProblems,
   judgmentPoint,
-  parseAnswer,
   type JudgmentPointId,
   type PlayRunner,
 } from '../pipeline/index.js';
@@ -188,11 +189,23 @@ export class OrchestrationHandlers {
         const play = await rt.store.plays.get(decision.playId);
         if (play?.finishedAt !== null) continue;
       }
+      // A judgment point shows the shape of its answer: the schema and one valid example.
+      const guide = decision.kind.startsWith(DECISION_KINDS.judgePrefix)
+        ? answerGuide(
+            decision.kind.slice(DECISION_KINDS.judgePrefix.length) as JudgmentPointId,
+            decision.input,
+          )
+        : undefined;
       mine.push({
         id: decision.id,
         kind: decision.kind,
         playId: decision.playId,
         input: decision.input,
+        ...(guide === undefined
+          ? {}
+          : {
+              answer: { schema: guide.schema as JsonObject, example: guide.example as JsonObject },
+            }),
       });
     }
     const summary = renderStateSummary(await stateSummaryOf(rt.store, scenarioId));
@@ -201,7 +214,7 @@ export class OrchestrationHandlers {
       hint:
         mine.length === 0
           ? 'Nothing is waiting for you. Answer the Producer, or wait for the next prompt.'
-          : 'Settle each decision with `decide {decisionId, payload}`; the payload follows the point.',
+          : 'Settle each decision with `decide {decisionId, payload}`; the payload of a judgment point follows its `answer.schema` (see `answer.example`).',
       summary,
     };
   }
@@ -306,11 +319,19 @@ export class OrchestrationHandlers {
     if (judgmentPoint(point) === undefined) {
       return new ToolFailure('unsupported', `The point "${point}" is not a judgment point.`);
     }
-    const answer = parseAnswer(point as JudgmentPointId, input.payload);
-    if (answer === undefined || !isRecord(input.payload)) {
+    // Checked before the machine sees it: the machine refuses a classification naming a demand
+    // the script does not have, and a refused event would read as a stale decision.
+    const payload = input.payload;
+    const problems = isRecord(payload)
+      ? answerProblems(point as JudgmentPointId, payload, decision.input)
+      : ['the payload must be a JSON object'];
+    if (!isRecord(payload) || problems.length > 0) {
+      const example = answerGuide(point as JudgmentPointId, decision.input)?.example;
       return new ToolFailure(
         'invalid_answer',
-        `The payload does not fit the point "${point}". Read the "input" of the decision and answer with the shape the point asks for.`,
+        `The payload does not fit the point "${point}": ${problems.join('; ')}.${
+          example === undefined ? '' : ` A valid payload looks like ${JSON.stringify(example)}.`
+        } \`next_action\` shows the full schema under "answer".`,
       );
     }
     const demandId =
@@ -323,9 +344,9 @@ export class OrchestrationHandlers {
         type: 'JUDGED',
         point,
         ...(demandId === undefined ? {} : { demandId }),
-        answer: input.payload,
+        answer: payload,
       },
-      input.payload,
+      payload,
     );
   }
 
