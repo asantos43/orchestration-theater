@@ -38,7 +38,8 @@ import { ApiFailure, ApiHandlers, type HandlerEntry } from './handlers.js';
 export const API_HOST = '127.0.0.1';
 
 /** The headers a page of an allowed origin may send. [proposta] Fixed: the contract names them. */
-const CORS_ALLOWED_HEADERS = 'authorization, content-type, last-event-id, idempotency-key';
+const CORS_ALLOWED_HEADERS =
+  'authorization, content-type, last-event-id, idempotency-key, x-ot-client-id';
 const CORS_ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE';
 
 export interface ApiServerOptions {

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   API_ROUTES,
+  LAYOUT_ORIGIN_HEADER,
+  LAYOUT_SYNCS,
   readLayoutText,
   defaultLayout,
   type LayoutAdjustedPayload,
   type LayoutInterface,
   type LayoutPreferences,
   type LayoutStore as LayoutStoreMode,
+  type LayoutSync,
 } from '@otheater/protocol';
 import { z } from 'zod';
 import type { ApiClient } from '../client.js';
@@ -29,6 +32,12 @@ export interface LayoutLoad {
 export interface LayoutPersistence {
   /** Which place this is: `daemon` or `local`. */
   readonly mode: LayoutStoreMode;
+  /**
+   * What names this client in the saves it makes (N174): the daemon puts it in the `origin` of the
+   * `layout.changed` event, so the client knows its own echo. Only the `daemon` place has one: a
+   * local file is seen by no other client.
+   */
+  readonly clientId?: string | undefined;
   /** Reads the layout; the default when nothing was saved. */
   load(): Promise<LayoutLoad>;
   /** Saves the whole record. */
@@ -38,12 +47,15 @@ export interface LayoutPersistence {
 /** The layout in the record of the interface in the daemon, by REST (`getLayout`, `putLayout`). */
 export class DaemonLayoutPersistence implements LayoutPersistence {
   readonly mode = 'daemon';
+  /** [proposta] A fresh random id for each instance: two stores of one interface in a process differ. */
+  readonly clientId: string;
   readonly #client: ApiClient;
   readonly #interface: LayoutInterface;
 
-  constructor(client: ApiClient, layoutInterface: LayoutInterface) {
+  constructor(client: ApiClient, layoutInterface: LayoutInterface, clientId?: string) {
     this.#client = client;
     this.#interface = layoutInterface;
+    this.clientId = clientId ?? globalThis.crypto.randomUUID();
   }
 
   async load(): Promise<LayoutLoad> {
@@ -57,6 +69,7 @@ export class DaemonLayoutPersistence implements LayoutPersistence {
   async save(layout: LayoutPreferences): Promise<void> {
     await this.#client.call(API_ROUTES.putLayout, {
       params: { interface: this.#interface },
+      headers: { [LAYOUT_ORIGIN_HEADER.toLowerCase()]: this.clientId },
       body: layout,
     });
   }
@@ -138,16 +151,19 @@ export interface LayoutSettings {
   readonly store: LayoutStoreMode;
   /** How long to wait after the last change before saving, in milliseconds. */
   readonly writeDelayMs: number;
+  /** `ui.layout.sync`: `live` applies a change another client made, `on_open` only reads when it opens. */
+  readonly sync: LayoutSync;
 }
 
 const ConfigLayoutSchema = z.object({
   store: z.enum(['daemon', 'local']).catch('daemon'),
   // The daemon's effective configuration carries a duration as milliseconds.
   write_delay: z.number().int().min(0).catch(DEFAULT_LAYOUT_WRITE_DELAY_MS),
+  sync: z.enum(LAYOUT_SYNCS).catch('live'),
 });
 
 /**
- * `ui.layout.store` and `ui.layout.write_delay` from what `getConfig` answered (`config`). A missing
+ * `ui.layout.store`, `ui.layout.write_delay` and `ui.layout.sync` from what `getConfig` answered (`config`). A missing
  * or odd value is the default: a client of a daemon that has no such key still works.
  */
 export function layoutSettingsFromConfig(config: unknown): LayoutSettings {
@@ -155,6 +171,10 @@ export function layoutSettingsFromConfig(config: unknown): LayoutSettings {
   const parsed = ConfigLayoutSchema.safeParse(ui?.layout ?? {});
   const value = parsed.success
     ? parsed.data
-    : { store: 'daemon' as const, write_delay: DEFAULT_LAYOUT_WRITE_DELAY_MS };
-  return { store: value.store, writeDelayMs: value.write_delay };
+    : {
+        store: 'daemon' as const,
+        write_delay: DEFAULT_LAYOUT_WRITE_DELAY_MS,
+        sync: 'live' as const,
+      };
+  return { store: value.store, writeDelayMs: value.write_delay, sync: value.sync };
 }
