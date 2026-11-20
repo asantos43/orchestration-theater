@@ -4,13 +4,13 @@ import { FakeClock } from '@otheater/core/testing';
 import { ChatPresence } from './presence.js';
 
 describe('who is watching (P15a)', () => {
-  const make = (mode: 'poll' | 'always' | 'never') => {
+  const make = (mode: 'connected' | 'always' | 'never') => {
     const clock = new FakeClock();
     return { clock, presence: new ChatPresence({ clock, mode, windowMs: 30_000 }) };
   };
 
-  it('poll: nobody until a chat polls the scenario, then for the window only', async () => {
-    const { clock, presence } = make('poll');
+  it('connected: nobody until a chat polls the scenario, then for the window only', async () => {
+    const { clock, presence } = make('connected');
     expect(presence.attended('s1')).toBe(false);
     presence.touch('s1');
     expect(presence.attended('s1')).toBe(true);
@@ -32,7 +32,7 @@ describe('who is watching (P15a)', () => {
   });
 
   it('hold: a scenario with an open socket is watched with no poll, however long it takes', async () => {
-    const { clock, presence } = make('poll');
+    const { clock, presence } = make('connected');
     const release = presence.hold('s1');
     expect(presence.attended('s1')).toBe(true);
     await clock.advance(10 * 60_000);
@@ -46,7 +46,7 @@ describe('who is watching (P15a)', () => {
   });
 
   it('hold: counts the sockets, and a second release does nothing', () => {
-    const { presence } = make('poll');
+    const { presence } = make('connected');
     const first = presence.hold('s1');
     const second = presence.hold('s1');
     first();
