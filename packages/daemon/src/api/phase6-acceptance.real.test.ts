@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { LaunchedProcess, LaunchOptions, ProcessLauncher } from '@otheater/core';
 import { ApiClient } from '@otheater/client';
@@ -13,7 +12,7 @@ import { LIMIT_PRESET_NAMES, parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { RealHeadCodeHost, waitFor } from '../orchestration/e2e-fixture.js';
-import { dataPaths, profileDirOf } from '../paths.js';
+import { dataPaths, profileDirOf, type ProfileNames } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
 
@@ -26,7 +25,7 @@ import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
  * spent.
  *
  * Needs `OT_TEST_REAL_CLIENTS=1`, `OT_TEST_REAL_PROMPTS=1` and `OT_TEST_REAL_PHASE6=1`, plus the
- * same variables as `orchestration/play.real.test.ts` (the profile is linked, never copied or
+ * same variables as `orchestration/play.real.test.ts` (the profile is pointed at, never copied or
  * read): `OT_TEST_CLAUDE_PROFILE_DIR`, `OT_TEST_CLAUDE_MODEL`, and, optional,
  * `OT_TEST_CLAUDE_MODE`, `OT_TEST_PLAY_TIMEOUT_MS` (default 25 minutes) and `OT_TEST_PLAY_LIMITS`
  * (default `moderate`).
@@ -153,19 +152,22 @@ orchestration:
     profile: real
     model: ${JSON.stringify(MODEL)}
 ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`}`);
-        const profileDir = profileDirOf(dataPaths(tmp.dir), {
-          client: 'claude-code',
-          profile: 'real',
-        });
-        await mkdir(join(profileDir, '..'), { recursive: true });
-        await symlink(PROFILE_DIR, profileDir, 'dir');
+        // The profile of the play is the owner's logged-in one, pointed at by the test seam of the
+        // daemon (`overrides.profileDir`): never a copy, and no link inside the data directory. The
+        // sandbox (layer 3, on by default) denies `<data>` and does not follow a link there when it
+        // reads the profile again, so a linked profile has no login inside it (2026-11-20).
+        const profileSource = await realpath(PROFILE_DIR);
+        const profileDir = (ref: ProfileNames): string =>
+          ref.client === 'claude-code' && ref.profile === 'real'
+            ? profileSource
+            : profileDirOf(dataPaths(tmp.dir), ref);
 
         const fakeHost = new FakeCodeHost();
         const codeHost = new RealHeadCodeHost(fakeHost);
         const daemon = await startDaemon({
           dataDir: tmp.dir,
           config,
-          overrides: { vault: new InMemorySecretVault(), launcher, codeHost },
+          overrides: { vault: new InMemorySecretVault(), launcher, codeHost, profileDir },
           clients: productionClients(config),
           logger: createSilentLogger(),
           version: '0.0.0-test',
@@ -349,7 +351,6 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           stream.close();
           await rig.dispose();
           await daemon.stop();
-          await unlink(profileDir).catch(() => undefined);
           await tmp.dispose();
           survivors = await waitFor(
             'the processes of the clients to exit',

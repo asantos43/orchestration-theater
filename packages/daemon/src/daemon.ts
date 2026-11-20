@@ -440,7 +440,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     apiRef,
   } = input;
   const { clock, store, vault, logger } = composition;
-  const paths = dataPaths(options.dataDir);
+  const paths = dataPaths(options.dataDir, options.overrides?.profileDir);
   const startedAt = clock.now();
   let state: DaemonState = 'starting';
 
@@ -953,7 +953,7 @@ function buildExecution(
     launcher,
     clock: composition.clock,
     transport: composition.transport,
-    paths: dataPaths(options.dataDir),
+    paths: dataPaths(options.dataDir, options.overrides?.profileDir),
     logger,
     situations: composition.situations,
     // The API key of a profile reaches only the process of that profile (Phase 5, P2).

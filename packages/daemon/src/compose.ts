@@ -112,7 +112,7 @@ import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
-import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
+import { dataPaths, profileDirOf, type DataPaths, type Env, type ProfileNames } from './paths.js';
 import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
 
 /** The ports the daemon composes. */
@@ -161,6 +161,12 @@ export interface ComposeOverrides {
    * `'none'` runs the daemon without it, whatever `sandbox.mode` says.
    */
   readonly sandbox?: Sandbox | 'none';
+  /**
+   * Test seam: where a profile lives for the sessions and the clients, instead of
+   * `<data>/profiles/<client>/<profile>` (see `DataPaths.profileDirOverride`). The registry of the
+   * profiles (create, remove) ignores it. The product never sets it.
+   */
+  readonly profileDir?: (ref: ProfileNames) => string;
   /**
    * The source of the `ccusage` check (P12, N118). Used only when `usage.ccusage.enabled`; by
    * default the `CcusageSource` adapter over the binary the config names. Tests hand in a fake.
@@ -526,8 +532,8 @@ function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
  * `FakeClock` and `InMemorySecretVault`); they are recorded with the id `override`.
  */
 export async function compose(config: DaemonConfig, options: ComposeOptions): Promise<Composition> {
-  const paths = dataPaths(options.dataDir);
   const overrides = options.overrides ?? {};
+  const paths = dataPaths(options.dataDir, overrides.profileDir);
   const adapters: AdapterRecord[] = [];
   let store: Store | undefined;
   let vault: SecretVault | undefined;
