@@ -190,8 +190,13 @@ export class ProducerChannel {
    * `project` scenario on a repository (the default, as in P8) or, with `type: 'chat'`, a generic
    * chat with a folder of its own; the type comes from the scenario type registry (5.20).
    */
-  async openChat(input: OpenChatInput): Promise<{ scenarioId: string; cursor: number }> {
-    const { scenarios, directors, confirmer, conventionsMode } = this.#options;
+  async openChat(
+    input: OpenChatInput,
+  ): Promise<{ scenarioId: string; cursor: number; lastEventId: number }> {
+    const { store, scenarios, directors, confirmer, conventionsMode } = this.#options;
+    // N179, item 1: the position of the log before the daemon does anything for this call. The chat
+    // socket resumes from it, so what the Director says while the client opens the socket is not lost.
+    const lastEventId = await store.events.lastId();
     const { scenario } = await scenarios.create({
       type: input.type ?? 'project',
       ...(input.repo === undefined ? {} : { repo: input.repo }),
@@ -207,7 +212,7 @@ export class ProducerChannel {
     }
     await directors.ensure(scenarioId);
     const replies = directors.replies(scenarioId, 0);
-    return { scenarioId, cursor: replies[replies.length - 1]?.seq ?? 0 };
+    return { scenarioId, cursor: replies[replies.length - 1]?.seq ?? 0, lastEventId };
   }
 
   /**

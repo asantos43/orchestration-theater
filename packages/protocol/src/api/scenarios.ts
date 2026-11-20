@@ -75,7 +75,9 @@ export const getScenario = defineRoute({
  * `OpenChatInput` of the daemon: the type (a key of the scenario type registry, default `project`),
  * the repository, the base branch, a name and `newProject`. It also wakes the Director of the
  * scenario, so the first reply is on its way when the answer arrives; `cursor` is where the replies
- * of the chat stand.
+ * of the chat stand. `lastEventId` is the newest event of the log before the daemon did anything
+ * for this call (N179, item 1): the chat socket opens with `resume` from it, so a reply the Director
+ * produces before the socket is open still comes, once. [proposta]
  */
 export const OpenScenarioBodySchema = z.strictObject({
   type: z.string().min(1).max(64).optional(),
@@ -89,6 +91,7 @@ export type OpenScenarioBody = z.input<typeof OpenScenarioBodySchema>;
 export const OpenScenarioResultSchema = z.strictObject({
   scenario: ApiScenarioSchema,
   cursor: z.int().min(0),
+  lastEventId: z.int().min(0),
 });
 export type OpenScenarioResult = z.infer<typeof OpenScenarioResultSchema>;
 

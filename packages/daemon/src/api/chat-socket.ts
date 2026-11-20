@@ -9,6 +9,7 @@ import {
 import {
   ChatClientMessageSchema,
   ChatDirectorReplyPayloadSchema,
+  ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   CHAT_DROP_REASONS,
   IdeaQueueHeldPayloadSchema,
@@ -64,10 +65,14 @@ export interface ChatRoutesOptions {
 const FEED_TYPES = [
   'chat.director_reply',
   'chat.ask',
+  'chat.ask_closed',
   'scenario.system_message',
   'idea.queue_held',
   'play.transitioned',
 ] as const;
+
+/** Events read per page when a resume looks for the questions the replay will bring. */
+const ASK_SCAN_PAGE = 500;
 
 /** Close codes that say the client broke the protocol (RFC 6455): protocol, data, size. */
 const PROTOCOL_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009]);
@@ -369,20 +374,28 @@ class ChatSession {
       }
     }
     this.#cursor = from;
-    if (afterId === undefined || afterId > head) {
-      // Nothing to resend: what waits for the Producer now is told as the first thing.
-      const state = await channel.state(this.#scenarioId);
-      for (const ask of state.asks) {
-        this.#asksSent.add(ask.id);
-        this.#send({
-          type: 'ask',
-          eventId: Math.max(1, head),
-          decisionId: ask.id,
-          kind: ask.kind,
-          playId: ask.playId,
-          input: ask.input,
-        });
-      }
+    // What waits for the Producer now is told as the first thing, from the state of the store and
+    // not only from the log (N179, item 3): a decision made before `chat.ask` existed, or whose
+    // event was not written, has no event to replay. [proposta] The frame carries the cursor the
+    // feed starts from (the head of the log on a fresh socket, the cursor of a resume), never an id
+    // the client has not got the events of.
+    const replayed =
+      afterId !== undefined && afterId <= head
+        ? await this.#askedBetween(afterId, head)
+        : new Set<string>();
+    const state = await channel.state(this.#scenarioId);
+    for (const ask of state.asks) {
+      // The replay brings this one with its own event, in its place among the other messages.
+      if (replayed.has(ask.id)) continue;
+      this.#asksSent.add(ask.id);
+      this.#send({
+        type: 'ask',
+        eventId: Math.max(1, from),
+        decisionId: ask.id,
+        kind: ask.kind,
+        playId: ask.playId,
+        input: ask.input,
+      });
     }
     await this.#pushState(true);
     void this.#follow(from);
@@ -391,6 +404,25 @@ class ChatSession {
     }, stateIntervalMs);
     timer.unref();
     this.#timers.push(timer);
+  }
+
+  /** The decisions of this scenario that a `chat.ask` of the ids `after < id <= upTo` announces. */
+  async #askedBetween(after: number, upTo: number): Promise<Set<string>> {
+    const { store } = this.#options;
+    const asked = new Set<string>();
+    let cursor = after;
+    while (cursor < upTo) {
+      const page = await store.events.readFrom(cursor, ASK_SCAN_PAGE);
+      if (page.length === 0) break;
+      for (const event of page) {
+        if (event.id > upTo) return asked;
+        cursor = event.id;
+        if (event.type !== 'chat.ask' || event.scenarioId !== this.#scenarioId) continue;
+        const payload = ChatAskPayloadSchema.safeParse(event.payload);
+        if (payload.success) asked.add(payload.data.decisionId);
+      }
+    }
+    return asked;
   }
 
   async #follow(afterId: number): Promise<void> {
@@ -477,6 +509,22 @@ class ChatSession {
           kind: ask.kind,
           playId: ask.playId,
           input: ask.input,
+        });
+        return;
+      }
+      case 'chat.ask_closed': {
+        const payload = ChatAskClosedPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        // Sent even to a connection that never showed the ask: its client may have it from an
+        // earlier connection, and the message of a question it does not know is harmless.
+        this.#send({
+          type: 'ask_closed',
+          eventId,
+          decisionId: payload.data.decisionId,
+          state: payload.data.state,
         });
         return;
       }

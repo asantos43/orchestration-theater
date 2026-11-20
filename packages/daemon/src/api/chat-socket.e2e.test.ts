@@ -24,6 +24,7 @@ import {
   type PlayHarness,
   type PlayHarnessOptions,
 } from '../orchestration/e2e-fixture.js';
+import { DECISION_KINDS } from '../orchestration/play-effects.js';
 import { dataPaths } from '../paths.js';
 
 /**
@@ -332,7 +333,7 @@ describeWithLauncher('the chat WebSocket with the fake agent (P7)', { timeout: 1
     });
   });
 
-  it('tells a new connection what is pending, once, and does not tell the old one twice', async () => {
+  it('tells a new connection what is pending, and a resume past the question tells it once more, with the cursor', async () => {
     await withChatDaemon({}, async (harness) => {
       const scenarioId = await harness.openGenericChat('talk');
       const first = await ChatClient.open(harness, scenarioId);
@@ -346,16 +347,173 @@ describeWithLauncher('the chat WebSocket with the fake agent (P7)', { timeout: 1
       expect(again.decisionId).toBe(ask.decisionId);
       await second.close();
 
-      // With a cursor past the question it is not sent again.
+      // N179, item 3: a resume past the question still tells what is pending, from the state of the
+      // store, once. The frame carries the cursor of the resume, so a client never jumps over an
+      // event it has not got. A client has the question already; it matches it by `decisionId`.
       const third = await ChatClient.open(harness, scenarioId, {
         type: 'resume',
         lastEventId: ask.eventId,
       });
       await third.next('the state', (frame) => frame.type === 'busy');
-      expect(third.of('ask')).toEqual([]);
+      expect(third.of('ask').map((frame) => [frame.decisionId, frame.eventId])).toEqual([
+        [ask.decisionId, ask.eventId],
+      ]);
       third.send({ type: 'answer', decisionId: ask.decisionId, answer: { answers: ['Ada'] } });
       await replyWith(third, 'answer:');
       await third.close();
+    });
+  });
+
+  it('tells a resume the question once when its event is in the replay and the state has it too', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      const before = await harness.daemon.store.events.lastId();
+      const first = await ChatClient.open(harness, scenarioId);
+      first.send({ type: 'message', text: '#ot-ask Which name?' });
+      const ask = await first.next('the question', isAsk);
+      await first.close();
+
+      // The cursor is before the question: the replay brings its `chat.ask`, and the state has it.
+      const second = await ChatClient.open(harness, scenarioId, {
+        type: 'resume',
+        lastEventId: before,
+      });
+      await second.next('the state', (frame) => frame.type === 'busy');
+      await second.next('the question', isAsk);
+      expect(second.of('ask').map((frame) => [frame.decisionId, frame.eventId])).toEqual([
+        [ask.decisionId, ask.eventId],
+      ]);
+      await second.close();
+    });
+  });
+
+  it('a decision with no chat.ask event reaches a resume, from the state of the store (N179, item 3)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      // `daemon.store` is the store before the chat decorator: this decision has no `chat.ask`, like
+      // one made before the event existed or whose event was not written.
+      await harness.daemon.store.decisions.create({
+        id: 'D-silent',
+        scenarioId,
+        kind: DECISION_KINDS.menu,
+        input: {},
+      });
+      expect(await eventsOfType(harness, 'chat.ask')).toEqual([]);
+      const cursor = await harness.daemon.store.events.lastId();
+
+      const client = await ChatClient.open(harness, scenarioId, {
+        type: 'resume',
+        lastEventId: cursor,
+      });
+      await client.next('the state', (frame) => frame.type === 'busy');
+      expect(client.of('ask').map((frame) => [frame.decisionId, frame.eventId])).toEqual([
+        ['D-silent', cursor],
+      ]);
+      await client.close();
+    });
+  });
+
+  it('takes a question back from the other clients when one of them answers it (N179, item 2)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      const one = await ChatClient.open(harness, scenarioId);
+      const other = await ChatClient.open(harness, scenarioId);
+      one.send({ type: 'message', text: '#ot-ask Which name?' });
+      const ask = await one.next('the question', isAsk);
+      await other.next('the same question', isAsk);
+
+      other.send({ type: 'answer', decisionId: ask.decisionId, answer: { answers: ['Ada'] } });
+      const closed = await one.next(
+        'the withdrawal',
+        (frame): frame is Extract<ChatServerMessage, { type: 'ask_closed' }> =>
+          frame.type === 'ask_closed',
+      );
+      expect(closed).toMatchObject({ decisionId: ask.decisionId, state: 'decided' });
+      expect(closed.eventId).toBeGreaterThan(ask.eventId);
+      // It is an event of the log, and the one that answered is told too (it ignores a question it
+      // answered itself).
+      const events = await eventsOfType(harness, 'chat.ask_closed');
+      expect(events.map((event) => event.id)).toEqual([closed.eventId]);
+      expect((await other.next('its own', (frame) => frame.type === 'ask_closed')).eventId).toBe(
+        closed.eventId,
+      );
+
+      // A resume from before the question brings both events, and no question to show.
+      const late = await ChatClient.open(harness, scenarioId, {
+        type: 'resume',
+        lastEventId: ask.eventId - 1,
+      });
+      await late.next('the withdrawal again', (frame) => frame.type === 'ask_closed');
+      expect(late.of('ask')).toEqual([]);
+      await Promise.all([one.close(), other.close(), late.close()]);
+    });
+  });
+
+  it('takes a question back from the clients when the REST route answers it', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      const client = await ChatClient.open(harness, scenarioId);
+      client.send({ type: 'message', text: '#ot-ask Which name?' });
+      const ask = await client.next('the question', isAsk);
+
+      const answered = await fetch(
+        `${harness.daemon.api.url}/v1/decisions/${ask.decisionId}/answer`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${await tokenOf(harness)}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ answer: { answers: ['Ada'] } }),
+        },
+      );
+      expect(answered.status).toBe(200);
+      const closed = await client.next(
+        'the withdrawal',
+        (frame): frame is Extract<ChatServerMessage, { type: 'ask_closed' }> =>
+          frame.type === 'ask_closed',
+      );
+      expect(closed).toMatchObject({ decisionId: ask.decisionId, state: 'decided' });
+
+      expect(client.of('ask_closed')).toHaveLength(1);
+      await client.close();
+    });
+  });
+
+  it('a resume from the snapshot of openScenario gets the reply made before the socket opened (N179, item 1)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const opened = await harness.producer.openChat({ type: 'chat', name: 'talk' });
+      const { scenarioId } = opened;
+      expect(opened.lastEventId).toBeGreaterThan(0);
+      expect(opened.lastEventId).toBeLessThanOrEqual(await harness.daemon.store.events.lastId());
+
+      // The Director answers between the snapshot and the socket.
+      await harness.producer.send(scenarioId, '#ot-chat early');
+      await waitFor('the early reply', async () =>
+        (await harness.producer.poll(scenarioId, 0)).replies.some((r) => r.text.includes('early'))
+          ? true
+          : undefined,
+      );
+
+      // With no cursor the socket starts at the head and never hears it...
+      const blind = await ChatClient.open(harness, scenarioId);
+      await blind.next('the state', (frame) => frame.type === 'busy');
+      // ...and with the cursor of the snapshot it does, once.
+      const client = await ChatClient.open(harness, scenarioId, {
+        type: 'resume',
+        lastEventId: opened.lastEventId,
+      });
+      const reply = await replyWith(client, 'early');
+      expect(reply.eventId).toBeGreaterThan(opened.lastEventId);
+      client.send({ type: 'message', text: '#ot-chat later' });
+      await replyWith(client, 'later');
+      expect(
+        client.of('director_reply').filter((frame) => frame.text.includes('early')),
+      ).toHaveLength(1);
+      expect(blind.of('director_reply').filter((frame) => frame.text.includes('early'))).toEqual(
+        [],
+      );
+      await Promise.all([blind.close(), client.close()]);
     });
   });
 
