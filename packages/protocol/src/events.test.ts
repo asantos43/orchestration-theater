@@ -37,6 +37,7 @@ describe('daemon event registry', () => {
       'attempt.reset_wait_ended',
       'session.cancel_escalated',
       'session.processes_left',
+      'session.turn_timeout',
       'session.closed',
       'permission.asked',
       'permission.answered',

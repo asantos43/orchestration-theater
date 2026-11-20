@@ -282,6 +282,109 @@ describe('AttemptRunner, the timeout', () => {
   );
 });
 
+describe('AttemptRunner, limits.turn_timeout (N184)', () => {
+  it(
+    'cancel: ends the attempt as timed_out with the cause turn_timeout, by the path of the deadline',
+    async () => {
+      const r = await rig({
+        checkpointEditBatch: 99,
+        turnTimeoutMs: 1000,
+        onTurnTimeout: 'cancel',
+      });
+      const running = r.runner.run(
+        specOf(r, editsPrompt({ 'wip.txt': 'draft\n' }, '#script:hang'), { timeoutMs: 60_000 }),
+      );
+      await untilHanging(r);
+      await r.clock.advance(1000);
+      const outcome = await running;
+
+      expect(outcome).toMatchObject({
+        state: 'timed_out',
+        cause: 'turn_timeout',
+        needsDecision: true,
+        countsAsAttempt: true,
+      });
+      expect(await r.store.attempts.get(outcome.attemptId)).toMatchObject({
+        state: 'timed_out',
+        cause: 'turn_timeout',
+      });
+      // The WIP commit is there, the tree was killed and nothing is left.
+      expect(outcome.checkpointSha).toBeDefined();
+      expect(await testGit(outcome.worktree, 'show', 'HEAD:wip.txt')).toBe('draft');
+      expect(r.launcher.launched[0]?.killTreeCalls).toBeGreaterThan(0);
+      expect(r.launcher.running).toHaveLength(0);
+      const events = await eventsOf(r, 'session.turn_timeout');
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload).toMatchObject({
+        sessionId: 'fake-session-1',
+        limitMs: 1000,
+        elapsedMs: 1000,
+        action: 'cancel',
+        playId: 'play-1',
+        demandId: 'demand-1',
+      });
+      // The interruption keeps the cause of the table of 5.16 and says which limit it was.
+      const interrupted = await eventsOf(r, 'session.interrupted');
+      expect(interrupted).toHaveLength(1);
+      expect(interrupted[0]?.payload).toMatchObject({ cause: 'timeout' });
+      expect(JSON.stringify(interrupted[0]?.payload)).toContain('limits.turn_timeout');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'notice: writes the event and lets the turn go on; the deadline of the attempt is still the cut',
+    async () => {
+      const r = await rig({ turnTimeoutMs: 1000, onTurnTimeout: 'notice' });
+      const running = r.runner.run(specOf(r, '#script:hang', { timeoutMs: 5000 }));
+      await untilHanging(r);
+      await r.clock.advance(1000);
+      await until(
+        async () => (await eventsOf(r, 'session.turn_timeout')).length === 1,
+        'the notice',
+      );
+      expect((await eventsOf(r, 'session.turn_timeout'))[0]?.payload).toMatchObject({
+        limitMs: 1000,
+        action: 'notice',
+      });
+      expect(r.launcher.running).toHaveLength(1);
+      await r.clock.advance(4000);
+      const outcome = await running;
+      expect(outcome).toMatchObject({ state: 'timed_out', cause: 'timeout' });
+      expect(await eventsOf(r, 'session.turn_timeout')).toHaveLength(1);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'off: nothing fires before the deadline of the attempt',
+    async () => {
+      const r = await rig({ turnTimeoutMs: 1000, onTurnTimeout: 'off' });
+      const running = r.runner.run(specOf(r, '#script:hang', { timeoutMs: 5000 }));
+      await untilHanging(r);
+      await r.clock.advance(4000);
+      expect(r.launcher.running).toHaveLength(1);
+      await r.clock.advance(1000);
+      expect(await running).toMatchObject({ state: 'timed_out', cause: 'timeout' });
+      expect(await eventsOf(r, 'session.turn_timeout')).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a turn limit that is not before the deadline never fires: the deadline is the cut',
+    async () => {
+      const r = await rig({ turnTimeoutMs: 5000, onTurnTimeout: 'cancel' });
+      const running = r.runner.run(specOf(r, '#script:hang', { timeoutMs: 1000 }));
+      await untilHanging(r);
+      await r.clock.advance(1000);
+      expect(await running).toMatchObject({ state: 'timed_out', cause: 'timeout' });
+      expect(await eventsOf(r, 'session.turn_timeout')).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe('AttemptRunner, a process that survives the kill (P18b)', () => {
   it(
     'a stuck process on a shared process, with a child left alive, is told in session.processes_left',

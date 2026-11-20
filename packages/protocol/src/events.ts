@@ -108,6 +108,7 @@ import {
   SessionProcessesLeftPayloadSchema,
   SessionPromptFinishedPayloadSchema,
   SessionResumedPayloadSchema,
+  SessionTurnTimeoutPayloadSchema,
   SessionUpdatePayloadSchema,
 } from './session-events.js';
 import {
@@ -284,6 +285,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'session.processes_left',
     schemaVersion: 1,
     payload: SessionProcessesLeftPayloadSchema,
+  }),
+  defineEventType({
+    type: 'session.turn_timeout',
+    schemaVersion: 1,
+    payload: SessionTurnTimeoutPayloadSchema,
   }),
   defineEventType({
     type: 'session.closed',
@@ -715,6 +721,7 @@ export type AttemptAbortedPayload = DaemonEventPayloads['attempt.aborted'];
 export type AttemptResetWaitStartedPayload = DaemonEventPayloads['attempt.reset_wait_started'];
 export type AttemptResetWaitEndedPayload = DaemonEventPayloads['attempt.reset_wait_ended'];
 export type SessionCancelEscalatedPayload = DaemonEventPayloads['session.cancel_escalated'];
+export type SessionTurnTimeoutPayload = DaemonEventPayloads['session.turn_timeout'];
 export type SessionClosedPayload = DaemonEventPayloads['session.closed'];
 export type PermissionAskedPayload = DaemonEventPayloads['permission.asked'];
 export type PermissionAnsweredPayload = DaemonEventPayloads['permission.answered'];

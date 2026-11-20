@@ -141,6 +141,9 @@ describe('parseConfig, limits (architecture 5.4)', () => {
     persistent: [3, 3, 4, 4, 3, 3, 2, 3, 45, 180],
   } as const;
 
+  // N184 [proposta]: below the demand_timeout of each preset.
+  const TURN_MINUTES = { moderate: 15, economical: 10, persistent: 25 } as const;
+
   it.each(Object.entries(TABLE))('the %s preset fills every key', (name, row) => {
     const limits = parseConfig(`limits:\n  preset: ${name}\n`).limits;
     expect(limits).toEqual({
@@ -155,6 +158,8 @@ describe('parseConfig, limits (architecture 5.4)', () => {
       submit_retries: row[7],
       demand_timeout: row[8] * 60_000,
       demand_timeout_max: row[9] * 60_000,
+      turn_timeout: TURN_MINUTES[name as keyof typeof TURN_MINUTES] * 60_000,
+      on_turn_timeout: 'cancel',
     });
   });
 
@@ -169,6 +174,8 @@ describe('parseConfig, limits (architecture 5.4)', () => {
     expect(limits).toEqual({
       ...LIMIT_PRESETS.economical,
       preset: 'economical',
+      turn_timeout: 600_000,
+      on_turn_timeout: 'cancel',
       plan_reviews: 5,
       submit_retries: 0,
       demand_timeout: 600_000,
@@ -184,6 +191,28 @@ describe('parseConfig, limits (architecture 5.4)', () => {
       parseConfig('limits:\n  preset: economical\n  demand_timeout_max: 4h\n').limits
         .demand_timeout_max,
     ).toBe(14_400_000);
+  });
+
+  it('limits.turn_timeout (N184): preset value, own value, off, and never above demand_timeout', () => {
+    expect(parseConfig('').limits).toMatchObject({
+      turn_timeout: 900_000,
+      on_turn_timeout: 'cancel',
+    });
+    expect(
+      parseConfig('limits:\n  turn_timeout: 5m\n  on_turn_timeout: notice\n').limits,
+    ).toMatchObject({ turn_timeout: 300_000, on_turn_timeout: 'notice' });
+    expect(parseConfig('limits:\n  on_turn_timeout: off\n').limits.on_turn_timeout).toBe('off');
+    // Written by the user: checked against demand_timeout (the preset's, or the user's own).
+    expect(() => parseConfig('limits:\n  turn_timeout: 31m\n')).toThrow(
+      /turn_timeout must not exceed demand_timeout/,
+    );
+    expect(() => parseConfig('limits:\n  turn_timeout: 20m\n  demand_timeout: 10m\n')).toThrow(
+      /turn_timeout must not exceed demand_timeout/,
+    );
+    expect(parseConfig('limits:\n  turn_timeout: 30m\n').limits.turn_timeout).toBe(1_800_000);
+    // The preset value alone never goes above a shorter demand_timeout of the user.
+    expect(parseConfig('limits:\n  demand_timeout: 5m\n').limits.turn_timeout).toBe(300_000);
+    expect(() => parseConfig('limits:\n  on_turn_timeout: stop\n')).toThrow(/on_turn_timeout/);
   });
 
   it('rejects an unknown preset, an unknown key, a negative count and zero attempts', () => {
@@ -212,6 +241,8 @@ describe('parseConfig, execution keys', () => {
       ...LIMIT_PRESETS.moderate,
       demand_timeout: 1_800_000,
       demand_timeout_max: 7_200_000,
+      turn_timeout: 900_000,
+      on_turn_timeout: 'cancel',
     });
     expect(config.resume).toMatchObject({
       preset: 'balanced',
