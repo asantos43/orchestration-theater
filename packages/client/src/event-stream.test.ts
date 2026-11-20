@@ -238,6 +238,41 @@ describe('EventStream: filters and cursor', () => {
     expect(ids).toEqual([43]);
     expect(stream.lastEventId).toBe(43);
   });
+
+  it('tells the listener when the cursor moves, once for each chunk: the head frame first', async () => {
+    const server = await serve((connection) => {
+      connection.write('retry: 1\nid: 0\n\n');
+      setTimeout(() => {
+        // Two events in one chunk move the cursor once, to the last of them.
+        connection.write(frames(server, 1, 2));
+      }, 20);
+      setTimeout(() => {
+        // The same id again moves nothing.
+        connection.write('id: 2\n\n');
+      }, 40);
+    });
+    const { stream, ids } = rig(server);
+    const cursors: number[] = [];
+    const stop = stream.onCursor((id) => cursors.push(id));
+    stream.start();
+    await waitFor(() => ids.length === 2, 'two events');
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+    expect(cursors).toEqual([0, 2]);
+    stop();
+  });
+
+  it('does not tell the cursor to a listener that was removed', async () => {
+    const server = await serve((connection) => {
+      connection.write('id: 5\n\n');
+    });
+    const { stream } = rig(server);
+    const cursors: number[] = [];
+    stream.onCursor((id) => cursors.push(id))();
+    stream.start();
+    await waitFor(() => stream.state === 'open', 'the stream');
+    await waitFor(() => stream.lastEventId === 5, 'the cursor');
+    expect(cursors).toEqual([]);
+  });
 });
 
 describe('EventStream: reconnection', () => {
