@@ -3,6 +3,7 @@ import { mkdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dataPaths, defaultDataDir, ensureDataDir, profileDirOf, resolveDataDir } from './paths.js';
+import { createProfileDir } from './profiles/dirs.js';
 import { makeTempDataDir } from './test-helpers.js';
 
 describe('defaultDataDir (injected environment, no real HOME)', () => {
@@ -85,6 +86,26 @@ describe('profileDirOf', () => {
     expect(profileDirOf(paths, { client: 'opencode', profile: 'work.1' })).toBe(
       join(resolve('/data/ot'), 'profiles', 'opencode', 'work.1'),
     );
+  });
+
+  it('answers with the test seam when there is one, after checking the names the same way', () => {
+    const seamed = dataPaths('/data', (ref) => `/elsewhere/${ref.client}-${ref.profile}`);
+    expect(profileDirOf(seamed, { client: 'claude-code', profile: 'real' })).toBe(
+      resolve('/elsewhere/claude-code-real'),
+    );
+    expect(() => profileDirOf(seamed, { client: 'codex', profile: '..' })).toThrow(/profile/);
+    expect(dataPaths('/data').profileDirOverride).toBeUndefined();
+  });
+
+  it('is not used by the registry of the profiles, which stays under <data>/profiles', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const seamed = dataPaths(tmp.dir, () => join(tmp.dir, 'elsewhere'));
+      const made = await createProfileDir(seamed, { client: 'codex', profile: 'work' });
+      expect(made.dir).toBe(resolve(tmp.dir, 'profiles', 'codex', 'work'));
+    } finally {
+      await tmp.dispose();
+    }
   });
 
   it('refuses names that would leave the profiles directory', () => {

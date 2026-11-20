@@ -88,11 +88,24 @@ export interface DataPaths {
   readonly bin: string;
   /** The layout preferences of the interfaces, one file each (`<layout>/<interface>.json`; P12, N170). */
   readonly layout: string;
+  /**
+   * Test seam (`ComposeOverrides.profileDir`): where a profile lives instead of
+   * `<profiles>/<client>/<profile>`, for the sessions and the clients ({@link profileDirOf}). The
+   * product never sets it. The real tests point a profile at a logged-in folder outside the data
+   * directory with it: a link inside `<data>` is hidden by the sandbox (layer 3), which denies
+   * `<data>` and does not follow the link when it reads the profile again (measured 2026-11-20:
+   * ENOENT on read and write through the link; with `<data>` open, the write is EROFS).
+   */
+  readonly profileDirOverride?: ((ref: ProfileNames) => string) | undefined;
 }
 
-export function dataPaths(dataDir: string): DataPaths {
+export function dataPaths(
+  dataDir: string,
+  profileDirOverride?: (ref: ProfileNames) => string,
+): DataPaths {
   const root = resolve(dataDir);
   return {
+    ...(profileDirOverride === undefined ? {} : { profileDirOverride }),
     dataDir: root,
     config: resolve(root, 'config.yaml'),
     store: resolve(root, 'store.sqlite'),
@@ -118,9 +131,13 @@ const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /**
  * Absolute directory of one profile: `<data>/profiles/<client>/<profile>`. Both names become one
  * path segment each, so a name with a separator, `..` or a leading dot is refused (`InvalidInput`)
- * instead of leading out of the data directory.
+ * instead of leading out of the data directory. With the test seam
+ * ({@link DataPaths.profileDirOverride}) the names are checked the same way and the seam answers.
  */
-export function profileDirOf(paths: Pick<DataPaths, 'profiles'>, ref: ProfileNames): string {
+export function profileDirOf(
+  paths: Pick<DataPaths, 'profiles' | 'profileDirOverride'>,
+  ref: ProfileNames,
+): string {
   for (const [what, value] of [
     ['client', ref.client],
     ['profile', ref.profile],
@@ -129,6 +146,7 @@ export function profileDirOf(paths: Pick<DataPaths, 'profiles'>, ref: ProfileNam
       throw new InvalidInput(`Profile ${what} "${value}" cannot be a directory name`);
     }
   }
+  if (paths.profileDirOverride !== undefined) return resolve(paths.profileDirOverride(ref));
   return resolve(paths.profiles, ref.client, ref.profile);
 }
 

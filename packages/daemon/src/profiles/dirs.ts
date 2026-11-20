@@ -23,7 +23,8 @@ export async function createProfileDir(
   paths: Pick<DataPaths, 'profiles'>,
   names: ProfileNames,
 ): Promise<{ readonly dir: string; readonly created: boolean }> {
-  const dir = profileDirOf(paths, names);
+  // The registry always works on `<data>/profiles`: the test seam of the sessions is not for it.
+  const dir = profileDirOf({ profiles: paths.profiles }, names);
   try {
     const found = await lstat(dir);
     if (!found.isDirectory()) {
@@ -55,7 +56,7 @@ export interface RemoveDirOptions {
  * `keep_backup` moves it to `<data>/profiles/.removed/` instead of deleting it.
  */
 export async function removeProfileDir(options: RemoveDirOptions): Promise<DirRemoval> {
-  const expected = profileDirOf(options.paths, options.names);
+  const expected = profileDirOf({ profiles: options.paths.profiles }, options.names);
   if (resolve(options.recorded) !== expected) {
     throw new InvalidInput(
       'The recorded profile directory is not the one its names give; nothing was removed',

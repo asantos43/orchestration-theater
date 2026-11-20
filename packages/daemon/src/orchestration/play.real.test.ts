@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
+import { realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type {
@@ -16,7 +16,7 @@ import { defaultLauncher, productionClients } from '../compose.js';
 import { LIMIT_PRESET_NAMES, parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
-import { dataPaths, profileDirOf } from '../paths.js';
+import { dataPaths, profileDirOf, type ProfileNames } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
 import { RealHeadCodeHost, waitFor } from './e2e-fixture.js';
@@ -27,7 +27,7 @@ import { RealHeadCodeHost, waitFor } from './e2e-fixture.js';
  *
  * Needs `OT_TEST_REAL_CLIENTS=1`, `OT_TEST_REAL_PROMPTS=1` and `OT_TEST_REAL_PLAY=1`, plus:
  * - `OT_TEST_CLAUDE_PROFILE_DIR`: a logged-in Claude Code profile. The test points the profile of
- *   the play at it with a symlink inside the temporary data directory: it never copies, reads or
+ *   the play at it with the test seam of the daemon (`overrides.profileDir`): it never copies, reads or
  *   deletes what is in it (the pattern of `acceptance.real.test.ts`, where the profile is used as
  *   is);
  * - `OT_TEST_CLAUDE_MODEL`: the model id the client lists (a Haiku one is enough; the test does
@@ -311,13 +311,15 @@ orchestration:
     model: ${JSON.stringify(MODEL)}
 ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`}`);
 
-        // The profile of the play is the owner's logged-in one: a link, never a copy.
-        const profileDir = profileDirOf(dataPaths(tmp.dir), {
-          client: 'claude-code',
-          profile: 'real',
-        });
-        await mkdir(join(profileDir, '..'), { recursive: true });
-        await symlink(PROFILE_DIR, profileDir, 'dir');
+        // The profile of the play is the owner's logged-in one, pointed at by the test seam of the
+        // daemon (`overrides.profileDir`): never a copy, and no link inside the data directory. The
+        // sandbox (layer 3, on by default) denies `<data>` and does not follow a link there when it
+        // reads the profile again, so a linked profile has no login inside it (2026-11-20).
+        const profileSource = await realpath(PROFILE_DIR);
+        const profileDir = (ref: ProfileNames): string =>
+          ref.client === 'claude-code' && ref.profile === 'real'
+            ? profileSource
+            : profileDirOf(dataPaths(tmp.dir), ref);
 
         const fakeHost = new FakeCodeHost();
         const codeHost = new RealHeadCodeHost(fakeHost);
@@ -325,7 +327,7 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           dataDir: tmp.dir,
           config,
           // The clock is the real one: the stuck and the timeout detection of the daemon need it.
-          overrides: { vault: new InMemorySecretVault(), launcher, codeHost },
+          overrides: { vault: new InMemorySecretVault(), launcher, codeHost, profileDir },
           clients: productionClients(config),
           logger: createSilentLogger(),
           version: '0.0.0-test',
@@ -500,9 +502,6 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           }
           await rig.dispose();
           await daemon.stop();
-          // Only the link goes: `rm -r` on the data directory would not follow it, but a link
-          // removed by hand leaves no doubt about the owner's profile.
-          await unlink(profileDir).catch(() => undefined);
           await tmp.dispose();
           survivors = await waitFor(
             'the processes of the clients to exit',
