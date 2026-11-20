@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import {
+  answerGuide,
+  answerProblems,
   JUDGMENT_POINT_IDS,
   JUDGMENT_POINTS,
   judgmentPoint,
@@ -66,5 +68,48 @@ describe('the 8 judgment points of the Director', () => {
     ] as const)('%s refuses %j', (id, answer) => {
       expect(parseAnswer(id, answer)).toBeUndefined();
     });
+  });
+});
+
+describe('the guide of an answer (what the Director reads in next_action)', () => {
+  const input = { demandIds: ['d1', 'd2'] };
+
+  it.each(JUDGMENT_POINT_IDS)('the example of %s fits its own schema', (id) => {
+    const guide = answerGuide(id, input);
+    expect(guide?.schema).toMatchObject({ type: 'object' });
+    expect(guide?.schema).not.toHaveProperty('$schema');
+    expect(answerProblems(id, guide?.example, input)).toEqual([]);
+    expect(parseAnswer(id, guide?.example)).toBeDefined();
+  });
+
+  it('the example of point 1 names the first demand, or a placeholder when there is none', () => {
+    expect(answerGuide('classify_critique', input)?.example).toMatchObject({
+      failures: [{ kind: 'execution', demandIds: ['d1'] }],
+    });
+    expect(answerGuide('classify_critique', {})?.example).toMatchObject({
+      failures: [{ demandIds: ['<a demand id from demandIds>'] }],
+    });
+  });
+
+  it('the schema of point 1 says when demandIds and exception are needed', () => {
+    const text = JSON.stringify(answerGuide('classify_critique', input)?.schema);
+    expect(text).toContain('Required when kind is \\"execution\\"');
+    expect(text).toContain('Required when kind is \\"critical_exception\\"');
+  });
+
+  it('lists the problems with their paths, and the demands the script does not have', () => {
+    expect(answerProblems('classify_critique', { failures: [] }, input)).toEqual([
+      expect.stringMatching(/^failures: /),
+    ]);
+    expect(
+      answerProblems(
+        'classify_critique',
+        { failures: [{ kind: 'execution', demandIds: ['x'] }] },
+        input,
+      ),
+    ).toEqual(['failures.0.demandIds: "x" is not a demand of the script (d1, d2)']);
+    expect(answerProblems('actor_timeout', { action: 'wait' }, {})).toEqual([
+      expect.stringMatching(/^action: /),
+    ]);
   });
 });

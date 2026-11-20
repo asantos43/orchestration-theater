@@ -91,6 +91,24 @@ function log(text: string): void {
 const NO_PLAY_GRACE_MS = 90_000;
 /** How much of each reply of the Director goes into the notes. */
 const REPLY_NOTE_CHARS = 600;
+/**
+ * The events whose payload goes into the summary, clipped: what each role delivered, why the play
+ * moved, what was asked and what the tools answered. The run of 2026-11-20 ended with an empty
+ * diff and a refused classification, and the log said only how many events of each type there
+ * were. `session.update` (the stream of the models) stays out: it is most of the log.
+ */
+const TRACED_EVENTS = new Set([
+  'play.transitioned',
+  'attempt.submitted',
+  'attempt.submit_failed',
+  'attempt.aborted',
+  'permission.asked',
+  'permission.answered',
+  'tool.called',
+  'tool.finished',
+  'workspace.integrated',
+]);
+const TRACE_CHARS = 400;
 
 function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/gu, ' ').trim();
@@ -339,6 +357,12 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                 )
                 .join(' > ');
               log(`play ${play.id} (${play.state}): ${path}`);
+            }
+            for (const event of events) {
+              if (!TRACED_EVENTS.has(event.type)) continue;
+              log(
+                `trace ${event.type}@${seconds(event.timestamp - started)}: ${clip(JSON.stringify(event.payload), TRACE_CHARS)}`,
+              );
             }
           } catch (error) {
             log(`the summary of the log failed: ${String(error)}`);
