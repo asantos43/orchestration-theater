@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { ADMIN_ROUTES } from './admin.js';
 import { CHAT_ROUTES } from './chat.js';
 import { LAYOUT_ROUTES } from './layout.js';
 import { assertUniqueRoutes, type AnyApiRoute } from './route.js';
@@ -7,7 +8,7 @@ import { STATUS_ROUTES } from './status.js';
 
 /**
  * Every route of the daemon API, keyed by `id`. A resource keeps its routes in its own file of
- * this folder (`status.ts`, `sse.ts`, `chat.ts`, `layout.ts`; P5 and P6 add `scenarios.ts` and
+ * this folder (`status.ts`, `sse.ts`, `chat.ts`, `layout.ts`, `admin.ts`; P5 and P6 add `scenarios.ts` and
  * the others) and spreads its table here. The server (P3 and later) and the client (P9) read
  * routes from here, and the catalog (`catalog.ts`) is generated from it.
  */
@@ -16,6 +17,7 @@ export const API_ROUTES = {
   ...EVENT_ROUTES,
   ...CHAT_ROUTES,
   ...LAYOUT_ROUTES,
+  ...ADMIN_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

@@ -20,13 +20,16 @@ import { probeSandbox } from './compose.js';
 import type { SituationCorrelation, SituationSink } from './situations.js';
 
 /**
- * The `daemon.notice` events a start with the default sandbox and no client writes on this
- * platform: the execution that stays off and, where layer 3 is missing (Windows, 5.9), first the
- * `sandbox_unavailable` of the composition.
+ * What a start with the default sandbox and no client writes on this platform after
+ * `daemon.started`: the `api.started` of the API server (P3 of Phase 6), the execution that stays
+ * `daemon.notice` (no client) and, where layer 3 is missing (Windows, 5.9), first the
+ * `sandbox_unavailable` of the composition, which the log writes before the API starts.
  */
-export async function startNotices(): Promise<'daemon.notice'[]> {
+export async function startNotices(): Promise<('api.started' | 'daemon.notice')[]> {
   const layer3 = await probeSandbox();
-  return layer3.ok ? ['daemon.notice'] : ['daemon.notice', 'daemon.notice'];
+  return layer3.ok
+    ? ['api.started', 'daemon.notice']
+    : ['daemon.notice', 'api.started', 'daemon.notice'];
 }
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */

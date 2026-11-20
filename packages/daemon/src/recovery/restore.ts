@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { access, cp, rename } from 'node:fs/promises';
+import { access, cp, readFile, rename } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { InvalidInput, NotFound, type Clock } from '@otheater/core';
-import type { BackupManifest } from '@otheater/protocol';
+import { DAEMON_ID_FILE, DaemonIdSchema, type BackupManifest } from '@otheater/protocol';
 import type { StoreFileTools } from '../compose.js';
 import { dataPaths } from '../paths.js';
 import { BACKUP_STORE_FILE } from './backup.js';
@@ -23,6 +23,14 @@ export interface RestoreResult {
   readonly previousDatabase: string | undefined;
   /** Where the replaced `scenarios/` went; `undefined` when it was left alone or did not exist. */
   readonly previousScenarios: string | undefined;
+  /**
+   * True when the backup carried a `daemon-id` and it is now the id of this data folder (N168: the
+   * restored daemon is the same daemon). False when the backup has none (older ones) or it already
+   * was this folder's id: the id is left alone.
+   */
+  readonly daemonIdRestored: boolean;
+  /** Where the replaced `daemon-id` went; `undefined` when there was none or it was the same id. */
+  readonly previousDaemonId: string | undefined;
 }
 
 const exists = (path: string): Promise<boolean> =>
@@ -63,10 +71,39 @@ export async function restoreBackup(input: RestoreInput): Promise<RestoreResult>
     const saved = join(folder, 'scenarios');
     if (await exists(saved)) await cp(saved, live, { recursive: true });
   }
+  const daemonId = await restoreDaemonId(folder, input);
   return {
     manifest,
     databasePath: restored.databasePath,
     previousDatabase: restored.previousDatabase,
     previousScenarios,
+    ...daemonId,
   };
+}
+
+/**
+ * Puts the `daemon-id` of the backup in the data folder (N168), so the events and the scenarios
+ * the backup holds still belong to the daemon they were made by. A backup with no (or a damaged)
+ * `daemon-id` leaves the folder's id alone; a different id that was there is kept as
+ * `daemon-id.before-restore-<stamp>`, like the database.
+ */
+async function restoreDaemonId(
+  folder: string,
+  input: RestoreInput,
+): Promise<Pick<RestoreResult, 'daemonIdRestored' | 'previousDaemonId'>> {
+  const none = { daemonIdRestored: false, previousDaemonId: undefined };
+  const saved = join(folder, DAEMON_ID_FILE);
+  if (!(await exists(saved))) return none;
+  const savedId = DaemonIdSchema.safeParse((await readFile(saved, 'utf8')).trim());
+  if (!savedId.success) return none;
+  const live = dataPaths(input.dataDir).daemonId;
+  let previousDaemonId: string | undefined;
+  if (await exists(live)) {
+    const liveId = DaemonIdSchema.safeParse((await readFile(live, 'utf8')).trim());
+    if (liveId.success && liveId.data === savedId.data) return none;
+    previousDaemonId = `${live}.before-restore-${new Date(input.clock.now()).toISOString().replace(/[:.]/g, '-')}`;
+    await rename(live, previousDaemonId);
+  }
+  await cp(saved, live);
+  return { daemonIdRestored: true, previousDaemonId };
 }

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Secret } from '@otheater/core';
 import type { TFunction } from 'i18next';
+import { runApiRotateTokenCommand } from './commands-api.js';
 import { runChatCommand } from './chat-command.js';
 import {
   EXIT_FAILED,
@@ -89,6 +90,7 @@ const COMMANDS = [
   'chat',
   'profile',
   'executor',
+  'api',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -175,6 +177,13 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
         if (folder === undefined) return usageError(t('usage.missingBackupPath'));
         if (extra.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         return await runRestoreCommand(context, folder);
+      }
+      case 'api': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingApiAction'));
+        if (action !== 'rotate-token') return usageError(t('usage.unknownApiAction', { action }));
+        if (args.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runApiRotateTokenCommand(context);
       }
       case 'directives': {
         const [action, ...args] = rest;

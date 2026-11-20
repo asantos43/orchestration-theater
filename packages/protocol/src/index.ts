@@ -20,3 +20,4 @@ export * from './quota-events.js';
 export * from './usage-events.js';
 export * from './selection-events.js';
 export * from './notice-events.js';
+export * from './api-events.js';
