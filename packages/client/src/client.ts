@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: MPL-2.0
+import {
+  API_ROUTES,
+  ApiErrorSchema,
+  invalidInputDetails,
+  isSupportedApiVersion,
+  routePath,
+  type AnyApiRoute,
+  type ApiStatus,
+  type DaemonId,
+  type RouteBody,
+  type RouteParams,
+  type RouteQuery,
+  type RouteResponse,
+  type ScenarioRef,
+} from '@otheater/protocol';
+import type { z } from 'zod';
+import {
+  ApiInputError,
+  ApiNetworkError,
+  ApiProtocolError,
+  ApiRequestError,
+  ApiVersionError,
+  DaemonIdMismatchError,
+  type ApiErrorContext,
+} from './errors.js';
+
+/**
+ * Typed REST client of one daemon (plan docs/17 P9). It is generic over the route registry of
+ * `@otheater/protocol`: `client.call(route, { params, query, body, headers })` takes the types of
+ * the route's schemas, sends `Authorization: Bearer`, and returns the answer parsed by the
+ * route's `response` schema. It runs on `fetch` only, so it works in Node 24 and in a browser.
+ */
+
+/** The part of `fetch` the client uses; tests and other runtimes pass their own. */
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+/** Per-call deadline when nothing else says. [proposta] 30 s. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
+
+export interface ApiClientOptions {
+  /** Base URL of the daemon (`http://127.0.0.1:<port>`); a path prefix is kept (reverse proxy). */
+  readonly url: string;
+  /** The API token. Sent as `Authorization: Bearer`, never logged and never put in an error. */
+  readonly token: string;
+  /**
+   * The id the list expects at this address (N168). It goes into every error, and
+   * {@link ApiClient.connect} checks the daemon against it.
+   */
+  readonly daemonId?: DaemonId | undefined;
+  readonly fetch?: FetchLike | undefined;
+  /** Deadline of one call in milliseconds; `0` means none. Default {@link DEFAULT_TIMEOUT_MS}. */
+  readonly timeoutMs?: number | undefined;
+}
+
+/** What every call accepts besides the parts of its route. */
+export interface CallControl {
+  /** Aborts the call: it fails with an `ApiNetworkError` of reason `aborted`. */
+  readonly signal?: AbortSignal | undefined;
+  /** Overrides the client's deadline for this call; `0` means none. */
+  readonly timeoutMs?: number | undefined;
+}
+
+/** An object with no keys: it is assignable to a type exactly when all its keys are optional. */
+type Empty = Record<string, never>;
+
+/** The request headers of a route as its schema types them (lower-case keys). */
+export type RouteHeaders<R extends AnyApiRoute> = R['headers'] extends z.ZodType
+  ? z.input<R['headers']>
+  : undefined;
+
+type ParamsPart<R extends AnyApiRoute> = R['params'] extends z.ZodType
+  ? { readonly params: RouteParams<R> }
+  : { readonly params?: undefined };
+
+type QueryPart<R extends AnyApiRoute> = R['query'] extends z.ZodType
+  ? Empty extends RouteQuery<R>
+    ? { readonly query?: RouteQuery<R> }
+    : { readonly query: RouteQuery<R> }
+  : { readonly query?: undefined };
+
+type BodyPart<R extends AnyApiRoute> = R['body'] extends z.ZodType
+  ? { readonly body: RouteBody<R> }
+  : { readonly body?: undefined };
+
+type HeadersPart<R extends AnyApiRoute> = R['headers'] extends z.ZodType
+  ? Empty extends RouteHeaders<R>
+    ? { readonly headers?: RouteHeaders<R> }
+    : { readonly headers: RouteHeaders<R> }
+  : { readonly headers?: undefined };
+
+/** The options of a call to route `R`: each part the route has is typed by its schema. */
+export type CallOptions<R extends AnyApiRoute> = CallControl &
+  ParamsPart<R> &
+  QueryPart<R> &
+  BodyPart<R> &
+  HeadersPart<R>;
+
+/** The options argument is required exactly when the route has a required part. */
+export type CallArgs<R extends AnyApiRoute> =
+  Empty extends CallOptions<R> ? [options?: CallOptions<R>] : [options: CallOptions<R>];
+
+/** The same options, as the code that sends them sees them. */
+interface RuntimeCallOptions extends CallControl {
+  readonly params?: Readonly<Record<string, string | number>> | undefined;
+  readonly query?: Readonly<Record<string, unknown>> | undefined;
+  readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+}
+
+export class ApiClient {
+  /** Base URL with no trailing slash. */
+  readonly url: string;
+  /** The daemon the client was told it talks to, when the list knew it. */
+  readonly daemonId: DaemonId | undefined;
+  readonly #token: string;
+  readonly #fetch: FetchLike;
+  readonly #timeoutMs: number;
+
+  constructor(options: ApiClientOptions) {
+    this.url = options.url.replace(/\/+$/, '');
+    this.#token = options.token;
+    this.daemonId = options.daemonId;
+    this.#fetch = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+    this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  /**
+   * Calls a `json` route. Resolves with the answer parsed by the route's `response` schema, or
+   * rejects with an {@link ApiRequestError} (an error answer of the API), an
+   * {@link ApiProtocolError} (an answer outside the contract), an {@link ApiNetworkError} (no
+   * answer) or an {@link ApiInputError} (the input does not fit the route; nothing was sent).
+   * `sse` and `websocket` routes are not calls: they have their own clients (P10).
+   */
+  async call<R extends AnyApiRoute>(route: R, ...args: CallArgs<R>): Promise<RouteResponse<R>> {
+    const options = (args[0] ?? {}) as RuntimeCallOptions;
+    if (route.kind !== 'json') {
+      throw new TypeError(
+        `Route ${route.id} is a ${route.kind} route: it does not go through call()`,
+      );
+    }
+    const context: ApiErrorContext = { daemonId: this.daemonId, routeId: route.id };
+    const request = this.#prepare(route, options, context);
+    const { response, text } = await this.#send(route, request, options, context);
+    return this.#interpret(route, response, text, context) as RouteResponse<R>;
+  }
+
+  /** `GET /v1/status`. */
+  status(options: CallControl = {}): Promise<ApiStatus> {
+    return this.call(API_ROUTES.getStatus, options);
+  }
+
+  /**
+   * The handshake: asks `GET /v1/status` and checks what comes back. A different `daemonId` from
+   * the one the client was told is a {@link DaemonIdMismatchError} (N168), and an API version
+   * this build does not speak is an {@link ApiVersionError}. Resolves with the status.
+   */
+  async connect(options: CallControl = {}): Promise<ApiStatus> {
+    const status = await this.status(options);
+    if (this.daemonId !== undefined && status.daemonId !== this.daemonId) {
+      throw new DaemonIdMismatchError(
+        { expected: this.daemonId, actual: status.daemonId },
+        new URL(this.url).origin,
+      );
+    }
+    if (!isSupportedApiVersion(status.apiVersion)) {
+      throw new ApiVersionError(status.apiVersion, { daemonId: this.daemonId });
+    }
+    return status;
+  }
+
+  /** The global reference of a scenario of this daemon (N168). Needs the id of the daemon. */
+  scenarioRef(scenarioId: string): ScenarioRef {
+    if (this.daemonId === undefined) {
+      throw new TypeError('This client does not know the id of its daemon: connect first');
+    }
+    return { daemonId: this.daemonId, scenarioId };
+  }
+
+  #prepare(
+    route: AnyApiRoute,
+    options: RuntimeCallOptions,
+    context: ApiErrorContext,
+  ): { url: string; init: RequestInit & { headers: Headers } } {
+    const checks = [
+      [
+        'params',
+        route.params,
+        route.params === undefined ? options.params : (options.params ?? {}),
+      ],
+      ['query', route.query, route.query === undefined ? options.query : (options.query ?? {})],
+      ['body', route.body, options.body],
+    ] as const;
+    for (const [part, schema, value] of checks) this.#validate(part, schema, value, context);
+
+    const headers = new Headers();
+    const given = Object.fromEntries(
+      Object.entries(options.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]),
+    );
+    this.#validate(
+      'headers',
+      route.headers,
+      route.headers === undefined ? options.headers : given,
+      context,
+    );
+    for (const [name, value] of Object.entries(given)) headers.set(name, value);
+    headers.set('accept', 'application/json');
+    headers.set('authorization', `Bearer ${this.#token}`);
+
+    const url = new URL(`${this.url}${routePath(route, options.params ?? {})}`);
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      for (const item of Array.isArray(value) ? (value as unknown[]) : [value]) {
+        if (item !== undefined) url.searchParams.append(key, queryValue(item));
+      }
+    }
+    const init: RequestInit & { headers: Headers } = {
+      method: route.method,
+      headers,
+      redirect: 'manual',
+    };
+    if (options.body !== undefined) {
+      headers.set('content-type', 'application/json');
+      init.body = JSON.stringify(options.body);
+    }
+    return { url: url.toString(), init };
+  }
+
+  #validate(
+    part: 'params' | 'query' | 'headers' | 'body',
+    schema: z.ZodType | undefined,
+    value: unknown,
+    context: ApiErrorContext,
+  ): void {
+    if (schema === undefined) {
+      if (value !== undefined) {
+        throw new ApiInputError(
+          { part, issues: [{ path: [], message: `this route takes no ${part}` }] },
+          context,
+        );
+      }
+      return;
+    }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      throw new ApiInputError({ part, issues: invalidInputDetails(parsed.error).issues }, context);
+    }
+  }
+
+  async #send(
+    route: AnyApiRoute,
+    request: { url: string; init: RequestInit },
+    options: RuntimeCallOptions,
+    context: ApiErrorContext,
+  ): Promise<{ response: Response; text: string }> {
+    const origin = new URL(request.url).origin;
+    const timeoutMs = options.timeoutMs ?? this.#timeoutMs;
+    const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+    const signals = [options.signal, timeout].filter(
+      (signal): signal is AbortSignal => signal !== undefined,
+    );
+    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+    try {
+      const response = await this.#fetch(request.url, {
+        ...request.init,
+        ...(signal === undefined ? {} : { signal }),
+      });
+      return { response, text: await response.text() };
+    } catch (cause) {
+      const reason =
+        options.signal?.aborted === true
+          ? 'aborted'
+          : timeout?.aborted === true
+            ? 'timeout'
+            : 'connection';
+      throw new ApiNetworkError(
+        { reason, origin, ...(reason === 'connection' ? detailOf(cause) : {}) },
+        { ...context, routeId: route.id },
+        { cause },
+      );
+    }
+  }
+
+  #interpret(
+    route: AnyApiRoute,
+    response: Response,
+    text: string,
+    context: ApiErrorContext,
+  ): unknown {
+    const status = response.status;
+    const body = parseJson(text);
+    if (response.ok) {
+      if (!body.ok) throw new ApiProtocolError({ reason: 'invalid_json', status }, context);
+      const parsed = route.response.safeParse(body.value);
+      if (!parsed.success) {
+        throw new ApiProtocolError(
+          { reason: 'invalid_response', status, issues: invalidInputDetails(parsed.error).issues },
+          context,
+        );
+      }
+      return parsed.data;
+    }
+    const error = body.ok ? ApiErrorSchema.safeParse(body.value) : undefined;
+    if (error?.success !== true) {
+      throw new ApiProtocolError({ reason: 'invalid_error_body', status }, context);
+    }
+    throw new ApiRequestError(
+      {
+        status,
+        body: error.data.error,
+        retryAfterSeconds: retryAfterOf(response.headers.get('retry-after')),
+      },
+      context,
+    );
+  }
+}
+
+/** A query value as text; an array is sent as repeated keys by the caller. */
+function queryValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+/** An empty body is `undefined`; anything else must be JSON. */
+function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
+  if (text.trim() === '') return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** `Retry-After` as seconds (the HTTP date form is not used by the daemon). */
+function retryAfterOf(header: string | null): number | undefined {
+  if (header === null || !/^\d+$/.test(header.trim())) return undefined;
+  return Number(header.trim());
+}
+
+/** What the failure of `fetch` says, short: the error code of the socket, or its message. */
+function detailOf(cause: unknown): { detail?: string } {
+  const inner = (cause as { cause?: unknown } | undefined)?.cause ?? cause;
+  const code = (inner as { code?: unknown } | undefined)?.code;
+  if (typeof code === 'string') return { detail: code };
+  if (inner instanceof Error) return { detail: inner.message };
+  return {};
+}

@@ -2,7 +2,8 @@
 // Dependency rule (architecture 5.18, rule 3). Run with `pnpm deps` (from the repository root).
 //   core    depends only on zod;
 //   adapter depends on core and its own libraries, never on the daemon or on another adapter;
-//   daemon  depends on core and imports adapters only at the composition point (compose.ts).
+//   daemon  depends on core and imports adapters only at the composition point (compose.ts);
+//   client  depends on protocol and zod, runs in a browser too, and keeps Node only in src/node/.
 // Test files (*.test.ts) are out of the "core only zod" rule because they import the test runner.
 // The fakes in core/src/testing/ may be imported only by tests (rule testing-only-from-tests).
 
@@ -48,6 +49,68 @@ export default {
           '(^|/)node_modules/@otheater/core/(src|dist)/(?!testing/)',
           '(^|/)node_modules/zod/',
           '^zod(/|$)',
+        ],
+      },
+    },
+    {
+      name: 'client-only-protocol-and-zod',
+      comment:
+        'packages/client/src runs in Node and in a browser (Phase 12): it may import only itself, @otheater/protocol, @otheater/core (types) and zod. No daemon, no adapter, no fake-agent, and no Node built-in outside src/node/ [proposta]. Tests may import the test runner and Node.',
+      severity: 'error',
+      from: {
+        path: '^packages/client/src/',
+        pathNot: ['\\.test(-support)?\\.ts$', '^packages/client/src/node/'],
+      },
+      to: {
+        pathNot: [
+          '^packages/client/src/',
+          '^packages/protocol/(src|dist)/',
+          '(^|/)node_modules/@otheater/protocol/(src|dist)/',
+          '^packages/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/@otheater/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/zod/',
+          '^zod(/|$)',
+        ],
+      },
+    },
+    {
+      name: 'client-node-folder',
+      comment:
+        'packages/client/src/node is the only place of the client that may use Node built-ins (files, paths, pid). Nothing else of the client may import it, so the rest stays browser-safe [proposta].',
+      severity: 'error',
+      from: {
+        path: '^packages/client/src/',
+        pathNot: ['\\.test(-support)?\\.ts$', '^packages/client/src/node/'],
+      },
+      to: { path: '^packages/client/src/node/' },
+    },
+    {
+      name: 'client-node-folder-limits',
+      comment:
+        'The Node folder of the client may import the client, @otheater/protocol, zod and Node built-ins, and nothing else (never the daemon).',
+      severity: 'error',
+      from: { path: '^packages/client/src/node/', pathNot: '\\.test(-support)?\\.ts$' },
+      to: {
+        dependencyTypesNot: ['core'],
+        pathNot: [
+          '^packages/client/src/',
+          '^packages/protocol/(src|dist)/',
+          '(^|/)node_modules/@otheater/protocol/(src|dist)/',
+          '(^|/)node_modules/zod/',
+          '^zod(/|$)',
+        ],
+      },
+    },
+    {
+      name: 'client-never-daemon',
+      comment:
+        'No file of the client, tests included, imports the daemon, an adapter or the fake-agent.',
+      severity: 'error',
+      from: { path: '^packages/client/' },
+      to: {
+        path: [
+          '^packages/(daemon|adapters|fake-agent)/',
+          '(^|/)node_modules/@otheater/(daemon|adapter-|fake-agent)',
         ],
       },
     },
