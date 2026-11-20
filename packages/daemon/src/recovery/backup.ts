@@ -10,6 +10,7 @@ import {
 } from '@otheater/core';
 import {
   BACKUP_MANIFEST_FORMAT_VERSION,
+  DAEMON_ID_FILE,
   BackupManifestSchema,
   buildDaemonEvent,
   type BackupContent,
@@ -73,8 +74,8 @@ const exists = (path: string): Promise<boolean> =>
 
 /**
  * One copy: `<backupDir>/otheater-<stamp>Z/` with `store.sqlite` (already checked by the store's
- * own `integrity_check`), `manifest.json` and, by `content`, the `scenarios/` folder (architecture
- * 5.21). Everything is written in `<name>.partial/` and renamed to its final name last, so a
+ * own `integrity_check`), `manifest.json`, the `daemon-id` file when the data folder has one
+ * (N168), and, by `content`, the `scenarios/` folder (architecture 5.21). Everything is written in `<name>.partial/` and renamed to its final name last, so a
  * folder with the final name is always complete; on any failure the partial folder is removed.
  */
 export async function createBackup(input: CreateBackupInput): Promise<CreatedBackup> {
@@ -106,6 +107,9 @@ export async function createBackup(input: CreateBackupInput): Promise<CreatedBac
         input.content,
       );
     }
+    // The id of the daemon (N168) travels with every backup, so a restore keeps the identity.
+    const daemonIdFile = dataPaths(input.dataDir).daemonId;
+    if (await exists(daemonIdFile)) await cp(daemonIdFile, join(partial, DAEMON_ID_FILE));
     const manifest = BackupManifestSchema.parse({
       formatVersion: BACKUP_MANIFEST_FORMAT_VERSION,
       createdAt,

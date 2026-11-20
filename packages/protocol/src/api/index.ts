@@ -8,5 +8,6 @@ export * from './discovery.js';
 export * from './sse.js';
 export * from './chat.js';
 export * from './layout.js';
+export * from './admin.js';
 export * from './registry.js';
 export * from './catalog.js';

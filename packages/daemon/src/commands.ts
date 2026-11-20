@@ -142,6 +142,10 @@ export async function runRestoreCommand(
     if (result.previousScenarios !== undefined) {
       context.out(context.t('restore.keptScenarios', { path: result.previousScenarios }));
     }
+    if (result.daemonIdRestored) context.out(context.t('restore.daemonIdRestored'));
+    if (result.previousDaemonId !== undefined) {
+      context.out(context.t('restore.keptDaemonId', { path: result.previousDaemonId }));
+    }
     return EXIT_OK;
   } finally {
     await lock.release();

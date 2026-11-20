@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { InvalidInput, NotFound, type StoreBackupResult } from '@otheater/core';
 import { FakeClock } from '@otheater/core/testing';
@@ -126,5 +126,80 @@ describe('restoreBackup', () => {
     } finally {
       await tmp.dispose();
     }
+  });
+
+  describe('daemon-id (Phase 6, P3)', () => {
+    const SAVED = '3f2b8a52-6a9a-4a0e-9c7e-7d3e0f6a1b11';
+    const OTHER = '9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f';
+
+    async function restore(dir: string, folder: string): ReturnType<typeof restoreBackup> {
+      return restoreBackup({
+        dataDir: dir,
+        backupPath: folder,
+        tools: fakeTools(dir),
+        clock: new FakeClock(AT + 1000),
+      });
+    }
+
+    it('goes into the backup and comes back with the restore, the live id kept aside', async () => {
+      const tmp = await makeTempDataDir();
+      try {
+        await writeFile(join(tmp.dir, 'store.sqlite'), 'live');
+        await writeFile(join(tmp.dir, 'daemon-id'), `${SAVED}\n`);
+        const folder = await makeBackup(tmp.dir, 'store_only');
+        expect(await readFile(join(folder, 'daemon-id'), 'utf8')).toBe(`${SAVED}\n`);
+
+        // A fresh data folder (other machine): its own id is replaced by the one of the backup.
+        await writeFile(join(tmp.dir, 'daemon-id'), `${OTHER}\n`);
+        const result = await restore(tmp.dir, folder);
+        expect(result.daemonIdRestored).toBe(true);
+        expect(await readFile(join(tmp.dir, 'daemon-id'), 'utf8')).toBe(`${SAVED}\n`);
+        expect(result.previousDaemonId).toMatch(
+          /daemon-id\.before-restore-2026-11-16T15-30-06-000Z$/,
+        );
+        expect(await readFile(result.previousDaemonId ?? '', 'utf8')).toBe(`${OTHER}\n`);
+      } finally {
+        await tmp.dispose();
+      }
+    });
+
+    it('restores the id into a data folder that has none', async () => {
+      const tmp = await makeTempDataDir();
+      try {
+        await writeFile(join(tmp.dir, 'store.sqlite'), 'live');
+        await writeFile(join(tmp.dir, 'daemon-id'), `${SAVED}\n`);
+        const folder = await makeBackup(tmp.dir, 'store_only');
+        await rm(join(tmp.dir, 'daemon-id'));
+        const result = await restore(tmp.dir, folder);
+        expect(result).toMatchObject({ daemonIdRestored: true, previousDaemonId: undefined });
+        expect(await readFile(join(tmp.dir, 'daemon-id'), 'utf8')).toBe(`${SAVED}\n`);
+      } finally {
+        await tmp.dispose();
+      }
+    });
+
+    it('touches nothing when the id is the same, or when the backup has none or a damaged one', async () => {
+      const tmp = await makeTempDataDir();
+      try {
+        await writeFile(join(tmp.dir, 'store.sqlite'), 'live');
+        await writeFile(join(tmp.dir, 'daemon-id'), `${SAVED}\n`);
+        const folder = await makeBackup(tmp.dir, 'store_only');
+        const same = await restore(tmp.dir, folder);
+        expect(same).toMatchObject({ daemonIdRestored: false, previousDaemonId: undefined });
+
+        await writeFile(join(tmp.dir, 'store.sqlite'), 'live');
+        await writeFile(join(tmp.dir, 'daemon-id'), `${OTHER}\n`);
+        await writeFile(join(folder, 'daemon-id'), 'garbage');
+        const damaged = await restore(tmp.dir, folder);
+        expect(damaged.daemonIdRestored).toBe(false);
+        await rm(join(folder, 'daemon-id'));
+        await writeFile(join(tmp.dir, 'store.sqlite'), 'live');
+        const none = await restore(tmp.dir, folder);
+        expect(none.daemonIdRestored).toBe(false);
+        expect(await readFile(join(tmp.dir, 'daemon-id'), 'utf8')).toBe(`${OTHER}\n`);
+      } finally {
+        await tmp.dispose();
+      }
+    });
   });
 });

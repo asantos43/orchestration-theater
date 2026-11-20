@@ -2,6 +2,7 @@
 import { chmod, mkdir } from 'node:fs/promises';
 import { posix, resolve, win32 } from 'node:path';
 import { InvalidInput } from '@otheater/core';
+import { API_DISCOVERY_FILE, API_TOKEN_FILE, DAEMON_ID_FILE } from '@otheater/protocol';
 
 /** Environment as the path functions need it; tests pass a plain object, never `process.env`. */
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -76,6 +77,15 @@ export interface DataPaths {
    */
   readonly channel: string;
   /**
+   * Where a running daemon publishes where its API is (`api.json`: url, daemon id, pid, API version;
+   * never the token). Mode 0600; removed when the daemon stops cleanly (P3, N166).
+   */
+  readonly apiDiscovery: string;
+  /** The API token (mode 0600). Kept apart from `api.json`: with `api.token: persistent` it outlives a start. */
+  readonly apiToken: string;
+  /** The id of the daemon (N168): a UUID made on the first start. Goes into a backup and back with `ot restore`. */
+  readonly daemonId: string;
+  /**
    * The commands by profile (P28b, N159): one small script per profile (`codex-personal`) that only
    * calls `ot profile exec`. The person puts this folder in `PATH`, by hand or with
    * `ot profile shims path --install`.
@@ -99,6 +109,9 @@ export function dataPaths(dataDir: string): DataPaths {
     profiles: resolve(root, 'profiles'),
     scratch: resolve(root, 'scratch'),
     channel: resolve(root, 'channel.json'),
+    apiDiscovery: resolve(root, API_DISCOVERY_FILE),
+    apiToken: resolve(root, API_TOKEN_FILE),
+    daemonId: resolve(root, DAEMON_ID_FILE),
     bin: resolve(root, 'bin'),
   };
 }

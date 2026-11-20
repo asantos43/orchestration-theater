@@ -5,13 +5,14 @@ import { API_ROUTE_LIST, API_ROUTES } from './registry.js';
 import { API_PREFIX, HTTP_METHODS, assertUniqueRoutes, pathParamNames } from './route.js';
 
 describe('API_ROUTES', () => {
-  it('has the routes of P1', () => {
+  it('has the routes of P1 and the rotation of the token (P3)', () => {
     expect(Object.keys(API_ROUTES).sort()).toEqual([
       'createChatTicket',
       'getLayout',
       'getStatus',
       'openChatSocket',
       'putLayout',
+      'rotateApiToken',
       'streamEvents',
     ]);
   });
