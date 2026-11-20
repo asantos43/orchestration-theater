@@ -116,15 +116,17 @@
 #            O código que o navegador mostra para colar vai do terminal ao teste por um FIFO (P27b).
 #            Um login que pede terminal (OpenCode) é pulado na hora e fica [N], a menos que
 #            OT_TEST_PROFILES_TERMINAL_LOGIN=wait (P27c). Ctrl+C para o teste inteiro (P27c).
-#   phase6   [proposta] o aceite da Fase 6 no nível real (P13): UMA peça inteira com o Claude Code em
-#            todos os papéis, seguida por um cliente de `@otheater/client` como uma tela faria: abre
-#            o cenário por REST, conversa com o Diretor pelo WebSocket do chat, responde às
-#            perguntas e acompanha a peça pelo SSE até a entrega (phase6-acceptance.real.test.ts).
+#   phase6   [proposta] o aceite da Fase 6 no nível real (P13): UMA peça inteira com UM cliente em
+#            todos os papéis (OT_TEST_PHASE6_CLIENT: claude-code, o padrão, codex ou opencode),
+#            seguida por um cliente de `@otheater/client` como uma tela faria: abre o cenário por
+#            REST, conversa com o Diretor pelo WebSocket do chat, responde às perguntas e acompanha
+#            a peça pelo SSE até a entrega (phase6-acceptance.real.test.ts).
 #            Confere que os eventos recebidos são exatamente os do log (ids, sem repetição), que o
 #            caminho vai a DONE com `delivery.completed`, que o REST diz DONE e que o CodeHost
 #            falso tem o PR. OT_TEST_REAL_CLIENTS=1, OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PHASE6=1;
-#            lê as mesmas OT_TEST_CLAUDE_PROFILE_DIR, OT_TEST_CLAUDE_MODEL, OT_TEST_CLAUDE_MODE,
-#            OT_TEST_PLAY_TIMEOUT_MS e OT_TEST_PLAY_LIMITS do nível play. Gasta cota da conta do
+#            lê OT_TEST_<CLIENTE>_PROFILE_DIR, OT_TEST_<CLIENTE>_MODEL e OT_TEST_<CLIENTE>_MODE do
+#            cliente escolhido, OT_TEST_PLAY_TIMEOUT_MS e OT_TEST_PLAY_LIMITS do nível play e, para o
+#            provedor do OpenCode, OT_TEST_SANDBOX_EXTRA_DOMAINS. Gasta cota da conta do
 #            perfil (a mesma ordem de grandeza do nível play). Resumo no log com o prefixo [phase6-real].
 #
 # Uso:
@@ -189,9 +191,19 @@ while [ $# -gt 0 ]; do
 done
 
 case "$level" in clients|prompts|k|play|phase6|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
-# Os níveis play e phase6 [proposta] rodam uma peça inteira só com o Claude Code: mesmas exigências.
+# Os níveis play e phase6 [proposta] rodam uma peça inteira com um só cliente: mesmas exigências. O
+# play é só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT (claude-code, o padrão).
 play_like=0
 if [ "$level" = play ] || [ "$level" = phase6 ]; then play_like=1; fi
+play_key=CLAUDE
+if [ "$level" = phase6 ]; then
+  case "${OT_TEST_PHASE6_CLIENT:-claude-code}" in
+    claude-code) play_key=CLAUDE ;;
+    codex) play_key=CODEX ;;
+    opencode) play_key=OPENCODE ;;
+    *) echo "OT_TEST_PHASE6_CLIENT deve ser claude-code, codex ou opencode" >&2; exit 2 ;;
+  esac
+fi
 # O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
 # nível play [proposta] é de 40m: o prazo da peça (OT_TEST_PLAY_TIMEOUT_MS) é de 25m, mais 3m para
 # parar o daemon e conferir os processos, e o teste da chamada MCP que roda antes leva alguns
@@ -289,9 +301,9 @@ k_left_out=()
 declare -A executable=([CLAUDE]=claude-agent-acp [CODEX]=codex-acp [OPENCODE]=opencode)
 for key in CLAUDE CODEX OPENCODE; do
   exe="${executable[$key]}"
-  # Os níveis play e phase6 rodam a peça só com o Claude Code; os outros clientes não entram.
-  if [ "$play_like" = 1 ] && [ "$key" != CLAUDE ]; then
-    printf '  [--]    %s: fora do nível %s (só o Claude Code)\n' "$exe" "$level"
+  # Os níveis play e phase6 rodam a peça com um só cliente; os outros não entram.
+  if [ "$play_like" = 1 ] && [ "$key" != "$play_key" ]; then
+    printf '  [--]    %s: fora do nível %s (só %s)\n' "$exe" "$level" "${executable[$play_key]}"
     continue
   fi
   if command -v "$exe" >/dev/null 2>&1; then
@@ -319,7 +331,7 @@ for key in CLAUDE CODEX OPENCODE; do
           fail "  $profile_var aponta para uma pasta que não existe"
         fi
       elif [ "$play_like" = 1 ]; then
-        fail "  o nível $level exige $profile_var (perfil já logado) e $model_var (por exemplo, um Haiku)"
+        fail "  o nível $level exige $profile_var (perfil já logado) e $model_var (um modelo pequeno)"
       else
         warn "  sem $profile_var e $model_var: o teste deixa $exe de fora no nível $level"
         k_left_out+=("$key")
@@ -508,7 +520,7 @@ if [ "$level" = play ]; then
   echo "  Se o Diretor responde só com texto e não abre peça, a peça falha em cerca de 90 s (antes esperava os 25m)."
 fi
 if [ "$level" = phase6 ]; then
-  echo "Atenção: o nível phase6 roda UMA PEÇA INTEIRA com o Claude Code em todos os papéis, seguida por um cliente de @otheater/client (REST, SSE e WebSocket do chat). Gasta cota da conta do perfil."
+  echo "Atenção: o nível phase6 roda UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis (OT_TEST_PHASE6_CLIENT=${OT_TEST_PHASE6_CLIENT:-claude-code}${OT_TEST_SANDBOX_EXTRA_DOMAINS:+, sandbox.extra_domains=$OT_TEST_SANDBOX_EXTRA_DOMAINS}), seguida por um cliente de @otheater/client (REST, SSE e WebSocket do chat). Gasta cota da conta do perfil."
   # [proposta] Estimativa, não medida: a mesma ordem de grandeza da peça do nível play (N88).
   echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz; com repetições até cerca de 50."
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."
