@@ -66,6 +66,11 @@ export const API_PROTOCOL_REASONS = [
   'invalid_response',
   /** A non-success answer whose body is not the error shape (a proxy page, a crash, a redirect). */
   'invalid_error_body',
+  /**
+   * An event stream or a chat socket that does not follow the contract: the answer is not a
+   * `text/event-stream`, or a frame of the socket is not text. [proposta] (P10)
+   */
+  'invalid_stream',
 ] as const;
 export type ApiProtocolReason = (typeof API_PROTOCOL_REASONS)[number];
 
@@ -134,6 +139,20 @@ export class ApiNetworkError extends ApiClientError {
       options,
     );
     this.reason = input.reason;
+  }
+}
+
+/**
+ * A chat message was sent while the socket was not open (connecting, retrying or closed).
+ * Nothing was sent, and nothing is queued: the caller decides whether to try again.
+ */
+export class ChatNotOpenError extends ApiClientError {
+  override name = 'ChatNotOpenError';
+  readonly state: string;
+
+  constructor(state: string, context: ApiErrorContext = {}) {
+    super(`The chat socket is ${state}: the message was not sent`, context);
+    this.state = state;
   }
 }
 
