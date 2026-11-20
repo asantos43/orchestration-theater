@@ -24,10 +24,18 @@ export const CritiqueFailureSchema = z
   .strictObject({
     kind: z.enum(FAILURE_KINDS),
     /** The demands the failure is about (needed for an `execution` failure). */
-    demandIds: z.array(z.string().min(1)).optional(),
+    demandIds: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        'Required when kind is "execution": the affected demands, taken from the "demandIds" of the decision input.',
+      ),
     /** The critical exception (needed for a `critical_exception` failure). */
-    exception: z.enum(CRITICAL_EXCEPTIONS).optional(),
-    note: z.string().optional(),
+    exception: z
+      .enum(CRITICAL_EXCEPTIONS)
+      .optional()
+      .describe('Required when kind is "critical_exception".'),
+    note: z.string().optional().describe('What failed; it goes on as context of the next cycle.'),
   })
   .superRefine((failure, ctx) => {
     if (failure.kind === 'execution' && (failure.demandIds?.length ?? 0) === 0) {
@@ -47,6 +55,19 @@ export interface JudgmentPoint {
   readonly flows: readonly string[];
   /** Schema of the answer of the Director. */
   readonly answer: z.ZodType;
+  /**
+   * One valid answer, shown to the Director next to the schema. It reads the input of the decision
+   * (the demands of the script, for point 1) so that the example names what exists.
+   */
+  readonly example: (input: Readonly<Record<string, unknown>>) => Record<string, unknown>;
+}
+
+function firstDemandOf(input: Readonly<Record<string, unknown>>): string {
+  const ids = input.demandIds;
+  const first = Array.isArray(ids)
+    ? (ids as unknown[]).find((id) => typeof id === 'string')
+    : undefined;
+  return typeof first === 'string' ? first : '<a demand id from demandIds>';
 }
 
 /**
@@ -59,48 +80,60 @@ export const JUDGMENT_POINTS: readonly JudgmentPoint[] = [
     number: 1,
     flows: ['play'],
     answer: z.strictObject({ failures: z.array(CritiqueFailureSchema).min(1) }),
+    example: (input) => ({
+      failures: [
+        { kind: 'execution', demandIds: [firstDemandOf(input)], note: 'what failed and why' },
+      ],
+    }),
   },
   {
     id: 'actor_timeout',
     number: 2,
     flows: ['play'],
     answer: z.strictObject({ action: z.enum(['accept_partial', 'reassign']) }),
+    example: () => ({ action: 'reassign' }),
   },
   {
     id: 'consult_producer',
     number: 3,
     flows: ['play', 'task.define', 'task.run', 'chat'],
     answer: z.strictObject({ ask: z.boolean(), question: z.string().min(1).optional() }),
+    example: () => ({ ask: false }),
   },
   {
     id: 'chat_consult',
     number: 4,
     flows: ['chat'],
     answer: z.strictObject({ consult: z.boolean() }),
+    example: () => ({ consult: false }),
   },
   {
     id: 'task_step_failed',
     number: 5,
     flows: ['task.run'],
     answer: z.strictObject({ action: z.enum(['fix_definition', 'retry', 'skip', 'stop']) }),
+    example: () => ({ action: 'retry' }),
   },
   {
     id: 'refusal_or_permission',
     number: 6,
     flows: ['play'],
     answer: z.strictObject({ action: z.enum(['reformulate', 'switch_executor', 'ask_producer']) }),
+    example: () => ({ action: 'reformulate' }),
   },
   {
     id: 'resumes_exceeded',
     number: 7,
     flows: ['play'],
     answer: z.strictObject({ action: z.enum(['handoff', 'fail_attempt', 'ask_producer']) }),
+    example: () => ({ action: 'handoff' }),
   },
   {
     id: 'dependency_redone',
     number: 8,
     flows: ['play'],
     answer: z.strictObject({ action: z.enum(['rebase', 'redo']) }),
+    example: () => ({ action: 'rebase' }),
   },
 ];
 
@@ -113,6 +146,69 @@ export function judgmentPoint(id: string): JudgmentPoint | undefined {
 /** True when the point belongs to the flow. */
 export function pointBelongsTo(id: JudgmentPointId, flow: string): boolean {
   return judgmentPoint(id)?.flows.includes(flow) === true;
+}
+
+/** What the Director needs to answer a point: the JSON Schema of the answer and one valid answer. */
+export interface AnswerGuide {
+  readonly schema: Record<string, unknown>;
+  readonly example: Record<string, unknown>;
+}
+
+const SCHEMAS = new Map<JudgmentPointId, Record<string, unknown>>();
+
+function jsonSchemaOf(point: JudgmentPoint): Record<string, unknown> {
+  const cached = SCHEMAS.get(point.id);
+  if (cached !== undefined) return cached;
+  const json = z.toJSONSchema(point.answer, {
+    io: 'input',
+    target: 'draft-2020-12',
+    unrepresentable: 'any',
+  }) as Record<string, unknown>;
+  delete json.$schema;
+  SCHEMAS.set(point.id, json);
+  return json;
+}
+
+/** The schema and an example of the answer of a point, for the input of one decision. */
+export function answerGuide(
+  id: JudgmentPointId,
+  input: Readonly<Record<string, unknown>>,
+): AnswerGuide | undefined {
+  const point = judgmentPoint(id);
+  if (point === undefined) return undefined;
+  return { schema: jsonSchemaOf(point), example: point.example(input) };
+}
+
+/**
+ * Why an answer does not fit a point, one line per problem (`path: message`); empty when it fits.
+ * For point 1 it also checks that the demands named are among `demandIds` of the input: the
+ * machine refuses a classification that names a demand the script does not have.
+ */
+export function answerProblems(
+  id: JudgmentPointId,
+  answer: unknown,
+  input: Readonly<Record<string, unknown>>,
+): string[] {
+  const point = judgmentPoint(id);
+  if (point === undefined) return [`"${id}" is not a judgment point`];
+  const result = point.answer.safeParse(answer);
+  if (!result.success) {
+    return result.error.issues.map((issue) => {
+      const path = issue.path.map(String).join('.');
+      return path === '' ? issue.message : `${path}: ${issue.message}`;
+    });
+  }
+  if (id !== 'classify_critique' || !Array.isArray(input.demandIds)) return [];
+  const known = new Set((input.demandIds as unknown[]).filter((d) => typeof d === 'string'));
+  const { failures } = result.data as { failures: CritiqueFailure[] };
+  return failures.flatMap((failure, index) =>
+    (failure.demandIds ?? [])
+      .filter((demand) => !known.has(demand))
+      .map(
+        (demand) =>
+          `failures.${String(index)}.demandIds: "${demand}" is not a demand of the script (${[...known].join(', ') || 'none'})`,
+      ),
+  );
 }
 
 /** Parses the answer of a point; `undefined` when it does not fit the schema. */
