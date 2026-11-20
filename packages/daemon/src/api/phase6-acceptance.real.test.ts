@@ -8,7 +8,7 @@ import { FakeCodeHost, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, realClientFlags, testGit } from '@otheater/sdk';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultLauncher, productionClients } from '../compose.js';
-import { LIMIT_PRESET_NAMES, parseConfig } from '../config.js';
+import { CLIENT_IDS, LIMIT_PRESET_NAMES, parseConfig, type ClientId } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { RealHeadCodeHost, waitFor } from '../orchestration/e2e-fixture.js';
@@ -17,18 +17,23 @@ import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
 
 /**
- * The acceptance of Phase 6 at the REAL level (P13 of docs/17) [proposta]: one real client (Claude
- * Code with a small model) in every role of a play, and a client of `@otheater/client` that does
- * what a screen does: opens the scenario by REST, talks to the Director over the chat WebSocket,
- * answers its questions, and follows the play through the event stream until the delivery. Nothing
- * here runs by default: a plain `pnpm test` skips the file, so no client is started and no quota is
- * spent.
+ * The acceptance of Phase 6 at the REAL level (P13 of docs/17) [proposta]: one real client (with a
+ * small model) in every role of a play, and a client of `@otheater/client` that does what a screen
+ * does: opens the scenario by REST, talks to the Director over the chat WebSocket, answers its
+ * questions, and follows the play through the event stream until the delivery. Nothing here runs
+ * by default: a plain `pnpm test` skips the file, so no client is started and no quota is spent.
  *
- * Needs `OT_TEST_REAL_CLIENTS=1`, `OT_TEST_REAL_PROMPTS=1` and `OT_TEST_REAL_PHASE6=1`, plus the
- * same variables as `orchestration/play.real.test.ts` (the profile is pointed at, never copied or
- * read): `OT_TEST_CLAUDE_PROFILE_DIR`, `OT_TEST_CLAUDE_MODEL`, and, optional,
- * `OT_TEST_CLAUDE_MODE`, `OT_TEST_PLAY_TIMEOUT_MS` (default 25 minutes) and `OT_TEST_PLAY_LIMITS`
- * (default `moderate`).
+ * Needs `OT_TEST_REAL_CLIENTS=1`, `OT_TEST_REAL_PROMPTS=1` and `OT_TEST_REAL_PHASE6=1`. The client
+ * is `OT_TEST_PHASE6_CLIENT` (`claude-code`, the default, `codex` or `opencode`), with the
+ * variables of that client (the profile is pointed at, never copied or read):
+ * `OT_TEST_<CLAUDE|CODEX|OPENCODE>_PROFILE_DIR` and `_MODEL`, and, optional, `_MODE`. Also
+ * optional: `OT_TEST_PLAY_TIMEOUT_MS` (default 25 minutes), `OT_TEST_PLAY_LIMITS` (default
+ * `moderate`) and `OT_TEST_SANDBOX_EXTRA_DOMAINS` (comma-separated domains for
+ * `sandbox.extra_domains`, for the provider of OpenCode) and `OT_TEST_PHASE6_EDIT_RULES=1`, which
+ * gives the roles that write (actor and consultant) `on_ask: rules` with one rule that allows the
+ * `edit` kind inside the worktree. That is the test-only stand-in of N180 for the clients with no
+ * mode that edits with no request (Codex and OpenCode); N99 still refuses an edit outside the
+ * worktree before the rules. Without it, every request of those clients is rejected.
  *
  * The criteria are about what the client SAW, not about what the model wrote: the events the
  * stream delivered are exactly the events of the log (ids, no repeat), they hold the whole path to
@@ -40,9 +45,40 @@ import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
 const flags = realClientFlags();
 const phase6Flag = process.env.OT_TEST_REAL_PHASE6 === '1';
 const supported = process.platform !== 'win32';
-const PROFILE_DIR = process.env.OT_TEST_CLAUDE_PROFILE_DIR ?? '';
-const MODEL = process.env.OT_TEST_CLAUDE_MODEL ?? '';
-const MODE = process.env.OT_TEST_CLAUDE_MODE;
+/** The prefix of the variables of each client: `OT_TEST_<prefix>_PROFILE_DIR`, `_MODEL`, `_MODE`. */
+const ENV_PREFIX: Readonly<Record<ClientId, string>> = {
+  'claude-code': 'OT_TEST_CLAUDE',
+  codex: 'OT_TEST_CODEX',
+  opencode: 'OT_TEST_OPENCODE',
+};
+const RAW_CLIENT = process.env.OT_TEST_PHASE6_CLIENT ?? '';
+const CLIENT: ClientId | undefined =
+  RAW_CLIENT === ''
+    ? 'claude-code'
+    : (CLIENT_IDS as readonly string[]).includes(RAW_CLIENT)
+      ? (RAW_CLIENT as ClientId)
+      : undefined;
+const prefix = ENV_PREFIX[CLIENT ?? 'claude-code'];
+const PROFILE_DIR = process.env[`${prefix}_PROFILE_DIR`] ?? '';
+const MODEL = process.env[`${prefix}_MODEL`] ?? '';
+const MODE = process.env[`${prefix}_MODE`];
+const EXTRA_DOMAINS = (process.env.OT_TEST_SANDBOX_EXTRA_DOMAINS ?? '')
+  .split(',')
+  .map((domain) => domain.trim())
+  .filter((domain) => domain !== '');
+const EDIT_RULES = process.env.OT_TEST_PHASE6_EDIT_RULES === '1';
+/** `roles.<role>.policy` for the roles that write, when {@link EDIT_RULES} is on. */
+const EDIT_RULES_YAML = ['actor', 'consultant']
+  .map(
+    (role) =>
+      `  ${role}:\n    policy:\n      on_ask: rules\n      rules:\n        - { id: edit-in-worktree, action: allow, kind: edit, path: "**" }\n`,
+  )
+  .join('');
+if (phase6Flag && CLIENT === undefined) {
+  throw new Error(
+    `OT_TEST_PHASE6_CLIENT must be one of ${CLIENT_IDS.join(', ')}, got "${RAW_CLIENT}"`,
+  );
+}
 const ready =
   flags.clients && flags.prompts && phase6Flag && supported && PROFILE_DIR !== '' && MODEL !== '';
 
@@ -146,7 +182,7 @@ function recording(inner: ProcessLauncher): { launcher: ProcessLauncher; pids: n
 afterAll(disposeTestGitIsolation);
 
 describe.skipIf(!ready)(
-  'a play with real Claude Code followed by a client of the API (OT_TEST_REAL_CLIENTS=1, OT_TEST_REAL_PROMPTS=1, OT_TEST_REAL_PHASE6=1)',
+  `a play with real ${CLIENT ?? '?'} followed by a client of the API (OT_TEST_REAL_CLIENTS=1, OT_TEST_REAL_PROMPTS=1, OT_TEST_REAL_PHASE6=1)`,
   () => {
     const limitMs = ready ? timeoutMs() : DEFAULT_TIMEOUT_MS;
 
@@ -157,6 +193,10 @@ describe.skipIf(!ready)(
         const real = defaultLauncher();
         if (real === undefined) throw new Error('this platform has no process launcher');
         const { launcher, pids } = recording(real);
+        const executor = CLIENT ?? 'claude-code';
+        log(
+          `client: ${executor}, model: ${MODEL}${MODE === undefined || MODE === '' ? '' : `, mode: ${MODE}`}${EDIT_RULES ? ', edit rules: on' : ''}`,
+        );
         const config = parseConfig(`
 backup:
   when: manual
@@ -164,9 +204,9 @@ security:
   unenforced: warn
 limits:
   preset: ${limitsPreset()}
-orchestration:
+${EXTRA_DOMAINS.length === 0 ? '' : `sandbox:\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`}${EDIT_RULES ? `roles:\n${EDIT_RULES_YAML}` : ''}orchestration:
   executor:
-    client: claude-code
+    client: ${executor}
     profile: real
     model: ${JSON.stringify(MODEL)}
 ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`}`);
@@ -176,7 +216,7 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
         // reads the profile again, so a linked profile has no login inside it (2026-11-20).
         const profileSource = await realpath(PROFILE_DIR);
         const profileDir = (ref: ProfileNames): string =>
-          ref.client === 'claude-code' && ref.profile === 'real'
+          ref.client === executor && ref.profile === 'real'
             ? profileSource
             : profileDirOf(dataPaths(tmp.dir), ref);
 
