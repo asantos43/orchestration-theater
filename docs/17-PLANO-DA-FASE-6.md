@@ -62,7 +62,7 @@ Não entram **[proposta]**:
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano e decisões (este documento) | nada | nada | concluído (este PR) |
+| P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #165) |
 | P1 | Contrato da API no `packages/protocol` | P0 | P2, P3, P9 | a fazer |
 | P2 | Aviso de evento novo em processo | P0 | P1, P3, P9 | a fazer |
 | P3 | Servidor da API: bind, token, CORS, descoberta e id do daemon | P0 | P1, P2, P9 | a fazer |
