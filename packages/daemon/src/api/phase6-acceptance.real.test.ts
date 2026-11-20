@@ -88,6 +88,20 @@ function log(text: string): void {
   process.stderr.write(`[phase6-real] ${text}\n`);
 }
 
+/** How long a Director that answered in text, with no play and nothing pending, may stay so. */
+const NO_PLAY_GRACE_MS = 90_000;
+/** How much of each reply of the Director goes into the notes. */
+const REPLY_NOTE_CHARS = 600;
+
+function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/gu, ' ').trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max)}...`;
+}
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -174,29 +188,46 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
         // The token is the file of the daemon in the temporary folder: the test's own, not a client's.
         const token = (await readFile(dataPaths(tmp.dir).apiToken, 'utf8')).trim();
         const client = new ApiClient({ url: daemon.api.url, token });
+        const notes: string[] = [];
+        let scenarioId: string | undefined;
         const stream = client.events({ since: 0 });
         stream.onMessage((message) => received.push(message));
+        // The stream opens only when started (the first run of this test, 2026-11-20, missed it
+        // and the client saw no event at all).
+        stream.start();
         let chat: ReturnType<ApiClient['chat']> | undefined;
         try {
           const opened = await client.call(API_ROUTES.openScenario, {
             body: { repo: rig.repo },
           });
-          const scenarioId = opened.scenario.id;
+          scenarioId = opened.scenario.id;
           chat = client.chat(scenarioId, {});
-          const answered = new Set<number>();
+          // By decision, not by event: the asks pending when the chat opens share one event id.
+          const answered = new Set<string>();
           chat.onMessage((frame: ChatServerMessage) => {
-            if (frame.type === 'director_reply' && frame.final) replies.push(frame.text);
-            if (frame.type === 'ask' && !answered.has(frame.eventId)) {
-              answered.add(frame.eventId);
+            if (frame.type === 'director_reply' && frame.final) {
+              replies.push(frame.text);
+              notes.push(
+                `Director reply #${String(replies.length)}@${seconds(Date.now() - started)}: ${clip(frame.text, REPLY_NOTE_CHARS)}`,
+              );
+            }
+            if (frame.type === 'ask' && !answered.has(frame.decisionId)) {
+              answered.add(frame.decisionId);
               const input = frame.input as { questions?: { options?: { label?: unknown }[] }[] };
               if (frame.kind === 'producer_question') {
                 const answers = (input.questions ?? []).map((question) => {
                   const first = question.options?.[0]?.label;
                   return typeof first === 'string' && first !== '' ? first : ANSWER_FALLBACK;
                 });
+                notes.push(
+                  `question@${seconds(Date.now() - started)} (${String(answers.length)}): answered`,
+                );
                 chat?.send({ type: 'answer', decisionId: frame.decisionId, answer: { answers } });
               } else {
                 // A menu is a limit that ran out: a failure of the run, so the play is cancelled.
+                notes.push(
+                  `menu "${frame.kind}"@${seconds(Date.now() - started)} in ${frame.playId ?? '?'}: cancelled`,
+                );
                 chat?.send({
                   type: 'answer',
                   decisionId: frame.decisionId,
@@ -222,11 +253,33 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                   String((message.data.payload as { to?: unknown }).to),
                 ),
             );
-          await waitFor(
-            'the play to end as the client sees it',
-            () => Promise.resolve(finished() || undefined),
-            limitMs,
-          );
+          const { producer } = daemon;
+          if (producer === undefined) throw new Error('the daemon has no Producer channel');
+          const deadline = started + limitMs;
+          // Since when the Director has answered, no play is open and nothing waits for us.
+          let idleSince: number | undefined;
+          while (!finished()) {
+            if (Date.now() > deadline) {
+              throw new Error('Timed out waiting for the play to end as the client sees it');
+            }
+            // Fail early: a Director that answered in text and opened nothing will not open a play
+            // by waiting; the notes say what it answered. `state` has no side effect.
+            const state = await producer.state(scenarioId);
+            const plays = await daemon.store.plays.list({ scenarioId });
+            const waiting =
+              plays.length === 0 && replies.length > 0 && state.asks.length === 0 && !state.busy;
+            if (!waiting) {
+              idleSince = undefined;
+            } else {
+              idleSince ??= Date.now();
+              if (Date.now() - idleSince >= NO_PLAY_GRACE_MS) {
+                throw new Error(
+                  `the Director answered without opening a play (${seconds(NO_PLAY_GRACE_MS)} of grace; see the notes)`,
+                );
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2_000));
+          }
 
           // The stream is the log: same ids, in order, none twice.
           const head = await daemon.store.events.readFrom(0, 1_000_000);
@@ -262,6 +315,33 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
         } catch (error) {
           failure = error;
         } finally {
+          // The summary comes first, so a failure still tells what happened: the log of the
+          // daemon (types and counts only, no payload) and the path of each play.
+          try {
+            const events = await daemon.store.events.readFrom(0, 1_000_000);
+            const counts = new Map<string, number>();
+            for (const event of events) counts.set(event.type, (counts.get(event.type) ?? 0) + 1);
+            log(
+              `events in the log: ${String(events.length)} (${[...counts]
+                .map(([type, count]) => `${type} ${String(count)}`)
+                .join(', ')})`,
+            );
+            const plays =
+              scenarioId === undefined ? [] : await daemon.store.plays.list({ scenarioId });
+            for (const play of plays) {
+              const path = events
+                .filter((event) => event.playId === play.id && event.type === 'play.transitioned')
+                .map(
+                  (event) =>
+                    `${String((event.payload as { to?: unknown }).to)}@${seconds(event.timestamp - started)}`,
+                )
+                .join(' > ');
+              log(`play ${play.id} (${play.state}): ${path}`);
+            }
+          } catch (error) {
+            log(`the summary of the log failed: ${String(error)}`);
+          }
+          for (const note of notes) log(note);
           log(
             `events seen by the client: ${String(received.length)}; Director replies: ${String(replies.length)}; total time: ${((Date.now() - started) / 1000).toFixed(1)}s (deadline ${(limitMs / 1000).toFixed(1)}s)`,
           );
