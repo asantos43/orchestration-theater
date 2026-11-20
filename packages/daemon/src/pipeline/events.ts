@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { defineEventType } from '@otheater/core';
 import { z } from 'zod';
-import { MENU_OPTIONS, PLAY_STATES } from './definitions.js';
+import { PlayCreatedPayloadSchema, PlayTransitionedPayloadSchema } from '@otheater/protocol';
+import { MENU_OPTIONS } from './definitions.js';
 import { JUDGMENT_POINT_IDS } from './judgment.js';
 
 const text = z.string().min(1);
@@ -162,33 +163,6 @@ export type PlayEventType = PlayEvent['type'];
  * `Clock`). The machine never reads the time itself, so a transition is a pure function.
  */
 export type MachineEvent = PlayEvent & { readonly at: number };
-
-const countersSchema = z.record(z.string(), z.int().min(0));
-
-/** `play.created`: the play exists, in NEED, before its first event. [proposta] */
-export const PlayCreatedPayloadSchema = z.strictObject({
-  flowId: text,
-  flowVersion: z.int().min(1),
-  need: text,
-  parentPlayId: text.nullable(),
-});
-
-/**
- * `play.transitioned`: one transition of the machine, written in the same transaction as the
- * snapshot (5.4, 5.21). [proposta] `effects` lists the types of the effects the transition
- * asked for, so the log tells what was about to start even if the daemon died before it did.
- * `reason` is the reason the event carried (a veto, `SUBMIT_FAILED`, a failed attempt), so the
- * log tells why the play moved: it is not in the machine context for every event. Optional, so the
- * events already written stay valid (same schema version).
- */
-export const PlayTransitionedPayloadSchema = z.strictObject({
-  event: text,
-  from: z.enum(PLAY_STATES),
-  to: z.enum(PLAY_STATES),
-  counters: countersSchema,
-  effects: z.array(text),
-  reason: z.string().optional(),
-});
 
 export const PLAY_CREATED_EVENT = defineEventType({
   type: 'play.created',

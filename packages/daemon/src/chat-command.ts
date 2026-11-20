@@ -419,6 +419,7 @@ async function runIdeaCommand(
       const route = command.action === 'discard' ? API_ROUTES.discardIdea : API_ROUTES.deferIdea;
       const { idea } = await client.call(route, {
         params: { ideaId: command.id },
+        query: { scenarioId },
         body: { reason: command.reason },
         headers,
       });
@@ -427,6 +428,7 @@ async function runIdeaCommand(
     case 'requeue': {
       const { idea } = await client.call(API_ROUTES.requeueIdea, {
         params: { ideaId: command.id },
+        query: { scenarioId },
         headers,
       });
       return { idea: ideaViewOf(idea), ideas: [] };
