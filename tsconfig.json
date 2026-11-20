@@ -4,6 +4,7 @@
     { "path": "packages/core" },
     { "path": "packages/sdk" },
     { "path": "packages/protocol" },
+    { "path": "packages/client" },
     { "path": "packages/fake-agent" },
     { "path": "packages/daemon" },
     { "path": "packages/adapters/clock-system" },
