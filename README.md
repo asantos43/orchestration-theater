@@ -74,6 +74,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [14-PLANO-DA-FASE-3.md](docs/14-PLANO-DA-FASE-3.md) | Plano de passos da Fase 3, com dependências, paralelismo, aceite de cada passo e o marco 3a |
 | [15-PLANO-DA-FASE-4.md](docs/15-PLANO-DA-FASE-4.md) | Plano de passos da Fase 4, com dependências, paralelismo, aceite de cada passo e o marco 4a |
 | [16-PLANO-DA-FASE-5.md](docs/16-PLANO-DA-FASE-5.md) | Plano de passos da Fase 5 (assinaturas, cotas e seleção), com dependências, paralelismo, aceite de cada passo e o marco 5a [proposta] |
+| [17-PLANO-DA-FASE-6.md](docs/17-PLANO-DA-FASE-6.md) | Plano de passos da Fase 6 (API do daemon e `packages/client`), com dependências, paralelismo e aceite de cada passo |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
 | [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
 
