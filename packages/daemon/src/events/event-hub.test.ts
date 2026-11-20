@@ -395,6 +395,31 @@ describe('follow: slow subscribers and the buffer', () => {
     controller.abort();
   });
 
+  it('calls onLag once per episode with the unseen count, and survives a hook that throws', async () => {
+    const { store, hub } = setup(5);
+    const lags: { unseen: number; bufferEvents: number }[] = [];
+    const slow = followOf(hub, {
+      afterId: 0,
+      onLag: (lag) => lags.push({ ...lag }),
+    });
+    const iterator = slow.iterable[Symbol.asyncIterator]();
+    // A second subscriber whose hook throws must not reach the writer nor the first one.
+    const broken = followOf(hub, {
+      afterId: 0,
+      onLag: () => {
+        throw new Error('hook failed');
+      },
+    });
+    const brokenIterator = broken.iterable[Symbol.asyncIterator]();
+    await store.events.append(tick(0));
+    await iterator.next();
+    await brokenIterator.next();
+    for (let i = 1; i < 50; i += 1) await store.events.append(tick(i));
+    expect(lags).toEqual([{ unseen: 6, bufferEvents: 5 }]);
+    slow.controller.abort();
+    broken.controller.abort();
+  });
+
   it('does not warn while the subscriber keeps up', async () => {
     const { store, hub, lines } = setup(5);
     const { controller, iterable } = followOf(hub, { afterId: 0 });

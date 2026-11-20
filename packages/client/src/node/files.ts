@@ -2,6 +2,7 @@
 import { randomBytes } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { API_DISCOVERY_FILE, API_TOKEN_FILE, ApiDiscoverySchema } from '@otheater/protocol';
 import {
   DAEMON_LIST_VERSION,
@@ -23,6 +24,26 @@ function isNotFound(error: unknown): boolean {
   return (error as { code?: unknown } | undefined)?.code === 'ENOENT';
 }
 
+/** Codes of a rename that Windows refuses while another handle has the target open. */
+const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+function isTransientRename(error: unknown): boolean {
+  const code = (error as { code?: unknown } | undefined)?.code;
+  return typeof code === 'string' && TRANSIENT_RENAME_CODES.has(code);
+}
+
+export interface FileDaemonListStoreOptions {
+  /**
+   * How many times a rename over the list is tried when Windows refuses it because another
+   * handle (another process, an antivirus) has the file open. Default 5, with a delay that
+   * doubles from 10 ms. 1 means no retry.
+   */
+  readonly renameAttempts?: number | undefined;
+}
+
+/** Default of `FileDaemonListStoreOptions.renameAttempts`. */
+export const DEFAULT_RENAME_ATTEMPTS = 5;
+
 /**
  * The list of saved daemons as a JSON file (`client.json`), mode 0600 because it holds tokens.
  * A write goes to a temporary file in the same folder and is renamed over the list, so a reader
@@ -31,9 +52,13 @@ function isNotFound(error: unknown): boolean {
  */
 export class FileDaemonListStore implements DaemonListStore {
   readonly #path: string;
+  readonly #renameAttempts: number;
+  /** Saves of this store run one at a time, in call order: Windows refuses concurrent renames. */
+  #queue: Promise<void> = Promise.resolve();
 
-  constructor(path: string) {
+  constructor(path: string, options: FileDaemonListStoreOptions = {}) {
     this.#path = resolve(path);
+    this.#renameAttempts = Math.max(1, options.renameAttempts ?? DEFAULT_RENAME_ATTEMPTS);
   }
 
   get path(): string {
@@ -70,8 +95,26 @@ export class FileDaemonListStore implements DaemonListStore {
     return parsed.data.daemons;
   }
 
-  async save(list: readonly DaemonConnection[]): Promise<void> {
+  save(list: readonly DaemonConnection[]): Promise<void> {
     const file = DaemonListFileSchema.parse({ version: DAEMON_LIST_VERSION, daemons: list });
+    const run = this.#queue.then(() => this.#write(file));
+    this.#queue = run.catch(() => undefined);
+    return run;
+  }
+
+  async #rename(from: string): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await rename(from, this.#path);
+        return;
+      } catch (error) {
+        if (attempt >= this.#renameAttempts || !isTransientRename(error)) throw error;
+        await sleep(10 * 2 ** (attempt - 1));
+      }
+    }
+  }
+
+  async #write(file: unknown): Promise<void> {
     await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
     const temporary = `${this.#path}.${randomBytes(4).toString('hex')}.tmp`;
     try {
@@ -81,7 +124,7 @@ export class FileDaemonListStore implements DaemonListStore {
       });
       // `writeFile` is subject to the umask, which only removes bits: set the exact mode.
       await chmod(temporary, 0o600);
-      await rename(temporary, this.#path);
+      await this.#rename(temporary);
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => undefined);
       throw error;

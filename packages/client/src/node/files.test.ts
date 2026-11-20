@@ -77,6 +77,8 @@ describe('FileDaemonListStore', () => {
       ),
     );
     expect(await readdir(dir)).toEqual(['client.json']);
+    // Saves run in call order, so the last one called is the one on disk.
+    expect((await store.load()).map((saved) => saved.name)).toEqual(['d3']);
   });
 
   it('a file that is not a list is unreadable, and is never overwritten', async () => {

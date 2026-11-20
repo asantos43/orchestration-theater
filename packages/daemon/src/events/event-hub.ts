@@ -35,6 +35,13 @@ export interface FollowOptions {
   readonly signal: AbortSignal;
   /** Events read from the log per page. Default {@link DEFAULT_FOLLOW_PAGE_SIZE}. */
   readonly pageSize?: number;
+  /**
+   * [proposta] Called once per episode, when this subscriber leaves more live events unseen than
+   * `bufferEvents` (the moment of the `warn`). `unseen` is how many it had counted. It runs in the
+   * writer's path, so it must be quick; a throw is swallowed. The API turns it into the
+   * `api.stream_lagged` event: the hub itself knows no stream, window or situation log.
+   */
+  readonly onLag?: (lag: { readonly unseen: number; readonly bufferEvents: number }) => void;
 }
 
 export interface EventHubOptions {
@@ -50,6 +57,7 @@ export interface EventHubOptions {
 /** The state of one `follow`. */
 interface Subscriber {
   readonly matches: (event: EventEnvelope) => boolean;
+  readonly onLag: FollowOptions['onLag'];
   /** A matching event was committed since the last read started. */
   dirty: boolean;
   /** Matching notices counted since the last read started (while not `lapsed`). */
@@ -148,6 +156,7 @@ export class EventHub {
 
     const subscriber: Subscriber = {
       matches: compileFilter(options.filter),
+      onLag: options.onLag,
       dirty: false,
       unseen: 0,
       lapsed: false,
@@ -228,6 +237,14 @@ export class EventHub {
       );
     } catch {
       // A logger that fails must not reach the writer.
+    }
+    try {
+      subscriber.onLag?.({
+        unseen: subscriber.unseen,
+        bufferEvents: this.#options.bufferEvents,
+      });
+    } catch {
+      // Nor a hook that fails.
     }
   }
 }

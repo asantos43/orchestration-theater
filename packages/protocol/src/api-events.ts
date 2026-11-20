@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { DaemonIdSchema } from './api/ids.js';
 
 /**
- * Payloads of the `api.started` and `api.client_rejected` events (Phase 6, P3 of docs/17).
+ * Payloads of the `api.started`, `api.client_rejected` (Phase 6, P3 of docs/17) and `api.stream_lagged`
+ * (P4) events.
  * Registered in `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1. Every payload is a
  * strict object. Neither one ever carries the token, the value a client sent (a token, a `Host`, an
  * `Origin`) or a path of the secret list.
@@ -32,5 +33,29 @@ export const ApiStartedPayloadSchema = z.strictObject({
  */
 export const ApiClientRejectedPayloadSchema = z.strictObject({
   reason: ApiRejectionReasonSchema,
+  suppressed: z.int().min(0),
+});
+
+/**
+ * Why an event stream (`GET /v1/events`) fell behind the live events. [proposta] `buffer_overflow`:
+ * the subscriber left more live events unseen than `api.sse.buffer_events` allows, and it catches up
+ * from the log. `backpressure`: the client stopped reading its socket, so the daemon holds the writes
+ * until it reads again (and the events wait in the log, not in memory).
+ */
+export const API_STREAM_LAG_REASONS = ['buffer_overflow', 'backpressure'] as const;
+export const ApiStreamLagReasonSchema = z.enum(API_STREAM_LAG_REASONS);
+export type ApiStreamLagReason = z.infer<typeof ApiStreamLagReasonSchema>;
+
+/**
+ * `api.stream_lagged`: a client of the event stream is slow. It stays in the stream and loses no
+ * event: it reads the history from the log. [proposta] `behind` is the size of the delay in events:
+ * the live events left unseen (`buffer_overflow`) or the ids between the last one sent and the end
+ * of the log (`backpressure`). Rate-limited per reason like `api.client_rejected`: `suppressed`
+ * counts the episodes of that reason the daemon did not write as events in between. The payload
+ * never says who the client is.
+ */
+export const ApiStreamLaggedPayloadSchema = z.strictObject({
+  reason: ApiStreamLagReasonSchema,
+  behind: z.int().min(0),
   suppressed: z.int().min(0),
 });
