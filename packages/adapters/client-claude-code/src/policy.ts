@@ -17,10 +17,13 @@ import { mcpToolsOf, type RolePolicy } from '@otheater/core';
  * - The mode of the session (N180, owner, 2026-11-20): `default` asks for permission before every
  *   edit, and the daemon answers `reject_once` to every request (`onAsk: 'reject'`), so in the
  *   real `phase6` acceptance with the haiku model every `Write` and `Edit` of the Actor was refused
- *   and the diff stayed empty. [V: that run] A role whose `nativeTools` has `edit` or `write` starts
+ *   and the diff stayed empty. [V: that run] A role whose `nativeTools` has `edit` or `write` AND
+ *   whose `editInWorktree` is `allow` (N182, owner, 2026-11-20: the key
+ *   `roles.<role>.policy.edit_in_worktree`, `allow` by default for the roles that write) starts
  *   in `acceptEdits`, which spares the request only for the editing of files [S:
  *   https://code.claude.com/docs/en/permissions, read 2026-11-20; what it does for a path outside
- *   the cwd was not measured [N]]; the other roles stay in `default`. No native tool goes into
+ *   the cwd was not measured [N]]; the other roles, and a role with `edit_in_worktree: ask`, stay in
+ *   `default`, so the edit reaches layer 2, which answers it as it answers the other clients. No native tool goes into
  *   `allowedTools`, and the shell stays removed and denied. The fence of the writing is layer 3 (the
  *   sandbox) and the worktree, not the mode. The key `mode` of the executor still wins when set. A
  *   tool of an MCP server asks for permission unless a rule allows it, and the mode
@@ -76,19 +79,19 @@ export const SETTING_SOURCES: Readonly<Record<SettingSourcesMode, readonly strin
 /** The mode of a role that does not write: `default`, so each request reaches layer 2 (`dontAsk` does not reach ACP). [V] */
 export const SESSION_MODE = 'default';
 
-/** The mode of a role that writes (N180): the edit of a file runs with no request; the rest still reaches layer 2. */
+/** The mode of a role that writes and has `editInWorktree: allow` (N180, N182): the edit of a file runs with no request; the rest still reaches layer 2. */
 export const WRITING_SESSION_MODE = 'acceptEdits';
 
 /**
  * The mode a session of this policy starts in: {@link WRITING_SESSION_MODE} when `nativeTools` has
- * `edit` or `write`, {@link SESSION_MODE} otherwise. `bypassPermissions` is never a result.
+ * `edit` or `write` and `editInWorktree` is `allow` (absent counts as `ask`), {@link SESSION_MODE}
+ * otherwise. `bypassPermissions` is never a result.
  */
 export function sessionModeOf(
   policy: RolePolicy,
 ): typeof SESSION_MODE | typeof WRITING_SESSION_MODE {
-  return policy.nativeTools.includes('edit') || policy.nativeTools.includes('write')
-    ? WRITING_SESSION_MODE
-    : SESSION_MODE;
+  const writes = policy.nativeTools.includes('edit') || policy.nativeTools.includes('write');
+  return writes && policy.editInWorktree === 'allow' ? WRITING_SESSION_MODE : SESSION_MODE;
 }
 
 /** Modes the catalog of the adapter has that the policy never selects. */

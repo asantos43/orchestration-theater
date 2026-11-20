@@ -66,6 +66,8 @@ describe('the default policy of each role', () => {
         nativeShell: role === 'actor' ? 'shells' : 'none',
         mcpServers: ['otheater'],
         onAsk: 'reject',
+        // N182: the roles that write edit in the worktree with no request; the others have nothing to edit.
+        editInWorktree: role === 'actor' || role === 'consultant' ? 'allow' : 'ask',
         bypass: 'forbidden',
         writeScope: 'worktree',
         network: { allow: [] },
@@ -109,6 +111,9 @@ describe('the default policy of each role', () => {
   it('has the defaults of defaultPolicySettings', () => {
     expect(defaultPolicySettings('actor').nativeTools).toContain('edit');
     expect(defaultPolicySettings('critic').nativeTools).toEqual(['read', 'search']);
+    expect(defaultPolicySettings('actor').editInWorktree).toBe('allow');
+    expect(defaultPolicySettings('consultant').editInWorktree).toBe('allow');
+    expect(defaultPolicySettings('critic').editInWorktree).toBe('ask');
   });
 });
 
@@ -217,6 +222,32 @@ describe('roles.<role>.policy in the configuration', () => {
     expect(policy.nativeTools).toEqual(['read', 'search', 'edit', 'write']);
     expect(policy.network.allow).toEqual([]);
     expect(policy.onAsk).toBe('reject');
+  });
+
+  it('edit_in_worktree turns the release of the edit off for a role that writes, and on for one that does not (N182)', async () => {
+    const off = 'roles:\n  actor:\n    policy:\n      edit_in_worktree: ask\n';
+    expect((await resolveRolePolicy(resolver(off), 'actor')).editInWorktree).toBe('ask');
+    expect((await resolveRolePolicy(resolver(off), 'consultant')).editInWorktree).toBe('allow');
+    const on = 'roles:\n  critic:\n    policy:\n      edit_in_worktree: allow\n';
+    expect((await resolveRolePolicy(resolver(on), 'critic')).editInWorktree).toBe('allow');
+    expect((await resolveRolePolicy(resolver(on), 'director')).editInWorktree).toBe('ask');
+  });
+
+  it('the rules of the user do not take edit_in_worktree away: it is a key of its own (N182)', async () => {
+    const yaml =
+      'roles:\n  actor:\n    policy:\n      on_ask: rules\n      rules:\n        - { action: allow, kind: read }\n';
+    const policy = await resolveRolePolicy(resolver(yaml), 'actor');
+    expect(policy.editInWorktree).toBe('allow');
+    expect(policy.rules).toEqual([{ id: 'rules[0]', action: 'allow', kind: 'read' }]);
+  });
+
+  it('refuses a value of edit_in_worktree that is not allow or ask', () => {
+    expect(() =>
+      parseConfig('roles:\n  actor:\n    policy:\n      edit_in_worktree: always\n'),
+    ).toThrow(/edit_in_worktree/);
+    expect(() =>
+      parseConfig('roles:\n  actor:\n    policy:\n      edit_in_worktree: true\n'),
+    ).toThrow(/edit_in_worktree/);
   });
 
   it('takes the literals that are the only values (bypass, write_scope) and on_ask: reject', () => {
@@ -364,6 +395,23 @@ describe('the override in a scenario', () => {
     const closed = await resolveRolePolicy(resolver('', [closing]), 'actor', 's2');
     expect(closed.nativeShell).toBe('none');
     expect(toolsOf(closed)).not.toContain('git_commit');
+  });
+
+  it('a scenario turns edit_in_worktree off with a dotted key, and the file under it keeps its say (N182)', async () => {
+    const record = scenario('s1', {
+      configOverride: { 'roles.actor.policy.edit_in_worktree': 'ask' },
+    });
+    expect((await resolveRolePolicy(resolver('', [record]), 'actor', 's1')).editInWorktree).toBe(
+      'ask',
+    );
+    expect((await resolveRolePolicy(resolver('', [record]), 'actor')).editInWorktree).toBe('allow');
+    const yaml = 'roles:\n  actor:\n    policy:\n      edit_in_worktree: ask\n';
+    const reopen = scenario('s2', {
+      configOverride: { 'roles.actor.policy.edit_in_worktree': 'allow' },
+    });
+    expect((await resolveRolePolicy(resolver(yaml, [reopen]), 'actor', 's2')).editInWorktree).toBe(
+      'allow',
+    );
   });
 
   it('accepts the nested form and a dotted path to the whole policy', async () => {

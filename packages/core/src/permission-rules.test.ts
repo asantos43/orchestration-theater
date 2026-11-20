@@ -256,6 +256,124 @@ describe('decidePermission, what is always rejected (N99)', () => {
   });
 });
 
+describe('decidePermission, edit_in_worktree (N182)', () => {
+  const WRITER = ['read', 'search', 'edit', 'write'];
+  const writer = (patch: Partial<PermissionPolicy> = {}): PermissionPolicy => ({
+    onAsk: 'reject',
+    network: { allow: [] },
+    nativeTools: WRITER,
+    editInWorktree: 'allow',
+    ...patch,
+  });
+  const EDITED = { decision: 'allow', rule: NO_RULE, reason: 'edit_in_worktree' };
+
+  it('allows an edit inside the worktree, however it is spelled, with on_ask: reject', () => {
+    for (const path of ['a.txt', 'src/a/b.ts', '/work/tree/a.txt', './x/../y.txt']) {
+      expect(decide(request({ locations: [path] }), writer())).toEqual(EDITED);
+    }
+  });
+
+  it('allows it with on_ask: rules too, before the rules are read (a rejecting rule does not win)', () => {
+    const rules: PermissionRule[] = [{ id: 'no', action: 'reject', kind: 'edit' }];
+    const p = writer({ onAsk: 'rules', rules });
+    expect(decide(request({ locations: ['a.txt'] }), p)).toEqual(EDITED);
+  });
+
+  it('allows an edit of several files only when every one is inside', () => {
+    expect(decide(request({ locations: ['a', 'b/c'] }), writer())).toEqual(EDITED);
+    expect(decide(request({ locations: ['a', '/tmp/x'] }), writer())).toMatchObject({
+      decision: 'reject',
+    });
+  });
+
+  it('keeps what N99 always rejects: outside the worktree, no target, with rules or without', () => {
+    for (const onAsk of ['reject', 'rules'] as const) {
+      const p = writer({ onAsk, rules: [{ id: 'all', action: 'allow', path: '**' }] });
+      const outside = decide(request({ locations: ['../x'] }), p);
+      expect(outside.decision).toBe('reject');
+      expect(outside.reason).not.toBe('edit_in_worktree');
+      expect(decide(request({ locations: ['/etc/passwd'] }), p).decision).toBe('reject');
+      expect(decide(request({ locations: [] }), p).decision).toBe('reject');
+      expect(decide(request({}), p).decision).toBe('reject');
+    }
+    const rules = writer({ onAsk: 'rules', rules: [ALLOW_EDIT] });
+    expect(decide(request({ locations: ['../x'] }), rules).reason).toBe('write_outside_worktree');
+    expect(decide(request({}), rules).reason).toBe('write_target_unknown');
+  });
+
+  it('keeps a write through a symbolic link that leaves the worktree rejected', () => {
+    const resolve = (p: string): string => (p.endsWith('/link') ? '/etc/shadow' : p);
+    expect(decide(request({ locations: ['link'] }), writer(), resolve).decision).toBe('reject');
+  });
+
+  it('with ask (or absent) the edit falls to on_ask: reject and to the rules', () => {
+    for (const editInWorktree of ['ask', undefined] as const) {
+      const patch = editInWorktree === undefined ? {} : { editInWorktree };
+      const base = writer(patch);
+      const noKey: PermissionPolicy =
+        editInWorktree === undefined
+          ? { onAsk: base.onAsk, network: base.network, nativeTools: WRITER }
+          : base;
+      expect(decide(request({ locations: ['a'] }), noKey)).toEqual({
+        decision: 'reject',
+        rule: NO_RULE,
+        reason: 'on_ask_reject',
+      });
+      expect(
+        decide(request({ locations: ['a'] }), { ...noKey, onAsk: 'rules', rules: [ALLOW_EDIT] }),
+      ).toEqual({ decision: 'allow', rule: 'edit', reason: 'rule' });
+      expect(
+        decide(request({ locations: ['a'] }), { ...noKey, onAsk: 'rules', rules: [] }).reason,
+      ).toBe('no_rule');
+    }
+  });
+
+  it('a role with no edit or write native tool does not gain the edit', () => {
+    for (const nativeTools of [['read', 'search'], [], undefined]) {
+      const p: PermissionPolicy = {
+        onAsk: 'reject',
+        network: { allow: [] },
+        editInWorktree: 'allow',
+        ...(nativeTools === undefined ? {} : { nativeTools }),
+      };
+      expect(decide(request({ locations: ['a'] }), p).reason).toBe('on_ask_reject');
+    }
+    expect(decide(request({ locations: ['a'] }), writer({ nativeTools: ['write'] }))).toEqual(
+      EDITED,
+    );
+    expect(decide(request({ locations: ['a'] }), writer({ nativeTools: ['edit'] }))).toEqual(
+      EDITED,
+    );
+  });
+
+  it('only the kind edit is released: delete, move, read and fetch are not', () => {
+    expect(decide(request({ toolKind: 'delete', locations: ['a'] }), writer()).reason).toBe(
+      'on_ask_reject',
+    );
+    expect(decide(request({ toolKind: 'move', locations: ['a'] }), writer()).reason).toBe(
+      'on_ask_reject',
+    );
+    expect(decide(request({ toolKind: 'read', locations: ['a'] }), writer()).reason).toBe(
+      'on_ask_reject',
+    );
+    expect(decide(request({ toolKind: 'execute', locations: ['a'] }), writer()).reason).toBe(
+      'on_ask_reject',
+    );
+  });
+
+  it('with an onAsk it does not know it still rejects', () => {
+    expect(decide(request({ locations: ['a'] }), writer({ onAsk: 'allow' })).decision).toBe(
+      'reject',
+    );
+  });
+
+  it('the answer goes back as allow_once, never allow_always', () => {
+    const req = request({ locations: ['a'] });
+    const decision = decide(req, writer());
+    expect(answerOf(req, decision)).toEqual({ outcome: 'selected', optionId: 'yes' });
+  });
+});
+
 describe('decidePermission, an MCP tool of the role (Codex asks about every MCP call)', () => {
   /** What codex-acp sends once the transport merged the tool call in: kind execute and the names. */
   const mcp = (server: string, tool: string, patch: Partial<PermissionRequest> = {}) =>

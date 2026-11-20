@@ -22,10 +22,14 @@ import { RefusalSchema, summarizeRefusal, wasDenied } from './refusal.js';
  * 2026-11-20): when the attempt ends blocked or with no change, the daemon sends `ACTOR_REFUSED`
  * and the Director judges point 6 (`refusal_or_permission`), instead of the plan going back to
  * the script or the Critic finding an empty diff. The default policy answers `on_ask: reject`.
+ * Since N182 the Actor edits inside its worktree with no request by default, so these runs turn
+ * `edit_in_worktree` off: the fake Actor asks for exactly that edit and must reach layer 2.
  */
 
 beforeAll(assertFakeAgentBuilt);
 afterAll(disposeTestGitIsolation);
+
+const EDIT_ASKS = 'roles:\n  actor:\n    policy:\n      edit_in_worktree: ask';
 
 function fakes(): PlayFakes {
   return {
@@ -114,7 +118,7 @@ describe('a refused Actor, end to end with the fake agent', { timeout: 120_000 }
   itWithLauncher(
     'opens judgment point 6 before the Critic, the Director reformulates and the play delivers',
     async () => {
-      await withPlayDaemon(fakes(), {}, async (harness) => {
+      await withPlayDaemon(fakes(), { extra: EDIT_ASKS }, async (harness) => {
         const playId = await openPlay(harness, 'write alpha #actor-refused:alpha@1');
         const rows = await pointSix(harness, playId);
         expect(rows).toHaveLength(1);
@@ -160,7 +164,7 @@ describe('a refused Actor, end to end with the fake agent', { timeout: 120_000 }
   itWithLauncher(
     'changes nothing when the denied permission does not stop the delivery',
     async () => {
-      await withPlayDaemon(fakes(), {}, async (harness) => {
+      await withPlayDaemon(fakes(), { extra: EDIT_ASKS }, async (harness) => {
         const playId = await openPlay(harness, 'write alpha #actor-refused:alpha=anyway');
         expect(await pointSix(harness, playId)).toEqual([]);
         const attempts = await attemptsOf(harness, playId);
@@ -174,6 +178,25 @@ describe('a refused Actor, end to end with the fake agent', { timeout: 120_000 }
               (event.payload as { answer?: string }).answer === 'reject',
           ),
         ).toBe(true);
+        expect(harness.codeHost.pullRequests()).toHaveLength(1);
+      });
+    },
+  );
+
+  itWithLauncher(
+    'with the default policy the edit inside the worktree is allowed, and nothing is refused (N182)',
+    async () => {
+      await withPlayDaemon(fakes(), {}, async (harness) => {
+        const playId = await openPlay(harness, 'write alpha #actor-refused:alpha@1');
+        expect(await pointSix(harness, playId)).toEqual([]);
+        expect(await attemptsOf(harness, playId)).toHaveLength(1);
+        const events = await harness.daemon.store.events.readFrom(0, 5000);
+        const answers = events
+          .filter((event) => event.type === 'permission.answered')
+          .map((event) => event.payload as { answer?: string; reason?: string });
+        expect(answers).toEqual([
+          expect.objectContaining({ answer: 'allow', reason: 'edit_in_worktree' }),
+        ]);
         expect(harness.codeHost.pullRequests()).toHaveLength(1);
       });
     },

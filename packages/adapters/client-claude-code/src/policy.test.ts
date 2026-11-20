@@ -193,10 +193,14 @@ const ROLE_TOOLS: Readonly<Record<string, RolePolicy['nativeTools']>> = {
   critic: ['read', 'search'],
 };
 
-describe('sessionModeOf (N180)', () => {
-  it('starts the roles that write in acceptEdits, on the three paths', () => {
+describe('sessionModeOf (N180, N182)', () => {
+  it('starts the roles that write in acceptEdits (edit_in_worktree: allow), on the three paths', () => {
     for (const role of ['actor', 'consultant']) {
-      const policy: RolePolicy = { ...base, nativeTools: ROLE_TOOLS[role] ?? [] };
+      const policy: RolePolicy = {
+        ...base,
+        nativeTools: ROLE_TOOLS[role] ?? [],
+        editInWorktree: 'allow',
+      };
       expect(sessionModeOf(policy)).toBe('acceptEdits');
       const args = headlessArgs(policy, 'none');
       expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
@@ -213,13 +217,37 @@ describe('sessionModeOf (N180)', () => {
     expect(sessionModeOf({ ...base, nativeTools: [] })).toBe('default');
   });
 
-  it('is acceptEdits with only edit or only write', () => {
-    expect(sessionModeOf({ ...base, nativeTools: ['edit'] })).toBe('acceptEdits');
-    expect(sessionModeOf({ ...base, nativeTools: ['write'] })).toBe('acceptEdits');
+  it('is acceptEdits with only edit or only write, when edit_in_worktree is allow', () => {
+    const allow: RolePolicy = { ...base, editInWorktree: 'allow' };
+    expect(sessionModeOf({ ...allow, nativeTools: ['edit'] })).toBe('acceptEdits');
+    expect(sessionModeOf({ ...allow, nativeTools: ['write'] })).toBe('acceptEdits');
+  });
+
+  it('stays in default when edit_in_worktree is ask or absent, so the edit reaches layer 2 (N182)', () => {
+    for (const editInWorktree of ['ask', undefined] as const) {
+      const policy: RolePolicy = {
+        ...base,
+        nativeTools: ['read', 'search', 'edit', 'write'],
+        ...(editInWorktree === undefined ? {} : { editInWorktree }),
+      };
+      expect(sessionModeOf(policy)).toBe('default');
+      const args = headlessArgs(policy, 'none');
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('default');
+    }
+  });
+
+  it('edit_in_worktree: allow does not give a mode to a role with no edit or write tool', () => {
+    expect(
+      sessionModeOf({ ...base, nativeTools: ['read', 'search'], editInWorktree: 'allow' }),
+    ).toBe('default');
   });
 
   it('puts no native tool in allowedTools and keeps the shell denied', () => {
-    const policy: RolePolicy = { ...base, nativeTools: ['read', 'search', 'edit', 'write'] };
+    const policy: RolePolicy = {
+      ...base,
+      nativeTools: ['read', 'search', 'edit', 'write'],
+      editInWorktree: 'allow',
+    };
     expect(acpOptions(policy, 'none').allowedTools).toEqual([]);
     expect(permissionSettings(policy).allow).toEqual([]);
     expect(deniedTools(policy)).toContain('Bash');

@@ -44,6 +44,14 @@ export const POLICY_ON_ASK_AVAILABLE: readonly (typeof POLICY_ON_ASK_MODES)[numb
   'rules',
 ];
 
+/**
+ * `allow`: a role with `edit` or `write` in `native_tools` edits files inside its worktree with no
+ * request, for every client (N182, owner, 2026-11-20). `ask`: the edit reaches layer 2 like any other
+ * request and `on_ask` and `rules` answer it. The default is `allow` for the roles that write and
+ * `ask` for the others. The writes outside the worktree are rejected in both (N99).
+ */
+export const POLICY_EDIT_IN_WORKTREE_MODES = ['allow', 'ask'] as const;
+
 /** How many rules one `policy.rules` list may have. [proposta] */
 export const POLICY_RULES_MAX = 100;
 
@@ -214,6 +222,7 @@ export const RolePolicySettingsSchema = z.strictObject({
     })
     .optional(),
   rules: PolicyRulesSchema.optional(),
+  edit_in_worktree: z.enum(POLICY_EDIT_IN_WORKTREE_MODES).optional(),
   bypass: z
     .literal(
       'forbidden',

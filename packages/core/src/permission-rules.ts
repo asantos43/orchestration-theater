@@ -16,8 +16,12 @@ import type {
  * 1. what is always rejected (N99): a write outside the worktree, the shell of the client, the
  *    network outside `network.allow` and a change of mode (the way into a bypass). No rule opens
  *    these, and the daemon configuration refuses a rule that tries;
- * 2. with `onAsk: 'rules'`, the first rule of the policy that matches the request;
- * 3. no rule: the rejection of `onAsk: 'reject'`, which is also what a policy that does not use
+ * 2. `editInWorktree: 'allow'` (N182, owner, 2026-11-20): an edit of files that are ALL inside the
+ *    worktree, by a role whose `nativeTools` has `edit` or `write`, is allowed, whatever `onAsk`
+ *    says and before the rules are read. It is a key of its own and not a rule of the list, so a
+ *    user who writes `rules` does not lose it;
+ * 3. with `onAsk: 'rules'`, the first rule of the policy that matches the request;
+ * 4. no rule: the rejection of `onAsk: 'reject'`, which is also what a policy that does not use
  *    rules does for every request.
  */
 
@@ -55,6 +59,7 @@ export const PERMISSION_REASONS = [
   'mode_switch',
   'mcp_tool_of_role',
   'mcp_tool_outside_role',
+  'edit_in_worktree',
 ] as const;
 export type PermissionReason = (typeof PERMISSION_REASONS)[number];
 
@@ -91,6 +96,13 @@ export interface PermissionPolicy {
    */
   readonly mcpServers?: readonly string[];
   readonly mcpTools?: Readonly<Record<string, readonly string[] | 'all'>>;
+  /**
+   * `allow`: an edit inside the worktree is allowed before the rules (N182). Absent or `ask`: it
+   * goes on to the rules and to `onAsk`. [proposta]
+   */
+  readonly editInWorktree?: 'allow' | 'ask';
+  /** The native tools of the role (`RolePolicy.nativeTools`); `editInWorktree` needs `edit` or `write` here. */
+  readonly nativeTools?: readonly string[];
 }
 
 /** What the answer needs besides the request and the policy. */
@@ -299,6 +311,18 @@ export function matchRule(
   });
 }
 
+/**
+ * True when `editInWorktree: 'allow'` releases the request (N182): an edit (ACP kind `edit` alone;
+ * `delete` and `move` are not edits of a file's content) of a role that has `edit` or `write` among
+ * its native tools. That every path is inside the worktree is checked by {@link forbiddenReason},
+ * which runs before this: a request with no path or with one outside is already a rejection.
+ */
+function editInWorktreeAllows(request: PermissionRequest, policy: PermissionPolicy): boolean {
+  if (policy.editInWorktree !== 'allow' || request.toolKind !== 'edit') return false;
+  const tools = policy.nativeTools ?? [];
+  return tools.includes('edit') || tools.includes('write');
+}
+
 /** True when the role lists the MCP tool: its server in `mcpServers` and the tool (or `all`) for that server. */
 function roleAllowsMcpTool(
   tool: NonNullable<PermissionRequest['mcpTool']>,
@@ -319,6 +343,9 @@ function roleAllowsMcpTool(
  * with `mcpTool` is never the native shell, whatever its kind says. For every other request,
  * `onAsk: 'reject'` (and any value this function does not know) rejects everything; `rules`
  * rejects what is always rejected, then follows the first rule that matches.
+ * `editInWorktree: 'allow'` (N182) sits between the two: after what is always rejected, before the
+ * rules and `onAsk`, an edit inside the worktree is allowed with the reason `edit_in_worktree` and
+ * no rule id. With an `onAsk` this function does not know it never allows.
  */
 export function decidePermission(
   request: PermissionRequest,
@@ -333,11 +360,15 @@ export function decidePermission(
       reason: allowed ? 'mcp_tool_of_role' : 'mcp_tool_outside_role',
     };
   }
+  const knownOnAsk = policy.onAsk === 'reject' || policy.onAsk === 'rules';
+  const forbidden = forbiddenReason(request, policy, context);
+  if (knownOnAsk && forbidden === undefined && editInWorktreeAllows(request, policy)) {
+    return { decision: 'allow', rule: NO_RULE, reason: 'edit_in_worktree' };
+  }
   if (policy.onAsk !== 'rules') {
     return { decision: 'reject', rule: NO_RULE, reason: 'on_ask_reject' };
   }
   const rules = policy.rules ?? [];
-  const forbidden = forbiddenReason(request, policy, context);
   const matched = matchRule(rules, request, context);
   if (forbidden !== undefined) {
     return {

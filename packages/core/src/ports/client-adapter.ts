@@ -67,6 +67,17 @@ export interface RolePolicy {
    * [proposta]
    */
   readonly rules?: readonly PermissionRule[];
+  /**
+   * `allow`: a role with `edit` or `write` among its `nativeTools` edits files inside its worktree
+   * with no request: layer 2 allows the edit before it reads the rules (reason `edit_in_worktree`),
+   * and a client with a mode that spares the request opens in it (Claude Code `acceptEdits`, OpenCode
+   * `edit: allow`). `ask`: the edit reaches layer 2 like any other request, and the client does not
+   * spare it. Absent means `ask` (fail closed). The writes outside the worktree stay rejected (N99)
+   * either way. Not a field of the guarantee ({@link ROLE_POLICY_FIELDS}); additive, so the port
+   * version stays. Owner decision of 2026-11-20 (N182); the key is `roles.<role>.policy.edit_in_worktree`.
+   * [proposta]
+   */
+  readonly editInWorktree?: 'allow' | 'ask';
   readonly bypass: 'forbidden';
   readonly writeScope: 'worktree';
   /** Allowed domains; guaranteed by layer 3. */
