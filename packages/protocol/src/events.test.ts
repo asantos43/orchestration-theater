@@ -114,6 +114,7 @@ describe('daemon event registry', () => {
       'prompt.queued',
       'chat.director_reply',
       'chat.ask',
+      'chat.ask_closed',
       'api.chat_closed',
       'api.chat_message_dropped',
       'layout.adjusted',

@@ -10,7 +10,7 @@ export function registerScenarioCommands(register: CommandRegistrar, deps: Comma
 
   register('openScenario', async ({ body }) => {
     const channel = available(deps.channel, 'open a scenario');
-    const { scenarioId, cursor } = await channel.openChat({
+    const { scenarioId, cursor, lastEventId } = await channel.openChat({
       ...(body.type === undefined ? {} : { type: body.type }),
       ...(body.repo === undefined ? {} : { repo: body.repo }),
       ...(body.base === undefined ? {} : { base: body.base }),
@@ -19,7 +19,7 @@ export function registerScenarioCommands(register: CommandRegistrar, deps: Comma
     });
     const record = await store.scenarios.get(scenarioId);
     if (record === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
-    return { scenario: scenarioOf(record), cursor };
+    return { scenario: scenarioOf(record), cursor, lastEventId };
   });
 
   register('addAttachment', async ({ params, body }) => {

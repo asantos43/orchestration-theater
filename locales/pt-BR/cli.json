@@ -95,6 +95,7 @@
     "option": "  - {{label}}: {{description}}",
     "badOption": "Essa não é uma das opções. Digite uma de: {{options}}.",
     "answerFailed": "A resposta não foi aceita: {{message}}",
+    "askWithdrawn": "A pergunta foi respondida em outro lugar e foi retirada.",
     "connectFailed": "Não foi possível alcançar o daemon: {{message}}",
     "sendFailed": "A mensagem não foi enviada: {{message}}",
     "reconnecting": "A conexão com o daemon caiu ({{message}}). Nova tentativa em {{seconds}} s.",

@@ -978,6 +978,14 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         }
         expect(code).toBe(EXIT_OK);
         expect(sockets.length).toBeGreaterThanOrEqual(2);
+        // N179, item 1: the first socket resumes from the snapshot of `openScenario`, so a reply
+        // produced before it opened is not lost.
+        const first = JSON.parse(sockets[0]?.sent[0] ?? 'null') as {
+          type: string;
+          lastEventId: number;
+        };
+        expect(first.type).toBe('resume');
+        expect(first.lastEventId).toBeGreaterThan(0);
         const resume = JSON.parse(sockets[1]?.sent[0] ?? 'null') as { type: string };
         expect(resume.type).toBe('resume');
         // Each reply once: nothing is printed again because of the resume.
@@ -988,6 +996,67 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
       });
     } finally {
       globalThis.WebSocket = RealWebSocket;
+      if (previousConfigDir === undefined) delete process.env.OT_CLIENT_CONFIG_DIR;
+      else process.env.OT_CLIENT_CONFIG_DIR = previousConfigDir;
+      await rm(configDir, { recursive: true, force: true });
+    }
+  });
+
+  it('`ot chat` takes back a question that was answered somewhere else, and goes on (N179, item 2)', async () => {
+    const configDir = await mkdtemp(join(tmpdir(), 'otheater-ot-chat-'));
+    const previousConfigDir = process.env.OT_CLIENT_CONFIG_DIR;
+    process.env.OT_CLIENT_CONFIG_DIR = configDir;
+    try {
+      await withFakeDaemon({}, async (harness) => {
+        const t = await createTranslator('en');
+        const out: string[] = [];
+        const err: string[] = [];
+        const input = new PassThrough();
+        let code: number | undefined;
+        const running = runChatCommand(
+          {
+            dataDir: harness.dataDir,
+            t,
+            out: (line) => out.push(line),
+            err: (line) => err.push(line),
+          },
+          { type: 'chat', name: 'talk', input, quietMs: 800 },
+        ).then((exit) => {
+          code = exit;
+        });
+        try {
+          input.write('#ot-ask Which name?\n');
+          await waitFor('the question', () =>
+            Promise.resolve(out.some((line) => line.includes('Which name?')) || undefined),
+          );
+          // Another client (the REST route does the same call) answers it.
+          const pending = await waitFor('the pending decision', async () => {
+            const found = await harness.daemon.store.decisions.list({ states: ['pending'] });
+            return found.length === 1 ? found : undefined;
+          });
+          await harness.producer.answer(pending[0]?.id ?? '', { answers: ['Ada'] });
+          await waitFor('the question to be taken back', () =>
+            Promise.resolve(
+              out.some((line) => line.includes('answered somewhere else')) || undefined,
+            ),
+          );
+          // The prompt is free again: the next line is a message, not the answer to the question.
+          input.write('#ot-chat after\n');
+          await waitFor('the reply after it', () =>
+            Promise.resolve(out.some((line) => /\bafter\b/.test(line)) || undefined),
+          );
+          input.end();
+          await waitFor('the command to end', () => Promise.resolve(code), 90_000);
+          await running;
+        } finally {
+          input.destroy();
+        }
+        expect(code).toBe(EXIT_OK);
+        expect(out.filter((line) => line.includes('answered somewhere else'))).toHaveLength(1);
+        expect(out.filter((line) => line.includes('Which name?'))).toHaveLength(1);
+        expect(err).toEqual([]);
+      });
+    } finally {
       if (previousConfigDir === undefined) delete process.env.OT_CLIENT_CONFIG_DIR;
       else process.env.OT_CLIENT_CONFIG_DIR = previousConfigDir;
       await rm(configDir, { recursive: true, force: true });

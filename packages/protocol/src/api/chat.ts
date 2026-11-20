@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
+import { CHAT_ASK_CLOSED_STATES } from '../chat-events.js';
 import { IdeaQueueHeldPayloadSchema } from '../idea-events.js';
 import { ScenarioSystemMessagePayloadSchema } from '../scenario-events.js';
 import { ApiErrorBodySchema } from './errors.js';
@@ -92,6 +93,16 @@ export const ChatServerMessageSchema = z.discriminatedUnion('type', [
     kind: z.string().min(1),
     playId: z.string().min(1).nullable(),
     input: AnswerSchema,
+  }),
+  /**
+   * A question the daemon showed is not pending any more: it was answered by another client or by
+   * the REST route, or cancelled (N179). The client takes it back. [proposta]
+   */
+  z.strictObject({
+    type: z.literal('ask_closed'),
+    eventId,
+    decisionId: DecisionIdSchema,
+    state: z.enum(CHAT_ASK_CLOSED_STATES),
   }),
   /** A message of the daemon itself (the reconciliation of the start-up, a handoff, a wait...). */
   z.strictObject({

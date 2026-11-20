@@ -95,6 +95,7 @@
     "option": "  - {{label}}: {{description}}",
     "badOption": "That is not one of the options. Type one of: {{options}}.",
     "answerFailed": "The answer was not taken: {{message}}",
+    "askWithdrawn": "The question was answered somewhere else, so it was taken back.",
     "connectFailed": "Could not reach the daemon: {{message}}",
     "sendFailed": "The message was not sent: {{message}}",
     "reconnecting": "The connection to the daemon dropped ({{message}}). Trying again in {{seconds}} s.",

@@ -45,6 +45,21 @@ export const ChatAskPayloadSchema = z.strictObject({
   input: z.record(z.string(), z.json()),
 });
 
+/** How a decision the chat asked the Producer about ended (`DecisionState` without `pending`). */
+export const CHAT_ASK_CLOSED_STATES = ['decided', 'cancelled'] as const;
+
+/**
+ * `chat.ask_closed`: a decision announced by `chat.ask` is not pending any more, because somebody
+ * answered it (the socket of another client, the REST route, the Director...) or it was cancelled
+ * (N179, item 2). The chat takes the question back from the clients that still show it. [proposta]
+ * The answer is not in the payload: it stays in the decision record. The play is in the envelope.
+ */
+export const ChatAskClosedPayloadSchema = z.strictObject({
+  decisionId: z.string().min(1),
+  kind: z.string().min(1),
+  state: z.enum(CHAT_ASK_CLOSED_STATES),
+});
+
 /**
  * Why the daemon closed a chat WebSocket (or the client went away). `feed_failed` is the feed of
  * events that broke while the socket was open ([proposta], P7): the socket ends with 1011 and the
