@@ -39,6 +39,16 @@ export const getIdea = defineRoute({
 
 const IdeaIdParamsSchema = z.strictObject({ ideaId: z.string().min(1).max(64) });
 const IdeaResultSchema = z.strictObject({ idea: ApiIdeaSchema });
+/**
+ * The idea routes are addressed by the id of the idea alone, so the path carries no scenario to
+ * check it against. [proposta] A client that acts for one scenario (`ot chat`) gives it here: an
+ * idea of another scenario then answers 404 `not_found`, the same as an idea that does not exist,
+ * so the answer does not tell that the id exists elsewhere. Without it, any idea can be acted on.
+ */
+export const IdeaCommandQuerySchema = z.strictObject({
+  scenarioId: z.string().min(1).max(256).optional(),
+});
+export type IdeaCommandQuery = z.input<typeof IdeaCommandQuerySchema>;
 const ideaErrors = ['not_found', 'conflict', 'unavailable'] as const;
 
 /** `/idea add`: puts an idea in the queue of a scenario. [proposta] Its source is recorded as `tui`. */
@@ -87,6 +97,7 @@ export const discardIdea = defineRoute({
   path: '/v1/ideas/:ideaId/discard',
   summary: 'Drops an idea for good, with the reason',
   params: IdeaIdParamsSchema,
+  query: IdeaCommandQuerySchema,
   headers: IdempotencyHeadersSchema,
   body: IdeaReasonBodySchema,
   response: IdeaResultSchema,
@@ -99,6 +110,7 @@ export const deferIdea = defineRoute({
   path: '/v1/ideas/:ideaId/defer',
   summary: 'Sets an idea aside for later, with the reason',
   params: IdeaIdParamsSchema,
+  query: IdeaCommandQuerySchema,
   headers: IdempotencyHeadersSchema,
   body: IdeaReasonBodySchema,
   response: IdeaResultSchema,
@@ -111,6 +123,7 @@ export const requeueIdea = defineRoute({
   path: '/v1/ideas/:ideaId/requeue',
   summary: 'Puts a deferred idea back in the queue',
   params: IdeaIdParamsSchema,
+  query: IdeaCommandQuerySchema,
   headers: IdempotencyHeadersSchema,
   response: IdeaResultSchema,
   errors: ideaErrors,

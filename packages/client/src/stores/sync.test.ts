@@ -268,10 +268,10 @@ describe('DaemonStores: following the stream', () => {
       playTransitioned(11, 'S1', 'P1', 'EXECUTING'),
       playTransitioned(11, 'S1', 'P1', 'DONE'),
     );
-    daemon.push(playTransitioned(12, 'S1', 'P1', 'REVIEW'));
+    daemon.push(playTransitioned(12, 'S1', 'P1', 'CRITIQUING'));
     await waitFor(() => hub.status.getState().cursor === 12, 'the events');
     expect(hub.events.getState().events.map((e) => e.id)).toEqual([11, 12]);
-    expect(hub.plays.getState().byId.P1?.state).toBe('REVIEW');
+    expect(hub.plays.getState().byId.P1?.state).toBe('CRITIQUING');
   });
 
   it('resumes after a dropped connection with the last id, and gives no event twice', async () => {
@@ -370,7 +370,7 @@ describe('DaemonStores: what the events cannot keep is read again', () => {
     daemon.decisions.set('S1', [decision('K1', 'S1'), decision('K2', 'S1', 2)]);
     daemon.push(playTransitioned(11, 'S1', 'P1', 'AWAITING_PRODUCER'));
     await waitFor(() => gated, 'the read to start');
-    daemon.push(playTransitioned(12, 'S1', 'P1', 'REVIEW'));
+    daemon.push(playTransitioned(12, 'S1', 'P1', 'CRITIQUING'));
     await waitFor(() => hub.status.getState().cursor === 12, 'the second event');
     release();
     await waitFor(() => hub.decisions.getState().byScenario.S1?.length === 2, 'the second read');
@@ -412,7 +412,7 @@ describe('DaemonStores: what the events cannot keep is read again', () => {
 
     failing = false;
     daemon.decisions.set('S1', []);
-    daemon.push(playTransitioned(12, 'S1', 'P1', 'REVIEW'));
+    daemon.push(playTransitioned(12, 'S1', 'P1', 'CRITIQUING'));
     await waitFor(() => hub.decisions.getState().stale.S1 === undefined, 'the read');
     expect(hub.decisions.getState().byScenario.S1).toEqual([]);
   });

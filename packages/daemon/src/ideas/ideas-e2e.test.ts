@@ -159,35 +159,47 @@ describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_0
     });
   });
 
-  it('with drain auto and grouping_approval auto the queue empties by itself', async () => {
-    await withPlayDaemon(
-      { extra: 'ideas:\n  drain: auto\n  grouping_approval: auto' },
-      async (harness) => {
-        const scenarioId = await harness.openChat();
-        // The first three go in without waking the queue; the fourth wakes it with all four there.
-        for (const idea of FOUR.slice(0, 3)) {
-          await harness.daemon.store.ideas.create({
-            scenarioId,
-            text: idea.text,
-            source: 'terminal',
-            ...(idea.area === undefined ? {} : { area: idea.area }),
-          });
-        }
-        await harness.producer.idea(scenarioId, { action: 'add', text: FOUR[3].text });
-        await waitFor('the queue to drain', async () =>
-          (await ideasOf(harness, scenarioId)).every((idea) => idea.state === 'done'),
-        );
-        expect(await harness.plays(scenarioId)).toHaveLength(3);
-        expect(harness.codeHost.pullRequests()).toHaveLength(3);
-        const ideas = await ideasOf(harness, scenarioId);
-        expect(ideas.every((idea) => idea.prNumber !== null && idea.playId !== null)).toBe(true);
-        // `auto` never asked: no decision of the group was created.
-        expect(
-          await harness.daemon.store.decisions.list({ scenarioId, kinds: [IDEA_GROUP_DECISION] }),
-        ).toHaveLength(0);
-      },
-    );
-  });
+  // The queue makes one group at a time and waits for its play to end before the next, so this test
+  // waits for three plays one after another, not for one. Measured: ~7 s a play with the machine
+  // idle (~14 sessions of the fake agent, each a process of ~0.5 s), ~20 s the three; the default of
+  // `waitFor` (60 s) is for one step, and under a load of 30 on 12 cores the three together went over
+  // it (nothing waits without need: the time is the processes). So the limit is three steps.
+  const THREE_PLAYS_MS = 3 * 60_000;
+  it(
+    'with drain auto and grouping_approval auto the queue empties by itself',
+    async () => {
+      await withPlayDaemon(
+        { extra: 'ideas:\n  drain: auto\n  grouping_approval: auto' },
+        async (harness) => {
+          const scenarioId = await harness.openChat();
+          // The first three go in without waking the queue; the fourth wakes it with all four there.
+          for (const idea of FOUR.slice(0, 3)) {
+            await harness.daemon.store.ideas.create({
+              scenarioId,
+              text: idea.text,
+              source: 'terminal',
+              ...(idea.area === undefined ? {} : { area: idea.area }),
+            });
+          }
+          await harness.producer.idea(scenarioId, { action: 'add', text: FOUR[3].text });
+          await waitFor(
+            'the queue to drain',
+            async () => (await ideasOf(harness, scenarioId)).every((idea) => idea.state === 'done'),
+            THREE_PLAYS_MS,
+          );
+          expect(await harness.plays(scenarioId)).toHaveLength(3);
+          expect(harness.codeHost.pullRequests()).toHaveLength(3);
+          const ideas = await ideasOf(harness, scenarioId);
+          expect(ideas.every((idea) => idea.prNumber !== null && idea.playId !== null)).toBe(true);
+          // `auto` never asked: no decision of the group was created.
+          expect(
+            await harness.daemon.store.decisions.list({ scenarioId, kinds: [IDEA_GROUP_DECISION] }),
+          ).toHaveLength(0);
+        },
+      );
+    },
+    THREE_PLAYS_MS + 120_000,
+  );
 
   it('the Producer can edit a group (fewer ideas, a new need): the one left out goes back to the queue', async () => {
     await withPlayDaemon({ extra: 'ideas:\n  drain: manual' }, async (harness) => {

@@ -139,6 +139,24 @@ describe('orders', () => {
     expect(await eventsOf('directive.suspended')).toHaveLength(1);
   });
 
+  it('answers 404 for a local order or a suspension in a scenario that does not exist', async () => {
+    const global = (
+      await send('POST', '/v1/orders', { text: 'Keep it short', scope: 'global' })
+    ).json<{ order: { id: string } }>().order;
+    const local = await send('POST', '/v1/orders', {
+      text: 'Only here',
+      scope: 'local',
+      scenarioId: 'nope',
+    });
+    expect(local.status, local.text).toBe(404);
+    const suspended = await send('POST', `/v1/orders/${global.id}/suspend`, {
+      scenarioId: 'nope',
+    });
+    expect(suspended.status, suspended.text).toBe(404);
+    expect(await daemon.store.directives.list({})).toHaveLength(1);
+    expect(await eventsOf('directive.suspended')).toHaveLength(0);
+  });
+
   it('maps the failures of the order service to the codes of the API', async () => {
     const missing = await send('POST', '/v1/orders/nope/revoke', { reason: 'x' });
     expect(missing.status).toBe(404);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DirectiveRecord } from '@otheater/core';
+import { NotFound, type DirectiveRecord } from '@otheater/core';
 import type { OrderValidity } from '@otheater/protocol';
 import type { DirectiveInput, ValidityText } from '../../directives/index.js';
 import type { CommandRegistrar } from './command.js';
@@ -21,10 +21,19 @@ function validityOf(validity: OrderValidity | undefined): ValidityText | undefin
  * and `import`). The service writes the events of every change (`directive.*`).
  */
 export function registerOrderCommands(register: CommandRegistrar, deps: CommandRouteDeps): void {
-  const { directives } = deps;
+  const { directives, store } = deps;
+  // A local order or a suspension names a scenario; one that does not exist is a 404, not an order
+  // left pointing at nothing.
+  const scenarioExists = async (scenarioId: string | undefined): Promise<void> => {
+    if (scenarioId === undefined) return;
+    if ((await store.scenarios.get(scenarioId)) === undefined) {
+      throw new NotFound(`There is no scenario "${scenarioId}"`);
+    }
+  };
   const wrap = (order: DirectiveRecord): { order: DirectiveRecord } => ({ order });
 
   register('createOrder', async ({ body }) => {
+    await scenarioExists(body.scenarioId);
     const input: DirectiveInput = {
       text: body.text,
       scope: body.scope,
@@ -45,8 +54,9 @@ export function registerOrderCommands(register: CommandRegistrar, deps: CommandR
     wrap(await directives.extend(params.orderId, validityOf(body.validity) ?? {})),
   );
 
-  register('suspendOrder', async ({ params, body }) =>
-    wrap(
+  register('suspendOrder', async ({ params, body }) => {
+    await scenarioExists(body.scenarioId);
+    return wrap(
       await directives.create(
         {
           kind: 'suspension',
@@ -58,8 +68,8 @@ export function registerOrderCommands(register: CommandRegistrar, deps: CommandR
         },
         'tui',
       ),
-    ),
-  );
+    );
+  });
 
   register('revokeOrder', async ({ params, body }) =>
     wrap(await directives.revoke(params.orderId, body.reason)),

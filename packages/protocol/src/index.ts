@@ -11,6 +11,7 @@ export * from './session-update.js';
 export * from './workspace-events.js';
 export * from './directive-events.js';
 export * from './idea-events.js';
+export * from './play-events.js';
 export * from './profile-events.js';
 export * from './scenario-events.js';
 export * from './permission-events.js';

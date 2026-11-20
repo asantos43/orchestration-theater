@@ -157,6 +157,50 @@ describeWithLauncher(
       });
     });
 
+    it('acts on an idea for one scenario only when it belongs to it, and answers 404 otherwise', async () => {
+      await withPlayDaemon({ extra: 'ideas:\n  drain: manual' }, async (harness, send) => {
+        const mine = await harness.openChat();
+        const other = await harness.openGenericChat('other');
+        const added = await send('POST', `/v1/scenarios/${other}/ideas`, { text: 'not yours' });
+        const ideaId = added.json.idea.id as string;
+        const query = `?scenarioId=${mine}`;
+        const types = async (): Promise<string[]> =>
+          (await harness.daemon.store.events.readFrom(0, 100_000)).map(
+            (event): string => event.type,
+          );
+
+        // The answer is the one of an idea that does not exist, so it does not tell it exists.
+        const gone = await send('POST', '/v1/ideas/nope/discard?scenarioId=' + mine, {
+          reason: 'no',
+        });
+        expect(gone.status).toBe(404);
+        for (const [path, body] of [
+          [`/v1/ideas/${ideaId}/discard${query}`, { reason: 'no' }],
+          [`/v1/ideas/${ideaId}/defer${query}`, { reason: 'later' }],
+          [`/v1/ideas/${ideaId}/requeue${query}`, undefined],
+        ] as const) {
+          const refused = await send('POST', path, body);
+          expect(refused.status, path).toBe(404);
+          expect(refused.json.error.code).toBe('not_found');
+          expect(refused.json.error.message).toBe(`There is no idea "${ideaId}"`);
+        }
+        // Nothing changed: the idea is still queued and no event says otherwise.
+        expect((await harness.daemon.store.ideas.get(ideaId))?.state).toBe('queued');
+        expect(await types()).not.toContain('idea.discarded');
+        expect(await types()).not.toContain('idea.deferred');
+
+        // With its own scenario, or with none (the id alone, as before), the command goes through.
+        const deferred = await send('POST', `/v1/ideas/${ideaId}/defer?scenarioId=${other}`, {
+          reason: 'later',
+        });
+        expect(deferred.json.idea.state).toBe('deferred');
+        const requeued = await send('POST', `/v1/ideas/${ideaId}/requeue?scenarioId=${other}`);
+        expect(requeued.json.idea.state).toBe('queued');
+        const discarded = await send('POST', `/v1/ideas/${ideaId}/discard`, { reason: 'no' });
+        expect(discarded.json.idea.state).toBe('discarded');
+      });
+    });
+
     it('answers the menu of a stopped play and cancels another, each one an event', async () => {
       await withPlayDaemon({ limits: '  attempts_per_demand: 2' }, async (harness, send) => {
         const scenarioId = await harness.openChat();

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 export * from './core.js';
-export * from './play-events.js';
 export * from './scenarios.js';
 export * from './plays.js';
 export * from './demands.js';
