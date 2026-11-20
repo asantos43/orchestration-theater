@@ -41,6 +41,13 @@ import {
   ScenarioDecisionAnsweredPayloadSchema,
 } from './api-command-events.js';
 import {
+  ApiChatClosedPayloadSchema,
+  ApiChatMessageDroppedPayloadSchema,
+  ChatAskPayloadSchema,
+  ChatDirectorReplyPayloadSchema,
+  PromptQueuedPayloadSchema,
+} from './chat-events.js';
+import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
@@ -617,6 +624,31 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ConfigEditedPayloadSchema,
   }),
+  defineEventType({
+    type: 'prompt.queued',
+    schemaVersion: 1,
+    payload: PromptQueuedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.director_reply',
+    schemaVersion: 1,
+    payload: ChatDirectorReplyPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.ask',
+    schemaVersion: 1,
+    payload: ChatAskPayloadSchema,
+  }),
+  defineEventType({
+    type: 'api.chat_closed',
+    schemaVersion: 1,
+    payload: ApiChatClosedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'api.chat_message_dropped',
+    schemaVersion: 1,
+    payload: ApiChatMessageDroppedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -743,6 +775,11 @@ export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];
 export type ScenarioDecisionAnsweredPayload = DaemonEventPayloads['scenario.decision_answered'];
 export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
+export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
+export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
+export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
+export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
+export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

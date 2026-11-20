@@ -55,7 +55,7 @@ export default {
     {
       name: 'client-only-protocol-and-zod',
       comment:
-        'packages/client/src runs in Node and in a browser (Phase 12): it may import only itself, @otheater/protocol, @otheater/core (types) and zod. No daemon, no adapter, no fake-agent, and no Node built-in outside src/node/ [proposta]. Tests may import the test runner and Node.',
+        'packages/client/src runs in Node and in a browser (Phase 12): it may import only itself, @otheater/protocol, @otheater/core (types), zod and zustand (the stores, P11). No daemon, no adapter, no fake-agent, and no Node built-in outside src/node/ [proposta]. Tests may import the test runner and Node.',
       severity: 'error',
       from: {
         path: '^packages/client/src/',
@@ -70,6 +70,8 @@ export default {
           '(^|/)node_modules/@otheater/core/(src|dist)/(?!testing/)',
           '(^|/)node_modules/zod/',
           '^zod(/|$)',
+          '(^|/)node_modules/zustand/',
+          '^zustand(/|$)',
         ],
       },
     },

@@ -1556,6 +1556,38 @@ export const DaemonConfigSchema = z
          * command is deduplicated. The memory is the daemon's own and does not survive a restart.
          */
         idempotency_ttl: DurationSchema.or(z.literal(0)).prefault('24h'),
+        chat: z
+          .strictObject({
+            /** [proposta: 30s] How long a chat ticket (`POST /v1/chat-tickets`) is good for, and no longer. */
+            ticket_ttl: DurationSchema.prefault('30s'),
+            /**
+             * [proposta: 30s] Interval of the protocol ping of the chat socket; a socket that did not
+             * answer the previous ping with a pong by the next one is closed (`no_pong`).
+             */
+            heartbeat: DurationSchema.prefault('30s'),
+            /** [proposta: 2s] After the daemon sends a close frame, how long it waits for the client before it ends the socket. */
+            close_grace: DurationSchema.prefault('2s'),
+            /** [proposta: 1 MiB] The largest message the chat socket takes from the client; a bigger one ends the socket (code 1009). */
+            max_message_bytes: z.int().min(1).default(1_048_576),
+            /**
+             * [proposta: 60] Pongs the daemon may owe a client that floods it with pings (`maxPendingAutoPongs`
+             * of `ws` 8.23.0, which ends the socket past it).
+             */
+            max_pending_pongs: z.int().min(1).default(60),
+            /**
+             * [proposta: 1s] How often the chat socket looks at what is not an event (`waits` and
+             * `busy` come from the state of the scenario, not from the log) and sends it if it changed.
+             */
+            state_interval: DurationSchema.prefault('1s'),
+            /**
+             * [proposta: 250ms] How long the socket waits, after it opens, for the first message of the
+             * client before it starts sending: a client with a cursor says `resume` first, and what the
+             * daemon sent before that would come twice. A client with no cursor gets the current state
+             * after this wait.
+             */
+            resume_window: DurationSchema.prefault('250ms'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     events: z

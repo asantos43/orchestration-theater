@@ -111,6 +111,11 @@ describe('daemon event registry', () => {
       'api.stream_lagged',
       'scenario.decision_answered',
       'config.edited',
+      'prompt.queued',
+      'chat.director_reply',
+      'chat.ask',
+      'api.chat_closed',
+      'api.chat_message_dropped',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

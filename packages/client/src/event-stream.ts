@@ -79,6 +79,7 @@ export class EventStream extends ReconnectingConnection {
   readonly #dropRepeated: boolean;
   readonly #messages = new Listeners<[ApiSseMessage]>();
   readonly #invalid = new Listeners<[ApiClientError]>();
+  readonly #cursors = new Listeners<[number]>();
   /** The cursor: the id of the last event the stream has, sent as `Last-Event-ID`. */
   #cursor: number | undefined;
   /** Whether the stream has moved the cursor itself (after that, `since` is not used again). */
@@ -130,9 +131,22 @@ export class EventStream extends ReconnectingConnection {
     return this.#invalid.add(listener);
   }
 
+  /**
+   * Watches the cursor: called with the last `id:` of a chunk of the stream each time it moves,
+   * before the messages that came in the same chunk (so a chunk with several events reports the
+   * id of the last one once). A daemon sends the id of its newest event as the first
+   * frame of a stream that has no cursor (`0` when the log is empty), so this is how a reader
+   * learns the head of the log at the moment the stream opened (the stores of P11 start from
+   * it). Returns the function that stops watching. [proposta]
+   */
+  onCursor(listener: (id: number) => void): () => void {
+    return this.#cursors.add(listener);
+  }
+
   protected override onClosed(): void {
     this.#messages.clear();
     this.#invalid.clear();
+    this.#cursors.clear();
   }
 
   protected override async connectOnce(signal: AbortSignal, opened: () => void): Promise<void> {
@@ -263,6 +277,7 @@ export class EventStream extends ReconnectingConnection {
     if (id === this.#cursor) return;
     this.#cursor = id;
     this.#moved = true;
+    this.#cursors.emit(id);
   }
 
   #receive(item: SseEvent, status: number, context: ApiErrorContext): void {
