@@ -512,6 +512,23 @@ describe('the tokens of the Actor (P23)', () => {
     expect(second.calls.map((call) => call.tool)).toEqual(['git_commit', 'install_deps', 'submit']);
   });
 
+  it('finishes blocked without writing, only in the attempt the token names', async () => {
+    const need = 'go #actor-blocked:alpha@1';
+    const first = host(prompt(need, 'alpha', 1));
+    await playRolePlay(first.host);
+    expect(first.calls).toEqual([
+      {
+        tool: 'submit',
+        args: {
+          result: { state: 'blocked', reason: 'alpha: the contract does not say the format' },
+        },
+      },
+    ]);
+    const second = host(prompt(need, 'alpha', 2));
+    await playRolePlay(second.host);
+    expect(second.calls.at(-1)?.args).toEqual({ result: { file: 'alpha.txt' } });
+  });
+
   it('fails only in the attempt the token names', async () => {
     const need = 'go #actor-quota:alpha=2026-11-18T18:00:00.000Z@2';
     const first = host(prompt(need, 'alpha', 1));

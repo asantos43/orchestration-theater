@@ -236,6 +236,8 @@ async function submit(
  *   attempt, when `@` is there) ends with a quota error that says the limit ends at `<iso>`;
  * - `#actor-hang:<id>@<attempt>`: the first turn of that attempt writes nothing and waits for the
  *   cancel, as a session that is still working when its profile is taken away.
+ * - `#actor-blocked:<id>[@<attempt>]`: the Actor writes nothing and finishes with a result whose
+ *   state is `blocked` (prompt `actor.md`, "Blocked"), on every attempt or only on that one.
  * What a token does once is counted in the state directory, so the next session of the attempt (a
  * baton pass or a native resume) goes on with the work.
  */
@@ -266,6 +268,13 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
   await mkdir(stateDir(), { recursive: true });
   await writeFile(memoryFile(host.cwd), host.text);
   const attempt = Number(markerOf(host.text, '#ot-attempt:')) || 1;
+  const blocked = actorToken(host.text, 'blocked', demandId);
+  if (blocked !== undefined && (blocked.attempt ?? attempt) === attempt) {
+    await submit(host, 'submit', {
+      result: { state: 'blocked', reason: `${demandId}: the contract does not say the format` },
+    });
+    return;
+  }
   const hang = actorToken(host.text, 'hang', demandId);
   if (hang !== undefined && (hang.attempt ?? attempt) === attempt) {
     if ((await countOf(`actor-hang-${demandId}-${String(attempt)}`)) === 0) {
