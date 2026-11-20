@@ -116,6 +116,7 @@ describe('daemon event registry', () => {
       'chat.ask',
       'api.chat_closed',
       'api.chat_message_dropped',
+      'layout.adjusted',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

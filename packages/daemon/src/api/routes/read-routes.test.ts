@@ -182,9 +182,9 @@ async function seedScenario(id: string): Promise<void> {
 }
 
 describe('the read routes before and after the services exist', () => {
-  it('answers what the registry says: every GET route that is not a stream, socket or layout has a handler', () => {
+  it('answers what the registry says: every GET route that is not a stream or a socket has a handler', () => {
     const unregistered: string[] = [];
-    const skip = new Set(['streamEvents', 'openChatSocket', 'getLayout', 'getStatus']);
+    const skip = new Set(['streamEvents', 'openChatSocket', 'getStatus']);
     for (const route of Object.values(API_ROUTES)) {
       if (route.method !== 'GET' || skip.has(route.id)) continue;
       expect(daemon.api.handlers.has(route.id), route.id).toBe(true);

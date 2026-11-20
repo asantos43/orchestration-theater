@@ -40,6 +40,7 @@ import {
   ConfigEditedPayloadSchema,
   ScenarioDecisionAnsweredPayloadSchema,
 } from './api-command-events.js';
+import { LayoutAdjustedPayloadSchema } from './layout-events.js';
 import {
   ApiChatClosedPayloadSchema,
   ApiChatMessageDroppedPayloadSchema,
@@ -649,6 +650,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ApiChatMessageDroppedPayloadSchema,
   }),
+  defineEventType({
+    type: 'layout.adjusted',
+    schemaVersion: 1,
+    payload: LayoutAdjustedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -780,6 +786,7 @@ export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
+export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

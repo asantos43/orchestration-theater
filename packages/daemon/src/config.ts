@@ -18,7 +18,7 @@ import {
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
-import { BACKUP_CONTENTS } from '@otheater/protocol';
+import { BACKUP_CONTENTS, LAYOUT_STORES } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import {
@@ -1931,6 +1931,26 @@ export const DaemonConfigSchema = z
     ui: z
       .strictObject({
         locale: z.enum(LOCALE_SETTINGS).default('auto'),
+        /**
+         * The layout preferences of the interfaces (architecture 5.13, N170; P12 of docs/17). The
+         * daemon keeps them either way; these keys are what a client reads (`GET /v1/config`) to
+         * know where to keep its own.
+         */
+        layout: z
+          .strictObject({
+            /**
+             * Where a client keeps its layout: `daemon` (the record of its interface in the daemon,
+             * by REST, so another client of the same user finds it) or `local` (a file in the
+             * configuration folder of the client).
+             */
+            store: z.enum(LAYOUT_STORES).default('daemon'),
+            /**
+             * [proposta: 300ms] How long a client waits after the last change of its layout before it
+             * writes it, so dragging the edge of the chat does not write once per column.
+             */
+            write_delay: DurationSchema.prefault('300ms'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     log: z

@@ -4,6 +4,7 @@ import type { BudgetService } from '../../budget/index.js';
 import type { DaemonConfig } from '../../config.js';
 import type { DirectiveService } from '../../directives/index.js';
 import type { IdeaQueueService } from '../../ideas/index.js';
+import type { LayoutPreferencesStore } from '../../layout/preferences.js';
 import type { Logger } from '../../logger.js';
 import type { ProducerChannel } from '../../orchestration/channel.js';
 import type { PlayRunner } from '../../pipeline/runner.js';
@@ -27,6 +28,8 @@ export interface ReadRouteDeps {
   readonly budget: BudgetService;
   readonly profiles: ProfileService;
   readonly attachments: AttachmentService;
+  /** The layout preferences of the interfaces (P12). */
+  readonly layout: LayoutPreferencesStore;
 }
 
 /**
@@ -49,4 +52,6 @@ export interface CommandRouteDeps {
   readonly channel?: ProducerChannel | undefined;
   readonly runner?: PlayRunner | undefined;
   readonly ideas?: IdeaQueueService | undefined;
+  /** The layout preferences of the interfaces (P12). */
+  readonly layout: LayoutPreferencesStore;
 }

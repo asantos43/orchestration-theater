@@ -73,6 +73,7 @@ describe('dataPaths', () => {
       apiDiscovery: join(root, 'api.json'),
       apiToken: join(root, 'api-token'),
       daemonId: join(root, 'daemon-id'),
+      layout: join(root, 'layout'),
     });
   });
 });
