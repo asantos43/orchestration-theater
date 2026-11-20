@@ -7664,6 +7664,47 @@
               },
               "final": {
                 "type": "boolean"
+              },
+              "generated": {
+                "type": "boolean",
+                "const": true
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "in_progress",
+                            "completed",
+                            "failed"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "playId": {
+                "type": "string",
+                "minLength": 1
               }
             },
             "required": [

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
-import { renderSystemMessage } from './chat-command.js';
+import { renderGeneratedReply, renderSystemMessage } from './chat-command.js';
 import { createTranslator } from './i18n.js';
 
 /** The system message of the reconciliation, in the language of the Producer (5.22). */
@@ -188,5 +188,36 @@ describe('renderSystemMessage, the failover of the Director (P20)', () => {
       toExecutor: null,
     });
     expect(line).toContain('no other Executor');
+  });
+});
+
+describe('renderGeneratedReply (N183)', () => {
+  const TOOLS = [
+    { name: 'open_play', status: 'completed' as const },
+    { name: 'ask_producer', status: 'failed' as const },
+  ];
+
+  it('names the tools and the play, in English', async () => {
+    const t = await createTranslator('en');
+    expect(renderGeneratedReply(t, TOOLS, 'play-1')).toBe(
+      'System: the Director ended the turn without a reply. Tools called: open_play, ask_producer (failed). Play opened: play-1.',
+    );
+  });
+
+  it('says it in Brazilian Portuguese, with and without a play', async () => {
+    const t = await createTranslator('pt-BR');
+    expect(renderGeneratedReply(t, TOOLS, 'play-1')).toBe(
+      'Sistema: o Diretor terminou o turno sem responder. Ferramentas chamadas: open_play, ask_producer (falhou). Peça aberta: play-1.',
+    );
+    expect(renderGeneratedReply(t, TOOLS.slice(0, 1), undefined)).toBe(
+      'Sistema: o Diretor terminou o turno sem responder. Ferramentas chamadas: open_play.',
+    );
+  });
+
+  it('says there was no tool at all', async () => {
+    const t = await createTranslator('pt-BR');
+    expect(renderGeneratedReply(t, [], undefined)).toBe(
+      'Sistema: o Diretor terminou o turno sem responder.',
+    );
   });
 });
