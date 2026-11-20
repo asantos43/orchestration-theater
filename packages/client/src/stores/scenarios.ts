@@ -58,8 +58,8 @@ export const reduceScenarios: EventReducer<ScenariosState> = (state, event) => {
         ...state,
         byId: {
           ...state.byId,
-          // [proposta] The store stamps `updatedAt` with the clock that stamps the event: both
-          // are written in the same transaction (to be checked against the daemon in P13).
+          // [V] N177: the daemon writes the record and the event in one transaction, which reads
+          // the clock once, so the stamp of the event is the `updatedAt` of the record.
           [id]: { ...known, directorState, updatedAt: Math.max(known.updatedAt, event.timestamp) },
         },
       };

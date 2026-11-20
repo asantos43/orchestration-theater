@@ -694,43 +694,37 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
     });
   });
 
-  it('with a clock that moves, the stamp of the event and the stamp of the record are a few milliseconds apart', async () => {
+  it('with a clock that moves, the play built from the events equals the REST record, stamps included (N177)', async () => {
     await withFakeDaemon({ clock: new TickingClock() }, async (harness, client) => {
+      const stores = new DaemonStores(client, { plays: 'all', refreshDebounceMs: 10 });
+      await stores.start();
       const raw = client.events({ since: await headOf(harness), initialDelayMs: 10 });
       const { messages } = follow(raw);
       try {
         const scenarioId = await harness.openChat();
         await harness.producer.send(scenarioId, APPROVED_PLAY);
         const play = await waitForPlay(harness, scenarioId, 'DONE');
+        await caughtUp(harness, stores);
         await waitFor('the stream to reach the log', async () =>
           messages.at(-1)?.data.id === (await headOf(harness)) ? true : undefined,
         );
         const rest = (await client.call(API_ROUTES.getPlay, { params: { playId: play.id } })).play;
-        const reduced = applyEvents(
-          initialPlays(),
-          messages.map((message) => message.data),
-          reducePlays,
-        ).byId[play.id];
-        if (reduced === undefined) throw new Error('the store has no play');
-        // What the events say is right...
-        expect({ ...reduced, createdAt: 0, updatedAt: 0, finishedAt: 0 }).toEqual({
-          ...rest,
-          createdAt: 0,
-          updatedAt: 0,
-          finishedAt: 0,
-        });
-        // ...and the stamps are within a few ticks of the clock: the runner and the store read the
-        // clock one time for the record and another for the event. [N] in docs/17 (P13).
-        const gap = (a: number | null, b: number | null): number => Math.abs((a ?? 0) - (b ?? 0));
-        const gaps = {
-          createdAt: gap(reduced.createdAt, rest.createdAt),
-          updatedAt: gap(reduced.updatedAt, rest.updatedAt),
-          finishedAt: gap(reduced.finishedAt, rest.finishedAt),
-        };
-        for (const value of Object.values(gaps)) expect(value).toBeLessThan(1000);
-        expect(reduced.finishedAt).not.toBeNull();
+        const events = messages.map((message) => message.data);
+        // The record and the event of one change are written in one transaction, which reads the
+        // clock once: field by field, with no tolerance, the events say what REST says.
+        expect(applyEvents(initialPlays(), events, reducePlays).byId[play.id]).toEqual(rest);
+        expect(stores.plays.getState().stale).toEqual({});
+        expect(stores.plays.getState().byId[play.id]).toEqual(rest);
+        expect(rest.finishedAt).not.toBeNull();
+        expect(events.find((event) => event.type === 'play.created')?.timestamp).toBe(
+          rest.createdAt,
+        );
+        expect(events.filter((event) => event.type === 'play.transitioned').at(-1)?.timestamp).toBe(
+          rest.finishedAt,
+        );
       } finally {
         raw.close();
+        stores.close();
       }
     });
   });

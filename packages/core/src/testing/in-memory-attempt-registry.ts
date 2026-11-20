@@ -60,8 +60,8 @@ export class InMemoryAttemptRegistry implements AttemptRegistry {
   }
 
   /** For `InMemoryStore`: a transaction copy of this (committed) registry. */
-  fork(): InMemoryAttemptRegistry {
-    return new InMemoryAttemptRegistry(this.#clock, this);
+  fork(clock: Pick<Clock, 'now'> = this.#clock): InMemoryAttemptRegistry {
+    return new InMemoryAttemptRegistry(clock, this);
   }
 
   /** For `InMemoryStore`: publishes the copy into its base and ends it. */

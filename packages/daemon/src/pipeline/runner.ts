@@ -220,7 +220,8 @@ export class PlayRunner {
           state: to,
           snapshot: toJson(playMachine.getPersistedSnapshot(next)),
           counters: { ...next.context.counters },
-          ...(finished ? { finishedAt: this.#clock.now() } : {}),
+          // The instant of the transaction: the one of `updatedAt` and of the event (N177).
+          ...(finished ? { finishedAt: tx.now() } : {}),
         });
         await tx.events.append({
           type: PLAY_TRANSITIONED_EVENT.type,

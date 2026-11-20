@@ -375,13 +375,16 @@ export class DirectorSessions {
       logger.warn({ err: error, scenarioId: session.scenarioId }, 'the Director lease did not go');
     });
     grant?.revoke();
-    await store.scenarios.update(session.scenarioId, { directorState: 'asleep' });
-    await store.events.append({
-      ...buildDaemonEvent('scenario.director_slept', {
+    // One transaction: the record and the event carry the same stamp (N177).
+    await store.transaction(async (tx) => {
+      await tx.scenarios.update(session.scenarioId, { directorState: 'asleep' });
+      await tx.events.append({
+        ...buildDaemonEvent('scenario.director_slept', {
+          scenarioId: session.scenarioId,
+          idleMs,
+        }),
         scenarioId: session.scenarioId,
-        idleMs,
-      }),
-      scenarioId: session.scenarioId,
+      });
     });
   }
 
@@ -430,13 +433,15 @@ export class DirectorSessions {
       const slept = session.sleptAt !== undefined;
       session.sleptAt = undefined;
       if (slept) {
-        await store.scenarios.update(session.scenarioId, { directorState: 'active' });
-        await store.events.append({
-          ...buildDaemonEvent('scenario.director_woke', {
+        await store.transaction(async (tx) => {
+          await tx.scenarios.update(session.scenarioId, { directorState: 'active' });
+          await tx.events.append({
+            ...buildDaemonEvent('scenario.director_woke', {
+              scenarioId: session.scenarioId,
+              sleptAt,
+            }),
             scenarioId: session.scenarioId,
-            sleptAt,
-          }),
-          scenarioId: session.scenarioId,
+          });
         });
       }
       const failing = session.failover !== undefined;

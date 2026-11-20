@@ -41,11 +41,20 @@ scenarios:
       model: fake-model
 `;
 
+/** A clock that moves a millisecond at every reading: what a real clock does between two writes. */
+class TickingClock extends FakeClock {
+  #ticks = 0;
+
+  override now(): number {
+    return super.now() + this.#ticks++;
+  }
+}
+
 function withChatDaemon(
   options: PlayHarnessOptions,
   body: (harness: PlayHarness, clock: FakeClock) => Promise<void>,
+  clock: FakeClock = new FakeClock(),
 ): Promise<void> {
-  const clock = new FakeClock();
   const fakes: PlayFakes = {
     codeHost: new FakeCodeHost(),
     clock,
@@ -240,6 +249,39 @@ describeWithLauncher('the chat flow with the fake agent (P12)', { timeout: 120_0
       expect(await events('scenario.director_woke')).toHaveLength(1);
       expect((await harness.daemon.store.scenarios.get(scenarioId))?.directorState).toBe('active');
     });
+  });
+
+  it('stamps the scenario and the sleep and wake events with the same reading of a clock that moves (N177)', async () => {
+    await withChatDaemon(
+      {},
+      async (harness, clock) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        await harness.producer.send(scenarioId, '#ot-chat first');
+        await waitForReply(harness, scenarioId, 'answer: first');
+        await waitFor('the Director to sleep', async () => {
+          await clock.advance(15 * 60_000);
+          const scenario = await harness.daemon.store.scenarios.get(scenarioId);
+          return scenario?.directorState === 'asleep' ? true : undefined;
+        });
+        const lastOf = async (type: string) =>
+          (await harness.daemon.store.events.readFrom(0, 100_000))
+            .filter((event) => event.type === type && event.scenarioId === scenarioId)
+            .at(-1);
+        const slept = await lastOf('scenario.director_slept');
+        expect((await harness.daemon.store.scenarios.get(scenarioId))?.updatedAt).toBe(
+          slept?.timestamp,
+        );
+
+        await harness.producer.send(scenarioId, '#ot-chat second');
+        await waitForReply(harness, scenarioId, 'answer: second');
+        const woke = await lastOf('scenario.director_woke');
+        expect(woke).toBeDefined();
+        expect((await harness.daemon.store.scenarios.get(scenarioId))?.updatedAt).toBe(
+          woke?.timestamp,
+        );
+      },
+      new TickingClock(),
+    );
   });
 
   it('never sleeps when director_idle_after is 0', async () => {
