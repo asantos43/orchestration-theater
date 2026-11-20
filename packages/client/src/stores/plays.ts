@@ -19,9 +19,11 @@ import {
 /**
  * The plays (peças) of one daemon, by id. The events carry the whole record, so a play built only
  * from `play.created` and `play.transitioned` equals the REST record at the end of the play
- * (the test against a real daemon enters in P13). [proposta] The two things the events do not
- * say are taken from the event: `createdAt`/`updatedAt` are its timestamp, and `finishedAt` is its
- * timestamp when the play goes to a final state; the snapshot of the machine is not in the API.
+ * (checked against a real daemon in P13, with a clock that moves too). [V] N177: the daemon
+ * writes the record and the event in one transaction that reads the clock once, so the two things
+ * the events do not say are the timestamp of the event: `createdAt`/`updatedAt` are its timestamp,
+ * and `finishedAt` is its timestamp when the play goes to a final state; the snapshot of the
+ * machine is not in the API.
  */
 
 export interface PlaysState extends SyncFields {

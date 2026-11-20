@@ -25,8 +25,10 @@ import type { WakeupRegistry } from './wakeups.js';
  * - 0.4.0 added the idea queue of the scenario (`ideas`, Phase 4, architecture 5.20).
  * - 0.5.0 added the tables of Phase 5 (section 7): `profiles`, `executors`, `interruptions`,
  *   `quotaSnapshots`, `usage` and `wakeups`.
+ * - 0.6.0 (N177) gave a transaction one instant: `tx.now()`, and the records and events it writes
+ *   carry that same reading of the clock.
  */
-export const STORE_PORT_VERSION = '0.5.0';
+export const STORE_PORT_VERSION = '0.6.0';
 
 /**
  * The aggregates of the store (architecture section 7), one registry per table. [proposta] Each
@@ -63,6 +65,14 @@ export interface StoreAggregates {
 export interface StoreTransaction extends StoreAggregates {
   readonly events: EventLog;
   readonly attempts: AttemptRegistry;
+  /**
+   * The instant of the transaction (epoch ms): the clock is read once, the first time anything in
+   * the transaction needs a stamp, and every record (`createdAt`, `updatedAt`, `finishedAt`...) and
+   * every event written through `tx` carries that same reading. [proposta] N177: a caller that
+   * must stamp a field of its own (`finishedAt` of a play) asks here, so the record and the event
+   * of one change never differ by the ticks of a clock that moves.
+   */
+  now(): number;
 }
 
 /**

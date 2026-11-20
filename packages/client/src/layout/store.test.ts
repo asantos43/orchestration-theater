@@ -2,11 +2,14 @@
 import {
   LAYOUT_VERSION,
   defaultLayout,
+  type ApiEventEnvelope,
+  type ApiSseMessage,
   type LayoutInterface,
   type LayoutPreferences,
 } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiClient } from '../client.js';
+import { event as eventOf } from '../stores/fixtures.test-support.js';
 import { startTestDaemon, type TestDaemon } from '../test-daemon.test-support.js';
 import { ManualClock } from './manual-clock.test-support.js';
 import {
@@ -19,6 +22,7 @@ import {
 import {
   LayoutStore,
   createLayoutStore,
+  type LayoutEventSource,
   type LayoutProblem,
   type LayoutStoreOptions,
 } from './store.js';
@@ -440,16 +444,22 @@ describe('createLayoutStore and layoutSettingsFromConfig', () => {
     ).toEqual({
       store: 'local',
       writeDelayMs: 1000,
+      sync: 'live',
     });
+    expect(layoutSettingsFromConfig({ ui: { layout: { sync: 'on_open' } } }).sync).toBe('on_open');
     for (const config of [
       undefined,
       null,
       {},
       { ui: {} },
       { ui: { layout: 7 } },
-      { ui: { layout: { store: 'cloud', write_delay: 'soon' } } },
+      { ui: { layout: { store: 'cloud', write_delay: 'soon', sync: 'never' } } },
     ]) {
-      expect(layoutSettingsFromConfig(config)).toEqual({ store: 'daemon', writeDelayMs: 300 });
+      expect(layoutSettingsFromConfig(config)).toEqual({
+        store: 'daemon',
+        writeDelayMs: 300,
+        sync: 'live',
+      });
     }
     expect(layoutSettingsFromConfig({ ui: { layout: { write_delay: 0 } } }).writeDelayMs).toBe(0);
   });
@@ -460,7 +470,7 @@ describe('createLayoutStore and layoutSettingsFromConfig', () => {
     const viaDaemon = createLayoutStore({
       client,
       interface: 'tui',
-      settings: { store: 'daemon', writeDelayMs: 0 },
+      settings: { store: 'daemon', writeDelayMs: 0, sync: 'on_open' },
       clock: new ManualClock(),
     });
     viaDaemon.setChatWidth(70);
@@ -471,7 +481,7 @@ describe('createLayoutStore and layoutSettingsFromConfig', () => {
     const viaFile = createLayoutStore({
       client,
       interface: 'tui',
-      settings: { store: 'local', writeDelayMs: 0 },
+      settings: { store: 'local', writeDelayMs: 0, sync: 'on_open' },
       file,
       clock: new ManualClock(),
     });
@@ -487,7 +497,7 @@ describe('createLayoutStore and layoutSettingsFromConfig', () => {
     const store = createLayoutStore({
       client: clientOf(started),
       interface: 'web',
-      settings: { store: 'local', writeDelayMs: 0 },
+      settings: { store: 'local', writeDelayMs: 0, sync: 'on_open' },
       clock: new ManualClock(),
       onProblem: (problem) => problems.push(problem),
     });
@@ -495,5 +505,183 @@ describe('createLayoutStore and layoutSettingsFromConfig', () => {
     store.setChatWidth(500);
     await store.flush();
     expect(started.layouts.get('web')?.chatWidth).toBe(500);
+  });
+});
+
+/** A stream of `layout.changed` the test drives by hand. */
+class FakeEvents implements LayoutEventSource {
+  started = 0;
+  closed = 0;
+  readonly #listeners = new Set<(message: ApiSseMessage) => void>();
+  #id = 0;
+
+  onMessage(listener: (message: ApiSseMessage) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  start(): void {
+    this.started += 1;
+  }
+
+  close(): void {
+    this.closed += 1;
+  }
+
+  get listening(): number {
+    return this.#listeners.size;
+  }
+
+  /** The daemon announces that `layout` was saved by `origin` for `which`. */
+  changed(layout: unknown, origin: string | null = 'other-client', which = 'tui'): void {
+    this.#id += 1;
+    const envelope = eventOf(this.#id, 'layout.changed', {
+      interface: which,
+      origin,
+      layout,
+    } as ApiEventEnvelope['payload']);
+    const message = { id: String(envelope.id), event: envelope.type, data: envelope };
+    for (const listener of [...this.#listeners]) listener(message);
+  }
+}
+
+describe('LayoutStore following layout.changed (N174)', () => {
+  const live = (
+    persistence: LayoutPersistence = new StubPersistence(),
+    sync: 'live' | 'on_open' = 'live',
+  ): Rig & { events: FakeEvents } => {
+    const events = new FakeEvents();
+    return { ...rig(persistence, 'tui', { sync, events }), events };
+  };
+
+  it('with live, installs the record another client saved, with no read and no save', async () => {
+    const stub = new StubPersistence();
+    const { store, events, clock } = live(stub);
+    await store.load();
+    expect(events.started).toBe(1);
+    events.changed(SAVED);
+    expect(store.layout).toEqual(SAVED);
+    expect(store.state.getState().dirty).toBe(false);
+    await clock.advance(1000);
+    expect(stub.saved).toHaveLength(0);
+  });
+
+  it('with on_open, does not subscribe and does not apply', async () => {
+    const { store, events } = live(new StubPersistence(), 'on_open');
+    await store.load();
+    expect(events.started).toBe(0);
+    expect(events.listening).toBe(0);
+    events.changed(SAVED);
+    expect(store.layout).toEqual(defaultLayout('tui'));
+  });
+
+  it('a change of this client not saved yet wins over the event', async () => {
+    const stub = new StubPersistence();
+    const { store, events, clock } = live(stub);
+    await store.load();
+    store.setChatWidth(55);
+    expect(store.state.getState().dirty).toBe(true);
+    events.changed(SAVED);
+    expect(store.layout.chatWidth).toBe(55);
+    expect(store.layout.sidebarCollapsed).toBe(false);
+    await clock.advance(300);
+    await store.whenSaved();
+    expect(stub.saved).toEqual([{ ...defaultLayout('tui'), chatWidth: 55 }]);
+    // Once saved, the next record of another client is followed again.
+    events.changed(SAVED);
+    expect(store.layout).toEqual(SAVED);
+  });
+
+  it('ignores the echo of its own save, even when the layout has gone further', async () => {
+    const started = await daemon();
+    const persistence = new DaemonLayoutPersistence(clientOf(started), 'tui', 'me');
+    const { store, events, clock } = live(persistence);
+    await store.load();
+    store.setChatWidth(70);
+    await clock.advance(300);
+    await store.whenSaved();
+    store.setChatWidth(80);
+    await clock.advance(300);
+    await store.whenSaved();
+    // The first echo arrives when the layout is already at 80 and saved: it must not move it back.
+    events.changed({ ...defaultLayout('tui'), chatWidth: 70 }, 'me');
+    expect(store.layout.chatWidth).toBe(80);
+    // Another client's record is applied.
+    events.changed(SAVED, 'someone-else');
+    expect(store.layout).toEqual(SAVED);
+    // A record with no origin is not this client's either.
+    events.changed({ ...SAVED, chatWidth: 33 }, null);
+    expect(store.layout.chatWidth).toBe(33);
+  });
+
+  it('names itself in its saves, so the daemon can say who wrote', async () => {
+    const started = await daemon();
+    const persistence = new DaemonLayoutPersistence(clientOf(started), 'tui', 'me');
+    await persistence.save(SAVED);
+    const put = started.requests.find((request) => request.method === 'PUT');
+    expect(put?.headers['x-ot-client-id']).toBe('me');
+    expect(new DaemonLayoutPersistence(clientOf(started), 'tui').clientId).toMatch(
+      /^[\x21-\x7e]+$/,
+    );
+  });
+
+  it('ignores the events of the other interface, and of a record that does not fit', async () => {
+    const { store, events } = live();
+    await store.load();
+    events.changed(SAVED, 'x', 'web');
+    events.changed({ ...SAVED, version: 2 });
+    events.changed({ ...SAVED, chatWidth: 0 });
+    expect(store.layout).toEqual(defaultLayout('tui'));
+  });
+
+  it('an event that comes before the read ends is installed over the read, once it ends', async () => {
+    const stub = new StubPersistence();
+    let finish: (value: { layout: LayoutPreferences }) => void = () => undefined;
+    stub.loadResult = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const { store, events } = live(stub);
+    const loading = store.load();
+    // The stream is started before the read.
+    expect(events.started).toBe(1);
+    events.changed({ ...SAVED, chatWidth: 77 });
+    expect(store.layout).toEqual(defaultLayout('tui'));
+    finish({ layout: SAVED });
+    await loading;
+    expect(store.layout).toEqual({ ...SAVED, chatWidth: 77 });
+  });
+
+  it('close stops following and closes the stream', async () => {
+    const { store, events } = live();
+    await store.load();
+    store.close();
+    expect(events.closed).toBe(1);
+    expect(events.listening).toBe(0);
+    events.changed(SAVED);
+    expect(store.layout).toEqual(defaultLayout('tui'));
+  });
+
+  it('createLayoutStore opens the stream only for the daemon place with sync live', async () => {
+    const started = await daemon();
+    const client = clientOf(started);
+    const make = (
+      settings: { store: 'daemon' | 'local'; sync: 'live' | 'on_open' },
+      file?: MemoryFile,
+    ): FakeEvents => {
+      const events = new FakeEvents();
+      const store = createLayoutStore({
+        client,
+        interface: 'tui',
+        settings: { ...settings, writeDelayMs: 0 },
+        ...(file === undefined ? {} : { file }),
+        events,
+        clock: new ManualClock(),
+      });
+      void store.load();
+      return events;
+    };
+    expect(make({ store: 'daemon', sync: 'live' }).started).toBe(1);
+    expect(make({ store: 'daemon', sync: 'on_open' }).started).toBe(0);
+    expect(make({ store: 'local', sync: 'live' }, new MemoryFile()).started).toBe(0);
   });
 });

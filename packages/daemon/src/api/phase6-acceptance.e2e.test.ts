@@ -703,43 +703,37 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
     });
   });
 
-  it('with a clock that moves, the stamp of the event and the stamp of the record are a few milliseconds apart', async () => {
+  it('with a clock that moves, the play built from the events equals the REST record, stamps included (N177)', async () => {
     await withFakeDaemon({ clock: new TickingClock() }, async (harness, client) => {
+      const stores = new DaemonStores(client, { plays: 'all', refreshDebounceMs: 10 });
+      await stores.start();
       const raw = client.events({ since: await headOf(harness), initialDelayMs: 10 });
       const { messages } = follow(raw);
       try {
         const scenarioId = await harness.openChat();
         await harness.producer.send(scenarioId, APPROVED_PLAY);
         const play = await waitForPlay(harness, scenarioId, 'DONE');
+        await caughtUp(harness, stores);
         await waitFor('the stream to reach the log', async () =>
           messages.at(-1)?.data.id === (await headOf(harness)) ? true : undefined,
         );
         const rest = (await client.call(API_ROUTES.getPlay, { params: { playId: play.id } })).play;
-        const reduced = applyEvents(
-          initialPlays(),
-          messages.map((message) => message.data),
-          reducePlays,
-        ).byId[play.id];
-        if (reduced === undefined) throw new Error('the store has no play');
-        // What the events say is right...
-        expect({ ...reduced, createdAt: 0, updatedAt: 0, finishedAt: 0 }).toEqual({
-          ...rest,
-          createdAt: 0,
-          updatedAt: 0,
-          finishedAt: 0,
-        });
-        // ...and the stamps are within a few ticks of the clock: the runner and the store read the
-        // clock one time for the record and another for the event. [N] in docs/17 (P13).
-        const gap = (a: number | null, b: number | null): number => Math.abs((a ?? 0) - (b ?? 0));
-        const gaps = {
-          createdAt: gap(reduced.createdAt, rest.createdAt),
-          updatedAt: gap(reduced.updatedAt, rest.updatedAt),
-          finishedAt: gap(reduced.finishedAt, rest.finishedAt),
-        };
-        for (const value of Object.values(gaps)) expect(value).toBeLessThan(1000);
-        expect(reduced.finishedAt).not.toBeNull();
+        const events = messages.map((message) => message.data);
+        // The record and the event of one change are written in one transaction, which reads the
+        // clock once: field by field, with no tolerance, the events say what REST says.
+        expect(applyEvents(initialPlays(), events, reducePlays).byId[play.id]).toEqual(rest);
+        expect(stores.plays.getState().stale).toEqual({});
+        expect(stores.plays.getState().byId[play.id]).toEqual(rest);
+        expect(rest.finishedAt).not.toBeNull();
+        expect(events.find((event) => event.type === 'play.created')?.timestamp).toBe(
+          rest.createdAt,
+        );
+        expect(events.filter((event) => event.type === 'play.transitioned').at(-1)?.timestamp).toBe(
+          rest.finishedAt,
+        );
       } finally {
         raw.close();
+        stores.close();
       }
     });
   });
@@ -843,7 +837,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
       async (harness, client) => {
         const { config } = await client.call(API_ROUTES.getConfig, {});
         const settings = layoutSettingsFromConfig(config);
-        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20 });
+        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20, sync: 'live' });
 
         const tui = createLayoutStore({ client, interface: 'tui', settings });
         await tui.load();
@@ -894,6 +888,107 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
     );
   });
 
+  it('a layout one client changes shows in another one that is open, when `ui.layout.sync` is live (N174)', async () => {
+    await withFakeDaemon(
+      { extra: 'ui:\n  layout:\n    write_delay: 20ms\n' },
+      async (harness, client) => {
+        const { config } = await client.call(API_ROUTES.getConfig, {});
+        const settings = layoutSettingsFromConfig(config);
+        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20, sync: 'live' });
+
+        // Two clients of the same user, each with its own connection and its own stream.
+        const clientA = await clientOf(harness);
+        const clientB = await clientOf(harness);
+        const a = createLayoutStore({ client: clientA, interface: 'tui', settings });
+        const streamB = clientB.events({ types: 'layout.changed' });
+        const opened = new Promise<void>((resolve) => {
+          streamB.onState((state) => {
+            if (state === 'open') resolve();
+          });
+        });
+        const b = createLayoutStore({
+          client: clientB,
+          interface: 'tui',
+          settings,
+          events: streamB,
+        });
+        // A stream that follows a scenario never gets it: an event with no scenario does not match.
+        const scenarioStream = clientB.events({ scenario: 'sc-none' });
+        const seen = follow(scenarioStream);
+        await Promise.all([a.load(), b.load(), opened]);
+
+        a.setChatWidth(77);
+        a.setSectionCollapsed('quota', true);
+        await waitFor('the other client to show the change', () =>
+          Promise.resolve(b.layout.chatWidth === 77 ? true : undefined),
+        );
+        expect(b.layout).toEqual(a.layout);
+        expect(b.state.getState().dirty).toBe(false);
+        // A did not take its own echo for a change of another client, and B saved nothing.
+        await a.whenSaved();
+        expect(a.layout.chatWidth).toBe(77);
+        const changes = (await logOf(harness)).filter((event) => event.type === 'layout.changed');
+        expect(changes.length).toBeGreaterThan(0);
+        const last = changes.at(-1);
+        expect(last?.scenarioId).toBeUndefined();
+        expect(last === undefined ? undefined : payloadOf(last).layout).toEqual(a.layout);
+        expect(seen.messages.filter((m) => m.event === 'layout.changed')).toHaveLength(0);
+
+        // The other way round: B changes, A follows.
+        b.setSidebarCollapsed(true);
+        await waitFor('the first client to show the change', () =>
+          Promise.resolve(a.layout.sidebarCollapsed ? true : undefined),
+        );
+        a.close();
+        b.close();
+        scenarioStream.close();
+      },
+    );
+  });
+
+  it('with `ui.layout.sync: on_open` the open client does not follow, and a new one reads the record', async () => {
+    await withFakeDaemon(
+      { extra: 'ui:\n  layout:\n    write_delay: 20ms\n    sync: on_open\n' },
+      async (harness, client) => {
+        const { config } = await client.call(API_ROUTES.getConfig, {});
+        const settings = layoutSettingsFromConfig(config);
+        expect(settings.sync).toBe('on_open');
+        const a = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        const b = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        await Promise.all([a.load(), b.load()]);
+        a.setChatWidth(77);
+        await a.flush();
+        // The daemon still writes the event (it is also a fact of the log), but B does not follow.
+        await waitFor('the event in the log', async () =>
+          (await logOf(harness)).some((event) => event.type === 'layout.changed')
+            ? true
+            : undefined,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(b.layout.chatWidth).toBe(defaultLayout('tui').chatWidth);
+        // Opening again reads it.
+        const c = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        await c.load();
+        expect(c.layout.chatWidth).toBe(77);
+        a.close();
+        b.close();
+        c.close();
+      },
+    );
+  });
+
   it('with `ui.layout.store: local` the layout goes to the file of the client and the daemon keeps none', async () => {
     const configDir = await mkdtemp(join(tmpdir(), 'otheater-layout-'));
     try {
@@ -902,7 +997,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         async (harness, client) => {
           const { config } = await client.call(API_ROUTES.getConfig, {});
           const settings = layoutSettingsFromConfig(config);
-          expect(settings).toEqual({ store: 'local', writeDelayMs: 20 });
+          expect(settings).toEqual({ store: 'local', writeDelayMs: 20, sync: 'live' });
           const file = new FileLayoutStore(clientLayoutFile(configDir, 'tui'));
           const store = createLayoutStore({ client, interface: 'tui', settings, file });
           await store.load();

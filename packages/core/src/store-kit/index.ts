@@ -37,6 +37,7 @@ export * from './blackboard.js';
 export * from './directives.js';
 export * from './executors.js';
 export * from './ideas.js';
+export * from './instant.js';
 export * from './interruptions.js';
 export * from './plays.js';
 export * from './profiles.js';

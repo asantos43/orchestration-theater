@@ -54,9 +54,9 @@ export class InMemoryEventLog implements EventLog {
     return this.#run(() => this.#lastId());
   }
 
-  /** For `InMemoryStore`: a transaction overlay over this (committed) log. */
-  fork(): InMemoryEventLog {
-    return new InMemoryEventLog(this.#clock, this);
+  /** For `InMemoryStore`: a transaction overlay over this (committed) log, stamping with `clock`. */
+  fork(clock: Pick<Clock, 'now'> = this.#clock): InMemoryEventLog {
+    return new InMemoryEventLog(clock, this);
   }
 
   /** For `InMemoryStore`: publishes the overlay's events into its base and ends the overlay. */

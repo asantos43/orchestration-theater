@@ -5,6 +5,7 @@ import { InMemoryEventLog } from './in-memory-event-log.js';
 import { InMemorySecretVault } from './in-memory-secret-vault.js';
 import { InMemoryStore } from './in-memory-store.js';
 import { Secret } from '../secret.js';
+import { transactionInstant } from '../store-kit/instant.js';
 
 const event = { type: 'test.happened', schemaVersion: 1, payload: {} };
 
@@ -42,6 +43,44 @@ describe('InMemoryStore', () => {
     const store = new InMemoryStore({ clock });
     const stored = await store.transaction((tx) => tx.events.append(event));
     expect(stored.timestamp).toBe(5000);
+  });
+
+  it('reads a clock that moves once per transaction: the record and the event share the stamp (N177)', async () => {
+    let ticks = 0;
+    const store = new InMemoryStore({ clock: { now: () => 1000 + ticks++ } });
+    const first = await store.transaction(async (tx) => {
+      const scenario = await tx.scenarios.create({
+        id: 'scn-1',
+        kind: 'project',
+        flowId: 'software',
+        name: 'One',
+        folder: '/tmp/scenarios/1',
+      });
+      const logged = await tx.events.append(event);
+      const renamed = await tx.scenarios.update('scn-1', { name: 'Two' });
+      return { scenario, logged, renamed, now: tx.now() };
+    });
+    expect(first.scenario.createdAt).toBe(1000);
+    expect(first.logged.timestamp).toBe(1000);
+    expect(first.renamed.updatedAt).toBe(1000);
+    expect(first.now).toBe(1000);
+    // The next transaction reads the clock again, and only once; one that stamps nothing does not.
+    await store.transaction(() => Promise.resolve());
+    const second = await store.transaction(async (tx) => {
+      await tx.events.append(event);
+      return tx.events.append(event);
+    });
+    expect(second.timestamp).toBe(1001);
+  });
+});
+
+describe('transactionInstant', () => {
+  it('is lazy and gives the first reading from then on', () => {
+    let reads = 0;
+    const instant = transactionInstant({ now: () => 7 + reads++ });
+    expect(reads).toBe(0);
+    expect([instant.now(), instant.now(), instant.now()]).toEqual([7, 7, 7]);
+    expect(reads).toBe(1);
   });
 });
 

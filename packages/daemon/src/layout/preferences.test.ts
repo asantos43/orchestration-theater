@@ -62,8 +62,43 @@ describe('LayoutPreferencesStore', () => {
     const second = (await open()).store;
     expect(second.get('tui')).toEqual(SAVED);
     expect(second.get('web')).toEqual(defaultLayout('web'));
-    expect(situations.recorded).toHaveLength(0);
+    // The save is a `layout.changed`; reading it again after a restart is no event.
+    expect(situations.recorded.map((item) => item.type)).toEqual(['layout.changed']);
     expect(await readdir(dir)).toEqual(['tui.json']);
+  });
+
+  it('writes layout.changed for a write that changes the record, with the record and its origin', async () => {
+    const { store } = await open();
+    await store.put('tui', SAVED, 'client-a');
+    await store.put('web', { ...SAVED, chatWidth: 500 });
+    expect(situations.of('layout.changed')).toEqual([
+      { interface: 'tui', origin: 'client-a', layout: SAVED },
+      { interface: 'web', origin: null, layout: { ...SAVED, chatWidth: 500 } },
+    ]);
+  });
+
+  it('writes no event for a write equal to the record that is there, saved or default', async () => {
+    const { store } = await open();
+    // The default of the interface is what is there when nothing was saved.
+    await store.put('tui', defaultLayout('tui'));
+    expect(situations.recorded).toHaveLength(0);
+    await store.put('tui', SAVED);
+    await store.put('tui', { ...SAVED }, 'client-a');
+    expect(situations.of('layout.changed')).toHaveLength(1);
+    // One that differs by a single field is a change again.
+    await store.put('tui', { ...SAVED, openTabs: ['overview'] });
+    expect(situations.of('layout.changed')).toHaveLength(2);
+  });
+
+  it('writes no event when the write fails: the record did not change', async () => {
+    await writeFile(join(tmp.dir, 'blocker'), 'x');
+    const blocked = await LayoutPreferencesStore.open({
+      dir: join(tmp.dir, 'blocker', 'layout'),
+      situations,
+      logger: captureLogger().logger,
+    });
+    await expect(blocked.put('tui', SAVED)).rejects.toThrow();
+    expect(situations.of('layout.changed')).toHaveLength(0);
   });
 
   it('writes the writes of a burst in order, and the last one stays', async () => {
