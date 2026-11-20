@@ -435,6 +435,20 @@ O aceite roda nos três sistemas da CI. O nível real (`tools/acceptance`) ganha
   5. O Ator, sem conseguir escrever, entregou `state: blocked`, e a demanda foi aprovada assim mesmo: o Crítico achou o diff vazio três vezes. Agora a demanda volta ao roteiro por `DEMAND_BLOCKED` (#184).
   6. `ACTOR_REFUSED` existe na máquina, mas nada o envia: a permissão negada não chega ao Diretor; decidido na N181 e implementado (#187): o daemon envia `ACTOR_REFUSED` e o Diretor julga no ponto 6 com o resumo `refused`.
 - **Confirmação da N180 com o cliente real [V].** Passou também na rodada das 14h51, já sem `OT_TEST_CLAUDE_MODE` (só a N180, na main desde o #186, e a N181, #187): peça `play-b7b26de3` em `DONE` em 61,6 s (PLANNING > REVIEWING_PLAN > SCRIPTING > REVIEWING_SCRIPT > EXECUTING > EXECUTING > INTEGRATING > CRITIQUING > DELIVERING > DONE), 554 eventos vistos pelo cliente, nenhum evento `permission.*` (o Ator escreveu sem pedir permissão), a demanda integrada na primeira tentativa e aprovada pelo Crítico na primeira olhada, 9 processos e nenhum vivo no fim, pico de cerca de 1070 MB; log `real-acceptance-phase6-20261120-145150.log`. O envio do `ACTOR_REFUSED` com um cliente real segue não medido [N]: nada foi negado nessa rodada.
+- **Aceite real `phase6` por cliente (2026-11-20) [V].** O aceite roda com qualquer cliente desde o PR #195; a variável `OT_TEST_PHASE6_CLIENT` escolhe `claude-code`, `codex` ou `opencode`. Logs `real-acceptance-phase6-20261120-<hora>.log`, citados pela hora.
+  - **Claude Code (haiku):** passou. `DONE` em 112,1 s, 829 eventos, 3 respostas do Diretor, 12 processos, nenhum vivo (`172843`).
+  - **Codex (gpt-5.6-luna), sem regra:** falhou. A edição de `src/slugify.js` do Ator recebeu `reject on_ask_reject` e a peça foi cancelada (`173110`); decidido na N182.
+  - **Codex, com `OT_TEST_PHASE6_EDIT_RULES=1`** (regra de teste que libera `edit` em `**` para o Ator e o consultor): passou. `DONE` em 193,3 s, 755 eventos, 1 resposta, 15 processos, nenhum vivo; 2 edições liberadas pela regra (`173724`).
+  - **Codex, sem regra, com a N182:** passou. `DONE` em 458,6 s, 1911 eventos vistos pelo cliente, 2 respostas do Diretor, 39 processos, nenhum vivo; 5 edições liberadas com o motivo `edit_in_worktree` e nenhum `on_ask_reject` (`183015`).
+  - **OpenCode (openai/gpt-5.6-luna):** quatro rodadas, todas falharam por comportamento do modelo:
+    - `174051`, sem regra: 3 vetos contraditórios do revisor do roteiro pela regra 3 (o primeiro diz que a dependência é desnecessária, o seguinte pede a dependência inversa), `AWAITING_PRODUCER` e `CANCELLED`, em 120 s;
+    - `174312`, com regra: `REVIEWING_PLAN` para `AWAITING_PRODUCER` por `SUBMIT_FAILED` ("the reviewer ended its turn without calling its submit tool"); o Diretor respondeu algo falso sobre o daemon; 36 s;
+    - `174415`, com regra: chegou a `DONE` em 330,7 s (1 veto, 1 rejeição do Crítico, `DEMAND_BLOCKED`, volta ao roteiro), mas com 0 respostas do Diretor; 35 processos, nenhum vivo; 0 pedidos de permissão;
+    - `183811`, com regra, no código da N183: 3 vetos contraditórios de novo, `CANCELLED` em 139 s; 0 respostas do Diretor e nenhum `chat.director_silent`.
+  - **Leitura [N]:** a N183 sempre emite `chat.director_silent` num turno que termina sem texto, e um turno com erro deixa `[erro]`; a ausência dos dois sugere que o turno do Diretor ainda não tinha terminado quando o teste acabou, e não um Diretor calado. O PR #198 faz o resumo do aceite dizer se o Diretor ainda estava em turno no fim; uma nova rodada vai confirmar.
+  <!-- resultado da rodada de confirmação: a preencher -->
+  - **OpenCode (openai/gpt-5.6-sol), sem regra:** passou de primeira. `DONE` em 129,8 s, 357 eventos, 1 resposta, 13 processos, nenhum vivo; 1 submissão inválida do roteiro (`contracts[1].kind`) corrigida; pico de cerca de 6,4 GB (`175322`).
+  - **Restricted shell nas rodadas do Codex:** recusou `sh -c` (`shell_syntax`) e `sed` (`program_not_allowed`); não impediu a peça.
 
 ## Fora desta fase
 
@@ -476,3 +490,5 @@ Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir dos achados d
 Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir do nível real `phase6` (P13), iguais à recomendação ([docs/13](13-DECISOES-EM-ABERTO.md)):
 - **N180, modo de escrita do Claude Code:** `acceptEdits` nos papéis com `edit` ou `write` (Ator, consultor), `default` nos outros; a chave `mode` do executor vence. Implementada no PR #186.
 - **N181, recusa do Ator:** o daemon envia `ACTOR_REFUSED` quando a camada 2 negou uma permissão ao Ator e a tentativa termina bloqueada ou sem mudança. Implementada no PR #187.
+- **N182, edição na worktree para os papéis que escrevem, em qualquer cliente:** a regra padrão na camada 2, com a chave `roles.<papel>.policy.edit_in_worktree: allow | ask`, padrão `allow` no Ator e no consultor e `ask` nos outros; ausente conta como `ask`. Implementada no PR #197.
+- **N183, turno do Diretor que termina sem texto:** o aviso do daemon no chat: o evento `chat.director_silent` e, com `chat.silent_turn: notice` (padrão), uma resposta curta gerada, marcada `generated: true`; `none` deixa o chat como antes. Implementada no PR #196.
