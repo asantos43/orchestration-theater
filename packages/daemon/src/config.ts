@@ -1526,6 +1526,27 @@ export const DaemonConfigSchema = z
              * stops counting them and catches up from the log (`daemon/src/events/event-hub.ts`).
              */
             buffer_events: z.int().min(1).default(1000),
+            /**
+             * [proposta: 15s] Period of the comment line (`: heartbeat`) an idle event stream writes,
+             * so a proxy or a client can tell a live stream from a dead one. `0` turns it off.
+             */
+            heartbeat: DurationSchema.or(z.literal(0)).prefault('15s'),
+            /** [proposta: 2s] The `retry:` field the stream opens with: how long a client waits to reconnect. */
+            retry: DurationSchema.prefault('2s'),
+            /**
+             * [proposta: 32] Event streams open at once. Past it `GET /v1/events` answers 503
+             * `unavailable` with `Retry-After`.
+             */
+            max_streams: z.int().min(1).default(32),
+            lagged_events: z
+              .strictObject({
+                /**
+                 * [proposta: 10s] At most one `api.stream_lagged` event per reason in this window,
+                 * so a stuck client cannot flood the log; the event counts what it held back.
+                 */
+                every: DurationSchema.prefault('10s'),
+              })
+              .prefault({}),
           })
           .prefault({}),
         chat: z

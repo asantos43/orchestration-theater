@@ -29,6 +29,7 @@ import {
 } from '@otheater/protocol';
 import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
+import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
@@ -508,6 +509,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   apiRef.server = api;
   api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
+  // P4 (Phase 6): the event stream. It reads the log through the hub and heartbeats on the clock.
+  registerEventRoutes({
+    handlers: api.handlers,
+    onTokenRotated: (listener) => api.onTokenRotated(listener),
+    daemonId,
+    hub: composition.eventHub,
+    lastId: () => store.events.lastId(),
+    clock,
+    config: config.api.sse,
+    logger,
+    situations: composition.situations,
+  });
 
   await directives.start();
 

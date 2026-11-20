@@ -24,6 +24,9 @@ import {
   DaemonIdMismatchError,
   type ApiErrorContext,
 } from './errors.js';
+import { ChatSocket, type ChatSocketOptions, type WebSocketConstructor } from './chat-socket.js';
+import { EventStream, type EventStreamOptions } from './event-stream.js';
+import { networkDetail, parseJsonText, retryAfterSeconds, type FetchLike } from './http.js';
 
 /**
  * Typed REST client of one daemon (plan docs/17 P9). It is generic over the route registry of
@@ -32,8 +35,7 @@ import {
  * route's `response` schema. It runs on `fetch` only, so it works in Node 24 and in a browser.
  */
 
-/** The part of `fetch` the client uses; tests and other runtimes pass their own. */
-export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+export type { FetchLike } from './http.js';
 
 /** Per-call deadline when nothing else says. [proposta] 30 s. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -169,6 +171,41 @@ export class ApiClient {
     return status;
   }
 
+  /**
+   * The event stream of this daemon (`GET /v1/events`), with the filters, cursor and backoff of
+   * `options`. It is not started: add the listeners, then call `start()`. The token stays in the
+   * client and goes only in `Authorization`. [proposta]
+   */
+  events(options: EventStreamOptions = {}): EventStream {
+    return new EventStream(
+      { url: this.url, token: this.#token, daemonId: this.daemonId, fetch: this.#fetch },
+      options,
+    );
+  }
+
+  /**
+   * The chat socket of a scenario of this daemon. It is not started: add the listeners, then call
+   * `start()`. Each connection gets its ticket by `POST /v1/chat-tickets` with this client's token.
+   * `webSocket` replaces the runtime's `WebSocket` (tests, or a runtime that has none). [proposta]
+   */
+  chat(
+    scenarioId: string,
+    options: ChatSocketOptions & { readonly webSocket?: WebSocketConstructor | undefined } = {},
+  ): ChatSocket {
+    const { webSocket, ...rest } = options;
+    return new ChatSocket(
+      {
+        url: this.url,
+        daemonId: this.daemonId,
+        webSocket,
+        createTicket: (id, signal) =>
+          this.call(API_ROUTES.createChatTicket, { body: { scenarioId: id }, signal }),
+      },
+      scenarioId,
+      rest,
+    );
+  }
+
   /** The global reference of a scenario of this daemon (N168). Needs the id of the daemon. */
   scenarioRef(scenarioId: string): ScenarioRef {
     if (this.daemonId === undefined) {
@@ -273,7 +310,7 @@ export class ApiClient {
             ? 'timeout'
             : 'connection';
       throw new ApiNetworkError(
-        { reason, origin, ...(reason === 'connection' ? detailOf(cause) : {}) },
+        { reason, origin, ...(reason === 'connection' ? networkDetail(cause) : {}) },
         { ...context, routeId: route.id },
         { cause },
       );
@@ -287,7 +324,7 @@ export class ApiClient {
     context: ApiErrorContext,
   ): unknown {
     const status = response.status;
-    const body = parseJson(text);
+    const body = parseJsonText(text);
     if (response.ok) {
       if (!body.ok) throw new ApiProtocolError({ reason: 'invalid_json', status }, context);
       const parsed = route.response.safeParse(body.value);
@@ -307,7 +344,7 @@ export class ApiClient {
       {
         status,
         body: error.data.error,
-        retryAfterSeconds: retryAfterOf(response.headers.get('retry-after')),
+        retryAfterSeconds: retryAfterSeconds(response.headers.get('retry-after')),
       },
       context,
     );
@@ -321,29 +358,4 @@ function queryValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
-}
-
-/** An empty body is `undefined`; anything else must be JSON. */
-function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
-  if (text.trim() === '') return { ok: true, value: undefined };
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return { ok: false };
-  }
-}
-
-/** `Retry-After` as seconds (the HTTP date form is not used by the daemon). */
-function retryAfterOf(header: string | null): number | undefined {
-  if (header === null || !/^\d+$/.test(header.trim())) return undefined;
-  return Number(header.trim());
-}
-
-/** What the failure of `fetch` says, short: the error code of the socket, or its message. */
-function detailOf(cause: unknown): { detail?: string } {
-  const inner = (cause as { cause?: unknown } | undefined)?.cause ?? cause;
-  const code = (inner as { code?: unknown } | undefined)?.code;
-  if (typeof code === 'string') return { detail: code };
-  if (inner instanceof Error) return { detail: inner.message };
-  return {};
 }

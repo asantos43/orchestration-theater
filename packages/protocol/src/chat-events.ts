@@ -67,3 +67,21 @@ export const ApiChatClosedPayloadSchema = z.strictObject({
   reason: z.enum(CHAT_CLOSE_REASONS),
   code: z.int().min(1000).max(4999).nullable(),
 });
+
+/**
+ * Why a chat socket did not send the message of an event: `unfit` when the event does not fit
+ * its chat message (a payload that does not parse), `prepare_failed` when building or sending
+ * the message threw. [proposta]
+ */
+export const CHAT_DROP_REASONS = ['unfit', 'prepare_failed'] as const;
+
+/**
+ * `api.chat_message_dropped`: a chat socket skipped the message of an event, so the situation is
+ * not only in the log. `eventId` and `eventType` name the event when it is known; the error text
+ * stays in the log. The scenario is in the envelope. [proposta]
+ */
+export const ApiChatMessageDroppedPayloadSchema = z.strictObject({
+  reason: z.enum(CHAT_DROP_REASONS),
+  eventId: z.int().min(1).nullable(),
+  eventType: z.string().min(1).nullable(),
+});

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { API_REJECTION_REASONS } from './api-events.js';
 import {
   ApiChatClosedPayloadSchema,
+  ApiChatMessageDroppedPayloadSchema,
+  CHAT_DROP_REASONS,
   CHAT_CLOSE_REASONS,
   ChatAskPayloadSchema,
   ChatDirectorReplyPayloadSchema,
@@ -27,6 +29,31 @@ describe('the events of the chat WebSocket (P7 of docs/17)', () => {
     const ask = { decisionId: 'd1', kind: 'producer_question', input: { questions: [] } };
     expect(ChatAskPayloadSchema.parse(ask)).toEqual(ask);
     expect(ChatAskPayloadSchema.safeParse({ ...ask, extra: 1 }).success).toBe(false);
+  });
+
+  it('api.chat_message_dropped takes a reason and the event when known', () => {
+    expect(
+      ApiChatMessageDroppedPayloadSchema.parse({
+        reason: 'unfit',
+        eventId: 42,
+        eventType: 'chat.ask',
+      }),
+    ).toEqual({ reason: 'unfit', eventId: 42, eventType: 'chat.ask' });
+    expect(
+      ApiChatMessageDroppedPayloadSchema.parse({
+        reason: 'prepare_failed',
+        eventId: null,
+        eventType: null,
+      }).eventId,
+    ).toBeNull();
+    expect(
+      ApiChatMessageDroppedPayloadSchema.safeParse({
+        reason: 'lost',
+        eventId: null,
+        eventType: null,
+      }).success,
+    ).toBe(false);
+    expect(CHAT_DROP_REASONS).toEqual(['unfit', 'prepare_failed']);
   });
 
   it('api.chat_closed takes a reason and a close code or null', () => {

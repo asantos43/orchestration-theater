@@ -10,6 +10,7 @@ import {
   ChatClientMessageSchema,
   ChatDirectorReplyPayloadSchema,
   ChatAskPayloadSchema,
+  CHAT_DROP_REASONS,
   IdeaQueueHeldPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
   apiError,
@@ -386,7 +387,7 @@ class ChatSession {
     await this.#pushState(true);
     void this.#follow(from);
     const timer = setInterval(() => {
-      void this.#step(() => this.#pushState(false));
+      void this.#step(undefined, () => this.#pushState(false));
     }, stateIntervalMs);
     timer.unref();
     this.#timers.push(timer);
@@ -400,7 +401,7 @@ class ChatSession {
         filter: { scenarioIds: [this.#scenarioId], typePrefixes: FEED_TYPES },
         signal: this.#stop.signal,
       })) {
-        await this.#step(async () => {
+        await this.#step(event, async () => {
           await this.#deliver(event);
           this.#cursor = event.id;
           await this.#pushState(false);
@@ -418,7 +419,7 @@ class ChatSession {
   }
 
   /** Runs `work` after the one before it, so the messages go out in the order of the events. */
-  #step(work: () => Promise<void>): Promise<void> {
+  #step(event: EventEnvelope | undefined, work: () => Promise<void>): Promise<void> {
     const next = this.#outbox.then(async () => {
       if (this.#closed) return;
       try {
@@ -428,6 +429,7 @@ class ChatSession {
           { err: error, scenarioId: this.#scenarioId },
           'a chat message could not be prepared',
         );
+        this.#dropped('prepare_failed', event);
       }
     });
     this.#outbox = next;
@@ -514,6 +516,16 @@ class ChatSession {
     this.#options.logger.warn(
       { type: event.type, eventId: event.id, scenarioId: this.#scenarioId },
       'an event does not fit its chat message; it was not sent',
+    );
+    this.#dropped('unfit', event);
+  }
+
+  /** A message that was not sent is a situation, not only a line of the log. */
+  #dropped(reason: (typeof CHAT_DROP_REASONS)[number], event: EventEnvelope | undefined): void {
+    this.#options.situations.record(
+      'api.chat_message_dropped',
+      { reason, eventId: event?.id ?? null, eventType: event?.type ?? null },
+      { scenarioId: this.#scenarioId },
     );
   }
 
