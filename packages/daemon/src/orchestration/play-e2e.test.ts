@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   FakeClientAdapter,
@@ -202,6 +204,25 @@ describe('ot chat with the fake Director (P8)', { timeout: 120_000 }, () => {
         const plays = await harness.plays(scenarioId ?? '');
         expect(plays.map((play) => play.state)).toEqual(['CANCELLED']);
         expect(harness.codeHost.pullRequests()).toHaveLength(0);
+      });
+    },
+  );
+
+  itWithLauncher(
+    'leaves no file of the old Producer channel and opens only the MCP server and the API server (P8 of docs/17)',
+    async () => {
+      // A listening server shows up as a `TCPServerWrap` among the active resources of the process.
+      const listeners = () =>
+        process.getActiveResourcesInfo().filter((name) => name === 'TCPServerWrap').length;
+      const before = listeners();
+      await withPlayDaemon({}, (harness) => {
+        expect(readdirSync(harness.dataDir).filter((name) => name.startsWith('channel'))).toEqual(
+          [],
+        );
+        expect(existsSync(join(harness.dataDir, 'api.json'))).toBe(true);
+        // Before P8 the Producer channel was a third loopback server.
+        expect(listeners() - before).toBe(2);
+        return Promise.resolve();
       });
     },
   );

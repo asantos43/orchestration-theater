@@ -79,7 +79,7 @@
     "failed": "O daemon não conseguiu trocar o token (HTTP {{status}})."
   },
   "chat": {
-    "noDaemon": "Nenhum daemon está em execução nesta pasta de dados (ou o canal do Produtor está desligado). Inicie-o com \"ot daemon\".",
+    "noDaemon": "Nenhum daemon está em execução nesta pasta de dados (ou ele não está acessível). Inicie-o com \"ot daemon\".",
     "opened": "Chat aberto no cenário {{scenarioId}}. Digite uma mensagem e pressione Enter.",
     "reply": "Diretor: {{text}}",
     "play": "Peça {{id}}: {{state}}",
@@ -95,6 +95,10 @@
     "option": "  - {{label}}: {{description}}",
     "badOption": "Essa não é uma das opções. Digite uma de: {{options}}.",
     "answerFailed": "A resposta não foi aceita: {{message}}",
+    "connectFailed": "Não foi possível alcançar o daemon: {{message}}",
+    "sendFailed": "A mensagem não foi enviada: {{message}}",
+    "reconnecting": "A conexão com o daemon caiu ({{message}}). Nova tentativa em {{seconds}} s.",
+    "connectionLost": "A conexão com o daemon foi perdida: {{message}}",
     "leftPending": "Ainda há algo esperando a sua resposta. Fica no daemon: rode \"ot chat\" de novo para responder.",
     "attached": "Anexado como {{id}}: {{name}} ({{mime}}, {{size}} bytes). Vai com a sua próxima mensagem.",
     "attachFailed": "O arquivo não foi anexado: {{message}}",

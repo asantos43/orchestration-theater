@@ -189,7 +189,7 @@ export interface DaemonHandle {
    */
   readonly mcpUrl: string;
   /**
-   * The Producer's side (what `ot chat` reaches over `channel.json`): open a chat, send messages,
+   * The Producer's side (what the chat socket and the REST commands reach): open a chat, send messages,
    * read the Director's replies, answer its questions. `undefined` when the execution is off.
    */
   readonly producer: ProducerChannel | undefined;
@@ -242,7 +242,7 @@ export interface DaemonHandle {
  * 6. `daemon.started` is appended to the log;
  * 7. the orders catch up with the clock (what started or ended while the daemon was stopped gets
  *    its event with the real boundary time) before any session opens, and their watcher starts;
- * 8. the reconciliation (5.21), while the MCP server and the Producer channel hold their calls:
+ * 8. the reconciliation (5.21), while the MCP server and the REST commands hold their calls:
  *    the client processes the dead daemon left are ended (pid and start instant), its sessions
  *    become `interrupted`, what its worktrees held uncommitted becomes a `wip(recovery)` commit,
  *    and the effects with an intent and no end are settled by their verifiers (or the Producer is
@@ -267,7 +267,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   // The API server is started inside `run`; a failure after that point stops it from here.
   const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
-  // Producer channel wait here (5.21: "os comandos que mudam estado esperam").
+  // commands of the API wait here (5.21: "os comandos que mudam estado esperam").
   const gate = new RecoveryGate();
   try {
     const config = options.config ?? (await loadConfig(paths.config));
@@ -572,7 +572,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   let orchestration: Orchestration | undefined;
   if (execution !== undefined) {
     // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
-    orchestration = await startOrchestration({
+    orchestration = startOrchestration({
       config,
       composition,
       execution,
@@ -583,7 +583,6 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       paths,
       handlers: input.orchestrationHandlers,
       scenarioHandlers: input.scenarioHandlers,
-      gate,
       handoff,
       home: homedir(),
     });
@@ -615,8 +614,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     ),
   );
   // What the start-up did, for the chat of each scenario it touched (5.21, step 8); nothing when
-  // there was nothing to settle. The record is the event; the channel hands it to the next poll.
-  const notices = await announceRecovery({
+  // there was nothing to settle. The record is the event, and the chat socket delivers it.
+  await announceRecovery({
     store,
     logger,
     mode: config.recovery.notice,
@@ -624,7 +623,6 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     plays: resumed,
     attempts,
   });
-  for (const notice of notices) orchestration?.channel.notify(notice);
   gate.open();
   // The ideas of a group the restart lost go back to the queue, and the queues that can move do.
   await orchestration?.ideas.settle();

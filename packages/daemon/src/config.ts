@@ -611,9 +611,6 @@ export type ChangelogMode = (typeof CHANGELOG_MODES)[number];
 export const RESCRIPT_REUSE_MODES = ['keep_unchanged', 'redo_all', 'from_previous'] as const;
 export type RescriptReuseMode = (typeof RESCRIPT_REUSE_MODES)[number];
 
-export const CHAT_CHANNEL_MODES = ['auto', 'off'] as const;
-export type ChatChannelMode = (typeof CHAT_CHANNEL_MODES)[number];
-
 /**
  * `recovery.notice` [proposta]: when the reconciliation of a start-up tells the chat of a scenario
  * (architecture 5.21, step 8). `always` (default): every scenario it touched, a clean restart that
@@ -1264,15 +1261,13 @@ export const DaemonConfigSchema = z
      */
     models: ModelsConfigSchema.prefault({}),
     /**
-     * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `channel`:
-     * `auto` (default) opens the local channel `ot chat` talks to (127.0.0.1, a port the system
-     * picks, a token in a file of the data directory); `off` leaves it closed. `history` is how many
-     * replies of the Director the channel keeps in memory per scenario for `ot chat` to show.
+     * The chat of the Producer with the Director (architecture 5.3 and 5.4; N78, P8). `history` is
+     * how many replies of the Director the channel keeps in memory per scenario. (The loopback
+     * channel and its `channel` key are gone since P8 of docs/17: `ot chat` uses the API.)
      * `presence` and `presence_window` say when a play counts as watched (`delivery.base_drift: ask`).
      */
     chat: z
       .strictObject({
-        channel: z.enum(CHAT_CHANNEL_MODES).default('auto'),
         history: z.int().min(1).default(200),
         /** [proposta] Who counts as watching a play: see {@link CHAT_PRESENCE_MODES}. */
         presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { InvalidInput, PROMPT_ORDER_MODES } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
-  CHAT_CHANNEL_MODES,
   RECOVERY_NOTICE_MODES,
   SANDBOX_MCP_BRIDGE_MODES,
   resolveMcpBridge,
@@ -732,24 +731,20 @@ describe('orchestration', () => {
 });
 
 describe('chat', () => {
-  it('defaults to an open local channel and 200 replies of history', () => {
+  it('defaults to 200 replies of history', () => {
     expect(parseConfig('').chat).toEqual({
-      channel: 'auto',
       history: 200,
       presence: 'poll',
       presence_window: 30_000,
     });
   });
 
-  it('takes each mode of the channel and any history from 1', () => {
-    for (const mode of CHAT_CHANNEL_MODES) {
-      expect(parseConfig(`chat:\n  channel: ${mode}\n`).chat.channel).toBe(mode);
-    }
+  it('takes any history from 1', () => {
     expect(parseConfig('chat:\n  history: 1\n').chat.history).toBe(1);
   });
 
-  it('rejects an unknown mode, a bad history and unknown keys', () => {
-    expect(() => parseConfig('chat:\n  channel: lan\n')).toThrow(/chat\.channel/);
+  it('rejects a bad history and unknown keys (the old `channel` key included)', () => {
+    expect(() => parseConfig('chat:\n  channel: auto\n')).toThrow(InvalidInput);
     for (const bad of ['0', '1.5', '"all"']) {
       expect(() => parseConfig(`chat:\n  history: ${bad}\n`)).toThrow(/history/);
     }

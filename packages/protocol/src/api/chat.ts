@@ -8,8 +8,9 @@ import { defineRoute, defineRoutes } from './route.js';
 
 /**
  * Chat of the Producer with the Orchestrator over a WebSocket (architecture 5.4 and 5.12, P7 of
- * the plan docs/17). It replaces the polling channel of N78 (`channel-http.ts`): the same things
- * the six routes and `poll` exchange, in both directions, as a discriminated union by `type`.
+ * the plan docs/17). It replaces the polling channel of N78 (a loopback HTTP server, removed in P8): the
+ * same things its routes and `poll` exchanged, in both directions, as a discriminated union by
+ * `type`.
  * The attachment itself goes by REST; the message carries only the ids of attachments already
  * sent. [proposta] Every message shape of this file is a proposal of the plan.
  */
