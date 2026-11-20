@@ -1,0 +1,1725 @@
+{
+  "apiVersion": 1,
+  "prefix": "/v1",
+  "errorSchema": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_input",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict",
+              "payload_too_large",
+              "quota_exhausted",
+              "vault_locked",
+              "unavailable",
+              "recovering",
+              "internal"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema0"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "error"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "__schema0": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema0"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "id": "createChatTicket",
+      "method": "POST",
+      "path": "/v1/chat-tickets",
+      "kind": "json",
+      "summary": "One-use ticket to open the chat socket of a scenario (valid for 30 s)",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 256
+          },
+          "expiresInMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "ticket",
+          "expiresInMs"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "recovering"
+        ]
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "streamEvents",
+      "method": "GET",
+      "path": "/v1/events",
+      "kind": "sse",
+      "summary": "Event stream with resume by Last-Event-ID: history after the cursor, then live",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "event": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "data": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "data"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^[1-9]\\d*$"
+          },
+          "__schema1": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "__schema2": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "schemaVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "payload": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "playId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "attemptId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "daemonId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "type",
+              "schemaVersion",
+              "payload",
+              "id",
+              "timestamp",
+              "daemonId"
+            ],
+            "additionalProperties": false
+          },
+          "__schema3": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              }
+            ]
+          },
+          "__schema4": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          },
+          "types": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "since": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.-]*$"
+          }
+        }
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "last-event-id": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "getLayout",
+      "method": "GET",
+      "path": "/v1/layout/:interface",
+      "kind": "json",
+      "summary": "Layout preferences of an interface (the default when none was saved)",
+      "pathParams": [
+        "interface"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "sidebarCollapsed": {
+            "type": "boolean"
+          },
+          "chatWidth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "openTabs": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "collapsedSections": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "sidebarCollapsed",
+          "chatWidth",
+          "openTabs",
+          "collapsedSections"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "enum": [
+              "tui",
+              "web"
+            ]
+          }
+        },
+        "required": [
+          "interface"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "putLayout",
+      "method": "PUT",
+      "path": "/v1/layout/:interface",
+      "kind": "json",
+      "summary": "Replaces the layout preferences of an interface",
+      "pathParams": [
+        "interface"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "sidebarCollapsed": {
+            "type": "boolean"
+          },
+          "chatWidth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "openTabs": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "collapsedSections": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "sidebarCollapsed",
+          "chatWidth",
+          "openTabs",
+          "collapsedSections"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "enum": [
+              "tui",
+              "web"
+            ]
+          }
+        },
+        "required": [
+          "interface"
+        ],
+        "additionalProperties": false
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "sidebarCollapsed": {
+            "type": "boolean"
+          },
+          "chatWidth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "openTabs": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "collapsedSections": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "sidebarCollapsed",
+          "chatWidth",
+          "openTabs",
+          "collapsedSections"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    {
+      "id": "openChatSocket",
+      "method": "GET",
+      "path": "/v1/scenarios/:id/chat",
+      "kind": "websocket",
+      "summary": "WebSocket of the chat with the Director; authenticated by a ticket, not by the token",
+      "pathParams": [
+        "id"
+      ],
+      "response": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "director_reply"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "replyId": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "text": {
+                "type": "string"
+              },
+              "final": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "replyId",
+              "text",
+              "final"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "ask"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "decisionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "input": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "decisionId",
+              "kind",
+              "playId",
+              "input"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "system"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "message": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "recovery"
+                      },
+                      "resumed": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "play",
+                                "attempt"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "settled": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "effectType": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "playId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "done",
+                                "not_done"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "effectType",
+                            "playId",
+                            "outcome"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "waiting": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "effect",
+                                "play"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "playId": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectType": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "playId",
+                            "effectType"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "resumed",
+                      "settled",
+                      "waiting"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "handoff"
+                      },
+                      "playId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "attemptId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "role": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cause": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "fromExecutor": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "toExecutor": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "playId",
+                      "attemptId",
+                      "role",
+                      "cause",
+                      "fromExecutor",
+                      "toExecutor"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "selection_wait"
+                      },
+                      "role": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "playId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "demandId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "crossCheck": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "workedProvider": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "on": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "executor": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "profile": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "executor",
+                            "profile",
+                            "reason"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "until": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "role",
+                      "playId",
+                      "demandId",
+                      "crossCheck",
+                      "workedProvider",
+                      "on",
+                      "until"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "reset_wait"
+                      },
+                      "playId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "attemptId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "role": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cause": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "executor": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "resetsAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "playId",
+                      "attemptId",
+                      "role",
+                      "cause",
+                      "executor",
+                      "resetsAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "director_failover"
+                      },
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "switched",
+                          "waiting",
+                          "unavailable"
+                        ]
+                      },
+                      "cause": {
+                        "type": "string",
+                        "enum": [
+                          "quota_exhausted",
+                          "spend_cap",
+                          "transient",
+                          "client_crash",
+                          "daemon_restart",
+                          "timeout",
+                          "stuck",
+                          "refusal",
+                          "permission",
+                          "profile_removed"
+                        ]
+                      },
+                      "fromExecutor": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "toExecutor": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "requeued": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "resetsAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "detail": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "outcome",
+                      "cause",
+                      "fromExecutor",
+                      "toExecutor",
+                      "requeued",
+                      "resetsAt",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "queue_held"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "held": {
+                "type": "object",
+                "properties": {
+                  "scenarioId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "cause": {
+                    "type": "string",
+                    "enum": [
+                      "author_failed",
+                      "author_left_all_out",
+                      "group_refused",
+                      "play_not_opened",
+                      "play_ended"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "playId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "scenarioId",
+                  "cause",
+                  "reason",
+                  "playId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "held"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "play_state"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "playId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "state": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "playId",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "waits"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "waits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "playId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "demandId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "on": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "profile": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "reason": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "profile",
+                          "reason"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "until": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "playId",
+                    "demandId",
+                    "on",
+                    "until"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "waits"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "busy"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "busy": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "busy"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "error"
+              },
+              "eventId": {
+                "type": "null"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "invalid_input",
+                      "unauthorized",
+                      "forbidden",
+                      "not_found",
+                      "conflict",
+                      "payload_too_large",
+                      "quota_exhausted",
+                      "vault_locked",
+                      "unavailable",
+                      "recovering",
+                      "internal"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema3": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "ticket"
+        ],
+        "additionalProperties": false
+      },
+      "clientMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "message"
+              },
+              "text": {
+                "type": "string"
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "answer"
+              },
+              "decisionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "answer": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "type",
+              "decisionId",
+              "answer"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "command"
+              },
+              "text": {
+                "type": "string",
+                "pattern": "^\\/"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "resume"
+              },
+              "lastEventId": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "type",
+              "lastEventId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "getStatus",
+      "method": "GET",
+      "path": "/v1/status",
+      "kind": "json",
+      "summary": "State of the daemon: pid, version, data folder, state, daemon id and API version",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "startedAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataDir": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "recovering",
+              "running",
+              "stopping"
+            ]
+          },
+          "daemonId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "apiVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "pid",
+          "startedAt",
+          "version",
+          "dataDir",
+          "state",
+          "daemonId",
+          "apiVersion"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    }
+  ]
+}

@@ -63,7 +63,7 @@ Não entram **[proposta]**:
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #165) |
-| P1 | Contrato da API no `packages/protocol` | P0 | P2, P3, P9 | a fazer |
+| P1 | Contrato da API no `packages/protocol` | P0 | P2, P3, P9 | concluído |
 | P2 | Aviso de evento novo em processo | P0 | P1, P3, P9 | concluído |
 | P3 | Servidor da API: bind, token, CORS, descoberta e id do daemon | P0 | P1, P2, P9 | a fazer |
 | P4 | SSE com `Last-Event-ID` | P1, P2, P3 | P5, P6, P7, P10 | a fazer |
@@ -89,16 +89,20 @@ Sem marco interno: a fase é curta, e o aceite só faz sentido com a API e o cli
 
 ### P1. Contrato da API no `packages/protocol` (§5.12)
 
-**Escopo:**
-- `protocol/src/api/`, um arquivo por recurso, com os schemas zod de cada rota: método, caminho, parâmetros, corpo, resposta e erros. O contrato é a única fonte: o daemon valida com ele, e o `packages/client` tipa com ele.
-- Prefixo `/v1` em todas as rotas, e a versão do contrato em `GET /v1/status` (`apiVersion`), no formato da §5.18 **[proposta]**.
-- Formato de erro único: `{ error: { code, message, details? } }`, com os códigos tirados dos erros do core (`InvalidInput` → 400, `NotFound` → 404, `Conflict` → 409, `AdapterUnavailable` → 503) **[proposta]**. É o que o canal faz hoje, com nome de código no lugar do texto solto.
-- O envelope do evento no SSE: `id` (o id do log), `event` (o tipo) e `data` (o `EventEnvelope` inteiro, com `daemonId`).
-- As mensagens do WebSocket do chat, nos dois sentidos, como união discriminada por `type` (P7).
-- O id do daemon (`daemonId`) e a referência global de um cenário (`{ daemonId, scenarioId }`) (N168).
-- Um catálogo das rotas gerado dos schemas (`tools/verify` ou script do protocolo), versionado no repositório e conferido na CI. É o equivalente do `endpoints.json` do Claudexor **[proposta]**.
+**Escopo:** só a base do contrato **[proposta]**. Os schemas de cada recurso (cenários, peças, perfis, ordens...) vêm com o passo que abre as rotas deles, P5 e P6, um arquivo por recurso em `protocol/src/api/<recurso>.ts`:
+- `protocol/src/api/`, com o auxiliar `defineRoute` e o registro `API_ROUTES`: método, caminho, parâmetros, consulta, cabeçalhos, corpo, resposta e erros de cada rota. O contrato é a única fonte: o daemon valida com ele, e o `packages/client` tipa com ele.
+- Prefixo `/v1` em todas as rotas, e a versão do contrato em `GET /v1/status` (`apiVersion`), inteiro a partir de 1 **[proposta]**. O `ApiStatusSchema` é o `DaemonStatusSchema` mais `daemonId` e `apiVersion`; o `DaemonStatusSchema` não muda.
+- Formato de erro único: `{ error: { code, message, details? } }`, com a tabela de códigos e status HTTP (`invalid_input` 400, `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `payload_too_large` 413, `quota_exhausted` 429, `vault_locked` 503, `unavailable` 503, `recovering` 503, `internal` 500) e o mapa dos erros do core para ela **[proposta]**. É o que o canal faz hoje, com nome de código no lugar do texto solto.
+- O id do daemon (`daemonId`, UUID) e a referência global de um cenário (`{ daemonId, scenarioId }`) (N168).
+- Paginação por cursor (`after`, `limit` com teto: padrão 50, máximo 200 **[proposta]**, resposta `{ items, nextCursor }`) e o cabeçalho `Idempotency-Key`.
+- O SSE (P4): a consulta de `GET /v1/events`, o cabeçalho `Last-Event-ID` e o envelope da mensagem: `id` (o id do log), `event` (o tipo) e `data` (o `EventEnvelope` inteiro, com `daemonId`).
+- O WebSocket do chat (P7): `POST /v1/chat-tickets`, `GET /v1/scenarios/:id/chat` e as mensagens nos dois sentidos, como união discriminada por `type` **[proposta]**.
+- As preferências de layout (N170): schema com versão, por interface (`tui`, `web`), e `GET`/`PUT /v1/layout/:interface`.
+- O catálogo das rotas, gerado dos schemas por `z.toJSONSchema` e versionado em `docs/reference/api-routes.json`, equivalente do `endpoints.json` do Claudexor **[proposta]**. A conferência é um teste do vitest (arquivo de *snapshot*) que falha se o arquivo não bate; a regeneração é `pnpm api:catalog`.
 
 **Aceite:** os schemas fazem o caminho de ida e volta (parse do que o daemon gera); o catálogo gerado bate com o versionado; nenhuma rota sem schema de resposta e de erro.
+
+**Resultado (2026-11-19):** feito na branch `fase6/p1-contrato`. Arquivos em `packages/protocol/src/api/`: `route.ts` (`defineRoute`, `routePath`, `assertUniqueRoutes`), `errors.ts`, `ids.ts`, `page.ts`, `status.ts`, `sse.ts`, `chat.ts`, `layout.ts`, `registry.ts` (`API_ROUTES`, `API_ROUTE_LIST`), `catalog.ts` e `index.ts`, mais um `*.test.ts` para cada um; o `index.ts` do protocolo reexporta tudo. O catálogo versionado é `docs/reference/api-routes.json`, e o script `api:catalog` entrou no `package.json` da raiz. Sem dependência nova. [V] `tsc -b`, `eslint packages/protocol` e os testes do protocolo (26 arquivos, 160 testes) passam localmente: ida e volta dos schemas, toda rota com resposta e erros, nenhum caminho fora de `/v1`, caminho único por método, catálogo igual ao arquivo, e as uniões do WebSocket recusando `type` desconhecido. Os schemas por recurso ficam para P5 e P6. Para acrescentar rota: criar `api/<recurso>.ts`, espalhar a tabela `*_ROUTES` em `registry.ts` e rodar `pnpm api:catalog`.
 
 ### P2. Aviso de evento novo em processo (§5.11, P6 da arquitetura)
 
@@ -156,7 +160,7 @@ Sem marco interno: a fase é curta, e o aceite só faz sentido com a API e o cli
 - a configuração efetiva, sem segredo nenhum: as chaves que apontam para o cofre saem como referência, nunca como valor;
 - `GET /v1/status`.
 
-Paginação por cursor (`after`, `limit`) nas listas que crescem **[proposta]**. Antes de abrir, o passo relê o `control-api` e o `endpoints.json` do Claudexor (N119) e registra o commit lido.
+Paginação por cursor (`after`, `limit`, base do P1) nas listas que crescem **[proposta]**. Os schemas de cada recurso lido nascem aqui, um arquivo por recurso em `protocol/src/api/<recurso>.ts`, e entram em `API_ROUTES` **[proposta]**. Antes de abrir, o passo relê o `control-api` e o `endpoints.json` do Claudexor (N119) e registra o commit lido.
 
 **Aceite:** cada rota responde no schema do P1, testada contra o daemon com o `fake-agent`; uma busca no texto das respostas da configuração não acha nenhum valor do cofre falso; as listas paginadas não perdem item entre páginas com escrita no meio.
 
@@ -170,7 +174,7 @@ Paginação por cursor (`after`, `limit`) nas listas que crescem **[proposta]**.
 - perfis: cadastrar, drenar e remover. O login oficial pela interface fica para a Fase 7, que desenha o painel dele; aqui entra só o que não é interativo **[proposta]**;
 - editar a configuração, com a validação do `config-edit.ts`.
 
-Todo comando aceita `Idempotency-Key`. Uma repetição com a mesma chave devolve a resposta da primeira vez, guardada por `api.idempotency_ttl` **[proposta: 24 h]**. Todo comando vira evento, como já acontece no daemon.
+Os schemas de cada recurso de comando nascem aqui, em `protocol/src/api/<recurso>.ts`, e entram em `API_ROUTES` **[proposta]**. Todo comando aceita `Idempotency-Key` (formato definido no P1). Uma repetição com a mesma chave devolve a resposta da primeira vez, guardada por `api.idempotency_ttl` **[proposta: 24 h]**. Todo comando vira evento, como já acontece no daemon.
 
 **Aceite:** cada comando tem teste contra o daemon com o `fake-agent`; uma repetição com a mesma `Idempotency-Key` não duplica efeito; um comando durante a reconciliação espera o fim dela; um corpo fora do schema dá 400 com o caminho do campo.
 
@@ -231,7 +235,7 @@ Todo comando aceita `Idempotency-Key`. Uma repetição com a mesma chave devolve
 **Escopo:**
 - As preferências da §5.13: lateral recolhida, largura do chat, abas abertas e seções recolhidas.
 - Pela N170, ficam no daemon, separadas por interface (`tui`, `web`), e são lidas e escritas pela REST. A chave é `ui.layout.store: daemon | local`, padrão `daemon`. No modo `local`, ficam num arquivo da pasta de configuração do cliente.
-- Schema no `protocol`, com versão, e store próprio no `packages/client`.
+- Schema no `protocol`, com versão (feito no P1), e store próprio no `packages/client`.
 - A escrita sai com atraso curto (*debounce*), para que arrastar a borda do chat não gere uma escrita por coluna **[proposta]**.
 
 **Aceite:** as preferências salvas por um cliente voltam num cliente novo; um arquivo ou registro de versão antiga é migrado ou trocado pelo padrão, com aviso, sem travar a subida.

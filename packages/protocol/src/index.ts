@@ -2,6 +2,7 @@
 export const OTHEATER_PROTOCOL_VERSION = '0.0.0';
 
 export * from './api.js';
+export * from './api/index.js';
 export * from './events.js';
 export * from './quota.js';
 export * from './config.js';
