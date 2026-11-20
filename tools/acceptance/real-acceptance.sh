@@ -126,7 +126,9 @@
 #            falso tem o PR. OT_TEST_REAL_CLIENTS=1, OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PHASE6=1;
 #            lê OT_TEST_<CLIENTE>_PROFILE_DIR, OT_TEST_<CLIENTE>_MODEL e OT_TEST_<CLIENTE>_MODE do
 #            cliente escolhido, OT_TEST_PLAY_TIMEOUT_MS e OT_TEST_PLAY_LIMITS do nível play e, para o
-#            provedor do OpenCode, OT_TEST_SANDBOX_EXTRA_DOMAINS. Gasta cota da conta do
+#            provedor do OpenCode, OT_TEST_SANDBOX_EXTRA_DOMAINS. OT_TEST_PHASE6_EDIT_RULES=1 dá
+#            ao Ator e ao Consultor uma regra que libera a edição dentro da worktree (só de teste,
+#            para Codex e OpenCode, que não têm modo que edite sem pedir). Gasta cota da conta do
 #            perfil (a mesma ordem de grandeza do nível play). Resumo no log com o prefixo [phase6-real].
 #
 # Uso:
@@ -520,7 +522,7 @@ if [ "$level" = play ]; then
   echo "  Se o Diretor responde só com texto e não abre peça, a peça falha em cerca de 90 s (antes esperava os 25m)."
 fi
 if [ "$level" = phase6 ]; then
-  echo "Atenção: o nível phase6 roda UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis (OT_TEST_PHASE6_CLIENT=${OT_TEST_PHASE6_CLIENT:-claude-code}${OT_TEST_SANDBOX_EXTRA_DOMAINS:+, sandbox.extra_domains=$OT_TEST_SANDBOX_EXTRA_DOMAINS}), seguida por um cliente de @otheater/client (REST, SSE e WebSocket do chat). Gasta cota da conta do perfil."
+  echo "Atenção: o nível phase6 roda UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis (OT_TEST_PHASE6_CLIENT=${OT_TEST_PHASE6_CLIENT:-claude-code}${OT_TEST_SANDBOX_EXTRA_DOMAINS:+, sandbox.extra_domains=$OT_TEST_SANDBOX_EXTRA_DOMAINS}${OT_TEST_PHASE6_EDIT_RULES:+, OT_TEST_PHASE6_EDIT_RULES=$OT_TEST_PHASE6_EDIT_RULES}), seguida por um cliente de @otheater/client (REST, SSE e WebSocket do chat). Gasta cota da conta do perfil."
   # [proposta] Estimativa, não medida: a mesma ordem de grandeza da peça do nível play (N88).
   echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz; com repetições até cerca de 50."
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."

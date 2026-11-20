@@ -29,7 +29,11 @@ import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
  * `OT_TEST_<CLAUDE|CODEX|OPENCODE>_PROFILE_DIR` and `_MODEL`, and, optional, `_MODE`. Also
  * optional: `OT_TEST_PLAY_TIMEOUT_MS` (default 25 minutes), `OT_TEST_PLAY_LIMITS` (default
  * `moderate`) and `OT_TEST_SANDBOX_EXTRA_DOMAINS` (comma-separated domains for
- * `sandbox.extra_domains`, for the provider of OpenCode).
+ * `sandbox.extra_domains`, for the provider of OpenCode) and `OT_TEST_PHASE6_EDIT_RULES=1`, which
+ * gives the roles that write (actor and consultant) `on_ask: rules` with one rule that allows the
+ * `edit` kind inside the worktree. That is the test-only stand-in of N180 for the clients with no
+ * mode that edits with no request (Codex and OpenCode); N99 still refuses an edit outside the
+ * worktree before the rules. Without it, every request of those clients is rejected.
  *
  * The criteria are about what the client SAW, not about what the model wrote: the events the
  * stream delivered are exactly the events of the log (ids, no repeat), they hold the whole path to
@@ -62,6 +66,14 @@ const EXTRA_DOMAINS = (process.env.OT_TEST_SANDBOX_EXTRA_DOMAINS ?? '')
   .split(',')
   .map((domain) => domain.trim())
   .filter((domain) => domain !== '');
+const EDIT_RULES = process.env.OT_TEST_PHASE6_EDIT_RULES === '1';
+/** `roles.<role>.policy` for the roles that write, when {@link EDIT_RULES} is on. */
+const EDIT_RULES_YAML = ['actor', 'consultant']
+  .map(
+    (role) =>
+      `  ${role}:\n    policy:\n      on_ask: rules\n      rules:\n        - { id: edit-in-worktree, action: allow, kind: edit, path: "**" }\n`,
+  )
+  .join('');
 if (phase6Flag && CLIENT === undefined) {
   throw new Error(
     `OT_TEST_PHASE6_CLIENT must be one of ${CLIENT_IDS.join(', ')}, got "${RAW_CLIENT}"`,
@@ -183,7 +195,7 @@ describe.skipIf(!ready)(
         const { launcher, pids } = recording(real);
         const executor = CLIENT ?? 'claude-code';
         log(
-          `client: ${executor}, model: ${MODEL}${MODE === undefined || MODE === '' ? '' : `, mode: ${MODE}`}`,
+          `client: ${executor}, model: ${MODEL}${MODE === undefined || MODE === '' ? '' : `, mode: ${MODE}`}${EDIT_RULES ? ', edit rules: on' : ''}`,
         );
         const config = parseConfig(`
 backup:
@@ -192,7 +204,7 @@ security:
   unenforced: warn
 limits:
   preset: ${limitsPreset()}
-${EXTRA_DOMAINS.length === 0 ? '' : `sandbox:\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`}orchestration:
+${EXTRA_DOMAINS.length === 0 ? '' : `sandbox:\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`}${EDIT_RULES ? `roles:\n${EDIT_RULES_YAML}` : ''}orchestration:
   executor:
     client: ${executor}
     profile: real
