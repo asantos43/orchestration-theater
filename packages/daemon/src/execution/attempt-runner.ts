@@ -239,7 +239,12 @@ type Ended =
       readonly limitHit?: LimitHit;
       readonly sha: string | undefined;
     }
-  | { readonly kind: 'timeout'; readonly sha: string | undefined }
+  | {
+      readonly kind: 'timeout';
+      readonly sha: string | undefined;
+      /** Set when the limit was the one of the turn (`limits.turn_timeout`, N184), not the deadline of the attempt. */
+      readonly turn?: { readonly limitMs: number; readonly elapsedMs: number };
+    }
   | {
       readonly kind: 'stopped';
       readonly sha: string | undefined;
@@ -819,7 +824,7 @@ export class AttemptRunner {
         case 'failed':
           return this.#failed(context, ended.message);
         case 'timeout':
-          return this.#timedOut(context, ended.sha);
+          return this.#timedOut(context, ended.sha, ended.turn);
         case 'stopped':
           return this.#stopped(context, ended.sha, ended.leaving === true);
         case 'interrupted': {
@@ -1151,6 +1156,9 @@ export class AttemptRunner {
 
     const started = clock.now();
     context.tracker.startInterval(signal);
+    // The limit of this turn (N184) stops with the turn: whatever ends the race ends its timers.
+    const turnEnd = new AbortController();
+    const turnSignal = AbortSignal.any([signal, turnEnd.signal]);
     const prompt: Promise<Raced> = session.prompt([{ type: 'text', text: step.prompt }]).then(
       (outcome) => ({ kind: 'finished', stopReason: outcome.stopReason }) as const,
       (error: unknown) => ({ kind: 'error', error }) as const,
@@ -1163,6 +1171,7 @@ export class AttemptRunner {
         signal,
       ),
       this.#watchdog(context, signal),
+      this.#turnLimit(context, sessionId, started, turnSignal),
       new Promise<Raced>((resolve) => {
         const onStop = (): void => {
           resolve({ kind: 'stopped', sha: undefined });
@@ -1178,7 +1187,21 @@ export class AttemptRunner {
         else context.leave.signal.addEventListener('abort', onLeave, { once: true, signal });
       }),
     ]);
+    turnEnd.abort();
 
+    if (raced.kind === 'timeout' && raced.turn !== undefined) {
+      await journal
+        .write(
+          buildDaemonEvent('session.turn_timeout', {
+            sessionId,
+            limitMs: raced.turn.limitMs,
+            elapsedMs: raced.turn.elapsedMs,
+            action: 'cancel',
+            ...this.#correlation(context),
+          }),
+        )
+        .catch(() => undefined);
+    }
     if (raced.kind === 'error') return this.#classify(raced.error, false);
     if (raced.kind !== 'finished') return raced;
     await journal.write(
@@ -1212,6 +1235,51 @@ export class AttemptRunner {
     for (const [id, value] of Object.entries(options)) {
       await lease.session.setConfig(id, value);
     }
+  }
+
+  /**
+   * `limits.turn_timeout` (N184): the limit of one turn, counted from `started` (the start of the
+   * prompt). `cancel` ends the go as a `timeout` with the turn's cause, so the attempt takes the
+   * path of the deadline (WIP commit, `session/cancel`, kill of the tree); `notice` only writes
+   * `session.turn_timeout` and lets the turn go on. A limit that is not before the deadline of the
+   * attempt never fires: the deadline is the cut then. The timers stop with `signal`.
+   */
+  #turnLimit(
+    context: AttemptContext,
+    sessionId: string,
+    started: number,
+    signal: AbortSignal,
+  ): Promise<Raced> {
+    const { clock, settings } = this.#options;
+    const limitMs = settings.turnTimeoutMs;
+    const mode = settings.onTurnTimeout;
+    if (mode === 'off' || limitMs <= 0 || started + limitMs >= context.deadline) return NEVER;
+    const wait = started + limitMs - clock.now();
+    if (mode === 'cancel') {
+      return this.#after<Raced>(
+        wait,
+        {
+          kind: 'timeout',
+          sha: undefined,
+          turn: { limitMs, elapsedMs: Math.max(limitMs, clock.now() - started) },
+        },
+        signal,
+      );
+    }
+    void this.#after<true>(wait, true, signal).then(async () => {
+      await context.journal
+        .write(
+          buildDaemonEvent('session.turn_timeout', {
+            sessionId,
+            limitMs,
+            elapsedMs: clock.now() - started,
+            action: 'notice',
+            ...this.#correlation(context),
+          }),
+        )
+        .catch(() => undefined);
+    });
+    return NEVER;
   }
 
   /** `stuck.no_event_for` with no event of the session: the process is stuck. */
@@ -2301,18 +2369,33 @@ export class AttemptRunner {
     return this.#outcome(context, 'failed', message, undefined, false);
   }
 
-  async #timedOut(context: AttemptContext, sha: string | undefined): Promise<AttemptOutcome> {
+  /**
+   * The deadline of the attempt, or (`turn` set, N184) the limit of one turn: the same path and the
+   * same interruption cause (`timeout`, so the table of 5.16 stays as is), and the cause of the
+   * attempt says `turn_timeout` instead of `timeout`.
+   */
+  async #timedOut(
+    context: AttemptContext,
+    sha: string | undefined,
+    turn?: { readonly limitMs: number; readonly elapsedMs: number },
+  ): Promise<AttemptOutcome> {
     const decision = decideInterruption(this.#facts(context, 'timeout'), this.#rules());
+    const cause = turn === undefined ? 'timeout' : 'turn_timeout';
     await this.#interruptionEvent(
       context,
       decision,
-      'the attempt reached its deadline',
+      turn === undefined
+        ? 'the attempt reached its deadline'
+        : `a turn reached its limit of ${String(turn.limitMs)} ms (limits.turn_timeout)`,
       sha ?? context.journal.record.lastCheckpoint ?? undefined,
-      ['deadline', `action:${decision.action}`],
+      [
+        turn === undefined ? 'deadline' : `turn_timeout:${String(turn.limitMs)}ms`,
+        `action:${decision.action}`,
+      ],
     );
-    await this.#closed(context, 'interrupted', { state: 'timed_out', cause: 'timeout' });
+    await this.#closed(context, 'interrupted', { state: 'timed_out', cause });
     await context.journal.flush();
-    return this.#outcome(context, 'timed_out', 'timeout', undefined, true, decision);
+    return this.#outcome(context, 'timed_out', cause, undefined, true, decision);
   }
 
   /**

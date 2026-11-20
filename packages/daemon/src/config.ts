@@ -416,10 +416,36 @@ export interface PlayLimits {
   readonly demand_timeout_max: number;
 }
 
-/** The resolved `limits` of the configuration: the values plus the name of the preset. */
+/**
+ * What `limits.on_turn_timeout` does when a turn of a session outlives `limits.turn_timeout`
+ * (N184, [proposta]): `cancel` (default) cancels the session and ends the attempt as `timed_out`
+ * with the cause `turn_timeout`, `notice` only writes the event `session.turn_timeout` and lets the
+ * turn go on (the deadline of the attempt stays the cut), `off` turns the limit off.
+ */
+export const TURN_TIMEOUT_MODES = ['cancel', 'notice', 'off'] as const;
+export type TurnTimeoutMode = (typeof TURN_TIMEOUT_MODES)[number];
+
+/**
+ * The resolved `limits` of the configuration: the values plus the name of the preset and the
+ * limit of a single turn (N184), which is no counter of the pipeline and so is not in `PlayLimits`.
+ */
 export interface ResolvedLimits extends PlayLimits {
   readonly preset: LimitPresetName;
+  /** Milliseconds: how long one turn (one prompt of a session) may take. */
+  readonly turn_timeout: number;
+  readonly on_turn_timeout: TurnTimeoutMode;
 }
+
+/**
+ * `limits.turn_timeout` by preset, in milliseconds (N184). [proposta] Each one is below the
+ * `demand_timeout` of its preset: the turn limit cuts a turn that does not end, the demand limit
+ * cuts the demand as a whole.
+ */
+export const TURN_TIMEOUT_PRESETS: Readonly<Record<LimitPresetName, number>> = {
+  moderate: 15 * 60_000,
+  economical: 10 * 60_000,
+  persistent: 25 * 60_000,
+};
 
 /**
  * The three presets of `limits` (architecture 5.4, table "Predefinição"; `submit_retries` is the
@@ -466,9 +492,13 @@ export const LIMIT_PRESETS: Readonly<Record<LimitPresetName, PlayLimits>> = {
 
 /** Fills the keys the user did not write from the preset. */
 function resolveLimits(
-  limits: { preset: LimitPresetName } & { [K in keyof PlayLimits]?: number | undefined },
+  limits: { preset: LimitPresetName } & { [K in keyof PlayLimits]?: number | undefined } & {
+    turn_timeout?: number | undefined;
+    on_turn_timeout: TurnTimeoutMode;
+  },
 ): ResolvedLimits {
   const preset = LIMIT_PRESETS[limits.preset];
+  const demandTimeout = limits.demand_timeout ?? preset.demand_timeout;
   return {
     preset: limits.preset,
     plan_reviews: limits.plan_reviews ?? preset.plan_reviews,
@@ -481,6 +511,11 @@ function resolveLimits(
     submit_retries: limits.submit_retries ?? preset.submit_retries,
     demand_timeout: limits.demand_timeout ?? preset.demand_timeout,
     demand_timeout_max: limits.demand_timeout_max ?? preset.demand_timeout_max,
+    // A preset value never goes above the demand limit the user wrote; a value the user wrote is
+    // checked against it by the schema.
+    turn_timeout:
+      limits.turn_timeout ?? Math.min(TURN_TIMEOUT_PRESETS[limits.preset], demandTimeout),
+    on_turn_timeout: limits.on_turn_timeout,
   };
 }
 
@@ -1222,8 +1257,23 @@ export const DaemonConfigSchema = z
         demand_timeout: DurationSchema.optional(),
         /** Ceiling of what the plan may ask for. */
         demand_timeout_max: DurationSchema.optional(),
+        /**
+         * [proposta] (N184) How long one turn (one prompt of a session, from its start) may take,
+         * never above `demand_timeout`. Absent: the preset (moderate 15m, economical 10m,
+         * persistent 25m). What happens when it runs out is `on_turn_timeout`.
+         */
+        turn_timeout: DurationSchema.optional(),
+        /** [proposta] (N184) `cancel` (default), `notice` or `off`; see `TURN_TIMEOUT_MODES`. */
+        on_turn_timeout: z.enum(TURN_TIMEOUT_MODES).default('cancel'),
       })
       .prefault({})
+      .refine(
+        (limits) =>
+          limits.turn_timeout === undefined ||
+          limits.turn_timeout <=
+            (limits.demand_timeout ?? LIMIT_PRESETS[limits.preset].demand_timeout),
+        { message: 'turn_timeout must not exceed demand_timeout', path: ['turn_timeout'] },
+      )
       .transform(resolveLimits)
       .refine((limits) => limits.demand_timeout <= limits.demand_timeout_max, {
         message: 'demand_timeout must not exceed demand_timeout_max',

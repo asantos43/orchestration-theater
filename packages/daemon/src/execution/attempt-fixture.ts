@@ -29,6 +29,8 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   pool: { sessionsPerProcess: 2, maxSessions: 10, idleMs: HOUR, sharedCancel: 'escalate' },
   timeoutMs: HOUR,
   timeoutMaxMs: 24 * HOUR,
+  turnTimeoutMs: HOUR,
+  onTurnTimeout: 'off',
   checkpointEveryMs: 0,
   checkpointEditBatch: 0,
   maxResumes: 3,
