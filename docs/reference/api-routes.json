@@ -399,6 +399,420 @@
       }
     },
     {
+      "id": "putConfig",
+      "method": "PUT",
+      "path": "/v1/config",
+      "kind": "json",
+      "summary": "Edits keys of the configuration file with the validation of a start; applies on restart",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "appliesOn": {
+            "type": "string",
+            "const": "restart"
+          },
+          "set": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "appliesOn",
+          "set",
+          "removed"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "set": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "remove": {
+            "$ref": "#/$defs/__schema5"
+          }
+        },
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema4"
+              }
+            },
+            "required": [
+              "path",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "__schema2": {
+            "minItems": 1,
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema3"
+            }
+          },
+          "__schema3": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              }
+            ]
+          },
+          "__schema5": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "answerDecision",
+      "method": "POST",
+      "path": "/v1/decisions/:decisionId/answer",
+      "kind": "json",
+      "summary": "Answers a pending decision of the Producer; idempotent by Idempotency-Key",
+      "pathParams": [
+        "decisionId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "input": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "answer": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "decidedBy": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "producer",
+                      "director",
+                      "daemon"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "decided",
+                  "cancelled"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "decidedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema3"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "scenarioId",
+              "playId",
+              "kind",
+              "input",
+              "answer",
+              "decidedBy",
+              "state",
+              "createdAt",
+              "updatedAt",
+              "decidedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "__schema2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              }
+            ]
+          },
+          "__schema3": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "decisionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "decisionId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema0"
+            }
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "streamEvents",
       "method": "GET",
       "path": "/v1/events",
@@ -1229,6 +1643,733 @@
       }
     },
     {
+      "id": "deferIdea",
+      "method": "POST",
+      "path": "/v1/ideas/:ideaId/defer",
+      "kind": "json",
+      "summary": "Sets an idea aside for later, with the reason",
+      "pathParams": [
+        "ideaId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "idea": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^I[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "area": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "author",
+                  "import"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "grouped",
+                  "done",
+                  "discarded",
+                  "deferred"
+                ]
+              },
+              "groupId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "groupOrder": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prNumber": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prUrl": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scenarioId",
+              "text",
+              "area",
+              "source",
+              "state",
+              "groupId",
+              "groupOrder",
+              "playId",
+              "prNumber",
+              "prUrl",
+              "reason",
+              "createdAt",
+              "updatedAt",
+              "closedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "idea"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "ideaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "ideaId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "discardIdea",
+      "method": "POST",
+      "path": "/v1/ideas/:ideaId/discard",
+      "kind": "json",
+      "summary": "Drops an idea for good, with the reason",
+      "pathParams": [
+        "ideaId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "idea": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^I[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "area": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "author",
+                  "import"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "grouped",
+                  "done",
+                  "discarded",
+                  "deferred"
+                ]
+              },
+              "groupId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "groupOrder": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prNumber": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prUrl": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scenarioId",
+              "text",
+              "area",
+              "source",
+              "state",
+              "groupId",
+              "groupOrder",
+              "playId",
+              "prNumber",
+              "prUrl",
+              "reason",
+              "createdAt",
+              "updatedAt",
+              "closedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "idea"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "ideaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "ideaId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "requeueIdea",
+      "method": "POST",
+      "path": "/v1/ideas/:ideaId/requeue",
+      "kind": "json",
+      "summary": "Puts a deferred idea back in the queue",
+      "pathParams": [
+        "ideaId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "idea": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^I[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "area": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "author",
+                  "import"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "grouped",
+                  "done",
+                  "discarded",
+                  "deferred"
+                ]
+              },
+              "groupId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "groupOrder": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prNumber": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prUrl": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scenarioId",
+              "text",
+              "area",
+              "source",
+              "state",
+              "groupId",
+              "groupOrder",
+              "playId",
+              "prNumber",
+              "prUrl",
+              "reason",
+              "createdAt",
+              "updatedAt",
+              "closedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "idea"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "ideaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "ideaId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
       "id": "getLayout",
       "method": "GET",
       "path": "/v1/layout/:interface",
@@ -1766,6 +2907,393 @@
       }
     },
     {
+      "id": "createOrder",
+      "method": "POST",
+      "path": "/v1/orders",
+      "kind": "json",
+      "summary": "Gives an order (an instruction, a rule or a suspension); idempotent by Idempotency-Key",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "local"
+                ]
+              },
+              "scenarioId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instruction",
+                  "rule",
+                  "suspension"
+                ]
+              },
+              "text": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "ruleKey": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ruleValue": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "suspendsId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "startsAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "endsAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timezone": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "scheduled",
+                  "active",
+                  "expired",
+                  "revoked"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "import"
+                ]
+              },
+              "replacesId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "revokedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "revokeReason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scope",
+              "scenarioId",
+              "kind",
+              "text",
+              "ruleKey",
+              "ruleValue",
+              "suspendsId",
+              "roles",
+              "startsAt",
+              "endsAt",
+              "timezone",
+              "state",
+              "origin",
+              "replacesId",
+              "createdAt",
+              "updatedAt",
+              "revokedAt",
+              "revokeReason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "local"
+            ]
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "instruction",
+              "rule",
+              "suspension"
+            ]
+          },
+          "roles": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "ruleKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "ruleValue": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "suspendsId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "replacesId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "validity": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "until": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "for": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "text",
+          "scope"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "getOrder",
       "method": "GET",
       "path": "/v1/orders/:orderId",
@@ -2012,6 +3540,923 @@
         },
         "required": [
           "orderId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "extendOrder",
+      "method": "POST",
+      "path": "/v1/orders/:orderId/extend",
+      "kind": "json",
+      "summary": "Changes the validity of an order (`for` counts from the current end)",
+      "pathParams": [
+        "orderId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "local"
+                ]
+              },
+              "scenarioId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instruction",
+                  "rule",
+                  "suspension"
+                ]
+              },
+              "text": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "ruleKey": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ruleValue": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "suspendsId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "startsAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "endsAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timezone": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "scheduled",
+                  "active",
+                  "expired",
+                  "revoked"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "import"
+                ]
+              },
+              "replacesId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "revokedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "revokeReason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scope",
+              "scenarioId",
+              "kind",
+              "text",
+              "ruleKey",
+              "ruleValue",
+              "suspendsId",
+              "roles",
+              "startsAt",
+              "endsAt",
+              "timezone",
+              "state",
+              "origin",
+              "replacesId",
+              "createdAt",
+              "updatedAt",
+              "revokedAt",
+              "revokeReason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "orderId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "validity": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "until": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "for": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "validity"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "revokeOrder",
+      "method": "POST",
+      "path": "/v1/orders/:orderId/revoke",
+      "kind": "json",
+      "summary": "Revokes an order, with the reason",
+      "pathParams": [
+        "orderId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "local"
+                ]
+              },
+              "scenarioId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instruction",
+                  "rule",
+                  "suspension"
+                ]
+              },
+              "text": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "ruleKey": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ruleValue": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "suspendsId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "startsAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "endsAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timezone": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "scheduled",
+                  "active",
+                  "expired",
+                  "revoked"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "import"
+                ]
+              },
+              "replacesId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "revokedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "revokeReason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scope",
+              "scenarioId",
+              "kind",
+              "text",
+              "ruleKey",
+              "ruleValue",
+              "suspendsId",
+              "roles",
+              "startsAt",
+              "endsAt",
+              "timezone",
+              "state",
+              "origin",
+              "replacesId",
+              "createdAt",
+              "updatedAt",
+              "revokedAt",
+              "revokeReason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "orderId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "suspendOrder",
+      "method": "POST",
+      "path": "/v1/orders/:orderId/suspend",
+      "kind": "json",
+      "summary": "Suspends a global order in one scenario by giving a local suspension order",
+      "pathParams": [
+        "orderId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "local"
+                ]
+              },
+              "scenarioId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instruction",
+                  "rule",
+                  "suspension"
+                ]
+              },
+              "text": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "ruleKey": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ruleValue": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "suspendsId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "startsAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "endsAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timezone": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "scheduled",
+                  "active",
+                  "expired",
+                  "revoked"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "import"
+                ]
+              },
+              "replacesId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "revokedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "revokeReason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scope",
+              "scenarioId",
+              "kind",
+              "text",
+              "ruleKey",
+              "ruleValue",
+              "suspendsId",
+              "roles",
+              "startsAt",
+              "endsAt",
+              "timezone",
+              "state",
+              "origin",
+              "replacesId",
+              "createdAt",
+              "updatedAt",
+              "revokedAt",
+              "revokeReason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "orderId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "validity": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "until": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "for": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "scenarioId"
         ],
         "additionalProperties": false
       }
@@ -2901,6 +5346,177 @@
       }
     },
     {
+      "id": "cancelPlay",
+      "method": "POST",
+      "path": "/v1/plays/:playId/cancel",
+      "kind": "json",
+      "summary": "Cancels a play that is not finished; idempotent by Idempotency-Key",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "play": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "need": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "flowId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "flowVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "counters": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "parentPlayId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "finishedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "scenarioId",
+              "need",
+              "flowId",
+              "flowVersion",
+              "state",
+              "counters",
+              "parentPlayId",
+              "createdAt",
+              "updatedAt",
+              "finishedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "play"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "listProfiles",
       "method": "GET",
       "path": "/v1/profiles",
@@ -3264,6 +5880,538 @@
       }
     },
     {
+      "id": "addProfile",
+      "method": "POST",
+      "path": "/v1/profiles",
+      "kind": "json",
+      "summary": "Registers an account (a subscription profile or an API key profile); idempotent",
+      "pathParams": [],
+      "response": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "added"
+              },
+              "profile": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "client": {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  "name": {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "token_plan",
+                      "api"
+                    ]
+                  },
+                  "provider": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "draining",
+                      "removed"
+                    ]
+                  },
+                  "dir": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "secretRef": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeAcceptedAt": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAt": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "updatedAt": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "removedAt": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/__schema2"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "client",
+                  "name",
+                  "kind",
+                  "provider",
+                  "state",
+                  "dir",
+                  "secretRef",
+                  "noticeAcceptedAt",
+                  "createdAt",
+                  "updatedAt",
+                  "removedAt"
+                ],
+                "additionalProperties": false
+              },
+              "hasSecret": {
+                "type": "boolean"
+              },
+              "secretBackend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "login": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "logged_in",
+                      "logged_out",
+                      "unknown"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "notice": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema3"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "profile",
+              "hasSecret",
+              "secretBackend",
+              "login",
+              "notice"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "needs_notice"
+              },
+              "notice": {
+                "$ref": "#/$defs/__schema3"
+              }
+            },
+            "required": [
+              "status",
+              "notice"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema3": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "existing": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "once",
+                  "always"
+                ]
+              }
+            },
+            "required": [
+              "provider",
+              "existing",
+              "mode"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "vault_locked"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "token_plan",
+              "api"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "acceptNotice": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client",
+          "name",
+          "kind",
+          "provider"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "removeProfile",
+      "method": "DELETE",
+      "path": "/v1/profiles/:client/:name",
+      "kind": "json",
+      "summary": "Drains and removes an account: its directory, its secret and its Executors",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "drain": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "finished",
+                      "handoff",
+                      "forced",
+                      "still_running"
+                    ]
+                  },
+                  "sessions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "profile",
+                  "outcome",
+                  "sessions"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "loggedOut": {
+            "type": "boolean"
+          },
+          "dir": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "backup",
+              "missing"
+            ]
+          },
+          "secretDeleted": {
+            "type": "boolean"
+          },
+          "executorsInvalidated": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "profile",
+          "drain",
+          "loggedOut",
+          "dir",
+          "secretDeleted",
+          "executorsInvalidated"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "client": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "name": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "token_plan",
+                  "api"
+                ]
+              },
+              "provider": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "draining",
+                  "removed"
+                ]
+              },
+              "dir": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "secretRef": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "noticeAcceptedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema3"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "removedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema3"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "client",
+              "name",
+              "kind",
+              "provider",
+              "state",
+              "dir",
+              "secretRef",
+              "noticeAcceptedAt",
+              "createdAt",
+              "updatedAt",
+              "removedAt"
+            ],
+            "additionalProperties": false
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "__schema3": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
       "id": "getProfile",
       "method": "GET",
       "path": "/v1/profiles/:client/:name",
@@ -3587,6 +6735,206 @@
           "client",
           "name"
         ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "drainProfile",
+      "method": "POST",
+      "path": "/v1/profiles/:client/:name/drain",
+      "kind": "json",
+      "summary": "Stops giving new sessions to an account and waits for the running ones",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "client": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "name": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "token_plan",
+                  "api"
+                ]
+              },
+              "provider": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "draining",
+                  "removed"
+                ]
+              },
+              "dir": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "secretRef": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "noticeAcceptedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "removedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "client",
+              "name",
+              "kind",
+              "provider",
+              "state",
+              "dir",
+              "secretRef",
+              "noticeAcceptedAt",
+              "createdAt",
+              "updatedAt",
+              "removedAt"
+            ],
+            "additionalProperties": false
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "finished",
+              "handoff",
+              "forced",
+              "still_running"
+            ]
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "profile",
+          "outcome",
+          "sessions"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
         "additionalProperties": false
       }
     },
@@ -4036,6 +7384,199 @@
               "active",
               "archived"
             ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "openScenario",
+      "method": "POST",
+      "path": "/v1/scenarios",
+      "kind": "json",
+      "summary": "Opens a scenario (a project or a chat) and its Director; idempotent by Idempotency-Key",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project",
+                  "task",
+                  "chat"
+                ]
+              },
+              "flowId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "name": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "folder": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "profile": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "baseBranch": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "originScenarioId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "directorState": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "asleep"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "flowId",
+              "name",
+              "folder",
+              "profile",
+              "baseBranch",
+              "originScenarioId",
+              "directorState",
+              "state",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "scenario",
+          "cursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "base": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "newProject": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -5547,6 +9088,189 @@
       }
     },
     {
+      "id": "addAttachment",
+      "method": "POST",
+      "path": "/v1/scenarios/:scenarioId/attachments",
+      "kind": "json",
+      "summary": "Attaches a file of the daemon machine or a pasted text to a scenario; idempotent",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^A[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "mime": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hash": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "reference"
+            ]
+          },
+          "path": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "scenarioId",
+          "id",
+          "seq",
+          "messageId",
+          "name",
+          "mime",
+          "size",
+          "hash",
+          "source",
+          "path",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "413": [
+          "payload_too_large"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "copy",
+                  "reference"
+                ]
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    {
       "id": "getAttachment",
       "method": "GET",
       "path": "/v1/scenarios/:scenarioId/attachments/:attachmentId",
@@ -6022,6 +9746,338 @@
           }
         },
         "additionalProperties": false
+      }
+    },
+    {
+      "id": "addIdea",
+      "method": "POST",
+      "path": "/v1/scenarios/:scenarioId/ideas",
+      "kind": "json",
+      "summary": "Puts an idea in the queue of a scenario; idempotent by Idempotency-Key",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "idea": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^I[1-9][0-9]*$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "area": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "tui",
+                  "terminal",
+                  "author",
+                  "import"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "grouped",
+                  "done",
+                  "discarded",
+                  "deferred"
+                ]
+              },
+              "groupId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "groupOrder": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "playId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prNumber": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prUrl": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "scenarioId",
+              "text",
+              "area",
+              "source",
+              "state",
+              "groupId",
+              "groupOrder",
+              "playId",
+              "prNumber",
+              "prUrl",
+              "reason",
+              "createdAt",
+              "updatedAt",
+              "closedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "idea"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "drainIdeas",
+      "method": "POST",
+      "path": "/v1/scenarios/:scenarioId/ideas/drain",
+      "kind": "json",
+      "summary": "Runs one pass of the idea queue of a scenario now (`/idea drain`)",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "stopped": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "groups",
+          "stopped"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
       }
     },
     {

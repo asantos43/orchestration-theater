@@ -68,7 +68,7 @@ Não entram **[proposta]**:
 | P3 | Servidor da API: bind, token, CORS, descoberta e id do daemon | P0 | P1, P2, P9 | concluído |
 | P4 | SSE com `Last-Event-ID` | P1, P2, P3 | P5, P6, P7, P10 | concluído, falta o teste com o cliente (P13) |
 | P5 | REST de leitura | P1, P3 | P4, P6, P7, P10 | concluído |
-| P6 | REST de comandos | P1, P3 | P4, P5, P7, P10 | a fazer |
+| P6 | REST de comandos | P1, P3 | P4, P5, P7, P10 | concluído, falta pausar, retomar e cancelar Ator |
 | P7 | WebSocket do chat, ligado à fila de prompts | P1, P2, P3 | P4, P5, P6, P10 | concluído, falta o teste com o cliente do P10 |
 | P8 | `ot chat` sobre a API e o fim do canal antigo | P7, P10 | P11, P12 | a fazer |
 | P9 | `packages/client`: base, REST tipado e vários daemons | P1 | P2, P3, P4 a P7 | concluído, falta o teste com daemons reais |
@@ -218,6 +218,37 @@ Paginação por cursor (`after`, `limit`, base do P1) nas listas que crescem **[
 Os schemas de cada recurso de comando nascem aqui, em `protocol/src/api/<recurso>.ts`, e entram em `API_ROUTES` **[proposta]**. Todo comando aceita `Idempotency-Key` (formato definido no P1). Uma repetição com a mesma chave devolve a resposta da primeira vez, guardada por `api.idempotency_ttl` **[proposta: 24 h]**. Todo comando vira evento, como já acontece no daemon.
 
 **Aceite:** cada comando tem teste contra o daemon com o `fake-agent`; uma repetição com a mesma `Idempotency-Key` não duplica efeito; um comando durante a reconciliação espera o fim dela; um corpo fora do schema dá 400 com o caminho do campo.
+
+**Resultado (2026-11-20):** feito na branch `fase6/p6-rest-comandos`. Sem dependência nova.
+- **O que entrou** **[V]**. 17 rotas de comando, todas com `headers: IdempotencyHeadersSchema` e registradas como comando (esperam o `RecoveryGate`):
+  - cenário e anexo: `POST /v1/scenarios` (abre), `POST /v1/scenarios/:id/attachments` (texto ou caminho);
+  - decisão: `POST /v1/decisions/:id/answer`; peça: `POST /v1/plays/:id/cancel`;
+  - ordens: criar, prorrogar, suspender e revogar;
+  - ideias: adicionar, drenar, descartar, adiar e devolver à fila;
+  - perfis: `POST /v1/profiles`, `POST /v1/profiles/:client/:name/drain`, `DELETE /v1/profiles/:client/:name`;
+  - configuração: `PUT /v1/config`.
+- **Arquivos.**
+  - Protocolo: `packages/protocol/src/api/{scenarios,attachments,decisions,plays,orders,ideas,profiles,config-view}.ts` (rotas acrescentadas) e `api-command-events.ts` (payloads novos), com `events.ts` e `index.ts`.
+  - Daemon, em `packages/daemon/src/api/routes/`: `idempotency.ts`, `command.ts` (registro, mapeamento de erro, `available`), `{scenario,decision,play,order,idea,profile,config}-commands.ts`, `deps.ts` (`CommandRouteDeps`) e `index.ts` (`registerCommandRoutes`). `daemon.ts` ganha uma chamada e `config.ts`, a chave `api.idempotency_ttl`. `scenarioOf` e `playOf` passam a ser exportadas de `scenarios.ts`. O catálogo `docs/reference/api-routes.json` foi regenerado.
+  - Testes: `idempotency.test.ts`, `command-routes.test.ts`, `command-gate.test.ts` e `command-routes.e2e.test.ts` (daemon com o `fake-agent`: abrir cenário, anexar, ideias, resposta ao menu do Produtor e cancelar peça).
+- **Verificado localmente** **[V]**. Cada comando tem teste. Uma repetição com a mesma chave devolve a primeira resposta sem segundo efeito e sem segundo evento. A mesma chave com outro corpo, rota, parâmetro ou consulta dá 409 `conflict`. Um comando que chega com o `RecoveryGate` fechado só chega ao serviço depois de `gate.open()`, e roda uma vez. Corpo fora do schema dá 400 com `details.issues[].path`. A chave de API de um perfil fica só no cofre: não aparece em resposta, evento nem log. Edição de configuração mantém os comentários, recusa valor inválido sem citar o caminho do arquivo, recusa o que parece segredo e não perde edições concorrentes.
+- **Propostas** **[proposta]**.
+  1. `api.idempotency_ttl` (padrão 24 h; `0` não guarda nada) é chave nova de configuração.
+  2. A memória é do daemon, não uma tabela do store: um reinício esquece as chaves. Uma tabela pediria migração e mudança em todo adaptador de store por uma janela de um dia. Os comandos que um reinício deixaria rodar duas vezes são os que criam registro (`openScenario`, `createOrder`, `addIdea`, `addAttachment`).
+  3. A chave é global, não por rota; só resposta 2xx fica guardada (falha tenta de novo); uma repetição durante a primeira execução espera por ela. O pedido é reconhecido por um HMAC-SHA256 com chave só do processo, nunca por cópia do corpo.
+  4. Uma repetição responde com o cabeçalho `Idempotency-Replayed: true`, vai ao log só em `debug` e não escreve evento.
+  5. Origem das ordens e fonte das ideias vindas da API: `'tui'`, o valor que o catálogo já tem para um cliente do Produtor (sem valor próprio para a API, que seria mudança de schema do store).
+  6. `POST /v1/profiles` sem aviso de leitura devolve `needs_notice` com 200, não erro, porque é um estado do fluxo do cadastro.
+  7. `PUT /v1/config` só altera o arquivo e responde `appliesOn: 'restart'`; recusa valor que gere caminho de segredo (segredo vai para o cofre). Edições concorrentes são serializadas só dentro da API; um editor externo no mesmo arquivo continua fora dessa garantia.
+  8. Dois eventos novos no catálogo, `scenario.decision_answered` (ids e `kind`, nunca o texto da resposta) e `config.edited` (só os caminhos), escritos como situação (`writeSituation`). O `/chat/answer` antigo não emite `scenario.decision_answered`.
+  9. `addAttachment` por caminho lê um arquivo da máquina do daemon, como o `attach` do canal já faz.
+- **O que falta ou fica como limite.**
+  - Pausar e retomar uma peça, e pausar, retomar e cancelar um Ator **não** entraram: o daemon não tem esses comandos (ver `PlayRunner`, só tem `CANCEL`), e este passo expõe o que já existe. Ficam como pendência para quando o núcleo ganhar o comando.
+  - Não há teto para o número de chaves guardadas dentro do TTL; o varredor roda a cada 60 s do relógio do daemon.
+  - A confirmação do rascunho de diretriz não está exposta.
+  - O login interativo de perfis fica para a Fase 7, como no escopo.
+- **Para o P7 e o coordenador.** Os totais de registro de eventos sobem 87 para 89 (protocolo) e 89 para 91 (daemon): quem mesclar com o P7 reconcilia os dois números se ele também acrescentar evento. Arquivos compartilhados mexidos, só com bloco acrescentado: `daemon/src/config.ts`, `daemon/src/daemon.ts`, `protocol/src/events.ts`, `protocol/src/index.ts` e `docs/reference/api-routes.json` (regenerar com `pnpm api:catalog` depois do merge). O `PlayRunner` e o canal chegam às rotas por `CommandRouteDeps` (opcionais); sem o módulo de peças, o comando dá 503 `unavailable`.
+- **Acrescentado pelo coordenador no merge com o P7 e o P11 (2026-11-20).** Os dois eventos deste passo somaram-se aos do P4 e do P7: o catálogo do daemon tem 94 tipos e o registro do daemon 96 **[V: testes de registro]**. O `config.ts` ganhou, lado a lado, o `api.idempotency_ttl` deste passo e o bloco `api.chat` do P7. O P8 depende das rotas deste passo (`openScenario`, `addAttachment` e as de ideias) para tirar o canal antigo.
 
 ### P7. WebSocket do chat, ligado à fila de prompts (§5.4, §5.12)
 

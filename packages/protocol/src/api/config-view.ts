@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { JsonObjectSchema } from '@otheater/core';
 import { z } from 'zod';
+import { IdempotencyHeadersSchema } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
 
 /**
@@ -30,4 +31,49 @@ export const getConfig = defineRoute({
   response: ApiConfigSchema,
 });
 
-export const CONFIG_VIEW_ROUTES = defineRoutes(getConfig);
+/**
+ * Edits the configuration file (`config.yaml`; P6 of docs/17). [proposta] The edit is the one of
+ * `config-edit.ts`: the comments and the order of the file stay, the result is validated like a
+ * start would validate it (an edit that leaves a config the daemon would refuse is `invalid_input`,
+ * naming the key) and written atomically. A value that could be a secret (see `getConfig`) is
+ * refused: a secret goes to the vault, never to the YAML. The running daemon keeps the configuration
+ * it started with, so the answer says the edit applies on restart.
+ */
+export const ConfigKeyPathSchema = z.array(z.string().min(1).max(256)).min(1).max(16);
+
+export const ConfigEditBodySchema = z
+  .strictObject({
+    /** Keys to set (created as needed), each as its path and a plain JSON value. */
+    set: z
+      .array(z.strictObject({ path: ConfigKeyPathSchema, value: z.json() }))
+      .max(64)
+      .optional(),
+    /** Keys to take out; the file goes back to the default of each. */
+    remove: z.array(ConfigKeyPathSchema).max(64).optional(),
+  })
+  .refine((edit) => (edit.set?.length ?? 0) + (edit.remove?.length ?? 0) > 0, {
+    message: 'Give at least one key to set or to remove',
+  });
+export type ConfigEditBody = z.input<typeof ConfigEditBodySchema>;
+
+export const ConfigEditResultSchema = z.strictObject({
+  appliesOn: z.literal('restart'),
+  /** The dotted paths that were set and the ones taken out (never the values). */
+  set: z.array(z.string()),
+  removed: z.array(z.string()),
+});
+export type ConfigEditResult = z.infer<typeof ConfigEditResultSchema>;
+
+export const putConfig = defineRoute({
+  id: 'putConfig',
+  method: 'PUT',
+  path: '/v1/config',
+  summary:
+    'Edits keys of the configuration file with the validation of a start; applies on restart',
+  headers: IdempotencyHeadersSchema,
+  body: ConfigEditBodySchema,
+  response: ConfigEditResultSchema,
+  errors: ['conflict'],
+});
+
+export const CONFIG_VIEW_ROUTES = defineRoutes(getConfig, putConfig);

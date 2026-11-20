@@ -8,7 +8,7 @@ import {
 } from '@otheater/core';
 import { z } from 'zod';
 import { ScenarioIdSchema } from './ids.js';
-import { PageQuerySchema, pageOf } from './page.js';
+import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
 
 /**
@@ -70,4 +70,37 @@ export const getScenario = defineRoute({
   errors: ['not_found'],
 });
 
-export const SCENARIO_ROUTES = defineRoutes(listScenarios, getScenario);
+/**
+ * Opens a scenario (the command of the Producer's `ot chat`, P6 of docs/17). [proposta] The body is
+ * `OpenChatInput` of the daemon: the type (a key of the scenario type registry, default `project`),
+ * the repository, the base branch, a name and `newProject`. It also wakes the Director of the
+ * scenario, so the first reply is on its way when the answer arrives; `cursor` is where the replies
+ * of the chat stand.
+ */
+export const OpenScenarioBodySchema = z.strictObject({
+  type: z.string().min(1).max(64).optional(),
+  repo: z.string().min(1).max(4096).optional(),
+  base: z.string().min(1).max(256).optional(),
+  name: z.string().min(1).max(256).optional(),
+  newProject: z.boolean().optional(),
+});
+export type OpenScenarioBody = z.input<typeof OpenScenarioBodySchema>;
+
+export const OpenScenarioResultSchema = z.strictObject({
+  scenario: ApiScenarioSchema,
+  cursor: z.int().min(0),
+});
+export type OpenScenarioResult = z.infer<typeof OpenScenarioResultSchema>;
+
+export const openScenario = defineRoute({
+  id: 'openScenario',
+  method: 'POST',
+  path: '/v1/scenarios',
+  summary: 'Opens a scenario (a project or a chat) and its Director; idempotent by Idempotency-Key',
+  headers: IdempotencyHeadersSchema,
+  body: OpenScenarioBodySchema,
+  response: OpenScenarioResultSchema,
+  errors: ['not_found', 'conflict', 'unavailable'],
+});
+
+export const SCENARIO_ROUTES = defineRoutes(listScenarios, getScenario, openScenario);

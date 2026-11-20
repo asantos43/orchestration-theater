@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { AttachmentRecordSchema } from '@otheater/core';
 import { z } from 'zod';
-import { PageQuerySchema, pageOf } from './page.js';
+import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
 import { ScenarioParamsSchema } from './scenarios.js';
 
@@ -63,4 +63,39 @@ export const getAttachmentContent = defineRoute({
   errors: ['not_found', 'payload_too_large'],
 });
 
-export const ATTACHMENT_ROUTES = defineRoutes(listAttachments, getAttachment, getAttachmentContent);
+/**
+ * What the Producer attaches: a file of the machine of the daemon (`path`, copied or referenced) or
+ * a pasted text (`text`, with a `name`). [proposta] The same two shapes `ot chat` takes
+ * (`ProducerChannel.attach`); a file is read by the daemon, so `path` is a path on ITS machine, the
+ * way the terminal's chat has always been (the API only listens on the loopback).
+ */
+export const AddAttachmentBodySchema = z.union([
+  z.strictObject({
+    path: z.string().min(1).max(4096),
+    mode: z.enum(['copy', 'reference']).optional(),
+  }),
+  z.strictObject({
+    text: z.string().min(1),
+    name: z.string().min(1).max(256).optional(),
+  }),
+]);
+export type AddAttachmentBody = z.input<typeof AddAttachmentBodySchema>;
+
+export const addAttachment = defineRoute({
+  id: 'addAttachment',
+  method: 'POST',
+  path: '/v1/scenarios/:scenarioId/attachments',
+  summary: 'Attaches a file of the daemon machine or a pasted text to a scenario; idempotent',
+  params: ScenarioParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  body: AddAttachmentBodySchema,
+  response: ApiAttachmentSchema,
+  errors: ['not_found', 'payload_too_large', 'unavailable'],
+});
+
+export const ATTACHMENT_ROUTES = defineRoutes(
+  listAttachments,
+  getAttachment,
+  getAttachmentContent,
+  addAttachment,
+);

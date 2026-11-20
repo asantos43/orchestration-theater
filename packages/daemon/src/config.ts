@@ -1549,6 +1549,13 @@ export const DaemonConfigSchema = z
               .prefault({}),
           })
           .prefault({}),
+        /**
+         * [proposta: 24h] How long the daemon remembers the answer of a command that came with an
+         * `Idempotency-Key` (P6 of docs/17): a repeat with the same key and the same body inside
+         * the window gets the first answer back and does not act again. `0` keeps nothing, so no
+         * command is deduplicated. The memory is the daemon's own and does not survive a restart.
+         */
+        idempotency_ttl: DurationSchema.or(z.literal(0)).prefault('24h'),
         chat: z
           .strictObject({
             /** [proposta: 30s] How long a chat ticket (`POST /v1/chat-tickets`) is good for, and no longer. */

@@ -109,6 +109,8 @@ describe('daemon event registry', () => {
       'api.started',
       'api.client_rejected',
       'api.stream_lagged',
+      'scenario.decision_answered',
+      'config.edited',
       'prompt.queued',
       'chat.director_reply',
       'chat.ask',

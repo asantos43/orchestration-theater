@@ -31,7 +31,7 @@ import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
-import { registerReadRoutes } from './api/routes/index.js';
+import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
@@ -852,6 +852,21 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         readMax: config.scenarios.attachment_read_max,
       }),
     }),
+  });
+
+  // P6 (Phase 6): the commands of the REST API, on the same services. They wait for `gate` (the
+  // reconciliation of the start-up) before they run, which the server does for every command.
+  registerCommandRoutes(api.handlers, {
+    store,
+    clock,
+    logger,
+    directives,
+    profiles,
+    configPath: paths.config,
+    idempotencyTtlMs: () => config.api.idempotency_ttl,
+    channel: orchestration?.channel,
+    runner: orchestration?.runner,
+    ideas: orchestration?.ideas,
   });
 
   const handle: DaemonHandle = {

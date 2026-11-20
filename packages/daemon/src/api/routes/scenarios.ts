@@ -16,11 +16,11 @@ function without<Row extends object, Name extends keyof Row>(
 }
 
 /** The scenario as a list shows it: without the parts the detail carries. */
-const scenarioOf = (record: ScenarioRecord): ApiScenario =>
+export const scenarioOf = (record: ScenarioRecord): ApiScenario =>
   without(record, ['conventions', 'configOverride']);
 
 /** The play without the machine's own snapshot. */
-const playOf = (record: PlayRecord): ApiPlay => without(record, ['snapshot']);
+export const playOf = (record: PlayRecord): ApiPlay => without(record, ['snapshot']);
 
 /** A tree of the scenario (conventions, overrides) with what could be a secret held back. */
 const safe = (tree: JsonObject): JsonObject => redactTree(tree).value;

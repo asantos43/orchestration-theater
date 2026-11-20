@@ -37,6 +37,10 @@ import {
   ApiStreamLaggedPayloadSchema,
 } from './api-events.js';
 import {
+  ConfigEditedPayloadSchema,
+  ScenarioDecisionAnsweredPayloadSchema,
+} from './api-command-events.js';
+import {
   ApiChatClosedPayloadSchema,
   ApiChatMessageDroppedPayloadSchema,
   ChatAskPayloadSchema,
@@ -611,6 +615,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ApiStreamLaggedPayloadSchema,
   }),
   defineEventType({
+    type: 'scenario.decision_answered',
+    schemaVersion: 1,
+    payload: ScenarioDecisionAnsweredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'config.edited',
+    schemaVersion: 1,
+    payload: ConfigEditedPayloadSchema,
+  }),
+  defineEventType({
     type: 'prompt.queued',
     schemaVersion: 1,
     payload: PromptQueuedPayloadSchema,
@@ -759,6 +773,8 @@ export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];
+export type ScenarioDecisionAnsweredPayload = DaemonEventPayloads['scenario.decision_answered'];
+export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
 export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
 export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
