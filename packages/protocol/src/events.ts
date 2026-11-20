@@ -47,6 +47,7 @@ import {
   ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   ChatDirectorReplyPayloadSchema,
+  ChatDirectorSilentPayloadSchema,
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import {
@@ -637,6 +638,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ChatDirectorReplyPayloadSchema,
   }),
   defineEventType({
+    type: 'chat.director_silent',
+    schemaVersion: 1,
+    payload: ChatDirectorSilentPayloadSchema,
+  }),
+  defineEventType({
     type: 'chat.ask',
     schemaVersion: 1,
     payload: ChatAskPayloadSchema,
@@ -794,6 +800,7 @@ export type ScenarioDecisionAnsweredPayload = DaemonEventPayloads['scenario.deci
 export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
 export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
 export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
+export type ChatDirectorSilentPayload = DaemonEventPayloads['chat.director_silent'];
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
 export type ChatAskClosedPayload = DaemonEventPayloads['chat.ask_closed'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];

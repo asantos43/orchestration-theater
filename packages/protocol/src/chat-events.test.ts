@@ -9,6 +9,7 @@ import {
   ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   ChatDirectorReplyPayloadSchema,
+  ChatDirectorSilentPayloadSchema,
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import { buildDaemonEvent } from './events.js';
@@ -30,6 +31,41 @@ describe('the events of the chat WebSocket (P7 of docs/17)', () => {
     const ask = { decisionId: 'd1', kind: 'producer_question', input: { questions: [] } };
     expect(ChatAskPayloadSchema.parse(ask)).toEqual(ask);
     expect(ChatAskPayloadSchema.safeParse({ ...ask, extra: 1 }).success).toBe(false);
+  });
+
+  it('chat.director_reply marks a generated reply, and a reply of the Director stays valid without the marks (N183)', () => {
+    const generated = {
+      replyId: 2,
+      to: 'producer',
+      text: 'The Director ended the turn without a reply.',
+      generated: true,
+      tools: [{ name: 'open_play', status: 'completed' }],
+      playId: 'play-1',
+    };
+    expect(ChatDirectorReplyPayloadSchema.parse(generated)).toEqual(generated);
+    expect(
+      ChatDirectorReplyPayloadSchema.safeParse({ ...generated, generated: false }).success,
+    ).toBe(false);
+    expect(
+      ChatDirectorReplyPayloadSchema.safeParse({
+        ...generated,
+        tools: [{ name: '', status: null }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('chat.director_silent carries the tools, the play and the mode, and is strict (N183)', () => {
+    const silent = {
+      tools: [{ name: 'open_play', status: null }],
+      playId: null,
+      mode: 'none' as const,
+    };
+    expect(ChatDirectorSilentPayloadSchema.parse(silent)).toEqual(silent);
+    expect(ChatDirectorSilentPayloadSchema.safeParse({ ...silent, mode: 'loud' }).success).toBe(
+      false,
+    );
+    expect(ChatDirectorSilentPayloadSchema.safeParse({ ...silent, extra: 1 }).success).toBe(false);
+    expect(buildDaemonEvent('chat.director_silent', silent).type).toBe('chat.director_silent');
   });
 
   it('chat.ask_closed names the decision and how it ended, and is strict (N179)', () => {

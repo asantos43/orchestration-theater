@@ -16,6 +16,7 @@ import {
   API_ROUTES,
   IDEMPOTENCY_KEY_HEADER,
   type ChatServerMessage,
+  type ChatToolCall,
   type IdeaQueueHeldPayload,
   type ScenarioDirectorFailoverNotice,
   type ScenarioHandoffNotice,
@@ -120,6 +121,28 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
   if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
   if (notice.kind === 'director_failover') return renderDirectorFailoverMessage(t, notice);
   return renderRecoveryMessage(t, notice);
+}
+
+/**
+ * The line for a reply the daemon generated because a turn of the Director ended without text
+ * (N183, [proposta]): the tools it called and the play it opened, if any.
+ */
+export function renderGeneratedReply(
+  t: TFunction,
+  tools: readonly ChatToolCall[],
+  playId: string | undefined,
+): string {
+  if (tools.length === 0) return t('chat.generatedReply.none');
+  return t('chat.generatedReply.tools', {
+    tools: tools
+      .map((tool) =>
+        tool.status === 'failed'
+          ? t('chat.generatedReply.toolFailed', { name: tool.name })
+          : tool.name,
+      )
+      .join(', '),
+    play: playId === undefined ? '' : t('chat.generatedReply.play', { id: playId }),
+  });
 }
 
 /**
@@ -551,6 +574,11 @@ export async function runChatCommand(
     poke();
     switch (message.type) {
       case 'director_reply': {
+        if (message.generated === true) {
+          // N183: written by the daemon for a silent turn; said in the language of the Producer.
+          out(renderGeneratedReply(t, message.tools ?? [], message.playId));
+          return;
+        }
         const text = `${replyParts.get(message.replyId) ?? ''}${message.text}`;
         if (message.final) {
           replyParts.delete(message.replyId);

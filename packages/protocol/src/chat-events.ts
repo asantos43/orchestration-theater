@@ -22,16 +22,54 @@ export const PromptQueuedPayloadSchema = z.strictObject({
   priority: z.int(),
 });
 
+/** Status of a tool call as the Director's session reported it last (ACP `ToolCallStatus`). */
+export const CHAT_TOOL_CALL_STATUSES = ['pending', 'in_progress', 'completed', 'failed'] as const;
+
+/**
+ * A tool the Director called in a turn (N183): its name as the client reported it (the title of
+ * the ACP `tool_call`) and the last status it saw, or `null` when it saw none. [proposta]
+ */
+export const ChatToolCallSchema = z.strictObject({
+  name: z.string().min(1),
+  status: z.enum(CHAT_TOOL_CALL_STATUSES).nullable(),
+});
+export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
+
 /**
  * `chat.director_reply`: the Director ended a turn and what it said is a reply for the chat.
  * `replyId` is the `seq` of the reply of the scenario (1, 2, 3...); `to` is who put the prompt
  * the reply answers in the queue. The reply goes whole, so the WebSocket message has
  * `final: true`.
+ *
+ * [proposta] (N183) `generated: true` marks a reply the daemon wrote because the turn of the Director
+ * ended without text (`chat.silent_turn: notice`); `text` is then a short English line, and `tools`
+ * and `playId` (the play the turn opened, when one was) are what a client needs to show it in its
+ * own language. All three are absent from a reply of the Director itself, so the events written
+ * before N183 stay valid.
  */
 export const ChatDirectorReplyPayloadSchema = z.strictObject({
   replyId: z.int().min(1),
   to: z.enum(PROMPT_QUEUE_SOURCES),
   text: z.string(),
+  generated: z.literal(true).optional(),
+  tools: z.array(ChatToolCallSchema).optional(),
+  playId: z.string().min(1).optional(),
+});
+
+/** What `chat.silent_turn` was when the turn ended (the modes of the key, see the daemon config). */
+export const CHAT_SILENT_TURN_MODES = ['notice', 'none'] as const;
+
+/**
+ * `chat.director_silent` (N183, [proposta]): a turn of the Director ended without any text. `tools`
+ * are the tools it called, in the order they started; `playId` is the play it opened, if one was
+ * created during the turn, else `null`; `mode` is `chat.silent_turn`: with `notice` the chat got a
+ * generated `chat.director_reply`, with `none` it got nothing. The scenario is in the envelope.
+ * Written for a turn that ended without error only: a failed turn keeps its `[error]` reply.
+ */
+export const ChatDirectorSilentPayloadSchema = z.strictObject({
+  tools: z.array(ChatToolCallSchema),
+  playId: z.string().min(1).nullable(),
+  mode: z.enum(CHAT_SILENT_TURN_MODES),
 });
 
 /**

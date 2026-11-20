@@ -82,6 +82,12 @@
     "noDaemon": "Nenhum daemon está em execução nesta pasta de dados (ou ele não está acessível). Inicie-o com \"ot daemon\".",
     "opened": "Chat aberto no cenário {{scenarioId}}. Digite uma mensagem e pressione Enter.",
     "reply": "Diretor: {{text}}",
+    "generatedReply": {
+      "none": "Sistema: o Diretor terminou o turno sem responder.",
+      "tools": "Sistema: o Diretor terminou o turno sem responder. Ferramentas chamadas: {{tools}}.{{play}}",
+      "toolFailed": "{{name}} (falhou)",
+      "play": " Peça aberta: {{id}}."
+    },
     "play": "Peça {{id}}: {{state}}",
     "playEnded": "A peça {{id}} terminou.",
     "waiting": "{{what}} ({{who}}).",

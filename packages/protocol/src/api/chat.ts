@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
-import { CHAT_ASK_CLOSED_STATES } from '../chat-events.js';
+import { CHAT_ASK_CLOSED_STATES, ChatToolCallSchema } from '../chat-events.js';
 import { IdeaQueueHeldPayloadSchema } from '../idea-events.js';
 import { ScenarioSystemMessagePayloadSchema } from '../scenario-events.js';
 import { ApiErrorBodySchema } from './errors.js';
@@ -83,6 +83,14 @@ export const ChatServerMessageSchema = z.discriminatedUnion('type', [
     replyId: z.int().min(1),
     text: z.string(),
     final: z.boolean(),
+    /**
+     * `true` when the daemon wrote the reply because the turn of the Director ended without text
+     * (`chat.silent_turn: notice`, N183); `tools` and `playId` (the play the turn opened) are what
+     * a client needs to say it in its own language. Absent from a reply of the Director. [proposta]
+     */
+    generated: z.literal(true).optional(),
+    tools: z.array(ChatToolCallSchema).optional(),
+    playId: z.string().min(1).optional(),
   }),
   /** A question or a menu waiting for the Producer's answer. */
   z.strictObject({

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   buildDaemonEvent,
+  type ChatDirectorSilentPayload,
+  type ChatToolCall,
   type InterruptionCause,
   type ScenarioDirectorFailoverNotice,
 } from '@otheater/protocol';
@@ -34,6 +36,7 @@ import {
   PROFILE_REMOVED,
   type DirectorFailure,
 } from './director-failover.js';
+import { silentReplyText, TurnTools } from './director-silence.js';
 import { resolveRolePolicy } from './role-policy.js';
 import type { RoleSelection, SelectedExecutor } from './role-selection.js';
 
@@ -52,6 +55,19 @@ export interface DirectorReply {
   /** Who put the prompt this reply answers in the queue. */
   readonly to: PromptQueueItem['source'];
   readonly text: string;
+  /**
+   * Set when the daemon wrote the reply because the turn ended with no text (N183,
+   * `chat.silent_turn: notice`); absent from what the Director itself said.
+   */
+  readonly generated?: GeneratedReply;
+}
+
+/** What a reply the daemon generated for a silent turn is made from (N183). */
+export interface GeneratedReply {
+  /** The tools the turn called, in the order they started. */
+  readonly tools: readonly ChatToolCall[];
+  /** The play the turn opened (a `play.created` of the scenario during it), if there was one. */
+  readonly playId: string | null;
 }
 
 export interface DirectorSessionsOptions {
@@ -88,6 +104,12 @@ export interface DirectorSessionsOptions {
    * from. It must not throw; what it throws is logged.
    */
   readonly onReply?: ((scenarioId: string, reply: DirectorReply) => void) | undefined;
+  /**
+   * Called when a turn ends without error and without any text (N183), whatever `chat.silent_turn`
+   * says: the daemon records the `chat.director_silent` event here. It is called before the
+   * generated reply goes to `onReply`. It must not throw; what it throws is logged.
+   */
+  readonly onSilent?: ((scenarioId: string, silent: ChatDirectorSilentPayload) => void) | undefined;
 }
 
 /** The failover of a Director session that is being replaced (P20). */
@@ -655,9 +677,14 @@ export class DirectorSessions {
     let reply = '';
     let failure: DirectorFailure | undefined;
     let failedWith: unknown;
+    let ended = false;
+    const tools = new TurnTools();
+    // Where the log stood when the turn began: a `play.created` after it may be the play it opened.
+    const startedAt = await this.#lastEventId();
     session.active = true;
     const subscription = lease.session.onUpdate((update) => {
       reply += textOf(update);
+      tools.note(update);
     });
     try {
       await lease.session.prompt([{ type: 'text', text }]);
@@ -668,6 +695,7 @@ export class DirectorSessions {
       session.summaryNeeded = false;
       session.failed = false;
       session.failedExecutors.clear();
+      ended = true;
     } catch (error) {
       session.failed = true;
       reply = `${reply}\n[${error instanceof Error ? error.message : String(error)}]`;
@@ -679,20 +707,10 @@ export class DirectorSessions {
       subscription.dispose();
       session.active = false;
       if (reply.trim() !== '') {
-        session.seq += 1;
-        const kept: DirectorReply = { seq: session.seq, to: item.source, text: reply.trim() };
-        session.replies.push(kept);
-        try {
-          this.#options.onReply?.(session.scenarioId, kept);
-        } catch (error) {
-          this.#options.logger.warn(
-            { err: error, scenarioId: session.scenarioId },
-            'the reply of the Director could not be announced',
-          );
-        }
-        const limit = this.#options.config.chat.history;
-        if (session.replies.length > limit)
-          session.replies.splice(0, session.replies.length - limit);
+        this.#keep(session, item, reply.trim());
+      } else if (ended) {
+        // N183: a turn that worked and said nothing. A failed turn always has its error in `reply`.
+        await this.#silent(session, item, tools.list(), startedAt);
       }
       // P20: replaced once the reply is kept; the error still goes up, so the prompt stays in the
       // queue and the pump stops (`PromptDispatcher`): the new session restarts it.
@@ -708,6 +726,111 @@ export class DirectorSessions {
       if (session.leaving && session.lease === undefined) this.#letGo(session);
       this.#arm(session);
     }
+  }
+
+  /** Keeps a reply for the chat, in memory and as `onReply`, bounded by `chat.history`. */
+  #keep(
+    session: DirectorSession,
+    item: PromptQueueItem,
+    text: string,
+    generated?: GeneratedReply,
+  ): void {
+    session.seq += 1;
+    const kept: DirectorReply = {
+      seq: session.seq,
+      to: item.source,
+      text,
+      ...(generated === undefined ? {} : { generated }),
+    };
+    session.replies.push(kept);
+    try {
+      this.#options.onReply?.(session.scenarioId, kept);
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, scenarioId: session.scenarioId },
+        'the reply of the Director could not be announced',
+      );
+    }
+    const limit = this.#options.config.chat.history;
+    if (session.replies.length > limit) session.replies.splice(0, session.replies.length - limit);
+  }
+
+  /**
+   * N183: the turn ended without error and without text. The situation is always an event
+   * (`chat.director_silent`); `chat.silent_turn: notice` (default) also keeps a short reply the
+   * daemon generates from the tools the turn called, so the Producer is never left without an
+   * answer, and `none` leaves the chat as it was.
+   */
+  async #silent(
+    session: DirectorSession,
+    item: PromptQueueItem,
+    tools: readonly ChatToolCall[],
+    startedAt: number | undefined,
+  ): Promise<void> {
+    const { scenarioId } = session;
+    const mode = this.#options.config.chat.silent_turn;
+    const playId = await this.#playOpenedSince(scenarioId, startedAt);
+    this.#options.logger.warn(
+      { scenarioId, tools: tools.map((tool) => tool.name), playId, mode },
+      'the Director ended the turn without a reply',
+    );
+    try {
+      this.#options.onSilent?.(scenarioId, { tools: [...tools], playId, mode });
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, scenarioId },
+        'the silent turn of the Director could not be announced',
+      );
+    }
+    if (mode === 'none') return;
+    this.#keep(session, item, silentReplyText(tools, playId), { tools, playId });
+  }
+
+  async #lastEventId(): Promise<number | undefined> {
+    try {
+      return await this.#options.store.events.lastId();
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'the position of the event log could not be read');
+      return undefined;
+    }
+  }
+
+  /**
+   * The play the turn opened: the last `play.created` of the scenario after `afterId`. [proposta]
+   * The ACP updates do not carry what a tool returned, so the id is read from the event the play
+   * machine writes when it creates the play; a play another source creates in the same scenario
+   * during the turn (the idea queue) could be taken for it. `null` when none, or when the log
+   * could not be read.
+   */
+  async #playOpenedSince(scenarioId: string, afterId: number | undefined): Promise<string | null> {
+    if (afterId === undefined) return null;
+    const PAGE = 500;
+    // A bounded read: a turn does not span an unbounded part of the log.
+    const MAX_PAGES = 20;
+    let found: string | null = null;
+    let cursor = afterId;
+    try {
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const events = await this.#options.store.events.readFrom(cursor, PAGE);
+        for (const event of events) {
+          if (
+            event.type === 'play.created' &&
+            event.scenarioId === scenarioId &&
+            event.playId !== undefined
+          ) {
+            found = event.playId;
+          }
+        }
+        if (events.length < PAGE) break;
+        cursor = events[events.length - 1]?.id ?? cursor;
+      }
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, scenarioId },
+        'the log could not be read for the play',
+      );
+    }
+    return found;
   }
 
   /** Whether `scenarios.director_failover` replaces the session for this failure. */

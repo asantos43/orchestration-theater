@@ -327,6 +327,17 @@ describe('the role-play script', () => {
     expect(woke.said).toEqual(['woke with the state of talk-1', 'answer: again']);
   });
 
+  it('plays a silent Director: opens the play with no text, or does nothing at all (N183)', async () => {
+    const open = host('prefix\n#ot-silent-play do the thing');
+    await playRolePlay(open.host);
+    expect(open.calls).toEqual([{ tool: 'open_play', args: { need: 'do the thing' } }]);
+    expect(open.said).toEqual([]);
+    const nothing = host('prefix\n#ot-silent');
+    await playRolePlay(nothing.host);
+    expect(nothing.calls).toEqual([]);
+    expect(nothing.said).toEqual([]);
+  });
+
   it('hands a hard chat question to the consultant with its attachments', async () => {
     const run = host('#ot-consult how to shard\n#ot-attach A1 A2', {
       consult: { answer: 'x' },
