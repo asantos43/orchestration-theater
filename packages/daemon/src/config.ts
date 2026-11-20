@@ -322,6 +322,24 @@ export const SANDBOX_MODES = ['runtime', 'off'] as const;
  * - `off`: no bridge, only the `localhost:<port>` domain rule, which a client that honours
  *   `NO_PROXY` cannot use.
  */
+/** `api.token`: how long the API token lives (P3 of docs/17). */
+export const API_TOKEN_MODES = ['persistent', 'per_start'] as const;
+export type ApiTokenMode = (typeof API_TOKEN_MODES)[number];
+
+/** `api.remote`: where the API listens. Only `off` (loopback) works until Phase 12. */
+export const API_REMOTE_MODES = ['off', 'vpn', 'proxy'] as const;
+export type ApiRemoteMode = (typeof API_REMOTE_MODES)[number];
+
+/** True for the text of an origin as a browser writes it: scheme, host, optional port, no path. */
+function isOriginText(text: string): boolean {
+  try {
+    const url = new URL(text);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === text;
+  } catch {
+    return false;
+  }
+}
+
 export const SANDBOX_MCP_BRIDGE_MODES = ['auto', 'proxy', 'unix', 'off'] as const;
 export type SandboxMcpBridgeMode = (typeof SANDBOX_MCP_BRIDGE_MODES)[number];
 
@@ -1451,11 +1469,56 @@ export const DaemonConfigSchema = z
     tools: ToolsConfigSchema,
     browser: BrowserConfigSchema,
     /**
-     * The API of the daemon (architecture 5.12; Phase 6). [proposta] One block that grows step by
-     * step: P2 only has `sse.buffer_events`, and P3 adds `port`, `token`, `remote`, `cors`... here.
+     * The API of the daemon (architecture 5.12; Phase 6, P3 of docs/17). [proposta] The names and
+     * the defaults below. The API always binds `127.0.0.1` and always asks for the token.
      */
     api: z
       .strictObject({
+        /** `auto` (default): the system picks a free port (tests, several daemons); or a fixed port. */
+        port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+        /**
+         * `persistent` (default): `api-token` in the data folder is reused across starts (a client
+         * keeps working over a restart). `per_start`: a new token at each start.
+         */
+        token: z.enum(API_TOKEN_MODES).default('persistent'),
+        /**
+         * `off` (default): loopback only. `vpn` and `proxy` (N165, N166) come in Phase 12 and are
+         * refused for now, so a typo or a copied config never opens the API beyond the machine.
+         */
+        remote: z
+          .enum(API_REMOTE_MODES)
+          .default('off')
+          .refine((mode) => mode === 'off', {
+            message:
+              'api.remote vpn and proxy are not available yet (Phase 12); only off is accepted',
+          }),
+        cors: z
+          .strictObject({
+            /**
+             * Origins (`https://app.example`, no path, no `*`) a browser page may call the API from.
+             * Empty (default): no `Access-Control-Allow-*` header is ever sent.
+             */
+            origins: z
+              .array(
+                z.string().refine(isOriginText, {
+                  message: 'expected an origin such as https://app.example (scheme, host, port)',
+                }),
+              )
+              .default([]),
+          })
+          .prefault({}),
+        /** [proposta: 1 MiB] The largest request body the API reads; a bigger one is `payload_too_large`. */
+        max_body_bytes: z.int().min(1).default(1_048_576),
+        rejection_events: z
+          .strictObject({
+            /**
+             * [proposta: 10s] At most one `api.client_rejected` event per reason (`token`, `host`,
+             * `origin`) in this window, so a scan cannot flood the log of events; the event counts
+             * what it held back. Every rejection is still a line in the daemon log.
+             */
+            every: DurationSchema.prefault('10s'),
+          })
+          .prefault({}),
         sse: z
           .strictObject({
             /**

@@ -83,6 +83,38 @@
   },
   "routes": [
     {
+      "id": "rotateApiToken",
+      "method": "POST",
+      "path": "/v1/api-token/rotate",
+      "kind": "json",
+      "summary": "Swap the API token: the old one stops working at once; the new one is in api-token",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "rotated": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "rotated"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    },
+    {
       "id": "createChatTicket",
       "method": "POST",
       "path": "/v1/chat-tickets",

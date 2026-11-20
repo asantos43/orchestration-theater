@@ -18,13 +18,17 @@ import {
   type Store,
 } from '@otheater/core';
 import {
+  API_VERSION,
   buildDaemonEvent,
   DaemonStatusSchema,
   type BackupTrigger,
+  type DaemonId,
   type DaemonRecoveredPayload,
   type DaemonState,
   type DaemonStatus,
 } from '@otheater/protocol';
+import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
+import { ApiServer } from './api/server.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
@@ -157,6 +161,15 @@ export interface DaemonHandle {
    * through it.
    */
   readonly eventHub: EventHub;
+  /**
+   * P3 (Phase 6): the HTTP API of the daemon, listening on `127.0.0.1` since the start. `api.handlers`
+   * is where P4 to P7 register the handler of each route of `API_ROUTES` (`api.handlers.register(id,
+   * handler, { command })`); `api.url` is the base URL (no token); `api.onTokenRotated(listener)` is
+   * the hook the streams and sockets close on when the token changes.
+   */
+  readonly api: ApiServer;
+  /** The id of this daemon (N168): the UUID of `daemon-id` in the data folder, the same across restarts. */
+  readonly daemonId: DaemonId;
   readonly vault: SecretVault;
   /** The validated registries the daemon started with (architecture 5.18). */
   readonly registries: Registries;
@@ -247,6 +260,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let directives: DirectiveService | undefined;
   let quota: QuotaService | undefined;
   let browserTools: BrowserTools | undefined;
+  // The API server is started inside `run`; a failure after that point stops it from here.
+  const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
   // Producer channel wait here (5.21: "os comandos que mudam estado esperam").
   const gate = new RecoveryGate();
@@ -367,9 +382,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       orchestrationHandlers,
       scenarioHandlers,
       gate,
+      apiRef,
     });
   } catch (error) {
     gate.open();
+    await apiRef.server?.stop().catch(() => undefined);
     await directives?.stop().catch(() => undefined);
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
@@ -396,6 +413,8 @@ interface RunInput {
   readonly orchestrationHandlers: OrchestrationHandlers;
   readonly scenarioHandlers: ScenarioHandlers;
   readonly gate: RecoveryGate;
+  /** Where `run` leaves the API server it started, so a failure of the start-up can stop it. */
+  readonly apiRef: { server?: ApiServer };
 }
 
 async function run(input: RunInput): Promise<DaemonHandle> {
@@ -413,6 +432,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     version,
     prompts,
     gate,
+    apiRef,
   } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir);
@@ -461,6 +481,27 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P24 (N146): what compose and the vault noticed before this point is written now, after
   // `daemon.started`, and what comes later is written as it happens.
   composition.situations.open();
+
+  // P3 (Phase 6): the API listens from here, before the reconciliation. A read (`GET /v1/status`)
+  // answers at once with the state `recovering`; a command waits on the gate (5.21).
+  const daemonId = await loadOrCreateDaemonId(paths.daemonId, logger);
+  const api = await ApiServer.start({
+    port: config.api.port,
+    token: await loadOrCreateApiToken(paths.apiToken, config.api.token),
+    tokenMode: config.api.token,
+    tokenFile: paths.apiToken,
+    discoveryFile: paths.apiDiscovery,
+    daemonId,
+    corsOrigins: config.api.cors.origins,
+    maxBodyBytes: config.api.max_body_bytes,
+    rejectionWindowMs: config.api.rejection_events.every,
+    now: () => clock.now(),
+    logger,
+    situations: composition.situations,
+    gate,
+  });
+  apiRef.server = api;
+  api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
 
   await directives.start();
 
@@ -694,6 +735,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
           logger.error({ err: error }, `shutdown step failed: ${what}`);
         }
       };
+      // First: no new request reaches a service that is about to stop (and `api.json` goes away).
+      await attempt('api', () => api.stop());
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
@@ -761,6 +804,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     // The store as the adapter built it; the daemon's own code appends through the validated one.
     store: composition.rawStore,
     eventHub: composition.eventHub,
+    api,
+    daemonId,
     vault,
     registries,
     adapters: composition.adapters,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readdir, writeFile } from 'node:fs/promises';
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Store } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
@@ -99,6 +99,13 @@ describe('ot: usage and information', () => {
     ['an unknown command', ['frobnicate'], /Unknown command "frobnicate"/],
     ['restore without a folder', ['restore'], /needs the backup folder/],
     ['restore with two folders', ['restore', 'a', 'b'], /Too many arguments for "ot restore"/],
+    ['api without an action', ['api'], /"ot api" needs an action/],
+    ['api with an unknown action', ['api', 'burn'], /Unknown action "burn" for "ot api"/],
+    [
+      'api rotate-token with an argument',
+      ['api', 'rotate-token', 'x'],
+      /Too many arguments for "ot api"/,
+    ],
     ['backup with an argument', ['backup', 'x'], /Too many arguments for "ot backup"/],
     ['daemon with an argument', ['daemon', 'x'], /Too many arguments for "ot daemon"/],
     ['an unknown option', ['--bogus'], /Invalid option/],
@@ -421,6 +428,46 @@ describe('ot directives', () => {
       }
       const empty = await run(['directives', 'list'], tmp.dir, { systemLocale: 'pt-BR' });
       expect(empty.out).toEqual(['Nenhuma ordem.']);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+});
+
+describe('ot api rotate-token (Phase 6, P3)', () => {
+  it('with no daemon, writes a new token (mode 0600) into api-token and says so', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const path = dataPaths(tmp.dir).apiToken;
+      const first = await ot(['api', 'rotate-token', '--data-dir', tmp.dir], tmp.dir);
+      expect(first).toMatchObject({ code: 0, err: [] });
+      expect(first.out.join('\n')).toMatch(/daemon is stopped/);
+      const one = await readFile(path, 'utf8');
+      expect(one.trim()).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(first.out.join('\n')).not.toContain(one.trim());
+      if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600);
+      await ot(['api', 'rotate-token', '--data-dir', tmp.dir], tmp.dir);
+      expect(await readFile(path, 'utf8')).not.toBe(one);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('with a daemon running but no live api.json, fails with a clear message, in pt-BR when asked', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const paths = dataPaths(tmp.dir);
+      const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+      try {
+        const refused = await ot(['api', 'rotate-token', '--data-dir', tmp.dir], tmp.dir, {
+          systemLocale: 'pt-BR',
+        });
+        expect(refused.code).toBe(1);
+        expect(refused.err[0]).toMatch(/api\.json está velho/);
+        expect(refused.out).toEqual([]);
+      } finally {
+        await lock.release();
+      }
     } finally {
       await tmp.dispose();
     }

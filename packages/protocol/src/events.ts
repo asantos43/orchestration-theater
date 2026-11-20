@@ -31,6 +31,7 @@ import {
   ScenarioDirectorResumedPayloadSchema,
   ScenarioDirectorWaitingPayloadSchema,
 } from './selection-events.js';
+import { ApiClientRejectedPayloadSchema, ApiStartedPayloadSchema } from './api-events.js';
 import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
@@ -583,6 +584,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ScenarioNoticePayloadSchema,
   }),
+  defineEventType({
+    type: 'api.started',
+    schemaVersion: 1,
+    payload: ApiStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'api.client_rejected',
+    schemaVersion: 1,
+    payload: ApiClientRejectedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -704,6 +715,8 @@ export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
 export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
+export type ApiStartedPayload = DaemonEventPayloads['api.started'];
+export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);
