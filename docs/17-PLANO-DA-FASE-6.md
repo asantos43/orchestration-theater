@@ -464,7 +464,7 @@ Todas foram decididas pelo dono em 2026-11-19, por múltipla escolha, iguais à 
 - **N171, merge:** a autorização das Fases 3 a 5 vale também para a Fase 6. Com a CI verde, o squash é feito pelo `merge-pr.sh`, sem ok por PR.
 
 Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir dos achados do P8, do P12 e do P13 ([docs/13](13-DECISOES-EM-ABERTO.md)). Todas iguais à recomendação, menos a N175. A implementação de todas, menos a N178, **ainda não foi feita**:
-- **N172, eventos de entrega no filtro por cenário:** `delivery.completed`, `workspace.integrated` e `workspace.integration_failed` ganham `scenarioId` no payload (aditivo, mesma `schemaVersion`), e o filtro `scenario` do SSE passa a vê-los. A implementar.
+- **N172, eventos de entrega no filtro por cenário:** `delivery.completed`, `workspace.integrated` e `workspace.integration_failed` ganham `scenarioId` no payload (aditivo, mesma `schemaVersion`), e o filtro `scenario` do SSE passa a vê-los. Implementada no PR #189.
 - **N173, eventos que faltam:** `decision.created`, `decision.answered`, `scenario.archived` e `demand.transitioned` (nomes **[proposta]**), num passo só da próxima fase. A implementar.
 - **N174, layout entre clientes:** evento `layout.changed` e a chave `ui.layout.sync: live | on_open`, padrão `live`. A implementar.
 - **N175, modo `poll` de `chat.presence`** (diferente da recomendação): renomeado para `connected`, **sem alias**; o nome antigo é recusado. Modos `connected | always | never`, padrão `connected`. Implementada no PR #190.

@@ -304,6 +304,36 @@ describe('follow: filter', () => {
     controller.abort();
   });
 
+  it('follows the integration and the delivery of a play by the scenario in the envelope (N172)', async () => {
+    const { store, hub } = setup();
+    const { controller, iterable } = followOf(hub, {
+      afterId: 0,
+      filter: { scenarioIds: ['sc-a'] },
+    });
+    const received = take(iterable, 3);
+    await settle();
+    await store.events.append(
+      tick(1, { scenarioId: 'sc-a', playId: 'p1', type: 'workspace.integrated' }),
+    );
+    // The events logged before N172 have a `playId` and no `scenarioId`: they stay out.
+    await store.events.append(tick(2, { playId: 'p1', type: 'delivery.completed' }));
+    await store.events.append(
+      tick(3, { scenarioId: 'sc-b', playId: 'p2', type: 'delivery.completed' }),
+    );
+    await store.events.append(
+      tick(4, { scenarioId: 'sc-a', playId: 'p1', type: 'workspace.integration_failed' }),
+    );
+    await store.events.append(
+      tick(5, { scenarioId: 'sc-a', playId: 'p1', type: 'delivery.completed' }),
+    );
+    expect((await received).map((event) => event.type)).toEqual([
+      'workspace.integrated',
+      'workspace.integration_failed',
+      'delivery.completed',
+    ]);
+    controller.abort();
+  });
+
   it('treats an empty list as no restriction', async () => {
     const { store, hub } = setup();
     await store.events.append(tick(1, { scenarioId: 'sc-a' }));

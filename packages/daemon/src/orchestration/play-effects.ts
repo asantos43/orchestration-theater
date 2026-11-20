@@ -1546,6 +1546,7 @@ export class OrchestrationEffects implements PlayEffects {
       const result = await workspace.integrate({
         repo: repo.path,
         playId,
+        scenarioId,
         script,
         approved,
         round: await this.#roundOf(playId),
@@ -1624,6 +1625,7 @@ export class OrchestrationEffects implements PlayEffects {
     const result = await workspace.deliver({
       repo: repo.path,
       playId,
+      scenarioId,
       base: repo.mainBranch,
       ...(repo.remote === undefined ? {} : { remote: repo.remote }),
       title: artifacts.title,

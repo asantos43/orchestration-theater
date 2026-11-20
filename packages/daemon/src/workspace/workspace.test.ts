@@ -20,6 +20,7 @@ import { Workspace } from './workspace.js';
 afterAll(disposeTestGitIsolation);
 
 const PLAY = 'play-1';
+const SCENARIO = 'scenario-1';
 const T = 60_000;
 
 interface Rig extends WorkspaceRig {
@@ -126,6 +127,7 @@ describe('Workspace.integrate', () => {
       const result = await rig.workspace.integrate({
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script,
         approved: [
           { demandId: 'd2', attempt: 1 },
@@ -155,7 +157,11 @@ describe('Workspace.integrate', () => {
 
       const events = await eventsOf(rig, 'workspace.integrated');
       expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ playId: PLAY, payload: { head: result.head } });
+      expect(events[0]).toMatchObject({
+        playId: PLAY,
+        scenarioId: SCENARIO,
+        payload: { scenarioId: SCENARIO, head: result.head },
+      });
     },
     T,
   );
@@ -167,6 +173,7 @@ describe('Workspace.integrate', () => {
       const input = {
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script,
         approved: [{ demandId: 'd1', attempt: 1 }],
       };
@@ -189,6 +196,7 @@ describe('Workspace.integrate', () => {
       const input = {
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script,
         approved: [
           { demandId: 'd1', attempt: 1 },
@@ -218,7 +226,10 @@ describe('Workspace.integrate', () => {
 
       const failed = await eventsOf(rig, 'workspace.integration_failed');
       expect(failed).toHaveLength(1);
+      // N172: the scenario is in the envelope (the SSE filter reads it there) and in the payload.
+      expect(failed[0]).toMatchObject({ playId: PLAY, scenarioId: SCENARIO });
       expect(failed[0]?.payload).toMatchObject({
+        scenarioId: SCENARIO,
         cause: 'merge_conflict',
         demandId: 'd3',
         conflictFiles: ['shared.txt'],
@@ -242,6 +253,7 @@ describe('Workspace.integrate', () => {
       const result = await rig.workspace.integrate({
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script,
         approved: [
           { demandId: 'd1', attempt: 1 },
@@ -261,6 +273,7 @@ describe('Workspace.integrate', () => {
       const input = {
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script,
         approved: [{ demandId: 'd1', attempt: 1 }],
       };
@@ -299,7 +312,7 @@ describe('Workspace.integrate', () => {
   it(
     'rejects what makes no sense before touching git',
     async () => {
-      const base = { repo: rig.repo, playId: PLAY, script };
+      const base = { repo: rig.repo, playId: PLAY, scenarioId: SCENARIO, script };
       await expect(rig.workspace.integrate({ ...base, approved: [] })).rejects.toBeInstanceOf(
         InvalidInput,
       );
@@ -330,6 +343,7 @@ describe('Workspace.integrate', () => {
         rig.workspace.integrate({
           repo: rig.repo,
           playId: 'other-play',
+          scenarioId: SCENARIO,
           script,
           approved: [{ demandId: 'd1', attempt: 1 }],
         }),
@@ -338,6 +352,7 @@ describe('Workspace.integrate', () => {
         rig.workspace.integrate({
           repo: rig.repo,
           playId: PLAY,
+          scenarioId: SCENARIO,
           script,
           approved: [{ demandId: 'd1', attempt: 1 }],
         }),
@@ -353,6 +368,7 @@ describe('Workspace.deliver', () => {
   const branch = integrationBranch(PLAY);
   const delivery = {
     playId: PLAY,
+    scenarioId: SCENARIO,
     base: 'main',
     title: 'Deliver play 1',
     body: 'What was done.',
@@ -368,6 +384,7 @@ describe('Workspace.deliver', () => {
     const integrated = await rig.workspace.integrate({
       repo: rig.repo,
       playId: PLAY,
+      scenarioId: SCENARIO,
       script,
       approved: [{ demandId: 'd1', attempt: 1 }],
     });
@@ -406,7 +423,9 @@ describe('Workspace.deliver', () => {
       ]);
       const events = await eventsOf(rig, 'delivery.completed');
       expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ playId: PLAY, scenarioId: SCENARIO });
       expect(events[0]?.payload).toMatchObject({
+        scenarioId: SCENARIO,
         mode: 'pr',
         requestedMode: 'pr',
         requestedBy: 'config',
@@ -692,6 +711,7 @@ describe('Workspace: the base moves while the play runs (N83, N84)', () => {
       await rig.workspace.integrate({
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script: demands,
         approved: [{ demandId: 'd1', attempt: 1 }],
       });
@@ -722,6 +742,7 @@ describe('Workspace: the base moves while the play runs (N83, N84)', () => {
       const integrated = await rig.workspace.integrate({
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script: demands,
         approved: [{ demandId: 'd1', attempt: 1 }],
       });
@@ -744,6 +765,7 @@ describe('Workspace: the base moves while the play runs (N83, N84)', () => {
       const input = {
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script: demands,
         approved: [{ demandId: 'd1', attempt: 1 }],
       };
@@ -775,6 +797,7 @@ describe('Workspace.deliver: what the delivery adds before the push (P7)', () =>
   const branch = integrationBranch(PLAY);
   const delivery = {
     playId: PLAY,
+    scenarioId: SCENARIO,
     base: 'main',
     title: 'Add the thing',
     body: 'What was done.',
@@ -806,6 +829,7 @@ describe('Workspace.deliver: what the delivery adds before the push (P7)', () =>
     const integrated = await rig.workspace.integrate({
       repo: rig.repo,
       playId: PLAY,
+      scenarioId: SCENARIO,
       script,
       approved: [{ demandId: 'd1', attempt: 1 }],
     });
