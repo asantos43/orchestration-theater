@@ -12,6 +12,7 @@ import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/te
 import { describe, expect, it, vi } from 'vitest';
 import { checkAdapterRange, compose, composeClock } from './compose.js';
 import { parseConfig } from './config.js';
+import { buildDaemonRegistries } from './registries.js';
 import { makeTempDataDir } from './test-helpers.js';
 
 const adapter = (port: string, range: string): Adapter => ({
@@ -69,6 +70,44 @@ describe('compose', () => {
     }
   });
 
+  it('announces every append of the daemon through the event hub, validated or not (Phase 6, P2)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const clock = new FakeClock(1000);
+      const store = new InMemoryStore({ clock });
+      const composition = await compose(parseConfig('api:\n  sse:\n    buffer_events: 7\n'), {
+        dataDir: tmp.dir,
+        events: { registry: buildDaemonRegistries().events, unknownType: 'reject' },
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+      });
+      const controller = new AbortController();
+      const live = composition.eventHub.follow({ signal: controller.signal });
+      const received: string[] = [];
+      const reader = (async () => {
+        for await (const event of live) {
+          received.push(event.type);
+          if (received.length === 2) break;
+        }
+      })();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const stopped = {
+        type: 'daemon.stopped',
+        schemaVersion: 1,
+        payload: { reason: 'signal', uptimeMs: 1 },
+      } as const;
+      await composition.store.events.append(stopped);
+      // The raw store (what `DaemonHandle.store` exposes) is announced too, with no validation.
+      await composition.rawStore.events.append({ ...stopped, type: 'test.raw' });
+      await reader;
+      expect(received).toEqual(['daemon.stopped', 'test.raw']);
+      expect(composition.eventHub.subscriberCount).toBe(0);
+      controller.abort();
+      await composition.close();
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
   it('uses overrides instead of adapters and records them as override', async () => {
     const tmp = await makeTempDataDir();
     try {
@@ -80,7 +119,9 @@ describe('compose', () => {
         overrides: { clock, store, vault: new InMemorySecretVault() },
       });
       expect(composition.clock).toBe(clock);
-      expect(composition.store).toBe(store);
+      // The store the daemon uses is the override behind the event hub: same data, same close.
+      await composition.store.events.append({ type: 'test.tick', schemaVersion: 1, payload: {} });
+      await expect(store.events.lastId()).resolves.toBe(1);
       expect(composition.adapters.map((record) => record.id)).toEqual([
         'override',
         'override',

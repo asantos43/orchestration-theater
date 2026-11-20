@@ -35,6 +35,7 @@ import {
 } from './compose.js';
 import { loadConfig, type DaemonConfig } from './config.js';
 import { Execution } from './execution/service.js';
+import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
 import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
@@ -150,6 +151,12 @@ export type StopReason = 'signal' | 'shutdown' | 'error';
 export interface DaemonHandle {
   readonly clock: Clock;
   readonly store: Store;
+  /**
+   * P2 (Phase 6): the in-process notice of a new event. `eventHub.follow({ afterId, filter, signal })`
+   * is the live read the SSE (P4) and the WebSocket (P7) use; `store` above already announces
+   * through it.
+   */
+  readonly eventHub: EventHub;
   readonly vault: SecretVault;
   /** The validated registries the daemon started with (architecture 5.18). */
   readonly registries: Registries;
@@ -753,6 +760,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     clock,
     // The store as the adapter built it; the daemon's own code appends through the validated one.
     store: composition.rawStore,
+    eventHub: composition.eventHub,
     vault,
     registries,
     adapters: composition.adapters,

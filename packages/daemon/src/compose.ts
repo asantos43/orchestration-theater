@@ -109,6 +109,7 @@ import {
   type DaemonConfig,
 } from './config.js';
 import { validateEventsOf, type EventValidation } from './event-validation.js';
+import { createEventHub, type EventHub } from './events/event-hub.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env } from './paths.js';
 import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
@@ -191,9 +192,15 @@ export interface Composition {
   /**
    * [proposta] The store as the adapter built it, with no event validation. `DaemonHandle.store`
    * exposes this one (the Phase 2 tests append their own event types through it); the same
-   * instance as `store` when `events` is not set.
+   * instance as `store` when `events` is not set. Both go through the {@link EventHub}.
    */
   readonly rawStore: Store;
+  /**
+   * P2 (Phase 6): the notice of a new event, in process. Every `append` of the daemon (through
+   * `store` and through `rawStore`) is announced after it is committed; `hub.follow` is what the
+   * API streams read from.
+   */
+  readonly eventHub: EventHub;
   readonly vault: SecretVault;
   readonly logger: Logger;
   readonly adapters: readonly AdapterRecord[];
@@ -576,6 +583,13 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       store = await SqliteStore.open(storeSection(config, paths), clock);
     }
 
+    // Phase 6, P2: the hub is the innermost decorator, so every `append` that reaches the adapter
+    // (validated or not) is announced after the commit, and one the registry refuses never is.
+    const eventHub = createEventHub(store, {
+      bufferEvents: config.api.sse.buffer_events,
+      logger,
+    });
+    store = eventHub.store;
     // N80: every `append` of the daemon goes through the event registry.
     const rawStore = store;
     if (options.events !== undefined) {
@@ -595,12 +609,13 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
 
     const usageSource = composeUsageSource(config, paths, overrides, adapters, logger, situations);
 
-    const opened = { store, vault, sandbox, browser, situations };
+    const opened = { store, vault, sandbox, browser, situations, eventHub };
     let closing: Promise<void> | undefined;
     return {
       clock,
       store,
       rawStore,
+      eventHub,
       vault,
       logger,
       adapters,
@@ -630,6 +645,7 @@ async function closeParts(
     sandbox: SandboxWiring | undefined;
     browser?: BrowserSession | undefined;
     situations?: SituationLog | undefined;
+    eventHub?: EventHub | undefined;
   },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
@@ -648,6 +664,8 @@ async function closeParts(
   try {
     // The situations still being written use the store: they finish before it closes.
     await parts.situations?.idle();
+    // The streams end before the store they read from closes.
+    parts.eventHub?.close();
     await parts.store?.close();
   } catch (error) {
     failures.push(error);
