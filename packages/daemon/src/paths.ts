@@ -91,6 +91,8 @@ export interface DataPaths {
    * `ot profile shims path --install`.
    */
   readonly bin: string;
+  /** The layout preferences of the interfaces, one file each (`<layout>/<interface>.json`; P12, N170). */
+  readonly layout: string;
 }
 
 export function dataPaths(dataDir: string): DataPaths {
@@ -113,6 +115,7 @@ export function dataPaths(dataDir: string): DataPaths {
     apiToken: resolve(root, API_TOKEN_FILE),
     daemonId: resolve(root, DAEMON_ID_FILE),
     bin: resolve(root, 'bin'),
+    layout: resolve(root, 'layout'),
   };
 }
 

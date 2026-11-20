@@ -44,6 +44,44 @@ export interface FileDaemonListStoreOptions {
 /** Default of `FileDaemonListStoreOptions.renameAttempts`. */
 export const DEFAULT_RENAME_ATTEMPTS = 5;
 
+export interface WritePrivateFileOptions {
+  /** See {@link FileDaemonListStoreOptions.renameAttempts}. Default {@link DEFAULT_RENAME_ATTEMPTS}. */
+  readonly renameAttempts?: number | undefined;
+}
+
+/**
+ * Writes `text` to `path` so a reader never sees half a file, at mode 0600: a temporary file in the
+ * same folder, renamed over the target (retried while Windows refuses it, see `renameAttempts`).
+ * The folder is made with mode 0700 where POSIX modes exist. Used for `client.json` and for the
+ * layout file of the `local` mode.
+ */
+export async function writePrivateFileAtomic(
+  path: string,
+  text: string,
+  options: WritePrivateFileOptions = {},
+): Promise<void> {
+  const attempts = Math.max(1, options.renameAttempts ?? DEFAULT_RENAME_ATTEMPTS);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    await writeFile(temporary, text, { encoding: 'utf8', mode: 0o600 });
+    // `writeFile` is subject to the umask, which only removes bits: set the exact mode.
+    await chmod(temporary, 0o600);
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await rename(temporary, path);
+        return;
+      } catch (error) {
+        if (attempt >= attempts || !isTransientRename(error)) throw error;
+        await sleep(10 * 2 ** (attempt - 1));
+      }
+    }
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 /**
  * The list of saved daemons as a JSON file (`client.json`), mode 0600 because it holds tokens.
  * A write goes to a temporary file in the same folder and is renamed over the list, so a reader
@@ -102,33 +140,10 @@ export class FileDaemonListStore implements DaemonListStore {
     return run;
   }
 
-  async #rename(from: string): Promise<void> {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        await rename(from, this.#path);
-        return;
-      } catch (error) {
-        if (attempt >= this.#renameAttempts || !isTransientRename(error)) throw error;
-        await sleep(10 * 2 ** (attempt - 1));
-      }
-    }
-  }
-
-  async #write(file: unknown): Promise<void> {
-    await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
-    const temporary = `${this.#path}.${randomBytes(4).toString('hex')}.tmp`;
-    try {
-      await writeFile(temporary, `${JSON.stringify(file, null, 2)}\n`, {
-        encoding: 'utf8',
-        mode: 0o600,
-      });
-      // `writeFile` is subject to the umask, which only removes bits: set the exact mode.
-      await chmod(temporary, 0o600);
-      await this.#rename(temporary);
-    } catch (error) {
-      await rm(temporary, { force: true }).catch(() => undefined);
-      throw error;
-    }
+  #write(file: unknown): Promise<void> {
+    return writePrivateFileAtomic(this.#path, `${JSON.stringify(file, null, 2)}\n`, {
+      renameAttempts: this.#renameAttempts,
+    });
   }
 }
 

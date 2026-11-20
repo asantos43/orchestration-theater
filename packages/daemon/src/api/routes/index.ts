@@ -11,6 +11,7 @@ import { registerExecutorRoutes } from './executors.js';
 import { registerIdeaCommands } from './idea-commands.js';
 import { registerIdeaRoutes } from './ideas.js';
 import { IdempotencyCache } from './idempotency.js';
+import { registerLayoutCommands, registerLayoutRoutes } from './layout.js';
 import { registerOrderCommands } from './order-commands.js';
 import { registerOrderRoutes } from './orders.js';
 import { registerPlayCommands } from './play-commands.js';
@@ -37,6 +38,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerIdeaRoutes(handlers, deps);
   registerUsageRoutes(handlers, deps);
   registerConfigRoutes(handlers, deps);
+  registerLayoutRoutes(handlers, deps);
 }
 
 /**
@@ -55,4 +57,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerIdeaCommands(register, deps);
   registerProfileCommands(register, deps);
   registerConfigCommands(register, deps);
+  registerLayoutCommands(register, deps);
 }

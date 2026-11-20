@@ -46,6 +46,7 @@ import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
 import { executionSettingsOf } from './execution/settings.js';
 import { InstanceLock } from './instance-lock.js';
+import { LayoutPreferencesStore } from './layout/preferences.js';
 import type { Logger } from './logger.js';
 import type { McpAccess } from './mcp/access.js';
 import { DirectiveService, registerDirectiveTools } from './directives/index.js';
@@ -834,6 +835,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         }),
   });
 
+  // P12 (Phase 6, N170): the layout records of the interfaces, read here and not later so a start
+  // never waits for them; a record that cannot be used is replaced by the default and noticed.
+  const layout = await LayoutPreferencesStore.open({
+    dir: paths.layout,
+    situations: composition.situations,
+    logger,
+  });
+
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
@@ -843,6 +852,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     usage,
     budget,
     profiles,
+    layout,
     attachments: new AttachmentService({
       store,
       clock,
@@ -864,6 +874,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     profiles,
     configPath: paths.config,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
+    layout,
     channel: orchestration?.channel,
     runner: orchestration?.runner,
     ideas: orchestration?.ideas,

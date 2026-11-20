@@ -69,6 +69,20 @@ describe('parseConfig', () => {
     expect(config.log).toEqual({ level: 'info', destination: 'file' });
   });
 
+  it('takes ui.layout.store as daemon or local and ui.layout.write_delay as a duration (P12)', () => {
+    expect(parseConfig('').ui.layout).toEqual({ store: 'daemon', write_delay: 300 });
+    expect(
+      parseConfig('ui:\n  layout:\n    store: local\n    write_delay: 1s\n').ui.layout,
+    ).toEqual({
+      store: 'local',
+      write_delay: 1000,
+    });
+    expect(() => parseConfig('ui:\n  layout:\n    store: cloud\n')).toThrow(/ui\.layout\.store/);
+    expect(() => parseConfig('ui:\n  layout:\n    write_delay: soon\n')).toThrow(
+      /ui\.layout\.write_delay/,
+    );
+  });
+
   it('takes backup.pages_per_step as "all" or an integer >= 1', () => {
     expect(parseConfig('backup:\n  pages_per_step: all\n').backup.pages_per_step).toBe('all');
     expect(parseConfig('backup:\n  pages_per_step: 500\n').backup.pages_per_step).toBe(500);
