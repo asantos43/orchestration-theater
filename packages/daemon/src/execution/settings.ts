@@ -7,6 +7,7 @@ import {
   type QUOTA_WAIT_DEADLINE_MODES,
   type ON_PROFILE_REMOVED_MODES,
   type QUOTA_WAIT_MISSED_MODES,
+  type TurnTimeoutMode,
   type PACKAGE_SHORT_OUTPUT_MODES,
   type PACKAGE_SUMMARIZE_MODES,
   CLIENT_IDS,
@@ -75,6 +76,10 @@ export interface ExecutionSettings {
   readonly timeoutMs: number;
   /** `limits.demand_timeout_max`: a request never gets more than this. */
   readonly timeoutMaxMs: number;
+  /** `limits.turn_timeout` (N184): the limit of one turn of a session. */
+  readonly turnTimeoutMs: number;
+  /** `limits.on_turn_timeout` (N184). */
+  readonly onTurnTimeout: TurnTimeoutMode;
   /** `resume.checkpoint_every`. */
   readonly checkpointEveryMs: number;
   /** Completed edit tool calls that make one batch. */
@@ -134,6 +139,8 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     },
     timeoutMs: config.limits.demand_timeout,
     timeoutMaxMs: config.limits.demand_timeout_max,
+    turnTimeoutMs: config.limits.turn_timeout,
+    onTurnTimeout: config.limits.on_turn_timeout,
     checkpointEveryMs: config.resume.checkpoint_every,
     checkpointEditBatch: config.resume.checkpoint_edit_batch,
     maxResumes: config.resume.max_resumes,

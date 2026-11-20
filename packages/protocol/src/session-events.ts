@@ -313,6 +313,21 @@ export const SessionCancelEscalatedPayloadSchema = z.strictObject({
   ...correlation,
 });
 
+/**
+ * `session.turn_timeout`: one turn of a session outlived `limits.turn_timeout` (N184). [proposta]
+ * `action` is `limits.on_turn_timeout` at that moment: `cancel` (the session is cancelled and the
+ * turn counts as failed) or `notice` (nothing is cancelled, the event is the only trace).
+ */
+export const SessionTurnTimeoutPayloadSchema = z.strictObject({
+  sessionId: id,
+  /** `limits.turn_timeout`, in milliseconds. */
+  limitMs: z.int().min(1),
+  /** How long the turn had run when the limit was met, in milliseconds. */
+  elapsedMs: z.int().min(0),
+  action: z.enum(['cancel', 'notice']),
+  ...correlation,
+});
+
 /** `session.closed`: the session ended and its process was released. */
 export const SessionClosedPayloadSchema = z.strictObject({
   sessionId: id,

@@ -53,6 +53,13 @@ const good: Record<string, unknown> = {
     siblings: 2,
     ...correlation,
   },
+  'session.turn_timeout': {
+    sessionId: 's1',
+    limitMs: 900_000,
+    elapsedMs: 900_001,
+    action: 'cancel',
+    ...correlation,
+  },
   'session.closed': { sessionId: 's1', reason: 'completed' },
   'attempt.checkpoint': {
     sha: 'abc123',
@@ -130,6 +137,8 @@ describe('session and checkpoint events', () => {
         'session.cancel_escalated',
         { ...(good['session.cancel_escalated'] as object), siblings: -1 },
       ],
+      ['session.turn_timeout', { ...(good['session.turn_timeout'] as object), action: 'off' }],
+      ['session.turn_timeout', { ...(good['session.turn_timeout'] as object), limitMs: 0 }],
       ['session.closed', { sessionId: 's1', reason: 'because' }],
       ['attempt.checkpoint', { sha: 'a', label: 'x', reason: 'whim' }],
       ['attempt.checkpoint', { sha: '', label: 'x', reason: 'interval' }],

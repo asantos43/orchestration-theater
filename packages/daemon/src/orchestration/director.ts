@@ -198,6 +198,14 @@ interface ParkingHooks {
 /** What the notice and the log say about a failover caused by the removal of the profile (P21b). */
 const LEAVING_ERROR = new Error('The profile of the Director session is being removed.');
 
+/** The turn of the Director outlived `limits.turn_timeout` and was cancelled (N184). */
+class TurnTimeoutError extends Error {
+  constructor(limitMs: number) {
+    super(`The turn of the Director took longer than limits.turn_timeout (${String(limitMs)} ms).`);
+    this.name = 'TurnTimeoutError';
+  }
+}
+
 function textOf(update: NormalizedUpdate): string {
   return update.kind === 'agent_message_chunk' && update.content.type === 'text'
     ? update.content.text
@@ -686,8 +694,10 @@ export class DirectorSessions {
       reply += textOf(update);
       tools.note(update);
     });
+    const limit = this.#turnLimit(session, lease);
     try {
-      await lease.session.prompt([{ type: 'text', text }]);
+      const prompt = lease.session.prompt([{ type: 'text', text }]);
+      await (limit === undefined ? prompt : Promise.race([prompt, limit.expired]));
       // A turn cut by the removal of its profile (P21b) may come back as if it had ended: what it
       // said is not the answer, so the prompt goes back to the queue like after an error.
       if (session.leaving) throw LEAVING_ERROR;
@@ -704,6 +714,7 @@ export class DirectorSessions {
       failedWith = session.leaving ? LEAVING_ERROR : error;
       throw error;
     } finally {
+      limit?.stop();
       subscription.dispose();
       session.active = false;
       if (reply.trim() !== '') {
@@ -726,6 +737,60 @@ export class DirectorSessions {
       if (session.leaving && session.lease === undefined) this.#letGo(session);
       this.#arm(session);
     }
+  }
+
+  /**
+   * `limits.turn_timeout` for a turn of the Director (N184), the same key the attempts use. It
+   * needs the clock; without one, or with `limits.on_turn_timeout: off`, there is no limit. `cancel`:
+   * `expired` rejects after the event is written (and the session is cancelled), so the turn fails
+   * like any other failed turn (its error is the reply `[...]` of the chat); `notice`: only the
+   * event `session.turn_timeout`, and the turn goes on. `stop` ends the timer with the turn.
+   */
+  #turnLimit(
+    session: DirectorSession,
+    lease: SessionLease,
+  ): { readonly expired: Promise<never>; readonly stop: () => void } | undefined {
+    const { clock, config, store, logger } = this.#options;
+    const { turn_timeout: limitMs, on_turn_timeout: action } = config.limits;
+    if (clock === undefined || action === 'off') return undefined;
+    const started = clock.now();
+    const timer = new AbortController();
+    const expired = new Promise<never>((_, reject) => {
+      clock.sleep(limitMs, timer.signal).then(
+        async () => {
+          try {
+            await store.events.append({
+              ...buildDaemonEvent('session.turn_timeout', {
+                sessionId: lease.session.sessionId,
+                limitMs,
+                elapsedMs: clock.now() - started,
+                action,
+              }),
+              scenarioId: session.scenarioId,
+            });
+          } catch (error) {
+            logger.warn(
+              { err: error, scenarioId: session.scenarioId },
+              'the turn timeout of the Director could not be recorded',
+            );
+          }
+          if (action !== 'cancel') return;
+          // The turn fails first: the cancel makes the prompt come back as `cancelled`, which must
+          // not be taken for an answer.
+          reject(new TurnTimeoutError(limitMs));
+          await lease.session.cancel().catch(() => undefined);
+        },
+        () => undefined,
+      );
+    });
+    // Nobody may be waiting on `expired` any more when it rejects: never an unhandled rejection.
+    expired.catch(() => undefined);
+    return {
+      expired,
+      stop: () => {
+        timer.abort();
+      },
+    };
   }
 
   /** Keeps a reply for the chat, in memory and as `onReply`, bounded by `chat.history`. */
