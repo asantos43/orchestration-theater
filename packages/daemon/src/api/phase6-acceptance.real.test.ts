@@ -143,6 +143,7 @@ const TRACED_EVENTS = new Set([
   'tool.called',
   'tool.finished',
   'workspace.integrated',
+  'chat.director_silent',
 ]);
 const TRACE_CHARS = 400;
 
@@ -408,6 +409,20 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
             log(`the summary of the log failed: ${String(error)}`);
           }
           for (const note of notes) log(note);
+          // Whether the Director still had a turn running (or a prompt queued) when the play ended:
+          // a real round with no reply and no `chat.director_silent` (N183) points to a turn that
+          // had not ended yet, not to a silent one. Once the play has ended, `busy` is that and the
+          // rare idea work of the scenario.
+          if (scenarioId !== undefined && daemon.producer !== undefined) {
+            try {
+              const { busy } = await daemon.producer.state(scenarioId);
+              log(
+                `Director busy at the end (a turn running or a prompt queued): ${busy ? 'yes' : 'no'}`,
+              );
+            } catch (error) {
+              log(`the state of the Director could not be read: ${String(error)}`);
+            }
+          }
           log(
             `events seen by the client: ${String(received.length)}; Director replies: ${String(replies.length)}; total time: ${((Date.now() - started) / 1000).toFixed(1)}s (deadline ${(limitMs / 1000).toFixed(1)}s)`,
           );
