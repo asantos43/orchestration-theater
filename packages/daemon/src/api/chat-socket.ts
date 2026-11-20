@@ -1,0 +1,545 @@
+// SPDX-License-Identifier: MPL-2.0
+import {
+  NotFound,
+  isOTheaterError,
+  type EventEnvelope,
+  type JsonValue,
+  type Store,
+} from '@otheater/core';
+import {
+  ChatClientMessageSchema,
+  ChatDirectorReplyPayloadSchema,
+  ChatAskPayloadSchema,
+  IdeaQueueHeldPayloadSchema,
+  ScenarioSystemMessagePayloadSchema,
+  apiError,
+  apiErrorCodeOf,
+  invalidInputDetails,
+  type ApiErrorCode,
+  type ChatClientMessage,
+  type ChatServerMessage,
+  type ChatWait,
+} from '@otheater/protocol';
+import type { WSContext } from 'hono/ws';
+import type { WebSocket } from 'ws';
+import type { EventHub } from '../events/event-hub.js';
+import type { Logger } from '../logger.js';
+import type { ProducerChannel } from '../orchestration/channel.js';
+import type { SituationSink } from '../situations.js';
+import { ChatTickets } from './chat-tickets.js';
+import { ApiFailure, type ApiSocketEvents } from './handlers.js';
+import type { ApiServer } from './server.js';
+
+/**
+ * The chat WebSocket of the API (P7 of docs/17): the poll of the Producer channel, pushed, and the
+ * messages of the Producer in the single prompt queue. Every message of the daemon carries the id
+ * of the event that produced it, so one cursor serves the stream and the chat, and a connection
+ * that drops comes back with `resume` and gets what it missed, once.
+ */
+
+/** The `details` of an error of the API. */
+type Details = Readonly<Record<string, JsonValue>>;
+
+/** What the routes read from `api.chat` (the config; every one has a default there). */
+export interface ChatRoutesOptions {
+  readonly api: ApiServer;
+  readonly channel: ProducerChannel;
+  readonly store: Store;
+  readonly hub: EventHub;
+  readonly situations: SituationSink;
+  readonly logger: Logger;
+  readonly now: () => number;
+  /** `api.chat.ticket_ttl`. */
+  readonly ticketTtlMs: number;
+  /** `api.chat.heartbeat`. */
+  readonly heartbeatMs: number;
+  /** `api.chat.state_interval`. */
+  readonly stateIntervalMs: number;
+  /** `api.chat.resume_window`. */
+  readonly resumeWindowMs: number;
+}
+
+/** The types of event the chat turns into messages. The filter of the hub takes them as prefixes. */
+const FEED_TYPES = [
+  'chat.director_reply',
+  'chat.ask',
+  'scenario.system_message',
+  'idea.queue_held',
+  'play.transitioned',
+] as const;
+
+/** Close codes that say the client broke the protocol (RFC 6455): protocol, data, size. */
+const PROTOCOL_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009]);
+
+/** What a refusal of the socket says to the client. */
+const CLOSE = {
+  stop: { code: 1001, reason: 'The daemon is stopping' },
+  rotated: { code: 1008, reason: 'The API token was rotated' },
+  feed: { code: 1011, reason: 'The daemon could not read the events' },
+} as const;
+
+/**
+ * Registers `createChatTicket` and `openChatSocket`. Returns the tickets, for the tests that need
+ * to look at them.
+ */
+export function registerChatRoutes(options: ChatRoutesOptions): ChatTickets {
+  const { api, store } = options;
+  const tickets = new ChatTickets({ ttlMs: options.ticketTtlMs, now: options.now });
+  // A rotation revokes what the old token vouched for: the tickets it issued go with it. The sockets
+  // already open close themselves (each session listens too).
+  api.onTokenRotated(() => {
+    tickets.clear();
+  });
+  api.handlers.register('createChatTicket', async ({ body }) => {
+    if ((await store.scenarios.get(body.scenarioId)) === undefined) {
+      throw new NotFound(`There is no scenario "${body.scenarioId}"`);
+    }
+    return tickets.issue(body.scenarioId);
+  });
+  api.handlers.register(
+    'openChatSocket',
+    async ({ params, query, request, upgrade }) => {
+      if (upgrade === undefined || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+        throw new ApiFailure('invalid_input', 'This route opens a WebSocket');
+      }
+      // One try: the ticket is spent whatever happens next.
+      if (!tickets.redeem(query.ticket, params.id)) return api.rejectTicket(request);
+      if ((await store.scenarios.get(params.id)) === undefined) {
+        throw new NotFound(`There is no scenario "${params.id}"`);
+      }
+      return upgrade(new ChatSession(options, params.id).events());
+    },
+    // A socket is opened with a ticket that a command already waited the gate for.
+    { command: false },
+  );
+  return tickets;
+}
+
+/** One open chat socket. */
+class ChatSession {
+  readonly #options: ChatRoutesOptions;
+  readonly #scenarioId: string;
+  readonly #stop = new AbortController();
+  readonly #asksSent = new Set<string>();
+  #ws: WSContext<WebSocket> | undefined;
+  #raw: WebSocket | undefined;
+  #release: (() => void) | undefined;
+  #timers: NodeJS.Timeout[] = [];
+  #unsubscribe: (() => void) | undefined;
+  #onStop: (() => void) | undefined;
+  #resumeTimer: NodeJS.Timeout | undefined;
+  /** The inbox: messages of the client are handled one at a time, in order. */
+  #inbox: Promise<void> = Promise.resolve();
+  /** The feed and the state go out in order, one step at a time. */
+  #outbox: Promise<void> = Promise.resolve();
+  #started = false;
+  #closed = false;
+  #reason: 'daemon_stop' | 'token_rotated' | 'no_pong' | 'feed_failed' | undefined;
+  #ponged = true;
+  /** The id of the last event of the feed this connection went through (the cursor of its messages). */
+  #cursor = 0;
+  /** The head of the log when the feed started: an ask of an event after it is live. */
+  #head = 0;
+  #waitsSent: string | undefined;
+  #busySent: boolean | undefined;
+
+  constructor(options: ChatRoutesOptions, scenarioId: string) {
+    this.#options = options;
+    this.#scenarioId = scenarioId;
+  }
+
+  events(): ApiSocketEvents {
+    return {
+      onOpen: (_event, ws) => {
+        this.#open(ws);
+      },
+      onMessage: (event) => {
+        const data: unknown = event.data;
+        this.#inbox = this.#inbox.then(() => this.#receive(data));
+      },
+      onClose: (event) => {
+        this.#closedBy(event.code);
+      },
+      onError: (event) => {
+        this.#options.logger.warn(
+          { err: (event as { error?: unknown }).error, scenarioId: this.#scenarioId },
+          'a chat socket failed',
+        );
+      },
+    };
+  }
+
+  // ---- life of the socket ----
+
+  #open(ws: WSContext<WebSocket>): void {
+    const { api, channel, heartbeatMs, resumeWindowMs } = this.#options;
+    this.#ws = ws;
+    this.#raw = ws.raw;
+    // An open socket counts as somebody watching the scenario (N89).
+    this.#release = channel.watch(this.#scenarioId);
+    this.#raw?.on('pong', () => {
+      this.#ponged = true;
+    });
+    const beat = setInterval(() => {
+      if (!this.#ponged) {
+        this.#reason = 'no_pong';
+        this.#raw?.terminate();
+        return;
+      }
+      this.#ponged = false;
+      try {
+        this.#raw?.ping();
+      } catch (error) {
+        this.#options.logger.warn({ err: error }, 'a chat ping failed');
+      }
+    }, heartbeatMs);
+    beat.unref();
+    this.#timers.push(beat);
+    this.#unsubscribe = api.onTokenRotated(() => {
+      this.#reason = 'token_rotated';
+      this.#end(CLOSE.rotated);
+    });
+    const stop = (): void => {
+      this.#reason = 'daemon_stop';
+      this.#end(CLOSE.stop);
+    };
+    if (api.stopSignal.aborted) stop();
+    else {
+      api.stopSignal.addEventListener('abort', stop, { once: true });
+      this.#onStop = () => {
+        api.stopSignal.removeEventListener('abort', stop);
+      };
+    }
+    // A client with a cursor says `resume` first; one with none says nothing, and this is its wait.
+    this.#resumeTimer = setTimeout(() => {
+      this.#inbox = this.#inbox.then(() => this.#start(undefined));
+    }, resumeWindowMs);
+    this.#resumeTimer.unref();
+  }
+
+  #end(close: { readonly code: number; readonly reason: string }): void {
+    try {
+      this.#ws?.close(close.code, close.reason);
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'a chat socket could not be closed');
+    }
+  }
+
+  #closedBy(code: number): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#stop.abort();
+    clearTimeout(this.#resumeTimer);
+    for (const timer of this.#timers) clearInterval(timer);
+    this.#timers = [];
+    this.#unsubscribe?.();
+    this.#onStop?.();
+    this.#release?.();
+    const reason =
+      this.#reason ?? (PROTOCOL_CLOSE_CODES.has(code) ? 'protocol_error' : 'client_closed');
+    // A message too big for the socket ends it before the route sees it: that is a refusal too.
+    if (code === 1009) this.#options.api.recordMessageRejected();
+    this.#options.situations.record(
+      'api.chat_closed',
+      { reason, code: code >= 1000 && code <= 4999 ? code : null },
+      { scenarioId: this.#scenarioId },
+    );
+  }
+
+  // ---- what the client says ----
+
+  async #receive(data: unknown): Promise<void> {
+    if (this.#closed) return;
+    try {
+      const message = this.#parse(data);
+      if (message === undefined) return;
+      if (message.type === 'resume') {
+        if (this.#started) {
+          this.#refuse('invalid_input', 'resume is only taken as the first message');
+          return;
+        }
+        await this.#start(message.lastEventId);
+        return;
+      }
+      // Whoever speaks before the window ends has no cursor: the feed starts now, before the
+      // message goes in, so what the message makes the daemon say is not missed.
+      await this.#start(undefined);
+      await this.#handle(message);
+    } catch (error) {
+      this.#fail(error);
+    }
+  }
+
+  #parse(data: unknown): ChatClientMessage | undefined {
+    if (typeof data !== 'string') {
+      this.#refuse('invalid_input', 'The chat takes text frames only');
+      return undefined;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(data);
+    } catch {
+      this.#refuse('invalid_input', 'The message is not JSON');
+      return undefined;
+    }
+    const parsed = ChatClientMessageSchema.safeParse(json);
+    if (!parsed.success) {
+      this.#refuse('invalid_input', 'The message does not fit the chat contract', {
+        details: invalidInputDetails(parsed.error),
+      });
+      return undefined;
+    }
+    return parsed.data;
+  }
+
+  async #handle(message: Exclude<ChatClientMessage, { type: 'resume' }>): Promise<void> {
+    const { channel } = this.#options;
+    switch (message.type) {
+      case 'message':
+        // The single prompt queue, with the Producer's source: `prompt.queued` is the record.
+        await channel.send(this.#scenarioId, message.text, message.attachments ?? []);
+        return;
+      case 'command':
+        // [proposta] The registry of the commands is of Phase 7: for now the line goes to the
+        // Director as typed, like a message.
+        await channel.send(this.#scenarioId, message.text);
+        return;
+      case 'answer':
+        await channel.answer(message.decisionId, message.answer);
+        return;
+    }
+  }
+
+  #fail(error: unknown): void {
+    const code = apiErrorCodeOf(error);
+    if (code === 'internal') {
+      this.#options.logger.error(
+        { err: error, scenarioId: this.#scenarioId },
+        'a chat message failed',
+      );
+    }
+    this.#sendError(
+      code,
+      code !== 'internal' && isOTheaterError(error)
+        ? error.message
+        : 'The daemon failed this message',
+    );
+  }
+
+  /** A message of the client the daemon refused: the same record as any other refusal. */
+  #refuse(code: ApiErrorCode, message: string, extra: { readonly details?: Details } = {}): void {
+    this.#options.api.recordMessageRejected();
+    this.#sendError(code, message, extra.details);
+  }
+
+  #sendError(code: ApiErrorCode, message: string, details?: Details): void {
+    this.#send({ type: 'error', eventId: null, error: apiError(code, message, details).error });
+  }
+
+  #send(message: ChatServerMessage): void {
+    const ws = this.#ws;
+    if (this.#closed || ws?.readyState !== 1) return;
+    ws.send(JSON.stringify(message));
+  }
+
+  // ---- what the daemon says ----
+
+  /**
+   * Starts the feed. `afterId` is the cursor of a `resume`; without it the feed is live from the
+   * head of the log, and what is pending now comes first (the asks, then the state). Only the first
+   * call does anything.
+   */
+  async #start(afterId: number | undefined): Promise<void> {
+    if (this.#started || this.#closed) return;
+    this.#started = true;
+    clearTimeout(this.#resumeTimer);
+    const { store, channel, stateIntervalMs } = this.#options;
+    const head = await store.events.lastId();
+    this.#head = head;
+    let from = head;
+    if (afterId !== undefined) {
+      if (afterId > head) {
+        // A cursor from another log (the data of the daemon was reset): nothing to resend.
+        this.#refuse('invalid_input', 'lastEventId is ahead of the log; the chat starts from now', {
+          details: { lastEventId: afterId, lastId: head },
+        });
+      } else {
+        from = afterId;
+      }
+    }
+    this.#cursor = from;
+    if (afterId === undefined || afterId > head) {
+      // Nothing to resend: what waits for the Producer now is told as the first thing.
+      const state = await channel.state(this.#scenarioId);
+      for (const ask of state.asks) {
+        this.#asksSent.add(ask.id);
+        this.#send({
+          type: 'ask',
+          eventId: Math.max(1, head),
+          decisionId: ask.id,
+          kind: ask.kind,
+          playId: ask.playId,
+          input: ask.input,
+        });
+      }
+    }
+    await this.#pushState(true);
+    void this.#follow(from);
+    const timer = setInterval(() => {
+      void this.#step(() => this.#pushState(false));
+    }, stateIntervalMs);
+    timer.unref();
+    this.#timers.push(timer);
+  }
+
+  async #follow(afterId: number): Promise<void> {
+    const { hub } = this.#options;
+    try {
+      for await (const event of hub.follow({
+        afterId,
+        filter: { scenarioIds: [this.#scenarioId], typePrefixes: FEED_TYPES },
+        signal: this.#stop.signal,
+      })) {
+        await this.#step(async () => {
+          await this.#deliver(event);
+          this.#cursor = event.id;
+          await this.#pushState(false);
+        });
+      }
+    } catch (error) {
+      if (this.#closed || this.#stop.signal.aborted) return;
+      this.#options.logger.error(
+        { err: error, scenarioId: this.#scenarioId },
+        'the chat feed failed',
+      );
+      this.#reason = 'feed_failed';
+      this.#end(CLOSE.feed);
+    }
+  }
+
+  /** Runs `work` after the one before it, so the messages go out in the order of the events. */
+  #step(work: () => Promise<void>): Promise<void> {
+    const next = this.#outbox.then(async () => {
+      if (this.#closed) return;
+      try {
+        await work();
+      } catch (error) {
+        this.#options.logger.warn(
+          { err: error, scenarioId: this.#scenarioId },
+          'a chat message could not be prepared',
+        );
+      }
+    });
+    this.#outbox = next;
+    return next;
+  }
+
+  async #deliver(event: EventEnvelope): Promise<void> {
+    const eventId = event.id;
+    switch (event.type) {
+      case 'chat.director_reply': {
+        const payload = ChatDirectorReplyPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        this.#send({
+          type: 'director_reply',
+          eventId,
+          replyId: payload.data.replyId,
+          text: payload.data.text,
+          // The Director's reply is kept whole today; parts are for a later step.
+          final: true,
+        });
+        return;
+      }
+      case 'chat.ask': {
+        const payload = ChatAskPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        const { decisionId } = payload.data;
+        // Once per connection: the first state of a fresh socket may already have told it.
+        if (this.#asksSent.has(decisionId)) return;
+        // An ask that was answered (or cancelled) since is not one any more.
+        const ask = await this.#options.channel.pendingAsk(this.#scenarioId, decisionId, {
+          live: event.id > this.#head,
+        });
+        if (ask === undefined) return;
+        this.#asksSent.add(decisionId);
+        this.#send({
+          type: 'ask',
+          eventId,
+          decisionId,
+          kind: ask.kind,
+          playId: ask.playId,
+          input: ask.input,
+        });
+        return;
+      }
+      case 'scenario.system_message': {
+        const payload = ScenarioSystemMessagePayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        this.#send({ type: 'system', eventId, message: payload.data });
+        return;
+      }
+      case 'idea.queue_held': {
+        const payload = IdeaQueueHeldPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        this.#send({ type: 'queue_held', eventId, held: payload.data });
+        return;
+      }
+      case 'play.transitioned': {
+        const to = (event.payload as { to?: unknown } | null)?.to;
+        if (event.playId === undefined || typeof to !== 'string') {
+          this.#skipped(event);
+          return;
+        }
+        this.#send({ type: 'play_state', eventId, playId: event.playId, state: to });
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  #skipped(event: EventEnvelope): void {
+    this.#options.logger.warn(
+      { type: event.type, eventId: event.id, scenarioId: this.#scenarioId },
+      'an event does not fit its chat message; it was not sent',
+    );
+  }
+
+  /**
+   * `waits` and `busy` are the state of the moment, not events: they come from the scenario, are
+   * sent when they change (and once when the feed starts) and carry the cursor of the feed, so a
+   * client never takes from them an id it has not got the events of.
+   */
+  async #pushState(force: boolean): Promise<void> {
+    const state = await this.#options.channel.state(this.#scenarioId);
+    const eventId = Math.max(1, this.#cursor);
+    const waits: ChatWait[] = state.waits.map((wait) => ({
+      role: wait.role,
+      playId: wait.playId,
+      demandId: wait.demandId,
+      on: wait.on.map((item) => ({ profile: item.profile, reason: item.reason })),
+      until: wait.until,
+    }));
+    const key = JSON.stringify(waits);
+    if (force || key !== this.#waitsSent) {
+      this.#waitsSent = key;
+      this.#send({ type: 'waits', eventId, waits });
+    }
+    if (force || state.busy !== this.#busySent) {
+      this.#busySent = state.busy;
+      this.#send({ type: 'busy', eventId, busy: state.busy });
+    }
+  }
+}

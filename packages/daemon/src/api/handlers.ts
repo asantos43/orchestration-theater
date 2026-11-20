@@ -7,6 +7,8 @@ import {
   type ApiRouteId,
   type RouteResponse,
 } from '@otheater/protocol';
+import type { WSEvents } from 'hono/ws';
+import type { WebSocket } from 'ws';
 import type { z } from 'zod';
 
 /**
@@ -31,7 +33,16 @@ export interface ApiCall<Route extends AnyApiRoute> {
   readonly request: Request;
   /** Aborts when the client goes away or the daemon stops. */
   readonly signal: AbortSignal;
+  /**
+   * Only on a route of kind `websocket` (P7): upgrades the connection and hands the socket to
+   * `events`. It resolves to the `Response` the handler returns. Call it only after the route
+   * accepted the request: a refusal is a plain `Response`, and the upgrade never happens.
+   */
+  readonly upgrade?: (events: ApiSocketEvents) => Promise<Response>;
 }
+
+/** What a route that upgrades the connection listens to; `raw` of the context is the `ws` socket. */
+export type ApiSocketEvents = WSEvents<WebSocket>;
 
 /**
  * What a handler returns: the value of the `response` schema (the server answers it as JSON with

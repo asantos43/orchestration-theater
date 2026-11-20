@@ -33,6 +33,12 @@ import {
 } from './selection-events.js';
 import { ApiClientRejectedPayloadSchema, ApiStartedPayloadSchema } from './api-events.js';
 import {
+  ApiChatClosedPayloadSchema,
+  ChatAskPayloadSchema,
+  ChatDirectorReplyPayloadSchema,
+  PromptQueuedPayloadSchema,
+} from './chat-events.js';
+import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
@@ -594,6 +600,26 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ApiClientRejectedPayloadSchema,
   }),
+  defineEventType({
+    type: 'prompt.queued',
+    schemaVersion: 1,
+    payload: PromptQueuedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.director_reply',
+    schemaVersion: 1,
+    payload: ChatDirectorReplyPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.ask',
+    schemaVersion: 1,
+    payload: ChatAskPayloadSchema,
+  }),
+  defineEventType({
+    type: 'api.chat_closed',
+    schemaVersion: 1,
+    payload: ApiChatClosedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -717,6 +743,10 @@ export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
 export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
+export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
+export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
+export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
+export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

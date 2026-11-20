@@ -28,6 +28,7 @@ import {
   type DaemonStatus,
 } from '@otheater/protocol';
 import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
+import { registerChatRoutes } from './api/chat-socket.js';
 import { ApiServer } from './api/server.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
@@ -499,6 +500,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
     situations: composition.situations,
     gate,
+    websocket: {
+      maxPayloadBytes: config.api.chat.max_message_bytes,
+      maxPendingPongs: config.api.chat.max_pending_pongs,
+      closeGraceMs: config.api.chat.close_grace,
+    },
   });
   apiRef.server = api;
   api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
@@ -565,6 +571,20 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       gate,
       handoff,
       home: homedir(),
+    });
+    // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
+    registerChatRoutes({
+      api,
+      channel: orchestration.channel,
+      store,
+      hub: composition.eventHub,
+      situations: composition.situations,
+      logger,
+      now: () => clock.now(),
+      ticketTtlMs: config.api.chat.ticket_ttl,
+      heartbeatMs: config.api.chat.heartbeat,
+      stateIntervalMs: config.api.chat.state_interval,
+      resumeWindowMs: config.api.chat.resume_window,
     });
   }
   // The machines of the plays come back from their snapshots; the orders were recomputed by

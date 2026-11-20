@@ -111,6 +111,13 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     onError: (error, item) => {
       logger.error({ err: error, scenarioId: item?.scenarioId }, 'a prompt could not be delivered');
     },
+    onQueued: (item) => {
+      composition.situations.record(
+        'prompt.queued',
+        { promptId: item.id, source: item.source, priority: item.priority },
+        { scenarioId: item.scenarioId },
+      );
+    },
   });
   const directors = new DirectorSessions({
     store,
@@ -126,6 +133,13 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     clock: composition.clock,
     quota: input.quota,
     onNotice: (notice) => late.channel?.notify(notice),
+    onReply: (scenarioId, reply) => {
+      composition.situations.record(
+        'chat.director_reply',
+        { replyId: reply.seq, to: reply.to, text: reply.text },
+        { scenarioId },
+      );
+    },
   });
   const workspace =
     composition.codeHost === undefined
