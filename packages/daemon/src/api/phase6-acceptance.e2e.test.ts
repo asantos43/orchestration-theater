@@ -297,8 +297,8 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         expect(all.lastEventId).toBe(ids.at(-1));
 
         // The filter by scenario gives what the log says belongs to the scenario, no more, no less.
-        // [N] The events the daemon writes with a `playId` and no `scenarioId` (the delivery is one)
-        // are not in it: see docs/17, P13.
+        // [V] N172: the integration and the delivery carry the scenario too (envelope and payload),
+        // so a client that follows the scenario sees them; before N172 the filter dropped them.
         const scenarioIds = log.filter((event) => event.scenarioId === scenarioId).map((e) => e.id);
         await waitFor('the filtered stream', () =>
           Promise.resolve(ofScenario.length === scenarioIds.length || undefined),
@@ -306,6 +306,15 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         expect(ofScenario.map((message) => message.data.id)).toEqual(scenarioIds);
         expect(ofScenario.every((message) => message.data.scenarioId === scenarioId)).toBe(true);
         expect(ofScenario.some((message) => message.data.type === 'play.created')).toBe(true);
+        for (const type of ['workspace.integrated', 'delivery.completed']) {
+          const seen = ofScenario.filter((message) => message.data.type === type);
+          expect(seen, type).toHaveLength(1);
+          const event = seen[0]?.data;
+          if (event === undefined) throw new Error(`${type} is not in the scenario stream`);
+          expect(event.playId).toBe(playId);
+          expect(event.scenarioId).toBe(scenarioId);
+          expect(payloadOf(event)).toMatchObject({ scenarioId });
+        }
       } finally {
         all.close();
         scoped.close();
