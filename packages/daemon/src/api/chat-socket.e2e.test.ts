@@ -646,4 +646,28 @@ describeWithLauncher('the chat WebSocket with the fake agent (P7)', { timeout: 1
       },
     );
   });
+
+  it('delivers a reply the daemon generated for a silent turn, with its marks (N183)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openChat();
+      const client = await ChatClient.open(harness, scenarioId);
+      client.send({ type: 'message', text: '#ot-silent-play write alpha and beta' });
+      const reply = await client.next(
+        'the generated reply',
+        (frame): frame is Extract<ChatServerMessage, { type: 'director_reply' }> =>
+          frame.type === 'director_reply' && frame.generated === true,
+      );
+      const [play] = await harness.plays(scenarioId);
+      expect(reply).toMatchObject({ replyId: 1, final: true, generated: true, playId: play?.id });
+      expect(reply.tools).toHaveLength(1);
+      expect(reply.tools?.[0]?.name).toContain('open_play');
+      expect(reply.text).toContain('The Director ended the turn without a reply.');
+      // A reply of the Director itself has none of the marks.
+      client.send({ type: 'message', text: '#ot-chat hello' });
+      const said = await replyWith(client, 'answer: hello');
+      expect(said).not.toHaveProperty('generated');
+      expect(said).not.toHaveProperty('tools');
+      await client.close();
+    });
+  });
 });

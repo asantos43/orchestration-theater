@@ -644,6 +644,14 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
     await playJudge(host);
     return;
   }
+  // N183: a Director that works and says nothing. `#ot-silent-play <need>` opens a play and ends
+  // the turn with no text (what a real OpenCode round did); `#ot-silent` alone does nothing at all.
+  const silentNeed = markerOf(text, '#ot-silent-play(?![-\\w])');
+  if (silentNeed !== undefined && silentNeed !== '') {
+    await host.call('open_play', { need: silentNeed });
+    return;
+  }
+  if (markerOf(text, '#ot-silent(?![-\\w])') !== undefined) return;
   const need = markerOf(text, '#ot-play(?!:)');
   if (need !== undefined && need !== '') {
     const reply = await host.call('open_play', { need });

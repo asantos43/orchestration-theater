@@ -82,6 +82,12 @@
     "noDaemon": "No daemon is running on this data directory (or it is not reachable). Start it with \"ot daemon\".",
     "opened": "Chat open on scenario {{scenarioId}}. Type a message and press Enter.",
     "reply": "Director: {{text}}",
+    "generatedReply": {
+      "none": "System: the Director ended the turn without a reply.",
+      "tools": "System: the Director ended the turn without a reply. Tools called: {{tools}}.{{play}}",
+      "toolFailed": "{{name}} (failed)",
+      "play": " Play opened: {{id}}."
+    },
     "play": "Play {{id}}: {{state}}",
     "playEnded": "Play {{id}} ended.",
     "waiting": "{{what}} ({{who}}).",

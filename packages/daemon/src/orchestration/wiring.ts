@@ -129,9 +129,23 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     onReply: (scenarioId, reply) => {
       composition.situations.record(
         'chat.director_reply',
-        { replyId: reply.seq, to: reply.to, text: reply.text },
+        {
+          replyId: reply.seq,
+          to: reply.to,
+          text: reply.text,
+          ...(reply.generated === undefined
+            ? {}
+            : {
+                generated: true as const,
+                tools: [...reply.generated.tools],
+                ...(reply.generated.playId === null ? {} : { playId: reply.generated.playId }),
+              }),
+        },
         { scenarioId },
       );
+    },
+    onSilent: (scenarioId, silent) => {
+      composition.situations.record('chat.director_silent', silent, { scenarioId });
     },
   });
   const workspace =

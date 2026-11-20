@@ -274,6 +274,17 @@ describeWithLauncher('the failover of the Director (P20)', { timeout: 180_000 },
         );
         expect(await failovers(harness, scenarioId)).toEqual([]);
         expect(await directorExecutors(harness)).toEqual([entry('one')]);
+        // N183: a turn that failed keeps its `[error]` reply and is not a silent turn.
+        const replies = await waitFor('the reply event', async () => {
+          const found = (await scenarioEvents(harness, scenarioId)).filter(
+            (event) => event.type === 'chat.director_reply',
+          );
+          return found.length > 0 ? found : undefined;
+        });
+        expect(replies).toHaveLength(1);
+        expect(replies[0]?.payload).not.toHaveProperty('generated');
+        const events = await scenarioEvents(harness, scenarioId);
+        expect(events.filter((event) => event.type === 'chat.director_silent')).toEqual([]);
       },
     );
   });

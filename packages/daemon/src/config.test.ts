@@ -17,6 +17,7 @@ import {
   parseTimeOfDay,
   sessionMbOf,
   sessionsPerProcessOf,
+  SILENT_TURN_MODES,
   VERIFY_MODES,
 } from './config.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
@@ -754,7 +755,16 @@ describe('chat', () => {
       history: 200,
       presence: 'connected',
       presence_window: 30_000,
+      silent_turn: 'notice',
     });
+  });
+
+  it('takes each silent_turn mode and refuses any other (N183)', () => {
+    expect(SILENT_TURN_MODES).toEqual(['notice', 'none']);
+    for (const mode of SILENT_TURN_MODES) {
+      expect(parseConfig(`chat:\n  silent_turn: ${mode}\n`).chat.silent_turn).toBe(mode);
+    }
+    expect(() => parseConfig('chat:\n  silent_turn: loud\n')).toThrow(/chat\.silent_turn/);
   });
 
   it('takes any history from 1', () => {
