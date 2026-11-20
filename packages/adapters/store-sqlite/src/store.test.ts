@@ -42,6 +42,42 @@ describe('writerPragmas', () => {
 });
 
 describe.each(DRIVERS)('SqliteStore on %s', (driver) => {
+  it('reads a clock that moves once per transaction: the record and the event share the stamp (N177)', async () => {
+    let ticks = 0;
+    const { dir, dispose: removeDir } = await makeTempDir();
+    const store = await SqliteStore.open(
+      { path: join(dir, 'otheater.db'), driver },
+      { now: () => 1000 + ticks++ },
+    );
+    try {
+      const seen = await store.transaction(async (tx) => {
+        const scenario = await tx.scenarios.create({
+          id: 'scn-1',
+          kind: 'project',
+          flowId: 'software',
+          name: 'One',
+          folder: '/tmp/scenarios/1',
+        });
+        const logged = await tx.events.append(event(1));
+        const renamed = await tx.scenarios.update('scn-1', { name: 'Two' });
+        return { scenario, logged, renamed, now: tx.now() };
+      });
+      expect(seen.scenario.createdAt).toBe(1000);
+      expect(seen.logged.timestamp).toBe(1000);
+      expect(seen.renamed.updatedAt).toBe(1000);
+      expect(seen.now).toBe(1000);
+      // The next transaction reads the clock once more, not once per write.
+      const next = await store.transaction(async (tx) => {
+        await tx.events.append(event(2));
+        return tx.events.append(event(3));
+      });
+      expect(next.timestamp).toBe(1001);
+    } finally {
+      await store.close();
+      await removeDir();
+    }
+  });
+
   it('reads the pragmas back from the real connection', async () => {
     const ctx = await openTempStore(driver);
     try {

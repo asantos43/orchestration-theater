@@ -7,6 +7,7 @@ import {
   createStoreAggregates,
   InvalidInput,
   isOTheaterError,
+  transactionInstant,
   type AttemptListFilter,
   type AttemptRecord,
   type AttemptRecordInput,
@@ -246,12 +247,14 @@ export class SqliteStore implements Store, StoreMaintenance {
       // Kysely commits when the callback resolves, and on a rejection rolls back and rethrows the
       // very same error object (typed errors cross the port untouched).
       return await this.#writer.transaction().execute(async (trx) => {
-        const events = new TransactionEventLog(trx, this.#clock);
-        const attempts = new TransactionAttemptRegistry(trx, this.#clock);
+        // One reading of the clock for everything the transaction writes (N177).
+        const instant = transactionInstant(this.#clock);
+        const events = new TransactionEventLog(trx, instant);
+        const attempts = new TransactionAttemptRegistry(trx, instant);
         const tables = new TransactionTables(trx);
-        const aggregates = createStoreAggregates(tables.factory, this.#clock);
+        const aggregates = createStoreAggregates(tables.factory, instant);
         try {
-          return await fn({ events, attempts, ...aggregates });
+          return await fn({ events, attempts, now: () => instant.now(), ...aggregates });
         } finally {
           // From here on a leaked handle is refused, even while the commit is still running.
           events.finish();
