@@ -6,15 +6,47 @@ import { API_PREFIX, HTTP_METHODS, assertUniqueRoutes, pathParamNames } from './
 
 describe('API_ROUTES', () => {
   it('has the routes of P1 and the rotation of the token (P3)', () => {
-    expect(Object.keys(API_ROUTES).sort()).toEqual([
-      'createChatTicket',
-      'getLayout',
-      'getStatus',
-      'openChatSocket',
-      'putLayout',
-      'rotateApiToken',
-      'streamEvents',
-    ]);
+    expect(Object.keys(API_ROUTES)).toEqual(
+      expect.arrayContaining([
+        'createChatTicket',
+        'getLayout',
+        'getStatus',
+        'openChatSocket',
+        'putLayout',
+        'rotateApiToken',
+        'streamEvents',
+      ]),
+    );
+  });
+
+  it('has the read routes of P5, every one a GET', () => {
+    const reads = [
+      'getAttachment',
+      'getAttachmentContent',
+      'getBlackboardEntry',
+      'getBudget',
+      'getConfig',
+      'getIdea',
+      'getOrder',
+      'getPlay',
+      'getProfile',
+      'getScenario',
+      'getUsage',
+      'listAttachments',
+      'listBlackboard',
+      'listBlackboardHistory',
+      'listExecutors',
+      'listIdeas',
+      'listOrders',
+      'listProfiles',
+      'listRoles',
+      'listScenarioDecisions',
+      'listScenarioPlays',
+      'listScenarios',
+    ];
+    expect(Object.keys(API_ROUTES)).toEqual(expect.arrayContaining(reads));
+    for (const id of reads)
+      expect(API_ROUTES[id as keyof typeof API_ROUTES].method, id).toBe('GET');
   });
 
   it('keys every route by its own id', () => {

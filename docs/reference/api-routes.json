@@ -115,6 +115,151 @@
       }
     },
     {
+      "id": "getBudget",
+      "method": "GET",
+      "path": "/v1/budget",
+      "kind": "json",
+      "summary": "The spending caps (per profile and per Executor) with what each has spent",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unknownCost": {
+            "type": "string",
+            "minLength": 1
+          },
+          "onCapChange": {
+            "type": "string",
+            "minLength": 1
+          },
+          "caps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "profile",
+                    "executor",
+                    "run"
+                  ]
+                },
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "period": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "month",
+                    "run"
+                  ]
+                },
+                "limitUsd": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "spentUsd": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "remainingUsd": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "endsAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "unknownCostTurns": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "blockedByUnknownCost": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "scope",
+                "id",
+                "period",
+                "limitUsd",
+                "spentUsd",
+                "remainingUsd",
+                "endsAt",
+                "unknownCostTurns",
+                "blockedByUnknownCost"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "exceeded": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "profile": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "resetsAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "onExceeded": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "profile",
+                "resetsAt",
+                "onExceeded"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "timezone",
+          "unknownCost",
+          "onCapChange",
+          "caps",
+          "exceeded"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    },
+    {
       "id": "createChatTicket",
       "method": "POST",
       "path": "/v1/chat-tickets",
@@ -174,6 +319,83 @@
           "scenarioId"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "id": "getConfig",
+      "method": "GET",
+      "path": "/v1/config",
+      "kind": "json",
+      "summary": "The effective configuration, with every value that could be a secret held back",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "redactedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "config",
+          "redactedPaths"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
       }
     },
     {
@@ -383,6 +605,627 @@
           }
         },
         "additionalProperties": {}
+      }
+    },
+    {
+      "id": "listExecutors",
+      "method": "GET",
+      "path": "/v1/executors",
+      "kind": "json",
+      "summary": "Executors of the configuration and of the table, by id, by cursor",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "client": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "profile": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "effort": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "validity": {
+                  "type": "string",
+                  "enum": [
+                    "valid",
+                    "invalid"
+                  ]
+                },
+                "invalidReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configured": {
+                  "type": "boolean"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "director",
+                      "consultant",
+                      "author",
+                      "reviewer",
+                      "scriptwriter",
+                      "actor",
+                      "critic"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "profileId",
+                "client",
+                "profile",
+                "model",
+                "effort",
+                "provider",
+                "validity",
+                "invalidReason",
+                "configured",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "validity": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listIdeas",
+      "method": "GET",
+      "path": "/v1/ideas",
+      "kind": "json",
+      "summary": "Ideas in the order they arrived, by cursor; filter by state, scenario, play and group",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^I[1-9][0-9]*$"
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "text": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "area": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "chat",
+                    "tui",
+                    "terminal",
+                    "author",
+                    "import"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "grouped",
+                    "done",
+                    "discarded",
+                    "deferred"
+                  ]
+                },
+                "groupId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "groupOrder": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "playId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "prNumber": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "prUrl": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "closedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "seq",
+                "scenarioId",
+                "text",
+                "area",
+                "source",
+                "state",
+                "groupId",
+                "groupOrder",
+                "playId",
+                "prNumber",
+                "prUrl",
+                "reason",
+                "createdAt",
+                "updatedAt",
+                "closedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "grouped",
+              "done",
+              "discarded",
+              "deferred"
+            ]
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getIdea",
+      "method": "GET",
+      "path": "/v1/ideas/:ideaId",
+      "kind": "json",
+      "summary": "One idea",
+      "pathParams": [
+        "ideaId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^I[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scenarioId": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "text": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "tui",
+              "terminal",
+              "author",
+              "import"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "grouped",
+              "done",
+              "discarded",
+              "deferred"
+            ]
+          },
+          "groupId": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "groupOrder": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "playId": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prNumber": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prUrl": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "closedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scenarioId",
+          "text",
+          "area",
+          "source",
+          "state",
+          "groupId",
+          "groupOrder",
+          "playId",
+          "prNumber",
+          "prUrl",
+          "reason",
+          "createdAt",
+          "updatedAt",
+          "closedAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "ideaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "ideaId"
+        ],
+        "additionalProperties": false
       }
     },
     {
@@ -616,6 +1459,2586 @@
             "maxLength": 64
           }
         }
+      }
+    },
+    {
+      "id": "listOrders",
+      "method": "GET",
+      "path": "/v1/orders",
+      "kind": "json",
+      "summary": "Orders (in force, scheduled, ended) in the order they were given, by cursor",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^O[1-9][0-9]*$"
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "global",
+                    "local"
+                  ]
+                },
+                "scenarioId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "instruction",
+                    "rule",
+                    "suspension"
+                  ]
+                },
+                "text": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "ruleKey": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ruleValue": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "suspendsId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^O[1-9][0-9]*$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "startsAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "endsAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timezone": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "scheduled",
+                    "active",
+                    "expired",
+                    "revoked"
+                  ]
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "chat",
+                    "tui",
+                    "terminal",
+                    "import"
+                  ]
+                },
+                "replacesId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^O[1-9][0-9]*$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "revokedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "revokeReason": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "seq",
+                "scope",
+                "scenarioId",
+                "kind",
+                "text",
+                "ruleKey",
+                "ruleValue",
+                "suspendsId",
+                "roles",
+                "startsAt",
+                "endsAt",
+                "timezone",
+                "state",
+                "origin",
+                "replacesId",
+                "createdAt",
+                "updatedAt",
+                "revokedAt",
+                "revokeReason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "active",
+              "expired",
+              "revoked",
+              "ended"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "local"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "instruction",
+              "rule",
+              "suspension"
+            ]
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getOrder",
+      "method": "GET",
+      "path": "/v1/orders/:orderId",
+      "kind": "json",
+      "summary": "One order",
+      "pathParams": [
+        "orderId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^O[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "local"
+            ]
+          },
+          "scenarioId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "instruction",
+              "rule",
+              "suspension"
+            ]
+          },
+          "text": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "ruleKey": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ruleValue": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "suspendsId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "startsAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "endsAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "active",
+              "expired",
+              "revoked"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "tui",
+              "terminal",
+              "import"
+            ]
+          },
+          "replacesId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^O[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revokeReason": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scope",
+          "scenarioId",
+          "kind",
+          "text",
+          "ruleKey",
+          "ruleValue",
+          "suspendsId",
+          "roles",
+          "startsAt",
+          "endsAt",
+          "timezone",
+          "state",
+          "origin",
+          "replacesId",
+          "createdAt",
+          "updatedAt",
+          "revokedAt",
+          "revokeReason"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "orderId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getPlay",
+      "method": "GET",
+      "path": "/v1/plays/:playId",
+      "kind": "json",
+      "summary": "One play with its stages and demands",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "play": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "scenarioId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "need": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "flowId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "flowVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "counters": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "parentPlayId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "finishedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "scenarioId",
+              "need",
+              "flowId",
+              "flowVersion",
+              "state",
+              "counters",
+              "parentPlayId",
+              "createdAt",
+              "updatedAt",
+              "finishedAt"
+            ],
+            "additionalProperties": false
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "playId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "name": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "role": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "attemptId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "demandId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ]
+                },
+                "result": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "playId",
+                "name",
+                "role",
+                "attemptId",
+                "demandId",
+                "state",
+                "result",
+                "createdAt",
+                "updatedAt",
+                "endedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "demands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "playId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "id": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "title": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "dependsOn": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "contract": {
+                  "type": "object",
+                  "properties": {
+                    "inputs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "outputs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    }
+                  },
+                  "required": [
+                    "inputs",
+                    "outputs"
+                  ],
+                  "additionalProperties": false
+                },
+                "expectedFiles": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema1"
+                  }
+                },
+                "complexity": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "specialty": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timeoutMin": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "acceptanceCriteria": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema1"
+                  }
+                },
+                "verify": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema3"
+                  }
+                },
+                "verifyWaiver": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "ready",
+                    "running",
+                    "in_review",
+                    "approved",
+                    "failed",
+                    "blocked",
+                    "cancelled"
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "playId",
+                "id",
+                "title",
+                "description",
+                "dependsOn",
+                "contract",
+                "expectedFiles",
+                "complexity",
+                "specialty",
+                "timeoutMin",
+                "acceptanceCriteria",
+                "verify",
+                "verifyWaiver",
+                "state",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "play",
+          "stages",
+          "demands"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema3": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listBlackboard",
+      "method": "GET",
+      "path": "/v1/plays/:playId/blackboard",
+      "kind": "json",
+      "summary": "The latest version of each key of the blackboard of a play, by key, by cursor",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "playId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "value": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "author": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "playId",
+                "key",
+                "version",
+                "value",
+                "author",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getBlackboardEntry",
+      "method": "GET",
+      "path": "/v1/plays/:playId/blackboard/entry",
+      "kind": "json",
+      "summary": "One key of the blackboard of a play: the latest version, or the one asked for",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "value": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "playId",
+          "key",
+          "version",
+          "value",
+          "author",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listBlackboardHistory",
+      "method": "GET",
+      "path": "/v1/plays/:playId/blackboard/history",
+      "kind": "json",
+      "summary": "The versions of one key of the blackboard of a play, oldest first, by cursor",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "playId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "value": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "author": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "playId",
+                "key",
+                "version",
+                "value",
+                "author",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listProfiles",
+      "method": "GET",
+      "path": "/v1/profiles",
+      "kind": "json",
+      "summary": "Accounts with the state of the quota of each, in the order they were made, by cursor",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "profile": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "client": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "token_plan",
+                        "api"
+                      ]
+                    },
+                    "provider": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "draining",
+                        "removed"
+                      ]
+                    },
+                    "dir": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "secretRef": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "noticeAcceptedAt": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    "updatedAt": {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    "removedAt": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "client",
+                    "name",
+                    "kind",
+                    "provider",
+                    "state",
+                    "dir",
+                    "secretRef",
+                    "noticeAcceptedAt",
+                    "createdAt",
+                    "updatedAt",
+                    "removedAt"
+                  ],
+                  "additionalProperties": false
+                },
+                "hasSecret": {
+                  "type": "boolean"
+                },
+                "executors": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "invalid": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "valid",
+                    "invalid"
+                  ],
+                  "additionalProperties": false
+                },
+                "quota": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "profile": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "ok",
+                            "near_limit",
+                            "exhausted",
+                            "unknown"
+                          ]
+                        },
+                        "cause": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "quota",
+                                "budget"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "untilReset": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windows": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema3"
+                          }
+                        },
+                        "observedAt": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "nearLimitWindow": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/__schema3"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "authorizes": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "profile",
+                        "state",
+                        "cause",
+                        "untilReset",
+                        "windows",
+                        "observedAt",
+                        "nearLimitWindow",
+                        "reason",
+                        "authorizes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "profile",
+                "hasSecret",
+                "executors",
+                "quota"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema3": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "type": "string",
+                "minLength": 1
+              },
+              "usedPercent": {
+                "type": "number",
+                "minimum": 0
+              },
+              "resetsAt": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fresh": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "window",
+              "usedPercent",
+              "resetsAt",
+              "observedAt",
+              "source",
+              "fresh"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "token_plan",
+              "api"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "draining",
+              "removed"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getProfile",
+      "method": "GET",
+      "path": "/v1/profiles/:client/:name",
+      "kind": "json",
+      "summary": "One account with its quota state",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "client": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "name": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "token_plan",
+                  "api"
+                ]
+              },
+              "provider": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "draining",
+                  "removed"
+                ]
+              },
+              "dir": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "secretRef": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "noticeAcceptedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "removedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "client",
+              "name",
+              "kind",
+              "provider",
+              "state",
+              "dir",
+              "secretRef",
+              "noticeAcceptedAt",
+              "createdAt",
+              "updatedAt",
+              "removedAt"
+            ],
+            "additionalProperties": false
+          },
+          "hasSecret": {
+            "type": "boolean"
+          },
+          "executors": {
+            "type": "object",
+            "properties": {
+              "valid": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "invalid": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "valid",
+              "invalid"
+            ],
+            "additionalProperties": false
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "ok",
+                      "near_limit",
+                      "exhausted",
+                      "unknown"
+                    ]
+                  },
+                  "cause": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "quota",
+                          "budget"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "untilReset": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "windows": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  },
+                  "observedAt": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "nearLimitWindow": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/__schema3"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "authorizes": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "profile",
+                  "state",
+                  "cause",
+                  "untilReset",
+                  "windows",
+                  "observedAt",
+                  "nearLimitWindow",
+                  "reason",
+                  "authorizes"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "profile",
+          "hasSecret",
+          "executors",
+          "quota"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema3": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "type": "string",
+                "minLength": 1
+              },
+              "usedPercent": {
+                "type": "number",
+                "minimum": 0
+              },
+              "resetsAt": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fresh": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "window",
+              "usedPercent",
+              "resetsAt",
+              "observedAt",
+              "source",
+              "fresh"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listRoles",
+      "method": "GET",
+      "path": "/v1/roles",
+      "kind": "json",
+      "summary": "The ordered Executor list of each role, with the next Executor and the exhaustion rule",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "balanced",
+              "economical"
+            ]
+          },
+          "capabilityCheck": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "block",
+              "off"
+            ]
+          },
+          "allowedProfiles": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "consultant",
+                    "author",
+                    "reviewer",
+                    "scriptwriter",
+                    "actor",
+                    "critic"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "preset",
+                    "config",
+                    "legacy"
+                  ]
+                },
+                "whenExhausted": {
+                  "type": "string",
+                  "enum": [
+                    "next",
+                    "wait"
+                  ]
+                },
+                "executors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "profileId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "effort": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "provider": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "validity": {
+                        "type": "string",
+                        "enum": [
+                          "valid",
+                          "invalid"
+                        ]
+                      },
+                      "invalidReason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "origin": {
+                        "type": "string",
+                        "enum": [
+                          "preset",
+                          "api_fallback",
+                          "config",
+                          "legacy"
+                        ]
+                      },
+                      "blockedBy": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "invalid",
+                              "quota",
+                              "budget"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "shortfalls": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "context",
+                            "reasoning"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "profileId",
+                      "model",
+                      "effort",
+                      "provider",
+                      "validity",
+                      "invalidReason",
+                      "origin",
+                      "blockedBy",
+                      "shortfalls"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "next": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "source",
+                "whenExhausted",
+                "executors",
+                "next"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "info",
+                    "warning"
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "no_account",
+                    "not_registered",
+                    "invalid_executor",
+                    "profile_not_allowed",
+                    "below_minimum",
+                    "empty_list"
+                  ]
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "consultant",
+                    "author",
+                    "reviewer",
+                    "scriptwriter",
+                    "actor",
+                    "critic"
+                  ]
+                },
+                "executorId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "severity",
+                "code",
+                "role",
+                "executorId",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "preset",
+          "capabilityCheck",
+          "allowedProfiles",
+          "roles",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    },
+    {
+      "id": "listScenarios",
+      "method": "GET",
+      "path": "/v1/scenarios",
+      "kind": "json",
+      "summary": "Scenarios (projects, tasks, chats), oldest first, by cursor; filter by kind and state",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "task",
+                    "chat"
+                  ]
+                },
+                "flowId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "name": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "folder": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "profile": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "baseBranch": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "originScenarioId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "directorState": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "asleep"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "archived"
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "flowId",
+                "name",
+                "folder",
+                "profile",
+                "baseBranch",
+                "originScenarioId",
+                "directorState",
+                "state",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "task",
+              "chat"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
@@ -1683,6 +5106,1112 @@
       }
     },
     {
+      "id": "getScenario",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId",
+      "kind": "json",
+      "summary": "One scenario with its repositories, overrides and counts of open plays and decisions",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project",
+                  "task",
+                  "chat"
+                ]
+              },
+              "flowId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "name": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "folder": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "profile": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "baseBranch": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "originScenarioId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "directorState": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "asleep"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema2"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "flowId",
+              "name",
+              "folder",
+              "profile",
+              "baseBranch",
+              "originScenarioId",
+              "directorState",
+              "state",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "conventions": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "configOverride": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "repos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "path": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "remote": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "mainBranch": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "scenarioId",
+                "path",
+                "remote",
+                "mainBranch",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "openPlays": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pendingDecisions": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "attachments": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "openPlays",
+              "pendingDecisions",
+              "attachments"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "scenario",
+          "conventions",
+          "configOverride",
+          "repos",
+          "counts"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema3": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "__schema4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listAttachments",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId/attachments",
+      "kind": "json",
+      "summary": "Attachments of a scenario (metadata only), in the order they came, by cursor",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "id": {
+                  "type": "string",
+                  "pattern": "^A[1-9][0-9]*$"
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "messageId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "mime": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "hash": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "copy",
+                    "reference"
+                  ]
+                },
+                "path": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "scenarioId",
+                "id",
+                "seq",
+                "messageId",
+                "name",
+                "mime",
+                "size",
+                "hash",
+                "source",
+                "path",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getAttachment",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId/attachments/:attachmentId",
+      "kind": "json",
+      "summary": "Metadata of one attachment",
+      "pathParams": [
+        "scenarioId",
+        "attachmentId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^A[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "mime": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hash": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "reference"
+            ]
+          },
+          "path": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "scenarioId",
+          "id",
+          "seq",
+          "messageId",
+          "name",
+          "mime",
+          "size",
+          "hash",
+          "source",
+          "path",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "attachmentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "scenarioId",
+          "attachmentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "getAttachmentContent",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId/attachments/:attachmentId/content",
+      "kind": "json",
+      "summary": "The content of one attachment: text, or base64 for an image or a binary file",
+      "pathParams": [
+        "scenarioId",
+        "attachmentId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "binary"
+            ]
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf8",
+              "base64"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime",
+          "size",
+          "kind",
+          "encoding",
+          "content",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "413": [
+          "payload_too_large"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "attachmentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "scenarioId",
+          "attachmentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listScenarioDecisions",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId/decisions",
+      "kind": "json",
+      "summary": "Judgment points of a scenario, oldest first, by cursor; filter by state, play and kind",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "playId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "input": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "answer": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "decidedBy": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "producer",
+                        "director",
+                        "daemon"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "decided",
+                    "cancelled"
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "decidedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "scenarioId",
+                "playId",
+                "kind",
+                "input",
+                "answer",
+                "decidedBy",
+                "state",
+                "createdAt",
+                "updatedAt",
+                "decidedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "__schema2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              }
+            ]
+          },
+          "__schema3": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "decided",
+              "cancelled"
+            ]
+          },
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listScenarioPlays",
+      "method": "GET",
+      "path": "/v1/scenarios/:scenarioId/plays",
+      "kind": "json",
+      "summary": "Plays of a scenario, oldest first, by cursor; filter by open and state",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "need": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "flowId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "flowVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "state": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "counters": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "parentPlayId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "finishedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "scenarioId",
+                "need",
+                "flowId",
+                "flowVersion",
+                "state",
+                "counters",
+                "parentPlayId",
+                "createdAt",
+                "updatedAt",
+                "finishedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "open": {
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "getStatus",
       "method": "GET",
       "path": "/v1/status",
@@ -1751,6 +6280,189 @@
         "500": [
           "internal"
         ]
+      }
+    },
+    {
+      "id": "getUsage",
+      "method": "GET",
+      "path": "/v1/usage",
+      "kind": "json",
+      "summary": "Consumption totals, optionally split by session, play, profile or Executor",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "session",
+                  "play",
+                  "profile",
+                  "executor"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "totals": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "totals"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "totals",
+          "by",
+          "groups"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "turns": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "inputTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "outputTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cachedTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "realUsd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "apiEquivalentUsd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unknownCostTurns": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "turns",
+              "inputTokens",
+              "outputTokens",
+              "cachedTokens",
+              "realUsd",
+              "apiEquivalentUsd",
+              "unknownCostTurns",
+              "complete"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": [
+              "session",
+              "play",
+              "profile",
+              "executor"
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "executorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "since": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "until": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
       }
     }
   ]
