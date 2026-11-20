@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "api:catalog": "vitest run packages/protocol/src/api/catalog.test.ts -u",
     "deps": "depcruise packages --config .dependency-cruiser.js",
     "notices": "node tools/verify/dist/cli.js notices",
     "verify": "node tools/verify/dist/cli.js licenses && node tools/verify/dist/cli.js notices --check && node tools/verify/dist/cli.js headers && node tools/verify/dist/cli.js credentials && node tools/verify/dist/cli.js catalogs && node tools/verify/dist/cli.js deps",
