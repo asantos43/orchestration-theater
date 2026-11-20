@@ -24,6 +24,7 @@ import { demandOf, makeWorkspaceRig, scriptOf, type WorkspaceRig } from './works
 afterAll(disposeTestGitIsolation);
 
 const PLAY = 'play-1';
+const SCENARIO = 'scenario-1';
 const BRANCH = integrationBranch(PLAY);
 const T = 60_000;
 
@@ -57,6 +58,7 @@ describe('verifiers of the workspace effects (architecture 5.21)', () => {
       await rig.workspace.integrate({
         repo: rig.repo,
         playId: PLAY,
+        scenarioId: SCENARIO,
         script: scriptOf([demandOf('d1')]),
         approved: [{ demandId: 'd1', attempt: 1 }],
       });
