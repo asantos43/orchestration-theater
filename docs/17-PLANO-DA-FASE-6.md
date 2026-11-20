@@ -473,5 +473,5 @@ Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir dos achados d
 - **N179, lacunas do chat:** (1) o socket abre com `resume` desde o retrato; (2) mensagem do servidor que retira uma pergunta já respondida; (3) o `resume` inclui as decisões pendentes do estado. Num passo só. A implementar.
 
 Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir do nível real `phase6` (P13), iguais à recomendação ([docs/13](13-DECISOES-EM-ABERTO.md)):
-- **N180, modo de escrita do Claude Code:** `acceptEdits` nos papéis com `edit` ou `write` (Ator, consultor), `default` nos outros; a chave `mode` do executor vence. A implementar.
+- **N180, modo de escrita do Claude Code:** `acceptEdits` nos papéis com `edit` ou `write` (Ator, consultor), `default` nos outros; a chave `mode` do executor vence. Implementada no PR #186.
 - **N181, recusa do Ator:** o daemon envia `ACTOR_REFUSED` quando a camada 2 negou uma permissão ao Ator e a tentativa termina bloqueada ou sem mudança. A implementar.

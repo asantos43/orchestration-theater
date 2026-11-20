@@ -54,6 +54,20 @@ describe('writeProfileSettings', () => {
     });
   });
 
+  it('writes acceptEdits as defaultMode for a role that edits or writes (N180)', async () => {
+    await writeProfileSettings(
+      profile,
+      { ...policy, nativeTools: ['read', 'edit', 'write'] },
+      {
+        quotaStatusline: 'off',
+      },
+    );
+    const permissions = (await read()).permissions as Record<string, unknown>;
+    expect(permissions.defaultMode).toBe('acceptEdits');
+    await writeProfileSettings(profile, policy, { quotaStatusline: 'off' });
+    expect(((await read()).permissions as Record<string, unknown>).defaultMode).toBe('default');
+  });
+
   it('does not write the MCP allow rules: they travel in the session, not in the shared file', async () => {
     await writeProfileSettings(profile, { ...policy, mcpServers: ['otheater'] });
     const permissions = (await read()).permissions as Record<string, unknown>;
