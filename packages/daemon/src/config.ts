@@ -622,12 +622,14 @@ export const RECOVERY_NOTICE_MODES = ['always', 'unclean_only', 'off'] as const;
 export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
 
 /**
- * Who counts as watching a play (decision of P15a, [proposta]). `poll` (default): an `ot chat`
- * that polled the scenario of the play within `chat.presence_window`; `always`: someone is always
+ * Who counts as watching a play (decision of P15a, [proposta]; renamed in N175, 2026-11-20, from
+ * `poll` with no alias: the old name is an invalid value). `connected` (default): an `ot chat`
+ * connected to the scenario of the play, that is, with its chat WebSocket open, or that polled it
+ * within `chat.presence_window`; `always`: someone is always
  * there (the Producer is trusted to answer); `never`: nobody is, so `delivery.base_drift: ask`
  * acts as `update`.
  */
-export const CHAT_PRESENCE_MODES = ['poll', 'always', 'never'] as const;
+export const CHAT_PRESENCE_MODES = ['connected', 'always', 'never'] as const;
 export type ChatPresenceMode = (typeof CHAT_PRESENCE_MODES)[number];
 
 /**
@@ -1270,8 +1272,8 @@ export const DaemonConfigSchema = z
       .strictObject({
         history: z.int().min(1).default(200),
         /** [proposta] Who counts as watching a play: see {@link CHAT_PRESENCE_MODES}. */
-        presence: z.enum(CHAT_PRESENCE_MODES).default('poll'),
-        /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: poll`). */
+        presence: z.enum(CHAT_PRESENCE_MODES).default('connected'),
+        /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: connected`). */
         presence_window: DurationSchema.prefault('30s'),
       })
       .prefault({}),
