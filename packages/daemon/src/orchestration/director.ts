@@ -82,6 +82,12 @@ export interface DirectorSessionsOptions {
    * `scenario.system_message` event is written. The daemon hands it to the Producer channel.
    */
   readonly onNotice?: ((notice: ScenarioDirectorFailoverNotice) => void) | undefined;
+  /**
+   * Called for every reply kept for the chat, after it is in memory (P7 of docs/17): the daemon
+   * records the `chat.director_reply` event here, the record the chat WebSocket reads and resumes
+   * from. It must not throw; what it throws is logged.
+   */
+  readonly onReply?: ((scenarioId: string, reply: DirectorReply) => void) | undefined;
 }
 
 /** The failover of a Director session that is being replaced (P20). */
@@ -669,7 +675,16 @@ export class DirectorSessions {
       session.active = false;
       if (reply.trim() !== '') {
         session.seq += 1;
-        session.replies.push({ seq: session.seq, to: item.source, text: reply.trim() });
+        const kept: DirectorReply = { seq: session.seq, to: item.source, text: reply.trim() };
+        session.replies.push(kept);
+        try {
+          this.#options.onReply?.(session.scenarioId, kept);
+        } catch (error) {
+          this.#options.logger.warn(
+            { err: error, scenarioId: session.scenarioId },
+            'the reply of the Director could not be announced',
+          );
+        }
         const limit = this.#options.config.chat.history;
         if (session.replies.length > limit)
           session.replies.splice(0, session.replies.length - limit);

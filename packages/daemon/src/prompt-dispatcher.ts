@@ -30,6 +30,11 @@ export interface PromptDispatcherOptions {
    * fails (without one). The pump of that scenario stops.
    */
   readonly onError?: (error: unknown, item: PromptQueueItem | undefined) => void;
+  /**
+   * Called after an item is written to the queue (P7 of docs/17): the daemon records the
+   * `prompt.queued` event here. What it throws goes to `onError` and does not undo the submit.
+   */
+  readonly onQueued?: (item: PromptQueueItem) => void;
 }
 
 export interface SubmitPrompt {
@@ -78,6 +83,7 @@ export class PromptDispatcher {
   readonly #order: PromptOrderMode;
   readonly #newId: () => string;
   readonly #onError: PromptDispatcherOptions['onError'];
+  readonly #onQueued: PromptDispatcherOptions['onQueued'];
   readonly #lanes = new Map<string, ScenarioLane>();
 
   constructor(options: PromptDispatcherOptions) {
@@ -85,6 +91,7 @@ export class PromptDispatcher {
     this.#order = options.order ?? 'producer_first';
     this.#newId = options.newId ?? randomUUID;
     this.#onError = options.onError;
+    this.#onQueued = options.onQueued;
   }
 
   /** Writes the prompt to the queue and, once it is written, starts delivering. */
@@ -97,6 +104,11 @@ export class PromptDispatcher {
       priority,
       content: { ...input.extra, text: input.text },
     });
+    try {
+      this.#onQueued?.(item);
+    } catch (error) {
+      this.#onError?.(error, undefined);
+    }
     this.resume(input.scenarioId);
     return item;
   }

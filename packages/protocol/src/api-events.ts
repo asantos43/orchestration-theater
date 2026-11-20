@@ -10,8 +10,12 @@ import { DaemonIdSchema } from './api/ids.js';
  * `Origin`) or a path of the secret list.
  */
 
-/** Why the daemon turned a request away before any route ran. */
-export const API_REJECTION_REASONS = ['token', 'host', 'origin'] as const;
+/**
+ * Why the daemon turned a request away before any route ran. `ticket` (P7): the chat socket came
+ * without a valid ticket (missing, used, expired or of another scenario); `message` (P7): a chat
+ * message the daemon could not take (not JSON, not in the contract, too big).
+ */
+export const API_REJECTION_REASONS = ['token', 'host', 'origin', 'ticket', 'message'] as const;
 export const ApiRejectionReasonSchema = z.enum(API_REJECTION_REASONS);
 export type ApiRejectionReason = z.infer<typeof ApiRejectionReasonSchema>;
 
