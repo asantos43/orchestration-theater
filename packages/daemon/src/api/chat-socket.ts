@@ -484,6 +484,14 @@ class ChatSession {
           text: payload.data.text,
           // The Director's reply is kept whole today; parts are for a later step.
           final: true,
+          // N183: the marks of a reply the daemon generated for a silent turn.
+          ...(payload.data.generated === undefined
+            ? {}
+            : {
+                generated: true as const,
+                ...(payload.data.tools === undefined ? {} : { tools: payload.data.tools }),
+                ...(payload.data.playId === undefined ? {} : { playId: payload.data.playId }),
+              }),
         });
         return;
       }

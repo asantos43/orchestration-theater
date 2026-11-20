@@ -113,6 +113,7 @@ describe('daemon event registry', () => {
       'config.edited',
       'prompt.queued',
       'chat.director_reply',
+      'chat.director_silent',
       'chat.ask',
       'chat.ask_closed',
       'api.chat_closed',

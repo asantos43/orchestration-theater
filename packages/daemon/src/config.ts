@@ -633,6 +633,18 @@ export const CHAT_PRESENCE_MODES = ['connected', 'always', 'never'] as const;
 export type ChatPresenceMode = (typeof CHAT_PRESENCE_MODES)[number];
 
 /**
+ * `chat.silent_turn` (N183, decision of the owner of 2026-11-20): what the chat gets when a turn of
+ * the Director ends without any text (a real OpenCode round opened a play with the framework tool
+ * and said nothing [V]; why the model stayed silent is not confirmed [N]). `notice` (default): the
+ * daemon keeps a short reply generated from the tools the turn called (and the play it opened), marked
+ * `generated: true` in `chat.director_reply`, so the Producer is never left without an answer;
+ * `none`: nothing reaches the chat. In both modes the situation is the event `chat.director_silent`.
+ * A turn that failed is not a silent turn: it keeps its `[error]` reply.
+ */
+export const SILENT_TURN_MODES = ['notice', 'none'] as const;
+export type SilentTurnMode = (typeof SILENT_TURN_MODES)[number];
+
+/**
  * `tools.shell_allowlist.mode` (N97): which programs `restricted_shell` runs. `list` (default):
  * the entries of `tools.shell_allowlist.list`; `profile`: only the commands of the project
  * conventions (`scenarios.conventions`); `any`: any program of the PATH (the sandbox, P4, is the
@@ -1267,6 +1279,7 @@ export const DaemonConfigSchema = z
      * how many replies of the Director the channel keeps in memory per scenario. (The loopback
      * channel and its `channel` key are gone since P8 of docs/17: `ot chat` uses the API.)
      * `presence` and `presence_window` say when a play counts as watched (`delivery.base_drift: ask`).
+     * `silent_turn` (N183) is what the chat gets when a turn of the Director ends without text.
      */
     chat: z
       .strictObject({
@@ -1275,6 +1288,8 @@ export const DaemonConfigSchema = z
         presence: z.enum(CHAT_PRESENCE_MODES).default('connected'),
         /** [proposta] How long after its last poll an `ot chat` still counts as present (`presence: connected`). */
         presence_window: DurationSchema.prefault('30s'),
+        /** [proposta] A turn of the Director with no text: see {@link SILENT_TURN_MODES}. */
+        silent_turn: z.enum(SILENT_TURN_MODES).default('notice'),
       })
       .prefault({}),
     /** What the start-up does after a crash or a restart (architecture 5.21). */
