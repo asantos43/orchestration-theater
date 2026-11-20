@@ -5,6 +5,17 @@ import { LAYOUT_ROUTES } from './layout.js';
 import { assertUniqueRoutes, type AnyApiRoute } from './route.js';
 import { EVENT_ROUTES } from './sse.js';
 import { STATUS_ROUTES } from './status.js';
+import { ATTACHMENT_ROUTES } from './attachments.js';
+import { BLACKBOARD_ROUTES } from './blackboard.js';
+import { CONFIG_VIEW_ROUTES } from './config-view.js';
+import { DECISION_ROUTES } from './decisions.js';
+import { EXECUTOR_ROUTES } from './executors.js';
+import { IDEA_ROUTES } from './ideas.js';
+import { ORDER_ROUTES } from './orders.js';
+import { PLAY_ROUTES } from './plays.js';
+import { PROFILE_ROUTES } from './profiles.js';
+import { SCENARIO_ROUTES } from './scenarios.js';
+import { USAGE_ROUTES } from './usage.js';
 
 /**
  * Every route of the daemon API, keyed by `id`. A resource keeps its routes in its own file of
@@ -18,6 +29,17 @@ export const API_ROUTES = {
   ...CHAT_ROUTES,
   ...LAYOUT_ROUTES,
   ...ADMIN_ROUTES,
+  ...ATTACHMENT_ROUTES,
+  ...BLACKBOARD_ROUTES,
+  ...CONFIG_VIEW_ROUTES,
+  ...DECISION_ROUTES,
+  ...EXECUTOR_ROUTES,
+  ...IDEA_ROUTES,
+  ...ORDER_ROUTES,
+  ...PLAY_ROUTES,
+  ...PROFILE_ROUTES,
+  ...SCENARIO_ROUTES,
+  ...USAGE_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;
