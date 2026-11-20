@@ -36,7 +36,15 @@ function host(
   text: string,
   replies: Record<string, unknown> = {},
   signal: AbortSignal = new AbortController().signal,
-): { host: RolePlayHost; calls: Call[]; said: string[]; exhausted: (string | undefined)[] } {
+  permission: 'allowed' | 'rejected' | 'cancelled' = 'rejected',
+): {
+  host: RolePlayHost;
+  calls: Call[];
+  said: string[];
+  exhausted: (string | undefined)[];
+  asked: Parameters<RolePlayHost['ask']>[0][];
+} {
+  const asked: Parameters<RolePlayHost['ask']>[0][] = [];
   const calls: Call[] = [];
   const said: string[] = [];
   const exhausted: (string | undefined)[] = [];
@@ -44,6 +52,7 @@ function host(
     calls,
     said,
     exhausted,
+    asked,
     host: {
       text,
       cwd: sandbox,
@@ -51,6 +60,10 @@ function host(
       exhaust: (resetsAt) => {
         exhausted.push(resetsAt);
         return Promise.reject(new Error('quota exhausted'));
+      },
+      ask: (request) => {
+        asked.push(request);
+        return Promise.resolve(permission);
       },
       say: (line) => {
         said.push(line);
@@ -527,6 +540,69 @@ describe('the tokens of the Actor (P23)', () => {
     const second = host(prompt(need, 'alpha', 2));
     await playRolePlay(second.host);
     expect(second.calls.at(-1)?.args).toEqual({ result: { file: 'alpha.txt' } });
+  });
+
+  it('asks permission to edit its file and finishes blocked when it is refused (N181)', async () => {
+    const need = 'go #actor-refused:alpha@1';
+    for (const answer of ['rejected', 'cancelled'] as const) {
+      const first = host(prompt(need, 'alpha', 1), {}, undefined, answer);
+      await playRolePlay(first.host);
+      expect(first.asked).toEqual([
+        { kind: 'edit', title: 'Write alpha.txt', locations: [join(sandbox, 'alpha.txt')] },
+      ]);
+      expect(first.calls).toEqual([
+        {
+          tool: 'submit',
+          args: { result: { state: 'blocked', reason: 'alpha: permission denied' } },
+        },
+      ]);
+      await expect(readFile(join(sandbox, 'alpha.txt'), 'utf8')).rejects.toThrow();
+    }
+  });
+
+  it('writes and submits as usual when the permission is allowed, or in another attempt (N181)', async () => {
+    const need = 'go #actor-refused:alpha@1';
+    const allowed = host(prompt(need, 'alpha', 1), {}, undefined, 'allowed');
+    await playRolePlay(allowed.host);
+    expect(allowed.asked).toHaveLength(1);
+    expect(allowed.calls.at(-1)?.args).toEqual({ result: { file: 'alpha.txt' } });
+    expect(await readFile(join(sandbox, 'alpha.txt'), 'utf8')).toContain(
+      'written by the fake Actor',
+    );
+    // the marker with `@1` no longer holds in the second attempt: nothing is asked
+    const second = host(prompt(need, 'alpha', 2), {}, undefined, 'rejected');
+    await playRolePlay(second.host);
+    expect(second.asked).toEqual([]);
+    expect(second.calls.at(-1)?.args).toEqual({ result: { file: 'alpha.txt' } });
+    // without an attempt, the marker holds every time; another demand is not touched
+    const every = host(prompt('go #actor-refused:alpha', 'alpha', 3));
+    await playRolePlay(every.host);
+    expect(every.asked).toHaveLength(1);
+    const other = host(prompt('go #actor-refused:alpha', 'beta', 1));
+    await playRolePlay(other.host);
+    expect(other.asked).toEqual([]);
+  });
+
+  it('goes on after a denial when the marker says anyway (N181)', async () => {
+    const run = host(prompt('go #actor-refused:alpha=anyway'), {}, undefined, 'rejected');
+    await playRolePlay(run.host);
+    expect(run.asked).toHaveLength(1);
+    expect(run.calls.at(-1)?.args).toEqual({ result: { file: 'alpha.txt' } });
+  });
+
+  it('answers judgment point 6 with reformulate (N181)', async () => {
+    const judge = host('#ot-judge', {
+      next_action: {
+        decisions: [
+          { id: 'p6', kind: 'judge.refusal_or_permission', input: { demandId: 'alpha' } },
+        ],
+      },
+    });
+    await playRolePlay(judge.host);
+    expect(judge.calls[1]).toEqual({
+      tool: 'decide',
+      args: { decisionId: 'p6', payload: { action: 'reformulate' } },
+    });
   });
 
   it('fails only in the attempt the token names', async () => {

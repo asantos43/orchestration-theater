@@ -54,6 +54,13 @@ import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { Workspace } from '../workspace/index.js';
 import type { DirectorSessions } from './director.js';
 import { buildDeliveryArtifacts, changelogModeOf, planChangelog } from '../project/artifacts.js';
+import {
+  RefusalSchema,
+  refusalKey,
+  summarizeRefusal,
+  wasDenied,
+  type PermissionAnswer,
+} from './refusal.js';
 import { CarrySchema, carryKey, INTEGRATION_ROUND_KEY, keptDemands, type Carry } from './carry.js';
 import {
   type CarriedWork,
@@ -557,20 +564,39 @@ export class OrchestrationEffects implements PlayEffects {
 
   /** What the submit tools of an attempt recorded after `mark`, if anything. */
   async #submissionOf(attemptId: string, mark: number): Promise<Submission | undefined> {
+    return (await this.#recordOf(attemptId, mark)).submission;
+  }
+
+  /**
+   * What an attempt told the event log after `mark`: its last submission, and the answers layer 2
+   * gave to the permissions it asked (`permission.answered`, in order). One read for both.
+   */
+  async #recordOf(
+    attemptId: string,
+    mark: number,
+  ): Promise<{ submission: Submission | undefined; permissions: PermissionAnswer[] }> {
     const { events } = this.#options.store;
     let after = mark;
-    let found: Submission | undefined;
+    let submission: Submission | undefined;
+    const permissions: PermissionAnswer[] = [];
     for (;;) {
       const page: readonly EventEnvelope[] = await events.readFrom(after, 500);
-      if (page.length === 0) return found;
+      if (page.length === 0) return { submission, permissions };
       for (const event of page) {
         after = event.id;
         const payload = event.payload as Record<string, unknown>;
         if (payload.attemptId !== attemptId) continue;
         if (event.type === 'attempt.submitted') {
-          found = { kind: 'submitted', tool: String(payload.tool), output: payload.output };
+          submission = { kind: 'submitted', tool: String(payload.tool), output: payload.output };
         } else if (event.type === 'attempt.submit_failed') {
-          found = { kind: 'failed', errors: String(payload.errors) };
+          submission = { kind: 'failed', errors: String(payload.errors) };
+        } else if (event.type === 'permission.answered') {
+          permissions.push({
+            answer: String(payload.answer),
+            tool: String(payload.tool),
+            paths: Array.isArray(payload.paths) ? payload.paths.map(String) : [],
+            reason: String(payload.reason),
+          });
         }
       }
     }
@@ -1013,7 +1039,12 @@ export class OrchestrationEffects implements PlayEffects {
       }
     }
     wanted.seq += 1;
-    wanted.ids = new Set(effect.demandIds);
+    // A retry asks for one demand again: the others still wanted (the dependents that wait for it)
+    // stay wanted, or they would never start once it is approved. [V] found with the e2e of N181:
+    // a demand retried while its dependent was pending left the play in EXECUTING for ever.
+    wanted.ids = effect.retry
+      ? new Set([...wanted.ids, ...effect.demandIds])
+      : new Set(effect.demandIds);
     wanted.feedback = effect.feedback;
     wanted.submitRetries = effect.submitRetries;
     await this.#schedule(scope, generation);
@@ -1163,7 +1194,24 @@ export class OrchestrationEffects implements PlayEffects {
       }
       // A finished attempt takes no last checkpoint: what the Executor wrote is committed now.
       await vcs.commitAll(outcome.worktree, `Work of ${demand.id} (attempt ${String(attempt)})`);
-      const submission = await this.#submissionOf(outcome.attemptId, mark);
+      const { submission, permissions } = await this.#recordOf(outcome.attemptId, mark);
+      // N181: layer 2 denied the Actor a permission and the attempt got nowhere (it finished
+      // blocked, or left nothing in the worktree, with or without `submit`): judgment point 6,
+      // this comes before `DEMAND_BLOCKED` (back to the script) and before a failed attempt.
+      if (
+        await this.#refused(
+          demand,
+          scope,
+          generation,
+          attempt,
+          base,
+          outcome.worktree,
+          submission,
+          permissions,
+        )
+      ) {
+        return;
+      }
       if (submission === undefined || submission.kind === 'failed') {
         await store.demands.update(playId, demand.id, { state: 'failed' });
         await failed(
@@ -1209,6 +1257,64 @@ export class OrchestrationEffects implements PlayEffects {
       await store.demands.update(playId, demand.id, { state: 'failed' }).catch(() => undefined);
       await failed(messageOf(error));
     }
+  }
+
+  /**
+   * N181: when layer 2 denied the Actor at least one permission and the attempt ended blocked or
+   * with no change, the daemon sends `ACTOR_REFUSED` (judgment point 6) and the Director judges;
+   * returns true then. Without a denial nothing changes. [proposta] The rules:
+   * - `cancelled` counts as a denial, as `reject` does: the request was turned down and the tool
+   *   call did not run (the daemon cancels when the client offers no option that could allow);
+   * - "no change" is the diff of the whole attempt against its base, not of the last commit: a
+   *   resumed attempt may hold checkpoint commits from before, and those are work;
+   * - the demand is `blocked`, as it is for an Actor that says so: the attempt did not fail on a
+   *   check, it stopped at a wall, and the count of attempts only moves if the Director answers
+   *   `reformulate` or `switch_executor` (`failAttempt` in the machine);
+   * - the denied tools and files go to the decision as `refused` (see `refusal.ts`).
+   */
+  async #refused(
+    demand: Demand,
+    scope: PlayEffectScope,
+    generation: number,
+    attempt: number,
+    base: string,
+    worktree: string,
+    submission: Submission | undefined,
+    permissions: readonly PermissionAnswer[],
+  ): Promise<boolean> {
+    if (!permissions.some((answer) => wasDenied(answer.answer))) return false;
+    const { store, vcs, logger } = this.#options;
+    const { playId } = scope;
+    const blocked =
+      submission?.kind === 'submitted' ? blockedReasonOf(submission.output) : undefined;
+    if (blocked === undefined) {
+      let changed = true; // when the diff cannot be read, the work is taken as there
+      try {
+        changed = (await vcs.diffStat(worktree, base)).filesChanged > 0;
+      } catch (error) {
+        logger.warn(
+          { err: error, playId, demandId: demand.id },
+          'the diff of a refused attempt was not read',
+        );
+      }
+      if (changed) return false;
+    }
+    const refusal = summarizeRefusal(permissions, {
+      attempt,
+      ended: blocked === undefined ? 'no_change' : 'blocked',
+      worktree,
+      actorReason: blocked,
+    });
+    if (refusal === undefined) return false;
+    await store.blackboard.put({
+      playId,
+      key: refusalKey(demand.id),
+      value: asJson(refusal),
+      author: 'daemon',
+    });
+    await store.demands.update(playId, demand.id, { state: 'blocked' });
+    await this.#send(playId, generation, { type: 'ACTOR_REFUSED', demandId: demand.id });
+    return true;
   }
 
   /**
@@ -1623,6 +1729,11 @@ export class OrchestrationEffects implements PlayEffects {
     const { store, dispatcher, directors } = this.#options;
     const { playId, scenarioId } = scope;
     const kind = `${DECISION_KINDS.judgePrefix}${effect.point}`;
+    // N181: point 6 shows what layer 2 denied; the daemon wrote it before it sent `ACTOR_REFUSED`
+    const refused =
+      effect.point === 'refusal_or_permission' && effect.demandId !== null
+        ? RefusalSchema.safeParse(await this.#blackboard(playId, refusalKey(effect.demandId)))
+        : undefined;
     const created = await this.#locked(playId, async () => {
       const mine = (await store.decisions.list({ playId, kinds: [kind] })).filter(
         (row) => row.input.demandId === (effect.demandId ?? null),
@@ -1643,6 +1754,7 @@ export class OrchestrationEffects implements PlayEffects {
           reason: context?.feedback ?? null,
           demandIds: [...(context?.demandIds ?? [])],
           approvedDemands: [...(context?.approvedDemands ?? [])],
+          ...(refused?.success === true ? { refused: asJson(refused.data) } : {}),
         },
       });
       return true;

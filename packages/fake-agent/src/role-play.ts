@@ -29,6 +29,8 @@ const execFileAsync = promisify(execFile);
  * (alpha is redone while beta, which depends on it, is approved) and the Director answers judgment
  * point 8 with the `rebase` or the `redo` that the outcome names. Every other outcome answers
  * point 8 with `rebase`.
+ *
+ * The Director answers judgment point 6 (`refusal_or_permission`, N181) with `reformulate`.
  */
 
 export const OUTCOMES = [
@@ -61,6 +63,15 @@ export interface RolePlayHost {
    * error, with `resetsAt` (an ISO time) when the limit says when it ends. It never returns.
    */
   exhaust(resetsAt?: string): Promise<never>;
+  /**
+   * Asks the client for permission for a tool call (`session/request_permission`, kind `edit` with
+   * the path in `locations`) and says what the daemon answered.
+   */
+  ask(request: {
+    readonly kind: 'edit' | 'execute' | 'fetch' | 'switch_mode';
+    readonly title: string;
+    readonly locations?: readonly string[];
+  }): Promise<'allowed' | 'rejected' | 'cancelled'>;
   /** Calls a tool of the framework server and reports the call as a tool call of the turn. */
   call(
     tool: string,
@@ -238,6 +249,12 @@ async function submit(
  *   cancel, as a session that is still working when its profile is taken away.
  * - `#actor-blocked:<id>[@<attempt>]`: the Actor writes nothing and finishes with a result whose
  *   state is `blocked` (prompt `actor.md`, "Blocked"), on every attempt or only on that one.
+ * - `#actor-refused:<id>[@<attempt>]`: before it writes its file the Actor asks permission to edit
+ *   `<id>.txt` (kind `edit`, the path in its worktree), as a client does for a write it does not
+ *   own. If the daemon allows it, the Actor writes and goes on as usual; if it is rejected, the
+ *   Actor writes nothing and finishes with a result whose state is `blocked` and whose reason says
+ *   the permission was denied, as the real Claude did [V] (N181). Every attempt, or only that one.
+ *   `#actor-refused:<id>=anyway` goes on after a denial and writes the file another way.
  * What a token does once is counted in the state directory, so the next session of the attempt (a
  * baton pass or a native resume) goes on with the work.
  */
@@ -274,6 +291,23 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
       result: { state: 'blocked', reason: `${demandId}: the contract does not say the format` },
     });
     return;
+  }
+  const refused = actorToken(host.text, 'refused', demandId);
+  if (refused !== undefined && (refused.attempt ?? attempt) === attempt) {
+    const file = `${demandId}.txt`;
+    const answer = await host.ask({
+      kind: 'edit',
+      title: `Write ${file}`,
+      locations: [join(host.cwd, file)],
+    });
+    // `=anyway`: it goes on without the permission, writing its file another way (the test of the
+    // case in which a denied permission does not stop the delivery)
+    if (answer !== 'allowed' && refused.value !== 'anyway') {
+      await submit(host, 'submit', {
+        result: { state: 'blocked', reason: `${demandId}: permission denied` },
+      });
+      return;
+    }
   }
   const hang = actorToken(host.text, 'hang', demandId);
   if (hang !== undefined && (hang.attempt ?? attempt) === attempt) {
@@ -451,6 +485,13 @@ async function playJudge(host: RolePlayHost): Promise<void> {
       const reply = await host.call('decide', {
         decisionId: id,
         payload: { action: redo ? 'redo' : 'rebase' },
+      });
+      await host.say(`decided ${id}: ${reply.text}`);
+    } else if (decision.kind === 'judge.refusal_or_permission') {
+      // N181: the Actor was refused a permission; the attempt is tried again, with no change
+      const reply = await host.call('decide', {
+        decisionId: id,
+        payload: { action: 'reformulate' },
       });
       await host.say(`decided ${id}: ${reply.text}`);
     } else {
