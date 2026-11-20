@@ -10,9 +10,12 @@ export function registerLayoutRoutes(handlers: ApiHandlers, deps: ReadRouteDeps)
 
 /**
  * `PUT /v1/layout/:interface`: replaces the layout of an interface with the body (already checked
- * against the schema, with the current version). [proposta] It writes no event: a layout changes
- * as the person drags a border, and the log is not the place for that.
+ * against the schema, with the current version). [proposta] A write that changes the record
+ * writes the event `layout.changed` (N174; the store decides, and an equal record writes none).
+ * The `X-OT-Client-Id` header, when sent, is the `origin` of the event.
  */
 export function registerLayoutCommands(register: CommandRegistrar, deps: CommandRouteDeps): void {
-  register('putLayout', ({ params, body }) => deps.layout.put(params.interface, body));
+  register('putLayout', ({ params, body, headers }) =>
+    deps.layout.put(params.interface, body, headers['x-ot-client-id']),
+  );
 }

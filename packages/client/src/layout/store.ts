@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  LayoutChangedPayloadSchema,
   LayoutPreferencesSchema,
   defaultLayout,
+  type ApiSseMessage,
   type LayoutInterface,
   type LayoutPreferences,
+  type LayoutSync,
 } from '@otheater/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ApiClient } from '../client.js';
@@ -30,7 +33,13 @@ import {
  *   `error`. A failed save is not tried again by itself: the next change saves the whole record,
  *   and `flush()` tries it again;
  * - a change that arrives before the read ends wins over the read (the person acted on what they
- *   saw), and is saved as the whole record.
+ *   saw), and is saved as the whole record;
+ * - with `sync: live` (N174, 2026-11-20; `ui.layout.sync`) the store also follows the event
+ *   `layout.changed`: a record another client saved is installed on the spot. A change of this
+ *   client that is not saved yet (`dirty`) wins, as in the read, and the event is dropped; the
+ *   echo of this client's own save is dropped by its `origin`. With `on_open` it follows nothing:
+ *   the record is read once, by `load()`. In `ui.layout.store: local` the daemon keeps no record, so
+ *   no event exists and there is nothing to follow.
  */
 
 export interface LayoutState {
@@ -54,9 +63,26 @@ export type LayoutProblem =
   /** A change that would break the schema (a name too long, too many tabs) was not applied. */
   | { readonly kind: 'invalid_change'; readonly message: string };
 
+/**
+ * Where the `layout.changed` events come from: an {@link EventStream} of `types: 'layout.changed'`
+ * fits. [proposta] The store owns it: it starts it in `load()`, before the read, and closes it in
+ * `close()`. It is a stream of its own and not the one a screen opens to follow a scenario,
+ * because the daemon's `scenario` filter drops the events that have no scenario, and a layout has
+ * none.
+ */
+export interface LayoutEventSource {
+  onMessage(listener: (message: ApiSseMessage) => void): () => void;
+  start(): unknown;
+  close(): void;
+}
+
 export interface LayoutStoreOptions {
   readonly interface: LayoutInterface;
   readonly persistence: LayoutPersistence;
+  /** `ui.layout.sync`. Default `on_open`: without `events` the store follows nothing either way. */
+  readonly sync?: LayoutSync | undefined;
+  /** Used only with `sync: live`. */
+  readonly events?: LayoutEventSource | undefined;
   /** Quiet time before a save, from `ui.layout.write_delay`. Default 300. */
   readonly writeDelayMs?: number | undefined;
   readonly clock?: Clock | undefined;
@@ -82,6 +108,9 @@ export class LayoutStore {
   readonly #clock: Clock;
   readonly #onProblem: ((problem: LayoutProblem) => void) | undefined;
   readonly #closed = new AbortController();
+  readonly #events: LayoutEventSource | undefined;
+  /** A record another client saved that came before the read ended: installed over it after. */
+  #remote: LayoutPreferences | undefined;
   /** Goes up with every accepted change; a save is of one revision. */
   #revision = 0;
   #savedRevision = 0;
@@ -96,6 +125,7 @@ export class LayoutStore {
     this.#delay = Math.max(0, options.writeDelayMs ?? DEFAULT_LAYOUT_WRITE_DELAY_MS);
     this.#clock = options.clock ?? systemClock;
     this.#onProblem = options.onProblem;
+    this.#events = options.sync === 'live' ? options.events : undefined;
     this.state = createStore<LayoutState>(() => ({
       layout: defaultLayout(options.interface),
       loaded: false,
@@ -120,6 +150,8 @@ export class LayoutStore {
   }
 
   async #load(): Promise<void> {
+    // The stream starts before the read so a change made in between is not missed.
+    this.#follow();
     try {
       const { layout, adjusted } = await this.#persistence.load();
       if (this.#closed.signal.aborted) return;
@@ -133,6 +165,52 @@ export class LayoutStore {
       this.state.setState({ loaded: true, error: asError(error) });
       this.#problem({ kind: 'load_failed', error: asError(error) });
     }
+    if (this.#remote !== undefined) {
+      const remote = this.#remote;
+      this.#remote = undefined;
+      this.#install(remote);
+    }
+  }
+
+  /** Starts to follow `layout.changed` (`sync: live` only). */
+  #follow(): void {
+    const events = this.#events;
+    if (events === undefined) return;
+    const stop = events.onMessage((message) => {
+      this.#onEvent(message);
+    });
+    this.#closed.signal.addEventListener(
+      'abort',
+      () => {
+        stop();
+        events.close();
+      },
+      { once: true },
+    );
+    try {
+      events.start();
+    } catch (error) {
+      // No stream is a layout that follows nothing, like `on_open`: the read still works.
+      this.#problem({ kind: 'load_failed', error: asError(error) });
+    }
+  }
+
+  #onEvent(message: ApiSseMessage): void {
+    if (this.#closed.signal.aborted || message.event !== 'layout.changed') return;
+    const payload = LayoutChangedPayloadSchema.safeParse(message.data.payload);
+    if (!payload.success || payload.data.interface !== this.interface) return;
+    // The echo of this client's own save: nothing to apply, and no flicker if it has gone further.
+    const own = this.#persistence.clientId;
+    if (own !== undefined && payload.data.origin === own) return;
+    if (this.state.getState().loaded) this.#install(payload.data.layout);
+    else this.#remote = payload.data.layout;
+  }
+
+  /** Installs a record another client saved, unless this client has a change of its own not saved yet. */
+  #install(layout: LayoutPreferences): void {
+    if (this.#closed.signal.aborted || this.state.getState().dirty) return;
+    if (JSON.stringify(layout) === JSON.stringify(this.layout)) return;
+    this.state.setState({ layout });
   }
 
   /**
@@ -283,13 +361,18 @@ function tail<Item>(items: readonly Item[], max: number): Item[] {
 
 export interface CreateLayoutStoreOptions extends Omit<
   LayoutStoreOptions,
-  'persistence' | 'writeDelayMs'
+  'persistence' | 'writeDelayMs' | 'sync' | 'events'
 > {
   readonly client: ApiClient;
   /** `ui.layout.*` of the effective configuration, see `layoutSettingsFromConfig`. */
   readonly settings: LayoutSettings;
   /** The file of the `local` mode, when this client has one. */
   readonly file?: LayoutFileStore | undefined;
+  /**
+   * Replaces the stream of `layout.changed` that `sync: live` opens (tests). Without it the store
+   * opens `client.events({ types: 'layout.changed' })`, with no scenario filter.
+   */
+  readonly events?: LayoutEventSource | undefined;
 }
 
 /**
@@ -297,7 +380,7 @@ export interface CreateLayoutStoreOptions extends Omit<
  * (the file). `local` with no file to use falls back to the daemon and says so to `onProblem`.
  */
 export function createLayoutStore(options: CreateLayoutStoreOptions): LayoutStore {
-  const { client, settings, file, ...rest } = options;
+  const { client, settings, file, events, ...rest } = options;
   let persistence: LayoutPersistence;
   if (settings.store === 'local' && file !== undefined) {
     persistence = new LocalLayoutPersistence(file, rest.interface);
@@ -311,5 +394,13 @@ export function createLayoutStore(options: CreateLayoutStoreOptions): LayoutStor
       }
     }
   }
-  return new LayoutStore({ ...rest, persistence, writeDelayMs: settings.writeDelayMs });
+  // [proposta] Only the `daemon` place has anything to follow, and only `live` asks for it.
+  const live = persistence.mode === 'daemon' && settings.sync === 'live';
+  return new LayoutStore({
+    ...rest,
+    persistence,
+    writeDelayMs: settings.writeDelayMs,
+    sync: settings.sync,
+    ...(live ? { events: events ?? client.events({ types: 'layout.changed' }) } : {}),
+  });
 }

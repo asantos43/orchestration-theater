@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
-import { LAYOUT_REPLACE_REASONS, LayoutInterfaceSchema } from './api/layout.js';
+import {
+  LAYOUT_REPLACE_REASONS,
+  LayoutInterfaceSchema,
+  LayoutOriginSchema,
+  LayoutPreferencesSchema,
+} from './api/layout.js';
 
 /**
  * Payload of the event the layout preferences write when a saved record is not used as it was
@@ -22,4 +27,24 @@ export const LayoutAdjustedPayloadSchema = z.strictObject({
   fromVersion: z.int().min(1).nullable(),
   /** A copy of the unusable record was kept beside it. */
   kept: z.boolean(),
+});
+
+/**
+ * Payload of `layout.changed` (N174, 2026-11-20; schemaVersion 1): a `PUT /v1/layout/:interface`
+ * changed the record of an interface, so another client that follows it (`ui.layout.sync: live`)
+ * can apply it without a trip to the REST. [proposta] The rules:
+ * - the whole record goes in `layout`: it is a few hundred bytes. The `version` inside it is the
+ *   version of the record's schema; there is no separate revision counter, because one that starts
+ *   again with the daemon would mislead a client, and the id of the event in the log already orders
+ *   the changes. A new `LAYOUT_VERSION` asks for a new `schemaVersion` of this event;
+ * - `origin` is the `X-OT-Client-Id` of the request that wrote it, or `null` when it had none, so the
+ *   client that wrote recognizes its own echo;
+ * - no `scenarioId`: a layout belongs to the person, not to a scenario. A stream that filters by
+ *   `scenario` does not receive it (events without a scenario never match that filter), so a
+ *   client asks for it in a stream of its own (`types=layout.changed`).
+ */
+export const LayoutChangedPayloadSchema = z.strictObject({
+  interface: LayoutInterfaceSchema,
+  origin: LayoutOriginSchema.nullable(),
+  layout: LayoutPreferencesSchema,
 });

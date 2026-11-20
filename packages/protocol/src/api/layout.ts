@@ -17,6 +17,13 @@ export const LayoutInterfaceSchema = z.enum(LAYOUT_INTERFACES);
 export const LAYOUT_STORES = ['daemon', 'local'] as const;
 export type LayoutStore = (typeof LAYOUT_STORES)[number];
 
+/**
+ * How a client follows a layout another client changed (`ui.layout.sync`, N174, 2026-11-20): `live`
+ * applies the `layout.changed` event as it arrives, `on_open` reads the record only when it opens.
+ */
+export const LAYOUT_SYNCS = ['live', 'on_open'] as const;
+export type LayoutSync = (typeof LAYOUT_SYNCS)[number];
+
 /** Version of the record written by this code. */
 export const LAYOUT_VERSION = 1;
 
@@ -176,6 +183,19 @@ export function readLayoutText(
   return readLayout(layoutInterface, raw, migrations);
 }
 
+/**
+ * Header of `putLayout` that names the client that writes (N174). [proposta] The daemon copies it
+ * into the `origin` of the `layout.changed` event, so a client knows its own echo and ignores it.
+ * A header and not a field of the body, because the body is the record and nothing else; printable
+ * ASCII with no spaces, 1 to 64 characters, so a random UUID fits.
+ */
+export const LAYOUT_ORIGIN_HEADER = 'X-OT-Client-Id';
+export const LayoutOriginSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[\x21-\x7e]+$/);
+
 const LayoutParamsSchema = z.strictObject({ interface: LayoutInterfaceSchema });
 
 export const getLayout = defineRoute({
@@ -193,6 +213,7 @@ export const putLayout = defineRoute({
   path: '/v1/layout/:interface',
   summary: 'Replaces the layout preferences of an interface',
   params: LayoutParamsSchema,
+  headers: z.looseObject({ 'x-ot-client-id': LayoutOriginSchema.optional() }),
   body: LayoutPreferencesSchema,
   response: LayoutPreferencesSchema,
 });

@@ -85,6 +85,19 @@ afterEach(async () => {
   await tmp.dispose();
 });
 
+/** The events are written by the queue of the situations: waits until `read` returns `count`. */
+async function waitForEvents(
+  read: () => Promise<readonly unknown[]>,
+  count: number,
+): Promise<readonly unknown[]> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const events = await read();
+    if (events.length >= count || Date.now() > deadline) return events;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 describe('the layout over REST', () => {
   it('serves the default of each interface before anything was saved', async () => {
     const send = await client(await start());
@@ -95,7 +108,11 @@ describe('the layout over REST', () => {
     const config = (await send('GET', '/v1/config')).json as {
       config: { ui: { layout: unknown } };
     };
-    expect(config.config.ui.layout).toEqual({ store: 'daemon', write_delay: 300 });
+    expect(config.config.ui.layout).toEqual({
+      store: 'daemon',
+      write_delay: 300,
+      sync: 'live',
+    });
   });
 
   it('gives a new client what another one saved, and keeps it after a restart', async () => {
@@ -113,12 +130,44 @@ describe('the layout over REST', () => {
     const c = await client(await start());
     expect((await c('GET', '/v1/layout/tui')).json).toEqual(SAVED);
     expect((await c('GET', '/v1/layout/web')).json).toEqual(defaultLayout('web'));
-    // A normal save is not an event, and nothing needed a warning.
+    // A normal save is `layout.changed` and never `layout.adjusted`; nothing needed a warning.
     const types = (await running().store.events.readFrom(0, 10_000)).map((event) => event.type);
     expect(types).not.toContain('layout.adjusted');
     expect(
       lines.filter((line) => line.level === 'warn' && line.msg.includes('layout')),
     ).toHaveLength(0);
+  });
+
+  it('writes layout.changed for a PUT that changes the record, with the origin of the header, and none for an equal one', async () => {
+    const handle = await start();
+    const send = await client(handle);
+    const changes = async () =>
+      (await handle.store.events.readFrom(0, 10_000))
+        .filter((event) => event.type === 'layout.changed')
+        .map((event) => event.payload);
+    const saved = await send('PUT', '/v1/layout/tui', SAVED, { 'x-ot-client-id': 'client-a' });
+    expect(saved.status, saved.text).toBe(200);
+    await waitForEvents(changes, 1);
+    // The same record again, from another client: nothing changed, so nothing is announced.
+    expect(
+      (await send('PUT', '/v1/layout/tui', SAVED, { 'x-ot-client-id': 'client-b' })).status,
+    ).toBe(200);
+    const next = { ...SAVED, chatWidth: 91 };
+    expect((await send('PUT', '/v1/layout/tui', next)).status).toBe(200);
+    // A header that is not a name is refused, and nothing is written.
+    expect((await send('PUT', '/v1/layout/tui', next, { 'x-ot-client-id': 'a b' })).status).toBe(
+      400,
+    );
+    const all = await waitForEvents(changes, 2);
+    expect(all).toEqual([
+      { interface: 'tui', origin: 'client-a', layout: SAVED },
+      { interface: 'tui', origin: null, layout: next },
+    ]);
+    // The event is global: it has no scenario.
+    const [event] = (await handle.store.events.readFrom(0, 10_000)).filter(
+      (item) => item.type === 'layout.changed',
+    );
+    expect(event?.scenarioId).toBeUndefined();
   });
 
   it('refuses a body outside the schema and keeps what was saved', async () => {

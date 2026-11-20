@@ -843,7 +843,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
       async (harness, client) => {
         const { config } = await client.call(API_ROUTES.getConfig, {});
         const settings = layoutSettingsFromConfig(config);
-        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20 });
+        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20, sync: 'live' });
 
         const tui = createLayoutStore({ client, interface: 'tui', settings });
         await tui.load();
@@ -894,6 +894,107 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
     );
   });
 
+  it('a layout one client changes shows in another one that is open, when `ui.layout.sync` is live (N174)', async () => {
+    await withFakeDaemon(
+      { extra: 'ui:\n  layout:\n    write_delay: 20ms\n' },
+      async (harness, client) => {
+        const { config } = await client.call(API_ROUTES.getConfig, {});
+        const settings = layoutSettingsFromConfig(config);
+        expect(settings).toEqual({ store: 'daemon', writeDelayMs: 20, sync: 'live' });
+
+        // Two clients of the same user, each with its own connection and its own stream.
+        const clientA = await clientOf(harness);
+        const clientB = await clientOf(harness);
+        const a = createLayoutStore({ client: clientA, interface: 'tui', settings });
+        const streamB = clientB.events({ types: 'layout.changed' });
+        const opened = new Promise<void>((resolve) => {
+          streamB.onState((state) => {
+            if (state === 'open') resolve();
+          });
+        });
+        const b = createLayoutStore({
+          client: clientB,
+          interface: 'tui',
+          settings,
+          events: streamB,
+        });
+        // A stream that follows a scenario never gets it: an event with no scenario does not match.
+        const scenarioStream = clientB.events({ scenario: 'sc-none' });
+        const seen = follow(scenarioStream);
+        await Promise.all([a.load(), b.load(), opened]);
+
+        a.setChatWidth(77);
+        a.setSectionCollapsed('quota', true);
+        await waitFor('the other client to show the change', () =>
+          Promise.resolve(b.layout.chatWidth === 77 ? true : undefined),
+        );
+        expect(b.layout).toEqual(a.layout);
+        expect(b.state.getState().dirty).toBe(false);
+        // A did not take its own echo for a change of another client, and B saved nothing.
+        await a.whenSaved();
+        expect(a.layout.chatWidth).toBe(77);
+        const changes = (await logOf(harness)).filter((event) => event.type === 'layout.changed');
+        expect(changes.length).toBeGreaterThan(0);
+        const last = changes.at(-1);
+        expect(last?.scenarioId).toBeUndefined();
+        expect(last === undefined ? undefined : payloadOf(last).layout).toEqual(a.layout);
+        expect(seen.messages.filter((m) => m.event === 'layout.changed')).toHaveLength(0);
+
+        // The other way round: B changes, A follows.
+        b.setSidebarCollapsed(true);
+        await waitFor('the first client to show the change', () =>
+          Promise.resolve(a.layout.sidebarCollapsed ? true : undefined),
+        );
+        a.close();
+        b.close();
+        scenarioStream.close();
+      },
+    );
+  });
+
+  it('with `ui.layout.sync: on_open` the open client does not follow, and a new one reads the record', async () => {
+    await withFakeDaemon(
+      { extra: 'ui:\n  layout:\n    write_delay: 20ms\n    sync: on_open\n' },
+      async (harness, client) => {
+        const { config } = await client.call(API_ROUTES.getConfig, {});
+        const settings = layoutSettingsFromConfig(config);
+        expect(settings.sync).toBe('on_open');
+        const a = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        const b = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        await Promise.all([a.load(), b.load()]);
+        a.setChatWidth(77);
+        await a.flush();
+        // The daemon still writes the event (it is also a fact of the log), but B does not follow.
+        await waitFor('the event in the log', async () =>
+          (await logOf(harness)).some((event) => event.type === 'layout.changed')
+            ? true
+            : undefined,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(b.layout.chatWidth).toBe(defaultLayout('tui').chatWidth);
+        // Opening again reads it.
+        const c = createLayoutStore({
+          client: await clientOf(harness),
+          interface: 'tui',
+          settings,
+        });
+        await c.load();
+        expect(c.layout.chatWidth).toBe(77);
+        a.close();
+        b.close();
+        c.close();
+      },
+    );
+  });
+
   it('with `ui.layout.store: local` the layout goes to the file of the client and the daemon keeps none', async () => {
     const configDir = await mkdtemp(join(tmpdir(), 'otheater-layout-'));
     try {
@@ -902,7 +1003,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         async (harness, client) => {
           const { config } = await client.call(API_ROUTES.getConfig, {});
           const settings = layoutSettingsFromConfig(config);
-          expect(settings).toEqual({ store: 'local', writeDelayMs: 20 });
+          expect(settings).toEqual({ store: 'local', writeDelayMs: 20, sync: 'live' });
           const file = new FileLayoutStore(clientLayoutFile(configDir, 'tui'));
           const store = createLayoutStore({ client, interface: 'tui', settings, file });
           await store.load();

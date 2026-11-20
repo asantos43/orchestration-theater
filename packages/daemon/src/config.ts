@@ -18,7 +18,7 @@ import {
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
-import { BACKUP_CONTENTS, LAYOUT_STORES } from '@otheater/protocol';
+import { BACKUP_CONTENTS, LAYOUT_STORES, LAYOUT_SYNCS } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import {
@@ -1949,6 +1949,14 @@ export const DaemonConfigSchema = z
              * writes it, so dragging the edge of the chat does not write once per column.
              */
             write_delay: DurationSchema.prefault('300ms'),
+            /**
+             * [proposta] How a client follows a layout another client changed (N174, 2026-11-20):
+             * `live` applies the `layout.changed` event as it arrives; `on_open` reads the record
+             * only when the screen opens. The daemon writes the event in both modes (it is also a
+             * fact of the log, for hooks and plugins); the key is what a client reads. With
+             * `store: local` the daemon keeps no record, so no event exists and the key is idle.
+             */
+            sync: z.enum(LAYOUT_SYNCS).default('live'),
           })
           .prefault({}),
       })

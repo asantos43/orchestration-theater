@@ -27,7 +27,10 @@ import type { SituationSink } from '../situations.js';
  *   serves until the next write. Both are recorded as the event `layout.adjusted`. Nothing here
  *   stops the start: a layout is a preference;
  * - a write is the whole record, one after the other; the memory changes only after the file does;
- * - a normal write is not an event: dragging the edge of the chat would fill the log with it.
+ * - a write that changes the record is the event `layout.changed` (N174, 2026-11-20), so another
+ *   client can follow it; a write equal to what is there is not. This reverses the first rule of
+ *   P12 (no event on a write, so dragging an edge would not fill the log): the client already
+ *   groups its writes by `ui.layout.write_delay`, so a drag is one write, one event.
  */
 
 /** The suffix of the copy of a record that was replaced. */
@@ -55,17 +58,19 @@ function isNotFound(error: unknown): boolean {
 
 export class LayoutPreferencesStore {
   readonly #dir: string;
+  readonly #situations: SituationSink;
   readonly #records = new Map<LayoutInterface, LayoutPreferences>();
   /** Writes run one at a time: the rename of one must not meet the rename of the next. */
   #chain: Promise<unknown> = Promise.resolve();
 
-  private constructor(dir: string) {
+  private constructor(dir: string, situations: SituationSink) {
     this.#dir = dir;
+    this.#situations = situations;
   }
 
   /** Reads the record of every interface. Never rejects. */
   static async open(options: LayoutPreferencesOptions): Promise<LayoutPreferencesStore> {
-    const store = new LayoutPreferencesStore(options.dir);
+    const store = new LayoutPreferencesStore(options.dir, options.situations);
     await Promise.all(LAYOUT_INTERFACES.map((which) => store.#load(which, options)));
     return store;
   }
@@ -141,11 +146,29 @@ export class LayoutPreferencesStore {
     return this.#records.get(which) ?? defaultLayout(which);
   }
 
-  /** Saves the whole record of an interface and returns it. Rejects if the file cannot be written. */
-  put(which: LayoutInterface, layout: LayoutPreferences): Promise<LayoutPreferences> {
+  /**
+   * Saves the whole record of an interface and returns it. Rejects if the file cannot be written.
+   * When the record is not the one that was there it is also the event `layout.changed`, written
+   * after the file and the memory, with `origin` the client that asked (`null` if it said none).
+   * [proposta] The file is written even when the record is equal: it costs nothing and the file
+   * ends as the client sent it.
+   */
+  put(
+    which: LayoutInterface,
+    layout: LayoutPreferences,
+    origin?: string,
+  ): Promise<LayoutPreferences> {
     const run = async (): Promise<LayoutPreferences> => {
       await this.#write(which, layout);
+      const changed = JSON.stringify(this.get(which)) !== JSON.stringify(layout);
       this.#records.set(which, layout);
+      if (changed) {
+        this.#situations.record('layout.changed', {
+          interface: which,
+          origin: origin ?? null,
+          layout,
+        });
+      }
       return layout;
     };
     const next = this.#chain.then(run, run);

@@ -68,13 +68,16 @@ describe('parseConfig', () => {
     expect(config.log).toEqual({ level: 'info', destination: 'file' });
   });
 
-  it('takes ui.layout.store as daemon or local and ui.layout.write_delay as a duration (P12)', () => {
-    expect(parseConfig('').ui.layout).toEqual({ store: 'daemon', write_delay: 300 });
+  it('takes ui.layout.store as daemon or local, ui.layout.write_delay as a duration (P12) and ui.layout.sync as live or on_open (N174)', () => {
+    expect(parseConfig('').ui.layout).toEqual({ store: 'daemon', write_delay: 300, sync: 'live' });
+    expect(parseConfig('ui:\n  layout:\n    sync: on_open\n').ui.layout.sync).toBe('on_open');
+    expect(() => parseConfig('ui:\n  layout:\n    sync: sometimes\n')).toThrow(/ui\.layout\.sync/);
     expect(
       parseConfig('ui:\n  layout:\n    store: local\n    write_delay: 1s\n').ui.layout,
     ).toEqual({
       store: 'local',
       write_delay: 1000,
+      sync: 'live',
     });
     expect(() => parseConfig('ui:\n  layout:\n    store: cloud\n')).toThrow(/ui\.layout\.store/);
     expect(() => parseConfig('ui:\n  layout:\n    write_delay: soon\n')).toThrow(
