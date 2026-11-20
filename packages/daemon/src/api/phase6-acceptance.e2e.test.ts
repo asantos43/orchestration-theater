@@ -8,8 +8,6 @@ import {
   ApiRequestError,
   DaemonIdMismatchError,
   DaemonStores,
-  PlayCreatedPayloadSchema as ClientPlayCreatedSchema,
-  PlayTransitionedPayloadSchema as ClientPlayTransitionedSchema,
   applyEvents,
   createLayoutStore,
   initialPlays,
@@ -28,6 +26,8 @@ import {
 } from '@otheater/client/node';
 import {
   API_ROUTES,
+  PlayCreatedPayloadSchema,
+  PlayTransitionedPayloadSchema,
   defaultLayout,
   type ApiSseMessage,
   type ChatServerMessage,
@@ -51,10 +51,6 @@ import {
   type PlayHarness,
 } from '../orchestration/e2e-fixture.js';
 import { dataPaths } from '../paths.js';
-import {
-  PlayCreatedPayloadSchema as DaemonPlayCreatedSchema,
-  PlayTransitionedPayloadSchema as DaemonPlayTransitionedSchema,
-} from '../pipeline/events.js';
 
 /**
  * The acceptance of Phase 6 (P13 of docs/17) [proposta]: the test client of `@otheater/client` (the
@@ -672,40 +668,17 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         ).toEqual([]);
         expect(stores.status.getState()).toMatchObject({ phase: 'live', error: undefined });
 
-        // Both schemas of the two events (the client's, loose; the daemon's, strict) take every
-        // payload the daemon wrote, and read the same fields from it.
+        // The one schema of each event (in the protocol, shared by the daemon and the client) takes
+        // every payload the daemon wrote.
         const created = events.filter((event) => event.type === 'play.created');
         const moved = events.filter((event) => event.type === 'play.transitioned');
         expect(created).toHaveLength(1);
         expect(moved.length).toBeGreaterThanOrEqual(3);
         for (const event of created) {
-          const daemon = DaemonPlayCreatedSchema.parse(event.payload);
-          const loose = ClientPlayCreatedSchema.parse(event.payload);
-          expect(loose).toMatchObject({
-            flowId: daemon.flowId,
-            flowVersion: daemon.flowVersion,
-            need: daemon.need,
-            parentPlayId: daemon.parentPlayId,
-          });
+          expect(() => PlayCreatedPayloadSchema.parse(event.payload)).not.toThrow();
         }
         for (const event of moved) {
-          const daemon = DaemonPlayTransitionedSchema.parse(event.payload);
-          const loose = ClientPlayTransitionedSchema.parse(event.payload);
-          expect(loose).toMatchObject({
-            event: daemon.event,
-            from: daemon.from,
-            to: daemon.to,
-            counters: daemon.counters,
-          });
-        }
-        // The two schemas stay the same shape: what the daemon's has, the client's has.
-        const keys = (schema: { shape: Record<string, unknown> }): string[] =>
-          Object.keys(schema.shape).sort();
-        for (const key of keys(DaemonPlayTransitionedSchema)) {
-          expect(keys(ClientPlayTransitionedSchema)).toContain(key);
-        }
-        for (const key of keys(DaemonPlayCreatedSchema)) {
-          expect(keys(ClientPlayCreatedSchema)).toContain(key);
+          expect(() => PlayTransitionedPayloadSchema.parse(event.payload)).not.toThrow();
         }
 
         // The stamp of every event is the stamp of the record it carries.
