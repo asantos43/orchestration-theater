@@ -15,6 +15,7 @@ import { RealHeadCodeHost, waitFor } from '../orchestration/e2e-fixture.js';
 import { dataPaths, profileDirOf, type ProfileNames } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
+import { summarizeSessionUpdates } from './phase6-update-summary.js';
 
 /**
  * The acceptance of Phase 6 at the REAL level (P13 of docs/17) [proposta]: one real client (with a
@@ -404,6 +405,14 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
               log(
                 `trace ${event.type}@${seconds(event.timestamp - started)}: ${clip(JSON.stringify(event.payload), TRACE_CHARS)}`,
               );
+            }
+            // What the `session.update` events were, per session: kinds, tools and the end of the
+            // stream (kinds, tool names and statuses only, never content). Apart from the summary
+            // above, so a failure here only costs this block.
+            try {
+              for (const line of summarizeSessionUpdates(events)) log(line);
+            } catch (error) {
+              log(`the diagnosis of the session updates failed: ${String(error)}`);
             }
           } catch (error) {
             log(`the summary of the log failed: ${String(error)}`);
