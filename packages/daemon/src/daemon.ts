@@ -30,6 +30,7 @@ import {
 import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
+import { registerReadRoutes } from './api/routes/index.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
@@ -66,6 +67,7 @@ import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
+import { AttachmentService } from './scenarios/attachments.js';
 import { createDaemonExhaustion } from './orchestration/exhaustion-wiring.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
@@ -810,6 +812,26 @@ async function run(input: RunInput): Promise<DaemonHandle> {
             ...(orchestration === undefined ? {} : { directors: orchestration.directors }),
           }),
         }),
+  });
+
+  // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
+  // registered here and not where `getStatus` is; a read before this point answers 404.
+  registerReadRoutes(api.handlers, {
+    store,
+    config,
+    quota,
+    usage,
+    budget,
+    profiles,
+    attachments: new AttachmentService({
+      store,
+      clock,
+      scenariosDir: paths.scenarios,
+      limits: () => ({
+        maxSize: config.scenarios.attachment_max_size,
+        readMax: config.scenarios.attachment_read_max,
+      }),
+    }),
   });
 
   const handle: DaemonHandle = {
