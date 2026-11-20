@@ -1450,6 +1450,23 @@ export const DaemonConfigSchema = z
       .prefault({}),
     tools: ToolsConfigSchema,
     browser: BrowserConfigSchema,
+    /**
+     * The API of the daemon (architecture 5.12; Phase 6). [proposta] One block that grows step by
+     * step: P2 only has `sse.buffer_events`, and P3 adds `port`, `token`, `remote`, `cors`... here.
+     */
+    api: z
+      .strictObject({
+        sse: z
+          .strictObject({
+            /**
+             * [proposta: 1000] Live events one subscriber of the event hub may leave unseen before it
+             * stops counting them and catches up from the log (`daemon/src/events/event-hub.ts`).
+             */
+            buffer_events: z.int().min(1).default(1000),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
     events: z
       .strictObject({
         /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */

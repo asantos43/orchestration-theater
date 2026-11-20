@@ -16,7 +16,7 @@ import {
 } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import pino from 'pino';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseConfig } from './config.js';
 import { MAX_PASSWORD_ATTEMPTS, startDaemon, unlockVault, type PasswordPrompt } from './daemon.js';
 import { createSilentLogger } from './logger.js';
@@ -248,6 +248,43 @@ describe('startDaemon', () => {
       // The store is closed now, so read the log through the inner store's committed events.
       await expect(store.events.readFrom(0, 10)).rejects.toThrow(AdapterUnavailable);
       expect(await exists(join(tmp.dir, 'daemon.lock'))).toBe(true); // the file stays; the lock does not
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('exposes the event hub: the history, the live events, and the streams end when the daemon stops (Phase 6, P2)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const clock = new FakeClock(AT);
+      const store = new MaintainedStore(clock);
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        clientSearch: NO_CLIENTS,
+        config: MANUAL,
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+        logger: createSilentLogger(),
+        version: '9.9.9',
+      });
+      const controller = new AbortController();
+      const seen: string[] = [];
+      const reader = (async () => {
+        for await (const event of daemon.eventHub.follow({
+          afterId: 0,
+          signal: controller.signal,
+        })) {
+          seen.push(event.type);
+        }
+      })();
+      await daemon.store.events.append({ type: 'test.tick', schemaVersion: 1, payload: {} });
+      await vi.waitFor(() => {
+        expect(seen).toContain('test.tick');
+      });
+      expect(seen[0]).toBe('daemon.started');
+      await daemon.stop('shutdown');
+      // The stream ended by itself (no abort): the hub closes before the store does.
+      await reader;
+      expect(daemon.eventHub.subscriberCount).toBe(0);
     } finally {
       await tmp.dispose();
     }
