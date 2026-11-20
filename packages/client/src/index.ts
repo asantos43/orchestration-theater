@@ -5,3 +5,17 @@ export * from './errors.js';
 export * from './client.js';
 export * from './directory.js';
 export * from './refs.js';
+export {
+  CONNECTION_STATES,
+  DEFAULT_RECONNECT,
+  backoffDelayMs,
+  systemClock,
+  type Clock,
+  type ConnectionDetail,
+  type ConnectionListener,
+  type ConnectionState,
+  type ReconnectOptions,
+} from './connection.js';
+export * from './sse-parser.js';
+export * from './event-stream.js';
+export * from './chat-socket.js';
