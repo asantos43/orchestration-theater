@@ -440,7 +440,7 @@ O aceite roda nos três sistemas da CI. O nível real (`tools/acceptance`) ganha
   - **Codex (gpt-5.6-luna), sem regra:** falhou. A edição de `src/slugify.js` do Ator recebeu `reject on_ask_reject` e a peça foi cancelada (`173110`); decidido na N182.
   - **Codex, com `OT_TEST_PHASE6_EDIT_RULES=1`** (regra de teste que libera `edit` em `**` para o Ator e o consultor): passou. `DONE` em 193,3 s, 755 eventos, 1 resposta, 15 processos, nenhum vivo; 2 edições liberadas pela regra (`173724`).
   - **Codex, sem regra, com a N182:** passou. `DONE` em 458,6 s, 1911 eventos vistos pelo cliente, 2 respostas do Diretor, 39 processos, nenhum vivo; 5 edições liberadas com o motivo `edit_in_worktree` e nenhum `on_ask_reject` (`183015`).
-  - **OpenCode (openai/gpt-5.6-luna):** quatro rodadas e uma de confirmação, todas falharam por comportamento do modelo:
+  - **OpenCode (openai/gpt-5.6-luna):** quatro rodadas e uma de confirmação falharam por comportamento do modelo; a sexta, com a N184 e o resumo das atualizações, passou:
     - `174051`, sem regra: 3 vetos contraditórios do revisor do roteiro pela regra 3 (o primeiro diz que a dependência é desnecessária, o seguinte pede a dependência inversa), `AWAITING_PRODUCER` e `CANCELLED`, em 120 s;
     - `174312`, com regra: `REVIEWING_PLAN` para `AWAITING_PRODUCER` por `SUBMIT_FAILED` ("the reviewer ended its turn without calling its submit tool"); o Diretor respondeu algo falso sobre o daemon; 36 s;
     - `174415`, com regra: chegou a `DONE` em 330,7 s (1 veto, 1 rejeição do Crítico, `DEMAND_BLOCKED`, volta ao roteiro), mas com 0 respostas do Diretor; 35 processos, nenhum vivo; 0 pedidos de permissão;
@@ -454,6 +454,15 @@ O aceite roda nos três sistemas da CI. O nível real (`tools/acceptance`) ganha
       - [V] um turno de papel pode rodar mais de 25 min sem terminar e sem acionar o watchdog `stuck.no_event_for`, porque as atualizações continuam chegando. O único corte é o prazo da tentativa (`limits.demand_timeout`, 30 min no `moderate`), maior que o prazo do teste. Isso levou à N184.
       - [N] o Diretor ocupado no fim é compatível com a hipótese do turno longo, mas não a prova.
       - [N] o que eram as atualizações: o resumo do aceite passa a contá-las por tipo e por sessão, e uma nova rodada vai dizer.
+  - **Rodada com a N184** (`205014`, na main com os PRs #200 e #201, sem regra de teste): passou.
+    - `DONE` em 124,0 s, 240 eventos vistos pelo cliente, 1 resposta do Diretor, 12 processos, nenhum vivo; pico de cerca de 4,4 GB.
+    - 1 submissão inválida do roteiro (`contracts[0].kind` e `contracts[1].kind`), corrigida na segunda.
+    - "Director busy at the end: no"; nenhum `session.turn_timeout` e nenhum `chat.director_silent`.
+    - O resumo das atualizações mostrou turnos curtos: de 7 a 37 `session.update` por sessão de papel, de 2,7 s a 26,9 s cada, quase todas `tool_call` e `tool_call_update`.
+    - **Leitura:**
+      - [V] o prazo por turno não precisou cortar nada nesta rodada; o corte com um cliente real segue não medido [N].
+      - [N] a causa do turno de 25 min da rodada `192554` não se repetiu e segue sem explicação. O resumo das atualizações só ajuda quando o caso volta.
+      - [V] um defeito pequeno do resumo: ele corta o id da sessão em 8 caracteres, e os ids do OpenCode têm o mesmo começo, então todas as sessões aparecem como `ses_e04a`. O papel ao lado ainda as separa. A sessão do Diretor não aparece no resumo; o motivo segue [N].
   - **OpenCode (openai/gpt-5.6-sol), sem regra:** passou de primeira. `DONE` em 129,8 s, 357 eventos, 1 resposta, 13 processos, nenhum vivo; 1 submissão inválida do roteiro (`contracts[1].kind`) corrigida; pico de cerca de 6,4 GB (`175322`).
   - **Restricted shell nas rodadas do Codex:** recusou `sh -c` (`shell_syntax`) e `sed` (`program_not_allowed`); não impediu a peça.
 
