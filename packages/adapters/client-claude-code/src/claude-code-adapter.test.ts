@@ -31,7 +31,11 @@ const policy: RolePolicy = {
   network: { allow: [] },
 };
 
-const writingPolicy: RolePolicy = { ...policy, nativeTools: ['read', 'search', 'edit', 'write'] };
+const writingPolicy: RolePolicy = {
+  ...policy,
+  nativeTools: ['read', 'search', 'edit', 'write'],
+  editInWorktree: 'allow',
+};
 
 let root: string;
 let profile: Profile;
@@ -161,6 +165,18 @@ describe('the mode of the session (N180)', () => {
     const setup = headless.opened[0]?.setup;
     if (setup?.via !== 'headless') throw new Error('expected a headless setup');
     expect(setup.args[setup.args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
+  });
+
+  it('starts a role that writes with edit_in_worktree: ask in default, so the edit reaches layer 2 (N182)', async () => {
+    const asking: RolePolicy = { ...writingPolicy, editInWorktree: 'ask' };
+    await build().openSession(profile, asking, '/work', via);
+    expect(via.opened[0]?.setup).toMatchObject({ via: 'acp', configOptions: { mode: 'default' } });
+    expect((await settingsOf()).permissions.defaultMode).toBe('default');
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await build().openSession(profile, asking, '/work', headless);
+    const setup = headless.opened[0]?.setup;
+    if (setup?.via !== 'headless') throw new Error('expected a headless setup');
+    expect(setup.args[setup.args.indexOf('--permission-mode') + 1]).toBe('default');
   });
 
   it('starts a role that only reads in default, on the same three paths', async () => {

@@ -41,6 +41,14 @@ export interface PolicySettings {
   readonly onAsk: 'reject' | 'rules';
   /** The rules of layer 2, ids still optional; they count only when `onAsk` is `rules`. */
   readonly rules: readonly PolicyRule[];
+  /**
+   * N182 (owner, 2026-11-20) [proposta]: `allow` lets a role that has `edit` or `write` in
+   * `nativeTools` edit files inside its worktree with no request, for every client (layer 2 allows it
+   * before the rules; Claude Code opens in `acceptEdits`, OpenCode puts `edit: allow`). `ask` sends
+   * the edit to layer 2 like any other request. A key of its own and not a rule of `rules`, because
+   * `rules` is replaced as a list: a user who writes rules would lose a default that lived there.
+   */
+  readonly editInWorktree: 'allow' | 'ask';
 }
 
 /**
@@ -88,6 +96,10 @@ export function defaultPolicySettings(role: string): PolicySettings {
     browser: 'none',
     onAsk: 'reject',
     rules: [],
+    // [V: real acceptance of 2026-11-20] Codex has no mode that edits with no request: the edit of
+    // the Actor reached layer 2 and `on_ask: reject` cancelled the piece. [proposta] N182: the roles
+    // that write get the edit inside the worktree by default; the others have nothing to edit.
+    editInWorktree: WRITING_ROLES.has(role) ? 'allow' : 'ask',
   };
 }
 
@@ -100,6 +112,7 @@ export function applyPolicyLayer(base: PolicySettings, layer: RolePolicySettings
     browser: layer.browser ?? base.browser,
     onAsk: layer.on_ask ?? base.onAsk,
     rules: layer.rules ?? base.rules,
+    editInWorktree: layer.edit_in_worktree ?? base.editInWorktree,
   };
 }
 
@@ -180,6 +193,7 @@ export function buildRolePolicy(
     mcpTools: { [FRAMEWORK_MCP_NAME]: frameworkToolsOf(role, settings, tools) },
     onAsk: settings.onAsk,
     ...(settings.onAsk === 'rules' ? { rules: permissionRulesOf(settings) } : {}),
+    editInWorktree: settings.editInWorktree,
     bypass: 'forbidden',
     writeScope: 'worktree',
     network: { allow: settings.network.allow },

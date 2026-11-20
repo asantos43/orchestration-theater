@@ -33,7 +33,11 @@ const reader: RolePolicy = {
   writeScope: 'worktree',
   network: { allow: [] },
 };
-const writer: RolePolicy = { ...reader, nativeTools: ['read', 'search', 'edit'] };
+const writer: RolePolicy = {
+  ...reader,
+  nativeTools: ['read', 'search', 'edit'],
+  editInWorktree: 'allow',
+};
 
 const NO_OS = { fields: [] } as const;
 const ALL_OS = { fields: ROLE_POLICY_FIELDS } as const;
@@ -237,6 +241,15 @@ describe('OpenCodeAdapter', () => {
       ).close();
       expect(permissionOf(0)).toMatchObject({ edit: 'deny', bash: 'deny' });
       expect(permissionOf(1)).toMatchObject({ edit: 'allow', bash: 'deny' });
+    });
+
+    it('a writer with edit_in_worktree: ask gets edit: ask, so the request reaches layer 2 (N182)', async () => {
+      const adapter = make();
+      const asking: RolePolicy = { ...writer, editInWorktree: 'ask' };
+      await (
+        await adapter.openSession(profile, asking, '/work', new FakeSessionTransport())
+      ).close();
+      expect(permissionOf(0)).toMatchObject({ edit: 'ask', bash: 'deny' });
     });
 
     it('the project config can be left on, and the homes to isolate are a setting', async () => {

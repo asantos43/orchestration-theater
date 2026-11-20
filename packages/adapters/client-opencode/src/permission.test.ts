@@ -37,9 +37,34 @@ describe('opencodePermission', () => {
       list: 'allow',
       edit: 'deny',
     });
-    const writer = opencodePermission(policy({ nativeTools: ['read', 'edit'] }));
+    const writer = opencodePermission(
+      policy({ nativeTools: ['read', 'edit'], editInWorktree: 'allow' }),
+    );
     expect(writer).toMatchObject({ read: 'allow', glob: 'deny', grep: 'deny', edit: 'allow' });
-    expect(opencodePermission(policy({ nativeTools: ['write'] })).edit).toBe('allow');
+    expect(
+      opencodePermission(policy({ nativeTools: ['write'], editInWorktree: 'allow' })).edit,
+    ).toBe('allow');
+  });
+
+  it('edit follows edit_in_worktree (N182): allow spares the request, ask (or absent) sends it to layer 2', () => {
+    const writes = ['read', 'search', 'edit', 'write'] as const;
+    expect(opencodePermission(policy({ nativeTools: writes, editInWorktree: 'allow' })).edit).toBe(
+      'allow',
+    );
+    expect(opencodePermission(policy({ nativeTools: writes, editInWorktree: 'ask' })).edit).toBe(
+      'ask',
+    );
+    expect(opencodePermission(policy({ nativeTools: writes })).edit).toBe('ask');
+    expect(opencodePermission(policy({ nativeTools: ['write'], editInWorktree: 'ask' })).edit).toBe(
+      'ask',
+    );
+  });
+
+  it('edit_in_worktree: allow does not give edit to a role with no edit or write tool (N182)', () => {
+    const rules = opencodePermission(
+      policy({ nativeTools: ['read', 'search'], editInWorktree: 'allow' }),
+    );
+    expect(rules.edit).toBe('deny');
   });
 
   it('always denies the shell, the tools outside the four native ones and external directories', () => {
@@ -153,6 +178,7 @@ describe('the translation for each role (Phase 4, P1)', () => {
   for (const row of roles) {
     const mine = policy({
       nativeTools: row.nativeTools,
+      editInWorktree: 'allow',
       mcpServers: ['otheater'],
       mcpTools: { otheater: row.tools },
     });

@@ -56,7 +56,11 @@ export function mcpToolPrefix(serverName: string): string {
  * 5.2, translation table). Pure.
  *
  * - `nativeTools`: each tool the role has is `allow`; the others are `deny`, which removes the
- *   tool (measured for the shell: "Invalid Tool", Phase 0 [V]; for the other keys [N]).
+ *   tool (measured for the shell: "Invalid Tool", Phase 0 [V]; for the other keys [N]). The exception
+ *   is `edit` (N182, owner, 2026-11-20): a role that has `edit` or `write` gets `edit: allow` only
+ *   when `editInWorktree` is `allow` (the default of the roles that write); with `ask` (or absent)
+ *   it gets `edit: ask`, so the request reaches layer 2, which answers it like it does for the other
+ *   clients. Not measured against the real client [N]; `ask` is the default action of this map.
  * - `nativeShell: none`: the shell keys are `deny`.
  * - `mcpServers` and `mcpTools`: each tool the role may call is `allow` by name
  *   (`<server>_<tool>`), or `<server>_*` for a server whose tools are `all`; the other tools of the
@@ -80,7 +84,12 @@ export function opencodePermission(
   const rules: Record<string, PermissionAction> = { '*': 'ask' };
   rules.read = tools.has('read') ? 'allow' : 'deny';
   for (const tool of SEARCH_TOOLS) rules[tool] = tools.has('search') ? 'allow' : 'deny';
-  rules.edit = tools.has('edit') || tools.has('write') ? 'allow' : 'deny';
+  rules.edit =
+    tools.has('edit') || tools.has('write')
+      ? policy.editInWorktree === 'allow'
+        ? 'allow'
+        : 'ask'
+      : 'deny';
   for (const key of options.shellKeys ?? DEFAULT_SHELL_KEYS) rules[key] = 'deny';
   rules.external_directory = 'deny';
   for (const tool of REMOVED_TOOLS) rules[tool] = 'deny';

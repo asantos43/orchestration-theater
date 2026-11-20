@@ -57,7 +57,7 @@ describe('writeProfileSettings', () => {
   it('writes acceptEdits as defaultMode for a role that edits or writes (N180)', async () => {
     await writeProfileSettings(
       profile,
-      { ...policy, nativeTools: ['read', 'edit', 'write'] },
+      { ...policy, nativeTools: ['read', 'edit', 'write'], editInWorktree: 'allow' },
       {
         quotaStatusline: 'off',
       },
@@ -65,6 +65,13 @@ describe('writeProfileSettings', () => {
     const permissions = (await read()).permissions as Record<string, unknown>;
     expect(permissions.defaultMode).toBe('acceptEdits');
     await writeProfileSettings(profile, policy, { quotaStatusline: 'off' });
+    expect(((await read()).permissions as Record<string, unknown>).defaultMode).toBe('default');
+    // N182: with edit_in_worktree: ask the role keeps its tools but the mode is the default one.
+    await writeProfileSettings(
+      profile,
+      { ...policy, nativeTools: ['read', 'edit', 'write'], editInWorktree: 'ask' },
+      { quotaStatusline: 'off' },
+    );
     expect(((await read()).permissions as Record<string, unknown>).defaultMode).toBe('default');
   });
 
