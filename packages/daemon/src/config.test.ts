@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { InvalidInput, PROMPT_ORDER_MODES } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
+  CHAT_PRESENCE_MODES,
   RECOVERY_NOTICE_MODES,
   SANDBOX_MCP_BRIDGE_MODES,
   resolveMcpBridge,
@@ -751,13 +752,28 @@ describe('chat', () => {
   it('defaults to 200 replies of history', () => {
     expect(parseConfig('').chat).toEqual({
       history: 200,
-      presence: 'poll',
+      presence: 'connected',
       presence_window: 30_000,
     });
   });
 
   it('takes any history from 1', () => {
     expect(parseConfig('chat:\n  history: 1\n').chat.history).toBe(1);
+  });
+
+  it('takes each presence mode, and refuses the old name `poll` (N175, no alias)', () => {
+    expect(CHAT_PRESENCE_MODES).toEqual(['connected', 'always', 'never']);
+    for (const mode of CHAT_PRESENCE_MODES) {
+      expect(parseConfig(`chat:\n  presence: ${mode}\n`).chat.presence).toBe(mode);
+    }
+    let message = '';
+    try {
+      parseConfig('chat:\n  presence: poll\n');
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toMatch(/chat\.presence/);
+    for (const mode of CHAT_PRESENCE_MODES) expect(message).toContain(mode);
   });
 
   it('rejects a bad history and unknown keys (the old `channel` key included)', () => {

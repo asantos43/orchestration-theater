@@ -11,8 +11,8 @@ export interface ChatPresenceOptions {
 }
 
 /**
- * Who is watching (decision of P15a, [proposta]): an `ot chat` is connected to a scenario while it
- * polls it, or while its chat WebSocket is open (`hold`, P7). Every poll of the channel marks the
+ * Who is watching (decision of P15a, [proposta]; mode `connected`, N175): an `ot chat` is connected
+ * to a scenario while its chat WebSocket is open (`hold`, P7), or while it polls it. Every poll of the channel marks the
  * scenario; the scenario counts as watched for `windowMs` after the last one. The presence is in memory: after a restart nobody is there until
  * the chat polls again (it does so every few hundred milliseconds).
  */
