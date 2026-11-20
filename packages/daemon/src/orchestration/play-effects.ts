@@ -137,6 +137,21 @@ type Submission =
   | { readonly kind: 'submitted'; readonly tool: string; readonly output: unknown }
   | { readonly kind: 'failed'; readonly errors: string };
 
+/**
+ * The reason an Actor gives when it finishes blocked (prompt `actor.md`, "Blocked": `submit` with
+ * a result whose state is `blocked`), or `undefined` for any other result. `submit` takes free
+ * JSON (`{ result }`), so this reads it loosely: a result without a usable reason still blocks,
+ * with the whole result as the reason, because the script needs to know why.
+ */
+export function blockedReasonOf(output: unknown): string | undefined {
+  if (typeof output !== 'object' || output === null) return undefined;
+  const result = (output as { result?: unknown }).result;
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined;
+  const { state, reason } = result as { state?: unknown; reason?: unknown };
+  if (state !== 'blocked') return undefined;
+  return typeof reason === 'string' && reason.trim() !== '' ? reason : JSON.stringify(result);
+}
+
 export interface OrchestrationEffectsOptions {
   readonly store: Store;
   readonly execution: Execution;
@@ -1156,6 +1171,18 @@ export class OrchestrationEffects implements PlayEffects {
             ? 'The Actor ended its turn without calling `submit`.'
             : submission.errors,
         );
+        return;
+      }
+      // A blocked Actor says the demand is not enough (architecture 5.4): it goes back to the
+      // script, without `verify` or the Critic, which would only find the missing work.
+      const blocked = blockedReasonOf(submission.output);
+      if (blocked !== undefined) {
+        await store.demands.update(playId, demand.id, { state: 'blocked' });
+        await this.#send(playId, generation, {
+          type: 'DEMAND_BLOCKED',
+          demandId: demand.id,
+          reason: clip(blocked),
+        });
         return;
       }
       const problem = await this.#verify(demand, outcome.worktree, timeoutMin * 60_000);
