@@ -139,17 +139,6 @@ daemon = await startDaemon({
 });
 process.stdout.write('STARTED\n');
 
-/** What the chat of the scenario shows right after a start: the notices of the reconciliation. */
-async function pollNotices() {
-  const plays = await daemon.store.plays.list({});
-  const scenarioId = plays[0]?.scenarioId;
-  if (scenarioId === undefined || daemon.producer === undefined) return { taken: [], again: [] };
-  const taken = (await daemon.producer.poll(scenarioId, 0)).notices;
-  const again = (await daemon.producer.poll(scenarioId, 0)).notices;
-  return { scenarioId, taken, again };
-}
-const notices = env.OT_CHILD_MODE === 'resume' ? await pollNotices() : undefined;
-
 if (env.OT_CHILD_MODE === 'first') {
   const { scenarioId } = await daemon.producer.openChat({ repo: env.OT_CHILD_REPO });
   await daemon.producer.send(scenarioId, '#ot-play write alpha and beta #outcome:approved');
@@ -172,7 +161,6 @@ const events = await daemon.store.events.readFrom(0, 100000);
 const report = {
   timedOut,
   plays: (await daemon.store.plays.list({})).map((play) => ({ id: play.id, state: play.state })),
-  notices,
   systemMessages: events
     .filter((event) => event.type === 'scenario.system_message')
     .map((event) => ({ scenarioId: event.scenarioId ?? null, payload: event.payload })),

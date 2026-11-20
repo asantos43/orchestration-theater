@@ -394,6 +394,9 @@ importers:
       '@otheater/adapter-vcs-git':
         specifier: workspace:*
         version: link:../adapters/vcs-git
+      '@otheater/client':
+        specifier: workspace:*
+        version: link:../client
       '@otheater/core':
         specifier: workspace:*
         version: link:../core

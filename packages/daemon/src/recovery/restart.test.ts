@@ -93,7 +93,6 @@ describeWithLauncher('a restart in the middle of a play (P9)', { timeout: 180_00
         ),
       ).toEqual([]);
       const { scenarioId } = await producer.openChat({ repo: rig.repo });
-      expect((await producer.poll(scenarioId, 0)).notices).toEqual([]);
       await producer.send(scenarioId, '#ot-play write alpha and beta #outcome:approved');
       const play: PlayRecord = await waitFor('the play to exist', async () => {
         return (await first.store.plays.list({ scenarioId }))[0];
@@ -106,9 +105,12 @@ describeWithLauncher('a restart in the middle of a play (P9)', { timeout: 180_00
 
       daemon = await start();
       const second = daemon;
-      // The chat of the scenario gets the system message of the reconciliation, once.
-      const taken = await second.producer?.poll(scenarioId, 0);
-      expect(taken?.notices).toEqual([
+      // The chat of the scenario gets the system message of the reconciliation: one event, which
+      // the chat socket delivers (P7); there is no other copy kept in memory (P8).
+      const notices = (await second.store.events.readFrom(0, 100_000)).filter(
+        (event) => event.type === 'scenario.system_message' && event.scenarioId === scenarioId,
+      );
+      expect(notices.map((event) => event.payload)).toEqual([
         {
           scenarioId,
           kind: 'recovery',
@@ -117,7 +119,6 @@ describeWithLauncher('a restart in the middle of a play (P9)', { timeout: 180_00
           waiting: [],
         },
       ]);
-      expect((await second.producer?.poll(scenarioId, 0))?.notices).toEqual([]);
       await waitFor(
         'DONE after the restart',
         async () => (await second.store.plays.get(play.id))?.state === 'DONE',

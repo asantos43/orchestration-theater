@@ -167,15 +167,17 @@ describeWithLauncher('the failover of the Director (P20)', { timeout: 180_000 },
     });
   });
 
-  it('shows the notice to the chat of the Producer, in the next poll', async () => {
+  it('writes the notice for the chat of the Producer as a system message event', async () => {
     await withFailoverDaemon({ extra: rolesConfig(['one', 'two']) }, async (harness) => {
       const scenarioId = await harness.openGenericChat('talk');
       await harness.producer.send(scenarioId, '#ot-director-fail:quota\n#ot-chat hello');
-      const notices = await waitFor('the notice in a poll', async () => {
-        const view = await harness.producer.poll(scenarioId, 0);
-        return view.notices.length > 0 ? view.notices : undefined;
+      const notices = await waitFor('the notice event', async () => {
+        const found = (await harness.daemon.store.events.readFrom(0, 100_000)).filter(
+          (event) => event.type === 'scenario.system_message' && event.scenarioId === scenarioId,
+        );
+        return found.length > 0 ? found : undefined;
       });
-      expect(notices[0]).toMatchObject({ kind: 'director_failover', outcome: 'switched' });
+      expect(notices[0]?.payload).toMatchObject({ kind: 'director_failover', outcome: 'switched' });
     });
   });
 
