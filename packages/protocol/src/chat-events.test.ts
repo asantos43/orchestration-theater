@@ -6,6 +6,7 @@ import {
   ApiChatMessageDroppedPayloadSchema,
   CHAT_DROP_REASONS,
   CHAT_CLOSE_REASONS,
+  ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   ChatDirectorReplyPayloadSchema,
   PromptQueuedPayloadSchema,
@@ -29,6 +30,20 @@ describe('the events of the chat WebSocket (P7 of docs/17)', () => {
     const ask = { decisionId: 'd1', kind: 'producer_question', input: { questions: [] } };
     expect(ChatAskPayloadSchema.parse(ask)).toEqual(ask);
     expect(ChatAskPayloadSchema.safeParse({ ...ask, extra: 1 }).success).toBe(false);
+  });
+
+  it('chat.ask_closed names the decision and how it ended, and is strict (N179)', () => {
+    const closed = { decisionId: 'd1', kind: 'producer_question', state: 'decided' as const };
+    expect(ChatAskClosedPayloadSchema.parse(closed)).toEqual(closed);
+    expect(ChatAskClosedPayloadSchema.parse({ ...closed, state: 'cancelled' }).state).toBe(
+      'cancelled',
+    );
+    // Still pending is not a way for a question to close, and the answer stays out of the event.
+    expect(ChatAskClosedPayloadSchema.safeParse({ ...closed, state: 'pending' }).success).toBe(
+      false,
+    );
+    expect(ChatAskClosedPayloadSchema.safeParse({ ...closed, answer: {} }).success).toBe(false);
+    expect(buildDaemonEvent('chat.ask_closed', closed).type).toBe('chat.ask_closed');
   });
 
   it('api.chat_message_dropped takes a reason and the event when known', () => {

@@ -44,6 +44,7 @@ import { LayoutAdjustedPayloadSchema, LayoutChangedPayloadSchema } from './layou
 import {
   ApiChatClosedPayloadSchema,
   ApiChatMessageDroppedPayloadSchema,
+  ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   ChatDirectorReplyPayloadSchema,
   PromptQueuedPayloadSchema,
@@ -641,6 +642,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ChatAskPayloadSchema,
   }),
   defineEventType({
+    type: 'chat.ask_closed',
+    schemaVersion: 1,
+    payload: ChatAskClosedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.chat_closed',
     schemaVersion: 1,
     payload: ApiChatClosedPayloadSchema,
@@ -789,6 +795,7 @@ export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
 export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
 export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
+export type ChatAskClosedPayload = DaemonEventPayloads['chat.ask_closed'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];

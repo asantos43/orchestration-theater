@@ -518,6 +518,8 @@ export async function runChatCommand(
   };
 
   const shown = new Set<string>();
+  /** The decisions the daemon took back: an ask that comes for one of them is out of date. */
+  const closed = new Set<string>();
   const states = new Map<string, string>();
   const finished = new Set<string>();
   const waitSaid = new Map<string, string>();
@@ -559,7 +561,7 @@ export async function runChatCommand(
         return;
       }
       case 'ask':
-        if (shown.has(message.decisionId)) return;
+        if (shown.has(message.decisionId) || closed.has(message.decisionId)) return;
         shown.add(message.decisionId);
         waiting.push({
           id: message.decisionId,
@@ -568,6 +570,9 @@ export async function runChatCommand(
           input: message.input,
         });
         activate();
+        return;
+      case 'ask_closed':
+        withdraw(message.decisionId);
         return;
       case 'system':
         for (const line of renderSystemMessage(t, message.message)) out(line);
@@ -620,8 +625,11 @@ export async function runChatCommand(
   };
 
   // A new ticket and a `resume` come with each connection and reconnection: the socket does both.
+  // The first connection resumes from the position of the log before the scenario was opened
+  // (N179, item 1): what the Director says before the socket is open still comes, once.
   const socket = client.chat(scenarioId, {
     ...options.reconnect,
+    resumeFrom: opened.lastEventId,
     maxRetries: options.reconnect?.maxRetries ?? CHAT_MAX_RETRIES,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
@@ -674,6 +682,24 @@ export async function runChatCommand(
       err(t(failure, { message: errorText(error) }));
       return false;
     }
+  };
+
+  /**
+   * The daemon took a question back: somebody else answered it (another client, the REST route) or
+   * it was cancelled (N179, item 2). It leaves the queue; if it is the one being answered, the
+   * Producer is told and the next one comes. A question this client answered itself is already gone.
+   */
+  const withdraw = (decisionId: string): void => {
+    closed.add(decisionId);
+    const queued = waiting.findIndex((ask) => ask.id === decisionId);
+    if (queued >= 0) {
+      waiting.splice(queued, 1);
+      return;
+    }
+    if (current?.ask.id !== decisionId) return;
+    current = undefined;
+    out(t('chat.askWithdrawn'));
+    activate();
   };
 
   /** Takes the next ask that waits and says what it is, when nothing is being answered. */

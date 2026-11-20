@@ -24,6 +24,7 @@ const serverMessages = [
   { type: 'director_reply', eventId: 5, replyId: 1, text: 'part', final: false },
   { type: 'director_reply', eventId: 6, replyId: 1, text: 'end', final: true },
   { type: 'ask', eventId: 7, decisionId: 'D4', kind: 'producer_question', playId: null, input: {} },
+  { type: 'ask_closed', eventId: 9, decisionId: 'D4', state: 'decided' },
   {
     type: 'system',
     eventId: 8,
@@ -103,6 +104,8 @@ describe('the messages of the daemon', () => {
       { type: 'busy', busy: true },
       { type: 'busy', eventId: 0, busy: true },
       { type: 'busy', eventId: 1, busy: true, extra: 1 },
+      { type: 'ask_closed', eventId: 1, decisionId: 'D4', state: 'pending' },
+      { type: 'ask_closed', eventId: 1, decisionId: 'D4' },
       { type: 'error', eventId: 3, error: { code: 'internal', message: 'x' } },
       { type: 'error', eventId: null, error: { code: 'teapot', message: 'x' } },
       { type: 'director_reply', eventId: 1, replyId: 1, text: 'x' },
