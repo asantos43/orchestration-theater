@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { serve } from '@hono/node-server';
+import { serve, upgradeWebSocket, type WebSocketLike } from '@hono/node-server';
 import { AdapterUnavailable, isOTheaterError } from '@otheater/core';
 import {
   API_ROUTE_LIST,
@@ -10,12 +10,15 @@ import {
   apiErrorCodeOf,
   apiErrorStatus,
   invalidInputDetails,
+  type AnyApiRoute,
   type ApiDiscovery,
   type ApiErrorCode,
   type ApiRejectionReason,
   type DaemonId,
 } from '@otheater/protocol';
 import { Hono, type Context } from 'hono';
+import type { WSEvents } from 'hono/ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import type { ZodType } from 'zod';
 import type { ApiTokenMode } from '../config.js';
 import type { Logger } from '../logger.js';
@@ -64,7 +67,30 @@ export interface ApiServerOptions {
   readonly situations?: SituationSink;
   /** Command routes wait here while the reconciliation of the start-up runs (5.21). Default: no wait. */
   readonly gate?: Pick<RecoveryGate, 'wait'>;
+  /** The WebSocket routes (P7): the limits of `api.chat`. Default: 1 MiB, 60 pongs, 2 s. */
+  readonly websocket?: ApiWebSocketOptions;
 }
+
+/** What the server asks of the sockets of the routes that upgrade the connection (P7). */
+export interface ApiWebSocketOptions {
+  /** `api.chat.max_message_bytes`. */
+  readonly maxPayloadBytes: number;
+  /** `api.chat.max_pending_pongs`. */
+  readonly maxPendingPongs: number;
+  /** `api.chat.close_grace`: how long `stop()` waits for the sockets to close before it ends them. */
+  readonly closeGraceMs: number;
+}
+
+const DEFAULT_WEBSOCKET: ApiWebSocketOptions = {
+  maxPayloadBytes: 1_048_576,
+  maxPendingPongs: 60,
+  closeGraceMs: 2000,
+};
+
+/** The routes that upgrade the connection, with the pattern of their path. */
+const WEBSOCKET_ROUTES = API_ROUTE_LIST.filter((route) => route.kind === 'websocket').map(
+  (route) => ({ route, pattern: new RegExp(`^${route.path.replace(/:[^/]+/g, '[^/]+')}$`) }),
+);
 
 type Listener = () => void;
 
@@ -89,14 +115,21 @@ export class ApiServer {
   readonly #options: ApiServerOptions;
   readonly #origins: ReadonlySet<string>;
   readonly #stopController = new AbortController();
+  readonly #sockets: WebSocketServer;
   readonly #rotationListeners = new Set<Listener>();
   readonly #rejections = new Map<ApiRejectionReason, { lastAt: number; suppressed: number }>();
   #token: string;
   #rotating: Promise<void> = Promise.resolve();
   #stopped: Promise<void> | undefined;
 
-  private constructor(options: ApiServerOptions, http: HttpServer, port: number) {
+  private constructor(
+    options: ApiServerOptions,
+    http: HttpServer,
+    port: number,
+    sockets: WebSocketServer,
+  ) {
     this.#options = options;
+    this.#sockets = sockets;
     this.#origins = new Set(options.corsOrigins ?? []);
     this.#http = http;
     this.port = port;
@@ -116,12 +149,19 @@ export class ApiServer {
     // the guard reads it from `holder` at each request.
     const holder: { server?: ApiServer } = {};
     ApiServer.#mount(app, holder, resolved);
+    const limits = options.websocket ?? DEFAULT_WEBSOCKET;
+    const sockets = new WebSocketServer({
+      noServer: true,
+      maxPayload: limits.maxPayloadBytes,
+      maxPendingAutoPongs: limits.maxPendingPongs,
+    });
     const http = await new Promise<HttpServer>((resolve, reject) => {
       const server = serve(
         {
           fetch: app.fetch,
           hostname: API_HOST,
           port: options.port === 'auto' ? 0 : options.port,
+          websocket: { server: sockets },
         },
         () => {
           server.off('error', onError);
@@ -134,7 +174,7 @@ export class ApiServer {
       server.once('error', onError);
     });
     const { port } = http.address() as AddressInfo;
-    const api = new ApiServer(resolved, http, port);
+    const api = new ApiServer(resolved, http, port, sockets);
     holder.server = api;
     // [proposta] The rotation is a route of the contract (`POST /v1/api-token/rotate`), always there.
     if (!api.handlers.has('rotateApiToken')) {
@@ -177,6 +217,11 @@ export class ApiServer {
     return this.#http;
   }
 
+  /** The open sockets of the routes that upgrade the connection (the chat, P7). */
+  get openSockets(): ReadonlySet<WebSocket> {
+    return this.#sockets.clients;
+  }
+
   /**
    * The request as a route that takes over the connection sees it (the WebSocket upgrade, P7):
    * the same three checks of every request, in the same order, with the same events. `undefined`
@@ -184,6 +229,23 @@ export class ApiServer {
    */
   guard(request: Request): Response | undefined {
     return this.#checkHost(request) ?? this.#checkOrigin(request) ?? this.#checkToken(request);
+  }
+
+  /**
+   * The answer for a WebSocket upgrade whose ticket the route refused (missing, used, expired or of
+   * another scenario, P7): 401, and the same record as any other refusal (`api.client_rejected` with
+   * reason `ticket`). The ticket is never in the record.
+   */
+  rejectTicket(request: Request): Response {
+    return this.#reject('ticket', 401, 'unauthorized', 'A valid chat ticket is required', request);
+  }
+
+  /**
+   * A chat message the route could not take (not JSON, not in the contract): the same record as
+   * any other refusal, reason `message`, and no answer (the route says it on the socket).
+   */
+  recordMessageRejected(): void {
+    this.#record('message', 'POST');
   }
 
   /**
@@ -228,6 +290,7 @@ export class ApiServer {
         this.#options.logger.warn({ err: error }, 'api.json could not be removed');
       });
       this.#stopController.abort();
+      await this.#closeSockets();
       await new Promise<void>((resolve) => {
         this.#http.close(() => {
           resolve();
@@ -236,6 +299,39 @@ export class ApiServer {
       });
     })();
     return this.#stopped;
+  }
+
+  /**
+   * Closes the sockets of the upgraded routes (`closeAllConnections` does not reach them): a close
+   * frame to each one, then, after `closeGraceMs`, whatever is still open is ended. A route that
+   * listens to `stopSignal` has already started its own close by now.
+   */
+  async #closeSockets(): Promise<void> {
+    const open = [...this.#sockets.clients];
+    if (open.length === 0) return;
+    const closed = Promise.all(
+      open.map(
+        (socket) =>
+          new Promise<void>((resolve) => {
+            if (socket.readyState === 3) resolve();
+            else
+              socket.once('close', () => {
+                resolve();
+              });
+          }),
+      ),
+    );
+    for (const socket of open) {
+      if (socket.readyState === 1) socket.close(1001, 'the daemon is stopping');
+    }
+    const grace = (this.#options.websocket ?? DEFAULT_WEBSOCKET).closeGraceMs;
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, grace);
+    });
+    await Promise.race([closed, late]);
+    clearTimeout(timer);
+    for (const socket of this.#sockets.clients) socket.terminate();
   }
 
   // ---- start-up ----
@@ -262,6 +358,19 @@ export class ApiServer {
   }
 
   // ---- the guard ----
+
+  /**
+   * The guard of a WebSocket upgrade (P7): the same Host and Origin checks, and the credential is
+   * the ticket of the query, not the token (a browser cannot set `Authorization` on a socket, and
+   * the token never goes in a URL). Here the ticket must only be well formed; whether it is good
+   * is for the route, which owns the tickets.
+   */
+  #guardSocket(request: Request, route: AnyApiRoute): Response | undefined {
+    const refused = this.#checkHost(request) ?? this.#checkOrigin(request);
+    if (refused !== undefined) return refused;
+    if (route.query?.safeParse(queryOf(request)).success === true) return undefined;
+    return this.rejectTicket(request);
+  }
 
   #checkHost(request: Request): Response | undefined {
     const host = request.headers.get('host')?.toLowerCase();
@@ -297,22 +406,27 @@ export class ApiServer {
     request: Request,
     headers: Record<string, string> = {},
   ): Response {
+    this.#record(reason, request.method);
+    return Response.json(apiError(code, message), {
+      status,
+      headers: { 'cache-control': 'no-store', ...headers },
+    });
+  }
+
+  /** The log line and, at most once per window and reason, the `api.client_rejected` event. */
+  #record(reason: ApiRejectionReason, method: string): void {
     const { now, rejectionWindowMs, logger, situations } = this.#options;
     const at = now();
     const state = this.#rejections.get(reason);
     if (state === undefined || at - state.lastAt >= rejectionWindowMs) {
       const suppressed = state?.suppressed ?? 0;
       this.#rejections.set(reason, { lastAt: at, suppressed: 0 });
-      logger.warn({ reason, method: request.method }, 'an API request was rejected');
+      logger.warn({ reason, method }, 'an API request was rejected');
       situations?.record('api.client_rejected', { reason, suppressed });
     } else {
       state.suppressed += 1;
-      logger.debug({ reason, method: request.method }, 'an API request was rejected');
+      logger.debug({ reason, method }, 'an API request was rejected');
     }
-    return Response.json(apiError(code, message), {
-      status,
-      headers: { 'cache-control': 'no-store', ...headers },
-    });
   }
 
   // ---- the app ----
@@ -340,7 +454,9 @@ export class ApiServer {
           },
         });
       }
-      const refused = self.guard(request);
+      const upgrade = websocketRouteOf(request);
+      const refused =
+        upgrade === undefined ? self.guard(request) : self.#guardSocket(request, upgrade);
       if (refused !== undefined) return refused;
       const declared = Number(request.headers.get('content-length') ?? '0');
       if (declared > options.maxBodyBytes) {
@@ -387,7 +503,27 @@ export class ApiServer {
     // A command acts on the state, so it waits for the reconciliation of the start-up (5.21).
     if (entry.command) await this.#options.gate?.wait();
     const signal = AbortSignal.any([request.signal, this.#stopController.signal]);
-    const result = await entry.handler({ params, query, headers, body, request, signal });
+    // The route that upgrades the connection takes this to open the socket (P7).
+    const upgrade =
+      route.kind === 'websocket'
+        ? {
+            upgrade: (events: WSEvents<WebSocket>) =>
+              upgradeWebSocket(c, events as unknown as WSEvents<WebSocketLike>, {
+                onError: (error: unknown) => {
+                  this.#options.logger.warn({ err: error, route: route.id }, 'a socket failed');
+                },
+              }) as Promise<Response>,
+          }
+        : {};
+    const result = await entry.handler({
+      params,
+      query,
+      headers,
+      body,
+      request,
+      signal,
+      ...upgrade,
+    });
     return this.#answer(entry, result);
   }
 
@@ -407,6 +543,15 @@ export class ApiServer {
     }
     return Response.json(result);
   }
+}
+
+/** The route of a WebSocket upgrade request, if it is one. */
+function websocketRouteOf(request: Request): AnyApiRoute | undefined {
+  if (request.method !== 'GET' || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+    return undefined;
+  }
+  const { pathname } = new URL(request.url);
+  return WEBSOCKET_ROUTES.find((candidate) => candidate.pattern.test(pathname))?.route;
 }
 
 function corsHeaders(origin: string): Record<string, string> {

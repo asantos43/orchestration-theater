@@ -19,6 +19,15 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
         max_streams: 32,
         lagged_events: { every: 10_000 },
       },
+      chat: {
+        ticket_ttl: 30_000,
+        heartbeat: 30_000,
+        close_grace: 2000,
+        max_message_bytes: 1_048_576,
+        max_pending_pongs: 60,
+        state_interval: 1000,
+        resume_window: 250,
+      },
     });
   });
 
@@ -88,5 +97,30 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
     expect(parseConfig('api:\n  sse:\n    buffer_events: 5\n').api.sse.buffer_events).toBe(5);
     expect(() => parseConfig('api:\n  host: 0.0.0.0\n')).toThrow(/host/);
     expect(() => parseConfig('api:\n  cors:\n    allow_all: true\n')).toThrow(/allow_all/);
+  });
+
+  it('takes the api.chat keys: durations for ticket_ttl, heartbeat, close_grace, state_interval and resume_window, integers for the rest', () => {
+    const yaml =
+      'api:\n  chat:\n    ticket_ttl: 10s\n    heartbeat: 5s\n    close_grace: 500ms\n    max_message_bytes: 4096\n    max_pending_pongs: 3\n    state_interval: 250ms\n    resume_window: 100ms\n';
+    expect(parseConfig(yaml).api.chat).toEqual({
+      ticket_ttl: 10_000,
+      heartbeat: 5000,
+      close_grace: 500,
+      max_message_bytes: 4096,
+      max_pending_pongs: 3,
+      state_interval: 250,
+      resume_window: 100,
+    });
+    for (const bad of [
+      'ticket_ttl: 0s',
+      'heartbeat: 5',
+      'max_message_bytes: 0',
+      'max_pending_pongs: 1.5',
+      'state_interval: 0s',
+      'resume_window: 0s',
+    ]) {
+      expect(() => parseConfig(`api:\n  chat:\n    ${bad}\n`)).toThrow(/chat/);
+    }
+    expect(() => parseConfig('api:\n  chat:\n    token: x\n')).toThrow(/token/);
   });
 });

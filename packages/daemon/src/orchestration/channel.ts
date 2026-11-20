@@ -23,6 +23,7 @@ import { type ScenarioService, projectScenarioId } from '../scenarios/service.js
 import type { DirectorReply, DirectorSessions } from './director.js';
 import type { QuestionBoard } from './handlers.js';
 import { DECISION_KINDS } from './play-effects.js';
+import { isChatAskKind } from './chat-feed.js';
 import type { ChatPresence } from './presence.js';
 import type { RoleSelection } from './role-selection.js';
 
@@ -135,6 +136,14 @@ const GroupAnswerBody = z.discriminatedUnion('option', [
   z.strictObject({ option: z.literal('refuse'), reason: z.string().optional() }),
 ]);
 
+/** What is pending and going on in a scenario now (the part of a poll that is state). */
+export interface ChatState {
+  readonly asks: readonly PendingAsk[];
+  readonly plays: readonly { readonly id: string; readonly state: string }[];
+  readonly waits: readonly WaitView[];
+  readonly busy: boolean;
+}
+
 export interface ChatPoll {
   readonly replies: readonly DirectorReply[];
   readonly asks: readonly PendingAsk[];
@@ -180,6 +189,14 @@ export class ProducerChannel {
 
   constructor(options: ProducerChannelOptions) {
     this.#options = options;
+  }
+
+  /**
+   * A chat WebSocket opened on the scenario (P7 of docs/17): it counts as watched until the
+   * returned function is called (see `ChatPresence.hold`). Without presence it does nothing.
+   */
+  watch(scenarioId: string): () => void {
+    return this.#options.presence?.hold(scenarioId) ?? (() => undefined);
   }
 
   /**
@@ -272,12 +289,16 @@ export class ProducerChannel {
     await dispatcher.submit({ scenarioId, source: 'producer', text: body });
   }
 
-  async poll(scenarioId: string, since: number): Promise<ChatPoll> {
-    const { store, directors, board, presence } = this.#options;
+  /**
+   * What is pending and what is going on in the scenario now, with no side effect: it neither
+   * counts as a look of the Producer nor takes the notices (P7 of docs/17, the chat WebSocket
+   * reads it every moment). `poll` is this plus the handed-out messages.
+   */
+  async state(scenarioId: string): Promise<ChatState> {
+    const { store, directors, board } = this.#options;
     if ((await store.scenarios.get(scenarioId)) === undefined) {
       throw new NotFound(`There is no scenario "${scenarioId}"`);
     }
-    presence?.touch(scenarioId);
     const pending = await store.decisions.list({ scenarioId, states: ['pending'] });
     const asks: PendingAsk[] = [];
     for (const decision of pending) {
@@ -298,16 +319,9 @@ export class ProducerChannel {
       asks.filter((ask) => ask.kind !== DECISION_KINDS.question).map((ask) => ask.playId),
     );
     const moving = open.some((play) => play.state !== 'NEED' && !awaiting.has(play.id));
-    const notices = this.#notices.get(scenarioId) ?? [];
-    this.#notices.delete(scenarioId);
-    const queueHolds = this.#holds.get(scenarioId) ?? [];
-    this.#holds.delete(scenarioId);
     return {
-      replies: directors.replies(scenarioId, since),
       asks,
       plays: open.map((play) => ({ id: play.id, state: play.state })),
-      notices,
-      queueHolds,
       waits: (this.#options.selection?.waiting(scenarioId) ?? []).map((wait) => ({
         role: wait.role,
         playId: wait.playId,
@@ -320,6 +334,53 @@ export class ProducerChannel {
         moving ||
         this.#options.ideas?.busy(scenarioId) === true ||
         asks.some((a) => board.has(a.id)),
+    };
+  }
+
+  /**
+   * The ask of a decision, if it is still the Producer's to answer (P7): pending, of a kind the
+   * chat shows and of this scenario. A question also needs somebody waiting for it on the board,
+   * unless `live`: a question that was just created is on the board a moment later, and one the
+   * chat reads from the history of a past run (nobody waits for it any more) is not an ask.
+   */
+  async pendingAsk(
+    scenarioId: string,
+    decisionId: string,
+    options: { readonly live: boolean },
+  ): Promise<PendingAsk | undefined> {
+    const { store, board } = this.#options;
+    const decision = await store.decisions.get(decisionId);
+    if (
+      decision?.state !== 'pending' ||
+      decision.scenarioId !== scenarioId ||
+      !isChatAskKind(decision.kind)
+    ) {
+      return undefined;
+    }
+    if (decision.kind === DECISION_KINDS.question && !options.live && !board.has(decision.id)) {
+      return undefined;
+    }
+    return {
+      id: decision.id,
+      kind: decision.kind,
+      playId: decision.playId,
+      input: decision.input,
+    };
+  }
+
+  async poll(scenarioId: string, since: number): Promise<ChatPoll> {
+    const { directors, presence } = this.#options;
+    const state = await this.state(scenarioId);
+    presence?.touch(scenarioId);
+    const notices = this.#notices.get(scenarioId) ?? [];
+    this.#notices.delete(scenarioId);
+    const queueHolds = this.#holds.get(scenarioId) ?? [];
+    this.#holds.delete(scenarioId);
+    return {
+      replies: directors.replies(scenarioId, since),
+      ...state,
+      notices,
+      queueHolds,
     };
   }
 
