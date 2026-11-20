@@ -7,6 +7,8 @@ const alias = {
   '@otheater/core/testing': `${import.meta.dirname}/packages/core/src/testing/index.ts`,
   '@otheater/core': `${import.meta.dirname}/packages/core/src/index.ts`,
   '@otheater/sdk': `${import.meta.dirname}/packages/sdk/src/index.ts`,
+  '@otheater/client/node': `${import.meta.dirname}/packages/client/src/node/index.ts`,
+  '@otheater/client': `${import.meta.dirname}/packages/client/src/index.ts`,
   '@otheater/protocol': `${import.meta.dirname}/packages/protocol/src/index.ts`,
   '@otheater/adapter-store-sqlite': `${import.meta.dirname}/packages/adapters/store-sqlite/src/index.ts`,
   '@otheater/adapter-vault-file': `${import.meta.dirname}/packages/adapters/vault-file/src/index.ts`,
