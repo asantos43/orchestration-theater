@@ -13,8 +13,17 @@ import { mcpToolsOf, type RolePolicy } from '@otheater/core';
  *   [V: same run]
  * - `settingSources: []` drops the plugins, skills and MCP servers of the user's profile. [V]
  * - `permissions.defaultMode` in `_meta` is ignored: the mode belongs to ACP and starts at `auto`,
- *   so the session setup sets `default` explicitly. [V]
- * - A tool of an MCP server asks for permission unless a rule allows it, and the mode
+ *   so the session setup sets the mode of the role explicitly ({@link sessionModeOf}). [V]
+ * - The mode of the session (N180, owner, 2026-11-20): `default` asks for permission before every
+ *   edit, and the daemon answers `reject_once` to every request (`onAsk: 'reject'`), so in the
+ *   real `phase6` acceptance with the haiku model every `Write` and `Edit` of the Actor was refused
+ *   and the diff stayed empty. [V: that run] A role whose `nativeTools` has `edit` or `write` starts
+ *   in `acceptEdits`, which spares the request only for the editing of files [S:
+ *   https://code.claude.com/docs/en/permissions, read 2026-11-20; what it does for a path outside
+ *   the cwd was not measured [N]]; the other roles stay in `default`. No native tool goes into
+ *   `allowedTools`, and the shell stays removed and denied. The fence of the writing is layer 3 (the
+ *   sandbox) and the worktree, not the mode. The key `mode` of the executor still wins when set. A
+ *   tool of an MCP server asks for permission unless a rule allows it, and the mode
  *   `acceptEdits` only allows file edits. The daemon answers `reject_once` to every
  *   `session/request_permission` (`onAsk: 'reject'`), so without a rule the framework tools
  *   (`open_play`, `submit`...) are refused and never run. The rule `mcp__<server>` matches every
@@ -64,8 +73,23 @@ export const SETTING_SOURCES: Readonly<Record<SettingSourcesMode, readonly strin
   user: ['user', 'project', 'local'],
 };
 
-/** The mode every session starts in: `default`, so each request reaches layer 2 (`dontAsk` does not reach ACP). [V] */
+/** The mode of a role that does not write: `default`, so each request reaches layer 2 (`dontAsk` does not reach ACP). [V] */
 export const SESSION_MODE = 'default';
+
+/** The mode of a role that writes (N180): the edit of a file runs with no request; the rest still reaches layer 2. */
+export const WRITING_SESSION_MODE = 'acceptEdits';
+
+/**
+ * The mode a session of this policy starts in: {@link WRITING_SESSION_MODE} when `nativeTools` has
+ * `edit` or `write`, {@link SESSION_MODE} otherwise. `bypassPermissions` is never a result.
+ */
+export function sessionModeOf(
+  policy: RolePolicy,
+): typeof SESSION_MODE | typeof WRITING_SESSION_MODE {
+  return policy.nativeTools.includes('edit') || policy.nativeTools.includes('write')
+    ? WRITING_SESSION_MODE
+    : SESSION_MODE;
+}
 
 /** Modes the catalog of the adapter has that the policy never selects. */
 export const FORBIDDEN_MODES: readonly string[] = ['bypassPermissions'];
@@ -175,7 +199,7 @@ export function headlessArgs(policy: RolePolicy, sources: SettingSourcesMode): s
     deniedTools(policy).join(','),
     ...(allowed.length === 0 ? [] : ['--allowedTools', allowed.join(',')]),
     '--permission-mode',
-    SESSION_MODE,
+    sessionModeOf(policy),
     // `host`: with `--print`, the host (the daemon, layer 2) answers the requests, not a terminal.
     '--permission-prompts',
     'host',

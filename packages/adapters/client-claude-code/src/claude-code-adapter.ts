@@ -43,7 +43,7 @@ import {
 } from './normalize-update.js';
 import { ClaudeModelCatalog, EFFORT_OPTION_ID, MODEL_OPTION_ID } from './model-catalog.js';
 import type { ClaudeModelCatalogOptions } from './model-catalog.js';
-import { acpOptions, headlessArgs, SESSION_MODE, type SettingSourcesMode } from './policy.js';
+import { acpOptions, headlessArgs, sessionModeOf, type SettingSourcesMode } from './policy.js';
 import { shCRejectProbe, type ShCRejectProbeOptions } from './probes.js';
 import { writeProfileSettings } from './prepare-profile.js';
 import { ClaudeQuotaProbe } from './quota-probe.js';
@@ -238,8 +238,10 @@ export class ClaudeCodeAdapter extends ClientAdapter {
       via: 'acp',
       // The whole `_meta` of `session/new`; the options go under `claudeCode.options`. [V]
       meta: { claudeCode: { options: acpOptions(policy, this.#sources) } },
-      // The adapter starts in `auto`; `default` makes every request reach layer 2. [V]
-      configOptions: { mode: SESSION_MODE },
+      // The adapter starts in `auto`. `default` makes every request reach layer 2 [V]; a role that
+      // writes starts in `acceptEdits` (N180). The `mode` of the executor (`mapConfig`) is applied
+      // later, by `session.setConfig`, so it wins.
+      configOptions: { mode: sessionModeOf(policy) },
     };
   }
 

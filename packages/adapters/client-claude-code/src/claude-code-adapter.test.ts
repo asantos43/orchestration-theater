@@ -31,6 +31,8 @@ const policy: RolePolicy = {
   network: { allow: [] },
 };
 
+const writingPolicy: RolePolicy = { ...policy, nativeTools: ['read', 'search', 'edit', 'write'] };
+
 let root: string;
 let profile: Profile;
 let launcher: FakeProcessLauncher;
@@ -138,6 +140,60 @@ describe('the process it launches', () => {
     expect(settings.permissions.defaultMode).toBe('default');
     expect(settings.permissions.disableBypassPermissionsMode).toBe('disable');
     expect(settings.permissions.deny).toEqual(deniedTools(policy));
+  });
+});
+
+describe('the mode of the session (N180)', () => {
+  const settingsOf = async (): Promise<{ permissions: { defaultMode: string } }> =>
+    JSON.parse(await readFile(join(profile.dir, 'settings.json'), 'utf8')) as {
+      permissions: { defaultMode: string };
+    };
+
+  it('starts a role that writes in acceptEdits: the ACP setup, the headless flags and the profile file', async () => {
+    await build().openSession(profile, writingPolicy, '/work', via);
+    expect(via.opened[0]?.setup).toMatchObject({
+      via: 'acp',
+      configOptions: { mode: 'acceptEdits' },
+    });
+    expect((await settingsOf()).permissions.defaultMode).toBe('acceptEdits');
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await build().openSession(profile, writingPolicy, '/work', headless);
+    const setup = headless.opened[0]?.setup;
+    if (setup?.via !== 'headless') throw new Error('expected a headless setup');
+    expect(setup.args[setup.args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
+  });
+
+  it('starts a role that only reads in default, on the same three paths', async () => {
+    await build().openSession(profile, policy, '/work', via);
+    expect(via.opened[0]?.setup).toMatchObject({ via: 'acp', configOptions: { mode: 'default' } });
+    expect((await settingsOf()).permissions.defaultMode).toBe('default');
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await build().openSession(profile, policy, '/work', headless);
+    const setup = headless.opened[0]?.setup;
+    if (setup?.via !== 'headless') throw new Error('expected a headless setup');
+    expect(setup.args[setup.args.indexOf('--permission-mode') + 1]).toBe('default');
+  });
+
+  it('lets the mode of the executor win: it is applied by setConfig after the setup', async () => {
+    const adapter = build();
+    const session = await adapter.openSession(profile, writingPolicy, '/work', via);
+    expect(via.opened[0]?.setup).toMatchObject({ configOptions: { mode: 'acceptEdits' } });
+    // The setup is applied at the opening of the session; the executor config only afterwards.
+    expect(via.configApplied).toEqual([]);
+    for (const [id, value] of Object.entries(
+      adapter.configOptionsFor({ model: 'sonnet', mode: 'plan' }),
+    )) {
+      if (id === 'mode') await session.setConfig(id, value);
+    }
+    expect(via.configApplied.at(-1)).toEqual({ id: 'mode', value: 'plan' });
+    // An executor with no `mode` asks for no mode at all: the mode of the role stays.
+    expect(adapter.configOptionsFor({ model: 'sonnet' })).not.toHaveProperty('mode');
+  });
+
+  it('still refuses bypassPermissions on a role that writes', () => {
+    expect(() => build().configOptionsFor({ model: 'sonnet', mode: 'bypassPermissions' })).toThrow(
+      PermissionDenied,
+    );
   });
 });
 
