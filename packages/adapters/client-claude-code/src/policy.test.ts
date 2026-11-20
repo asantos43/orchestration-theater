@@ -10,8 +10,10 @@ import {
   isManagedToolName,
   permissionSettings,
   SESSION_MODE,
+  sessionModeOf,
   SETTING_SOURCES,
   SETTING_SOURCES_MODES,
+  WRITING_SESSION_MODE,
 } from './policy.js';
 
 const base: RolePolicy = {
@@ -177,8 +179,51 @@ describe('acpOptions', () => {
     expect(Object.keys(SETTING_SOURCES)).toEqual([...SETTING_SOURCES_MODES]);
   });
 
-  it('starts every session in the default mode', () => {
+  it('starts a role that does not write in the default mode', () => {
     expect(SESSION_MODE).toBe('default');
+    expect(WRITING_SESSION_MODE).toBe('acceptEdits');
+  });
+});
+
+/** The native tools of each role, as `defaultPolicySettings` of the daemon gives them (`WRITING_ROLES`). */
+const ROLE_TOOLS: Readonly<Record<string, RolePolicy['nativeTools']>> = {
+  actor: ['read', 'search', 'edit', 'write'],
+  consultant: ['read', 'search', 'edit', 'write'],
+  director: ['read', 'search'],
+  critic: ['read', 'search'],
+};
+
+describe('sessionModeOf (N180)', () => {
+  it('starts the roles that write in acceptEdits, on the three paths', () => {
+    for (const role of ['actor', 'consultant']) {
+      const policy: RolePolicy = { ...base, nativeTools: ROLE_TOOLS[role] ?? [] };
+      expect(sessionModeOf(policy)).toBe('acceptEdits');
+      const args = headlessArgs(policy, 'none');
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
+    }
+  });
+
+  it('keeps the roles that only read in default', () => {
+    for (const role of ['director', 'critic']) {
+      const policy: RolePolicy = { ...base, nativeTools: ROLE_TOOLS[role] ?? [] };
+      expect(sessionModeOf(policy)).toBe('default');
+      const args = headlessArgs(policy, 'none');
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('default');
+    }
+    expect(sessionModeOf({ ...base, nativeTools: [] })).toBe('default');
+  });
+
+  it('is acceptEdits with only edit or only write', () => {
+    expect(sessionModeOf({ ...base, nativeTools: ['edit'] })).toBe('acceptEdits');
+    expect(sessionModeOf({ ...base, nativeTools: ['write'] })).toBe('acceptEdits');
+  });
+
+  it('puts no native tool in allowedTools and keeps the shell denied', () => {
+    const policy: RolePolicy = { ...base, nativeTools: ['read', 'search', 'edit', 'write'] };
+    expect(acpOptions(policy, 'none').allowedTools).toEqual([]);
+    expect(permissionSettings(policy).allow).toEqual([]);
+    expect(deniedTools(policy)).toContain('Bash');
+    expect(headlessArgs(policy, 'none')).not.toContain('--allowedTools');
   });
 });
 

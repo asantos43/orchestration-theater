@@ -2,7 +2,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { InvalidInput, type Profile, type RolePolicy } from '@otheater/core';
-import { isManagedToolName, permissionSettings, SESSION_MODE } from './policy.js';
+import { isManagedToolName, permissionSettings, sessionModeOf } from './policy.js';
 import {
   isOurStatusline,
   STATUSLINE_SCRIPT,
@@ -102,7 +102,7 @@ export async function writeProfileSettings(
     ...others,
     permissions: {
       ...permissions,
-      defaultMode: SESSION_MODE,
+      defaultMode: sessionModeOf(policy),
       disableBypassPermissionsMode: wanted.disableBypassPermissionsMode,
       deny: [...kept, ...wanted.deny],
     },
