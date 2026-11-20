@@ -70,7 +70,6 @@ describe('dataPaths', () => {
       worktrees: join(root, 'worktrees'),
       profiles: join(root, 'profiles'),
       scratch: join(root, 'scratch'),
-      channel: join(root, 'channel.json'),
       apiDiscovery: join(root, 'api.json'),
       apiToken: join(root, 'api-token'),
       daemonId: join(root, 'daemon-id'),

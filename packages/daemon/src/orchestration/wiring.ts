@@ -6,7 +6,6 @@ import type { Execution } from '../execution/service.js';
 import type { McpAccess } from '../mcp/access.js';
 import type { DataPaths } from '../paths.js';
 import type { QuotaService } from '../quota/service.js';
-import type { RecoveryGate } from '../recovery/gate.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
@@ -20,7 +19,6 @@ import {
 import { IdeaQueueService } from '../ideas/index.js';
 import { Workspace } from '../workspace/index.js';
 import { ProducerChannel } from './channel.js';
-import { ProducerChannelServer } from './channel-http.js';
 import { DirectorSessions } from './director.js';
 import { createDaemonHandoff, type LateHandoff } from './handoff-wiring.js';
 import type { OrchestrationHandlers } from './handlers.js';
@@ -40,12 +38,10 @@ export interface OrchestrationInput {
   readonly mcp: McpAccess;
   readonly registries: Registries;
   readonly prompts: PromptSource;
-  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'channel' | 'scenarios' | 'dataDir'>;
+  readonly paths: Pick<DataPaths, 'profiles' | 'worktrees' | 'scenarios' | 'dataDir'>;
   readonly handlers: OrchestrationHandlers;
   /** The handlers of `consult` and `read_attachment` (P12), bound here with the services. */
   readonly scenarioHandlers: ScenarioHandlers;
-  /** The Producer channel holds its requests here until the reconciliation ends (P9, 5.21). */
-  readonly gate?: Pick<RecoveryGate, 'wait'>;
   /**
    * The baton of the attempts (P18, P16b): the runner already holds it, and the wiring binds the
    * real port here, with the selection that is built here. Absent, a handoff parks the attempt.
@@ -81,19 +77,18 @@ export interface Orchestration {
 /**
  * Puts the pieces of the play together (architecture 5.4): the single queue of prompts, the
  * Director sessions it feeds, the effects that open Actors and integrate and deliver, the machine
- * runner, the MCP handlers of the Director's tools, and the Producer channel `ot chat` uses.
+ * runner, the MCP handlers of the Director's tools, and the Producer channel the API uses.
  *
  * The runner is not asked to resume the plays the previous daemon left (`resumeAll`) here: the
  * reconciliation of the start-up (`recovery/reconcile.ts`, P9) calls it, once it has checked what
  * each play left behind.
  */
-export async function startOrchestration(input: OrchestrationInput): Promise<Orchestration> {
+export function startOrchestration(input: OrchestrationInput): Orchestration {
   const { config, composition, execution, mcp, registries, prompts, paths, handlers } = input;
   const { scenarioHandlers } = input;
   const { store, logger } = composition;
-  // The queue of ideas hears the end of every play; it is built after the runner it needs. The
-  // channel is built last, and the notice of a strict wait (N135) reaches it through here.
-  const late: { ideas?: IdeaQueueService; channel?: ProducerChannel } = {};
+  // The queue of ideas hears the end of every play; it is built after the runner it needs.
+  const late: { ideas?: IdeaQueueService } = {};
   const selection = new RoleSelection({
     store,
     config,
@@ -102,7 +97,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     paths,
     clock: composition.clock,
     logger,
-    onNotice: (notice) => late.channel?.notify(notice),
     situations: composition.situations,
   });
   const dispatcher = new PromptDispatcher({
@@ -132,7 +126,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     logger,
     clock: composition.clock,
     quota: input.quota,
-    onNotice: (notice) => late.channel?.notify(notice),
     onReply: (scenarioId, reply) => {
       composition.situations.record(
         'chat.director_reply',
@@ -243,7 +236,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     opening: { store, runner, workspace, config },
     selection,
     logger,
-    onHeld: (held) => late.channel?.notifyQueueHeld(held),
   });
   late.ideas = ideas;
   const channel = new ProducerChannel({
@@ -261,7 +253,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     selection,
     conventionsMode: () => config.project.conventions,
   });
-  late.channel = channel;
   if (input.handoff !== undefined && input.home !== undefined) {
     input.handoff.bind(
       createDaemonHandoff({
@@ -275,23 +266,9 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
         logger,
         home: input.home,
         dataDir: paths.dataDir,
-        announce: (notice) => {
-          channel.notify(notice);
-        },
       }),
     );
   }
-  const server =
-    config.chat.channel === 'off'
-      ? undefined
-      : await ProducerChannelServer.start({
-          channel,
-          port: 'auto',
-          logger,
-          ...(input.gate === undefined ? {} : { gate: input.gate }),
-        });
-  await server?.publish(paths.channel);
-
   let quiet: Promise<void> | undefined;
   return {
     runner,
@@ -304,7 +281,6 @@ export async function startOrchestration(input: OrchestrationInput): Promise<Orc
     selection,
     quiesce: () =>
       (quiet ??= (async () => {
-        await server?.stop(paths.channel);
         handlers.board.abortAll('The daemon is stopping.');
         handlers.bind(undefined);
         scenarioHandlers.bind(undefined);

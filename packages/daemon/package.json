@@ -35,6 +35,7 @@
     "@otheater/adapter-vault-file": "workspace:*",
     "@otheater/adapter-vault-keyring": "workspace:*",
     "@otheater/adapter-vcs-git": "workspace:*",
+    "@otheater/client": "workspace:*",
     "@otheater/core": "workspace:*",
     "@otheater/protocol": "workspace:*",
     "hono": "4.13.16",

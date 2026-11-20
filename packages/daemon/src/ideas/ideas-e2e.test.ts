@@ -6,6 +6,7 @@ import {
   FakeCodeHost,
   InMemorySecretVault,
 } from '@otheater/core/testing';
+import type { IdeaQueueHeldPayload } from '@otheater/protocol';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import {
   assertFakeAgentBuilt,
@@ -79,6 +80,13 @@ async function eventTypes(harness: PlayHarness, prefix: string): Promise<string[
   return (await harness.daemon.store.events.readFrom(0, 100_000))
     .map((event) => event.type)
     .filter((type) => type.startsWith(prefix));
+}
+
+/** The payloads of the `idea.queue_held` events: why a queue stopped (the chat socket delivers them). */
+async function heldOf(harness: PlayHarness): Promise<IdeaQueueHeldPayload[]> {
+  return (await harness.daemon.store.events.readFrom(0, 100_000))
+    .filter((event) => event.type === 'idea.queue_held')
+    .map((event) => event.payload as IdeaQueueHeldPayload);
 }
 
 describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_000 }, () => {
@@ -217,13 +225,10 @@ describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_0
       await harness.producer.idea(scenarioId, { action: 'drain' });
       const ask = await groupAsk(harness, scenarioId);
       await harness.producer.answer(ask.id, { option: 'refuse', reason: 'not now' });
-      // The Producer is told why the queue stopped, once.
-      const poll = await harness.producer.poll(scenarioId, 0);
-      expect(poll.queueHolds).toEqual([
+      // The Producer is told why the queue stopped, once: one event, which the chat socket delivers.
+      expect(await heldOf(harness)).toEqual([
         { scenarioId, cause: 'group_refused', reason: 'not now', playId: null },
       ]);
-      expect((await harness.producer.poll(scenarioId, 0)).queueHolds).toEqual([]);
-      expect(await eventTypes(harness, 'idea.queue_held')).toHaveLength(1);
       const ideas = await ideasOf(harness, scenarioId);
       expect(ideas.map((idea) => idea.state)).toEqual(['queued', 'queued', 'queued', 'queued']);
       expect(ideas[0]?.reason).toBe('not now');
@@ -239,8 +244,8 @@ describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_0
       const first = await groupAsk(harness, scenarioId);
       await harness.producer.answer(first.id, { option: 'refuse', reason: 'changed my mind' });
       const held = await waitFor('the notice of the stop', async () => {
-        const { queueHolds } = await harness.producer.poll(scenarioId, 0);
-        return queueHolds.length === 0 ? undefined : queueHolds;
+        const found = await heldOf(harness);
+        return found.length === 0 ? undefined : found;
       });
       expect(held[0]).toMatchObject({ cause: 'group_refused', reason: 'changed my mind' });
       // Nothing moves the queue by itself: the idea stays queued and no new group is asked.
@@ -287,7 +292,7 @@ describeWithLauncher('the idea queue with the fake agent (P8)', { timeout: 180_0
           (event) => event.type === 'idea.returned',
         );
         expect(returned.map((event) => event.payload.playId)).toEqual([play.id]);
-        const { queueHolds } = await harness.producer.poll(scenarioId, 0);
+        const queueHolds = await heldOf(harness);
         expect(queueHolds).toHaveLength(1);
         expect(queueHolds[0]).toMatchObject({ cause: 'play_ended', playId: play.id });
         expect(queueHolds[0]?.reason).toContain('cancelled');

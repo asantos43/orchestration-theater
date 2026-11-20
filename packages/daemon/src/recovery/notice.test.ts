@@ -4,7 +4,6 @@ import type { Store } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { ScenarioSystemMessagePayloadSchema } from '@otheater/protocol';
 import { createSilentLogger } from '../logger.js';
-import { ProducerChannel, type ProducerChannelOptions } from '../orchestration/channel.js';
 import { announceRecovery, type RecoveryNoticeInput } from './notice.js';
 import type { RecoveryReport } from './reconcile.js';
 
@@ -205,23 +204,5 @@ describe('announceRecovery', () => {
       input({ store: broken, plays: { resumed: ['p1'], refused: [] } }),
     );
     expect(notices).toEqual([]);
-  });
-});
-
-describe('the Producer channel and the system messages', () => {
-  it('hands each message to the poll of its scenario once', async () => {
-    const channel = new ProducerChannel({
-      store,
-      runner: {},
-      board: { has: () => false },
-      directors: { replies: () => [], busy: () => Promise.resolve(false) },
-      logger: createSilentLogger(),
-    } as unknown as ProducerChannelOptions);
-    const [notice] = await announceRecovery(input({ plays: { resumed: ['p1'], refused: [] } }));
-    if (notice === undefined) throw new Error('no notice');
-    channel.notify(notice);
-    expect((await channel.poll('s2', 0)).notices).toEqual([]);
-    expect((await channel.poll('s1', 0)).notices).toEqual([notice]);
-    expect((await channel.poll('s1', 0)).notices).toEqual([]);
   });
 });

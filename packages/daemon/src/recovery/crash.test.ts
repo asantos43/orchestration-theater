@@ -120,7 +120,6 @@ interface Report {
     playsResumed: string[];
     pending: unknown[];
   }[];
-  notices?: { scenarioId?: string; taken: SystemMessage[]; again: SystemMessage[] };
   systemMessages: { scenarioId: string | null; payload: SystemMessage }[];
   events: { type: string; playId: string | null }[];
   sideEffects: { key: string; type: string; state: string; verifier: string | null }[];
@@ -207,18 +206,15 @@ describe.skipIf(process.platform !== 'linux')(
         expect(report.plays.map((play) => play.state)).toEqual(['DONE']);
         // The chat of the scenario shows what the start-up did (5.21, step 8): the play taken up
         // again and the pull request settled by the verifier; nothing waits for the Producer. The
-        // first start of the folder was clean and wrote no message; each message is shown once.
+        // first start of the folder was clean and wrote no message: one event, for one scenario.
         const playId = report.plays[0]?.id ?? '';
         expect(report.systemMessages).toHaveLength(1);
-        expect(report.notices?.taken).toHaveLength(1);
-        expect(report.notices?.taken[0]).toEqual(report.systemMessages[0]?.payload);
-        const notice = report.notices?.taken[0];
-        expect(notice?.scenarioId).toBe(report.notices?.scenarioId);
+        const notice = report.systemMessages[0]?.payload;
+        expect(notice?.scenarioId).toBe(report.systemMessages[0]?.scenarioId);
         expect(notice?.kind).toBe('recovery');
         expect(notice?.resumed).toContainEqual({ kind: 'play', id: playId });
         expect(notice?.settled).toEqual([{ effectType: 'open_pr', playId, outcome: 'done' }]);
         expect(notice?.waiting).toEqual([]);
-        expect(report.notices?.again).toEqual([]);
       } finally {
         for (const pid of spawned) {
           if (isAlive(pid)) process.kill(pid, 'SIGKILL');

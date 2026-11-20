@@ -9,7 +9,6 @@ import {
   NotFound,
   type Store,
 } from '@otheater/core';
-import type { IdeaQueueHeldPayload, ScenarioSystemMessagePayload } from '@otheater/protocol';
 import { z } from 'zod';
 import type { ConventionsMode } from '../config.js';
 import type { DrainResult, IdeaQueueService } from '../ideas/index.js';
@@ -149,16 +148,6 @@ export interface ChatPoll {
   readonly asks: readonly PendingAsk[];
   readonly plays: readonly { readonly id: string; readonly state: string }[];
   /**
-   * The system messages of the daemon for this scenario that nobody has taken yet, oldest first
-   * (the reconciliation of the start-up, 5.21). Each one is handed out once.
-   */
-  readonly notices: readonly ScenarioSystemMessagePayload[];
-  /**
-   * The stops of the idea queue of this scenario that nobody has taken yet, oldest first (5.20):
-   * why it stopped, and `/idea drain`, `/idea requeue` or a new idea frees it. Each is handed out once.
-   */
-  readonly queueHolds: readonly IdeaQueueHeldPayload[];
-  /**
    * What waits for an Executor of this scenario now (P16): "esperando cota de ...". It is the
    * state of the moment, not a message handed out once: the chat shows each wait when it begins
    * and again when its cause changes.
@@ -178,14 +167,11 @@ export const chatScenarioId = projectScenarioId;
  * The Producer's side of the daemon (decision N78, "ot chat" mínimo): opens the scenario and its
  * Director, puts the Producer's messages in the single queue (source `producer`), lists what the
  * Director said, and takes the Producer's answers to the questions and to the menu of
- * AWAITING_PRODUCER. The HTTP layer ({@link ProducerChannelServer}) and the tests call it.
- * [proposta] The channel is a loopback HTTP server apart from the MCP server, because the MCP
- * server is the tools of the Executors, behind per-attempt tokens.
+ * AWAITING_PRODUCER. The API of the daemon (the REST commands and the chat socket, P6 and P7 of
+ * docs/17) and the tests call it; `ot chat` reaches it only through the API (P8).
  */
 export class ProducerChannel {
   readonly #options: ProducerChannelOptions;
-  readonly #notices = new Map<string, ScenarioSystemMessagePayload[]>();
-  readonly #holds = new Map<string, IdeaQueueHeldPayload[]>();
 
   constructor(options: ProducerChannelOptions) {
     this.#options = options;
@@ -197,27 +183,6 @@ export class ProducerChannel {
    */
   watch(scenarioId: string): () => void {
     return this.#options.presence?.hold(scenarioId) ?? (() => undefined);
-  }
-
-  /**
-   * Keeps a system message for the chat of its scenario until the next poll takes it. [proposta]
-   * In memory only: the record is the `scenario.system_message` event, and a new start writes its
-   * own, so a message nobody read before another restart is not shown late.
-   */
-  notify(notice: ScenarioSystemMessagePayload): void {
-    const waiting = this.#notices.get(notice.scenarioId) ?? [];
-    waiting.push(notice);
-    this.#notices.set(notice.scenarioId, waiting);
-  }
-
-  /**
-   * Keeps the stop of an idea queue for the chat of its scenario until the next poll takes it.
-   * [proposta] In memory only, like the system messages: the record is the `idea.queue_held` event.
-   */
-  notifyQueueHeld(held: IdeaQueueHeldPayload): void {
-    const waiting = this.#holds.get(held.scenarioId) ?? [];
-    waiting.push(held);
-    this.#holds.set(held.scenarioId, waiting);
   }
 
   /**
@@ -372,16 +337,7 @@ export class ProducerChannel {
     const { directors, presence } = this.#options;
     const state = await this.state(scenarioId);
     presence?.touch(scenarioId);
-    const notices = this.#notices.get(scenarioId) ?? [];
-    this.#notices.delete(scenarioId);
-    const queueHolds = this.#holds.get(scenarioId) ?? [];
-    this.#holds.delete(scenarioId);
-    return {
-      replies: directors.replies(scenarioId, since),
-      ...state,
-      notices,
-      queueHolds,
-    };
+    return { replies: directors.replies(scenarioId, since), ...state };
   }
 
   #ideas(): IdeaQueueService {

@@ -72,11 +72,6 @@ export interface DataPaths {
   /** Scratch worktrees of the probes (the OpenCode permission probe creates its own here). */
   readonly scratch: string;
   /**
-   * Where a running daemon publishes the address and token of the Producer channel `ot chat`
-   * talks to (P8, N78). Mode 0600; removed when the daemon stops.
-   */
-  readonly channel: string;
-  /**
    * Where a running daemon publishes where its API is (`api.json`: url, daemon id, pid, API version;
    * never the token). Mode 0600; removed when the daemon stops cleanly (P3, N166).
    */
@@ -108,7 +103,6 @@ export function dataPaths(dataDir: string): DataPaths {
     worktrees: resolve(root, 'worktrees'),
     profiles: resolve(root, 'profiles'),
     scratch: resolve(root, 'scratch'),
-    channel: resolve(root, 'channel.json'),
     apiDiscovery: resolve(root, API_DISCOVERY_FILE),
     apiToken: resolve(root, API_TOKEN_FILE),
     daemonId: resolve(root, DAEMON_ID_FILE),

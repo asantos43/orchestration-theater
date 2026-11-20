@@ -79,7 +79,7 @@
     "failed": "The daemon could not swap the token (HTTP {{status}})."
   },
   "chat": {
-    "noDaemon": "No daemon is running on this data directory (or its Producer channel is off). Start it with \"ot daemon\".",
+    "noDaemon": "No daemon is running on this data directory (or it is not reachable). Start it with \"ot daemon\".",
     "opened": "Chat open on scenario {{scenarioId}}. Type a message and press Enter.",
     "reply": "Director: {{text}}",
     "play": "Play {{id}}: {{state}}",
@@ -95,6 +95,10 @@
     "option": "  - {{label}}: {{description}}",
     "badOption": "That is not one of the options. Type one of: {{options}}.",
     "answerFailed": "The answer was not taken: {{message}}",
+    "connectFailed": "Could not reach the daemon: {{message}}",
+    "sendFailed": "The message was not sent: {{message}}",
+    "reconnecting": "The connection to the daemon dropped ({{message}}). Trying again in {{seconds}} s.",
+    "connectionLost": "The connection to the daemon was lost: {{message}}",
     "leftPending": "Something still waits for your answer. It stays in the daemon: run \"ot chat\" again to answer it.",
     "attached": "Attached as {{id}}: {{name}} ({{mime}}, {{size}} bytes). It goes with your next message.",
     "attachFailed": "The file was not attached: {{message}}",

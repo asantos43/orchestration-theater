@@ -14,7 +14,7 @@ import type { Logger } from '../logger.js';
  * The three small files of the daemon API in the data folder (P3 of docs/17; decisions N165, N166
  * and N168): `daemon-id`, `api-token` and `api.json`. All are written atomically (a temporary
  * file with the mode, then a rename) so a reader never sees half of one. The mode `0600` does not
- * apply on Windows, where the data folder is private to the user by its place, as `channel.json`.
+ * apply on Windows, where the data folder is private to the user by its place.
  */
 
 const FILE_MODE = 0o600;

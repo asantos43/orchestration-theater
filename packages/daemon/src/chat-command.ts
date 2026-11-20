@@ -1,32 +1,49 @@
 // SPDX-License-Identifier: MPL-2.0
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { setTimeout as sleep } from 'node:timers/promises';
+import {
+  ApiNetworkError,
+  ApiRequestError,
+  DaemonDirectoryError,
+  type ApiClient,
+  type ConnectedDaemon,
+  type ReconnectOptions,
+} from '@otheater/client';
+import { createNodeDaemonDirectory } from '@otheater/client/node';
 import type { JsonObject } from '@otheater/core';
-import type {
-  IdeaQueueHeldPayload,
-  ScenarioDirectorFailoverNotice,
-  ScenarioHandoffNotice,
-  ScenarioResetWaitNotice,
-  ScenarioSelectionWaitNotice,
-  ScenarioRecoveryNotice,
-  ScenarioSystemMessagePayload,
+import {
+  API_ROUTES,
+  IDEMPOTENCY_KEY_HEADER,
+  type ChatServerMessage,
+  type IdeaQueueHeldPayload,
+  type ScenarioDirectorFailoverNotice,
+  type ScenarioHandoffNotice,
+  type ScenarioResetWaitNotice,
+  type ScenarioSelectionWaitNotice,
+  type ScenarioRecoveryNotice,
+  type ScenarioSystemMessagePayload,
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
-import { dataPaths } from './paths.js';
-import type {
-  ChatPoll,
-  IdeaCommand,
-  IdeaCommandResult,
-  IdeaView,
-  PendingAsk,
-  WaitView,
+import {
+  ideaViewOf,
+  type IdeaCommand,
+  type IdeaCommandResult,
+  type IdeaView,
+  type PendingAsk,
+  type WaitView,
 } from './orchestration/channel.js';
-import { ChannelClient, readChannelInfo } from './orchestration/channel-http.js';
 
-/** How often `ot chat` asks the daemon what happened, in milliseconds. [proposta] */
-export const CHAT_POLL_MS = 300;
+/**
+ * How long `ot chat` waits with nothing happening before it takes the end of the input as the end
+ * of the chat, in milliseconds. The daemon pushes `busy` at most every `api.chat.state_interval`
+ * (1 s by default), so the window is longer than that. [proposta]
+ */
+export const CHAT_QUIET_MS = 1500;
+
+/** Failures in a row after which `ot chat` gives up on a daemon that does not come back. [proposta] */
+export const CHAT_MAX_RETRIES = 5;
 
 export interface ChatOptions {
   /** The type of scenario: `project` (default) or `chat`. */
@@ -41,7 +58,10 @@ export interface ChatOptions {
   readonly input: NodeJS.ReadableStream;
   /** Aborting leaves the chat (the entry point wires Ctrl+C to it). */
   readonly signal?: AbortSignal | undefined;
-  readonly pollMs?: number | undefined;
+  /** Quiet window before the end of the input ends the chat. Default {@link CHAT_QUIET_MS}. */
+  readonly quietMs?: number | undefined;
+  /** How the chat socket tries again (backoff, limit). Default: the client's, with {@link CHAT_MAX_RETRIES}. */
+  readonly reconnect?: ReconnectOptions | undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -343,104 +363,315 @@ export function renderIdeaGroup(t: TFunction, ask: PendingAsk): string[] {
   ];
 }
 
+/** The states in which a play is over (`pipeline/machine.ts`: the two `final` states). */
+const FINAL_PLAY_STATES: ReadonlySet<string> = new Set(['DONE', 'CANCELLED']);
+
+/** The text of an error of the client: what the daemon said, without the route and the status. */
+function errorText(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    return error.message.replace(/^[^:]*: \w+ \(HTTP \d+\): /, '');
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The header that makes a command safe to repeat: one fresh key for each command. */
+function commandHeaders(): { readonly [IDEMPOTENCY_KEY_HEADER]: string } {
+  return { [IDEMPOTENCY_KEY_HEADER]: randomUUID() };
+}
+
+/** `/idea` over REST: the same commands and the same result the old channel gave. */
+async function runIdeaCommand(
+  client: ApiClient,
+  scenarioId: string,
+  command: IdeaCommand,
+): Promise<IdeaCommandResult> {
+  const headers = commandHeaders();
+  switch (command.action) {
+    case 'add': {
+      const { idea } = await client.call(API_ROUTES.addIdea, {
+        params: { scenarioId },
+        body: { text: command.text, ...(command.area === undefined ? {} : { area: command.area }) },
+        headers,
+      });
+      return { idea: ideaViewOf(idea), ideas: [] };
+    }
+    case 'list': {
+      const ideas: IdeaView[] = [];
+      let after: string | undefined;
+      do {
+        const page = await client.call(API_ROUTES.listIdeas, {
+          query: { scenarioId, limit: 200, ...(after === undefined ? {} : { after }) },
+        });
+        ideas.push(...page.items.map(ideaViewOf));
+        after = page.nextCursor ?? undefined;
+      } while (after !== undefined);
+      return { ideas };
+    }
+    case 'drain': {
+      const { groups, stopped } = await client.call(API_ROUTES.drainIdeas, {
+        params: { scenarioId },
+        headers,
+      });
+      return { ideas: [], drain: { groups, stopped: stopped ?? undefined } };
+    }
+    case 'discard':
+    case 'defer': {
+      const route = command.action === 'discard' ? API_ROUTES.discardIdea : API_ROUTES.deferIdea;
+      const { idea } = await client.call(route, {
+        params: { ideaId: command.id },
+        body: { reason: command.reason },
+        headers,
+      });
+      return { idea: ideaViewOf(idea), ideas: [] };
+    }
+    case 'requeue': {
+      const { idea } = await client.call(API_ROUTES.requeueIdea, {
+        params: { ideaId: command.id },
+        headers,
+      });
+      return { idea: ideaViewOf(idea), ideas: [] };
+    }
+  }
+}
+
+/** Connects to the daemon of the data folder, or says why not (and returns `undefined`). */
+async function connectLocal(
+  context: CommandContext,
+  signal: AbortSignal | undefined,
+): Promise<ConnectedDaemon | undefined> {
+  const { t, err } = context;
+  try {
+    return await createNodeDaemonDirectory({ dataDir: context.dataDir }).connect(
+      'local',
+      signal === undefined ? {} : { signal },
+    );
+  } catch (error) {
+    if (
+      (error instanceof DaemonDirectoryError && error.code === 'not_found') ||
+      error instanceof ApiNetworkError
+    ) {
+      err(t('chat.noDaemon'));
+    } else {
+      err(t('chat.connectFailed', { message: errorText(error) }));
+    }
+    return undefined;
+  }
+}
+
 /**
- * `ot chat` (decision N78, the minimal chat of the terminal): opens the scenario of a repository
- * on the running daemon, sends each line the Producer types to the single queue, shows what the
- * Director says and how the plays move, and takes the Producer's answers to the Director's
- * questions and to the menu of a play that ran out of a counter. [proposta] Ends when the input
- * ends and the daemon has nothing more going on; a question or a menu still open stays in the
- * daemon for the next `ot chat`.
+ * `ot chat` (decision N78, the minimal chat of the terminal), over the API of the daemon (P8 of
+ * the plan docs/17): finds the daemon by `api.json`, opens the scenario of a repository by REST,
+ * and talks on the chat WebSocket, with a new ticket for each connection. It sends each line the
+ * Producer types to the single queue, shows what the Director says and how the plays move, and
+ * takes the Producer's answers to the Director's questions and to the menu of a play that ran out
+ * of a counter. Attachments and `/idea` go by REST. [proposta] Ends when the input ends and the
+ * daemon says it is not busy (`busy`) and has said nothing for a quiet window; a question or a
+ * menu still open stays in the daemon for the next `ot chat`.
  */
 export async function runChatCommand(
   context: CommandContext,
   options: ChatOptions,
 ): Promise<number> {
   const { t, out, err } = context;
-  const info = await readChannelInfo(dataPaths(context.dataDir).channel);
-  if (info === undefined) {
-    err(t('chat.noDaemon'));
-    return EXIT_FAILED;
-  }
-  const client = new ChannelClient(info);
-  const opened = await client.open({
-    ...(options.type === undefined ? {} : { type: options.type }),
-    ...(options.repo === undefined ? {} : { repo: options.repo }),
-    ...(options.base === undefined ? {} : { base: options.base }),
-    ...(options.name === undefined ? {} : { name: options.name }),
-    ...(options.newProject === true ? { newProject: true } : {}),
+  const connected = await connectLocal(context, options.signal);
+  if (connected === undefined) return EXIT_FAILED;
+  const { client } = connected;
+  const opened = await client.call(API_ROUTES.openScenario, {
+    body: {
+      ...(options.type === undefined ? {} : { type: options.type }),
+      ...(options.repo === undefined ? {} : { repo: options.repo }),
+      ...(options.base === undefined ? {} : { base: options.base }),
+      ...(options.name === undefined ? {} : { name: options.name }),
+      ...(options.newProject === true ? { newProject: true } : {}),
+    },
+    headers: commandHeaders(),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
-  const { scenarioId } = opened;
-  let cursor = opened.cursor;
+  const scenarioId = opened.scenario.id;
   out(t('chat.opened', { scenarioId }));
 
   // Lines wait here until the loop below takes them one at a time.
   const lines: string[] = [];
   let ended = false as boolean;
   let wake: (() => void) | undefined;
+  const poke = (): void => {
+    wake?.();
+  };
   const reader = createInterface({ input: options.input, crlfDelay: Infinity });
   reader.on('line', (line) => {
     lines.push(line);
-    wake?.();
+    poke();
   });
   reader.on('close', () => {
     ended = true;
-    wake?.();
+    poke();
   });
+  options.signal?.addEventListener('abort', poke, { once: true });
+
+  const quietMs = options.quietMs ?? CHAT_QUIET_MS;
+  /** When something last happened that the end of the chat has to wait for. */
+  let activeAt = Date.now();
+  const touch = (): void => {
+    activeAt = Date.now();
+  };
 
   const shown = new Set<string>();
   const states = new Map<string, string>();
+  const finished = new Set<string>();
   const waitSaid = new Map<string, string>();
+  const replyParts = new Map<number, string>();
+  /** What the daemon last said about whether it is busy; unknown until it says. */
+  let busy: boolean | undefined;
   /** The ask the next line answers, with the answers of its questions so far. */
   let current: { ask: PendingAsk; collected: string[] } | undefined;
   const waiting: PendingAsk[] = [];
-  const pollMs = options.pollMs ?? CHAT_POLL_MS;
-  let quiet = 0;
+  /** What the last message sent to the socket was: a refusal that comes back is about it. */
+  let lastSent: 'message' | 'answer' = 'message';
+  let failed = false as boolean;
 
-  const show = (poll: ChatPoll): void => {
-    for (const notice of poll.notices) {
-      for (const line of renderSystemMessage(t, notice)) out(line);
-    }
-    for (const held of poll.queueHolds) {
-      for (const line of renderQueueHeld(t, held)) out(line);
-    }
-    // What waits for an Executor is said when it begins and again when its cause changes.
-    const waitNow = new Map<string, string>();
-    for (const wait of poll.waits) {
-      const key = `${wait.playId ?? ''}/${wait.demandId ?? wait.role}`;
-      const lines = renderWait(t, wait);
-      waitNow.set(key, lines.join('\n'));
-      if (waitSaid.get(key) !== waitNow.get(key)) for (const line of lines) out(line);
-    }
-    waitSaid.clear();
-    for (const [key, text] of waitNow) waitSaid.set(key, text);
-    for (const reply of poll.replies) {
-      out(t('chat.reply', { text: reply.text }));
-      cursor = Math.max(cursor, reply.seq);
-    }
-    const open = new Set<string>();
-    for (const play of poll.plays) {
-      open.add(play.id);
-      if (states.get(play.id) !== play.state) {
-        states.set(play.id, play.state);
-        out(t('chat.play', { id: play.id, state: play.state }));
-      }
-    }
-    for (const id of [...states.keys()]) {
-      if (open.has(id)) continue;
+  const showPlay = (id: string, state: string): void => {
+    if (FINAL_PLAY_STATES.has(state)) {
       states.delete(id);
+      if (finished.has(id)) return;
+      finished.add(id);
       out(t('chat.playEnded', { id }));
+      return;
     }
-    for (const ask of poll.asks) {
-      if (shown.has(ask.id)) continue;
-      shown.add(ask.id);
-      waiting.push(ask);
+    if (finished.has(id) || states.get(id) === state) return;
+    states.set(id, state);
+    out(t('chat.play', { id, state }));
+  };
+
+  const onMessage = (message: ChatServerMessage): void => {
+    touch();
+    poke();
+    switch (message.type) {
+      case 'director_reply': {
+        const text = `${replyParts.get(message.replyId) ?? ''}${message.text}`;
+        if (message.final) {
+          replyParts.delete(message.replyId);
+          out(t('chat.reply', { text }));
+        } else {
+          replyParts.set(message.replyId, text);
+        }
+        return;
+      }
+      case 'ask':
+        if (shown.has(message.decisionId)) return;
+        shown.add(message.decisionId);
+        waiting.push({
+          id: message.decisionId,
+          kind: message.kind,
+          playId: message.playId,
+          input: message.input,
+        });
+        activate();
+        return;
+      case 'system':
+        for (const line of renderSystemMessage(t, message.message)) out(line);
+        return;
+      case 'queue_held':
+        for (const line of renderQueueHeld(t, message.held)) out(line);
+        return;
+      case 'play_state':
+        showPlay(message.playId, message.state);
+        return;
+      case 'waits': {
+        // What waits for an Executor is said when it begins and again when its cause changes.
+        const waitNow = new Map<string, string>();
+        for (const wait of message.waits) {
+          const key = `${wait.playId ?? ''}/${wait.demandId ?? wait.role}`;
+          const text = renderWait(t, wait);
+          waitNow.set(key, text.join('\n'));
+          if (waitSaid.get(key) !== waitNow.get(key)) for (const line of text) out(line);
+        }
+        waitSaid.clear();
+        for (const [key, text] of waitNow) waitSaid.set(key, text);
+        return;
+      }
+      case 'busy':
+        busy = message.busy;
+        return;
+      case 'error':
+        err(
+          t(lastSent === 'answer' ? 'chat.answerFailed' : 'chat.sendFailed', {
+            message: message.error.message,
+          }),
+        );
+        return;
     }
-    // An ask that is gone (answered somewhere else, or nobody waits for it) is not waited on.
-    const live = new Set(poll.asks.map((ask) => ask.id));
-    for (let index = waiting.length - 1; index >= 0; index -= 1) {
-      if (!live.has(waiting[index]?.id ?? '')) waiting.splice(index, 1);
+  };
+
+  /** Plays that were already going when the chat opened: say them once, unless the socket did. */
+  const seedPlays = async (): Promise<void> => {
+    try {
+      const page = await client.call(API_ROUTES.listScenarioPlays, {
+        params: { scenarioId },
+        query: { open: 'true', limit: 200 },
+      });
+      for (const play of page.items) {
+        if (!states.has(play.id) && !finished.has(play.id)) showPlay(play.id, play.state);
+      }
+    } catch {
+      // The socket tells every change from here on; the plays already going are only a courtesy.
     }
-    if (current !== undefined && !live.has(current.ask.id)) current = undefined;
+  };
+
+  // A new ticket and a `resume` come with each connection and reconnection: the socket does both.
+  const socket = client.chat(scenarioId, {
+    ...options.reconnect,
+    maxRetries: options.reconnect?.maxRetries ?? CHAT_MAX_RETRIES,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const openWaiters: (() => void)[] = [];
+  let seeded = false;
+  socket.onMessage(onMessage);
+  socket.onState((state, detail) => {
+    if (state === 'open') {
+      for (const resolveWaiter of openWaiters.splice(0)) resolveWaiter();
+      if (!seeded) {
+        seeded = true;
+        void seedPlays();
+      }
+    } else if (state === 'retrying') {
+      err(
+        t('chat.reconnecting', {
+          message: detail.error === undefined ? '' : errorText(detail.error),
+          seconds: Math.ceil((detail.delayMs ?? 0) / 1000),
+        }),
+      );
+    } else if (state === 'closed') {
+      if (detail.error !== undefined) {
+        failed = true;
+        err(t('chat.connectionLost', { message: errorText(detail.error) }));
+      }
+      for (const resolveWaiter of openWaiters.splice(0)) resolveWaiter();
+      poke();
+    }
+  });
+
+  /** Resolves when the socket is open (or closed for good: the caller checks). */
+  const untilOpen = (): Promise<void> =>
+    socket.state === 'open' || socket.state === 'closed'
+      ? Promise.resolve()
+      : new Promise<void>((resolveOpen) => {
+          openWaiters.push(resolveOpen);
+        });
+
+  /** Sends a message of the chat when the socket is open; says so when it cannot. */
+  const sendOnSocket = async (
+    message: Parameters<typeof socket.send>[0],
+    failure: 'chat.answerFailed' | 'chat.sendFailed',
+  ): Promise<boolean> => {
+    await untilOpen();
+    try {
+      lastSent = message.type === 'answer' ? 'answer' : 'message';
+      socket.send(message);
+      return true;
+    } catch (error) {
+      err(t(failure, { message: errorText(error) }));
+      return false;
+    }
   };
 
   /** Takes the next ask that waits and says what it is, when nothing is being answered. */
@@ -473,6 +704,9 @@ export async function runChatCommand(
     }
   };
 
+  const answer = (ask: PendingAsk, body: JsonObject): Promise<boolean> =>
+    sendOnSocket({ type: 'answer', decisionId: ask.id, answer: body }, 'chat.answerFailed');
+
   const answerMenu = async (ask: PendingAsk, line: string): Promise<boolean> => {
     const [option = '', ...rest] = line.trim().split(/\s+/);
     if (!menuOptionsOf(ask).includes(option)) {
@@ -480,28 +714,27 @@ export async function runChatCommand(
       return false;
     }
     const text = rest.join(' ');
-    const answer: JsonObject = {
+    await answer(ask, {
       option,
       ...(text === '' ? {} : option === 'redefine_need' ? { need: text } : { reason: text }),
-    };
-    await client.answer(ask.id, answer);
+    });
     return true;
   };
 
   const answerGroup = async (ask: PendingAsk, line: string): Promise<boolean> => {
     const [option = '', ...rest] = line.trim().split(/\s+/);
     const text = rest.join(' ');
-    let answer: JsonObject;
-    if (option === 'approve') answer = { option };
-    else if (option === 'refuse') answer = { option, ...(text === '' ? {} : { reason: text }) };
-    else if (option === 'edit' && text !== '') answer = { option, need: text };
+    let body: JsonObject;
+    if (option === 'approve') body = { option };
+    else if (option === 'refuse') body = { option, ...(text === '' ? {} : { reason: text }) };
+    else if (option === 'edit' && text !== '') body = { option, need: text };
     else if (option === 'keep' && rest.length > 0) {
-      answer = { option: 'edit', ideaIds: rest.flatMap((word) => word.split(',')).filter(Boolean) };
+      body = { option: 'edit', ideaIds: rest.flatMap((word) => word.split(',')).filter(Boolean) };
     } else {
       out(t('chat.ideaGroupBad'));
       return false;
     }
-    await client.answer(ask.id, answer);
+    await answer(ask, body);
     return true;
   };
 
@@ -512,12 +745,10 @@ export async function runChatCommand(
       return;
     }
     try {
-      const result = await client.idea(scenarioId, command);
+      const result = await runIdeaCommand(client, scenarioId, command);
       for (const text of renderIdeaResult(t, command, result)) out(text);
     } catch (error) {
-      err(
-        t('chat.ideaFailed', { message: error instanceof Error ? error.message : String(error) }),
-      );
+      err(t('chat.ideaFailed', { message: errorText(error) }));
     }
   };
 
@@ -532,16 +763,15 @@ export async function runChatCommand(
       return;
     }
     try {
-      const record = await client.attach(scenarioId, {
-        path: resolve(path),
-        ...(reference ? { mode: 'reference' as const } : {}),
+      const record = await client.call(API_ROUTES.addAttachment, {
+        params: { scenarioId },
+        body: { path: resolve(path), ...(reference ? { mode: 'reference' as const } : {}) },
+        headers: commandHeaders(),
       });
       attached.push(record.id);
       out(t('chat.attached', record));
     } catch (error) {
-      err(
-        t('chat.attachFailed', { message: error instanceof Error ? error.message : String(error) }),
-      );
+      err(t('chat.attachFailed', { message: errorText(error) }));
     }
   };
 
@@ -555,41 +785,39 @@ export async function runChatCommand(
         await attach(line);
         return;
       }
-      if (line.trim() !== '') await client.send(scenarioId, line, attached.splice(0));
+      if (line.trim() !== '') {
+        const ids = attached.splice(0);
+        await sendOnSocket(
+          { type: 'message', text: line, ...(ids.length === 0 ? {} : { attachments: ids }) },
+          'chat.sendFailed',
+        );
+      }
       return;
     }
     const { ask } = current;
-    try {
-      if (ask.kind === IDEA_GROUP_KIND) {
-        if (await answerGroup(ask, line)) current = undefined;
-        return;
-      }
-      if (ask.kind !== 'producer_question') {
-        if (await answerMenu(ask, line)) current = undefined;
-        return;
-      }
-      current.collected.push(line);
-      const total = Math.max(questionsOf(ask).length, 1);
-      if (current.collected.length < total) {
-        promptQuestion(ask, current.collected.length);
-        return;
-      }
-      const answers = current.collected;
-      current = undefined;
-      await client.answer(ask.id, { answers });
-    } catch (error) {
-      current = undefined;
-      err(
-        t('chat.answerFailed', { message: error instanceof Error ? error.message : String(error) }),
-      );
+    if (ask.kind === IDEA_GROUP_KIND) {
+      if (await answerGroup(ask, line)) current = undefined;
+      return;
     }
+    if (ask.kind !== 'producer_question') {
+      if (await answerMenu(ask, line)) current = undefined;
+      return;
+    }
+    current.collected.push(line);
+    const total = Math.max(questionsOf(ask).length, 1);
+    if (current.collected.length < total) {
+      promptQuestion(ask, current.collected.length);
+      return;
+    }
+    const answers = current.collected;
+    current = undefined;
+    await answer(ask, { answers });
   };
 
+  socket.start();
   try {
     for (;;) {
-      if (options.signal?.aborted === true) break;
-      const poll = await client.poll(scenarioId, cursor);
-      show(poll);
+      if (options.signal?.aborted === true || failed) break;
       activate();
       let acted = false;
       while (lines.length > 0) {
@@ -598,24 +826,24 @@ export async function runChatCommand(
         acted = true;
       }
       const open = current !== undefined || waiting.length > 0;
-      // What the poll said is out of date once a line was sent: wait for a poll after it.
-      quiet = acted || (poll.busy && !open) ? 0 : quiet + 1;
-      if (ended && quiet >= 2) break;
-      await Promise.race([
-        sleep(
-          pollMs,
-          undefined,
-          options.signal === undefined ? {} : { signal: options.signal },
-        ).catch(() => undefined),
-        new Promise<void>((resolve) => {
-          wake = resolve;
-        }),
-      ]);
+      // What the daemon said before a line was sent is out of date: the quiet window starts anew.
+      if (acted || (busy === true && !open)) touch();
+      const settled = ended && lines.length === 0 && busy === false;
+      const remaining = quietMs - (Date.now() - activeAt);
+      if (settled && remaining <= 0) break;
+      await new Promise<void>((resolveWait) => {
+        const timer = settled ? setTimeout(resolveWait, remaining) : undefined;
+        wake = () => {
+          clearTimeout(timer);
+          resolveWait();
+        };
+      });
       wake = undefined;
     }
     if (current !== undefined || waiting.length > 0) err(t('chat.leftPending'));
   } finally {
+    socket.close();
     reader.close();
   }
-  return EXIT_OK;
+  return failed ? EXIT_FAILED : EXIT_OK;
 }
