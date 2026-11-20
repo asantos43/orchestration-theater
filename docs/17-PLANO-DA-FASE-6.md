@@ -431,9 +431,10 @@ O aceite roda nos três sistemas da CI. O nível real (`tools/acceptance`) ganha
   1. O SSE não mandava nada antes do primeiro evento, e o cliente esperava o fluxo abrir (#181).
   2. A sandbox escondia o perfil do teste, que é um link simbólico, e o cliente via `Authentication required` (#182: gancho `profileDirOverride`, só de teste, decisão do dono).
   3. O Diretor respondia aos pontos de julgamento sem o schema e a decisão era cancelada; o `next_action` passou a trazer `answer: {schema, example}` e o `decide` devolve `invalid_answer` sem cancelar (#183).
-  4. No modo `default` com `onAsk: reject`, todo `Write` do Ator foi recusado e o diff ficou vazio; decidido na N180 (`acceptEdits` nos papéis que escrevem).
+  4. No modo `default` com `onAsk: reject`, todo `Write` do Ator foi recusado e o diff ficou vazio; decidido na N180 (`acceptEdits` nos papéis que escrevem) e implementado (#186).
   5. O Ator, sem conseguir escrever, entregou `state: blocked`, e a demanda foi aprovada assim mesmo: o Crítico achou o diff vazio três vezes. Agora a demanda volta ao roteiro por `DEMAND_BLOCKED` (#184).
-  6. `ACTOR_REFUSED` existe na máquina, mas nada o envia: a permissão negada não chega ao Diretor; decidido na N181.
+  6. `ACTOR_REFUSED` existe na máquina, mas nada o envia: a permissão negada não chega ao Diretor; decidido na N181 e implementado (#187): o daemon envia `ACTOR_REFUSED` e o Diretor julga no ponto 6 com o resumo `refused`.
+- **Confirmação da N180 com o cliente real [V].** Passou também na rodada das 14h51, já sem `OT_TEST_CLAUDE_MODE` (só a N180, na main desde o #186, e a N181, #187): peça `play-b7b26de3` em `DONE` em 61,6 s (PLANNING > REVIEWING_PLAN > SCRIPTING > REVIEWING_SCRIPT > EXECUTING > EXECUTING > INTEGRATING > CRITIQUING > DELIVERING > DONE), 554 eventos vistos pelo cliente, nenhum evento `permission.*` (o Ator escreveu sem pedir permissão), a demanda integrada na primeira tentativa e aprovada pelo Crítico na primeira olhada, 9 processos e nenhum vivo no fim, pico de cerca de 1070 MB; log `real-acceptance-phase6-20261120-145150.log`. O envio do `ACTOR_REFUSED` com um cliente real segue não medido [N]: nada foi negado nessa rodada.
 
 ## Fora desta fase
 
