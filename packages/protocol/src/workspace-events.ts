@@ -6,10 +6,21 @@ import { z } from 'zod';
  * Payloads of the workspace and delivery events (architecture 5.5). They are registered in
  * `DAEMON_EVENT_TYPES` (events.ts) at `schemaVersion` 1. Every payload is a strict object, and
  * carries `playId` like the session events do (N54). [proposta] The fields below.
+ *
+ * N172 (2026-11-20): the three events of a play that the SSE filter `scenario` used to drop
+ * (`workspace.integrated`, `workspace.integration_failed`, `delivery.completed`) also carry
+ * `scenarioId`, in the payload and in the envelope (where the filter reads it), as the `idea.*`
+ * events do. The field is additive, at the same `schemaVersion` 1. [proposta] It is optional in
+ * the schema: the registry checks payloads only on `append`, and the daemon always writes the
+ * field (`Workspace` requires `scenarioId` in its inputs), but logs written before N172 hold these
+ * events without it and must still be valid for whoever checks them again. Those old events stay
+ * out of the scenario filter; nothing rewrites a log.
  */
 
 const id = z.string().min(1).max(256);
 const sha = z.string().min(7).max(64);
+/** N172: the scenario of the play. Optional only so events logged before N172 stay valid. */
+const scenarioId = id.optional();
 
 /** One approved attempt that went into the integration branch. */
 const IntegratedAttemptSchema = z.strictObject({
@@ -23,6 +34,7 @@ const IntegratedAttemptSchema = z.strictObject({
 /** `workspace.integrated`: every approved attempt is in `play/<id>/integration`. */
 export const WorkspaceIntegratedPayloadSchema = z.strictObject({
   playId: id,
+  scenarioId,
   /** The integration branch (`play/<id>/integration`). */
   branch: z.string().min(1),
   /** Head of the integration branch after the last merge. */
@@ -37,6 +49,7 @@ export const WorkspaceIntegratedPayloadSchema = z.strictObject({
  */
 export const WorkspaceIntegrationFailedPayloadSchema = z.strictObject({
   playId: id,
+  scenarioId,
   branch: z.string().min(1),
   cause: z.literal('merge_conflict'),
   /** The attempt whose merge conflicted. */
@@ -55,6 +68,7 @@ export type DeliveryRequester = z.infer<typeof DeliveryRequesterSchema>;
 /** `delivery.completed`: the integration branch reached the base, by PR or by direct merge. */
 export const DeliveryCompletedPayloadSchema = z.strictObject({
   playId: id,
+  scenarioId,
   /** The mode that was carried out. */
   mode: z.enum(['pr', 'direct_merge']),
   /** The mode that was asked for; differs from `mode` when it was downgraded. */

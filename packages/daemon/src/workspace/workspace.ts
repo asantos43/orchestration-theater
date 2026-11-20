@@ -71,6 +71,8 @@ export interface ApprovedAttempt {
 export interface IntegrateInput {
   readonly repo: string;
   readonly playId: string;
+  /** The scenario of the play: goes in the events, so the SSE filter `scenario` sees them (N172). */
+  readonly scenarioId: string;
   readonly script: Pick<Script, 'demands'>;
   readonly approved: readonly ApprovedAttempt[];
   /**
@@ -158,6 +160,8 @@ export interface DeliveryChange {
 export interface DeliverInput {
   readonly repo: string;
   readonly playId: string;
+  /** The scenario of the play: goes in `delivery.completed` (N172). */
+  readonly scenarioId: string;
   /** Branch the work is delivered to (the project's base, on the remote). */
   readonly base: string;
   /** Default {@link DEFAULT_REMOTE}. */
@@ -324,8 +328,9 @@ export class Workspace {
           mergedSoFar: merged.map((entry) => entry.demandId),
         } as const;
         if (!replayedOnly) {
-          await this.#emit(input.playId, 'workspace.integration_failed', {
+          await this.#emit(input.playId, input.scenarioId, 'workspace.integration_failed', {
             playId: input.playId,
+            scenarioId: input.scenarioId,
             branch,
             cause: failure.cause,
             demandId,
@@ -347,8 +352,9 @@ export class Workspace {
 
     const head = await this.#vcs.headOf(worktree);
     if (!replayedOnly) {
-      await this.#emit(input.playId, 'workspace.integrated', {
+      await this.#emit(input.playId, input.scenarioId, 'workspace.integrated', {
         playId: input.playId,
+        scenarioId: input.scenarioId,
         branch,
         head,
         merged: merged.map(({ demandId, attempt, branch: from, sha }) => ({
@@ -552,8 +558,9 @@ export class Workspace {
 
     // The event says the delivery happened; a repetition that only replays records says nothing.
     if (final.origin !== 'replayed' || pushed.origin !== 'replayed') {
-      await this.#emit(playId, 'delivery.completed', {
+      await this.#emit(playId, input.scenarioId, 'delivery.completed', {
         playId,
+        scenarioId: input.scenarioId,
         mode: decision.mode,
         requestedMode: decision.requestedMode,
         requestedBy: decision.requestedBy,
@@ -687,8 +694,9 @@ export class Workspace {
 
   async #emit<
     T extends 'workspace.integrated' | 'workspace.integration_failed' | 'delivery.completed',
-  >(playId: string, type: T, payload: DaemonEventPayloads[T]): Promise<void> {
-    await this.#store.events.append({ ...buildDaemonEvent(type, payload), playId });
+  >(playId: string, scenarioId: string, type: T, payload: DaemonEventPayloads[T]): Promise<void> {
+    // N172: `scenarioId` is also in the envelope, which is what the SSE filter `scenario` reads.
+    await this.#store.events.append({ ...buildDaemonEvent(type, payload), playId, scenarioId });
   }
 }
 

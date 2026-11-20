@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { buildDaemonEvent, validateEventPayload } from './events.js';
+import {
+  buildDaemonEvent,
+  validateEventPayload,
+  type DeliveryCompletedPayload,
+  type WorkspaceIntegratedPayload,
+  type WorkspaceIntegrationFailedPayload,
+} from './events.js';
 import {
   DeliveryCompletedPayloadSchema,
   WorkspaceIntegratedPayloadSchema,
@@ -19,6 +25,48 @@ describe('workspace and delivery event payloads (architecture 5.5)', () => {
     };
     expect(WorkspaceIntegratedPayloadSchema.parse(payload)).toEqual(payload);
     expect(buildDaemonEvent('workspace.integrated', payload).type).toBe('workspace.integrated');
+  });
+
+  it('carries the scenario in the three events of a play, and still reads the ones logged without it (N172)', () => {
+    const integrated: WorkspaceIntegratedPayload = {
+      playId: 'play-1',
+      branch: 'play/play-1/integration',
+      head: sha,
+      merged: [],
+    };
+    const failed: WorkspaceIntegrationFailedPayload = {
+      playId: 'play-1',
+      branch: 'play/play-1/integration',
+      cause: 'merge_conflict',
+      demandId: 'd2',
+      attempt: 2,
+      conflictFiles: ['shared.txt'],
+      mergedSoFar: [],
+    };
+    const delivered: DeliveryCompletedPayload = {
+      playId: 'play-1',
+      mode: 'pr',
+      requestedMode: 'pr',
+      requestedBy: 'config',
+      downgraded: false,
+      branch: 'play/play-1/integration',
+      base: 'main',
+      pushedSha: sha,
+    };
+    for (const [type, payload] of [
+      ['workspace.integrated', integrated],
+      ['workspace.integration_failed', failed],
+      ['delivery.completed', delivered],
+    ] as const) {
+      const scoped = { ...payload, scenarioId: 'scn-1' };
+      // Same schemaVersion 1: the field is additive.
+      expect(validateEventPayload(type, 1, scoped)).toEqual(scoped);
+      expect(buildDaemonEvent(type, scoped).payload).toMatchObject({ scenarioId: 'scn-1' });
+      // A payload logged before N172 has no `scenarioId` and stays valid.
+      expect(validateEventPayload(type, 1, payload)).toEqual(payload);
+      expect(() => validateEventPayload(type, 1, { ...scoped, scenarioId: '' })).toThrow();
+      expect(() => validateEventPayload(type, 2, scoped)).toThrow();
+    }
   });
 
   it('accepts a merge conflict and rejects any other cause', () => {
