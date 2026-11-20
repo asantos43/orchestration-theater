@@ -12,6 +12,7 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
       cors: { origins: [] },
       max_body_bytes: 1_048_576,
       rejection_events: { every: 10_000 },
+      idempotency_ttl: 86_400_000,
       sse: {
         buffer_events: 1000,
         heartbeat: 15_000,

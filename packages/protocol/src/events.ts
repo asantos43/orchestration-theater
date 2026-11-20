@@ -37,6 +37,10 @@ import {
   ApiStreamLaggedPayloadSchema,
 } from './api-events.js';
 import {
+  ConfigEditedPayloadSchema,
+  ScenarioDecisionAnsweredPayloadSchema,
+} from './api-command-events.js';
+import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
@@ -603,6 +607,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: ApiStreamLaggedPayloadSchema,
   }),
+  defineEventType({
+    type: 'scenario.decision_answered',
+    schemaVersion: 1,
+    payload: ScenarioDecisionAnsweredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'config.edited',
+    schemaVersion: 1,
+    payload: ConfigEditedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -727,6 +741,8 @@ export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];
+export type ScenarioDecisionAnsweredPayload = DaemonEventPayloads['scenario.decision_answered'];
+export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

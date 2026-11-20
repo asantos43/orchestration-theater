@@ -2,7 +2,7 @@
 import { PROFILE_KINDS, PROFILE_STATES, ProfileRecordSchema } from '@otheater/core';
 import { z } from 'zod';
 import { QUOTA_CAUSES, QUOTA_STATES } from '../quota-events.js';
-import { PageQuerySchema, pageOf } from './page.js';
+import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
 
 /**
@@ -74,4 +74,113 @@ export const getProfile = defineRoute({
   errors: ['not_found'],
 });
 
-export const PROFILE_ROUTES = defineRoutes(listProfiles, getProfile);
+const ProfileParamsSchema = z.strictObject({
+  client: z.string().min(1).max(64),
+  name: z.string().min(1).max(128),
+});
+
+/**
+ * Registers an account (P6 of docs/17; `ot profile add` without the login, which is interactive and
+ * stays at the terminal). [proposta] An `api` profile brings its `apiKey`, which goes straight to
+ * the vault: no response, event or log carries it, and a repeat under the same `Idempotency-Key` is
+ * recognized by a keyed digest of the body, never by the body. A second subscription of one
+ * provider answers `status: needs_notice` (HTTP 200) with the notice; the client shows it and sends
+ * the same body again with `acceptNotice: true`.
+ */
+export const AddProfileBodySchema = z.strictObject({
+  client: z.string().min(1).max(64),
+  name: z.string().min(1).max(128),
+  kind: z.enum(PROFILE_KINDS),
+  provider: z.string().min(1).max(128),
+  apiKey: z.string().min(1).max(8192).optional(),
+  acceptNotice: z.boolean().optional(),
+});
+export type AddProfileBody = z.input<typeof AddProfileBodySchema>;
+
+/** The notice of a second subscription of the same provider (architecture N127). */
+export const ProfileNoticeSchema = z.strictObject({
+  provider: z.string().min(1),
+  existing: z.array(z.string().min(1)),
+  mode: z.enum(['once', 'always']),
+});
+export type ProfileNotice = z.infer<typeof ProfileNoticeSchema>;
+
+export const AddProfileResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('added'),
+    profile: ProfileRecordSchema,
+    hasSecret: z.boolean(),
+    /** The vault that keeps the key (`keyring`, `file`...), or null for a subscription. */
+    secretBackend: z.string().nullable(),
+    /** Whether the client has a login in the profile; null for an `api` profile. */
+    login: z.enum(['logged_in', 'logged_out', 'unknown']).nullable(),
+    notice: ProfileNoticeSchema.nullable(),
+  }),
+  z.strictObject({ status: z.literal('needs_notice'), notice: ProfileNoticeSchema }),
+]);
+export type AddProfileResult = z.infer<typeof AddProfileResultSchema>;
+
+export const addProfile = defineRoute({
+  id: 'addProfile',
+  method: 'POST',
+  path: '/v1/profiles',
+  summary: 'Registers an account (a subscription profile or an API key profile); idempotent',
+  headers: IdempotencyHeadersSchema,
+  body: AddProfileBodySchema,
+  response: AddProfileResultSchema,
+  errors: ['conflict', 'vault_locked'],
+});
+
+/** What a drain or a removal waits for the running sessions: `profiles.drain.timeout` unless given. */
+export const ProfileTimeoutSchema = z.strictObject({ timeoutMs: z.int().min(0).optional() });
+
+export const DrainProfileResultSchema = z.strictObject({
+  profile: ProfileRecordSchema,
+  outcome: z.enum(['finished', 'handoff', 'forced', 'still_running']),
+  /** Sessions handed back to the queue or closed. */
+  sessions: z.int().min(0),
+});
+export type DrainProfileResult = z.infer<typeof DrainProfileResultSchema>;
+
+export const drainProfile = defineRoute({
+  id: 'drainProfile',
+  method: 'POST',
+  path: '/v1/profiles/:client/:name/drain',
+  summary: 'Stops giving new sessions to an account and waits for the running ones',
+  params: ProfileParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  body: ProfileTimeoutSchema.optional(),
+  response: DrainProfileResultSchema,
+  errors: ['not_found', 'conflict'],
+});
+
+export const RemoveProfileResultSchema = z.strictObject({
+  profile: ProfileRecordSchema,
+  drain: DrainProfileResultSchema.nullable(),
+  loggedOut: z.boolean(),
+  dir: z.enum(['deleted', 'backup', 'missing']),
+  secretDeleted: z.boolean(),
+  /** The Executors that stopped being valid with the account. */
+  executorsInvalidated: z.array(z.string()),
+});
+export type RemoveProfileResult = z.infer<typeof RemoveProfileResultSchema>;
+
+export const removeProfile = defineRoute({
+  id: 'removeProfile',
+  method: 'DELETE',
+  path: '/v1/profiles/:client/:name',
+  summary: 'Drains and removes an account: its directory, its secret and its Executors',
+  params: ProfileParamsSchema,
+  query: z.strictObject({ timeoutMs: z.coerce.number().int().min(0).optional() }),
+  headers: IdempotencyHeadersSchema,
+  response: RemoveProfileResultSchema,
+  errors: ['not_found', 'conflict'],
+});
+
+export const PROFILE_ROUTES = defineRoutes(
+  listProfiles,
+  getProfile,
+  addProfile,
+  drainProfile,
+  removeProfile,
+);

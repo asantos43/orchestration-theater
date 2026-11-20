@@ -109,6 +109,8 @@ describe('daemon event registry', () => {
       'api.started',
       'api.client_rejected',
       'api.stream_lagged',
+      'scenario.decision_answered',
+      'config.edited',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
