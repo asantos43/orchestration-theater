@@ -178,7 +178,7 @@ export function playTransitioned(
   return event(
     id,
     'play.transitioned',
-    { event: 'go', from: 'x', to, counters },
+    { event: 'START', from: 'NEED', to, counters, effects: [] },
     { scenarioId, playId },
   );
 }

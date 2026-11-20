@@ -209,6 +209,39 @@ describe('ot chat with the fake Director (P8)', { timeout: 120_000 }, () => {
   );
 
   itWithLauncher(
+    'refuses /idea discard, defer and requeue for an idea of another scenario (P13 of docs/17)',
+    async () => {
+      await withPlayDaemon({ extra: 'ideas:\n  drain: manual' }, async (harness) => {
+        const other = await harness.openGenericChat('other');
+        const added = await harness.producer.idea(other, { action: 'add', text: 'not yours' });
+        const ideaId = added.idea?.id ?? '';
+        expect(ideaId).not.toBe('');
+
+        const input = new PassThrough();
+        const out: string[] = [];
+        const err: string[] = [];
+        const finished = main(['chat', '--repo', harness.rig.repo, '--data-dir', harness.dataDir], {
+          env: {},
+          platform: process.platform,
+          homedir: harness.dataDir,
+          out: (line) => out.push(line),
+          err: (line) => err.push(line),
+          systemLocale: 'en',
+          input,
+        });
+        input.write(
+          `/idea discard ${ideaId} no\n/idea defer ${ideaId} later\n/idea requeue ${ideaId}\n`,
+        );
+        input.end();
+        expect(await finished).toBe(0);
+        expect(err.filter((line) => line.includes('The idea command failed'))).toHaveLength(3);
+        expect(err.join('\n')).toContain(`There is no idea "${ideaId}"`);
+        expect((await harness.daemon.store.ideas.get(ideaId))?.state).toBe('queued');
+      });
+    },
+  );
+
+  itWithLauncher(
     'leaves no file of the old Producer channel and opens only the MCP server and the API server (P8 of docs/17)',
     async () => {
       // A listening server shows up as a `TCPServerWrap` among the active resources of the process.

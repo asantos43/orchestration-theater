@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ApiPlay } from '@otheater/protocol';
+import {
+  PlayCreatedPayloadSchema,
+  PlayTransitionedPayloadSchema,
+  isFinalPlayState,
+  type ApiPlay,
+} from '@otheater/protocol';
 import {
   byNumberThenId,
   clearStale,
@@ -10,11 +15,6 @@ import {
   type EventReducer,
   type SyncFields,
 } from './core.js';
-import {
-  PlayCreatedPayloadSchema,
-  PlayTransitionedPayloadSchema,
-  isFinalPlayState,
-} from './play-events.js';
 
 /**
  * The plays (peças) of one daemon, by id. The events carry the whole record, so a play built only

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { isFinalPlayState } from '@otheater/protocol';
 
 /** Id and version of the play flow in the flow registry (architecture 5.4 and 5.18). */
 export const PLAY_FLOW_ID = 'play';
@@ -8,33 +9,11 @@ export const PLAY_FLOW_ID = 'play';
  */
 export const PLAY_FLOW_VERSION = 1;
 
-/**
- * The states of the play (architecture 5.4). `NEED` is the state before the first transition: the
- * play exists with its need and waits for `START`. [proposta] `CANCELLED` is the end the menu
- * option "cancel" leads to; the architecture draws it without naming it.
- */
-export const PLAY_STATES = [
-  'NEED',
-  'PLANNING',
-  'CLARIFYING',
-  'REVIEWING_PLAN',
-  'SCRIPTING',
-  'REVIEWING_SCRIPT',
-  'EXECUTING',
-  'INTEGRATING',
-  'CRITIQUING',
-  'DECIDING',
-  'DELIVERING',
-  'AWAITING_PRODUCER',
-  'DONE',
-  'CANCELLED',
-] as const;
-export type PlayState = (typeof PLAY_STATES)[number];
-
-export const FINAL_PLAY_STATES = ['DONE', 'CANCELLED'] as const satisfies readonly PlayState[];
+// The states of the play live in the protocol, with the payloads of the events that carry them.
+export { FINAL_PLAY_STATES, PLAY_STATES, type PlayState } from '@otheater/protocol';
 
 export function isFinalState(state: string): boolean {
-  return (FINAL_PLAY_STATES as readonly string[]).includes(state);
+  return isFinalPlayState(state);
 }
 
 /**

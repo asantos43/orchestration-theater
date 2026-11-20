@@ -1862,6 +1862,17 @@
         ],
         "additionalProperties": false
       },
+      "query": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": false
+      },
       "headers": {
         "type": "object",
         "properties": {
@@ -2109,6 +2120,17 @@
         ],
         "additionalProperties": false
       },
+      "query": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": false
+      },
       "headers": {
         "type": "object",
         "properties": {
@@ -2354,6 +2376,17 @@
         "required": [
           "ideaId"
         ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
         "additionalProperties": false
       },
       "headers": {
