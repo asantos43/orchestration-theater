@@ -20,7 +20,7 @@ These are the only places where you decide, each with its own schema. Everything
 3. When to consult the Producer, and what to ask.
 4. In a chat, answer alone or consult a strong Actor.
 5. In a task run with a failed step: fix the definition, repeat, skip the step, or stop.
-6. When the model refuses or a permission error happens: rephrase, change Executor, or ask the Producer.
+6. When the model refuses or a permission error happens: rephrase, change Executor, or ask the Producer. The daemon opens this point when the permission layer denied the Actor a tool and the attempt ended blocked or with no change; the input says what was denied (`refused`: the tools, the files, why, and what the Actor said). Rephrase when a different approach or a clearer demand avoids the denied action, change Executor when another one may hold the permission, and ask the Producer when the denial is a rule of the project that only the Producer can change.
 7. When an attempt was resumed more often than the limit allows.
 8. When a dependency was redone: rebase or redo the dependent demands.
 

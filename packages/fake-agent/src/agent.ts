@@ -446,6 +446,7 @@ async function playRolePlayScript(
           throw error;
         }
       },
+      ask: (request) => askPermission(turn, request),
       call: async (tool, args) => {
         const outcome = await client.callTool(tool, args);
         await reportMcpCall(
@@ -532,6 +533,54 @@ async function playProbe(
   return END_TURN;
 }
 
+/** What a tool call asks permission for (the escape script and the `#actor-refused` marker). */
+interface PermissionRequestSpec {
+  readonly kind: 'edit' | 'execute' | 'fetch' | 'switch_mode';
+  readonly title: string;
+  readonly locations?: readonly string[] | undefined;
+  readonly rawInput?: Readonly<Record<string, unknown>> | undefined;
+}
+
+/**
+ * Announces a tool call and asks the client for permission (`session/request_permission`), as a
+ * client does before a write it does not own. Says what came back: the option that was selected,
+ * or `cancelled` when the turn was cancelled or no option was taken.
+ */
+async function askPermission(
+  turn: TurnContext,
+  { kind, title, locations, rawInput }: PermissionRequestSpec,
+): Promise<'allowed' | 'rejected' | 'cancelled'> {
+  const toolCallId = nextToolCallId(turn.session);
+  const places = locations?.map((path) => ({ path }));
+  await update(turn, {
+    sessionUpdate: 'tool_call',
+    toolCallId,
+    title,
+    kind,
+    status: 'pending',
+    ...(places === undefined ? {} : { locations: places }),
+    ...(rawInput === undefined ? {} : { rawInput }),
+  });
+  const permission: RequestPermissionResponse = await turn.client.request(
+    methods.client.session.requestPermission,
+    {
+      sessionId: turn.sessionId,
+      toolCall: {
+        toolCallId,
+        title,
+        kind,
+        status: 'pending',
+        ...(places === undefined ? {} : { locations: places }),
+        ...(rawInput === undefined ? {} : { rawInput }),
+      },
+      options: [ALLOW, REJECT],
+    },
+    { cancellationSignal: turn.signal, stopWaitingOnCancel: true },
+  );
+  if (permission.outcome.outcome === 'cancelled' || turn.signal.aborted) return 'cancelled';
+  return permission.outcome.optionId === ALLOW.optionId ? 'allowed' : 'rejected';
+}
+
 /** The escape script (P5): the ACP side of its host; the steps are in `escape-scripts.ts`. */
 async function playEscapeScript(
   turn: TurnContext,
@@ -544,37 +593,7 @@ async function playEscapeScript(
         cwd: turn.session.cwd,
         signal: turn.signal,
         say: (text) => message(turn, text),
-        ask: async ({ kind, title, locations, rawInput }) => {
-          const toolCallId = nextToolCallId(turn.session);
-          const places = locations?.map((path) => ({ path }));
-          await update(turn, {
-            sessionUpdate: 'tool_call',
-            toolCallId,
-            title,
-            kind,
-            status: 'pending',
-            ...(places === undefined ? {} : { locations: places }),
-            ...(rawInput === undefined ? {} : { rawInput }),
-          });
-          const permission: RequestPermissionResponse = await turn.client.request(
-            methods.client.session.requestPermission,
-            {
-              sessionId: turn.sessionId,
-              toolCall: {
-                toolCallId,
-                title,
-                kind,
-                status: 'pending',
-                ...(places === undefined ? {} : { locations: places }),
-                ...(rawInput === undefined ? {} : { rawInput }),
-              },
-              options: [ALLOW, REJECT],
-            },
-            { cancellationSignal: turn.signal, stopWaitingOnCancel: true },
-          );
-          if (permission.outcome.outcome === 'cancelled' || turn.signal.aborted) return 'cancelled';
-          return permission.outcome.optionId === ALLOW.optionId ? 'allowed' : 'rejected';
-        },
+        ask: (request) => askPermission(turn, request),
         callTool: async (server, tool, args) => {
           if (!clients.has(server)) clients.set(server, await mcpClientFor(turn, server));
           const client = clients.get(server);
