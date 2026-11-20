@@ -467,7 +467,7 @@ Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir dos achados d
 - **N172, eventos de entrega no filtro por cenário:** `delivery.completed`, `workspace.integrated` e `workspace.integration_failed` ganham `scenarioId` no payload (aditivo, mesma `schemaVersion`), e o filtro `scenario` do SSE passa a vê-los. A implementar.
 - **N173, eventos que faltam:** `decision.created`, `decision.answered`, `scenario.archived` e `demand.transitioned` (nomes **[proposta]**), num passo só da próxima fase. A implementar.
 - **N174, layout entre clientes:** evento `layout.changed` e a chave `ui.layout.sync: live | on_open`, padrão `live`. A implementar.
-- **N175, modo `poll` de `chat.presence`** (diferente da recomendação): renomeado para `connected`, **sem alias**; o nome antigo é recusado. Modos `connected | always | never`, padrão `connected`. A implementar.
+- **N175, modo `poll` de `chat.presence`** (diferente da recomendação): renomeado para `connected`, **sem alias**; o nome antigo é recusado. Modos `connected | always | never`, padrão `connected`. Implementada no PR #190.
 - **N176, pausar e retomar peça; pausar, retomar e cancelar Ator, pela REST:** passo próprio da próxima fase, junto dos eventos da N173, com `Idempotency-Key` e `RecoveryGate`. A implementar.
 - **N177, carimbo do evento e do registro:** uma leitura do relógio, usada no registro (`createdAt`, `updatedAt`, `finishedAt`) e no evento. A implementar.
 - **N178, documentos com o canal antigo:** o coordenador atualiza a arquitetura e os docs 13, 16 e 17 num PR de docs. Feita no PR da arquitetura v0.80.
