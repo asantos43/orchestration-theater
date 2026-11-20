@@ -157,12 +157,14 @@ describe('acceptance: the daemon over the real SQLite', () => {
           // recovery is not fixed: compare the set.
           const types = (await allEvents(fake.store)).map((event) => event.type);
           expect(types[0]).toBe('daemon.started');
-          expect([...types].sort()).toEqual([
-            ...(await startNotices()),
-            'daemon.notice',
-            'daemon.recovered',
-            'daemon.started',
-          ]);
+          expect([...types].sort()).toEqual(
+            [
+              ...(await startNotices()),
+              'daemon.notice',
+              'daemon.recovered',
+              'daemon.started',
+            ].sort(),
+          );
         } finally {
           await fake.stop();
         }
