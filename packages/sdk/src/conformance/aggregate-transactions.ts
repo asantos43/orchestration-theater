@@ -59,6 +59,22 @@ export function describeAggregateTransactionsConformance(
       expect(await store.attachments.get('scn-1', 'A1')).toBeDefined();
     });
 
+    it('a transaction has one instant: tx.now(), the records and the events carry the same stamp (N177)', async () => {
+      const { store } = harness();
+      await store.scenarios.create(sampleScenario(1));
+      const seen = await store.transaction(async (tx) => {
+        const play = await tx.plays.create(samplePlay(1));
+        const created = await tx.events.append(sampleEvent(1));
+        const updated = await tx.plays.update('play-1', { state: 'PLANNING' });
+        const moved = await tx.events.append(sampleEvent(2));
+        return { now: tx.now(), play, created, updated, moved };
+      });
+      expect(seen.play.createdAt).toBe(seen.now);
+      expect(seen.created.timestamp).toBe(seen.now);
+      expect(seen.updated.updatedAt).toBe(seen.now);
+      expect(seen.moved.timestamp).toBe(seen.now);
+    });
+
     it('a rollback drops events and aggregates together, and numbering starts over', async () => {
       const { store } = harness();
       await store.scenarios.create(sampleScenario(1));

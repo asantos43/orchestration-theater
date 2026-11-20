@@ -9,7 +9,11 @@ import type {
   AttemptRegistry,
 } from '../ports/attempt-registry.js';
 import type { Store, StoreAggregates, StoreTransaction } from '../ports/store.js';
-import { autoCommitAggregates, createStoreAggregates } from '../store-kit/index.js';
+import {
+  autoCommitAggregates,
+  createStoreAggregates,
+  transactionInstant,
+} from '../store-kit/index.js';
 import { InMemoryAttemptRegistry } from './in-memory-attempt-registry.js';
 import { InMemoryEventLog } from './in-memory-event-log.js';
 import { InMemoryTables } from './in-memory-tables.js';
@@ -92,12 +96,19 @@ export class InMemoryStore implements Store {
     if (this.#closed) return Promise.reject(new AdapterUnavailable('The store is closed'));
     // A transaction accepted before `close()` runs to completion; `close()` waits for it.
     const run = this.#tail.then(async () => {
-      const overlay = this.#committed.fork();
-      const attempts = this.#committedAttempts.fork();
+      // One reading of the clock for everything the transaction writes (N177).
+      const instant = transactionInstant(this.#clock);
+      const overlay = this.#committed.fork(instant);
+      const attempts = this.#committedAttempts.fork(instant);
       const tables = this.#committedTables.fork();
-      const aggregates: StoreAggregates = createStoreAggregates(tables.factory, this.#clock);
+      const aggregates: StoreAggregates = createStoreAggregates(tables.factory, instant);
       try {
-        const result = await fn({ events: overlay, attempts, ...aggregates });
+        const result = await fn({
+          events: overlay,
+          attempts,
+          now: () => instant.now(),
+          ...aggregates,
+        });
         overlay.commit();
         attempts.commit();
         tables.commit();
