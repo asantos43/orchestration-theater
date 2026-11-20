@@ -4,6 +4,7 @@ export * from './errors.js';
 export * from './ids.js';
 export * from './page.js';
 export * from './status.js';
+export * from './discovery.js';
 export * from './sse.js';
 export * from './chat.js';
 export * from './layout.js';
