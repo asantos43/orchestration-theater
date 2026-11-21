@@ -84,7 +84,12 @@ import {
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
-import { TelemetryStoreResetPayloadSchema } from './telemetry-events.js';
+import {
+  TelemetryBatchRejectedPayloadSchema,
+  TelemetryReceiverStartedPayloadSchema,
+  TelemetryRedactedPayloadSchema,
+  TelemetryStoreResetPayloadSchema,
+} from './telemetry-events.js';
 import { UsageNoticePayloadSchema, UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
@@ -686,6 +691,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: TelemetryStoreResetPayloadSchema,
   }),
   defineEventType({
+    type: 'telemetry.receiver_started',
+    schemaVersion: 1,
+    payload: TelemetryReceiverStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'telemetry.batch_rejected',
+    schemaVersion: 1,
+    payload: TelemetryBatchRejectedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'telemetry.redacted',
+    schemaVersion: 1,
+    payload: TelemetryRedactedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.started',
     schemaVersion: 1,
     payload: ApiStartedPayloadSchema,
@@ -978,6 +998,9 @@ export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
 export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
 export type TelemetryStoreResetPayload = DaemonEventPayloads['telemetry.store_reset'];
+export type TelemetryReceiverStartedPayload = DaemonEventPayloads['telemetry.receiver_started'];
+export type TelemetryBatchRejectedPayload = DaemonEventPayloads['telemetry.batch_rejected'];
+export type TelemetryRedactedPayload = DaemonEventPayloads['telemetry.redacted'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];

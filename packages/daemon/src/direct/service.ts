@@ -353,6 +353,7 @@ export class DirectSessionService {
         profile,
         policy,
         cwd: worktree ?? folder,
+        telemetry: { scenarioId },
         permissions: {
           onDecision: (outcome) => {
             if (pending.live !== undefined) this.#decided(pending.live, outcome);

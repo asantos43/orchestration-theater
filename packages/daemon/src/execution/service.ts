@@ -15,6 +15,7 @@ import { AttemptRunner, type AttemptRunnerOptions } from './attempt-runner.js';
 import type { ExhaustionPort } from './exhaustion.js';
 import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
+import type { SessionTelemetry } from '../telemetry/client-telemetry.js';
 import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
 import type { ExecutionSettings } from './settings.js';
 
@@ -44,6 +45,8 @@ export interface ExecutionOptions {
   readonly localInstance?: LocalInstanceResolver;
   /** The baton of an attempt (P18): the next Executor and the package. Without it a handoff parks. */
   readonly handoff?: HandoffPort;
+  /** Where the clients send their telemetry (P2); absent: the sessions start with none. */
+  readonly telemetry?: SessionTelemetry;
 }
 
 /**
@@ -67,6 +70,7 @@ export class Execution {
       ...(options.memory === undefined ? {} : { memory: options.memory }),
       ...(options.canAdmit === undefined ? {} : { canAdmit: options.canAdmit }),
       ...(options.localInstance === undefined ? {} : { localInstance: options.localInstance }),
+      ...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
     });
     this.runner = new AttemptRunner({
       store: options.store,

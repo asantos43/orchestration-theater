@@ -36,7 +36,10 @@ const detail = z.string().min(1).max(512).nullable();
  * - `account_rotated` (P26, N157): `profiles.rotate_on_exhaustion.<provider>` is `on` and a
  *   subscription account of that provider ran out, so the work passed to another account of the
  *   same provider (`subject`: the role; `detail`: the provider, the profile that ran out and the
- *   profile that took the work; the envelope carries the play and the attempt) [proposta].
+ *   profile that took the work; the envelope carries the play and the attempt) [proposta];
+ * - `telemetry_receiver_unavailable` (P2 of Phase 8, N212): the OTLP receiver could not listen
+ *   (`telemetry.receiver.port` is taken, or the system refused), so the clients start without
+ *   telemetry; the daemon goes on (`subject`: `receiver`; `detail`: the reason, no token) [proposta].
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -51,6 +54,7 @@ export const DAEMON_NOTICE_KINDS = [
   'browser_warning',
   'cross_check_unsatisfiable',
   'account_rotated',
+  'telemetry_receiver_unavailable',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

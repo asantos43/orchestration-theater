@@ -1252,6 +1252,9 @@ export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
 /** `backup.telemetry`: whether the backup carries the telemetry file. */
 export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 
+/** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
+export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
+
 const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
 
 /**
@@ -1268,8 +1271,8 @@ function telemetryClient<Shape extends z.ZodRawShape>(options: Shape) {
 }
 
 /**
- * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block: P2 adds
- * `receiver.*` next to these keys. Every key is [proposta] except where the plan names it.
+ * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block; P2 added
+ * `receiver.*` and `redaction` after these keys. Every key is [proposta] except where the plan names it.
  */
 const TelemetryConfigSchema = z
   .strictObject({
@@ -1304,6 +1307,25 @@ const TelemetryConfigSchema = z
         opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
       })
       .prefault({}),
+    /**
+     * The OTLP/HTTP receiver of the daemon (P2, N211 to N213), loopback only, JSON only. [proposta]
+     * - `port`: `auto` (a free port, each boot) or a fixed one;
+     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413.
+     */
+    receiver: z
+      .strictObject({
+        port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+        max_body: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
+          '8MB',
+        ),
+      })
+      .prefault({}),
+    /**
+     * What the receiver keeps of the content (P2, N212). `default`: the identity and secrets are
+     * always removed, and so is the content (prompts, answers, tool arguments and output), kept as
+     * size and hash. `full`: the content stays; the identity and secrets are still removed.
+     */
+    redaction: z.enum(TELEMETRY_REDACTION_MODES).default('default'),
   })
   .prefault({});
 

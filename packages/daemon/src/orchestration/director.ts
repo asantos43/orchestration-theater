@@ -639,6 +639,7 @@ export class DirectorSessions {
         cwd,
         mcpServers: [grant.server],
         director: true,
+        telemetry: { scenarioId, attemptId: directorAttemptId(scenarioId) },
       });
       try {
         grant.bind(lease.session.sessionId);

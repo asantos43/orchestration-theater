@@ -1334,6 +1334,8 @@ describe('telemetry (P1 of Phase 8)', () => {
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
+      receiver: { port: 'auto', max_body: 8 * 1024 * 1024 },
+      redaction: 'default',
     });
     expect(config.backup.telemetry).toBe('exclude');
   });
@@ -1381,7 +1383,18 @@ describe('telemetry (P1 of Phase 8)', () => {
     ).toEqual({ enabled: 'on', traces: 'on' });
   });
 
-  it('refuses unknown values and keys, and does not own the receiver yet', () => {
+  it('takes the receiver and redaction keys of P2', () => {
+    const config = parseConfig(
+      'telemetry:\n  receiver:\n    port: 4318\n    max_body: 1MB\n  redaction: full\n',
+    );
+    expect(config.telemetry.receiver).toEqual({ port: 4318, max_body: 1024 * 1024 });
+    expect(config.telemetry.redaction).toBe('full');
+    expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
+      'auto',
+    );
+  });
+
+  it('refuses unknown values and keys', () => {
     for (const bad of [
       'telemetry:\n  enabled: maybe\n',
       'telemetry:\n  synchronous: off\n',
@@ -1393,6 +1406,11 @@ describe('telemetry (P1 of Phase 8)', () => {
       'telemetry:\n  clients:\n    codex:\n      traces: on\n',
       'telemetry:\n  clients:\n    gemini: on\n',
       'telemetry:\n  receiver:\n    port: 1\n',
+      'telemetry:\n  receiver:\n    port: 70000\n',
+      'telemetry:\n  receiver:\n    max_body: 0\n',
+      'telemetry:\n  receiver:\n    max_body: huge\n',
+      'telemetry:\n  receiver:\n    other: 1\n',
+      'telemetry:\n  redaction: none\n',
       'telemetry:\n  other: 1\n',
       'backup:\n  telemetry: sometimes\n',
     ]) {
