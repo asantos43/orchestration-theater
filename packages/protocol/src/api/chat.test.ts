@@ -17,6 +17,7 @@ const clientMessages = [
   { type: 'message', text: 'see this', attachments: ['A1', 'A2'] },
   { type: 'answer', decisionId: 'D4', answer: { option: 'approve' } },
   { type: 'command', text: '/idea add something' },
+  { type: 'command', text: '/cancel', confirm: true },
   { type: 'resume', lastEventId: 120 },
 ];
 
@@ -59,6 +60,16 @@ const serverMessages = [
     ],
   },
   { type: 'busy', eventId: 12, busy: true },
+  {
+    type: 'command_result',
+    eventId: null,
+    result: { status: 'confirm', command: 'cancel', text: 'Cancel the play?' },
+  },
+  {
+    type: 'command_result',
+    eventId: null,
+    result: { status: 'done', command: 'plays', text: '1 play', data: { plays: [] } },
+  },
   {
     type: 'shell_started',
     eventId: 13,
@@ -131,6 +142,8 @@ describe('the messages of the daemon', () => {
       { type: 'ask_closed', eventId: 1, decisionId: 'D4', state: 'pending' },
       { type: 'ask_closed', eventId: 1, decisionId: 'D4' },
       { type: 'error', eventId: 3, error: { code: 'internal', message: 'x' } },
+      { type: 'command_result', eventId: 3, result: { status: 'done', command: 'x', text: '' } },
+      { type: 'command_result', eventId: null, result: { status: 'ran', command: 'x', text: '' } },
       { type: 'error', eventId: null, error: { code: 'teapot', message: 'x' } },
       { type: 'director_reply', eventId: 1, replyId: 1, text: 'x' },
       { type: 'system', eventId: 1, message: { kind: 'unknown' } },

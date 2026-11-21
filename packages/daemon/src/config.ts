@@ -711,6 +711,45 @@ export const SILENT_TURN_MODES = ['notice', 'none'] as const;
 export type SilentTurnMode = (typeof SILENT_TURN_MODES)[number];
 
 /**
+ * `chat.slash_commands` (Phase 7, P3; architecture 5.13): `on` sends a line that starts with `/` to
+ * the registry of commands of the daemon (an unknown one is refused); `off` keeps the old
+ * behaviour, the line goes to the Director as typed.
+ */
+export const SLASH_COMMAND_MODES = ['on', 'off'] as const;
+export type SlashCommandMode = (typeof SLASH_COMMAND_MODES)[number];
+
+/**
+ * `chat.client_commands` (P3): the `/` commands of the client of the Director (`/claude:compact`).
+ * `on`: all of those the client announced; `off`: none; `allowlist`: only those in
+ * `chat.client_commands_allow`.
+ */
+export const CLIENT_COMMAND_MODES = ['on', 'off', 'allowlist'] as const;
+export type ClientCommandMode = (typeof CLIENT_COMMAND_MODES)[number];
+
+/** `chat.slash_confirm` (P3): `always` asks before a command that marks itself as asking; `never` runs it at once. */
+export const SLASH_CONFIRM_MODES = ['always', 'never'] as const;
+export type SlashConfirmMode = (typeof SLASH_CONFIRM_MODES)[number];
+
+/**
+ * `chat.slash_access` (P3): what the `/` commands may do. `full`: all of them; `read_only`: only the
+ * ones that read (the registry marks each as `read` or `write`), the others are refused with
+ * `forbidden`.
+ */
+export const SLASH_ACCESS_MODES = ['full', 'read_only'] as const;
+export type SlashAccessMode = (typeof SLASH_ACCESS_MODES)[number];
+
+/**
+ * The templates for the Director (`/plan fix the login`): the name of the command and the text the
+ * Producer's words follow. [proposta] They are prompts, so they are in English like every prompt of
+ * the daemon (5.22); the Producer's own templates go in `chat.slash_templates`.
+ */
+export const DEFAULT_SLASH_TEMPLATES: Readonly<Record<string, string>> = {
+  plan: 'Make a plan, without changing anything yet, for: ',
+  explain: 'Explain: ',
+  review: 'Review the work done so far and tell me what is missing: ',
+};
+
+/**
  * `tools.shell_allowlist.mode` (N97): which programs `restricted_shell` runs. `list` (default):
  * the entries of `tools.shell_allowlist.list`; `profile`: only the commands of the project
  * conventions (`scenarios.conventions`); `any`: any program of the PATH (the sandbox, P4, is the
@@ -1415,6 +1454,29 @@ export const DaemonConfigSchema = z
         presence_window: DurationSchema.prefault('30s'),
         /** [proposta] A turn of the Director with no text: see {@link SILENT_TURN_MODES}. */
         silent_turn: z.enum(SILENT_TURN_MODES).default('notice'),
+        /** [proposta: on] The `/` commands go to the registry of the daemon: see {@link SLASH_COMMAND_MODES}. */
+        slash_commands: z.enum(SLASH_COMMAND_MODES).default('on'),
+        /** [proposta: on] The commands of the client of the Director: see {@link CLIENT_COMMAND_MODES}. */
+        client_commands: z.enum(CLIENT_COMMAND_MODES).default('on'),
+        /**
+         * [proposta] The commands `client_commands: allowlist` lets through, with the prefix
+         * (`claude:compact`) or without the slash. (A key `client_commands.allow` is not possible:
+         * `client_commands` is a value, and a YAML key cannot be a value and a map.)
+         */
+        client_commands_allow: z.array(z.string().min(1)).default([]),
+        /** [proposta: always] A command that asks for a confirmation (`/cancel`): see {@link SLASH_CONFIRM_MODES}. */
+        slash_confirm: z.enum(SLASH_CONFIRM_MODES).default('always'),
+        /** [proposta: 20] How many events `/logs` shows when it is given no number. */
+        slash_logs_lines: z.int().min(1).max(500).default(20),
+        /** [proposta: full] What the `/` commands may do: see {@link SLASH_ACCESS_MODES}. */
+        slash_access: z.enum(SLASH_ACCESS_MODES).default('full'),
+        /**
+         * [proposta] The templates for the Director: name (without the slash) to the text that
+         * goes before what the Producer types. A name that is a command of the daemon is ignored.
+         */
+        slash_templates: z
+          .record(z.string().regex(/^[a-z][a-z0-9_-]*$/), z.string().min(1))
+          .default({ ...DEFAULT_SLASH_TEMPLATES }),
         /**
          * [proposta] The `!` command of the Producer (N43, N187): `on` | `off` or a section with
          * `mode`, `timeout` (a duration or `off`; default 5m) and `context` (`auto` | `ask` | `never`).

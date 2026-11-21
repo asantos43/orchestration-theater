@@ -51,6 +51,8 @@ export const CLI_NAMESPACE = 'cli';
 
 export interface CreateTranslatorOptions {
   readonly localesDir?: string;
+  /** The catalog file to load (`<namespace>.json`). Default: {@link CLI_NAMESPACE}. */
+  readonly namespace?: string;
 }
 
 /**
@@ -62,13 +64,12 @@ export async function createTranslator(
   options: CreateTranslatorOptions = {},
 ): Promise<TFunction> {
   const dir = options.localesDir ?? DEFAULT_LOCALES_DIR;
+  const namespace = options.namespace ?? CLI_NAMESPACE;
   const resources = Object.fromEntries(
     LOCALES.map((lng) => [
       lng,
       {
-        [CLI_NAMESPACE]: JSON.parse(
-          readFileSync(`${dir}/${lng}/${CLI_NAMESPACE}.json`, 'utf8'),
-        ) as object,
+        [namespace]: JSON.parse(readFileSync(`${dir}/${lng}/${namespace}.json`, 'utf8')) as object,
       },
     ]),
   );
@@ -77,8 +78,8 @@ export async function createTranslator(
     lng: locale,
     fallbackLng: 'en',
     supportedLngs: [...LOCALES],
-    ns: [CLI_NAMESPACE],
-    defaultNS: CLI_NAMESPACE,
+    ns: [namespace],
+    defaultNS: namespace,
     resources,
     // Output goes to a terminal, not into HTML.
     interpolation: { escapeValue: false },
