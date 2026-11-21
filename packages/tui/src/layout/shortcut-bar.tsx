@@ -14,7 +14,10 @@ export interface Hint {
 }
 
 /** `^B Lateral  ^J Painel`: the hints that fit in `width`, from the first; what does not fit is left out. */
-export function Hints(props: { readonly width: number; readonly hints: readonly Hint[] }): ReactNode {
+export function Hints(props: {
+  readonly width: number;
+  readonly hints: readonly Hint[];
+}): ReactNode {
   const shown: Hint[] = [];
   let used = 1;
   for (const hint of props.hints) {

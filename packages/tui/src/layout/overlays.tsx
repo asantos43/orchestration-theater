@@ -112,7 +112,12 @@ export function PaletteOverlay(props: PaletteProps): ReactNode {
   const visible = Math.max(3, Math.min(12, props.screen.rows - 10));
   const run = useLatest(props.onRun);
   return (
-    <OverlayBox screen={props.screen} width={76} height={visible + 6} title={t('layout.palette.title')}>
+    <OverlayBox
+      screen={props.screen}
+      width={76}
+      height={visible + 6}
+      title={t('layout.palette.title')}
+    >
       <Box>
         <Text color={COLOR.accent}>{'› '}</Text>
         <TextInput placeholder={t('layout.palette.placeholder')} onChange={setQuery} />
@@ -140,7 +145,11 @@ export interface HelpProps {
 }
 
 /** The lines of the help: a header per group, then one line per command with its keys. */
-export function helpLines(groups: readonly UiHelpGroup[], t: UiTranslate, width: number): ListLine[] {
+export function helpLines(
+  groups: readonly UiHelpGroup[],
+  t: UiTranslate,
+  width: number,
+): ListLine[] {
   const lines: ListLine[] = [];
   const keysWidth = Math.min(28, Math.floor(width / 2));
   for (const group of groups) {

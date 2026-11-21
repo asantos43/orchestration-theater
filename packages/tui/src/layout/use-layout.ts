@@ -20,6 +20,29 @@ export function useLayoutPreferences(store: LayoutStore): LayoutPreferences {
   );
 }
 
+/**
+ * [proposta] The tab the person is on is saved the same way: the marker below, followed by the
+ * id of the tab, among the collapsed sections (one at a time). The record has no field for it,
+ * and without it the TUI would reopen on the first tab, not on the one it was closed on.
+ */
+export const ACTIVE_TAB_PREFIX = 'layout.activeTab.';
+
+function isMarker(id: string): boolean {
+  return id === PANEL_CLOSED_MARKER || id.startsWith(ACTIVE_TAB_PREFIX);
+}
+
+/** The tab saved as the active one, if any (the caller checks that it is still open). */
+export function savedActiveTab(layout: LayoutPreferences): string | undefined {
+  const marker = layout.collapsedSections.find((id) => id.startsWith(ACTIVE_TAB_PREFIX));
+  return marker === undefined ? undefined : marker.slice(ACTIVE_TAB_PREFIX.length);
+}
+
+export function saveActiveTab(store: LayoutStore, tab: string | undefined): boolean {
+  const others = store.layout.collapsedSections.filter((id) => !id.startsWith(ACTIVE_TAB_PREFIX));
+  const next = tab === undefined ? others : [...others, `${ACTIVE_TAB_PREFIX}${tab}`];
+  return store.update({ collapsedSections: next });
+}
+
 export function isPanelOpen(layout: LayoutPreferences): boolean {
   return !layout.collapsedSections.includes(PANEL_CLOSED_MARKER);
 }
@@ -30,5 +53,5 @@ export function setPanelOpen(store: LayoutStore, open: boolean): boolean {
 
 /** The ids of the sections the person folded, as a set. */
 export function foldedSections(layout: LayoutPreferences): ReadonlySet<string> {
-  return new Set(layout.collapsedSections.filter((id) => id !== PANEL_CLOSED_MARKER));
+  return new Set(layout.collapsedSections.filter((id) => !isMarker(id)));
 }

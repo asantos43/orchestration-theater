@@ -72,9 +72,7 @@ export function computeGeometry(input: GeometryInput): Geometry {
     bodyHeight: rows - 2,
     sidebar: { mode, width: sidebarWidth },
     chat: { x: sidebarWidth, width: chatWidth },
-    panel: showPanel
-      ? { x: sidebarWidth + chatWidth, width: available - chatWidth }
-      : undefined,
+    panel: showPanel ? { x: sidebarWidth + chatWidth, width: available - chatWidth } : undefined,
     panelAbsence: showPanel ? undefined : input.panelOpen ? 'narrow' : 'closed',
     chatRange: { min: minChat, max: maxChat },
   };
@@ -85,8 +83,13 @@ export function computeGeometry(input: GeometryInput): Geometry {
  * geometry. With no panel the chat takes the whole row and there is nothing to adjust: the result
  * is the width as it is.
  */
-export function steppedChatWidth(geometry: Geometry, delta: number): number {
+export function steppedChatWidth(
+  geometry: Geometry,
+  delta: number,
+  from: number = geometry.chat.width,
+): number {
   if (geometry.panel === undefined) return geometry.chat.width;
   const { min, max } = geometry.chatRange;
-  return Math.min(max, Math.max(min, geometry.chat.width + delta));
+  const start = Math.min(max, Math.max(min, from));
+  return Math.min(max, Math.max(min, start + delta));
 }

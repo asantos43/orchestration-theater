@@ -123,22 +123,30 @@ export function parseTerminalKey(data: string): string | undefined {
     if (data.length === 1) return make('Esc');
     const next = data[1] ?? '';
     if (next === '[') {
+      // eslint-disable-next-line no-control-regex -- an escape sequence starts with the ESC byte
       const match = /^\x1b\[([\d;:]*)([A-Za-z~])$/u.exec(data);
       if (match === null) return undefined;
       return parseCsi(match[1] ?? '', match[2] ?? '');
     }
     if (next === 'O') {
+      // eslint-disable-next-line no-control-regex -- an escape sequence starts with the ESC byte
       const match = /^\x1bO(\d*;?\d*)([A-Z])$/u.exec(data);
       if (match === null) return undefined;
       const [, parameters = '', final = ''] = match;
-      const modifier = parameters.includes(';') ? Number.parseInt(parameters.split(';')[1] ?? '', 10) : 1;
+      const modifier = parameters.includes(';')
+        ? Number.parseInt(parameters.split(';')[1] ?? '', 10)
+        : 1;
       const key = NAMED_CSI_LETTER[final];
-      return key === undefined ? undefined : make(key, modifiersOf(Number.isNaN(modifier) ? 1 : modifier));
+      return key === undefined
+        ? undefined
+        : make(key, modifiersOf(Number.isNaN(modifier) ? 1 : modifier));
     }
     // ESC and one more key: the Alt of that key.
     const inner = parseTerminalKey(data.slice(1));
     const parsed = inner === undefined || data.length > 3 ? undefined : parseKeyCombo(inner);
-    return parsed === undefined || parsed.alt ? undefined : formatKeyCombo({ ...parsed, alt: true });
+    return parsed === undefined || parsed.alt
+      ? undefined
+      : formatKeyCombo({ ...parsed, alt: true });
   }
   const chars = Array.from(data);
   if (chars.length !== 1) return undefined;

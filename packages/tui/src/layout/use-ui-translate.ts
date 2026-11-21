@@ -7,9 +7,7 @@ import { useTranslation } from 'react-i18next';
 export function useUiTranslate(): UiTranslate {
   const { t } = useTranslation();
   return useMemo(
-    (): UiTranslate =>
-      (key, params) =>
-        params === undefined ? t(key) : t(key, params),
+    (): UiTranslate => (key, params) => (params === undefined ? t(key) : t(key, params)),
     [t],
   );
 }

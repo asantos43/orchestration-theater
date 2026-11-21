@@ -83,7 +83,7 @@ function ExpandedQuota(props: { readonly row: QuotaRow; readonly inner: number }
   const values =
     row.fiveHour === undefined && row.week === undefined
       ? t('layout.sidebar.noReading')
-      : `${row.fiveHour === undefined ? '—' : `${row.fiveHour}%`} · ${row.week === undefined ? '—' : `${row.week}%`}${row.state === 'near_limit' || row.state === 'exhausted' ? ' !' : ''}`;
+      : `${row.fiveHour === undefined ? '—' : `${String(row.fiveHour)}%`} · ${row.week === undefined ? '—' : `${String(row.week)}%`}${row.state === 'near_limit' || row.state === 'exhausted' ? ' !' : ''}`;
   const name = fit(row.profile, Math.max(1, inner - cellWidth(values) - 1));
   return (
     <>
@@ -133,7 +133,12 @@ function SectionHead(props: {
   const head = `${props.folded ? '▸' : '▾'} ${props.title}`;
   const line = `${fit(head, Math.max(1, props.inner - cellWidth(props.right) - 1))} ${props.right}`;
   return (
-    <Text bold dimColor={!props.cursor} {...paint(undefined, props.cursor ? COLOR.selected : undefined)} wrap="truncate">
+    <Text
+      bold
+      dimColor={!props.cursor}
+      {...paint(undefined, props.cursor ? COLOR.selected : undefined)}
+      wrap="truncate"
+    >
       {fit(line, props.inner)}
     </Text>
   );
@@ -191,10 +196,13 @@ function Expanded(props: SidebarProps): ReactNode {
       <Text dimColor>{'─'.repeat(inner)}</Text>
       <Text wrap="truncate">
         {fit(`⚙ ${settings}`, Math.max(1, inner - (props.keys.settings?.length ?? 0) - 1))}{' '}
-        <Text color={COLOR.key}>{fitRight(props.keys.settings ?? '', (props.keys.settings ?? '').length)}</Text>
+        <Text color={COLOR.key}>
+          {fitRight(props.keys.settings ?? '', (props.keys.settings ?? '').length)}
+        </Text>
       </Text>
       <Text wrap="truncate">
-        <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text> {fit(daemon, Math.max(1, inner - 2))}
+        <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text>{' '}
+        {fit(daemon, Math.max(1, inner - 2))}
       </Text>
     </>
   );
@@ -210,9 +218,15 @@ function Rail(props: SidebarProps): ReactNode {
           <Text
             key={row.id}
             wrap="truncate"
-            {...paint(undefined, props.focused && props.cursor === row.id ? COLOR.selected : undefined)}
+            {...paint(
+              undefined,
+              props.focused && props.cursor === row.id ? COLOR.selected : undefined,
+            )}
           >
-            <Text {...paint(props.selectedId === row.id ? COLOR.accent : undefined)} bold={props.selectedId === row.id}>
+            <Text
+              {...paint(props.selectedId === row.id ? COLOR.accent : undefined)}
+              bold={props.selectedId === row.id}
+            >
               {fit(Array.from(row.name)[0]?.toUpperCase() ?? ' ', 1)}
             </Text>
             <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>

@@ -32,7 +32,11 @@ describe('parseUiSettings', () => {
 
   it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
     const settings = parseUiSettings({
-      keymap: { preset: 'classic', environment: 'none', overrides: { 'app.quit': ['Ctrl+X'], bad: 3 } },
+      keymap: {
+        preset: 'classic',
+        environment: 'none',
+        overrides: { 'app.quit': ['Ctrl+X'], bad: 3 },
+      },
       tuiLayout: { sidebarWidth: 40, railWidth: 99, chatStep: 4, scrollStep: 'line' },
     });
     expect(settings.keymap).toEqual({

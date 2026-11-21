@@ -78,7 +78,6 @@ export interface KeyEvent {
 /** What `useStdin()` gives at run time, beyond the types: the emitter Ink's own `useInput` listens on. */
 interface InkStdin {
   readonly setRawMode: (value: boolean) => void;
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   readonly internal_eventEmitter?: EventEmitter | undefined;
 }
 

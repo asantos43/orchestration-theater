@@ -34,6 +34,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
 
   useEffect(() => {
     const life = { cancelled: false };
+    const cancelled = (): boolean => life.cancelled;
     let daemon: LiveDaemon | undefined;
     let unsubscribe: (() => void) | undefined;
 
@@ -50,7 +51,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
       daemon = result.daemon;
       const live = daemon;
       const layout = await live.openLayout();
-      if (life.cancelled) {
+      if (cancelled()) {
         live.close();
         return;
       }

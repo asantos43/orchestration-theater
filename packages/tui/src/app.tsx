@@ -39,7 +39,10 @@ function useQuitKeys(keymap: TuiKeymap, isActive: boolean): void {
   const { afterKey } = useRenderControl();
   useRawKeys(
     (event) => {
-      if (event.data === '\x03' || (event.combo !== undefined && keymap.match(event.combo) === 'app.quit')) {
+      if (
+        event.data === '\x03' ||
+        (event.combo !== undefined && keymap.match(event.combo) === 'app.quit')
+      ) {
         exit();
         return;
       }

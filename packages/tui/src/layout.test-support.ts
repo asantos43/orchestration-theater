@@ -6,7 +6,12 @@ import {
   LocalLayoutPersistence,
   type LayoutFileStore,
 } from '@otheater/client';
-import { API_VERSION, type ApiPlay, type ApiQuotaStatus, type ApiScenario } from '@otheater/protocol';
+import {
+  API_VERSION,
+  type ApiPlay,
+  type ApiQuotaStatus,
+  type ApiScenario,
+} from '@otheater/protocol';
 import type { ConnectResult, DaemonConnector, LiveDaemon } from './daemon-connection.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings } from './settings.js';
 
@@ -109,7 +114,7 @@ let sequence = 0;
 export function scenario(name: string, overrides: Partial<ApiScenario> = {}): ApiScenario {
   sequence += 1;
   return {
-    id: `S${sequence}`,
+    id: `S${String(sequence)}`,
     name,
     state: 'active',
     updatedAt: 1_000 - sequence,
@@ -120,7 +125,7 @@ export function scenario(name: string, overrides: Partial<ApiScenario> = {}): Ap
 export function play(scenarioId: string, overrides: Partial<ApiPlay> = {}): ApiPlay {
   sequence += 1;
   return {
-    id: `P${sequence}`,
+    id: `P${String(sequence)}`,
     scenarioId,
     need: 'a need',
     state: 'RUNNING',
@@ -148,11 +153,7 @@ export function quota(
 
 /** Fills the stores with a few scenarios, plays, a decision and two accounts. */
 export function seedStores(stores: DaemonStores): { scenarios: ApiScenario[] } {
-  const scenarios = [
-    scenario('Billing API'),
-    scenario('Mobile app'),
-    scenario('Docs site'),
-  ];
+  const scenarios = [scenario('Billing API'), scenario('Mobile app'), scenario('Docs site')];
   const [first, second] = scenarios;
   stores.scenarios.setState({
     byId: Object.fromEntries(scenarios.map((item) => [item.id, item])),

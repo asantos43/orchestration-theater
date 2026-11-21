@@ -44,7 +44,8 @@ export function frameLine(
   const available = Math.max(0, width - 4);
   let leftText = left === undefined || left === '' ? '' : ` ${left} `;
   let rightText = right === undefined || right === '' ? '' : ` ${right} `;
-  if (cellWidth(leftText) > available) leftText = ` ${fit(left ?? '', Math.max(0, available - 2))} `;
+  if (cellWidth(leftText) > available)
+    leftText = ` ${fit(left ?? '', Math.max(0, available - 2))} `;
   if (cellWidth(leftText) + cellWidth(rightText) > available) {
     rightText = clip(rightText, Math.max(0, available - cellWidth(leftText)));
   }
@@ -62,7 +63,8 @@ export function Frame(props: FrameProps): ReactNode {
   const inner = Math.max(0, height - 2);
   const top = frameLine(width, ['╭', '╮'], props.title, props.titleRight);
   const bottom = frameLine(width, ['╰', '╯'], undefined, props.bottomLabel);
-  const handleRows = handle === undefined ? 0 : Math.max(0, Math.min(handle.rows, inner - handle.from));
+  const handleRows =
+    handle === undefined ? 0 : Math.max(0, Math.min(handle.rows, inner - handle.from));
   const before = handle === undefined ? inner : Math.max(0, Math.min(handle.from, inner));
   const after = Math.max(0, inner - before - handleRows);
   return (

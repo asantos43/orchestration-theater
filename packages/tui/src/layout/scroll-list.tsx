@@ -69,10 +69,21 @@ export function ScrollList(props: ScrollListProps): ReactNode {
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
       {window.rows.map((row, index) => {
         let text = row.text;
-        const mark = index === 0 && window.more.above ? marks.above : index === last && window.more.below ? marks.below : '';
+        const mark =
+          index === 0 && window.more.above
+            ? marks.above
+            : index === last && window.more.below
+              ? marks.below
+              : '';
         text = mark === '' ? fit(text, width).trimEnd() : `${fit(text, width - 1)}${mark}`;
         return (
-          <Text key={index} {...paint(row.color)} bold={row.bold === true} dimColor={row.dim === true} wrap="truncate">
+          <Text
+            key={index}
+            {...paint(row.color)}
+            bold={row.bold === true}
+            dimColor={row.dim === true}
+            wrap="truncate"
+          >
             {text === '' ? ' ' : text}
           </Text>
         );

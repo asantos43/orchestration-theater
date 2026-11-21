@@ -7,6 +7,9 @@ import type { ScenarioMark } from './scenario-rows.js';
 import { clip } from './text.js';
 import { COLOR } from './theme.js';
 
+/** The mark of the product, which is not translated. */
+const BRAND = ' ◆ ot';
+
 export interface HeaderProps {
   readonly width: number;
   readonly scenarioName: string | undefined;
@@ -42,7 +45,7 @@ export function Header(props: HeaderProps): ReactNode {
     <Box width={width} height={1} backgroundColor={COLOR.header}>
       <Text color={COLOR.headerText} wrap="truncate">
         <Text color={COLOR.headerKey} bold>
-          {' ◆ '}ot
+          {BRAND}
         </Text>
         {' │ '}
         {clip(where, Math.max(8, Math.floor(room / 2)))}

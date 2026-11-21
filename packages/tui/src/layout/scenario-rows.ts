@@ -56,7 +56,9 @@ export interface QuotaRow {
 
 function percentOf(status: ApiQuotaStatus, window: string): number | undefined {
   const found = status.windows.find((item) => item.window === window);
-  return found === undefined ? undefined : Math.max(0, Math.min(100, Math.round(found.usedPercent)));
+  return found === undefined
+    ? undefined
+    : Math.max(0, Math.min(100, Math.round(found.usedPercent)));
 }
 
 export function quotaRows(byProfile: Readonly<Record<string, ApiQuotaStatus>>): QuotaRow[] {

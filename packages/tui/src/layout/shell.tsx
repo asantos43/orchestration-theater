@@ -28,7 +28,14 @@ import { scrollStepLines } from './scroll.js';
 import { Sidebar, sidebarItems } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
-import { foldedSections, isPanelOpen, setPanelOpen, useLayoutPreferences } from './use-layout.js';
+import {
+  foldedSections,
+  isPanelOpen,
+  saveActiveTab,
+  savedActiveTab,
+  setPanelOpen,
+  useLayoutPreferences,
+} from './use-layout.js';
 import { COLOR } from './theme.js';
 import { useUiTranslate } from './use-ui-translate.js';
 
@@ -78,7 +85,6 @@ export function Shell(props: ShellProps): ReactNode {
 
   const [focusState, setFocus] = useState<Focus>('chat');
   const [overlay, setOverlay] = useState<Overlay | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [sideCursor, setSideCursor] = useState<string | undefined>(undefined);
   const [panelCursor, setPanelCursor] = useState<string | undefined>(undefined);
@@ -125,6 +131,7 @@ export function Shell(props: ShellProps): ReactNode {
         .map((tab) => ({ id: tab.id, label: t(tab.textKey) })),
     [preferences.openTabs, registry, t],
   );
+  const activeTab = savedActiveTab(preferences);
   const currentTab = openTabs.some((tab) => tab.id === activeTab) ? activeTab : openTabs[0]?.id;
   const definition = currentTab === undefined ? undefined : tabContent[currentTab];
   const tabSections = definition?.sections ?? NO_SECTIONS;
@@ -132,8 +139,7 @@ export function Shell(props: ShellProps): ReactNode {
     panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
 
   // The scenario the chat is about, and what the header says of it.
-  const selectedRow =
-    scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
+  const selectedRow = scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
   const play = useMemo(() => {
     if (selectedRow === undefined) return undefined;
     let found: { need: string; updatedAt: number } | undefined;
@@ -145,7 +151,8 @@ export function Shell(props: ShellProps): ReactNode {
   }, [plays, selectedRow]);
 
   const items = useMemo(
-    () => sidebarItems(scenarioRowsNow, folded, geometry.sidebar.mode === 'rail' ? 'rail' : 'expanded'),
+    () =>
+      sidebarItems(scenarioRowsNow, folded, geometry.sidebar.mode === 'rail' ? 'rail' : 'expanded'),
     [scenarioRowsNow, folded, geometry.sidebar.mode],
   );
   const cursorInSide = items.some((item) => item.id === sideCursor) ? sideCursor : items[0]?.id;
@@ -174,7 +181,7 @@ export function Shell(props: ShellProps): ReactNode {
     (tab: string): void => {
       layoutStore.openTab(tab);
       setPanelOpen(layoutStore, true);
-      setActiveTab(tab);
+      saveActiveTab(layoutStore, tab);
       setPanelScroll(0);
     },
     [layoutStore],
@@ -187,10 +194,15 @@ export function Shell(props: ShellProps): ReactNode {
 
   const widen = (cells: number): void => {
     if (geometry.panel === undefined) return;
-    layoutStore.setChatWidth(steppedChatWidth(geometry, cells));
+    // From the width the store has now: two presses in the same tick (key repeat) both count.
+    layoutStore.setChatWidth(steppedChatWidth(geometry, cells, layoutStore.layout.chatWidth));
   };
 
-  const walk = <T extends string>(list: readonly T[], from: T | undefined, delta: number): T | undefined => {
+  const walk = <T extends string>(
+    list: readonly T[],
+    from: T | undefined,
+    delta: number,
+  ): T | undefined => {
     if (list.length === 0) return undefined;
     const at = from === undefined ? 0 : Math.max(0, list.indexOf(from));
     return list[Math.min(list.length - 1, Math.max(0, at + delta))];
@@ -238,7 +250,7 @@ export function Shell(props: ShellProps): ReactNode {
           const at = openTabs.findIndex((tab) => tab.id === currentTab);
           const next = openTabs[at + 1] ?? openTabs[at - 1];
           layoutStore.closeTab(currentTab);
-          setActiveTab(next?.id);
+          saveActiveTab(layoutStore, next?.id);
           setPanelScroll(0);
           setPanelCursor(undefined);
         }
@@ -292,7 +304,7 @@ export function Shell(props: ShellProps): ReactNode {
       case 'panel.prevTab':
       case 'panel.nextTab': {
         const ids = openTabs.map((tab) => tab.id);
-        setActiveTab(walk(ids, currentTab, id === 'panel.prevTab' ? -1 : 1));
+        saveActiveTab(layoutStore, walk(ids, currentTab, id === 'panel.prevTab' ? -1 : 1));
         setPanelScroll(0);
         setPanelCursor(undefined);
         return;
@@ -325,12 +337,13 @@ export function Shell(props: ShellProps): ReactNode {
       const contexts: UiContext[] =
         overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay', 'global'];
       const id = tuiKeymap.match(event.combo, contexts);
-        if (id !== undefined && (overlay === undefined || overlayAllows(id))) runAction(id);
+      if (id !== undefined && (overlay === undefined || overlayAllows(id))) runAction(id);
     }
     afterKey();
   });
 
-  const contexts: UiContext[] = overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay'];
+  const contexts: UiContext[] =
+    overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay'];
   const barItems = deriveShortcutBar(registry, tuiKeymap.keymap, contexts);
   const panelFooter = useMemo(
     (): Hint[] =>
@@ -359,7 +372,8 @@ export function Shell(props: ShellProps): ReactNode {
     keyLabel(tuiKeymap, 'layout.narrowChat'),
     keyLabel(tuiKeymap, 'layout.widenChat'),
   );
-  const content = geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
+  const content =
+    geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
 
   return (
     <Box flexDirection="column" width={geometry.columns} height={geometry.rows}>
@@ -408,7 +422,9 @@ export function Shell(props: ShellProps): ReactNode {
           }
           title={selectedRow?.name ?? t('layout.header.noScenario')}
           stateLine={
-            selectedRow === undefined ? '' : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
+            selectedRow === undefined
+              ? ''
+              : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
           }
           messages={messages}
           offset={chatOffset}
@@ -433,7 +449,12 @@ export function Shell(props: ShellProps): ReactNode {
                 {openTabs.length === 0 ? t('layout.panel.noTabs') : t('layout.panel.empty')}
               </Text>
             ) : (
-              <Box marginTop={-panelScroll} flexShrink={0} flexDirection="column" width={content.width}>
+              <Box
+                marginTop={-panelScroll}
+                flexShrink={0}
+                flexDirection="column"
+                width={content.width}
+              >
                 {definition.render({
                   width: content.width,
                   height: content.height,

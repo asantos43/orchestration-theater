@@ -62,8 +62,12 @@ describe('scrollWindow', () => {
   });
 
   it('gives an empty window for an empty list or no room', () => {
-    expect(scrollWindow({ count: 0, height: 5, offset: 0, anchor: 'bottom', heightOf }).slices).toEqual([]);
-    expect(scrollWindow({ count: 5, height: 0, offset: 0, anchor: 'top', heightOf }).slices).toEqual([]);
+    expect(
+      scrollWindow({ count: 0, height: 5, offset: 0, anchor: 'bottom', heightOf }).slices,
+    ).toEqual([]);
+    expect(
+      scrollWindow({ count: 5, height: 0, offset: 0, anchor: 'top', heightOf }).slices,
+    ).toEqual([]);
   });
 });
 

@@ -99,7 +99,6 @@ export function wrapText(text: string, width: number): string[] {
         continue;
       } else {
         lines.push(line);
-        line = '';
       }
       while (cellWidth(rest) > limit) {
         const head = clip(rest, limit);

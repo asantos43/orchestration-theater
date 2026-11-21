@@ -148,7 +148,7 @@ function overrides(value: unknown): UiKeymapSettings['overrides'] {
   for (const [action, combos] of Object.entries(source)) {
     if (typeof combos === 'string') result[action] = combos;
     else if (Array.isArray(combos) && combos.every((item) => typeof item === 'string')) {
-      result[action] = combos as string[];
+      result[action] = combos;
     }
   }
   return result;
@@ -220,7 +220,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.minPanelWidth,
       ),
       chatStep: integer(field(tuiLayout, 'chatStep'), 1, 20, DEFAULT_TUI_LAYOUT.chatStep),
-      scrollStep: oneOf(field(tuiLayout, 'scrollStep'), SCROLL_STEPS, DEFAULT_TUI_LAYOUT.scrollStep),
+      scrollStep: oneOf(
+        field(tuiLayout, 'scrollStep'),
+        SCROLL_STEPS,
+        DEFAULT_TUI_LAYOUT.scrollStep,
+      ),
     },
   };
 }

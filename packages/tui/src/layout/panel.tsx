@@ -45,7 +45,10 @@ export function Panel(props: PanelProps): ReactNode {
             <Text
               key={segment.id}
               bold={segment.active}
-              {...paint(segment.active ? 'white' : undefined, segment.active ? COLOR.selected : undefined)}
+              {...paint(
+                segment.active ? 'white' : undefined,
+                segment.active ? COLOR.selected : undefined,
+              )}
               dimColor={!segment.active}
             >
               {segment.text}
@@ -56,7 +59,10 @@ export function Panel(props: PanelProps): ReactNode {
         <Text color={COLOR.accent}>{right}</Text>
       </Text>
       <Text color={props.focused ? COLOR.borderActive : COLOR.border} wrap="truncate">
-        {(bar.underline + '─'.repeat(Math.max(0, inner - cellWidth(bar.underline)))).slice(0, inner)}
+        {(bar.underline + '─'.repeat(Math.max(0, inner - cellWidth(bar.underline)))).slice(
+          0,
+          inner,
+        )}
       </Text>
       <Box width={content.width} height={content.height} flexDirection="column" overflow="hidden">
         {props.children}

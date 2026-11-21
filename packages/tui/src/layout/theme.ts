@@ -18,7 +18,10 @@ export const COLOR = {
 } as const;
 
 /** `color` and `backgroundColor` as props, leaving out what is not set (Ink does not take `undefined`). */
-export function paint(color?: string, background?: string): { color?: string; backgroundColor?: string } {
+export function paint(
+  color?: string,
+  background?: string,
+): { color?: string; backgroundColor?: string } {
   return {
     ...(color === undefined ? {} : { color }),
     ...(background === undefined ? {} : { backgroundColor: background }),
