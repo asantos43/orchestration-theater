@@ -431,6 +431,16 @@ describe('telemetry for the daemon (Phase 8, P3)', () => {
     });
   });
 
+  it('sets the export interval of the metrics only when the daemon says one', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel });
+    expect(metaEnv()).not.toHaveProperty('OTEL_METRIC_EXPORT_INTERVAL');
+    via = new FakeSessionTransport({ id: 'acp' });
+    await build().openSession(profile, policy, '/work', via, {
+      otel: { ...otel, metricsIntervalMs: 5000 },
+    });
+    expect(metaEnv()).toMatchObject({ OTEL_METRIC_EXPORT_INTERVAL: '5000' });
+  });
+
   it('puts nothing in the process environment: the variables belong to the session', async () => {
     await build().openSession(profile, policy, '/work', via, { otel });
     const env = launcher.launched[0]?.options.env ?? {};
