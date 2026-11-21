@@ -83,11 +83,16 @@ export interface UiTuiLayoutSettings {
 export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
 export type TrajectoryOpenMode = (typeof TRAJECTORY_OPEN_MODES)[number];
 
+export const TRAJECTORY_FOLLOW_MODES = ['latest', 'play', 'direct'] as const;
+export type TrajectoryFollowMode = (typeof TRAJECTORY_FOLLOW_MODES)[number];
+
 /** `ui.trajectories` (P14): which steps of the Trajectories tab start open, how much it keeps and shows of a diff. */
 export interface UiTrajectoriesSettings {
   readonly open: TrajectoryOpenMode;
   readonly keep: number;
   readonly diffLines: number;
+  /** P27: what the tab follows, a play or a direct session. */
+  readonly follow: TrajectoryFollowMode;
 }
 
 export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
@@ -192,6 +197,7 @@ export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
   open: 'last',
   keep: 5000,
   diffLines: 200,
+  follow: 'latest',
 };
 
 export const DEFAULT_CHAT: UiChatSettings = {
@@ -360,6 +366,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         10,
         10_000,
         DEFAULT_TRAJECTORIES.diffLines,
+      ),
+      follow: oneOf(
+        field(trajectories, 'follow'),
+        TRAJECTORY_FOLLOW_MODES,
+        DEFAULT_TRAJECTORIES.follow,
       ),
     },
     chat: {

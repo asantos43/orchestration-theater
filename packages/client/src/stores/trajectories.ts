@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   buildTrajectory,
+  isDirectTrajectoryEvent,
   isTrajectoryEvent,
+  trajectorySubjectOf,
   type ApiDemandDiff,
+  type ApiDirectSession,
   type Trajectory,
   type TrajectoryEvent,
 } from '@otheater/protocol';
@@ -13,7 +16,10 @@ import {
  * history comes by one paged REST read when a screen opens the play; from then on the events of
  * the stream are appended as they arrive, so there is no read per event. A play nobody asked
  * for keeps nothing. The events of the history and of the stream may overlap: they merge by id.
- * The diffs of the demands are read on demand and kept by `playId/demandId`.
+ * The diffs of the demands are read on demand and kept by `playId/demandId`. [proposta] P27 of
+ * docs/18: a direct session is kept like a play, under its session id (`direct-<hex>`), and the
+ * store also indexes the direct sessions it knows of, per scenario, so a screen can follow the
+ * latest of them.
  */
 
 /** [proposta] How many events of one play the store keeps when `client.trajectories.keep` is not set. */
@@ -36,13 +42,25 @@ export interface DemandDiffState {
   readonly error: string | undefined;
 }
 
+/** A direct session the store knows of: enough to pick the one a screen follows. */
+export interface DirectTrajectorySubject {
+  readonly sessionId: string;
+  readonly scenarioId: string;
+  /** Epoch ms of the last thing that happened in it. */
+  readonly at: number;
+  readonly closed: boolean;
+}
+
 export interface TrajectoriesState {
+  /** The trajectories held, by play id or by direct session id. */
   readonly plays: Readonly<Record<string, PlayTrajectoryState>>;
   readonly diffs: Readonly<Record<string, DemandDiffState>>;
+  /** The direct sessions known, by session id (P27). */
+  readonly direct: Readonly<Record<string, DirectTrajectorySubject>>;
 }
 
 export function initialTrajectories(): TrajectoriesState {
-  return { plays: {}, diffs: {} };
+  return { plays: {}, diffs: {}, direct: {} };
 }
 
 export function diffKey(playId: string, demandId: string): string {
@@ -111,11 +129,62 @@ export function failTrajectory(
 /** An event of the stream: it goes to the play it names, if a screen follows that play. */
 export function reduceTrajectories(
   state: TrajectoriesState,
+  event: TrajectoryEvent & { readonly scenarioId?: string | undefined },
+  keep: number,
+): TrajectoriesState {
+  if (!isTrajectoryEvent(event.type)) return state;
+  const playId = trajectorySubjectOf(event);
+  if (playId === undefined) return state;
+  if (isDirectTrajectoryEvent(event.type)) {
+    return reduceHeld(noteDirectEvent(state, playId, event), playId, event, keep);
+  }
+  return reduceHeld(state, playId, event, keep);
+}
+
+/** The direct session an event of the stream names: new on `opened`, closed on `closed`, alive on the rest. */
+function noteDirectEvent(
+  state: TrajectoriesState,
+  sessionId: string,
+  event: TrajectoryEvent & { readonly scenarioId?: string | undefined },
+): TrajectoriesState {
+  const known = state.direct[sessionId];
+  const scenarioId = known?.scenarioId ?? event.scenarioId;
+  if (scenarioId === undefined) return state;
+  const next: DirectTrajectorySubject = {
+    sessionId,
+    scenarioId,
+    at: Math.max(known?.at ?? 0, event.timestamp),
+    closed: known?.closed === true || event.type === 'direct.session.closed',
+  };
+  if (known === undefined && event.type !== 'direct.session.opened') return state;
+  return { ...state, direct: { ...state.direct, [sessionId]: next } };
+}
+
+/** The direct sessions a REST list of a scenario brought, merged with what the stream noted. */
+export function settleDirectSessions(
+  state: TrajectoriesState,
+  sessions: readonly ApiDirectSession[],
+): TrajectoriesState {
+  if (sessions.length === 0) return state;
+  const direct = { ...state.direct };
+  for (const session of sessions) {
+    const known = direct[session.id];
+    direct[session.id] = {
+      sessionId: session.id,
+      scenarioId: session.scenarioId,
+      at: Math.max(known?.at ?? 0, session.closedAt ?? session.lastActivityAt),
+      closed: known?.closed === true || session.state === 'closed',
+    };
+  }
+  return { ...state, direct };
+}
+
+function reduceHeld(
+  state: TrajectoriesState,
+  playId: string,
   event: TrajectoryEvent,
   keep: number,
 ): TrajectoriesState {
-  const { playId } = event;
-  if (playId === undefined || !isTrajectoryEvent(event.type)) return state;
   const old = state.plays[playId];
   if (old === undefined) return state;
   const last = old.events[old.events.length - 1];
