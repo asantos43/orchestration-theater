@@ -18,6 +18,10 @@ import {
   sessionMbOf,
   sessionsPerProcessOf,
   SILENT_TURN_MODES,
+  CLIENT_COMMAND_MODES,
+  SLASH_ACCESS_MODES,
+  SLASH_COMMAND_MODES,
+  SLASH_CONFIRM_MODES,
   VERIFY_MODES,
 } from './config.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
@@ -884,7 +888,41 @@ describe('chat', () => {
       presence: 'connected',
       presence_window: 30_000,
       silent_turn: 'notice',
+      slash_commands: 'on',
+      client_commands: 'on',
+      client_commands_allow: [],
+      slash_confirm: 'always',
+      slash_logs_lines: 20,
+      slash_access: 'full',
+      slash_templates: {
+        plan: 'Make a plan, without changing anything yet, for: ',
+        explain: 'Explain: ',
+        review: 'Review the work done so far and tell me what is missing: ',
+      },
     });
+  });
+
+  it('takes each mode of the / commands and refuses any other (P3)', () => {
+    expect(SLASH_COMMAND_MODES).toEqual(['on', 'off']);
+    expect(CLIENT_COMMAND_MODES).toEqual(['on', 'off', 'allowlist']);
+    expect(SLASH_CONFIRM_MODES).toEqual(['always', 'never']);
+    expect(SLASH_ACCESS_MODES).toEqual(['full', 'read_only']);
+    for (const [key, modes] of [
+      ['slash_commands', SLASH_COMMAND_MODES],
+      ['client_commands', CLIENT_COMMAND_MODES],
+      ['slash_confirm', SLASH_CONFIRM_MODES],
+      ['slash_access', SLASH_ACCESS_MODES],
+    ] as const) {
+      for (const mode of modes) {
+        expect(parseConfig(`chat:\n  ${key}: ${mode}\n`).chat[key]).toBe(mode);
+      }
+      expect(() => parseConfig(`chat:\n  ${key}: loud\n`)).toThrow(new RegExp(`chat\\.${key}`));
+    }
+    expect(parseConfig('chat:\n  slash_logs_lines: 500\n').chat.slash_logs_lines).toBe(500);
+    expect(() => parseConfig('chat:\n  slash_logs_lines: 501\n')).toThrow(/slash_logs_lines/);
+    expect(() => parseConfig('chat:\n  slash_templates:\n    Bad Name: x\n')).toThrow(
+      /slash_templates/,
+    );
   });
 
   it('takes each silent_turn mode and refuses any other (N183)', () => {
