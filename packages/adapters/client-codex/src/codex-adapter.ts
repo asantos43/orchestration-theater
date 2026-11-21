@@ -3,9 +3,11 @@ import {
   AdapterUnavailable,
   ClientAdapter,
   InvalidInput,
+  otelResourceAttributes,
   PermissionDenied,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
+  type ClientOtel,
   type ClientCapabilities,
   type ConformanceProbe,
   type Enforcement,
@@ -14,6 +16,7 @@ import {
   type ModelCatalog,
   type NormalizedError,
   type NormalizedUpdate,
+  type OtelLaunch,
   type Profile,
   type ProfileCli,
   type ProcessLauncher,
@@ -48,6 +51,13 @@ import {
   type ModePolicy,
 } from './modes.js';
 import { normalizeCodexError, normalizeCodexUpdate } from './normalize.js';
+import {
+  codexOtelSettings,
+  codexOtelTitle,
+  ensureCodexOtelWrapper,
+  OTEL_REAL_ENV,
+  OTEL_SETTINGS_ENV,
+} from './otel.js';
 import { modeVetoProbe, pinnedModeProbe, type ReadSessionMode } from './probes.js';
 import {
   APPROVAL_POLICIES,
@@ -149,10 +159,26 @@ export interface CodexAdapterOptions extends ClientAdapterOptions {
    * Without it the probe rejects with `AdapterUnavailable` and the profile stays `unknown`.
    */
   readonly quota?: CodexQuotaOptions;
+  /**
+   * [proposta] Keys `clients.codex.otel.*` (Phase 8, P3): how the telemetry reaches the client when
+   * the daemon asks for it (`SessionStartOptions.otel`).
+   */
+  readonly otel?: CodexOtelOptions;
   /** Where the model catalog reads the config options of a profile (a `session/new`). Without it `models.list` rejects. */
   readonly modelSource?: CodexConfigSource;
   /** How the pinned-mode probe reads the mode of a fresh session. Without it the probe fails, honestly. */
   readonly readSessionMode?: ReadSessionMode;
+}
+
+/** The adapter's own choices for the telemetry of Codex (`clients.codex.otel.*`, [proposta]). */
+export interface CodexOtelOptions {
+  /**
+   * The real `codex` the wrapper starts. Default: the `CODEX_PATH` of the environment, else `codex`
+   * on `PATH`. Set it when `codex-acp` uses a `codex` of its own, which the adapter cannot know.
+   */
+  readonly codexPath?: string;
+  /** Default `process.platform`. The wrapper is a POSIX shell script: on `win32` the client starts without telemetry. */
+  readonly platform?: NodeJS.Platform;
 }
 
 /** What the composition root gives the quota probe: the location of the profiles and the three keys. */
@@ -213,6 +239,7 @@ export class CodexAdapter extends ClientAdapter {
   readonly #launcher: ProcessLauncher;
   readonly #baseEnv: Readonly<Record<string, string>>;
   readonly #loginOptions: LoginOptions;
+  readonly #otel: CodexOtelOptions;
 
   constructor(options: CodexAdapterOptions) {
     super(options);
@@ -245,6 +272,7 @@ export class CodexAdapter extends ClientAdapter {
     this.#launcher = options.launcher;
     this.#baseEnv = options.baseEnv;
     this.#loginOptions = options.login ?? {};
+    this.#otel = options.otel ?? {};
     this.quota = new CodexQuotaProbe({
       launcher: options.launcher,
       baseEnv: options.baseEnv,
@@ -331,6 +359,56 @@ export class CodexAdapter extends ClientAdapter {
       );
     }
     return { via: 'headless', args: ['exec', '--json', '--sandbox', sandbox], env: {} };
+  }
+
+  /**
+   * Telemetry of the process (Phase 8, P3): `codex app-server` reads `[otel]` only at its start, so
+   * the daemon points `CODEX_PATH` at a wrapper that adds `-c otel.*` (the settings travel in the
+   * environment, not in the file) and puts the correlation in `OTEL_RESOURCE_ATTRIBUTES`. Nothing
+   * is written to `config.toml` of the profile. The app-server serves every session of the
+   * process, so the resource names the session that started it; the receiver tells the others
+   * apart by `conversation.id` [V: spike]. `codex exec` (headless) and Windows start without it.
+   */
+  protected override async otelLaunch(
+    profile: Profile,
+    otel: ClientOtel,
+    via: TransportId,
+    env: Readonly<Record<string, string>>,
+  ): Promise<OtelLaunch> {
+    const unavailable = this.#otelUnavailable(via);
+    if (unavailable !== undefined) return { unavailable };
+    const settings = codexOtelSettings(otel);
+    const wrapper = await ensureCodexOtelWrapper(profile.dir);
+    return {
+      env: {
+        CODEX_PATH: wrapper,
+        [OTEL_REAL_ENV]: this.#otel.codexPath ?? env.CODEX_PATH ?? 'codex',
+        [OTEL_SETTINGS_ENV]: settings.join('\n'),
+        OTEL_RESOURCE_ATTRIBUTES: otelResourceAttributes(otel.resource),
+      },
+    };
+  }
+
+  /**
+   * Telemetry of the session: a title, set before the first prompt. A Codex session without one
+   * opens one more thread (a model call) to write it, and that thread would show up in the
+   * telemetry as a conversation of its own [V: spike, n=3].
+   */
+  protected override otelSetup(
+    setup: SessionSetup,
+    otel: ClientOtel,
+    via: TransportId,
+  ): SessionSetup {
+    if (setup.via !== 'acp' || this.#otelUnavailable(via) !== undefined) return setup;
+    return { ...setup, title: codexOtelTitle(otel) };
+  }
+
+  #otelUnavailable(via: TransportId): string | undefined {
+    if (via === 'headless') return 'codex exec takes no otel settings in this adapter';
+    if ((this.#otel.platform ?? process.platform) === 'win32') {
+      return 'the codex telemetry wrapper is a shell script and does not run on Windows';
+    }
+    return undefined;
   }
 
   /**

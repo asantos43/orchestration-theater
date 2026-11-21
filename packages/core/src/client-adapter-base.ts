@@ -26,6 +26,7 @@ import type {
   SessionTransport,
 } from './ports/agent-session.js';
 import type { ConfigValue } from './normalized-update.js';
+import type { ClientOtel } from './ports/client-otel.js';
 import {
   CLIENT_ADAPTER_PORT_VERSION,
   ROLE_POLICY_FIELDS,
@@ -215,11 +216,37 @@ export type ClientAdapterWarning =
       readonly kind: 'catalog_probe_exempt';
       readonly clientId: string;
       readonly short: readonly RolePolicyField[];
+    }
+  | {
+      /**
+       * The session was asked to send telemetry ({@link SessionStartOptions.otel}) but this client
+       * cannot on this machine (`reason`): it starts without telemetry, never refused.
+       */
+      readonly kind: 'otel_unavailable';
+      readonly clientId: string;
+      readonly reason: string;
     };
 
 // The types of the options moved to the port (`ports/client-adapter.ts`); kept here for importers
 // of this module.
 export type { ProcessReuse, SessionPurpose, SessionStartOptions };
+
+/**
+ * What a client adds to the process it starts so that it exports telemetry
+ * ({@link ClientAdapter.otelLaunch}). Nothing here is written to the configuration folder of
+ * the person: only the environment and the arguments of the process the daemon launches.
+ */
+export interface OtelLaunch {
+  /** Added to the environment, over the profile's. */
+  readonly env?: Readonly<Record<string, string>>;
+  /** Added after the arguments of the command. */
+  readonly args?: readonly string[];
+  /**
+   * Why this client cannot export telemetry on this machine: the base starts it without telemetry
+   * and warns (`otel_unavailable`). When set, `env` and `args` are ignored.
+   */
+  readonly unavailable?: string;
+}
 
 /** Everything the base needs from the outside; the core reads no environment and no file (rule `core-only-zod`). */
 export interface ClientAdapterOptions {
@@ -463,7 +490,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * launch options (command, working directory, environment built by the base). It starts nothing.
    * [proposta] Additive: it is the first half of {@link openSession}, so the pool can keep one
    * process for several sessions (`processModel: 'multi-session'`). `purpose` is the one of the
-   * session that will open on the process (see {@link SessionStartOptions.purpose}).
+   * session that will open on the process (see {@link SessionStartOptions.purpose}). `otel`
+   * (Phase 8, P3) is the process-level telemetry of {@link SessionStartOptions.otel}.
    */
   async launchSpec(
     profile: Profile,
@@ -471,9 +499,10 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     cwd: string,
     via: TransportId = 'acp',
     purpose: SessionPurpose = 'work',
+    otel?: ClientOtel,
   ): Promise<LaunchOptions> {
     this.#assertGuaranteed(policy, via, purpose);
-    return this.#spec(profile, policy, cwd, via);
+    return this.#spec(profile, policy, cwd, via, otel);
   }
 
   /**
@@ -669,6 +698,32 @@ export abstract class ClientAdapter implements ClientAdapterContract {
    * mode, the `PermissionDenied`, the wrapper of the session), so no common method is overridden.
    */
   protected abstract modeVeto(mode: string, via: TransportId): string | null;
+  /**
+   * Phase 8, P3: the part of the telemetry that belongs to the process (arguments and environment
+   * the client reads at start). Called on every `launchSpec` and on every open that starts a
+   * process, only when the caller gave {@link SessionStartOptions.otel}; `env` is the environment
+   * already built (base, profile, secrets), for a client that has to wrap a variable of it. A
+   * client with nothing process-level keeps the default. [proposta]
+   */
+  // The default ignores its arguments; a client that exports telemetry reads them.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  protected otelLaunch(
+    profile: Profile,
+    otel: ClientOtel,
+    via: TransportId,
+    env: Readonly<Record<string, string>>,
+  ): Promise<OtelLaunch> {
+    return Promise.resolve({});
+  }
+  /**
+   * Phase 8, P3: the part of the telemetry that belongs to the session (the `_meta` of
+   * `session/new`, a title). Receives what {@link sessionSetup} built and returns what the
+   * transport gets. Only called when the caller gave {@link SessionStartOptions.otel}. [proposta]
+   */
+  protected otelSetup(setup: SessionSetup, otel: ClientOtel, via: TransportId): SessionSetup {
+    return setup;
+  }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
   /** Answers the `_otheater/<resource>` extension methods of this client. */
   protected abstract extensions(): AcpExtensionHandler[];
   /** Probes of this client, in addition to the common ones. */
@@ -700,7 +755,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     const mcpServers = this.#mcpServersOf(policy, options?.mcpServers);
     // The spec is built on every open, shared process or not: the profile files and the slot the
     // descendant keeps for this policy are written per session, and the key needs the environment.
-    const spec = await this.#spec(profile, policy, cwd, via.id);
+    const spec = await this.#spec(profile, policy, cwd, via.id, options?.otel);
     const sharing =
       this.processModel === 'multi-session' &&
       (options?.process ?? this.#processReuse) === 'shared';
@@ -717,6 +772,7 @@ export abstract class ClientAdapter implements ClientAdapterContract {
         mcpServers,
         purpose,
         options?.permissions,
+        options?.otel,
       );
     } catch (error) {
       await this.#reap(process);
@@ -729,15 +785,19 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     policy: RolePolicy,
     cwd: string,
     via: TransportId,
+    otel: ClientOtel | undefined,
   ): Promise<LaunchOptions> {
     await this.prepareProfile(profile, policy);
     const { cmd, args } = this.command(profile, via);
     const secrets = (await this.#secretEnv?.(profile)) ?? {};
+    const env = { ...this.#baseEnv, ...this.profileEnv(profile), ...secrets };
+    const telemetry =
+      otel === undefined ? undefined : await this.#otelLaunch(profile, otel, via, env);
     const spec: LaunchOptions = {
       cmd,
-      args,
+      args: telemetry?.args === undefined ? args : [...args, ...telemetry.args],
       cwd,
-      env: { ...this.#baseEnv, ...this.profileEnv(profile), ...secrets },
+      env: telemetry?.env === undefined ? env : { ...env, ...telemetry.env },
     };
     return this.#launchWrapper === undefined
       ? spec
@@ -753,9 +813,11 @@ export abstract class ClientAdapter implements ClientAdapterContract {
     mcpServers: readonly McpServerRef[],
     purpose: SessionPurpose,
     permissions: SessionPermissions | undefined,
+    otel: ClientOtel | undefined,
   ): Promise<AgentSession> {
-    const setup = this.sessionSetup(policy, via.id);
-    this.#assertSetupModes(setup, via.id);
+    const base = this.sessionSetup(policy, via.id);
+    this.#assertSetupModes(base, via.id);
+    const setup = otel === undefined ? base : this.otelSetup(base, otel, via.id);
     const params: SessionOpenParams = {
       process,
       cwd,
@@ -798,10 +860,24 @@ export abstract class ClientAdapter implements ClientAdapterContract {
         mcpServers,
         purpose,
         options?.permissions,
+        options?.otel,
       );
     } catch (error) {
       throw isOTheaterError(error) ? error : this.#unavailable(error);
     }
+  }
+
+  /** {@link otelLaunch} with the `unavailable` answer turned into the warning and no change. */
+  async #otelLaunch(
+    profile: Profile,
+    otel: ClientOtel,
+    via: TransportId,
+    env: Readonly<Record<string, string>>,
+  ): Promise<OtelLaunch | undefined> {
+    const launch = await this.otelLaunch(profile, otel, via, env);
+    if (launch.unavailable === undefined) return launch;
+    this.#warn({ kind: 'otel_unavailable', clientId: this.id, reason: launch.unavailable });
+    return undefined;
   }
 
   /**
