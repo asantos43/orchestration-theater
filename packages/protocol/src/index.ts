@@ -25,3 +25,4 @@ export * from './api-events.js';
 export * from './api-command-events.js';
 export * from './layout-events.js';
 export * from './chat-events.js';
+export * from './record-events.js';
