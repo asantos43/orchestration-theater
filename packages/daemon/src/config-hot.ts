@@ -38,6 +38,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** Makes `target` equal to `source`, keeping the identity of every object that exists in both. */
 function syncInPlace(target: Record<string, unknown>, source: Record<string, unknown>): void {
   for (const key of Object.keys(target)) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- the live object must lose the keys the file no longer has
     if (!(key in source)) delete target[key];
   }
   for (const [key, value] of Object.entries(source)) {

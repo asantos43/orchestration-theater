@@ -118,10 +118,7 @@ export function editConfigFile(
 /** The edits waiting or running, by file: the tail of each file's queue. */
 const queues = new Map<string, Promise<void>>();
 
-async function editNow(
-  path: string,
-  edit: (editor: ConfigEditor) => void,
-): Promise<DaemonConfig> {
+async function editNow(path: string, edit: (editor: ConfigEditor) => void): Promise<DaemonConfig> {
   const text = await readOrEmpty(path);
   const doc: Document = parseDocument(text, { keepSourceTokens: false });
   if (doc.errors.length > 0) {

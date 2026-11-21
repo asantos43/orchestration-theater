@@ -26,8 +26,7 @@ import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { keyLabel } from '../../keys/labels.js';
 import { usePanelServices } from '../../layout/panel-context.js';
 import { useRenderControl } from '../../render-control.js';
-import { Section } from '../../layout/section.js';
-import type { TabContentProps, TabDefinition } from '../../layout/tab-content.js';
+import { Section, type SectionControl } from '../../layout/section.js';
 import { fit, wrapText } from '../../layout/text.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
@@ -79,6 +78,24 @@ export const runInTerminal: LocalRunner = (command) =>
       resolve(code);
     });
   });
+
+/**
+ * What the panel gives a tab and what it takes back (`TabContentProps` and `TabDefinition` of
+ * `layout/tab-content.ts`), written here as the shapes they are: `tab-content.ts` imports this
+ * tab, so importing its types would close a cycle (`pnpm verify` refuses one).
+ */
+interface TabContentProps {
+  readonly width: number;
+  readonly height: number;
+  readonly focused: boolean;
+  readonly scroll: number;
+  readonly sections: SectionControl;
+}
+
+export interface SettingsTabDefinition {
+  readonly sections: readonly string[];
+  readonly render: (props: TabContentProps) => ReactNode;
+}
 
 export interface SettingsTabOptions {
   /** The routes of the tab; default: the client of the daemon the TUI is connected to. */
@@ -936,11 +953,11 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
 }
 
 /** The tab Settings with its routes; the tests give it a fake API and a runner of their own. */
-export function createSettingsTab(options: SettingsTabOptions = {}): TabDefinition {
+export function createSettingsTab(options: SettingsTabOptions = {}): SettingsTabDefinition {
   return {
     sections: SECTION_IDS,
     render: (content) => createElement(SettingsTab, { content, options }),
   };
 }
 
-export const settingsTab: TabDefinition = createSettingsTab();
+export const settingsTab: SettingsTabDefinition = createSettingsTab();

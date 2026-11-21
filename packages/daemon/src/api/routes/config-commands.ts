@@ -69,7 +69,8 @@ export function registerConfigCommands(register: CommandRegistrar, deps: Command
       removed,
       appliesOn,
     });
-    if (hot.length > 0) await writeSituation(store.events, logger, 'config.changed', { hot, restart });
+    if (hot.length > 0)
+      await writeSituation(store.events, logger, 'config.changed', { hot, restart });
     return { appliesOn, set: setPaths, removed, hot, restart } as const;
   });
 }
