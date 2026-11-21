@@ -51,6 +51,12 @@ import {
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import {
+  DecisionAnsweredPayloadSchema,
+  DecisionCreatedPayloadSchema,
+  DemandTransitionedPayloadSchema,
+  ScenarioArchivedPayloadSchema,
+} from './record-events.js';
+import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
@@ -696,6 +702,26 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: LayoutChangedPayloadSchema,
   }),
+  defineEventType({
+    type: 'decision.created',
+    schemaVersion: 1,
+    payload: DecisionCreatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'decision.answered',
+    schemaVersion: 1,
+    payload: DecisionAnsweredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.archived',
+    schemaVersion: 1,
+    payload: ScenarioArchivedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'demand.transitioned',
+    schemaVersion: 1,
+    payload: DemandTransitionedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -835,6 +861,10 @@ export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];
 export type LayoutChangedPayload = DaemonEventPayloads['layout.changed'];
+export type DecisionCreatedPayload = DaemonEventPayloads['decision.created'];
+export type DecisionAnsweredPayload = DaemonEventPayloads['decision.answered'];
+export type ScenarioArchivedPayload = DaemonEventPayloads['scenario.archived'];
+export type DemandTransitionedPayload = DaemonEventPayloads['demand.transitioned'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);
