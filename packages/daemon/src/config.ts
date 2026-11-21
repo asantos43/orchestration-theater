@@ -31,6 +31,7 @@ import {
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiNewProjectConfigSchema,
   UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
   UiTrajectoriesConfigSchema,
@@ -2255,6 +2256,8 @@ export const DaemonConfigSchema = z
         tuiMouse: UiTuiMouseConfigSchema.prefault({}),
         /** Whether the terminal interface opens the setup assistant on its own (P17). */
         setup: UiSetupConfigSchema.prefault({}),
+        /** What the prompt of "new project" starts with (P22 of docs/18). */
+        newProject: UiNewProjectConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

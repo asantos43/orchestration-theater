@@ -66,6 +66,26 @@ export function clip(text: string, width: number): string {
   return out;
 }
 
+/**
+ * The end of `text` that fits in `width` cells, after an ellipsis when it had to cut: a field whose
+ * cursor is at the end (a long path) shows what is being typed, not the start.
+ */
+export function clipStart(text: string, width: number): string {
+  if (width <= 0) return '';
+  if (cellWidth(text) <= width) return text;
+  const chars = Array.from(text);
+  let used = 1;
+  let out = '';
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index] ?? '';
+    const next = charWidth(char);
+    if (used + next > width) break;
+    used += next;
+    out = char + out;
+  }
+  return '…' + out;
+}
+
 /** `text` in exactly `width` cells: cut with an ellipsis when longer, padded on the right when shorter. */
 export function fit(text: string, width: number): string {
   if (width <= 0) return '';

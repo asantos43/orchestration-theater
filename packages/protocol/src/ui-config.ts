@@ -311,3 +311,23 @@ export const UiSetupConfigSchema = z.strictObject({
   readTimeoutMs: z.int().min(100).max(60_000).default(5000),
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
+
+// ---- A new project from the terminal interface (N208; P22 of docs/18) ---------------------------
+
+/**
+ * Where the repository of a new project comes from when the person does not type one.
+ * `cwd`: the folder the TUI was opened in; `git_root`: the root of the Git repository that folder
+ * belongs to (the folder itself when it is in none); `empty`: nothing, the person types it.
+ */
+export const UI_NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
+export type UiNewProjectRepoMode = (typeof UI_NEW_PROJECT_REPO_MODES)[number];
+
+/**
+ * `ui.newProject` (P22), [proposta]: the architecture fixes that the TUI creates a project and asks
+ * for the repository, and not what the prompt starts with, so the pattern is a key with modes:
+ * `repo` is `cwd` (default), `git_root` or `empty`.
+ */
+export const UiNewProjectConfigSchema = z.strictObject({
+  repo: z.enum(UI_NEW_PROJECT_REPO_MODES).default('cwd'),
+});
+export type UiNewProjectConfig = z.output<typeof UiNewProjectConfigSchema>;
