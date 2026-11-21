@@ -101,7 +101,7 @@ export type TuiRunner = (run: TuiRun) => Promise<number>;
  */
 const launchBuiltTui: TuiRunner = async (run) => {
   const { launchTui } = await import('@otheater/tui/launcher');
-  return await launchTui({ dataDir: run.dataDir, ui: run.ui, env: run.env as NodeJS.ProcessEnv });
+  return await launchTui({ dataDir: run.dataDir, ui: run.ui, env: run.env });
 };
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
