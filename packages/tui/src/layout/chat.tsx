@@ -5,8 +5,24 @@ import { useTranslation } from 'react-i18next';
 import { useMouseTarget, type DragInfo } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
-import { wrapText } from './text.js';
+import { breakLine, wrapText } from './text.js';
 import { COLOR } from './theme.js';
+
+/** A line under the output of a command: how it ended, what was left out, what became of it. */
+export interface ChatTerminalNote {
+  readonly text: string;
+  readonly tone: 'ok' | 'warn' | 'error' | 'dim';
+}
+
+/**
+ * A `!` command as a block (P18): the command, its output as the `terminal_snippet` holds it and a
+ * few notes. `ChatMessage.text` has the same things as plain text, for what is not drawn as a block.
+ */
+export interface ChatTerminal {
+  readonly header: string;
+  readonly output: readonly string[];
+  readonly notes: readonly ChatTerminalNote[];
+}
 
 /** One message of the chat as the layout draws it; `chat/lines.ts` makes them from the chat state. */
 export interface ChatMessage {
@@ -15,6 +31,8 @@ export interface ChatMessage {
   /** `09:12`. */
   readonly at: string;
   readonly text: string;
+  /** The message is a `!` command: drawn as a block, not as wrapped text. */
+  readonly terminal?: ChatTerminal | undefined;
 }
 
 export interface ChatProps {
@@ -41,6 +59,32 @@ export interface ChatProps {
 
 /** Rows of the input region when nothing is open: the text box of one line, and its status line. */
 export const INPUT_ROWS = 2;
+
+const NOTE_COLOR: Readonly<Record<ChatTerminalNote['tone'], string | undefined>> = {
+  ok: COLOR.ok,
+  warn: COLOR.warn,
+  error: COLOR.error,
+  dim: undefined,
+};
+
+/** The rows of a `!` command: its line, the output behind a bar, then the notes. */
+export function terminalLines(terminal: ChatTerminal, width: number): readonly ListLine[] {
+  const bar = '│ ';
+  const room = Math.max(1, width - bar.length);
+  return [
+    ...wrapText(terminal.header, width).map((text) => ({ text, bold: true, color: COLOR.accent })),
+    ...terminal.output.flatMap((line) =>
+      breakLine(line, room).map((text) => ({ text: `${bar}${text}` })),
+    ),
+    ...terminal.notes.flatMap((note) =>
+      wrapText(note.text, width).map((text) => ({
+        text,
+        color: NOTE_COLOR[note.tone],
+        dim: note.tone === 'dim',
+      })),
+    ),
+  ];
+}
 
 const WHO_COLOR: Readonly<Record<ChatMessage['who'], string>> = {
   you: 'cyanBright',
@@ -70,7 +114,9 @@ export function Chat(props: ChatProps): ReactNode {
             color: WHO_COLOR[message.who],
             bold: true,
           },
-          ...wrapText(message.text, width).map((text) => ({ text })),
+          ...(message.terminal === undefined
+            ? wrapText(message.text, width).map((text) => ({ text }))
+            : terminalLines(message.terminal, width)),
           { text: '' },
         ];
       },

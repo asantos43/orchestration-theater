@@ -32,6 +32,7 @@ import {
 } from './card.js';
 import { messagesOf, waitReason, type Translate } from './lines.js';
 import { createChatState } from './model.js';
+import { isShellLine, oneLine, SHELL_COMMAND_SHOWN } from './shell.js';
 import { ChatSession, type ChatSocketLike } from './session.js';
 import { completionOf, suggestionsFor, typingCommandName } from './suggest.js';
 
@@ -165,6 +166,22 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
           question: question === '' ? '' : ` - ${question}`,
         }),
       need: (need) => t('layout.chat.card.need', { need }),
+      shell: (shell) => ({
+        prompt: t('layout.chat.card.shell.prompt', {
+          command: oneLine(shell.command, SHELL_COMMAND_SHOWN),
+        }),
+        lines: [
+          t('layout.chat.card.shell.result', {
+            code: shell.exitCode ?? '?',
+            lines: shell.lines,
+            count: shell.lines,
+          }),
+        ],
+        send: t('layout.chat.card.shell.send'),
+        sendDescription: t('layout.chat.card.shell.sendDescription'),
+        keep: t('layout.chat.card.shell.keep'),
+        keepDescription: t('layout.chat.card.shell.keepDescription'),
+      }),
     };
     return buildCard(ask, texts);
     // The card is rebuilt when the ask changes or the language does.
@@ -245,6 +262,12 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       if (session === undefined || upload === undefined) {
         throw new Error(t('layout.chat.noConnection'));
       }
+      if (isShellLine(message.text)) {
+        // Before the upload: a `!` command takes no attachment, and a draft sent then would be orphaned.
+        if (message.attachments.length > 0) throw new Error(t('layout.chat.shellNoAttachments'));
+        session.submit(message.text);
+        return;
+      }
       const bound = await bindAttachments(message, upload);
       session.submit(bound.text, bound.attachments);
     },
@@ -274,6 +297,15 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     // First, so a line the width of the chat cuts does not hide that the socket is down.
     if (state.connection !== 'open' && scenarioId !== undefined) {
       parts.push(t(`layout.chat.connection.${state.connection}`));
+    }
+    // A command in progress comes before the stage: the line is cut at the width of the chat.
+    if (state.shells.length > 0) {
+      parts.push(
+        t('layout.chat.shellRunning', {
+          count: state.shells.length,
+          command: oneLine(state.shells[0]?.command ?? '', SHELL_COMMAND_SHOWN),
+        }),
+      );
     }
     if (stage !== undefined) {
       parts.push(
@@ -306,6 +338,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     scenarioState,
     state.busy,
     state.waits,
+    state.shells,
     state.connection,
     config.chat.esc,
     stopKey,

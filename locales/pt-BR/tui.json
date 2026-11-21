@@ -266,6 +266,9 @@
         "system": "Sistema"
       },
       "noConnection": "O chat não está ligado ao daemon.",
+      "shellNoAttachments": "Um comando ! não aceita anexos.",
+      "shellRunning_one": "rodando: ! {{command}}",
+      "shellRunning_other": "{{count}} comandos rodando",
       "stage": "etapa: {{state}}",
       "pending_one": "{{count}} decisão pendente",
       "pending_other": "{{count}} decisões pendentes",
@@ -292,6 +295,15 @@
         },
         "other": "Outra (digite a resposta)",
         "keepPrompt": "Quais ideias você mantém?",
+        "shell": {
+          "prompt": "Enviar a saída de ! {{command}} ao Diretor?",
+          "result_one": "Terminou com o código {{code}}; {{count}} linha de saída.",
+          "result_other": "Terminou com o código {{code}}; {{count}} linhas de saída.",
+          "send": "Enviar",
+          "sendDescription": "O Diretor lê o resultado e a saída.",
+          "keep": "Manter aqui",
+          "keepDescription": "A saída fica só no chat e no log."
+        },
         "option": {
           "redefine_need": "Redefinir a necessidade",
           "raise_limit": "Aumentar o limite",
@@ -347,7 +359,7 @@
           "play_ended": "a peça {{playId}} terminou"
         },
         "play": "A peça {{id}} está agora em {{state}}.",
-        "shellStarted": "Rodando em {{place}}: {{command}}",
+        "shellStarted": "Rodando em {{place}}…",
         "shell": {
           "exited": "Terminou com o código {{code}} em {{seconds}} s.",
           "timeout": "Parado após {{seconds}} s (limite de tempo).",
@@ -358,6 +370,19 @@
           "tail": "(últimas {{shown}} de {{total}} linhas)"
         },
         "shellAskedInput": "O comando pediu uma entrada; ela não foi dada.",
+        "shellContext": {
+          "sent": "O Diretor recebeu o resultado e a saída.",
+          "asked": "O Diretor ainda não viu: a sua resposta decide.",
+          "never": "Fica fora do que o Diretor lê."
+        },
+        "shellRefused": {
+          "forbidden": "O comando ! está desligado (chaves chat.shell_command e app.terminal).",
+          "conflict": "Há comandos ! demais rodando; espere um terminar.",
+          "unavailable": "O comando ! não pode rodar agora: {{message}}",
+          "invalid_input": "O comando ! está vazio.",
+          "not_found": "O cenário não foi encontrado.",
+          "other": "O comando ! foi recusado: {{message}}"
+        },
         "error": "Erro: {{message}}",
         "local": {
           "reconnected": "Reconectado ao daemon.",

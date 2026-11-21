@@ -11,6 +11,7 @@ import type {
   ShellCommandStartedPayload,
   SlashCommandResult,
 } from '@otheater/protocol';
+import { isShellQuestion, type ShellAsk } from './shell.js';
 
 /**
  * The state of the chat of one scenario, as a pure reducer (P12 of docs/18): what the frames of the
@@ -20,7 +21,10 @@ import type {
  *   applied to that reply is a repeat, which is dropped;
  * - the frames that stand for an event of the log (`system`, `queue_held`, `play_state`, the shell
  *   ones) are applied once: only a frame past the last one applied counts;
- * - an `ask` is kept once per `decisionId`, and one that was closed does not come back.
+ * - an `ask` is kept once per `decisionId`, and one that was closed does not come back;
+ * - a `!` command (P18) is one entry that changes in place: the line that says it runs becomes the
+ *   output when it ends, and the question of `chat.shell_command.context: ask` is told apart from
+ *   the questions of the Director by the `shell_finished` frame that announced it.
  */
 
 export type EntryBody =
@@ -38,7 +42,11 @@ export type EntryBody =
       readonly kind: 'shellFinished';
       readonly result: ShellCommandFinishedPayload;
       readonly snippet: string;
+      /** What the Producer typed after the `!`; empty when the start was not seen. */
+      readonly command: string;
     }
+  /** The daemon refused a `!` command (`chat.shell_command: off`, too many running...). */
+  | { readonly kind: 'shellRefused'; readonly error: ApiErrorBody }
   | { readonly kind: 'command'; readonly result: SlashCommandResult }
   | { readonly kind: 'error'; readonly error: ApiErrorBody }
   /** A line of the TUI itself: `key` is under `layout.chat.local` in the catalog. */
@@ -69,7 +77,30 @@ export interface PendingAsk {
   readonly kind: string;
   readonly playId: string | null;
   readonly input: Readonly<Record<string, unknown>>;
+  /** Set when the question is the one of `chat.shell_command.context: ask` (P18). */
+  readonly shell?: ShellAsk | undefined;
 }
+
+/** A `!` command that began and has not ended. */
+export interface RunningShell {
+  readonly commandId: string;
+  readonly command: string;
+  readonly place: string;
+  /** The entry that says it runs; the end of the command replaces its body. */
+  readonly entryId: string;
+}
+
+/** The codes of an error frame that a `!` command can cause (`ShellCommandService.start`). */
+const SHELL_ERROR_CODES: readonly ApiErrorBody['code'][] = [
+  'forbidden',
+  'conflict',
+  'unavailable',
+  'invalid_input',
+  'not_found',
+];
+
+/** The most `context: ask` questions that wait for their `ask` frame. */
+const MAX_SHELL_ASKS = 20;
 
 /** A command that asked for a confirmation. */
 export interface PendingConfirm {
@@ -100,6 +131,12 @@ export interface ChatState {
   readonly confirm: PendingConfirm | undefined;
   /** The line of the last `command` sent, for the confirmation. */
   readonly lastCommand: string | undefined;
+  /** The `!` commands that run now, oldest first. */
+  readonly shells: readonly RunningShell[];
+  /** `!` lines sent that the daemon has not answered yet (neither started nor refused). */
+  readonly shellSending: number;
+  /** Commands whose output the daemon is going to ask about (`context: ask`), for the `ask` frame. */
+  readonly shellAsks: readonly ShellAsk[];
 }
 
 export type ChatEvent =
@@ -110,6 +147,8 @@ export type ChatEvent =
       readonly at: number;
       readonly queued: boolean;
       readonly held?: boolean;
+      /** The line is a `!` command: the Director does not see it, so it never waits in a queue. */
+      readonly shell?: boolean;
     }
   | { readonly type: 'released'; readonly entryId: string }
   | { readonly type: 'commandSent'; readonly text: string }
@@ -138,6 +177,9 @@ export function createChatState(): ChatState {
     answering: undefined,
     confirm: undefined,
     lastCommand: undefined,
+    shells: [],
+    shellSending: 0,
+    shellAsks: [],
   };
 }
 
@@ -214,6 +256,35 @@ function once(state: ChatState, eventId: number, make: (state: ChatState) => Cha
   return make({ ...state, lastEvent: eventId });
 }
 
+/** The end of a `!` command: the entry that said it ran now holds its output. */
+function finishShell(
+  state: ChatState,
+  frame: Extract<ChatServerMessage, { type: 'shell_finished' }>,
+  at: number,
+): ChatState {
+  const { result } = frame;
+  const running = state.shells.find((shell) => shell.commandId === result.commandId);
+  const command = running?.command ?? '';
+  const body: EntryBody = { kind: 'shellFinished', result, snippet: frame.snippet, command };
+  const shells = state.shells.filter((shell) => shell.commandId !== result.commandId);
+  const shellAsks =
+    result.context === 'asked'
+      ? [
+          ...state.shellAsks,
+          { command, exitCode: result.exitCode, lines: result.totalLines },
+        ].slice(-MAX_SHELL_ASKS)
+      : state.shellAsks;
+  const patch = { shells, shellAsks };
+  const index =
+    running === undefined ? -1 : state.entries.findIndex((entry) => entry.id === running.entryId);
+  if (index === -1) return push(state, { who: 'system', at, body }, patch);
+  return {
+    ...state,
+    ...patch,
+    entries: state.entries.map((entry, at$) => (at$ === index ? { ...entry, body } : entry)),
+  };
+}
+
 function applyFrame(state: ChatState, frame: ChatServerMessage, at: number): ChatState {
   switch (frame.type) {
     case 'director_reply':
@@ -221,13 +292,23 @@ function applyFrame(state: ChatState, frame: ChatServerMessage, at: number): Cha
     case 'ask': {
       if (state.closed.includes(frame.decisionId)) return state;
       if (state.asks.some((ask) => ask.decisionId === frame.decisionId)) return state;
+      // The question of `context: ask` comes right after the `shell_finished` that announced it.
+      const shell =
+        frame.kind === 'producer_question' && isShellQuestion(frame.input)
+          ? state.shellAsks[0]
+          : undefined;
       const ask: PendingAsk = {
         decisionId: frame.decisionId,
         kind: frame.kind,
         playId: frame.playId,
         input: frame.input,
+        ...(shell === undefined ? {} : { shell }),
       };
-      return { ...state, asks: [...state.asks, ask] };
+      return {
+        ...state,
+        asks: [...state.asks, ask],
+        shellAsks: shell === undefined ? state.shellAsks : state.shellAsks.slice(1),
+      };
     }
     case 'ask_closed': {
       const closed = state.closed.includes(frame.decisionId)
@@ -257,17 +338,25 @@ function applyFrame(state: ChatState, frame: ChatServerMessage, at: number): Cha
         }),
       );
     case 'shell_started':
-      return once(state, frame.eventId, (next) =>
-        push(next, { who: 'system', at, body: { kind: 'shellStarted', command: frame.command } }),
-      );
+      return once(state, frame.eventId, (next) => {
+        const entryId = `e${String(next.nextId)}`;
+        const running: RunningShell = {
+          commandId: frame.command.commandId,
+          command: frame.command.command,
+          place: frame.command.place,
+          entryId,
+        };
+        return push(
+          next,
+          { who: 'system', at, body: { kind: 'shellStarted', command: frame.command } },
+          {
+            shells: [...next.shells, running],
+            shellSending: Math.max(0, next.shellSending - 1),
+          },
+        );
+      });
     case 'shell_finished':
-      return once(state, frame.eventId, (next) =>
-        push(next, {
-          who: 'system',
-          at,
-          body: { kind: 'shellFinished', result: frame.result, snippet: frame.snippet },
-        }),
-      );
+      return once(state, frame.eventId, (next) => finishShell(next, frame, at));
     case 'waits':
       return { ...state, waits: frame.waits };
     case 'busy':
@@ -297,13 +386,26 @@ function applyFrame(state: ChatState, frame: ChatServerMessage, at: number): Cha
         { confirm: pending },
       );
     }
-    case 'error':
+    case 'error': {
+      // A `!` command waits for its start: an error of the kind it causes is its refusal.
+      const refused = state.shellSending > 0 && SHELL_ERROR_CODES.includes(frame.error.code);
       return push(
         state,
-        { who: 'system', at, body: { kind: 'error', error: frame.error } },
+        {
+          who: 'system',
+          at,
+          body: refused
+            ? { kind: 'shellRefused', error: frame.error }
+            : { kind: 'error', error: frame.error },
+        },
         // An answer the daemon refused is still pending: the Producer can answer again.
-        { answering: undefined, confirm: undefined },
+        {
+          answering: undefined,
+          confirm: undefined,
+          ...(refused ? { shellSending: state.shellSending - 1 } : {}),
+        },
       );
+    }
   }
 }
 
@@ -312,6 +414,8 @@ export function reduceChat(state: ChatState, event: ChatEvent): ChatState {
     case 'frame':
       return applyFrame(state, event.frame, event.at);
     case 'sent':
+      // A `!` line has no entry of its own: the block of the command, drawn when it starts, is it.
+      if (event.shell === true) return { ...state, shellSending: state.shellSending + 1 };
       return push(state, {
         who: 'you',
         at: event.at,
@@ -334,7 +438,12 @@ export function reduceChat(state: ChatState, event: ChatEvent): ChatState {
       return { ...state, confirm: undefined };
     case 'connection': {
       if (event.state === state.connection) return state;
-      const base = { ...state, connection: event.state };
+      // A `!` line sent on a socket that fell may never be answered.
+      const base = {
+        ...state,
+        connection: event.state,
+        ...(event.state === 'retrying' || event.state === 'closed' ? { shellSending: 0 } : {}),
+      };
       // Leaving the chat (or a socket that ended) is not a drop: the next opening is a first one.
       if (event.state === 'closed') return { ...base, everOpen: false };
       if (event.state === 'open') {
