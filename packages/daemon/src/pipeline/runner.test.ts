@@ -521,6 +521,136 @@ describe('PlayRunner', () => {
     });
   });
 
+  describe('pause and resume (N176)', () => {
+    it('drain: holds the effect of the next state, saves it, and RESUME dispatches it', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      effects.clear();
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain', reason: 'coffee' });
+      expect(effects.types()).toEqual(['pause_work']);
+      // the stage in flight finishes: the state moves, but what it asks for waits
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      expect(await stateOf()).toBe('REVIEWING_PLAN');
+      expect(effects.types()).toEqual(['pause_work']);
+      const events = await store.events.readFrom(0, 20);
+      expect(events.at(-1)?.payload).toMatchObject({
+        event: 'PLAN_SUBMITTED',
+        held: ['run_stage'],
+      });
+
+      await runner.send('p1', { type: 'RESUME' });
+      expect(effects.types()).toEqual(['pause_work', 'resume_work', 'run_stage']);
+      expect(effects.last('run_stage')).toMatchObject({ stage: 'REVIEWING_PLAN' });
+      expect(
+        ((await store.plays.get('p1'))?.snapshot as { context: { paused: unknown } }).context
+          .paused,
+      ).toBeNull();
+    });
+
+    it('refuses to pause twice, to resume a play that is not paused and to pause a finished one', async () => {
+      await create();
+      await toExecuting();
+      await expect(runner.send('p1', { type: 'RESUME' })).rejects.toBeInstanceOf(Conflict);
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      await expect(runner.send('p1', { type: 'PAUSE', mode: 'interrupt' })).rejects.toBeInstanceOf(
+        Conflict,
+      );
+      await runner.send('p1', { type: 'CANCEL' });
+      await expect(runner.send('p1', { type: 'PAUSE', mode: 'drain' })).rejects.toBeInstanceOf(
+        Conflict,
+      );
+    });
+
+    it('a pause in EXECUTING keeps the demands out until RESUME', async () => {
+      await create();
+      await toExecuting();
+      effects.clear();
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1' });
+      await runner.send('p1', { type: 'DEMAND_APPROVED', demandId: 'd1' });
+      await runner.send('p1', { type: 'DEMAND_APPROVED', demandId: 'd2' });
+      expect(await stateOf()).toBe('INTEGRATING');
+      expect(effects.types()).toEqual(['pause_work']);
+      await runner.send('p1', { type: 'RESUME' });
+      expect(effects.types()).toEqual(['pause_work', 'resume_work', 'integrate']);
+    });
+
+    it('stays paused after a restart: nothing starts until RESUME, which starts the state again', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      await runner.close();
+      effects.clear();
+
+      runner = newRunner();
+      await runner.resume('p1');
+      expect(effects.types()).toEqual(['pause_work']);
+      expect(effects.dispatched[0]?.effect).toEqual({ type: 'pause_work', mode: 'drain' });
+      await runner.send('p1', { type: 'RESUME' });
+      // the held effect came from the snapshot: only one run_stage, not two
+      expect(effects.types()).toEqual(['pause_work', 'resume_work', 'run_stage']);
+    });
+
+    it('a restart of a play paused with nothing held starts the state on RESUME', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      await runner.close();
+      effects.clear();
+
+      runner = newRunner();
+      await runner.resume('p1');
+      expect(effects.types()).toEqual(['pause_work']);
+      await runner.send('p1', { type: 'RESUME' });
+      expect(effects.types()).toEqual(['pause_work', 'resume_work', 'run_stage']);
+      expect(effects.last('run_stage')).toMatchObject({ stage: 'PLANNING' });
+    });
+
+    it('interrupt: freezes the deadlines while paused and moves them forward on RESUME', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      const deadline = clock.now() + 5 * 60_000;
+      expect(runner.armedDeadlines('p1')).toEqual({ d1: deadline });
+      await runner.send('p1', { type: 'PAUSE', mode: 'interrupt' });
+      expect(runner.armedDeadlines('p1')).toEqual({});
+      await clock.advance(10 * 60_000);
+      await runner.idle();
+      expect(effects.dispatched.filter((entry) => entry.effect.type === 'judge')).toHaveLength(0);
+      await runner.send('p1', { type: 'RESUME' });
+      expect(runner.armedDeadlines('p1')).toEqual({ d1: deadline + 10 * 60_000 });
+    });
+
+    it('drain: the deadlines keep running', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1', timeoutMin: 5 });
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      expect(Object.keys(runner.armedDeadlines('p1'))).toEqual(['d1']);
+    });
+
+    it('CANCEL of a paused play aborts the work, drops what was held and ends the play', async () => {
+      await create();
+      await runner.send('p1', { type: 'START' });
+      await runner.send('p1', { type: 'PAUSE', mode: 'drain' });
+      await runner.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      effects.clear();
+      await runner.send('p1', { type: 'CANCEL' });
+      expect(effects.types()).toEqual(['abort_work']);
+      expect(await stateOf()).toBe('CANCELLED');
+    });
+
+    it('a cancelled attempt asks the Director to judge it (judgment point 2)', async () => {
+      await create();
+      await toExecuting();
+      await runner.send('p1', { type: 'DEMAND_STARTED', demandId: 'd1' });
+      effects.clear();
+      await runner.send('p1', { type: 'ACTOR_CANCELLED', demandId: 'd1', reason: 'by hand' });
+      expect(effects.last('judge')).toMatchObject({ point: 'actor_timeout', demandId: 'd1' });
+    });
+  });
+
   describe('play.notice of the warnings of the runner (P24, N146)', () => {
     const minutes = (n: number) => n * 60_000;
     const notices = async () =>

@@ -15,7 +15,7 @@ import { createActor, initialTransition, transition, type SnapshotFrom } from 'x
 import type { PlayNoticeKind } from '@otheater/protocol';
 import type { PlayLimits } from '../config.js';
 import { situationText, writeSituation } from '../situations.js';
-import type { PlayContext } from './context.js';
+import type { PausedPlay, PlayContext } from './context.js';
 import { PLAY_FLOW_ID, PLAY_FLOW_VERSION, isFinalState, type PlayState } from './definitions.js';
 import {
   entryEffects,
@@ -129,6 +129,11 @@ export class PlayRunner {
   readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
   readonly #fired = new Set<Promise<void>>();
   readonly #notices = new Set<Promise<void>>();
+  /**
+   * N176: the effects of the state a play was in when the daemon restarted while it was paused:
+   * `resume` did not dispatch them, `RESUME` does. In memory only; a restart computes them again.
+   */
+  readonly #restartHeld = new Map<string, PlayEffect[]>();
   #closed = false;
 
   constructor(options: PlayRunnerOptions) {
@@ -214,11 +219,29 @@ export class PlayRunner {
       }
       const to = next.value;
       const finished = next.status === 'done';
+      const scope = { playId, scenarioId: record.scenarioId };
+      const before = snapshot.context.paused ?? null;
+      const pausedNow = finished ? null : (next.context.paused ?? null);
+      // N176: while the play is paused the effects are held, except the ones that stop work or
+      // that talk about the pause itself; they are saved in the snapshot and RESUME dispatches them.
+      const held =
+        pausedNow === null ? [] : effects.filter((effect) => !BYPASSES_PAUSE.has(effect.type));
+      const dispatchNow =
+        pausedNow === null ? effects : effects.filter((effect) => BYPASSES_PAUSE.has(effect.type));
+      const persisted = toJson(playMachine.getPersistedSnapshot(next));
+      if (pausedNow !== null && before !== null) {
+        // an abort or a new state makes what was held stale (it was for the work that is gone)
+        const stale = record.state !== to || effects.some((effect) => effect.type === 'abort_work');
+        setHeld(persisted, [...(stale ? [] : before.held), ...held]);
+      } else if (pausedNow !== null) {
+        setHeld(persisted, held);
+      }
+      if (record.state !== to) this.#restartHeld.delete(playId);
       const updated = await this.#store.transaction(async (tx) => {
         await this.#writeDecisions(tx, record, decisions);
         const saved = await tx.plays.update(playId, {
           state: to,
-          snapshot: toJson(playMachine.getPersistedSnapshot(next)),
+          snapshot: persisted,
           counters: { ...next.context.counters },
           // The instant of the transaction: the one of `updatedAt` and of the event (N177).
           ...(finished ? { finishedAt: tx.now() } : {}),
@@ -235,14 +258,23 @@ export class PlayRunner {
             ...('reason' in machineEvent && typeof machineEvent.reason === 'string'
               ? { reason: machineEvent.reason }
               : {}),
+            ...(held.length > 0 ? { held: held.map((effect) => effect.type) } : {}),
           },
           scenarioId: record.scenarioId,
           playId,
         });
         return saved;
       });
-      this.#reconcileDeadlines(playId, finished ? {} : next.context.deadlines);
-      await this.#dispatch(effects, { playId, scenarioId: record.scenarioId });
+      const frozen = pausedNow?.mode === 'interrupt';
+      this.#reconcileDeadlines(playId, finished || frozen ? {} : next.context.deadlines);
+      if (before !== null && pausedNow === null) {
+        // RESUME (or a cancel): what was held starts, after the effect that wakes the paused work
+        const carried = finished ? [] : this.#heldOf(playId, before);
+        this.#restartHeld.delete(playId);
+        await this.#dispatch([...dispatchNow, ...carried], scope);
+      } else {
+        await this.#dispatch(dispatchNow, scope);
+      }
       if (finished) this.#notifyFinish(updated);
       return updated;
     });
@@ -259,13 +291,26 @@ export class PlayRunner {
       const record = await this.#load(playId);
       if (isFinalState(record.state)) return;
       const snapshot = restorePlay(record);
-      this.#reconcileDeadlines(playId, snapshot.context.deadlines);
       const context = snapshot.context;
+      const scope = { playId, scenarioId: record.scenarioId };
+      const paused = context.paused ?? null;
       const effects = [
         ...entryEffects(record.state as PlayState, context),
         ...context.openJudgments.map((judgment) => judgmentEffect(judgment)),
       ];
-      await this.#dispatch(effects, { playId, scenarioId: record.scenarioId });
+      if (paused !== null) {
+        // N176: a paused play stays paused after a restart. Nothing starts: what the state asks for
+        // waits for RESUME, and `interrupt` keeps its deadlines frozen.
+        this.#reconcileDeadlines(playId, paused.mode === 'interrupt' ? {} : context.deadlines);
+        this.#restartHeld.set(
+          playId,
+          effects.filter((effect) => !paused.held.some((held) => sameEffect(held, effect))),
+        );
+        await this.#dispatch([{ type: 'pause_work', mode: paused.mode }], scope);
+        return;
+      }
+      this.#reconcileDeadlines(playId, context.deadlines);
+      await this.#dispatch(effects, scope);
     });
   }
 
@@ -313,6 +358,14 @@ export class PlayRunner {
     this.#closed = true;
     for (const playId of [...this.#timers.keys()]) this.#reconcileDeadlines(playId, {});
     await this.idle();
+  }
+
+  /** The effects that wait for `RESUME`: the ones held in the snapshot, then the ones of a restart. */
+  #heldOf(playId: string, paused: PausedPlay): PlayEffect[] {
+    const all = [...paused.held, ...(this.#restartHeld.get(playId) ?? [])];
+    return all.filter(
+      (effect, index) => all.findIndex((other) => sameEffect(other, effect)) === index,
+    );
   }
 
   async #load(playId: string): Promise<PlayRecord> {
@@ -453,6 +506,23 @@ export class PlayRunner {
       }
     }
   }
+}
+
+/** The effects that keep running or that tell the work about the pause: the pause never holds them. */
+const BYPASSES_PAUSE: ReadonlySet<PlayEffect['type']> = new Set([
+  'abort_work',
+  'pause_work',
+  'resume_work',
+]);
+
+/** Writes the held effects into the persisted snapshot (the machine does not know them). */
+function setHeld(persisted: JsonObject, held: readonly PlayEffect[]): void {
+  const context = persisted.context as { paused?: { held?: unknown } | null } | undefined;
+  if (context?.paused != null) context.paused.held = toJson(held.length === 0 ? [] : held) as never;
+}
+
+function sameEffect(a: PlayEffect, b: PlayEffect): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function judgmentEffect(judgment: PlayContext['openJudgments'][number]): PlayEffect {

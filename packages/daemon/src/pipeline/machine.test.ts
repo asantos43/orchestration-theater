@@ -450,3 +450,62 @@ describe('the classification of a critique (judgment point 1)', () => {
     expect(judged({ failures: [{ kind: 'script' }] })).toBe(true);
   });
 });
+
+describe('pause and resume of the play (N176)', () => {
+  it('pauses in EXECUTING without leaving the state, and asks the effects to pause', () => {
+    const model = new Model().toExecuting();
+    model.send({ type: 'PAUSE', mode: 'drain', reason: 'lunch' });
+    expect(model.state).toBe('EXECUTING');
+    expect(model.context.paused).toEqual({
+      mode: 'drain',
+      at: model.now,
+      reason: 'lunch',
+      held: [],
+    });
+    expect(model.effect('pause_work')).toEqual({ type: 'pause_work', mode: 'drain' });
+    expect(model.can({ type: 'PAUSE', mode: 'interrupt' })).toBe(false);
+  });
+
+  it('refuses RESUME when the play is not paused, and takes it when it is', () => {
+    const model = new Model().toExecuting();
+    expect(model.can({ type: 'RESUME' })).toBe(false);
+    model.send({ type: 'PAUSE', mode: 'interrupt' });
+    model.now += 5_000;
+    model.send({ type: 'RESUME' });
+    expect(model.context.paused).toBeNull();
+    expect(model.effect('resume_work')).toEqual({ type: 'resume_work', pausedMs: 5_000 });
+  });
+
+  it('moves the deadlines forward by the time paused in interrupt mode only', () => {
+    const interrupt = new Model().toExecuting().send({ type: 'DEMAND_STARTED', demandId: 'd1' });
+    const before = interrupt.context.deadlines.d1;
+    expect(before).toBeDefined();
+    interrupt.send({ type: 'PAUSE', mode: 'interrupt' });
+    interrupt.now += 7_000;
+    interrupt.send({ type: 'RESUME' });
+    expect(interrupt.context.deadlines.d1).toBe((before ?? 0) + 7_000);
+
+    const drain = new Model().toExecuting().send({ type: 'DEMAND_STARTED', demandId: 'd1' });
+    const kept = drain.context.deadlines.d1;
+    drain.send({ type: 'PAUSE', mode: 'drain' });
+    drain.now += 7_000;
+    drain.send({ type: 'RESUME' });
+    expect(drain.context.deadlines.d1).toBe(kept);
+  });
+
+  it('CANCEL of a paused play leaves it cancelled and no longer paused', () => {
+    const model = new Model().toExecuting().send({ type: 'PAUSE', mode: 'drain' });
+    model.send({ type: 'CANCEL' });
+    expect(model.state).toBe('CANCELLED');
+    expect(model.context.paused).toBeNull();
+    expect(model.can({ type: 'PAUSE', mode: 'drain' })).toBe(false);
+  });
+
+  it('a cancelled attempt opens the judgment of point 2 with the reason', () => {
+    const model = new Model().toExecuting().send({ type: 'DEMAND_STARTED', demandId: 'd1' });
+    model.send({ type: 'ACTOR_CANCELLED', demandId: 'd1', reason: 'the Producer cancelled it' });
+    expect(model.state).toBe('EXECUTING');
+    expect(model.context.feedback).toBe('the Producer cancelled it');
+    expect(model.effect('judge')).toMatchObject({ point: 'actor_timeout' });
+  });
+});

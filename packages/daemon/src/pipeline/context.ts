@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { PlayLimits } from '../config.js';
 import type { CounterKey, CriticalException, PlayState } from './definitions.js';
+import type { PlayEffect } from './effects.js';
 import type { JudgmentPointId } from './judgment.js';
 
 /**
@@ -60,6 +61,20 @@ export interface OpenJudgment {
 }
 
 /**
+ * [proposta] N176: the play is paused. It lives in the snapshot, so a pause survives a restart of
+ * the daemon. `held` are the effects the transitions asked for since the pause and the runner did
+ * not dispatch; `RESUME` dispatches them.
+ */
+export interface PausedPlay {
+  /** `drain`: the stage in flight finishes. `interrupt`: the attempts are interrupted (`paused`). */
+  readonly mode: 'drain' | 'interrupt';
+  /** When it was paused (epoch ms, from the event). */
+  readonly at: number;
+  readonly reason: string | null;
+  readonly held: readonly PlayEffect[];
+}
+
+/**
  * The context of the machine. It is what `getPersistedSnapshot()` writes, so it holds only JSON
  * (no `undefined`, no functions) and nothing that is already in the store's own tables beyond what
  * the transitions need.
@@ -103,6 +118,11 @@ export interface PlayContext {
    * before P9, so it is read as `?? null`.
    */
   readonly deliveryChoice?: DeliveryChoice | null;
+  /**
+   * [proposta] N176: set while the play is paused. Missing in snapshots written before the pause,
+   * so it is read as `?? null`.
+   */
+  readonly paused?: PausedPlay | null;
   /** PLANNING was entered by a restart or a new need, not for the first time. */
   readonly restart: boolean;
   /** Sequence of the decisions this play recorded; makes their ids deterministic (`<play>:d<n>`). */
