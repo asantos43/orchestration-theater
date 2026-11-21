@@ -8,8 +8,8 @@
 # OT_TEST_CI picks the mode: `affected` (default) or `full` (always `vitest run`).
 #
 # In `affected`, the changed files are those of `git diff <base-ref>` (the working tree against the
-# base). The whole suite still runs when one of them is "global", that is, reaches tests that the
-# module graph of vitest does not see:
+# base) and the untracked ones. The whole suite still runs when one of them is "global", that is,
+# reaches tests that the module graph of vitest does not see:
 # - the lockfile, the workspace, any package.json or tsconfig, the vitest config, this script and
 #   .github/ (the dependencies, the build and the CI itself);
 # - packages/protocol/src and packages/core/src (almost every test imports them);
@@ -43,7 +43,8 @@ case "$mode" in
     ;;
 esac
 
-changed=$(git diff --name-only "$base")
+# Untracked files too, as `vitest --changed` sees them (none on a CI checkout).
+changed=$(git diff --name-only "$base"; git ls-files --others --exclude-standard)
 printf 'test-affected: %s changed file(s) since %s\n' "$(printf '%s' "$changed" | grep -c . || true)" "$base"
 
 global=$(printf '%s\n' "$changed" | grep -E \
