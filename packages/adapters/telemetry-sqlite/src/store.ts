@@ -15,6 +15,9 @@ import {
   type TelemetryLogRecord,
   type TelemetryMetricPoint,
   type TelemetryReadFilter,
+  type TelemetryRecordOf,
+  type TelemetryRow,
+  type TelemetrySignal,
   type TelemetrySpan,
   type TelemetryStore,
   type TelemetryStoreState,
@@ -63,6 +66,13 @@ function cursorKey(name: string): string {
   }
   return `cursor:${name}`;
 }
+
+/** The table of each signal, for `readSince`. */
+const SINCE_TABLE = {
+  spans: 'spans',
+  metrics: 'metric_points',
+  logs: 'log_records',
+} as const satisfies Record<TelemetrySignal, string>;
 
 /** Rows per `INSERT`: well under SQLite's limit of bound variables (32766) for the widest table. */
 const ROWS_PER_INSERT = 100;
@@ -416,6 +426,50 @@ export class SqliteTelemetryStore implements TelemetryStore {
         order by ${ms}, ${sub}, t.id
         limit ${limit}`.execute(conn.reader);
       return map(result.rows);
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  /**
+   * `readSince` (port 0.3.0): the rows after a position, by row id (`integer primary key
+   * autoincrement`, so ids grow with the insertion and are never reused), with no time filter.
+   */
+  async readSince<S extends TelemetrySignal>(
+    signal: S,
+    afterRowId: number,
+    limit: number = DEFAULT_READ_LIMIT,
+  ): Promise<readonly TelemetryRow<TelemetryRecordOf[S]>[]> {
+    if (!Number.isSafeInteger(afterRowId) || afterRowId < 0) {
+      throw new InvalidInput('afterRowId must be a non-negative integer');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_READ_LIMIT) {
+      throw new InvalidInput(`limit must be an integer from 1 to ${String(MAX_READ_LIMIT)}`);
+    }
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    await this.flush().catch(() => undefined);
+    const conn = this.#conn;
+    if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+    const table = SINCE_TABLE[signal];
+    try {
+      const result = await sql<{ id: number }>`
+        select t.*, r.attributes as resource_attributes
+        from ${sql.table(table)} t join resources r on r.id = t.resource_id
+        where t.id > ${afterRowId}
+        order by t.id
+        limit ${limit}`.execute(conn.reader);
+      const rows = result.rows as unknown as never[];
+      const records: unknown[] =
+        signal === 'spans'
+          ? (rows as SpanRow[]).map(toSpan)
+          : signal === 'metrics'
+            ? (rows as MetricRow[]).map(toMetric)
+            : (rows as LogRow[]).map(toLog);
+      return result.rows.map((row, index) => ({
+        rowId: row.id,
+        record: records[index],
+      })) as unknown as readonly TelemetryRow<TelemetryRecordOf[S]>[];
     } catch (error) {
       await this.#afterFailure(error);
       throw toTelemetryError(error);

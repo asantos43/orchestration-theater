@@ -152,12 +152,26 @@ const HistogramDataSchema = z.looseObject({
   explicitBounds: z.array(z.number()).optional(),
 });
 
+/** `AggregationTemporality`: 1 delta, 2 cumulative (a number, or the name of the enum). */
+const TemporalitySchema = z.union([z.int().min(0).max(2), z.string()]);
+
 const MetricSchema = z.looseObject({
   name: z.string().max(1024),
   unit: z.string().optional(),
   gauge: z.looseObject({ dataPoints: z.array(NumberDataSchema).optional() }).optional(),
-  sum: z.looseObject({ dataPoints: z.array(NumberDataSchema).optional() }).optional(),
-  histogram: z.looseObject({ dataPoints: z.array(HistogramDataSchema).optional() }).optional(),
+  sum: z
+    .looseObject({
+      dataPoints: z.array(NumberDataSchema).optional(),
+      aggregationTemporality: TemporalitySchema.optional(),
+      isMonotonic: z.boolean().optional(),
+    })
+    .optional(),
+  histogram: z
+    .looseObject({
+      dataPoints: z.array(HistogramDataSchema).optional(),
+      aggregationTemporality: TemporalitySchema.optional(),
+    })
+    .optional(),
 });
 
 const MetricsRequestSchema = z.looseObject({
@@ -196,6 +210,30 @@ const LogsRequestSchema = z.looseObject({
     )
     .optional(),
 });
+
+/** The number of an `AggregationTemporality`, or `undefined` when it is unset or unknown. */
+function temporalityOf(value: number | string | undefined): 1 | 2 | undefined {
+  if (value === 1 || value === 'AGGREGATION_TEMPORALITY_DELTA') return 1;
+  if (value === 2 || value === 'AGGREGATION_TEMPORALITY_CUMULATIVE') return 2;
+  return undefined;
+}
+
+/**
+ * What a sum carries besides its points: its temporality and whether it only grows. [proposta] Kept
+ * in `detail` (P7) so the exporter does not tell a backend that a delta counter is cumulative.
+ * `null` when the request said neither.
+ */
+function sumDetail(
+  sum:
+    | { aggregationTemporality?: number | string | undefined; isMonotonic?: boolean | undefined }
+    | undefined,
+): Record<string, JsonValue> | null {
+  const detail: Record<string, JsonValue> = {};
+  const temporality = temporalityOf(sum?.aggregationTemporality);
+  if (temporality !== undefined) detail.aggregationTemporality = temporality;
+  if (sum?.isMonotonic !== undefined) detail.isMonotonic = sum.isMonotonic;
+  return Object.keys(detail).length === 0 ? null : detail;
+}
 
 /** The OTLP signal a path names. */
 export type OtlpSignal = 'traces' | 'metrics' | 'logs';
@@ -320,7 +358,7 @@ function decodeMetrics(body: unknown): TelemetryBatch {
               timeUnixNano: nanos(point.timeUnixNano) ?? 0n,
               startTimeUnixNano: kind === 'gauge' ? null : nanos(point.startTimeUnixNano),
               value: Number.isFinite(value) ? value : 0,
-              detail: null,
+              detail: kind === 'sum' ? sumDetail(metric.sum) : null,
               attributes: attributesOf(point.attributes),
               resource,
             });
@@ -332,6 +370,8 @@ function decodeMetrics(body: unknown): TelemetryBatch {
             bucketCounts: (point.bucketCounts ?? []).map(Number),
             explicitBounds: point.explicitBounds ?? [],
           };
+          const temporality = temporalityOf(metric.histogram?.aggregationTemporality);
+          if (temporality !== undefined) detail.aggregationTemporality = temporality;
           if (point.min !== undefined) detail.min = point.min;
           if (point.max !== undefined) detail.max = point.max;
           metrics.push({
