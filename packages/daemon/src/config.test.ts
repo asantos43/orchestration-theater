@@ -94,7 +94,7 @@ describe('parseConfig', () => {
       inkPatches: ['cache', 'grid'],
       historyWindow: 0,
     });
-    expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2 });
+    expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2, exitGraceMs: 2000 });
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
     expect(ui.tuiLayout).toEqual({
       sidebarWidth: 30,
