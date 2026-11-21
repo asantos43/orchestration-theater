@@ -106,6 +106,9 @@ describe('daemon event registry', () => {
       'profile.exec.ended',
       'profile.shims.synced',
       'profile.shims.rc_changed',
+      'profile.login.started',
+      'profile.login.completed',
+      'profile.login.failed',
       'executor.changed',
       'daemon.notice',
       'recovery.notice',
@@ -124,6 +127,10 @@ describe('daemon event registry', () => {
       'api.chat_message_dropped',
       'layout.adjusted',
       'layout.changed',
+      'decision.created',
+      'decision.answered',
+      'scenario.archived',
+      'demand.transitioned',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

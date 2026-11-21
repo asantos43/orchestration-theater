@@ -659,7 +659,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         expect(detail.play.state).toBe('DONE');
         expect(detail.play.finishedAt).not.toBeNull();
 
-        // What the events cannot keep is read by REST, and the read gives the same as REST.
+        // The demands are built from `demand.transitioned` (N173), and equal what REST says.
         expect(stores.demands.getState().byPlay[play.id]).toEqual({
           demands: detail.demands,
           stages: detail.stages,
@@ -757,7 +757,7 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
           const items = await pending(scenarioId);
           return items.length === 1 ? items[0] : undefined;
         });
-        // The play moved, and that is the event that marks the decisions: the store has the menu.
+        // `decision.created` (N173) puts the menu in the store, with no read of the list.
         await waitFor('the menu in the store', () =>
           Promise.resolve(
             stores.decisions.getState().byScenario[scenarioId]?.some((d) => d.id === menu.id) ??
@@ -781,10 +781,9 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
         const detail = await client.call(API_ROUTES.getPlay, { params: { playId: play.id } });
         expect(stores.plays.getState().byId[play.id]).toEqual(detail.play);
 
-        // A question of the Director in a chat is a decision too. No event of the log says that a
-        // decision was created or answered: the store learns it from the `scenario.chat_transitioned`
-        // that comes with the question and with the answer (the chat stops and moves again).
-        // [N] docs/17 (P13): `decision.created` / `decision.answered` events would not depend on that.
+        // A question of the Director in a chat is a decision too: the store learns that it was
+        // created and answered from `decision.created` and `decision.answered` (N173, P1 of docs/18),
+        // not from the transitions that come with them.
         const chatId = await harness.openGenericChat('talk');
         await caughtUp(harness, stores);
         await waitFor('the scenario in the store', () =>
@@ -809,7 +808,8 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
           .map((event) => event.type);
         expect(chatTypes).toContain('chat.ask');
         expect(chatTypes).toContain('scenario.chat_transitioned');
-        expect(chatTypes.some((type) => type.startsWith('decision.'))).toBe(false);
+        expect(chatTypes).toContain('decision.created');
+        expect(chatTypes.indexOf('decision.created')).toBeLessThan(chatTypes.indexOf('chat.ask'));
 
         await client.call(API_ROUTES.answerDecision, {
           params: { decisionId: question.id },
@@ -820,6 +820,12 @@ describeWithLauncher('the test client against the real daemon (P13)', { timeout:
           return (stores.decisions.getState().byScenario[chatId] ?? []).length === 0 || undefined;
         });
         expect(await pending(chatId)).toEqual([]);
+        const answeredTypes = (await logOf(harness))
+          .filter((event) => event.scenarioId === chatId)
+          .map((event) => event.type);
+        expect(answeredTypes).toContain('decision.answered');
+        expect(answeredTypes).toContain('scenario.decision_answered');
+        expect(stores.decisions.getState().stale).toEqual({});
         // A full read gives the same as the events did.
         await stores.resync();
         expect(stores.decisions.getState().byScenario[chatId] ?? []).toEqual([]);

@@ -3344,7 +3344,7 @@ Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/17
 **Critério de aceite:** criar um projeto, adicionar uma assinatura (login oficial dentro da TUI), configurar papéis, pedir uma necessidade no chat, responder a uma decisão e acompanhar até o PR só pela TUI, no Windows Terminal e num terminal de macOS/Linux, nos dois idiomas.
 **Estimativa:** 2,5–3 semanas (era 2–2,5 como fase opcional; agora cobre configuração e plugins completos).
 
-Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/18](../18-PLANO-DA-FASE-7.md) (2026-11-20). Ele leva a N173 e a N176, da Fase 6, e traz as decisões N185 a N192 (dependências, login na TUI, `!`, recarga da configuração, aba Plugins, sessão direta, terminais do aceite e merge), tomadas pelo dono no mesmo dia, todas iguais à recomendação.
+Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/18](../18-PLANO-DA-FASE-7.md) (2026-11-20). Ele leva a N173 e a N176, da Fase 6, e traz as decisões N185 a N192 (dependências, login na TUI, `!`, recarga da configuração, aba Plugins, sessão direta, terminais do aceite e merge), tomadas pelo dono no mesmo dia, todas iguais à recomendação. Ao abrir a onda 1, no mesmo dia, o dono escolheu também, igual à recomendação: `pause.mode: drain | interrupt`, padrão `drain` (N193); `chat.shell_command.timeout`, padrão 5 min (N194); e `ot` sem argumento abrindo a TUI num terminal interativo, além de `ot tui`, numa chave `ui.*` (N195).
 
 ### Fase 8 — Observabilidade
 
@@ -3740,6 +3740,9 @@ Decididas:
 - edição na worktree em qualquer cliente (2026-11-20, seção 5.8 e Fase 6, N182): `roles.<papel>.policy.edit_in_worktree: allow | ask`, padrão `allow` no Ator e no consultor e `ask` nos outros; implementada no PR #197;
 - turno do Diretor sem texto (2026-11-20, seção 5.12 e Fase 6, N183): evento `chat.director_silent` e `chat.silent_turn: notice | none`, padrão `notice`; implementada no PR #196;
 - turno que não termina (2026-11-20, seção 5.4 e Fase 6, N184): `limits.turn_timeout` por predefinição e `limits.on_turn_timeout: cancel | notice | off`, padrão `cancel`, com o evento `session.turn_timeout`; vale para os papéis e para o Diretor;
+- pausa da peça (2026-11-20, seção 5.16 e Fase 7, N193): `pause.mode: drain | interrupt`, padrão `drain`;
+- prazo do `!` do Produtor (2026-11-20, seção 5.13 e Fase 7, N194): `chat.shell_command.timeout`, padrão 5 min, ou `off`;
+- abertura da TUI (2026-11-20, seção 5.13 e Fase 7, N195): `ot tui`, e `ot` sem argumento num terminal interativo, com a chave `ui.*` de modos `tui | help`, padrão `tui`;
 - shell nativo do Codex na sandbox `runtime` (2026-11-18, seções 5.2 e 5.8 e Fase 4, N129): `clients.codex.inner_sandbox: keep | full_access_when_wrapped | nested`, padrão `keep`; a medida mostrou que o srt bloqueia namespace aninhado por padrão e que `allowNestedUserNamespaces` o permite, ao custo das proibições de escrita;
 - estratégia de seleção entre contas (2026-11-18, seção 5.7 e Fase 5, N130): `selection.strategy: ordered | most_headroom | round_robin`, padrão `ordered`;
 - continuação de sessão entre papéis (2026-11-18, seções 5.4 e 5.7, N131): `pipeline.session_reuse: off | when_same_executor | preferred`, padrão `when_same_executor`, nos pares Revisor → Roteirista e Autor → revisão do roteiro; a revisão independente (Autor → Revisor, Ator → Crítico) sempre abre sessão nova; implementação depois da Fase 5;

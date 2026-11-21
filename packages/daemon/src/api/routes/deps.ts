@@ -9,6 +9,7 @@ import type { LayoutPreferencesStore } from '../../layout/preferences.js';
 import type { Logger } from '../../logger.js';
 import type { ProducerChannel } from '../../orchestration/channel.js';
 import type { PlayRunner } from '../../pipeline/runner.js';
+import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
@@ -45,6 +46,8 @@ export interface CommandRouteDeps {
   readonly logger: Logger;
   readonly directives: DirectiveService;
   readonly profiles: ProfileService;
+  /** The official login of a subscription account (P5 of Phase 7). */
+  readonly logins: ProfileLoginService;
   /** `<data>/config.yaml`, the file `PUT /v1/config` edits. */
   readonly configPath: string;
   /** `api.idempotency_ttl`, read at each command. */

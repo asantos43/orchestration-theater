@@ -307,6 +307,11 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     };
   }
 
+  /** The mode `login` runs in, told without starting it (P5 of Phase 7, N186). */
+  override loginMode(): LoginFlow['mode'] {
+    return this.#loginOptions.mode ?? 'browser';
+  }
+
   /**
    * The official login (`claude auth login`) inside the profile (architecture 5.6). The URL the
    * client prints comes back in the flow for the Producer to open; the token is written by the
