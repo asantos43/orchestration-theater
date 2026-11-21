@@ -11,11 +11,25 @@ conferido ainda. Quem passar o roteiro troca os `[N]` da tabela do fim por `[V: 
 
 ## Antes de começar
 
-- O OTheater compilado (`pnpm install --frozen-lockfile` e `pnpm build`), e o daemon com o `fake-agent`, para
-  não gastar cota: na raiz do repositório, abra um terminal e rode `node packages/daemon/dist/cli.js daemon`.
-  [proposta: se o seu ambiente já tem um daemon de teste, use-o; o roteiro não precisa de cliente real.]
-- Abra a TUI em **outro** terminal, o que está sendo conferido: `node packages/daemon/dist/cli.js` (sem
-  argumento: abre a TUI quando a entrada e a saída são um terminal, N195) ou `... tui`.
+- O OTheater compilado (`pnpm install --frozen-lockfile` e `pnpm build`). O `ot daemon` da CLI só liga os
+  clientes de produção; para não gastar cota, use o daemon de teste do repositório. Na raiz, abra um terminal
+  e rode `bash tools/acceptance/tui-terminals-daemon.sh`. Ele sobe um daemon com o `fake-agent` em todos os
+  papéis, numa pasta temporária (repositório, remote e hospedagem de código falsos), com o relógio real, e
+  imprime a pasta de dados e o comando para abrir a TUI. Nada gasta cota e nada toca o seu perfil. Deixe esse
+  terminal aberto: `Ctrl+C` nele para o daemon e apaga a pasta; sem parar, ele para sozinho em 120 minutos
+  (`OT_MANUAL_MINUTES=<minutos>` muda o prazo). [V: 2026-11-21, num Linux: o daemon sobe, a TUI conecta num
+  tmux e abre o cartão da seção 3, e a pasta some ao parar. Nos terminais do dono ainda não foi rodado.]
+- Abra a TUI em **outro** terminal, o que está sendo conferido, com o comando que o script imprimiu. Tem a forma
+  `OT_DATA_DIR=<pasta de dados> OT_CLIENT_CONFIG_DIR=<pasta>/client node packages/daemon/dist/cli.js tui`: o
+  `OT_DATA_DIR` aponta para o daemon de teste e o `OT_CLIENT_CONFIG_DIR` guarda o layout da TUI fora da sua
+  pasta de configuração. Sem argumento (`... cli.js`) a TUI abre do mesmo jeito quando a entrada e a saída são
+  um terminal (N195). Na seção 8 (SSH), a máquina remota precisa ter o repositório compilado e alcançar essa
+  pasta de dados; o mais simples é rodar o script e a TUI lá. [N: a seção 8 não foi tentada.]
+- As chaves `ui.mouse` e `ui.clipboard.copy` (seções 3 e 4) estão no `config.yaml` da pasta de dados que o
+  script imprimiu (`<pasta de dados>/config.yaml`; começam em `full` e `osc52`). Edite o arquivo, feche a TUI
+  (`Ctrl+Q`) e abra de novo com o mesmo comando: a TUI lê a chave ao abrir. [V: o `config.yaml` existe ali, e
+  no código a CLI o lê ao abrir a TUI (`packages/daemon/src/cli.ts`, comando `tui`); a troca no meio do roteiro não foi exercitada. A aba Settings (`F5`) também edita
+  esse arquivo, mas se ela cobre essas duas chaves não foi conferido.]
 - Anote na tabela do fim: o terminal, a versão, o sistema e o shell. Tamanho de partida sugerido: 120x36 ou mais.
 - Para cada item, **faça** o que está escrito e compare com o **esperado**. Se a tecla ou o efeito não vier,
   anote o que apareceu (a tecla fica `[X]`; não conserte na hora).
