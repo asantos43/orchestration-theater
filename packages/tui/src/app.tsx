@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Box, Text, useApp, useWindowSize } from 'ink';
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
 import type { DaemonConnector } from './daemon-connection.js';
@@ -17,7 +17,9 @@ import type { TabContentMap } from './layout/tab-content.js';
 import type { LocaleController } from './locale.js';
 import { MouseLayer, type MouseLayerProps, type MouseTerminal } from './mouse/index.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
-import type { UiSettings } from './settings.js';
+import type { SetupGate } from './layout/shell.js';
+import type { UiSettings, UiSetupSettings } from './settings.js';
+import type { SetupApi } from './setup/index.js';
 import { StatusScreen } from './status-screen.js';
 import { useDaemon } from './use-daemon.js';
 
@@ -36,6 +38,8 @@ export interface AppProps {
   readonly history?: ChatPanelConfig['history'];
   /** What each tab of the panel draws; they come in empty and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
+  /** The routes of the setup assistant (P17); default: the ones of the daemon's client. For tests. */
+  readonly setupApi?: SetupApi | undefined;
   /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
   readonly keyEnvironment?: KeyEnvironment | undefined;
   /**
@@ -86,13 +90,24 @@ function Screen(props: AppProps): ReactNode {
   const { columns, rows } = useWindowSize();
   const { locale: controller, connector } = props;
   const keymap = useTuiKeymap(props.settings.keymap, props.keyEnvironment);
+  // The `ui.setup` of the daemon, once read: the gate of the assistant (P17) waits for it, because
+  // the settings of this process do not know what the configuration of the daemon says.
+  // [proposta] When the read fails the gate goes on with the settings of this process.
+  const [daemonSetup, setDaemonSetup] = useState<UiSetupSettings | undefined>(undefined);
   const onSettings = useCallback(
     (settings: UiSettings): void => {
       void controller.apply(settings.locale);
+      setDaemonSetup(settings.setup);
     },
     [controller],
   );
-  const view = useDaemon(connector, { onSettings });
+  const onSettingsFailed = useCallback((): void => {
+    setDaemonSetup(props.settings.setup);
+  }, [props.settings.setup]);
+  const view = useDaemon(connector, { onSettings, onSettingsFailed });
+  // `never` here closes the gate without waiting; otherwise the daemon has the last word.
+  const setupGate: SetupGate =
+    props.settings.setup.open === 'never' ? props.settings.setup : (daemonSetup ?? 'pending');
   useQuitKeys(keymap, view.kind !== 'online');
   const warning = patchWarning(props.patch);
   if (view.kind === 'online') {
@@ -113,6 +128,8 @@ function Screen(props: AppProps): ReactNode {
           history: props.history,
         }}
         tabContent={props.tabContent}
+        setupApi={props.setupApi}
+        setupGate={setupGate}
       />
     );
   }

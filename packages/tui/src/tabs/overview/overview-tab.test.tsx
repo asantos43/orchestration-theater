@@ -11,7 +11,8 @@ import {
   scenario as scenarioOf,
   type FakeOnline,
 } from '../../layout.test-support.js';
-import { DEFAULT_UI_SETTINGS, type UiSettings } from '../../settings.js';
+import { type UiSettings } from '../../settings.js';
+import { TEST_UI_SETTINGS } from '../../ink.test-support.js';
 
 /**
  * The Overview tab over `ink-testing-library` and a fake daemon that is online (N57): what it
@@ -145,7 +146,7 @@ function world(extra: { paused?: boolean } = {}): World {
   return { online, scenarioId: scenario.id, play };
 }
 
-async function open(w: World, settings: UiSettings = DEFAULT_UI_SETTINGS): Promise<RenderedApp> {
+async function open(w: World, settings: UiSettings = TEST_UI_SETTINGS): Promise<RenderedApp> {
   const app = await renderApp({ connector: w.online.connector, size: SIZE, settings });
   await app.waitForText('Pipeline');
   return app;
@@ -160,7 +161,7 @@ async function focusPanel(app: RenderedApp): Promise<void> {
 }
 
 function settingsConfirm(confirm: 'always' | 'off'): UiSettings {
-  return { ...DEFAULT_UI_SETTINGS, overview: { ...DEFAULT_UI_SETTINGS.overview, confirm } };
+  return { ...TEST_UI_SETTINGS, overview: { ...TEST_UI_SETTINGS.overview, confirm } };
 }
 
 describe('what the Overview draws', () => {

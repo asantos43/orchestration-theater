@@ -193,7 +193,7 @@ interface TabProps {
 
 function SettingsTab({ content, options }: TabProps): ReactNode {
   const { t } = useTranslation();
-  const { stores, keymap, capture } = useTabHost();
+  const { stores, keymap, capture, openAssistant } = useTabHost();
   const scenarioId = content.scenarioId;
   const { suspendTerminal } = useApp();
   const { afterKey } = useRenderControl();
@@ -582,6 +582,23 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     }
     if (name === 'add') {
       openPrompt({ purpose: 'add' }, t('settings.prompt.add'));
+      return;
+    }
+    // The setup assistant (P17): the same screen, on the flow that fits the key.
+    if (name === 'assistantAccount' || name === 'assistantPreset' || name === 'assistantFirstRun') {
+      if (openAssistant === undefined) {
+        say(t('settings.result.noAssistant'), 'warn');
+      } else if (scope === 'project') {
+        say(t('settings.result.readOnly'), 'warn');
+      } else {
+        openAssistant(
+          name === 'assistantAccount'
+            ? 'add_account'
+            : name === 'assistantPreset'
+              ? 'change_preset'
+              : 'first_run',
+        );
+      }
       return;
     }
     if (section === undefined || data === undefined) return;

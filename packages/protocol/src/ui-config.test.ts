@@ -8,6 +8,7 @@ import {
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
@@ -116,5 +117,14 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
     expect(UiUsageConfigSchema.parse({ refreshSeconds: 0 }).refreshSeconds).toBe(0);
     expect(UiUsageConfigSchema.safeParse({ refreshSeconds: 4000 }).success).toBe(false);
+  });
+
+  it('has the defaults of the setup block (P17), takes its other mode and refuses the rest', () => {
+    expect(UiSetupConfigSchema.parse({})).toEqual({ open: 'auto', readTimeoutMs: 5000 });
+    expect(UiSetupConfigSchema.parse({ open: 'never' }).open).toBe('never');
+    expect(UiSetupConfigSchema.safeParse({ open: 'always' }).success).toBe(false);
+    expect(UiSetupConfigSchema.safeParse({ readTimeoutMs: 99 }).success).toBe(false);
+    expect(UiSetupConfigSchema.safeParse({ readTimeoutMs: 60_001 }).success).toBe(false);
+    expect(UiSetupConfigSchema.safeParse({ wait: 1 }).success).toBe(false);
   });
 });

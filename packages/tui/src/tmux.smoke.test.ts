@@ -94,7 +94,9 @@ suite(
           client: (launcher, command, env) =>
             new FakeClientAdapter({ launcher, baseEnv: {}, env, adapterVersion: '1.0.0', command }),
         },
-        {},
+        // The daemon of the smoke names no preset, so the setup assistant (P17) would take the
+        // screen on the first run: the smoke is about the layout, so it keeps the assistant closed.
+        { extra: 'ui:\n  setup:\n    open: never\n' },
       );
       home = await mkdtemp(join(tmpdir(), 'otheater-tmux-home-'));
     }, TEST_TIMEOUT);
