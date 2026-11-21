@@ -51,6 +51,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
         'Clock:system',
         'SecretVault:override',
         'Store:sqlite',
+        'TelemetryStore:sqlite',
       ]);
       expect(
         await allEvents(daemon.store).then((events) => events.map((event) => event.type)),
