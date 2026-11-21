@@ -13,7 +13,8 @@ import {
 import { DEFAULT_INPUT_SETTINGS } from './settings.js';
 
 const rules = DEFAULT_INPUT_SETTINGS.paste;
-const lines = (count: number): string => Array.from({ length: count }, (_, i) => `line ${i}`).join('\n');
+const lines = (count: number): string =>
+  Array.from({ length: count }, (_, i) => `line ${String(i)}`).join('\n');
 
 describe('paste', () => {
   it('turns the line breaks of a terminal into `\\n`', () => {
@@ -43,7 +44,7 @@ describe('paste', () => {
     const options = { homedir: '/home/ana', platform: 'linux' as const };
 
     it('splits words as a shell does', () => {
-      expect(splitShellWords("/a/b.png '/c d/e.png' /f\\ g/h.png \"/i j/k\"")).toEqual([
+      expect(splitShellWords('/a/b.png \'/c d/e.png\' /f\\ g/h.png "/i j/k"')).toEqual([
         '/a/b.png',
         '/c d/e.png',
         '/f g/h.png',

@@ -168,7 +168,6 @@
       "toolFailed": "{{tool}} could not read the clipboard: {{message}}",
       "toolTimeout": "{{tool}} did not answer in {{seconds}} s.",
       "imageTooBig": "The image is larger than the limit of {{limit}} MB (ui.input.image.maxBytes).",
-      "saveFailed": "Could not save the image: {{message}}",
       "editorOff": "The external editor is off (ui.input.editor).",
       "editorMissing": "Set the variable VISUAL or EDITOR to write in an editor.",
       "editorFailed": "The editor could not run: {{message}}",

@@ -68,7 +68,10 @@ describe('the state of the text box', () => {
       const sent = { text: 'hello', drafts: [] };
       const failed = run([{ type: 'submitFailed', message: 'boom', sent }], { from: first.state });
       expect(failed.state.editor.text).toBe('hello');
-      expect(failed.state.status).toEqual({ key: 'input.status.submitFailed', params: { message: 'boom' } });
+      expect(failed.state.status).toEqual({
+        key: 'input.status.submitFailed',
+        params: { message: 'boom' },
+      });
       // The Producer already started something else: it is not overwritten.
       const typing = run([type('new'), { type: 'submitFailed', message: 'boom', sent }], {
         from: first.state,
@@ -157,6 +160,13 @@ describe('the state of the text box', () => {
       expect(r.state.search?.query).toBe('bug');
     });
 
+    it('takes characters that arrive together, as a paste, into the search', () => {
+      const r = run([act('historySearch'), paste('bug')], { from: history });
+      expect(r.state.search?.query).toBe('bug');
+      expect(r.state.editor.text).toBe('fix the bug');
+      expect(r.state.drafts).toEqual([]);
+    });
+
     it('goes to older matches with Ctrl+R again and newer ones with Down', () => {
       let r = run([act('historySearch'), type('deploy')], { from: history });
       expect(r.state.editor.text).toBe('deploy again');
@@ -174,7 +184,9 @@ describe('the state of the text box', () => {
     });
 
     it('brings back what was in the box with Esc', () => {
-      const r = run([type('wip'), act('historySearch'), type('bug'), act('cancel')], { from: history });
+      const r = run([type('wip'), act('historySearch'), type('bug'), act('cancel')], {
+        from: history,
+      });
       expect(r.state.search).toBeUndefined();
       expect(r.state.editor.text).toBe('wip');
     });
@@ -204,7 +216,7 @@ describe('the state of the text box', () => {
     });
 
     it('turns a paste of 2,000 lines into a marker and keeps the whole text in the attachment', () => {
-      const lines = Array.from({ length: 2000 }, (_, i) => `line ${i + 1}`);
+      const lines = Array.from({ length: 2000 }, (_, i) => `line ${String(i + 1)}`);
       const text = lines.join('\n');
       const r = run([type('see: '), paste(text)]);
       expect(r.state.editor.text).toBe('see: [Pasted text #1]');
@@ -259,7 +271,9 @@ describe('the state of the text box', () => {
     });
 
     it('does not look for files with ui.input.dropPaths: text', () => {
-      const r = run([paste('/home/u/a.txt')], { settings: parseInputSettings({ dropPaths: 'text' }) });
+      const r = run([paste('/home/u/a.txt')], {
+        settings: parseInputSettings({ dropPaths: 'text' }),
+      });
       expect(r.effects).toEqual([]);
       expect(r.state.editor.text).toBe('/home/u/a.txt');
     });
@@ -277,7 +291,12 @@ describe('the state of the text box', () => {
     it('attaches the image as a marker with the temporary file', () => {
       const asked = run([act('pasteImage')]);
       const done = run(
-        [{ type: 'imageRead', result: { kind: 'image', path: '/tmp/x/clip.png', mime: 'image/png', tool: 'wl-paste' } }],
+        [
+          {
+            type: 'imageRead',
+            result: { kind: 'image', path: '/tmp/x/clip.png', mime: 'image/png', tool: 'wl-paste' },
+          },
+        ],
         { from: asked.state },
       );
       expect(done.state.busy).toBeUndefined();
@@ -292,10 +311,18 @@ describe('the state of the text box', () => {
     it.each([
       [{ kind: 'no_image', tool: 'wl-paste' }, 'noImage', undefined],
       [{ kind: 'off' }, 'imageOff', undefined],
-      [{ kind: 'tool_missing', tried: ['wl-paste', 'xclip'] }, 'toolMissing', { tools: 'wl-paste, xclip' }],
+      [
+        { kind: 'tool_missing', tried: ['wl-paste', 'xclip'] },
+        'toolMissing',
+        { tools: 'wl-paste, xclip' },
+      ],
       [{ kind: 'timeout', tool: 'xclip', ms: 3000 }, 'toolTimeout', { tool: 'xclip', seconds: 3 }],
       [{ kind: 'too_big', tool: 'xclip', limit: 20 * 1024 * 1024 }, 'imageTooBig', { limit: 20 }],
-      [{ kind: 'failed', tool: 'xclip', message: 'no display' }, 'toolFailed', { tool: 'xclip', message: 'no display' }],
+      [
+        { kind: 'failed', tool: 'xclip', message: 'no display' },
+        'toolFailed',
+        { tool: 'xclip', message: 'no display' },
+      ],
     ] as const)('says what happened when the clipboard gives %j', (result, key, params) => {
       const asked = run([act('pasteImage')]);
       const done = run([{ type: 'imageRead', result }], { from: asked.state });
@@ -310,9 +337,12 @@ describe('the state of the text box', () => {
       const asked = run([type('draft'), act('externalEditor')]);
       expect(asked.effects).toEqual([{ type: 'editExternally', text: 'draft' }]);
       expect(asked.state.busy).toBe('editor');
-      const done = run([{ type: 'editorDone', result: { kind: 'edited', text: 'rewritten\nin vim' } }], {
-        from: asked.state,
-      });
+      const done = run(
+        [{ type: 'editorDone', result: { kind: 'edited', text: 'rewritten\nin vim' } }],
+        {
+          from: asked.state,
+        },
+      );
       expect(done.state.editor.text).toBe('rewritten\nin vim');
       expect(done.state.editor.cursor).toBe('rewritten\nin vim'.length);
       expect(done.state.busy).toBeUndefined();

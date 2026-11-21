@@ -38,7 +38,7 @@ const MARKER_LABELS = { text: 'Pasted text', image: 'Image', file: 'File' } as c
  * `[Image #1]`) and are part of the message the agents read, so they are not translated.
  */
 export function markerFor(kind: AttachmentKind, number: number): string {
-  return `[${MARKER_LABELS[kind]} #${number}]`;
+  return `[${MARKER_LABELS[kind]} #${String(number)}]`;
 }
 
 /** The drafts whose marker is in `text`, in the order they appear. */

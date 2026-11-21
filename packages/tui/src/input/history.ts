@@ -58,7 +58,10 @@ export function historyNewer(
   const index = nav.index + 1;
   const entry = nav.entries[index];
   if (entry === undefined) {
-    return { nav: { ...nav, index: null, draft: null }, entry: nav.draft ?? { text: '', drafts: [] } };
+    return {
+      nav: { ...nav, index: null, draft: null },
+      entry: nav.draft ?? { text: '', drafts: [] },
+    };
   }
   return { nav: { ...nav, index }, entry };
 }
@@ -78,10 +81,7 @@ export function pushEntry(
 // ---- Search (Ctrl+R) -------------------------------------------------------------------------
 
 /** The indices of the entries that have `query`, newest first, a text once (case does not matter). */
-export function searchHistory(
-  entries: readonly HistoryEntry[],
-  query: string,
-): readonly number[] {
+export function searchHistory(entries: readonly HistoryEntry[], query: string): readonly number[] {
   const needle = query.toLowerCase();
   const seen = new Set<string>();
   const found: number[] = [];

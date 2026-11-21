@@ -36,7 +36,10 @@ export function previousBoundary(text: string, index: number): number {
 /** The end of the grapheme that starts at `index`. */
 export function nextBoundary(text: string, index: number): number {
   if (index >= text.length) return text.length;
-  const first = segmenter.segment(text.slice(index, index + WINDOW))[Symbol.iterator]().next();
+  const first = segmenter
+    .segment(text.slice(index, index + WINDOW))
+    [Symbol.iterator]()
+    .next();
   return index + (first.done === true ? 1 : first.value.segment.length);
 }
 
@@ -226,12 +229,7 @@ export function killToLineStart(state: EditorState): EditorState {
 }
 
 export function killWordBackward(state: EditorState, atoms: readonly Atom[] = []): EditorState {
-  return removeRange(
-    state,
-    wordStartBefore(state.text, state.cursor, atoms),
-    state.cursor,
-    true,
-  );
+  return removeRange(state, wordStartBefore(state.text, state.cursor, atoms), state.cursor, true);
 }
 
 export function killWordForward(state: EditorState, atoms: readonly Atom[] = []): EditorState {

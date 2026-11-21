@@ -97,9 +97,7 @@ async function readWithTypes(
   remaining: () => number,
 ): Promise<ToolOutcome> {
   const listArgs =
-    tool === 'wl-paste'
-      ? ['--list-types']
-      : ['-selection', 'clipboard', '-t', 'TARGETS', '-o'];
+    tool === 'wl-paste' ? ['--list-types'] : ['-selection', 'clipboard', '-t', 'TARGETS', '-o'];
   const listed = await io.run(tool, listArgs, { ...options, timeoutMs: remaining() });
   if (listed.kind === 'missing') return { kind: 'skip' };
   if (listed.kind === 'timeout') return { kind: 'timeout', tool, ms: options.timeoutMs };
@@ -131,9 +129,7 @@ async function readToFile(
 ): Promise<ToolOutcome> {
   const path = await io.tempPath('png');
   const [command, args] =
-    tool === 'osascript'
-      ? ['osascript', macScript(path)]
-      : ['powershell', windowsScript(path)];
+    tool === 'osascript' ? ['osascript', macScript(path)] : ['powershell', windowsScript(path)];
   const ran = await io.run(command, args, { ...options, timeoutMs: remaining() });
   if (ran.kind === 'missing') return { kind: 'skip' };
   if (ran.kind === 'timeout') return { kind: 'timeout', tool, ms: options.timeoutMs };
@@ -207,7 +203,9 @@ export async function readClipboardImage(
 }
 
 export function errorMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).split('\n')[0]?.slice(0, 200) ?? '';
+  return (
+    (error instanceof Error ? error.message : String(error)).split('\n')[0]?.slice(0, 200) ?? ''
+  );
 }
 
 // ---- The real machine --------------------------------------------------------------------------

@@ -9,7 +9,11 @@ import {
   type AttachmentDraft,
 } from './attachments.js';
 
-function draft(kind: AttachmentDraft['kind'], number: number, body: AddAttachmentBody): AttachmentDraft {
+function draft(
+  kind: AttachmentDraft['kind'],
+  number: number,
+  body: AddAttachmentBody,
+): AttachmentDraft {
   return { marker: markerFor(kind, number), number, kind, body };
 }
 
@@ -44,7 +48,7 @@ describe('the attachments of the message', () => {
       { text: `${a.marker} then ${b.marker} and again ${a.marker}`, attachments: [a, b] },
       (body) => {
         uploaded.push(body);
-        return Promise.resolve({ id: `A${uploaded.length + 6}` });
+        return Promise.resolve({ id: `A${String(uploaded.length + 6)}` });
       },
     );
     expect(uploaded).toEqual([a.body, b.body]);

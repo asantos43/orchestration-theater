@@ -98,7 +98,11 @@ export type BoxEvent =
   | { readonly type: 'paste'; readonly text: string }
   | { readonly type: 'imageRead'; readonly result: ClipboardImageResult }
   /** The answer of `resolvePaths`: `files` is set when every path is a file that exists. */
-  | { readonly type: 'pathsResolved'; readonly raw: string; readonly files: readonly string[] | undefined }
+  | {
+      readonly type: 'pathsResolved';
+      readonly raw: string;
+      readonly files: readonly string[] | undefined;
+    }
   | {
       readonly type: 'editorDone';
       readonly result:
@@ -185,7 +189,11 @@ function showMatch(state: BoxState, search: Omit<SearchState, 'matches'>): BoxSt
     const { original } = search;
     return {
       ...base,
-      editor: { ...createEditor(original.text), cursor: original.cursor, killed: state.editor.killed },
+      editor: {
+        ...createEditor(original.text),
+        cursor: original.cursor,
+        killed: state.editor.killed,
+      },
       drafts: original.drafts,
     };
   }
@@ -223,14 +231,19 @@ function cancelSearch(state: BoxState): BoxState {
   return {
     ...state,
     search: undefined,
-    editor: { ...createEditor(original.text), cursor: original.cursor, killed: state.editor.killed },
+    editor: {
+      ...createEditor(original.text),
+      cursor: original.cursor,
+      killed: state.editor.killed,
+    },
     drafts: original.drafts,
   };
 }
 
 function reduceSearch(state: BoxState, search: SearchState, event: BoxEvent): BoxStep | undefined {
-  if (event.type === 'text') {
-    const query = search.query + event.value.replace(/[\r\n]+/g, ' ');
+  if (event.type === 'text' || event.type === 'paste') {
+    const typed = event.type === 'text' ? event.value : event.text;
+    const query = search.query + typed.replace(/[\r\n]+/g, ' ');
     return step(showMatch(state, { ...search, query, position: 0 }));
   }
   if (event.type !== 'action') return undefined;
@@ -275,7 +288,7 @@ function pasteText(state: BoxState, raw: string, ctx: BoxContext): BoxState {
   const text = normalizeNewlines(raw);
   if (classifyPaste(text, ctx.settings.paste) === 'marker') {
     const number = nextMarkerNumber(state.sequence, state.drafts);
-    return attach(state, 'text', { text, name: `pasted-text-${number}.txt` }).state;
+    return attach(state, 'text', { text, name: `pasted-text-${String(number)}.txt` }).state;
   }
   return withEditor(state, insert(state.editor, sanitizeForBox(text)));
 }
@@ -403,7 +416,8 @@ function reducePaste(state: BoxState, raw: string, ctx: BoxContext): BoxStep {
 export function reduceBox(state: BoxState, event: BoxEvent, ctx: BoxContext): BoxStep {
   // Results that come from outside do not clear the status; what the Producer does does.
   const fromProducer = event.type === 'action' || event.type === 'text' || event.type === 'paste';
-  let current = fromProducer && state.status !== undefined ? { ...state, status: undefined } : state;
+  let current =
+    fromProducer && state.status !== undefined ? { ...state, status: undefined } : state;
 
   if (fromProducer && current.search !== undefined) {
     const handled = reduceSearch(current, current.search, event);
@@ -442,7 +456,10 @@ export function reduceBox(state: BoxState, event: BoxEvent, ctx: BoxContext): Bo
       const { result } = event;
       switch (result.kind) {
         case 'edited':
-          return step({ ...free, editor: { ...createEditor(result.text), killed: free.editor.killed } });
+          return step({
+            ...free,
+            editor: { ...createEditor(result.text), killed: free.editor.killed },
+          });
         case 'off':
           return step(say(free, 'editorOff'));
         case 'missing':
@@ -456,7 +473,10 @@ export function reduceBox(state: BoxState, event: BoxEvent, ctx: BoxContext): Bo
       // What was sent before the file was read goes after what was already saved.
       const loaded = event.texts.map((text): HistoryEntry => ({ text, drafts: [] }));
       const nav = { ...current.nav, entries: [...loaded, ...current.nav.entries] };
-      return step({ ...current, nav: { ...nav, index: nav.index === null ? null : nav.index + loaded.length } });
+      return step({
+        ...current,
+        nav: { ...nav, index: nav.index === null ? null : nav.index + loaded.length },
+      });
     }
     case 'historyFailed':
       return step(say(current, 'historyFailed', { message: event.message }));

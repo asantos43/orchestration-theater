@@ -98,7 +98,14 @@ export const UI_EDITOR_MODES = ['auto', 'off'] as const;
  * The tool Ctrl+V reads an image with. `auto` picks by the system (`wl-paste` or `xclip` on Linux,
  * `osascript` on macOS, PowerShell on Windows); `off` turns the image paste off.
  */
-export const UI_IMAGE_TOOLS = ['auto', 'wl-paste', 'xclip', 'osascript', 'powershell', 'off'] as const;
+export const UI_IMAGE_TOOLS = [
+  'auto',
+  'wl-paste',
+  'xclip',
+  'osascript',
+  'powershell',
+  'off',
+] as const;
 
 export type UiImageTool = (typeof UI_IMAGE_TOOLS)[number];
 
@@ -135,7 +142,10 @@ export const UiInputConfigSchema = z.strictObject({
     .strictObject({
       tool: z.enum(UI_IMAGE_TOOLS).default('auto'),
       timeoutMs: z.int().min(100).max(60_000).default(3000),
-      maxBytes: z.int().min(1).default(20 * 1024 * 1024),
+      maxBytes: z
+        .int()
+        .min(1)
+        .default(20 * 1024 * 1024),
     })
     .prefault({}),
 });

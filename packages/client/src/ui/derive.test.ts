@@ -55,7 +55,13 @@ describe('palette, help and bar are derived from the registry and the keymap', (
 
   it('groups the help by the order of the groups and keeps the entries with no key', () => {
     const help = deriveHelp(DEFAULT_UI_REGISTRY, keymapOf('linux', { 'layout.togglePanel': [] }));
-    expect(help.map((group) => group.id)).toEqual(['layout', 'tabs', 'decision', 'input', 'general']);
+    expect(help.map((group) => group.id)).toEqual([
+      'layout',
+      'tabs',
+      'decision',
+      'input',
+      'general',
+    ]);
     const layout = help.find((group) => group.id === 'layout');
     expect(layout?.rows.find((row) => row.id === 'layout.togglePanel')?.keys).toEqual([]);
     expect(help.find((group) => group.id === 'tabs')?.rows.map((row) => row.id)).toContain(

@@ -23,20 +23,20 @@ describe('navigation of the history', () => {
     const nav = createHistoryNav(list('one', 'two', 'three'));
     const first = historyOlder(nav, entry('draft'));
     expect(first?.entry.text).toBe('three');
-    const second = historyOlder(first!.nav, entry('three'));
+    const second = historyOlder(first?.nav ?? nav, entry('three'));
     expect(second?.entry.text).toBe('two');
-    const back = historyNewer(second!.nav);
+    const back = historyNewer(second?.nav ?? nav);
     expect(back?.entry.text).toBe('three');
-    const end = historyNewer(back!.nav);
+    const end = historyNewer(back?.nav ?? nav);
     expect(end?.entry.text).toBe('draft');
     expect(end?.nav.index).toBeNull();
-    expect(historyNewer(end!.nav)).toBeUndefined();
+    expect(historyNewer(end?.nav ?? nav)).toBeUndefined();
   });
 
   it('stops at the oldest message and has nowhere to go with an empty history', () => {
     let nav = createHistoryNav(list('only'));
     const step = historyOlder(nav, entry(''));
-    nav = step!.nav;
+    nav = step?.nav ?? nav;
     expect(historyOlder(nav, entry('only'))).toBeUndefined();
     expect(historyOlder(createHistoryNav(), entry('x'))).toBeUndefined();
   });

@@ -28,7 +28,11 @@ interface Call {
 /** A clipboard that answers from `answers` (by command and first argument); nothing real runs. */
 function fakeIo(
   answers: (call: Call) => RunResult,
-  options: { platform?: NodeJS.Platform; env?: Record<string, string>; sizes?: Record<string, number> } = {},
+  options: {
+    platform?: NodeJS.Platform;
+    env?: Record<string, string>;
+    sizes?: Record<string, number>;
+  } = {},
 ): { io: ClipboardIo; calls: Call[]; written: Map<string, Buffer> } {
   const calls: Call[] = [];
   const written = new Map<string, Buffer>();
@@ -64,7 +68,10 @@ describe('the image of the clipboard', () => {
 
   it('chooses the tools by the system and by the setting', () => {
     const linux = (env: Record<string, string>) => ({ platform: 'linux' as const, env });
-    expect(toolsFor('auto', linux({ WAYLAND_DISPLAY: 'wayland-0' }))).toEqual(['wl-paste', 'xclip']);
+    expect(toolsFor('auto', linux({ WAYLAND_DISPLAY: 'wayland-0' }))).toEqual([
+      'wl-paste',
+      'xclip',
+    ]);
     expect(toolsFor('auto', linux({}))).toEqual(['xclip', 'wl-paste']);
     expect(toolsFor('auto', { platform: 'darwin', env: {} })).toEqual(['osascript']);
     expect(toolsFor('auto', { platform: 'win32', env: {} })).toEqual(['powershell']);
@@ -92,10 +99,13 @@ describe('the image of the clipboard', () => {
   });
 
   it('reads with xclip when wl-paste is not installed', async () => {
-    const { io } = fakeIo(({ command, args }) => {
-      if (command === 'wl-paste') return { kind: 'missing' };
-      return args.includes('TARGETS') ? ok('TARGETS\nimage/jpeg\n') : ok(PNG);
-    }, { env: { WAYLAND_DISPLAY: 'wayland-0' } });
+    const { io } = fakeIo(
+      ({ command, args }) => {
+        if (command === 'wl-paste') return { kind: 'missing' };
+        return args.includes('TARGETS') ? ok('TARGETS\nimage/jpeg\n') : ok(PNG);
+      },
+      { env: { WAYLAND_DISPLAY: 'wayland-0' } },
+    );
     const result = await readClipboardImage(settings, io);
     expect(result).toMatchObject({ kind: 'image', mime: 'image/jpeg', tool: 'xclip' });
     expect((result as { path: string }).path.endsWith('.jpg')).toBe(true);
@@ -194,7 +204,9 @@ describe('the real runner of tools (local processes only)', () => {
   });
 
   it('says a command is not installed', async () => {
-    expect(await runTool('ot-tool-that-is-not-installed', [], options)).toEqual({ kind: 'missing' });
+    expect(await runTool('ot-tool-that-is-not-installed', [], options)).toEqual({
+      kind: 'missing',
+    });
   });
 
   it('reports the failure with what the tool said', async () => {

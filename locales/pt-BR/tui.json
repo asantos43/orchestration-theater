@@ -168,7 +168,6 @@
       "toolFailed": "{{tool}} não conseguiu ler a área de transferência: {{message}}",
       "toolTimeout": "{{tool}} não respondeu em {{seconds}} s.",
       "imageTooBig": "A imagem passa do limite de {{limit}} MB (ui.input.image.maxBytes).",
-      "saveFailed": "Não foi possível salvar a imagem: {{message}}",
       "editorOff": "O editor externo está desligado (ui.input.editor).",
       "editorMissing": "Defina a variável VISUAL ou EDITOR para escrever num editor.",
       "editorFailed": "Não foi possível executar o editor: {{message}}",
