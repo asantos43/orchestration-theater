@@ -18,7 +18,9 @@ export type UiSurface = (typeof UI_SURFACES)[number];
  * (N35): they are the editing keys, and they may repeat a key of `decision`, which never has the
  * focus at the same time. The terminal adds one context for each area that can have the focus
  * (`chat`, `edge` for the border of the chat, `sidebar`, `panel`) and one for the palette and the
- * help (`overlay`): their arrows and Enter never collide with another area's. Each tab of the
+ * help (`overlay`): their arrows and Enter never collide with another area's. The setup assistant
+ * (P17) is a screen of its own and not an area of the layout: its context `setup` is alive only
+ * while that screen is open, and meets `global` and nothing else. Each tab of the
  * panel has a context of its own as well ({@link UI_TAB_CONTEXTS}), alive while the panel has the
  * focus and that tab is the open one.
  */
@@ -41,6 +43,7 @@ export const UI_CONTEXTS = [
   'sidebar',
   'panel',
   'overlay',
+  'setup',
   ...UI_TAB_CONTEXTS,
 ] as const;
 export type UiContext = (typeof UI_CONTEXTS)[number];

@@ -6,7 +6,8 @@
     "general": "General",
     "navigation": "Navigation",
     "input": "Text box",
-    "settings": "Settings"
+    "settings": "Settings",
+    "setup": "Setup assistant"
   },
   "tabs": {
     "overview": "Overview",
@@ -109,7 +110,10 @@
       "remove": "Remove the account",
       "edit": "Change the value or the rule",
       "unset": "Take the key out (back to the default)",
-      "scope": "Switch between the global and the project scope"
+      "scope": "Switch between the global and the project scope",
+      "assistantAccount": "Bring an account into the roles (setup assistant)",
+      "assistantPreset": "Change the preset (setup assistant)",
+      "assistantFirstRun": "Run the first-run assistant (resumes it if it was left midway)"
     },
     "overview": {
       "pausePlay": "Pause the play of the scenario (Overview tab)",
@@ -138,6 +142,20 @@
       "revoke": "Revoke the selected order",
       "previous": "Select the previous order",
       "next": "Select the next order"
+    },
+    "setup": {
+      "advance": "Answer the step and continue (confirm at the review)",
+      "back": "Back one step (leave the assistant at the first one)",
+      "itemPrev": "Previous item",
+      "itemNext": "Next item",
+      "toggle": "Take the account in or out",
+      "moveUp": "Move the account up (more priority)",
+      "moveDown": "Move the account down (less priority)",
+      "add": "Add an Executor",
+      "edit": "Edit the spending cap",
+      "remove": "Remove the Executor",
+      "reload": "Read the step again",
+      "cancel": "Cancel the run (nothing is written)"
     }
   },
   "bar": {
@@ -175,6 +193,14 @@
     },
     "overlay": {
       "close": "Close"
+    },
+    "setup": {
+      "advance": "Continue",
+      "back": "Back",
+      "toggle": "Pick",
+      "add": "Add",
+      "edit": "Cap",
+      "cancel": "Cancel run"
     }
   },
   "keymap": {
@@ -638,7 +664,8 @@
       "badDuration": "{{key}} takes a duration such as 30m, 2h or 45s.",
       "badAdd": "Write <client> <name> <token_plan|api> <provider>.",
       "nothing": "Nothing under the cursor.",
-      "noLogin": "Only a subscription account signs in."
+      "noLogin": "Only a subscription account signs in.",
+      "noAssistant": "The assistant needs the daemon."
     }
   },
   "overview": {
@@ -930,5 +957,102 @@
       "alreadyRevoked": "The order is already revoked.",
       "noScenario": "There is no scenario to suspend the order in."
     }
+  },
+  "setup": {
+    "title": {
+      "first_run": "Setup assistant: first run",
+      "add_account": "Setup assistant: add an account",
+      "change_preset": "Setup assistant: change the preset"
+    },
+    "stepOf": "Step {{n}} of {{total}}",
+    "step": {
+      "detect": "Accounts",
+      "account": "Account",
+      "preset": "Preset",
+      "executors": "Executors",
+      "review": "Review"
+    },
+    "loading": "Reading the assistant...",
+    "loadFailed": "Could not open the assistant: {{message}}",
+    "loadRetry": "{{key}} tries again, {{back}} leaves.",
+    "busy": "Working...",
+    "resumed": "Resuming the run you left midway, at the step {{step}}.",
+    "refused": "Refused by the daemon: {{message}}",
+    "leaveHint": "{{key}} leaves; the run stays saved and resumes next time.",
+    "hint": {
+      "detect": "Pick the accounts that take part and put them in priority order.",
+      "account": "Pick the account to bring into the roles.",
+      "preset": "Pick the preset of the roles.",
+      "executors": "Register Executors by API or local model and set the spending cap of each API account.",
+      "review": "This is what will be written. Nothing is written before you confirm."
+    },
+    "detect": {
+      "clients": "Clients on this machine: {{list}}",
+      "installed": "{{client}} (installed)",
+      "missing": "{{client}} (not found)",
+      "none": "No account yet. Add one in the Settings tab, then run the assistant again.",
+      "usable": "usable",
+      "unusable": "not usable",
+      "order": "{{n}}. "
+    },
+    "preset": {
+      "current": "in use",
+      "name": {
+        "quality": "quality: the best Executor first",
+        "balanced": "balanced: quality where it counts, economy elsewhere",
+        "economical": "economical: the cheapest Executor first"
+      }
+    },
+    "executors": {
+      "listTitle": "Executors to register",
+      "none": "None. Enter continues without one.",
+      "row": "{{profile}}  {{model}}",
+      "rowEffort": "{{profile}}  {{model}}  effort {{effort}}",
+      "budgetTitle": "Spending caps of the API accounts",
+      "noApi": "No API account with a key in the vault.",
+      "budgetRow": "{{profile}}  day {{daily}}  month {{monthly}}",
+      "budgetSuggested": "{{profile}}  suggested: day {{daily}}, month {{monthly}}",
+      "noCap": "no cap",
+      "usd": "USD {{value}}"
+    },
+    "prompt": {
+      "executor": "Executor as: <account> <model> [effort]",
+      "budget": "Cap of {{profile}} as: <day> <month> in USD, or - for no cap",
+      "hintEnter": "Enter confirms, Esc cancels",
+      "confirmCancel": "Cancel this run? Nothing was written. y/n",
+      "hintConfirm": "y confirms, any other key cancels",
+      "yes": "y",
+      "badExecutor": "Write <account> <model> [effort].",
+      "badBudget": "Write <day> <month>: numbers above zero, or - for no cap."
+    },
+    "review": {
+      "preset": "Preset: {{preset}}",
+      "presetKept": "Preset: kept as it is",
+      "roles": "Roles after the confirmation",
+      "role": "{{role}}: {{executors}}  (when exhausted: {{rule}})",
+      "noExecutors": "no Executor",
+      "executors": "Executors to register",
+      "executor": "{{id}}  {{model}}  {{provider}}  ({{source}})",
+      "budgets": "Spending caps",
+      "budget": "{{profile}}  day {{daily}}  month {{monthly}}",
+      "writes": "Keys written to the configuration",
+      "notes": "Notes",
+      "info": "info",
+      "warning": "warning",
+      "none": "none"
+    },
+    "source": {
+      "discovered": "found",
+      "registered": "registered"
+    },
+    "done": {
+      "confirmed": "Done. The configuration was written.",
+      "preset": "Preset: {{preset}}",
+      "executors": "Executors registered: {{list}}",
+      "written": "Keys written: {{list}}",
+      "cancelled": "Run cancelled. Nothing was written.",
+      "close": "{{key}} closes the assistant."
+    },
+    "gateFailed": "Could not check whether the first run is needed: {{message}}"
   }
 }

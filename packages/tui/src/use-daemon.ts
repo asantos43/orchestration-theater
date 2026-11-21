@@ -23,6 +23,8 @@ export type DaemonView =
 export interface UseDaemonOptions {
   /** Called with `ui` read from the daemon each time it is live (the first time and after a reconnection). */
   readonly onSettings?: ((settings: UiSettings) => void) | undefined;
+  /** Called when that read fails: whoever waits for the settings (the gate of P17) stops waiting. */
+  readonly onSettingsFailed?: (() => void) | undefined;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface UseDaemonOptions {
  */
 export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions = {}): DaemonView {
   const [view, setView] = useState<DaemonView>({ kind: 'connecting' });
-  const { onSettings } = options;
+  const { onSettings, onSettingsFailed } = options;
 
   useEffect(() => {
     const life = { cancelled: false };
@@ -66,7 +68,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
         layout,
       });
       let wasLive = false;
-      unsubscribe = live.stores.status.subscribe((sync) => {
+      const check = (sync: { readonly phase: string; readonly connection: string }): void => {
         const isLive = sync.phase === 'live' && sync.connection === 'open';
         if (isLive && !wasLive && onSettings !== undefined) {
           live
@@ -74,10 +76,15 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
             .then((settings) => {
               if (!life.cancelled) onSettings(settings);
             })
-            .catch(() => undefined);
+            .catch(() => {
+              if (!life.cancelled) onSettingsFailed?.();
+            });
         }
         wasLive = isLive;
-      });
+      };
+      unsubscribe = live.stores.status.subscribe(check);
+      // A store that is live already (a reconnection, a fake) does not notify: look at it once.
+      check(live.stores.status.getState());
       live.stores.start().catch(() => undefined);
     })();
 
@@ -86,7 +93,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
       unsubscribe?.();
       daemon?.close();
     };
-  }, [connector, onSettings]);
+  }, [connector, onSettings, onSettingsFailed]);
 
   return view;
 }

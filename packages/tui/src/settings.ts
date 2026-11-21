@@ -118,6 +118,15 @@ export interface UiTuiMouseSettings {
   readonly copyMaxBytes: number;
 }
 
+export const SETUP_OPEN_MODES = ['auto', 'never'] as const;
+export type SetupOpenMode = (typeof SETUP_OPEN_MODES)[number];
+
+/** `ui.setup` (P17): whether the first run opens the assistant, and how long the TUI waits to know. */
+export interface UiSetupSettings {
+  readonly open: SetupOpenMode;
+  readonly readTimeoutMs: number;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -135,6 +144,7 @@ export interface UiSettings {
   /** `ui.clipboard.copy` (N36). */
   readonly clipboardCopy: ClipboardCopyMode;
   readonly tuiMouse: UiTuiMouseSettings;
+  readonly setup: UiSetupSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -185,6 +195,8 @@ export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
   copyMaxBytes: 100_000,
 };
 
+export const DEFAULT_SETUP: UiSetupSettings = { open: 'auto', readTimeoutMs: 5000 };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -199,6 +211,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   mouse: 'full',
   clipboardCopy: 'osc52',
   tuiMouse: DEFAULT_TUI_MOUSE,
+  setup: DEFAULT_SETUP,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -257,6 +270,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const chat = record(field(source, 'chat'));
   const clipboard = record(field(source, 'clipboard'));
   const tuiMouse = record(field(source, 'tuiMouse'));
+  const setup = record(field(source, 'setup'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -358,6 +372,15 @@ export function parseUiSettings(ui: unknown): UiSettings {
         1,
         10_000_000,
         DEFAULT_TUI_MOUSE.copyMaxBytes,
+      ),
+    },
+    setup: {
+      open: oneOf(field(setup, 'open'), SETUP_OPEN_MODES, DEFAULT_SETUP.open),
+      readTimeoutMs: integer(
+        field(setup, 'readTimeoutMs'),
+        100,
+        60_000,
+        DEFAULT_SETUP.readTimeoutMs,
       ),
     },
   };
