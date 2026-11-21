@@ -7,7 +7,10 @@ import {
   routePath,
   type AnyApiRoute,
   type ApiStatus,
+  type CreateOrderBody,
   type DaemonId,
+  type ExtendOrderBody,
+  type OrderValidity,
   type RouteBody,
   type RouteParams,
   type RouteQuery,
@@ -241,6 +244,73 @@ export class ApiClient {
   ): Promise<RouteResponse<typeof API_ROUTES.cancelAttempt>> {
     return this.call(API_ROUTES.cancelAttempt, {
       params: { attemptId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  // ---- orders (Phase 7, P15) ----
+
+  /** `POST /v1/orders`: gives an order (an instruction, a rule or a suspension). */
+  createOrder(
+    body: CreateOrderBody,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.createOrder>> {
+    return this.call(API_ROUTES.createOrder, {
+      body,
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/orders/:orderId/extend`: changes the validity (`for` counts from the current end). */
+  extendOrder(
+    orderId: string,
+    validity: ExtendOrderBody['validity'],
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.extendOrder>> {
+    return this.call(API_ROUTES.extendOrder, {
+      params: { orderId },
+      body: { validity },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /**
+   * `POST /v1/orders/:orderId/suspend`: gives a local suspension that takes a global order out of
+   * one scenario. The order itself is not touched.
+   */
+  suspendOrder(
+    orderId: string,
+    body: {
+      readonly scenarioId: string;
+      readonly text?: string | undefined;
+      readonly validity?: OrderValidity | undefined;
+    },
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.suspendOrder>> {
+    return this.call(API_ROUTES.suspendOrder, {
+      params: { orderId },
+      body: {
+        scenarioId: body.scenarioId,
+        ...(body.text === undefined ? {} : { text: body.text }),
+        ...(body.validity === undefined ? {} : { validity: body.validity }),
+      },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/orders/:orderId/revoke`: ends the order for good, with the reason. */
+  revokeOrder(
+    orderId: string,
+    reason: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.revokeOrder>> {
+    return this.call(API_ROUTES.revokeOrder, {
+      params: { orderId },
+      body: { reason },
       ...commandHeaders(options),
       ...callControlOf(options),
     });

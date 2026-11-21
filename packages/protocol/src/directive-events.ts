@@ -4,6 +4,7 @@ import {
   DIRECTIVE_ORIGINS,
   DIRECTIVE_SCOPES,
   DIRECTIVE_STATES,
+  DirectiveRecordSchema,
 } from '@otheater/core';
 import { z } from 'zod';
 
@@ -33,6 +34,12 @@ export const DirectiveCreatedPayloadSchema = z.strictObject({
   ruleKey: z.string().min(1).nullable(),
   suspendsId: directiveId.nullable(),
   replacesId: directiveId.nullable(),
+  /**
+   * [proposta] The whole record of the new order (text, rule value and dates), so a client builds
+   * its list from the events alone, with no read per event (N173, like `demand.transitioned` and
+   * `decision.created`). Optional: an older log has none, and the client then reads the order.
+   */
+  order: DirectiveRecordSchema.optional(),
 });
 
 /**

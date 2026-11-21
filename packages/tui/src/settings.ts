@@ -80,6 +80,16 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
 }
 
+export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
+export type TrajectoryOpenMode = (typeof TRAJECTORY_OPEN_MODES)[number];
+
+/** `ui.trajectories` (P14): which steps of the Trajectories tab start open, how much it keeps and shows of a diff. */
+export interface UiTrajectoriesSettings {
+  readonly open: TrajectoryOpenMode;
+  readonly keep: number;
+  readonly diffLines: number;
+}
+
 export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
 export type ChatQueueMode = (typeof CHAT_QUEUE_MODES)[number];
 export const CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
@@ -114,6 +124,7 @@ export interface UiSettings {
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  readonly trajectories: UiTrajectoriesSettings;
   readonly chat: UiChatSettings;
   /** `ui.input`: the text box (P10). */
   readonly input: InputSettings;
@@ -156,6 +167,12 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   scrollStep: 'half',
 };
 
+export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
+  open: 'last',
+  keep: 5000,
+  diffLines: 200,
+};
+
 export const DEFAULT_CHAT: UiChatSettings = {
   queue: 'daemon',
   suggestions: 6,
@@ -174,6 +191,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  trajectories: DEFAULT_TRAJECTORIES,
   chat: DEFAULT_CHAT,
   input: DEFAULT_INPUT_SETTINGS,
   overview: DEFAULT_OVERVIEW_SETTINGS,
@@ -235,6 +253,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
+  const trajectories = record(field(source, 'trajectories'));
   const chat = record(field(source, 'chat'));
   const clipboard = record(field(source, 'clipboard'));
   const tuiMouse = record(field(source, 'tuiMouse'));
@@ -301,6 +320,16 @@ export function parseUiSettings(ui: unknown): UiSettings {
         field(tuiLayout, 'scrollStep'),
         SCROLL_STEPS,
         DEFAULT_TUI_LAYOUT.scrollStep,
+      ),
+    },
+    trajectories: {
+      open: oneOf(field(trajectories, 'open'), TRAJECTORY_OPEN_MODES, DEFAULT_TRAJECTORIES.open),
+      keep: integer(field(trajectories, 'keep'), 100, 100_000, DEFAULT_TRAJECTORIES.keep),
+      diffLines: integer(
+        field(trajectories, 'diff_lines'),
+        10,
+        10_000,
+        DEFAULT_TRAJECTORIES.diffLines,
       ),
     },
     chat: {

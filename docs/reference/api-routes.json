@@ -1152,14 +1152,18 @@
       "method": "PUT",
       "path": "/v1/config",
       "kind": "json",
-      "summary": "Edits keys of the configuration file with the validation of a start; applies on restart",
+      "summary": "Edits keys of the configuration file with the validation of a start; ui, chat, limits and roles apply at once, the rest on restart",
       "pathParams": [],
       "response": {
         "type": "object",
         "properties": {
           "appliesOn": {
             "type": "string",
-            "const": "restart"
+            "enum": [
+              "hot",
+              "restart",
+              "mixed"
+            ]
           },
           "set": {
             "type": "array",
@@ -1172,12 +1176,26 @@
             "items": {
               "type": "string"
             }
+          },
+          "hot": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restart": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "appliesOn",
           "set",
-          "removed"
+          "removed",
+          "hot",
+          "restart"
         ],
         "additionalProperties": false
       },
@@ -6311,6 +6329,115 @@
       }
     },
     {
+      "id": "getDemandDiff",
+      "method": "GET",
+      "path": "/v1/plays/:playId/demands/:demandId/diff",
+      "kind": "json",
+      "summary": "The diff of the latest attempt of a demand against the branch of its play",
+      "pathParams": [
+        "playId",
+        "demandId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "demandId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_vcs",
+                  "no_attempt",
+                  "no_branch"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diff": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "playId",
+          "demandId",
+          "attemptId",
+          "available",
+          "unavailable",
+          "diff",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "demandId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId",
+          "demandId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "pausePlay",
       "method": "POST",
       "path": "/v1/plays/:playId/pause",
@@ -6654,6 +6781,181 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listPlayTrajectory",
+      "method": "GET",
+      "path": "/v1/plays/:playId/trajectory",
+      "kind": "json",
+      "summary": "The events a play trajectory is built from (sessions, turns, tools, permissions, attempts), oldest first, by cursor",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+                },
+                "schemaVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "payload": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "scenarioId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "playId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "attemptId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "timestamp": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "type",
+                "schemaVersion",
+                "payload",
+                "id",
+                "timestamp"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
           }
         },
         "additionalProperties": false
