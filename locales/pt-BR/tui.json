@@ -3,7 +3,8 @@
     "layout": "Layout",
     "tabs": "Abas",
     "decision": "Decisões",
-    "general": "Geral"
+    "general": "Geral",
+    "navigation": "Navegação"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -37,6 +38,35 @@
     },
     "app": {
       "quit": "Sair"
+    },
+    "chat": {
+      "scrollUp": "Rolar o chat para cima",
+      "scrollDown": "Rolar o chat para baixo",
+      "scrollTop": "Ir ao início do chat",
+      "scrollBottom": "Ir ao fim do chat"
+    },
+    "edge": {
+      "narrow": "Estreitar o chat (borda com o foco)",
+      "widen": "Alargar o chat (borda com o foco)"
+    },
+    "sidebar": {
+      "up": "Subir na barra lateral",
+      "down": "Descer na barra lateral",
+      "activate": "Abrir o cenário ou recolher a seção"
+    },
+    "panel": {
+      "prevTab": "Ir para a aba anterior",
+      "nextTab": "Ir para a próxima aba",
+      "up": "Subir na aba",
+      "down": "Descer na aba",
+      "pageUp": "Rolar a aba para cima",
+      "pageDown": "Rolar a aba para baixo",
+      "activate": "Recolher ou expandir a seção"
+    },
+    "overlay": {
+      "close": "Fechar a paleta ou a ajuda",
+      "pageUp": "Rolar a ajuda para cima",
+      "pageDown": "Rolar a ajuda para baixo"
     }
   },
   "bar": {
@@ -57,6 +87,22 @@
     },
     "app": {
       "quit": "Sair"
+    },
+    "chat": {
+      "scroll": "Rolar"
+    },
+    "edge": {
+      "resize": "Largura"
+    },
+    "sidebar": {
+      "activate": "Abrir"
+    },
+    "panel": {
+      "tabs": "Abas",
+      "activate": "Recolher"
+    },
+    "overlay": {
+      "close": "Fechar"
     }
   },
   "keymap": {

@@ -55,7 +55,7 @@ describe('palette, help and bar are derived from the registry and the keymap', (
 
   it('groups the help by the order of the groups and keeps the entries with no key', () => {
     const help = deriveHelp(DEFAULT_UI_REGISTRY, keymapOf('linux', { 'layout.togglePanel': [] }));
-    expect(help.map((group) => group.id)).toEqual(['layout', 'tabs', 'decision', 'general']);
+    expect(help.map((group) => group.id)).toEqual(['layout', 'tabs', 'navigation', 'decision', 'general']);
     const layout = help.find((group) => group.id === 'layout');
     expect(layout?.rows.find((row) => row.id === 'layout.togglePanel')?.keys).toEqual([]);
     expect(help.find((group) => group.id === 'tabs')?.rows.map((row) => row.id)).toContain(
@@ -78,6 +78,10 @@ describe('palette, help and bar are derived from the registry and the keymap', (
     expect(global[5]?.label).toBe('Alt+K');
     const decision = deriveShortcutBar(DEFAULT_UI_REGISTRY, keymap, ['global', 'decision']);
     expect(decision.map((item) => item.id)).toContain('decision.answer');
+    // the keys of the area that has the focus join the bar, and only while it has it
+    const sidebar = deriveShortcutBar(DEFAULT_UI_REGISTRY, keymap, ['global', 'sidebar']);
+    expect(sidebar.map((item) => item.id)).toContain('sidebar.activate');
+    expect(global.map((item) => item.id)).not.toContain('sidebar.activate');
     // an action with its shortcut taken away leaves the bar
     const without = deriveShortcutBar(DEFAULT_UI_REGISTRY, keymapOf('linux', { 'app.quit': [] }));
     expect(without.map((item) => item.id)).not.toContain('app.quit');

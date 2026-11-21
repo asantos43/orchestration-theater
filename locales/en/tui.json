@@ -3,7 +3,8 @@
     "layout": "Layout",
     "tabs": "Tabs",
     "decision": "Decisions",
-    "general": "General"
+    "general": "General",
+    "navigation": "Navigation"
   },
   "tabs": {
     "overview": "Overview",
@@ -37,6 +38,35 @@
     },
     "app": {
       "quit": "Quit"
+    },
+    "chat": {
+      "scrollUp": "Scroll the chat up",
+      "scrollDown": "Scroll the chat down",
+      "scrollTop": "Go to the start of the chat",
+      "scrollBottom": "Go to the end of the chat"
+    },
+    "edge": {
+      "narrow": "Make the chat narrower (border focused)",
+      "widen": "Make the chat wider (border focused)"
+    },
+    "sidebar": {
+      "up": "Move up in the side bar",
+      "down": "Move down in the side bar",
+      "activate": "Open the scenario or fold the section"
+    },
+    "panel": {
+      "prevTab": "Go to the previous tab",
+      "nextTab": "Go to the next tab",
+      "up": "Move up in the tab",
+      "down": "Move down in the tab",
+      "pageUp": "Scroll the tab up",
+      "pageDown": "Scroll the tab down",
+      "activate": "Fold or unfold the section"
+    },
+    "overlay": {
+      "close": "Close the palette or the help",
+      "pageUp": "Scroll the help up",
+      "pageDown": "Scroll the help down"
     }
   },
   "bar": {
@@ -57,6 +87,22 @@
     },
     "app": {
       "quit": "Quit"
+    },
+    "chat": {
+      "scroll": "Scroll"
+    },
+    "edge": {
+      "resize": "Width"
+    },
+    "sidebar": {
+      "activate": "Open"
+    },
+    "panel": {
+      "tabs": "Tabs",
+      "activate": "Fold"
+    },
+    "overlay": {
+      "close": "Close"
     }
   },
   "keymap": {

@@ -14,9 +14,19 @@ export type UiSurface = (typeof UI_SURFACES)[number];
 /**
  * When the keys of an entry are alive. `global` keys work everywhere; `decision` keys work only
  * while a pending decision of the Director has the focus (5.3), so `Enter` there does not collide
- * with the text box.
+ * with the text box. The terminal adds one context for each area that can have the focus
+ * (`chat`, `edge` for the border of the chat, `sidebar`, `panel`) and one for the palette and the
+ * help (`overlay`): their arrows and Enter never collide with another area's.
  */
-export const UI_CONTEXTS = ['global', 'decision'] as const;
+export const UI_CONTEXTS = [
+  'global',
+  'decision',
+  'chat',
+  'edge',
+  'sidebar',
+  'panel',
+  'overlay',
+] as const;
 export type UiContext = (typeof UI_CONTEXTS)[number];
 
 /** The platforms the combinations are written for: `default` (Windows and Linux) and `mac`. */
