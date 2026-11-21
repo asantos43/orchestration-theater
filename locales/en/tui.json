@@ -265,6 +265,15 @@
     "link": {
       "syncing": "syncing",
       "lost": "connection lost"
+    },
+    "mouse": {
+      "copied": "Copied {{chars}} characters.",
+      "copyFailed": {
+        "off": "The mouse copy is off (ui.clipboard.copy).",
+        "too_long": "The selection is too long to copy (ui.tuiMouse.copyMaxBytes).",
+        "no_tool": "No clipboard tool was found for ui.clipboard.copy: system.",
+        "tool_failed": "The clipboard tool failed to copy."
+      }
     }
   },
   "input": {

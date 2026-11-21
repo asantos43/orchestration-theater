@@ -10,9 +10,10 @@ import {
   type UiTranslate,
 } from '@otheater/client';
 import { Box, Text, useApp, useWindowSize } from 'ink';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keyLabel, pairLabel } from '../keys/labels.js';
+import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
 import type { UiTuiLayoutSettings } from '../settings.js';
@@ -24,8 +25,9 @@ import { Header } from './header.js';
 import { InputSlot } from './input-slot.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { Panel, panelContentSize } from './panel.js';
+import type { TabBarHit } from './tab-bar-hit.js';
 import { scrollStepLines } from './scroll.js';
-import { Sidebar, sidebarItems } from './sidebar.js';
+import { Sidebar, sidebarItems, type SidebarItem } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
 import {
@@ -192,6 +194,11 @@ export function Shell(props: ShellProps): ReactNode {
     setFocus(order[(at + delta + order.length) % order.length] ?? 'chat');
   };
 
+  const widenTo = (width: number): void => {
+    if (geometry.panel === undefined) return;
+    layoutStore.setChatWidth(width);
+  };
+
   const widen = (cells: number): void => {
     if (geometry.panel === undefined) return;
     // From the width the store has now: two presses in the same tick (key repeat) both count.
@@ -207,6 +214,52 @@ export function Shell(props: ShellProps): ReactNode {
     const at = from === undefined ? 0 : Math.max(0, list.indexOf(from));
     return list[Math.min(list.length - 1, Math.max(0, at + delta))];
   };
+
+  // What the mouse does (N34): the same actions as the keys, reached by a click, the wheel or a drag.
+  const closeTab = (id: string): void => {
+    const at = openTabs.findIndex((tab) => tab.id === id);
+    if (at < 0) return;
+    const next =
+      id === currentTab
+        ? (openTabs[at + 1] ?? openTabs[at - 1])
+        : openTabs.find((tab) => tab.id === currentTab);
+    layoutStore.closeTab(id);
+    saveActiveTab(layoutStore, next?.id);
+    setPanelScroll(0);
+    setPanelCursor(undefined);
+  };
+
+  const activateSideItem = (item: SidebarItem): void => {
+    if (item.kind === 'section') {
+      layoutStore.setSectionCollapsed(item.id);
+    } else {
+      setSelected(item.id);
+      setChatOffset(0);
+      setFocus('chat');
+    }
+  };
+
+  const chatDragFrom = useRef(0);
+  const dragChatEdge = (drag: DragInfo): void => {
+    if (drag.phase === 'start') {
+      chatDragFrom.current = geometry.chat.width;
+      setFocus('edge');
+      return;
+    }
+    widenTo(steppedChatWidth(geometry, drag.dx, chatDragFrom.current));
+  };
+
+  const copyNotice = useCallback(
+    (outcome: CopyOutcome): void => {
+      if (outcome.ok) {
+        setNotice(t('layout.mouse.copied', { chars: outcome.chars }));
+      } else if (outcome.reason !== 'empty') {
+        setNotice(t(`layout.mouse.copyFailed.${outcome.reason}`));
+      }
+    },
+    [t],
+  );
+  useMouseCopy(copyNotice);
 
   const runAction = (id: string): void => {
     if (id.startsWith('tabs.open.')) {
@@ -245,15 +298,7 @@ export function Shell(props: ShellProps): ReactNode {
         setOverlay('picker');
         return;
       case 'tabs.close':
-        if (currentTab === undefined) return;
-        {
-          const at = openTabs.findIndex((tab) => tab.id === currentTab);
-          const next = openTabs[at + 1] ?? openTabs[at - 1];
-          layoutStore.closeTab(currentTab);
-          saveActiveTab(layoutStore, next?.id);
-          setPanelScroll(0);
-          setPanelCursor(undefined);
-        }
+        if (currentTab !== undefined) closeTab(currentTab);
         return;
       case 'palette.open':
         setOverlay((now) => (now === 'palette' ? undefined : 'palette'));
@@ -291,14 +336,7 @@ export function Shell(props: ShellProps): ReactNode {
       }
       case 'sidebar.activate': {
         const item = items.find((candidate) => candidate.id === cursorInSide);
-        if (item === undefined) return;
-        if (item.kind === 'section') {
-          layoutStore.setSectionCollapsed(item.id);
-        } else {
-          setSelected(item.id);
-          setChatOffset(0);
-          setFocus('chat');
-        }
+        if (item !== undefined) activateSideItem(item);
         return;
       }
       case 'panel.prevTab':
@@ -323,6 +361,26 @@ export function Shell(props: ShellProps): ReactNode {
         if (cursorInTab !== undefined) layoutStore.setSectionCollapsed(cursorInTab);
         return;
       default:
+        return;
+    }
+  };
+
+  const clickTabBar = (hit: TabBarHit): void => {
+    switch (hit.kind) {
+      case 'tab':
+        saveActiveTab(layoutStore, hit.id);
+        setPanelScroll(0);
+        setPanelCursor(undefined);
+        setFocus('panel');
+        return;
+      case 'close':
+        closeTab(hit.id);
+        return;
+      case 'add':
+        runAction('tabs.add');
+        return;
+      case 'toggle':
+        runAction('layout.togglePanel');
         return;
     }
   };
@@ -404,6 +462,17 @@ export function Shell(props: ShellProps): ReactNode {
               toggle: keyLabel(tuiKeymap, 'layout.toggleSidebar'),
               settings: keyLabel(tuiKeymap, 'tabs.open.settings'),
             }}
+            onActivate={(item) => {
+              setSideCursor(item.id);
+              activateSideItem(item);
+              if (item.kind === 'section') setFocus('sidebar');
+            }}
+            onSettings={() => {
+              runAction('tabs.open.settings');
+            }}
+            onToggle={() => {
+              runAction('layout.toggleSidebar');
+            }}
           />
         )}
         <Chat
@@ -429,6 +498,7 @@ export function Shell(props: ShellProps): ReactNode {
           messages={messages}
           offset={chatOffset}
           onOffset={setChatOffset}
+          onResizeDrag={dragChatEdge}
           input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
         />
         {geometry.panel !== undefined && content !== undefined && (
@@ -443,6 +513,10 @@ export function Shell(props: ShellProps): ReactNode {
               toggle: keyLabel(tuiKeymap, 'layout.togglePanel'),
             }}
             footer={panelFooter}
+            onBarClick={clickTabBar}
+            onWheel={(lines) => {
+              setPanelScroll((offset) => Math.max(0, offset + lines));
+            }}
           >
             {definition === undefined ? (
               <Text dimColor wrap="truncate">
@@ -460,7 +534,15 @@ export function Shell(props: ShellProps): ReactNode {
                   height: content.height,
                   focused: focus === 'panel',
                   scroll: panelScroll,
-                  sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
+                  sections: {
+                    folded,
+                    cursor: focus === 'panel' ? cursorInTab : undefined,
+                    toggle: (id) => {
+                      layoutStore.setSectionCollapsed(id);
+                      setPanelCursor(id);
+                      setFocus('panel');
+                    },
+                  },
                 })}
               </Box>
             )}
