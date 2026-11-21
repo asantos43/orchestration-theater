@@ -34,6 +34,9 @@
     "decision": {
       "answer": "Answer the pending decision",
       "aside": "Set the decision aside",
+      "up": "Move up the options of the decision",
+      "down": "Move down the options of the decision",
+      "mark": "Mark the option of the decision",
       "open": "Open the pending decision"
     },
     "palette": {
@@ -425,6 +428,7 @@
           "asked": "The Director has not seen it yet: your answer decides.",
           "never": "Kept out of what the Director reads."
         },
+        "shellRefusedFor": "! {{command}}: {{reason}}",
         "shellRefused": {
           "forbidden": "The ! command is off (settings chat.shell_command and app.terminal).",
           "conflict": "Too many ! commands are running; wait for one to end.",

@@ -14,6 +14,8 @@ import {
   ChatAskClosedPayloadSchema,
   ChatAskPayloadSchema,
   CHAT_DROP_REASONS,
+  CHAT_ERROR_COMMAND_MAX,
+  CHAT_ERROR_SOURCE_SHELL,
   IdeaQueueHeldPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
   ShellCommandFinishedPayloadSchema,
@@ -31,7 +33,11 @@ import type { WebSocket } from 'ws';
 import type { EventHub } from '../events/event-hub.js';
 import type { Logger } from '../logger.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
-import { isShellCommand, type ShellCommandService } from '../shell/service.js';
+import {
+  commandOf as shellCommandOf,
+  isShellCommand,
+  type ShellCommandService,
+} from '../shell/service.js';
 import type { SituationSink } from '../situations.js';
 import type { SlashCommandService } from '../slash/index.js';
 import { ChatTickets } from './chat-tickets.js';
@@ -88,6 +94,23 @@ const FEED_TYPES = [
 
 /** Events read per page when a resume looks for the questions the replay will bring. */
 const ASK_SCAN_PAGE = 500;
+
+/**
+ * What a `history` counts: the events that make an entry of the chat of the Producer (a reply, a
+ * notice, a stop of the queue, a play, a `!` command). The questions are not counted: they are
+ * cards, and the replay brings the ones that still wait anyway.
+ */
+const HISTORY_TYPES: ReadonlySet<string> = new Set([
+  'chat.director_reply',
+  'scenario.system_message',
+  'idea.queue_held',
+  'play.transitioned',
+  'chat.shell_command.started',
+]);
+/** How many ids of the log a `history` looks at in one window, going back from the head. */
+const HISTORY_WINDOW = 2000;
+/** How far back (in ids of the log) a `history` looks at most. [proposta] */
+const HISTORY_SCAN_MAX = 200_000;
 
 /** Close codes that say the client broke the protocol (RFC 6455): protocol, data, size. */
 const PROTOCOL_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009]);
@@ -154,6 +177,8 @@ class ChatSession {
   /** The feed and the state go out in order, one step at a time. */
   #outbox: Promise<void> = Promise.resolve();
   #started = false;
+  /** The feed began because the resume window ended, with no word from the client (P26). */
+  #startedByWindow = false;
   #closed = false;
   #reason: 'daemon_stop' | 'token_rotated' | 'no_pong' | 'feed_failed' | undefined;
   #ponged = true;
@@ -233,7 +258,10 @@ class ChatSession {
     }
     // A client with a cursor says `resume` first; one with none says nothing, and this is its wait.
     this.#resumeTimer = setTimeout(() => {
-      this.#inbox = this.#inbox.then(() => this.#start(undefined));
+      this.#inbox = this.#inbox.then(() => {
+        if (!this.#started) this.#startedByWindow = true;
+        return this.#start(undefined);
+      });
     }, resumeWindowMs);
     this.#resumeTimer.unref();
   }
@@ -282,9 +310,22 @@ class ChatSession {
         await this.#start(message.lastEventId);
         return;
       }
+      if (message.type === 'history') {
+        if (this.#started) {
+          // A `history` that lost the race with the window (a busy machine) is a chat that opens
+          // without history, not a mistake of the client: the feed is live, so it is counted and
+          // nothing else. After a message of the client it is a refusal, as `resume` is.
+          if (this.#startedByWindow) this.#options.api.recordMessageRejected();
+          else this.#refuse('invalid_input', 'history is only taken as the first message');
+          return;
+        }
+        await this.#start(await this.#historyStart(message.count));
+        return;
+      }
       // Whoever speaks before the window ends has no cursor: the feed starts now, before the
       // message goes in, so what the message makes the daemon say is not missed.
       await this.#start(undefined);
+      this.#startedByWindow = false;
       await this.#handle(message);
     } catch (error) {
       this.#fail(error);
@@ -313,14 +354,16 @@ class ChatSession {
     return parsed.data;
   }
 
-  async #handle(message: Exclude<ChatClientMessage, { type: 'resume' }>): Promise<void> {
+  async #handle(
+    message: Exclude<ChatClientMessage, { type: 'resume' | 'history' }>,
+  ): Promise<void> {
     const { channel } = this.#options;
     switch (message.type) {
       case 'message':
         // N43: a message that starts with `!` is a command for the worktree, not a message for the
         // Director; its end comes back as events (`shell_started`, `shell_finished`).
         if (isShellCommand(message.text)) {
-          await this.#shell(message.text, message.attachments ?? []);
+          await this.#shell(message.text, message.attachments ?? [], message.clientId);
           return;
         }
         // The single prompt queue, with the Producer's source: `prompt.queued` is the record.
@@ -347,18 +390,32 @@ class ChatSession {
     }
   }
 
-  async #shell(text: string, attachments: readonly string[]): Promise<void> {
+  async #shell(
+    text: string,
+    attachments: readonly string[],
+    clientId: string | undefined,
+  ): Promise<void> {
     const { shell } = this.#options;
-    if (attachments.length > 0) {
-      throw new InvalidInput('A ! command takes no attachments');
+    try {
+      if (attachments.length > 0) {
+        throw new InvalidInput('A ! command takes no attachments');
+      }
+      if (shell === undefined) {
+        throw new AdapterUnavailable('The ! command is not available in this daemon');
+      }
+      await shell.start(this.#scenarioId, text);
+    } catch (error) {
+      // N205: the refusal of a `!` line says it is one, and which (the answers of several lines in
+      // flight may come in any order).
+      this.#fail(error, {
+        source: CHAT_ERROR_SOURCE_SHELL,
+        command: shellCommandOf(text).slice(0, CHAT_ERROR_COMMAND_MAX),
+        ...(clientId === undefined ? {} : { clientId }),
+      });
     }
-    if (shell === undefined) {
-      throw new AdapterUnavailable('The ! command is not available in this daemon');
-    }
-    await shell.start(this.#scenarioId, text);
   }
 
-  #fail(error: unknown): void {
+  #fail(error: unknown, origin: Details = {}): void {
     const code = apiErrorCodeOf(error);
     if (code === 'internal') {
       this.#options.logger.error(
@@ -371,6 +428,7 @@ class ChatSession {
       code !== 'internal' && isOTheaterError(error)
         ? error.message
         : 'The daemon failed this message',
+      Object.keys(origin).length === 0 ? undefined : origin,
     );
   }
 
@@ -446,6 +504,50 @@ class ChatSession {
     }, stateIntervalMs);
     timer.unref();
     this.#timers.push(timer);
+  }
+
+  /**
+   * The cursor a `history` of `count` starts the feed from: the id before the oldest of the last
+   * `count` events of this scenario that the chat shows. `undefined` when there is none (or `count`
+   * is 0): the feed is then live. The log has no read by scenario, so it is read backwards in
+   * windows of ids and stops when it has enough or has gone {@link HISTORY_SCAN_MAX} ids back.
+   */
+  async #historyStart(count: number): Promise<number | undefined> {
+    if (count <= 0) return undefined;
+    const { store } = this.#options;
+    const head = await store.events.lastId();
+    let oldest: number | undefined;
+    let found = 0;
+    let upTo = head;
+    while (upTo > 0 && found < count && head - upTo < HISTORY_SCAN_MAX) {
+      const after = Math.max(0, upTo - HISTORY_WINDOW);
+      const ids = await this.#shownBetween(after, upTo);
+      for (let at = ids.length - 1; at >= 0 && found < count; at -= 1) {
+        oldest = ids[at];
+        found += 1;
+      }
+      upTo = after;
+    }
+    return oldest === undefined ? undefined : oldest - 1;
+  }
+
+  /** The ids, ascending, of the events of this scenario that a `history` counts, with `after < id <= upTo`. */
+  async #shownBetween(after: number, upTo: number): Promise<number[]> {
+    const { store } = this.#options;
+    const ids: number[] = [];
+    let cursor = after;
+    while (cursor < upTo) {
+      const page = await store.events.readFrom(cursor, ASK_SCAN_PAGE);
+      if (page.length === 0) break;
+      for (const event of page) {
+        if (event.id > upTo) return ids;
+        cursor = event.id;
+        if (event.scenarioId === this.#scenarioId && HISTORY_TYPES.has(event.type)) {
+          ids.push(event.id);
+        }
+      }
+    }
+    return ids;
   }
 
   /** The decisions of this scenario that a `chat.ask` of the ids `after < id <= upTo` announces. */

@@ -8,6 +8,7 @@ import {
   createCardState,
   type CardAnswer,
   type CardKey,
+  type CardKeymap,
   type CardModel,
   type CardState,
   type CardTexts,
@@ -205,10 +206,64 @@ describe('the ideas of a group', () => {
 });
 
 describe('cardKeyOf', () => {
+  /** The default keys of the registry, as `TuiKeymap.match` would answer for the two contexts. */
+  const defaults: CardKeymap = {
+    decision: (combo) =>
+      ({
+        Up: 'decision.up',
+        Down: 'decision.down',
+        Space: 'decision.mark',
+        Enter: 'decision.answer',
+        Esc: 'decision.aside',
+      })[combo],
+    textBox: (combo) => (combo === 'Backspace' ? 'input.backspace' : undefined),
+  };
+
   it('maps the combos of the card and printable text, and drops control bytes', () => {
-    expect(cardKeyOf({ combo: 'Up', data: '' })).toEqual({ kind: 'up' });
-    expect(cardKeyOf({ combo: undefined, data: 'a' })).toEqual({ kind: 'text', text: 'a' });
-    expect(cardKeyOf({ combo: undefined, data: '\x01' })).toBeUndefined();
+    expect(cardKeyOf({ combo: 'Up', data: '\x1b[A' }, defaults, false)).toEqual({ kind: 'up' });
+    expect(cardKeyOf({ combo: 'Backspace', data: '\x7f' }, defaults, true)).toEqual({
+      kind: 'backspace',
+    });
+    expect(cardKeyOf({ combo: undefined, data: 'a' }, defaults, false)).toEqual({
+      kind: 'text',
+      text: 'a',
+    });
+    expect(cardKeyOf({ combo: undefined, data: '\x01' }, defaults, false)).toBeUndefined();
+  });
+
+  it('reads the keys from the keymap: a remapped key acts and the old one does not (N203)', () => {
+    // `ui.keymap.overrides`: decision.down on J, decision.answer on Ctrl+Y, decision.up taken away.
+    const remapped: CardKeymap = {
+      decision: (combo) =>
+        ({ J: 'decision.down', 'Ctrl+Y': 'decision.answer', Space: 'decision.mark' })[combo],
+      textBox: () => undefined,
+    };
+    expect(cardKeyOf({ combo: 'J', data: 'j' }, remapped, false)).toEqual({ kind: 'down' });
+    expect(cardKeyOf({ combo: 'Ctrl+Y', data: '\x19' }, remapped, false)).toEqual({
+      kind: 'enter',
+    });
+    expect(cardKeyOf({ combo: 'Enter', data: '\r' }, remapped, false)).toBeUndefined();
+    expect(cardKeyOf({ combo: 'Up', data: '\x1b[A' }, remapped, false)).toBeUndefined();
+    // a digit still picks an option
+    expect(cardKeyOf({ combo: '2', data: '2' }, remapped, false)).toEqual({
+      kind: 'text',
+      text: '2',
+    });
+  });
+
+  it('keeps a letter bound to a key as text on the typing line', () => {
+    const remapped: CardKeymap = {
+      decision: (combo) => ({ J: 'decision.down' })[combo],
+      textBox: () => undefined,
+    };
+    expect(cardKeyOf({ combo: 'J', data: 'j' }, remapped, true)).toEqual({
+      kind: 'text',
+      text: 'j',
+    });
+    expect(cardKeyOf({ combo: 'Space', data: ' ' }, remapped, true)).toEqual({
+      kind: 'text',
+      text: ' ',
+    });
   });
 });
 
