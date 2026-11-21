@@ -12,7 +12,15 @@ import {
   type UiTranslate,
 } from '@otheater/client';
 import { Box, Text, useApp, useWindowSize } from 'ink';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js';
@@ -21,6 +29,13 @@ import { useRenderControl } from '../render-control.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
 import { useChatPanel, type ChatPanelConfig } from '../chat/use-chat-panel.js';
+import {
+  SetupScreen,
+  firstRunNeeded,
+  setupApiOf,
+  type SetupApi,
+  type SetupFlow,
+} from '../setup/index.js';
 import { Chat, chatMessageRows } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
 import { computeGeometry, steppedChatWidth } from './geometry.js';
@@ -77,6 +92,8 @@ export interface ShellProps {
   readonly settings?: UiSettings | undefined;
   /** The clock of the tabs (epoch ms); tests pass a fake one. */
   readonly now?: (() => number) | undefined;
+  /** [P17] The routes of the setup assistant; default: the ones of `client`. Tests pass a fake. */
+  readonly setupApi?: SetupApi | undefined;
 }
 
 /** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
@@ -101,6 +118,13 @@ export function Shell(props: ShellProps): ReactNode {
   const [notice, setNotice] = useState<string | undefined>(() => firstProblem(tuiKeymap, ut));
   // A tab that reads text (a form, P15) takes the keyboard by setting this (see `TabHost.capture`).
   const capture = useRef(false);
+  // The setup assistant (P17) takes the whole screen while it is open.
+  const [assistant, setAssistant] = useState<SetupFlow | undefined>(undefined);
+  const settings = props.settings ?? DEFAULT_UI_SETTINGS;
+  const setupApi = useMemo(
+    () => props.setupApi ?? (props.client === undefined ? undefined : setupApiOf(props.client)),
+    [props.setupApi, props.client],
+  );
 
   const scenarioRowsNow = useScenarioRows(stores);
   const quotas = useQuotaRows(stores);
@@ -173,7 +197,7 @@ export function Shell(props: ShellProps): ReactNode {
     keymap: tuiKeymap,
     width: Math.max(1, geometry.chat.width - 2),
     height: geometry.bodyHeight,
-    active: focus === 'chat' && overlay === undefined,
+    active: focus === 'chat' && overlay === undefined && assistant === undefined,
   });
   const messageRows = chatMessageRows(geometry.bodyHeight, chat.inputRows);
   const step = scrollStepLines(tuning.scrollStep, messageRows);
@@ -186,6 +210,29 @@ export function Shell(props: ShellProps): ReactNode {
         exit();
       });
   }, [layoutStore, exit]);
+
+  // The first run (N121, N195): the daemon says there is no configuration, and the TUI opens straight
+  // in the assistant. [proposta] The read is not waited for: the layout is drawn at once and the
+  // assistant takes over when the answer says so; what cannot be read is said in the notice.
+  const firstRunChecked = useRef(false);
+  const onGateFailed = useEffectEvent((message: string): void => {
+    setNotice(t('setup.gateFailed', { message }));
+  });
+  useEffect(() => {
+    if (firstRunChecked.current || setupApi === undefined || settings.setup.open !== 'auto') return;
+    firstRunChecked.current = true;
+    let mounted = true;
+    firstRunNeeded(setupApi, settings.setup.readTimeoutMs)
+      .then((needed) => {
+        if (needed && mounted) setAssistant('first_run');
+      })
+      .catch((error: unknown) => {
+        if (mounted) onGateFailed(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [setupApi, settings.setup.open, settings.setup.readTimeoutMs]);
 
   // Whatever way the TUI ends (Ctrl+Q, Ctrl+C, the terminal going away), the layout is saved.
   useEffect(
@@ -407,7 +454,7 @@ export function Shell(props: ShellProps): ReactNode {
       quit();
       return;
     }
-    if (capture.current) {
+    if (capture.current || assistant !== undefined) {
       afterKey();
       return;
     }
@@ -478,14 +525,28 @@ export function Shell(props: ShellProps): ReactNode {
       stores,
       client: props.client,
       keymap: tuiKeymap,
-      settings: props.settings ?? DEFAULT_UI_SETTINGS,
+      settings,
       now: props.now ?? Date.now,
       capture,
+      openAssistant: setupApi === undefined ? undefined : setAssistant,
     }),
-    [stores, props.client, tuiKeymap, props.settings, props.now],
+    [stores, props.client, tuiKeymap, settings, props.now, setupApi],
   );
   const content =
     geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
+
+  if (assistant !== undefined && setupApi !== undefined) {
+    return (
+      <SetupScreen
+        flow={assistant}
+        api={setupApi}
+        keymap={tuiKeymap}
+        onClose={() => {
+          setAssistant(undefined);
+        }}
+      />
+    );
+  }
 
   return (
     <TabHostProvider host={tabHost}>

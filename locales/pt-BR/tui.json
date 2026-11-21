@@ -6,7 +6,8 @@
     "general": "Geral",
     "navigation": "Navegação",
     "input": "Caixa de texto",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "setup": "Assistente de configuração"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -108,7 +109,10 @@
       "remove": "Remover a conta",
       "edit": "Mudar o valor ou a regra",
       "unset": "Tirar a chave (volta ao padrão)",
-      "scope": "Alternar entre o escopo global e o do projeto"
+      "scope": "Alternar entre o escopo global e o do projeto",
+      "assistantAccount": "Trazer uma conta para os papéis (assistente de configuração)",
+      "assistantPreset": "Mudar o preset (assistente de configuração)",
+      "assistantFirstRun": "Rodar o assistente da primeira execução (retoma se ficou no meio)"
     },
     "overview": {
       "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
@@ -127,6 +131,20 @@
       "revoke": "Revogar a ordem selecionada",
       "previous": "Selecionar a ordem anterior",
       "next": "Selecionar a ordem seguinte"
+    },
+    "setup": {
+      "advance": "Responder o passo e seguir (confirmar na revisão)",
+      "back": "Voltar um passo (sair do assistente no primeiro)",
+      "itemPrev": "Item anterior",
+      "itemNext": "Próximo item",
+      "toggle": "Pôr a conta ou tirar a conta",
+      "moveUp": "Subir a conta (mais prioridade)",
+      "moveDown": "Descer a conta (menos prioridade)",
+      "add": "Adicionar um Executor",
+      "edit": "Editar o teto de gasto",
+      "remove": "Remover o Executor",
+      "reload": "Ler o passo de novo",
+      "cancel": "Cancelar a execução (nada é gravado)"
     }
   },
   "bar": {
@@ -164,6 +182,14 @@
     },
     "overlay": {
       "close": "Fechar"
+    },
+    "setup": {
+      "advance": "Seguir",
+      "back": "Voltar",
+      "toggle": "Marcar",
+      "add": "Adicionar",
+      "edit": "Teto",
+      "cancel": "Cancelar"
     }
   },
   "keymap": {
@@ -554,7 +580,8 @@
       "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
       "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
       "nothing": "Nada sob o cursor.",
-      "noLogin": "Só uma conta de assinatura entra por login."
+      "noLogin": "Só uma conta de assinatura entra por login.",
+      "noAssistant": "O assistente precisa do daemon."
     }
   },
   "overview": {
@@ -781,5 +808,102 @@
       "alreadyRevoked": "A ordem já está revogada.",
       "noScenario": "Não há cenário em que suspender a ordem."
     }
+  },
+  "setup": {
+    "title": {
+      "first_run": "Assistente de configuração: primeira execução",
+      "add_account": "Assistente de configuração: adicionar uma conta",
+      "change_preset": "Assistente de configuração: mudar o preset"
+    },
+    "stepOf": "Passo {{n}} de {{total}}",
+    "step": {
+      "detect": "Contas",
+      "account": "Conta",
+      "preset": "Preset",
+      "executors": "Executores",
+      "review": "Revisão"
+    },
+    "loading": "Lendo o assistente...",
+    "loadFailed": "Não deu para abrir o assistente: {{message}}",
+    "loadRetry": "{{key}} tenta de novo, {{back}} sai.",
+    "busy": "Trabalhando...",
+    "resumed": "Retomando a execução que você deixou no meio, no passo {{step}}.",
+    "refused": "Recusado pelo daemon: {{message}}",
+    "leaveHint": "{{key}} sai; a execução fica guardada e é retomada na próxima vez.",
+    "hint": {
+      "detect": "Marque as contas que participam e ponha-as em ordem de prioridade.",
+      "account": "Escolha a conta que entra nos papéis.",
+      "preset": "Escolha o preset dos papéis.",
+      "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
+      "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar."
+    },
+    "detect": {
+      "clients": "Clientes nesta máquina: {{list}}",
+      "installed": "{{client}} (instalado)",
+      "missing": "{{client}} (não encontrado)",
+      "none": "Nenhuma conta ainda. Adicione uma na aba Configurações e rode o assistente de novo.",
+      "usable": "utilizável",
+      "unusable": "não utilizável",
+      "order": "{{n}}. "
+    },
+    "preset": {
+      "current": "em uso",
+      "name": {
+        "quality": "quality: o melhor Executor primeiro",
+        "balanced": "balanced: qualidade onde importa, economia no resto",
+        "economical": "economical: o Executor mais barato primeiro"
+      }
+    },
+    "executors": {
+      "listTitle": "Executores a cadastrar",
+      "none": "Nenhum. Enter segue sem um.",
+      "row": "{{profile}}  {{model}}",
+      "rowEffort": "{{profile}}  {{model}}  esforço {{effort}}",
+      "budgetTitle": "Tetos de gasto das contas de API",
+      "noApi": "Nenhuma conta de API com chave no cofre.",
+      "budgetRow": "{{profile}}  dia {{daily}}  mês {{monthly}}",
+      "budgetSuggested": "{{profile}}  sugerido: dia {{daily}}, mês {{monthly}}",
+      "noCap": "sem teto",
+      "usd": "USD {{value}}"
+    },
+    "prompt": {
+      "executor": "Executor como: <conta> <modelo> [esforço]",
+      "budget": "Teto de {{profile}} como: <dia> <mês> em USD, ou - para sem teto",
+      "hintEnter": "Enter confirma, Esc cancela",
+      "confirmCancel": "Cancelar esta execução? Nada foi gravado. s/n",
+      "hintConfirm": "s confirma, qualquer outra tecla cancela",
+      "yes": "s",
+      "badExecutor": "Escreva <conta> <modelo> [esforço].",
+      "badBudget": "Escreva <dia> <mês>: números acima de zero, ou - para sem teto."
+    },
+    "review": {
+      "preset": "Preset: {{preset}}",
+      "presetKept": "Preset: fica como está",
+      "roles": "Papéis depois da confirmação",
+      "role": "{{role}}: {{executors}}  (ao esgotar: {{rule}})",
+      "noExecutors": "nenhum Executor",
+      "executors": "Executores a cadastrar",
+      "executor": "{{id}}  {{model}}  {{provider}}  ({{source}})",
+      "budgets": "Tetos de gasto",
+      "budget": "{{profile}}  dia {{daily}}  mês {{monthly}}",
+      "writes": "Chaves gravadas na configuração",
+      "notes": "Notas",
+      "info": "info",
+      "warning": "aviso",
+      "none": "nenhuma"
+    },
+    "source": {
+      "discovered": "achado",
+      "registered": "cadastrado"
+    },
+    "done": {
+      "confirmed": "Pronto. A configuração foi gravada.",
+      "preset": "Preset: {{preset}}",
+      "executors": "Executores cadastrados: {{list}}",
+      "written": "Chaves gravadas: {{list}}",
+      "cancelled": "Execução cancelada. Nada foi gravado.",
+      "close": "{{key}} fecha o assistente."
+    },
+    "gateFailed": "Não deu para checar se a primeira execução é necessária: {{message}}"
   }
 }

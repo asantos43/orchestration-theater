@@ -70,6 +70,11 @@ const SETTINGS_KEYS: readonly (readonly [name: string, keys: readonly string[]])
   ['edit', ['E']],
   ['unset', ['U']],
   ['scope', ['S']],
+  // The setup assistant (P17), opened from the tab: add an account, change the preset, or resume
+  // (or redo) the first run. [proposta] `W` for the wizard; no tab key takes it.
+  ['assistantAccount', ['W']],
+  ['assistantPreset', ['P']],
+  ['assistantFirstRun', ['Shift+W']],
 ];
 
 function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
@@ -81,6 +86,46 @@ function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
     surfaces: ['tui' as const],
     palette: false,
     keys: terminalKeys(keys),
+  }));
+}
+
+/**
+ * The actions of the setup assistant (P17 of docs/18), in the context `setup`: the screen of the
+ * assistant is not an area of the layout, so these keys are alive only while it is open. [proposta]
+ * The letters are bare because a field is read by the screen itself, which takes every key while a
+ * line is being typed. They are not commands of the palette: they act on the step on screen.
+ * `advance` is Enter on every step (answer the step, or confirm at the review); `back` is Esc (go
+ * back one step, or leave the assistant at the first one, keeping the run to resume).
+ */
+const SETUP_KEYS: readonly (readonly [
+  name: string,
+  keys: readonly string[],
+  bar?: readonly [textKey: string, order: number],
+])[] = [
+  ['advance', ['Enter'], ['bar.setup.advance', 10]],
+  ['back', ['Esc'], ['bar.setup.back', 12]],
+  ['itemPrev', ['Up', 'K']],
+  ['itemNext', ['Down', 'J']],
+  ['toggle', ['Space'], ['bar.setup.toggle', 14]],
+  ['moveUp', ['Shift+Up']],
+  ['moveDown', ['Shift+Down']],
+  ['add', ['A'], ['bar.setup.add', 16]],
+  ['edit', ['E'], ['bar.setup.edit', 18]],
+  ['remove', ['X']],
+  ['reload', ['R']],
+  ['cancel', ['C'], ['bar.setup.cancel', 20]],
+];
+
+function setupActions(): NonNullable<UiRegistryDefinition['actions']> {
+  return SETUP_KEYS.map(([name, keys, bar]) => ({
+    id: `setup.${name}`,
+    textKey: `actions.setup.${name}`,
+    group: 'setup',
+    context: 'setup' as const,
+    surfaces: ['tui' as const],
+    palette: false,
+    keys: terminalKeys(keys),
+    ...(bar === undefined ? {} : { bar: { textKey: bar[0], order: bar[1] } }),
   }));
 }
 
@@ -97,6 +142,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'decision', textKey: 'groups.decision', order: 30 },
     { id: 'input', textKey: 'groups.input', order: 35 },
     { id: 'settings', textKey: 'groups.settings', order: 37 },
+    { id: 'setup', textKey: 'groups.setup', order: 38 },
     { id: 'general', textKey: 'groups.general', order: 40 },
   ],
   tabs: [
@@ -475,6 +521,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.
     ...textBoxActions(),
     ...settingsActions(),
+    ...setupActions(),
     {
       id: 'palette.open',
       textKey: 'actions.palette.open',

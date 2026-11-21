@@ -1,0 +1,317 @@
+// SPDX-License-Identifier: MPL-2.0
+import type { SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
+import type { TFunction } from 'i18next';
+import { COLOR } from '../layout/theme.js';
+import { stepNumber, type Draft } from './model.js';
+
+/** One row of the setup screen, before it is cut to the width. */
+export interface SetupLine {
+  readonly key: string;
+  readonly text: string;
+  readonly color?: string | undefined;
+  readonly dim?: boolean;
+  readonly bold?: boolean;
+  /** The row under the cursor. */
+  readonly selected?: boolean;
+}
+
+export interface SetupLinesInput {
+  readonly run: SetupRunView;
+  readonly draft: Draft;
+  readonly t: TFunction;
+  /** The label of the key that closes the finished screen (the `advance` key). */
+  readonly closeKey: string;
+}
+
+const MARK = { done: '✓', now: '●', todo: '○' } as const;
+
+/** `✓ Accounts  ● Preset  ○ Executors  ○ Review`. */
+function progress(run: SetupRunView, t: TFunction): string {
+  const now = stepNumber(run) - 1;
+  return run.steps
+    .map((step, index) => {
+      const mark =
+        run.state === 'confirmed' || index < now ? MARK.done : index === now ? MARK.now : MARK.todo;
+      return `${mark} ${t(`setup.step.${step}`)}`;
+    })
+    .join('  ');
+}
+
+function usdText(value: number | null, t: TFunction): string {
+  return value === null ? t('setup.executors.noCap') : t('setup.executors.usd', { value });
+}
+
+function list(items: readonly string[], t: TFunction): string {
+  return items.length === 0 ? t('setup.review.none') : items.join(', ');
+}
+
+function detectLines(
+  prompt: Extract<SetupPrompt, { step: 'detect' }>,
+  draft: Extract<Draft, { kind: 'detect' }>,
+  t: TFunction,
+): SetupLine[] {
+  const lines: SetupLine[] = [];
+  const clients = prompt.clients.map((entry) =>
+    t(entry.installed ? 'setup.detect.installed' : 'setup.detect.missing', {
+      client: entry.client,
+    }),
+  );
+  if (clients.length > 0) {
+    lines.push({
+      key: 'clients',
+      text: t('setup.detect.clients', { list: clients.join(', ') }),
+      dim: true,
+    });
+  }
+  if (draft.rows.length === 0) {
+    lines.push({ key: 'none', text: t('setup.detect.none'), color: COLOR.warn });
+    return lines;
+  }
+  let order = 0;
+  draft.rows.forEach((row, index) => {
+    const profile = prompt.profiles.find((candidate) => candidate.profileId === row.profileId);
+    if (row.on) order += 1;
+    const parts = [row.profileId];
+    if (profile !== undefined) {
+      parts.push(profile.kind);
+      if (profile.state !== 'active') parts.push(t(`settings.profile.${profile.state}`));
+      parts.push(t(profile.usable ? 'setup.detect.usable' : 'setup.detect.unusable'));
+    }
+    lines.push({
+      key: `d.${row.profileId}`,
+      text: `${row.on ? '[x]' : '[ ]'} ${row.on ? t('setup.detect.order', { n: order }) : '   '}${parts.join('  ')}`,
+      color: profile?.usable === false ? COLOR.warn : undefined,
+      selected: index === draft.cursor,
+    });
+  });
+  return lines;
+}
+
+function accountLines(
+  prompt: Extract<SetupPrompt, { step: 'account' }>,
+  draft: Extract<Draft, { kind: 'account' }>,
+  t: TFunction,
+): SetupLine[] {
+  if (prompt.profiles.length === 0) {
+    return [{ key: 'none', text: t('setup.detect.none'), color: COLOR.warn }];
+  }
+  return prompt.profiles.map((profile, index) => ({
+    key: `a.${profile.profileId}`,
+    text: [
+      profile.profileId,
+      profile.kind,
+      t(profile.usable ? 'setup.detect.usable' : 'setup.detect.unusable'),
+    ].join('  '),
+    color: profile.usable ? undefined : COLOR.warn,
+    selected: index === draft.cursor,
+  }));
+}
+
+function presetLines(
+  prompt: Extract<SetupPrompt, { step: 'preset' }>,
+  draft: Extract<Draft, { kind: 'preset' }>,
+  t: TFunction,
+): SetupLine[] {
+  return prompt.options.map((option, index) => ({
+    key: `p.${option}`,
+    text:
+      t(`setup.preset.name.${option}`) +
+      (prompt.current === option ? `  (${t('setup.preset.current')})` : ''),
+    selected: index === draft.cursor,
+  }));
+}
+
+function executorsLines(
+  prompt: Extract<SetupPrompt, { step: 'executors' }>,
+  draft: Extract<Draft, { kind: 'executors' }>,
+  t: TFunction,
+): SetupLine[] {
+  const lines: SetupLine[] = [
+    { key: 'h.list', text: t('setup.executors.listTitle'), color: COLOR.accent, bold: true },
+  ];
+  if (draft.executors.length === 0) {
+    lines.push({ key: 'e.none', text: t('setup.executors.none'), dim: true });
+  }
+  draft.executors.forEach((executor, index) => {
+    lines.push({
+      key: `e.${String(index)}`,
+      text:
+        executor.effort === undefined
+          ? t('setup.executors.row', { profile: executor.profileId, model: executor.model })
+          : t('setup.executors.rowEffort', {
+              profile: executor.profileId,
+              model: executor.model,
+              effort: executor.effort,
+            }),
+      selected: index === draft.cursor,
+    });
+  });
+  lines.push({
+    key: 'h.budget',
+    text: t('setup.executors.budgetTitle'),
+    color: COLOR.accent,
+    bold: true,
+  });
+  if (prompt.apiProfiles.length === 0) {
+    lines.push({ key: 'b.none', text: t('setup.executors.noApi'), dim: true });
+  }
+  prompt.apiProfiles.forEach((profile, index) => {
+    const set = draft.budgets[profile.profileId];
+    lines.push({
+      key: `b.${profile.profileId}`,
+      text:
+        set === undefined
+          ? t('setup.executors.budgetSuggested', {
+              profile: profile.profileId,
+              daily: usdText(prompt.suggestedBudget.dailyUsd, t),
+              monthly: usdText(prompt.suggestedBudget.monthlyUsd, t),
+            })
+          : t('setup.executors.budgetRow', {
+              profile: profile.profileId,
+              daily: usdText(set.dailyUsd, t),
+              monthly: usdText(set.monthlyUsd, t),
+            }),
+      selected: draft.executors.length + index === draft.cursor,
+    });
+  });
+  return lines;
+}
+
+function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
+  const lines: SetupLine[] = [
+    {
+      key: 'preset',
+      text:
+        plan.preset === null
+          ? t('setup.review.presetKept')
+          : t('setup.review.preset', { preset: plan.preset }),
+      bold: true,
+    },
+    { key: 'h.roles', text: t('setup.review.roles'), color: COLOR.accent, bold: true },
+  ];
+  for (const role of plan.roles) {
+    lines.push({
+      key: `r.${role.role}`,
+      text: t('setup.review.role', {
+        role: role.role,
+        executors:
+          role.executors.length === 0 ? t('setup.review.noExecutors') : role.executors.join(', '),
+        rule: t(`settings.role.${role.whenExhausted}`),
+      }),
+    });
+  }
+  if (plan.executors.length > 0) {
+    lines.push({
+      key: 'h.exec',
+      text: t('setup.review.executors'),
+      color: COLOR.accent,
+      bold: true,
+    });
+    for (const executor of plan.executors) {
+      lines.push({
+        key: `x.${executor.id}`,
+        text: t('setup.review.executor', {
+          id: executor.id,
+          model: executor.model,
+          provider: executor.provider,
+          source: t(`setup.source.${executor.source}`),
+        }),
+      });
+    }
+  }
+  if (plan.budgets.length > 0) {
+    lines.push({
+      key: 'h.budgets',
+      text: t('setup.review.budgets'),
+      color: COLOR.accent,
+      bold: true,
+    });
+    for (const budget of plan.budgets) {
+      lines.push({
+        key: `b.${budget.profileId}`,
+        text: t('setup.review.budget', {
+          profile: budget.profileId,
+          daily: usdText(budget.dailyUsd, t),
+          monthly: usdText(budget.monthlyUsd, t),
+        }),
+      });
+    }
+  }
+  lines.push({ key: 'h.writes', text: t('setup.review.writes'), color: COLOR.accent, bold: true });
+  lines.push({ key: 'writes', text: list(plan.writes, t), dim: true });
+  if (plan.notes.length > 0) {
+    lines.push({ key: 'h.notes', text: t('setup.review.notes'), color: COLOR.accent, bold: true });
+    plan.notes.forEach((note, index) => {
+      lines.push({
+        key: `n.${String(index)}`,
+        text: `[${t(`setup.review.${note.severity}`)}] ${note.message}`,
+        color: note.severity === 'warning' ? COLOR.warn : undefined,
+        dim: note.severity === 'info',
+      });
+    });
+  }
+  return lines;
+}
+
+function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): SetupLine[] {
+  const lines: SetupLine[] = [];
+  if (run.state === 'cancelled') {
+    lines.push({ key: 'cancelled', text: t('setup.done.cancelled'), color: COLOR.warn });
+  } else {
+    lines.push({ key: 'confirmed', text: t('setup.done.confirmed'), color: COLOR.ok, bold: true });
+    const result = run.result;
+    if (result?.preset !== null && result?.preset !== undefined) {
+      lines.push({ key: 'preset', text: t('setup.done.preset', { preset: result.preset }) });
+    }
+    if (result !== null && result.executors.length > 0) {
+      lines.push({
+        key: 'executors',
+        text: t('setup.done.executors', { list: result.executors.join(', ') }),
+      });
+    }
+    if (result !== null) {
+      lines.push({
+        key: 'written',
+        text: t('setup.done.written', { list: list(result.written, t) }),
+        dim: true,
+      });
+    }
+  }
+  lines.push({ key: 'close', text: t('setup.done.close', { key: closeKey }), dim: true });
+  return lines;
+}
+
+/** The rows of the screen: the progress, the hint of the step and the step itself (or the end). */
+export function setupLines(input: SetupLinesInput): SetupLine[] {
+  const { run, draft, t } = input;
+  const lines: SetupLine[] = [
+    { key: 'progress', text: progress(run, t), bold: true },
+    { key: 'gap', text: '' },
+  ];
+  const prompt = run.prompt;
+  if (run.state !== 'active' || prompt === null) {
+    return [...lines, ...finishedLines(run, input.closeKey, t)];
+  }
+  lines.push(
+    { key: 'hint', text: t(`setup.hint.${prompt.step}`), dim: true },
+    { key: 'gap2', text: '' },
+  );
+  switch (prompt.step) {
+    case 'detect':
+      if (draft.kind === 'detect') lines.push(...detectLines(prompt, draft, t));
+      break;
+    case 'account':
+      if (draft.kind === 'account') lines.push(...accountLines(prompt, draft, t));
+      break;
+    case 'preset':
+      if (draft.kind === 'preset') lines.push(...presetLines(prompt, draft, t));
+      break;
+    case 'executors':
+      if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t));
+      break;
+    case 'review':
+      lines.push(...planLines(prompt.plan, t));
+      break;
+  }
+  return lines;
+}

@@ -20,6 +20,7 @@ export const UI_KEYMAP_ENVIRONMENTS = ['auto', 'none'] as const;
 export const UI_CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as const;
 export const UI_MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
+export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 
@@ -256,3 +257,20 @@ export const UiTuiMouseConfigSchema = z.strictObject({
   copyMaxBytes: z.int().min(1).max(10_000_000).default(100_000),
 });
 export type UiTuiMouseConfig = z.output<typeof UiTuiMouseConfigSchema>;
+
+// ---- The setup assistant of the terminal interface (N121; P17 of docs/18) -----------------------
+
+/**
+ * `ui.setup` (P17), [proposta]: the architecture fixes that the first run opens straight in the
+ * assistant and does not name a way to turn that off, so the pattern is a key with modes:
+ * - `open`: `auto` (default) opens the assistant when the daemon says there is no configuration yet
+ *   (`firstRunNeeded` of `GET /v1/setup`), and resumes the run the daemon kept; `never` leaves the
+ *   assistant to the tab Settings and to the person.
+ * - `readTimeoutMs`: how long the TUI waits for that answer before it gives up and goes on with the
+ *   normal screen (a daemon that does not answer must not hold the interface), in milliseconds.
+ */
+export const UiSetupConfigSchema = z.strictObject({
+  open: z.enum(UI_SETUP_OPEN_MODES).default('auto'),
+  readTimeoutMs: z.int().min(100).max(60_000).default(5000),
+});
+export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;

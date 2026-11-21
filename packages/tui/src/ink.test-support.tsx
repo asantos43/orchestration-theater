@@ -18,6 +18,7 @@ import {
   type SystemLocaleEnv,
 } from './locale.js';
 import { DEFAULT_UI_SETTINGS, type LocaleSetting, type UiSettings } from './settings.js';
+import type { SetupApi } from './setup/index.js';
 
 /**
  * What the tests of the TUI share: a helper that writes keys and reads frames over
@@ -88,6 +89,8 @@ export interface RenderAppOptions {
   readonly chatSocket?: ChatPanelConfig['socket'];
   readonly history?: ChatPanelConfig['history'];
   readonly tabContent?: TabContentMap | undefined;
+  /** The routes of the setup assistant (P17); default: the ones of the connected client. */
+  readonly setupApi?: SetupApi | undefined;
   /** The system the keymap adapts to. Default: Linux with no terminal variables, on every OS. */
   readonly keyEnvironment?: KeyEnvironment | undefined;
   /**
@@ -99,6 +102,16 @@ export interface RenderAppOptions {
   readonly mouseClipboard?: MouseLayerProps['clipboard'];
 }
 
+/**
+ * The settings the tests start from: the defaults, with the first-run assistant (P17) off. A real
+ * daemon with no configuration says `firstRunNeeded`, which would take the screen of every test
+ * that is not about the assistant; the tests that are about it ask for `open: 'auto'`.
+ */
+export const TEST_UI_SETTINGS: UiSettings = {
+  ...DEFAULT_UI_SETTINGS,
+  setup: { ...DEFAULT_UI_SETTINGS.setup, open: 'never' },
+};
+
 /** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */
 const LINUX_KEYS: KeyEnvironment = { env: {}, platform: 'linux' };
 
@@ -107,7 +120,7 @@ const SETTLE_MS = 20;
 
 /** Mounts the app over `ink-testing-library`. */
 export async function renderApp(options: RenderAppOptions): Promise<RenderedApp> {
-  const settings = options.settings ?? DEFAULT_UI_SETTINGS;
+  const settings = options.settings ?? TEST_UI_SETTINGS;
   const env: SystemLocaleEnv = { LANG: options.systemLocale ?? 'en_US.UTF-8' };
   const i18n = await createTuiI18n(resolveLocale(settings.locale, env), loadTuiCatalogs());
   const locale = new LocaleController(i18n, settings.locale, env);
@@ -122,6 +135,7 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       chatSocket={options.chatSocket}
       history={options.history}
       tabContent={options.tabContent}
+      setupApi={options.setupApi}
       keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
       mouseTerminal={
         options.mouseWrites === undefined

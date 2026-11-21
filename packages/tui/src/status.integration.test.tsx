@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanupApps, renderApp, type RenderedApp } from './ink.test-support.js';
+import { cleanupApps, renderApp, TEST_UI_SETTINGS, type RenderedApp } from './ink.test-support.js';
 import { parseUiSettings } from './settings.js';
 import { startTuiTestDaemon, type TuiTestDaemon } from './test-daemon.test-support.js';
 
@@ -35,7 +35,8 @@ async function open(
 ): Promise<RenderedApp> {
   return renderApp({
     connector: daemon.connector,
-    settings: parseUiSettings(ui),
+    // The assistant of P17 is not what these tests are about: it stays closed.
+    settings: ui === undefined ? TEST_UI_SETTINGS : parseUiSettings(ui),
     systemLocale,
   });
 }

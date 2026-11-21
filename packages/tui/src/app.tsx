@@ -18,6 +18,7 @@ import type { LocaleController } from './locale.js';
 import { MouseLayer, type MouseLayerProps, type MouseTerminal } from './mouse/index.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
 import type { UiSettings } from './settings.js';
+import type { SetupApi } from './setup/index.js';
 import { StatusScreen } from './status-screen.js';
 import { useDaemon } from './use-daemon.js';
 
@@ -36,6 +37,8 @@ export interface AppProps {
   readonly history?: ChatPanelConfig['history'];
   /** What each tab of the panel draws; they come in empty and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
+  /** The routes of the setup assistant (P17); default: the ones of the daemon's client. For tests. */
+  readonly setupApi?: SetupApi | undefined;
   /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
   readonly keyEnvironment?: KeyEnvironment | undefined;
   /**
@@ -113,6 +116,7 @@ function Screen(props: AppProps): ReactNode {
           history: props.history,
         }}
         tabContent={props.tabContent}
+        setupApi={props.setupApi}
       />
     );
   }
