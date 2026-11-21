@@ -22,6 +22,14 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
   }),
   /** The Producer cancels the play. [proposta] Allowed in every state that is not final. */
   z.strictObject({ type: z.literal('CANCEL'), reason }),
+  /**
+   * [proposta] N176: the Producer pauses the play, in any state that is not final. `drain` lets
+   * the stage in flight finish and opens nothing new; `interrupt` also interrupts the attempts in
+   * flight with the cause `paused`, saving the checkpoint.
+   */
+  z.strictObject({ type: z.literal('PAUSE'), mode: z.enum(['drain', 'interrupt']), reason }),
+  /** [proposta] N176: the Producer resumes a paused play; what was held back starts. */
+  z.strictObject({ type: z.literal('RESUME'), reason }),
   z.strictObject({ type: z.literal('PLAN_SUBMITTED'), hasOpenQuestions: z.boolean() }),
   z.strictObject({ type: z.literal('QUESTIONS_ANSWERED') }),
   z.strictObject({ type: z.literal('PLAN_REVIEWED'), approved: z.boolean(), reason }),
@@ -82,6 +90,11 @@ export const PlayEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('DEMAND_BLOCKED'), demandId, reason }),
   /** Judgment point 2: the Actor ran out of time. Also what the deadline of a demand sends. */
   z.strictObject({ type: z.literal('ACTOR_TIMED_OUT'), demandId }),
+  /**
+   * [proposta] N176: a person cancelled the attempt of a demand in flight. Like a timeout it opens
+   * judgment point 2 (`actor_timeout`): the Director takes the work done so far or reassigns.
+   */
+  z.strictObject({ type: z.literal('ACTOR_CANCELLED'), demandId, reason }),
   /** Judgment point 6: the model refused, or a permission error. */
   z.strictObject({ type: z.literal('ACTOR_REFUSED'), demandId }),
   /** Judgment point 7: an attempt went over the limit of resumes. */

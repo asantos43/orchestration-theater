@@ -24,6 +24,7 @@ export * from './ports/profiles.js';
 export * from './ports/quota-snapshots.js';
 export * from './ports/usage.js';
 export * from './ports/usage-source.js';
+export * from './ports/setup-runs.js';
 export * from './ports/wakeups.js';
 export * from './ports/prompt-source.js';
 export * from './store-kit/index.js';

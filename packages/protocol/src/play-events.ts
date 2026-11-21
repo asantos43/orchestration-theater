@@ -66,5 +66,11 @@ export const PlayTransitionedPayloadSchema = z.strictObject({
   counters: z.record(z.string(), z.int().min(0)),
   effects: z.array(text),
   reason: z.string().optional(),
+  /**
+   * Types of the effects the transition asked for and the runner held back because the play is
+   * paused (N176); they are dispatched again on `RESUME`. Optional, so the events already written
+   * stay valid (same schema version).
+   */
+  held: z.array(text).optional(),
 });
 export type PlayTransitionedPayload = z.infer<typeof PlayTransitionedPayloadSchema>;

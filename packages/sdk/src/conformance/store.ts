@@ -9,6 +9,7 @@ import { describeIdeaAggregatesConformance } from './idea-aggregates.js';
 import { describePlayAggregatesConformance } from './play-aggregates.js';
 import { describeProfileAggregatesConformance } from './profile-aggregates.js';
 import { describeScenarioAggregatesConformance } from './scenario-aggregates.js';
+import { describeSetupAggregatesConformance } from './setup-aggregates.js';
 import { describeEventLogConformance, sampleEvent } from './event-log.js';
 import { deferred, rejectionOf, settle } from './helpers.js';
 
@@ -41,6 +42,7 @@ export function describeStoreConformance(
   describeCoordinationAggregatesConformance(name, factory);
   describeIdeaAggregatesConformance(name, factory);
   describeProfileAggregatesConformance(name, factory);
+  describeSetupAggregatesConformance(name, factory);
   describeAggregateTransactionsConformance(name, factory);
 
   describe(`Store conformance: ${name} (port ${STORE_PORT_VERSION})`, () => {

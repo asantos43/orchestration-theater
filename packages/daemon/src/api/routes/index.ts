@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiHandlers } from '../handlers.js';
 import { registerAttachmentRoutes } from './attachments.js';
+import { registerAttemptCommands } from './attempt-commands.js';
 import { registerBlackboardRoutes } from './blackboard.js';
 import { registerConfigRoutes } from './config-view.js';
 import { commandRegistrar } from './command.js';
@@ -19,6 +20,7 @@ import { registerProfileCommands } from './profile-commands.js';
 import { registerProfileRoutes } from './profiles.js';
 import { registerScenarioCommands } from './scenario-commands.js';
 import { registerScenarioRoutes } from './scenarios.js';
+import { registerSetupCommands, registerSetupRoutes } from './setup.js';
 import { registerUsageRoutes } from './usage.js';
 
 export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
@@ -39,6 +41,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerUsageRoutes(handlers, deps);
   registerConfigRoutes(handlers, deps);
   registerLayoutRoutes(handlers, deps);
+  registerSetupRoutes(handlers, deps);
 }
 
 /**
@@ -53,9 +56,11 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerScenarioCommands(register, deps);
   registerDecisionCommands(register, deps);
   registerPlayCommands(register, deps);
+  registerAttemptCommands(register, deps);
   registerOrderCommands(register, deps);
   registerIdeaCommands(register, deps);
   registerProfileCommands(register, deps);
   registerConfigCommands(register, deps);
   registerLayoutCommands(register, deps);
+  registerSetupCommands(register, deps);
 }

@@ -32,7 +32,8 @@ import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
-import type { ClientFactory, ClientFactoryParts } from './clients.js';
+import { SetupService } from './setup/index.js';
+import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
 import {
   compose,
   productionClients,
@@ -40,7 +41,7 @@ import {
   type Composition,
   type ProductionClientsOptions,
 } from './compose.js';
-import { loadConfig, type DaemonConfig } from './config.js';
+import { CLIENT_IDS, loadConfig, type DaemonConfig } from './config.js';
 import { Execution } from './execution/service.js';
 import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
@@ -70,6 +71,7 @@ import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
 import { AttachmentService } from './scenarios/attachments.js';
+import { ShellCommandService } from './shell/service.js';
 import { createDaemonExhaustion } from './orchestration/exhaustion-wiring.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
@@ -81,6 +83,7 @@ import { situationSubject, situationText, type SituationSink } from './situation
 import { liveProfileSessions } from './profiles/live-sessions.js';
 import { roleListsOf } from './profiles/role-lists.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
+import { ExecutorService } from './executors/service.js';
 import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
@@ -572,6 +575,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     void report.done;
   }
   let orchestration: Orchestration | undefined;
+  let shellCommands: ShellCommandService | undefined;
   if (execution !== undefined) {
     // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
     orchestration = startOrchestration({
@@ -588,10 +592,51 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handoff,
       home: homedir(),
     });
+    // P6 (Phase 7): the `!` command of the Producer (N43). Its processes are written down like the
+    // clients' (5.21); the sandbox is the one of layer 3, and `app.terminal` says whether it is used.
+    shellCommands = new ShellCommandService({
+      store,
+      clock,
+      launcher:
+        composition.launcher === undefined
+          ? undefined
+          : new TrackingLauncher(
+              composition.launcher,
+              store,
+              clock,
+              logger,
+              composition.situations,
+            ),
+      confine: composition.sandbox?.confineCommand,
+      attachments: new AttachmentService({
+        store,
+        clock,
+        scenariosDir: paths.scenarios,
+        limits: () => ({
+          maxSize: config.scenarios.attachment_max_size,
+          readMax: config.scenarios.attachment_read_max,
+        }),
+      }),
+      channel: orchestration.channel,
+      ask: (scenarioId, question) => input.orchestrationHandlers.openApproval(scenarioId, question),
+      env: () =>
+        buildClientEnv(
+          { env_inherit: config.tools.env_inherit, env_allow: config.tools.env_allow, env: {} },
+          options.clientSearch?.env ?? process.env,
+        ),
+      scenariosDir: paths.scenarios,
+      settings: () => ({
+        shell: config.chat.shell_command,
+        terminalMode: config.app.terminal,
+        terminal: config.terminal,
+      }),
+      logger,
+    });
     // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
     registerChatRoutes({
       api,
       channel: orchestration.channel,
+      shell: shellCommands,
       store,
       hub: composition.eventHub,
       situations: composition.situations,
@@ -772,6 +817,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       };
       // First: no new request reaches a service that is about to stop (and `api.json` goes away).
       await attempt('api', () => api.stop());
+      // The `!` commands end (their whole process tree) before the services they report to stop.
+      await attempt('shell commands', async () => shellCommands?.close());
       // A login left open is cancelled: its process must not outlive the daemon.
       await attempt('logins', () => logins.stop());
       await attempt('scheduler', () => scheduler.stop());
@@ -844,6 +891,34 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
   });
 
+  // P4 (Phase 7, N121): the setup assistant. It cadastres Executors through the same service as
+  // `ot executor add` (only its dry run: nothing enters `config.yaml` before the confirmation) and
+  // reads the model catalogs of the clients the pool has; with no execution it sees no client.
+  const clientAdapter = (client: string) => {
+    try {
+      return execution?.pool.adapterOf(client);
+    } catch {
+      return undefined;
+    }
+  };
+  const setup = new SetupService({
+    store,
+    clock,
+    logger,
+    configPath: paths.config,
+    profiles,
+    executors: new ExecutorService({
+      store,
+      clock,
+      logger,
+      configPath: paths.config,
+      catalogs: (client) => clientAdapter(client)?.models,
+    }),
+    catalogs: (client) => clientAdapter(client)?.models,
+    installedClients: () =>
+      new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
+  });
+
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
@@ -854,6 +929,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     budget,
     profiles,
     layout,
+    setup,
     attachments: new AttachmentService({
       store,
       clock,
@@ -893,7 +969,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     layout,
     channel: orchestration?.channel,
     runner: orchestration?.runner,
+    attempts: execution?.runner,
+    pauseMode: () => config.pause.mode,
     ideas: orchestration?.ideas,
+    setup,
   });
 
   const handle: DaemonHandle = {

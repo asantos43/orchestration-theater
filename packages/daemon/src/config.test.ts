@@ -560,6 +560,13 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('rescript:\n  extra: 1\n')).toThrow(/extra/);
   });
 
+  it('defaults pause.mode to drain (N176) and takes the two modes', () => {
+    expect(parseConfig('').pause).toEqual({ mode: 'drain' });
+    expect(parseConfig('pause:\n  mode: interrupt\n').pause.mode).toBe('interrupt');
+    expect(() => parseConfig('pause:\n  mode: kill\n')).toThrow(/mode/);
+    expect(() => parseConfig('pause:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
   it('defaults security.catalog_probe to allow and takes refuse', () => {
     expect(parseConfig('').security.catalog_probe).toBe('allow');
     expect(parseConfig('security:\n  catalog_probe: refuse\n').security.catalog_probe).toBe(
@@ -885,6 +892,7 @@ describe('chat', () => {
       presence: 'connected',
       presence_window: 30_000,
       silent_turn: 'notice',
+      shell_command: { mode: 'on', timeout: 300_000, context: 'auto', max_running: 4 },
     });
   });
 
@@ -921,6 +929,66 @@ describe('chat', () => {
       expect(() => parseConfig(`chat:\n  history: ${bad}\n`)).toThrow(/history/);
     }
     expect(() => parseConfig('chat:\n  port: 80\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('the ! command (N43, N187)', () => {
+  it('is on, with a 5 minute timeout and the output going to the Director by default', () => {
+    const config = parseConfig('');
+    expect(config.chat.shell_command).toEqual({
+      mode: 'on',
+      timeout: 300_000,
+      context: 'auto',
+      max_running: 4,
+    });
+    expect(config.app).toEqual({ terminal: 'sandbox' });
+    expect(config.terminal).toEqual({
+      snippet: { max_lines: 200, keep: 'tail' },
+      log_max_size: 16 * 1024 * 1024,
+    });
+  });
+
+  it('takes chat.shell_command as the scalar on | off or as a section', () => {
+    expect(parseConfig('chat:\n  shell_command: off\n').chat.shell_command).toEqual({
+      mode: 'off',
+      timeout: 300_000,
+      context: 'auto',
+      max_running: 4,
+    });
+    expect(
+      parseConfig('chat:\n  shell_command:\n    timeout: 30s\n    context: ask\n').chat
+        .shell_command,
+    ).toEqual({ mode: 'on', timeout: 30_000, context: 'ask', max_running: 4 });
+    expect(
+      parseConfig('chat:\n  shell_command: { timeout: off }\n').chat.shell_command.timeout,
+    ).toBe(null);
+  });
+
+  it('refuses a bad mode, timeout, context, terminal mode or snippet size', () => {
+    for (const bad of [
+      'chat:\n  shell_command: maybe\n',
+      'chat:\n  shell_command: { timeout: 0 }\n',
+      'chat:\n  shell_command: { timeout: soon }\n',
+      'chat:\n  shell_command: { context: sometimes }\n',
+      'chat:\n  shell_command: { other: 1 }\n',
+      'chat:\n  shell_command: { max_running: 0 }\n',
+      'app:\n  terminal: docker\n',
+      'terminal:\n  snippet: { max_lines: 0 }\n',
+      'terminal:\n  snippet: { keep: middle }\n',
+      'terminal:\n  log_max_size: 0B\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+
+  it('takes each app.terminal mode and the snippet keys', () => {
+    for (const mode of ['sandbox', 'host', 'off']) {
+      expect(parseConfig(`app:\n  terminal: ${mode}\n`).app.terminal).toBe(mode);
+    }
+    const terminal = parseConfig(
+      'terminal:\n  snippet: { max_lines: 5, keep: head }\n  log_max_size: 1MB\n',
+    ).terminal;
+    expect(terminal).toEqual({ snippet: { max_lines: 5, keep: 'head' }, log_max_size: 1_048_576 });
   });
 });
 
@@ -1001,6 +1069,28 @@ describe('sandbox and security.secret_paths', () => {
     ).security;
     expect(secret_paths).toEqual({ add: ['~/.vault'], remove: ['~/.aws'] });
     expect(() => parseConfig('security:\n  secret_paths:\n    add: [""]\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('setup (the setup assistant, P4 of Phase 7)', () => {
+  it('proposes a cap of 20 a day and 200 a month, and writes explicit lists, by default', () => {
+    const { setup } = parseConfig('');
+    expect(setup.suggested_budget).toEqual({ daily_usd: 20, monthly_usd: 200 });
+    expect(setup.role_lists).toBe('explicit');
+  });
+
+  it('takes each mode and a cap of its own', () => {
+    expect(parseConfig('setup:\n  role_lists: preset\n').setup.role_lists).toBe('preset');
+    const { setup } = parseConfig('setup:\n  suggested_budget:\n    daily_usd: 5\n');
+    expect(setup.suggested_budget).toEqual({ daily_usd: 5, monthly_usd: 200 });
+  });
+
+  it('rejects an unknown mode, a cap that is not positive and unknown keys', () => {
+    expect(() => parseConfig('setup:\n  role_lists: some\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('setup:\n  suggested_budget:\n    daily_usd: 0\n')).toThrow(
+      InvalidInput,
+    );
+    expect(() => parseConfig('setup:\n  extra: 1\n')).toThrow(InvalidInput);
   });
 });
 
