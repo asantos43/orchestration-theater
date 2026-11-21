@@ -1,6 +1,6 @@
 # 18. Plano da Fase 7
 
-Versão 6, de 2026-11-21 (as cinco ondas estão concluídas; o P21, o aceite, está na main no PR #231 (7debaa8) [V: `git log`]; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
+Versão 7, de 2026-11-21 (as cinco ondas estão concluídas, e o dono pediu uma onda 6 de acertos, P22 a P27, N208; o P21, o aceite, está na main no PR #231 (7debaa8) [V: `git log`]; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
 O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levantou oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), tomadas pelo dono em 2026-11-20, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim.
 
@@ -101,6 +101,12 @@ Não entram **[proposta]**:
 | P19 | Sessão direta com um Ator (N190) | P12 | P17, P18 | concluído (PR #228) |
 | P20 | Terminais: testes de fumaça e roteiro manual (N191) | P12 | P17 a P19 | concluído (PR #226) |
 | P21 | Aceite da fase | todos | nada | concluído (PR #231) |
+| P22 | Criar projeto pela TUI (N208, item 1) | P21 | P23 a P27 | por fazer |
+| P23 | Assistente e Executores a quente (N208, item 3; N202 (c)) | P21 | P22, P24 a P27 | por fazer |
+| P24 | Teclas que chegam antes de a caixa ligar (N208, item 5) | P21 | P22, P23, P25 a P27 | por fazer |
+| P25 | Tentativas e pausa na API (N200, itens 1 e 2) | P21 | P22 a P24, P26, P27 | por fazer |
+| P26 | Chat: teclas do cartão, histórico ao reabrir e origem do `!` (N203, itens 2 e 3; N205 (b)) | P21 | P22 a P25, P27 | por fazer |
+| P27 | Sessão direta: trajetórias, testes e worktrees órfãs (N206, itens 3, 5 e 6) | P21 | P22 a P26 | por fazer |
 
 Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20 e as ondas 2, 3, 4 e 5 em 2026-11-21; os PRs estão nas linhas dos passos; os PRs #222 e #224, que estavam abertos quando a onda 3 foi documentada, estão na main [V: `git log`]; os PRs #226, #227 e #228 da onda 4 também estão na main [V: `git log`], e os passos foram descritos pela descrição dos PRs e, em parte, pelo código [S]):
 1. P1, P2, P4, P5, P6, P7 e P8. Os cinco primeiros são do daemon; P7 e P8 abrem o lado da TUI. Sete passos de uma vez passam do limite de dois subagentes com a suíte completa: os do daemon rodam a suíte em fila, e P7 e P8 testam só os pacotes deles até o PR.
@@ -108,10 +114,11 @@ Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20 e as ondas 2, 3, 
 3. P11, P12, P13, P14, P15 e P16.
 4. P17, P18, P19 e P20.
 5. P21.
+6. P22 a P27, de acertos, decidida pelo dono em 2026-11-21 (N208), depois do aceite e antes da Fase 8. Os seis mexem em partes diferentes (lateral e comandos `/`; configuração a quente; caixa de texto; rota de tentativas e Visão geral; chat; sessão direta) e correm juntos, cada um no seu worktree; os catálogos de rotas, eventos e textos, que vários tocam, o orquestrador junta ao mesclar.
 
 Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e conversa com o Diretor contra o `fake-agent`. É o ponto em que o dono pode abrir a TUI e mudar o rumo antes das telas de configuração e do aceite. **Atingido em 2026-11-21** [S: os testes de aceite dos PRs #218 a #221, #222 e do P14 rodam contra o `fake-agent`]. A onda 4 (P17 a P20) fechou as telas que faltavam (o assistente, o `!` e a sessão direta) e pôs a TUI num tmux de verdade na CI Linux (P20). A onda 5 (P21, PR #231) fechou o aceite em dois níveis: o automático, pela TUI e só pelas teclas contra o `fake-agent`, em `en` e `pt-BR`, e o real, com o Claude Code (haiku) num tmux, que passou na rodada do orquestrador de 2026-11-21 [V]. Falta o dono abrir a TUI num terminal real e passar o roteiro `tools/acceptance/tui-terminals.md` (Windows Terminal e macOS ou Linux), e fazer o login oficial dentro da TUI: nenhum teste rodou num terminal de verdade além do tmux, e o orquestrador não faz login [N]. As lacunas do aceite estão na N208, e o fechamento da fase, na N209.
 
-**Estimativa:** 2,5 a 3 semanas, como na §10. Pelo ritmo medido nas Fases 1 a 6, com agentes, fica mais perto de 1,5 semana **[proposta]**. São 22 passos, contra 14 da Fase 6 e 23 da Fase 5.
+**Estimativa:** 2,5 a 3 semanas, como na §10. Pelo ritmo medido nas Fases 1 a 6, com agentes, fica mais perto de 1,5 semana **[proposta]**. São 22 passos (28 com a onda 6), contra 14 da Fase 6 e 23 da Fase 5.
 
 ### P1. Eventos que faltam (N173; §5.12)
 
@@ -519,6 +526,48 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 - **no nível real, o teste responde a primeira opção** de cada pergunta do Diretor, como o `phase6`; outro cartão (um limite que acabou) falha o teste;
 - **fica de fora**: os terminais reais (roteiro do P20, com o dono, tabela toda **[N]**), o login oficial, Windows e macOS no nível real (o tmux não roda no Windows; o teste pula ali) e a confirmação do assistente a quente.
 
+### P22. Criar projeto pela TUI (N208, item 1; §5.20)
+
+O critério da §10 começa por "criar um projeto", e a TUI não tem como. Uma ação **"novo projeto"** na barra lateral e um **`/new project`** no registro de comandos do daemon (`packages/daemon/src/slash/builtin.ts`), que pedem o repositório (padrão: a pasta em que a TUI abriu) e abrem o cenário `project` pela mesma rota `openScenario` que o `ot chat --type project --repo .` usa. O cenário novo aparece na lateral e fica ativo. Textos no catálogo, em `en` e `pt-BR`; tecla da ação no registro de interface, remapeável.
+
+**Aceite:** teste de ponta a ponta com `ink-testing-library` contra o daemon em processo: a ação da lateral e o `/new project` criam o cenário e o deixam ativo; repositório inválido mostra o erro do catálogo.
+
+### P23. Assistente e Executores a quente (N208, item 3; N202 (c); N188)
+
+A confirmação do assistente (`packages/daemon/src/setup/service.ts`) e o serviço de Executores gravam a configuração, mas o daemon só a relê no reinício. Os dois passam a aplicar a mudança pela mesma recarga do `PUT /v1/config` (`packages/daemon/src/config-hot.ts`): as chaves quentes valem na hora e emitem `config.changed {hot, restart}`, e as outras ficam marcadas "vale no reinício", como na aba Configurações. A edição à mão do arquivo continua só no reinício.
+
+**Aceite:** teste do daemon: depois de `setup.confirm`, um `GET /v1/config` e o evento `config.changed` mostram os papéis e as contas novas sem reiniciar; o mesmo para adicionar e remover um Executor.
+
+### P24. Teclas que chegam antes de a caixa ligar (N208, item 5; N35)
+
+Sob carga, a tela do chat aparece antes de a caixa de texto (`packages/tui/src/input/text-box.tsx`) ligar as teclas, e a primeira se perde. A caixa passa a guardar as teclas que chegam antes de ligar e as aplica na ordem quando liga; colagem e atalhos seguem o mesmo caminho. O teste de aceite (`phase7-acceptance.e2e.test.tsx`) deixa de repetir a primeira tecla.
+
+**Aceite:** teste com a ligação atrasada de propósito: nenhuma tecla se perde, e a ordem se mantém; o aceite automático passa três vezes seguidas sem a repetição.
+
+### P25. Tentativas e pausa na API (N200, itens 1 e 2; §5.12)
+
+Uma rota que lista as tentativas de uma peça (as abertas e as recentes, com Ator, estado, pausa e início), para o store `activity` (`packages/client/src/stores/activity.ts`) se montar ao conectar, e não só pelos eventos que chegam depois; e o campo `paused` em `ApiPlay`, para a Visão geral só oferecer "retomar" com a peça pausada. Rota e campo no catálogo de rotas (`api-routes.json`), aditivos, com o mesmo `schemaVersion`.
+
+**Aceite:** teste do daemon e do cliente: uma peça pausada antes de a TUI conectar aparece pausada, com os Atores, e a Visão geral oferece "retomar" só nesse caso.
+
+### P26. Chat: teclas do cartão, histórico ao reabrir e origem do `!` (N203, itens 2 e 3; N205 (b))
+
+- **Teclas do cartão**: o cartão de decisão (`packages/tui/src/chat/card.ts`) lê `decision.answer` do registro de interface, e não as combinações direto, para o `ui.keymap.overrides` valer ali.
+- **Histórico ao reabrir**: ao abrir um cenário, o chat mostra as últimas mensagens do log, em vez de o socket novo nascer no fim; a quantidade é chave de configuração com modos **[proposta]**.
+- **Origem do `!`**: o daemon marca a pergunta do `context: ask` com `source: 'shell'` no `input` do `ask` e põe código e origem no `error` do `!`; a TUI deixa a heurística (`isShellQuestion` e o contador de linhas em voo) e lê a marca; textos no catálogo.
+
+**Aceite:** testes do cartão com uma tecla remapeada; do chat reaberto com histórico; do `!` com uma pergunta do Diretor que tem `Send` e `Keep` e não é tomada pela do `!`, e com duas recusas fora de ordem.
+
+### P27. Sessão direta: trajetórias, testes e worktrees órfãs (N206, itens 3, 5 e 6; N190)
+
+Os eventos `direct.session.*` entram no construtor de trajetória (`packages/daemon/src/trajectory/service.ts`), para a sessão direta aparecer na aba Trajetórias e no export; testes do orçamento e do `shutdown` do daemon fechando as sessões; e uma varredura, na partida do daemon, das worktrees `direct/<id>` sem sessão viva, que segue `direct_session.on_close` (`keep` só registra, `discard` remove) e gera evento.
+
+**Aceite:** testes do daemon para os três itens; a aba Trajetórias mostra uma sessão direta fechada.
+
+### Fechamento da fase (N209)
+
+A Fase 7 só é dada por concluída depois da onda 6, do roteiro dos terminais (`tools/acceptance/tui-terminals.md`) no Windows Terminal e num terminal de macOS ou Linux e do login oficial pela TUI, os dois com o dono ao teclado. O plano da Fase 8 (docs/19) pode ser escrito em paralelo, e os merges da Fase 8 seguem a N210.
+
 ## Fora desta fase
 
 - **Sistema de plugins e a aba Plugins:** Fase 9 (N189). O registro de abas do P7 já aceita a aba.
@@ -540,3 +589,5 @@ Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo do
 - **N190, sessão direta:** nesta fase, num passo próprio (P19), fora do critério de aceite. Alternativas: dentro do aceite; ou na Fase 12.
 - **N191, terminais do aceite:** teste de fumaça com tmux na CI Linux, `ink-testing-library` também no Windows e no macOS, e um roteiro manual para o dono nos terminais reais. Alternativa: só a CI, com os terminais reais **[N]** até a Fase 11.
 - **N192, merge da Fase 7:** a autorização das Fases 3 a 6 (N171) vale também para a Fase 7, com a CI verde e squash pelo `merge-pr.sh`. Alternativa: ok do dono em cada PR.
+
+Os achados das ondas 2 a 5 (N196 a N209) e o merge da Fase 8 (N210) foram decididos em 2026-11-21, todos iguais à recomendação: as chaves e escolhas **[proposta]** aceitas (N197, N198, N201 e N204); `panelClosed` e `activeTab` com campos próprios antes da Fase 12 (N196); o contexto de teclas por aba como padrão, com um contrato de aba só antes da Fase 9 (N199); a onda 6 de acertos, P22 a P27 (N200, N202, N203, N205, N206 e N208); o fechamento depois do roteiro e do login (N209); e o merge da Fase 8 sem ok por PR (N210).
