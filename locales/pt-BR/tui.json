@@ -829,6 +829,80 @@
       "network": "Não foi possível falar com o daemon.",
       "unavailable": "O daemon não pode responder agora.",
       "other": "Não foi possível ler o consumo ({{code}})."
+    },
+    "trend": {
+      "title": "Tendência · {{days}} dias",
+      "legend": "Por dia: tokens, custo real ≈ custo em equivalente de API (— é desconhecido)",
+      "figures": "entrada {{input}} · saída {{output}} · {{real}} ≈{{api}}",
+      "row": "{{day}}  {{figures}}",
+      "gapDay": "{{day}}  sem dados",
+      "total": "Total  {{figures}}",
+      "coverage": "Conhecido: tokens em {{tokens}} dos turnos · custo em {{cost}} · fechado até {{through}}",
+      "missing_one": "{{count}} dia do período não tem agregado (não fechou, foi apagado ou está vazio).",
+      "missing_other": "{{count}} dias do período não têm agregado (não fecharam, foram apagados ou estão vazios).",
+      "noneReady": "Nenhum dia fechou ainda: os agregados são montados uma vez por dia."
+    },
+    "bottlenecks": {
+      "title": "Gargalos",
+      "stages": "Tempo por estado",
+      "waits": "Esperas",
+      "none": "Nada medido neste período.",
+      "row": "{{name}}  {{total}} · {{count}}x · p95 {{p95}} · {{share}}",
+      "coverage": "Conhecido: tentativas com telemetria do cliente {{attempts}} · tokens {{tokens}} · custo {{cost}}",
+      "origin": "Origem dos números: {{origins}}",
+      "approximate": "O p95 é aproximado: mais de um agregado foi reunido."
+    },
+    "play": {
+      "title": "Spans da peça",
+      "noScenario": "Selecione um cenário para ver os spans da peça dele.",
+      "noPlay": "Este cenário ainda não tem peça.",
+      "direct": "A aba Trajetórias segue uma sessão direta: ela não tem spans.",
+      "empty": "Ainda não há span desta peça.",
+      "running": "A peça está em andamento: os spans do que ainda está aberto aparecem quando fecham.",
+      "truncated": "A base tem mais spans do que foram lidos: os mais antigos estão listados.",
+      "more": "... mais {{count}} spans (ui.usage.spanRows)",
+      "failed": "falhou",
+      "kind": {
+        "play": "peça",
+        "stage": "etapa",
+        "attempt": "tentativa",
+        "session": "sessão",
+        "tool": "ferramenta",
+        "wait": "espera",
+        "other": "span"
+      }
+    },
+    "telemetry": {
+      "title": "Telemetria",
+      "state": {
+        "on": "Receptor ouvindo na porta {{port}}.",
+        "off": "A telemetria está desligada (telemetry.enabled).",
+        "no_base": "A base de telemetria não está aberta: nada é guardado.",
+        "no_receiver": "A base está aberta, mas o receptor OTLP não conseguiu ouvir: os clientes não enviam nada."
+      },
+      "accepted": "Lotes aceitos: traces {{traces}} · métricas {{metrics}} · logs {{logs}}",
+      "rejected": "Lotes recusados: formato {{format}} · tamanho {{size}} · token {{token}}",
+      "daemonSpans": {
+        "on": "Spans do daemon: ligados",
+        "off": "Spans do daemon: desligados (telemetry.daemon_spans)"
+      },
+      "base": "Base {{state}} · gravados {{written}} · na fila {{queued}} · descartados por estouro {{overflow}} · perdidos {{discarded}}",
+      "baseState": {
+        "ok": "ok",
+        "degraded": "degradada",
+        "no_base": "ausente"
+      },
+      "export": "Exportação: {{mode}}",
+      "exportMode": {
+        "off": "desligada",
+        "otlp": "OTLP",
+        "prometheus": "Prometheus",
+        "both": "OTLP e Prometheus"
+      },
+      "otlp": "OTLP para {{destination}} · enviados {{exported}}",
+      "dropped_one": "{{count}} registro descartado após as tentativas: {{reasons}}",
+      "dropped_other": "{{count}} registros descartados após as tentativas: {{reasons}}",
+      "prometheus": "Métricas Prometheus servidas em /metrics"
     }
   },
   "direct": {

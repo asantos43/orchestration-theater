@@ -10019,6 +10019,162 @@
       }
     },
     {
+      "id": "getPlaySpans",
+      "method": "GET",
+      "path": "/v1/plays/:playId/spans",
+      "kind": "json",
+      "summary": "The spans the daemon made for a play (stages, attempts, sessions, tool calls, waits) as a tree with the durations",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "spanId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "parentSpanId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "play",
+                    "stage",
+                    "attempt",
+                    "session",
+                    "tool",
+                    "wait",
+                    "other"
+                  ]
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "label": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "startMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "durationMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "unset",
+                    "ok",
+                    "error"
+                  ]
+                },
+                "attemptId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "spanId",
+                "parentSpanId",
+                "kind",
+                "depth",
+                "label",
+                "detail",
+                "startMs",
+                "durationMs",
+                "status",
+                "attemptId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "playClosed": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "playId",
+          "spans",
+          "playClosed",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "listPlayTrajectory",
       "method": "GET",
       "path": "/v1/plays/:playId/trajectory",
@@ -22665,6 +22821,232 @@
           "apiVersion"
         ],
         "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    },
+    {
+      "id": "getTelemetryStatus",
+      "method": "GET",
+      "path": "/v1/telemetry",
+      "kind": "json",
+      "summary": "The state of the telemetry: the OTLP receiver and its refused batches, the base, and the export with its drops",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "on",
+              "off",
+              "no_base",
+              "no_receiver"
+            ]
+          },
+          "daemonSpans": {
+            "type": "boolean"
+          },
+          "receiver": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "accepted": {
+                    "type": "object",
+                    "properties": {
+                      "traces": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "metrics": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "logs": {
+                        "$ref": "#/$defs/__schema0"
+                      }
+                    },
+                    "required": [
+                      "traces",
+                      "metrics",
+                      "logs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "rejected": {
+                    "type": "object",
+                    "properties": {
+                      "format": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "size": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "token": {
+                        "$ref": "#/$defs/__schema0"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "size",
+                      "token"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "port",
+                  "accepted",
+                  "rejected"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "ok",
+                      "degraded",
+                      "no_base"
+                    ]
+                  },
+                  "queued": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "written": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "droppedOverflow": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "discarded": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "resets": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "fileBytes": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "state",
+                  "queued",
+                  "written",
+                  "droppedOverflow",
+                  "discarded",
+                  "resets",
+                  "fileBytes"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "export": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "otlp",
+                  "prometheus",
+                  "both"
+                ]
+              },
+              "otlp": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "destination": {
+                        "type": "string"
+                      },
+                      "exported": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "dropped": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      }
+                    },
+                    "required": [
+                      "destination",
+                      "exported",
+                      "dropped"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prometheus": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "mode",
+              "otlp",
+              "prometheus"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "state",
+          "daemonSpans",
+          "receiver",
+          "base",
+          "export"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
       },
       "errors": {
         "401": [

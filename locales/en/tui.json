@@ -829,6 +829,80 @@
       "network": "Could not reach the daemon.",
       "unavailable": "The daemon cannot answer now.",
       "other": "Could not read consumption ({{code}})."
+    },
+    "trend": {
+      "title": "Trend · {{days}} days",
+      "legend": "Per day: tokens, real cost ≈ cost in API equivalent (— is unknown)",
+      "figures": "in {{input}} · out {{output}} · {{real}} ≈{{api}}",
+      "row": "{{day}}  {{figures}}",
+      "gapDay": "{{day}}  no data",
+      "total": "Total  {{figures}}",
+      "coverage": "Known: tokens in {{tokens}} of the turns · cost in {{cost}} · closed through {{through}}",
+      "missing_one": "{{count}} day of the period has no aggregate (not closed, purged or empty).",
+      "missing_other": "{{count}} days of the period have no aggregate (not closed, purged or empty).",
+      "noneReady": "No day is closed yet: the aggregates are built once a day."
+    },
+    "bottlenecks": {
+      "title": "Bottlenecks",
+      "stages": "Time per state",
+      "waits": "Waits",
+      "none": "Nothing measured in this period.",
+      "row": "{{name}}  {{total}} · {{count}}x · p95 {{p95}} · {{share}}",
+      "coverage": "Known: attempts with client telemetry {{attempts}} · tokens {{tokens}} · cost {{cost}}",
+      "origin": "Origin of the numbers: {{origins}}",
+      "approximate": "p95 is approximate: more than one aggregate was joined."
+    },
+    "play": {
+      "title": "Spans of the play",
+      "noScenario": "Select a scenario to see the spans of its play.",
+      "noPlay": "This scenario has no play yet.",
+      "direct": "The Trajectories tab follows a direct session: it has no spans.",
+      "empty": "No span of this play yet.",
+      "running": "The play is running: the spans of what is still open appear when they close.",
+      "truncated": "The base has more spans than were read: the oldest are listed.",
+      "more": "... {{count}} more spans (ui.usage.spanRows)",
+      "failed": "failed",
+      "kind": {
+        "play": "play",
+        "stage": "stage",
+        "attempt": "attempt",
+        "session": "session",
+        "tool": "tool",
+        "wait": "wait",
+        "other": "span"
+      }
+    },
+    "telemetry": {
+      "title": "Telemetry",
+      "state": {
+        "on": "Receiver listening on port {{port}}.",
+        "off": "Telemetry is off (telemetry.enabled).",
+        "no_base": "The telemetry base is not open: nothing is kept.",
+        "no_receiver": "The base is open but the OTLP receiver could not listen: the clients send nothing."
+      },
+      "accepted": "Batches taken: traces {{traces}} · metrics {{metrics}} · logs {{logs}}",
+      "rejected": "Batches refused: format {{format}} · size {{size}} · token {{token}}",
+      "daemonSpans": {
+        "on": "Spans of the daemon: on",
+        "off": "Spans of the daemon: off (telemetry.daemon_spans)"
+      },
+      "base": "Base {{state}} · written {{written}} · queued {{queued}} · dropped on overflow {{overflow}} · discarded {{discarded}}",
+      "baseState": {
+        "ok": "ok",
+        "degraded": "degraded",
+        "no_base": "missing"
+      },
+      "export": "Export: {{mode}}",
+      "exportMode": {
+        "off": "off",
+        "otlp": "OTLP",
+        "prometheus": "Prometheus",
+        "both": "OTLP and Prometheus"
+      },
+      "otlp": "OTLP to {{destination}} · sent {{exported}}",
+      "dropped_one": "{{count}} record dropped after the retries: {{reasons}}",
+      "dropped_other": "{{count}} records dropped after the retries: {{reasons}}",
+      "prometheus": "Prometheus metrics served at /metrics"
     }
   },
   "direct": {
