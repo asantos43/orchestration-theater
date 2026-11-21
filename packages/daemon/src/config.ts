@@ -24,6 +24,7 @@ import {
   LAYOUT_STORES,
   LAYOUT_SYNCS,
   UiClipboardConfigSchema,
+  UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
   UiRenderConfigSchema,
@@ -2146,6 +2147,8 @@ export const DaemonConfigSchema = z
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */
         runtime: UiRuntimeConfigSchema.prefault({}),
+        /** The text box of the terminal interface (N35): paste, history, editor and image. */
+        input: UiInputConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

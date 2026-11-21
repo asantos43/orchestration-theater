@@ -153,9 +153,9 @@ describe('ui.keymap.overrides', () => {
   });
 
   it('warns about a shortcut on the list of collisions of 5.13, but does not refuse it', () => {
-    const { warnings } = bindings(env, { 'tabs.add': 'Ctrl+A', 'tabs.close': 'Ctrl+Left' });
+    const { warnings } = bindings(env, { 'tabs.add': 'Ctrl+T', 'tabs.close': 'Ctrl+S' });
     const collisions = warnings.filter((notice) => notice.code === 'collision');
-    expect(collisions.map((notice) => notice.combo).sort()).toEqual(['Ctrl+A', 'Ctrl+Left']);
+    expect(collisions.map((notice) => notice.combo).sort()).toEqual(['Ctrl+S', 'Ctrl+T']);
     expect(collisions[0]?.text.key).toBe('keymap.notices.collision');
     expect(bindings(env, { 'tabs.add': 'Alt+Q' }).warnings).toEqual([]);
   });

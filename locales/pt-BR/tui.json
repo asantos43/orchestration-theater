@@ -3,6 +3,7 @@
     "layout": "Layout",
     "tabs": "Abas",
     "decision": "Decisões",
+    "input": "Caixa de texto",
     "general": "Geral"
   },
   "tabs": {
@@ -35,6 +36,29 @@
     },
     "app": {
       "quit": "Sair"
+    },
+    "input": {
+      "submit": "Enviar a mensagem",
+      "newline": "Inserir uma nova linha",
+      "left": "Mover o cursor um caractere para a esquerda",
+      "right": "Mover o cursor um caractere para a direita",
+      "wordLeft": "Mover o cursor uma palavra para a esquerda",
+      "wordRight": "Mover o cursor uma palavra para a direita",
+      "lineStart": "Ir ao início da linha",
+      "lineEnd": "Ir ao fim da linha",
+      "up": "Linha acima, ou a mensagem anterior do histórico",
+      "down": "Linha abaixo, ou a próxima mensagem do histórico",
+      "backspace": "Apagar o caractere antes do cursor",
+      "delete": "Apagar o caractere no cursor",
+      "killToEnd": "Recortar do cursor ao fim da linha",
+      "killToStart": "Recortar do cursor ao início da linha",
+      "killWordBack": "Recortar a palavra antes do cursor",
+      "killWordForward": "Recortar a palavra depois do cursor",
+      "yank": "Colar o último texto recortado",
+      "historySearch": "Buscar no histórico de mensagens",
+      "externalEditor": "Escrever a mensagem no editor externo",
+      "pasteImage": "Anexar a imagem da área de transferência",
+      "cancel": "Sair da busca no histórico"
     }
   },
   "bar": {
@@ -125,6 +149,31 @@
       "open": "aberto",
       "retrying": "tentando de novo",
       "closed": "fechado"
+    }
+  },
+  "input": {
+    "moreAbove": "… mais {{count}} linhas acima",
+    "moreBelow": "… mais {{count}} linhas abaixo",
+    "search": {
+      "prompt": "Buscar no histórico: {{query}}",
+      "none": "nenhuma mensagem encontrada"
+    },
+    "attachments": "Anexos: {{list}}",
+    "status": {
+      "imageAdded": "Imagem anexada como {{marker}}.",
+      "filesAdded": "Anexado: {{names}}.",
+      "noImage": "Não há imagem na área de transferência.",
+      "imageOff": "Colar imagem está desligado (ui.input.image.tool).",
+      "toolMissing": "Para colar uma imagem, instale uma destas: {{tools}}.",
+      "toolFailed": "{{tool}} não conseguiu ler a área de transferência: {{message}}",
+      "toolTimeout": "{{tool}} não respondeu em {{seconds}} s.",
+      "imageTooBig": "A imagem passa do limite de {{limit}} MB (ui.input.image.maxBytes).",
+      "editorOff": "O editor externo está desligado (ui.input.editor).",
+      "editorMissing": "Defina a variável VISUAL ou EDITOR para escrever num editor.",
+      "editorFailed": "Não foi possível executar o editor: {{message}}",
+      "readingImage": "Lendo a imagem da área de transferência...",
+      "historyFailed": "Não foi possível salvar o histórico: {{message}}",
+      "submitFailed": "A mensagem não foi enviada: {{message}}"
     }
   }
 }
