@@ -27,7 +27,23 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
+      chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop' },
+      input: DEFAULT_UI_SETTINGS.input,
     });
+  });
+
+  it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {
+    const settings = parseUiSettings({
+      chat: { queue: 'hold', suggestions: 0, decisionFocus: 'sometimes', esc: 'off' },
+      input: { maxVisibleLines: 3 },
+    });
+    expect(settings.chat).toEqual({
+      queue: 'hold',
+      suggestions: 0,
+      decisionFocus: 'auto',
+      esc: 'off',
+    });
+    expect(settings.input.maxVisibleLines).toBe(3);
   });
 
   it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
@@ -79,6 +95,8 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
+      chat: DEFAULT_UI_SETTINGS.chat,
+      input: DEFAULT_UI_SETTINGS.input,
     });
   });
 

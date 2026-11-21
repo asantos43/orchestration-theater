@@ -122,6 +122,23 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  input:\n    editor: vim\n')).toThrow(/ui\.input\.editor/);
   });
 
+  it('has the defaults of ui.chat and takes its other modes (P12)', () => {
+    expect(parseConfig('').ui.chat).toEqual({
+      queue: 'daemon',
+      suggestions: 6,
+      decisionFocus: 'auto',
+      esc: 'stop',
+    });
+    const yaml = 'ui:\n  chat:\n    queue: hold\n    suggestions: 0\n    esc: off\n';
+    expect(parseConfig(yaml).ui.chat).toEqual({
+      queue: 'hold',
+      suggestions: 0,
+      decisionFocus: 'auto',
+      esc: 'off',
+    });
+    expect(() => parseConfig('ui:\n  chat:\n    queue: later\n')).toThrow(/ui\.chat\.queue/);
+  });
+
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
     const yaml = [
       'ui:',

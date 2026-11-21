@@ -169,3 +169,36 @@ export const UiInputConfigSchema = z.strictObject({
     .prefault({}),
 });
 export type UiInputConfig = z.output<typeof UiInputConfigSchema>;
+
+// ---- The chat of the terminal interface (P12 of docs/18) ----------------------------------------
+
+/**
+ * What the TUI does with a message the Producer sends while the Director is in a turn. `daemon`: it
+ * goes at once and the daemon holds it in the prompt queue of the scenario (5.13, "Enfileirar");
+ * `hold`: the TUI keeps it, shown as waiting, and sends it when the turn ends.
+ */
+export const UI_CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
+/**
+ * How a decision of the Producer takes the keyboard. `auto`: the list opens in the chat as soon as
+ * it arrives and the arrows, Space and Enter answer it; `manual`: the chat only says there is a
+ * decision, and a key opens the list.
+ */
+export const UI_CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
+/** What Esc does while the Director is replying: `stop` asks the daemon to stop the reply (`/stop`); `off` does nothing. */
+export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
+
+/**
+ * `ui.chat` (P12). Every default is [proposta], since the architecture fixes the behavior and not
+ * these choices:
+ * - `queue`: `daemon` (default) or `hold`;
+ * - `suggestions`: how many commands the list of `/` shows at most (6); 0 turns the list off;
+ * - `decisionFocus`: `auto` (default) or `manual`;
+ * - `esc`: `stop` (default) or `off`.
+ */
+export const UiChatConfigSchema = z.strictObject({
+  queue: z.enum(UI_CHAT_QUEUE_MODES).default('daemon'),
+  suggestions: z.int().min(0).max(30).default(6),
+  decisionFocus: z.enum(UI_CHAT_DECISION_FOCUS_MODES).default('auto'),
+  esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
+});
+export type UiChatConfig = z.output<typeof UiChatConfigSchema>;

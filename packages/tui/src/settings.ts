@@ -7,6 +7,7 @@
  * default here, and nothing throws. This package never imports the daemon, so the defaults are
  * repeated on purpose.
  */
+import { DEFAULT_INPUT_SETTINGS, parseInputSettings, type InputSettings } from './input/settings.js';
 
 export const KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export type KeyRenderMode = (typeof KEY_RENDER_MODES)[number];
@@ -65,12 +66,31 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
 }
 
+export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
+export type ChatQueueMode = (typeof CHAT_QUEUE_MODES)[number];
+export const CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
+export type ChatDecisionFocus = (typeof CHAT_DECISION_FOCUS_MODES)[number];
+export const CHAT_ESC_MODES = ['stop', 'off'] as const;
+export type ChatEscMode = (typeof CHAT_ESC_MODES)[number];
+
+/** `ui.chat` (P12): the queue while the Director is in a turn, the `/` list, decisions and Esc. */
+export interface UiChatSettings {
+  readonly queue: ChatQueueMode;
+  /** How many commands the `/` list shows at most; 0 turns it off. */
+  readonly suggestions: number;
+  readonly decisionFocus: ChatDecisionFocus;
+  readonly esc: ChatEscMode;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  readonly chat: UiChatSettings;
+  /** `ui.input`: the text box (P10). */
+  readonly input: InputSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -102,12 +122,21 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   scrollStep: 'half',
 };
 
+export const DEFAULT_CHAT: UiChatSettings = {
+  queue: 'daemon',
+  suggestions: 6,
+  decisionFocus: 'auto',
+  esc: 'stop',
+};
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  chat: DEFAULT_CHAT,
+  input: DEFAULT_INPUT_SETTINGS,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -162,6 +191,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
+  const chat = record(field(source, 'chat'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -226,5 +256,16 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
     },
+    chat: {
+      queue: oneOf(field(chat, 'queue'), CHAT_QUEUE_MODES, DEFAULT_CHAT.queue),
+      suggestions: integer(field(chat, 'suggestions'), 0, 30, DEFAULT_CHAT.suggestions),
+      decisionFocus: oneOf(
+        field(chat, 'decisionFocus'),
+        CHAT_DECISION_FOCUS_MODES,
+        DEFAULT_CHAT.decisionFocus,
+      ),
+      esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
+    },
+    input: parseInputSettings(field(source, 'input')),
   };
 }
