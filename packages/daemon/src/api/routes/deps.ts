@@ -13,6 +13,7 @@ import type { PlayRunner } from '../../pipeline/runner.js';
 import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
+import type { AtifExporter } from '../../atif/atif-exporter.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
 import type { SlashCommandService } from '../../slash/index.js';
 import type { SetupService } from '../../setup/index.js';
@@ -44,6 +45,8 @@ export interface ReadRouteDeps {
   readonly direct?: DirectSessionService | undefined;
   /** The trajectory of a play (P14 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly trajectory?: TrajectoryService | undefined;
+  /** The ATIF export of a play (P5 of Phase 8); absent: its route answers 503 `unavailable`. */
+  readonly atif?: AtifExporter | undefined;
 }
 
 /**

@@ -54,6 +54,7 @@ import {
   DIRECT_ON_CLOSE_MODES,
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
+import { AtifConfigSchema } from './atif/atif-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1522,6 +1523,8 @@ export const DaemonConfigSchema = z
     terminal: TerminalConfigSchema,
     /** [proposta] The direct session with an Actor (architecture 5.20): see `direct/direct-config.ts`. */
     direct_session: DirectSessionConfigSchema,
+    /** [proposta] The ATIF export of the trajectories (architecture 5.11, N219): see `atif/atif-config.ts`. */
+    atif: AtifConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({

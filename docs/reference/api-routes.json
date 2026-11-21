@@ -6504,6 +6504,1403 @@
       }
     },
     {
+      "id": "getPlayAtif",
+      "method": "GET",
+      "path": "/v1/plays/:playId/atif",
+      "kind": "json",
+      "summary": "The play as an ATIF v1.8 trajectory (the Director as the root, each attempt embedded); with attemptId, that attempt alone",
+      "pathParams": [
+        "playId"
+      ],
+      "response": {
+        "$ref": "#/$defs/__schema35",
+        "$defs": {
+          "__schema0": {
+            "default": "ATIF-v1.8",
+            "type": "string",
+            "enum": [
+              "ATIF-v1.0",
+              "ATIF-v1.1",
+              "ATIF-v1.2",
+              "ATIF-v1.3",
+              "ATIF-v1.4",
+              "ATIF-v1.5",
+              "ATIF-v1.6",
+              "ATIF-v1.7",
+              "ATIF-v1.8"
+            ]
+          },
+          "__schema1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema3": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "model_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool_definitions": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema4"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "extra": {
+                "type": "object",
+                "properties": {
+                  "otheater": {
+                    "type": "object",
+                    "properties": {
+                      "schema": {
+                        "$ref": "#/$defs/__schema5"
+                      },
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "executor": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "client": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "profile": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "attemptId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sessionId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "schema",
+                      "role",
+                      "executor",
+                      "client",
+                      "profile",
+                      "attemptId",
+                      "sessionId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "name",
+              "version"
+            ],
+            "additionalProperties": false
+          },
+          "__schema4": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema5": {
+            "type": "number",
+            "const": 1
+          },
+          "__schema6": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema7"
+            }
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "step_id": {
+                "$ref": "#/$defs/__schema8"
+              },
+              "timestamp": {
+                "$ref": "#/$defs/__schema9"
+              },
+              "source": {
+                "$ref": "#/$defs/__schema10"
+              },
+              "model_name": {
+                "$ref": "#/$defs/__schema11"
+              },
+              "reasoning_effort": {
+                "$ref": "#/$defs/__schema12"
+              },
+              "message": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "reasoning_content": {
+                "$ref": "#/$defs/__schema17"
+              },
+              "tool_calls": {
+                "$ref": "#/$defs/__schema18"
+              },
+              "observation": {
+                "$ref": "#/$defs/__schema19"
+              },
+              "metrics": {
+                "$ref": "#/$defs/__schema24"
+              },
+              "is_copied_context": {
+                "$ref": "#/$defs/__schema28"
+              },
+              "llm_call_count": {
+                "$ref": "#/$defs/__schema29"
+              },
+              "extra": {
+                "$ref": "#/$defs/__schema30"
+              }
+            },
+            "required": [
+              "step_id",
+              "source",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema8": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "__schema9": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema10": {
+            "type": "string",
+            "enum": [
+              "system",
+              "user",
+              "agent"
+            ]
+          },
+          "__schema11": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema12": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "__schema13": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "$ref": "#/$defs/__schema14"
+                    },
+                    "text": {
+                      "$ref": "#/$defs/__schema15"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            ]
+          },
+          "__schema14": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio"
+            ]
+          },
+          "__schema15": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema16": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "media_type": {
+                        "type": "string",
+                        "enum": [
+                          "image/jpeg",
+                          "image/png",
+                          "image/gif",
+                          "image/webp"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "media_type",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "media_type": {
+                        "type": "string",
+                        "enum": [
+                          "audio/wav",
+                          "audio/mpeg",
+                          "audio/mp4",
+                          "audio/aac",
+                          "audio/ogg",
+                          "audio/flac",
+                          "audio/webm",
+                          "audio/aiff"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "duration_sec": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "media_type",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema17": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema18": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool_call_id": {
+                      "type": "string"
+                    },
+                    "function_name": {
+                      "type": "string"
+                    },
+                    "arguments": {
+                      "$ref": "#/$defs/__schema4"
+                    },
+                    "extra": {
+                      "type": "object",
+                      "properties": {
+                        "otheater": {
+                          "type": "object",
+                          "properties": {
+                            "schema": {
+                              "$ref": "#/$defs/__schema5"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "daemon"
+                              ]
+                            },
+                            "toolKind": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "status": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "paths": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "schema",
+                            "source",
+                            "toolKind",
+                            "status",
+                            "paths"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": [
+                    "tool_call_id",
+                    "function_name",
+                    "arguments"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema19": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source_call_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "content": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/__schema13"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "subagent_trajectory_ref": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "trajectory_id": {
+                                    "$ref": "#/$defs/__schema20"
+                                  },
+                                  "session_id": {
+                                    "$ref": "#/$defs/__schema21"
+                                  },
+                                  "trajectory_path": {
+                                    "$ref": "#/$defs/__schema22"
+                                  },
+                                  "extra": {
+                                    "$ref": "#/$defs/__schema23"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "extra": {
+                          "type": "object",
+                          "properties": {
+                            "otheater": {
+                              "type": "object",
+                              "properties": {
+                                "schema": {
+                                  "$ref": "#/$defs/__schema5"
+                                },
+                                "status": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "outcome": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "exitCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "durationMs": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "schema",
+                                "status",
+                                "outcome",
+                                "exitCode",
+                                "durationMs"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "results"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema20": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema21": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema22": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema23": {
+            "type": "object",
+            "properties": {
+              "otheater": {
+                "type": "object",
+                "properties": {
+                  "schema": {
+                    "$ref": "#/$defs/__schema5"
+                  },
+                  "attemptId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "demandId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attempt": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "state": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "role": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "schema",
+                  "attemptId",
+                  "demandId",
+                  "attempt",
+                  "state",
+                  "role"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": {}
+          },
+          "__schema24": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "prompt_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "completion_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cached_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cost_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "prompt_token_ids": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "completion_token_ids": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "logprobs": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "extra": {
+                    "type": "object",
+                    "properties": {
+                      "otheater": {
+                        "type": "object",
+                        "properties": {
+                          "schema": {
+                            "$ref": "#/$defs/__schema5"
+                          },
+                          "costKind": {
+                            "type": "string",
+                            "enum": [
+                              "real",
+                              "api_equivalent",
+                              "mixed",
+                              "unknown"
+                            ]
+                          },
+                          "costSource": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "client",
+                                  "pricing_table"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pricingVersion": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "apiEquivalentCostUsd": {
+                            "$ref": "#/$defs/__schema25"
+                          },
+                          "quota": {
+                            "$ref": "#/$defs/__schema26"
+                          },
+                          "usageIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "schema",
+                          "costKind",
+                          "costSource",
+                          "pricingVersion",
+                          "apiEquivalentCostUsd",
+                          "quota",
+                          "usageIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema25": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema26": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "$ref": "#/$defs/__schema27"
+              },
+              "outputTokens": {
+                "$ref": "#/$defs/__schema27"
+              },
+              "cachedTokens": {
+                "$ref": "#/$defs/__schema27"
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "cachedTokens"
+            ],
+            "additionalProperties": false
+          },
+          "__schema27": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema28": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "__schema29": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema30": {
+            "type": "object",
+            "properties": {
+              "otheater": {
+                "type": "object",
+                "properties": {
+                  "schema": {
+                    "$ref": "#/$defs/__schema5"
+                  },
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "need",
+                      "demand",
+                      "director_reply",
+                      "decision",
+                      "dispatch",
+                      "turn",
+                      "system_message"
+                    ]
+                  },
+                  "turnIndex": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stopReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "eventIds": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        ],
+                        "items": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string"
+                        },
+                        "toolCallId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "answer": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "rule": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "paths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "toolCallId",
+                        "answer",
+                        "rule",
+                        "reason",
+                        "paths"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "plan": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "content": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "content",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "terminal": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "schema",
+                  "origin",
+                  "turnIndex",
+                  "stopReason",
+                  "eventIds",
+                  "permissions",
+                  "plan",
+                  "terminal"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": {}
+          },
+          "__schema31": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema32": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "total_prompt_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "total_completion_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "total_cached_tokens": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "total_cost_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "total_steps": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "extra": {
+                    "type": "object",
+                    "properties": {
+                      "otheater": {
+                        "type": "object",
+                        "properties": {
+                          "schema": {
+                            "$ref": "#/$defs/__schema5"
+                          },
+                          "scope": {
+                            "type": "string",
+                            "enum": [
+                              "play",
+                              "attempt"
+                            ]
+                          },
+                          "costKind": {
+                            "type": "string",
+                            "enum": [
+                              "real",
+                              "api_equivalent",
+                              "mixed",
+                              "unknown"
+                            ]
+                          },
+                          "realCostUsd": {
+                            "$ref": "#/$defs/__schema25"
+                          },
+                          "apiEquivalentCostUsd": {
+                            "$ref": "#/$defs/__schema25"
+                          },
+                          "quota": {
+                            "$ref": "#/$defs/__schema26"
+                          },
+                          "usageRecords": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "schema",
+                          "scope",
+                          "costKind",
+                          "realCostUsd",
+                          "apiEquivalentCostUsd",
+                          "quota",
+                          "usageRecords"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema33": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "__schema34": {
+            "type": "object",
+            "properties": {
+              "otheater": {
+                "type": "object",
+                "properties": {
+                  "schema": {
+                    "$ref": "#/$defs/__schema5"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "play",
+                      "attempt"
+                    ]
+                  },
+                  "playId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "scenarioId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attemptId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "demandId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "state": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "contentMode": {
+                    "type": "string",
+                    "enum": [
+                      "full",
+                      "redacted"
+                    ]
+                  },
+                  "exportedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "lastEventId": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "fidelity": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "tool_arguments_not_in_event_log",
+                        "tool_output_not_in_event_log",
+                        "attempt_prompt_derived_from_demand",
+                        "director_turns_from_replies",
+                        "content_redacted"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "schema",
+                  "kind",
+                  "playId",
+                  "scenarioId",
+                  "attemptId",
+                  "demandId",
+                  "state",
+                  "contentMode",
+                  "exportedAt",
+                  "lastEventId",
+                  "fidelity"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": {}
+          },
+          "__schema35": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "session_id": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "trajectory_id": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "agent": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "steps": {
+                "$ref": "#/$defs/__schema6"
+              },
+              "notes": {
+                "$ref": "#/$defs/__schema31"
+              },
+              "final_metrics": {
+                "$ref": "#/$defs/__schema32"
+              },
+              "continued_trajectory_ref": {
+                "$ref": "#/$defs/__schema33"
+              },
+              "extra": {
+                "$ref": "#/$defs/__schema34"
+              },
+              "subagent_trajectories": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema35"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "schema_version",
+              "agent",
+              "steps"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "playId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "playId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "enum": [
+              "full",
+              "redacted"
+            ]
+          },
+          "attemptId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "listBlackboard",
       "method": "GET",
       "path": "/v1/plays/:playId/blackboard",
