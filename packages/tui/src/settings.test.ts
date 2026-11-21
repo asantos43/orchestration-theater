@@ -27,11 +27,8 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
-<<<<<<< HEAD
       chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop' },
       input: DEFAULT_UI_SETTINGS.input,
-=======
->>>>>>> origin/main
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
       usage: { groupBy: 'profile', refreshSeconds: 30 },
       mouse: 'full',
@@ -103,11 +100,8 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
-<<<<<<< HEAD
       chat: DEFAULT_UI_SETTINGS.chat,
       input: DEFAULT_UI_SETTINGS.input,
-=======
->>>>>>> origin/main
       overview: DEFAULT_UI_SETTINGS.overview,
       usage: DEFAULT_UI_SETTINGS.usage,
       mouse: DEFAULT_UI_SETTINGS.mouse,

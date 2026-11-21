@@ -134,7 +134,6 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  input:\n    editor: vim\n')).toThrow(/ui\.input\.editor/);
   });
 
-<<<<<<< HEAD
   it('has the defaults of ui.chat and takes its other modes (P12)', () => {
     expect(parseConfig('').ui.chat).toEqual({
       queue: 'daemon',
@@ -152,8 +151,6 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  chat:\n    queue: later\n')).toThrow(/ui\.chat\.queue/);
   });
 
-=======
->>>>>>> origin/main
   it('has the defaults of ui.overview and ui.usage and takes their other modes (P13)', () => {
     const { ui } = parseConfig('');
     expect(ui.overview).toEqual({

@@ -19,14 +19,10 @@ export interface LiveDaemon {
   readonly status: ApiStatus;
   /** `host:port` of the API, for the screen (never carries the token). */
   readonly address: string;
-<<<<<<< HEAD
   /**
    * The REST client of this daemon: the chat opens its sockets and reads the commands with it (P12),
    * and the tabs use it for the controls and the reads that have no store (P13).
    */
-=======
-  /** The REST client of this daemon: the tabs use it for the controls and the reads that have no store (P13). */
->>>>>>> origin/main
   readonly client: ApiClient;
   /** Starts the stores (REST snapshots and the event stream). Rejects when they cannot. */
   readonly stores: DaemonStores;
