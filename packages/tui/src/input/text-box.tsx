@@ -6,7 +6,7 @@ import {
   type UiRegistry,
   type UiTranslate,
 } from '@otheater/client';
-import { Box, Text, useInput, usePaste } from 'ink';
+import { Box, Text, usePaste } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSuspendTerminal } from '../mouse/index.js';
@@ -20,6 +20,7 @@ import {
   type ExternalEditResult,
 } from './external-editor.js';
 import { MemoryHistoryStore, type HistoryStore } from './history.js';
+import { useFeedInput } from './key-feed.js';
 import { actionOf, typedText } from './keys.js';
 import { layoutBox, type Segment } from './layout.js';
 import { createBoxPorts, type BoxPorts } from './ports.js';
@@ -201,7 +202,8 @@ export function TextBox(props: TextBoxProps): ReactNode {
     };
   }, [history, ports]);
 
-  useInput(
+  // Bound at the commit that gives the box the keyboard, not a task later (P24): see `key-feed.tsx`.
+  useFeedInput(
     (input, key) => {
       const id = actionOf(keymap, registry, input, key);
       if (id === 'input.submit' && props.complete !== undefined) {
