@@ -87,7 +87,11 @@ describe.each(DRIVERS)('span identity and producer cursors (%s)', (driver) => {
           `insert into spans (resource_id, trace_id, span_id, parent_span_id, name, kind, start_ms, start_sub_ns, end_ms, end_sub_ns, status, attributes)
            select resource_id, trace_id, span_id, parent_span_id, 'dup', kind, start_ms, start_sub_ns, end_ms, end_sub_ns, status, attributes from spans`,
         );
-        raw.exec("delete from kysely_migration where name = '0002_span_identity'");
+        // Kysely refuses a later migration applied without the earlier one: undo 0003 as well.
+        raw.exec('drop table rollups_daily');
+        raw.exec(
+          "delete from kysely_migration where name in ('0002_span_identity', '0003_rollups_daily')",
+        );
       } finally {
         raw.close();
       }

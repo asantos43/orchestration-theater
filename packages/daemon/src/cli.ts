@@ -46,6 +46,7 @@ import {
   runTrajectoryCommand,
   type TrajectoryOptions,
 } from './atif/command.js';
+import { runAnalysisCommand, type AnalysisOptions } from './analysis/command.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -122,6 +123,7 @@ const COMMANDS = [
   'executor',
   'api',
   'trajectory',
+  'analysis',
   'tui',
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -328,6 +330,10 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           trajectoryOptions(values),
         );
       }
+      case 'analysis': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runAnalysisCommand(context, {}, analysisOptions(values));
+      }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
@@ -410,6 +416,12 @@ function parseCliArgs(argv: readonly string[]) {
       'no-test-session': { type: 'boolean' },
       'dry-run': { type: 'boolean' },
       profile: { type: 'string' },
+      // The options of `ot analysis` (`scenario`, `from`, `json` are shared).
+      to: { type: 'string' },
+      'group-by': { type: 'string' },
+      'compare-from': { type: 'string' },
+      'compare-to': { type: 'string' },
+      'compare-scenario': { type: 'string' },
       // The options of `ot trajectory` (`json` is not used there).
       unit: { type: 'string' },
       content: { type: 'string' },
@@ -418,6 +430,19 @@ function parseCliArgs(argv: readonly string[]) {
     allowPositionals: true,
     strict: true,
   });
+}
+
+function analysisOptions(values: ParsedValues): AnalysisOptions {
+  return {
+    from: values.from,
+    to: values.to,
+    groupBy: values['group-by'],
+    scenario: values.scenario,
+    compareFrom: values['compare-from'],
+    compareTo: values['compare-to'],
+    compareScenario: values['compare-scenario'],
+    json: values.json === true,
+  };
 }
 
 function trajectoryOptions(values: ParsedValues): TrajectoryOptions {
