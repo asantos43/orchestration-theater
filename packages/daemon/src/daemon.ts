@@ -215,6 +215,11 @@ export interface DaemonHandle {
    */
   readonly telemetryUrl: string | undefined;
   /**
+   * The daily aggregates and the report over them (Phase 8, P9). `undefined` with no telemetry base.
+   * The schedule builds only finished days; a test with a real clock asks `aggregateDay` for today.
+   */
+  readonly analysis: AnalysisService | undefined;
+  /**
    * The Producer's side (what the chat socket and the REST commands reach): open a chat, send messages,
    * read the Director's replies, answer its questions. `undefined` when the execution is off.
    */
@@ -1212,6 +1217,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcpUrl: mcp.url,
     telemetryUrl: telemetry?.receiver.url,
     producer: orchestration?.channel,
+    analysis: analysisService,
     profiles,
     directives,
     quota,
