@@ -9,11 +9,12 @@ import {
 } from '@otheater/core/testing';
 import type { EventEnvelope } from '@otheater/core';
 import type { SetupRunView } from '@otheater/protocol';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { ClientFactory } from '../../clients.js';
 import { parseConfig } from '../../config.js';
 import { startDaemon, type DaemonHandle } from '../../daemon.js';
 import { fixtureOpenCodeCatalog } from '../../executors/opencode-catalog-fixture.js';
+import { describeWithLauncher } from '../../launcher-fixture.js';
 import { dataPaths } from '../../paths.js';
 import { MINIMAX, MINIMAX_EXECUTOR, MINIMAX_MODEL } from '../../setup/rig-fixture.js';
 import { captureLogger, makeTempDataDir } from '../../test-helpers.js';
@@ -109,7 +110,9 @@ afterEach(async () => {
   await tmp.dispose();
 });
 
-describe('setup.confirm applies the configuration to the running daemon (P23)', () => {
+// The catalog of a client comes from the pool of the execution, which a platform with no process
+// launcher (Windows, for now) does not build: there the cadastro answers `unavailable`.
+describeWithLauncher('setup.confirm applies the configuration to the running daemon (P23)', () => {
   it('first run: the roles, the Executor and the cap show in GET /v1/config at once, with config.changed', async () => {
     const before = await configView();
     expect(before.executors.entries).toEqual({});
