@@ -382,12 +382,15 @@ describe('GET /v1/events', () => {
       const resident = daemon.eventHub.subscriberCount;
       const streams = await Promise.all([open(), open(), open()]);
       await Promise.all(streams.map(({ reader }) => reader.next()));
-      expect(daemon.eventHub.subscriberCount).toBeGreaterThan(resident);
+      // The daemon follows its own log too (the spans projector of P4 and the ATIF export of P5): count the clients.
+      const during = daemon.eventHub.subscriberCount;
+      expect(during).toBeGreaterThanOrEqual(resident + streams.length);
       await Promise.all(streams.map(({ reader }) => reader.close()));
-      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > resident; i += 1) {
+      const left = during - streams.length;
+      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > left; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(daemon.eventHub.subscriberCount).toBe(resident);
+      expect(daemon.eventHub.subscriberCount).toBe(left);
     });
   });
 });

@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   PROMPT_PRIORITY,
+  type Clock,
   type Disposable,
   type JsonObject,
   type PromptOrderMode,
@@ -9,6 +10,8 @@ import {
   type PromptQueueItem,
   type Store,
 } from '@otheater/core';
+import { WAIT_KIND, OT } from './telemetry/span-conventions.js';
+import type { WaitRecorder } from './telemetry/wait-recorder.js';
 
 /** What the dispatcher needs of the store. */
 export type PromptDispatcherStore = Pick<Store, 'promptQueue'>;
@@ -35,7 +38,27 @@ export interface PromptDispatcherOptions {
    * `prompt.queued` event here. What it throws goes to `onError` and does not undo the submit.
    */
   readonly onQueued?: (item: PromptQueueItem) => void;
+  /**
+   * Phase 8, P4 (N217 (a)): told when a prompt leaves the queue for the Director, with the time it
+   * waited and why. Needs `clock`. It never throws and never waits; the log has no event for this
+   * wait, so the span is made here. [proposta]
+   */
+  readonly onWait?: WaitRecorder;
+  /** The clock of `onWait`. */
+  readonly clock?: Pick<Clock, 'now'>;
 }
+
+/** Why a prompt waited (`otheater.wait.reason` of the `prompt_queue` spans). */
+export const PROMPT_WAIT_REASON = {
+  /** A turn of the Director was going on: one prompt at a time. */
+  directorBusy: 'director_busy',
+  /** Nobody was attached to receive it. */
+  noDirector: 'no_director',
+  /** It was written and delivered with nothing in the way but the store. */
+  queued: 'queued',
+  /** It was found in the queue after a restart. */
+  restart: 'restart',
+} as const;
 
 export interface SubmitPrompt {
   readonly scenarioId: string;
@@ -84,6 +107,10 @@ export class PromptDispatcher {
   readonly #newId: () => string;
   readonly #onError: PromptDispatcherOptions['onError'];
   readonly #onQueued: PromptDispatcherOptions['onQueued'];
+  readonly #onWait: PromptDispatcherOptions['onWait'];
+  readonly #clock: PromptDispatcherOptions['clock'];
+  /** Why each prompt submitted here waited, by item id; read when it is handed over. */
+  readonly #reasons = new Map<string, string>();
   readonly #lanes = new Map<string, ScenarioLane>();
 
   constructor(options: PromptDispatcherOptions) {
@@ -92,6 +119,8 @@ export class PromptDispatcher {
     this.#newId = options.newId ?? randomUUID;
     this.#onError = options.onError;
     this.#onQueued = options.onQueued;
+    this.#onWait = options.onWait;
+    this.#clock = options.clock;
   }
 
   /** Writes the prompt to the queue and, once it is written, starts delivering. */
@@ -104,6 +133,17 @@ export class PromptDispatcher {
       priority,
       content: { ...input.extra, text: input.text },
     });
+    if (this.#onWait !== undefined) {
+      const lane = this.#lanes.get(input.scenarioId);
+      this.#reasons.set(
+        item.id,
+        lane?.running !== undefined
+          ? PROMPT_WAIT_REASON.directorBusy
+          : lane?.sender === undefined
+            ? PROMPT_WAIT_REASON.noDirector
+            : PROMPT_WAIT_REASON.queued,
+      );
+    }
     try {
       this.#onQueued?.(item);
     } catch (error) {
@@ -157,6 +197,27 @@ export class PromptDispatcher {
     return lane;
   }
 
+  /** The prompt leaves the queue: the wait ends here. */
+  #reportWait(item: PromptQueueItem): void {
+    const reason = this.#reasons.get(item.id) ?? PROMPT_WAIT_REASON.restart;
+    this.#reasons.delete(item.id);
+    if (this.#onWait === undefined || this.#clock === undefined) return;
+    try {
+      this.#onWait({
+        kind: WAIT_KIND.promptQueue,
+        key: item.id,
+        startMs: item.createdAt,
+        endMs: this.#clock.now(),
+        reason,
+        outcome: 'delivered',
+        correlation: { scenarioId: item.scenarioId },
+        attributes: { [OT.waitSource]: item.source, [OT.waitPriority]: item.priority },
+      });
+    } catch {
+      // A recorder that throws must not stop the prompt.
+    }
+  }
+
   /** Whether a `submit`, `attach` or `resume` came in while the pump was awaiting the store. */
   #woken(lane: ScenarioLane): boolean {
     return lane.again;
@@ -175,6 +236,7 @@ export class PromptDispatcher {
           if (this.#woken(lane)) continue;
           return;
         }
+        this.#reportWait(item);
         try {
           await sender(item);
         } catch (error) {
