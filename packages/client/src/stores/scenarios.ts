@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  ScenarioArchivedPayloadSchema,
   ScenarioCreatedPayloadSchema,
   ScenarioDirectorSleptPayloadSchema,
   ScenarioDirectorWokePayloadSchema,
@@ -20,8 +21,8 @@ import {
  * The scenarios (projects, tasks and chats) of one daemon, by id. The REST list gives the
  * snapshot; the events keep the Director's state, and tell when a scenario is born. [proposta]
  * `scenario.created` does not carry the record (no `profile`, `baseBranch`, `state`), so it marks
- * the scenario to be read by `GET /v1/scenarios/:id`. There is no event for archiving a scenario
- * yet (a finding of P11 for the daemon): its `state` is as fresh as the last read.
+ * the scenario to be read by `GET /v1/scenarios/:id`. `scenario.archived` (N173, P1 of docs/18)
+ * moves the `state` to `archived` with no read, and the stamp of the event is the `updatedAt`.
  */
 
 export interface ScenariosState extends SyncFields {
@@ -39,6 +40,26 @@ export const reduceScenarios: EventReducer<ScenariosState> = (state, event) => {
       const id = payload?.scenarioId ?? event.scenarioId;
       if (id === undefined || id in state.byId) return state;
       return markStale(state, id);
+    }
+    case 'scenario.archived': {
+      const payload = payloadOf(ScenarioArchivedPayloadSchema, event);
+      const id = payload?.scenarioId ?? event.scenarioId;
+      if (id === undefined) return state;
+      const known = state.byId[id];
+      if (known === undefined) return markStale(state, id);
+      if (known.state === 'archived') return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          // [V] N177: same instant as the record, so the stamp of the event is its `updatedAt`.
+          [id]: {
+            ...known,
+            state: 'archived',
+            updatedAt: Math.max(known.updatedAt, event.timestamp),
+          },
+        },
+      };
     }
     case 'scenario.director_slept':
     case 'scenario.director_woke': {
