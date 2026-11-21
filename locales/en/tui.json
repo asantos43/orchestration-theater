@@ -455,6 +455,54 @@
       "submitFailed": "The message was not sent: {{message}}"
     }
   },
+  "trajectories": {
+    "play": "Play {{id}}",
+    "noScenario": "Select a scenario to see its trajectory.",
+    "noPlay": "This scenario has no play yet.",
+    "loading": "Reading the trajectory...",
+    "failed": "Could not read the trajectory: {{error}}",
+    "stale": "Not up to date: {{error}}",
+    "empty": "Nothing happened in this play yet.",
+    "dropped": "The first {{count}} events were left out (ui.trajectories.keep).",
+    "attempt": "Attempt {{n}} · demand {{demand}}",
+    "turn": "Turn {{n}}",
+    "turns_one": "{{count}} turn",
+    "turns_other": "{{count}} turns",
+    "entries_one": "{{count}} step",
+    "entries_other": "{{count}} steps",
+    "running": "running",
+    "emptyTurn": "Nothing recorded in this turn.",
+    "more": "... {{count}} more lines",
+    "state": {
+      "running": "running",
+      "closed": "session closed",
+      "interrupted": "interrupted",
+      "ended": "ended"
+    },
+    "entry": {
+      "message": "say",
+      "thought": "think",
+      "terminal": "term",
+      "toolCall": "call",
+      "tool": "tool",
+      "permission": "ask",
+      "plan": "plan",
+      "running": "running",
+      "waiting": "waiting"
+    },
+    "diff": "Diff · demand {{demand}}",
+    "diffLoading": "Reading the diff...",
+    "diffFailed": "Could not read the diff: {{error}}",
+    "diffEmpty": "This attempt changed nothing.",
+    "diffMore": "... {{count}} more lines",
+    "diffCut": "The diff was cut at the output limit.",
+    "diffUnavailable": {
+      "no_vcs": "The play has no version control to diff against.",
+      "no_attempt": "The demand has no attempt yet.",
+      "no_branch": "The attempt has no branch to diff."
+    },
+    "transitions": "Demand moves"
+  },
   "settings": {
     "sections": {
       "subscriptions": "Subscriptions",

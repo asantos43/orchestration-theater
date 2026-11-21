@@ -19,7 +19,7 @@ import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
-import { useStoreValue } from '../use-store-value.js';
+import { useStoreValue, type ReadableStore } from '../use-store-value.js';
 import { useChatPanel, type ChatPanelConfig } from '../chat/use-chat-panel.js';
 import { Chat, chatMessageRows } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
@@ -32,6 +32,7 @@ import { scrollStepLines } from './scroll.js';
 import { Sidebar, sidebarItems, type SidebarItem } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
+import { useWatched } from './use-watched.js';
 import { TabHostProvider, type TabHost } from './tab-host.js';
 import {
   foldedSections,
@@ -143,12 +144,25 @@ export function Shell(props: ShellProps): ReactNode {
   const activeTab = savedActiveTab(preferences);
   const currentTab = openTabs.some((tab) => tab.id === activeTab) ? activeTab : openTabs[0]?.id;
   const definition = currentTab === undefined ? undefined : tabContent[currentTab];
-  const tabSections = definition?.sections ?? NO_SECTIONS;
-  const cursorInTab =
-    panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
+  const watched = useMemo(() => definition?.watch?.(stores) ?? NO_STORES, [definition, stores]);
+  const watchVersion = useWatched(watched);
 
   // The scenario the chat is about, and what the header says of it.
   const selectedRow = scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
+  const tabSettings = props.settings ?? DEFAULT_UI_SETTINGS;
+  const tabSections = useMemo(
+    () => {
+      const sections = definition?.sections;
+      if (sections === undefined) return NO_SECTIONS;
+      return typeof sections === 'function'
+        ? sections({ stores, scenarioId: selectedRow?.id, settings: tabSettings }, folded)
+        : sections;
+    },
+    // `watchVersion` changes when a store the tab named changes: the list is asked again.
+    [definition, stores, selectedRow?.id, tabSettings, folded, watchVersion],
+  );
+  const cursorInTab =
+    panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
   const play = useMemo(() => {
     if (selectedRow === undefined) return undefined;
     let found: { need: string; updatedAt: number } | undefined;
@@ -653,6 +667,7 @@ export function Shell(props: ShellProps): ReactNode {
 }
 
 const NO_SECTIONS: readonly string[] = [];
+const NO_STORES: readonly ReadableStore<unknown>[] = [];
 
 /** The first thing wrong with the keymap, or the first notice, in the person's language. */
 function firstProblem(keymap: TuiKeymap, t: UiTranslate): string | undefined {
