@@ -36,6 +36,7 @@ interface Rig {
   readonly messages: string[];
   readonly attached: string[];
   readonly opened: string[];
+  readonly openedInputs: { type?: string; name?: string; repo?: string }[];
   readonly setDirector: (state: ReturnType<typeof director>) => void;
   readonly interrupted: string[];
   readonly setInterruptible: (value: boolean) => void;
@@ -82,6 +83,7 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
   const messages: string[] = [];
   const attached: string[] = [];
   const opened: string[] = [];
+  const openedInputs: { type?: string; name?: string; repo?: string }[] = [];
   let current: ReturnType<typeof director> | undefined;
   const interrupted: string[] = [];
   let interruptible = true;
@@ -121,9 +123,17 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
         attached.push(input.path);
         return Promise.resolve({ id: 'att-1', name: 'notes.md' });
       },
-      openChat: (input: { name?: string }) => {
-        opened.push(input.name ?? '');
-        return Promise.resolve({ scenarioId: 'chat-new', cursor: 0, lastEventId: 0 });
+      openChat: (input: { type?: string; name?: string; repo?: string }) => {
+        if (input.repo === '/not-a-repo') {
+          return Promise.reject(new InvalidInput('"/not-a-repo" is not a git repository'));
+        }
+        opened.push(input.name ?? input.repo ?? '');
+        openedInputs.push(input);
+        return Promise.resolve({
+          scenarioId: input.type === 'project' ? 'project-new' : 'chat-new',
+          cursor: 0,
+          lastEventId: 0,
+        });
       },
     } as unknown as ProducerChannel,
     runner: {
@@ -151,6 +161,7 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
     messages,
     attached,
     opened,
+    openedInputs,
     setDirector: (state) => {
       current = state;
     },
@@ -440,6 +451,39 @@ describe('running a line', () => {
     expect(forwarded.status).toBe('forwarded');
     expect(messages).toEqual(['Make a plan, without changing anything yet, for: the login page']);
     await expect(service.execute('project-1', { text: '/plan' })).rejects.toThrow(/Usage: \/plan/);
+  });
+
+  it('/new project <repo> opens a project scenario through the same route as `ot chat --type project`', async () => {
+    const { service, opened, openedInputs } = await rig();
+    const result = await service.execute('chat-1', { text: '/new project /work/shop' });
+    expect(result.data).toEqual({ scenarioId: 'project-new', type: 'project' });
+    expect(result.text).toContain('shop');
+    expect(openedInputs).toEqual([{ type: 'project', repo: '/work/shop' }]);
+    expect(opened).toEqual(['/work/shop']);
+    // The words after "project" are the repository, spaces and all.
+    await service.execute('chat-1', { text: '/new project /work/my shop' });
+    expect(openedInputs[1]).toEqual({ type: 'project', repo: '/work/my shop' });
+    // A name that only starts with the word is still the name of a chat.
+    await service.execute('chat-1', { text: '/new projects' });
+    expect(openedInputs[2]).toEqual({ type: 'chat', name: 'projects' });
+  });
+
+  it('/new project says it needs the repository, and says a bad one in the catalog text', async () => {
+    const { service, openedInputs } = await rig();
+    await expect(service.execute('chat-1', { text: '/new project' })).rejects.toThrow(
+      /needs the repository/,
+    );
+    await expect(service.execute('chat-1', { text: '/new project /not-a-repo' })).rejects.toThrow(
+      /Could not open a project on "\/not-a-repo"/,
+    );
+    expect(openedInputs).toEqual([]);
+    const pt = await rig('', 'pt-BR');
+    await expect(pt.service.execute('chat-1', { text: '/new project' })).rejects.toThrow(
+      /precisa do repositório/,
+    );
+    await expect(
+      pt.service.execute('chat-1', { text: '/new project /not-a-repo' }),
+    ).rejects.toThrow(/Não deu para abrir um projeto em "\/not-a-repo"/);
   });
 
   it('/logs shows the last events of the scenario', async () => {

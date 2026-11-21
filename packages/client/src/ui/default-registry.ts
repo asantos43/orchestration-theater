@@ -284,6 +284,15 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       bar: { textKey: 'bar.sidebar.activate', order: 12 },
     },
     {
+      // [proposta] `N` in the side bar; the palette reaches it from any area (P22 of docs/18).
+      id: 'sidebar.newProject',
+      textKey: 'actions.sidebar.newProject',
+      group: 'navigation',
+      context: 'sidebar',
+      keys: terminalKeys(['N']),
+      bar: { textKey: 'bar.sidebar.newProject', order: 14 },
+    },
+    {
       id: 'panel.prevTab',
       textKey: 'actions.panel.prevTab',
       group: 'navigation',

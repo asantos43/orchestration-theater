@@ -49,6 +49,8 @@ export interface AppProps {
   readonly mouseTerminal?: MouseTerminal | undefined;
   /** The ports of the copy (the tool of the system, the environment); the real ones by default. For tests. */
   readonly mouseClipboard?: MouseLayerProps['clipboard'];
+  /** The folder the TUI was opened in, where "new project" starts (P22); default: this process's. For tests. */
+  readonly cwd?: string | undefined;
 }
 
 /**
@@ -130,6 +132,7 @@ function Screen(props: AppProps): ReactNode {
         tabContent={props.tabContent}
         setupApi={props.setupApi}
         setupGate={setupGate}
+        cwd={props.cwd}
       />
     );
   }

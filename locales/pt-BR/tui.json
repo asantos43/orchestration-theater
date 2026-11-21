@@ -61,7 +61,8 @@
     "sidebar": {
       "up": "Subir na barra lateral",
       "down": "Descer na barra lateral",
-      "activate": "Abrir o cenário ou recolher a seção"
+      "activate": "Abrir o cenário ou recolher a seção",
+      "newProject": "Abrir um novo projeto"
     },
     "panel": {
       "prevTab": "Ir para a aba anterior",
@@ -185,7 +186,8 @@
       "resize": "Largura"
     },
     "sidebar": {
-      "activate": "Abrir"
+      "activate": "Abrir",
+      "newProject": "Novo projeto"
     },
     "panel": {
       "tabs": "Abas",
@@ -477,6 +479,17 @@
     },
     "overlay": {
       "closeHint": "{{key}} fecha"
+    },
+    "newProject": {
+      "title": "Novo projeto",
+      "label": "Repositório (uma pasta de repositório git)",
+      "hint": "Enter abre · Esc cancela",
+      "opening": "Abrindo o projeto…",
+      "opened": "Projeto {{name}} aberto.",
+      "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar.",
+      "failed": "Não deu para abrir o projeto: {{message}}",
+      "noRepo": "Digite o repositório do projeto.",
+      "noConnection": "Não há conexão com o daemon."
     },
     "link": {
       "syncing": "sincronizando",

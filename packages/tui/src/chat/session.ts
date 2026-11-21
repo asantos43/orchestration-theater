@@ -3,6 +3,7 @@ import type { ChatOutgoing, ConnectionState } from '@otheater/client';
 import type { ChatServerMessage } from '@otheater/protocol';
 import { isShellLine, shellCommandOf } from './shell.js';
 import { createChatState, reduceChat, type ChatEvent, type ChatState } from './model.js';
+import { openedProjectOf } from './new-project.js';
 
 /** The part of `ChatSocket` the session uses; the real socket and a fake one both fit. */
 export interface ChatSocketLike {
@@ -23,6 +24,8 @@ export interface ChatSessionOptions {
   readonly open: (resumeFrom: number | undefined) => ChatSocketLike;
   readonly now: () => number;
   readonly queue: ChatQueueMode;
+  /** A `/new project` of this chat opened the project scenario `scenarioId` (P22): the screen goes to it. */
+  readonly onProjectOpened?: ((scenarioId: string) => void) | undefined;
 }
 
 interface Held {
@@ -77,6 +80,8 @@ export class ChatSession {
         this.#cursor = socket.lastEventId ?? this.#cursor;
         this.#dispatch({ type: 'frame', frame, at: this.#options.now() });
         if (frame.type === 'busy' && !frame.busy) this.#flush();
+        const opened = openedProjectOf(frame);
+        if (opened !== undefined) this.#options.onProjectOpened?.(opened);
       }),
       socket.onState((state) => {
         this.#dispatch({ type: 'connection', state, at: this.#options.now() });
