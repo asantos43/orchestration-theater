@@ -64,6 +64,28 @@ describe('clientWarningLog', () => {
     },
   );
 
+  it('otel_unavailable: a client that starts without telemetry is logged and becomes an event (Phase 8, P3)', () => {
+    const { logger, lines } = captureLogger();
+    const situations = new RecordingSituations();
+    const log = clientWarningLog('once', logger, situations);
+    log(
+      {
+        kind: 'otel_unavailable',
+        clientId: 'codex',
+        reason: 'the wrapper does not run on Windows',
+      },
+      '0.1.0',
+    );
+    expect(kinds(lines)).toEqual(['otel_unavailable']);
+    expect(situations.of('daemon.notice')).toMatchObject([
+      {
+        kind: 'client_warning',
+        subject: 'codex',
+        detail: 'otel_unavailable: the wrapper does not run on Windows',
+      },
+    ]);
+  });
+
   it('daemon.notice client_warning: what is logged is also an event, and what the log thins out is thinned out (P24, N146)', () => {
     const { logger } = captureLogger();
     const situations = new RecordingSituations();

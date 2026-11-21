@@ -5,6 +5,7 @@ import {
   InvalidInput,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
+  type ClientOtel,
   type ClientCapabilities,
   type ConformanceProbe,
   type Enforcement,
@@ -13,6 +14,7 @@ import {
   type ModelCatalog,
   type NormalizedError,
   type NormalizedUpdate,
+  type OtelLaunch,
   type Profile,
   type ProfileCli,
   type ProfileRef,
@@ -33,6 +35,7 @@ import {
   type LoginRun,
 } from './official-login.js';
 import { normalizeOpenCodeError, normalizeOpenCodeUpdate } from './normalize.js';
+import { OPENCODE_CONFIG_CONTENT_ENV, opencodeOtelEnv } from './otel.js';
 import {
   OpenCodeModelCatalog,
   requireProfileDir,
@@ -298,6 +301,24 @@ export class OpenCodeAdapter extends ClientAdapter {
         ? {}
         : { OPENCODE_DISABLE_PROJECT_CONFIG: '1' }),
     };
+  }
+
+  /**
+   * Telemetry of the process (Phase 8, P3): OpenCode reads the OTLP variables when it starts, on
+   * every transport, and nothing goes to its files. A `per_profile` process serves several
+   * sessions, so the resource names the session that started it. See {@link opencodeOtelEnv}.
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- the hook is asynchronous for the clients that write a file
+  protected override async otelLaunch(
+    _profile: Profile,
+    otel: ClientOtel,
+    _via: TransportId,
+    env: Readonly<Record<string, string>>,
+  ): Promise<OtelLaunch> {
+    const telemetry = opencodeOtelEnv(otel, env[OPENCODE_CONFIG_CONTENT_ENV]);
+    return telemetry === null
+      ? { unavailable: `${OPENCODE_CONFIG_CONTENT_ENV} is set and is not a JSON object` }
+      : { env: telemetry };
   }
 
   protected async prepareProfile(profile: Profile, policy: RolePolicy): Promise<void> {
