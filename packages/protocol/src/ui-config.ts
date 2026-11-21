@@ -17,7 +17,7 @@ export const UI_KEYMAP_PRESETS = ['agents', 'classic'] as const;
  * `TERM_PROGRAM=vscode`); `none` ignores them and uses the preset as it is.
  */
 export const UI_KEYMAP_ENVIRONMENTS = ['auto', 'none'] as const;
-export const UI_CLIPBOARD_COPY_MODES = ['osc52', 'system', 'off'] as const;
+export const UI_CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as const;
 export const UI_MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
@@ -49,12 +49,20 @@ export const UiKeymapConfigSchema = z.strictObject({
 });
 export type UiKeymapConfig = z.output<typeof UiKeymapConfigSchema>;
 
-/** `ui.clipboard.copy` (N36): `osc52` (default), `system` (pbcopy, wl-copy, clip.exe) or `off`. */
+/**
+ * `ui.clipboard.copy` (N36): `osc52` (default), `system` (pbcopy, wl-copy, clip.exe), `auto`
+ * [proposta] (the system tool when the interface runs on this machine and finds one, OSC 52
+ * otherwise, as over SSH) or `off`.
+ */
 export const UiClipboardConfigSchema = z.strictObject({
   copy: z.enum(UI_CLIPBOARD_COPY_MODES).default('osc52'),
 });
 
-/** `ui.mouse` (N34): `full` (default), `wheel` (only the wheel) or `off`. */
+/**
+ * `ui.mouse` (N34): `full` (default), `wheel` (only the wheel) or `off`. Only `off` gives the
+ * normal selection of the terminal back; in `wheel` the interface still tracks the mouse, and the
+ * terminal keeps its own selection under Shift.
+ */
 export const UiMouseModeSchema = z.enum(UI_MOUSE_MODES);
 
 /**
@@ -200,3 +208,18 @@ export const UiUsageConfigSchema = z.strictObject({
   refreshSeconds: z.int().min(0).max(3600).default(30),
 });
 export type UiUsageConfig = z.output<typeof UiUsageConfigSchema>;
+
+// ---- The mouse of the terminal interface (N34, N36; P11 of docs/18) -----------------------------
+
+/**
+ * `ui.tuiMouse` (P11). Both keys are [proposta], since the architecture fixes the modes of
+ * `ui.mouse` and `ui.clipboard.copy` and not these numbers:
+ * - `wheelLines`: the lines a notch of the wheel moves a list (3);
+ * - `copyMaxBytes`: the most the interface copies from one selection, in bytes of the text before
+ *   the encoding (100000; many terminals drop an OSC 52 payload bigger than about 100 KB).
+ */
+export const UiTuiMouseConfigSchema = z.strictObject({
+  wheelLines: z.int().min(1).max(50).default(3),
+  copyMaxBytes: z.int().min(1).max(10_000_000).default(100_000),
+});
+export type UiTuiMouseConfig = z.output<typeof UiTuiMouseConfigSchema>;

@@ -10,6 +10,7 @@ import { Select, TextInput } from '@inkjs/ui';
 import { Box, Text } from 'ink';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MouseModalScope } from '../mouse/index.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
 import { fit } from './text.js';
 import { useUiTranslate } from './use-ui-translate.js';
@@ -67,7 +68,7 @@ function OverlayBox(props: {
       <Text bold color={COLOR.accent} wrap="truncate">
         {props.title}
       </Text>
-      {props.children}
+      <MouseModalScope>{props.children}</MouseModalScope>
     </Box>
   );
 }

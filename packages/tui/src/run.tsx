@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { App } from './app.js';
 import type { DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
+import { MOUSE_DISABLE_SEQUENCE } from './mouse/modes.js';
 import {
   LocaleController,
   createTuiI18n,
@@ -71,6 +72,7 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
       settings={settings}
       patch={options.patch}
       flush={flush}
+      mouseTerminal={options.stdout}
     />
   );
   const running: Instance = render(tree, {
@@ -112,6 +114,8 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
     },
   );
   const finished = done.finally(() => {
+    // However it ended, the terminal does not keep the mouse reports on (N34).
+    if (settings.mouse !== 'off') options.stdout.write(MOUSE_DISABLE_SEQUENCE);
     removeGuards();
   });
   return { done: finished, locale, stop: unmount };

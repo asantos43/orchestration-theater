@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
-import { useMemo, type ReactNode } from 'react';
+import { Box, Text, type DOMElement } from 'ink';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMouseTarget, type DragInfo } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import { INPUT_ROWS } from './input-slot.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
@@ -36,6 +37,8 @@ export interface ChatProps {
   readonly messages: readonly ChatMessage[];
   readonly offset: number;
   readonly onOffset: (offset: number) => void;
+  /** The border is dragged with the mouse (N34): the same width action as the keys of the border. */
+  readonly onResizeDrag?: ((drag: DragInfo) => void) | undefined;
   readonly input: ReactNode;
 }
 
@@ -73,6 +76,13 @@ export function Chat(props: ChatProps): ReactNode {
       },
     [messages, t],
   );
+  // The right border is what the mouse drags to widen or narrow the chat.
+  const edgeRef = useRef<DOMElement>(null);
+  useMouseTarget(
+    edgeRef,
+    { onDrag: props.onResizeDrag },
+    { enabled: props.resizable && props.onResizeDrag !== undefined },
+  );
   const handleRows = Math.min(6, Math.max(0, props.height - 2));
   return (
     <Frame
@@ -81,6 +91,7 @@ export function Chat(props: ChatProps): ReactNode {
       active={props.focused}
       title={t('layout.chat.title')}
       bottomLabel={props.widthLabel}
+      edgeRef={edgeRef}
       handle={
         props.resizable
           ? {

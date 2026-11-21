@@ -32,6 +32,7 @@ import {
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
   UiUsageConfigSchema,
+  UiTuiMouseConfigSchema,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -2220,6 +2221,8 @@ export const DaemonConfigSchema = z
         overview: UiOverviewConfigSchema.prefault({}),
         /** The Usage tab: how the totals are split (P13 of docs/18). */
         usage: UiUsageConfigSchema.prefault({}),
+        /** The wheel step and the copy limit of the mouse of the terminal interface (P11). */
+        tuiMouse: UiTuiMouseConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

@@ -275,6 +275,15 @@
     "link": {
       "syncing": "sincronizando",
       "lost": "conexão perdida"
+    },
+    "mouse": {
+      "copied": "{{chars}} caracteres copiados.",
+      "copyFailed": {
+        "off": "A cópia pelo mouse está desligada (ui.clipboard.copy).",
+        "too_long": "A seleção é longa demais para copiar (ui.tuiMouse.copyMaxBytes).",
+        "no_tool": "Nenhuma ferramenta de área de transferência foi achada para ui.clipboard.copy: system.",
+        "tool_failed": "A ferramenta de área de transferência não conseguiu copiar."
+      }
     }
   },
   "overview": {
