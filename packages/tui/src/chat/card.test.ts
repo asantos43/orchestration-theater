@@ -22,6 +22,14 @@ const texts: CardTexts = {
   idea: (id, text) => `${id} ${text}`,
   leftOut: (id, reason) => `out ${id} ${reason}`,
   need: (need) => `need ${need}`,
+  shell: (shell) => ({
+    prompt: `Send ! ${shell.command}?`,
+    lines: [`code ${String(shell.exitCode)}, ${String(shell.lines)} lines`],
+    send: 'Send it',
+    sendDescription: 'The Director reads it',
+    keep: 'Keep it here',
+    keepDescription: 'Only the chat',
+  }),
 };
 
 const down: CardKey = { kind: 'down' };
@@ -227,5 +235,56 @@ describe('cardLines', () => {
     const state = play(model, [type('3'), type('h')]).state;
     const lines = cardLines(model, state, 40, 10, view).map((line) => line.text);
     expect(lines.at(-1)).toBe('> h█');
+  });
+});
+
+describe('the question of context: ask (P18)', () => {
+  const shellAsk: PendingAsk = {
+    ...ask('producer_question', {
+      questions: [
+        {
+          question: 'Send the result of "ls" (exit code 0, 2 lines) to the Director?',
+          options: [{ label: 'Send' }, { label: 'Keep' }],
+          multi_select: false,
+        },
+      ],
+    }),
+    shell: { command: 'ls', exitCode: 0, lines: 2 },
+  };
+  const model = buildCard(shellAsk, texts);
+
+  it('shows the words of the catalog, with the two options and no "other"', () => {
+    const step = model.stepAt(0, []);
+    expect(step?.prompt).toBe('Send ! ls?');
+    expect(step?.lines).toEqual(['code 0, 2 lines']);
+    expect(step?.options.map((option) => option.label)).toEqual(['Send it', 'Keep it here']);
+    expect(step?.freeText).toBe(false);
+  });
+
+  it('answers with the labels the daemon reads, whatever language it shows', () => {
+    expect(play(model, [enter]).done).toEqual({
+      answer: { answers: ['Send'] },
+      summary: 'Send it',
+    });
+    expect(play(model, [down, enter]).done).toEqual({
+      answer: { answers: ['Keep'] },
+      summary: 'Keep it here',
+    });
+    expect(play(model, [type('2')]).done?.answer).toEqual({ answers: ['Keep'] });
+  });
+
+  it('draws the prompt, how the command ended and the options', () => {
+    const lines = cardLines(model, createCardState(model), 80, 10, {
+      typingPrompt: '> ',
+      progress: '',
+    }).map((line) => line.text);
+    expect(lines[0]).toBe('Send ! ls?');
+    expect(lines).toContain('code 0, 2 lines');
+    expect(lines.join('\n')).toContain('1. Send it');
+  });
+
+  it('is an ordinary question when the ask carries no command', () => {
+    const plain = buildCard({ ...shellAsk, shell: undefined }, texts);
+    expect(plain.stepAt(0, [])?.prompt).toContain('Send the result of');
   });
 });

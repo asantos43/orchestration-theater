@@ -218,3 +218,49 @@ describe('the listeners', () => {
     expect(calls).toBe(before);
   });
 });
+
+describe('a ! command (P18)', () => {
+  it('sends the line as a message and counts it as in flight, with no entry of its own', () => {
+    const server = new FakeChatServer();
+    const session = sessionOver(server);
+    session.connect();
+    session.submit('!ls -la');
+    expect(server.latest('S1')?.sent).toEqual([{ type: 'message', text: '!ls -la' }]);
+    expect(session.state.shellSending).toBe(1);
+    expect(session.state.entries).toEqual([]);
+  });
+
+  it('does not wait behind the turn of the Director, whatever the queue says', () => {
+    const server = new FakeChatServer();
+    const session = sessionOver(server, 'hold');
+    session.connect();
+    const socket = server.latest('S1');
+    socket?.emit({ type: 'busy', eventId: 1, busy: true });
+    session.submit('!ls');
+    expect(socket?.sent).toEqual([{ type: 'message', text: '!ls' }]);
+  });
+
+  it('throws on an empty command and on attachments, and sends nothing', () => {
+    const server = new FakeChatServer();
+    const session = sessionOver(server);
+    session.connect();
+    expect(() => {
+      session.submit('!   ');
+    }).toThrow(/empty/u);
+    expect(() => {
+      session.submit('!cat', ['A1']);
+    }).toThrow(/attachment/u);
+    expect(server.latest('S1')?.sent).toEqual([]);
+    expect(session.state.shellSending).toBe(0);
+  });
+
+  it('answers the question of context: ask with the labels the daemon reads', () => {
+    const server = new FakeChatServer();
+    const session = sessionOver(server);
+    session.connect();
+    session.answer('D1', { answers: ['Send'] }, 'Enviar');
+    expect(server.latest('S1')?.sentOf('answer')).toEqual([
+      { type: 'answer', decisionId: 'D1', answer: { answers: ['Send'] } },
+    ]);
+  });
+});
