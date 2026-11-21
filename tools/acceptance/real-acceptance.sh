@@ -130,6 +130,18 @@
 #            ao Ator e ao Consultor uma regra que libera a edição dentro da worktree (só de teste,
 #            para Codex e OpenCode, que não têm modo que edite sem pedir). Gasta cota da conta do
 #            perfil (a mesma ordem de grandeza do nível play). Resumo no log com o prefixo [phase6-real].
+#            Modo de medição do prazo por turno (N184): OT_TEST_TURN_TIMEOUT (duração de
+#            `limits.turn_timeout`, como 20s; o schema aceita qualquer valor positivo, até o
+#            `demand_timeout` do preset) e, opcional, OT_TEST_ON_TURN_TIMEOUT (cancel, o padrão,
+#            notice ou off) entram no `limits:` do yaml. Com a primeira definida, o teste não exige
+#            a peça em DONE: espera o primeiro `session.turn_timeout` (ou o fim da peça), dá 60 s
+#            para as consequências aparecerem e exige pelo menos um `session.turn_timeout` com o
+#            limite e a ação definidos (nenhum com off); com cancel, um `session.closed` depois do
+#            corte de cada sessão de tentativa; nenhum processo vivo no fim; e o daemon parando
+#            sem erro. O log traz cada corte (sessão, papel, limite, decorrido, ação), o estado
+#            final da peça e o que veio depois (ACTOR_TIMED_OUT, SUBMIT_FAILED, transições,
+#            respostas do Diretor). Sem OT_TEST_TURN_TIMEOUT o nível roda como antes. Para uma
+#            medição curta, use também OT_TEST_PLAY_TIMEOUT_MS (mínimo 60000).
 #
 # Uso:
 #   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
@@ -396,6 +408,16 @@ if [ "$play_like" = 1 ] && [ -n "${OT_TEST_PLAY_LIMITS:-}" ]; then
     *) fail "OT_TEST_PLAY_LIMITS deve ser economical, moderate ou persistent: $OT_TEST_PLAY_LIMITS" ;;
   esac
 fi
+if [ "$level" = phase6 ] && [ -n "${OT_TEST_TURN_TIMEOUT:-}" ]; then
+  [[ "$OT_TEST_TURN_TIMEOUT" =~ ^[0-9]+(ms|s|m|h|d)$ ]] || fail "OT_TEST_TURN_TIMEOUT deve ser uma duração como 20s, 500ms ou 2m: $OT_TEST_TURN_TIMEOUT"
+fi
+if [ "$level" = phase6 ] && [ -n "${OT_TEST_ON_TURN_TIMEOUT:-}" ]; then
+  [ -n "${OT_TEST_TURN_TIMEOUT:-}" ] || fail "OT_TEST_ON_TURN_TIMEOUT sozinha não faz nada: defina também OT_TEST_TURN_TIMEOUT"
+  case "$OT_TEST_ON_TURN_TIMEOUT" in
+    cancel|notice|off) ;;
+    *) fail "OT_TEST_ON_TURN_TIMEOUT deve ser cancel, notice ou off: $OT_TEST_ON_TURN_TIMEOUT" ;;
+  esac
+fi
 if [ "$level" = k ] && [ -n "${OT_TEST_K_VALUES:-}" ]; then
   case "$OT_TEST_K_VALUES" in
     *[!0-9,\ ]*|'') fail "OT_TEST_K_VALUES deve ser uma lista de inteiros separados por vírgula: $OT_TEST_K_VALUES" ;;
@@ -527,6 +549,9 @@ if [ "$level" = phase6 ]; then
   echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz; com repetições até cerca de 50."
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso: nada vai ao GitHub."
   echo "  O resumo (eventos vistos pelo cliente, respostas do Diretor, tempo, processos) sai no log com o prefixo [phase6-real]."
+  if [ -n "${OT_TEST_TURN_TIMEOUT:-}" ]; then
+    echo "  MODO DE MEDIÇÃO DO PRAZO POR TURNO: limits.turn_timeout=$OT_TEST_TURN_TIMEOUT, on_turn_timeout=${OT_TEST_ON_TURN_TIMEOUT:-cancel}. O teste não exige a peça em DONE: exige pelo menos um session.turn_timeout, a sessão cortada encerrada (cancel), nenhum processo vivo e o daemon parando sem erro."
+  fi
 fi
 if [ "$level" = quota ]; then
   echo "Atenção: o nível quota LÊ a cota real pela sonda do daemon e NÃO provoca esgotamento. Roda os clientes com sandbox.mode: off (o sandbox padrão recusa o perfil apontado por link e o host da OpenAI; verificado em 2026-11-18). Gasta um turno curtíssimo no Claude Code e outro no OpenCode (o modelo de OT_TEST_CLAUDE_MODEL e OT_TEST_OPENCODE_MODEL; um Haiku basta); o Codex é lido pelo app-server, sem turno."

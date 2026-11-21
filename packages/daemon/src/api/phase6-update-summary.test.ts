@@ -139,11 +139,54 @@ describe('the diagnosis of the session updates (phase 6 real acceptance)', () =>
     ];
     const lines = summarizeSessionUpdates(events);
     expect(lines).toEqual([
-      `updates ${reviewer.slice(0, 8)} (reviewer): 8 (tool_call 3, tool_call_update 2, agent_message_chunk 1, agent_thought_chunk 1, plan 1) over 59.0s`,
-      `tools ${reviewer.slice(0, 8)}: bash 2, read 1`,
-      `updates ${planner.slice(0, 8)} (plan_reviewer?): 1 (agent_message_chunk 1) over 0.0s`,
-      `last updates ${reviewer.slice(0, 8)}: tool_call_update(bash, in_progress), tool_call(read, pending), tool_call(bash, pending), tool_call_update(bash, completed), plan`,
+      `updates ${reviewer} (reviewer): 8 (tool_call 3, tool_call_update 2, agent_message_chunk 1, agent_thought_chunk 1, plan 1) over 59.0s`,
+      `tools ${reviewer}: bash 2, read 1`,
+      `updates ${planner} (plan_reviewer?): 1 (agent_message_chunk 1) over 0.0s`,
+      `last updates ${reviewer}: tool_call_update(bash, in_progress), tool_call(read, pending), tool_call(bash, pending), tool_call_update(bash, completed), plan`,
+      'updates: no session of the Director in the log (the Director does not record session.update)',
     ]);
+    expect(lines.join('\n')).not.toContain(SECRET);
+  });
+
+  it('keeps sessions of the same client apart: ids with the same start print whole', () => {
+    nextId = 1;
+    // OpenCode: `ses_<time><random>`, the first 12 characters repeat between sessions of one run.
+    const openCode = ['ses_e04a1b2c3d4eAAAA1111', 'ses_e04a1b2c3d4eBBBB2222'];
+    // Codex: UUIDv7, the start is the time; Claude Code: UUIDv4, the start is random.
+    const codex = ['0197a1b2-c3d4-7e5f-8a9b-000000000001', '0197a1b2-c3d4-7e5f-8a9b-000000000002'];
+    const claude = ['5f3c9a10-1111-4222-8333-444455556666', 'a81d77e2-1111-4222-8333-444455556666'];
+    for (const ids of [openCode, codex, claude]) {
+      const events = ids.map((sessionId, index) =>
+        update(sessionId, 1000 + index, { kind: 'plan', entries: [] }, `att-${String(index)}`),
+      );
+      const lines = summarizeSessionUpdates(events);
+      const printed = lines
+        .filter((line) => line.startsWith('updates ') && line.includes(' ('))
+        .map((line) => line.split(' ')[1]);
+      expect(printed.sort()).toEqual([...ids].sort());
+    }
+  });
+
+  it('says the Director is not in the log when no session is of the chat', () => {
+    nextId = 1;
+    const lines = summarizeSessionUpdates([
+      update('sess-actor', 1000, { kind: 'plan', entries: [] }, 'att-1'),
+    ]);
+    expect(lines).toContain(
+      'updates: no session of the Director in the log (the Director does not record session.update)',
+    );
+  });
+
+  it('shows a session with no play and no attempt as chat, and then does not say it is missing', () => {
+    nextId = 1;
+    const lines = summarizeSessionUpdates([
+      event('session.update', 1000, {
+        sessionId: 'sess-chat',
+        update: { kind: 'agent_message_chunk', content: { type: 'text', text: SECRET } },
+      }),
+    ]);
+    expect(lines[0]).toBe('updates sess-chat (chat): 1 (agent_message_chunk 1) over 0.0s');
+    expect(lines.join('\n')).not.toContain('no session of the Director');
     expect(lines.join('\n')).not.toContain(SECRET);
   });
 });

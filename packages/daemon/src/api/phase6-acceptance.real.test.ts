@@ -15,7 +15,13 @@ import { RealHeadCodeHost, waitFor } from '../orchestration/e2e-fixture.js';
 import { dataPaths, profileDirOf, type ProfileNames } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
-import { summarizeSessionUpdates } from './phase6-update-summary.js';
+import {
+  checkTurnTimeoutRun,
+  measurementSettled,
+  readTurnTimeoutSetting,
+  summarizeTurnTimeouts,
+} from './phase6-turn-timeout.js';
+import { summarizeSessionUpdates, type SummarizableEvent } from './phase6-update-summary.js';
 
 /**
  * The acceptance of Phase 6 at the REAL level (P13 of docs/17) [proposta]: one real client (with a
@@ -35,6 +41,20 @@ import { summarizeSessionUpdates } from './phase6-update-summary.js';
  * `edit` kind inside the worktree. That is the test-only stand-in of N180 for the clients with no
  * mode that edits with no request (Codex and OpenCode); N99 still refuses an edit outside the
  * worktree before the rules. Without it, every request of those clients is rejected.
+ *
+ * Measuring the turn limit with a real client (N184): `OT_TEST_TURN_TIMEOUT` (a duration as
+ * `limits.turn_timeout` takes it, for example `20s`; the schema has no minimum above 1 ms, but it
+ * must not exceed `demand_timeout`) and, optional, `OT_TEST_ON_TURN_TIMEOUT` (`cancel`, the default
+ * when the first is set, `notice` or `off`) go into the `limits:` of the configuration. With the
+ * first one set the test is in "turn limit measurement mode": it does not need the play to reach
+ * DONE. It waits for the first `session.turn_timeout` (or the end of the play), lets the cut show
+ * its consequences for {@link SETTLE_MS}, and then requires: at least one `session.turn_timeout`
+ * with the limit and the action that were set (none with `off`); with `cancel`, a `session.closed`
+ * after the cut of every attempt session; no process of the test alive at the end; and a daemon
+ * that stops without error. The log gets each `session.turn_timeout` (session, role, limit,
+ * elapsed, action), the final state of the play and what followed the cut (`ACTOR_TIMED_OUT`,
+ * `SUBMIT_FAILED`, the transitions, the replies of the Director). Without the variable the test
+ * is the one below, unchanged.
  *
  * The criteria are about what the client SAW, not about what the model wrote: the events the
  * stream delivered are exactly the events of the log (ids, no repeat), they hold the whole path to
@@ -75,6 +95,8 @@ const EDIT_RULES_YAML = ['actor', 'consultant']
       `  ${role}:\n    policy:\n      on_ask: rules\n      rules:\n        - { id: edit-in-worktree, action: allow, kind: edit, path: "**" }\n`,
   )
   .join('');
+/** Measuring the turn limit (`OT_TEST_TURN_TIMEOUT`); `undefined` is the ordinary run. */
+const TURN_SETTING = phase6Flag ? readTurnTimeoutSetting(process.env) : undefined;
 if (phase6Flag && CLIENT === undefined) {
   throw new Error(
     `OT_TEST_PHASE6_CLIENT must be one of ${CLIENT_IDS.join(', ')}, got "${RAW_CLIENT}"`,
@@ -85,6 +107,8 @@ const ready =
 
 const DEFAULT_TIMEOUT_MS = 25 * 60_000;
 const TEARDOWN_MARGIN_MS = 3 * 60_000;
+/** In the measurement mode, how long the consequences of the first cut have to show up in the log. */
+const SETTLE_MS = 60_000;
 const ANSWER_FALLBACK = 'Use your best judgment and keep it as small as possible.';
 const WANTED_FILES = ['src/slugify.js', 'src/slugify.test.js'] as const;
 const NEED = [
@@ -199,6 +223,11 @@ describe.skipIf(!ready)(
         log(
           `client: ${executor}, model: ${MODEL}${MODE === undefined || MODE === '' ? '' : `, mode: ${MODE}`}${EDIT_RULES ? ', edit rules: on' : ''}`,
         );
+        if (TURN_SETTING !== undefined) {
+          log(
+            `turn limit measurement: limits.turn_timeout ${TURN_SETTING.text} (${String(TURN_SETTING.ms)} ms), on_turn_timeout ${TURN_SETTING.action}; the play does not have to reach DONE`,
+          );
+        }
         const config = parseConfig(`
 backup:
   when: manual
@@ -206,7 +235,7 @@ security:
   unenforced: warn
 limits:
   preset: ${limitsPreset()}
-${EXTRA_DOMAINS.length === 0 ? '' : `sandbox:\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`}${EDIT_RULES ? `roles:\n${EDIT_RULES_YAML}` : ''}orchestration:
+${TURN_SETTING === undefined ? '' : `  turn_timeout: ${JSON.stringify(TURN_SETTING.text)}\n  on_turn_timeout: ${TURN_SETTING.action}\n`}${EXTRA_DOMAINS.length === 0 ? '' : `sandbox:\n  extra_domains: ${JSON.stringify(EXTRA_DOMAINS)}\n`}${EDIT_RULES ? `roles:\n${EDIT_RULES_YAML}` : ''}orchestration:
   executor:
     client: ${executor}
     profile: real
@@ -245,7 +274,9 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
         const started = Date.now();
         const received: ApiSseMessage[] = [];
         const replies: string[] = [];
+        const replyAt: number[] = [];
         let failure: unknown;
+        let stopFailure: unknown;
         let survivors: number[];
         // The token is the file of the daemon in the temporary folder: the test's own, not a client's.
         const token = (await readFile(dataPaths(tmp.dir).apiToken, 'utf8')).trim();
@@ -269,6 +300,7 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           chat.onMessage((frame: ChatServerMessage) => {
             if (frame.type === 'director_reply' && frame.final) {
               replies.push(frame.text);
+              replyAt.push(Date.now());
               notes.push(
                 `Director reply #${String(replies.length)}@${seconds(Date.now() - started)}: ${clip(frame.text, REPLY_NOTE_CHARS)}`,
               );
@@ -315,12 +347,19 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
                   String((message.data.payload as { to?: unknown }).to),
                 ),
             );
+          // The envelopes the stream delivered are the events of the log (checked below).
+          const seen = (): SummarizableEvent[] => received.map((message) => message.data);
           const { producer } = daemon;
           if (producer === undefined) throw new Error('the daemon has no Producer channel');
           const deadline = started + limitMs;
           // Since when the Director has answered, no play is open and nothing waits for us.
           let idleSince: number | undefined;
-          while (!finished()) {
+          // The measurement mode ends on the first cut and its consequences, or on the end of the play.
+          while (
+            TURN_SETTING === undefined
+              ? !finished()
+              : !finished() && !measurementSettled(seen(), Date.now(), SETTLE_MS)
+          ) {
             if (Date.now() > deadline) {
               throw new Error('Timed out waiting for the play to end as the client sees it');
             }
@@ -345,35 +384,57 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
 
           // The stream is the log: same ids, in order, none twice.
           const head = await daemon.store.events.readFrom(0, 1_000_000);
+          // With the play over, nothing is written any more and the two are equal. In the
+          // measurement mode the play may still be running: the stream holds the log as a prefix.
           await waitFor(
             'the stream to reach the log',
-            () => Promise.resolve(received.at(-1)?.data.id === head.at(-1)?.id || undefined),
+            () =>
+              Promise.resolve(
+                (TURN_SETTING === undefined
+                  ? received.at(-1)?.data.id === head.at(-1)?.id
+                  : received.length >= head.length) || undefined,
+              ),
             60_000,
           );
-          expect(received.map((message) => message.data.id)).toEqual(head.map((event) => event.id));
+          expect(
+            (TURN_SETTING === undefined ? received : received.slice(0, head.length)).map(
+              (message) => message.data.id,
+            ),
+          ).toEqual(head.map((event) => event.id));
 
-          const playId = received.find((message) => message.data.type === 'play.created')?.data
-            .playId;
-          if (playId === undefined) throw new Error('the stream never showed play.created');
-          const path = received
-            .filter((message) => message.data.type === 'play.transitioned')
-            .map((message) => String((message.data.payload as { to?: unknown }).to));
-          expect(path.at(-1), `the play must reach DONE (path: ${path.join(' > ')})`).toBe('DONE');
-          const delivered = received.find((message) => message.data.type === 'delivery.completed');
-          expect(delivered, 'the client must see delivery.completed').toBeDefined();
-          const delivery = delivered?.data.payload as { branch: string };
-          expect((await client.call(API_ROUTES.getPlay, { params: { playId } })).play.state).toBe(
-            'DONE',
-          );
-          const pulls = fakeHost.pullRequests();
-          expect(pulls).toHaveLength(1);
-          expect(pulls[0]).toMatchObject({ baseBranch: 'main', headBranch: delivery.branch });
-          const files = (
-            await testGit(rig.repo, 'ls-tree', '-r', '--name-only', delivery.branch)
-          ).split('\n');
-          for (const wanted of WANTED_FILES) expect(files).toContain(wanted);
-          expect(replies.length, 'the Director must have answered the client').toBeGreaterThan(0);
-          log(`play ${playId}: ${path.join(' > ')}`);
+          if (TURN_SETTING !== undefined) {
+            // No DONE needed: the criteria are about the turn limit. The play may still be open;
+            // stopping the daemon below is the check that it stops with it open.
+            const problems = checkTurnTimeoutRun(head, TURN_SETTING);
+            expect(problems, `the turn limit measurement:\n${problems.join('\n')}`).toEqual([]);
+          } else {
+            const playId = received.find((message) => message.data.type === 'play.created')?.data
+              .playId;
+            if (playId === undefined) throw new Error('the stream never showed play.created');
+            const path = received
+              .filter((message) => message.data.type === 'play.transitioned')
+              .map((message) => String((message.data.payload as { to?: unknown }).to));
+            expect(path.at(-1), `the play must reach DONE (path: ${path.join(' > ')})`).toBe(
+              'DONE',
+            );
+            const delivered = received.find(
+              (message) => message.data.type === 'delivery.completed',
+            );
+            expect(delivered, 'the client must see delivery.completed').toBeDefined();
+            const delivery = delivered?.data.payload as { branch: string };
+            expect((await client.call(API_ROUTES.getPlay, { params: { playId } })).play.state).toBe(
+              'DONE',
+            );
+            const pulls = fakeHost.pullRequests();
+            expect(pulls).toHaveLength(1);
+            expect(pulls[0]).toMatchObject({ baseBranch: 'main', headBranch: delivery.branch });
+            const files = (
+              await testGit(rig.repo, 'ls-tree', '-r', '--name-only', delivery.branch)
+            ).split('\n');
+            for (const wanted of WANTED_FILES) expect(files).toContain(wanted);
+            expect(replies.length, 'the Director must have answered the client').toBeGreaterThan(0);
+            log(`play ${playId}: ${path.join(' > ')}`);
+          }
         } catch (error) {
           failure = error;
         } finally {
@@ -405,6 +466,30 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
               log(
                 `trace ${event.type}@${seconds(event.timestamp - started)}: ${clip(JSON.stringify(event.payload), TRACE_CHARS)}`,
               );
+            }
+            // The measurement of the turn limit: each cut and what followed it, the final state of
+            // the play and the replies of the Director after the first cut.
+            if (TURN_SETTING !== undefined) {
+              try {
+                const lines = summarizeTurnTimeouts(events, {
+                  prefix: 'measure: ',
+                  startedAt: started,
+                });
+                for (const line of lines) log(line);
+                log(
+                  `measure: final state of the play: ${plays.length === 0 ? 'no play' : plays.map((play) => `${play.id} ${play.state}`).join(', ')}`,
+                );
+                const firstCut = events.find((event) => event.type === 'session.turn_timeout');
+                const after =
+                  firstCut === undefined
+                    ? []
+                    : replyAt.filter((time) => time >= firstCut.timestamp);
+                log(
+                  `measure: Director replies after the first turn_timeout: ${String(after.length)} of ${String(replyAt.length)}${after.length === 0 ? '' : ` (at ${after.map((time) => seconds(time - started)).join(', ')}; the text is in the notes)`}`,
+                );
+              } catch (error) {
+                log(`the summary of the turn limit failed: ${String(error)}`);
+              }
             }
             // What the `session.update` events were, per session: kinds, tools and the end of the
             // stream (kinds, tool names and statuses only, never content). Apart from the summary
@@ -438,7 +523,12 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
           chat?.close();
           stream.close();
           await rig.dispose();
-          await daemon.stop();
+          try {
+            await daemon.stop();
+          } catch (error) {
+            stopFailure = error;
+            log(`the daemon did not stop clean: ${String(error)}`);
+          }
           await tmp.dispose();
           survivors = await waitFor(
             'the processes of the clients to exit',
@@ -446,6 +536,9 @@ ${MODE === undefined || MODE === '' ? '' : `    mode: ${JSON.stringify(MODE)}\n`
             15_000,
           ).catch(() => pids.filter(alive));
           log(`processes started: ${String(pids.length)}; left alive: ${String(survivors.length)}`);
+        }
+        if (stopFailure !== undefined) {
+          failure ??= new Error('the daemon did not stop clean', { cause: stopFailure });
         }
         if (failure !== undefined) {
           throw failure instanceof Error
