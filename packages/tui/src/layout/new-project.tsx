@@ -11,7 +11,7 @@ import { MouseModalScope } from '../mouse/index.js';
 import type { NewProjectRepoMode } from '../settings.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { overlayRect, type OverlayFrame } from './overlays.js';
-import { clip } from './text.js';
+import { clipStart } from './text.js';
 import { COLOR } from './theme.js';
 
 /**
@@ -161,7 +161,7 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
         </Text>
         <Text wrap="truncate">
           <Text color={COLOR.accent}>{'> '}</Text>
-          {clip(value, Math.max(1, inner - 3))}
+          {clipStart(value, Math.max(1, inner - 3))}
           {busy ? '' : <Text inverse> </Text>}
         </Text>
         {busy && (

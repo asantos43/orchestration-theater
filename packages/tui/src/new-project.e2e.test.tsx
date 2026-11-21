@@ -36,6 +36,9 @@ const run = promisify(execFile);
 const SIZE = { columns: 200, rows: 50 };
 const ENTER = '\r';
 const ESC = '\x1b';
+// macOS tmpdir() is a long /private/var/folders path: the field and the chat would cut or wrap it.
+const BASE = process.platform === 'win32' ? tmpdir() : '/tmp';
+const pause = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 200));
 const TAB = '\t';
 const WAIT_MS = 30_000;
 const TEST_MS = 90_000;
@@ -57,7 +60,7 @@ function fakes(): ChatFakes {
 
 /** A folder that is a git repository with one commit on `main` (what a project can start from). */
 async function makeRepo(prefix: string): Promise<string> {
-  const folder = await realpath(await mkdtemp(join(tmpdir(), prefix)));
+  const folder = await realpath(await mkdtemp(join(BASE, prefix)));
   const git = (...args: string[]): Promise<unknown> =>
     run('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args], {
       cwd: folder,
@@ -184,6 +187,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await seen(app, T('layout.newProject.label'));
           // The field starts with the folder the TUI was opened in (`ui.newProject.repo: cwd`).
           await seen(app, `> ${other}`);
+          await pause();
           await press(app, ENTER);
           await gone(app, T('layout.newProject.label'));
           const scenario = await projectOf(chat, other);
@@ -208,10 +212,11 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await focusSidebar(app, T('bar.sidebar.newProject'));
           await press(app, 'n');
           await seen(app, T('layout.newProject.label'));
+          await pause();
           await press(app, ESC);
           await gone(app, T('layout.newProject.label'));
 
-          const notRepo = await realpath(await mkdtemp(join(tmpdir(), 'otheater-p22-plain-')));
+          const notRepo = await realpath(await mkdtemp(join(BASE, 'otheater-p22-plain-')));
           try {
             await press(app, 'n');
             await seen(app, T('layout.newProject.label'));
@@ -271,6 +276,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await press(app, ENTER);
           await seen(app, T('layout.newProject.label'));
           await seen(app, `> ${other}`);
+          await pause();
           await press(app, ESC);
           await gone(app, T('layout.newProject.label'));
         });
