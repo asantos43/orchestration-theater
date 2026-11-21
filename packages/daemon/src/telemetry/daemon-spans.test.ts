@@ -103,7 +103,6 @@ function spansOf(
 /** What a projection of the log means, whatever the order the base returned it in. */
 function shape(spans: readonly TelemetrySpan[]): string[] {
   return spans
-    .filter((span) => span.attributes[OT.waitOrigin] !== 'direct')
     .map(
       (span) =>
         `${span.traceId}/${span.spanId}<-${span.parentSpanId ?? '-'} ${span.name} ` +
@@ -190,27 +189,7 @@ describe('the projector of the spans of the daemon (P4)', () => {
     expect(await telemetry.readCursor(DAEMON_SPANS_CURSOR)).toBe(log.events.length);
   });
 
-  it('records the waits of the places that wait only with waits: all, and drops the ones of the log with off', async () => {
-    const wait = {
-      kind: WAIT_KIND.promptQueue,
-      key: 'prompt-1',
-      startMs: T0,
-      endMs: T0 + 20,
-      reason: 'queued',
-      outcome: 'delivered',
-      correlation: { scenarioId: 's1' },
-    } as const;
-    for (const mode of ['all', 'log', 'off'] as const) {
-      const rig = makeRig();
-      const telemetry = rig.open();
-      const log = new MemoryLog();
-      const spans = spansOf(telemetry, rig.clock, log, { waits: mode });
-      spans.recordWait(wait);
-      await telemetry.flush();
-      const direct = (await telemetry.readSpans()).filter((span) => span.name === SPAN_NAME.wait);
-      expect(direct.length).toBe(mode === 'all' ? 1 : 0);
-    }
-
+  it('makes the spans of the prompt queue and of the pool from wait.started and wait.ended, and drops every wait span with waits: off', async () => {
     const log = new MemoryLog();
     log.append('play.created', { flowId: 'play' }, PLAY);
     log.append('session.opened', { sessionId: 'q', executor: EXECUTOR }, ATTEMPT);
@@ -220,16 +199,60 @@ describe('the projector of the spans of the daemon (P4)', () => {
       ATTEMPT,
     );
     log.append('attempt.reset_wait_ended', { outcome: 'resumed', waitedMs: 10 }, ATTEMPT);
-    for (const mode of ['log', 'off'] as const) {
-      const other = makeRig();
-      const store = other.open();
-      const spans = spansOf(store, other.clock, log, { waits: mode });
+    const prompt = {
+      waitId: 'prompt-1',
+      kind: 'prompt_queue',
+      reasons: ['queued'],
+      since: T0,
+      scenarioId: 's1',
+    };
+    log.append('wait.started', { ...prompt, thresholdMs: 1_000 }, { scenarioId: 's1' });
+    log.append(
+      'wait.ended',
+      { ...prompt, outcome: 'delivered', waitedMs: 1_500 },
+      { scenarioId: 's1' },
+    );
+    for (const mode of ['all', 'off'] as const) {
+      const rig = makeRig();
+      const store = rig.open();
+      const spans = spansOf(store, rig.clock, log, { waits: mode });
       spans.start();
       await spans.settle();
       await spans.stop();
       const waits = (await store.readSpans()).filter((span) => span.name === SPAN_NAME.wait);
-      expect(waits.length).toBe(mode === 'log' ? 1 : 0);
+      expect(waits.map((span) => span.attributes[OT.waitKind]).sort()).toEqual(
+        mode === 'all' ? [WAIT_KIND.promptQueue, WAIT_KIND.quota] : [],
+      );
     }
+  });
+
+  it('gives the same wait spans to a telemetry base that was deleted and recreated', async () => {
+    const log = new MemoryLog();
+    log.append('play.created', { flowId: 'play' }, PLAY);
+    const wait = {
+      waitId: 'p1/alpha/1|10|1',
+      kind: 'pool_admission',
+      reasons: ['max_sessions'],
+      since: T0,
+      ...ATTEMPT,
+    };
+    log.append('wait.started', { ...wait, thresholdMs: 100 }, ATTEMPT);
+    log.append('wait.ended', { ...wait, outcome: 'admitted', waitedMs: 400 }, ATTEMPT);
+    const read = async (): Promise<TelemetrySpan[]> => {
+      const rig = makeRig();
+      const store = rig.open();
+      const spans = spansOf(store, rig.clock, log);
+      spans.start();
+      await spans.settle();
+      await spans.stop();
+      return (await store.readSpans()).filter((span) => span.name === SPAN_NAME.wait);
+    };
+    const first = await read();
+    const second = await read();
+    expect(first).toHaveLength(1);
+    expect(second.map((span) => [span.traceId, span.spanId, span.endTimeUnixNano])).toEqual(
+      first.map((span) => [span.traceId, span.spanId, span.endTimeUnixNano]),
+    );
   });
 
   it('tells a failure once as a situation and tries again after a while', async () => {

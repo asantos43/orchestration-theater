@@ -15,7 +15,7 @@ const MANUAL = parseConfig('backup:\n  when: manual\n');
 describe('the daemon registries', () => {
   it('are valid with the official entries and hold the 134 daemon and 2 play event types', () => {
     const registries = buildDaemonRegistries();
-    expect(registries.events.size).toBe(136);
+    expect(registries.events.size).toBe(138);
     expect(registries.events.has('daemon.started')).toBe(true);
     expect(registries.roles.size).toBe(7);
     expect(registries.ruleKeys.size).toBe(6);
@@ -74,7 +74,7 @@ describe('starting the daemon with an invalid registry', () => {
         overrides: { clock, store: inner, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
       });
-      expect(daemon.registries.events.size).toBe(136);
+      expect(daemon.registries.events.size).toBe(138);
       await daemon.stop();
     } finally {
       await tmp.dispose();
