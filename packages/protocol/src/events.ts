@@ -85,6 +85,7 @@ import {
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
+import { TelemetryStoreResetPayloadSchema } from './telemetry-events.js';
 import { UsageNoticePayloadSchema, UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
@@ -675,6 +676,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ScenarioNoticePayloadSchema,
   }),
   defineEventType({
+    type: 'telemetry.store_reset',
+    schemaVersion: 1,
+    payload: TelemetryStoreResetPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.started',
     schemaVersion: 1,
     payload: ApiStartedPayloadSchema,
@@ -977,6 +983,7 @@ export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
 export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
+export type TelemetryStoreResetPayload = DaemonEventPayloads['telemetry.store_reset'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];

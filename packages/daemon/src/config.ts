@@ -1244,6 +1244,68 @@ const DirectSessionConfigSchema = z
   })
   .prefault({});
 
+/** `telemetry.enabled`, `telemetry.clients.<client>` and `telemetry.clients.<client>.<option>`: on or off. */
+export const TELEMETRY_SWITCH_MODES = ['on', 'off'] as const;
+/** `telemetry.synchronous` (`PRAGMA synchronous` of the telemetry base only; the `Store` stays full). */
+export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
+/** `backup.telemetry`: whether the backup carries the telemetry file. */
+export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
+
+const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
+
+/**
+ * One entry of `telemetry.clients.<client>`: `on` or `off` (shorthand for `enabled`), or an object
+ * with `enabled` and the options of that client. After parsing it is always the object. [proposta]
+ */
+function telemetryClient<Shape extends z.ZodRawShape>(options: Shape) {
+  return z
+    .preprocess(
+      (value) => (typeof value === 'string' ? { enabled: value } : value),
+      z.strictObject({ enabled: TelemetrySwitch.default('on'), ...options }),
+    )
+    .prefault({});
+}
+
+/**
+ * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block: P2 adds
+ * `receiver.*` next to these keys. Every key is [proposta] except where the plan names it.
+ */
+const TelemetryConfigSchema = z
+  .strictObject({
+    /** `off`: no telemetry base is opened and nothing is received or kept. */
+    enabled: TelemetrySwitch.default('on'),
+    /** The telemetry base, in the data folder (or absolute). Apart from `store.sqlite` (N54). */
+    file: z.string().min(1).default('telemetry.sqlite'),
+    /** `normal` (default): a power cut may lose the last commits, never corrupts. */
+    synchronous: z.enum(TELEMETRY_SYNCHRONOUS_MODES).default('normal'),
+    write: z
+      .strictObject({
+        /** Records per transaction; a queue that reaches it is written at once. */
+        batch: z.int().min(1).max(100_000).default(500),
+        /** Records the queue holds; when full the oldest are dropped and counted. */
+        queue_max: z.int().min(1).max(10_000_000).default(20_000),
+        /** A queue that did not fill up is written after this long. */
+        flush_interval: DurationSchema.prefault('1s'),
+        /** With no base, how long to wait before trying to open it again. */
+        retry_after: DurationSchema.prefault('1m'),
+      })
+      .prefault({}),
+    /**
+     * Which clients send telemetry to the daemon (P3 turns them on at launch). Each accepts `on` or
+     * `off`, or an object with `enabled` and its options:
+     * - `claude-code.traces`: also ask for the traces (beta); default `off`;
+     * - `opencode.ai_spans`: `experimental.openTelemetry` for the AI spans (N213); default `off`.
+     */
+    clients: z
+      .strictObject({
+        'claude-code': telemetryClient({ traces: TelemetrySwitch.default('off') }),
+        codex: telemetryClient({}),
+        opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
+      })
+      .prefault({}),
+  })
+  .prefault({});
+
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
  * section is optional and every key has a default, so a missing file means the defaults. Strict at
@@ -1270,6 +1332,8 @@ export const DaemonConfigSchema = z
      * without it the versioned `prompts/` folder of the repository is used). [proposta]
      */
     prompts: AdapterSection.prefault({}),
+    /** The telemetry of the clients and its own base (architecture 5.11, N54). */
+    telemetry: TelemetryConfigSchema,
     backup: z
       .strictObject({
         when: z.enum(BACKUP_WHEN).default('daily_after'),
@@ -1281,6 +1345,11 @@ export const DaemonConfigSchema = z
         keep_days: z.number().positive().default(2),
         copies: z.int().min(1).default(7),
         content: z.enum(BACKUP_CONTENTS).default('without_runs'),
+        /**
+         * `exclude` (default): the telemetry file is left out of the backup (it is a mirror that is
+         * cheap to lose, and it grows). `include`: a consistent copy goes in as `telemetry.sqlite`. [proposta]
+         */
+        telemetry: z.enum(BACKUP_TELEMETRY_MODES).default('exclude'),
         method: z.enum(BACKUP_METHOD_NAMES).default('online_api'),
         /**
          * `online_api` only (ignored with `vacuum_into`): pages copied per `sqlite3_backup_step`.

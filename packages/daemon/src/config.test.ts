@@ -73,6 +73,7 @@ describe('parseConfig', () => {
       keep_days: 2,
       copies: 7,
       content: 'without_runs',
+      telemetry: 'exclude',
       method: 'online_api',
       pages_per_step: 'all',
     });
@@ -1297,6 +1298,86 @@ describe('loadConfig', () => {
       await expect(loadConfig(file)).rejects.toThrow(/ui\.keymap\.overrides\.tabs\.add/);
     } finally {
       await tmp.dispose();
+    }
+  });
+});
+
+describe('telemetry (P1 of Phase 8)', () => {
+  it('has the defaults of the plan', () => {
+    const config = parseConfig('');
+    expect(config.telemetry).toEqual({
+      enabled: 'on',
+      file: 'telemetry.sqlite',
+      synchronous: 'normal',
+      write: { batch: 500, queue_max: 20_000, flush_interval: 1000, retry_after: 60_000 },
+      clients: {
+        'claude-code': { enabled: 'on', traces: 'off' },
+        codex: { enabled: 'on' },
+        opencode: { enabled: 'on', ai_spans: 'off' },
+      },
+    });
+    expect(config.backup.telemetry).toBe('exclude');
+  });
+
+  it('takes every mode of the new keys', () => {
+    const config = parseConfig(
+      [
+        'telemetry:',
+        '  enabled: off',
+        '  file: sub/t.sqlite',
+        '  synchronous: full',
+        '  write:',
+        '    batch: 10',
+        '    queue_max: 100',
+        '    flush_interval: 500ms',
+        '    retry_after: 5m',
+        '  clients:',
+        '    claude-code: off',
+        '    codex:',
+        '      enabled: off',
+        '    opencode:',
+        '      ai_spans: on',
+        'backup:',
+        '  telemetry: include',
+        '',
+      ].join('\n'),
+    );
+    expect(config.telemetry.enabled).toBe('off');
+    expect(config.telemetry.file).toBe('sub/t.sqlite');
+    expect(config.telemetry.synchronous).toBe('full');
+    expect(config.telemetry.write).toEqual({
+      batch: 10,
+      queue_max: 100,
+      flush_interval: 500,
+      retry_after: 300_000,
+    });
+    expect(config.telemetry.clients['claude-code']).toEqual({ enabled: 'off', traces: 'off' });
+    expect(config.telemetry.clients.codex).toEqual({ enabled: 'off' });
+    expect(config.telemetry.clients.opencode).toEqual({ enabled: 'on', ai_spans: 'on' });
+    expect(config.backup.telemetry).toBe('include');
+    expect(
+      parseConfig('telemetry:\n  clients:\n    claude-code:\n      traces: on\n').telemetry.clients[
+        'claude-code'
+      ],
+    ).toEqual({ enabled: 'on', traces: 'on' });
+  });
+
+  it('refuses unknown values and keys, and does not own the receiver yet', () => {
+    for (const bad of [
+      'telemetry:\n  enabled: maybe\n',
+      'telemetry:\n  synchronous: off\n',
+      'telemetry:\n  file: ""\n',
+      'telemetry:\n  write:\n    batch: 0\n',
+      'telemetry:\n  write:\n    queue_max: 1.5\n',
+      'telemetry:\n  write:\n    flush_interval: soon\n',
+      'telemetry:\n  clients:\n    codex: maybe\n',
+      'telemetry:\n  clients:\n    codex:\n      traces: on\n',
+      'telemetry:\n  clients:\n    gemini: on\n',
+      'telemetry:\n  receiver:\n    port: 1\n',
+      'telemetry:\n  other: 1\n',
+      'backup:\n  telemetry: sometimes\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }
   });
 });

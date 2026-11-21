@@ -75,7 +75,9 @@
     "keptDatabase": "O banco anterior foi guardado como {{path}}.",
     "keptScenarios": "A pasta de cenários anterior foi guardada como {{path}}.",
     "daemonIdRestored": "O id do daemon do backup foi restaurado.",
-    "keptDaemonId": "O arquivo do id do daemon anterior foi guardado como {{path}}."
+    "keptDaemonId": "O arquivo do id do daemon anterior foi guardado como {{path}}.",
+    "telemetryRestored": "O arquivo de telemetria do backup foi restaurado.",
+    "keptTelemetry": "O arquivo de telemetria anterior foi guardado como {{path}}."
   },
   "api": {
     "rotatedOffline": "Novo token da API gravado no arquivo api-token. O daemon está parado, então ele será usado na próxima partida.",

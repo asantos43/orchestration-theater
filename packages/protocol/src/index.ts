@@ -22,6 +22,7 @@ export * from './usage-events.js';
 export * from './atif-events.js';
 export * from './selection-events.js';
 export * from './notice-events.js';
+export * from './telemetry-events.js';
 export * from './api-events.js';
 export * from './api-command-events.js';
 export * from './layout-events.js';

@@ -782,6 +782,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       }
       return store.backup(dest, backupOptions);
     },
+    telemetryBackup: composition.telemetryBackup,
     recordEvent: (event) => store.events.append(event),
     situations: composition.situations,
   });
@@ -1031,6 +1032,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     direct,
     trajectory,
     atif,
+    attempts: execution?.runner,
     config,
     quota,
     usage,
