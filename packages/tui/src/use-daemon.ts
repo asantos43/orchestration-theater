@@ -14,8 +14,8 @@ export type DaemonView =
       readonly status: ApiStatus;
       readonly address: string;
       readonly stores: DaemonStores;
-      /** The client of the daemon, for the chat (P12). */
-      readonly client?: ApiClient | undefined;
+      /** The client of the daemon: the chat (P12) and the tabs (P13). */
+      readonly client: ApiClient;
       /** The saved layout, already read: the first frame of the screen is the one the person left. */
       readonly layout: LayoutStore;
     };

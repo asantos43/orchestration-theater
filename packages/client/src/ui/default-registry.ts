@@ -335,6 +335,57 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       context: 'chat',
       keys: terminalKeys(['Esc']),
     },
+    // The Overview and Usage tabs (P13 of docs/18). They act in the `panel` context, which every tab
+    // shares, so the keys are capital letters (Shift) that no other tab should take, and none shows in
+    // the palette: the tab draws the keys it offers. Each can be rebound in `ui.keymap.overrides`.
+    {
+      id: 'overview.pausePlay',
+      textKey: 'actions.overview.pausePlay',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+P']),
+    },
+    {
+      id: 'overview.resumePlay',
+      textKey: 'actions.overview.resumePlay',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+R']),
+    },
+    {
+      id: 'overview.nextActor',
+      textKey: 'actions.overview.nextActor',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+N']),
+    },
+    {
+      id: 'overview.pauseActor',
+      textKey: 'actions.overview.pauseActor',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+A']),
+    },
+    {
+      id: 'overview.resumeActor',
+      textKey: 'actions.overview.resumeActor',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+U']),
+    },
+    {
+      id: 'usage.refresh',
+      textKey: 'actions.usage.refresh',
+      group: 'general',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+L']),
+    },
     // The text box of the Producer (N35, P10 of docs/18). In `agents` it has the editing keys of the
     // coding agents and of the readline; in `classic` the Ctrl keys the layout used in v0.7 stay with
     // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.

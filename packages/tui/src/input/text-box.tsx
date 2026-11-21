@@ -6,9 +6,10 @@ import {
   type UiRegistry,
   type UiTranslate,
 } from '@otheater/client';
-import { Box, Text, useApp, useInput, usePaste } from 'ink';
+import { Box, Text, useInput, usePaste } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { type ProducerMessage, draftsInText } from './attachments.js';
 import { readClipboardImage, errorMessage } from './clipboard-image.js';
@@ -80,7 +81,8 @@ export function TextBox(props: TextBoxProps): ReactNode {
   const settings = props.settings ?? DEFAULT_INPUT_SETTINGS;
   const active = props.isActive ?? true;
   const { t } = useTranslation();
-  const { suspendTerminal } = useApp();
+  // The editor of Ctrl+G takes the terminal: the mouse reports are off while it runs (N34).
+  const suspendTerminal = useSuspendTerminal();
   const { afterKey } = useRenderControl();
 
   const ports = useMemo(() => props.ports ?? createBoxPorts(), [props.ports]);

@@ -28,9 +28,12 @@ import {
   UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
+  UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiUsageConfigSchema,
+  UiTuiMouseConfigSchema,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -2217,6 +2220,12 @@ export const DaemonConfigSchema = z
         input: UiInputConfigSchema.prefault({}),
         /** The chat of the terminal interface (P12): queue, suggestions, decisions and Esc. */
         chat: UiChatConfigSchema.prefault({}),
+        /** The Overview tab: confirmation, recent events (P13 of docs/18). */
+        overview: UiOverviewConfigSchema.prefault({}),
+        /** The Usage tab: how the totals are split (P13 of docs/18). */
+        usage: UiUsageConfigSchema.prefault({}),
+        /** The wheel step and the copy limit of the mouse of the terminal interface (P11). */
+        tuiMouse: UiTuiMouseConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

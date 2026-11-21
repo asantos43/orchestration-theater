@@ -5,9 +5,12 @@ import {
   UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
+  UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiUsageConfigSchema,
+  UiTuiMouseConfigSchema,
 } from './ui-config.js';
 
 describe('ui.* schemas of the terminal', () => {
@@ -50,6 +53,18 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiMouseModeSchema.safeParse('some').success).toBe(false);
   });
 
+  it('has the defaults of the mouse block, takes the auto copy mode and refuses what is out of range', () => {
+    expect(UiTuiMouseConfigSchema.parse({})).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    expect(UiTuiMouseConfigSchema.safeParse({ wheelLines: 0 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.safeParse({ copyMaxBytes: 0 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.safeParse({ speed: 2 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.parse({ wheelLines: 5 }).wheelLines).toBe(5);
+    for (const mode of ['osc52', 'system', 'auto', 'off'])
+      expect(UiClipboardConfigSchema.parse({ copy: mode }).copy).toBe(mode);
+    expect(UiClipboardConfigSchema.parse({}).copy).toBe('osc52');
+    expect(UiClipboardConfigSchema.safeParse({ copy: 'paste' }).success).toBe(false);
+  });
+
   it('refuses a shortcut that is not a key combination, and unknown keys', () => {
     expect(UiKeymapConfigSchema.safeParse({ overrides: { 'tabs.add': 'Alt+Foo' } }).success).toBe(
       false,
@@ -81,5 +96,25 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiInputConfigSchema.safeParse({ image: { tool: 'gimp' } }).success).toBe(false);
     expect(UiInputConfigSchema.safeParse({ maxVisibleLines: 0 }).success).toBe(false);
     expect(UiInputConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
+  });
+
+  it('has the defaults of the Overview and Usage tabs and refuses what is out of range', () => {
+    expect(UiOverviewConfigSchema.parse({})).toEqual({
+      confirm: 'always',
+      recentEvents: 8,
+      hiddenEvents: ['session.update'],
+    });
+    expect(UiOverviewConfigSchema.parse({ confirm: 'off' }).recentEvents).toBe(8);
+    expect(UiOverviewConfigSchema.safeParse({ confirm: 'never' }).success).toBe(false);
+    expect(UiOverviewConfigSchema.safeParse({ recentEvents: 0 }).success).toBe(false);
+    expect(UiOverviewConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({})).toEqual({
+      groupBy: 'profile',
+      refreshSeconds: 30,
+    });
+    expect(UiUsageConfigSchema.parse({ groupBy: 'none' }).groupBy).toBe('none');
+    expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({ refreshSeconds: 0 }).refreshSeconds).toBe(0);
+    expect(UiUsageConfigSchema.safeParse({ refreshSeconds: 4000 }).success).toBe(false);
   });
 });

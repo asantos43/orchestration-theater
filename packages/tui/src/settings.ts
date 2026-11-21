@@ -12,6 +12,14 @@ import {
   parseInputSettings,
   type InputSettings,
 } from './input/settings.js';
+import {
+  DEFAULT_OVERVIEW_SETTINGS,
+  DEFAULT_USAGE_SETTINGS,
+  parseOverviewSettings,
+  parseUsageSettings,
+  type OverviewSettings,
+  type UsageSettings,
+} from './tabs/settings.js';
 
 export const KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export type KeyRenderMode = (typeof KEY_RENDER_MODES)[number];
@@ -86,6 +94,18 @@ export interface UiChatSettings {
   readonly esc: ChatEscMode;
 }
 
+export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
+export type MouseMode = (typeof MOUSE_MODES)[number];
+
+export const CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as const;
+export type ClipboardCopyMode = (typeof CLIPBOARD_COPY_MODES)[number];
+
+/** `ui.tuiMouse` (P11): the lines a wheel notch moves and the most one selection copies, in bytes. */
+export interface UiTuiMouseSettings {
+  readonly wheelLines: number;
+  readonly copyMaxBytes: number;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -95,6 +115,13 @@ export interface UiSettings {
   readonly chat: UiChatSettings;
   /** `ui.input`: the text box (P10). */
   readonly input: InputSettings;
+  readonly overview: OverviewSettings;
+  readonly usage: UsageSettings;
+  /** `ui.mouse` (N34). */
+  readonly mouse: MouseMode;
+  /** `ui.clipboard.copy` (N36). */
+  readonly clipboardCopy: ClipboardCopyMode;
+  readonly tuiMouse: UiTuiMouseSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -133,6 +160,11 @@ export const DEFAULT_CHAT: UiChatSettings = {
   esc: 'stop',
 };
 
+export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
+  wheelLines: 3,
+  copyMaxBytes: 100_000,
+};
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -141,6 +173,11 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   tuiLayout: DEFAULT_TUI_LAYOUT,
   chat: DEFAULT_CHAT,
   input: DEFAULT_INPUT_SETTINGS,
+  overview: DEFAULT_OVERVIEW_SETTINGS,
+  usage: DEFAULT_USAGE_SETTINGS,
+  mouse: 'full',
+  clipboardCopy: 'osc52',
+  tuiMouse: DEFAULT_TUI_MOUSE,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -196,6 +233,8 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
   const chat = record(field(source, 'chat'));
+  const clipboard = record(field(source, 'clipboard'));
+  const tuiMouse = record(field(source, 'tuiMouse'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -271,5 +310,22 @@ export function parseUiSettings(ui: unknown): UiSettings {
       esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
     },
     input: parseInputSettings(field(source, 'input')),
+    overview: parseOverviewSettings(field(source, 'overview')),
+    usage: parseUsageSettings(field(source, 'usage')),
+    mouse: oneOf(field(source, 'mouse'), MOUSE_MODES, DEFAULT_UI_SETTINGS.mouse),
+    clipboardCopy: oneOf(
+      field(clipboard, 'copy'),
+      CLIPBOARD_COPY_MODES,
+      DEFAULT_UI_SETTINGS.clipboardCopy,
+    ),
+    tuiMouse: {
+      wheelLines: integer(field(tuiMouse, 'wheelLines'), 1, 50, DEFAULT_TUI_MOUSE.wheelLines),
+      copyMaxBytes: integer(
+        field(tuiMouse, 'copyMaxBytes'),
+        1,
+        10_000_000,
+        DEFAULT_TUI_MOUSE.copyMaxBytes,
+      ),
+    },
   };
 }

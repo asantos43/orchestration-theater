@@ -47,6 +47,8 @@ export class MemoryLayoutFile implements LayoutFileStore {
 export interface FakeOnline {
   readonly connector: DaemonConnector;
   readonly stores: DaemonStores;
+  /** The REST client of the fake daemon: a test stubs its methods (P13). */
+  readonly client: ApiClient;
   readonly file: MemoryLayoutFile;
   /** The layout stores opened (one per app that connected). */
   readonly layouts: LayoutStore[];
@@ -73,7 +75,13 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   const chat = new FakeChatServer();
   const fake = client as unknown as { chat: unknown; call: unknown };
   fake.chat = chat.open;
-  fake.call = () => Promise.resolve({ commands: options.commands ?? [] });
+  // Only `GET /v1/commands` answers. Any other read (the Usage tab of P13) never settles: the tab
+  // stays in its reading state, the same in every frame, instead of a wrong shape or a failure
+  // whose moment depends on the machine.
+  fake.call = (route: { readonly path: string }) =>
+    route.path === '/v1/commands'
+      ? Promise.resolve({ commands: options.commands ?? [] })
+      : new Promise<never>(() => undefined);
   const stores = new DaemonStores(client);
   stores.start = () => Promise.resolve();
   if (options.live !== false) {
@@ -92,8 +100,8 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
       apiVersion: API_VERSION,
     },
     address: options.address ?? '127.0.0.1:7777',
-    stores,
     client,
+    stores,
     readSettings: () => Promise.resolve(DEFAULT_UI_SETTINGS),
     openLayout: async () => {
       const layout = new LayoutStore({
@@ -113,6 +121,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   const result: ConnectResult = { kind: 'online', daemon };
   return {
     connector: { connect: () => Promise.resolve(result) },
+    client,
     stores,
     file,
     layouts,

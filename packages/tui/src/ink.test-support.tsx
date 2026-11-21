@@ -9,6 +9,7 @@ import type { TabContentMap } from './layout/tab-content.js';
 import type { KeyEnvironment } from './keys/use-keymap.js';
 import type { ConnectResult, DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
+import type { MouseLayerProps } from './mouse/index.js';
 import {
   LocaleController,
   createTuiI18n,
@@ -89,6 +90,13 @@ export interface RenderAppOptions {
   readonly tabContent?: TabContentMap | undefined;
   /** The system the keymap adapts to. Default: Linux with no terminal variables, on every OS. */
   readonly keyEnvironment?: KeyEnvironment | undefined;
+  /**
+   * Turns the mouse layer on: what it writes to the terminal (the mode sequences and the OSC 52
+   * copy) goes to this list. Without it the layer does nothing, as in the tests that ignore it.
+   */
+  readonly mouseWrites?: string[] | undefined;
+  /** The ports of the copy; the test one is Linux with no tool and no tmux, so only OSC 52 and `system` failing are reachable. */
+  readonly mouseClipboard?: MouseLayerProps['clipboard'];
 }
 
 /** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */
@@ -115,6 +123,14 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       history={options.history}
       tabContent={options.tabContent}
       keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
+      mouseTerminal={
+        options.mouseWrites === undefined
+          ? undefined
+          : { write: (text) => options.mouseWrites?.push(text) }
+      }
+      mouseClipboard={
+        options.mouseClipboard ?? { environment: { platform: 'linux', env: {} }, tmux: false }
+      }
       flush={() => {
         flushes += 1;
       }}
