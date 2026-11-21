@@ -463,6 +463,14 @@ O aceite roda nos três sistemas da CI. O nível real (`tools/acceptance`) ganha
       - [V] o prazo por turno não precisou cortar nada nesta rodada; o corte com um cliente real segue não medido [N].
       - [N] a causa do turno de 25 min da rodada `192554` não se repetiu e segue sem explicação. O resumo das atualizações só ajuda quando o caso volta.
       - [V] um defeito pequeno do resumo: ele corta o id da sessão em 8 caracteres, e os ids do OpenCode têm o mesmo começo, então todas as sessões aparecem como `ses_e04a`. O papel ao lado ainda as separa. A sessão do Diretor não aparece no resumo; o motivo segue [N].
+      - Depois [V]: o PR #202 passou a mostrar o id inteiro. O motivo da ausência do Diretor é que ele não grava `session.opened`, `session.update` nem `session.closed`, e o resumo agora diz isso numa linha própria.
+  - **Medição do corte por turno** (`214002`, modo de medição do PR #202): Claude Code (haiku), `limits.turn_timeout: 5s`, `on_turn_timeout: cancel`, prazo de 300 s. Passou.
+    - O turno do autor do plano foi cortado aos 5,0 s (limite de 5,0 s, ação `cancel` aos 11,2 s da rodada). O `session.closed` (interrompida) saiu aos 11,4 s.
+    - A etapa virou `SUBMIT_FAILED` (de PLANNING para AWAITING_PRODUCER, `submit_retries` 1, motivo "The author session timed_out: turn_timeout"). O teste desistiu no menu do Produtor, e a peça foi a CANCELLED.
+    - 37 eventos (1 `session.turn_timeout`, 1 `session.interrupted`), 1 resposta do Diretor antes do corte, Diretor livre no fim, 2 processos e nenhum vivo, 11,9 s no total, pico de cerca de 936 MB.
+    - **Leitura:**
+      - [V] o caminho do `cancel` numa etapa funciona com um cliente real, do evento ao fim da sessão e à transição da peça.
+      - [N] não medidos: o corte de um turno do Diretor (a resposta veio em menos de 5 s), os modos `notice` e `off` e o `ACTOR_TIMED_OUT` de um Ator real (a peça não chegou à execução).
   - **OpenCode (openai/gpt-5.6-sol), sem regra:** passou de primeira. `DONE` em 129,8 s, 357 eventos, 1 resposta, 13 processos, nenhum vivo; 1 submissão inválida do roteiro (`contracts[1].kind`) corrigida; pico de cerca de 6,4 GB (`175322`).
   - **Restricted shell nas rodadas do Codex:** recusou `sh -c` (`shell_syntax`) e `sed` (`program_not_allowed`); não impediu a peça.
 
@@ -508,4 +516,4 @@ Decididas pelo dono em 2026-11-20, por múltipla escolha, a partir do nível rea
 - **N181, recusa do Ator:** o daemon envia `ACTOR_REFUSED` quando a camada 2 negou uma permissão ao Ator e a tentativa termina bloqueada ou sem mudança. Implementada no PR #187.
 - **N182, edição na worktree para os papéis que escrevem, em qualquer cliente:** a regra padrão na camada 2, com a chave `roles.<papel>.policy.edit_in_worktree: allow | ask`, padrão `allow` no Ator e no consultor e `ask` nos outros; ausente conta como `ask`. Implementada no PR #197.
 - **N183, turno do Diretor que termina sem texto:** o aviso do daemon no chat: o evento `chat.director_silent` e, com `chat.silent_turn: notice` (padrão), uma resposta curta gerada, marcada `generated: true`; `none` deixa o chat como antes. Implementada no PR #196.
-- **N184, turno que não termina:** prazo por turno, com a chave `limits.turn_timeout` (valor por predefinição, menor ou igual ao `demand_timeout`) e o modo `limits.on_turn_timeout: cancel | notice | off`, padrão `cancel`. Com `cancel`, o turno é cancelado pelo ACP e conta como tentativa que falhou. Com `notice`, só sai o evento. Os dois modos emitem o evento `session.turn_timeout`. A regra vale para os papéis e para o Diretor. Implementada no PR #201.
+- **N184, turno que não termina:** prazo por turno, com a chave `limits.turn_timeout` (valor por predefinição, menor ou igual ao `demand_timeout`) e o modo `limits.on_turn_timeout: cancel | notice | off`, padrão `cancel`. Com `cancel`, o turno é cancelado pelo ACP e conta como tentativa que falhou. Com `notice`, só sai o evento. Os dois modos emitem o evento `session.turn_timeout`. A regra vale para os papéis e para o Diretor. Implementada no PR #201; o `cancel` numa etapa foi medido com o Claude Code em 2026-11-20 [V].
