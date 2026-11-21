@@ -32,6 +32,7 @@ import {
 } from '@otheater/core';
 import { LocalConfigSchema, type LocalConfig } from '@otheater/protocol';
 import { editConfigFile } from '../config-edit.js';
+import type { ConfigReload } from '../config-reload.js';
 import { loadConfig, type DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { writeSituation } from '../situations.js';
@@ -63,6 +64,12 @@ export interface ExecutorServiceOptions {
    * `ot` command with no daemon has no execution), and `executors.test_session: run` only warns.
    */
   readonly testSession?: TestSession | undefined;
+  /**
+   * Takes a write of the configuration into the running daemon (P23): the same reload as
+   * `PUT /v1/config`, with the keys the cadastro wrote. Absent (an `ot` command with no daemon),
+   * the file is read at the next start. Only a write counts: a dry run changes nothing.
+   */
+  readonly reload?: ConfigReload | undefined;
 }
 
 /** Why a field is not settled or a check did not pass. */
@@ -606,7 +613,7 @@ export class ExecutorService {
     }
 
     // 8. Write: the configuration first (it validates itself), then the table.
-    await editConfigFile(this.#o.configPath, (editor) => {
+    const written = await editConfigFile(this.#o.configPath, (editor) => {
       editor.set(['executors', id], configEntry);
       if (localConfig !== undefined) {
         editor.set(['profiles', profile.id, 'local'], {
@@ -640,6 +647,14 @@ export class ExecutorService {
       await this.#unwrite(id, writes, localConfig !== undefined ? profile.id : undefined);
       throw error;
     }
+    await this.#o.reload?.({
+      next: written,
+      paths: [
+        `executors.${id}`,
+        ...(localConfig === undefined ? [] : [`profiles.${profile.id}.local`]),
+        ...writes.map((write) => `roles.${write.role}.executors`),
+      ],
+    });
     this.#o.logger.info(
       { executor: id, profile: profile.id, roles: placements.map((p) => p.role) },
       'executor registered',
@@ -815,7 +830,7 @@ export class ExecutorService {
     }
     const rolesChanged: RoleId[] = [];
     const rolesEmptied: RoleId[] = [];
-    await editConfigFile(this.#o.configPath, (editor) => {
+    const next = await editConfigFile(this.#o.configPath, (editor) => {
       editor.remove(['executors', id]);
       for (const role of ROLE_IDS) {
         const list = config.roles[role]?.executors;
@@ -824,6 +839,11 @@ export class ExecutorService {
         rolesChanged.push(role);
         if (list.length === 1) rolesEmptied.push(role);
       }
+    });
+    // The file is the source: the running daemon drops the Executor at once, as the row follows.
+    await this.#o.reload?.({
+      next,
+      paths: [`executors.${id}`, ...rolesChanged.map((role) => `roles.${role}.executors`)],
     });
     if (row !== undefined && !alreadyRemoved) {
       await this.#o.store.executors.update(id, {
