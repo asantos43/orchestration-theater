@@ -29,6 +29,7 @@ import {
   UiMouseModeSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiTuiLayoutConfigSchema,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -2209,6 +2210,8 @@ export const DaemonConfigSchema = z
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */
         runtime: UiRuntimeConfigSchema.prefault({}),
+        /** The measures and steps of the screen of the terminal interface (P9 of docs/18). */
+        tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
         input: UiInputConfigSchema.prefault({}),
       })

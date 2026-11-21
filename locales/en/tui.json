@@ -3,8 +3,9 @@
     "layout": "Layout",
     "tabs": "Tabs",
     "decision": "Decisions",
-    "input": "Text box",
-    "general": "General"
+    "general": "General",
+    "navigation": "Navigation",
+    "input": "Text box"
   },
   "tabs": {
     "overview": "Overview",
@@ -18,7 +19,9 @@
       "toggleSidebar": "Show or hide the side bar",
       "togglePanel": "Show or hide the work panel",
       "narrowChat": "Make the chat narrower",
-      "widenChat": "Make the chat wider"
+      "widenChat": "Make the chat wider",
+      "focusNext": "Move the focus to the next area",
+      "focusPrev": "Move the focus to the previous area"
     },
     "tabs": {
       "add": "Open a tab",
@@ -36,6 +39,35 @@
     },
     "app": {
       "quit": "Quit"
+    },
+    "chat": {
+      "scrollUp": "Scroll the chat up",
+      "scrollDown": "Scroll the chat down",
+      "scrollTop": "Go to the start of the chat",
+      "scrollBottom": "Go to the end of the chat"
+    },
+    "edge": {
+      "narrow": "Make the chat narrower (border focused)",
+      "widen": "Make the chat wider (border focused)"
+    },
+    "sidebar": {
+      "up": "Move up in the side bar",
+      "down": "Move down in the side bar",
+      "activate": "Open the scenario or fold the section"
+    },
+    "panel": {
+      "prevTab": "Go to the previous tab",
+      "nextTab": "Go to the next tab",
+      "up": "Move up in the tab",
+      "down": "Move down in the tab",
+      "pageUp": "Scroll the tab up",
+      "pageDown": "Scroll the tab down",
+      "activate": "Fold or unfold the section"
+    },
+    "overlay": {
+      "close": "Close the palette or the help",
+      "pageUp": "Scroll the help up",
+      "pageDown": "Scroll the help down"
     },
     "input": {
       "submit": "Send the message",
@@ -64,7 +96,12 @@
   "bar": {
     "layout": {
       "toggleSidebar": "Side bar",
-      "togglePanel": "Panel"
+      "togglePanel": "Panel",
+      "focusNext": "Focus"
+    },
+    "tabs": {
+      "add": "Open tab",
+      "close": "Close tab"
     },
     "decision": {
       "answer": "Answer"
@@ -74,6 +111,22 @@
     },
     "app": {
       "quit": "Quit"
+    },
+    "chat": {
+      "scroll": "Scroll"
+    },
+    "edge": {
+      "resize": "Width"
+    },
+    "sidebar": {
+      "activate": "Open"
+    },
+    "panel": {
+      "tabs": "Tabs",
+      "activate": "Fold"
+    },
+    "overlay": {
+      "close": "Close"
     }
   },
   "keymap": {
@@ -149,6 +202,69 @@
       "open": "open",
       "retrying": "retrying",
       "closed": "closed"
+    }
+  },
+  "layout": {
+    "header": {
+      "noScenario": "No scenario",
+      "decisions_one": "{{count}} decision",
+      "decisions_other": "{{count}} decisions",
+      "daemon": "daemon {{address}}"
+    },
+    "state": {
+      "decision": "decision",
+      "running": "running",
+      "done": "done",
+      "idle": "idle"
+    },
+    "sidebar": {
+      "title": "Navigation",
+      "scenarios": "SCENARIOS",
+      "subscriptions": "SUBSCRIPTIONS",
+      "empty": "No scenarios yet",
+      "noQuota": "No subscription read yet",
+      "noReading": "no reading",
+      "fiveHour": "5h",
+      "week": "7d",
+      "settings": "Settings",
+      "daemon": "daemon {{address}}"
+    },
+    "chat": {
+      "title": "Chat",
+      "empty": "Nothing said yet.",
+      "placeholder": "Write to the Director",
+      "inputHint": "The text box arrives with the chat step.",
+      "state": "State: {{state}}",
+      "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
+      "who": {
+        "you": "You",
+        "director": "Director",
+        "system": "System"
+      }
+    },
+    "panel": {
+      "empty": "This tab has no content yet.",
+      "noTabs": "No tab open. Add one to fill the panel."
+    },
+    "palette": {
+      "title": "Command palette",
+      "placeholder": "Type to filter the commands",
+      "empty": "No command matches."
+    },
+    "help": {
+      "title": "Shortcuts",
+      "paletteOnly": "(palette only)"
+    },
+    "picker": {
+      "title": "Open a tab",
+      "allOpen": "Every tab is already open."
+    },
+    "overlay": {
+      "closeHint": "{{key}} closes"
+    },
+    "link": {
+      "syncing": "syncing",
+      "lost": "connection lost"
     }
   },
   "input": {

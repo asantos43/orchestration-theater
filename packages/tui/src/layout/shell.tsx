@@ -1,0 +1,521 @@
+// SPDX-License-Identifier: MPL-2.0
+import {
+  deriveHelp,
+  derivePalette,
+  deriveShortcutBar,
+  translateUiText,
+  type DaemonStores,
+  type LayoutStore,
+  type UiContext,
+  type UiTranslate,
+} from '@otheater/client';
+import { Box, Text, useApp, useWindowSize } from 'ink';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { keyLabel, pairLabel } from '../keys/labels.js';
+import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
+import { useRenderControl } from '../render-control.js';
+import type { UiTuiLayoutSettings } from '../settings.js';
+import { useStoreValue } from '../use-store-value.js';
+import { Chat, chatMessageRows, type ChatMessage } from './chat.js';
+import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
+import { computeGeometry, steppedChatWidth } from './geometry.js';
+import { Header } from './header.js';
+import { InputSlot } from './input-slot.js';
+import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
+import { Panel, panelContentSize } from './panel.js';
+import { scrollStepLines } from './scroll.js';
+import { Sidebar, sidebarItems } from './sidebar.js';
+import { ShortcutBar, type Hint } from './shortcut-bar.js';
+import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
+import {
+  foldedSections,
+  isPanelOpen,
+  saveActiveTab,
+  savedActiveTab,
+  setPanelOpen,
+  useLayoutPreferences,
+} from './use-layout.js';
+import { COLOR } from './theme.js';
+import { useUiTranslate } from './use-ui-translate.js';
+
+/** The areas the focus walks, in the order Tab takes it. */
+type Focus = 'chat' | 'edge' | 'panel' | 'sidebar';
+type Overlay = 'palette' | 'help' | 'picker';
+
+const FOCUS_CONTEXT: Readonly<Record<Focus, UiContext>> = {
+  chat: 'chat',
+  edge: 'edge',
+  panel: 'panel',
+  sidebar: 'sidebar',
+};
+
+/** What the overlay lets through of the global keys: the palette (to toggle it) and the way out. */
+function overlayAllows(actionId: string): boolean {
+  return actionId.startsWith('overlay.') || actionId === 'palette.open' || actionId === 'app.quit';
+}
+
+const TO_THE_END = Number.MAX_SAFE_INTEGER;
+
+export interface ShellProps {
+  readonly stores: DaemonStores;
+  readonly layout: LayoutStore;
+  readonly address: string;
+  readonly tuning: UiTuiLayoutSettings;
+  readonly keymap: TuiKeymap;
+  /**
+   * [proposta] Provisional until P12 feeds the chat from the daemon: the messages the chat shows.
+   */
+  readonly messages?: readonly ChatMessage[] | undefined;
+  /** What each tab of the panel draws; the tabs come in empty (P9) and each step fills its own. */
+  readonly tabContent?: TabContentMap | undefined;
+}
+
+/** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
+export function Shell(props: ShellProps): ReactNode {
+  const { stores, layout: layoutStore, keymap: tuiKeymap, tuning } = props;
+  const { t } = useTranslation();
+  const ut = useUiTranslate();
+  const { exit } = useApp();
+  const { afterKey } = useRenderControl();
+  const { columns, rows } = useWindowSize();
+  const preferences = useLayoutPreferences(layoutStore);
+  const tabContent = props.tabContent ?? TAB_CONTENT;
+  const messages = props.messages ?? NO_MESSAGES;
+
+  const [focusState, setFocus] = useState<Focus>('chat');
+  const [overlay, setOverlay] = useState<Overlay | undefined>(undefined);
+  const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [sideCursor, setSideCursor] = useState<string | undefined>(undefined);
+  const [panelCursor, setPanelCursor] = useState<string | undefined>(undefined);
+  const [chatOffset, setChatOffset] = useState(0);
+  const [panelScroll, setPanelScroll] = useState(0);
+  const [helpOffset, setHelpOffset] = useState(0);
+  const [notice, setNotice] = useState<string | undefined>(() => firstProblem(tuiKeymap, ut));
+
+  const scenarioRowsNow = useScenarioRows(stores);
+  const quotas = useQuotaRows(stores);
+  const decisions = usePendingDecisions(stores);
+  const link = useLink(stores);
+  const live = link === 'live';
+  const plays = useStoreValue(stores.plays, (s) => s.byId);
+
+  const geometry = computeGeometry({
+    columns,
+    rows,
+    sidebarCollapsed: preferences.sidebarCollapsed,
+    panelOpen: isPanelOpen(preferences),
+    chatWidth: preferences.chatWidth,
+    tuning,
+  });
+  const folded = useMemo(() => foldedSections(preferences), [preferences]);
+
+  // The focus falls back to the chat when the area it was on is not on screen.
+  const order = useMemo(
+    (): Focus[] => [
+      'chat',
+      ...(geometry.panel === undefined ? [] : (['edge', 'panel'] as const)),
+      ...(geometry.sidebar.mode === 'hidden' ? [] : (['sidebar'] as const)),
+    ],
+    [geometry.panel, geometry.sidebar.mode],
+  );
+  const focus: Focus = order.includes(focusState) ? focusState : 'chat';
+
+  // The tabs the person opened, in the order they keep.
+  const registry = tuiKeymap.registry;
+  const openTabs = useMemo(
+    () =>
+      preferences.openTabs
+        .map((id) => registry.tabs.find((tab) => tab.id === id))
+        .filter((tab) => tab !== undefined)
+        .map((tab) => ({ id: tab.id, label: t(tab.textKey) })),
+    [preferences.openTabs, registry, t],
+  );
+  const activeTab = savedActiveTab(preferences);
+  const currentTab = openTabs.some((tab) => tab.id === activeTab) ? activeTab : openTabs[0]?.id;
+  const definition = currentTab === undefined ? undefined : tabContent[currentTab];
+  const tabSections = definition?.sections ?? NO_SECTIONS;
+  const cursorInTab =
+    panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
+
+  // The scenario the chat is about, and what the header says of it.
+  const selectedRow = scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
+  const play = useMemo(() => {
+    if (selectedRow === undefined) return undefined;
+    let found: { need: string; updatedAt: number } | undefined;
+    for (const candidate of Object.values(plays)) {
+      if (candidate.scenarioId !== selectedRow.id || candidate.finishedAt !== null) continue;
+      if (found === undefined || candidate.updatedAt > found.updatedAt) found = candidate;
+    }
+    return found?.need;
+  }, [plays, selectedRow]);
+
+  const items = useMemo(
+    () =>
+      sidebarItems(scenarioRowsNow, folded, geometry.sidebar.mode === 'rail' ? 'rail' : 'expanded'),
+    [scenarioRowsNow, folded, geometry.sidebar.mode],
+  );
+  const cursorInSide = items.some((item) => item.id === sideCursor) ? sideCursor : items[0]?.id;
+
+  const messageRows = chatMessageRows(geometry.bodyHeight);
+  const step = scrollStepLines(tuning.scrollStep, messageRows);
+
+  const quit = useCallback((): void => {
+    layoutStore
+      .flush()
+      .catch(() => undefined)
+      .finally(() => {
+        exit();
+      });
+  }, [layoutStore, exit]);
+
+  // Whatever way the TUI ends (Ctrl+Q, Ctrl+C, the terminal going away), the layout is saved.
+  useEffect(
+    () => () => {
+      layoutStore.flush().catch(() => undefined);
+    },
+    [layoutStore],
+  );
+
+  const showPanel = useCallback(
+    (tab: string): void => {
+      layoutStore.openTab(tab);
+      setPanelOpen(layoutStore, true);
+      saveActiveTab(layoutStore, tab);
+      setPanelScroll(0);
+    },
+    [layoutStore],
+  );
+
+  const moveFocus = (delta: 1 | -1): void => {
+    const at = order.indexOf(focus);
+    setFocus(order[(at + delta + order.length) % order.length] ?? 'chat');
+  };
+
+  const widen = (cells: number): void => {
+    if (geometry.panel === undefined) return;
+    // From the width the store has now: two presses in the same tick (key repeat) both count.
+    layoutStore.setChatWidth(steppedChatWidth(geometry, cells, layoutStore.layout.chatWidth));
+  };
+
+  const walk = <T extends string>(
+    list: readonly T[],
+    from: T | undefined,
+    delta: number,
+  ): T | undefined => {
+    if (list.length === 0) return undefined;
+    const at = from === undefined ? 0 : Math.max(0, list.indexOf(from));
+    return list[Math.min(list.length - 1, Math.max(0, at + delta))];
+  };
+
+  const runAction = (id: string): void => {
+    if (id.startsWith('tabs.open.')) {
+      const tab = id.slice('tabs.open.'.length);
+      if (registry.tabs.some((candidate) => candidate.id === tab)) {
+        showPanel(tab);
+        setFocus('panel');
+      }
+      return;
+    }
+    switch (id) {
+      case 'app.quit':
+        quit();
+        return;
+      case 'layout.toggleSidebar':
+        layoutStore.setSidebarCollapsed(!preferences.sidebarCollapsed);
+        return;
+      case 'layout.togglePanel':
+        setPanelOpen(layoutStore, !isPanelOpen(preferences));
+        return;
+      case 'layout.narrowChat':
+      case 'edge.narrow':
+        widen(-tuning.chatStep);
+        return;
+      case 'layout.widenChat':
+      case 'edge.widen':
+        widen(tuning.chatStep);
+        return;
+      case 'layout.focusNext':
+        moveFocus(1);
+        return;
+      case 'layout.focusPrev':
+        moveFocus(-1);
+        return;
+      case 'tabs.add':
+        setOverlay('picker');
+        return;
+      case 'tabs.close':
+        if (currentTab === undefined) return;
+        {
+          const at = openTabs.findIndex((tab) => tab.id === currentTab);
+          const next = openTabs[at + 1] ?? openTabs[at - 1];
+          layoutStore.closeTab(currentTab);
+          saveActiveTab(layoutStore, next?.id);
+          setPanelScroll(0);
+          setPanelCursor(undefined);
+        }
+        return;
+      case 'palette.open':
+        setOverlay((now) => (now === 'palette' ? undefined : 'palette'));
+        return;
+      case 'help.show':
+        setHelpOffset(0);
+        setOverlay('help');
+        return;
+      case 'overlay.close':
+        setOverlay(undefined);
+        return;
+      case 'overlay.pageUp':
+        setHelpOffset((offset) => Math.max(0, offset - step));
+        return;
+      case 'overlay.pageDown':
+        setHelpOffset((offset) => offset + step);
+        return;
+      case 'chat.scrollUp':
+        setChatOffset((offset) => offset + step);
+        return;
+      case 'chat.scrollDown':
+        setChatOffset((offset) => Math.max(0, offset - step));
+        return;
+      case 'chat.scrollTop':
+        setChatOffset(TO_THE_END);
+        return;
+      case 'chat.scrollBottom':
+        setChatOffset(0);
+        return;
+      case 'sidebar.up':
+      case 'sidebar.down': {
+        const ids = items.map((item) => item.id);
+        setSideCursor(walk(ids, cursorInSide, id === 'sidebar.up' ? -1 : 1));
+        return;
+      }
+      case 'sidebar.activate': {
+        const item = items.find((candidate) => candidate.id === cursorInSide);
+        if (item === undefined) return;
+        if (item.kind === 'section') {
+          layoutStore.setSectionCollapsed(item.id);
+        } else {
+          setSelected(item.id);
+          setChatOffset(0);
+          setFocus('chat');
+        }
+        return;
+      }
+      case 'panel.prevTab':
+      case 'panel.nextTab': {
+        const ids = openTabs.map((tab) => tab.id);
+        saveActiveTab(layoutStore, walk(ids, currentTab, id === 'panel.prevTab' ? -1 : 1));
+        setPanelScroll(0);
+        setPanelCursor(undefined);
+        return;
+      }
+      case 'panel.up':
+      case 'panel.down':
+        setPanelCursor(walk(tabSections, cursorInTab, id === 'panel.up' ? -1 : 1));
+        return;
+      case 'panel.pageUp':
+        setPanelScroll((offset) => Math.max(0, offset - step));
+        return;
+      case 'panel.pageDown':
+        setPanelScroll((offset) => offset + step);
+        return;
+      case 'panel.activate':
+        if (cursorInTab !== undefined) layoutStore.setSectionCollapsed(cursorInTab);
+        return;
+      default:
+        return;
+    }
+  };
+
+  useRawKeys((event: KeyEvent) => {
+    if (notice !== undefined) setNotice(undefined);
+    if (event.data === '\x03') {
+      quit();
+      return;
+    }
+    if (event.combo !== undefined) {
+      const contexts: UiContext[] =
+        overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay', 'global'];
+      const id = tuiKeymap.match(event.combo, contexts);
+      if (id !== undefined && (overlay === undefined || overlayAllows(id))) runAction(id);
+    }
+    afterKey();
+  });
+
+  const contexts: UiContext[] =
+    overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay'];
+  const barItems = deriveShortcutBar(registry, tuiKeymap.keymap, contexts);
+  const panelFooter = useMemo(
+    (): Hint[] =>
+      deriveShortcutBar(registry, tuiKeymap.keymap, ['panel']).map((item) => ({
+        id: item.id,
+        label: item.label,
+        text: translateUiText(ut, item.text),
+      })),
+    [registry, tuiKeymap, ut],
+  );
+  const paletteRows = useMemo(
+    () => derivePalette(registry, tuiKeymap.keymap),
+    [registry, tuiKeymap],
+  );
+  const helpGroups = useMemo(() => deriveHelp(registry, tuiKeymap.keymap), [registry, tuiKeymap]);
+  const closeKey = keyLabel(tuiKeymap, 'overlay.close') ?? '';
+  const closeHint = t('layout.overlay.closeHint', { key: closeKey });
+  const pickerChoices = registry.tabs
+    .filter((tab) => !preferences.openTabs.includes(tab.id))
+    .map((tab) => ({ id: tab.id, label: t(tab.textKey) }));
+
+  const screen = { columns: geometry.columns, rows: geometry.rows };
+  const height = geometry.bodyHeight;
+  const resizable = geometry.panel !== undefined;
+  const resizeKeys = pairLabel(
+    keyLabel(tuiKeymap, 'layout.narrowChat'),
+    keyLabel(tuiKeymap, 'layout.widenChat'),
+  );
+  const content =
+    geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
+
+  return (
+    <Box flexDirection="column" width={geometry.columns} height={geometry.rows}>
+      <Header
+        width={geometry.columns}
+        scenarioName={selectedRow?.name}
+        play={play}
+        mark={selectedRow?.mark}
+        decisions={decisions}
+        address={props.address}
+        link={link}
+      />
+      <Box height={height}>
+        {geometry.sidebar.mode !== 'hidden' && (
+          <Sidebar
+            mode={geometry.sidebar.mode}
+            width={geometry.sidebar.width}
+            height={height}
+            focused={focus === 'sidebar'}
+            rows={scenarioRowsNow}
+            quotas={quotas}
+            folded={folded}
+            selectedId={selectedRow?.id}
+            cursor={cursorInSide}
+            address={props.address}
+            live={live}
+            keys={{
+              toggle: keyLabel(tuiKeymap, 'layout.toggleSidebar'),
+              settings: keyLabel(tuiKeymap, 'tabs.open.settings'),
+            }}
+          />
+        )}
+        <Chat
+          width={geometry.chat.width}
+          height={height}
+          focused={focus === 'chat'}
+          edgeFocused={focus === 'edge'}
+          resizable={resizable}
+          widthLabel={
+            resizable
+              ? t('layout.chat.widthLabel', {
+                  cols: geometry.chat.width,
+                  keys: resizeKeys,
+                })
+              : undefined
+          }
+          title={selectedRow?.name ?? t('layout.header.noScenario')}
+          stateLine={
+            selectedRow === undefined
+              ? ''
+              : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
+          }
+          messages={messages}
+          offset={chatOffset}
+          onOffset={setChatOffset}
+          input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
+        />
+        {geometry.panel !== undefined && content !== undefined && (
+          <Panel
+            width={geometry.panel.width}
+            height={height}
+            focused={focus === 'panel'}
+            tabs={openTabs}
+            active={currentTab}
+            keys={{
+              add: keyLabel(tuiKeymap, 'tabs.add'),
+              toggle: keyLabel(tuiKeymap, 'layout.togglePanel'),
+            }}
+            footer={panelFooter}
+          >
+            {definition === undefined ? (
+              <Text dimColor wrap="truncate">
+                {openTabs.length === 0 ? t('layout.panel.noTabs') : t('layout.panel.empty')}
+              </Text>
+            ) : (
+              <Box
+                marginTop={-panelScroll}
+                flexShrink={0}
+                flexDirection="column"
+                width={content.width}
+              >
+                {definition.render({
+                  width: content.width,
+                  height: content.height,
+                  focused: focus === 'panel',
+                  scroll: panelScroll,
+                  sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
+                })}
+              </Box>
+            )}
+          </Panel>
+        )}
+      </Box>
+      {notice === undefined ? (
+        <ShortcutBar width={geometry.columns} items={barItems} />
+      ) : (
+        <Text color={COLOR.warn} wrap="truncate">
+          {` ${notice}`}
+        </Text>
+      )}
+      {overlay === 'palette' && (
+        <PaletteOverlay
+          screen={screen}
+          rows={paletteRows}
+          hint={closeHint}
+          onRun={(id) => {
+            setOverlay(undefined);
+            runAction(id);
+          }}
+        />
+      )}
+      {overlay === 'help' && (
+        <HelpOverlay
+          screen={screen}
+          groups={helpGroups}
+          offset={helpOffset}
+          onOffset={setHelpOffset}
+          hint={closeHint}
+        />
+      )}
+      {overlay === 'picker' && (
+        <TabPickerOverlay
+          screen={screen}
+          choices={pickerChoices}
+          hint={closeHint}
+          onPick={(id) => {
+            setOverlay(undefined);
+            showPanel(id);
+          }}
+        />
+      )}
+    </Box>
+  );
+}
+
+const NO_MESSAGES: readonly ChatMessage[] = [];
+const NO_SECTIONS: readonly string[] = [];
+
+/** The first thing wrong with the keymap, or the first notice, in the person's language. */
+function firstProblem(keymap: TuiKeymap, t: UiTranslate): string | undefined {
+  const error = keymap.errors[0];
+  if (error !== undefined) return translateUiText(t, error.text);
+  const warning = keymap.warnings[0];
+  return warning === undefined ? undefined : translateUiText(t, warning.text);
+}

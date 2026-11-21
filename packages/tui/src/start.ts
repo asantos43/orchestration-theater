@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createNodeDaemonDirectory } from '@otheater/client/node';
+import { homedir } from 'node:os';
+import type { LayoutFileStore } from '@otheater/client';
+import {
+  FileLayoutStore,
+  clientLayoutFile,
+  createNodeDaemonDirectory,
+  resolveClientConfigDir,
+} from '@otheater/client/node';
 import type { Resource } from 'i18next';
 import { directoryConnector, type DaemonConnector } from './daemon-connection.js';
 import { applyInkPatches, type InkPatchDeps, type InkPatchOutcome } from './ink-patch.js';
@@ -19,6 +26,12 @@ export interface StartTuiOptions {
   readonly process?: ProcessHost | undefined;
   readonly env?: SystemLocaleEnv | undefined;
   readonly connector?: DaemonConnector | undefined;
+  /**
+   * The file of the layout when `ui.layout.store` is `local`. Default: `layout.tui.json` in the
+   * client folder (`OT_CLIENT_CONFIG_DIR`, else the config folder of the system, see
+   * `resolveClientConfigDir`). A test passes its own, so the real home is never read.
+   */
+  readonly layoutFile?: LayoutFileStore | undefined;
   readonly inkPatchDeps?: InkPatchDeps | undefined;
   readonly catalogs?: Resource | undefined;
   readonly interactive?: boolean | undefined;
@@ -42,6 +55,8 @@ export async function startTui(options: StartTuiOptions): Promise<StartedTui> {
     options.connector ??
     directoryConnector(
       createNodeDaemonDirectory(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
+      undefined,
+      { layoutFile: options.layoutFile ?? defaultLayoutFile() },
     );
   const running = await startTuiApp({
     stdin: options.stdin,
@@ -56,4 +71,14 @@ export async function startTui(options: StartTuiOptions): Promise<StartedTui> {
     interactive: options.interactive,
   });
   return { ...running, patch };
+}
+
+/** `layout.tui.json` in the client folder, which `OT_CLIENT_CONFIG_DIR` can move. */
+function defaultLayoutFile(): LayoutFileStore {
+  const configDir = resolveClientConfigDir({
+    env: process.env,
+    platform: process.platform,
+    homedir: homedir(),
+  });
+  return new FileLayoutStore(clientLayoutFile(configDir, 'tui'));
 }

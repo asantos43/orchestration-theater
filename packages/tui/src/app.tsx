@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
+import { Box, Text, useApp, useWindowSize } from 'ink';
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
 import type { DaemonConnector } from './daemon-connection.js';
 import { SUPPORTED_INK_VERSION, type InkPatchOutcome } from './ink-patch.js';
+import {
+  useRawKeys,
+  useTuiKeymap,
+  type KeyEnvironment,
+  type TuiKeymap,
+} from './keys/use-keymap.js';
+import type { ChatMessage } from './layout/chat.js';
+import { Shell } from './layout/shell.js';
+import type { TabContentMap } from './layout/tab-content.js';
 import type { LocaleController } from './locale.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
 import type { UiSettings } from './settings.js';
@@ -20,19 +29,34 @@ export interface AppProps {
   readonly patch?: InkPatchOutcome | undefined;
   /** Makes Ink paint the frame at once (`ui.render.keyRender: flush`). */
   readonly flush?: (() => void) | undefined;
+  /** [proposta] The messages of the chat until P12 feeds it from the daemon. */
+  readonly messages?: readonly ChatMessage[] | undefined;
+  /** What each tab of the panel draws; they come in empty and each step fills its own. */
+  readonly tabContent?: TabContentMap | undefined;
+  /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
+  readonly keyEnvironment?: KeyEnvironment | undefined;
 }
 
-/** Ctrl+Q quits. Ctrl+C is the terminal's: Ink is told not to exit on it, so it quits here too. */
-function useQuitKeys(): void {
+/**
+ * Quits from the screens that are not the layout (connecting, offline, failed): the key of
+ * `app.quit` and Ctrl+C, which is the terminal's own (Ink is told not to exit on it).
+ */
+function useQuitKeys(keymap: TuiKeymap, isActive: boolean): void {
   const { exit } = useApp();
   const { afterKey } = useRenderControl();
-  useInput((input, key) => {
-    if (key.ctrl && (input === 'q' || input === 'c')) {
-      exit();
-      return;
-    }
-    afterKey();
-  });
+  useRawKeys(
+    (event) => {
+      if (
+        event.data === '\x03' ||
+        (event.combo !== undefined && keymap.match(event.combo) === 'app.quit')
+      ) {
+        exit();
+        return;
+      }
+      afterKey();
+    },
+    { isActive },
+  );
 }
 
 function patchWarning(patch: InkPatchOutcome | undefined): string | undefined {
@@ -51,7 +75,7 @@ function Screen(props: AppProps): ReactNode {
   const { t } = useTranslation();
   const { columns, rows } = useWindowSize();
   const { locale: controller, connector } = props;
-  useQuitKeys();
+  const keymap = useTuiKeymap(props.settings.keymap, props.keyEnvironment);
   const onSettings = useCallback(
     (settings: UiSettings): void => {
       void controller.apply(settings.locale);
@@ -59,7 +83,21 @@ function Screen(props: AppProps): ReactNode {
     [controller],
   );
   const view = useDaemon(connector, { onSettings });
+  useQuitKeys(keymap, view.kind !== 'online');
   const warning = patchWarning(props.patch);
+  if (view.kind === 'online') {
+    return (
+      <Shell
+        stores={view.stores}
+        layout={view.layout}
+        address={view.address}
+        tuning={props.settings.tuiLayout}
+        keymap={keymap}
+        messages={props.messages}
+        tabContent={props.tabContent}
+      />
+    );
+  }
   return (
     <Box flexDirection="column" width={columns} height={rows} borderStyle="round" paddingX={1}>
       <Text bold color="cyan">

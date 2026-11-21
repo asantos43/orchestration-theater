@@ -21,6 +21,7 @@ export const UI_CLIPBOARD_COPY_MODES = ['osc52', 'system', 'off'] as const;
 export const UI_MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
+export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 
 export type UiKeymapPreset = (typeof UI_KEYMAP_PRESETS)[number];
 export type UiKeymapEnvironmentMode = (typeof UI_KEYMAP_ENVIRONMENTS)[number];
@@ -84,6 +85,24 @@ export const UiRuntimeConfigSchema = z.strictObject({
   maxOldSpaceMB: z.int().min(1).optional(),
 });
 
+/**
+ * `ui.tuiLayout` (architecture 5.13, P9 of docs/18): the measures of the screen of the terminal.
+ * `sidebarWidth`: columns of the side bar open (30, as in the mockup); `railWidth`: columns of the
+ * rail it becomes (5); `minChatWidth` and `minPanelWidth`: the least the chat and the work panel
+ * keep when the window is narrow (30 each); `chatStep`: columns one press of the width keys moves
+ * the edge of the chat (2); `scrollStep`: how far the scroll keys of a list go, `page`, `half`
+ * (default) or `line`. The ranges and defaults are [proposta].
+ */
+export const UiTuiLayoutConfigSchema = z.strictObject({
+  sidebarWidth: z.int().min(16).max(80).default(30),
+  railWidth: z.int().min(3).max(16).default(5),
+  minChatWidth: z.int().min(20).max(200).default(30),
+  minPanelWidth: z.int().min(20).max(200).default(30),
+  chatStep: z.int().min(1).max(20).default(2),
+  scrollStep: z.enum(UI_SCROLL_STEPS).default('half'),
+});
+export type UiTuiLayoutConfig = z.output<typeof UiTuiLayoutConfigSchema>;
+export type UiScrollStep = (typeof UI_SCROLL_STEPS)[number];
 // ---- The text box (N35; P10 of docs/18) ---------------------------------------------------------
 
 /** `marker`: a long paste becomes `[Pasted text #n]` plus an attachment; `inline`: it stays in the text. */

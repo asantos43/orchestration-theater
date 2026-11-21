@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DaemonStores } from '@otheater/client';
+import type { DaemonStores, LayoutStore } from '@otheater/client';
 import type { ApiStatus } from '@otheater/protocol';
 import { useEffect, useState } from 'react';
 import type { DaemonConnector, LiveDaemon } from './daemon-connection.js';
@@ -9,7 +9,14 @@ export type DaemonView =
   | { readonly kind: 'connecting' }
   | { readonly kind: 'offline' }
   | { readonly kind: 'failed'; readonly message: string }
-  | { readonly kind: 'online'; readonly status: ApiStatus; readonly stores: DaemonStores };
+  | {
+      readonly kind: 'online';
+      readonly status: ApiStatus;
+      readonly address: string;
+      readonly stores: DaemonStores;
+      /** The saved layout, already read: the first frame of the screen is the one the person left. */
+      readonly layout: LayoutStore;
+    };
 
 export interface UseDaemonOptions {
   /** Called with `ui` read from the daemon each time it is live (the first time and after a reconnection). */
@@ -27,6 +34,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
 
   useEffect(() => {
     const life = { cancelled: false };
+    const cancelled = (): boolean => life.cancelled;
     let daemon: LiveDaemon | undefined;
     let unsubscribe: (() => void) | undefined;
 
@@ -42,7 +50,18 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
       }
       daemon = result.daemon;
       const live = daemon;
-      setView({ kind: 'online', status: live.status, stores: live.stores });
+      const layout = await live.openLayout();
+      if (cancelled()) {
+        live.close();
+        return;
+      }
+      setView({
+        kind: 'online',
+        status: live.status,
+        address: live.address,
+        stores: live.stores,
+        layout,
+      });
       let wasLive = false;
       unsubscribe = live.stores.status.subscribe((sync) => {
         const isLive = sync.phase === 'live' && sync.connection === 'open';

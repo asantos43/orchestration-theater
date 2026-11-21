@@ -3,8 +3,9 @@
     "layout": "Layout",
     "tabs": "Abas",
     "decision": "Decisões",
-    "input": "Caixa de texto",
-    "general": "Geral"
+    "general": "Geral",
+    "navigation": "Navegação",
+    "input": "Caixa de texto"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -18,7 +19,9 @@
       "toggleSidebar": "Mostrar ou ocultar a barra lateral",
       "togglePanel": "Mostrar ou ocultar o painel de trabalho",
       "narrowChat": "Estreitar o chat",
-      "widenChat": "Alargar o chat"
+      "widenChat": "Alargar o chat",
+      "focusNext": "Mover o foco para a próxima área",
+      "focusPrev": "Mover o foco para a área anterior"
     },
     "tabs": {
       "add": "Abrir uma aba",
@@ -36,6 +39,35 @@
     },
     "app": {
       "quit": "Sair"
+    },
+    "chat": {
+      "scrollUp": "Rolar o chat para cima",
+      "scrollDown": "Rolar o chat para baixo",
+      "scrollTop": "Ir ao início do chat",
+      "scrollBottom": "Ir ao fim do chat"
+    },
+    "edge": {
+      "narrow": "Estreitar o chat (borda com o foco)",
+      "widen": "Alargar o chat (borda com o foco)"
+    },
+    "sidebar": {
+      "up": "Subir na barra lateral",
+      "down": "Descer na barra lateral",
+      "activate": "Abrir o cenário ou recolher a seção"
+    },
+    "panel": {
+      "prevTab": "Ir para a aba anterior",
+      "nextTab": "Ir para a próxima aba",
+      "up": "Subir na aba",
+      "down": "Descer na aba",
+      "pageUp": "Rolar a aba para cima",
+      "pageDown": "Rolar a aba para baixo",
+      "activate": "Recolher ou expandir a seção"
+    },
+    "overlay": {
+      "close": "Fechar a paleta ou a ajuda",
+      "pageUp": "Rolar a ajuda para cima",
+      "pageDown": "Rolar a ajuda para baixo"
     },
     "input": {
       "submit": "Enviar a mensagem",
@@ -64,7 +96,12 @@
   "bar": {
     "layout": {
       "toggleSidebar": "Barra lateral",
-      "togglePanel": "Painel"
+      "togglePanel": "Painel",
+      "focusNext": "Foco"
+    },
+    "tabs": {
+      "add": "Abrir aba",
+      "close": "Fechar aba"
     },
     "decision": {
       "answer": "Responder"
@@ -74,6 +111,22 @@
     },
     "app": {
       "quit": "Sair"
+    },
+    "chat": {
+      "scroll": "Rolar"
+    },
+    "edge": {
+      "resize": "Largura"
+    },
+    "sidebar": {
+      "activate": "Abrir"
+    },
+    "panel": {
+      "tabs": "Abas",
+      "activate": "Recolher"
+    },
+    "overlay": {
+      "close": "Fechar"
     }
   },
   "keymap": {
@@ -149,6 +202,69 @@
       "open": "aberto",
       "retrying": "tentando de novo",
       "closed": "fechado"
+    }
+  },
+  "layout": {
+    "header": {
+      "noScenario": "Sem cenário",
+      "decisions_one": "{{count}} decisão",
+      "decisions_other": "{{count}} decisões",
+      "daemon": "daemon {{address}}"
+    },
+    "state": {
+      "decision": "decisão",
+      "running": "executando",
+      "done": "concluído",
+      "idle": "parado"
+    },
+    "sidebar": {
+      "title": "Navegação",
+      "scenarios": "CENÁRIOS",
+      "subscriptions": "ASSINATURAS",
+      "empty": "Nenhum cenário ainda",
+      "noQuota": "Nenhuma assinatura lida ainda",
+      "noReading": "sem leitura",
+      "fiveHour": "5h",
+      "week": "7d",
+      "settings": "Configurações",
+      "daemon": "daemon {{address}}"
+    },
+    "chat": {
+      "title": "Chat",
+      "empty": "Nada dito ainda.",
+      "placeholder": "Escreva para o Diretor",
+      "inputHint": "A caixa de texto chega com o passo do chat.",
+      "state": "Estado: {{state}}",
+      "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
+      "who": {
+        "you": "Você",
+        "director": "Diretor",
+        "system": "Sistema"
+      }
+    },
+    "panel": {
+      "empty": "Esta aba ainda não tem conteúdo.",
+      "noTabs": "Nenhuma aba aberta. Adicione uma para preencher o painel."
+    },
+    "palette": {
+      "title": "Paleta de comandos",
+      "placeholder": "Digite para filtrar os comandos",
+      "empty": "Nenhum comando combina."
+    },
+    "help": {
+      "title": "Atalhos",
+      "paletteOnly": "(só pela paleta)"
+    },
+    "picker": {
+      "title": "Abrir uma aba",
+      "allOpen": "Todas as abas já estão abertas."
+    },
+    "overlay": {
+      "closeHint": "{{key}} fecha"
+    },
+    "link": {
+      "syncing": "sincronizando",
+      "lost": "conexão perdida"
     }
   },
   "input": {

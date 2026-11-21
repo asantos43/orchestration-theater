@@ -16,9 +16,20 @@ export type UiSurface = (typeof UI_SURFACES)[number];
  * while a pending decision of the Director has the focus (5.3), so `Enter` there does not collide
  * with the text box. `textBox` keys work only while the text box of the Producer has the focus
  * (N35): they are the editing keys, and they may repeat a key of `decision`, which never has the
- * focus at the same time.
+ * focus at the same time. The terminal adds one context for each area that can have the focus
+ * (`chat`, `edge` for the border of the chat, `sidebar`, `panel`) and one for the palette and the
+ * help (`overlay`): their arrows and Enter never collide with another area's.
  */
-export const UI_CONTEXTS = ['global', 'decision', 'textBox'] as const;
+export const UI_CONTEXTS = [
+  'global',
+  'decision',
+  'textBox',
+  'chat',
+  'edge',
+  'sidebar',
+  'panel',
+  'overlay',
+] as const;
 export type UiContext = (typeof UI_CONTEXTS)[number];
 
 /** The platforms the combinations are written for: `default` (Windows and Linux) and `mac`. */

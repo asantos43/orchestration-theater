@@ -7,6 +7,7 @@ import {
   UiMouseModeSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiTuiLayoutConfigSchema,
 } from './ui-config.js';
 
 describe('ui.* schemas of the terminal', () => {
@@ -26,6 +27,22 @@ describe('ui.* schemas of the terminal', () => {
       historyWindow: 0,
     });
     expect(UiRuntimeConfigSchema.parse({})).toEqual({ maxSemiSpaceMB: 2 });
+    expect(UiTuiLayoutConfigSchema.parse({})).toEqual({
+      sidebarWidth: 30,
+      railWidth: 5,
+      minChatWidth: 30,
+      minPanelWidth: 30,
+      chatStep: 2,
+      scrollStep: 'half',
+    });
+  });
+
+  it('refuses a measure of the layout out of its range and an unknown key', () => {
+    expect(UiTuiLayoutConfigSchema.safeParse({ sidebarWidth: 4 }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.safeParse({ scrollStep: 'all' }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.safeParse({ chatStep: 0 }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.safeParse({ color: 'red' }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.parse({ scrollStep: 'line' }).scrollStep).toBe('line');
   });
 
   it('takes every mode of the mouse and refuses the rest', () => {

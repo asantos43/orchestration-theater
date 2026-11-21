@@ -18,7 +18,39 @@ describe('parseUiSettings', () => {
         historyWindow: 0,
       },
       runtime: { maxSemiSpaceMB: 2, maxOldSpaceMB: undefined },
+      keymap: { preset: 'agents', environment: 'auto', overrides: {} },
+      tuiLayout: {
+        sidebarWidth: 30,
+        railWidth: 5,
+        minChatWidth: 30,
+        minPanelWidth: 30,
+        chatStep: 2,
+        scrollStep: 'half',
+      },
     });
+  });
+
+  it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
+    const settings = parseUiSettings({
+      keymap: {
+        preset: 'classic',
+        environment: 'none',
+        overrides: { 'app.quit': ['Ctrl+X'], bad: 3 },
+      },
+      tuiLayout: { sidebarWidth: 40, railWidth: 99, chatStep: 4, scrollStep: 'line' },
+    });
+    expect(settings.keymap).toEqual({
+      preset: 'classic',
+      environment: 'none',
+      overrides: { 'app.quit': ['Ctrl+X'] },
+    });
+    expect(settings.tuiLayout).toMatchObject({
+      sidebarWidth: 40,
+      railWidth: 5,
+      chatStep: 4,
+      scrollStep: 'line',
+    });
+    expect(parseUiSettings({ keymap: { preset: 'vim' } }).keymap.preset).toBe('agents');
   });
 
   it('reads valid values', () => {
@@ -45,6 +77,8 @@ describe('parseUiSettings', () => {
         historyWindow: 500,
       },
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
+      keymap: DEFAULT_UI_SETTINGS.keymap,
+      tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
     });
   });
 

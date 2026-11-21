@@ -19,6 +19,7 @@
     "patches"
   ],
   "dependencies": {
+    "@inkjs/ui": "2.0.0",
     "@otheater/client": "workspace:*",
     "@otheater/protocol": "workspace:*",
     "i18next": "26.6.0",
