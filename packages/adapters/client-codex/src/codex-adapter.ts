@@ -424,6 +424,11 @@ export class CodexAdapter extends ClientAdapter {
     };
   }
 
+  /** The mode `login` runs in, told without starting it (P5 of Phase 7, N186). */
+  override loginMode(): LoginFlow['mode'] {
+    return this.#loginOptions.mode ?? 'browser';
+  }
+
   /**
    * The official login (`codex login`, `--device-auth` in the mode `device_code`) inside the profile
    * (architecture 5.6). The URL and the code the client prints come back in the flow; the token is

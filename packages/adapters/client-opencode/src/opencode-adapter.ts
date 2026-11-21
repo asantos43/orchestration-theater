@@ -399,6 +399,11 @@ export class OpenCodeAdapter extends ClientAdapter {
     return this.#options.command?.cmd ?? 'opencode';
   }
 
+  /** The mode `login` runs in, told without starting it (P5 of Phase 7, N186). */
+  override loginMode(): LoginFlow['mode'] {
+    return this.#options.login?.mode ?? 'terminal';
+  }
+
   /**
    * The official login (`opencode auth login`) inside the profile (architecture 5.6), in the mode
    * `terminal` unless `login.mode` says another. The client may print a URL (`browser`) or a code

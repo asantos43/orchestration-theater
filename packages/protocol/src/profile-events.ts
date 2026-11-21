@@ -166,3 +166,51 @@ export const ProfileExecEndedPayloadSchema = z.strictObject({
   startFailed: z.boolean(),
   durationMs: z.number().int().nonnegative(),
 });
+
+/**
+ * The mode of an official login the daemon runs (`profile.login.*`): `terminal` is not here, since
+ * that login needs a terminal of the person and the daemon never starts it (P5 of Phase 7, N186).
+ */
+export const PROFILE_LOGIN_MODES = ['browser', 'device_code'] as const;
+
+/**
+ * `profile.login.started` (P5 of Phase 7, N186, [proposta]): the daemon opened the official login
+ * of a profile at the request of an interface. The URL and the code the client printed are NOT here
+ * (nor in the log): they go only in the answer of the route to whoever opened the login. `takesCode`
+ * says whether the login accepts the code the browser shows (`POST .../login/code`).
+ */
+export const ProfileLoginStartedPayloadSchema = z.strictObject({
+  profileId,
+  mode: z.enum(PROFILE_LOGIN_MODES),
+  takesCode: z.boolean(),
+});
+
+/**
+ * `profile.login.completed` (P5 of Phase 7, N186, [proposta]): the official login ended well (the
+ * client exited with code 0). Whether the profile now holds a login is for the probe to say; no
+ * token, code or URL is here.
+ */
+export const ProfileLoginCompletedPayloadSchema = z.strictObject({
+  profileId,
+  mode: z.enum(PROFILE_LOGIN_MODES),
+  durationMs: z.number().int().nonnegative(),
+});
+
+/**
+ * Why a login failed (P5 of Phase 7, [proposta]): `cancelled` (the person or the daemon ended it),
+ * `refused` (the client ended without a login, or it outlived its time), `unavailable` (the client
+ * could not be started or stopped answering) and `error` (anything else). Never the text of the
+ * client: its output may hold a URL or a code.
+ */
+export const PROFILE_LOGIN_FAILURES = ['cancelled', 'refused', 'unavailable', 'error'] as const;
+
+/**
+ * `profile.login.failed` (P5 of Phase 7, N186, [proposta]): the login did not end well. `mode` is
+ * `null` when it failed before the client said which mode it ran in.
+ */
+export const ProfileLoginFailedPayloadSchema = z.strictObject({
+  profileId,
+  mode: z.enum(PROFILE_LOGIN_MODES).nullable(),
+  reason: z.enum(PROFILE_LOGIN_FAILURES),
+  durationMs: z.number().int().nonnegative(),
+});
