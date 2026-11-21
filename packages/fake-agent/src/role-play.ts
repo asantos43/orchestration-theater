@@ -30,7 +30,8 @@ const execFileAsync = promisify(execFile);
  * point 8 with the `rebase` or the `redo` that the outcome names. Every other outcome answers
  * point 8 with `rebase`.
  *
- * The Director answers judgment point 6 (`refusal_or_permission`, N181) with `reformulate`.
+ * The Director answers judgment point 6 (`refusal_or_permission`, N181) with `reformulate`, and
+ * point 2 (`actor_timeout`, which a cancelled Actor opens too, N176) with `reassign`.
  */
 
 export const OUTCOMES = [
@@ -492,6 +493,13 @@ async function playJudge(host: RolePlayHost): Promise<void> {
       const reply = await host.call('decide', {
         decisionId: id,
         payload: { action: 'reformulate' },
+      });
+      await host.say(`decided ${id}: ${reply.text}`);
+    } else if (decision.kind === 'judge.actor_timeout') {
+      // N176: a person cancelled the Actor (or it ran out of time); another Actor takes the demand
+      const reply = await host.call('decide', {
+        decisionId: id,
+        payload: { action: 'reassign' },
       });
       await host.say(`decided ${id}: ${reply.text}`);
     } else {
