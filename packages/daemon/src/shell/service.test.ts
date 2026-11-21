@@ -16,7 +16,7 @@ import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { compose, defaultLauncher, probeSandbox } from '../compose.js';
 import { parseConfig } from '../config.js';
-import { describeWithLauncher } from '../launcher-fixture.js';
+import { describeWithLauncher, itWithLauncher } from '../launcher-fixture.js';
 import type { CommandConfiner } from '../sandbox-wiring.js';
 import { AttachmentService } from '../scenarios/attachments.js';
 import { makeTempDataDir } from '../test-helpers.js';
@@ -396,7 +396,7 @@ describe('the ! command: what refuses', () => {
     expect(existsSync(mark)).toBe(false);
   });
 
-  it('does not run the command when the sandbox cannot wrap it', async () => {
+  itWithLauncher('does not run the command when the sandbox cannot wrap it', async () => {
     const rig = await rigOf({ confine: () => Promise.reject(new Error('the sandbox is gone')) });
     const mark = join(rig.worktree, 'ran.txt');
     rig.set({ terminalMode: 'sandbox' });
