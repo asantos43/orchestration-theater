@@ -1,8 +1,8 @@
 # 19. Plano da Fase 8
 
-Versão 1, de 2026-11-21. Este é o plano de passos da Fase 8 da [arquitetura](framework-ideas/arquitetura.md), §10, "Fase 8 — Observabilidade", com o desenho da §5.11. A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
+Versão 2, de 2026-11-21 (a versão 1, do mesmo dia, tinha as decisões N211 a N219 abertas). Este é o plano de passos da Fase 8 da [arquitetura](framework-ideas/arquitetura.md), §10, "Fase 8 — Observabilidade", com o desenho da §5.11. A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
-A fase começa depois da onda 6 de acertos da Fase 7 (P22 a P27, docs/18, N208). O fechamento da Fase 7 depende do roteiro dos terminais e do login oficial pelo dono (N209), mas isso não segura a Fase 8: os passos desta fase não mexem na TUI até o P10. O plano também leva dois itens que a Fase 7 deixou para cá: o `terminal.output` e a lateral com as peças terminadas (N200, itens 3 e 5). Ele levanta nove decisões novas, N211 a N219 ([docs/13](13-DECISOES-EM-ABERTO.md)), abertas, com a recomendação primeiro; o resumo está em "Decisões que surgem deste plano", no fim. A N55 (a análise do sistema) fecha aqui, pela N217.
+A fase começa depois da onda 6 de acertos da Fase 7 (P22 a P27, docs/18, N208). O fechamento da Fase 7 depende do roteiro dos terminais e do login oficial pelo dono (N209), mas isso não segura a Fase 8: os passos desta fase não mexem na TUI até o P10. O plano também leva dois itens que a Fase 7 deixou para cá: o `terminal.output` e a lateral com as peças terminadas (N200, itens 3 e 5). Ele levantou nove decisões novas, N211 a N219 ([docs/13](13-DECISOES-EM-ABERTO.md)), que o dono tomou no mesmo dia, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim. A N55 (a análise do sistema) fechou pela N217.
 
 ## Como usar
 
@@ -20,7 +20,7 @@ A fase começa depois da onda 6 de acertos da Fase 7 (P22 a P27, docs/18, N208).
     - os catálogos `locales/<idioma>/*.json`;
   - no máximo dois subagentes rodam a suíte completa ao mesmo tempo, por causa da memória da máquina.
 - **Nada real roda nos testes (N57).** Os clientes são simulados pelo `fake-agent`, que passa a mandar OTLP no P3. O coletor OTLP "de fora" do aceite é um receptor de teste no próprio processo do teste, em loopback. Nenhum teste lê credencial nem faz login. As rodadas reais (Claude Code com haiku, Codex, OpenCode com modelos OpenAI) ficam no nível real do aceite, como nas Fases 6 e 7.
-- **Nenhum download novo sem decisão do dono.** As candidatas desta fase estão em "Dependências novas" e na N211 e na N215.
+- **Nenhum download novo sem decisão do dono.** Pela N211 (a), nenhum pacote npm entra; pela N215 (a), só o `harbor`, no job `atif` e com `OT_TEST_HARBOR=1` (ver "Dependências novas").
 - **Redação primeiro.** Tudo o que entra pelo receptor passa pela redação antes de ser gravado (§5.11): o Codex manda `user.email`, `user.account_id` e o resultado das ferramentas em claro [V: Fase 0]. Nenhum teste e nenhum relatório de PR imprime o conteúdo de um registro real.
 
 ## Ponto de partida
@@ -47,7 +47,7 @@ Conferido no código em 2026-11-21, no commit `392dcad` **[V]**. Os caminhos sã
 
 ## Dependências novas
 
-Dados do registro npm e do PyPI, consultados em 2026-11-21 **[S]**. Nenhuma está aprovada: a escolha é a N211 (OTLP) e a N215 (Harbor). A regra é a das fases anteriores: versão publicada há pelo menos duas semanas.
+Dados do registro npm e do PyPI, consultados em 2026-11-21 **[S]**. Pela N211 (a), nenhum pacote npm entra nesta fase; as linhas do `protobufjs` e do OpenTelemetry JS ficam como registro das opções recusadas. Pela N215 (a), o `harbor` entra só no job `atif` da CI e no modo opcional da máquina. A regra é a das fases anteriores: versão publicada há pelo menos duas semanas.
 
 | Pacote | Versão | Licença | Publicada | Passo | Observação |
 |---|---|---|---|---|---|
@@ -67,7 +67,7 @@ Não entram **[proposta]**:
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano e decisões (este documento) | nada | nada | por fazer |
+| P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #233, decisões N211 a N219 em 2026-11-21) |
 | P1 | Base de telemetria: porta, adaptador e chaves (N54) | P0, N211 | P3, P5, P11 | por fazer |
 | P2 | Receptor OTLP e redação (N212) | P1 | P4, P6 | por fazer |
 | P3 | Clientes e `fake-agent` mandam ao receptor (N213) | P0, N212 | P1, P5, P11 | por fazer |
@@ -231,7 +231,7 @@ Marco interno **[proposta]**: ao fim da onda 2, uma peça contra o `fake-agent` 
 
 ## Decisões que surgem deste plano
 
-Abertas em 2026-11-21 ([docs/13](13-DECISOES-EM-ABERTO.md)), para o dono, por múltipla escolha. A recomendação vem primeiro em cada item:
+Abertas e decididas em 2026-11-21 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha: **todas ficaram com a opção (a), a recomendada**. As opções ficam registradas abaixo:
 - **N211, OTLP e dependências:** (a) código próprio, OTLP/HTTP em JSON na entrada e na saída e o `/metrics` em texto, sem dependência nova; o protobuf e o gRPC ficam como modos futuros (a §5.11 fala no "exportador do OpenTelemetry JS" e em `http/protobuf` **[proposta]**, que mudariam); (b) `protobufjs` 8.8.1 para o protobuf na entrada e na saída, o resto próprio; (c) o OpenTelemetry JS 3.x (`api` 1.10.0, SDK 3.1.x, exportadores 0.301.x), como diz a §5.11, depois de 2026-11-23; (d) o OpenTelemetry JS 2.x (SDK 2.12.0, exportadores 0.223.0).
 - **N212, porta do receptor OTLP:** (a) porta própria em loopback, com token por subida, como o servidor MCP; (b) a mesma porta da API, com uma exceção no guard.
 - **N213, `experimental.openTelemetry` do OpenCode:** (a) desligado por padrão, numa chave, e a falta de tokens aparece como cobertura parcial; (b) ligado, com a redação do receptor tirando o conteúdo.
