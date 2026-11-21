@@ -31,6 +31,11 @@ import {
   type LocalInstanceResolver,
   type ProfileLoad,
 } from './admission.js';
+import type {
+  PreparedTelemetry,
+  SessionTelemetry,
+  TelemetryContext,
+} from '../telemetry/client-telemetry.js';
 import { type PoolSettings, sessionsPerProcessFor } from './settings.js';
 import { WAIT_KIND } from '../telemetry/span-conventions.js';
 import type { WaitCorrelation, WaitHandle, WaitTracker } from '../telemetry/wait-events.js';
@@ -75,6 +80,12 @@ export interface PoolRequest {
    * slots reserved for it (`reserve_for_director`), which any other session may not. [proposta]
    */
   readonly director?: boolean;
+  /**
+   * The work the session is for (play, stage, attempt): what ties the telemetry its client sends to
+   * the attempt (Phase 8, P2). Absent: a session with no work behind it (a catalog probe, a direct
+   * session) still sends telemetry, with the profile and client only. [proposta]
+   */
+  readonly telemetry?: TelemetryContext;
   /**
    * The ids of the log this session is for (Phase 8, P4, P15): a wait in the queue of the pool is
    * told with them (`wait.started`, `wait.ended`) and is a span of this attempt. Absent, the wait
@@ -145,6 +156,11 @@ export interface SessionPoolOptions {
   readonly canAdmit?: CanAdmit;
   /** The `local` instance behind a profile, whose slots are the vacancies of that profile (5.9). */
   readonly localInstance?: LocalInstanceResolver;
+  /**
+   * Where the clients send their telemetry (Phase 8, P2). Absent (`telemetry.enabled: off`, or the
+   * receiver is not up): the sessions start as before and no `OTEL_*` variable reaches them.
+   */
+  readonly telemetry?: SessionTelemetry;
   /**
    * Phase 8, P15 (N222 (a)): told when a session is held back in the queue and when it leaves it;
    * the tracker writes `wait.started` and `wait.ended` for a wait that lasts the threshold. It never
@@ -272,6 +288,7 @@ export class SessionPool {
   readonly #memory: MemoryProbe | undefined;
   readonly #canAdmit: CanAdmit;
   readonly #localInstance: LocalInstanceResolver | undefined;
+  readonly #telemetry: SessionTelemetry | undefined;
   readonly #waits: WaitTracker | undefined;
   #waitSeq = 0;
   /** Sessions holding a slot of their local instance, by profile id. */
@@ -301,6 +318,7 @@ export class SessionPool {
     this.#memory = options.memory;
     this.#canAdmit = options.canAdmit ?? ALWAYS_ADMIT;
     this.#localInstance = options.localInstance;
+    this.#telemetry = options.telemetry;
     this.#waits = options.waits;
     if (this.#admission.mode !== 'slots' && this.#memory === undefined) {
       throw new InvalidInput(
@@ -710,10 +728,12 @@ export class SessionPool {
     const via = this.#transport(adapter);
     const { profile, policy, cwd, resumeSessionId } = request;
     const profileId = profile.id;
-    // Only a session with its own MCP servers gets an `options`; the others call as before.
+    const prepared = await this.#telemetry?.prepare(adapter.id, profileId, request.telemetry);
+    // Only a session with its own MCP servers (or telemetry) gets an `options`; the others call as before.
     const options: SessionStartOptions = {
       ...(request.mcpServers === undefined ? {} : { mcpServers: request.mcpServers }),
       ...(request.permissions === undefined ? {} : { permissions: request.permissions }),
+      ...(prepared === undefined ? {} : { otel: prepared.session }),
     };
     const extra: [SessionStartOptions] | [] = Object.keys(options).length === 0 ? [] : [options];
     if (adapter.processModel === 'process-per-session') {
@@ -721,9 +741,18 @@ export class SessionPool {
         resumeSessionId === undefined
           ? await adapter.openSession(profile, policy, cwd, via, ...extra)
           : await adapter.loadSession(profile, policy, cwd, resumeSessionId, via, ...extra);
-      return this.#lease(session, adapter.id, profileId, via.id, undefined, undefined, slot);
+      return this.#lease(
+        session,
+        adapter.id,
+        profileId,
+        via.id,
+        undefined,
+        undefined,
+        slot,
+        this.#track(session, prepared),
+      );
     }
-    const { entry, token } = await this.#slotFor(adapter, request, via);
+    const { entry, token } = await this.#slotFor(adapter, request, via, prepared);
     try {
       const lent = lendProcess(entry.process, (options) => this.#detach(entry, token, options));
       const session =
@@ -731,7 +760,16 @@ export class SessionPool {
           ? await adapter.openSessionOn(lent, policy, cwd, via, ...extra)
           : await adapter.loadSessionOn(lent, policy, cwd, resumeSessionId, via, ...extra);
       void this.#learn(adapter.id, entry);
-      return this.#lease(session, adapter.id, profileId, via.id, entry, token, slot);
+      return this.#lease(
+        session,
+        adapter.id,
+        profileId,
+        via.id,
+        entry,
+        token,
+        slot,
+        this.#track(session, prepared),
+      );
     } catch (error) {
       entry.sessions.delete(token);
       this.#startIdleIfEmpty(entry);
@@ -750,8 +788,18 @@ export class SessionPool {
     adapter: ClientAdapter,
     request: PoolRequest,
     via: SessionTransport,
+    prepared: PreparedTelemetry | undefined,
   ): Promise<{ entry: PoolProcess; token: symbol }> {
-    const spec = await adapter.launchSpec(request.profile, request.policy, request.cwd, via.id);
+    // The process-level telemetry has only what is stable for the profile (see `ClientTelemetry`),
+    // so sessions of different attempts keep sharing one process: `sharedProcessKey` hashes the env.
+    const spec = await adapter.launchSpec(
+      request.profile,
+      request.policy,
+      request.cwd,
+      via.id,
+      'work',
+      prepared?.process,
+    );
     const key = `${adapter.id}|${sharedProcessKey(request.profile, spec)}`;
     const k = sessionsPerProcessFor(this.#settings, adapter.id);
     const token = Symbol(`${adapter.id}/${request.profile.id}`);
@@ -818,6 +866,19 @@ export class SessionPool {
     else this.#launching.set(key, rest);
   }
 
+  /**
+   * Tells the telemetry table that the session exists, so the records its client sends can be tied
+   * to the work; returns what to call when the lease is released. Never throws.
+   */
+  #track(session: AgentSession, prepared: PreparedTelemetry | undefined): (() => void) | undefined {
+    const telemetry = this.#telemetry;
+    if (telemetry === undefined || prepared === undefined) return undefined;
+    telemetry.opened(session.sessionId, prepared);
+    return () => {
+      telemetry.closed(session.sessionId);
+    };
+  }
+
   #lease(
     session: AgentSession,
     client: string,
@@ -826,6 +887,7 @@ export class SessionPool {
     entry: PoolProcess | undefined,
     token: symbol | undefined,
     slot: Slot,
+    onRelease?: () => void,
   ): SessionLease {
     let released = false;
     const pid = entry?.process.pid ?? 0;
@@ -846,6 +908,7 @@ export class SessionPool {
       release: async () => {
         if (released) return;
         released = true;
+        onRelease?.();
         try {
           await session.close();
         } catch {

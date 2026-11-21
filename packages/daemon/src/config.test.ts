@@ -1334,6 +1334,8 @@ describe('telemetry (P1 of Phase 8)', () => {
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
+      receiver: { port: 'auto', max_body: 8 * 1024 * 1024 },
+      redaction: 'default',
       daemon_spans: { enabled: 'on', waits: 'all' },
     });
     expect(config.backup.telemetry).toBe('exclude');
@@ -1382,6 +1384,17 @@ describe('telemetry (P1 of Phase 8)', () => {
     ).toEqual({ enabled: 'on', traces: 'on' });
   });
 
+  it('takes the receiver and redaction keys of P2', () => {
+    const config = parseConfig(
+      'telemetry:\n  receiver:\n    port: 4318\n    max_body: 1MB\n  redaction: full\n',
+    );
+    expect(config.telemetry.receiver).toEqual({ port: 4318, max_body: 1024 * 1024 });
+    expect(config.telemetry.redaction).toBe('full');
+    expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
+      'auto',
+    );
+  });
+
   it('takes the modes of the spans of the daemon (P4)', () => {
     const spans = (yaml: string) => parseConfig(`telemetry:\n${yaml}`).telemetry.daemon_spans;
     expect(spans('  daemon_spans: off\n')).toEqual({ enabled: 'off', waits: 'all' });
@@ -1392,7 +1405,7 @@ describe('telemetry (P1 of Phase 8)', () => {
     });
   });
 
-  it('refuses unknown values and keys, and does not own the receiver yet', () => {
+  it('refuses unknown values and keys', () => {
     for (const bad of [
       'telemetry:\n  enabled: maybe\n',
       'telemetry:\n  synchronous: off\n',
@@ -1404,6 +1417,11 @@ describe('telemetry (P1 of Phase 8)', () => {
       'telemetry:\n  clients:\n    codex:\n      traces: on\n',
       'telemetry:\n  clients:\n    gemini: on\n',
       'telemetry:\n  receiver:\n    port: 1\n',
+      'telemetry:\n  receiver:\n    port: 70000\n',
+      'telemetry:\n  receiver:\n    max_body: 0\n',
+      'telemetry:\n  receiver:\n    max_body: huge\n',
+      'telemetry:\n  receiver:\n    other: 1\n',
+      'telemetry:\n  redaction: none\n',
       'telemetry:\n  other: 1\n',
       'telemetry:\n  daemon_spans: maybe\n',
       'telemetry:\n  daemon_spans:\n    waits: some\n',

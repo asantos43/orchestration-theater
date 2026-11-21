@@ -72,6 +72,7 @@ import { registerBrowserTools, secretPathCheck, type BrowserTools } from './brow
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
+import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
@@ -201,6 +202,12 @@ export interface DaemonHandle {
    */
   readonly mcpUrl: string;
   /**
+   * `http://127.0.0.1:<port>`: where the OTLP receiver of the clients' telemetry listens (Phase 8,
+   * P2), with the port it got. `undefined` when `telemetry.enabled` is `off` or it could not start.
+   * The token is not here: only the sessions the daemon starts are given it.
+   */
+  readonly telemetryUrl: string | undefined;
+  /**
    * The Producer's side (what the chat socket and the REST commands reach): open a chat, send messages,
    * read the Director's replies, answer its questions. `undefined` when the execution is off.
    */
@@ -278,6 +285,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let directives: DirectiveService | undefined;
   let quota: QuotaService | undefined;
   let browserTools: BrowserTools | undefined;
+  let telemetry: TelemetryRuntime | undefined;
   // The API server is started inside `run`; a failure after that point stops it from here.
   const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
@@ -365,6 +373,16 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       });
       browserTools.startIdleLoop();
     }
+    // Phase 8, P2: the OTLP receiver is up before any client starts, so each session is given its
+    // address and token. A receiver that cannot listen is a notice, not a failed start.
+    telemetry = await startTelemetry({
+      config,
+      store: composition.telemetry,
+      vault: composition.vault,
+      logger: composition.logger,
+      situations: composition.situations,
+      scenarioOf: async (playId) => (await composition?.store.plays.get(playId))?.scenarioId,
+    });
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
@@ -393,6 +411,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       composition,
       registries,
       mcp,
+      telemetry,
       browserTools,
       directives,
       quota,
@@ -411,6 +430,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     await directives?.stop().catch(() => undefined);
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
+    await telemetry?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
     await composition?.close().catch(() => undefined);
     await lock.release().catch(() => undefined);
@@ -424,6 +444,7 @@ interface RunInput {
   readonly composition: Composition;
   readonly registries: Registries;
   readonly mcp: FrameworkMcpServer;
+  readonly telemetry: TelemetryRuntime | undefined;
   readonly browserTools: BrowserTools | undefined;
   readonly directives: DirectiveService;
   readonly quota: QuotaService;
@@ -445,6 +466,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     composition,
     registries,
     mcp,
+    telemetry,
     browserTools,
     directives,
     quota,
@@ -571,6 +593,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     quotaPrepare,
     handoff.port,
     exhaustion.port,
+    telemetry,
   );
   // The probes were handed over by `buildExecution`. The profiles the registry already has are
   // tracked before the readings start, so a MiniMax profile is read without waiting for a session.
@@ -879,6 +902,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('mcp', () => mcp.stop());
+      // After the clients ended (`execution`): their last batches have arrived or never will.
+      await attempt('telemetry', async () => telemetry?.stop());
       await attempt('browser', async () => browserTools?.close());
       // The timers of the waits that are still going on stop; they write nothing from here on.
       composition.waitEvents?.close();
@@ -1107,6 +1132,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     adapters: composition.adapters,
     execution,
     mcpUrl: mcp.url,
+    telemetryUrl: telemetry?.receiver.url,
     producer: orchestration?.channel,
     profiles,
     directives,
@@ -1146,6 +1172,7 @@ function buildExecution(
   quotaPrepare: (() => Promise<readonly ProfileRef[]>)[],
   handoff: HandoffPort,
   exhaustion: ExhaustionPort,
+  telemetry: TelemetryRuntime | undefined,
 ): Execution | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
@@ -1188,7 +1215,11 @@ function buildExecution(
           sandbox: {
             capabilities: composition.sandbox.capabilities,
             // The framework MCP server is the daemon's own loopback service the client must reach.
-            launchWrapper: composition.sandbox.launchWrapper(() => [mcp.url]),
+            launchWrapper: composition.sandbox.launchWrapper(() => [
+              mcp.url,
+              // The clients export their telemetry to the receiver, also from inside the sandbox.
+              ...(telemetry === undefined ? [] : [telemetry.receiver.url]),
+            ]),
           },
         }),
   });
@@ -1236,6 +1267,7 @@ function buildExecution(
     memory: composition.memory,
     handoff,
     exhaustion,
+    ...(telemetry === undefined ? {} : { telemetry: telemetry.clients }),
     ...(composition.waitEvents === undefined ? {} : { waits: composition.waitEvents }),
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
