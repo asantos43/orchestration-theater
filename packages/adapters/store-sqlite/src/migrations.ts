@@ -598,6 +598,31 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  // The runs of the setup assistant (Phase 7, 5.7, N121): the answers of a run in progress, so it
+  // survives the TUI closing and a daemon restart. No foreign keys, like the other aggregates.
+  '0010_setup_runs': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('setup_runs')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('flow', 'text', notNull)
+        .addColumn('state', 'text', notNull)
+        .addColumn('step', 'text', notNull)
+        .addColumn('done', 'text', jsonColumn('done'))
+        .addColumn('result', 'text', jsonColumn('result', true))
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addColumn('finished_at', 'integer')
+        .execute();
+      // At most one active run per flow (the registry checks it too).
+      await sql`
+        create unique index if not exists setup_runs_one_active
+        on setup_runs (flow) where state = 'active'
+      `.execute(db);
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */
