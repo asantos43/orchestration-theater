@@ -71,9 +71,9 @@ Não entram **[proposta]**:
 | P1 | Base de telemetria: porta, adaptador e chaves (N54) | P0, N211 | P3, P5, P11 | concluído (PR #242, f7d18e0) |
 | P2 | Receptor OTLP e redação (N212) | P1 | P4, P6 | em PR (#250) |
 | P3 | Clientes e `fake-agent` mandam ao receptor (N213) | P0, N212 | P1, P5, P11 | concluído (PR #243, 803fb50) |
-| P4 | Spans do daemon (N214) | P1 | P2, P6 | em PR (#249) |
+| P4 | Spans do daemon (N214) | P1 | P2, P6 | concluído (PR #249, 7fa8685) |
 | P5 | ATIF: schema zod e exportador (N219) | P0 | P1, P3, P11 | concluído (PR #244, ad8bc79) |
-| P6 | Validação pelo `TrajectoryValidator` do Harbor (N215) | P5 | P2, P4 | em andamento |
+| P6 | Validação pelo `TrajectoryValidator` do Harbor (N215) | P5 | P2, P4 | em PR (#252) |
 | P7 | Exportação: OTLP para fora e `/metrics` (N70, N218) | P2, P4 | P9 | por fazer |
 | P8 | Retenção e expurgo (N216) | P9 | P10, P12 | por fazer |
 | P9 | Análise do sistema (N55, N217) | P4 | P7 | por fazer |
@@ -82,7 +82,7 @@ Não entram **[proposta]**:
 | P12 | Phoenix opcional: receita | P7 | P8, P10 | por fazer |
 | P13 | Aceite da fase | todos | nada | por fazer |
 | P14 | Clique nas opções do cartão de decisão (N200, item 4) | nada | todos, menos P13 | em PR (#251) |
-| P15 | Esperas fora do log viram eventos (N222) | P4 | P7, P9 | por fazer |
+| P15 | Esperas fora do log viram eventos (N222) | P4 | P7, P9 | em PR (#253) |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P5 e P11. O P1 abre a base; o P3 mexe só nos três adaptadores dos clientes e no `fake-agent`, e testa contra um receptor falso até o P2 chegar; o P5 mexe só no protocolo e no exportador; o P11 é da Fase 7 e não depende do resto.
