@@ -481,24 +481,47 @@ ${mode === undefined || mode === '' ? '' : `    mode: ${json(mode)}\n`}`);
 
             // 2. The base: the tree of the daemon and the records of the client, with the same
             //    correlation. The client flushes on a timer or on exit, so the base is polled.
-            const tables = await waitFor(
-              `the telemetry of ${executor} in the base (up to ${seconds(waitMs)})`,
-              () => {
-                const read = readTables(file);
-                const own = daemonResourceIds(read.resources ?? []);
-                const ofPlay = (rows: Row[] | undefined): Row[] =>
-                  (rows ?? []).filter((row) => row.play_id === playId && !own.has(row.resource_id));
-                const have =
-                  (read.spans ?? []).some(
-                    (row) => row.name === SPAN_NAME.play && row.play_id === playId,
-                  ) &&
-                  ofPlay(read.metric_points).length > 0 &&
-                  ofPlay(read.log_records).length > 0 &&
-                  (executor !== 'claude-code' || !TRACES || ofPlay(read.spans).length > 0);
-                return Promise.resolve(have ? read : undefined);
-              },
-              waitMs,
-            );
+            let tables: Record<string, Row[]>;
+            try {
+              tables = await waitFor(
+                `the telemetry of ${executor} in the base (up to ${seconds(waitMs)})`,
+                () => {
+                  const read = readTables(file);
+                  const own = daemonResourceIds(read.resources ?? []);
+                  const ofPlay = (rows: Row[] | undefined): Row[] =>
+                    (rows ?? []).filter(
+                      (row) => row.play_id === playId && !own.has(row.resource_id),
+                    );
+                  const have =
+                    (read.spans ?? []).some(
+                      (row) => row.name === SPAN_NAME.play && row.play_id === playId,
+                    ) &&
+                    ofPlay(read.metric_points).length > 0 &&
+                    ofPlay(read.log_records).length > 0 &&
+                    (executor !== 'claude-code' || !TRACES || ofPlay(read.spans).length > 0);
+                  return Promise.resolve(have ? read : undefined);
+                },
+                waitMs,
+              );
+            } catch (error) {
+              // What arrived, by counts only (no content): which of the four the wait missed.
+              const read = readTables(file);
+              const own = daemonResourceIds(read.resources ?? []);
+              const client = (rows: Row[] | undefined): Row[] =>
+                (rows ?? []).filter((row) => !own.has(row.resource_id));
+              const ofPlay = (rows: Row[]): number =>
+                rows.filter((row) => row.play_id === playId).length;
+              for (const table of ['spans', 'metric_points', 'log_records'] as const) {
+                const rows = client(read[table]);
+                log(
+                  `on timeout, client ${table}: ${String(rows.length)} in all, ${String(ofPlay(rows))} with the play`,
+                );
+              }
+              log(
+                `on timeout, the play span: ${(read.spans ?? []).some((row) => row.name === SPAN_NAME.play && row.play_id === playId) ? 'present' : 'absent'}; resources: ${String((read.resources ?? []).length)} (${String(own.size)} of the daemon)`,
+              );
+              throw error;
+            }
             const own = daemonResourceIds(tables.resources ?? []);
             const daemonSpans = (tables.spans ?? []).filter(
               (row) => row.play_id === playId && own.has(row.resource_id),
