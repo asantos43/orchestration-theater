@@ -120,6 +120,7 @@ import {
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
 import { DaemonSpans } from './telemetry/daemon-spans.js';
+import { WaitEvents } from './telemetry/wait-events.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
 import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
@@ -277,6 +278,11 @@ export interface Composition {
    * `daemon.started` and stops it before the situations are closed.
    */
   readonly daemonSpans: DaemonSpans | undefined;
+  /**
+   * The events of the waits of the daemon (P15 of Phase 8, N222 (a)): `undefined` when
+   * `events.wait_threshold` is `off`. The daemon closes it (its timers) before the situations are.
+   */
+  readonly waitEvents: WaitEvents | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -777,6 +783,12 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
           })
         : undefined;
 
+    // Phase 8, P15 (N222 (a)): the waits of the queue of prompts and of the pool, told in the log.
+    const waitEvents =
+      config.events.wait_threshold === null
+        ? undefined
+        : new WaitEvents({ situations, clock, thresholdMs: config.events.wait_threshold });
+
     const opened = { store, vault, sandbox, browser, situations, eventHub, telemetry };
     let closing: Promise<void> | undefined;
     return {
@@ -799,6 +811,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       telemetry,
       telemetryBackup,
       daemonSpans,
+      waitEvents,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {

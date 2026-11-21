@@ -55,16 +55,51 @@ async function openPlay(harness: PlayHarness): Promise<string> {
   return play.id;
 }
 
-/** The ids, times and names of the spans the log decides (the waits told in place are left out). */
+/** The ids, times and names of the spans the log decides. */
 function shape(spans: readonly TelemetrySpan[]): string[] {
   return spans
-    .filter((span) => span.attributes[OT.waitOrigin] !== 'direct')
     .map(
       (span) =>
         `${span.traceId}/${span.spanId}<-${span.parentSpanId ?? '-'} ${span.name} ` +
         `${String(span.startTimeUnixNano)}-${String(span.endTimeUnixNano)}`,
     )
     .sort();
+}
+
+/** Projects the whole log of the daemon again, on a telemetry base that is new. */
+async function projectAgain(harness: PlayHarness): Promise<MemoryTelemetryStore> {
+  const events: readonly EventEnvelope[] = await harness.daemon.store.events.readFrom(0, 100_000);
+  const memory = {
+    events,
+    lastId: () => Promise.resolve(events.at(-1)?.id ?? 0),
+
+    follow: async function* (options: { afterId?: number; signal?: AbortSignal }) {
+      for (const event of events) if (event.id > (options.afterId ?? 0)) yield event;
+      await new Promise<void>((resolve) =>
+        options.signal?.addEventListener(
+          'abort',
+          () => {
+            resolve();
+          },
+          { once: true },
+        ),
+      );
+    },
+  };
+  const fresh = new MemoryTelemetryStore();
+  const again = new DaemonSpans({
+    telemetry: fresh,
+    hub: memory,
+    events: memory,
+    clock: new FakeClock(),
+    logger: { warn: () => undefined, debug: () => undefined },
+    waits: 'all',
+  });
+  again.start();
+  await again.settle();
+  await again.stop();
+  await fresh.flush();
+  return fresh;
 }
 
 describeWithLauncher('the spans of a play with the fake agent (P4)', { timeout: 120_000 }, () => {
@@ -147,60 +182,47 @@ describeWithLauncher('the spans of a play with the fake agent (P4)', { timeout: 
       expect(inTrace.filter((span) => span.attributes[OT.closedBy] !== undefined)).toEqual([]);
 
       // Projecting the log again, on a base that is new, gives the same spans.
-      const events: readonly EventEnvelope[] = await harness.daemon.store.events.readFrom(
-        0,
-        100_000,
-      );
-      const memory = {
-        events,
-        lastId: () => Promise.resolve(events.at(-1)?.id ?? 0),
-
-        follow: async function* (options: { afterId?: number; signal?: AbortSignal }) {
-          for (const event of events) if (event.id > (options.afterId ?? 0)) yield event;
-          await new Promise<void>((resolve) =>
-            options.signal?.addEventListener(
-              'abort',
-              () => {
-                resolve();
-              },
-              { once: true },
-            ),
-          );
-        },
-      };
-      const fresh = new MemoryTelemetryStore();
-      const again = new DaemonSpans({
-        telemetry: fresh,
-        hub: memory,
-        events: memory,
-        clock: new FakeClock(),
-        logger: { warn: () => undefined, debug: () => undefined },
-        waits: 'all',
-      });
-      again.start();
-      await again.settle();
-      await again.stop();
-      await fresh.flush();
+      const fresh = await projectAgain(harness);
       expect(shape(await fresh.readSpans())).toEqual(shape(spans));
       await fresh.close();
     });
   });
 
-  it('tells the wait of the prompt for the Director as otheater.wait', async () => {
+  it('tells the wait of the prompt for the Director as events and as otheater.wait, and gets the same span back on a new base', async () => {
     const telemetry = new MemoryTelemetryStore();
-    await withPlayDaemon(fakes(), { telemetry }, async (harness) => {
-      await openPlay(harness);
-      const waits = await waitFor('the wait of the prompt', async () => {
-        const found = (await telemetry.readSpans()).filter(
-          (span) => span.name === SPAN_NAME.wait && span.attributes[OT.waitKind] === 'prompt_queue',
-        );
-        return found.length > 0 ? found : undefined;
-      });
-      expect(waits[0]?.attributes).toMatchObject({
-        [OT.waitOrigin]: 'direct',
-        [OT.waitOutcome]: 'delivered',
-      });
-      expect(waits[0]?.attributes[OT.waitReason]).toBeTypeOf('string');
-    });
+    // The threshold is `always` so that the wait of the frozen clock is told at all.
+    await withPlayDaemon(
+      fakes(),
+      { telemetry, extra: 'events:\n  wait_threshold: always' },
+      async (harness) => {
+        await openPlay(harness);
+        const waits = await waitFor('the wait of the prompt', async () => {
+          const found = (await telemetry.readSpans()).filter(
+            (span) =>
+              span.name === SPAN_NAME.wait && span.attributes[OT.waitKind] === 'prompt_queue',
+          );
+          return found.length > 0 ? found : undefined;
+        });
+        expect(waits[0]?.attributes).toMatchObject({
+          [OT.waitOrigin]: 'log',
+          [OT.waitOutcome]: 'delivered',
+        });
+        expect(waits[0]?.attributes[OT.waitReason]).toBeTypeOf('string');
+
+        const events = await harness.daemon.store.events.readFrom(0, 100_000);
+        const started = events.filter((event) => event.type === 'wait.started');
+        const ended = events.filter((event) => event.type === 'wait.ended');
+        expect(started.length).toBeGreaterThanOrEqual(1);
+        expect(started[0]?.payload).toMatchObject({ kind: 'prompt_queue', thresholdMs: 0 });
+        expect(ended.map((event) => event.payload.waitId)).toContain(started[0]?.payload.waitId);
+
+        await telemetry.flush();
+        const fresh = await projectAgain(harness);
+        const waitsOf = (list: readonly TelemetrySpan[]): string[] =>
+          shape(list.filter((span) => span.name === SPAN_NAME.wait));
+        expect(waitsOf(await fresh.readSpans())).toEqual(waitsOf(await telemetry.readSpans()));
+        await fresh.close();
+      },
+    );
   });
 });
