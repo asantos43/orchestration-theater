@@ -7,6 +7,7 @@ import { createSilentLogger } from '../../logger.js';
 import { RecoveryGate } from '../../recovery/gate.js';
 import { makeTempDataDir, RecordingSituations } from '../../test-helpers.js';
 import type { DirectiveService } from '../../directives/index.js';
+import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import { generateApiToken } from '../files.js';
 import { ApiServer } from '../server.js';
@@ -90,6 +91,7 @@ describe('the commands and the recovery gate', () => {
       logger: createSilentLogger(),
       directives,
       profiles: {} as ProfileService,
+      logins: {} as ProfileLoginService,
       configPath: join(dir, 'config.yaml'),
       idempotencyTtlMs: () => 0,
       layout: {} as LayoutPreferencesStore,
