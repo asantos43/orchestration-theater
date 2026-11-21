@@ -23,7 +23,7 @@ function row(over: Partial<RollupRow> = {}): RollupRow {
 
 describe('telemetry port version', () => {
   it('declares the rollup extension as a minor bump', () => {
-    expect(TELEMETRY_STORE_PORT_VERSION).toBe('0.3.0');
+    expect(TELEMETRY_STORE_PORT_VERSION).toBe('0.4.0');
   });
 });
 

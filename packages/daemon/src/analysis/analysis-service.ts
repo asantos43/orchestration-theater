@@ -92,6 +92,15 @@ export class AnalysisService {
     return this.#deps.telemetry.readRollupsReadyThrough();
   }
 
+  /**
+   * The ready day and the first instant after it (epoch ms), or `null` before the first day is
+   * ready. The purge of the raw telemetry (P8) removes nothing at or after that instant.
+   */
+  async readyCutoff(): Promise<{ readonly day: string; readonly untilMs: number } | null> {
+    const day = await this.#deps.telemetry.readRollupsReadyThrough();
+    return day === null ? null : { day, untilMs: this.#boundary().endOf(day) };
+  }
+
   /** Starts the schedule; a second call does nothing. With `analysis.schedule.mode: off` nothing runs. */
   start(): void {
     if (this.#loop !== undefined) return;

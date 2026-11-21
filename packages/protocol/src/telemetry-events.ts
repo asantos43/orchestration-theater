@@ -108,3 +108,38 @@ export const TelemetryExportFailedPayloadSchema = z.strictObject({
   /** `drop`: the batches were dropped. `hold`: they stay in the base and are tried again. */
   mode: z.enum(['drop', 'hold']),
 });
+
+/** What decided a purge: the age (`telemetry.retention.days`), the size (`telemetry.retention.max_mb`) or both. */
+export const TELEMETRY_PURGE_REASONS = ['age', 'size', 'age_and_size'] as const;
+export type TelemetryPurgeReason = (typeof TELEMETRY_PURGE_REASONS)[number];
+
+/**
+ * Payload of `telemetry.purged` (Phase 8, P8, N216 (a); architecture 5.11): the purge of the raw
+ * telemetry removed rows from the telemetry base. Written only when something went (a pass that
+ * finds nothing past the limits says nothing). Strict, with no telemetry content. Registered in
+ * `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1. [proposta] The name and the fields.
+ *
+ * - `spans`, `metrics` and `logs`: the rows removed of each signal; `rows` is their sum;
+ * - `bytes`: the bytes of data the base freed (pages in use before minus after); `fileBytes`: the
+ *   size of the file after the pass (it only shrinks when the file was compacted: `compacted`);
+ * - `fromMs` and `untilMs`: the period removed, as epoch milliseconds: from the oldest record that
+ *   was in the base to the cut (exclusive). `fromMs` is `null` when the base could not say;
+ * - `readyThrough`: the last day the daily aggregates cover (the purge never goes past the end of
+ *   it, unless `telemetry.retention.guard` is `none`), or `null` when there is none.
+ */
+export const TelemetryPurgedPayloadSchema = z.strictObject({
+  reason: z.enum(TELEMETRY_PURGE_REASONS),
+  rows: z.int().min(1),
+  spans: z.int().min(0),
+  metrics: z.int().min(0),
+  logs: z.int().min(0),
+  bytes: z.int().min(0),
+  fileBytes: z.int().min(0).nullable(),
+  compacted: z.boolean(),
+  fromMs: z.int().min(0).nullable(),
+  untilMs: z.int().min(0),
+  readyThrough: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/u)
+    .nullable(),
+});

@@ -6,7 +6,7 @@ import type { JsonValue } from './event-log.js';
  * contratos"). It moves on its own, apart from `STORE_PORT_VERSION`: the telemetry base is a
  * different file with a different life (N54).
  */
-export const TELEMETRY_STORE_PORT_VERSION = '0.3.0';
+export const TELEMETRY_STORE_PORT_VERSION = '0.4.0';
 
 /**
  * Attributes of a resource, span, metric point or log record (the OTLP `KeyValue` list read as an
@@ -197,6 +197,26 @@ export interface RollupFilter {
 export const ROLLUP_DAY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /**
+ * How much the base holds and how far back it goes (port 0.4.0; the purge of Phase 8, P8). Contains
+ * no telemetry content.
+ *
+ * - `usedBytes`: the bytes of the pages that hold data. Deleting rows lowers it at once; the file
+ *   does not shrink with it (a page freed is reused by the next write, and returned to the system
+ *   only by {@link TelemetryStore.compact}), so the size cap of the retention reads this, not the
+ *   size of the file.
+ * - `fileBytes`: the size on disk, the main file and its write-ahead log (the footprint first folds
+ *   the log into the file); `null` when there is no base.
+ * - `oldestUnixNano`: the oldest raw record, by what {@link TelemetryStore.deleteOlderThan}
+ *   looks at (the end of a span, the time of a point or a record), at millisecond resolution;
+ *   `null` when the base holds no raw record. The daily aggregates are not raw records.
+ */
+export interface TelemetryFootprint {
+  readonly usedBytes: number;
+  readonly fileBytes: number | null;
+  readonly oldestUnixNano: bigint | null;
+}
+
+/**
  * `ok`: writing and reading. `degraded`: the last write or read failed and the next one tries
  * again. `no_base`: the base could not be recreated; writes are discards (counted) until it can.
  */
@@ -300,6 +320,19 @@ export interface TelemetryStore {
   markRollupsReady(day: string): Promise<void>;
   /** Deletes the aggregates of the days before `day` (exclusive); returns how many rows. Port 0.3.0. */
   deleteRollupsBefore(day: string): Promise<number>;
+  /**
+   * What the base holds now (see {@link TelemetryFootprint}); it first writes what is queued.
+   * Rejects with `AdapterUnavailable` when the base cannot be used. Port 0.4.0.
+   */
+  footprint(): Promise<TelemetryFootprint>;
+  /**
+   * Gives the pages that deleted rows left free back to the system, so the file shrinks. It
+   * rewrites the file: it takes as long as the base is big, holds the writes (they wait in the
+   * queue) and needs free disk of about the size of the data in use. The retention calls it only
+   * when the file is over the size cap; with no base, or nothing to give back, it does nothing.
+   * Rejects with `AdapterUnavailable` when the base cannot be used. Port 0.4.0.
+   */
+  compact(): Promise<void>;
   health(): Promise<TelemetryHealth>;
   close(): Promise<void>;
 }

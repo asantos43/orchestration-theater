@@ -5,6 +5,7 @@ import type { Writable } from 'node:stream';
 import type { Clock } from '@otheater/core';
 import pino, { type DestinationStream, type Logger } from 'pino';
 import type { DaemonConfig } from './config.js';
+import { RotatingFile, type LogRotation } from './log-rotation.js';
 
 export type { Logger } from 'pino';
 
@@ -39,6 +40,10 @@ export interface CreateLoggerOptions {
   readonly clock: Pick<Clock, 'now'>;
   /** Replaces the destinations (tests capture the lines here). */
   readonly stream?: Writable;
+  /** Rotates the file by size (`log.rotate`, P8); without it the file grows. */
+  readonly rotate?: LogRotation | undefined;
+  /** Told when a rotation fails (the log goes on in the same file). */
+  readonly onRotateError?: ((error: unknown) => void) | undefined;
 }
 
 export interface DaemonLogger {
@@ -50,7 +55,8 @@ export interface DaemonLogger {
 /**
  * The structured technical log (architecture section 8): one JSON line per entry, in English.
  * [proposta] The file is written synchronously: a daemon logs little, and nothing can be lost in
- * a crash or in a flush race at shutdown. Rotation of `daemon.log` is not done yet.
+ * a crash or in a flush race at shutdown. With `rotate` the file is rotated by size (P8, see
+ * `log-rotation.ts`).
  */
 export function createLogger(options: CreateLoggerOptions): DaemonLogger {
   const closers: (() => void)[] = [];
@@ -60,12 +66,16 @@ export function createLogger(options: CreateLoggerOptions): DaemonLogger {
   } else {
     if (options.destination === 'file' || options.destination === 'both') {
       mkdirSync(dirname(options.logFile), { recursive: true, mode: 0o700 });
-      const file = pino.destination({
-        dest: options.logFile,
-        sync: true,
-        mode: 0o600,
-        append: true,
-      });
+      const file: DestinationStream & { end(): void } =
+        options.rotate === undefined
+          ? pino.destination({ dest: options.logFile, sync: true, mode: 0o600, append: true })
+          : new RotatingFile({
+              path: options.logFile,
+              mode: 0o600,
+              maxBytes: options.rotate.maxBytes,
+              keep: options.rotate.keep,
+              onError: options.onRotateError,
+            });
       streams.push(file);
       closers.push(() => {
         file.end();
