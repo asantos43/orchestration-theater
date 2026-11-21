@@ -21,6 +21,7 @@
     "directives": "Lista as ordens em vigor no cenário",
     "config": "Mostra uma chave da configuração, ou as seções",
     "template": "Envia ao Diretor: {{text}}",
+    "direct": "Abre uma sessão direta com um Ator, sem passar pelo Diretor",
     "trajectory": "Mostra a trajetória de uma peça, ou o diff de uma de suas demandas"
   },
   "args": {
@@ -32,6 +33,7 @@
     "attach": "<caminho>",
     "config": "[chave]",
     "template": "<texto>",
+    "direct": "[executor]",
     "trajectory": "[peça] [demanda]"
   },
   "confirm": {
@@ -60,6 +62,7 @@
     },
     "unknownKey": "Não há a chave de configuração \"{{key}}\".",
     "noDirector": "Nenhum Executor está definido para o Diretor.",
+    "noDirect": "Este daemon não mantém sessões diretas: ele não roda peças.",
     "noTrajectory": "Este daemon não tem o serviço de trajetórias.",
     "trajectory": {
       "noPlay": "O cenário ainda não tem peça.",
@@ -163,6 +166,10 @@
     "forwarded": {
       "template": "Enviado ao Diretor.",
       "client": "Enviado ao cliente do Diretor."
+    },
+    "direct": {
+      "opened": "Sessão direta {{id}} aberta com {{executor}} (espaço de trabalho: {{workspace}}). Continue na aba Direta.",
+      "confirm": "A sessão escreveria na pasta do cenário. Abra-a pela aba Direta para confirmar."
     },
     "trajectory": {
       "header": "Trajetória de {{play}} ({{state}}).",
