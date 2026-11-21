@@ -68,19 +68,21 @@ Não entram **[proposta]**:
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #233, decisões N211 a N219 em 2026-11-21) |
-| P1 | Base de telemetria: porta, adaptador e chaves (N54) | P0, N211 | P3, P5, P11 | por fazer |
-| P2 | Receptor OTLP e redação (N212) | P1 | P4, P6 | por fazer |
-| P3 | Clientes e `fake-agent` mandam ao receptor (N213) | P0, N212 | P1, P5, P11 | por fazer |
-| P4 | Spans do daemon (N214) | P1 | P2, P6 | por fazer |
-| P5 | ATIF: schema zod e exportador (N219) | P0 | P1, P3, P11 | por fazer |
+| P1 | Base de telemetria: porta, adaptador e chaves (N54) | P0, N211 | P3, P5, P11 | concluído (PR #242, f7d18e0) |
+| P2 | Receptor OTLP e redação (N212) | P1 | P4, P6 | em andamento |
+| P3 | Clientes e `fake-agent` mandam ao receptor (N213) | P0, N212 | P1, P5, P11 | concluído (PR #243, 803fb50) |
+| P4 | Spans do daemon (N214) | P1 | P2, P6 | em PR (#249) |
+| P5 | ATIF: schema zod e exportador (N219) | P0 | P1, P3, P11 | em PR (#244) |
 | P6 | Validação pelo `TrajectoryValidator` do Harbor (N215) | P5 | P2, P4 | por fazer |
 | P7 | Exportação: OTLP para fora e `/metrics` (N70, N218) | P2, P4 | P9 | por fazer |
 | P8 | Retenção e expurgo (N216) | P9 | P10, P12 | por fazer |
 | P9 | Análise do sistema (N55, N217) | P4 | P7 | por fazer |
 | P10 | Painéis de telemetria na aba Consumo | P2, P9 | P8, P12 | por fazer |
-| P11 | `terminal.output` e peças terminadas na lateral (N200, itens 3 e 5) | P0 | P1, P3, P5 | por fazer |
+| P11 | `terminal.output` e peças terminadas na lateral (N200, itens 3 e 5) | P0 | P1, P3, P5 | concluído (PR #247, a232366) |
 | P12 | Phoenix opcional: receita | P7 | P8, P10 | por fazer |
 | P13 | Aceite da fase | todos | nada | por fazer |
+| P14 | Clique nas opções do cartão de decisão (N200, item 4) | nada | todos, menos P13 | por fazer |
+| P15 | Esperas fora do log viram eventos (N222) | P4 | P7, P9 | por fazer |
 
 Ordem em ondas **[proposta]**:
 1. P1, P3, P5 e P11. O P1 abre a base; o P3 mexe só nos três adaptadores dos clientes e no `fake-agent`, e testa contra um receptor falso até o P2 chegar; o P5 mexe só no protocolo e no exportador; o P11 é da Fase 7 e não depende do resto.
@@ -89,9 +91,11 @@ Ordem em ondas **[proposta]**:
 4. P8, P10 e P12.
 5. P13.
 
+O P14 e o P15 entraram depois do plano, pela segunda rodada de decisões de 2026-11-21 (N200, item 4, e N222). O P14 mexe só na TUI e corre junto de qualquer onda; o P15 vem depois do P4 e antes do P9, que lê as esperas.
+
 Marco interno **[proposta]**: ao fim da onda 2, uma peça contra o `fake-agent` deixa na `telemetry.sqlite` os spans do daemon e os registros OTLP do cliente simulado, com a mesma correlação, e o arquivo ATIF dela passa no validador do Harbor. É o ponto em que o dono pode olhar os dados antes da exportação, da análise e dos painéis.
 
-**Estimativa:** 1 semana, como na §10. Pelo ritmo das Fases 6 e 7, com agentes, fica perto de 3 a 4 dias **[proposta]**. São 14 passos.
+**Estimativa:** 1 semana, como na §10. Pelo ritmo das Fases 6 e 7, com agentes, fica perto de 3 a 4 dias **[proposta]**. São 16 passos, com o P14 e o P15.
 
 ### P1. Base de telemetria: porta, adaptador e chaves (N54; §5.11)
 
@@ -220,6 +224,19 @@ Marco interno **[proposta]**: ao fim da onda 2, uma peça contra o `fake-agent` 
 - **Real** (`tools/acceptance/real-acceptance.sh --level phase8`): uma peça com o Claude Code (haiku), com o mesmo roteiro, conferindo que os spans e métricas do cliente chegam com a correlação e que o e-mail não foi gravado. O Codex e o OpenCode entram se a rodada couber na janela do dia, também com `free -h` e `df -h /tmp` antes e com prazo.
 - **Aceite:** os dois níveis verdes; o relatório do PR não traz conteúdo de registro real.
 
+### P14. Clique nas opções do cartão de decisão (N200, item 4; N34)
+
+- O chat liga o `ClickTarget` (já existente, da N34) às opções do cartão de decisão: o clique numa opção faz o mesmo que as teclas do registro (`decision.up`, `decision.down`, `decision.mark` e `decision.answer`), na resposta simples e na de múltipla escolha. Com `ui.mouse: off`, nada muda.
+- Não há chave nova, a não ser que o passo precise de uma; nesse caso ela entra como **[proposta]**, com modos.
+- **Aceite:** teste no `ink-testing-library` com o evento de mouse simulado, nas duas formas de resposta, e um caso na fumaça em tmux (`OT_REQUIRE_TMUX=1` no job linux).
+
+### P15. Esperas fora do log viram eventos (N222; §5.11)
+
+- A fila de prompts (`PromptDispatcher`) e a admissão do `SessionPool` (teto de sessões, vaga local, cota, RAM) passam a emitir eventos de início e fim de espera no log, só acima de um limiar configurável; nomes, campos e a chave do limiar (por exemplo, 1 s) **[proposta]**, com modos.
+- O projetor do P4 passa a fazer os spans `otheater.wait` desses eventos, como os de `attempt.reset_wait_*`, e o caminho direto do `onWait` sai (ou fica só como modo, se o passo mostrar motivo). Com isso a base recriada reprojeta as esperas (N214) e hooks e plugins as veem.
+- Os testes de contagem de eventos (`event-registry.test.ts` e `registries.test.ts`) somam os eventos novos.
+- **Aceite:** uma espera acima do limiar gera os dois eventos e o span; abaixo, nada; a base apagada e reprojetada traz o mesmo span.
+
 ## Fora desta fase
 
 - **Sistema de plugins, a aba Plugins e a porta `EventSink` para plugins:** Fase 9. O P7 usa só a exportação OTLP e o `/metrics`.
@@ -227,7 +244,7 @@ Marco interno **[proposta]**: ao fim da onda 2, uma peça contra o `fake-agent` 
 - **Protobuf e gRPC no receptor e na exportação:** modos futuros das chaves, se a N211 ficar com (a).
 - **Propagação W3C de trace pelo ACP:** depende dos clientes.
 - **Painel de traces gráfico próprio:** o Phoenix e o Grafana cumprem esse papel (§5.11).
-- **N200 (4) e N206 (1)(4):** continuam com o dono; a N206 (1)(4) vai para a Fase 12.
+- **N206 (1)(4):** continuam com o dono e vão para a Fase 12. A N200 (4) virou o P14.
 
 ## Decisões que surgem deste plano
 
