@@ -733,6 +733,89 @@ const help = define({
   },
 });
 
+// ---- trajectory (P14) ----
+
+/** The arguments of `/trajectory`: a play (default: the latest of the scenario) and a demand. */
+const TRAJECTORY_ARGS = z
+  .string()
+  .max(400)
+  .transform((text) => {
+    const [play, demand] = text.trim().split(/\s+/);
+    return {
+      play: play === undefined || play === '' ? undefined : play,
+      demand: demand === undefined || demand === '' ? undefined : demand,
+    };
+  });
+
+const trajectory = define({
+  id: 'trajectory',
+  origin: 'daemon',
+  group: 'query',
+  descriptionKey: 'desc.trajectory',
+  argsKey: 'args.trajectory',
+  permission: 'read',
+  confirm: false,
+  appliesTo: { scoped: true, kinds: ['project', 'task'] },
+  args: TRAJECTORY_ARGS,
+  async run({ scenario, args, t, deps }) {
+    const { trajectory: service } = deps;
+    if (service === undefined) throw new AdapterUnavailable(t('error.noTrajectory'));
+    const own = await deps.store.plays.list({ scenarioId: scenario.id });
+    const play =
+      args.play === undefined
+        ? own[own.length - 1]
+        : own.find((candidate) => candidate.id === args.play);
+    if (play === undefined) {
+      throw new InvalidInput(
+        args.play === undefined
+          ? t('error.trajectory.noPlay')
+          : t('error.trajectory.unknownPlay', { id: args.play }),
+      );
+    }
+    if (args.demand !== undefined) {
+      const found = await service.diff(play.id, args.demand);
+      if (!found.available) {
+        return done(
+          t('out.trajectory.diffUnavailable', {
+            demand: args.demand,
+            reason: t(`out.trajectory.reason.${found.unavailable ?? 'no_vcs'}`),
+          }),
+          json(found),
+        );
+      }
+      if (found.diff === '')
+        return done(t('out.trajectory.diffEmpty', { demand: args.demand }), json(found));
+      return done(
+        lines(
+          t('out.trajectory.diffHeader', { demand: args.demand, play: play.id }),
+          found.diff,
+          ...(found.truncated ? [t('out.trajectory.diffTruncated')] : []),
+        ),
+        json(found),
+      );
+    }
+    const folded = await service.trajectory(play.id);
+    if (folded.attempts.length === 0) {
+      return done(t('out.trajectory.empty', { play: play.id }), json(folded));
+    }
+    return done(
+      lines(
+        t('out.trajectory.header', { play: play.id, state: play.state }),
+        ...folded.attempts.map((attempt) =>
+          t('out.trajectory.attempt', {
+            id: attempt.attemptId,
+            demand: attempt.demandId ?? '-',
+            state: attempt.state,
+            turns: attempt.turns.length,
+            entries: attempt.turns.reduce((sum, turn) => sum + turn.entries.length, 0),
+          }),
+        ),
+      ),
+      json(folded),
+    );
+  },
+});
+
 /** The commands of the daemon, in the order the list shows them. */
 export const BUILTIN_ACTIONS: readonly SlashAction[] = [
   status,
@@ -753,6 +836,7 @@ export const BUILTIN_ACTIONS: readonly SlashAction[] = [
   profile,
   directives,
   config,
+  trajectory,
   help,
 ];
 

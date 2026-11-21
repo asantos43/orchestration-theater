@@ -31,6 +31,7 @@ import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
+import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
 import { detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
@@ -899,6 +900,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   // P3 (Phase 7, N44): the registry of the `/` commands, on the services above. The chat socket
   // and both groups of routes read it.
+  const trajectory = new TrajectoryService({ store, config: () => config, vcs: composition.vcs });
   const slash = new SlashCommandService({
     store,
     clock,
@@ -915,6 +917,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     runner: orchestration?.runner,
     directors: orchestration?.directors,
     pauseMode: () => config.pause.mode,
+    trajectory,
   });
   slashRef.current = slash;
   // P4 (Phase 7, N121): the setup assistant. It cadastres Executors through the same service as
@@ -950,6 +953,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   registerReadRoutes(api.handlers, {
     store,
     slash,
+    trajectory,
     config,
     quota,
     usage,

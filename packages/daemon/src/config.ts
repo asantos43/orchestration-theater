@@ -30,6 +30,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiTrajectoriesConfigSchema,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -2214,6 +2215,8 @@ export const DaemonConfigSchema = z
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
         input: UiInputConfigSchema.prefault({}),
+        /** The Trajectories tab of the terminal interface (P14 of docs/18). */
+        trajectories: UiTrajectoriesConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

@@ -169,3 +169,23 @@ export const UiInputConfigSchema = z.strictObject({
     .prefault({}),
 });
 export type UiInputConfig = z.output<typeof UiInputConfigSchema>;
+
+// ---- The Trajectories tab (P14 of docs/18) -------------------------------------------------------
+
+/** `none`: every step starts closed; `last`: the last step of the play starts open; `all`: every step starts open. */
+export const UI_TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
+export type UiTrajectoryOpenMode = (typeof UI_TRAJECTORY_OPEN_MODES)[number];
+
+/**
+ * `ui.trajectories` (architecture 5.13, P14 of docs/18): the Trajectories tab. `open`: which steps
+ * (the attempts and their turns) start open, `last` by default, and a press of Enter on a step
+ * flips what it started as; `keep`: how many events of a play the interface keeps to draw its
+ * trajectory (5000), the oldest go first; `diff_lines`: how many lines of a demand diff the tab
+ * shows (200). The ranges and defaults are [proposta].
+ */
+export const UiTrajectoriesConfigSchema = z.strictObject({
+  open: z.enum(UI_TRAJECTORY_OPEN_MODES).default('last'),
+  keep: z.int().min(100).max(100_000).default(5000),
+  diff_lines: z.int().min(10).max(10_000).default(200),
+});
+export type UiTrajectoriesConfig = z.output<typeof UiTrajectoriesConfigSchema>;
