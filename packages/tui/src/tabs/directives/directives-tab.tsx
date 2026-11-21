@@ -247,7 +247,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
       return;
     }
     if (event.combo === undefined) return;
-    switch (keymap.match(event.combo, ['panel'])) {
+    switch (keymap.match(event.combo, ['directives'])) {
       case 'directives.new':
         open('new');
         break;
@@ -262,7 +262,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
         break;
       case 'directives.previous':
       case 'directives.next': {
-        const delta = keymap.match(event.combo, ['panel']) === 'directives.next' ? 1 : -1;
+        const delta = keymap.match(event.combo, ['directives']) === 'directives.next' ? 1 : -1;
         const at = selectedId === undefined ? -1 : visible.indexOf(selectedId);
         const target = visible[Math.min(visible.length - 1, Math.max(0, at + delta))];
         if (target !== undefined) setPickedId(target);

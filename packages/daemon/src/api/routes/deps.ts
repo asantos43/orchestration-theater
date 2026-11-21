@@ -15,6 +15,7 @@ import type { QuotaService } from '../../quota/index.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
 import type { SlashCommandService } from '../../slash/index.js';
 import type { SetupService } from '../../setup/index.js';
+import type { TrajectoryService } from '../../trajectory/service.js';
 import type { UsageService } from '../../usage/index.js';
 
 /**
@@ -38,6 +39,8 @@ export interface ReadRouteDeps {
   readonly slash?: SlashCommandService | undefined;
   /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly setup?: SetupService | undefined;
+  /** The trajectory of a play (P14 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly trajectory?: TrajectoryService | undefined;
 }
 
 /**
@@ -56,6 +59,11 @@ export interface CommandRouteDeps {
   readonly logins: ProfileLoginService;
   /** `<data>/config.yaml`, the file `PUT /v1/config` edits. */
   readonly configPath: string;
+  /**
+   * The configuration the daemon runs with. `PUT /v1/config` reloads `ui`, `chat`, `limits` and
+   * `roles` into it in place (N188); absent, every edit applies on restart.
+   */
+  readonly config?: DaemonConfig | undefined;
   /** `api.idempotency_ttl`, read at each command. */
   readonly idempotencyTtlMs: () => number;
   /** The Producer's channel: opens scenarios, attaches files and answers decisions. */

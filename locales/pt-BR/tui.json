@@ -5,7 +5,8 @@
     "decision": "Decisões",
     "general": "Geral",
     "navigation": "Navegação",
-    "input": "Caixa de texto"
+    "input": "Caixa de texto",
+    "settings": "Configurações"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -32,16 +33,6 @@
       "answer": "Responder a decisão pendente",
       "aside": "Pôr a decisão de lado",
       "open": "Abrir a decisão pendente"
-    },
-    "overview": {
-      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
-      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
-      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
-      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
-      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
-    },
-    "usage": {
-      "refresh": "Ler o consumo de novo (aba Consumo)"
     },
     "palette": {
       "open": "Abrir a paleta de comandos"
@@ -106,6 +97,28 @@
       "externalEditor": "Escrever a mensagem no editor externo",
       "pasteImage": "Anexar a imagem da área de transferência",
       "cancel": "Sair da busca no histórico"
+    },
+    "settings": {
+      "itemPrev": "Item anterior da seção",
+      "itemNext": "Próximo item da seção",
+      "moveUp": "Subir o Executor (mais prioridade)",
+      "moveDown": "Descer o Executor (menos prioridade)",
+      "login": "Entrar na conta (login oficial)",
+      "add": "Adicionar uma conta",
+      "remove": "Remover a conta",
+      "edit": "Mudar o valor ou a regra",
+      "unset": "Tirar a chave (volta ao padrão)",
+      "scope": "Alternar entre o escopo global e o do projeto"
+    },
+    "overview": {
+      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
+      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
+      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
+      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
+      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
+    },
+    "usage": {
+      "refresh": "Ler o consumo de novo (aba Consumo)"
     },
     "directives": {
       "new": "Dar uma ordem",
@@ -256,6 +269,8 @@
     "chat": {
       "title": "Chat",
       "empty": "Nada dito ainda.",
+      "placeholder": "Escreva para o Diretor",
+      "inputHint": "A caixa de texto chega com o passo do chat.",
       "state": "Estado: {{state}}",
       "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
       "who": {
@@ -415,6 +430,181 @@
       }
     }
   },
+  "input": {
+    "moreAbove": "… mais {{count}} linhas acima",
+    "moreBelow": "… mais {{count}} linhas abaixo",
+    "search": {
+      "prompt": "Buscar no histórico: {{query}}",
+      "none": "nenhuma mensagem encontrada"
+    },
+    "attachments": "Anexos: {{list}}",
+    "status": {
+      "imageAdded": "Imagem anexada como {{marker}}.",
+      "filesAdded": "Anexado: {{names}}.",
+      "noImage": "Não há imagem na área de transferência.",
+      "imageOff": "Colar imagem está desligado (ui.input.image.tool).",
+      "toolMissing": "Para colar uma imagem, instale uma destas: {{tools}}.",
+      "toolFailed": "{{tool}} não conseguiu ler a área de transferência: {{message}}",
+      "toolTimeout": "{{tool}} não respondeu em {{seconds}} s.",
+      "imageTooBig": "A imagem passa do limite de {{limit}} MB (ui.input.image.maxBytes).",
+      "editorOff": "O editor externo está desligado (ui.input.editor).",
+      "editorMissing": "Defina a variável VISUAL ou EDITOR para escrever num editor.",
+      "editorFailed": "Não foi possível executar o editor: {{message}}",
+      "readingImage": "Lendo a imagem da área de transferência...",
+      "historyFailed": "Não foi possível salvar o histórico: {{message}}",
+      "submitFailed": "A mensagem não foi enviada: {{message}}"
+    }
+  },
+  "trajectories": {
+    "play": "Peça {{id}}",
+    "noScenario": "Escolha um cenário para ver a trajetória dele.",
+    "noPlay": "Este cenário ainda não tem peça.",
+    "loading": "Lendo a trajetória...",
+    "failed": "Não foi possível ler a trajetória: {{error}}",
+    "stale": "Desatualizada: {{error}}",
+    "empty": "Ainda não aconteceu nada nesta peça.",
+    "dropped": "Os primeiros {{count}} eventos ficaram de fora (ui.trajectories.keep).",
+    "attempt": "Tentativa {{n}} · demanda {{demand}}",
+    "turn": "Turno {{n}}",
+    "turns_one": "{{count}} turno",
+    "turns_other": "{{count}} turnos",
+    "entries_one": "{{count}} passo",
+    "entries_other": "{{count}} passos",
+    "running": "em andamento",
+    "emptyTurn": "Nada registrado neste turno.",
+    "more": "... mais {{count}} linhas",
+    "state": {
+      "running": "em andamento",
+      "closed": "sessão fechada",
+      "interrupted": "interrompida",
+      "ended": "encerrada"
+    },
+    "entry": {
+      "message": "diz",
+      "thought": "pensa",
+      "terminal": "term",
+      "toolCall": "chama",
+      "tool": "ferr.",
+      "permission": "pede",
+      "plan": "plano",
+      "running": "em andamento",
+      "waiting": "esperando"
+    },
+    "diff": "Diff · demanda {{demand}}",
+    "diffLoading": "Lendo o diff...",
+    "diffFailed": "Não foi possível ler o diff: {{error}}",
+    "diffEmpty": "Esta tentativa não mudou nada.",
+    "diffMore": "... mais {{count}} linhas",
+    "diffCut": "O diff foi cortado no limite de saída.",
+    "diffUnavailable": {
+      "no_vcs": "A peça não tem controle de versão para comparar.",
+      "no_attempt": "A demanda ainda não tem tentativa.",
+      "no_branch": "A tentativa não tem branch para comparar."
+    },
+    "transitions": "Movimentos das demandas"
+  },
+  "settings": {
+    "sections": {
+      "subscriptions": "Assinaturas",
+      "executors": "Executores",
+      "roles": "Papéis",
+      "limits": "Limites"
+    },
+    "scope": {
+      "global": "Escopo: global ({{key}} alterna)",
+      "project": "Escopo: projeto {{name}}, só leitura ({{key}} alterna)",
+      "noProject": "Escopo: projeto, nenhum selecionado ({{key}} alterna)"
+    },
+    "loading": "Lendo as configurações...",
+    "loadFailed": "Não foi possível ler as configurações: {{message}}",
+    "empty": {
+      "profiles": "Nenhuma conta ainda. Adicione uma.",
+      "executors": "Nenhum Executor.",
+      "roles": "Nenhum papel.",
+      "overrides": "Este projeto não sobrepõe nenhuma chave."
+    },
+    "quota": {
+      "ok": "ok",
+      "near_limit": "perto do limite",
+      "exhausted": "esgotada",
+      "unknown": "sem leitura"
+    },
+    "profile": {
+      "draining": "drenando",
+      "removed": "removida",
+      "noSecret": "sem chave",
+      "used": "{{percent}}% usado",
+      "resets": "volta em {{time}}"
+    },
+    "executor": {
+      "invalid": "inválido: {{reason}}",
+      "roles": "papéis: {{roles}}",
+      "noRoles": "sem papel"
+    },
+    "role": {
+      "rule": "ao esgotar: {{rule}}",
+      "next": "passar ao próximo",
+      "wait": "esperar a renovação",
+      "blocked": {
+        "invalid": "inválido",
+        "quota": "cota",
+        "budget": "orçamento"
+      }
+    },
+    "prompt": {
+      "add": "Adicionar conta como: <cliente> <nome> <token_plan|api> <provedor>",
+      "apiKey": "Chave de API de {{profile}} (vai ao cofre, nunca aparece)",
+      "limit": "Novo valor de {{key}} ({{hint}})",
+      "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
+      "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
+      "hintEnter": "Enter confirma, Esc cancela",
+      "hintConfirm": "s confirma, qualquer outra tecla cancela",
+      "yes": "s"
+    },
+    "hint": {
+      "whole": "número inteiro, {{min}} ou mais",
+      "duration": "duração como 30m, 2h, 45s"
+    },
+    "login": {
+      "title": "Entrar: {{profile}}",
+      "mode": {
+        "browser": "Abra o endereço num navegador e entre.",
+        "device_code": "Abra o endereço e digite o código lá."
+      },
+      "url": "Endereço: {{url}}",
+      "code": "Código: {{code}}",
+      "noUrl": "O cliente ainda não imprimiu um endereço.",
+      "takesCode": "Cole aqui o código que o navegador mostra. Enter envia, Esc cancela.",
+      "cancelHint": "Esc cancela o login.",
+      "waiting": "Esperando o login terminar...",
+      "completed": "Login feito: {{profile}}.",
+      "failed": "O login de {{profile}} falhou: {{reason}}",
+      "cancelled": "Login cancelado.",
+      "terminal": "Este cliente entra pelo terminal: {{command}}",
+      "terminalDone": "O login pelo terminal de {{profile}} terminou com o código {{code}}.",
+      "terminalFailed": "O login pelo terminal não pôde rodar: {{message}}",
+      "reason": {
+        "cancelled": "cancelado",
+        "refused": "o cliente terminou sem login",
+        "unavailable": "o cliente não está disponível",
+        "error": "o cliente relatou um erro"
+      }
+    },
+    "result": {
+      "added": "Conta adicionada: {{profile}}.",
+      "removed": "Conta removida: {{profile}}.",
+      "hot": "Vale agora: {{keys}}.",
+      "restart": "Vale no reinício: {{keys}}.",
+      "invalid": "Configuração inválida, nada foi gravado: {{message}}",
+      "failed": "{{message}}",
+      "readOnly": "O escopo do projeto é só de leitura: nenhuma rota grava a sobreposição de um projeto.",
+      "badWhole": "{{key}} pede um número inteiro, {{min}} ou mais.",
+      "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
+      "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
+      "nothing": "Nada sob o cursor.",
+      "noLogin": "Só uma conta de assinatura entra por login."
+    }
+  },
   "overview": {
     "noScenario": "Escolha um cenário na barra lateral.",
     "noPlay": "Este cenário ainda não tem peça.",
@@ -545,31 +735,6 @@
       "network": "Não foi possível falar com o daemon.",
       "unavailable": "O daemon não pode responder agora.",
       "other": "Não foi possível ler o consumo ({{code}})."
-    }
-  },
-  "input": {
-    "moreAbove": "… mais {{count}} linhas acima",
-    "moreBelow": "… mais {{count}} linhas abaixo",
-    "search": {
-      "prompt": "Buscar no histórico: {{query}}",
-      "none": "nenhuma mensagem encontrada"
-    },
-    "attachments": "Anexos: {{list}}",
-    "status": {
-      "imageAdded": "Imagem anexada como {{marker}}.",
-      "filesAdded": "Anexado: {{names}}.",
-      "noImage": "Não há imagem na área de transferência.",
-      "imageOff": "Colar imagem está desligado (ui.input.image.tool).",
-      "toolMissing": "Para colar uma imagem, instale uma destas: {{tools}}.",
-      "toolFailed": "{{tool}} não conseguiu ler a área de transferência: {{message}}",
-      "toolTimeout": "{{tool}} não respondeu em {{seconds}} s.",
-      "imageTooBig": "A imagem passa do limite de {{limit}} MB (ui.input.image.maxBytes).",
-      "editorOff": "O editor externo está desligado (ui.input.editor).",
-      "editorMissing": "Defina a variável VISUAL ou EDITOR para escrever num editor.",
-      "editorFailed": "Não foi possível executar o editor: {{message}}",
-      "readingImage": "Lendo a imagem da área de transferência...",
-      "historyFailed": "Não foi possível salvar o histórico: {{message}}",
-      "submitFailed": "A mensagem não foi enviada: {{message}}"
     }
   },
   "directives": {

@@ -247,7 +247,7 @@ function OverviewTab(props: TabContentProps): ReactNode {
         return;
       }
       if (event.combo === undefined) return;
-      const id = host.keymap.match(event.combo, ['global', 'panel']);
+      const id = host.keymap.match(event.combo, ['overview']);
       if (id === undefined || !(OVERVIEW_ACTIONS as readonly string[]).includes(id)) return;
       switch (id) {
         case 'overview.pausePlay':
