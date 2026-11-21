@@ -167,6 +167,10 @@ export type AddExecutorResult =
       readonly testSession: 'skipped' | 'approved' | 'failed';
       /** The price the catalog gave, exposed for the Producer (and for `pricing`, P10). */
       readonly cost: ModelCost | null;
+      /** The body of `executors.<id>`: what the cadastro writes (and what the setup assistant writes later). */
+      readonly configEntry: ExecutorConfigEntry;
+      /** The `profiles.<id>.local` block the cadastro writes; `null` when it writes none. */
+      readonly localConfig: Pick<LocalConfig, 'server' | 'url'> | null;
     }
   | {
       /** A field is missing: the Producer gives it and runs the command again. */
@@ -256,6 +260,39 @@ function viewOf(
     invalidReason: record.invalidReason,
     configured: entry !== undefined,
     roles,
+  };
+}
+
+/** The body of `executors.<id>` in the configuration. */
+export interface ExecutorConfigEntry {
+  readonly client: string;
+  readonly profile: string;
+  readonly model: string;
+  readonly effort?: string;
+  readonly provider?: string;
+  readonly preset_expand?: false;
+}
+
+/**
+ * The body of `executors.<id>` the cadastro writes (and the setup assistant, P4 of docs/18, writes
+ * the same way). The provider is left out when the client fixes it; `presetExpand: false` is
+ * `executors.on_register: none` (N136).
+ */
+export function executorConfigEntry(fields: {
+  readonly client: string;
+  readonly profile: string;
+  readonly model: string;
+  readonly effort: string | null;
+  readonly provider: string;
+  readonly presetExpand: boolean;
+}): ExecutorConfigEntry {
+  return {
+    client: fields.client,
+    profile: fields.profile,
+    model: fields.model,
+    ...(fields.effort === null ? {} : { effort: fields.effort }),
+    ...(FIXED_PROVIDER_OF_CLIENT[fields.client] === undefined ? { provider: fields.provider } : {}),
+    ...(fields.presetExpand ? {} : { preset_expand: false as const }),
   };
 }
 
@@ -497,12 +534,25 @@ export class ExecutorService {
       configured: true,
       roles: placements.map((placement) => placement.role),
     });
+    const configEntry = executorConfigEntry({
+      client: ref.client,
+      profile: ref.profile,
+      model: info.id,
+      effort,
+      provider,
+      // N136: `on_register: none` also keeps the Executor out of the expansion of presets; it
+      // enters only the roles that name it.
+      presetExpand: config.executors.on_register !== 'none',
+    });
     const base = {
       draft: draftView,
       options: plan.options,
       onRegister: plan.mode,
       localBlock,
       cost: draft.cost,
+      configEntry,
+      localConfig:
+        localConfig === undefined ? null : { server: localConfig.server, url: localConfig.url },
     };
     if (input.dryRun === true) {
       return {
@@ -557,16 +607,7 @@ export class ExecutorService {
 
     // 8. Write: the configuration first (it validates itself), then the table.
     await editConfigFile(this.#o.configPath, (editor) => {
-      editor.set(['executors', id], {
-        client: ref.client,
-        profile: ref.profile,
-        model: info.id,
-        ...(effort === null ? {} : { effort }),
-        ...(fixed === undefined ? { provider } : {}),
-        // N136: `on_register: none` also keeps the Executor out of the expansion of presets; it
-        // enters only the roles that name it.
-        ...(config.executors.on_register === 'none' ? { preset_expand: false } : {}),
-      });
+      editor.set(['executors', id], configEntry);
       if (localConfig !== undefined) {
         editor.set(['profiles', profile.id, 'local'], {
           server: localConfig.server,

@@ -81,3 +81,10 @@ export function redactTree(tree: JsonObject, prefix = ''): Redacted<JsonObject> 
 export function redactConfig(config: unknown): Redacted<JsonObject> {
   return redactTree(JSON.parse(JSON.stringify(config)) as JsonObject);
 }
+
+/** The value as the tree `config.yaml` would hold it at `path`, to ask the redaction about it. */
+export function treeAt(path: readonly string[], value: JsonValue): JsonObject {
+  let node: JsonValue = value;
+  for (const key of [...path].reverse()) node = { [key]: node };
+  return node as JsonObject;
+}

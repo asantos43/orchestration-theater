@@ -31,6 +31,7 @@ import {
 import { SESSIONS_SPEC, TableSessionRegistry } from './sessions.js';
 import { SIDE_EFFECTS_SPEC, TableSideEffectRegistry } from './side-effects.js';
 import { TableUsageRegistry, USAGE_SPEC } from './usage.js';
+import { SETUP_RUNS_SPEC, TableSetupRunRegistry } from './setup-runs.js';
 import { TableWakeupRegistry, WAKEUPS_SPEC } from './wakeups.js';
 
 export * from './blackboard.js';
@@ -50,6 +51,7 @@ export * from './sessions.js';
 export * from './side-effects.js';
 export * from './support.js';
 export * from './usage.js';
+export * from './setup-runs.js';
 export * from './wakeups.js';
 
 /** Names of the tables the aggregates use (Phases 3 to 5), in the order the migrations create them. */
@@ -73,6 +75,7 @@ export const AGGREGATE_TABLE_NAMES: readonly string[] = [
   QUOTA_SNAPSHOTS_SPEC.name,
   USAGE_SPEC.name,
   WAKEUPS_SPEC.name,
+  SETUP_RUNS_SPEC.name,
 ];
 
 /**
@@ -104,6 +107,7 @@ export function createStoreAggregates(
     quotaSnapshots: new TableQuotaSnapshotRegistry(tables(QUOTA_SNAPSHOTS_SPEC), clock),
     usage: new TableUsageRegistry(tables(USAGE_SPEC), clock),
     wakeups: new TableWakeupRegistry(tables(WAKEUPS_SPEC), clock),
+    setupRuns: new TableSetupRunRegistry(tables(SETUP_RUNS_SPEC), clock),
   };
 }
 
@@ -133,6 +137,7 @@ export const AGGREGATE_READ_METHODS: Readonly<Record<AggregateName, readonly str
   quotaSnapshots: ['get', 'list'],
   usage: ['get', 'list'],
   wakeups: ['get', 'list'],
+  setupRuns: ['get', 'list'],
 };
 
 /** The methods of each aggregate that write: each one is a single-call transaction outside one. */
@@ -156,6 +161,7 @@ export const AGGREGATE_WRITE_METHODS: Readonly<Record<AggregateName, readonly st
   quotaSnapshots: ['put'],
   usage: ['record', 'update'],
   wakeups: ['create', 'update'],
+  setupRuns: ['create', 'update'],
 };
 
 type AnyMethod = (...args: unknown[]) => Promise<unknown>;
