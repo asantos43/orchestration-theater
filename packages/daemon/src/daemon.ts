@@ -32,6 +32,7 @@ import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import { AnalysisService } from './analysis/analysis-service.js';
+import { TelemetryRetention } from './telemetry/retention.js';
 import { AtifAutoExport } from './atif/atif-follower.js';
 import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
@@ -887,6 +888,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   let atifAuto: AtifAutoExport | undefined;
   // P9 (Phase 8): the schedule of the daily aggregates; it runs until the daemon stops.
   let analysisService: AnalysisService | undefined;
+  // P8 (Phase 8): the purge of the raw telemetry; it runs until the daemon stops.
+  let telemetryRetention: TelemetryRetention | undefined;
   let markStopped: () => void = () => undefined;
   const stopped = new Promise<void>((resolve) => {
     markStopped = resolve;
@@ -928,6 +931,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('effects', async () => orchestration?.drain());
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
+      await attempt('telemetry retention', async () => telemetryRetention?.stop());
       await attempt('analysis', async () => analysisService?.stop());
       await attempt('mcp', () => mcp.stop());
       // After the clients ended (`execution`): their last batches have arrived or never will.
@@ -1034,6 +1038,19 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       logger,
     });
     analysisService.start();
+    // P8 (Phase 8, N216 (a)): the purge of the raw telemetry. It waits for the aggregates (the
+    // catch-up of the analysis) and removes only the days they already cover.
+    const analysis = analysisService;
+    telemetryRetention = new TelemetryRetention({
+      clock,
+      telemetry: composition.telemetry,
+      settings: () => config.telemetry.retention,
+      ready: () => analysis.readyCutoff(),
+      prepare: config.analysis.schedule.mode === 'off' ? undefined : () => analysis.catchUp(),
+      situations: composition.situations,
+      logger,
+    });
+    telemetryRetention.start();
   }
   const slash = new SlashCommandService({
     store,

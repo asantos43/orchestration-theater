@@ -5,6 +5,7 @@ import {
   AdapterUnavailable,
   InvalidInput,
   isOTheaterError,
+  joinUnixNano,
   ROLLUP_DAY_PATTERN,
   splitUnixNano,
   TELEMETRY_STORE_PORT_VERSION,
@@ -14,6 +15,7 @@ import {
   type RollupRow,
   type TelemetryBatch,
   type TelemetryDeleteResult,
+  type TelemetryFootprint,
   type TelemetryHealth,
   type TelemetryLogRecord,
   type TelemetryMetricPoint,
@@ -577,6 +579,84 @@ export class SqliteTelemetryStore implements TelemetryStore {
             Number(result.numAffectedRows ?? 0n);
           return { spans: count(spans), metrics: count(metrics), logs: count(logs) };
         });
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  // ---- size and compaction (port 0.4.0) ----------------------------------------------------------
+
+  async footprint(): Promise<TelemetryFootprint> {
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    await this.flush().catch(() => undefined);
+    try {
+      return await this.#enqueue(async () => {
+        const conn = this.#conn;
+        if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+        const raw = conn.writerRaw;
+        // What the log of the WAL holds is folded into the file first, so the size of the file is
+        // the size of the data and not what happens to be waiting in the log. A reader that holds
+        // the log makes this a partial checkpoint; that is not an error.
+        try {
+          raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        } catch {
+          // The sizes below are still right, only the file may look smaller than it will be.
+        }
+        const pageSize = Number(readPragma(raw, 'page_size'));
+        const pages = Number(readPragma(raw, 'page_count'));
+        const free = Number(readPragma(raw, 'freelist_count'));
+        // The oldest raw record, by what `deleteOlderThan` compares (the end of a span).
+        let oldestMs: number | null = null;
+        for (const query of [
+          'select min(end_ms) as ms from spans',
+          'select min(time_ms) as ms from metric_points',
+          'select min(time_ms) as ms from log_records',
+        ]) {
+          const [row] = raw.prepare(query).all([]) as { ms: number | null }[];
+          if (row?.ms !== null && row?.ms !== undefined) {
+            oldestMs = oldestMs === null ? row.ms : Math.min(oldestMs, row.ms);
+          }
+        }
+        const main = await stat(this.config.path).then(
+          (info) => info.size,
+          () => null,
+        );
+        const wal = await stat(`${this.config.path}-wal`).then(
+          (info) => info.size,
+          () => 0,
+        );
+        const fileBytes = main === null ? null : main + wal;
+        return {
+          usedBytes: Math.max(0, pages - free) * pageSize,
+          fileBytes,
+          oldestUnixNano: oldestMs === null ? null : joinUnixNano(oldestMs, 0),
+        };
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async compact(): Promise<void> {
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    await this.flush().catch(() => undefined);
+    try {
+      await this.#enqueue(() => {
+        const conn = this.#conn;
+        if (conn === undefined) {
+          return Promise.reject(new AdapterUnavailable('The telemetry base is not available'));
+        }
+        const raw = conn.writerRaw;
+        if (Number(readPragma(raw, 'freelist_count')) === 0) return Promise.resolve();
+        // VACUUM goes through the WAL: what it wrote is folded back, and the log truncated, so the
+        // files really are smaller when it ends.
+        raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        raw.exec('VACUUM');
+        raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        return Promise.resolve();
       });
     } catch (error) {
       await this.#afterFailure(error);
