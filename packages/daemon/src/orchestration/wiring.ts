@@ -105,6 +105,10 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
   const dispatcher = new PromptDispatcher({
     store,
     order: config.prompt_queue.order,
+    // Phase 8, P4 (N217 (a)): the wait of a prompt in the queue is a span, with no event in the log.
+    ...(composition.daemonSpans === undefined
+      ? {}
+      : { onWait: composition.daemonSpans.recordWait, clock: composition.clock }),
     onError: (error, item) => {
       logger.error({ err: error, scenarioId: item?.scenarioId }, 'a prompt could not be delivered');
     },

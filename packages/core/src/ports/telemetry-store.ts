@@ -6,7 +6,7 @@ import type { JsonValue } from './event-log.js';
  * contratos"). It moves on its own, apart from `STORE_PORT_VERSION`: the telemetry base is a
  * different file with a different life (N54).
  */
-export const TELEMETRY_STORE_PORT_VERSION = '0.1.0';
+export const TELEMETRY_STORE_PORT_VERSION = '0.2.0';
 
 /**
  * Attributes of a resource, span, metric point or log record (the OTLP `KeyValue` list read as an
@@ -38,7 +38,10 @@ export const TELEMETRY_SIGNALS = ['spans', 'metrics', 'logs'] as const;
 export type TelemetrySignal = (typeof TELEMETRY_SIGNALS)[number];
 
 /**
- * One span. Times are exact epoch **nanoseconds** as `bigint`: an epoch in nanoseconds does not
+ * One span. A span is identified by its `(traceId, spanId)`: writing one that is already in the
+ * base is a no-op (P4 of Phase 8, port 0.2.0), so a producer that derives its ids from something
+ * stable (the daemon spans, from the ids of the event log) can write the same span again and the
+ * base keeps the first one. Times are exact epoch **nanoseconds** as `bigint`: an epoch in nanoseconds does not
  * fit the 53 bits of a `number`, and the base keeps them without rounding (the adapter splits them
  * in whole milliseconds and a remainder).
  */
@@ -160,6 +163,9 @@ export interface TelemetryHealth {
  * (counted), never the other way round.
  *
  * Contract (checked by the tests of the adapter):
+ * - `write` is idempotent for spans: a span whose `(traceId, spanId)` is already in the base is
+ *   ignored (the first one stays), and the receipt still counts it as accepted. Metric points and
+ *   log records have no identity and are always added.
  * - `write` never throws and never waits for the disk: it puts the records in a queue with a
  *   ceiling; the adapter writes them in batches. A full queue drops its **oldest** records and
  *   counts them (`droppedOverflow`). With no base the records are discarded and counted.
@@ -184,6 +190,19 @@ export interface TelemetryStore {
    * time. The retention policy that decides the cutoff is not part of the port (Phase 8, P8).
    */
   deleteOlderThan(cutoffUnixNano: bigint): Promise<TelemetryDeleteResult>;
+  /**
+   * The cursor a producer saved with {@link TelemetryStore.writeCursor}, or `null` when it saved
+   * none (or the base was recreated since, which is the point: the cursor lives in the base, so
+   * losing the base makes the producer start again). Rejects with `AdapterUnavailable` when the
+   * base cannot be used. Port 0.2.0.
+   */
+  readCursor(name: string): Promise<number | null>;
+  /**
+   * Saves a cursor (a non-negative integer, such as an event id) under `name`. It first writes
+   * what is queued, so the cursor never runs ahead of the spans written before it; it rejects when
+   * that write failed or the base cannot be used, and then the cursor is not saved. Port 0.2.0.
+   */
+  writeCursor(name: string, value: number): Promise<void>;
   health(): Promise<TelemetryHealth>;
   close(): Promise<void>;
 }
