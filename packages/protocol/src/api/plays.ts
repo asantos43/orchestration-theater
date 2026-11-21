@@ -14,7 +14,15 @@ import { ScenarioParamsSchema } from './scenarios.js';
 /** The `:playId` of the routes of one play. */
 export const PlayParamsSchema = z.strictObject({ playId: z.string().min(1).max(256) });
 
-export const ApiPlaySchema = PlayRecordSchema.omit({ snapshot: true });
+/**
+ * A play as the API shows it: its registry row without the snapshot of the machine, plus `paused`
+ * (P25, N200 item 2; [proposta]): the play got a `PAUSE` and no `RESUME` yet. It is read from the
+ * snapshot, so it holds across a restart of the daemon, and it is `false` once the play finishes.
+ * An interface that connects after the pause reads it here and offers "resume" only then.
+ */
+export const ApiPlaySchema = PlayRecordSchema.omit({ snapshot: true }).extend({
+  paused: z.boolean(),
+});
 export type ApiPlay = z.infer<typeof ApiPlaySchema>;
 
 export const ApiPlayDetailSchema = z.strictObject({

@@ -204,6 +204,7 @@ describe('pause, resume and cancel (N176)', () => {
     createdAt: 1,
     updatedAt: 2,
     finishedAt: null,
+    paused: true,
   };
   const attempt = {
     attemptId: 'play-1/alpha/1',

@@ -1003,6 +1003,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     slash,
     direct,
     trajectory,
+    attempts: execution?.runner,
     config,
     quota,
     usage,

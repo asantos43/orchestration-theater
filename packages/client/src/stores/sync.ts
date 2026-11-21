@@ -139,6 +139,11 @@ export interface DaemonStoresOptions {
    * one, `none` only those asked for with {@link DaemonStores.trackPlay}.
    */
   readonly demands?: 'open' | 'none' | undefined;
+  /**
+   * Which Actors the snapshot reads: `open` (default) the attempts still open of the open plays,
+   * `none` none (the activity then fills from the events alone).
+   */
+  readonly activity?: 'open' | 'none' | undefined;
   /** Reconnection of the stream (`since`, `scenario` and `types` are not for the hub). */
   readonly stream?: Omit<EventStreamOptions, 'since' | 'scenario' | 'types'> | undefined;
   readonly clock?: Clock | undefined;
@@ -531,6 +536,28 @@ export class DaemonStores {
               ),
           );
 
+    // The Actors in flight, for the activity store (P25): the open attempts of the open plays.
+    const attempts =
+      (this.#options.activity ?? 'open') === 'none'
+        ? []
+        : (
+            await Promise.all(
+              plays
+                .filter((play) => play.finishedAt === null)
+                .map((play) =>
+                  this.#limit.run(() =>
+                    this.#readAll((query) =>
+                      this.#client.call(API_ROUTES.listPlayAttempts, {
+                        params: { playId: play.id },
+                        query: { ...query, open: 'true' as const },
+                        signal,
+                      }),
+                    ),
+                  ),
+                ),
+            )
+          ).flat();
+
     // Everything is in hand: install it all at once, with no await in between.
     this.scenarios.setState(installScenarios(scenarios, head), true);
     this.plays.setState(installPlays(plays, head), true);
@@ -538,9 +565,11 @@ export class DaemonStores {
     this.decisions.setState(installDecisions(perScenarioDecisions, head), true);
     this.quotas.setState(installQuotas(quotas, head), true);
     this.orders.setState(installOrders(orders, head), true);
+    // The activity is read again at every install: the buffered events that follow are applied
+    // over it, and every reducer sets a value, so a replay ends in the state the daemon is in.
+    this.activity.setState(installActivity(head, plays, attempts), true);
     if (!this.#recentLoaded) {
       this.events.setState(installRecentEvents(head), true);
-      this.activity.setState(installActivity(head), true);
       this.#recentLoaded = true;
     }
   }
