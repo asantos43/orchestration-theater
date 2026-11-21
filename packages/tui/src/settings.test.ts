@@ -27,7 +27,7 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
-      trajectories: { open: 'last', keep: 5000, diffLines: 200 },
+      trajectories: { open: 'last', keep: 5000, diffLines: 200, follow: 'latest' },
       chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop', history: 40 },
       input: DEFAULT_UI_SETTINGS.input,
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
@@ -43,10 +43,13 @@ describe('parseUiSettings', () => {
   it('reads ui.trajectories (snake_case keys, as the daemon writes them) and falls back key by key', () => {
     expect(
       parseUiSettings({ trajectories: { open: 'all', keep: 1000, diff_lines: 50 } }).trajectories,
-    ).toEqual({ open: 'all', keep: 1000, diffLines: 50 });
+    ).toEqual({ open: 'all', keep: 1000, diffLines: 50, follow: 'latest' });
+    expect(parseUiSettings({ trajectories: { follow: 'direct' } }).trajectories.follow).toBe(
+      'direct',
+    );
     expect(
       parseUiSettings({ trajectories: { open: 'some', keep: 5, diff_lines: 50 } }).trajectories,
-    ).toEqual({ open: 'last', keep: 5000, diffLines: 50 });
+    ).toEqual({ open: 'last', keep: 5000, diffLines: 50, follow: 'latest' });
   });
 
   it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {

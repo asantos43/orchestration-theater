@@ -10,6 +10,7 @@ import {
 } from '@otheater/core';
 import {
   buildTrajectory,
+  isDirectTrajectoryEvent,
   isTrajectoryEvent,
   type ApiDemandDiff,
   type Page,
@@ -73,6 +74,41 @@ export class TrajectoryService {
       }
       if (block.length < SCAN_BLOCK) return { items, nextId: null };
     }
+  }
+
+  /**
+   * The events of the trajectory of a direct session (P27 of docs/18) after `afterId`: the
+   * `direct.session.*` events that name it, oldest first, at most `limit`, with the cursor of
+   * {@link events}. They come from the log, so a session the daemon forgot (closed long ago, or
+   * the daemon restarted) still answers; a session no event names is `NotFound`.
+   */
+  async directEvents(
+    sessionId: string,
+    afterId: number,
+    limit: number,
+  ): Promise<{ readonly items: EventEnvelope[]; readonly nextId: number | null }> {
+    const { events } = this.#deps.store;
+    const items: EventEnvelope[] = [];
+    let cursor = afterId;
+    let nextId: number | null = null;
+    scan: for (;;) {
+      const block = await events.readFrom(cursor, SCAN_BLOCK);
+      if (block.length === 0) break;
+      for (const event of block) {
+        cursor = event.id;
+        if (!isDirectTrajectoryEvent(event.type) || event.payload.sessionId !== sessionId) continue;
+        items.push(event);
+        if (items.length >= limit) {
+          nextId = cursor;
+          break scan;
+        }
+      }
+      if (block.length < SCAN_BLOCK) break;
+    }
+    if (items.length === 0 && afterId === 0) {
+      throw new NotFound(`There is no direct session "${sessionId}"`);
+    }
+    return { items, nextId };
   }
 
   /** The whole trajectory of a play, folded. */
