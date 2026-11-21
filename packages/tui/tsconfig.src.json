@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.test-support.ts",
+    "src/**/*.test-support.tsx"
+  ],
+  "references": [
+    { "path": "../protocol/tsconfig.src.json" },
+    { "path": "../client/tsconfig.src.json" }
+  ]
+}
