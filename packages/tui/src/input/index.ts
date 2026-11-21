@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // The text box of the Producer (N35; P10 of docs/18). P12 puts `TextBox` in the layout.
 export { TextBox, type TextBoxProps } from './text-box.js';
+export { KeyFeed, KeyFeedProvider, useFeedInput, type KeyListener } from './key-feed.js';
 export {
   bindAttachments,
   draftsInText,

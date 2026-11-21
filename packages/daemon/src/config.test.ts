@@ -118,6 +118,17 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
   });
 
+  it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
+    expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
+    expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(
+      'git_root',
+    );
+    expect(parseConfig('ui:\n  newProject:\n    repo: empty\n').ui.newProject.repo).toBe('empty');
+    expect(() => parseConfig('ui:\n  newProject:\n    repo: home\n')).toThrow(
+      /ui\.newProject\.repo/,
+    );
+  });
+
   it('has the defaults of ui.setup, takes its other mode and refuses bad values (P17)', () => {
     expect(parseConfig('').ui.setup).toEqual({ open: 'auto', readTimeoutMs: 5000 });
     const { ui } = parseConfig('ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n');
@@ -1113,6 +1124,7 @@ describe('the direct session (P19, N44, N190)', () => {
       history_max: 200,
       closed_kept: 10,
       idle_timeout: 1_800_000,
+      orphans: 'on_close',
     });
   });
 
@@ -1131,6 +1143,11 @@ describe('the direct session (P19, N44, N190)', () => {
       max_open: 1,
       idle_timeout: null,
     });
+    for (const orphans of ['on_close', 'keep', 'discard', 'off']) {
+      expect(parseConfig(`direct_session:\n  orphans: ${orphans}\n`).direct_session.orphans).toBe(
+        orphans,
+      );
+    }
   });
 
   it('refuses a bad mode, size or key', () => {
@@ -1142,6 +1159,7 @@ describe('the direct session (P19, N44, N190)', () => {
       'direct_session:\n  history_max: 0\n',
       'direct_session:\n  closed_kept: -1\n',
       'direct_session:\n  idle_timeout: soon\n',
+      'direct_session:\n  orphans: sometimes\n',
       'direct_session:\n  other: 1\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);

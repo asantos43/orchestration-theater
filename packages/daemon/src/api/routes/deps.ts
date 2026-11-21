@@ -2,6 +2,7 @@
 import type { Clock, Store } from '@otheater/core';
 import type { BudgetService } from '../../budget/index.js';
 import type { DaemonConfig, PauseMode } from '../../config.js';
+import type { ConfigReloader } from '../../config-reload.js';
 import type { DirectSessionService } from '../../direct/service.js';
 import type { DirectiveService } from '../../directives/index.js';
 import type { AttemptRunner } from '../../execution/attempt-runner.js';
@@ -44,6 +45,11 @@ export interface ReadRouteDeps {
   readonly direct?: DirectSessionService | undefined;
   /** The trajectory of a play (P14 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly trajectory?: TrajectoryService | undefined;
+  /**
+   * The runner of the attempts (P25 of docs/18): the list of the attempts of a play asks it for the
+   * model and the pause of the ones in flight. Absent, the list answers from the registry alone.
+   */
+  readonly attempts?: AttemptRunner | undefined;
 }
 
 /**
@@ -67,6 +73,11 @@ export interface CommandRouteDeps {
    * `roles` into it in place (N188); absent, every edit applies on restart.
    */
   readonly config?: DaemonConfig | undefined;
+  /**
+   * The reload of a write of the file into `config` (P23): the daemon's own, shared with the setup
+   * assistant and the cadastro of an Executor. Absent, the route builds one over `config`.
+   */
+  readonly reloader?: ConfigReloader | undefined;
   /** `api.idempotency_ttl`, read at each command. */
   readonly idempotencyTtlMs: () => number;
   /** The Producer's channel: opens scenarios, attaches files and answers decisions. */

@@ -7,6 +7,7 @@ import {
   type ApiPlay,
   type ApiQuotaStatus,
   type ApiScenario,
+  type TrajectoryEvent,
 } from '@otheater/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ApiClient } from '../client.js';
@@ -59,6 +60,7 @@ import {
   openDiff,
   openTrajectory,
   reduceTrajectories,
+  settleDirectSessions,
   settleDiff,
   settleTrajectory,
   type TrajectoriesState,
@@ -137,6 +139,11 @@ export interface DaemonStoresOptions {
    * one, `none` only those asked for with {@link DaemonStores.trackPlay}.
    */
   readonly demands?: 'open' | 'none' | undefined;
+  /**
+   * Which Actors the snapshot reads: `open` (default) the attempts still open of the open plays,
+   * `none` none (the activity then fills from the events alone).
+   */
+  readonly activity?: 'open' | 'none' | undefined;
   /** Reconnection of the stream (`since`, `scenario` and `types` are not for the hub). */
   readonly stream?: Omit<EventStreamOptions, 'since' | 'scenario' | 'types'> | undefined;
   readonly clock?: Clock | undefined;
@@ -308,19 +315,61 @@ export class DaemonStores {
    * unless `force`. Resolves when the history is installed; the failure is in the store.
    */
   async loadTrajectory(playId: string, options: { readonly force?: boolean } = {}): Promise<void> {
-    const held = this.trajectories.getState().plays[playId];
+    const signal = this.#abort.signal;
+    return this.#loadTrajectory(playId, options, (query) =>
+      this.#client.call(API_ROUTES.listPlayTrajectory, { params: { playId }, query, signal }),
+    );
+  }
+
+  /**
+   * The same for a direct session (P27 of docs/18): the history comes from
+   * `GET /v1/direct/:sessionId/trajectory` and is kept under the session id, with the events of
+   * the stream after it.
+   */
+  async loadDirectTrajectory(
+    sessionId: string,
+    options: { readonly force?: boolean } = {},
+  ): Promise<void> {
+    const signal = this.#abort.signal;
+    return this.#loadTrajectory(sessionId, options, (query) =>
+      this.#client.call(API_ROUTES.listDirectTrajectory, { params: { sessionId }, query, signal }),
+    );
+  }
+
+  async #loadTrajectory(
+    key: string,
+    options: { readonly force?: boolean },
+    read: (query: { limit: number; after?: string }) => Promise<{
+      items: TrajectoryEvent[];
+      nextCursor: string | null;
+    }>,
+  ): Promise<void> {
+    const held = this.trajectories.getState().plays[key];
     if (held !== undefined && held.load !== 'failed' && options.force !== true) return;
     const keep = this.#trajectoryKeep();
-    this.trajectories.setState((state) => openTrajectory(state, playId), true);
+    this.trajectories.setState((state) => openTrajectory(state, key), true);
     try {
-      const signal = this.#abort.signal;
-      const history = await this.#readAll((query) =>
-        this.#client.call(API_ROUTES.listPlayTrajectory, { params: { playId }, query, signal }),
-      );
-      this.trajectories.setState((state) => settleTrajectory(state, playId, history, keep), true);
+      const history = await this.#readAll(read);
+      this.trajectories.setState((state) => settleTrajectory(state, key, history, keep), true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.trajectories.setState((state) => failTrajectory(state, playId, message), true);
+      this.trajectories.setState((state) => failTrajectory(state, key, message), true);
+    }
+  }
+
+  /**
+   * Reads the direct sessions of a scenario (the open ones and the last closed) and notes them, so
+   * a screen can follow the latest. From then on the stream keeps the list. A failure leaves what
+   * the store had: the stream still notes the sessions that open.
+   */
+  async loadDirectSessions(scenarioId: string): Promise<void> {
+    try {
+      const { sessions } = await this.#client.listDirectSessions(scenarioId, {
+        signal: this.#abort.signal,
+      });
+      this.trajectories.setState((state) => settleDirectSessions(state, sessions), true);
+    } catch {
+      // Best effort: the tab shows the play, or what the stream brought.
     }
   }
 
@@ -487,6 +536,28 @@ export class DaemonStores {
               ),
           );
 
+    // The Actors in flight, for the activity store (P25): the open attempts of the open plays.
+    const attempts =
+      (this.#options.activity ?? 'open') === 'none'
+        ? []
+        : (
+            await Promise.all(
+              plays
+                .filter((play) => play.finishedAt === null)
+                .map((play) =>
+                  this.#limit.run(() =>
+                    this.#readAll((query) =>
+                      this.#client.call(API_ROUTES.listPlayAttempts, {
+                        params: { playId: play.id },
+                        query: { ...query, open: 'true' as const },
+                        signal,
+                      }),
+                    ),
+                  ),
+                ),
+            )
+          ).flat();
+
     // Everything is in hand: install it all at once, with no await in between.
     this.scenarios.setState(installScenarios(scenarios, head), true);
     this.plays.setState(installPlays(plays, head), true);
@@ -494,9 +565,11 @@ export class DaemonStores {
     this.decisions.setState(installDecisions(perScenarioDecisions, head), true);
     this.quotas.setState(installQuotas(quotas, head), true);
     this.orders.setState(installOrders(orders, head), true);
+    // The activity is read again at every install: the buffered events that follow are applied
+    // over it, and every reducer sets a value, so a replay ends in the state the daemon is in.
+    this.activity.setState(installActivity(head, plays, attempts), true);
     if (!this.#recentLoaded) {
       this.events.setState(installRecentEvents(head), true);
-      this.activity.setState(installActivity(head), true);
       this.#recentLoaded = true;
     }
   }

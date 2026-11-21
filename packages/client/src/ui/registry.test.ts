@@ -134,4 +134,19 @@ describe('interface registry', () => {
       ),
     ).toThrow(UiRegistryError);
   });
+
+  it('has "new project" in the side bar (P22), remappable and in the palette', () => {
+    const entry = DEFAULT_UI_REGISTRY.entry('sidebar.newProject');
+    expect(entry?.context).toBe('sidebar');
+    expect(entry?.text.key).toBe('actions.sidebar.newProject');
+    expect(entry?.keys.tui?.agents?.default).toEqual(['N']);
+    // No other action of the side bar or of the global keys uses the same combination.
+    const taken = DEFAULT_UI_REGISTRY.entries.filter(
+      (other) =>
+        other.id !== 'sidebar.newProject' &&
+        (other.context === 'sidebar' || other.context === 'global') &&
+        (other.keys.tui?.agents?.default ?? []).includes('N'),
+    );
+    expect(taken).toEqual([]);
+  });
 });

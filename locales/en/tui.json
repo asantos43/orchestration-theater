@@ -64,7 +64,8 @@
     "sidebar": {
       "up": "Move up in the side bar",
       "down": "Move down in the side bar",
-      "activate": "Open the scenario or fold the section"
+      "activate": "Open the scenario or fold the section",
+      "newProject": "Open a new project"
     },
     "panel": {
       "prevTab": "Go to the previous tab",
@@ -188,7 +189,8 @@
       "resize": "Width"
     },
     "sidebar": {
-      "activate": "Open"
+      "activate": "Open",
+      "newProject": "New project"
     },
     "panel": {
       "tabs": "Tabs",
@@ -482,6 +484,17 @@
     "overlay": {
       "closeHint": "{{key}} closes"
     },
+    "newProject": {
+      "title": "New project",
+      "label": "Repository (a folder of a git repository)",
+      "hint": "Enter opens · Esc cancels",
+      "opening": "Opening the project…",
+      "opened": "Project {{name}} open.",
+      "badRepo": "Could not open a project on \"{{repo}}\": it is not a git repository the project can start from.",
+      "failed": "Could not open the project: {{message}}",
+      "noRepo": "Type the repository of the project.",
+      "noConnection": "There is no connection with the daemon."
+    },
     "link": {
       "syncing": "syncing",
       "lost": "connection lost"
@@ -523,6 +536,7 @@
   },
   "trajectories": {
     "play": "Play {{id}}",
+    "direct": "Direct session {{id}}",
     "noScenario": "Select a scenario to see its trajectory.",
     "noPlay": "This scenario has no play yet.",
     "loading": "Reading the trajectory...",
@@ -531,6 +545,7 @@
     "empty": "Nothing happened in this play yet.",
     "dropped": "The first {{count}} events were left out (ui.trajectories.keep).",
     "attempt": "Attempt {{n}} · demand {{demand}}",
+    "session": "Session",
     "turn": "Turn {{n}}",
     "turns_one": "{{count}} turn",
     "turns_other": "{{count}} turns",
@@ -547,6 +562,8 @@
     },
     "entry": {
       "message": "say",
+      "prompt": "you",
+      "command": "run",
       "thought": "think",
       "terminal": "term",
       "toolCall": "call",

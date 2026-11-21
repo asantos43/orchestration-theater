@@ -83,11 +83,16 @@ export interface UiTuiLayoutSettings {
 export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
 export type TrajectoryOpenMode = (typeof TRAJECTORY_OPEN_MODES)[number];
 
+export const TRAJECTORY_FOLLOW_MODES = ['latest', 'play', 'direct'] as const;
+export type TrajectoryFollowMode = (typeof TRAJECTORY_FOLLOW_MODES)[number];
+
 /** `ui.trajectories` (P14): which steps of the Trajectories tab start open, how much it keeps and shows of a diff. */
 export interface UiTrajectoriesSettings {
   readonly open: TrajectoryOpenMode;
   readonly keep: number;
   readonly diffLines: number;
+  /** P27: what the tab follows, a play or a direct session. */
+  readonly follow: TrajectoryFollowMode;
 }
 
 export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
@@ -129,6 +134,14 @@ export interface UiSetupSettings {
   readonly readTimeoutMs: number;
 }
 
+export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
+export type NewProjectRepoMode = (typeof NEW_PROJECT_REPO_MODES)[number];
+
+/** `ui.newProject` (P22): what the prompt of "new project" starts with. */
+export interface UiNewProjectSettings {
+  readonly repo: NewProjectRepoMode;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -147,6 +160,7 @@ export interface UiSettings {
   readonly clipboardCopy: ClipboardCopyMode;
   readonly tuiMouse: UiTuiMouseSettings;
   readonly setup: UiSetupSettings;
+  readonly newProject: UiNewProjectSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -183,6 +197,7 @@ export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
   open: 'last',
   keep: 5000,
   diffLines: 200,
+  follow: 'latest',
 };
 
 export const DEFAULT_CHAT: UiChatSettings = {
@@ -200,6 +215,8 @@ export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
 
 export const DEFAULT_SETUP: UiSetupSettings = { open: 'auto', readTimeoutMs: 5000 };
 
+export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd' };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -215,6 +232,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   clipboardCopy: 'osc52',
   tuiMouse: DEFAULT_TUI_MOUSE,
   setup: DEFAULT_SETUP,
+  newProject: DEFAULT_NEW_PROJECT,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -274,6 +292,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const clipboard = record(field(source, 'clipboard'));
   const tuiMouse = record(field(source, 'tuiMouse'));
   const setup = record(field(source, 'setup'));
+  const newProject = record(field(source, 'newProject'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -348,6 +367,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         10_000,
         DEFAULT_TRAJECTORIES.diffLines,
       ),
+      follow: oneOf(
+        field(trajectories, 'follow'),
+        TRAJECTORY_FOLLOW_MODES,
+        DEFAULT_TRAJECTORIES.follow,
+      ),
     },
     chat: {
       queue: oneOf(field(chat, 'queue'), CHAT_QUEUE_MODES, DEFAULT_CHAT.queue),
@@ -386,6 +410,9 @@ export function parseUiSettings(ui: unknown): UiSettings {
         60_000,
         DEFAULT_SETUP.readTimeoutMs,
       ),
+    },
+    newProject: {
+      repo: oneOf(field(newProject, 'repo'), NEW_PROJECT_REPO_MODES, DEFAULT_NEW_PROJECT.repo),
     },
   };
 }

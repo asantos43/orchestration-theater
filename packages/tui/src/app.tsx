@@ -14,6 +14,7 @@ import {
 import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import { Shell } from './layout/shell.js';
 import type { TabContentMap } from './layout/tab-content.js';
+import { KeyFeedProvider } from './input/key-feed.js';
 import type { LocaleController } from './locale.js';
 import { MouseLayer, type MouseLayerProps, type MouseTerminal } from './mouse/index.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
@@ -49,6 +50,8 @@ export interface AppProps {
   readonly mouseTerminal?: MouseTerminal | undefined;
   /** The ports of the copy (the tool of the system, the environment); the real ones by default. For tests. */
   readonly mouseClipboard?: MouseLayerProps['clipboard'];
+  /** The folder the TUI was opened in, where "new project" starts (P22); default: this process's. For tests. */
+  readonly cwd?: string | undefined;
 }
 
 /**
@@ -130,6 +133,7 @@ function Screen(props: AppProps): ReactNode {
         tabContent={props.tabContent}
         setupApi={props.setupApi}
         setupGate={setupGate}
+        cwd={props.cwd}
       />
     );
   }
@@ -174,7 +178,9 @@ export function App(props: AppProps): ReactNode {
           terminal={props.mouseTerminal}
           clipboard={props.mouseClipboard}
         >
-          <Screen {...props} />
+          <KeyFeedProvider>
+            <Screen {...props} />
+          </KeyFeedProvider>
         </MouseLayer>
       </RenderControlProvider>
     </I18nextProvider>

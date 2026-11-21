@@ -17,6 +17,7 @@ import { bindAttachments, TextBox, type HistoryStore, type InputSettings } from 
 import type { KeyEvent, TuiKeymap } from '../keys/use-keymap.js';
 import { keyLabel } from '../keys/labels.js';
 import type { ChatMessage } from '../layout/chat.js';
+import { resolveRepo } from '../layout/new-project.js';
 import { clip } from '../layout/text.js';
 import type { UiChatSettings } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
@@ -33,6 +34,7 @@ import {
 } from './card.js';
 import { messagesOf, waitReason, type Translate } from './lines.js';
 import { createChatState } from './model.js';
+import { newProjectLine } from './new-project.js';
 import { isShellLine, oneLine, SHELL_COMMAND_SHOWN } from './shell.js';
 import { ChatSession, type ChatSocketLike } from './session.js';
 import { completionOf, suggestionsFor, typingCommandName } from './suggest.js';
@@ -60,6 +62,18 @@ export interface ChatPanelProps {
   readonly height: number;
   /** The chat has the keyboard: it is the focused area and no overlay is open. */
   readonly active: boolean;
+  /** [P22] What `/new project` needs from the shell: where the TUI was opened and the way to the prompt. */
+  readonly newProject?: ChatNewProject | undefined;
+}
+
+/** The shell's side of `/new project` (P22 of Phase 7). */
+export interface ChatNewProject {
+  /** The folder the TUI was opened in: a relative repository starts here. */
+  readonly cwd: string;
+  /** Opens the prompt that asks for the repository (the line had none). */
+  readonly prompt: () => void;
+  /** The command opened the project scenario `scenarioId`: the screen goes to it. */
+  readonly opened: (scenarioId: string) => void;
 }
 
 export interface ChatPanel {
@@ -100,6 +114,10 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
   const owner = useRef<ApiClient | undefined>(undefined);
   const socketOptions = config.socket;
   const queueMode = config.chat.queue;
+  // The sessions outlive a render: they call the latest `opened` of the shell through this ref.
+  const newProject = props.newProject;
+  const projectOpened = useRef(newProject?.opened);
+  projectOpened.current = newProject?.opened;
   const historyCount = config.chat.history;
   const session = useMemo((): ChatSession | undefined => {
     if (scenarioId === undefined || client === undefined) return undefined;
@@ -120,6 +138,9 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         }),
       now: () => Date.now(),
       queue: queueMode,
+      onProjectOpened: (opened) => {
+        projectOpened.current?.(opened);
+      },
     });
     sessions.current.set(scenarioId, made);
     return made;
@@ -266,6 +287,17 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       if (session === undefined || upload === undefined) {
         throw new Error(t('layout.chat.noConnection'));
       }
+      const project = newProject === undefined ? undefined : newProjectLine(message.text);
+      if (newProject !== undefined && project !== undefined) {
+        // The daemon does not know the folder the TUI was opened in: the prompt asks for the
+        // repository, and a typed one goes as an absolute path.
+        if (project.repo === '') {
+          newProject.prompt();
+          return;
+        }
+        session.submit(`/new project ${resolveRepo(project.repo, newProject.cwd)}`);
+        return;
+      }
       if (isShellLine(message.text)) {
         // Before the upload: a `!` command takes no attachment, and a draft sent then would be orphaned.
         if (message.attachments.length > 0) throw new Error(t('layout.chat.shellNoAttachments'));
@@ -275,7 +307,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       const bound = await bindAttachments(message, upload);
       session.submit(bound.text, bound.attachments);
     },
-    [session, upload, t],
+    [session, upload, t, newProject],
   );
 
   // ---- What it says of the scenario -------------------------------------------------------------

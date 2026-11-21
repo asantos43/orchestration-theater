@@ -12,7 +12,7 @@
     "resume": "Retoma as peças pausadas do cenário",
     "cancel": "Cancela as peças abertas do cenário (pede confirmação)",
     "stop": "Para a resposta que o Diretor está dando; as peças seguem",
-    "new": "Abre um novo cenário de conversa",
+    "new": "Abre um novo cenário de conversa, ou de projeto com \"new project <repo>\"",
     "attach": "Anexa um arquivo ao cenário",
     "export": "Exporta o cenário com as peças e as decisões",
     "model": "Mostra o modelo do Diretor",
@@ -29,7 +29,7 @@
     "logs": "[n]",
     "pause": "[motivo]",
     "cancel": "[motivo]",
-    "new": "[nome]",
+    "new": "[nome | project <repo>]",
     "attach": "<caminho>",
     "config": "[chave]",
     "template": "<texto>",
@@ -52,6 +52,10 @@
     "clientNotStarted": "O Diretor ainda não teve o primeiro turno: o comando do cliente iria dentro do primeiro prompt.",
     "clientNoSession": "O Diretor não tem sessão aberta agora (dorme ou ainda não começou).",
     "noChannel": "Este daemon não fala com o Diretor: ele não roda peças.",
+    "newProject": {
+      "noRepo": "/new project precisa do repositório: /new project <repo>.",
+      "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar."
+    },
     "noRunner": "Este daemon não roda peças.",
     "notAvailable": {
       "kind": "os cenários deste tipo não têm peças",
@@ -131,7 +135,8 @@
       "idle": "O Diretor não está dando uma resposta."
     },
     "new": {
-      "done": "Cenário {{id}} aberto."
+      "done": "Cenário {{id}} aberto.",
+      "project": "Projeto {{name}} ({{id}}) aberto."
     },
     "attach": {
       "done": "{{name}} anexado como {{id}}."

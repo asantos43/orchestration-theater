@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupApps, renderApp, type RenderedApp } from '../../ink.test-support.js';
 import { saveActiveTab } from '../../layout/use-layout.js';
 import { fakeOnline, play, scenario, type FakeOnline } from '../../layout.test-support.js';
-import { DEFAULT_UI_SETTINGS, type TrajectoryOpenMode, type UiSettings } from '../../settings.js';
+import {
+  DEFAULT_UI_SETTINGS,
+  type TrajectoryFollowMode,
+  type TrajectoryOpenMode,
+  type UiSettings,
+} from '../../settings.js';
 import { DEMAND_DIFF, fakePlayEvents, trajectoryEvent } from './trajectory.test-support.js';
 
 /**
@@ -17,7 +22,7 @@ afterEach(cleanupApps);
 
 const settings = (open: TrajectoryOpenMode, diffLines = 200): UiSettings => ({
   ...DEFAULT_UI_SETTINGS,
-  trajectories: { open, keep: 5000, diffLines },
+  trajectories: { open, keep: 5000, diffLines, follow: 'latest' },
 });
 
 interface Opened {
@@ -190,4 +195,110 @@ describe('the Trajectories tab', () => {
     online.stores.plays.setState({ byId: { P9: running } } as never);
     await app.waitForText('Play P9');
   });
+});
+
+/** The events of a direct session of the fake-agent as the log keeps them: no play, no attempt. */
+function directEvents(sessionId: string, at: number) {
+  const event = (id: number, type: string, payload: Record<string, unknown>) => ({
+    id,
+    type,
+    timestamp: at + id,
+    payload: { sessionId, ...payload },
+    playId: undefined,
+    attemptId: undefined,
+  });
+  return [
+    event(1, 'direct.session.opened', {
+      profile: 'fake/one',
+      client: 'fake',
+      workspace: 'worktree',
+      branch: `direct/${sessionId}`,
+    }),
+    event(2, 'direct.session.message', { turn: 1, from: 'producer', text: 'rename the helper' }),
+    event(3, 'direct.session.message', { turn: 1, from: 'actor', text: 'Renamed it everywhere' }),
+    event(4, 'direct.session.turn_finished', { turn: 1, stopReason: 'end_turn' }),
+    event(5, 'direct.session.closed', { reason: 'closed', turns: 1, work: 'kept' }),
+  ];
+}
+
+describe('the direct session in the Trajectories tab (P27, N206)', () => {
+  const SESSION = 'direct-0a1b2c3d';
+
+  async function openDirect(
+    follow: TrajectoryFollowMode,
+    withPlay: { readonly updatedAt: number } | undefined,
+    sessionAt: number,
+  ): Promise<RenderedApp> {
+    const online = fakeOnline();
+    const { stores } = online;
+    stores.loadDirectSessions = vi.fn(() => Promise.resolve());
+    stores.loadDirectTrajectory = vi.fn(() => Promise.resolve());
+    stores.loadTrajectory = vi.fn(() => Promise.resolve());
+    stores.loadDemandDiff = () => Promise.resolve();
+    const only = scenario('Billing API');
+    stores.scenarios.setState({ byId: { [only.id]: only } } as never);
+    const state: Record<string, unknown> = {};
+    if (withPlay !== undefined) {
+      stores.plays.setState({
+        byId: { P1: play(only.id, { id: 'P1', updatedAt: withPlay.updatedAt }) },
+      } as never);
+      state.P1 = { load: 'loaded', events: fakePlayEvents(), dropped: 0, error: undefined };
+    }
+    state[SESSION] = {
+      load: 'loaded',
+      events: directEvents(SESSION, sessionAt),
+      dropped: 0,
+      error: undefined,
+    };
+    stores.trajectories.setState({
+      plays: state,
+      diffs: {},
+      direct: {
+        [SESSION]: { sessionId: SESSION, scenarioId: only.id, at: sessionAt + 5, closed: true },
+      },
+    } as never);
+    const app = await renderApp({
+      connector: online.connector,
+      size: { columns: 140, rows: 60 },
+      settings: {
+        ...DEFAULT_UI_SETTINGS,
+        trajectories: { open: 'all', keep: 5000, diffLines: 200, follow },
+      },
+    });
+    await app.waitForText('Billing API');
+    const layout = online.layouts[0];
+    if (layout === undefined) throw new Error('the layout was not opened');
+    layout.update({ openTabs: ['overview', 'trajectories'] });
+    saveActiveTab(layout, 'trajectories');
+    return app;
+  }
+
+  it('shows a closed direct session: what the Producer asked, what the Actor said and how it ended', async () => {
+    const app = await openDirect('latest', undefined, 1_000);
+    const frame = await app.waitForText(`Direct session ${SESSION}`);
+    expect(frame).toContain('rename the helper');
+    expect(frame).toContain('Renamed it everywhere');
+    expect(frame).toContain('closed');
+    expect(frame).not.toContain('demand');
+    expect(frame).toContain('Session');
+  });
+
+  it(
+    'follows the session that moved last in latest mode, the play in play mode',
+    { timeout: 60_000 },
+    async () => {
+      // The play was updated after the session: latest follows the play.
+      const playLast = await openDirect('latest', { updatedAt: 9_999_999 }, 1_000);
+      expect(await playLast.waitForText('Play P1')).not.toContain('Direct session');
+      cleanupApps();
+      const directLast = await openDirect('latest', { updatedAt: 10 }, 1_000);
+      expect(await directLast.waitForText(`Direct session ${SESSION}`)).not.toContain('Play P1');
+      cleanupApps();
+      const onlyPlay = await openDirect('play', { updatedAt: 10 }, 1_000);
+      expect(await onlyPlay.waitForText('Play P1')).not.toContain('Direct session');
+      cleanupApps();
+      const onlyDirect = await openDirect('direct', { updatedAt: 9_999_999 }, 1_000);
+      await onlyDirect.waitForText(`Direct session ${SESSION}`);
+    },
+  );
 });

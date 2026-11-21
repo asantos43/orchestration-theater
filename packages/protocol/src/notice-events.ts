@@ -72,7 +72,13 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  * - `process_not_tracked`: a process a client started is not written down, so the next daemon cannot
  *   find it as an orphan;
  * - `effect_unsettled`: an effect with an intent and no end could not be settled by its verifier, so
- *   the Producer is asked (the play is the `playId` of the envelope).
+ *   the Producer is asked (the play is the `playId` of the envelope);
+ * - `direct_orphan_found` (P27, N206; [proposta]): at start-up, the worktree of a direct session
+ *   with no live session was found and `direct_session.orphans` leaves it (`subject`: its branch;
+ *   `detail`: where it is, under the data folder);
+ * - `direct_orphan_removed` (P27): the same worktree was removed, with its branch;
+ * - `direct_orphan_failed` (P27): it could not be removed, or it was not safe to remove (a link, a
+ *   folder that git does not list, a branch that is not its own), so it was left alone.
  * A failed backup is `daemon.backup` with `ok: false`, and the counts of a recovery are
  * `daemon.recovered`: neither is repeated here.
  */
@@ -81,6 +87,9 @@ export const RECOVERY_NOTICE_KINDS = [
   'retention_remove_failed',
   'process_not_tracked',
   'effect_unsettled',
+  'direct_orphan_found',
+  'direct_orphan_removed',
+  'direct_orphan_failed',
 ] as const;
 export type RecoveryNoticeKind = (typeof RECOVERY_NOTICE_KINDS)[number];
 

@@ -189,16 +189,26 @@ export const UI_TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
 export type UiTrajectoryOpenMode = (typeof UI_TRAJECTORY_OPEN_MODES)[number];
 
 /**
+ * What the Trajectories tab follows (P27 of docs/18). `latest`: whichever of the latest play and the
+ * latest direct session of the scenario moved last; `play`: always the latest play; `direct`: the
+ * latest direct session, and the latest play when the scenario has none. [proposta]
+ */
+export const UI_TRAJECTORY_FOLLOW_MODES = ['latest', 'play', 'direct'] as const;
+export type UiTrajectoryFollowMode = (typeof UI_TRAJECTORY_FOLLOW_MODES)[number];
+
+/**
  * `ui.trajectories` (architecture 5.13, P14 of docs/18): the Trajectories tab. `open`: which steps
  * (the attempts and their turns) start open, `last` by default, and a press of Enter on a step
  * flips what it started as; `keep`: how many events of a play the interface keeps to draw its
  * trajectory (5000), the oldest go first; `diff_lines`: how many lines of a demand diff the tab
- * shows (200). The ranges and defaults are [proposta].
+ * shows (200); `follow`: what the tab follows, a play or a direct session (`latest`). The ranges and
+ * defaults are [proposta].
  */
 export const UiTrajectoriesConfigSchema = z.strictObject({
   open: z.enum(UI_TRAJECTORY_OPEN_MODES).default('last'),
   keep: z.int().min(100).max(100_000).default(5000),
   diff_lines: z.int().min(10).max(10_000).default(200),
+  follow: z.enum(UI_TRAJECTORY_FOLLOW_MODES).default('latest'),
 });
 export type UiTrajectoriesConfig = z.output<typeof UiTrajectoriesConfigSchema>;
 
@@ -301,3 +311,23 @@ export const UiSetupConfigSchema = z.strictObject({
   readTimeoutMs: z.int().min(100).max(60_000).default(5000),
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
+
+// ---- A new project from the terminal interface (N208; P22 of docs/18) ---------------------------
+
+/**
+ * Where the repository of a new project comes from when the person does not type one.
+ * `cwd`: the folder the TUI was opened in; `git_root`: the root of the Git repository that folder
+ * belongs to (the folder itself when it is in none); `empty`: nothing, the person types it.
+ */
+export const UI_NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
+export type UiNewProjectRepoMode = (typeof UI_NEW_PROJECT_REPO_MODES)[number];
+
+/**
+ * `ui.newProject` (P22), [proposta]: the architecture fixes that the TUI creates a project and asks
+ * for the repository, and not what the prompt starts with, so the pattern is a key with modes:
+ * `repo` is `cwd` (default), `git_root` or `empty`.
+ */
+export const UiNewProjectConfigSchema = z.strictObject({
+  repo: z.enum(UI_NEW_PROJECT_REPO_MODES).default('cwd'),
+});
+export type UiNewProjectConfig = z.output<typeof UiNewProjectConfigSchema>;

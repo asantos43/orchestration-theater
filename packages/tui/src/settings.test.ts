@@ -27,7 +27,7 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
-      trajectories: { open: 'last', keep: 5000, diffLines: 200 },
+      trajectories: { open: 'last', keep: 5000, diffLines: 200, follow: 'latest' },
       chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop', history: 40 },
       input: DEFAULT_UI_SETTINGS.input,
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
@@ -36,16 +36,20 @@ describe('parseUiSettings', () => {
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
       setup: { open: 'auto', readTimeoutMs: 5000 },
+      newProject: { repo: 'cwd' },
     });
   });
 
   it('reads ui.trajectories (snake_case keys, as the daemon writes them) and falls back key by key', () => {
     expect(
       parseUiSettings({ trajectories: { open: 'all', keep: 1000, diff_lines: 50 } }).trajectories,
-    ).toEqual({ open: 'all', keep: 1000, diffLines: 50 });
+    ).toEqual({ open: 'all', keep: 1000, diffLines: 50, follow: 'latest' });
+    expect(parseUiSettings({ trajectories: { follow: 'direct' } }).trajectories.follow).toBe(
+      'direct',
+    );
     expect(
       parseUiSettings({ trajectories: { open: 'some', keep: 5, diff_lines: 50 } }).trajectories,
-    ).toEqual({ open: 'last', keep: 5000, diffLines: 50 });
+    ).toEqual({ open: 'last', keep: 5000, diffLines: 50, follow: 'latest' });
   });
 
   it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {
@@ -123,6 +127,7 @@ describe('parseUiSettings', () => {
       clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
       tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
       setup: DEFAULT_UI_SETTINGS.setup,
+      newProject: DEFAULT_UI_SETTINGS.newProject,
     });
   });
 
@@ -154,6 +159,16 @@ describe('parseUiSettings', () => {
       DEFAULT_UI_SETTINGS.setup,
     );
     expect(parseUiSettings({ setup: 3 }).setup).toEqual(DEFAULT_UI_SETTINGS.setup);
+  });
+
+  it('reads ui.newProject of P22 and falls back key by key', () => {
+    expect(parseUiSettings({}).newProject).toEqual({ repo: 'cwd' });
+    expect(parseUiSettings({ newProject: { repo: 'git_root' } }).newProject.repo).toBe('git_root');
+    expect(parseUiSettings({ newProject: { repo: 'empty' } }).newProject.repo).toBe('empty');
+    expect(parseUiSettings({ newProject: { repo: 'home' } }).newProject).toEqual(
+      DEFAULT_UI_SETTINGS.newProject,
+    );
+    expect(parseUiSettings({ newProject: 3 }).newProject).toEqual(DEFAULT_UI_SETTINGS.newProject);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {
