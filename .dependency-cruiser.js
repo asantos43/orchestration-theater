@@ -198,7 +198,9 @@ export default {
     // Excluding `dist/` would drop those edges from the graph and hide them from every rule, so
     // build output is kept as leaves (not followed) and only `coverage/` is excluded.
     doNotFollow: { path: '(^|/)node_modules/|/dist(-test)?/' },
-    exclude: { path: '(^|/)coverage/' },
+    // `packages/tui/patches/ink/` is a copy of a file of Ink: its imports (Ink's own dependencies)
+    // resolve where Node loads it, inside `node_modules/ink`, not next to the copy.
+    exclude: { path: '(^|/)coverage/|^packages/tui/patches/ink/' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {
