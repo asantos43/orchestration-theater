@@ -517,6 +517,42 @@ ${mode === undefined || mode === '' ? '' : `    mode: ${json(mode)}\n`}`);
                   `on timeout, client ${table}: ${String(rows.length)} in all, ${String(ofPlay(rows))} with the play`,
                 );
               }
+              // The metric points: their ids, their names and the KEYS of their attributes and
+              // resources (never the values), against the resources of the client records that
+              // did get the play.
+              const metrics = client(read.metric_points);
+              const set = (rows: Row[], column: string): number =>
+                rows.filter((row) => row[column] !== null && row[column] !== undefined).length;
+              const withPlay = new Set(
+                [...client(read.spans), ...client(read.log_records)]
+                  .filter((row) => row.play_id === playId)
+                  .map((row) => row.resource_id),
+              );
+              const metricResources = new Set(metrics.map((row) => row.resource_id));
+              const keysOf = (rows: Row[]): string =>
+                [
+                  ...new Set(
+                    rows.flatMap((row) => {
+                      try {
+                        return Object.keys(JSON.parse(String(row.attributes)) as object);
+                      } catch {
+                        return [];
+                      }
+                    }),
+                  ),
+                ]
+                  .sort()
+                  .join(',');
+              log(
+                `on timeout, client metric points: session ${String(set(metrics, 'session_id'))}, attempt ${String(set(metrics, 'attempt_id'))}, scenario ${String(set(metrics, 'scenario_id'))}; resources ${String(metricResources.size)}, of them shared with the records of the play ${String([...metricResources].filter((id) => withPlay.has(id)).length)}`,
+              );
+              log(
+                `on timeout, metric names: ${[...new Set(metrics.map((row) => String(row.name)))].sort().join(',')}`,
+              );
+              log(`on timeout, metric attribute keys: ${keysOf(metrics)}`);
+              log(
+                `on timeout, metric resource keys: ${keysOf((read.resources ?? []).filter((row) => metricResources.has(row.id)))}`,
+              );
               log(
                 `on timeout, the play span: ${(read.spans ?? []).some((row) => row.name === SPAN_NAME.play && row.play_id === playId) ? 'present' : 'absent'}; resources: ${String((read.resources ?? []).length)} (${String(own.size)} of the daemon)`,
               );
