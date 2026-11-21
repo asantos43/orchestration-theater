@@ -27,6 +27,8 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
+      overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
+      usage: { groupBy: 'profile' },
     });
   });
 
@@ -79,6 +81,8 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
+      overview: DEFAULT_UI_SETTINGS.overview,
+      usage: DEFAULT_UI_SETTINGS.usage,
     });
   });
 

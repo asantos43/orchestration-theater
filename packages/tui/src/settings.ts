@@ -7,6 +7,14 @@
  * default here, and nothing throws. This package never imports the daemon, so the defaults are
  * repeated on purpose.
  */
+import {
+  DEFAULT_OVERVIEW_SETTINGS,
+  DEFAULT_USAGE_SETTINGS,
+  parseOverviewSettings,
+  parseUsageSettings,
+  type OverviewSettings,
+  type UsageSettings,
+} from './tabs/settings.js';
 
 export const KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export type KeyRenderMode = (typeof KEY_RENDER_MODES)[number];
@@ -71,6 +79,8 @@ export interface UiSettings {
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  readonly overview: OverviewSettings;
+  readonly usage: UsageSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -108,6 +118,8 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  overview: DEFAULT_OVERVIEW_SETTINGS,
+  usage: DEFAULT_USAGE_SETTINGS,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -226,5 +238,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
     },
+    overview: parseOverviewSettings(field(source, 'overview')),
+    usage: parseUsageSettings(field(source, 'usage')),
   };
 }

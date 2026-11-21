@@ -5,9 +5,11 @@ import {
   UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
+  UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiUsageConfigSchema,
 } from './ui-config.js';
 
 describe('ui.* schemas of the terminal', () => {
@@ -81,5 +83,20 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiInputConfigSchema.safeParse({ image: { tool: 'gimp' } }).success).toBe(false);
     expect(UiInputConfigSchema.safeParse({ maxVisibleLines: 0 }).success).toBe(false);
     expect(UiInputConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
+  });
+
+  it('has the defaults of the Overview and Usage tabs and refuses what is out of range', () => {
+    expect(UiOverviewConfigSchema.parse({})).toEqual({
+      confirm: 'always',
+      recentEvents: 8,
+      hiddenEvents: ['session.update'],
+    });
+    expect(UiOverviewConfigSchema.parse({ confirm: 'off' }).recentEvents).toBe(8);
+    expect(UiOverviewConfigSchema.safeParse({ confirm: 'never' }).success).toBe(false);
+    expect(UiOverviewConfigSchema.safeParse({ recentEvents: 0 }).success).toBe(false);
+    expect(UiOverviewConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({})).toEqual({ groupBy: 'profile' });
+    expect(UiUsageConfigSchema.parse({ groupBy: 'none' }).groupBy).toBe('none');
+    expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
   });
 });
