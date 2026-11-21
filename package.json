@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:affected": "bash tools/ci/test-affected.sh",
     "api:catalog": "vitest run packages/protocol/src/api/catalog.test.ts -u",
     "deps": "depcruise packages --config .dependency-cruiser.js",
     "notices": "node tools/verify/dist/cli.js notices",
