@@ -4,6 +4,7 @@ import { DAEMON_EVENT_DEFINITIONS } from './events.js';
 import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
+  TelemetryPurgedPayloadSchema,
   TelemetryReceiverStartedPayloadSchema,
   TelemetryRedactedPayloadSchema,
   TelemetryStoreResetPayloadSchema,
@@ -116,5 +117,45 @@ describe('telemetry.export_failed', () => {
       TelemetryExportFailedPayloadSchema.safeParse({ ...ok, headers: { Authorization: 'x' } })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('telemetry.purged', () => {
+  const ok = {
+    reason: 'age',
+    rows: 12,
+    spans: 10,
+    metrics: 1,
+    logs: 1,
+    bytes: 4096,
+    fileBytes: 8192,
+    compacted: false,
+    fromMs: 1_700_000_000_000,
+    untilMs: 1_700_086_400_000,
+    readyThrough: '2026-11-10',
+  };
+
+  it('is in the event catalog at schemaVersion 1', () => {
+    const def = DAEMON_EVENT_DEFINITIONS.find((d) => d.type === 'telemetry.purged');
+    expect(def?.schemaVersion).toBe(1);
+  });
+
+  it('carries counts, bytes and the period, never a record', () => {
+    expect(TelemetryPurgedPayloadSchema.parse(ok)).toEqual(ok);
+    expect(
+      TelemetryPurgedPayloadSchema.safeParse({
+        ...ok,
+        reason: 'size',
+        fromMs: null,
+        fileBytes: null,
+        readyThrough: null,
+      }).success,
+    ).toBe(true);
+    expect(TelemetryPurgedPayloadSchema.safeParse({ ...ok, reason: 'other' }).success).toBe(false);
+    expect(TelemetryPurgedPayloadSchema.safeParse({ ...ok, rows: 0 }).success).toBe(false);
+    expect(
+      TelemetryPurgedPayloadSchema.safeParse({ ...ok, readyThrough: 'yesterday' }).success,
+    ).toBe(false);
+    expect(TelemetryPurgedPayloadSchema.safeParse({ ...ok, spansList: [] }).success).toBe(false);
   });
 });

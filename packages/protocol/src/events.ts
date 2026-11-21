@@ -88,6 +88,7 @@ import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif
 import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
+  TelemetryPurgedPayloadSchema,
   TelemetryReceiverStartedPayloadSchema,
   TelemetryRedactedPayloadSchema,
   TelemetryStoreResetPayloadSchema,
@@ -713,6 +714,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: TelemetryExportFailedPayloadSchema,
   }),
   defineEventType({
+    type: 'telemetry.purged',
+    schemaVersion: 1,
+    payload: TelemetryPurgedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.started',
     schemaVersion: 1,
     payload: ApiStartedPayloadSchema,
@@ -1021,6 +1027,7 @@ export type TelemetryReceiverStartedPayload = DaemonEventPayloads['telemetry.rec
 export type TelemetryBatchRejectedPayload = DaemonEventPayloads['telemetry.batch_rejected'];
 export type TelemetryRedactedPayload = DaemonEventPayloads['telemetry.redacted'];
 export type TelemetryExportFailedPayload = DaemonEventPayloads['telemetry.export_failed'];
+export type TelemetryPurgedPayload = DaemonEventPayloads['telemetry.purged'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];

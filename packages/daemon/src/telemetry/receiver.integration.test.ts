@@ -98,6 +98,12 @@ class RecordingStore implements TelemetryStore {
   deleteOlderThan() {
     return Promise.resolve({ spans: 0, metrics: 0, logs: 0 });
   }
+  footprint() {
+    return Promise.resolve({ usedBytes: 0, fileBytes: null, oldestUnixNano: null });
+  }
+  compact(): Promise<void> {
+    return Promise.resolve();
+  }
   replaceRollupDay() {
     return Promise.resolve();
   }

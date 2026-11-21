@@ -4,6 +4,7 @@ import type {
   RollupRow,
   TelemetryBatch,
   TelemetryDeleteResult,
+  TelemetryFootprint,
   TelemetryHealth,
   TelemetryLogRecord,
   TelemetryMetricPoint,
@@ -24,6 +25,16 @@ import type {
  * the real adapter, on a real file, is checked in the tests of the adapter.
  */
 export class MemoryTelemetryStore implements TelemetryStore {
+  /**
+   * What a record weighs in `footprint()` (port 0.4.0): the real base measures pages, this one
+   * counts records, so a test of the size cap decides the sizes. The file keeps the high-water
+   * mark until `compact()`, as the real file does.
+   */
+  readonly #bytesPerRecord: number;
+  #highWater = 0;
+  /** Times `compact()` ran, for the tests. */
+  compactions = 0;
+
   readonly #spans = new Map<string, TelemetrySpan>();
   /** Row ids by signal, as the real base gives them (they only grow, even after a delete). */
   readonly #spanRows = new Map<string, number>();
@@ -35,6 +46,14 @@ export class MemoryTelemetryStore implements TelemetryStore {
   #readyThrough: string | null = null;
   #resets = 0;
   #closed = false;
+
+  constructor(options: { readonly bytesPerRecord?: number } = {}) {
+    this.#bytesPerRecord = options.bytesPerRecord ?? 1024;
+  }
+
+  #usedBytes(): number {
+    return (this.#spans.size + this.#metrics.length + this.#logs.length) * this.#bytesPerRecord;
+  }
 
   write(batch: TelemetryBatch): TelemetryWriteReceipt {
     if (this.#closed) return { accepted: 0, dropped: (batch.spans ?? []).length };
@@ -51,6 +70,7 @@ export class MemoryTelemetryStore implements TelemetryStore {
     for (const record of batch.logs ?? []) {
       this.#logs.push({ rowId: this.#nextRow.logs++, record });
     }
+    this.#highWater = Math.max(this.#highWater, this.#usedBytes());
     return {
       accepted:
         (batch.spans ?? []).length + (batch.metrics ?? []).length + (batch.logs ?? []).length,
@@ -203,7 +223,46 @@ export class MemoryTelemetryStore implements TelemetryStore {
         spans += 1;
       }
     }
-    return Promise.resolve({ spans, metrics: 0, logs: 0 });
+    const metrics = this.#metrics.length;
+    this.#metrics.splice(
+      0,
+      this.#metrics.length,
+      ...this.#metrics.filter((row) => row.record.timeUnixNano >= cutoffUnixNano),
+    );
+    const logs = this.#logs.length;
+    this.#logs.splice(
+      0,
+      this.#logs.length,
+      ...this.#logs.filter((row) => row.record.timeUnixNano >= cutoffUnixNano),
+    );
+    return Promise.resolve({
+      spans,
+      metrics: metrics - this.#metrics.length,
+      logs: logs - this.#logs.length,
+    });
+  }
+
+  footprint(): Promise<TelemetryFootprint> {
+    const times = [
+      ...[...this.#spans.values()].map((span) => span.endTimeUnixNano),
+      ...this.#metrics.map((row) => row.record.timeUnixNano),
+      ...this.#logs.map((row) => row.record.timeUnixNano),
+    ];
+    const oldest = times.reduce<bigint | null>(
+      (min, time) => (min === null || time < min ? time : min),
+      null,
+    );
+    return Promise.resolve({
+      usedBytes: this.#usedBytes(),
+      fileBytes: Math.max(this.#highWater, this.#usedBytes()),
+      oldestUnixNano: oldest,
+    });
+  }
+
+  compact(): Promise<void> {
+    this.compactions += 1;
+    this.#highWater = this.#usedBytes();
+    return Promise.resolve();
   }
 
   readCursor(name: string): Promise<number | null> {
