@@ -234,6 +234,42 @@ describe('reconcileAttempts', () => {
   );
 
   it(
+    'parks a paused attempt as interrupted with the cause paused, with no new event',
+    async () => {
+      const r: TestRig = await makeRig(fakes());
+      rigs.push(r);
+      const running = r.runner.run(specOf(r, editsPrompt({ 'a.txt': 'a\n' }, '#script:hang')));
+      await until(
+        async () =>
+          (await eventsOf(r, 'session.update')).some((event) =>
+            JSON.stringify(event.payload).includes('hanging until session/cancel'),
+          ),
+        'the Executor to hang',
+      );
+      await r.runner.pauseAttempt('play-1/demand-1/1', 'actor');
+      const interruptedBefore = (await eventsOf(r, 'session.interrupted')).length;
+
+      const report = await reconcileAttempts({
+        store: r.store,
+        runner: r.runner,
+        resolver: RESOLVER,
+        logger,
+      });
+      expect(report.parked).toEqual(['play-1/demand-1/1']);
+      expect(report.resuming).toEqual([]);
+      expect(await r.store.attempts.get('play-1/demand-1/1')).toMatchObject({
+        state: 'interrupted',
+        cause: 'paused',
+      });
+      expect(await eventsOf(r, 'session.interrupted')).toHaveLength(interruptedBefore);
+      expect(await r.store.interruptions.list()).toHaveLength(1);
+      await r.runner.stop();
+      await running;
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     'leaves finished attempts alone',
     async () => {
       const r: TestRig = await makeRig(fakes());

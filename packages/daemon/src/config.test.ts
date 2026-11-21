@@ -568,6 +568,13 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('rescript:\n  extra: 1\n')).toThrow(/extra/);
   });
 
+  it('defaults pause.mode to drain (N176) and takes the two modes', () => {
+    expect(parseConfig('').pause).toEqual({ mode: 'drain' });
+    expect(parseConfig('pause:\n  mode: interrupt\n').pause.mode).toBe('interrupt');
+    expect(() => parseConfig('pause:\n  mode: kill\n')).toThrow(/mode/);
+    expect(() => parseConfig('pause:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
   it('defaults security.catalog_probe to allow and takes refuse', () => {
     expect(parseConfig('').security.catalog_probe).toBe('allow');
     expect(parseConfig('security:\n  catalog_probe: refuse\n').security.catalog_probe).toBe(
@@ -1009,6 +1016,28 @@ describe('sandbox and security.secret_paths', () => {
     ).security;
     expect(secret_paths).toEqual({ add: ['~/.vault'], remove: ['~/.aws'] });
     expect(() => parseConfig('security:\n  secret_paths:\n    add: [""]\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('setup (the setup assistant, P4 of Phase 7)', () => {
+  it('proposes a cap of 20 a day and 200 a month, and writes explicit lists, by default', () => {
+    const { setup } = parseConfig('');
+    expect(setup.suggested_budget).toEqual({ daily_usd: 20, monthly_usd: 200 });
+    expect(setup.role_lists).toBe('explicit');
+  });
+
+  it('takes each mode and a cap of its own', () => {
+    expect(parseConfig('setup:\n  role_lists: preset\n').setup.role_lists).toBe('preset');
+    const { setup } = parseConfig('setup:\n  suggested_budget:\n    daily_usd: 5\n');
+    expect(setup.suggested_budget).toEqual({ daily_usd: 5, monthly_usd: 200 });
+  });
+
+  it('rejects an unknown mode, a cap that is not positive and unknown keys', () => {
+    expect(() => parseConfig('setup:\n  role_lists: some\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('setup:\n  suggested_budget:\n    daily_usd: 0\n')).toThrow(
+      InvalidInput,
+    );
+    expect(() => parseConfig('setup:\n  extra: 1\n')).toThrow(InvalidInput);
   });
 });
 

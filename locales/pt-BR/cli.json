@@ -249,5 +249,42 @@
     "removed": "Executor {{id}} removido.",
     "removedFromRoles": "Tirado das listas dos papéis: {{roles}}.",
     "rolesEmptied": "Estas listas ficaram vazias e foram tiradas (o papel volta ao preset): {{roles}}."
+  },
+  "setup": {
+    "flow": {
+      "first_run": "Primeira execução",
+      "add_account": "Adicionar uma conta",
+      "change_preset": "Trocar o preset"
+    },
+    "step": {
+      "detect": "Clientes e contas",
+      "account": "Conta",
+      "preset": "Preset",
+      "executors": "Executores por API e tetos",
+      "review": "Revisão"
+    },
+    "hint": {
+      "detect": "Confirme quais contas entram. Só o estado delas é lido: o conteúdo de uma chave ou de um login nunca é lido.",
+      "account": "Escolha a conta cadastrada que entra nos papéis.",
+      "preset": "Escolha o preset: ele dá a lista de Executores de cada papel.",
+      "executors": "Cadastre os Executores por API e dê o teto de gasto de cada conta de API (vazio vale).",
+      "review": "Isto é o que será gravado. Nada está no config.yaml até você confirmar."
+    },
+    "note": {
+      "catalog_unavailable": "O catálogo de modelos da conta não pôde ser lido: os modelos dela não são propostos.",
+      "effort_not_accepted": "O modelo não aceita o esforço que o preset nomeia: ele fica de fora.",
+      "legacy_executors": "orchestration.executor e orchestration.roles são o formato antigo: as listas gravadas aqui tomam o lugar deles.",
+      "lists_replaced": "A lista do papel no arquivo é trocada pela lista do preset.",
+      "budget_suggested": "Conta de API sem teto: o teto sugerido (setup.suggested_budget) é proposto.",
+      "no_accounts": "Nenhuma conta entra: as listas dos papéis ficam vazias até uma ser adicionada.",
+      "no_account": "O preset nomeia um modelo que nenhuma conta desta máquina tem: ele fica de fora.",
+      "not_registered": "A lista nomeia um Executor que não está cadastrado.",
+      "invalid_executor": "A lista tem um Executor inválido.",
+      "profile_not_allowed": "O Executor fica de fora: a conta dele não está em roles.allowed_profiles.",
+      "below_minimum": "O Executor está abaixo do mínimo do papel.",
+      "empty_list": "Não sobrou nenhum Executor na lista do papel."
+    },
+    "confirmed": "Configuração confirmada: {{executors}} Executor(es) cadastrado(s), {{written}} chave(s) gravada(s) no config.yaml.",
+    "cancelled": "Configuração cancelada. Nada foi gravado."
   }
 }

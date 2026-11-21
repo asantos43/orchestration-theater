@@ -249,5 +249,42 @@
     "removed": "Executor {{id}} removed.",
     "removedFromRoles": "Taken out of the lists of the roles: {{roles}}.",
     "rolesEmptied": "These lists became empty and were taken out (the role goes back to its preset): {{roles}}."
+  },
+  "setup": {
+    "flow": {
+      "first_run": "First run",
+      "add_account": "Add an account",
+      "change_preset": "Change the preset"
+    },
+    "step": {
+      "detect": "Clients and accounts",
+      "account": "Account",
+      "preset": "Preset",
+      "executors": "Executors by API and caps",
+      "review": "Review"
+    },
+    "hint": {
+      "detect": "Confirm which accounts take part. Only their state is read: the content of a key or a login is never read.",
+      "account": "Choose the registered account to bring into the roles.",
+      "preset": "Choose the preset: it gives the list of Executors of each role.",
+      "executors": "Register the Executors by API and give the spending cap of each API account (empty is valid).",
+      "review": "This is what will be written. Nothing is in config.yaml until you confirm."
+    },
+    "note": {
+      "catalog_unavailable": "The model catalog of the account could not be read: its models are not proposed.",
+      "effort_not_accepted": "The model does not accept the effort the preset names: it is left out.",
+      "legacy_executors": "orchestration.executor and orchestration.roles are the old format: the lists written here take their place.",
+      "lists_replaced": "The list of the role in the file is replaced by the list of the preset.",
+      "budget_suggested": "API account with no cap: the suggested cap (setup.suggested_budget) is proposed.",
+      "no_accounts": "No account takes part: the lists of the roles stay empty until one is added.",
+      "no_account": "The preset names a model that no account of this machine has: it is left out.",
+      "not_registered": "The list names an Executor that is not registered.",
+      "invalid_executor": "The list has an Executor that is invalid.",
+      "profile_not_allowed": "The Executor is left out: its account is not in roles.allowed_profiles.",
+      "below_minimum": "The Executor is below the minimum of the role.",
+      "empty_list": "No Executor is left in the list of the role."
+    },
+    "confirmed": "Setup confirmed: {{executors}} Executor(s) registered, {{written}} key(s) written to config.yaml.",
+    "cancelled": "Setup cancelled. Nothing was written."
   }
 }

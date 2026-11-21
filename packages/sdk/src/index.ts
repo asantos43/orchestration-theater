@@ -49,6 +49,10 @@ export {
   sampleUsage,
   sampleWakeup,
 } from './conformance/profile-aggregates.js';
+export {
+  describeSetupAggregatesConformance,
+  sampleSetupRun,
+} from './conformance/setup-aggregates.js';
 export { describeAggregateTransactionsConformance } from './conformance/aggregate-transactions.js';
 export {
   describeSecretVaultConformance,

@@ -161,6 +161,12 @@ export function decideInterruption(
       return facts.reloadable
         ? make('resume_native', 'native', 'the conversation files are there')
         : make('handoff', 'handoff', 'the conversation cannot be reloaded');
+    case 'paused':
+      // The Producer or the Director paused the attempt or its play (N176): no failure, no attempt
+      // spent, no `max_resumes`. The checkpoint is saved; the resume reloads the conversation.
+      return facts.reloadable
+        ? make('resume_native', 'native', 'paused; the conversation is reloaded on resume')
+        : make('handoff', 'handoff', 'paused, and the conversation cannot be reloaded');
     case 'profile_removed':
       // An external cause (P21b, N152): no attempt spent, no `max_resumes`, never a native resume
       // on the profile that left and never the wait for its reset. The conversation stays where it
