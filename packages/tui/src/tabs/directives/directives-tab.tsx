@@ -7,8 +7,8 @@ import { keyLabel, pairLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { fit, fitRight, wrapText } from '../../layout/text.js';
 import { Section } from '../../layout/section.js';
-import { useTabEnvironment } from '../../layout/tab-environment.js';
-import type { TabContentProps } from '../../layout/tab-props.js';
+import { useTabHost } from '../../layout/tab-host.js';
+import type { TabContentProps } from '../../layout/tab-types.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { useRenderControl } from '../../render-control.js';
 import { useStoreValue } from '../../use-store-value.js';
@@ -71,7 +71,7 @@ function errorText(error: unknown): string {
 }
 
 export function DirectivesTab(props: TabContentProps): ReactNode {
-  const { stores, keymap, capture } = useTabEnvironment();
+  const { stores, keymap, capture } = useTabHost();
   const { t } = useTranslation();
   const { afterKey } = useRenderControl();
   const { width } = props;

@@ -12,7 +12,7 @@ export interface TabContentProps {
   /** Cells and rows of the content area (the tab bar and the footer are not in it). */
   readonly width: number;
   readonly height: number;
-  /** The panel has the focus. */
+  /** The panel has the focus and no overlay (palette, help, picker) is open: the tab may read keys. */
   readonly focused: boolean;
   /** Lines the person scrolled (PageUp and PageDown in the panel). A tab that scrolls uses it. */
   readonly scroll: number;
