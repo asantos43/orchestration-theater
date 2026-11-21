@@ -32,6 +32,8 @@ import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
+import { detectSystemLocale, resolveLocale } from './i18n.js';
+import { SlashCatalog, SlashCommandService } from './slash/index.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
@@ -572,6 +574,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     void report.done;
   }
   let orchestration: Orchestration | undefined;
+  // P3 (Phase 7, N44): the registry of the `/` commands. The chat socket below is registered before
+  // the services it reads exist, so it asks for the registry at each command.
+  let slash: SlashCommandService | undefined;
   if (execution !== undefined) {
     // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
     orchestration = startOrchestration({
@@ -601,6 +606,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       heartbeatMs: config.api.chat.heartbeat,
       stateIntervalMs: config.api.chat.state_interval,
       resumeWindowMs: config.api.chat.resume_window,
+      commands: () => slash,
     });
   }
   // The machines of the plays come back from their snapshots; the orders were recomputed by
@@ -844,10 +850,31 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
   });
 
+  // P3 (Phase 7, N44): the registry of the `/` commands, on the services above. The chat socket
+  // and both groups of routes read it.
+  slash = new SlashCommandService({
+    store,
+    clock,
+    logger,
+    config,
+    quota,
+    usage,
+    budget,
+    profiles,
+    directives,
+    catalog: await SlashCatalog.load(),
+    locale: resolveLocale(config.ui.locale, detectSystemLocale(process.env)),
+    channel: orchestration?.channel,
+    runner: orchestration?.runner,
+    directors: orchestration?.directors,
+    pauseMode: () => config.pause.mode,
+  });
+
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
     store,
+    slash,
     config,
     quota,
     usage,
@@ -896,6 +923,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     attempts: execution?.runner,
     pauseMode: () => config.pause.mode,
     ideas: orchestration?.ideas,
+    slash,
   });
 
   const handle: DaemonHandle = {
