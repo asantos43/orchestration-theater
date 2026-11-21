@@ -493,6 +493,9 @@ importers:
         specifier: 17.1.13
         version: 17.1.13(i18next@26.6.0(typescript@6.0.3))(react@19.3.1)(typescript@6.0.3)
     devDependencies:
+      '@otheater/core':
+        specifier: workspace:*
+        version: link:../core
       '@otheater/daemon':
         specifier: workspace:*
         version: link:../daemon

@@ -27,6 +27,7 @@
     "react-i18next": "17.1.13"
   },
   "devDependencies": {
+    "@otheater/core": "workspace:*",
     "@otheater/daemon": "workspace:*",
     "@types/react": "19.3.0",
     "ink-testing-library": "4.0.0"
