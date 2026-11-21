@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { sgrReport } from './mouse/sgr.js';
 
 /**
  * A real tmux for the smoke test of the TUI (P20 of docs/18, N191; `spikes/tui-keys` is the
@@ -183,6 +184,16 @@ export class TmuxSession {
   async type(text: string): Promise<void> {
     const result = await this.#tmux('send-keys', '-t', 's', '-l', '--', text);
     if (result.code !== 0) throw new Error(`tmux send-keys failed: ${result.stderr.trim()}`);
+  }
+
+  /**
+   * A left click on the cell `col`, `row` (0-based, as `screen()` has them): the SGR report of the
+   * press and of the release, written to the pane as the terminal would (`tmux send-keys -l`; the
+   * program in the pane asks for the mouse by its own terminal modes, which this does not need).
+   */
+  async click(col: number, row: number): Promise<void> {
+    await this.type(sgrReport({ action: 'press', button: 'left', col, row }));
+    await this.type(sgrReport({ action: 'release', button: 'left', col, row }));
   }
 
   async resize(columns: number, rows: number): Promise<void> {

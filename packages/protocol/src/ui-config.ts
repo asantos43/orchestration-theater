@@ -226,6 +226,13 @@ export const UI_CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
  * decision, and a key opens the list.
  */
 export const UI_CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
+/**
+ * What a click on an option of the decision card does (P14 of docs/19, N34; it needs `ui.mouse:
+ * full`). `answer`: the click does what the keys do on that option, so it answers a simple choice
+ * and marks or unmarks one of a multiple choice; `select`: the click only moves the cursor to the
+ * option, and a second click on it does what `answer` does.
+ */
+export const UI_CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
 /** What Esc does while the Director is replying: `stop` asks the daemon to stop the reply (`/stop`); `off` does nothing. */
 export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
 
@@ -235,6 +242,7 @@ export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
  * - `queue`: `daemon` (default) or `hold`;
  * - `suggestions`: how many commands the list of `/` shows at most (6); 0 turns the list off;
  * - `decisionFocus`: `auto` (default) or `manual`;
+ * - `decisionClick` (P14 of docs/19): `answer` (default) or `select`;
  * - `esc`: `stop` (default) or `off`;
  * - `history` (P26, N203 item 2): how many of the last events of the scenario the chat shows when it
  *   opens on a scenario that already talked (40); `0` opens it empty, as before. The most is
@@ -244,6 +252,7 @@ export const UiChatConfigSchema = z.strictObject({
   queue: z.enum(UI_CHAT_QUEUE_MODES).default('daemon'),
   suggestions: z.int().min(0).max(30).default(6),
   decisionFocus: z.enum(UI_CHAT_DECISION_FOCUS_MODES).default('auto'),
+  decisionClick: z.enum(UI_CHAT_DECISION_CLICK_MODES).default('answer'),
   esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
   history: z.int().min(0).max(200).default(40),
 });
