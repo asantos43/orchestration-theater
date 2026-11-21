@@ -502,6 +502,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P24 (N146): what compose and the vault noticed before this point is written now, after
   // `daemon.started`, and what comes later is written as it happens.
   composition.situations.open();
+  // P4 (N214): the spans of the daemon are projected from the log from here on.
+  composition.daemonSpans?.start();
 
   // P3 (Phase 6): the API listens from here, before the reconciliation. A read (`GET /v1/status`)
   // answers at once with the state `recovering`; a command waits on the gate (5.21).
@@ -878,6 +880,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('mcp', () => mcp.stop());
       await attempt('browser', async () => browserTools?.close());
+      // The spans of the last events are written before the telemetry store closes with the composition.
+      await attempt('daemon spans', async () => composition.daemonSpans?.stop());
       // The situations recorded so far are written before `daemon.stopped` closes the log.
       await attempt('situations', () => composition.situations.idle());
       await attempt('daemon.stopped', () =>
@@ -1230,6 +1234,9 @@ function buildExecution(
     memory: composition.memory,
     handoff,
     exhaustion,
+    ...(composition.daemonSpans === undefined
+      ? {}
+      : { onWait: composition.daemonSpans.recordWait }),
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }
