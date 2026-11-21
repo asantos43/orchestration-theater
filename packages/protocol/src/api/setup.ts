@@ -36,12 +36,13 @@ export type SetupStepId = (typeof SETUP_STEP_IDS)[number];
 export const SetupStepIdSchema = z.enum(SETUP_STEP_IDS);
 
 /** The steps of each flow, in order. `review` is last: it has no input. */
-export const SETUP_FLOW_STEPS: Readonly<Record<(typeof SETUP_FLOWS)[number], readonly SetupStepId[]>> =
-  {
-    first_run: ['detect', 'preset', 'executors', 'review'],
-    add_account: ['account', 'executors', 'review'],
-    change_preset: ['preset', 'review'],
-  };
+export const SETUP_FLOW_STEPS: Readonly<
+  Record<(typeof SETUP_FLOWS)[number], readonly SetupStepId[]>
+> = {
+  first_run: ['detect', 'preset', 'executors', 'review'],
+  add_account: ['account', 'executors', 'review'],
+  change_preset: ['preset', 'review'],
+};
 
 const profileId = z.string().min(1).max(129);
 

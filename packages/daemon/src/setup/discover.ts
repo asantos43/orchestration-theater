@@ -71,7 +71,7 @@ export async function discoverForPreset(input: DiscoverInput): Promise<DiscoverR
     const provider = FIXED_PROVIDER_OF_CLIENT[ref.client];
     if (prefix === undefined || provider === undefined) continue;
     const catalog = input.catalogs(ref.client);
-    if (catalog === undefined || catalog.discovery !== 'automatic') continue;
+    if (catalog?.discovery !== 'automatic') continue;
     let listed: readonly ModelInfo[];
     try {
       listed = await catalog.list(ref);
@@ -92,7 +92,11 @@ export async function discoverForPreset(input: DiscoverInput): Promise<DiscoverR
       const short = split.model.slice(prefix.length + 1);
       const info = listed.find((candidate) => matches(candidate, short));
       if (info === undefined) continue;
-      if (split.effort !== null && info.efforts.length > 0 && !info.efforts.includes(split.effort)) {
+      if (
+        split.effort !== null &&
+        info.efforts.length > 0 &&
+        !info.efforts.includes(split.effort)
+      ) {
         notes.push({
           severity: 'warning',
           code: 'effort_not_accepted',

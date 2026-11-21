@@ -291,9 +291,7 @@ export function executorConfigEntry(fields: {
     profile: fields.profile,
     model: fields.model,
     ...(fields.effort === null ? {} : { effort: fields.effort }),
-    ...(FIXED_PROVIDER_OF_CLIENT[fields.client] === undefined
-      ? { provider: fields.provider }
-      : {}),
+    ...(FIXED_PROVIDER_OF_CLIENT[fields.client] === undefined ? { provider: fields.provider } : {}),
     ...(fields.presetExpand ? {} : { preset_expand: false as const }),
   };
 }

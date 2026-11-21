@@ -99,7 +99,10 @@ export function describeSetupAggregatesConformance(
       const { store } = harness();
       await store.setupRuns.create(sampleSetupRun());
       await expectCode(store.setupRuns.update('SR1', { step: '' }), 'INVALID_INPUT');
-      await expectCode(store.setupRuns.update('SR1', { state: 'active' as never }), 'INVALID_INPUT');
+      await expectCode(
+        store.setupRuns.update('SR1', { state: 'active' as never }),
+        'INVALID_INPUT',
+      );
       await expectCode(
         store.setupRuns.update('SR1', { state: 'cancelled', result: { a: 1 } }),
         'INVALID_INPUT',

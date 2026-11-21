@@ -867,7 +867,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       catalogs: (client) => clientAdapter(client)?.models,
     }),
     catalogs: (client) => clientAdapter(client)?.models,
-    installedClients: () => new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
+    installedClients: () =>
+      new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
   });
 
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are

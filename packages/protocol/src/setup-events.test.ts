@@ -20,9 +20,9 @@ describe('setup events (P4 of docs/18)', () => {
     expect(validateEventPayload('setup.back', 1, back)).toEqual(back);
     expect(validateEventPayload('setup.confirmed', 1, confirmed)).toEqual(confirmed);
     expect(validateEventPayload('setup.cancelled', 1, cancelled)).toEqual(cancelled);
-    expect(validateEventPayload('setup.confirmed', 1, { ...confirmed, preset: null })).toMatchObject(
-      { preset: null },
-    );
+    expect(
+      validateEventPayload('setup.confirmed', 1, { ...confirmed, preset: null }),
+    ).toMatchObject({ preset: null });
     for (const [type, payload] of [
       ['setup.started', { ...started, apiKey: 'x' }],
       ['setup.started', { ...started, runId: 'run-1' }],

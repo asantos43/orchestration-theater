@@ -28,7 +28,6 @@ import {
   SetupStepSubmissionSchema,
   type DaemonEventPayloads,
   type SetupBudget,
-  type SetupDetectedProfile,
   type SetupDoneStep,
   type SetupExecutor,
   type SetupFlowStatus,
@@ -159,13 +158,24 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
 
 /** One change of `config.yaml` the confirmation makes. */
 type ConfigOp =
-  | { readonly kind: 'set'; readonly path: string[]; readonly value: JsonValue; readonly onlyIfAbsent?: true }
+  | {
+      readonly kind: 'set';
+      readonly path: string[];
+      readonly value: JsonValue;
+      readonly onlyIfAbsent?: true;
+    }
   | { readonly kind: 'remove'; readonly path: string[] }
-  | { readonly kind: 'insert'; readonly path: string[]; readonly position: number; readonly id: string };
+  | {
+      readonly kind: 'insert';
+      readonly path: string[];
+      readonly position: number;
+      readonly id: string;
+    };
 
 function opsOf(apply: PlanApply): ConfigOp[] {
   const ops: ConfigOp[] = [];
-  if (apply.preset !== null) ops.push({ kind: 'set', path: ['roles', 'preset'], value: apply.preset });
+  if (apply.preset !== null)
+    ops.push({ kind: 'set', path: ['roles', 'preset'], value: apply.preset });
   for (const list of apply.lists) {
     const path = ['roles', list.role, 'executors'];
     if (list.executors.length === 0) ops.push({ kind: 'remove', path });
@@ -233,7 +243,9 @@ export class SetupService {
     const { store } = this.#o;
     const config = await loadConfig(this.#o.configPath);
     const runs = await store.setupRuns.list();
-    const confirmedFirstRun = runs.some((run) => run.flow === 'first_run' && run.state === 'confirmed');
+    const confirmedFirstRun = runs.some(
+      (run) => run.flow === 'first_run' && run.state === 'confirmed',
+    );
     const flows: SetupFlowStatus[] = [];
     for (const flow of SETUP_FLOWS) {
       const own = runs.filter((run) => run.flow === flow);
@@ -299,7 +311,7 @@ export class SetupService {
       );
     }
     const steps = stepsOf(run.flow);
-    const index = steps.indexOf(run.step as SetupStepId);
+    const index = steps.indexOf(run.step);
     const next = steps[index + 1];
     if (index === -1 || next === undefined) {
       throw new InvalidInput(`The step ${run.step} takes no answer: confirm or cancel the run`);
@@ -371,10 +383,9 @@ export class SetupService {
     return run;
   }
 
-  async #emit<T extends 'setup.started' | 'setup.step' | 'setup.back' | 'setup.cancelled' | 'setup.confirmed'>(
-    type: T,
-    payload: DaemonEventPayloads[T],
-  ): Promise<void> {
+  async #emit<
+    T extends 'setup.started' | 'setup.step' | 'setup.back' | 'setup.cancelled' | 'setup.confirmed',
+  >(type: T, payload: DaemonEventPayloads[T]): Promise<void> {
     await writeSituation(this.#o.store.events, this.#o.logger, type, payload);
   }
 
@@ -397,7 +408,11 @@ export class SetupService {
   }
 
   /** The plan of a run over the file as it is now. */
-  async #planOf(run: SetupRunRecord, done: readonly SetupDoneStep[], config: DaemonConfig): Promise<PlanResult> {
+  async #planOf(
+    run: SetupRunRecord,
+    done: readonly SetupDoneStep[],
+    config: DaemonConfig,
+  ): Promise<PlanResult> {
     const facts = factsOf(done);
     const accounts = await this.#accountsOf(run, facts);
     return buildPlan({
@@ -422,7 +437,9 @@ export class SetupService {
   async #view(run: SetupRunRecord, config: DaemonConfig): Promise<SetupRunView> {
     const done = doneOf(run);
     const result =
-      run.state === 'confirmed' && run.result !== null ? (run.result as unknown as SetupResult) : null;
+      run.state === 'confirmed' && run.result !== null
+        ? (run.result as unknown as SetupResult)
+        : null;
     return {
       id: run.id,
       flow: run.flow,
@@ -461,7 +478,9 @@ export class SetupService {
         const known = await detectProfiles(this.#o.profiles, { checkLogin: false });
         return {
           step,
-          apiProfiles: known.filter((p) => p.kind === 'api' && p.hasSecret && accounts.has(p.profileId)),
+          apiProfiles: known.filter(
+            (p) => p.kind === 'api' && p.hasSecret && accounts.has(p.profileId),
+          ),
           suggestedBudget: {
             dailyUsd: config.setup.suggested_budget.daily_usd,
             monthlyUsd: config.setup.suggested_budget.monthly_usd,
@@ -509,7 +528,11 @@ export class SetupService {
           catalogs: this.#o.catalogs,
           presetExpand: true,
         });
-        return { profile: detectedProfileOf(summary), discovered: found.discovered, notes: found.notes };
+        return {
+          profile: detectedProfileOf(summary),
+          discovered: found.discovered,
+          notes: found.notes,
+        };
       }
       case 'preset': {
         const input = SetupPresetInputSchema.parse(body.input);
@@ -615,7 +638,12 @@ export class SetupService {
       });
       for (const issue of result.issues) {
         if (issue.severity === 'error') continue;
-        notes.push({ severity: issue.severity, code: issue.code, role: null, message: issue.message });
+        notes.push({
+          severity: issue.severity,
+          code: issue.code,
+          role: null,
+          message: issue.message,
+        });
       }
     }
     const seen = new Set<string>();
@@ -711,7 +739,10 @@ export class SetupService {
           provider: executor.provider,
         });
       } else if (row.validity === 'invalid' && written.has(executor.id)) {
-        await store.executors.update(executor.id, { provider: executor.provider, validity: 'valid' });
+        await store.executors.update(executor.id, {
+          provider: executor.provider,
+          validity: 'valid',
+        });
       }
     }
 

@@ -11,12 +11,7 @@ import {
   type RolesLayer,
   type SetupFlow,
 } from '@otheater/core';
-import type {
-  SetupBudget,
-  SetupExecutor,
-  SetupNote,
-  SetupPlan,
-} from '@otheater/protocol';
+import type { SetupBudget, SetupExecutor, SetupNote, SetupPlan } from '@otheater/protocol';
 import type { DaemonConfig, SetupRoleListMode } from '../config.js';
 import { legacyExecutorsOf } from '../orchestration/role-executors.js';
 
@@ -88,7 +83,10 @@ export function entryOf(executor: SetupExecutor): ExecutorEntry {
   };
 }
 
-function hasCap(budget: { daily_usd?: number | undefined; monthly_usd?: number | undefined }): boolean {
+function hasCap(budget: {
+  daily_usd?: number | undefined;
+  monthly_usd?: number | undefined;
+}): boolean {
   return budget.daily_usd !== undefined || budget.monthly_usd !== undefined;
 }
 
@@ -113,7 +111,8 @@ export function buildPlan(input: PlanInput): PlanResult {
   // them where `executors.on_register` says.
   const choosesPreset = input.preset !== null;
   const rewriteLists = choosesPreset && settings.roleLists === 'explicit';
-  const effectivePreset: RolePresetName = input.preset ?? config.roles.preset ?? DEFAULT_ROLE_PRESET;
+  const effectivePreset: RolePresetName =
+    input.preset ?? config.roles.preset ?? DEFAULT_ROLE_PRESET;
   const base: RolesLayer = config.roles;
   const layer: RolesLayer = rewriteLists
     ? {
@@ -145,11 +144,20 @@ export function buildPlan(input: PlanInput): PlanResult {
     crossClient: config.executors.cross_client,
   });
   for (const note of resolved.notes) {
-    notes.push({ severity: note.severity, code: note.code, role: note.role, message: note.message });
+    notes.push({
+      severity: note.severity,
+      code: note.code,
+      role: note.role,
+      message: note.message,
+    });
   }
 
   const lists = new Map<RoleId, string[]>();
-  for (const role of ROLE_IDS) lists.set(role, resolved.roles[role].executors.map((item) => item.id));
+  for (const role of ROLE_IDS)
+    lists.set(
+      role,
+      resolved.roles[role].executors.map((item) => item.id),
+    );
 
   // The lists the file keeps get the new Executors where `on_register` puts them.
   const insertions: { role: RoleId; position: number; id: string }[] = [];
@@ -162,7 +170,9 @@ export function buildPlan(input: PlanInput): PlanResult {
     for (const executor of toWrite) {
       const registration = planRegistration({
         executorId: executor.id,
-        mode: config.executors.on_register,
+        // `ask` is the question the review answers: the placements are in the plan, and the
+        // Producer confirms them there; so the assistant applies the ones the preset names.
+        mode: config.executors.on_register === 'ask' ? 'preset_only' : config.executors.on_register,
         preset: effectivePreset,
         currentLists: explicit,
       });
@@ -200,10 +210,11 @@ export function buildPlan(input: PlanInput): PlanResult {
   const given = new Map(input.givenBudgets.map((budget) => [budget.profileId, budget]));
   const kindOf = new Map(input.profiles.map((profile) => [profile.id, profile.kind]));
   const budgets: SetupBudget[] = [];
-  for (const [profileId, budget] of given) budgets.push(budget);
+  for (const budget of given.values()) budgets.push(budget);
   const withNew = new Set(toWrite.map((executor) => executor.profileId));
   for (const profileId of input.profiles.map((profile) => profile.id)) {
-    if (given.has(profileId) || kindOf.get(profileId) !== 'api' || !withNew.has(profileId)) continue;
+    if (given.has(profileId) || kindOf.get(profileId) !== 'api' || !withNew.has(profileId))
+      continue;
     const existing = config.profiles.entries[profileId]?.budget;
     if (existing !== undefined && hasCap(existing)) continue;
     budgets.push({
@@ -236,7 +247,9 @@ export function buildPlan(input: PlanInput): PlanResult {
   const listsToWrite = rewriteLists
     ? ROLE_IDS.flatMap((role) => {
         const ids = lists.get(role) ?? [];
-        return ids.length === 0 && base[role]?.executors === undefined ? [] : [{ role, executors: ids }];
+        return ids.length === 0 && base[role]?.executors === undefined
+          ? []
+          : [{ role, executors: ids }];
       })
     : [];
   for (const list of listsToWrite) writes.push(`roles.${list.role}.executors`);

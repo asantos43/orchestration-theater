@@ -25,7 +25,8 @@ export function detectClients(installed: InstalledClients): SetupDetectedClient[
  */
 export function detectedProfileOf(summary: ProfileSummary): SetupDetectedProfile {
   const { profile } = summary;
-  const login = summary.login === undefined ? (profile.kind === 'api' ? null : 'unknown') : summary.login;
+  const login =
+    summary.login === undefined ? (profile.kind === 'api' ? null : 'unknown') : summary.login;
   const usable =
     profile.state === 'active' &&
     (profile.kind === 'api' ? summary.hasSecret : login !== 'logged_out');
