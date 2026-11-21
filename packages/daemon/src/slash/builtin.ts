@@ -6,6 +6,7 @@ import {
   type PlayRecord,
   type ProfileFact,
 } from '@otheater/core';
+import { basename } from 'node:path';
 import { z } from 'zod';
 import { redactConfig } from '../api/routes/redact.js';
 import { playOf, scenarioOf } from '../api/routes/projections.js';
@@ -519,6 +520,13 @@ const NAME = z
   .max(200)
   .transform((text) => (text === '' ? undefined : text));
 
+/**
+ * `/new project <repo>` (N208, item 1): the word `project` first, then the repository. Anything
+ * else is the name of a chat, as before; a chat that must be named "project" cannot be opened by
+ * this command (the TUI and the `ot chat` command still can).
+ */
+const PROJECT_ARGS = /^project(?:\s+([\s\S]*))?$/;
+
 const newScenario = define({
   id: 'new',
   origin: 'daemon',
@@ -530,6 +538,26 @@ const newScenario = define({
   appliesTo: { scoped: false },
   args: NAME,
   async run(context) {
+    const project = context.args === undefined ? null : PROJECT_ARGS.exec(context.args.trim());
+    if (project !== null) {
+      const repo = (project[1] ?? '').trim();
+      if (repo === '') throw new InvalidInput(context.t('error.newProject.noRepo'));
+      // The same route as `ot chat --type project --repo <repo>` (`openChat`, the type registry).
+      const opened = await channel(context)
+        .openChat({ type: 'project', repo })
+        .catch((error: unknown) => {
+          if (error instanceof InvalidInput) {
+            throw new InvalidInput(context.t('error.newProject.badRepo', { repo }), {
+              cause: error,
+            });
+          }
+          throw error;
+        });
+      return done(context.t('out.new.project', { name: basename(repo), id: opened.scenarioId }), {
+        scenarioId: opened.scenarioId,
+        type: 'project',
+      });
+    }
     const opened = await channel(context).openChat({
       type: 'chat',
       ...(context.args === undefined ? {} : { name: context.args }),
