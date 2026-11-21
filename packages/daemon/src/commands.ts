@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { AdapterUnavailable, hasErrorCode, hasStoreMaintenance } from '@otheater/core';
 import type { TFunction } from 'i18next';
-import { compose, composeClock, composeStoreFileTools, type ComposeOverrides } from './compose.js';
+import {
+  compose,
+  composeClock,
+  composeStoreFileTools,
+  composeTelemetryBackup,
+  telemetryPath,
+  type ComposeOverrides,
+} from './compose.js';
 import { loadConfig } from './config.js';
 import { InstanceLock, releaseOnFailure } from './instance-lock.js';
 import { createSilentLogger } from './logger.js';
@@ -68,6 +75,7 @@ export async function runBackupCommand(context: CommandContext): Promise<number>
         logger: composition.logger,
         version,
         storeBackup: (dest, options) => store.backup(dest, options),
+        telemetryBackup: composition.telemetryBackup,
         recordEvent: (event) => store.events.append(event),
       });
       outcome = await service.run('manual');
@@ -85,6 +93,7 @@ export async function runBackupCommand(context: CommandContext): Promise<number>
       logger: createSilentLogger(),
       version,
       storeBackup: (dest, options) => tools.backupFile(dest, options),
+      telemetryBackup: composeTelemetryBackup(config, paths.dataDir),
     });
     outcome = await service.run('manual');
   }
@@ -134,6 +143,7 @@ export async function runRestoreCommand(
       backupPath,
       tools: composeStoreFileTools(config, paths.dataDir),
       clock: composeClock(context.overrides),
+      telemetryFile: telemetryPath(config, paths.dataDir),
     });
     context.out(context.t('restore.done', { path: result.databasePath }));
     if (result.previousDatabase !== undefined) {
@@ -141,6 +151,10 @@ export async function runRestoreCommand(
     }
     if (result.previousScenarios !== undefined) {
       context.out(context.t('restore.keptScenarios', { path: result.previousScenarios }));
+    }
+    if (result.telemetryRestored) context.out(context.t('restore.telemetryRestored'));
+    if (result.previousTelemetry !== undefined) {
+      context.out(context.t('restore.keptTelemetry', { path: result.previousTelemetry }));
     }
     if (result.daemonIdRestored) context.out(context.t('restore.daemonIdRestored'));
     if (result.previousDaemonId !== undefined) {
