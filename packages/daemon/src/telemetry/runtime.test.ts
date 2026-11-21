@@ -23,6 +23,8 @@ const STORE: TelemetryStore = {
   readRollupsReadyThrough: () => Promise.resolve(null),
   markRollupsReady: () => Promise.resolve(),
   deleteRollupsBefore: () => Promise.resolve(0),
+  footprint: () => Promise.resolve({ usedBytes: 0, fileBytes: null, oldestUnixNano: null }),
+  compact: () => Promise.resolve(),
   health: () =>
     Promise.resolve({
       state: 'ok',
