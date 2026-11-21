@@ -18,7 +18,17 @@ import {
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
-import { BACKUP_CONTENTS, LAYOUT_STORES, LAYOUT_SYNCS } from '@otheater/protocol';
+import { DEFAULT_UI_REGISTRY, resolveKeymap } from '@otheater/client';
+import {
+  BACKUP_CONTENTS,
+  LAYOUT_STORES,
+  LAYOUT_SYNCS,
+  UiClipboardConfigSchema,
+  UiKeymapConfigSchema,
+  UiMouseModeSchema,
+  UiRenderConfigSchema,
+  UiRuntimeConfigSchema,
+} from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import {
@@ -2084,6 +2094,32 @@ export const DaemonConfigSchema = z
             sync: z.enum(LAYOUT_SYNCS).default('live'),
           })
           .prefault({}),
+        /**
+         * The keymap of the terminal (architecture 5.13, N35; P7 of docs/18): the preset, and the
+         * shortcuts the owner changes. The registry of `@otheater/client` checks the ids and refuses
+         * a repeated shortcut, so the daemon does not start with a keymap the interface cannot use.
+         */
+        keymap: UiKeymapConfigSchema.superRefine((keymap, ctx) => {
+          const result = resolveKeymap(DEFAULT_UI_REGISTRY, {
+            preset: keymap.preset,
+            overrides: keymap.overrides,
+          });
+          if (result.ok) return;
+          for (const error of result.errors)
+            ctx.addIssue({
+              code: 'custom',
+              path: ['overrides', error.actionId],
+              message: error.message,
+            });
+        }).prefault({}),
+        /** How the terminal interface copies text (N36). */
+        clipboard: UiClipboardConfigSchema.prefault({}),
+        /** The mouse of the terminal interface (N34): `full`, `wheel` or `off`. */
+        mouse: UiMouseModeSchema.default('full'),
+        /** The rendering of the terminal interface (N37). */
+        render: UiRenderConfigSchema.prefault({}),
+        /** The Node runtime of the terminal interface (N37). */
+        runtime: UiRuntimeConfigSchema.prefault({}),
       })
       .prefault({}),
     log: z

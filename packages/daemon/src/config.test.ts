@@ -70,6 +70,89 @@ describe('parseConfig', () => {
     expect(config.log).toEqual({ level: 'info', destination: 'file' });
   });
 
+  it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render and ui.runtime (N34 to N37)', () => {
+    const { ui } = parseConfig('');
+    expect(ui.keymap).toEqual({ preset: 'agents', environment: 'auto', overrides: {} });
+    expect(ui.clipboard).toEqual({ copy: 'osc52' });
+    expect(ui.mouse).toBe('full');
+    expect(ui.render).toEqual({
+      keyRender: 'flush',
+      maxFps: 30,
+      coalesceMs: 16,
+      memo: true,
+      inkPatches: ['cache', 'grid'],
+      historyWindow: 0,
+    });
+    expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2 });
+    expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
+  });
+
+  it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
+    const yaml = [
+      'ui:',
+      '  keymap:',
+      '    preset: classic',
+      '    overrides:',
+      '      layout.toggleSidebar: Alt+Z',
+      '      tabs.add: [Alt+T, F7]',
+      '      layout.togglePanel: []',
+      '  clipboard:',
+      '    copy: system',
+      '  mouse: wheel',
+      '  render:',
+      '    keyRender: throttle',
+      '    maxFps: 60',
+      '    inkPatches: []',
+      '  runtime:',
+      '    maxOldSpaceMB: 512',
+      '',
+    ].join('\n');
+    const { ui } = parseConfig(yaml);
+    expect(ui.keymap.preset).toBe('classic');
+    expect(ui.keymap.overrides).toEqual({
+      'layout.toggleSidebar': 'Alt+Z',
+      'tabs.add': ['Alt+T', 'F7'],
+      'layout.togglePanel': [],
+    });
+    expect(ui.clipboard.copy).toBe('system');
+    expect(ui.mouse).toBe('wheel');
+    expect(ui.render).toMatchObject({ keyRender: 'throttle', maxFps: 60, inkPatches: [] });
+    expect(ui.runtime.maxOldSpaceMB).toBe(512);
+    expect(() => parseConfig('ui:\n  clipboard:\n    copy: paste\n')).toThrow(
+      /ui\.clipboard\.copy/,
+    );
+    expect(() => parseConfig('ui:\n  mouse: some\n')).toThrow(/ui\.mouse/);
+    expect(() => parseConfig('ui:\n  render:\n    maxFps: 0\n')).toThrow(/ui\.render\.maxFps/);
+    expect(() => parseConfig('ui:\n  render:\n    speed: 1\n')).toThrow(/ui\.render/);
+    expect(() => parseConfig('ui:\n  runtime:\n    maxSemiSpaceMB: 0\n')).toThrow(
+      /ui\.runtime\.maxSemiSpaceMB/,
+    );
+    expect(() => parseConfig('ui:\n  keymap:\n    preset: vim\n')).toThrow(/ui\.keymap\.preset/);
+  });
+
+  it('refuses at start-up a ui.keymap with a repeated shortcut, an unknown action or a key a terminal cannot send', () => {
+    const overrides = (lines: string) => `ui:\n  keymap:\n    overrides:\n${lines}`;
+    // the same shortcut as another action (Alt+S is the side bar)
+    expect(() => parseConfig(overrides('      tabs.add: Alt+S\n'))).toThrow(
+      /ui\.keymap\.overrides\.tabs\.add.*Alt\+S/s,
+    );
+    // twice in one action
+    expect(() => parseConfig(overrides('      tabs.add: [Alt+Q, alt+q]\n'))).toThrow(/Alt\+Q/);
+    expect(() => parseConfig(overrides('      nope.nothing: Alt+Q\n'))).toThrow(/nope\.nothing/);
+    expect(() => parseConfig(overrides('      tabs.add: Cmd+T\n'))).toThrow(/Cmd/);
+    expect(() => parseConfig(overrides('      tabs.add: Alt+Foo\n'))).toThrow(/key combination/);
+    // a shortcut on the list of collisions only warns: the config loads
+    expect(parseConfig(overrides('      tabs.add: Ctrl+A\n')).ui.keymap.overrides['tabs.add']).toBe(
+      'Ctrl+A',
+    );
+    // moving two shortcuts around is fine
+    expect(() =>
+      parseConfig(
+        overrides('      layout.toggleSidebar: Alt+J\n      layout.togglePanel: Alt+S\n'),
+      ),
+    ).not.toThrow();
+  });
+
   it('takes ui.layout.store as daemon or local, ui.layout.write_delay as a duration (P12) and ui.layout.sync as live or on_open (N174)', () => {
     expect(parseConfig('').ui.layout).toEqual({ store: 'daemon', write_delay: 300, sync: 'live' });
     expect(parseConfig('ui:\n  layout:\n    sync: on_open\n').ui.layout.sync).toBe('on_open');
@@ -975,6 +1058,24 @@ describe('loadConfig', () => {
       expect((await loadConfig(file)).ui.locale).toBe('auto');
       await writeFile(file, 'ui:\n  locale: pt-BR\n');
       expect((await loadConfig(file)).ui.locale).toBe('pt-BR');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('reads the ui.* keys of the terminal from the file and refuses a repeated shortcut (N35)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const file = join(tmp.dir, 'config.yaml');
+      await writeFile(
+        file,
+        'ui:\n  mouse: off\n  keymap:\n    overrides:\n      tabs.add: Alt+Q\n',
+      );
+      const config = await loadConfig(file);
+      expect(config.ui.mouse).toBe('off');
+      expect(config.ui.keymap.overrides).toEqual({ 'tabs.add': 'Alt+Q' });
+      await writeFile(file, 'ui:\n  keymap:\n    overrides:\n      tabs.add: Alt+S\n');
+      await expect(loadConfig(file)).rejects.toThrow(/ui\.keymap\.overrides\.tabs\.add/);
     } finally {
       await tmp.dispose();
     }
