@@ -1,0 +1,122 @@
+--- a/ink-8.0.0/build/output.js	2026-11-14 22:13:30.988883027 -0300
++++ b/ink-8.0.0/build/output.js	2026-11-15 06:27:02.696751685 -0300
+@@ -28,15 +28,39 @@
+     };
+ };
+ class OutputCaches {
++    // [PATCH OTheater cache] custo aproximado do que está guardado, em caracteres (o limite do cache é em custo, não em
++    // número de entradas: uma entrada de `styledChars` guarda uma célula por caractere, ~100 bytes cada)
++    cost = 0;
+     widths = new Map();
+     blockWidths = new Map();
+     styledChars = new Map();
++    // [PATCH OTheater cache] texto -> linhas (já com os estilos por linha); só usado com `cache`
++    lineSets = new Map();
++    getLines(text) {
++        let cached = this.lineSets.get(text);
++        if (cached === undefined) {
++            const characterLines = [[]];
++            for (const character of this.getStyledChars(text)) {
++                if (character.value === '\n') {
++                    characterLines.push([]);
++                }
++                else {
++                    characterLines.at(-1).push(character);
++                }
++            }
++            cached = characterLines.map(line => styledCharsToString(line));
++            this.lineSets.set(text, cached);
++            this.cost += text.length + 1;
++        }
++        return cached;
++    }
+     getStyledChars(line) {
+         let cached = this.styledChars.get(line);
+         if (cached === undefined) {
+             // Standalone invisible Unicode characters must not occupy terminal cells.
+             cached = styledCharsFromTokens(tokenize(line)).filter(character => !/^\p{Default_Ignorable_Code_Point}+$/u.test(character.value));
+             this.styledChars.set(line, cached);
++            this.cost += line.length + 1;
+         }
+         return cached;
+     }
+@@ -45,6 +69,7 @@
+         if (cached === undefined) {
+             cached = stringWidth(text);
+             this.widths.set(text, cached);
++            this.cost += 4;
+         }
+         return cached;
+     }
+@@ -61,9 +86,30 @@
+         return cached;
+     }
+ }
++// [PATCH OTheater cache] Os caches (tokenização, largura de texto) viviam só dentro de um quadro e eram refeitos a cada
++// quadro. Com `cache` ligado, um único conjunto vale para a sessão inteira; ao passar de PATCH_CACHE_LIMIT (custo em caracteres guardados)
++// ele é esvaziado (limite de memória). As células guardadas são imutáveis (o Ink só as copia com `blankCell`).
++const PATCH_FEATURES = String(globalThis.__otInkPatch ?? '').split(',');
++const PATCH_CACHE = PATCH_FEATURES.includes('cache') || PATCH_FEATURES.includes('all');
++// [PATCH OTheater grid] A grade do quadro (altura x largura) era preenchida com 1 objeto + 1 array novos por célula,
++// a cada quadro (14 mil alocações em 160x45). Com `grid` todas as células vazias são um único objeto congelado:
++// o Ink só substitui células (nunca altera uma), então é seguro, e o congelamento acusaria qualquer escrita indevida.
++const PATCH_GRID = PATCH_FEATURES.includes('grid') || PATCH_FEATURES.includes('all');
++const BLANK_CELL = Object.freeze({ type: 'char', value: ' ', fullWidth: false, styles: Object.freeze([]) });
++const PATCH_CACHE_LIMIT = Number(process.env.OT_INK_CACHE_LIMIT ?? 120000);
++let sharedCaches;
++const acquireCaches = () => {
++    if (!PATCH_CACHE) {
++        return new OutputCaches();
++    }
++    if (!sharedCaches || sharedCaches.cost > PATCH_CACHE_LIMIT) {
++        sharedCaches = new OutputCaches();
++    }
++    return sharedCaches;
++};
+ export default class Output {
+     operations = [];
+-    caches = new OutputCaches();
++    caches = acquireCaches();
+     width;
+     height;
+     constructor(options) {
+@@ -75,16 +121,22 @@
+         const { text, transformers } = operation;
+         let { x, y } = operation;
+         // Preserve styles across explicit newlines before clipping individual rows.
+-        const characterLines = [[]];
+-        for (const character of this.caches.getStyledChars(text)) {
+-            if (character.value === '\n') {
+-                characterLines.push([]);
+-            }
+-            else {
+-                characterLines.at(-1).push(character);
++        let lines;
++        if (PATCH_CACHE) {
++            lines = this.caches.getLines(text);
++        }
++        else {
++            const characterLines = [[]];
++            for (const character of this.caches.getStyledChars(text)) {
++                if (character.value === '\n') {
++                    characterLines.push([]);
++                }
++                else {
++                    characterLines.at(-1).push(character);
++                }
+             }
++            lines = characterLines.map(line => styledCharsToString(line));
+         }
+-        let lines = characterLines.map(line => styledCharsToString(line));
+         if (clip) {
+             // Two nested clips can intersect to nothing. Nothing is visible, so bail out before slicing.
+             if (isClipEmpty(clip)) {
+@@ -233,7 +285,7 @@
+         for (let y = 0; y < this.height; y++) {
+             const row = [];
+             for (let x = 0; x < this.width; x++) {
+-                row.push({
++                row.push(PATCH_GRID ? BLANK_CELL : {
+                     type: 'char',
+                     value: ' ',
+                     fullWidth: false,
