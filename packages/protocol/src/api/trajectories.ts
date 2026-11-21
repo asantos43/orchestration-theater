@@ -44,6 +44,27 @@ export const listPlayTrajectory = defineRoute({
   errors: ['not_found', 'unavailable'],
 });
 
+/** The `:sessionId` of a direct session (the same as the routes of `api/direct.ts`). */
+export const DirectTrajectoryParamsSchema = z.strictObject({
+  sessionId: z.string().min(1).max(64),
+});
+
+/**
+ * [proposta] P27 of docs/18 (N206): the events a direct session trajectory is built from, by cursor,
+ * as the log has them: it answers for a session the daemon no longer holds in memory too.
+ */
+export const listDirectTrajectory = defineRoute({
+  id: 'listDirectTrajectory',
+  method: 'GET',
+  path: '/v1/direct/:sessionId/trajectory',
+  summary:
+    'The events a direct session trajectory is built from (messages, tools, permissions, closing), oldest first, by cursor',
+  params: DirectTrajectoryParamsSchema,
+  query: PageQuerySchema,
+  response: pageOf(EventEnvelopeSchema),
+  errors: ['not_found', 'unavailable'],
+});
+
 export const getDemandDiff = defineRoute({
   id: 'getDemandDiff',
   method: 'GET',
@@ -54,4 +75,8 @@ export const getDemandDiff = defineRoute({
   errors: ['not_found', 'unavailable'],
 });
 
-export const TRAJECTORY_ROUTES = defineRoutes(listPlayTrajectory, getDemandDiff);
+export const TRAJECTORY_ROUTES = defineRoutes(
+  listPlayTrajectory,
+  getDemandDiff,
+  listDirectTrajectory,
+);

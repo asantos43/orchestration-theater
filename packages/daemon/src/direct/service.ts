@@ -42,6 +42,7 @@ import type { Logger } from '../logger.js';
 import { openPlayFromNeed, type PlayOpening } from '../orchestration/open-play.js';
 import { resolveRolePolicy } from '../orchestration/role-policy.js';
 import type { RoleSelection } from '../orchestration/role-selection.js';
+import { sweepDirectOrphans, type OrphanSweepResult } from './orphans.js';
 import { situationSubject, situationText, writeSituation } from '../situations.js';
 import { bareCommandName, clientPrefixOf, parseSlashLine } from '../slash/parse.js';
 
@@ -152,6 +153,27 @@ export class DirectSessionService {
 
   constructor(options: DirectSessionServiceOptions) {
     this.#o = options;
+  }
+
+  /**
+   * The start-up sweep of the worktrees of sessions that are gone (P27, N206): see `orphans.ts` and
+   * `direct_session.orphans`. Called once, before the daemon takes requests; it never throws.
+   */
+  sweepOrphans(): Promise<OrphanSweepResult> {
+    const { store, config, logger, vcs, worktreeRoot } = this.#o;
+    return sweepDirectOrphans({
+      vcs,
+      events: store.events,
+      logger,
+      worktreeRoot,
+      mode: config.direct_session.orphans,
+      onClose: config.direct_session.on_close,
+      live: new Set(
+        [...this.#sessions.values()]
+          .filter((live) => live.state !== 'closed')
+          .map((live) => live.id),
+      ),
+    });
   }
 
   // ---- reads ----

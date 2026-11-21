@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { apiError } from '@otheater/protocol';
+import { apiError, type ApiDirectSession } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiClient } from '../client.js';
 import { DAEMON_ID, FakeDaemon, event, play, scenario, setPlay } from './fixtures.test-support.js';
@@ -11,6 +11,7 @@ import {
   openTrajectory,
   reduceTrajectories,
   selectTrajectory,
+  settleDirectSessions,
   settleTrajectory,
 } from './trajectories.js';
 
@@ -75,6 +76,96 @@ describe('trajectories: the reducers', () => {
     state = failTrajectory(state, 'P1', 'boom');
     expect(state.plays.P1).toMatchObject({ load: 'failed', error: 'boom' });
     expect(state.plays.P1?.events).toHaveLength(3);
+  });
+});
+
+const directEvent = (
+  id: number,
+  type: string,
+  payload: Record<string, unknown> = {},
+  sessionId = 'direct-0a1b2c3d',
+  scenarioId = 'S1',
+) => event(id, type, { sessionId, ...payload }, { scenarioId });
+
+const directSession = (
+  id: string,
+  state: ApiDirectSession['state'],
+  at: { lastActivityAt: number; closedAt?: number | null },
+): ApiDirectSession => ({
+  id,
+  scenarioId: 'S1',
+  executor: 'fake-model@fake/one',
+  profile: 'fake/one',
+  client: 'fake',
+  model: null,
+  workspace: 'readonly',
+  branch: null,
+  state,
+  turns: 1,
+  openedAt: 1,
+  lastActivityAt: at.lastActivityAt,
+  closedAt: at.closedAt ?? null,
+  commands: [],
+});
+
+describe('trajectories: the direct sessions (P27, N206)', () => {
+  it('notes a session that opens, follows it to its closing and keeps the events of the ones a screen opened', () => {
+    let state = initialTrajectories();
+    // An event of a session nobody noted, other than its opening, is not enough to know it.
+    state = reduceTrajectories(state, directEvent(1, 'direct.session.message', { turn: 1 }), 10);
+    expect(state.direct).toEqual({});
+    state = reduceTrajectories(state, directEvent(2, 'direct.session.opened'), 10);
+    expect(state.direct['direct-0a1b2c3d']).toMatchObject({
+      scenarioId: 'S1',
+      closed: false,
+      at: event(2, 'x', {}).timestamp,
+    });
+    // Nothing is kept until a screen opens the session; then the events of the stream are.
+    expect(state.plays).toEqual({});
+    state = openTrajectory(state, 'direct-0a1b2c3d');
+    state = reduceTrajectories(state, directEvent(3, 'direct.session.message', { turn: 1 }), 10);
+    state = reduceTrajectories(
+      state,
+      directEvent(4, 'direct.session.closed', { reason: 'closed' }),
+      10,
+    );
+    expect(state.plays['direct-0a1b2c3d']?.events.map((e) => e.id)).toEqual([3, 4]);
+    expect(state.direct['direct-0a1b2c3d']).toMatchObject({ closed: true });
+    expect(selectTrajectory(state, 'direct-0a1b2c3d')?.attempts).toHaveLength(1);
+    // A refusal has no session, so the trajectory does not take it.
+    const before = state;
+    state = reduceTrajectories(
+      state,
+      event(5, 'direct.session.refused', { code: 'waiting' }, { scenarioId: 'S1' }),
+      10,
+    );
+    expect(state).toBe(before);
+  });
+
+  it('merges the list of the REST read with what the stream noted, and never reopens a closed one', () => {
+    let state = initialTrajectories();
+    expect(settleDirectSessions(state, [])).toBe(state);
+    state = reduceTrajectories(
+      state,
+      directEvent(2, 'direct.session.opened', {}, 'direct-aaaaaaaa'),
+      10,
+    );
+    state = reduceTrajectories(
+      state,
+      directEvent(3, 'direct.session.closed', {}, 'direct-aaaaaaaa'),
+      10,
+    );
+    state = settleDirectSessions(state, [
+      directSession('direct-aaaaaaaa', 'idle', { lastActivityAt: 1 }),
+      directSession('direct-bbbbbbbb', 'closed', { lastActivityAt: 5, closedAt: 9 }),
+    ]);
+    expect(state.direct['direct-aaaaaaaa']).toMatchObject({ closed: true });
+    expect(state.direct['direct-aaaaaaaa']?.at).toBeGreaterThan(1);
+    expect(state.direct['direct-bbbbbbbb']).toMatchObject({
+      scenarioId: 'S1',
+      closed: true,
+      at: 9,
+    });
   });
 });
 
@@ -146,6 +237,61 @@ describe('DaemonStores: trajectories', () => {
     fail = false;
     await hub.loadTrajectory('P1');
     expect(hub.trajectories.getState().plays.P1).toMatchObject({ load: 'loaded' });
+  });
+
+  it('reads the history of a direct session and the sessions of a scenario', async () => {
+    const daemon = populated();
+    const sessionEvent = (id: number, type: string, payload: Record<string, unknown>) =>
+      plain(directEvent(id, type, payload));
+    daemon.intercept = (request) => {
+      if (request.path === '/v1/direct/direct-0a1b2c3d/trajectory') {
+        return Response.json({
+          items: [
+            sessionEvent(1, 'direct.session.opened', { client: 'fake', workspace: 'readonly' }),
+            sessionEvent(2, 'direct.session.message', { turn: 1, from: 'producer', text: 'hi' }),
+            sessionEvent(3, 'direct.session.closed', { reason: 'closed', turns: 1, work: 'none' }),
+          ],
+          nextCursor: null,
+        });
+      }
+      if (request.path === '/v1/scenarios/S1/direct') {
+        return Response.json({
+          sessions: [
+            directSession('direct-0a1b2c3d', 'closed', { lastActivityAt: 5, closedAt: 8 }),
+          ],
+        });
+      }
+      return undefined;
+    };
+    const hub = hubOf(daemon);
+    await hub.start();
+    await hub.loadDirectSessions('S1');
+    expect(hub.trajectories.getState().direct['direct-0a1b2c3d']).toMatchObject({
+      scenarioId: 'S1',
+      closed: true,
+    });
+    await hub.loadDirectTrajectory('direct-0a1b2c3d');
+    const state = hub.trajectories.getState();
+    expect(state.plays['direct-0a1b2c3d']).toMatchObject({ load: 'loaded' });
+    const folded = selectTrajectory(state, 'direct-0a1b2c3d');
+    expect(folded?.attempts[0]).toMatchObject({ attemptId: 'direct-0a1b2c3d', state: 'closed' });
+    // Held: a second call reads nothing.
+    await hub.loadDirectTrajectory('direct-0a1b2c3d');
+    expect(
+      daemon.requests.filter((request) => request.path === '/v1/direct/direct-0a1b2c3d/trajectory'),
+    ).toHaveLength(1);
+  });
+
+  it('keeps what it had when the list of the sessions cannot be read', async () => {
+    const daemon = populated();
+    daemon.intercept = (request) =>
+      request.path === '/v1/scenarios/S1/direct'
+        ? Response.json(apiError('internal', 'down'), { status: 500 })
+        : undefined;
+    const hub = hubOf(daemon);
+    await hub.start();
+    await expect(hub.loadDirectSessions('S1')).resolves.toBeUndefined();
+    expect(hub.trajectories.getState().direct).toEqual({});
   });
 
   it('reads the diff of a demand and keeps it', async () => {

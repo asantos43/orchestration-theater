@@ -41,6 +41,7 @@ import {
 } from '@otheater/protocol';
 import { redactTree, treeAt } from '../api/routes/redact.js';
 import { editConfigFile } from '../config-edit.js';
+import type { ConfigReload } from '../config-reload.js';
 import { loadConfig, type DaemonConfig } from '../config.js';
 import { executorConfigEntry, type ExecutorService } from '../executors/service.js';
 import type { Logger } from '../logger.js';
@@ -66,8 +67,9 @@ import { buildPlan, type PlanApply, type PlanResult } from './plan.js';
  *   the machine); one that fails changes nothing;
  * - nothing enters `config.yaml` before `confirm`, which writes everything at once through the
  *   editor of `PUT /v1/config` (comments stay, a secret is refused), then the rows of the table of
- *   Executors, then ends the run. Every write is idempotent, so a `confirm` that stopped halfway is
- *   safe to repeat;
+ *   Executors, then hands the written keys to the same reload `PUT /v1/config` uses (P23: the roles,
+ *   the Executors and the caps are in the running daemon at once, with `config.changed`), then ends
+ *   the run. Every write is idempotent, so a `confirm` that stopped halfway is safe to repeat;
  * - `back` undoes only the state of the step it leaves; `cancel` writes nothing;
  * - the plan of `review` is computed by the same function `confirm` applies, over the file as it is
  *   at that moment.
@@ -86,6 +88,11 @@ export interface SetupServiceOptions {
   readonly catalogs: (client: string) => ModelCatalog | undefined;
   /** The clients that can run on this machine. */
   readonly installedClients: InstalledClients;
+  /**
+   * Takes the confirmed write into the running daemon (P23, N208 item 3): the same reload as
+   * `PUT /v1/config`. Absent (a test, a tool with no daemon), the file is read at the next start.
+   */
+  readonly reload?: ConfigReload | undefined;
 }
 
 /** What the answered steps of a run say. */
@@ -700,8 +707,9 @@ export class SetupService {
         );
       }
     }
+    let next: DaemonConfig;
     try {
-      await editConfigFile(this.#o.configPath, (editor) => {
+      next = await editConfigFile(this.#o.configPath, (editor) => {
         for (const op of ops) {
           if (op.kind === 'set') {
             if (op.onlyIfAbsent === true && editor.has(op.path)) continue;
@@ -744,6 +752,9 @@ export class SetupService {
         });
       }
     }
+
+    // The running daemon takes in what was written: the hot keys now, the others at the next start.
+    await this.#o.reload?.({ next, paths: plan.writes });
 
     const result: SetupResult = {
       preset: apply.preset,
