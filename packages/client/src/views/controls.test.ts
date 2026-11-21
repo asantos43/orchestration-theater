@@ -56,9 +56,9 @@ describe('runControl', () => {
     ).resolves.toEqual({
       ok: true,
     });
-    await runControl(client as never, { kind: 'play', playId: 'P1' }, 'resume');
-    await runControl(client as never, { kind: 'actor', attemptId: 'P1/D1/1' }, 'pause');
-    await runControl(client as never, { kind: 'actor', attemptId: 'P1/D1/1' }, 'resume');
+    await runControl(client, { kind: 'play', playId: 'P1' }, 'resume');
+    await runControl(client, { kind: 'actor', attemptId: 'P1/D1/1' }, 'pause');
+    await runControl(client, { kind: 'actor', attemptId: 'P1/D1/1' }, 'resume');
     expect(client.pausePlay).toHaveBeenCalledWith('P1');
     expect(client.resumePlay).toHaveBeenCalledWith('P1');
     expect(client.pauseAttempt).toHaveBeenCalledWith('P1/D1/1');

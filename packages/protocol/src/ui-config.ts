@@ -192,9 +192,11 @@ export type UiOverviewConfig = z.output<typeof UiOverviewConfigSchema>;
 
 /**
  * `ui.usage` (P13). `groupBy`: what the totals of `/v1/usage` are split by (`profile`, default).
- * The default is [proposta].
+ * `refreshSeconds`: how often the tab reads the two routes again while it is open (30; `0` reads only
+ * when it opens and on the refresh key). The defaults are [proposta].
  */
 export const UiUsageConfigSchema = z.strictObject({
   groupBy: z.enum(UI_USAGE_GROUPS).default('profile'),
+  refreshSeconds: z.int().min(0).max(3600).default(30),
 });
 export type UiUsageConfig = z.output<typeof UiUsageConfigSchema>;

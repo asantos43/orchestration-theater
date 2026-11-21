@@ -28,7 +28,7 @@ describe('parseUiSettings', () => {
         scrollStep: 'half',
       },
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
-      usage: { groupBy: 'profile' },
+      usage: { groupBy: 'profile', refreshSeconds: 30 },
     });
   });
 

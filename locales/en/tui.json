@@ -31,6 +31,16 @@
     "decision": {
       "answer": "Answer the pending decision"
     },
+    "overview": {
+      "pausePlay": "Pause the play of the scenario (Overview tab)",
+      "resumePlay": "Resume the play of the scenario (Overview tab)",
+      "nextActor": "Pick the next Actor (Overview tab)",
+      "pauseActor": "Pause the picked Actor (Overview tab)",
+      "resumeActor": "Resume the picked Actor (Overview tab)"
+    },
+    "usage": {
+      "refresh": "Read the consumption again (Usage tab)"
+    },
     "palette": {
       "open": "Open the command palette"
     },
@@ -265,6 +275,138 @@
     "link": {
       "syncing": "syncing",
       "lost": "connection lost"
+    }
+  },
+  "overview": {
+    "noScenario": "Select a scenario in the side bar.",
+    "noPlay": "This scenario has no play yet.",
+    "paused": "paused",
+    "busy": "Waiting for the daemon…",
+    "pipeline": {
+      "title": "Pipeline",
+      "need": "Need: {{need}}"
+    },
+    "state": {
+      "NEED": "Need",
+      "PLANNING": "Planning",
+      "CLARIFYING": "Clarifying",
+      "REVIEWING_PLAN": "Plan review",
+      "SCRIPTING": "Script",
+      "REVIEWING_SCRIPT": "Script review",
+      "EXECUTING": "Executing",
+      "INTEGRATING": "Integrating",
+      "CRITIQUING": "Critique",
+      "DECIDING": "Deciding",
+      "DELIVERING": "Delivering",
+      "AWAITING_PRODUCER": "Awaiting you",
+      "DONE": "Done",
+      "CANCELLED": "Cancelled"
+    },
+    "demands": {
+      "title": "Demands",
+      "empty": "No demands yet.",
+      "waiting": "waiting for an Executor",
+      "state": {
+        "pending": "pending",
+        "ready": "ready",
+        "running": "running",
+        "in_review": "in review",
+        "approved": "approved",
+        "failed": "failed",
+        "blocked": "blocked",
+        "cancelled": "cancelled"
+      }
+    },
+    "actors": {
+      "title": "Actors",
+      "empty": "No Actor at work.",
+      "paused": "paused",
+      "left": "{{time}} left",
+      "over": "{{time}} over"
+    },
+    "events": {
+      "title": "Recent events",
+      "empty": "No events yet."
+    },
+    "quota": {
+      "title": "Quota",
+      "empty": "No account read yet."
+    },
+    "hint": {
+      "pausePlay": "pause the play",
+      "resumePlay": "resume the play",
+      "nextActor": "next Actor",
+      "pauseActor": "pause the Actor",
+      "resumeActor": "resume the Actor"
+    },
+    "confirm": {
+      "pausePlay": "Pause the play “{{subject}}”? Press y to confirm, any other key cancels.",
+      "resumePlay": "Resume the play “{{subject}}”? Press y to confirm, any other key cancels.",
+      "pauseActor": "Pause the Actor {{subject}}? Press y to confirm, any other key cancels.",
+      "resumeActor": "Resume the Actor {{subject}}? Press y to confirm, any other key cancels."
+    },
+    "done": {
+      "pausePlay": "Play paused.",
+      "resumePlay": "Play resumed.",
+      "pauseActor": "Actor {{subject}} paused.",
+      "resumeActor": "Actor {{subject}} resumed."
+    },
+    "failed": {
+      "conflict": "Nothing to do: it is not in a state that allows this.",
+      "not_found": "Not found: it may have ended.",
+      "unavailable": "The daemon cannot do this now.",
+      "network": "The daemon did not answer.",
+      "other": "The daemon refused ({{code}})."
+    }
+  },
+  "usage": {
+    "offline": "No daemon connection: nothing to read.",
+    "loading": "Reading consumption…",
+    "empty": "Nothing read yet.",
+    "hint": "{{key}} reads again",
+    "updated": "read at {{time}}",
+    "totals": {
+      "title": "Totals",
+      "tokens": "{{turns}} turns · in {{input}} · out {{output}} · cache {{cached}}",
+      "money": "Real {{real}} · API equivalent {{api}}",
+      "incomplete_one": "{{count}} turn of unknown cost: the sums are a lower bound.",
+      "incomplete_other": "{{count}} turns of unknown cost: the sums are a lower bound."
+    },
+    "groups": {
+      "title": "By {{by}}",
+      "titleNone": "Groups",
+      "off": "Not split (ui.usage.groupBy is none).",
+      "empty": "No consumption yet.",
+      "noKey": "(no play)",
+      "by": {
+        "profile": "account",
+        "executor": "Executor",
+        "play": "play",
+        "session": "session"
+      }
+    },
+    "budget": {
+      "title": "Budget",
+      "empty": "No spending cap set.",
+      "scope": {
+        "profile": "Account",
+        "executor": "Executor",
+        "run": "Run"
+      },
+      "period": {
+        "day": "day",
+        "month": "month",
+        "run": "run"
+      },
+      "exceeded": "exceeded",
+      "blocked": "blocked: unknown cost",
+      "resets": "starts over {{time}}",
+      "profileExceeded": "{{profile}} is over its cap until {{time}}"
+    },
+    "failed": {
+      "network": "Could not reach the daemon.",
+      "unavailable": "The daemon cannot answer now.",
+      "other": "Could not read consumption ({{code}})."
     }
   },
   "input": {

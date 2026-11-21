@@ -31,6 +31,16 @@
     "decision": {
       "answer": "Responder a decisão pendente"
     },
+    "overview": {
+      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
+      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
+      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
+      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
+      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
+    },
+    "usage": {
+      "refresh": "Ler o consumo de novo (aba Consumo)"
+    },
     "palette": {
       "open": "Abrir a paleta de comandos"
     },
@@ -265,6 +275,138 @@
     "link": {
       "syncing": "sincronizando",
       "lost": "conexão perdida"
+    }
+  },
+  "overview": {
+    "noScenario": "Escolha um cenário na barra lateral.",
+    "noPlay": "Este cenário ainda não tem peça.",
+    "paused": "pausada",
+    "busy": "Esperando o daemon…",
+    "pipeline": {
+      "title": "Pipeline",
+      "need": "Necessidade: {{need}}"
+    },
+    "state": {
+      "NEED": "Necessidade",
+      "PLANNING": "Planejamento",
+      "CLARIFYING": "Esclarecimento",
+      "REVIEWING_PLAN": "Revisão do plano",
+      "SCRIPTING": "Roteiro",
+      "REVIEWING_SCRIPT": "Revisão do roteiro",
+      "EXECUTING": "Execução",
+      "INTEGRATING": "Integração",
+      "CRITIQUING": "Crítica",
+      "DECIDING": "Decisão",
+      "DELIVERING": "Entrega",
+      "AWAITING_PRODUCER": "Aguardando você",
+      "DONE": "Concluída",
+      "CANCELLED": "Cancelada"
+    },
+    "demands": {
+      "title": "Demandas",
+      "empty": "Nenhuma demanda ainda.",
+      "waiting": "esperando um Executor",
+      "state": {
+        "pending": "pendente",
+        "ready": "pronta",
+        "running": "em curso",
+        "in_review": "em revisão",
+        "approved": "aprovada",
+        "failed": "falhou",
+        "blocked": "bloqueada",
+        "cancelled": "cancelada"
+      }
+    },
+    "actors": {
+      "title": "Atores",
+      "empty": "Nenhum Ator trabalhando.",
+      "paused": "pausado",
+      "left": "faltam {{time}}",
+      "over": "{{time}} a mais"
+    },
+    "events": {
+      "title": "Eventos recentes",
+      "empty": "Nenhum evento ainda."
+    },
+    "quota": {
+      "title": "Cota",
+      "empty": "Nenhuma conta lida ainda."
+    },
+    "hint": {
+      "pausePlay": "pausar a peça",
+      "resumePlay": "retomar a peça",
+      "nextActor": "próximo Ator",
+      "pauseActor": "pausar o Ator",
+      "resumeActor": "retomar o Ator"
+    },
+    "confirm": {
+      "pausePlay": "Pausar a peça “{{subject}}”? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "resumePlay": "Retomar a peça “{{subject}}”? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "pauseActor": "Pausar o Ator {{subject}}? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "resumeActor": "Retomar o Ator {{subject}}? Tecle y para confirmar; qualquer outra tecla cancela."
+    },
+    "done": {
+      "pausePlay": "Peça pausada.",
+      "resumePlay": "Peça retomada.",
+      "pauseActor": "Ator {{subject}} pausado.",
+      "resumeActor": "Ator {{subject}} retomado."
+    },
+    "failed": {
+      "conflict": "Nada a fazer: ela não está num estado que permita isso.",
+      "not_found": "Não encontrada: pode ter terminado.",
+      "unavailable": "O daemon não pode fazer isso agora.",
+      "network": "O daemon não respondeu.",
+      "other": "O daemon recusou ({{code}})."
+    }
+  },
+  "usage": {
+    "offline": "Sem conexão com o daemon: nada a ler.",
+    "loading": "Lendo o consumo…",
+    "empty": "Nada lido ainda.",
+    "hint": "{{key}} lê de novo",
+    "updated": "lido às {{time}}",
+    "totals": {
+      "title": "Totais",
+      "tokens": "{{turns}} turnos · entrada {{input}} · saída {{output}} · cache {{cached}}",
+      "money": "Real {{real}} · equivalente em API {{api}}",
+      "incomplete_one": "{{count}} turno de custo desconhecido: as somas são um mínimo.",
+      "incomplete_other": "{{count}} turnos de custo desconhecido: as somas são um mínimo."
+    },
+    "groups": {
+      "title": "Por {{by}}",
+      "titleNone": "Grupos",
+      "off": "Sem divisão (ui.usage.groupBy é none).",
+      "empty": "Nenhum consumo ainda.",
+      "noKey": "(sem peça)",
+      "by": {
+        "profile": "conta",
+        "executor": "Executor",
+        "play": "peça",
+        "session": "sessão"
+      }
+    },
+    "budget": {
+      "title": "Orçamento",
+      "empty": "Nenhum teto de gasto definido.",
+      "scope": {
+        "profile": "Conta",
+        "executor": "Executor",
+        "run": "Execução"
+      },
+      "period": {
+        "day": "dia",
+        "month": "mês",
+        "run": "execução"
+      },
+      "exceeded": "estourado",
+      "blocked": "bloqueado: custo desconhecido",
+      "resets": "recomeça {{time}}",
+      "profileExceeded": "{{profile}} passou do teto até {{time}}"
+    },
+    "failed": {
+      "network": "Não foi possível falar com o daemon.",
+      "unavailable": "O daemon não pode responder agora.",
+      "other": "Não foi possível ler o consumo ({{code}})."
     }
   },
   "input": {

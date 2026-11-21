@@ -89,6 +89,8 @@ function Screen(props: AppProps): ReactNode {
     return (
       <Shell
         stores={view.stores}
+        client={view.client}
+        settings={props.settings}
         layout={view.layout}
         address={view.address}
         tuning={props.settings.tuiLayout}

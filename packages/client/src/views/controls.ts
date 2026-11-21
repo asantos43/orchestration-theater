@@ -31,7 +31,7 @@ export function playControls(
   play: ApiPlay | undefined,
   pausedPlays: ReadonlySet<string>,
 ): Controls {
-  if (play === undefined || play.finishedAt !== null) return { pause: false, resume: false };
+  if (play?.finishedAt !== null) return { pause: false, resume: false };
   return { pause: !pausedPlays.has(play.id), resume: true };
 }
 

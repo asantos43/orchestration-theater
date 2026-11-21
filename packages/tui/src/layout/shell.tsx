@@ -4,6 +4,7 @@ import {
   derivePalette,
   deriveShortcutBar,
   translateUiText,
+  type ApiClient,
   type DaemonStores,
   type LayoutStore,
   type UiContext,
@@ -15,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
-import type { UiTuiLayoutSettings } from '../settings.js';
+import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
 import { Chat, chatMessageRows, type ChatMessage } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
@@ -28,6 +29,7 @@ import { scrollStepLines } from './scroll.js';
 import { Sidebar, sidebarItems } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
+import { TabHostProvider } from './tab-host.js';
 import {
   foldedSections,
   isPanelOpen,
@@ -69,6 +71,11 @@ export interface ShellProps {
   readonly messages?: readonly ChatMessage[] | undefined;
   /** What each tab of the panel draws; the tabs come in empty (P9) and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
+  /** [P13] The REST client and the settings the tabs read (see `tab-host.tsx`). */
+  readonly client?: ApiClient | undefined;
+  readonly settings?: UiSettings | undefined;
+  /** The clock of the tabs (epoch ms); tests pass a fake one. */
+  readonly now?: (() => number) | undefined;
 }
 
 /** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
@@ -372,140 +379,153 @@ export function Shell(props: ShellProps): ReactNode {
     keyLabel(tuiKeymap, 'layout.narrowChat'),
     keyLabel(tuiKeymap, 'layout.widenChat'),
   );
+  const tabHost = useMemo(
+    () => ({
+      stores,
+      client: props.client,
+      keymap: tuiKeymap,
+      settings: props.settings ?? DEFAULT_UI_SETTINGS,
+      now: props.now ?? Date.now,
+    }),
+    [stores, props.client, tuiKeymap, props.settings, props.now],
+  );
   const content =
     geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
 
   return (
-    <Box flexDirection="column" width={geometry.columns} height={geometry.rows}>
-      <Header
-        width={geometry.columns}
-        scenarioName={selectedRow?.name}
-        play={play}
-        mark={selectedRow?.mark}
-        decisions={decisions}
-        address={props.address}
-        link={link}
-      />
-      <Box height={height}>
-        {geometry.sidebar.mode !== 'hidden' && (
-          <Sidebar
-            mode={geometry.sidebar.mode}
-            width={geometry.sidebar.width}
+    <TabHostProvider host={tabHost}>
+      <Box flexDirection="column" width={geometry.columns} height={geometry.rows}>
+        <Header
+          width={geometry.columns}
+          scenarioName={selectedRow?.name}
+          play={play}
+          mark={selectedRow?.mark}
+          decisions={decisions}
+          address={props.address}
+          link={link}
+        />
+        <Box height={height}>
+          {geometry.sidebar.mode !== 'hidden' && (
+            <Sidebar
+              mode={geometry.sidebar.mode}
+              width={geometry.sidebar.width}
+              height={height}
+              focused={focus === 'sidebar'}
+              rows={scenarioRowsNow}
+              quotas={quotas}
+              folded={folded}
+              selectedId={selectedRow?.id}
+              cursor={cursorInSide}
+              address={props.address}
+              live={live}
+              keys={{
+                toggle: keyLabel(tuiKeymap, 'layout.toggleSidebar'),
+                settings: keyLabel(tuiKeymap, 'tabs.open.settings'),
+              }}
+            />
+          )}
+          <Chat
+            width={geometry.chat.width}
             height={height}
-            focused={focus === 'sidebar'}
-            rows={scenarioRowsNow}
-            quotas={quotas}
-            folded={folded}
-            selectedId={selectedRow?.id}
-            cursor={cursorInSide}
-            address={props.address}
-            live={live}
-            keys={{
-              toggle: keyLabel(tuiKeymap, 'layout.toggleSidebar'),
-              settings: keyLabel(tuiKeymap, 'tabs.open.settings'),
+            focused={focus === 'chat'}
+            edgeFocused={focus === 'edge'}
+            resizable={resizable}
+            widthLabel={
+              resizable
+                ? t('layout.chat.widthLabel', {
+                    cols: geometry.chat.width,
+                    keys: resizeKeys,
+                  })
+                : undefined
+            }
+            title={selectedRow?.name ?? t('layout.header.noScenario')}
+            stateLine={
+              selectedRow === undefined
+                ? ''
+                : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
+            }
+            messages={messages}
+            offset={chatOffset}
+            onOffset={setChatOffset}
+            input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
+          />
+          {geometry.panel !== undefined && content !== undefined && (
+            <Panel
+              width={geometry.panel.width}
+              height={height}
+              focused={focus === 'panel'}
+              tabs={openTabs}
+              active={currentTab}
+              keys={{
+                add: keyLabel(tuiKeymap, 'tabs.add'),
+                toggle: keyLabel(tuiKeymap, 'layout.togglePanel'),
+              }}
+              footer={panelFooter}
+            >
+              {definition === undefined ? (
+                <Text dimColor wrap="truncate">
+                  {openTabs.length === 0 ? t('layout.panel.noTabs') : t('layout.panel.empty')}
+                </Text>
+              ) : (
+                <Box
+                  marginTop={-panelScroll}
+                  flexShrink={0}
+                  flexDirection="column"
+                  width={content.width}
+                >
+                  {definition.render({
+                    width: content.width,
+                    height: content.height,
+                    focused: focus === 'panel' && overlay === undefined,
+                    scroll: panelScroll,
+                    scenarioId: selectedRow?.id,
+                    sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
+                  })}
+                </Box>
+              )}
+            </Panel>
+          )}
+        </Box>
+        {notice === undefined ? (
+          <ShortcutBar width={geometry.columns} items={barItems} />
+        ) : (
+          <Text color={COLOR.warn} wrap="truncate">
+            {` ${notice}`}
+          </Text>
+        )}
+        {overlay === 'palette' && (
+          <PaletteOverlay
+            screen={screen}
+            rows={paletteRows}
+            hint={closeHint}
+            onRun={(id) => {
+              setOverlay(undefined);
+              runAction(id);
             }}
           />
         )}
-        <Chat
-          width={geometry.chat.width}
-          height={height}
-          focused={focus === 'chat'}
-          edgeFocused={focus === 'edge'}
-          resizable={resizable}
-          widthLabel={
-            resizable
-              ? t('layout.chat.widthLabel', {
-                  cols: geometry.chat.width,
-                  keys: resizeKeys,
-                })
-              : undefined
-          }
-          title={selectedRow?.name ?? t('layout.header.noScenario')}
-          stateLine={
-            selectedRow === undefined
-              ? ''
-              : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
-          }
-          messages={messages}
-          offset={chatOffset}
-          onOffset={setChatOffset}
-          input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
-        />
-        {geometry.panel !== undefined && content !== undefined && (
-          <Panel
-            width={geometry.panel.width}
-            height={height}
-            focused={focus === 'panel'}
-            tabs={openTabs}
-            active={currentTab}
-            keys={{
-              add: keyLabel(tuiKeymap, 'tabs.add'),
-              toggle: keyLabel(tuiKeymap, 'layout.togglePanel'),
+        {overlay === 'help' && (
+          <HelpOverlay
+            screen={screen}
+            groups={helpGroups}
+            offset={helpOffset}
+            onOffset={setHelpOffset}
+            hint={closeHint}
+          />
+        )}
+        {overlay === 'picker' && (
+          <TabPickerOverlay
+            screen={screen}
+            choices={pickerChoices}
+            hint={closeHint}
+            onPick={(id) => {
+              setOverlay(undefined);
+              showPanel(id);
             }}
-            footer={panelFooter}
-          >
-            {definition === undefined ? (
-              <Text dimColor wrap="truncate">
-                {openTabs.length === 0 ? t('layout.panel.noTabs') : t('layout.panel.empty')}
-              </Text>
-            ) : (
-              <Box
-                marginTop={-panelScroll}
-                flexShrink={0}
-                flexDirection="column"
-                width={content.width}
-              >
-                {definition.render({
-                  width: content.width,
-                  height: content.height,
-                  focused: focus === 'panel',
-                  scroll: panelScroll,
-                  sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
-                })}
-              </Box>
-            )}
-          </Panel>
+          />
         )}
       </Box>
-      {notice === undefined ? (
-        <ShortcutBar width={geometry.columns} items={barItems} />
-      ) : (
-        <Text color={COLOR.warn} wrap="truncate">
-          {` ${notice}`}
-        </Text>
-      )}
-      {overlay === 'palette' && (
-        <PaletteOverlay
-          screen={screen}
-          rows={paletteRows}
-          hint={closeHint}
-          onRun={(id) => {
-            setOverlay(undefined);
-            runAction(id);
-          }}
-        />
-      )}
-      {overlay === 'help' && (
-        <HelpOverlay
-          screen={screen}
-          groups={helpGroups}
-          offset={helpOffset}
-          onOffset={setHelpOffset}
-          hint={closeHint}
-        />
-      )}
-      {overlay === 'picker' && (
-        <TabPickerOverlay
-          screen={screen}
-          choices={pickerChoices}
-          hint={closeHint}
-          onPick={(id) => {
-            setOverlay(undefined);
-            showPanel(id);
-          }}
-        />
-      )}
-    </Box>
+    </TabHostProvider>
   );
 }
 

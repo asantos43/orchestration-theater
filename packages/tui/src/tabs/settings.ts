@@ -21,6 +21,8 @@ export interface OverviewSettings {
 
 export interface UsageSettings {
   readonly groupBy: UsageGroup;
+  /** Seconds between two reads while the tab is open; 0 reads on open and on the key only. */
+  readonly refreshSeconds: number;
 }
 
 export const DEFAULT_OVERVIEW_SETTINGS: OverviewSettings = {
@@ -29,7 +31,7 @@ export const DEFAULT_OVERVIEW_SETTINGS: OverviewSettings = {
   hiddenEvents: ['session.update'],
 };
 
-export const DEFAULT_USAGE_SETTINGS: UsageSettings = { groupBy: 'profile' };
+export const DEFAULT_USAGE_SETTINGS: UsageSettings = { groupBy: 'profile', refreshSeconds: 30 };
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -69,5 +71,12 @@ export function parseOverviewSettings(input: unknown): OverviewSettings {
 /** Reads `ui.usage`, never throwing. */
 export function parseUsageSettings(input: unknown): UsageSettings {
   const source = record(input);
-  return { groupBy: oneOf(source.groupBy, USAGE_GROUPS, DEFAULT_USAGE_SETTINGS.groupBy) };
+  const every = source.refreshSeconds;
+  return {
+    groupBy: oneOf(source.groupBy, USAGE_GROUPS, DEFAULT_USAGE_SETTINGS.groupBy),
+    refreshSeconds:
+      typeof every === 'number' && Number.isInteger(every) && every >= 0 && every <= 3600
+        ? every
+        : DEFAULT_USAGE_SETTINGS.refreshSeconds,
+  };
 }

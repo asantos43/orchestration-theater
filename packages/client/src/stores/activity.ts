@@ -86,7 +86,7 @@ export const reduceActivity: EventReducer<ActivityState> = (state, event) => {
       const attemptId = payload.attemptId ?? event.attemptId;
       const key = attemptId ?? payload.sessionId;
       const actor = state.actors[key];
-      if (actor === undefined || actor.sessionId !== payload.sessionId) return state;
+      if (actor?.sessionId !== payload.sessionId) return state;
       // A paused attempt stays on the list: its session ended, but the attempt waits to be resumed.
       if (actor.paused !== undefined) return state;
       return { ...state, actors: without(state.actors, key) };

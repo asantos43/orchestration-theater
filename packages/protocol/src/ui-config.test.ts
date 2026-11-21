@@ -95,8 +95,13 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiOverviewConfigSchema.safeParse({ confirm: 'never' }).success).toBe(false);
     expect(UiOverviewConfigSchema.safeParse({ recentEvents: 0 }).success).toBe(false);
     expect(UiOverviewConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
-    expect(UiUsageConfigSchema.parse({})).toEqual({ groupBy: 'profile' });
+    expect(UiUsageConfigSchema.parse({})).toEqual({
+      groupBy: 'profile',
+      refreshSeconds: 30,
+    });
     expect(UiUsageConfigSchema.parse({ groupBy: 'none' }).groupBy).toBe('none');
     expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({ refreshSeconds: 0 }).refreshSeconds).toBe(0);
+    expect(UiUsageConfigSchema.safeParse({ refreshSeconds: 4000 }).success).toBe(false);
   });
 });
