@@ -4,6 +4,7 @@ import { PermissionDenied } from './errors.js';
 import type {
   AgentSession,
   PromptOutcome,
+  SessionCommand,
   SessionConfigOption,
   UpdateListener,
 } from './ports/agent-session.js';
@@ -41,6 +42,10 @@ export class CatalogProbeSession implements AgentSession {
 
   get configOptions(): readonly SessionConfigOption[] {
     return this.#inner.configOptions;
+  }
+
+  get availableCommands(): readonly SessionCommand[] {
+    return this.#inner.availableCommands ?? [];
   }
 
   prompt(): Promise<PromptOutcome> {

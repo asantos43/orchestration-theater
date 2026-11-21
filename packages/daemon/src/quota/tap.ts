@@ -9,6 +9,7 @@ import {
   type PromptOutcome,
   type Profile,
   type ProfileRef,
+  type SessionCommand,
   type SessionConfigOption,
   type UpdateListener,
 } from '@otheater/core';
@@ -77,6 +78,10 @@ export class QuotaTappedSession implements AgentSession {
 
   get configOptions(): readonly SessionConfigOption[] {
     return this.#inner.configOptions;
+  }
+
+  get availableCommands(): readonly SessionCommand[] {
+    return this.#inner.availableCommands ?? [];
   }
 
   async prompt(blocks: readonly ContentBlock[]): Promise<PromptOutcome> {

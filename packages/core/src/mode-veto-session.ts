@@ -4,6 +4,7 @@ import type { ConfigValue, ContentBlock } from './normalized-update.js';
 import type {
   AgentSession,
   PromptOutcome,
+  SessionCommand,
   SessionConfigOption,
   UpdateListener,
 } from './ports/agent-session.js';
@@ -45,6 +46,10 @@ export class ModeVetoSession implements AgentSession {
 
   get configOptions(): readonly SessionConfigOption[] {
     return this.#inner.configOptions;
+  }
+
+  get availableCommands(): readonly SessionCommand[] {
+    return this.#inner.availableCommands ?? [];
   }
 
   prompt(blocks: readonly ContentBlock[]): Promise<PromptOutcome> {

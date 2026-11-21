@@ -21,6 +21,7 @@ import type {
   NormalizedError,
   PromptOutcome,
   RawUpdate,
+  SessionCommand,
   SessionConfigOption,
   SessionNormalizer,
   UpdateListener,
@@ -149,6 +150,7 @@ export class ManagedAgentSession implements AgentSession {
   readonly sessionId: string;
   readonly canLoad: boolean;
   #configOptions: readonly SessionConfigOption[];
+  #availableCommands: readonly SessionCommand[] = [];
   readonly #driver: SessionDriver;
   readonly #process: LaunchedProcess;
   readonly #normalizer: SessionNormalizer;
@@ -193,6 +195,11 @@ export class ManagedAgentSession implements AgentSession {
     return this.#configOptions;
   }
 
+  /** The last list of `/` commands the client announced (P3 of Phase 7); empty until it does. */
+  get availableCommands(): readonly SessionCommand[] {
+    return this.#availableCommands;
+  }
+
   /**
    * Replaces the snapshot of the config options: the client sent the full list again (a
    * `config_option_update`). The transport calls it; it works after the end of the session too.
@@ -216,6 +223,9 @@ export class ManagedAgentSession implements AgentSession {
       return;
     }
     for (const update of updates) {
+      if (update.kind === 'available_commands') {
+        this.#availableCommands = update.commands.map((command) => ({ ...command }));
+      }
       for (const listener of [...this.#listeners]) {
         try {
           listener(update);
