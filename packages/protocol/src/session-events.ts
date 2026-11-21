@@ -38,7 +38,8 @@ export type ExecutorPayload = z.infer<typeof ExecutorPayloadSchema>;
  * Why a session stopped before its work was done (architecture 5.16, "Política por causa"). One
  * per row of the table, in the same order: quota, spending cap, transient error, client crash,
  * restart of the daemon or machine, timeout, stuck agent, model refusal, permission error and, last,
- * the removal of the profile of the session (P21b, N152).
+ * the removal of the profile of the session (P21b, N152) and the pause of the attempt or of its play
+ * (Phase 7, P2, N176).
  */
 export const INTERRUPTION_CAUSES = [
   'quota_exhausted',
@@ -51,6 +52,7 @@ export const INTERRUPTION_CAUSES = [
   'refusal',
   'permission',
   'profile_removed',
+  'paused',
 ] as const;
 export const InterruptionCauseSchema = z.enum(INTERRUPTION_CAUSES);
 export type InterruptionCause = z.infer<typeof InterruptionCauseSchema>;
@@ -282,6 +284,40 @@ export const AttemptCheckpointFailedPayloadSchema = z.strictObject({
 export const AttemptAbortedPayloadSchema = z.strictObject({
   sessionId: id.optional(),
   error: errorText,
+  ...correlation,
+});
+
+/**
+ * `attempt.paused`: a person (or the play pause in `interrupt` mode) paused the attempt (N176,
+ * 5.16). The turn in flight was interrupted with the cause `paused` and the checkpoint was saved;
+ * the attempt waits for `attempt.resumed`. [proposta]
+ */
+export const AttemptPausedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  /** `actor` for a pause of the attempt itself, `play` for the play pause in `interrupt` mode. */
+  origin: z.enum(['actor', 'play']),
+  /** Whether the checkpoint was saved (it is not when the attempt had no work to save). */
+  checkpointed: z.boolean(),
+  ...correlation,
+});
+
+/**
+ * `attempt.resumed`: a paused attempt went on, by the resume policy of the cause `paused`
+ * (5.16): `native` reloads the conversation, `handoff` starts a new session from the summary.
+ * [proposta]
+ */
+export const AttemptResumedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  strategy: z.enum(['native', 'handoff']),
+  ...correlation,
+});
+
+/**
+ * `attempt.cancelled`: a person cancelled the attempt (N176). The attempt ends as `cancelled`,
+ * the work done so far is kept, and the Director judges the demand. [proposta]
+ */
+export const AttemptCancelledPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
   ...correlation,
 });
 
