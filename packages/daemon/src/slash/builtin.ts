@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import {
-  AdapterUnavailable,
-  InvalidInput,
-  type JsonValue,
-  type ProfileFact,
-} from '@otheater/core';
+import { AdapterUnavailable, InvalidInput, type JsonValue, type ProfileFact } from '@otheater/core';
 import { z } from 'zod';
 import { redactConfig } from '../api/routes/redact.js';
 import { isPausedPlay, playOf, scenarioOf } from '../api/routes/projections.js';
