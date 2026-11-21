@@ -42,6 +42,13 @@ import {
 } from './api-command-events.js';
 import { LayoutAdjustedPayloadSchema, LayoutChangedPayloadSchema } from './layout-events.js';
 import {
+  SetupBackPayloadSchema,
+  SetupCancelledPayloadSchema,
+  SetupConfirmedPayloadSchema,
+  SetupStartedPayloadSchema,
+  SetupStepPayloadSchema,
+} from './setup-events.js';
+import {
   ApiChatClosedPayloadSchema,
   ApiChatMessageDroppedPayloadSchema,
   ChatAskClosedPayloadSchema,
@@ -678,6 +685,19 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: LayoutChangedPayloadSchema,
   }),
+  defineEventType({ type: 'setup.started', schemaVersion: 1, payload: SetupStartedPayloadSchema }),
+  defineEventType({ type: 'setup.step', schemaVersion: 1, payload: SetupStepPayloadSchema }),
+  defineEventType({ type: 'setup.back', schemaVersion: 1, payload: SetupBackPayloadSchema }),
+  defineEventType({
+    type: 'setup.confirmed',
+    schemaVersion: 1,
+    payload: SetupConfirmedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'setup.cancelled',
+    schemaVersion: 1,
+    payload: SetupCancelledPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -814,6 +834,11 @@ export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];
 export type LayoutChangedPayload = DaemonEventPayloads['layout.changed'];
+export type SetupStartedPayload = DaemonEventPayloads['setup.started'];
+export type SetupStepPayload = DaemonEventPayloads['setup.step'];
+export type SetupBackPayload = DaemonEventPayloads['setup.back'];
+export type SetupConfirmedPayload = DaemonEventPayloads['setup.confirmed'];
+export type SetupCancelledPayload = DaemonEventPayloads['setup.cancelled'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

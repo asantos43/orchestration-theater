@@ -24,4 +24,5 @@ export * from './notice-events.js';
 export * from './api-events.js';
 export * from './api-command-events.js';
 export * from './layout-events.js';
+export * from './setup-events.js';
 export * from './chat-events.js';

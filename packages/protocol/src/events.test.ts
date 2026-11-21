@@ -121,6 +121,11 @@ describe('daemon event registry', () => {
       'api.chat_message_dropped',
       'layout.adjusted',
       'layout.changed',
+      'setup.started',
+      'setup.step',
+      'setup.back',
+      'setup.confirmed',
+      'setup.cancelled',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
