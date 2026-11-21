@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ChatServerMessage, ChatTicket } from '@otheater/protocol';
+import { CHAT_HISTORY_MAX, type ChatServerMessage, type ChatTicket } from '@otheater/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiClient } from './client.js';
 import { ChatSocket, type ChatSocketOptions, type ChatSocketTarget } from './chat-socket.js';
@@ -298,6 +298,10 @@ describe('ChatSocket: sending', () => {
     expect(() => {
       chat.send({ type: 'resume', lastEventId: 3 } as never);
     }).toThrow(ApiInputError);
+    // Nor is `history`.
+    expect(() => {
+      chat.send({ type: 'history', count: 10 } as never);
+    }).toThrow(ApiInputError);
     expect(socket.sent).toEqual([]);
   });
 
@@ -340,6 +344,41 @@ describe('ChatSocket: reconnection', () => {
     first.drop();
     const second = await openSocket(sockets, 1);
     expect(second.sentMessages()).toEqual([{ type: 'resume', lastEventId: 40 }]);
+  });
+
+  it('asks for the history on the first connection, and resumes (not asks again) once it has a cursor', async () => {
+    const { chat, sockets } = rig({ history: 40 });
+    chat.start();
+    const first = await openSocket(sockets);
+    expect(first.sentMessages()).toEqual([{ type: 'history', count: 40 }]);
+    first.receive(busy(9));
+    first.drop();
+    const second = await openSocket(sockets, 1);
+    expect(second.sentMessages()).toEqual([{ type: 'resume', lastEventId: 9 }]);
+  });
+
+  it('asks again for the history after a drop that came before any event', async () => {
+    const { chat, sockets } = rig({ history: 5 });
+    chat.start();
+    (await openSocket(sockets)).drop();
+    const second = await openSocket(sockets, 1);
+    expect(second.sentMessages()).toEqual([{ type: 'history', count: 5 }]);
+  });
+
+  it('prefers resumeFrom to the history, and sends neither history of 0 nor one past the limit as is', async () => {
+    const both = rig({ history: 40, resumeFrom: 12 });
+    both.chat.start();
+    expect((await openSocket(both.sockets)).sentMessages()).toEqual([
+      { type: 'resume', lastEventId: 12 },
+    ]);
+    const none = rig({ history: 0 });
+    none.chat.start();
+    expect((await openSocket(none.sockets)).sent).toEqual([]);
+    const huge = rig({ history: 100_000 });
+    huge.chat.start();
+    expect((await openSocket(huge.sockets)).sentMessages()).toEqual([
+      { type: 'history', count: CHAT_HISTORY_MAX },
+    ]);
   });
 
   it('sends no resume after a drop when it never had an event', async () => {
