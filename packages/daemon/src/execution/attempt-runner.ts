@@ -6,6 +6,7 @@ import {
   attemptBranch,
   attemptInputOf,
   Cancelled,
+  Conflict,
   formatExecutorId,
   hasErrorCode,
   mcpToolsOf,
@@ -102,7 +103,13 @@ export interface ResumeContext {
   readonly inFlight?: InFlightMode;
 }
 
-export const ATTEMPT_RESULT_STATES = ['completed', 'failed', 'timed_out', 'interrupted'] as const;
+export const ATTEMPT_RESULT_STATES = [
+  'completed',
+  'failed',
+  'timed_out',
+  'interrupted',
+  'cancelled',
+] as const;
 export type AttemptResultState = (typeof ATTEMPT_RESULT_STATES)[number];
 
 /** One passing of the baton inside an attempt (architecture 5.16; Phase 5, P18). */
@@ -237,6 +244,13 @@ type Ended =
       readonly signals: readonly string[];
       /** The limit error behind a `quota_exhausted`, for the `QuotaService`. */
       readonly limitHit?: LimitHit;
+      /** Set when the cause is `paused` (N176): who asked for the pause. */
+      readonly origin?: PauseOrigin;
+      readonly sha: string | undefined;
+    }
+  | {
+      /** N176: a person cancelled the attempt. */
+      readonly kind: 'cancelled';
       readonly sha: string | undefined;
     }
   | {
@@ -251,6 +265,13 @@ type Ended =
       /** The stop is the one of a profile that left with `on_timeout: force` (P21), not the daemon's. */
       readonly leaving?: boolean;
     };
+
+/** Who asked for a pause (N176): the attempt itself (a person), or the pause of the play. */
+export type PauseOrigin = 'actor' | 'play';
+
+/** What a person (or the pause of the play) asked of an attempt in flight (N176). */
+type HaltRequest =
+  { readonly kind: 'pause'; readonly origin: PauseOrigin } | { readonly kind: 'cancel' };
 
 /** An attempt that waits for a quota or a cap: what the runner holds to wake it (`restored`). */
 interface Waiter {
@@ -356,6 +377,19 @@ interface AttemptContext {
   left: string | undefined;
   /** Whoever waits for the attempt to leave its profile (`releaseProfile`). */
   leftWaiters: (() => void)[];
+  /**
+   * N176: aborted when a person pauses or cancels the attempt, to end the go (or the backoff, or
+   * the wait for the reset) in progress. A new one replaces it when the request is taken.
+   */
+  halt: AbortController;
+  /** What `halt` was aborted for; a go that starts finds it and stops at once. */
+  request: HaltRequest | undefined;
+  /** N176: the attempt is paused (`attempt.paused` written) and waits for `wake`, a cancel or a stop. */
+  held: { readonly origin: PauseOrigin; readonly wake: () => void } | undefined;
+  /** Whoever waits for the pause to take hold (`pauseAttempt`). */
+  pausedWaiters: (() => void)[];
+  /** The wait for the reset is in progress: a pause is refused then, a cancel ends the wait. */
+  resetting: boolean;
 }
 
 const NEVER: Promise<never> = new Promise<never>(() => undefined);
@@ -458,6 +492,98 @@ export class AttemptRunner {
       ),
     );
     return mine.length;
+  }
+
+  /**
+   * N176: the running attempts of a play, with who paused each one (`undefined`: it is not paused).
+   * Used by the pause of the play in `interrupt` mode and by the cancel of the play.
+   */
+  attemptsOfPlay(playId: string): { attemptId: string; paused: PauseOrigin | undefined }[] {
+    return [...this.#running.values()]
+      .filter((entry) => entry.context.spec.playId === playId)
+      .map((entry) => ({
+        attemptId: entry.context.attemptId,
+        paused: entry.context.held?.origin,
+      }));
+  }
+
+  /**
+   * N176: pauses an attempt in flight. The turn in progress is interrupted with the cause `paused`,
+   * the checkpoint is saved and the session is closed; the attempt waits for `resumeAttempt` (or a
+   * cancel). Resolves when the pause took hold, with `false` if the attempt ended first. A pause
+   * of the play (`origin: 'play'`) on an attempt that is paused already changes nothing; a person
+   * pausing an attempt that is paused, being cancelled or waiting for a reset gets a `Conflict`.
+   */
+  async pauseAttempt(attemptId: string, origin: PauseOrigin): Promise<boolean> {
+    const context = this.#runningContext(attemptId);
+    if (context.request?.kind === 'cancel') {
+      throw new Conflict(`Attempt ${attemptId} is being cancelled`);
+    }
+    const taken = context.held !== undefined || context.request !== undefined;
+    if (!taken) {
+      if (context.resetting) {
+        throw new Conflict(`Attempt ${attemptId} is waiting for the reset of its quota`);
+      }
+      context.request = { kind: 'pause', origin };
+      context.halt.abort();
+    } else if (origin === 'actor') {
+      throw new Conflict(`Attempt ${attemptId} is already paused`);
+    }
+    if (context.held === undefined) {
+      await new Promise<void>((resolve) => context.pausedWaiters.push(resolve));
+    }
+    return context.held !== undefined;
+  }
+
+  /**
+   * N176: resumes a paused attempt by the policy of the cause `paused` (the same conversation when
+   * it can be reloaded, otherwise a handoff). A person resumes what a person paused; the resume of
+   * the play wakes only what the pause of the play took (`origin`). Answers whether it woke one.
+   */
+  resumeAttempt(attemptId: string, origin: PauseOrigin): boolean {
+    const context = this.#runningContext(attemptId);
+    const { held, request } = context;
+    if (held === undefined) {
+      // The pause did not take hold yet: withdrawing it is the same as a pause and a resume
+      if (request?.kind === 'pause' && request.origin === origin) {
+        context.request = undefined;
+        context.halt = new AbortController();
+        for (const resolve of context.pausedWaiters.splice(0)) resolve();
+        return true;
+      }
+      if (origin === 'play') return false;
+      throw new Conflict(`Attempt ${attemptId} is not paused`);
+    }
+    if (held.origin !== origin) {
+      if (origin === 'play') return false;
+      throw new Conflict(
+        `Attempt ${attemptId} was paused by the pause of the play: resume the play`,
+      );
+    }
+    held.wake();
+    return true;
+  }
+
+  /**
+   * N176: cancels an attempt in flight, paused or not. The work done so far is checkpointed and
+   * kept; the attempt ends as `cancelled` and the caller (the play) asks the Director to judge it.
+   * Resolves with the outcome of the attempt.
+   */
+  async cancelAttempt(attemptId: string): Promise<AttemptOutcome> {
+    const entry = this.#running.get(attemptId);
+    if (entry === undefined) throw new Conflict(`Attempt ${attemptId} is not running`);
+    const { context } = entry;
+    if (context.request?.kind !== 'cancel') {
+      context.request = { kind: 'cancel' };
+      context.halt.abort();
+    }
+    return (await entry.done) as AttemptOutcome;
+  }
+
+  #runningContext(attemptId: string): AttemptContext {
+    const entry = this.#running.get(attemptId);
+    if (entry === undefined) throw new Conflict(`Attempt ${attemptId} is not running`);
+    return entry.context;
   }
 
   /** Creates the worktree and the branch of the attempt and runs it to its end. */
@@ -693,6 +819,11 @@ export class AttemptRunner {
       leave: new AbortController(),
       left: undefined,
       leftWaiters: [],
+      halt: new AbortController(),
+      request: undefined,
+      held: undefined,
+      pausedWaiters: [],
+      resetting: false,
     };
   }
 
@@ -762,6 +893,7 @@ export class AttemptRunner {
     return done.finally(() => {
       this.#running.delete(context.attemptId);
       this.#settleLeft(context);
+      for (const resolve of context.pausedWaiters.splice(0)) resolve();
     });
   }
 
@@ -827,8 +959,17 @@ export class AttemptRunner {
           return this.#timedOut(context, ended.sha, ended.turn);
         case 'stopped':
           return this.#stopped(context, ended.sha, ended.leaving === true);
+        case 'cancelled':
+          return this.#cancelled(context);
         case 'interrupted': {
           const { journal } = context;
+          if (ended.cause === 'paused') {
+            // N176: the attempt is held until a resume (or a cancel); then it goes on
+            const paused = await this.#paused(context, ended);
+            if (paused.kind === 'done') return paused.outcome;
+            step = paused.step;
+            continue;
+          }
           // The policy of 5.16 decides first, so the event and the row carry what it decided.
           const { decision, free, signals } =
             ended.leaving === true
@@ -878,10 +1019,13 @@ export class AttemptRunner {
           const waited = await this.#pause(context, decision.delayMs);
           if (waited === 'timeout') return this.#timedOut(context, ended.sha);
           if (waited === 'stopped') return this.#stopped(context, ended.sha);
-          await journal.write(undefined, {
-            state: 'resuming',
-            resumes: free ? resumes : resumes + 1,
-          });
+          // `halted` (N176): a pause or a cancel came meanwhile; the next go takes the request at once
+          if (waited === 'ok') {
+            await journal.write(undefined, {
+              state: 'resuming',
+              resumes: free ? resumes : resumes + 1,
+            });
+          }
           step = {
             resumeSessionId: context.sessionId,
             prompt:
@@ -907,6 +1051,8 @@ export class AttemptRunner {
       this.#markLeft(context);
       return this.#leavingEnded(leaving, undefined);
     }
+    // N176: a pause or a cancel came between two goes: no session opens for it
+    if (context.request !== undefined) return this.#haltEnded(context, true);
     // A new token for each go, also for the reload of a conversation (`session/load`): the MCP
     // servers of a session are the ones of the call that opens it, so the old token is gone.
     const grant = this.#grant(context);
@@ -925,7 +1071,7 @@ export class AttemptRunner {
           },
           resolvePath: resolveExistingPath,
         },
-        signal: AbortSignal.any([context.stop.signal, context.leave.signal]),
+        signal: AbortSignal.any([context.stop.signal, context.leave.signal, context.halt.signal]),
       });
     } catch (error) {
       grant?.revoke();
@@ -936,6 +1082,10 @@ export class AttemptRunner {
         // The profile left while the session waited for a slot: no session to close.
         this.#markLeft(context);
         return this.#leavingEnded(this.#leaving.get(spec.profile.id) ?? 'handoff', undefined);
+      }
+      if (context.halt.signal.aborted && hasErrorCode(error, 'CANCELLED')) {
+        // A pause or a cancel while the session waited for a slot: no session to close.
+        return this.#haltEnded(context, true);
       }
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
@@ -965,6 +1115,28 @@ export class AttemptRunner {
       this.#markLeft(context);
     }
     return ended;
+  }
+
+  /**
+   * How a go ends when a person paused or cancelled the attempt (N176). A pause is an interruption
+   * with the cause `paused`, resumable by the policy of 5.16; a cancel ends the attempt.
+   */
+  #haltEnded(context: AttemptContext, native: boolean): Ended {
+    const { request } = context;
+    if (request?.kind !== 'pause') return { kind: 'cancelled', sha: undefined };
+    return {
+      kind: 'interrupted',
+      cause: 'paused',
+      detail:
+        request.origin === 'actor'
+          ? 'the attempt was paused'
+          : 'the attempt was paused with the play (pause.mode: interrupt)',
+      native,
+      kill: false,
+      origin: request.origin,
+      signals: [`pause:${request.origin}`],
+      sha: undefined,
+    };
   }
 
   /** How a go ends when its profile leaves: the baton (`handoff`) or the stop of the daemon (`force`). */
@@ -1027,7 +1199,12 @@ export class AttemptRunner {
     } else if (ended.kind === 'failed') {
       await this.#checkpoint(context, 'failed');
     }
-    const cancelled = ended.kind === 'timeout' || ended.kind === 'stopped' || isLeaving(ended);
+    const cancelled =
+      ended.kind === 'timeout' ||
+      ended.kind === 'stopped' ||
+      ended.kind === 'cancelled' ||
+      (ended.kind === 'interrupted' && ended.cause === 'paused') ||
+      isLeaving(ended);
     if (cancelled) {
       await lease.session.cancel().catch(() => undefined);
       await this.#escalation(context, lease);
@@ -1185,6 +1362,13 @@ export class AttemptRunner {
         };
         if (context.leave.signal.aborted) onLeave();
         else context.leave.signal.addEventListener('abort', onLeave, { once: true, signal });
+      }),
+      new Promise<Raced>((resolve) => {
+        const onHalt = (): void => {
+          resolve(this.#haltEnded(context, session.canLoad));
+        };
+        if (context.halt.signal.aborted) onHalt();
+        else context.halt.signal.addEventListener('abort', onHalt, { once: true, signal });
       }),
     ]);
     turnEnd.abort();
@@ -1658,13 +1842,27 @@ export class AttemptRunner {
   }
 
   /** The wait before a native resume (the backoff the policy chose); a stop or the deadline ends it. */
-  async #pause(context: AttemptContext, ms: number): Promise<'ok' | 'timeout' | 'stopped'> {
+  async #pause(
+    context: AttemptContext,
+    ms: number,
+  ): Promise<'ok' | 'timeout' | 'stopped' | 'halted'> {
     const { clock } = this.#options;
     const guard = new AbortController();
     try {
       const result = await Promise.race([
         this.#after(ms, 'ok' as const, guard.signal),
         this.#after(context.deadline - clock.now(), 'timeout' as const, guard.signal),
+        new Promise<'halted'>((resolve) => {
+          const onHalt = (): void => {
+            resolve('halted');
+          };
+          if (context.halt.signal.aborted) onHalt();
+          else
+            context.halt.signal.addEventListener('abort', onHalt, {
+              once: true,
+              signal: guard.signal,
+            });
+        }),
         new Promise<'stopped'>((resolve) => {
           const onStop = (): void => {
             resolve('stopped');
@@ -1719,6 +1917,14 @@ export class AttemptRunner {
     this.#waiters.set(profile, waiters);
     const timers = new AbortController();
     let outcome: ResetWaitOutcome;
+    // N176: the attempt waits at no cost, so a pause that came meanwhile has nothing to hold (it is
+    // dropped); a cancel ends the wait (`#awaitReset`).
+    if (context.request?.kind === 'pause') {
+      context.request = undefined;
+      context.halt = new AbortController();
+      for (const resolve of context.pausedWaiters.splice(0)) resolve();
+    }
+    context.resetting = true;
     try {
       await journal.write(
         buildDaemonEvent('attempt.reset_wait_started', {
@@ -1749,6 +1955,7 @@ export class AttemptRunner {
             signal: timers.signal,
           });
     } finally {
+      context.resetting = false;
       timers.abort();
       waiters.delete(waiter);
       if (waiters.size === 0 && this.#waiters.get(profile) === waiters)
@@ -1788,6 +1995,11 @@ export class AttemptRunner {
         };
       }
       case 'stopped':
+        if (context.request?.kind === 'cancel') {
+          // N176: a person cancelled the attempt while it waited (`stopped` is the closest outcome)
+          await journal.write(endedEvent);
+          return { kind: 'done', outcome: await this.#cancelled(context) };
+        }
         // The record stays `awaiting_resume` with this cause: the next start takes the wait up again.
         await journal.write(endedEvent);
         await journal.flush();
@@ -1835,6 +2047,18 @@ export class AttemptRunner {
       settings.quotaWaitDeadline === 'count'
         ? this.#after(context.deadline - clock.now(), 'timeout' as const, wait.signal)
         : NEVER,
+      // N176: a person cancelled the attempt (a pause is not taken here: the wait costs nothing)
+      new Promise<'stopped'>((resolve) => {
+        const onHalt = (): void => {
+          if (context.request?.kind === 'cancel') resolve('stopped');
+        };
+        if (context.halt.signal.aborted) onHalt();
+        else
+          context.halt.signal.addEventListener('abort', onHalt, {
+            once: true,
+            signal: wait.signal,
+          });
+      }),
       // The profile that is waited for is being removed (P21): there is nothing to wait for.
       new Promise<'left'>((resolve) => {
         const onLeave = (): void => {
@@ -2225,6 +2449,161 @@ export class AttemptRunner {
     }
   }
 
+  // ---- pause and cancel (N176) ----
+
+  /**
+   * A pause took hold: the turn was interrupted with the cause `paused`, the checkpoint taken and
+   * the session closed (`#beforeClosing`). The policy of 5.16 says how it goes on (the same
+   * conversation when it can be reloaded, otherwise the baton); the attempt waits in
+   * `awaiting_resume` with the cause `paused` until `resumeAttempt`, a cancel or the stop of the
+   * daemon, which leaves it for the reconciliation. The time paused is not time of work: the
+   * deadline of the attempt moves forward by it. A pause costs no resume and no attempt.
+   */
+  async #paused(
+    context: AttemptContext,
+    ended: Extract<Ended, { kind: 'interrupted' }>,
+  ): Promise<Waited> {
+    const { clock, settings } = this.#options;
+    const { journal } = context;
+    const asked = context.request;
+    // A cancel that came after the pause was asked wins; a pause withdrawn meanwhile resumes at once
+    if (asked?.kind === 'cancel') return { kind: 'done', outcome: await this.#cancelled(context) };
+    const withdrawn = asked === undefined;
+    context.request = undefined;
+    context.halt = new AbortController();
+    const origin: PauseOrigin = ended.origin ?? 'actor';
+    const { decision, signals } = await this.#decide(context, ended);
+    await this.#interruptionEvent(context, decision, ended.detail, ended.sha, signals);
+    await this.#closed(context, 'interrupted', { state: 'awaiting_resume', cause: 'paused' });
+    const since = clock.now();
+    await journal.write(
+      buildDaemonEvent('attempt.paused', {
+        ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+        origin,
+        checkpointed: ended.sha !== undefined,
+        ...this.#correlation(context),
+      }),
+    );
+    await journal.flush();
+    const how = withdrawn ? 'resume' : await this.#hold(context, origin);
+    if (how === 'cancel') return { kind: 'done', outcome: await this.#cancelled(context) };
+    if (how === 'stopped') {
+      // The record stays `awaiting_resume` with `paused`: the reconciliation of the next start parks it
+      await journal.flush();
+      return {
+        kind: 'done',
+        outcome: this.#outcome(context, 'interrupted', 'paused', undefined, false, decision),
+      };
+    }
+    context.deadline += Math.max(0, clock.now() - since);
+    if (decision.action === 'handoff') {
+      const handoff = await this.#prepareHandoff(context, ended, decision);
+      if (handoff?.kind === 'ready') {
+        await this.#interruptionEvent(
+          context,
+          decision,
+          ended.detail,
+          ended.sha,
+          signals,
+          handoff.target,
+        );
+        const step = await this.#handoff(context, decision, handoff);
+        await this.#resumedEvent(context, 'handoff');
+        return { kind: 'step', step };
+      }
+      const wait = handoff?.wait ?? noHandoffPort(decision);
+      if (wait !== undefined) await this.#handoffFailed(context, decision, wait);
+      return { kind: 'done', outcome: await this.#parked(context, decision, wait) };
+    }
+    await journal.write(undefined, { state: 'resuming' });
+    await this.#resumedEvent(context, 'native');
+    return {
+      kind: 'step',
+      step: {
+        resumeSessionId: context.sessionId,
+        prompt:
+          context.sessionId === undefined
+            ? (context.handoffPrompt ?? context.firstPrompt)
+            : settings.continuePrompt,
+        cause: 'paused',
+      },
+    };
+  }
+
+  /** The attempt is paused: waits for the resume, a cancel or the stop of the daemon. */
+  async #hold(
+    context: AttemptContext,
+    origin: PauseOrigin,
+  ): Promise<'resume' | 'cancel' | 'stopped'> {
+    const guard = new AbortController();
+    try {
+      const how = await new Promise<'resume' | 'cancel' | 'stopped'>((resolve) => {
+        context.held = {
+          origin,
+          wake: () => {
+            resolve('resume');
+          },
+        };
+        for (const woken of context.pausedWaiters.splice(0)) woken();
+        const onCancel = (): void => {
+          resolve('cancel');
+        };
+        if (context.halt.signal.aborted) return onCancel();
+        context.halt.signal.addEventListener('abort', onCancel, {
+          once: true,
+          signal: guard.signal,
+        });
+        const onStop = (): void => {
+          resolve('stopped');
+        };
+        if (context.stop.signal.aborted) return onStop();
+        context.stop.signal.addEventListener('abort', onStop, { once: true, signal: guard.signal });
+        // A profile that leaves while the attempt is paused lets go of it (`releaseProfile` does not
+        // wait for a pause); the resume finds the profile released and passes the baton.
+        const onLeave = (): void => {
+          this.#markLeft(context);
+        };
+        if (this.#leaving.has(context.spec.profile.id) || context.leave.signal.aborted) onLeave();
+        else
+          context.leave.signal.addEventListener('abort', onLeave, {
+            once: true,
+            signal: guard.signal,
+          });
+      });
+      return how;
+    } finally {
+      guard.abort();
+      context.held = undefined;
+    }
+  }
+
+  async #resumedEvent(context: AttemptContext, strategy: 'native' | 'handoff'): Promise<void> {
+    await context.journal.write(
+      buildDaemonEvent('attempt.resumed', {
+        ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+        strategy,
+        ...this.#correlation(context),
+      }),
+    );
+  }
+
+  /**
+   * A person cancelled the attempt: what was written stays in the branch (the checkpoint was taken
+   * before the session ended), the registry says `cancelled` and the outcome asks for a decision:
+   * the Director judges the demand, like after a timeout.
+   */
+  async #cancelled(context: AttemptContext): Promise<AttemptOutcome> {
+    await this.#closed(context, 'cancelled', { state: 'cancelled', cause: null });
+    await context.journal.write(
+      buildDaemonEvent('attempt.cancelled', {
+        ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+        ...this.#correlation(context),
+      }),
+    );
+    await context.journal.flush();
+    return this.#outcome(context, 'cancelled', 'cancelled', undefined, true);
+  }
+
   // ---- ends ----
 
   async #checkpoint(context: AttemptContext, detail: string): Promise<string | undefined> {
@@ -2523,6 +2902,8 @@ function causeOf(ended: Ended): string {
       return 'timeout';
     case 'stopped':
       return 'daemon_restart';
+    case 'cancelled':
+      return 'cancelled';
     default:
       return ended.kind;
   }
