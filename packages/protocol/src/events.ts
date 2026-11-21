@@ -58,6 +58,12 @@ import {
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import {
+  DecisionAnsweredPayloadSchema,
+  DecisionCreatedPayloadSchema,
+  DemandTransitionedPayloadSchema,
+  ScenarioArchivedPayloadSchema,
+} from './record-events.js';
+import {
   DaemonNoticePayloadSchema,
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
@@ -85,6 +91,9 @@ import {
   ProfileRemovedPayloadSchema,
   ProfileExecEndedPayloadSchema,
   ProfileExecStartedPayloadSchema,
+  ProfileLoginCompletedPayloadSchema,
+  ProfileLoginFailedPayloadSchema,
+  ProfileLoginStartedPayloadSchema,
   ProfileShimsRcChangedPayloadSchema,
   ProfileShimsSyncedPayloadSchema,
   ProfileWarningPayloadSchema,
@@ -596,6 +605,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ProfileShimsRcChangedPayloadSchema,
   }),
   defineEventType({
+    type: 'profile.login.started',
+    schemaVersion: 1,
+    payload: ProfileLoginStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.login.completed',
+    schemaVersion: 1,
+    payload: ProfileLoginCompletedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.login.failed',
+    schemaVersion: 1,
+    payload: ProfileLoginFailedPayloadSchema,
+  }),
+  defineEventType({
     type: 'executor.changed',
     schemaVersion: 1,
     payload: ExecutorChangedPayloadSchema,
@@ -697,6 +721,26 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'setup.cancelled',
     schemaVersion: 1,
     payload: SetupCancelledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'decision.created',
+    schemaVersion: 1,
+    payload: DecisionCreatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'decision.answered',
+    schemaVersion: 1,
+    payload: DecisionAnsweredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.archived',
+    schemaVersion: 1,
+    payload: ScenarioArchivedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'demand.transitioned',
+    schemaVersion: 1,
+    payload: DemandTransitionedPayloadSchema,
   }),
 ] as const;
 
@@ -816,6 +860,9 @@ export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.starte
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];
 export type ProfileShimsSyncedPayload = DaemonEventPayloads['profile.shims.synced'];
 export type ProfileShimsRcChangedPayload = DaemonEventPayloads['profile.shims.rc_changed'];
+export type ProfileLoginStartedPayload = DaemonEventPayloads['profile.login.started'];
+export type ProfileLoginCompletedPayload = DaemonEventPayloads['profile.login.completed'];
+export type ProfileLoginFailedPayload = DaemonEventPayloads['profile.login.failed'];
 export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
@@ -839,6 +886,10 @@ export type SetupStepPayload = DaemonEventPayloads['setup.step'];
 export type SetupBackPayload = DaemonEventPayloads['setup.back'];
 export type SetupConfirmedPayload = DaemonEventPayloads['setup.confirmed'];
 export type SetupCancelledPayload = DaemonEventPayloads['setup.cancelled'];
+export type DecisionCreatedPayload = DaemonEventPayloads['decision.created'];
+export type DecisionAnsweredPayload = DaemonEventPayloads['decision.answered'];
+export type ScenarioArchivedPayload = DaemonEventPayloads['scenario.archived'];
+export type DemandTransitionedPayload = DaemonEventPayloads['demand.transitioned'];
 
 export function isDaemonEventType(type: string): type is DaemonEventType {
   return Object.hasOwn(DAEMON_EVENT_TYPES, type);

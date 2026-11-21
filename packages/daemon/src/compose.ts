@@ -111,6 +111,7 @@ import {
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
+import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env, type ProfileNames } from './paths.js';
 import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
@@ -603,7 +604,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       store = validateEventsOf(store, { ...options.events, logger });
     }
     // Phase 6, P7: a decision for the Producer also writes its `chat.ask` event (the chat socket's feed).
-    store = chatFeedStore(store, logger);
+    // Phase 7, P1 (N173): the decisions, demands and scenarios write the events the client stores are
+    // built from. Inside `chatFeedStore`, so `decision.created` comes before `chat.ask`.
+    store = chatFeedStore(recordFeedStore(store, logger), logger);
 
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();

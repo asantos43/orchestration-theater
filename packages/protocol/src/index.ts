@@ -26,3 +26,6 @@ export * from './api-command-events.js';
 export * from './layout-events.js';
 export * from './setup-events.js';
 export * from './chat-events.js';
+export * from './record-events.js';
+export * from './key-combo.js';
+export * from './ui-config.js';

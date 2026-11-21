@@ -1,0 +1,84 @@
+{
+  "groups": {
+    "layout": "Layout",
+    "tabs": "Abas",
+    "decision": "Decisões",
+    "general": "Geral"
+  },
+  "tabs": {
+    "overview": "Visão geral",
+    "trajectories": "Trajetórias",
+    "usage": "Uso",
+    "directives": "Diretrizes",
+    "settings": "Configurações"
+  },
+  "actions": {
+    "layout": {
+      "toggleSidebar": "Mostrar ou ocultar a barra lateral",
+      "togglePanel": "Mostrar ou ocultar o painel de trabalho",
+      "narrowChat": "Estreitar o chat",
+      "widenChat": "Alargar o chat"
+    },
+    "tabs": {
+      "add": "Abrir uma aba",
+      "close": "Fechar a aba",
+      "open": "Ir para a aba {{tab}}"
+    },
+    "decision": {
+      "answer": "Responder a decisão pendente"
+    },
+    "palette": {
+      "open": "Abrir a paleta de comandos"
+    },
+    "help": {
+      "show": "Mostrar os atalhos de teclado"
+    },
+    "app": {
+      "quit": "Sair"
+    }
+  },
+  "bar": {
+    "layout": {
+      "toggleSidebar": "Barra lateral",
+      "togglePanel": "Painel"
+    },
+    "decision": {
+      "answer": "Responder"
+    },
+    "palette": {
+      "open": "Comandos"
+    },
+    "app": {
+      "quit": "Sair"
+    }
+  },
+  "keymap": {
+    "errors": {
+      "unknownAction": "A ação {{action}} não existe.",
+      "invalidCombo": "\"{{combo}}\" não é uma combinação de teclas válida (ação {{action}}).",
+      "duplicate": "O atalho {{combo}} é usado por \"{{action}}\" e por \"{{other}}\".",
+      "repeated": "O atalho {{combo}} está repetido em \"{{action}}\".",
+      "terminal": {
+        "cmd": "{{combo}} não pode ser usado no terminal: ele não envia a tecla Cmd (ação {{action}}).",
+        "ctrl_shift_letter": "{{combo}} não pode ser usado no terminal: Ctrl+Shift+letra chega ao programa como Ctrl+letra (ação {{action}}).",
+        "bare_printable": "{{combo}} não pode ser um atalho global: tiraria um caractere da caixa de texto (ação {{action}})."
+      }
+    },
+    "notices": {
+      "collision": "{{combo}} para \"{{action}}\" pode colidir: {{reason}}.",
+      "tmuxPrefix": "{{combo}} (\"{{action}}\") é o prefixo padrão do tmux: aperte duas vezes ou troque o atalho.",
+      "vscodeCapture": "{{combo}} (\"{{action}}\") pode ser tomado pelo VS Code antes de chegar ao terminal.",
+      "macOption": "No macOS, os atalhos com Alt usam a tecla Option: ligue \"Usar Option como Meta\" no terminal.",
+      "macFn": "No macOS, as teclas de função podem exigir a tecla Fn."
+    },
+    "reasons": {
+      "readline": "é uma tecla de edição da caixa de texto e do shell",
+      "textBox": "a caixa de texto a usa",
+      "wordJump": "ela pula entre palavras na caixa de texto",
+      "flowControl": "alguns terminais a usam para pausar a saída",
+      "tmuxPrefix": "é o prefixo do tmux",
+      "browserTab": "o navegador a usa para fechar uma aba",
+      "terminalAlias": "o terminal envia o mesmo código de outra tecla"
+    }
+  }
+}

@@ -43,13 +43,17 @@ import {
 } from './index.js';
 import {
   decision,
+  decisionAnswered,
+  decisionCreated,
   demand,
+  demandTransitioned,
   event,
   play,
   playCreated,
   playTransitioned,
   quota,
   scenario,
+  scenarioArchived,
 } from './fixtures.test-support.js';
 
 describe('core', () => {
@@ -116,6 +120,14 @@ describe('scenarios', () => {
       reduceScenarios,
     );
     expect(woke.byId.S1?.directorState).toBe('active');
+  });
+
+  it('archives a scenario on `scenario.archived`, with the stamp of the event, and reads one it lacks (N173)', () => {
+    const archived = applyEvent(start, scenarioArchived(12, 'S1'), reduceScenarios);
+    expect(archived.byId.S1).toMatchObject({ state: 'archived', updatedAt: 1_700_000_000_012 });
+    expect(archived.stale).toEqual({});
+    expect(applyEvent(archived, scenarioArchived(13, 'S1'), reduceScenarios)).toBe(archived);
+    expect(applyEvent(start, scenarioArchived(12, 'S9'), reduceScenarios).stale).toEqual({ S9: 1 });
   });
 
   it('marks a scenario it does not know, or a payload it cannot read, to be read again', () => {
@@ -236,25 +248,54 @@ describe('demands', () => {
   const parts = { demands: [demand('P1', 'D1')], stages: [] };
   const start = installDemands([{ playId: 'P1', parts }], 5);
 
-  it('marks a tracked play whose machine moved, and not one it does not follow', () => {
-    const moved = applyEvent(
-      start,
-      playTransitioned(6, 'S1', 'P1', 'EXECUTING'),
-      createDemandsReducer(),
-    );
-    expect(moved.stale).toEqual({ P1: 1 });
-    const other = applyEvent(
-      start,
-      playTransitioned(6, 'S1', 'P2', 'EXECUTING'),
-      createDemandsReducer(),
-    );
-    expect(other).toBe(start);
+  it('does not read a play again when its machine moved: the demands have their own events', () => {
+    const reducer = createDemandsReducer();
+    expect(applyEvent(start, playTransitioned(6, 'S1', 'P1', 'EXECUTING'), reducer)).toBe(start);
+    expect(applyEvent(start, playTransitioned(6, 'S1', 'P2', 'EXECUTING'), reducer)).toBe(start);
   });
 
-  it('follows a new play only when `followNewPlays` is on', () => {
+  it('follows a new play only when `followNewPlays` is on, with no demand yet and no read', () => {
     const created = playCreated(6, 'S1', 'P2');
-    expect(applyEvent(start, created, createDemandsReducer()).stale).toEqual({ P2: 1 });
+    const followed = applyEvent(start, created, createDemandsReducer());
+    expect(followed.byPlay.P2).toEqual({ demands: [], stages: [] });
+    expect(followed.stale).toEqual({});
     expect(applyEvent(start, created, createDemandsReducer({ followNewPlays: false }))).toBe(start);
+  });
+
+  it('builds the demands of a play from `demand.transitioned`: the birth, then the moves (N173)', () => {
+    const reducer = createDemandsReducer();
+    const born = demand('P2', 'D2');
+    const first = applyEvents(
+      applyEvent(start, playCreated(6, 'S1', 'P2'), reducer),
+      [
+        demandTransitioned(7, 'S1', 'P2', 'D2', null, 'pending', {
+          ...born,
+          createdAt: 7,
+          updatedAt: 7,
+        }),
+        demandTransitioned(8, 'S1', 'P2', 'D1', null, 'pending', {
+          ...demand('P2', 'D1'),
+          createdAt: 7,
+          updatedAt: 7,
+        }),
+        demandTransitioned(9, 'S1', 'P2', 'D2', 'pending', 'running'),
+      ],
+      reducer,
+    );
+    expect(first.byPlay.P2?.demands.map((d) => [d.id, d.state, d.updatedAt])).toEqual([
+      ['D1', 'pending', 7],
+      ['D2', 'running', 1_700_000_000_009],
+    ]);
+    expect(first.stale).toEqual({});
+    // A play the store does not follow keeps nothing; a move of a demand it lacks is read.
+    expect(
+      applyEvent(start, demandTransitioned(6, 'S1', 'P9', 'D1', 'pending', 'ready'), reducer),
+    ).toBe(start);
+    expect(
+      applyEvent(start, demandTransitioned(6, 'S1', 'P1', 'D7', 'pending', 'ready'), reducer).stale,
+    ).toEqual({ P1: 1 });
+    // A payload it cannot read changes nothing.
+    expect(applyEvent(start, event(6, 'demand.transitioned', { nope: 1 }), reducer)).toBe(start);
   });
 
   it('keeps what waits for an Executor from `demand.waiting` to `demand.resumed`', () => {
@@ -314,14 +355,42 @@ describe('decisions', () => {
     expect(selectPendingDecisions(start).map((d) => d.id)).toEqual(['A', 'B']);
   });
 
-  it('marks the scenario when something moved in it', () => {
-    expect(
-      applyEvent(start, playTransitioned(5, 'S1', 'P1', 'AWAITING_PRODUCER'), reduceDecisions)
-        .stale,
-    ).toEqual({ S1: 1 });
-    const chat = event(6, 'scenario.chat_transitioned', { scenarioId: 'S2' });
-    expect(applyEvent(start, chat, reduceDecisions).stale).toEqual({ S2: 1 });
+  it('adds a decision from `decision.created` and takes it out on `decision.answered` (N173)', () => {
+    const born = decision('C', 'S1', 30);
+    const added = applyEvent(start, decisionCreated(5, born), reduceDecisions);
+    expect(selectPendingDecisions(added).map((d) => d.id)).toEqual(['A', 'B', 'C']);
+    expect(added.stale).toEqual({});
+    // The same event twice, or an id the list holds already: nothing changes.
+    expect(applyEvent(added, decisionCreated(6, born), reduceDecisions)).toBe(added);
+    const answered = applyEvent(added, decisionAnswered(7, born), reduceDecisions);
+    expect(selectPendingDecisions(answered).map((d) => d.id)).toEqual(['A', 'B']);
+    const cancelled = applyEvent(
+      answered,
+      decisionAnswered(8, decision('A', 'S1'), 'cancelled'),
+      reduceDecisions,
+    );
+    expect(selectPendingDecisions(cancelled).map((d) => d.id)).toEqual(['B']);
+    // A decision this store never held: nothing to take out.
+    expect(applyEvent(cancelled, decisionAnswered(9, decision('Z', 'S1')), reduceDecisions)).toBe(
+      cancelled,
+    );
+    expect(applyEvent(cancelled, decisionAnswered(9, decision('Z', 'S2')), reduceDecisions)).toBe(
+      cancelled,
+    );
+  });
+
+  it('opens the list of a new scenario and drops the one of an archived scenario', () => {
+    const born = event(5, 'scenario.created', { scenarioId: 'S2' }, { scenarioId: 'S2' });
+    const opened = applyEvent(start, born, reduceDecisions);
+    expect(opened.byScenario.S2).toEqual([]);
+    expect(opened.stale).toEqual({});
+    const archived = applyEvent(opened, scenarioArchived(6, 'S1'), reduceDecisions);
+    expect(Object.keys(archived.byScenario)).toEqual(['S2']);
     expect(applyEvent(start, event(7, 'quota.updated', {}), reduceDecisions)).toBe(start);
+    // A move of the play no longer says anything about the decisions.
+    expect(
+      applyEvent(start, playTransitioned(5, 'S1', 'P1', 'AWAITING_PRODUCER'), reduceDecisions),
+    ).toBe(start);
   });
 
   it('settles a read: the list replaces what the scenario had', () => {

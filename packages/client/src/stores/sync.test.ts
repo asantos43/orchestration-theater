@@ -8,7 +8,10 @@ import {
   DAEMON_ID,
   FakeDaemon,
   decision,
+  decisionAnswered,
+  decisionCreated,
   demand,
+  demandTransitioned,
   event,
   play,
   playCreated,
@@ -16,6 +19,7 @@ import {
   profileOf,
   quota,
   scenario,
+  scenarioArchived,
   setPlay,
 } from './fixtures.test-support.js';
 import { DaemonStores, type DaemonStoresOptions, type SyncProblem } from './sync.js';
@@ -294,23 +298,30 @@ describe('DaemonStores: following the stream', () => {
 });
 
 describe('DaemonStores: what the events cannot keep is read again', () => {
-  it('reads the pending decisions again when something moved in the scenario', async () => {
+  it('keeps the pending decisions from the events, with no read of the list (N173)', async () => {
     const daemon = populated();
     const hub = hubOf(daemon);
     await hub.start();
-    daemon.decisions.set('S1', [decision('K1', 'S1'), decision('K2', 'S1', 2)]);
-    daemon.push(playTransitioned(11, 'S1', 'P1', 'AWAITING_PRODUCER'));
-    await waitFor(() => hub.decisions.getState().byScenario.S1?.length === 2, 'the new decision');
+    const reads = count(daemon, '/v1/scenarios/S1/decisions');
+    const second = decision('K2', 'S1', 2);
+    daemon.push(
+      playTransitioned(11, 'S1', 'P1', 'AWAITING_PRODUCER'),
+      decisionCreated(12, second),
+      decisionAnswered(13, decision('K1', 'S1')),
+    );
+    await waitFor(() => hub.status.getState().cursor === 13, 'the events');
     await hub.whenIdle();
+    expect(hub.decisions.getState().byScenario.S1?.map((d) => d.id)).toEqual(['K2']);
     expect(hub.decisions.getState().stale).toEqual({});
+    expect(count(daemon, '/v1/scenarios/S1/decisions')).toBe(reads);
   });
 
-  it('reads a new scenario by REST, and the detail of a new play', async () => {
+  it('reads a new scenario by REST, and builds a new play from events with no read of its detail', async () => {
     const daemon = populated();
     const hub = hubOf(daemon);
     await hub.start();
     daemon.scenarios.push(scenario('S3'));
-    setPlay(daemon, play('P2', 'S1', { state: 'NEED' }), [demand('P2', 'D1')]);
+    const born = demand('P2', 'D1');
     daemon.push(
       event(
         11,
@@ -319,12 +330,28 @@ describe('DaemonStores: what the events cannot keep is read again', () => {
         { scenarioId: 'S3' },
       ),
       playCreated(12, 'S1', 'P2'),
+      demandTransitioned(13, 'S1', 'P2', 'D1', null, 'pending', born),
+      demandTransitioned(14, 'S1', 'P2', 'D1', 'pending', 'ready'),
     );
     await waitFor(() => hub.scenarios.getState().byId.S3 !== undefined, 'the new scenario');
-    await waitFor(() => hub.demands.getState().byPlay.P2 !== undefined, 'the new play detail');
+    await waitFor(() => hub.status.getState().cursor === 14, 'the events');
     await hub.whenIdle();
+    expect(hub.demands.getState().byPlay.P2?.demands.map((d) => d.state)).toEqual(['ready']);
     expect(hub.scenarios.getState().stale).toEqual({});
     expect(hub.demands.getState().stale).toEqual({});
+    expect(count(daemon, '/v1/plays/P2')).toBe(0);
+  });
+
+  it('archives a scenario from `scenario.archived` with no read of it (N173)', async () => {
+    const daemon = populated();
+    const hub = hubOf(daemon);
+    await hub.start();
+    const reads = count(daemon, '/v1/scenarios/S1');
+    daemon.push(scenarioArchived(11, 'S1'));
+    await waitFor(() => hub.scenarios.getState().byId.S1?.state === 'archived', 'the archive');
+    await hub.whenIdle();
+    expect(hub.decisions.getState().byScenario.S1).toBeUndefined();
+    expect(count(daemon, '/v1/scenarios/S1')).toBe(reads);
   });
 
   it('reads the quota of an account again after its event, and the read has the last word', async () => {
@@ -357,25 +384,33 @@ describe('DaemonStores: what the events cannot keep is read again', () => {
       release = resolve;
     });
     let gated = false;
+    const detail = (record: ReturnType<typeof scenario>) =>
+      Response.json({
+        scenario: record,
+        conventions: null,
+        configOverride: {},
+        repos: [],
+        counts: { openPlays: 0, pendingDecisions: 0, attachments: 0 },
+      });
     daemon.intercept = async (request) => {
-      if (request.path === '/v1/scenarios/S1/decisions' && !gated) {
+      if (request.path === '/v1/scenarios/S3' && !gated) {
         gated = true;
-        // The answer of the first read is the old list, delivered late.
-        const old = Response.json({ items: [decision('K1', 'S1')], nextCursor: null });
+        // The answer of the first read is the old record, delivered late.
+        const old = detail(scenario('S3'));
         await gate;
         return old;
       }
       return undefined;
     };
-    daemon.decisions.set('S1', [decision('K1', 'S1'), decision('K2', 'S1', 2)]);
-    daemon.push(playTransitioned(11, 'S1', 'P1', 'AWAITING_PRODUCER'));
+    daemon.scenarios.push(scenario('S3', { state: 'archived' }));
+    daemon.push(scenarioArchived(11, 'S3'));
     await waitFor(() => gated, 'the read to start');
-    daemon.push(playTransitioned(12, 'S1', 'P1', 'CRITIQUING'));
+    daemon.push(scenarioArchived(12, 'S3'));
     await waitFor(() => hub.status.getState().cursor === 12, 'the second event');
     release();
-    await waitFor(() => hub.decisions.getState().byScenario.S1?.length === 2, 'the second read');
+    await waitFor(() => hub.scenarios.getState().byId.S3?.state === 'archived', 'the second read');
     await hub.whenIdle();
-    expect(hub.decisions.getState().stale).toEqual({});
+    expect(hub.scenarios.getState().stale).toEqual({});
   });
 
   it('drops a record whose read answers 404 and does not ask again', async () => {
@@ -397,24 +432,24 @@ describe('DaemonStores: what the events cannot keep is read again', () => {
     await hub.start();
     let failing = true;
     daemon.intercept = (request) =>
-      failing && request.path === '/v1/scenarios/S1/decisions'
+      failing && request.path === '/v1/scenarios/S3'
         ? Response.json(apiError('internal', 'boom'), { status: 500 })
         : undefined;
-    daemon.push(playTransitioned(11, 'S1', 'P1', 'AWAITING_PRODUCER'));
+    daemon.scenarios.push(scenario('S3'));
+    daemon.push(scenarioArchived(11, 'S3'));
     await waitFor(() => problems.length === 1, 'the give up');
     await hub.whenIdle();
-    expect(problems[0]).toMatchObject({ kind: 'refresh_failed', store: 'decisions', key: 'S1' });
-    expect(hub.decisions.getState().stale).toEqual({ S1: 1 });
-    const asked = count(daemon, '/v1/scenarios/S1/decisions');
+    expect(problems[0]).toMatchObject({ kind: 'refresh_failed', store: 'scenarios', key: 'S3' });
+    expect(hub.scenarios.getState().stale).toEqual({ S3: 1 });
+    const asked = count(daemon, '/v1/scenarios/S3');
     await tick();
-    expect(count(daemon, '/v1/scenarios/S1/decisions')).toBe(asked);
+    expect(count(daemon, '/v1/scenarios/S3')).toBe(asked);
     expect(hub.status.getState().phase).toBe('live');
 
     failing = false;
-    daemon.decisions.set('S1', []);
-    daemon.push(playTransitioned(12, 'S1', 'P1', 'CRITIQUING'));
-    await waitFor(() => hub.decisions.getState().stale.S1 === undefined, 'the read');
-    expect(hub.decisions.getState().byScenario.S1).toEqual([]);
+    daemon.push(scenarioArchived(12, 'S3'));
+    await waitFor(() => hub.scenarios.getState().stale.S3 === undefined, 'the read');
+    expect(hub.scenarios.getState().byId.S3).toBeDefined();
   });
 });
 
