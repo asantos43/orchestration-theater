@@ -9,6 +9,14 @@ export {
   type FakeAgentOptions,
 } from './agent.js';
 export {
+  approximateTokens,
+  FAKE_OTEL_SERVICE,
+  FakeOtel,
+  type FakeOtelOptions,
+  type FakeOtelSignal,
+  type OtelTurn,
+} from './otel.js';
+export {
   McpClient,
   McpClientError,
   type HttpMcpServer,

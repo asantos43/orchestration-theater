@@ -23,6 +23,8 @@ function warningDetail(warning: ClientAdapterWarning): string | null {
       return situationText(
         `${warning.kind}: ${warning.probeId}: ${situationText(warning.error, 200) ?? ''}`,
       );
+    case 'otel_unavailable':
+      return situationText(`${warning.kind}: ${situationText(warning.reason, 200) ?? ''}`);
     case 'unenforced':
     case 'catalog_probe_exempt':
       return situationText(`${warning.kind}: ${warning.short.join(', ')}`);

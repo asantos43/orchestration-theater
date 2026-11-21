@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  InvalidInput,
   PermissionDenied,
+  type ClientOtel,
   type PermissionRequest,
   type Profile,
   type RolePolicy,
@@ -381,5 +383,104 @@ describe('conformance probes', () => {
 
   it('versions the translation for the conformance cache', () => {
     expect(CLAUDE_CODE_ADAPTER_VERSION).toMatch(/^\d+\.\d+\.\d+$/u);
+  });
+});
+
+describe('telemetry for the daemon (Phase 8, P3)', () => {
+  const otel: ClientOtel = {
+    endpoint: 'http://127.0.0.1:4318/',
+    headers: { Authorization: 'Bearer tok-1' },
+    resource: {
+      'otheater.play_id': 'p1',
+      'otheater.stage_id': 's1',
+      'otheater.attempt_id': 'a1',
+      'otheater.session_id': 'x1',
+      'otheater.profile': 'claude-code/p',
+      'otheater.client': 'claude-code',
+    },
+  };
+
+  /** `_meta.claudeCode.options.env` of the one session opened. */
+  function metaEnv(): Record<string, string> | undefined {
+    const setup = via.opened[0]?.setup;
+    if (setup?.via !== 'acp') throw new Error('expected an acp setup');
+    const meta = setup.meta as { claudeCode: { options: { env?: Record<string, string> } } };
+    return meta.claudeCode.options.env;
+  }
+
+  it('without otel, no variable is passed, in the session or in the process', async () => {
+    await build().openSession(profile, policy, '/work', via);
+    expect(metaEnv()).toBeUndefined();
+    expect(JSON.stringify(via.opened[0]?.setup)).not.toContain('OTEL_');
+    expect(
+      Object.keys(launcher.launched[0]?.options.env ?? {}).some((k) => /OTEL|TELEMETRY/u.test(k)),
+    ).toBe(false);
+  });
+
+  it('sends metrics and logs over OTLP/JSON to the receiver, with the token and the correlation', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel });
+    expect(metaEnv()).toEqual({
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_METRICS_EXPORTER: 'otlp',
+      OTEL_LOGS_EXPORTER: 'otlp',
+      OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318',
+      OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer tok-1',
+      OTEL_RESOURCE_ATTRIBUTES:
+        'otheater.attempt_id=a1,otheater.client=claude-code,otheater.play_id=p1,otheater.profile=claude-code/p,otheater.session_id=x1,otheater.stage_id=s1',
+    });
+  });
+
+  it('puts nothing in the process environment: the variables belong to the session', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel });
+    const env = launcher.launched[0]?.options.env ?? {};
+    expect(Object.keys(env).filter((k) => /OTEL|TELEMETRY/u.test(k))).toEqual([]);
+  });
+
+  it('keeps the policy options of the session', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel });
+    expect(via.opened[0]?.setup).toMatchObject({
+      via: 'acp',
+      configOptions: { mode: 'default' },
+      meta: { claudeCode: { options: { tools: ['Read', 'Glob', 'Grep'], strictMcpConfig: true } } },
+    });
+  });
+
+  it('never turns on the flags that put prompts or tool content in the logs', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel: { ...otel, traces: true } });
+    expect(Object.keys(metaEnv() ?? {}).filter((k) => k.startsWith('OTEL_LOG_'))).toEqual([]);
+  });
+
+  it('traces are off by default and on with traces: true (the enhanced telemetry beta)', async () => {
+    await build().openSession(profile, policy, '/work', via, { otel });
+    expect(metaEnv()).not.toHaveProperty('OTEL_TRACES_EXPORTER');
+    expect(metaEnv()).not.toHaveProperty('CLAUDE_CODE_ENHANCED_TELEMETRY_BETA');
+    via = new FakeSessionTransport({ id: 'acp' });
+    await build().openSession(profile, policy, '/work', via, { otel: { ...otel, traces: true } });
+    expect(metaEnv()).toMatchObject({
+      OTEL_TRACES_EXPORTER: 'otlp',
+      CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: '1',
+    });
+  });
+
+  it('refuses an id that the resource format cannot carry, and never prints the token', async () => {
+    const bad = { ...otel, resource: { 'otheater.play_id': 'a,b' } };
+    const error = await build()
+      .openSession(profile, policy, '/work', via, { otel: bad })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(InvalidInput);
+    expect(String(error)).not.toContain('tok-1');
+    expect(via.opened).toHaveLength(0);
+  });
+
+  it('on the headless transport the variables go in the environment of the process', async () => {
+    const headless = new FakeSessionTransport({ id: 'headless' });
+    await build().openSession(profile, policy, '/work', headless, { otel });
+    const setup = headless.opened[0]?.setup;
+    if (setup?.via !== 'headless') throw new Error('expected a headless setup');
+    expect(setup.env).toMatchObject({
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+    });
   });
 });
