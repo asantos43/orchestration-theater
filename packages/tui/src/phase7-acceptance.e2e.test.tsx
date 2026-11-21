@@ -121,34 +121,13 @@ async function press(app: RenderedApp, keys: string): Promise<void> {
   await app.settle();
 }
 
-/** Waits up to `ms` for the frame to show `text`; `false` when it did not. */
-async function seenWithin(app: RenderedApp, text: string, ms: number): Promise<boolean> {
-  const deadline = Date.now() + ms;
-  while (Date.now() <= deadline) {
-    if (flat(app.frame()).includes(text)) return true;
-    await new Promise<void>((resolve) => setTimeout(resolve, 25));
-  }
-  return false;
-}
-
 /**
- * Types text a key at a time, as a person does, and waits for it to be on the screen. A person
- * sees that the first key did not land (the text box was not yet bound to the keys, which happens
- * on a loaded machine) and presses it again: so does this, a few times, for the first key only,
- * when `before` (what the box shows ahead of the text) says where to look for it.
+ * Types text a key at a time, as a person does, and waits for it to be on the screen. The first key
+ * is pressed once: the text box hears the keys from the commit that gives it the keyboard (P24), so
+ * there is no repeating of it, and a lost key fails the test.
  */
-async function typeText(app: RenderedApp, text: string, before?: string): Promise<void> {
-  const [first = '', ...rest] = Array.from(text);
-  if (before !== undefined) {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await press(app, first);
-      if (await seenWithin(app, `${before}${first}`, 4000)) break;
-    }
-    await seen(app, `${before}${first}`);
-  } else {
-    await press(app, first);
-  }
-  for (const char of rest) await press(app, char);
+async function typeText(app: RenderedApp, text: string): Promise<void> {
+  for (const char of Array.from(text)) await press(app, char);
   await seen(app, text);
 }
 
@@ -272,7 +251,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await press(app, TAB);
           await press(app, TAB);
           await seen(app, T('bar.chat.scroll'));
-          await typeText(app, NEED, '❯ ');
+          await typeText(app, NEED);
           await press(app, ENTER);
           const play = await poll('the play of the scenario', async () => (await chat.plays())[0]);
           expect(play.need).toContain('write alpha and beta');
