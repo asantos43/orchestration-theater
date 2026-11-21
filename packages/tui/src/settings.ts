@@ -38,10 +38,39 @@ export interface UiRuntimeSettings {
   readonly maxOldSpaceMB: number | undefined;
 }
 
+export const KEYMAP_PRESETS = ['agents', 'classic'] as const;
+export type KeymapPresetName = (typeof KEYMAP_PRESETS)[number];
+
+export const KEYMAP_ENVIRONMENTS = ['auto', 'none'] as const;
+export type KeymapEnvironmentSetting = (typeof KEYMAP_ENVIRONMENTS)[number];
+
+export const SCROLL_STEPS = ['page', 'half', 'line'] as const;
+export type ScrollStep = (typeof SCROLL_STEPS)[number];
+
+/** `ui.keymap`: the preset, whether to follow the environment, and the person's own shortcuts. */
+export interface UiKeymapSettings {
+  readonly preset: KeymapPresetName;
+  readonly environment: KeymapEnvironmentSetting;
+  /** Action id to a combination, a list, or `[]` to take the shortcut away. */
+  readonly overrides: Record<string, string | string[]>;
+}
+
+/** `ui.tuiLayout` (P9): the sizes of the common layout and how far a scroll key goes. */
+export interface UiTuiLayoutSettings {
+  readonly sidebarWidth: number;
+  readonly railWidth: number;
+  readonly minChatWidth: number;
+  readonly minPanelWidth: number;
+  readonly chatStep: number;
+  readonly scrollStep: ScrollStep;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
   readonly runtime: UiRuntimeSettings;
+  readonly keymap: UiKeymapSettings;
+  readonly tuiLayout: UiTuiLayoutSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -58,10 +87,27 @@ export const DEFAULT_RUNTIME: UiRuntimeSettings = {
   maxOldSpaceMB: undefined,
 };
 
+export const DEFAULT_KEYMAP: UiKeymapSettings = {
+  preset: 'agents',
+  environment: 'auto',
+  overrides: {},
+};
+
+export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
+  sidebarWidth: 30,
+  railWidth: 5,
+  minChatWidth: 30,
+  minPanelWidth: 30,
+  chatStep: 2,
+  scrollStep: 'half',
+};
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
   runtime: DEFAULT_RUNTIME,
+  keymap: DEFAULT_KEYMAP,
+  tuiLayout: DEFAULT_TUI_LAYOUT,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -96,12 +142,26 @@ function patches(value: unknown, fallback: readonly InkPatchName[]): readonly In
   return [...new Set(valid)];
 }
 
+function overrides(value: unknown): UiKeymapSettings['overrides'] {
+  const source = record(value);
+  const result: Record<string, string | string[]> = {};
+  for (const [action, combos] of Object.entries(source)) {
+    if (typeof combos === 'string') result[action] = combos;
+    else if (Array.isArray(combos) && combos.every((item) => typeof item === 'string')) {
+      result[action] = combos as string[];
+    }
+  }
+  return result;
+}
+
 /** Reads `ui` (the object under the `ui` key of the configuration), never throwing. */
 export function parseUiSettings(ui: unknown): UiSettings {
   const source = record(ui);
   const render = record(field(source, 'render'));
   const runtime = record(field(source, 'runtime'));
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
+  const keymap = record(field(source, 'keymap'));
+  const tuiLayout = record(field(source, 'tuiLayout'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -129,6 +189,38 @@ export function parseUiSettings(ui: unknown): UiSettings {
       ),
       // 0 means "not set or not valid": V8 keeps its own limit.
       maxOldSpaceMB: oldSpace === 0 ? DEFAULT_RUNTIME.maxOldSpaceMB : oldSpace,
+    },
+    keymap: {
+      preset: oneOf(field(keymap, 'preset'), KEYMAP_PRESETS, DEFAULT_KEYMAP.preset),
+      environment: oneOf(
+        field(keymap, 'environment'),
+        KEYMAP_ENVIRONMENTS,
+        DEFAULT_KEYMAP.environment,
+      ),
+      overrides: overrides(field(keymap, 'overrides')),
+    },
+    tuiLayout: {
+      sidebarWidth: integer(
+        field(tuiLayout, 'sidebarWidth'),
+        16,
+        80,
+        DEFAULT_TUI_LAYOUT.sidebarWidth,
+      ),
+      railWidth: integer(field(tuiLayout, 'railWidth'), 3, 16, DEFAULT_TUI_LAYOUT.railWidth),
+      minChatWidth: integer(
+        field(tuiLayout, 'minChatWidth'),
+        20,
+        200,
+        DEFAULT_TUI_LAYOUT.minChatWidth,
+      ),
+      minPanelWidth: integer(
+        field(tuiLayout, 'minPanelWidth'),
+        20,
+        200,
+        DEFAULT_TUI_LAYOUT.minPanelWidth,
+      ),
+      chatStep: integer(field(tuiLayout, 'chatStep'), 1, 20, DEFAULT_TUI_LAYOUT.chatStep),
+      scrollStep: oneOf(field(tuiLayout, 'scrollStep'), SCROLL_STEPS, DEFAULT_TUI_LAYOUT.scrollStep),
     },
   };
 }

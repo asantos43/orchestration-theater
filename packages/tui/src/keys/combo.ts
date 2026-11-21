@@ -83,9 +83,11 @@ function modifiersOf(parameter: number): Pick<KeyCombo, 'ctrl' | 'alt' | 'shift'
   };
 }
 
-const NONE = { ctrl: false, alt: false, shift: false, cmd: false } as const;
+type Modifiers = Pick<KeyCombo, 'ctrl' | 'alt' | 'shift' | 'cmd'>;
 
-function make(key: string, modifiers: Partial<typeof NONE> = {}): string {
+const NONE: Modifiers = { ctrl: false, alt: false, shift: false, cmd: false };
+
+function make(key: string, modifiers: Partial<Modifiers> = {}): string {
   return formatKeyCombo({ ...NONE, ...modifiers, key });
 }
 
