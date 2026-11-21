@@ -226,8 +226,12 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             await press(app, '\x15');
             await typeText(app, notRepo);
             await press(app, ENTER);
-            // The message wraps in the box: the part before the folder is on one line.
-            await seen(app, T('layout.newProject.badRepo', { repo: '@@' }).split('@@')[0] ?? '');
+            // The message wraps in the box, and a long path (macOS /private/tmp) wraps right after the
+            // text before the quotes: only that part is on one line.
+            const before = (
+              T('layout.newProject.badRepo', { repo: '@@' }).split('@@')[0] ?? ''
+            ).replace(/[\s"“”«»]+$/u, '');
+            await seen(app, before);
             // The prompt stays open for another try, and nothing was created.
             expect(flat(app.frame())).toContain(T('layout.newProject.label'));
             const all = await chat.daemon.store.scenarios.list();
