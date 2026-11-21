@@ -24,6 +24,7 @@ import {
   LAYOUT_STORES,
   LAYOUT_SYNCS,
   UiClipboardConfigSchema,
+  UiChatConfigSchema,
   UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
@@ -2217,6 +2218,8 @@ export const DaemonConfigSchema = z
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
         input: UiInputConfigSchema.prefault({}),
+        /** The chat of the terminal interface (P12): queue, suggestions, decisions and Esc. */
+        chat: UiChatConfigSchema.prefault({}),
         /** The Overview tab: confirmation, recent events (P13 of docs/18). */
         overview: UiOverviewConfigSchema.prefault({}),
         /** The Usage tab: how the totals are split (P13 of docs/18). */

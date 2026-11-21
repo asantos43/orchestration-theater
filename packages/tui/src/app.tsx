@@ -11,7 +11,7 @@ import {
   type KeyEnvironment,
   type TuiKeymap,
 } from './keys/use-keymap.js';
-import type { ChatMessage } from './layout/chat.js';
+import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import { Shell } from './layout/shell.js';
 import type { TabContentMap } from './layout/tab-content.js';
 import type { LocaleController } from './locale.js';
@@ -30,8 +30,10 @@ export interface AppProps {
   readonly patch?: InkPatchOutcome | undefined;
   /** Makes Ink paint the frame at once (`ui.render.keyRender: flush`). */
   readonly flush?: (() => void) | undefined;
-  /** [proposta] The messages of the chat until P12 feeds it from the daemon. */
-  readonly messages?: readonly ChatMessage[] | undefined;
+  /** How the chat opens its sockets (tests give a fake `WebSocket` and fast retries). */
+  readonly chatSocket?: ChatPanelConfig['socket'];
+  /** Where the history of the text box lives; in memory when absent. */
+  readonly history?: ChatPanelConfig['history'];
   /** What each tab of the panel draws; they come in empty and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
   /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
@@ -103,7 +105,13 @@ function Screen(props: AppProps): ReactNode {
         address={view.address}
         tuning={props.settings.tuiLayout}
         keymap={keymap}
-        messages={props.messages}
+        chat={{
+          client: view.client,
+          socket: props.chatSocket,
+          chat: props.settings.chat,
+          input: props.settings.input,
+          history: props.history,
+        }}
         tabContent={props.tabContent}
       />
     );

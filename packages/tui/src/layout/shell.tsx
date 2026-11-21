@@ -19,11 +19,11 @@ import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js
 import { useRenderControl } from '../render-control.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
-import { Chat, chatMessageRows, type ChatMessage } from './chat.js';
+import { useChatPanel, type ChatPanelConfig } from '../chat/use-chat-panel.js';
+import { Chat, chatMessageRows } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
 import { computeGeometry, steppedChatWidth } from './geometry.js';
 import { Header } from './header.js';
-import { InputSlot } from './input-slot.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { Panel, panelContentSize } from './panel.js';
 import type { TabBarHit } from './tab-bar-hit.js';
@@ -67,10 +67,8 @@ export interface ShellProps {
   readonly address: string;
   readonly tuning: UiTuiLayoutSettings;
   readonly keymap: TuiKeymap;
-  /**
-   * [proposta] Provisional until P12 feeds the chat from the daemon: the messages the chat shows.
-   */
-  readonly messages?: readonly ChatMessage[] | undefined;
+  /** What the chat needs to talk to the Director: the client of the daemon and the settings (P12). */
+  readonly chat: ChatPanelConfig;
   /** What each tab of the panel draws; the tabs come in empty (P9) and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
   /** [P13] The REST client and the settings the tabs read (see `tab-host.tsx`). */
@@ -90,7 +88,6 @@ export function Shell(props: ShellProps): ReactNode {
   const { columns, rows } = useWindowSize();
   const preferences = useLayoutPreferences(layoutStore);
   const tabContent = props.tabContent ?? TAB_CONTENT;
-  const messages = props.messages ?? NO_MESSAGES;
 
   const [focusState, setFocus] = useState<Focus>('chat');
   const [overlay, setOverlay] = useState<Overlay | undefined>(undefined);
@@ -166,7 +163,16 @@ export function Shell(props: ShellProps): ReactNode {
   );
   const cursorInSide = items.some((item) => item.id === sideCursor) ? sideCursor : items[0]?.id;
 
-  const messageRows = chatMessageRows(geometry.bodyHeight);
+  const chat = useChatPanel({
+    stores,
+    config: props.chat,
+    scenarioId: selectedRow?.id,
+    keymap: tuiKeymap,
+    width: Math.max(1, geometry.chat.width - 2),
+    height: geometry.bodyHeight,
+    active: focus === 'chat' && overlay === undefined,
+  });
+  const messageRows = chatMessageRows(geometry.bodyHeight, chat.inputRows);
   const step = scrollStepLines(tuning.scrollStep, messageRows);
 
   const quit = useCallback((): void => {
@@ -398,17 +404,34 @@ export function Shell(props: ShellProps): ReactNode {
       quit();
       return;
     }
+    // The decision card and the confirmation of a command answer first (P12).
+    const inChat = overlay === undefined && focus === 'chat';
+    if (inChat && chat.onKey(event)) {
+      afterKey();
+      return;
+    }
     if (event.combo !== undefined) {
       const contexts: UiContext[] =
-        overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay', 'global'];
+        overlay === undefined
+          ? [
+              'global',
+              ...(inChat && chat.decisionFocused
+                ? (['decision', 'chat'] as const)
+                : [FOCUS_CONTEXT[focus]]),
+            ]
+          : ['overlay', 'global'];
       const id = tuiKeymap.match(event.combo, contexts);
-      if (id !== undefined && (overlay === undefined || overlayAllows(id))) runAction(id);
+      if (id !== undefined && (overlay === undefined || overlayAllows(id))) {
+        if (!inChat || !chat.onAction(id)) runAction(id);
+      }
     }
     afterKey();
   });
 
   const contexts: UiContext[] =
-    overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay'];
+    overlay === undefined
+      ? ['global', focus === 'chat' && chat.decisionFocused ? 'decision' : FOCUS_CONTEXT[focus]]
+      : ['overlay'];
   const barItems = deriveShortcutBar(registry, tuiKeymap.keymap, contexts);
   const panelFooter = useMemo(
     (): Hint[] =>
@@ -511,13 +534,17 @@ export function Shell(props: ShellProps): ReactNode {
             stateLine={
               selectedRow === undefined
                 ? ''
-                : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
+                : [
+                    t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) }),
+                    ...chat.stateParts,
+                  ].join(' · ')
             }
-            messages={messages}
+            messages={chat.messages}
             offset={chatOffset}
             onOffset={setChatOffset}
             onResizeDrag={dragChatEdge}
-            input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
+            input={chat.input}
+            inputRows={chat.inputRows}
           />
           {geometry.panel !== undefined && content !== undefined && (
             <Panel
@@ -582,7 +609,7 @@ export function Shell(props: ShellProps): ReactNode {
             hint={closeHint}
             onRun={(id) => {
               setOverlay(undefined);
-              runAction(id);
+              if (!chat.onAction(id)) runAction(id);
             }}
           />
         )}
@@ -611,7 +638,6 @@ export function Shell(props: ShellProps): ReactNode {
   );
 }
 
-const NO_MESSAGES: readonly ChatMessage[] = [];
 const NO_SECTIONS: readonly string[] = [];
 
 /** The first thing wrong with the keymap, or the first notice, in the person's language. */

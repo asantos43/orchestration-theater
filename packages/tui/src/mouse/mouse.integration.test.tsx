@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Text } from 'ink';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanupApps, renderApp, type RenderedApp } from '../ink.test-support.js';
+import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../ink.test-support.js';
 import { fakeOnline, seedStores } from '../layout.test-support.js';
 import { Section } from '../layout/section.js';
 import type { TabContentMap } from '../layout/tab-content.js';
 import { DEFAULT_UI_SETTINGS } from '../settings.js';
 import { MOUSE_DISABLE_SEQUENCE } from './modes.js';
 import { sgrReport } from './sgr.js';
-import type { ChatMessage } from '../layout/chat.js';
 
 /**
  * The mouse over the whole app (N34, N36): the terminal modes on mount and off on exit, the reports
@@ -21,12 +20,8 @@ afterEach(cleanupApps);
 const F5 = '\x1b[15~';
 const ENABLE_FULL = '\x1b[?1000h\x1b[?1002h\x1b[?1006h';
 
-const messages: readonly ChatMessage[] = Array.from({ length: 30 }, (_, index) => ({
-  id: `m${String(index)}`,
-  who: 'you' as const,
-  at: '09:00',
-  text: `message number ${String(index)}`,
-}));
+/** How many replies of the Director the chat shows, `message number 0` to `message number 29`. */
+const MESSAGES = 30;
 
 const tabContent: TabContentMap = {
   overview: {
@@ -67,11 +62,25 @@ async function open(settings = DEFAULT_UI_SETTINGS): Promise<Opened> {
     connector: online.connector,
     settings,
     size: { columns: 140, rows: 30 },
-    messages,
     tabContent,
     mouseWrites: writes,
   });
   await app.waitForText('SCENARIOS');
+  // The chat is fed by its socket (P12): the daemon tells one finished reply per message.
+  const socket = await waitFor(
+    () => [...online.chat.sockets.values()][0]?.at(-1),
+    'the chat socket',
+  );
+  for (let index = 0; index < MESSAGES; index += 1) {
+    socket.emit({
+      type: 'director_reply',
+      eventId: index + 1,
+      replyId: index + 1,
+      text: `message number ${String(index)}`,
+      final: true,
+    });
+  }
+  await app.waitForText(`message number ${String(MESSAGES - 1)}`);
   return { app, writes };
 }
 

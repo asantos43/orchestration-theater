@@ -27,12 +27,28 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
+      chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop' },
+      input: DEFAULT_UI_SETTINGS.input,
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
       usage: { groupBy: 'profile', refreshSeconds: 30 },
       mouse: 'full',
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
     });
+  });
+
+  it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {
+    const settings = parseUiSettings({
+      chat: { queue: 'hold', suggestions: 0, decisionFocus: 'sometimes', esc: 'off' },
+      input: { maxVisibleLines: 3 },
+    });
+    expect(settings.chat).toEqual({
+      queue: 'hold',
+      suggestions: 0,
+      decisionFocus: 'auto',
+      esc: 'off',
+    });
+    expect(settings.input.maxVisibleLines).toBe(3);
   });
 
   it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
@@ -84,6 +100,8 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
+      chat: DEFAULT_UI_SETTINGS.chat,
+      input: DEFAULT_UI_SETTINGS.input,
       overview: DEFAULT_UI_SETTINGS.overview,
       usage: DEFAULT_UI_SETTINGS.usage,
       mouse: DEFAULT_UI_SETTINGS.mouse,

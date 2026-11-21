@@ -29,7 +29,19 @@
       "open": "Ir para a aba {{tab}}"
     },
     "decision": {
-      "answer": "Responder a decisão pendente"
+      "answer": "Responder a decisão pendente",
+      "aside": "Pôr a decisão de lado",
+      "open": "Abrir a decisão pendente"
+    },
+    "overview": {
+      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
+      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
+      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
+      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
+      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
+    },
+    "usage": {
+      "refresh": "Ler o consumo de novo (aba Consumo)"
     },
     "overview": {
       "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
@@ -54,7 +66,10 @@
       "scrollUp": "Rolar o chat para cima",
       "scrollDown": "Rolar o chat para baixo",
       "scrollTop": "Ir ao início do chat",
-      "scrollBottom": "Ir ao fim do chat"
+      "scrollBottom": "Ir ao fim do chat",
+      "suggestNext": "Próxima sugestão de comando",
+      "suggestPrev": "Sugestão de comando anterior",
+      "stop": "Parar a resposta do Diretor"
     },
     "edge": {
       "narrow": "Estreitar o chat (borda com o foco)",
@@ -114,7 +129,8 @@
       "close": "Fechar aba"
     },
     "decision": {
-      "answer": "Responder"
+      "answer": "Responder",
+      "aside": "De lado"
     },
     "palette": {
       "open": "Comandos"
@@ -242,14 +258,129 @@
     "chat": {
       "title": "Chat",
       "empty": "Nada dito ainda.",
-      "placeholder": "Escreva para o Diretor",
-      "inputHint": "A caixa de texto chega com o passo do chat.",
       "state": "Estado: {{state}}",
       "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
       "who": {
         "you": "Você",
         "director": "Diretor",
         "system": "Sistema"
+      },
+      "noConnection": "O chat não está ligado ao daemon.",
+      "stage": "etapa: {{state}}",
+      "pending_one": "{{count}} decisão pendente",
+      "pending_other": "{{count}} decisões pendentes",
+      "director": {
+        "asleep": "Diretor adormecido",
+        "turn": "Diretor em turno",
+        "turnStop": "Diretor em turno ({{key}} para)",
+        "active": "Diretor ativo"
+      },
+      "waits": "esperando: {{what}}",
+      "connection": {
+        "connecting": "conectando",
+        "open": "conectado",
+        "retrying": "reconectando",
+        "closed": "desconectado"
+      },
+      "confirmLine": "{{command}}: {{prompt}} Enter confirma, Esc cancela.",
+      "card": {
+        "title": {
+          "default": "O Diretor precisa de uma decisão",
+          "producer_question": "O Diretor pergunta a você",
+          "producer_menu": "A peça precisa de você",
+          "ideas_group": "Um grupo de ideias espera a sua aprovação"
+        },
+        "other": "Outra (digite a resposta)",
+        "keepPrompt": "Quais ideias você mantém?",
+        "option": {
+          "redefine_need": "Redefinir a necessidade",
+          "raise_limit": "Aumentar o limite",
+          "deliver_ready": "Entregar o que está pronto",
+          "accept_as_is": "Aceitar como está",
+          "redo_on_new_base": "Refazer na nova base",
+          "deliver_with_conflict": "Entregar com os conflitos listados",
+          "deliver_pr": "Abrir um pull request",
+          "deliver_merge": "Mesclar na base",
+          "cancel": "Cancelar a peça",
+          "not_done": "Não concluído",
+          "done": "Concluído",
+          "approve": "Aprovar",
+          "refuse": "Recusar",
+          "edit": "Editar a necessidade",
+          "keep": "Manter só algumas ideias"
+        },
+        "idea": "{{id}}: {{text}}",
+        "leftOut": "Ficou de fora {{id}}: {{reason}}{{question}}",
+        "need": "Necessidade: {{need}}",
+        "typing": "Digite a resposta: ",
+        "hint_one": "{{count}} decisão está esperando. {{key}} abre.",
+        "hint_other": "{{count}} decisões estão esperando. {{key}} abre."
+      },
+      "entry": {
+        "sometime": "depois",
+        "waitReason": {
+          "quota": "cota de {{profiles}}",
+          "spend_cap": "teto de gasto de {{profiles}}",
+          "budget": "orçamento de {{profiles}}",
+          "rate_limit": "limite de taxa de {{profiles}}",
+          "unavailable": "{{profiles}} indisponível"
+        },
+        "handoff": "A tentativa {{attemptId}} passou de {{from}} para {{to}} ({{cause}}).",
+        "selectionWait": "O papel {{role}} espera um Executor: {{on}}. Próxima olhada às {{until}}.",
+        "resetWait": "A tentativa {{attemptId}} espera {{executor}} até {{until}}.",
+        "failover": {
+          "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
+          "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
+          "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt."
+        },
+        "recovery": "Depois da reinicialização: {{resumed}} retomadas, {{settled}} resolvidas, {{waiting}} esperando.",
+        "generatedNone": "O Diretor respondeu sem nenhuma ação.",
+        "generatedTools": "O Diretor agiu: {{tools}}.{{play}}",
+        "generatedPlay": "Peça {{id}}.",
+        "toolFailed": "{{name}} (falhou)",
+        "held": "A fila de ideias parou: {{what}} ({{reason}}).",
+        "heldWhat": {
+          "author_failed": "o autor falhou",
+          "author_left_all_out": "o autor deixou todas as ideias de fora",
+          "group_refused": "o grupo foi recusado",
+          "play_not_opened": "a peça não abriu",
+          "play_ended": "a peça {{playId}} terminou"
+        },
+        "play": "A peça {{id}} está agora em {{state}}.",
+        "shellStarted": "Rodando em {{place}}: {{command}}",
+        "shell": {
+          "exited": "Terminou com o código {{code}} em {{seconds}} s.",
+          "timeout": "Parado após {{seconds}} s (limite de tempo).",
+          "failed": "Falhou: {{error}}"
+        },
+        "shellCut": {
+          "head": "(primeiras {{shown}} de {{total}} linhas)",
+          "tail": "(últimas {{shown}} de {{total}} linhas)"
+        },
+        "shellAskedInput": "O comando pediu uma entrada; ela não foi dada.",
+        "error": "Erro: {{message}}",
+        "local": {
+          "reconnected": "Reconectado ao daemon.",
+          "connectionLost": "A conexão com o daemon caiu; tentando de novo.",
+          "sendFailed": "Não foi possível enviar: {{message}}"
+        },
+        "queued": "(na fila)"
+      },
+      "stageName": {
+        "NEED": "necessidade",
+        "PLANNING": "planejando",
+        "CLARIFYING": "esclarecendo",
+        "REVIEWING_PLAN": "revisando o plano",
+        "SCRIPTING": "roteirizando",
+        "REVIEWING_SCRIPT": "revisando o roteiro",
+        "EXECUTING": "executando",
+        "INTEGRATING": "integrando",
+        "CRITIQUING": "criticando",
+        "DECIDING": "decidindo",
+        "DELIVERING": "entregando",
+        "AWAITING_PRODUCER": "esperando você",
+        "DONE": "concluída",
+        "CANCELLED": "cancelada"
       }
     },
     "panel": {

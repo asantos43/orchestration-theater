@@ -8,6 +8,11 @@
  * repeated on purpose.
  */
 import {
+  DEFAULT_INPUT_SETTINGS,
+  parseInputSettings,
+  type InputSettings,
+} from './input/settings.js';
+import {
   DEFAULT_OVERVIEW_SETTINGS,
   DEFAULT_USAGE_SETTINGS,
   parseOverviewSettings,
@@ -73,6 +78,22 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
 }
 
+export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
+export type ChatQueueMode = (typeof CHAT_QUEUE_MODES)[number];
+export const CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
+export type ChatDecisionFocus = (typeof CHAT_DECISION_FOCUS_MODES)[number];
+export const CHAT_ESC_MODES = ['stop', 'off'] as const;
+export type ChatEscMode = (typeof CHAT_ESC_MODES)[number];
+
+/** `ui.chat` (P12): the queue while the Director is in a turn, the `/` list, decisions and Esc. */
+export interface UiChatSettings {
+  readonly queue: ChatQueueMode;
+  /** How many commands the `/` list shows at most; 0 turns it off. */
+  readonly suggestions: number;
+  readonly decisionFocus: ChatDecisionFocus;
+  readonly esc: ChatEscMode;
+}
+
 export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export type MouseMode = (typeof MOUSE_MODES)[number];
 
@@ -91,6 +112,9 @@ export interface UiSettings {
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  readonly chat: UiChatSettings;
+  /** `ui.input`: the text box (P10). */
+  readonly input: InputSettings;
   readonly overview: OverviewSettings;
   readonly usage: UsageSettings;
   /** `ui.mouse` (N34). */
@@ -129,6 +153,13 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   scrollStep: 'half',
 };
 
+export const DEFAULT_CHAT: UiChatSettings = {
+  queue: 'daemon',
+  suggestions: 6,
+  decisionFocus: 'auto',
+  esc: 'stop',
+};
+
 export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
   wheelLines: 3,
   copyMaxBytes: 100_000,
@@ -140,6 +171,8 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  chat: DEFAULT_CHAT,
+  input: DEFAULT_INPUT_SETTINGS,
   overview: DEFAULT_OVERVIEW_SETTINGS,
   usage: DEFAULT_USAGE_SETTINGS,
   mouse: 'full',
@@ -199,6 +232,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
+  const chat = record(field(source, 'chat'));
   const clipboard = record(field(source, 'clipboard'));
   const tuiMouse = record(field(source, 'tuiMouse'));
   return {
@@ -265,6 +299,17 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
     },
+    chat: {
+      queue: oneOf(field(chat, 'queue'), CHAT_QUEUE_MODES, DEFAULT_CHAT.queue),
+      suggestions: integer(field(chat, 'suggestions'), 0, 30, DEFAULT_CHAT.suggestions),
+      decisionFocus: oneOf(
+        field(chat, 'decisionFocus'),
+        CHAT_DECISION_FOCUS_MODES,
+        DEFAULT_CHAT.decisionFocus,
+      ),
+      esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
+    },
+    input: parseInputSettings(field(source, 'input')),
     overview: parseOverviewSettings(field(source, 'overview')),
     usage: parseUsageSettings(field(source, 'usage')),
     mouse: oneOf(field(source, 'mouse'), MOUSE_MODES, DEFAULT_UI_SETTINGS.mouse),
