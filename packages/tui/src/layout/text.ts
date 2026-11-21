@@ -84,6 +84,26 @@ export function fitRight(text: string, width: number): string {
   return ' '.repeat(width - size) + text;
 }
 
+/**
+ * Breaks one line into pieces of at most `width` cells, exactly where the width ends and keeping
+ * every space: the output of a command, whose columns and indentation count. An empty line is one
+ * empty piece.
+ */
+export function breakLine(text: string, width: number): string[] {
+  const limit = Math.max(1, width);
+  const pieces: string[] = [];
+  let rest = text;
+  while (cellWidth(rest) > limit) {
+    const head = clip(rest, limit);
+    // A character wider than the room would never advance.
+    if (head === '') break;
+    pieces.push(head);
+    rest = rest.slice(head.length);
+  }
+  pieces.push(rest);
+  return pieces;
+}
+
 /** Breaks `text` into lines of at most `width` cells, at spaces where it can and inside a word where it must. */
 export function wrapText(text: string, width: number): string[] {
   const limit = Math.max(1, width);
