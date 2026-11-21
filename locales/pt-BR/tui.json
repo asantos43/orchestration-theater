@@ -5,7 +5,8 @@
     "decision": "Decisões",
     "general": "Geral",
     "navigation": "Navegação",
-    "input": "Caixa de texto"
+    "input": "Caixa de texto",
+    "settings": "Configurações"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -91,6 +92,18 @@
       "externalEditor": "Escrever a mensagem no editor externo",
       "pasteImage": "Anexar a imagem da área de transferência",
       "cancel": "Sair da busca no histórico"
+    },
+    "settings": {
+      "itemPrev": "Item anterior da seção",
+      "itemNext": "Próximo item da seção",
+      "moveUp": "Subir o Executor (mais prioridade)",
+      "moveDown": "Descer o Executor (menos prioridade)",
+      "login": "Entrar na conta (login oficial)",
+      "add": "Adicionar uma conta",
+      "remove": "Remover a conta",
+      "edit": "Mudar o valor ou a regra",
+      "unset": "Tirar a chave (volta ao padrão)",
+      "scope": "Alternar entre o escopo global e o do projeto"
     }
   },
   "bar": {
@@ -290,6 +303,108 @@
       "readingImage": "Lendo a imagem da área de transferência...",
       "historyFailed": "Não foi possível salvar o histórico: {{message}}",
       "submitFailed": "A mensagem não foi enviada: {{message}}"
+    }
+  },
+  "settings": {
+    "sections": {
+      "subscriptions": "Assinaturas",
+      "executors": "Executores",
+      "roles": "Papéis",
+      "limits": "Limites"
+    },
+    "scope": {
+      "global": "Escopo: global ({{key}} alterna)",
+      "project": "Escopo: projeto {{name}}, só leitura ({{key}} alterna)",
+      "noProject": "Escopo: projeto, nenhum selecionado ({{key}} alterna)"
+    },
+    "loading": "Lendo as configurações...",
+    "loadFailed": "Não foi possível ler as configurações: {{message}}",
+    "empty": {
+      "profiles": "Nenhuma conta ainda. Adicione uma.",
+      "executors": "Nenhum Executor.",
+      "roles": "Nenhum papel.",
+      "overrides": "Este projeto não sobrepõe nenhuma chave."
+    },
+    "quota": {
+      "ok": "ok",
+      "near_limit": "perto do limite",
+      "exhausted": "esgotada",
+      "unknown": "sem leitura"
+    },
+    "profile": {
+      "draining": "drenando",
+      "removed": "removida",
+      "noSecret": "sem chave",
+      "used": "{{percent}}% usado",
+      "resets": "volta em {{time}}"
+    },
+    "executor": {
+      "invalid": "inválido: {{reason}}",
+      "roles": "papéis: {{roles}}",
+      "noRoles": "sem papel"
+    },
+    "role": {
+      "rule": "ao esgotar: {{rule}}",
+      "next": "passar ao próximo",
+      "wait": "esperar a renovação",
+      "blocked": {
+        "invalid": "inválido",
+        "quota": "cota",
+        "budget": "orçamento"
+      }
+    },
+    "prompt": {
+      "add": "Adicionar conta como: <cliente> <nome> <token_plan|api> <provedor>",
+      "apiKey": "Chave de API de {{profile}} (vai ao cofre, nunca aparece)",
+      "limit": "Novo valor de {{key}} ({{hint}})",
+      "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
+      "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
+      "hintEnter": "Enter confirma, Esc cancela",
+      "hintConfirm": "s confirma, qualquer outra tecla cancela",
+      "yes": "s"
+    },
+    "hint": {
+      "whole": "número inteiro, {{min}} ou mais",
+      "duration": "duração como 30m, 2h, 45s"
+    },
+    "login": {
+      "title": "Entrar: {{profile}}",
+      "mode": {
+        "browser": "Abra o endereço num navegador e entre.",
+        "device_code": "Abra o endereço e digite o código lá."
+      },
+      "url": "Endereço: {{url}}",
+      "code": "Código: {{code}}",
+      "noUrl": "O cliente ainda não imprimiu um endereço.",
+      "takesCode": "Cole aqui o código que o navegador mostra. Enter envia, Esc cancela.",
+      "cancelHint": "Esc cancela o login.",
+      "waiting": "Esperando o login terminar...",
+      "completed": "Login feito: {{profile}}.",
+      "failed": "O login de {{profile}} falhou: {{reason}}",
+      "cancelled": "Login cancelado.",
+      "terminal": "Este cliente entra pelo terminal: {{command}}",
+      "terminalDone": "O login pelo terminal de {{profile}} terminou com o código {{code}}.",
+      "terminalFailed": "O login pelo terminal não pôde rodar: {{message}}",
+      "reason": {
+        "cancelled": "cancelado",
+        "refused": "o cliente terminou sem login",
+        "unavailable": "o cliente não está disponível",
+        "error": "o cliente relatou um erro"
+      }
+    },
+    "result": {
+      "added": "Conta adicionada: {{profile}}.",
+      "removed": "Conta removida: {{profile}}.",
+      "hot": "Vale agora: {{keys}}.",
+      "restart": "Vale no reinício: {{keys}}.",
+      "invalid": "Configuração inválida, nada foi gravado: {{message}}",
+      "failed": "{{message}}",
+      "readOnly": "O escopo do projeto é só de leitura: nenhuma rota grava a sobreposição de um projeto.",
+      "badWhole": "{{key}} pede um número inteiro, {{min}} ou mais.",
+      "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
+      "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
+      "nothing": "Nada sob o cursor.",
+      "noLogin": "Só uma conta de assinatura entra por login."
     }
   }
 }

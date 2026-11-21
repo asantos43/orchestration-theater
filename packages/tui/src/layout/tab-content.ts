@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ReactNode } from 'react';
 import type { SectionControl } from './section.js';
+import { settingsTab } from '../tabs/settings/index.js';
 
 /** What a tab is given to draw its content in the panel. */
 export interface TabContentProps {
@@ -30,4 +31,6 @@ export type TabContentMap = Readonly<Record<string, TabDefinition>>;
  * (Overview, Trajectories, Usage, Directives, Settings). A tab with no entry shows the
  * placeholder of the panel.
  */
-export const TAB_CONTENT: TabContentMap = {};
+export const TAB_CONTENT: TabContentMap = {
+  settings: settingsTab,
+};

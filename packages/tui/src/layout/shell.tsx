@@ -22,6 +22,7 @@ import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './d
 import { computeGeometry, steppedChatWidth } from './geometry.js';
 import { Header } from './header.js';
 import { InputSlot } from './input-slot.js';
+import { PanelContext, type PanelServices } from './panel-context.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { Panel, panelContentSize } from './panel.js';
 import { scrollStepLines } from './scroll.js';
@@ -92,6 +93,8 @@ export function Shell(props: ShellProps): ReactNode {
   const [panelScroll, setPanelScroll] = useState(0);
   const [helpOffset, setHelpOffset] = useState(0);
   const [notice, setNotice] = useState<string | undefined>(() => firstProblem(tuiKeymap, ut));
+  // A tab with a text field takes every key but Ctrl+C (P16 of Phase 7).
+  const [captured, setCaptured] = useState(false);
 
   const scenarioRowsNow = useScenarioRows(stores);
   const quotas = useQuotaRows(stores);
@@ -140,6 +143,15 @@ export function Shell(props: ShellProps): ReactNode {
 
   // The scenario the chat is about, and what the header says of it.
   const selectedRow = scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
+  const panelServices = useMemo(
+    (): PanelServices => ({
+      stores,
+      keymap: tuiKeymap,
+      capture: setCaptured,
+      scenarioId: selectedRow?.id,
+    }),
+    [stores, tuiKeymap, selectedRow?.id],
+  );
   const play = useMemo(() => {
     if (selectedRow === undefined) return undefined;
     let found: { need: string; updatedAt: number } | undefined;
@@ -333,6 +345,10 @@ export function Shell(props: ShellProps): ReactNode {
       quit();
       return;
     }
+    if (captured) {
+      afterKey();
+      return;
+    }
     if (event.combo !== undefined) {
       const contexts: UiContext[] =
         overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay', 'global'];
@@ -455,13 +471,15 @@ export function Shell(props: ShellProps): ReactNode {
                 flexDirection="column"
                 width={content.width}
               >
-                {definition.render({
-                  width: content.width,
-                  height: content.height,
-                  focused: focus === 'panel',
-                  scroll: panelScroll,
-                  sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
-                })}
+                <PanelContext.Provider value={panelServices}>
+                  {definition.render({
+                    width: content.width,
+                    height: content.height,
+                    focused: focus === 'panel',
+                    scroll: panelScroll,
+                    sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
+                  })}
+                </PanelContext.Provider>
               </Box>
             )}
           </Panel>

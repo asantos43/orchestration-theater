@@ -5,7 +5,8 @@
     "decision": "Decisions",
     "general": "General",
     "navigation": "Navigation",
-    "input": "Text box"
+    "input": "Text box",
+    "settings": "Settings"
   },
   "tabs": {
     "overview": "Overview",
@@ -91,6 +92,18 @@
       "externalEditor": "Write the message in the external editor",
       "pasteImage": "Attach the image on the clipboard",
       "cancel": "Leave the history search"
+    },
+    "settings": {
+      "itemPrev": "Previous item of the section",
+      "itemNext": "Next item of the section",
+      "moveUp": "Move the Executor up (more priority)",
+      "moveDown": "Move the Executor down (less priority)",
+      "login": "Sign in to the account (official login)",
+      "add": "Add an account",
+      "remove": "Remove the account",
+      "edit": "Change the value or the rule",
+      "unset": "Take the key out (back to the default)",
+      "scope": "Switch between the global and the project scope"
     }
   },
   "bar": {
@@ -290,6 +303,108 @@
       "readingImage": "Reading the image from the clipboard...",
       "historyFailed": "The history could not be saved: {{message}}",
       "submitFailed": "The message was not sent: {{message}}"
+    }
+  },
+  "settings": {
+    "sections": {
+      "subscriptions": "Subscriptions",
+      "executors": "Executors",
+      "roles": "Roles",
+      "limits": "Limits"
+    },
+    "scope": {
+      "global": "Scope: global ({{key}} switches)",
+      "project": "Scope: project {{name}}, read only ({{key}} switches)",
+      "noProject": "Scope: project, none selected ({{key}} switches)"
+    },
+    "loading": "Reading the settings...",
+    "loadFailed": "Could not read the settings: {{message}}",
+    "empty": {
+      "profiles": "No account yet. Add one.",
+      "executors": "No Executor.",
+      "roles": "No role.",
+      "overrides": "This project overrides no key."
+    },
+    "quota": {
+      "ok": "ok",
+      "near_limit": "near the limit",
+      "exhausted": "exhausted",
+      "unknown": "no reading"
+    },
+    "profile": {
+      "draining": "draining",
+      "removed": "removed",
+      "noSecret": "no key",
+      "used": "{{percent}}% used",
+      "resets": "resets in {{time}}"
+    },
+    "executor": {
+      "invalid": "invalid: {{reason}}",
+      "roles": "roles: {{roles}}",
+      "noRoles": "no role"
+    },
+    "role": {
+      "rule": "when exhausted: {{rule}}",
+      "next": "go to the next",
+      "wait": "wait for the reset",
+      "blocked": {
+        "invalid": "invalid",
+        "quota": "quota",
+        "budget": "budget"
+      }
+    },
+    "prompt": {
+      "add": "Add an account as: <client> <name> <token_plan|api> <provider>",
+      "apiKey": "API key of {{profile}} (kept in the vault, never shown)",
+      "limit": "New value of {{key}} ({{hint}})",
+      "confirmRemove": "Remove {{profile}}? Its sessions drain, then its directory and key go. y/n",
+      "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n",
+      "hintEnter": "Enter confirms, Esc cancels",
+      "hintConfirm": "y confirms, any other key cancels",
+      "yes": "y"
+    },
+    "hint": {
+      "whole": "a whole number, {{min}} or more",
+      "duration": "a duration such as 30m, 2h, 45s"
+    },
+    "login": {
+      "title": "Sign in: {{profile}}",
+      "mode": {
+        "browser": "Open the address in a browser and sign in.",
+        "device_code": "Open the address and type the code there."
+      },
+      "url": "Address: {{url}}",
+      "code": "Code: {{code}}",
+      "noUrl": "The client has not printed an address yet.",
+      "takesCode": "Paste the code the browser shows here. Enter sends it, Esc cancels.",
+      "cancelHint": "Esc cancels the sign-in.",
+      "waiting": "Waiting for the sign-in to end...",
+      "completed": "Signed in: {{profile}}.",
+      "failed": "The sign-in of {{profile}} failed: {{reason}}",
+      "cancelled": "Sign-in cancelled.",
+      "terminal": "This client signs in at the terminal: {{command}}",
+      "terminalDone": "The terminal sign-in of {{profile}} ended with code {{code}}.",
+      "terminalFailed": "The terminal sign-in could not run: {{message}}",
+      "reason": {
+        "cancelled": "cancelled",
+        "refused": "the client ended without a login",
+        "unavailable": "the client is not available",
+        "error": "the client reported an error"
+      }
+    },
+    "result": {
+      "added": "Account added: {{profile}}.",
+      "removed": "Account removed: {{profile}}.",
+      "hot": "Applied now: {{keys}}.",
+      "restart": "Applies on restart: {{keys}}.",
+      "invalid": "Invalid configuration, nothing written: {{message}}",
+      "failed": "{{message}}",
+      "readOnly": "The project scope is read only: no route writes the override of a project.",
+      "badWhole": "{{key}} takes a whole number, {{min}} or more.",
+      "badDuration": "{{key}} takes a duration such as 30m, 2h or 45s.",
+      "badAdd": "Write <client> <name> <token_plan|api> <provider>.",
+      "nothing": "Nothing under the cursor.",
+      "noLogin": "Only a subscription account signs in."
     }
   }
 }
