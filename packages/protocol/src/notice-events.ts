@@ -68,6 +68,8 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  * What a `recovery.notice` tells: backup and recovery (architecture 5.21) that went worse than
  * planned, and that no other event says.
  * - `backup_rotation_failed`: the new copy is good, but the rotation of the old ones failed;
+ * - `backup_telemetry_failed` (P1 of Phase 8): `backup.telemetry: include` and the copy of the telemetry
+ *   file failed; the copy of the store is good and carries no telemetry;
  * - `retention_remove_failed`: retention could not remove an old copy (`subject`: its folder name);
  * - `process_not_tracked`: a process a client started is not written down, so the next daemon cannot
  *   find it as an orphan;
@@ -78,6 +80,7 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  */
 export const RECOVERY_NOTICE_KINDS = [
   'backup_rotation_failed',
+  'backup_telemetry_failed',
   'retention_remove_failed',
   'process_not_tracked',
   'effect_unsettled',

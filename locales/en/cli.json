@@ -69,7 +69,9 @@
     "keptDatabase": "The previous database was kept as {{path}}.",
     "keptScenarios": "The previous scenarios folder was kept as {{path}}.",
     "daemonIdRestored": "The daemon id of the backup was restored.",
-    "keptDaemonId": "The previous daemon id file was kept as {{path}}."
+    "keptDaemonId": "The previous daemon id file was kept as {{path}}.",
+    "telemetryRestored": "The telemetry file of the backup was restored.",
+    "keptTelemetry": "The previous telemetry file was kept as {{path}}."
   },
   "api": {
     "rotatedOffline": "New API token written to the api-token file. The daemon is stopped, so it will be used at the next start.",

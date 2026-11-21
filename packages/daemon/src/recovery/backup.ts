@@ -32,6 +32,12 @@ export type StoreBackupFn = (
   options: StoreBackupOptions,
 ) => Promise<StoreBackupResult>;
 
+/** Name of the telemetry copy inside a backup folder (`backup.telemetry: include`). */
+export const BACKUP_TELEMETRY_FILE = 'telemetry.sqlite';
+
+/** Copies the telemetry base to `dest`; `false` when there is no base to copy. */
+export type TelemetryBackupFn = (dest: string) => Promise<boolean>;
+
 /** `20261116-153000` for 2026-11-16T15:30:00Z. */
 function utcStamp(ms: number): string {
   return new Date(ms)
@@ -57,6 +63,10 @@ export interface CreateBackupInput {
   readonly clock: Pick<Clock, 'now'>;
   readonly version: string;
   readonly storeBackup: StoreBackupFn;
+  /** `backup.telemetry`: `exclude` leaves the telemetry file out, whatever `telemetryBackup` is. */
+  readonly telemetry?: 'exclude' | 'include' | undefined;
+  /** Makes the copy of the telemetry base; without it `include` has nothing to copy. */
+  readonly telemetryBackup?: TelemetryBackupFn | undefined;
 }
 
 export interface CreatedBackup {
@@ -64,6 +74,13 @@ export interface CreatedBackup {
   readonly dir: string;
   readonly manifest: BackupManifest;
   readonly result: StoreBackupResult;
+  /** `true` when `telemetry.sqlite` is in the folder (`backup.telemetry: include` and a base to copy). */
+  readonly telemetryCopied: boolean;
+  /**
+   * Why the telemetry copy was left out although `include` was set: a failure of the copy. The
+   * copy of the store does not fail for it (the telemetry is a mirror).
+   */
+  readonly telemetryError?: unknown;
 }
 
 const exists = (path: string): Promise<boolean> =>
@@ -107,6 +124,17 @@ export async function createBackup(input: CreateBackupInput): Promise<CreatedBac
         input.content,
       );
     }
+    // The telemetry file is a mirror: left out by default, and a failed copy never fails the backup.
+    let telemetryCopied = false;
+    let telemetryError: unknown;
+    if (input.telemetry === 'include' && input.telemetryBackup !== undefined) {
+      try {
+        telemetryCopied = await input.telemetryBackup(join(partial, BACKUP_TELEMETRY_FILE));
+      } catch (error) {
+        telemetryError = error;
+        await rm(join(partial, BACKUP_TELEMETRY_FILE), { force: true });
+      }
+    }
     // The id of the daemon (N168) travels with every backup, so a restore keeps the identity.
     const daemonIdFile = dataPaths(input.dataDir).daemonId;
     if (await exists(daemonIdFile)) await cp(daemonIdFile, join(partial, DAEMON_ID_FILE));
@@ -124,7 +152,14 @@ export async function createBackup(input: CreateBackupInput): Promise<CreatedBac
       mode: 0o600,
     });
     await rename(partial, dir);
-    return { name, dir, manifest, result: { ...result, path: join(dir, BACKUP_STORE_FILE) } };
+    return {
+      name,
+      dir,
+      manifest,
+      result: { ...result, path: join(dir, BACKUP_STORE_FILE) },
+      telemetryCopied,
+      ...(telemetryError === undefined ? {} : { telemetryError }),
+    };
   } catch (error) {
     await rm(partial, { recursive: true, force: true });
     throw error;
@@ -169,6 +204,8 @@ export interface BackupServiceOptions {
   readonly logger: Logger;
   readonly version: string;
   readonly storeBackup: StoreBackupFn;
+  /** Copies the telemetry base for `backup.telemetry: include` (see `Composition.telemetryBackup`). */
+  readonly telemetryBackup?: TelemetryBackupFn | undefined;
   /** Where the `daemon.backup` event goes; none when this process does not own the store (`ot backup` beside a running daemon). */
   readonly recordEvent?: ((event: NewEvent) => Promise<unknown>) | undefined;
   /**
@@ -222,6 +259,8 @@ export class BackupService {
         clock,
         version: this.#options.version,
         storeBackup: this.#options.storeBackup,
+        telemetry: settings.telemetry,
+        telemetryBackup: this.#options.telemetryBackup,
       });
     } catch (error) {
       const failure = {
@@ -233,6 +272,18 @@ export class BackupService {
         buildDaemonEvent('daemon.backup', { ok: false, trigger, error: failure, removed: [] }),
       );
       return { ok: false, error: failure, cause: error };
+    }
+
+    if (created.telemetryError !== undefined) {
+      logger.warn(
+        { err: created.telemetryError },
+        'backup: the telemetry file could not be copied; the copy of the store is good',
+      );
+      this.#options.situations?.record('recovery.notice', {
+        kind: 'backup_telemetry_failed',
+        subject: situationSubject(created.name),
+        detail: situationText(created.telemetryError),
+      });
     }
 
     let removed: string[] = [];

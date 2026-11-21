@@ -74,6 +74,8 @@ export interface TelemetryResetInfo {
   readonly brokenFile: string | null;
   /** Message of the error that led here (for the log, not for the event). */
   readonly error: string;
+  /** Times the base was recreated since this store opened, this one included. */
+  readonly resets: number;
 }
 
 export interface TelemetryStoreDeps {
@@ -582,9 +584,9 @@ export class SqliteTelemetryStore implements TelemetryStore {
     }
   }
 
-  #tell(info: TelemetryResetInfo): void {
+  #tell(info: Omit<TelemetryResetInfo, 'resets'>): void {
     try {
-      this.#deps.onReset?.(info);
+      this.#deps.onReset?.({ ...info, resets: this.#resets });
     } catch {
       // The daemon's report must never break the telemetry path.
     }
