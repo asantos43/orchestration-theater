@@ -38,6 +38,7 @@ import {
 } from './api-events.js';
 import {
   ConfigEditedPayloadSchema,
+  ConfigChangedPayloadSchema,
   ScenarioDecisionAnsweredPayloadSchema,
 } from './api-command-events.js';
 import { LayoutAdjustedPayloadSchema, LayoutChangedPayloadSchema } from './layout-events.js';
@@ -698,6 +699,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ConfigEditedPayloadSchema,
   }),
   defineEventType({
+    type: 'config.changed',
+    schemaVersion: 1,
+    payload: ConfigChangedPayloadSchema,
+  }),
+  defineEventType({
     type: 'prompt.queued',
     schemaVersion: 1,
     payload: PromptQueuedPayloadSchema,
@@ -963,6 +969,7 @@ export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];
 export type ScenarioDecisionAnsweredPayload = DaemonEventPayloads['scenario.decision_answered'];
 export type ConfigEditedPayload = DaemonEventPayloads['config.edited'];
+export type ConfigChangedPayload = DaemonEventPayloads['config.changed'];
 export type PromptQueuedPayload = DaemonEventPayloads['prompt.queued'];
 export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'];
 export type ChatDirectorSilentPayload = DaemonEventPayloads['chat.director_silent'];

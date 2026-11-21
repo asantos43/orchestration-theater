@@ -21,7 +21,8 @@
     "directives": "Lista as ordens em vigor no cenário",
     "config": "Mostra uma chave da configuração, ou as seções",
     "template": "Envia ao Diretor: {{text}}",
-    "direct": "Abre uma sessão direta com um Ator, sem passar pelo Diretor"
+    "direct": "Abre uma sessão direta com um Ator, sem passar pelo Diretor",
+    "trajectory": "Mostra a trajetória de uma peça, ou o diff de uma de suas demandas"
   },
   "args": {
     "help": "[comando]",
@@ -32,7 +33,8 @@
     "attach": "<caminho>",
     "config": "[chave]",
     "template": "<texto>",
-    "direct": "[executor]"
+    "direct": "[executor]",
+    "trajectory": "[peça] [demanda]"
   },
   "confirm": {
     "ask": "/{{command}} pede a sua confirmação antes de rodar. Envie de novo, confirmado, para seguir."
@@ -60,7 +62,12 @@
     },
     "unknownKey": "Não há a chave de configuração \"{{key}}\".",
     "noDirector": "Nenhum Executor está definido para o Diretor.",
-    "noDirect": "Este daemon não mantém sessões diretas: ele não roda peças."
+    "noDirect": "Este daemon não mantém sessões diretas: ele não roda peças.",
+    "noTrajectory": "Este daemon não tem o serviço de trajetórias.",
+    "trajectory": {
+      "noPlay": "O cenário ainda não tem peça.",
+      "unknownPlay": "O cenário não tem a peça \"{{id}}\"."
+    }
   },
   "out": {
     "status": {
@@ -163,6 +170,20 @@
     "direct": {
       "opened": "Sessão direta {{id}} aberta com {{executor}} (espaço de trabalho: {{workspace}}). Continue na aba Direta.",
       "confirm": "A sessão escreveria na pasta do cenário. Abra-a pela aba Direta para confirmar."
+    },
+    "trajectory": {
+      "header": "Trajetória de {{play}} ({{state}}).",
+      "attempt": "{{id}}: demanda {{demand}}, {{state}}, {{turns}} turno(s), {{entries}} passo(s)",
+      "empty": "A peça {{play}} ainda não tem trajetória.",
+      "diffHeader": "Diff da demanda {{demand}} da peça {{play}}:",
+      "diffEmpty": "A demanda {{demand}} não tem mudanças em relação à branch da peça.",
+      "diffTruncated": "(diff cortado)",
+      "diffUnavailable": "Sem diff para a demanda {{demand}}: {{reason}}.",
+      "reason": {
+        "no_vcs": "este daemon não tem controle de versão",
+        "no_attempt": "a demanda ainda não tem tentativa",
+        "no_branch": "a branch da tentativa não existe mais"
+      }
     }
   }
 }

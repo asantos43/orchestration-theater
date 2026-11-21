@@ -21,7 +21,8 @@
     "directives": "Lists the orders in force for the scenario",
     "config": "Shows a key of the configuration, or its sections",
     "template": "Sends to the Director: {{text}}",
-    "direct": "Opens a direct session with an Actor, outside the Director"
+    "direct": "Opens a direct session with an Actor, outside the Director",
+    "trajectory": "Shows the trajectory of a play, or the diff of one of its demands"
   },
   "args": {
     "help": "[command]",
@@ -32,7 +33,8 @@
     "attach": "<path>",
     "config": "[key]",
     "template": "<text>",
-    "direct": "[executor]"
+    "direct": "[executor]",
+    "trajectory": "[play] [demand]"
   },
   "confirm": {
     "ask": "/{{command}} asks for your confirmation before it runs. Send it again confirmed to go on."
@@ -60,7 +62,12 @@
     },
     "unknownKey": "There is no configuration key \"{{key}}\".",
     "noDirector": "No Executor is set for the Director.",
-    "noDirect": "This daemon cannot hold direct sessions: it runs no plays."
+    "noDirect": "This daemon cannot hold direct sessions: it runs no plays.",
+    "noTrajectory": "This daemon has no trajectory service.",
+    "trajectory": {
+      "noPlay": "The scenario has no play yet.",
+      "unknownPlay": "The scenario has no play \"{{id}}\"."
+    }
   },
   "out": {
     "status": {
@@ -163,6 +170,20 @@
     "direct": {
       "opened": "Opened the direct session {{id}} with {{executor}} (workspace: {{workspace}}). Continue it in the Direct tab.",
       "confirm": "The session would write in the folder of the scenario. Open it from the Direct tab to confirm."
+    },
+    "trajectory": {
+      "header": "Trajectory of {{play}} ({{state}}).",
+      "attempt": "{{id}}: demand {{demand}}, {{state}}, {{turns}} turn(s), {{entries}} step(s)",
+      "empty": "The play {{play}} has no trajectory yet.",
+      "diffHeader": "Diff of the demand {{demand}} of the play {{play}}:",
+      "diffEmpty": "The demand {{demand}} has no changes against the branch of the play.",
+      "diffTruncated": "(diff cut)",
+      "diffUnavailable": "No diff for the demand {{demand}}: {{reason}}.",
+      "reason": {
+        "no_vcs": "this daemon has no version control",
+        "no_attempt": "the demand has no attempt yet",
+        "no_branch": "the branch of the attempt is gone"
+      }
     }
   }
 }

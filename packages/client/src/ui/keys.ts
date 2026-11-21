@@ -18,8 +18,19 @@ export type UiSurface = (typeof UI_SURFACES)[number];
  * (N35): they are the editing keys, and they may repeat a key of `decision`, which never has the
  * focus at the same time. The terminal adds one context for each area that can have the focus
  * (`chat`, `edge` for the border of the chat, `sidebar`, `panel`) and one for the palette and the
- * help (`overlay`): their arrows and Enter never collide with another area's.
+ * help (`overlay`): their arrows and Enter never collide with another area's. Each tab of the
+ * panel has a context of its own as well ({@link UI_TAB_CONTEXTS}), alive while the panel has the
+ * focus and that tab is the open one.
  */
+export const UI_TAB_CONTEXTS = [
+  'overview',
+  'usage',
+  'trajectories',
+  'directives',
+  'settings',
+] as const;
+export type UiTabContext = (typeof UI_TAB_CONTEXTS)[number];
+
 export const UI_CONTEXTS = [
   'global',
   'decision',
@@ -29,8 +40,24 @@ export const UI_CONTEXTS = [
   'sidebar',
   'panel',
   'overlay',
+  ...UI_TAB_CONTEXTS,
 ] as const;
 export type UiContext = (typeof UI_CONTEXTS)[number];
+
+/** Whether `context` is the context of one tab of the panel. */
+export function isTabContext(context: UiContext): context is UiTabContext {
+  return (UI_TAB_CONTEXTS as readonly string[]).includes(context);
+}
+
+/**
+ * The context of the tab `tabId`, or `undefined` when the tab has none (a tab added by a plugin
+ * acts in `panel`). [proposta] The id of the tab is the name of its context.
+ */
+export function tabContextOf(tabId: string | undefined): UiTabContext | undefined {
+  return (UI_TAB_CONTEXTS as readonly string[]).includes(tabId ?? '')
+    ? (tabId as UiTabContext)
+    : undefined;
+}
 
 /** The platforms the combinations are written for: `default` (Windows and Linux) and `mac`. */
 export const UI_KEY_PLATFORMS = ['default', 'mac'] as const;
@@ -57,9 +84,14 @@ export function bindingsFor(
   return (list ?? []).map((text) => normalizeKeyCombo(text) ?? text);
 }
 
-/** Whether keys alive in `a` and in `b` can both be pressed in the same moment. */
+/**
+ * Whether keys alive in `a` and in `b` can both be pressed in the same moment. A tab context is
+ * alive together with `panel` (the panel has the focus) and never with another tab's: only one tab
+ * is open, so two tabs may take the same key (P15 and P16 of Phase 7).
+ */
 export function contextsOverlap(a: UiContext, b: UiContext): boolean {
-  return a === b || a === 'global' || b === 'global';
+  if (a === b || a === 'global' || b === 'global') return true;
+  return (a === 'panel' && isTabContext(b)) || (b === 'panel' && isTabContext(a));
 }
 
 export interface KeyOwner {

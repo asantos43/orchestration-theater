@@ -31,6 +31,7 @@ import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
+import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
 import { detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
@@ -362,7 +363,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
-      submitRetries: config.limits.submit_retries,
+      // N188: a getter, so `PUT /v1/config` changes it without a restart.
+      get submitRetries() {
+        return config.limits.submit_retries;
+      },
       // The read tools (P7) are built in; a handler the caller already registered wins.
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
       handlers: scenarioHandlers.register(
@@ -918,6 +922,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   // P3 (Phase 7, N44): the registry of the `/` commands, on the services above. The chat socket
   // and both groups of routes read it.
+  const trajectory = new TrajectoryService({ store, config: () => config, vcs: composition.vcs });
   const slash = new SlashCommandService({
     store,
     clock,
@@ -929,12 +934,16 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     profiles,
     directives,
     catalog: await SlashCatalog.load(),
-    locale: resolveLocale(config.ui.locale, detectSystemLocale(process.env)),
+    // N188: a getter, so `ui.locale` follows `PUT /v1/config`.
+    get locale() {
+      return resolveLocale(config.ui.locale, detectSystemLocale(process.env));
+    },
     channel: orchestration?.channel,
     runner: orchestration?.runner,
     directors: orchestration?.directors,
     direct,
     pauseMode: () => config.pause.mode,
+    trajectory,
   });
   slashRef.current = slash;
   // P4 (Phase 7, N121): the setup assistant. It cadastres Executors through the same service as
@@ -971,6 +980,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     store,
     slash,
     direct,
+    trajectory,
     config,
     quota,
     usage,
@@ -1013,6 +1023,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     profiles,
     logins,
     configPath: paths.config,
+    config,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
     layout,
     channel: orchestration?.channel,

@@ -3,6 +3,7 @@ import {
   API_ROUTES,
   type ApiDecision,
   type ApiEventEnvelope,
+  type ApiOrder,
   type ApiPlay,
   type ApiQuotaStatus,
   type ApiScenario,
@@ -35,6 +36,13 @@ import {
   settleDecisions,
   type DecisionsState,
 } from './decisions.js';
+import {
+  initialOrders,
+  installOrders,
+  reduceOrders,
+  settleOrder,
+  type OrdersState,
+} from './orders.js';
 import { initialPlays, installPlays, reducePlays, settlePlay, type PlaysState } from './plays.js';
 import {
   DEFAULT_EVENTS_KEEP,
@@ -43,6 +51,18 @@ import {
   installRecentEvents,
   type RecentEventsState,
 } from './recent-events.js';
+import {
+  DEFAULT_TRAJECTORY_KEEP,
+  failDiff,
+  failTrajectory,
+  initialTrajectories,
+  openDiff,
+  openTrajectory,
+  reduceTrajectories,
+  settleDiff,
+  settleTrajectory,
+  type TrajectoriesState,
+} from './trajectories.js';
 import {
   initialQuotas,
   installQuotas,
@@ -103,6 +123,11 @@ export interface DaemonStoresOptions {
   /** `client.events.*`. */
   readonly events?: {
     /** How many recent events to keep. Default {@link DEFAULT_EVENTS_KEEP} (500). */
+    readonly keep?: number | undefined;
+  };
+  /** `client.trajectories.*`. */
+  readonly trajectories?: {
+    /** How many events of one play to keep. Default {@link DEFAULT_TRAJECTORY_KEEP} (5000). */
     readonly keep?: number | undefined;
   };
   /** Which plays the snapshot reads: `open` (default) the ones not finished, `all` every one. */
@@ -183,8 +208,14 @@ export class DaemonStores {
     initialDecisions(),
   );
   readonly quotas: StoreApi<QuotasState> = createStore<QuotasState>(() => initialQuotas());
+  /** The orders of the Producer (P15 of docs/18), kept by the `directive.*` events. */
+  readonly orders: StoreApi<OrdersState> = createStore<OrdersState>(() => initialOrders());
   readonly events: StoreApi<RecentEventsState> = createStore<RecentEventsState>(() =>
     initialRecentEvents(),
+  );
+  /** The trajectories of the plays a screen follows (P14): see {@link DaemonStores.loadTrajectory}. */
+  readonly trajectories: StoreApi<TrajectoriesState> = createStore<TrajectoriesState>(() =>
+    initialTrajectories(),
   );
   /** Who is working and what is paused, from the events alone (P13). */
   readonly activity: StoreApi<ActivityState> = createStore<ActivityState>(() => initialActivity());
@@ -197,6 +228,7 @@ export class DaemonStores {
 
   readonly #client: ApiClient;
   readonly #options: DaemonStoresOptions;
+  #keepOverride: number | undefined;
   readonly #clock: Clock;
   readonly #limit: Semaphore;
   readonly #reduceDemands: EventReducer<DemandsState>;
@@ -259,10 +291,64 @@ export class DaemonStores {
     this.#drain(head);
   }
 
+  /** The client of this daemon, for the commands a screen sends (the stores only read). */
+  get client(): ApiClient {
+    return this.#client;
+  }
+
   /** Follows a play: its demands and stages are read at the next refresh and kept after. */
   trackPlay(playId: string): void {
     this.demands.setState((state) => trackPlay(state, playId), true);
     this.#pump();
+  }
+
+  /**
+   * Opens the trajectory of a play: reads its history by REST once (paged) and, from then on, keeps
+   * it with the events of the stream. Calling it again for a play already loaded does nothing,
+   * unless `force`. Resolves when the history is installed; the failure is in the store.
+   */
+  async loadTrajectory(playId: string, options: { readonly force?: boolean } = {}): Promise<void> {
+    const held = this.trajectories.getState().plays[playId];
+    if (held !== undefined && held.load !== 'failed' && options.force !== true) return;
+    const keep = this.#trajectoryKeep();
+    this.trajectories.setState((state) => openTrajectory(state, playId), true);
+    try {
+      const signal = this.#abort.signal;
+      const history = await this.#readAll((query) =>
+        this.#client.call(API_ROUTES.listPlayTrajectory, { params: { playId }, query, signal }),
+      );
+      this.trajectories.setState((state) => settleTrajectory(state, playId, history, keep), true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.trajectories.setState((state) => failTrajectory(state, playId, message), true);
+    }
+  }
+
+  /**
+   * `client.trajectories.keep` for a client that reads its settings after the stores exist (the
+   * TUI): from now on the trajectories keep at most this many events per play.
+   */
+  setTrajectoryKeep(keep: number): void {
+    this.#keepOverride = Math.max(1, Math.floor(keep));
+  }
+
+  #trajectoryKeep(): number {
+    return this.#keepOverride ?? this.#options.trajectories?.keep ?? DEFAULT_TRAJECTORY_KEEP;
+  }
+
+  /** Reads the diff of a demand (the latest attempt against the play branch) and keeps it. */
+  async loadDemandDiff(playId: string, demandId: string): Promise<void> {
+    this.trajectories.setState((state) => openDiff(state, playId, demandId), true);
+    try {
+      const value = await this.#client.call(API_ROUTES.getDemandDiff, {
+        params: { playId, demandId },
+        signal: this.#abort.signal,
+      });
+      this.trajectories.setState((state) => settleDiff(state, value), true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.trajectories.setState((state) => failDiff(state, playId, demandId, message), true);
+    }
   }
 
   /** Resolves when no read is in flight (those that gave up stay stale). For tests and screens. */
@@ -355,7 +441,7 @@ export class DaemonStores {
     );
     const active = scenarios.filter((scenario) => scenario.state === 'active');
     const playsOption = this.#options.plays ?? 'open';
-    const [perScenarioPlays, perScenarioDecisions, quotas] = await Promise.all([
+    const [perScenarioPlays, perScenarioDecisions, quotas, orders] = await Promise.all([
       Promise.all(
         active.map((scenario) =>
           this.#limit.run(() =>
@@ -384,6 +470,7 @@ export class DaemonStores {
         ),
       ),
       this.#readQuotas(),
+      this.#readAll((query) => this.#client.call(API_ROUTES.listOrders, { query, signal })),
     ]);
     const plays = perScenarioPlays.flat();
     const details: { playId: string; parts: PlayParts }[] =
@@ -406,6 +493,7 @@ export class DaemonStores {
     this.demands.setState(installDemands(details, head), true);
     this.decisions.setState(installDecisions(perScenarioDecisions, head), true);
     this.quotas.setState(installQuotas(quotas, head), true);
+    this.orders.setState(installOrders(orders, head), true);
     if (!this.#recentLoaded) {
       this.events.setState(installRecentEvents(head), true);
       this.activity.setState(installActivity(head), true);
@@ -470,7 +558,10 @@ export class DaemonStores {
     this.demands.setState((s) => applyEvent(s, event, this.#reduceDemands), true);
     this.decisions.setState((s) => applyEvent(s, event, reduceDecisions), true);
     this.quotas.setState((s) => applyEvent(s, event, reduceQuotas), true);
+    this.orders.setState((s) => applyEvent(s, event, reduceOrders), true);
     this.events.setState((s) => applyEvent(s, event, this.#reduceEvents), true);
+    const keep = this.#trajectoryKeep();
+    this.trajectories.setState((s) => reduceTrajectories(s, event, keep), true);
     this.activity.setState((s) => applyEvent(s, event, reduceActivity), true);
     this.status.setState({ cursor: event.id });
   }
@@ -566,6 +657,15 @@ export class DaemonStores {
         },
         settle: (key, revision, value) => {
           this.quotas.setState((s) => settleQuota(s, key, revision, value), true);
+        },
+      }),
+      target<ApiOrder>({
+        name: 'orders',
+        store: this.orders,
+        read: (key, signal) =>
+          notFound(() => call(API_ROUTES.getOrder, { params: { orderId: key }, signal })),
+        settle: (key, revision, value) => {
+          this.orders.setState((s) => settleOrder(s, key, revision, value), true);
         },
       }),
     ];

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { TrajectoryService } from '../trajectory/service.js';
 import type {
   Clock,
   JsonValue,
@@ -123,4 +124,6 @@ export interface SlashDeps {
   readonly direct?: Pick<DirectSessionService, 'open'> | undefined;
   /** `pause.mode`, read at each pause. */
   readonly pauseMode?: (() => PauseMode) | undefined;
+  /** The trajectory of a play (P14): `/trajectory` reads it. */
+  readonly trajectory?: TrajectoryService | undefined;
 }

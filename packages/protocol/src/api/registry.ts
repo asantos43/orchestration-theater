@@ -19,6 +19,7 @@ import { PLAY_ROUTES } from './plays.js';
 import { PROFILE_ROUTES } from './profiles.js';
 import { SCENARIO_ROUTES } from './scenarios.js';
 import { SETUP_ROUTES } from './setup.js';
+import { TRAJECTORY_ROUTES } from './trajectories.js';
 import { USAGE_ROUTES } from './usage.js';
 
 /**
@@ -48,6 +49,7 @@ export const API_ROUTES = {
   ...SETUP_ROUTES,
   ...USAGE_ROUTES,
   ...SLASH_COMMAND_ROUTES,
+  ...TRAJECTORY_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

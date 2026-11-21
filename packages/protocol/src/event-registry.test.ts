@@ -6,7 +6,7 @@ import { DAEMON_EVENT_DEFINITIONS, DAEMON_EVENT_TYPES, isDaemonEventType } from 
 describe('the event types of the daemon, derived from the registry definitions', () => {
   it('export the same 125 names, in the same order, from the definitions', () => {
     expect(Object.keys(DAEMON_EVENT_TYPES)).toEqual(DAEMON_EVENT_DEFINITIONS.map((d) => d.type));
-    expect(DAEMON_EVENT_DEFINITIONS).toHaveLength(125);
+    expect(DAEMON_EVENT_DEFINITIONS).toHaveLength(126);
     for (const definition of DAEMON_EVENT_DEFINITIONS) {
       const entry = DAEMON_EVENT_TYPES[definition.type];
       expect(entry.schemaVersion).toBe(definition.schemaVersion);
