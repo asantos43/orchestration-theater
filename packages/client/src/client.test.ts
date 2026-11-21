@@ -289,7 +289,7 @@ describe('orders (P15)', () => {
     const sent = started.requests.map((request) => [
       request.method,
       request.target,
-      JSON.parse(request.body ?? 'null') as unknown,
+      JSON.parse(request.body) as unknown,
     ]);
     expect(sent).toEqual([
       ['POST', '/v1/orders', { text: 'Be brief.', scope: 'global', validity: { for: '3d' } }],

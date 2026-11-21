@@ -261,6 +261,57 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Enter']),
       bar: { textKey: 'bar.panel.activate', order: 14 },
     },
+    // The tab Directives (P15 of docs/18, 5.17): the panel is focused and the tab is the open one.
+    // The keys are bare letters, which the `panel` context allows (the text box is not in focus).
+    // They are not commands of the palette: each one acts on the order the tab has selected.
+    {
+      id: 'directives.new',
+      textKey: 'actions.directives.new',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['N']),
+    },
+    {
+      id: 'directives.extend',
+      textKey: 'actions.directives.extend',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['E']),
+    },
+    {
+      id: 'directives.suspend',
+      textKey: 'actions.directives.suspend',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['S']),
+    },
+    {
+      id: 'directives.revoke',
+      textKey: 'actions.directives.revoke',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['R']),
+    },
+    {
+      id: 'directives.previous',
+      textKey: 'actions.directives.previous',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+Up', 'K']),
+    },
+    {
+      id: 'directives.next',
+      textKey: 'actions.directives.next',
+      group: 'navigation',
+      context: 'panel',
+      palette: false,
+      keys: terminalKeys(['Shift+Down', 'J']),
+    },
     {
       id: 'overlay.close',
       textKey: 'actions.overlay.close',

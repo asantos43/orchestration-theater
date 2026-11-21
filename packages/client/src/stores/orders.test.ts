@@ -172,7 +172,14 @@ const clock: Clock = {
     if (ms === 123_456) {
       await new Promise<void>((resolve) => {
         if (signal?.aborted === true) resolve();
-        else signal?.addEventListener('abort', () => resolve(), { once: true });
+        else
+          signal?.addEventListener(
+            'abort',
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
       });
       return;
     }
@@ -234,7 +241,7 @@ describe('DaemonStores: the orders', () => {
     expect(daemon.requests.some((request) => request.path === '/v1/orders/O9')).toBe(true);
   });
 
-  it('exposes the client the commands go through', async () => {
+  it('exposes the client the commands go through', () => {
     const daemon = new FakeDaemon();
     const hub = hubOf(daemon);
     expect(hub.client).toBeInstanceOf(ApiClient);

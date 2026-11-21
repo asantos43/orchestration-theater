@@ -10,7 +10,7 @@ import {
   type UiTranslate,
 } from '@otheater/client';
 import { Box, Text, useApp, useWindowSize } from 'ink';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
@@ -27,6 +27,7 @@ import { Panel, panelContentSize } from './panel.js';
 import { scrollStepLines } from './scroll.js';
 import { Sidebar, sidebarItems } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
+import { TabEnvironmentProvider, type TabEnvironment } from './tab-environment.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
 import {
   foldedSections,
@@ -92,6 +93,12 @@ export function Shell(props: ShellProps): ReactNode {
   const [panelScroll, setPanelScroll] = useState(0);
   const [helpOffset, setHelpOffset] = useState(0);
   const [notice, setNotice] = useState<string | undefined>(() => firstProblem(tuiKeymap, ut));
+  // A tab that reads text (a form) takes the keyboard by setting this (see `TabEnvironment`).
+  const capture = useRef(false);
+  const tabEnvironment = useMemo(
+    (): TabEnvironment => ({ stores, keymap: tuiKeymap, capture }),
+    [stores, tuiKeymap],
+  );
 
   const scenarioRowsNow = useScenarioRows(stores);
   const quotas = useQuotaRows(stores);
@@ -333,6 +340,10 @@ export function Shell(props: ShellProps): ReactNode {
       quit();
       return;
     }
+    if (capture.current) {
+      afterKey();
+      return;
+    }
     if (event.combo !== undefined) {
       const contexts: UiContext[] =
         overlay === undefined ? ['global', FOCUS_CONTEXT[focus]] : ['overlay', 'global'];
@@ -455,13 +466,16 @@ export function Shell(props: ShellProps): ReactNode {
                 flexDirection="column"
                 width={content.width}
               >
-                {definition.render({
-                  width: content.width,
-                  height: content.height,
-                  focused: focus === 'panel',
-                  scroll: panelScroll,
-                  sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
-                })}
+                <TabEnvironmentProvider value={tabEnvironment}>
+                  {definition.render({
+                    width: content.width,
+                    height: content.height,
+                    // An overlay (palette, help, picker) has the keyboard while it is open.
+                    focused: focus === 'panel' && overlay === undefined,
+                    scroll: panelScroll,
+                    sections: { folded, cursor: focus === 'panel' ? cursorInTab : undefined },
+                  })}
+                </TabEnvironmentProvider>
               </Box>
             )}
           </Panel>

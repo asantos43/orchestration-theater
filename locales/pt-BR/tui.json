@@ -91,6 +91,14 @@
       "externalEditor": "Escrever a mensagem no editor externo",
       "pasteImage": "Anexar a imagem da área de transferência",
       "cancel": "Sair da busca no histórico"
+    },
+    "directives": {
+      "new": "Dar uma ordem",
+      "extend": "Prorrogar a ordem selecionada",
+      "suspend": "Suspender a ordem selecionada em um cenário",
+      "revoke": "Revogar a ordem selecionada",
+      "previous": "Selecionar a ordem anterior",
+      "next": "Selecionar a ordem seguinte"
     }
   },
   "bar": {
@@ -290,6 +298,99 @@
       "readingImage": "Lendo a imagem da área de transferência...",
       "historyFailed": "Não foi possível salvar o histórico: {{message}}",
       "submitFailed": "A mensagem não foi enviada: {{message}}"
+    }
+  },
+  "directives": {
+    "tab": {
+      "hint": "{{new}} dar  {{extend}} prorrogar  {{suspend}} suspender  {{revoke}} revogar  {{move}} selecionar",
+      "sections": {
+        "inForce": "Vigentes",
+        "scheduled": "Agendadas",
+        "ended": "Encerradas"
+      },
+      "empty": "Ainda não há ordens. Aperte {{key}} para dar a primeira.",
+      "none": "nenhuma",
+      "scope": {
+        "global": "Global",
+        "local": "Cenário {{name}}"
+      },
+      "kind": {
+        "instruction": "instrução",
+        "rule": "regra",
+        "suspension": "suspensão"
+      },
+      "deadline": {
+        "endsIn": "termina em {{span}}",
+        "untilRevoked": "até ser revogada",
+        "startsIn": "começa em {{span}}",
+        "endedAgo": "terminou há {{span}}",
+        "revokedAgo": "revogada há {{span}}",
+        "expiring": "acaba logo: {{span}}"
+      },
+      "timeline": {
+        "open": "até ser revogada"
+      },
+      "detail": {
+        "roles": "Papéis: {{roles}}",
+        "allRoles": "todos",
+        "rule": "Regra: {{key}} = {{value}}",
+        "suspends": "Tira {{id}} do cenário",
+        "replaces": "Substitui {{id}}",
+        "reason": "Revogada: {{reason}}",
+        "zone": "Fuso {{zone}}",
+        "origin": "Dada por {{origin}}"
+      }
+    },
+    "form": {
+      "title": {
+        "new": "Dar uma ordem",
+        "extend": "Prorrogar {{subject}}",
+        "suspend": "Suspender {{subject}} em um cenário",
+        "revoke": "Revogar {{subject}}"
+      },
+      "field": {
+        "text": "Texto",
+        "scope": "Escopo",
+        "scenario": "Cenário",
+        "kind": "Tipo",
+        "ruleKey": "Chave da regra",
+        "ruleValue": "Valor da regra",
+        "from": "Começa (AAAA-MM-DD HH:mm; vazio: agora)",
+        "until": "Termina (AAAA-MM-DD HH:mm)",
+        "for": "Dura (30m, 2h, 3d)",
+        "forever": "Até ser revogada",
+        "reason": "Motivo"
+      },
+      "choice": {
+        "global": "global",
+        "local": "um cenário",
+        "instruction": "instrução",
+        "rule": "regra",
+        "yes": "sim",
+        "no": "não"
+      },
+      "noScenario": "(nenhum cenário)",
+      "hint": "Tab próximo campo  Enter enviar  Esc cancelar",
+      "hintChoice": "Tab próximo campo  ←/→ mudar  Enter enviar  Esc cancelar",
+      "problem": {
+        "textRequired": "Escreva o texto da ordem.",
+        "scenarioRequired": "Não há cenário para escolher.",
+        "ruleKeyRequired": "Uma regra precisa da chave de configuração que ela muda.",
+        "ruleValueRequired": "Uma regra precisa do valor dessa chave.",
+        "reasonRequired": "Diga por que a ordem é revogada."
+      }
+    },
+    "status": {
+      "sending": "Enviando...",
+      "created": "Ordem {{id}} dada.",
+      "extended": "Ordem {{id}} prorrogada.",
+      "suspended": "Suspensão {{id}} dada.",
+      "revoked": "Ordem {{id}} revogada.",
+      "failed": "Não foi feito: {{message}}",
+      "needOrder": "Selecione uma ordem antes.",
+      "onlyGlobal": "Só uma ordem global pode ser suspensa em um cenário.",
+      "alreadyRevoked": "A ordem já está revogada.",
+      "noScenario": "Não há cenário em que suspender a ordem."
     }
   }
 }
