@@ -14,6 +14,7 @@ import {
 import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import { Shell } from './layout/shell.js';
 import type { TabContentMap } from './layout/tab-content.js';
+import { KeyFeedProvider } from './input/key-feed.js';
 import type { LocaleController } from './locale.js';
 import { MouseLayer, type MouseLayerProps, type MouseTerminal } from './mouse/index.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
@@ -177,7 +178,9 @@ export function App(props: AppProps): ReactNode {
           terminal={props.mouseTerminal}
           clipboard={props.mouseClipboard}
         >
-          <Screen {...props} />
+          <KeyFeedProvider>
+            <Screen {...props} />
+          </KeyFeedProvider>
         </MouseLayer>
       </RenderControlProvider>
     </I18nextProvider>
