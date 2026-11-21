@@ -34,6 +34,38 @@ describe('directive event payloads (architecture 5.17)', () => {
     expect(DirectiveCreatedPayloadSchema.safeParse({ ...created, extra: 1 }).success).toBe(false);
   });
 
+  it('may carry the whole record of the order, and only a whole one', () => {
+    const order = {
+      id: 'O1',
+      seq: 1,
+      scope: 'global',
+      scenarioId: null,
+      kind: 'instruction',
+      text: 'Be brief.',
+      ruleKey: null,
+      ruleValue: null,
+      suspendsId: null,
+      roles: [],
+      startsAt: 1_000,
+      endsAt: null,
+      timezone: 'America/Sao_Paulo',
+      state: 'active',
+      origin: 'chat',
+      replacesId: null,
+      createdAt: 1_000,
+      updatedAt: 1_000,
+      revokedAt: null,
+      revokeReason: null,
+    };
+    expect(DirectiveCreatedPayloadSchema.parse({ ...created, order })).toEqual({
+      ...created,
+      order,
+    });
+    expect(
+      DirectiveCreatedPayloadSchema.safeParse({ ...created, order: { id: 'O1' } }).success,
+    ).toBe(false);
+  });
+
   it('keeps the real boundary in the activated and expired events', () => {
     const payload = { directiveId: 'O2', effectiveAt: 5_000 };
     expect(validateEventPayload('directive.activated', 1, payload)).toEqual(payload);
