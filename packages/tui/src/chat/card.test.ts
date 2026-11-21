@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCard,
+  cardClick,
   cardKey,
   cardKeyOf,
   cardLines,
@@ -341,5 +342,88 @@ describe('the question of context: ask (P18)', () => {
   it('is an ordinary question when the ask carries no command', () => {
     const plain = buildCard({ ...shellAsk, shell: undefined }, texts);
     expect(plain.stepAt(0, [])?.prompt).toContain('Send the result of');
+  });
+});
+
+describe('cardClick (P14, N34)', () => {
+  const simple = buildCard(question(['red', 'blue']), texts);
+  const multi = buildCard(question(['a', 'b', 'c'], true), texts);
+  const ideas = buildCard(
+    ask('ideas.group', {
+      ideas: [
+        { id: 'I1', text: 'one' },
+        { id: 'I2', text: 'two' },
+      ],
+    }),
+    texts,
+  );
+
+  it('answers a simple choice at once in the mode answer, as the number key does', () => {
+    const start = createCardState(simple);
+    expect(cardClick(simple, start, 1, 'answer').done?.answer).toEqual({ answers: ['blue'] });
+    expect(cardClick(simple, start, 1, 'answer').done).toEqual(
+      cardKey(simple, start, type('2')).done,
+    );
+  });
+
+  it('marks and unmarks the option of a multiple choice, and Enter answers', () => {
+    let state = createCardState(multi);
+    state = cardClick(multi, state, 2, 'answer').state;
+    expect(state.marked).toEqual(['2']);
+    expect(state.cursor).toBe(2);
+    state = cardClick(multi, state, 0, 'answer').state;
+    expect(state.marked).toEqual(['2', '0']);
+    state = cardClick(multi, state, 2, 'answer').state;
+    expect(state.marked).toEqual(['0']);
+    expect(cardKey(multi, state, enter).done?.answer).toEqual({ answers: ['a'] });
+  });
+
+  it('in the mode select only moves the cursor, and a second click does what answer does', () => {
+    const start = createCardState(simple);
+    const first = cardClick(simple, start, 1, 'select');
+    expect(first.done).toBeUndefined();
+    expect(first.state.cursor).toBe(1);
+    expect(cardClick(simple, first.state, 1, 'select').done?.answer).toEqual({
+      answers: ['blue'],
+    });
+    const marked = cardClick(multi, createCardState(multi), 1, 'select');
+    expect(marked.state).toMatchObject({ cursor: 1, marked: [] });
+    expect(cardClick(multi, marked.state, 1, 'select').state.marked).toEqual(['1']);
+  });
+
+  it('asks for the text of an option that wants one, as the keys do', () => {
+    const typed = cardClick(simple, createCardState(simple), 2, 'answer');
+    expect(typed.done).toBeUndefined();
+    expect(typed.state).toMatchObject({ typing: true, pending: ['other'] });
+    // Approve needs none; Edit asks for the need.
+    expect(cardClick(ideas, createCardState(ideas), 0, 'answer').done?.answer).toEqual({
+      option: 'approve',
+    });
+    expect(cardClick(ideas, createCardState(ideas), 2, 'answer').state.typing).toBe(true);
+  });
+
+  it('leaves the state alone for a click while typing, out of the list or with no step', () => {
+    const typing = cardKey(simple, createCardState(simple), type('3')).state;
+    expect(cardClick(simple, typing, 0, 'answer')).toEqual({ state: typing });
+    const start = createCardState(simple);
+    expect(cardClick(simple, start, 3, 'answer')).toEqual({ state: start });
+    expect(cardClick(simple, start, -1, 'answer')).toEqual({ state: start });
+    expect(cardClick(simple, { ...start, step: 5 }, 0, 'answer').done).toBeUndefined();
+  });
+});
+
+describe('cardLines and the mouse (P14)', () => {
+  const view = { typingPrompt: '> ', progress: '' };
+
+  it('tags the lines of each option, its description included, and not the prompt', () => {
+    const model = buildCard(question(['red', 'blue']), texts);
+    const lines = cardLines(model, createCardState(model), 40, 12, view);
+    expect(lines[0]?.option).toBeUndefined();
+    expect(lines.filter((line) => line.option === 0).map((line) => line.text)).toEqual([
+      expect.stringContaining('1. red'),
+      expect.stringContaining('about red'),
+    ]);
+    expect(lines.filter((line) => line.option === 1)).toHaveLength(1);
+    expect(lines.filter((line) => line.option === 2)).toHaveLength(1);
   });
 });

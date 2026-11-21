@@ -99,6 +99,8 @@ export const CHAT_QUEUE_MODES = ['daemon', 'hold'] as const;
 export type ChatQueueMode = (typeof CHAT_QUEUE_MODES)[number];
 export const CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
 export type ChatDecisionFocus = (typeof CHAT_DECISION_FOCUS_MODES)[number];
+export const CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
+export type ChatDecisionClick = (typeof CHAT_DECISION_CLICK_MODES)[number];
 export const CHAT_ESC_MODES = ['stop', 'off'] as const;
 export type ChatEscMode = (typeof CHAT_ESC_MODES)[number];
 
@@ -108,6 +110,8 @@ export interface UiChatSettings {
   /** How many commands the `/` list shows at most; 0 turns it off. */
   readonly suggestions: number;
   readonly decisionFocus: ChatDecisionFocus;
+  /** What a click on an option of the decision card does (P14 of docs/19); it needs `ui.mouse: full`. */
+  readonly decisionClick: ChatDecisionClick;
   readonly esc: ChatEscMode;
   /** How many of the last events of the scenario the chat shows on opening (P26); 0 opens it empty. */
   readonly history: number;
@@ -215,6 +219,7 @@ export const DEFAULT_CHAT: UiChatSettings = {
   queue: 'daemon',
   suggestions: 6,
   decisionFocus: 'auto',
+  decisionClick: 'answer',
   esc: 'stop',
   history: 40,
 };
@@ -395,6 +400,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         field(chat, 'decisionFocus'),
         CHAT_DECISION_FOCUS_MODES,
         DEFAULT_CHAT.decisionFocus,
+      ),
+      decisionClick: oneOf(
+        field(chat, 'decisionClick'),
+        CHAT_DECISION_CLICK_MODES,
+        DEFAULT_CHAT.decisionClick,
       ),
       esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
       history: integer(field(chat, 'history'), 0, 200, DEFAULT_CHAT.history),
