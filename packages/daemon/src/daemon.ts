@@ -45,6 +45,7 @@ import {
   type ProductionClientsOptions,
 } from './compose.js';
 import { CLIENT_IDS, loadConfig, type DaemonConfig } from './config.js';
+import { createConfigReloader } from './config-reload.js';
 import { Execution } from './execution/service.js';
 import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
@@ -961,18 +962,34 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       return undefined;
     }
   };
+  // P23 (Phase 7, N208 item 3, N202 (c)): one reload of a write of `config.yaml` into the running
+  // configuration, shared by `PUT /v1/config`, the confirmation of the assistant and the cadastro
+  // of an Executor. The spending caps are copied at the start, so they are read again when a hot
+  // path touches `profiles` or `executors`.
+  const configReloader = createConfigReloader({
+    config,
+    events: store.events,
+    logger,
+    onHot: async (hot) => {
+      if (hot.some((path) => path.startsWith('profiles.') || path.startsWith('executors.'))) {
+        await budget.applySettings(budgetSettingsOf(config));
+      }
+    },
+  });
   const setup = new SetupService({
     store,
     clock,
     logger,
     configPath: paths.config,
     profiles,
+    reload: configReloader.reload,
     executors: new ExecutorService({
       store,
       clock,
       logger,
       configPath: paths.config,
       catalogs: (client) => clientAdapter(client)?.models,
+      reload: configReloader.reload,
     }),
     catalogs: (client) => clientAdapter(client)?.models,
     installedClients: () =>
@@ -1029,6 +1046,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logins,
     configPath: paths.config,
     config,
+    reloader: configReloader,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
     layout,
     channel: orchestration?.channel,
