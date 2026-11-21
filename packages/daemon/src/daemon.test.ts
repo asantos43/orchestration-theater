@@ -223,6 +223,7 @@ describe('startDaemon', () => {
         'override',
         'override',
         'override',
+        'sqlite', // the telemetry base (Phase 8, P1)
       ]);
       const started = await store.events.readFrom(0, 10);
       expect(types(started)).toEqual([

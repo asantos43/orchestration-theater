@@ -11,6 +11,7 @@
     { "path": "packages/adapters/clock-system" },
     { "path": "packages/adapters/prompts-files" },
     { "path": "packages/adapters/store-sqlite" },
+    { "path": "packages/adapters/telemetry-sqlite" },
     { "path": "packages/adapters/vault-file" },
     { "path": "packages/adapters/vault-keyring" },
     { "path": "packages/adapters/platform-posix" },

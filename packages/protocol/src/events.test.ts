@@ -114,6 +114,7 @@ describe('daemon event registry', () => {
       'daemon.notice',
       'recovery.notice',
       'scenario.notice',
+      'telemetry.store_reset',
       'api.started',
       'api.client_rejected',
       'api.stream_lagged',
