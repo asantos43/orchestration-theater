@@ -82,6 +82,9 @@ const good: Record<string, unknown> = {
     calls: 3,
     ...correlation,
   },
+  'attempt.paused': { sessionId: 's1', origin: 'actor', checkpointed: true, ...correlation },
+  'attempt.resumed': { sessionId: 's1', strategy: 'native', ...correlation },
+  'attempt.cancelled': { sessionId: 's1', ...correlation },
 };
 
 describe('session and checkpoint events', () => {
@@ -163,6 +166,7 @@ describe('session and checkpoint events', () => {
       'refusal',
       'permission',
       'profile_removed',
+      'paused',
     ]);
     expect([...RESUME_FORMS]).toEqual(['native', 'handoff']);
     expect([...CHECKPOINT_REASONS]).toEqual(['edit_batch', 'interval', 'interruption']);

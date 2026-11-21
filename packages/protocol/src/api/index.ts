@@ -10,6 +10,7 @@ export * from './chat.js';
 export * from './layout.js';
 export * from './admin.js';
 export * from './attachments.js';
+export * from './attempts.js';
 export * from './blackboard.js';
 export * from './config-view.js';
 export * from './decisions.js';

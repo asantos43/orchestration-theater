@@ -6,6 +6,7 @@ import { assertUniqueRoutes, type AnyApiRoute } from './route.js';
 import { EVENT_ROUTES } from './sse.js';
 import { STATUS_ROUTES } from './status.js';
 import { ATTACHMENT_ROUTES } from './attachments.js';
+import { ATTEMPT_ROUTES } from './attempts.js';
 import { BLACKBOARD_ROUTES } from './blackboard.js';
 import { CONFIG_VIEW_ROUTES } from './config-view.js';
 import { DECISION_ROUTES } from './decisions.js';
@@ -31,6 +32,7 @@ export const API_ROUTES = {
   ...LAYOUT_ROUTES,
   ...ADMIN_ROUTES,
   ...ATTACHMENT_ROUTES,
+  ...ATTEMPT_ROUTES,
   ...BLACKBOARD_ROUTES,
   ...CONFIG_VIEW_ROUTES,
   ...DECISION_ROUTES,

@@ -190,6 +190,82 @@ describe('typed calls', () => {
   });
 });
 
+describe('pause, resume and cancel (N176)', () => {
+  const play = {
+    id: 'play-1',
+    scenarioId: 's1',
+    need: 'Do it',
+    flowId: 'software',
+    flowVersion: 1,
+    state: 'EXECUTING',
+    counters: {},
+    parentPlayId: null,
+    createdAt: 1,
+    updatedAt: 2,
+    finishedAt: null,
+  };
+  const attempt = {
+    attemptId: 'play-1/alpha/1',
+    playId: 'play-1',
+    demandId: 'alpha',
+    attempt: 1,
+    client: 'fake',
+    profile: 'one',
+    state: 'awaiting_resume',
+    cause: 'paused',
+    sessionId: 'session-1',
+    branch: 'attempt/alpha',
+    lastCheckpoint: null,
+    lastCheckpointAt: null,
+    lastEventAt: null,
+    resumes: 0,
+    freeResumes: 0,
+    createdAt: 1,
+    updatedAt: 2,
+  };
+
+  it('pauses and resumes a play, with the mode, the reason and the key as the daemon reads them', async () => {
+    const started = await daemon({
+      handler: (request) =>
+        request.target.startsWith('/v1/plays/') ? { json: { play } } : undefined,
+    });
+    const client = clientOf(started);
+    expect((await client.pausePlay('play-1')).play.id).toBe('play-1');
+    await client.pausePlay('play-1', {
+      mode: 'interrupt',
+      reason: 'lunch',
+      idempotencyKey: 'k-1',
+    });
+    await client.resumePlay('play-1', { reason: 'back' });
+    const [bare, named, resume] = started.requests;
+    expect(bare?.method).toBe('POST');
+    expect(bare?.target).toBe('/v1/plays/play-1/pause');
+    expect(bare?.body ?? '').toBe('');
+    expect(JSON.parse(named?.body ?? '')).toEqual({ mode: 'interrupt', reason: 'lunch' });
+    expect(named?.headers['idempotency-key']).toBe('k-1');
+    expect(resume?.target).toBe('/v1/plays/play-1/resume');
+    expect(JSON.parse(resume?.body ?? '')).toEqual({ reason: 'back' });
+  });
+
+  it('pauses, resumes and cancels an Actor, with the id of the attempt percent-encoded', async () => {
+    const started = await daemon({
+      handler: (request) =>
+        request.target.startsWith('/v1/attempts/') ? { json: { attempt } } : undefined,
+    });
+    const client = clientOf(started);
+    const encoded = encodeURIComponent(attempt.attemptId);
+    expect((await client.pauseAttempt(attempt.attemptId)).attempt.cause).toBe('paused');
+    await client.resumeAttempt(attempt.attemptId, { idempotencyKey: 'k-2' });
+    await client.cancelAttempt(attempt.attemptId);
+    expect(started.requests.map((request) => request.target)).toEqual([
+      `/v1/attempts/${encoded}/pause`,
+      `/v1/attempts/${encoded}/resume`,
+      `/v1/attempts/${encoded}/cancel`,
+    ]);
+    expect(started.requests[1]?.headers['idempotency-key']).toBe('k-2');
+  });
+});
+
 describe('errors', () => {
   it('an error answer of the API is an ApiRequestError with code, status and details', async () => {
     const started = await daemon({

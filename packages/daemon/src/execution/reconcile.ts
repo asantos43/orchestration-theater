@@ -48,6 +48,18 @@ export async function reconcileAttempts(options: ReconcileOptions): Promise<Reco
   const parked: string[] = [];
   const running: Promise<AttemptOutcome | undefined>[] = [];
   for (const record of records) {
+    if (record.state === 'awaiting_resume' && record.cause === 'paused') {
+      // A pause (N176) lives in the memory of the runner: after a restart nothing waits to wake it.
+      // `session.interrupted` and the interruption row were written when it paused, so this only
+      // parks the state; whoever resumes the play opens the demand again.
+      await store.attempts.put({
+        ...attemptInputOf(record),
+        state: 'interrupted',
+        cause: 'paused',
+      });
+      parked.push(record.attemptId);
+      continue;
+    }
     const resolved = resolver === undefined ? undefined : await resolver(record);
     if (resolved === undefined) {
       await park(store, record);

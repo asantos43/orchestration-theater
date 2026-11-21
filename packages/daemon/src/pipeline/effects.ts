@@ -85,6 +85,21 @@ export type PlayEffect =
       readonly reason: ProducerReason | null;
     }
   | {
+      /**
+       * [proposta] N176: the play was paused. Nothing new starts until `resume_work`; in
+       * `interrupt` mode the attempts in flight are interrupted with the cause `paused`. It is
+       * dispatched again after a restart while the play is still paused.
+       */
+      readonly type: 'pause_work';
+      readonly mode: 'drain' | 'interrupt';
+    }
+  | {
+      /** [proposta] N176: the play was resumed; the paused attempts go on, and what was held starts. */
+      readonly type: 'resume_work';
+      /** How long the play stayed paused, in milliseconds. */
+      readonly pausedMs: number;
+    }
+  | {
       /** Stop the work in flight (sessions, worktrees): the play left the state that asked for it. */
       readonly type: 'abort_work';
       readonly reason: string;

@@ -63,6 +63,27 @@ export interface CallControl {
   readonly timeoutMs?: number | undefined;
 }
 
+/** What the commands of a play or an attempt accept besides the usual call control (N176). */
+export interface CommandControl extends CallControl {
+  /** Sent as `Idempotency-Key`: a repeat of the command with it does not repeat the effect. */
+  readonly idempotencyKey?: string | undefined;
+}
+
+function commandHeaders(control: CommandControl): {
+  readonly headers?: { readonly 'idempotency-key': string };
+} {
+  return control.idempotencyKey === undefined
+    ? {}
+    : { headers: { 'idempotency-key': control.idempotencyKey } };
+}
+
+function callControlOf(control: CommandControl): CallControl {
+  return {
+    ...(control.signal === undefined ? {} : { signal: control.signal }),
+    ...(control.timeoutMs === undefined ? {} : { timeoutMs: control.timeoutMs }),
+  };
+}
+
 /** An object with no keys: it is assignable to a type exactly when all its keys are optional. */
 type Empty = Record<string, never>;
 
@@ -150,6 +171,79 @@ export class ApiClient {
   /** `GET /v1/status`. */
   status(options: CallControl = {}): Promise<ApiStatus> {
     return this.call(API_ROUTES.getStatus, options);
+  }
+
+  // ---- pause, resume and cancel (Phase 7, P2, N176) ----
+
+  /** `POST /v1/plays/:playId/pause`: the play opens nothing new; `mode` overrides `pause.mode`. */
+  pausePlay(
+    playId: string,
+    options: CommandControl & {
+      readonly mode?: 'drain' | 'interrupt' | undefined;
+      readonly reason?: string | undefined;
+    } = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.pausePlay>> {
+    const { mode, reason, ...control } = options;
+    const body = {
+      ...(mode === undefined ? {} : { mode }),
+      ...(reason === undefined ? {} : { reason }),
+    };
+    return this.call(API_ROUTES.pausePlay, {
+      params: { playId },
+      body: Object.keys(body).length === 0 ? undefined : body,
+      ...commandHeaders(control),
+      ...callControlOf(control),
+    });
+  }
+
+  /** `POST /v1/plays/:playId/resume`. */
+  resumePlay(
+    playId: string,
+    options: CommandControl & { readonly reason?: string | undefined } = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.resumePlay>> {
+    const { reason, ...control } = options;
+    return this.call(API_ROUTES.resumePlay, {
+      params: { playId },
+      body: reason === undefined ? undefined : { reason },
+      ...commandHeaders(control),
+      ...callControlOf(control),
+    });
+  }
+
+  /** `POST /v1/attempts/:attemptId/pause`: an Actor in flight stops with its checkpoint saved. */
+  pauseAttempt(
+    attemptId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.pauseAttempt>> {
+    return this.call(API_ROUTES.pauseAttempt, {
+      params: { attemptId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/attempts/:attemptId/resume`: resumes by the policy of the cause `paused`. */
+  resumeAttempt(
+    attemptId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.resumeAttempt>> {
+    return this.call(API_ROUTES.resumeAttempt, {
+      params: { attemptId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/attempts/:attemptId/cancel`: ends the Actor as cancelled; the Director judges. */
+  cancelAttempt(
+    attemptId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.cancelAttempt>> {
+    return this.call(API_ROUTES.cancelAttempt, {
+      params: { attemptId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
   }
 
   /**
