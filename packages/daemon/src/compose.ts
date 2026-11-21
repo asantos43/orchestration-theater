@@ -119,6 +119,7 @@ import {
 } from './config.js';
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
+import { DaemonSpans } from './telemetry/daemon-spans.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
 import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
@@ -270,6 +271,12 @@ export interface Composition {
    * `false` when there is nothing to copy. `undefined` when the base is off or is an override.
    */
   readonly telemetryBackup: ((dest: string) => Promise<boolean>) | undefined;
+  /**
+   * The spans of the daemon (P4 of Phase 8): the projector of the event log, or `undefined` when
+   * there is no telemetry base or `telemetry.daemon_spans` is `off`. The daemon starts it after
+   * `daemon.started` and stops it before the situations are closed.
+   */
+  readonly daemonSpans: DaemonSpans | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -735,6 +742,20 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       };
     }
 
+    // Phase 8, P4 (N214 (a)): the spans of the daemon, read from the event log. Started by the daemon.
+    const daemonSpans =
+      telemetry !== undefined && config.telemetry.daemon_spans.enabled === 'on'
+        ? new DaemonSpans({
+            telemetry,
+            hub: eventHub,
+            events: store.events,
+            clock,
+            logger,
+            situations,
+            waits: config.telemetry.daemon_spans.waits,
+          })
+        : undefined;
+
     const opened = { store, vault, sandbox, browser, situations, eventHub, telemetry };
     let closing: Promise<void> | undefined;
     return {
@@ -756,6 +777,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       situations,
       telemetry,
       telemetryBackup,
+      daemonSpans,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {

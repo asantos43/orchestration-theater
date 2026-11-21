@@ -56,6 +56,14 @@ export const MAX_RESETS_IN_A_ROW = 3;
 export const DEFAULT_READ_LIMIT = 1000;
 export const MAX_READ_LIMIT = 10_000;
 
+/** The `meta` key of a producer cursor (`format` and the others of the file never clash). */
+function cursorKey(name: string): string {
+  if (typeof name !== 'string' || name.length === 0 || name.length > 128) {
+    throw new InvalidInput('a cursor name must be a string of 1 to 128 characters');
+  }
+  return `cursor:${name}`;
+}
+
 /** Rows per `INSERT`: well under SQLite's limit of bound variables (32766) for the widest table. */
 const ROWS_PER_INSERT = 100;
 
@@ -327,9 +335,11 @@ export class SqliteTelemetryStore implements TelemetryStore {
         for (let at = 0; at < rows.length; at += ROWS_PER_INSERT) {
           const part = rows.slice(at, at + ROWS_PER_INSERT);
           if (signal === 'spans') {
+            // A span is identified by (trace_id, span_id): writing one again keeps the first.
             await trx
               .insertInto('spans')
               .values(part as never)
+              .onConflict((conflict) => conflict.columns(['trace_id', 'span_id']).doNothing())
               .execute();
           } else if (signal === 'metrics') {
             await trx
@@ -455,6 +465,50 @@ export class SqliteTelemetryStore implements TelemetryStore {
             Number(result.numAffectedRows ?? 0n);
           return { spans: count(spans), metrics: count(metrics), logs: count(logs) };
         });
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async readCursor(name: string): Promise<number | null> {
+    const key = cursorKey(name);
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    const conn = this.#conn;
+    if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+    try {
+      const row = await conn.reader
+        .selectFrom('meta')
+        .select('value')
+        .where('key', '=', key)
+        .executeTakeFirst();
+      if (row === undefined) return null;
+      const value = Number(row.value);
+      return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async writeCursor(name: string, value: number): Promise<void> {
+    const key = cursorKey(name);
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new InvalidInput('a cursor must be an integer >= 0');
+    }
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    // The cursor never runs ahead of the spans written before it.
+    await this.flush();
+    try {
+      await this.#enqueue(async () => {
+        const conn = this.#conn;
+        if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+        await conn.writer
+          .insertInto('meta')
+          .values({ key, value: String(value) })
+          .onConflict((conflict) => conflict.column('key').doUpdateSet({ value: String(value) }))
+          .execute();
       });
     } catch (error) {
       await this.#afterFailure(error);

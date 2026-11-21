@@ -37,6 +37,22 @@ import type {
   TelemetryContext,
 } from '../telemetry/client-telemetry.js';
 import { type PoolSettings, sessionsPerProcessFor } from './settings.js';
+import { WAIT_KIND } from '../telemetry/span-conventions.js';
+import type { DirectWaitCorrelation, WaitRecorder } from '../telemetry/wait-recorder.js';
+
+/** Why a session waited in the queue of the pool (`otheater.wait.reason` of the spans). */
+export const POOL_WAIT_REASON = {
+  /** `pool.max_sessions` is reached. */
+  maxSessions: 'max_sessions',
+  /** The local instance behind the profile has no vacancy for it. */
+  localSlot: 'local_slot',
+  /** `ram_and_quota`: the quota of the profile says no. */
+  quota: 'quota',
+  /** `ram` modes: the free RAM does not fit it. */
+  ram: 'ram',
+  /** The RAM could not be read and `pool.admission.unknown_ram` is `wait`. */
+  ramUnknown: 'ram_unknown',
+} as const;
 
 /** What a caller asks the pool for: one session of one `(client, profile)`. */
 export interface PoolRequest {
@@ -69,6 +85,11 @@ export interface PoolRequest {
    * session) still sends telemetry, with the profile and client only. [proposta]
    */
   readonly telemetry?: TelemetryContext;
+  /**
+   * The ids of the log this session is for (Phase 8, P4): a wait in the queue of the pool is a span
+   * of this attempt. Absent, the wait is recorded with no attempt. [proposta]
+   */
+  readonly correlation?: DirectWaitCorrelation;
   /** Aborts the wait for admission. */
   readonly signal?: AbortSignal;
 }
@@ -138,12 +159,22 @@ export interface SessionPoolOptions {
    * receiver is not up): the sessions start as before and no `OTEL_*` variable reaches them.
    */
   readonly telemetry?: SessionTelemetry;
+  /**
+   * Phase 8, P4 (N217 (a)): told when a session leaves the queue after it was held back, with why
+   * and for how long. The log has no event for this wait. It never throws and never waits.
+   */
+  readonly onWait?: WaitRecorder;
 }
 
 /** A session waiting for admission, and what it costs. */
 interface Waiter {
   readonly request: PoolRequest;
   readonly mb: number;
+  /** When it entered the queue (the clock of the pool). */
+  readonly since: number;
+  readonly key: string;
+  /** What held it back so far (`POOL_WAIT_REASON`); empty while nothing did. */
+  readonly reasons: Set<string>;
   readonly resolve: (slot: Slot) => void;
   readonly reject: (error: unknown) => void;
 }
@@ -255,6 +286,8 @@ export class SessionPool {
   readonly #canAdmit: CanAdmit;
   readonly #localInstance: LocalInstanceResolver | undefined;
   readonly #telemetry: SessionTelemetry | undefined;
+  readonly #onWait: WaitRecorder | undefined;
+  #waitSeq = 0;
   /** Sessions holding a slot of their local instance, by profile id. */
   readonly #load = new Map<string, ProfileLoad>();
   /** What `session_mb: auto` learned per client: the largest share of a process tree seen. */
@@ -283,6 +316,7 @@ export class SessionPool {
     this.#canAdmit = options.canAdmit ?? ALWAYS_ADMIT;
     this.#localInstance = options.localInstance;
     this.#telemetry = options.telemetry;
+    this.#onWait = options.onWait;
     if (this.#admission.mode !== 'slots' && this.#memory === undefined) {
       throw new InvalidInput(
         `pool.admission.mode ${this.#admission.mode} needs a MemoryProbe to read the free RAM`,
@@ -366,6 +400,7 @@ export class SessionPool {
     this.#recheck?.abort();
     this.#recheck = undefined;
     for (const waiter of this.#waiters.splice(0)) {
+      this.#reportWait(waiter, 'pool_closed');
       waiter.reject(new AdapterUnavailable('the session pool is closed'));
     }
     const all = [...this.#processes.values()].flat();
@@ -379,9 +414,14 @@ export class SessionPool {
     const { signal } = request;
     if (signal?.aborted === true) return Promise.reject(cancelledBy(signal));
     return new Promise<Slot>((resolve, reject) => {
+      const since = this.#clock.now();
+      this.#waitSeq += 1;
       const waiter: Waiter = {
         request,
         mb: this.#costOf(request.client),
+        since,
+        key: `${request.correlation?.attemptId ?? request.profile.id}|${String(since)}|${String(this.#waitSeq)}`,
+        reasons: new Set(),
         resolve: (slot) => {
           signal?.removeEventListener('abort', onAbort);
           resolve(slot);
@@ -390,7 +430,10 @@ export class SessionPool {
       };
       const onAbort = (): void => {
         const index = this.#waiters.indexOf(waiter);
-        if (index >= 0) this.#waiters.splice(index, 1);
+        if (index >= 0) {
+          this.#waiters.splice(index, 1);
+          this.#reportWait(waiter, 'cancelled');
+        }
         reject(cancelledBy(signal));
         // Whoever was behind a session that waited for RAM may fit now.
         this.#pump();
@@ -399,6 +442,32 @@ export class SessionPool {
       signal?.addEventListener('abort', onAbort, { once: true });
       this.#pump();
     });
+  }
+
+  /**
+   * A session left the queue: if something held it back, that wait is told (N217 (a)). A session
+   * admitted at its first look waited for nothing, and says nothing.
+   */
+  #reportWait(waiter: Waiter, outcome: 'admitted' | 'cancelled' | 'pool_closed'): void {
+    if (this.#onWait === undefined || waiter.reasons.size === 0) return;
+    const { request } = waiter;
+    try {
+      this.#onWait({
+        kind: WAIT_KIND.poolAdmission,
+        key: waiter.key,
+        startMs: waiter.since,
+        endMs: this.#clock.now(),
+        reason: [...waiter.reasons].sort().join(','),
+        outcome,
+        correlation: {
+          ...request.correlation,
+          client: request.client,
+          profile: request.profile.id,
+        },
+      });
+    } catch {
+      // A recorder that throws must not hold the pool.
+    }
   }
 
   /** A slot goes back: the vacancy and the load of its profile, then the queue gets its turn. */
@@ -469,7 +538,12 @@ export class SessionPool {
     let headroom = available === undefined ? 0 : available - this.#startingMb - minFreeMb;
     let ramBlocked = false;
     for (let index = 0; index < this.#waiters.length;) {
-      if (this.#sessions >= this.#settings.maxSessions) return;
+      if (this.#sessions >= this.#settings.maxSessions) {
+        for (const held of this.#waiters.slice(index)) {
+          held.reasons.add(POOL_WAIT_REASON.maxSessions);
+        }
+        return;
+      }
       const waiter = this.#waiters[index];
       if (waiter === undefined) return;
       const { request } = waiter;
@@ -481,10 +555,12 @@ export class SessionPool {
         instance !== undefined &&
         !slotFree(instance, load, director, this.#listedForDirector(profileId))
       ) {
+        waiter.reasons.add(POOL_WAIT_REASON.localSlot);
         index += 1;
         continue;
       }
       if (quota?.get(profileId) === false) {
+        waiter.reasons.add(POOL_WAIT_REASON.quota);
         index += 1;
         continue;
       }
@@ -492,12 +568,14 @@ export class SessionPool {
       if (mode !== 'slots') {
         if (ramUnknown) {
           if (unknownRam === 'wait') {
+            waiter.reasons.add(POOL_WAIT_REASON.ramUnknown);
             index += 1;
             continue;
           }
         } else {
           if (ramBlocked || headroom < waiter.mb) {
             ramBlocked = true;
+            waiter.reasons.add(POOL_WAIT_REASON.ram);
             index += 1;
             continue;
           }
@@ -506,6 +584,7 @@ export class SessionPool {
         }
       }
       this.#waiters.splice(index, 1);
+      this.#reportWait(waiter, 'admitted');
       this.#sessions += 1;
       this.#startingMb += reservedMb;
       if (director) load.directors += 1;

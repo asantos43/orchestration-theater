@@ -40,6 +40,9 @@ const detail = z.string().min(1).max(512).nullable();
  * - `telemetry_receiver_unavailable` (P2 of Phase 8, N212): the OTLP receiver could not listen
  *   (`telemetry.receiver.port` is taken, or the system refused), so the clients start without
  *   telemetry; the daemon goes on (`subject`: `receiver`; `detail`: the reason, no token) [proposta].
+ * - `daemon_spans_failed` (Phase 8, P4, N214; [proposta]): the projector of the spans of the daemon
+ *   could not read the log or write the base (`subject`: what failed; `detail`: why). It is told once
+ *   per episode and the projector tries again; the orchestration does not depend on it.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -55,6 +58,7 @@ export const DAEMON_NOTICE_KINDS = [
   'cross_check_unsatisfiable',
   'account_rotated',
   'telemetry_receiver_unavailable',
+  'daemon_spans_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

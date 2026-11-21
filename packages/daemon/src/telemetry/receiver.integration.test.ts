@@ -86,6 +86,12 @@ class RecordingStore implements TelemetryStore {
   readLogs() {
     return Promise.resolve(this.logs);
   }
+  readCursor(): Promise<number | null> {
+    return Promise.resolve(null);
+  }
+  writeCursor(): Promise<void> {
+    return Promise.resolve();
+  }
   deleteOlderThan() {
     return Promise.resolve({ spans: 0, metrics: 0, logs: 0 });
   }

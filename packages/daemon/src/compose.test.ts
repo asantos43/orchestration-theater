@@ -228,6 +228,22 @@ describe('compose: the telemetry base (Phase 8, P1)', () => {
     }
   });
 
+  it('builds the projector of the spans of the daemon by default, and not with off or without a base', async () => {
+    for (const [yaml, expected] of [
+      ['', true],
+      ['telemetry:\n  daemon_spans: off\n', false],
+      ['telemetry:\n  enabled: off\n', false],
+    ] as const) {
+      const { composition, dispose } = await composed(yaml);
+      try {
+        expect(composition.daemonSpans !== undefined).toBe(expected);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    }
+  });
+
   it('recreates a corrupted file and records telemetry.store_reset without a path', async () => {
     const { composition, dir, dispose } = await composed('', async (data) => {
       await writeFile(join(data, 'telemetry.sqlite'), Buffer.alloc(8192, 0x61));
