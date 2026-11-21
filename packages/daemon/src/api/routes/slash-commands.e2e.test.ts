@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- the answers of the API are read as loose JSON */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/restrict-template-expressions -- the answers of the API are read as loose JSON */
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -150,9 +150,14 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
         '/help',
         '/doctor',
       ].entries()) {
-        const answer = await send('POST', `/v1/scenarios/${scenarioId}/commands`, { text: line }, {
-          'idempotency-key': `q-${String(index)}`,
-        });
+        const answer = await send(
+          'POST',
+          `/v1/scenarios/${scenarioId}/commands`,
+          { text: line },
+          {
+            'idempotency-key': `q-${String(index)}`,
+          },
+        );
         expect(answer.status, `${line}: ${answer.text}`).toBe(200);
         expect(answer.json).toMatchObject({ status: 'done', command: line.slice(1).split(' ')[0] });
         expect(answer.json.text).not.toBe('');
@@ -215,14 +220,17 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
   });
 
   it('chat.slash_access: read_only refuses what changes things (403) and still answers a query', async () => {
-    await withSlashDaemon({ extra: 'chat:\n  slash_access: read_only' }, async ({ harness, send }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      const url = `/v1/scenarios/${scenarioId}/commands`;
-      expect((await send('POST', url, { text: '/status' })).status).toBe(200);
-      const refused = await send('POST', url, { text: '/plan a thing' });
-      expect(refused.status).toBe(403);
-      expect(refused.json.error.code).toBe('forbidden');
-    });
+    await withSlashDaemon(
+      { extra: 'chat:\n  slash_access: read_only' },
+      async ({ harness, send }) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        const url = `/v1/scenarios/${scenarioId}/commands`;
+        expect((await send('POST', url, { text: '/status' })).status).toBe(200);
+        const refused = await send('POST', url, { text: '/plan a thing' });
+        expect(refused.status).toBe(403);
+        expect(refused.json.error.code).toBe('forbidden');
+      },
+    );
   });
 
   it('chat.slash_commands: off empties the list and refuses a line', async () => {
@@ -231,7 +239,9 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
       const list = await send('GET', `/v1/commands?scenario=${scenarioId}`);
       expect(list.status).toBe(200);
       expect(list.json.commands).toEqual([]);
-      const refused = await send('POST', `/v1/scenarios/${scenarioId}/commands`, { text: '/status' });
+      const refused = await send('POST', `/v1/scenarios/${scenarioId}/commands`, {
+        text: '/status',
+      });
       expect(refused.status).toBe(403);
     });
   });
@@ -267,7 +277,9 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
           (await harness.producer.poll(scenarioId, 0)).replies.length > 0 ? true : undefined,
         );
         const names = await waitFor('the client commands', async () => {
-          const names = clientNames((await send('GET', `/v1/commands?scenario=${scenarioId}`)).json);
+          const names = clientNames(
+            (await send('GET', `/v1/commands?scenario=${scenarioId}`)).json,
+          );
           return names.length > 0 ? names : undefined;
         });
         expect(names).toEqual(['fake:fake-command']);
@@ -310,19 +322,22 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
     });
 
     it('chat.client_commands: off hides them and refuses them (403)', async () => {
-      await withSlashDaemon({ extra: 'chat:\n  client_commands: off' }, async ({ harness, send }) => {
-        const scenarioId = await harness.openGenericChat('talk');
-        await harness.producer.send(scenarioId, '#ot-chat first');
-        await waitFor('the first reply', async () =>
-          (await harness.producer.poll(scenarioId, 0)).replies.length > 0 ? true : undefined,
-        );
-        const list = await send('GET', `/v1/commands?scenario=${scenarioId}`);
-        expect(list.json.commands.some((c: any) => c.origin === 'client')).toBe(false);
-        const refused = await send('POST', `/v1/scenarios/${scenarioId}/commands`, {
-          text: '/fake:fake-command',
-        });
-        expect(refused.status).toBe(403);
-      });
+      await withSlashDaemon(
+        { extra: 'chat:\n  client_commands: off' },
+        async ({ harness, send }) => {
+          const scenarioId = await harness.openGenericChat('talk');
+          await harness.producer.send(scenarioId, '#ot-chat first');
+          await waitFor('the first reply', async () =>
+            (await harness.producer.poll(scenarioId, 0)).replies.length > 0 ? true : undefined,
+          );
+          const list = await send('GET', `/v1/commands?scenario=${scenarioId}`);
+          expect(list.json.commands.some((c: any) => c.origin === 'client')).toBe(false);
+          const refused = await send('POST', `/v1/scenarios/${scenarioId}/commands`, {
+            text: '/fake:fake-command',
+          });
+          expect(refused.status).toBe(403);
+        },
+      );
     });
   });
 
@@ -348,8 +363,8 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
       });
       const before = await countOf(harness, 'prompt.queued');
       socket.send(JSON.stringify({ type: 'command', text: '/status' }));
-      const result = await waitFor('the command result', async () =>
-        frames.find((frame) => frame.type === 'command_result'),
+      const result = await waitFor('the command result', () =>
+        Promise.resolve(frames.find((frame) => frame.type === 'command_result')),
       );
       expect(result).toMatchObject({
         type: 'command_result',
@@ -357,8 +372,8 @@ describeWithLauncher('the / commands with the fake agent (P3)', { timeout: 180_0
         result: { status: 'done', command: 'status' },
       });
       socket.send(JSON.stringify({ type: 'command', text: '/nope' }));
-      const error = await waitFor('the error', async () =>
-        frames.find((frame) => frame.type === 'error'),
+      const error = await waitFor('the error', () =>
+        Promise.resolve(frames.find((frame) => frame.type === 'error')),
       );
       expect(error).toMatchObject({ error: { code: 'invalid_input' } });
       // a query never reaches the Director

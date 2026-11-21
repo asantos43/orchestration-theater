@@ -8,7 +8,7 @@ import {
 } from '@otheater/core';
 import { z } from 'zod';
 import { redactConfig } from '../api/routes/redact.js';
-import { playOf, scenarioOf } from '../api/routes/scenarios.js';
+import { playOf, scenarioOf } from '../api/routes/projections.js';
 import { REMOVED_REASON } from '../executors/service.js';
 import { resolveScenarioRoleExecutors } from '../orchestration/role-executors.js';
 import type { SlashAction, SlashRunContext, SlashOutcome } from './types.js';
@@ -34,7 +34,7 @@ export function isPausedPlay(play: PlayRecord): boolean {
 function define<Args>(action: SlashAction<Args>): SlashAction {
   return {
     ...action,
-    args: action.args as unknown as SlashAction['args'],
+    args: action.args,
     run: (context) => action.run(context as SlashRunContext<Args>),
   };
 }
@@ -128,7 +128,12 @@ const status = define({
         t(`out.status.director.${director}`),
       ),
       {
-        scenario: { id: scenario.id, name: scenario.name, kind: scenario.kind, state: scenario.state },
+        scenario: {
+          id: scenario.id,
+          name: scenario.name,
+          kind: scenario.kind,
+          state: scenario.state,
+        },
         openPlays: facts.plays.length,
         pendingDecisions: pending.length,
         director,
@@ -186,7 +191,8 @@ const cost = define({
     const exceeded: { profile: string; resetsAt: number }[] = [];
     for (const profile of await deps.store.profiles.list()) {
       const breach = deps.budget.exceededOf(profile.id);
-      if (breach !== undefined) exceeded.push({ profile: breach.profile, resetsAt: breach.resetsAt });
+      if (breach !== undefined)
+        exceeded.push({ profile: breach.profile, resetsAt: breach.resetsAt });
     }
     const rows = [
       t('out.cost.total', {
@@ -266,7 +272,8 @@ const plays = define({
               id: play.id,
               state: play.state,
               paused: isPausedPlay(play) ? t('out.plays.paused') : '',
-              need: play.need.length > NEED_CHARS ? `${play.need.slice(0, NEED_CHARS)}...` : play.need,
+              need:
+                play.need.length > NEED_CHARS ? `${play.need.slice(0, NEED_CHARS)}...` : play.need,
             }),
           ),
         ),
@@ -336,10 +343,18 @@ const doctor = define({
     const mark = (ok: boolean): string => t(ok ? 'out.doctor.ok' : 'out.doctor.problem');
     try {
       const last = await deps.store.events.lastId();
-      checks.push({ name: 'store', ok: true, line: t('out.doctor.store', { status: mark(true), last }) });
+      checks.push({
+        name: 'store',
+        ok: true,
+        line: t('out.doctor.store', { status: mark(true), last }),
+      });
     } catch {
       // The failure is the answer: the line says the store has a problem.
-      checks.push({ name: 'store', ok: false, line: t('out.doctor.store', { status: mark(false), last: 0 }) });
+      checks.push({
+        name: 'store',
+        ok: false,
+        line: t('out.doctor.store', { status: mark(false), last: 0 }),
+      });
     }
     const profiles = await deps.store.profiles.list();
     const active = profiles.filter((p) => p.state === 'active');
@@ -421,10 +436,10 @@ const pause = define({
         ...(args === undefined ? {} : { reason: args }),
       });
     }
-    return done(
-      lines(t('out.pause.done', { count: open.length }), t('out.pause.mode', { mode })),
-      { paused: open.map((play) => play.id), mode },
-    );
+    return done(lines(t('out.pause.done', { count: open.length }), t('out.pause.mode', { mode })), {
+      paused: open.map((play) => play.id),
+      mode,
+    });
   },
 });
 
@@ -443,7 +458,10 @@ const resume = define({
     const target = runner(context);
     const held = facts.plays.filter(isPausedPlay);
     for (const play of held) {
-      await target.send(play.id, { type: 'RESUME', ...(args === undefined ? {} : { reason: args }) });
+      await target.send(play.id, {
+        type: 'RESUME',
+        ...(args === undefined ? {} : { reason: args }),
+      });
     }
     return done(t('out.resume.done', { count: held.length }), { resumed: held.map((p) => p.id) });
   },
@@ -463,7 +481,10 @@ const cancel = define({
     const { facts, args, t } = context;
     const target = runner(context);
     for (const play of facts.plays) {
-      await target.send(play.id, { type: 'CANCEL', ...(args === undefined ? {} : { reason: args }) });
+      await target.send(play.id, {
+        type: 'CANCEL',
+        ...(args === undefined ? {} : { reason: args }),
+      });
     }
     return done(t('out.cancel.done', { count: facts.plays.length }), {
       cancelled: facts.plays.map((play) => play.id),

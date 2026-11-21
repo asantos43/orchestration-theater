@@ -1,12 +1,4 @@
 {
-  "group": {
-    "query": "Query",
-    "control": "Control the play",
-    "session": "Session and scenario",
-    "configure": "Configure",
-    "help": "Help",
-    "client": "Commands of the client"
-  },
   "desc": {
     "help": "Lists the commands that are valid now, or explains one",
     "status": "Shows the scenario: its plays, its pending decisions and the Director",
@@ -67,9 +59,6 @@
     "noDirector": "No Executor is set for the Director."
   },
   "out": {
-    "none": "none",
-    "yes": "yes",
-    "no": "no",
     "status": {
       "scenario": "Scenario {{name}} ({{kind}}, {{state}}).",
       "counts": "Open plays: {{plays}}. Pending decisions: {{decisions}}.",
@@ -157,10 +146,7 @@
       "header": "Commands valid now:",
       "line": "{{name}}{{args}} - {{description}}",
       "one": "{{name}}{{args}} - {{description}}",
-      "confirm": "It asks for confirmation.",
-      "access": "It {{access}}.",
-      "reads": "only reads",
-      "writes": "changes things"
+      "confirm": "It asks for confirmation."
     },
     "forwarded": {
       "template": "Sent to the Director.",

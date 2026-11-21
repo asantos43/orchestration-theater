@@ -1,12 +1,4 @@
 {
-  "group": {
-    "query": "Consultar",
-    "control": "Controlar a peça",
-    "session": "Sessão e cenário",
-    "configure": "Configurar",
-    "help": "Ajuda",
-    "client": "Comandos do cliente"
-  },
   "desc": {
     "help": "Lista os comandos que valem agora, ou explica um",
     "status": "Mostra o cenário: as peças, as decisões pendentes e o Diretor",
@@ -67,9 +59,6 @@
     "noDirector": "Nenhum Executor está definido para o Diretor."
   },
   "out": {
-    "none": "nenhum",
-    "yes": "sim",
-    "no": "não",
     "status": {
       "scenario": "Cenário {{name}} ({{kind}}, {{state}}).",
       "counts": "Peças abertas: {{plays}}. Decisões pendentes: {{decisions}}.",
@@ -157,10 +146,7 @@
       "header": "Comandos que valem agora:",
       "line": "{{name}}{{args}} - {{description}}",
       "one": "{{name}}{{args}} - {{description}}",
-      "confirm": "Pede confirmação.",
-      "access": "{{access}}.",
-      "reads": "Só lê",
-      "writes": "Muda coisas"
+      "confirm": "Pede confirmação."
     },
     "forwarded": {
       "template": "Enviado ao Diretor.",

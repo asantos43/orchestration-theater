@@ -36,7 +36,12 @@ describe('the routes of the / commands', () => {
     expect(RunSlashCommandBodySchema.parse({ text: '/cancel now', confirm: true }).confirm).toBe(
       true,
     );
-    for (const bad of [{ text: 'pause' }, { text: '/' }, { text: '/ pause' }, { text: '/a', x: 1 }]) {
+    for (const bad of [
+      { text: 'pause' },
+      { text: '/' },
+      { text: '/ pause' },
+      { text: '/a', x: 1 },
+    ]) {
       expect(RunSlashCommandBodySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });
@@ -59,8 +64,8 @@ describe('the routes of the / commands', () => {
         true,
       );
     }
-    expect(SlashCommandResultSchema.safeParse({ status: 'ok', command: 'x', text: '' }).success).toBe(
-      false,
-    );
+    expect(
+      SlashCommandResultSchema.safeParse({ status: 'ok', command: 'x', text: '' }).success,
+    ).toBe(false);
   });
 });

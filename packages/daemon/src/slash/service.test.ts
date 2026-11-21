@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Conflict, InvalidInput, PermissionDenied, type PlayRecord } from '@otheater/core';
+import { Conflict, InvalidInput, PermissionDenied } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { BudgetService } from '../budget/index.js';
 import { parseConfig, type DaemonConfig } from '../config.js';
 import type { DirectiveService } from '../directives/index.js';
@@ -125,7 +125,9 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
     runner: {
       send: async (playId: string, event: Record<string, unknown>) => {
         sent.push({ playId, event });
-        return (await store.plays.get(playId)) as PlayRecord;
+        const play = await store.plays.get(playId);
+        if (play === undefined) throw new Error(`no play ${playId}`);
+        return play;
       },
     } as unknown as PlayRunner,
     directors: {
@@ -159,7 +161,8 @@ async function addPlay(store: InMemoryStore, id: string, paused = false): Promis
   });
 }
 
-const idsOf = (commands: readonly { id: string }[]): string[] => commands.map((command) => command.id);
+const idsOf = (commands: readonly { id: string }[]): string[] =>
+  commands.map((command) => command.id);
 
 describe('parsing a line', () => {
   it('splits the name from the rest and rejects what is not a command', () => {
@@ -186,7 +189,16 @@ describe('the list valid for a scenario', () => {
     const { service } = await rig();
     const ids = idsOf(await service.list());
     expect(ids).toEqual(
-      expect.arrayContaining(['help', 'quota', 'cost', 'executors', 'profile', 'config', 'new', 'doctor']),
+      expect.arrayContaining([
+        'help',
+        'quota',
+        'cost',
+        'executors',
+        'profile',
+        'config',
+        'new',
+        'doctor',
+      ]),
     );
     for (const absent of ['status', 'plays', 'pause', 'cancel', 'attach', 'plan']) {
       expect(ids, absent).not.toContain(absent);
@@ -197,10 +209,20 @@ describe('the list valid for a scenario', () => {
     const { service, store } = await rig();
     const project = idsOf(await service.list({ scenarioId: 'project-1' }));
     expect(project).toEqual(
-      expect.arrayContaining(['status', 'plays', 'logs', 'attach', 'export', 'model', 'plan', 'review']),
+      expect.arrayContaining([
+        'status',
+        'plays',
+        'logs',
+        'attach',
+        'export',
+        'model',
+        'plan',
+        'review',
+      ]),
     );
     // no open play: nothing to pause, resume or cancel
-    for (const absent of ['pause', 'resume', 'cancel']) expect(project, absent).not.toContain(absent);
+    for (const absent of ['pause', 'resume', 'cancel'])
+      expect(project, absent).not.toContain(absent);
 
     await addPlay(store, 'play-1');
     const running = idsOf(await service.list({ scenarioId: 'project-1' }));
@@ -215,10 +237,12 @@ describe('the list valid for a scenario', () => {
     // a chat has no plays; an archived scenario takes nothing new
     const chat = idsOf(await service.list({ scenarioId: 'chat-1' }));
     expect(chat).toContain('status');
-    for (const absent of ['plays', 'pause', 'resume', 'cancel']) expect(chat, absent).not.toContain(absent);
+    for (const absent of ['plays', 'pause', 'resume', 'cancel'])
+      expect(chat, absent).not.toContain(absent);
     const archived = idsOf(await service.list({ scenarioId: 'archived-1' }));
     expect(archived).toContain('status');
-    for (const absent of ['attach', 'plan', 'explain']) expect(archived, absent).not.toContain(absent);
+    for (const absent of ['attach', 'plan', 'explain'])
+      expect(archived, absent).not.toContain(absent);
   });
 
   it('describes each command in the language asked for, with the key of the catalog', async () => {
@@ -244,7 +268,9 @@ describe('the list valid for a scenario', () => {
   it('answers in ui.locale when the caller names no language', async () => {
     const { service } = await rig('', 'pt-BR');
     const pt = (await service.list()).find((command) => command.id === 'help');
-    const en = (await (await rig('', 'en')).service.list()).find((command) => command.id === 'help');
+    const en = (await (await rig('', 'en')).service.list()).find(
+      (command) => command.id === 'help',
+    );
     expect(pt?.description).not.toBe(en?.description);
   });
 });
@@ -252,7 +278,22 @@ describe('the list valid for a scenario', () => {
 describe('running a line', () => {
   it('a query answers with text and data and touches no Director', async () => {
     const { service, messages } = await rig();
-    for (const line of ['/status', '/quota', '/cost', '/executors', '/plays', '/logs', '/doctor', '/export', '/model', '/effort', '/profile', '/directives', '/config', '/help']) {
+    for (const line of [
+      '/status',
+      '/quota',
+      '/cost',
+      '/executors',
+      '/plays',
+      '/logs',
+      '/doctor',
+      '/export',
+      '/model',
+      '/effort',
+      '/profile',
+      '/directives',
+      '/config',
+      '/help',
+    ]) {
       const name = line.slice(1);
       if (name === 'model' || name === 'effort') continue; // those need an Executor: tested below
       const result = await service.execute('project-1', { text: line });
@@ -279,9 +320,9 @@ describe('running a line', () => {
     expect(sections.text).toContain('chat');
     const key = await service.execute('project-1', { text: '/config chat.slash_logs_lines' });
     expect(key.data).toBe(20);
-    await expect(service.execute('project-1', { text: '/config chat.nope' })).rejects.toBeInstanceOf(
-      InvalidInput,
-    );
+    await expect(
+      service.execute('project-1', { text: '/config chat.nope' }),
+    ).rejects.toBeInstanceOf(InvalidInput);
   });
 
   it('/help lists the valid commands and describes one', async () => {
@@ -345,10 +386,18 @@ describe('running a line', () => {
 
   it('refuses an unknown command and bad arguments', async () => {
     const { service } = await rig();
-    await expect(service.execute('project-1', { text: '/nope' })).rejects.toBeInstanceOf(InvalidInput);
-    await expect(service.execute('project-1', { text: '/status now' })).rejects.toThrow(/no arguments/);
-    await expect(service.execute('project-1', { text: '/logs many' })).rejects.toThrow(/Usage: \/logs/);
-    await expect(service.execute('project-1', { text: '/attach' })).rejects.toThrow(/Usage: \/attach/);
+    await expect(service.execute('project-1', { text: '/nope' })).rejects.toBeInstanceOf(
+      InvalidInput,
+    );
+    await expect(service.execute('project-1', { text: '/status now' })).rejects.toThrow(
+      /no arguments/,
+    );
+    await expect(service.execute('project-1', { text: '/logs many' })).rejects.toThrow(
+      /Usage: \/logs/,
+    );
+    await expect(service.execute('project-1', { text: '/attach' })).rejects.toThrow(
+      /Usage: \/attach/,
+    );
     await expect(service.execute('nope', { text: '/status' })).rejects.toThrow(/no scenario/i);
   });
 
@@ -476,12 +525,16 @@ describe('the commands of the client of the Director', () => {
 
   it('are not offered without an open session, to an archived scenario or for a chat with no client', async () => {
     const { service, setDirector } = await rig();
-    expect((await service.list({ scenarioId: 'project-1' })).some((c) => c.origin === 'client')).toBe(false);
+    expect(
+      (await service.list({ scenarioId: 'project-1' })).some((c) => c.origin === 'client'),
+    ).toBe(false);
     await expect(service.execute('project-1', { text: '/claude:compact' })).rejects.toBeInstanceOf(
       Conflict,
     );
     setDirector(director({}));
-    expect((await service.list({ scenarioId: 'archived-1' })).some((c) => c.origin === 'client')).toBe(false);
+    expect(
+      (await service.list({ scenarioId: 'archived-1' })).some((c) => c.origin === 'client'),
+    ).toBe(false);
     // no scenario: no client commands either
     expect((await service.list()).some((c) => c.origin === 'client')).toBe(false);
   });
@@ -489,7 +542,9 @@ describe('the commands of the client of the Director', () => {
   it('chat.client_commands: off hides them and refuses them', async () => {
     const { service, setDirector } = await rig('chat:\n  client_commands: off\n');
     setDirector(director({}));
-    expect((await service.list({ scenarioId: 'project-1' })).some((c) => c.origin === 'client')).toBe(false);
+    expect(
+      (await service.list({ scenarioId: 'project-1' })).some((c) => c.origin === 'client'),
+    ).toBe(false);
     await expect(service.execute('project-1', { text: '/claude:compact' })).rejects.toBeInstanceOf(
       PermissionDenied,
     );

@@ -38,6 +38,6 @@ export class SlashCatalog {
     const t = this.#translators.get(locale);
     if (t === undefined) throw new Error(`The catalog of the commands has no ${locale}`);
     // `t` returns a string for a key of the catalog and the key itself for one it lacks.
-    return (key, vars) => String(t(key, vars as Record<string, unknown>));
+    return (key, vars) => t(key, vars as Record<string, unknown>);
   }
 }

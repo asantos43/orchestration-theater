@@ -316,7 +316,7 @@ class ChatSession {
         // [proposta] The registry answers with a `command_result`; without it (or with the commands
         // off) the line goes to the Director as typed, like a message.
         const slash = this.#options.commands?.();
-        if (slash === undefined || !slash.enabled()) {
+        if (!slash?.enabled()) {
           await channel.send(this.#scenarioId, message.text);
           return;
         }

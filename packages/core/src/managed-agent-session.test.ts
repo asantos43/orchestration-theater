@@ -361,7 +361,7 @@ describe('ManagedAgentSession', () => {
               commands: raw.map((name) => ({ name: String(name), description: 'd' })),
             }
           : null,
-      normalizeError: normalizer.normalizeError,
+      normalizeError: (raw) => normalizer.normalizeError(raw),
     } satisfies SessionNormalizer;
     const { session } = setup({ normalizer: commands });
     expect(session.availableCommands).toEqual([]);

@@ -74,7 +74,9 @@ export class SlashCommandService {
     }
     if (appliesTo.plays === 'open' && plays.length === 0) return t('error.notAvailable.noOpenPlay');
     if (appliesTo.plays === 'unpaused' && !plays.some((play) => !isPausedPlay(play))) {
-      return t(plays.length === 0 ? 'error.notAvailable.noOpenPlay' : 'error.notAvailable.noUnpausedPlay');
+      return t(
+        plays.length === 0 ? 'error.notAvailable.noOpenPlay' : 'error.notAvailable.noUnpausedPlay',
+      );
     }
     if (appliesTo.plays === 'paused' && !plays.some(isPausedPlay)) {
       return t('error.notAvailable.noPausedPlay');
@@ -127,7 +129,10 @@ export class SlashCommandService {
 
   /** The commands valid for `scenarioId` now (none: the ones that need no scenario). */
   async list(
-    options: { readonly scenarioId?: string | undefined; readonly lang?: Language | undefined } = {},
+    options: {
+      readonly scenarioId?: string | undefined;
+      readonly lang?: Language | undefined;
+    } = {},
   ): Promise<ApiSlashCommand[]> {
     const t = this.#deps.catalog.translator(options.lang ?? this.#deps.locale);
     const facts = await this.#facts(options.scenarioId);
@@ -164,7 +169,8 @@ export class SlashCommandService {
     const line = parseSlashLine(input.text);
     if (line === undefined) throw new InvalidInput(t('error.unknown', { name: input.text.trim() }));
     const facts = await this.#facts(scenarioId);
-    const scenario = facts.scenario as ScenarioRecord;
+    const { scenario } = facts;
+    if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
     const wanted = line.name.toLowerCase();
 
     const action = this.#actions().find((candidate) => candidate.id === wanted);
@@ -212,7 +218,11 @@ export class SlashCommandService {
       );
     }
     if (action.confirm && config.chat.slash_confirm === 'always' && input.confirm !== true) {
-      return { status: 'confirm', command: action.id, text: t('confirm.ask', { command: action.id }) };
+      return {
+        status: 'confirm',
+        command: action.id,
+        text: t('confirm.ask', { command: action.id }),
+      };
     }
     const context: SlashRunContext<unknown> = {
       scenario,
@@ -251,4 +261,3 @@ export class SlashCommandService {
     return { status: 'forwarded', command: entry.id, text: t('out.forwarded.client') };
   }
 }
-
