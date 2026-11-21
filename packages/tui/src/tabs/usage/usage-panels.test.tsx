@@ -96,7 +96,10 @@ describe('the trend', () => {
     const { report, gapDay, unknownCostDay } = analysis();
     const stub = stubPanels(fake, undefined, { analysis: () => Promise.resolve(report) });
     const app = await open(fake, only(['trend']));
-    const frame = await app.waitForText('Trend · 14 days');
+    await app.waitForText('Trend · 14 days');
+    // The heading comes before the rows: wait for them, or a loaded machine reads a frame with none.
+    await waitFor(() => app.frame().includes('Total'), 'the rows');
+    const frame = app.frame();
     const window = defaultWindow();
     expect(frame).toContain(window.from);
     expect(frame).toContain(window.to);
@@ -124,9 +127,9 @@ describe('the trend', () => {
       size: { columns: 150, rows: 60 },
       settings: only(['trend']),
     });
-    const frame = await app.waitForText('Trend · 14 days');
+    await app.waitForText('Trend · 14 days');
     await waitFor(() => app.frame().includes('Total'), 'the rows');
-    expect(frame).toContain('US$ 1.50 ≈US$ 4.25');
+    expect(app.frame()).toContain('US$ 1.50 ≈US$ 4.25');
   });
 
   it('says that no day is closed yet, with the aggregates empty', async () => {
