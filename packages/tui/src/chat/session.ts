@@ -44,6 +44,8 @@ export class ChatSession {
   #state: ChatState = createChatState();
   #socket: ChatSocketLike | undefined;
   #cursor: number | undefined;
+  /** The `!` lines sent: the count makes the `clientId` of the next one. */
+  #shellLines = 0;
   #queue: ChatQueueMode;
 
   constructor(options: ChatSessionOptions) {
@@ -139,8 +141,10 @@ export class ChatSession {
   sendShell(text: string, attachments: readonly string[] = []): void {
     if (attachments.length > 0) throw new Error('a ! command takes no attachments');
     if (shellCommandOf(text) === '') throw new Error('the ! command is empty');
-    this.#require().send({ type: 'message', text });
-    this.#dispatch({ type: 'sent', text, at: this.#options.now(), queued: false, shell: true });
+    // The id comes back in the refusal of the line (N205); a `!` line has no entry of its own: the
+    // block of the command, drawn when it starts, is it.
+    this.#shellLines += 1;
+    this.#require().send({ type: 'message', text, clientId: `sh-${String(this.#shellLines)}` });
   }
 
   sendCommand(text: string, confirm?: boolean): void {

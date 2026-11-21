@@ -30,6 +30,15 @@ export const CHAT_TICKET_PARAM = 'ticket';
 const DecisionIdSchema = z.string().min(1);
 const AnswerSchema = z.record(z.string(), z.json());
 
+/**
+ * The most events a `history` asks the daemon to bring (P26, N203 item 2). [proposta] The client
+ * asks for a count; the daemon never reads more than this.
+ */
+export const CHAT_HISTORY_MAX = 200;
+
+/** The longest `clientId` of a `message`. */
+export const CHAT_CLIENT_ID_MAX = 64;
+
 /** What the client sends. */
 export const ChatClientMessageSchema = z.discriminatedUnion('type', [
   /** A message for the Director. It goes in the single prompt queue with the Producer's source. */
@@ -38,6 +47,12 @@ export const ChatClientMessageSchema = z.discriminatedUnion('type', [
     text: z.string(),
     /** Ids of attachments already sent by REST. */
     attachments: z.array(z.string().min(1)).optional(),
+    /**
+     * An id the client chose for the line (P26, N205). The `error` frame that refuses a `!` line
+     * gives it back in `details.clientId`, so a client with several lines in flight knows which
+     * one it is. Optional; a line without it is refused all the same. [proposta]
+     */
+    clientId: z.string().min(1).max(CHAT_CLIENT_ID_MAX).optional(),
   }),
   /** The answer to a pending decision (a question of the Director, or a menu). */
   z.strictObject({
@@ -62,6 +77,16 @@ export const ChatClientMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('resume'),
     lastEventId: z.int().min(0),
+  }),
+  /**
+   * On a first opening, with nothing in hand (P26, N203 item 2): the daemon sends again the last
+   * `count` events of this scenario that the chat shows (the replies, the notices, the commands, the
+   * plays...), then goes on live. Like `resume`, it is only taken as the first message; a client
+   * with a cursor sends `resume`, not this. `0` is the same as sending neither. Additive. [proposta]
+   */
+  z.strictObject({
+    type: z.literal('history'),
+    count: z.int().min(0).max(CHAT_HISTORY_MAX),
   }),
 ]);
 export type ChatClientMessage = z.infer<typeof ChatClientMessageSchema>;
@@ -193,6 +218,33 @@ export const ChatServerMessageSchema = z.discriminatedUnion('type', [
   }),
 ]);
 export type ChatServerMessage = z.infer<typeof ChatServerMessageSchema>;
+
+/**
+ * `details.source` of an `error` frame that refuses a `!` line (P26, N205). The frame then also
+ * carries `details.command` (the command, cut at {@link CHAT_ERROR_COMMAND_MAX} characters) and,
+ * when the line had one, `details.clientId`. The `code` is the code of the refusal. Additive:
+ * the other `error` frames carry none of these. [proposta]
+ */
+export const CHAT_ERROR_SOURCE_SHELL = 'shell';
+export const CHAT_ERROR_COMMAND_MAX = 200;
+
+/** Where a refused `!` line is told apart in an `error` frame: its command and its id. */
+export interface ShellRefusalOrigin {
+  readonly command: string;
+  readonly clientId: string | undefined;
+}
+
+/** The origin of an `error` frame of a `!` line; `undefined` for any other error. */
+export function shellRefusalOf(
+  details: Readonly<Record<string, unknown>> | undefined,
+): ShellRefusalOrigin | undefined {
+  if (details?.source !== CHAT_ERROR_SOURCE_SHELL) return undefined;
+  const { command, clientId } = details;
+  return {
+    command: typeof command === 'string' ? command : '',
+    clientId: typeof clientId === 'string' ? clientId : undefined,
+  };
+}
 
 /** The `type`s a message may have, per direction. */
 export const CHAT_CLIENT_MESSAGE_TYPES = ChatClientMessageSchema.options.map(

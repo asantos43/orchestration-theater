@@ -28,7 +28,7 @@ describe('parseUiSettings', () => {
         scrollStep: 'half',
       },
       trajectories: { open: 'last', keep: 5000, diffLines: 200 },
-      chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop' },
+      chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop', history: 40 },
       input: DEFAULT_UI_SETTINGS.input,
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
       usage: { groupBy: 'profile', refreshSeconds: 30 },
@@ -50,7 +50,7 @@ describe('parseUiSettings', () => {
 
   it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {
     const settings = parseUiSettings({
-      chat: { queue: 'hold', suggestions: 0, decisionFocus: 'sometimes', esc: 'off' },
+      chat: { queue: 'hold', suggestions: 0, decisionFocus: 'sometimes', esc: 'off', history: 12 },
       input: { maxVisibleLines: 3 },
     });
     expect(settings.chat).toEqual({
@@ -58,7 +58,10 @@ describe('parseUiSettings', () => {
       suggestions: 0,
       decisionFocus: 'auto',
       esc: 'off',
+      history: 12,
     });
+    expect(parseUiSettings({ chat: { history: 500 } }).chat.history).toBe(40);
+    expect(parseUiSettings({ chat: { history: 0 } }).chat.history).toBe(0);
     expect(settings.input.maxVisibleLines).toBe(3);
   });
 

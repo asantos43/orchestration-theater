@@ -29,7 +29,10 @@ const DEFAULTS: Record<string, string[]> = {
   'palette.open': ['Alt+K', 'F1'],
   'tabs.open.settings': ['F5'],
   'app.quit': ['Ctrl+Q'],
-  'decision.answer': ['Up', 'Down', 'Space', 'Enter'],
+  'decision.answer': ['Enter'],
+  'decision.up': ['Up'],
+  'decision.down': ['Down'],
+  'decision.mark': ['Space'],
 };
 
 describe('environment detection', () => {

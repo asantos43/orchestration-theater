@@ -12,7 +12,11 @@ import {
   type ProcessLauncher,
   type Store,
 } from '@otheater/core';
-import { buildDaemonEvent, type ShellCommandFinishedPayload } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  SHELL_ASK_SOURCE,
+  type ShellCommandFinishedPayload,
+} from '@otheater/protocol';
 import { answersOf, type AskApproval } from '../browser/approval.js';
 import type { CommandConfiner } from '../sandbox-wiring.js';
 import type { Logger } from '../logger.js';
@@ -325,6 +329,7 @@ export class ShellCommandService {
       if (context === 'sent') await this.#sendToDirector(scenarioId, message, attachmentId);
       else {
         await this.#askAboutIt(scenarioId, message, attachmentId, {
+          commandId,
           command,
           exitCode,
           lines: snippet.totalLines,
@@ -404,10 +409,18 @@ export class ShellCommandService {
     scenarioId: string,
     message: string,
     attachmentId: string | null,
-    about: { command: string; exitCode: number | null; lines: number },
+    about: { commandId: string; command: string; exitCode: number | null; lines: number },
   ): Promise<void> {
     const { ask } = this.#o;
     const opened = await ask?.(scenarioId, {
+      // N205: the question says where it comes from; a client does not guess it from the options.
+      source: SHELL_ASK_SOURCE,
+      shell: {
+        commandId: about.commandId,
+        command: about.command.slice(0, EVENT_COMMAND_MAX),
+        exitCode: about.exitCode,
+        lines: about.lines,
+      },
       questions: [
         {
           question: `Send the result of "${oneLine(about.command, QUESTION_COMMAND_MAX)}" (${
