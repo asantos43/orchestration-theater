@@ -639,6 +639,7 @@ export class DirectorSessions {
         cwd,
         mcpServers: [grant.server],
         director: true,
+        telemetry: { scenarioId, attemptId: directorAttemptId(scenarioId) },
         correlation: { scenarioId, attemptId: directorAttemptId(scenarioId), role: DIRECTOR_ROLE },
       });
       try {

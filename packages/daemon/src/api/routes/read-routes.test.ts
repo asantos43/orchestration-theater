@@ -199,7 +199,13 @@ describe('the read routes before and after the services exist', () => {
       // The in-memory store has no backup: that notice is the test's own, not the sandbox's.
       const payload = event.payload as { kind?: string };
       if (event.type === 'daemon.notice' && payload.kind === 'backup_unsupported') continue;
-      if (event.type === 'api.started' || event.type === 'daemon.notice') kinds.push(event.type);
+      if (
+        event.type === 'api.started' ||
+        event.type === 'daemon.notice' ||
+        event.type === 'telemetry.receiver_started'
+      ) {
+        kinds.push(event.type);
+      }
     }
     expect(kinds).toEqual(await startNotices());
   });

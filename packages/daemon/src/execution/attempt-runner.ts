@@ -1087,6 +1087,11 @@ export class AttemptRunner {
         },
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
         ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
+        telemetry: {
+          playId: spec.playId,
+          stageId: spec.demandId,
+          attemptId: attemptIdOf(spec.playId, spec.demandId, spec.attempt),
+        },
         permissions: {
           onDecision: (outcome) => {
             this.#onPermission(context, outcome);
