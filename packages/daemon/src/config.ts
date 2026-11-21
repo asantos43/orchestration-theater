@@ -31,6 +31,7 @@ import {
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
@@ -2250,6 +2251,8 @@ export const DaemonConfigSchema = z
         usage: UiUsageConfigSchema.prefault({}),
         /** The wheel step and the copy limit of the mouse of the terminal interface (P11). */
         tuiMouse: UiTuiMouseConfigSchema.prefault({}),
+        /** Whether the terminal interface opens the setup assistant on its own (P17). */
+        setup: UiSetupConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

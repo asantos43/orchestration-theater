@@ -35,6 +35,7 @@ describe('parseUiSettings', () => {
       mouse: 'full',
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
+      setup: { open: 'auto', readTimeoutMs: 5000 },
     });
   });
 
@@ -118,6 +119,7 @@ describe('parseUiSettings', () => {
       mouse: DEFAULT_UI_SETTINGS.mouse,
       clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
       tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
+      setup: DEFAULT_UI_SETTINGS.setup,
     });
   });
 
@@ -137,6 +139,18 @@ describe('parseUiSettings', () => {
     expect(bad.mouse).toBe('full');
     expect(bad.clipboardCopy).toBe('osc52');
     expect(bad.tuiMouse).toEqual(DEFAULT_UI_SETTINGS.tuiMouse);
+  });
+
+  it('reads ui.setup of P17 and falls back key by key', () => {
+    expect(parseUiSettings({}).setup).toEqual({ open: 'auto', readTimeoutMs: 5000 });
+    expect(parseUiSettings({ setup: { open: 'never', readTimeoutMs: 900 } }).setup).toEqual({
+      open: 'never',
+      readTimeoutMs: 900,
+    });
+    expect(parseUiSettings({ setup: { open: 'always', readTimeoutMs: 5 } }).setup).toEqual(
+      DEFAULT_UI_SETTINGS.setup,
+    );
+    expect(parseUiSettings({ setup: 3 }).setup).toEqual(DEFAULT_UI_SETTINGS.setup);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {

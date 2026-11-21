@@ -3,6 +3,7 @@ import type { ApiClient, DaemonStores } from '@otheater/client';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { TuiKeymap } from '../keys/use-keymap.js';
 import type { UiSettings } from '../settings.js';
+import type { SetupFlow } from '../setup/api.js';
 
 /**
  * What a tab needs from the screen and that `TabContentProps` does not carry (P13): the stores,
@@ -25,6 +26,11 @@ export interface TabHost {
    * (in a microtask), so that key does not also act as a command of the panel.
    */
   readonly capture: RefObject<boolean>;
+  /**
+   * Opens the setup assistant (P17) on a flow, over the whole screen. Absent in a screen that has
+   * no daemon client: the tab says the assistant needs the daemon.
+   */
+  readonly openAssistant?: ((flow: SetupFlow) => void) | undefined;
 }
 
 const TabHostContext = createContext<TabHost | undefined>(undefined);
