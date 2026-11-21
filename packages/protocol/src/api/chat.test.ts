@@ -8,7 +8,9 @@ import {
   ChatServerMessageSchema,
   ChatTicketRequestSchema,
   ChatTicketSchema,
+  CHAT_HISTORY_MAX,
   createChatTicket,
+  shellRefusalOf,
   openChatSocket,
 } from './chat.js';
 
@@ -19,6 +21,8 @@ const clientMessages = [
   { type: 'command', text: '/idea add something' },
   { type: 'command', text: '/cancel', confirm: true },
   { type: 'resume', lastEventId: 120 },
+  { type: 'history', count: 40 },
+  { type: 'message', text: '!ls', clientId: 'sh-1' },
 ];
 
 const serverMessages = [
@@ -112,6 +116,10 @@ describe('the messages of the client', () => {
       { type: 'command', text: 'no slash' },
       { type: 'resume', lastEventId: -1 },
       { type: 'resume' },
+      { type: 'history', count: -1 },
+      { type: 'history', count: CHAT_HISTORY_MAX + 1 },
+      { type: 'history' },
+      { type: 'message', text: '!ls', clientId: '' },
       { type: 'answer', decisionId: 'D1' },
       'message',
       null,
@@ -121,7 +129,13 @@ describe('the messages of the client', () => {
   });
 
   it('lists every type', () => {
-    expect(CHAT_CLIENT_MESSAGE_TYPES).toEqual(['message', 'answer', 'command', 'resume']);
+    expect(CHAT_CLIENT_MESSAGE_TYPES).toEqual([
+      'message',
+      'answer',
+      'command',
+      'resume',
+      'history',
+    ]);
   });
 });
 
@@ -173,5 +187,24 @@ describe('the ticket and the routes', () => {
     expect(openChatSocket.response).toBe(ChatServerMessageSchema);
     expect(openChatSocket.query.safeParse({ ticket: 'x'.repeat(32) }).success).toBe(true);
     expect(openChatSocket.query.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('the origin of the error of a ! line (N205)', () => {
+  it('is read from details.source, with the command and the id of the line', () => {
+    expect(shellRefusalOf({ source: 'shell', command: 'ls', clientId: 'sh-1', other: 1 })).toEqual({
+      command: 'ls',
+      clientId: 'sh-1',
+    });
+    expect(shellRefusalOf({ source: 'shell', command: 'ls' })).toEqual({
+      command: 'ls',
+      clientId: undefined,
+    });
+  });
+
+  it('is nothing for an error without the mark', () => {
+    expect(shellRefusalOf(undefined)).toBeUndefined();
+    expect(shellRefusalOf({})).toBeUndefined();
+    expect(shellRefusalOf({ source: 'other', command: 'ls' })).toBeUndefined();
   });
 });

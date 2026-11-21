@@ -499,11 +499,37 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       textKey: 'actions.decision.answer',
       group: 'decision',
       context: 'decision',
-      keys: terminalKeys(['Up', 'Down', 'Space', 'Enter']),
+      keys: terminalKeys(['Enter']),
       bar: { textKey: 'bar.decision.answer', order: 15 },
     },
+    // The other keys of the decision card (P26 of docs/18, N203): the card reads them from the keymap,
+    // so `ui.keymap.overrides` reaches them. The number of an option stays the digit itself.
+    {
+      id: 'decision.up',
+      textKey: 'actions.decision.up',
+      group: 'decision',
+      context: 'decision',
+      palette: false,
+      keys: terminalKeys(['Up']),
+    },
+    {
+      id: 'decision.down',
+      textKey: 'actions.decision.down',
+      group: 'decision',
+      context: 'decision',
+      palette: false,
+      keys: terminalKeys(['Down']),
+    },
+    {
+      id: 'decision.mark',
+      textKey: 'actions.decision.mark',
+      group: 'decision',
+      context: 'decision',
+      palette: false,
+      keys: terminalKeys(['Space']),
+    },
     // The chat of the Producer (P12 of docs/18): the Director's decision card, the / suggestions and
-    // the stop of the Director's reply. `decision.answer` above stays the card's own keys.
+    // the stop of the Director's reply.
     {
       id: 'decision.aside',
       textKey: 'actions.decision.aside',

@@ -4,6 +4,7 @@ import { buildDaemonEvent } from './events.js';
 import {
   ShellCommandFinishedPayloadSchema,
   ShellCommandStartedPayloadSchema,
+  shellAskMarkOf,
 } from './shell-events.js';
 
 const finished = {
@@ -59,5 +60,23 @@ describe('the events of the ! command (N43, N187)', () => {
     });
     expect(event.type).toBe('chat.shell_command.finished');
     expect(event.schemaVersion).toBe(1);
+  });
+});
+
+describe('the mark of the question of context: ask (N205)', () => {
+  const shell = { commandId: 'sh_1', command: 'ls', exitCode: 0, lines: 3 };
+
+  it('is read from source and shell of the input of the question', () => {
+    expect(shellAskMarkOf({ questions: [], source: 'shell', shell })).toEqual(shell);
+    expect(shellAskMarkOf({ source: 'shell', shell: { ...shell, exitCode: null } })).toMatchObject({
+      exitCode: null,
+    });
+  });
+
+  it('is nothing for a question of the Director, or a mark that does not fit', () => {
+    expect(shellAskMarkOf({ questions: [] })).toBeUndefined();
+    expect(shellAskMarkOf({ source: 'browser', shell })).toBeUndefined();
+    expect(shellAskMarkOf({ source: 'shell' })).toBeUndefined();
+    expect(shellAskMarkOf({ source: 'shell', shell: { command: 'ls' } })).toBeUndefined();
   });
 });

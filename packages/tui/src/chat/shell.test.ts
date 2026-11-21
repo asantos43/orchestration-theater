@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import {
-  isShellLine,
-  isShellQuestion,
-  oneLine,
-  outputLines,
-  shellCommandOf,
-  SHELL_KEEP_LABEL,
-  SHELL_SEND_LABEL,
-} from './shell.js';
+import { isShellLine, oneLine, outputLines, shellCommandOf } from './shell.js';
 
 describe('a line that is a ! command', () => {
   it('is the line whose first character that is not blank is !', () => {
@@ -24,35 +16,6 @@ describe('a line that is a ! command', () => {
     expect(shellCommandOf('  !   git status  ')).toBe('git status');
     expect(shellCommandOf('!')).toBe('');
     expect(shellCommandOf('!echo hi!')).toBe('echo hi!');
-  });
-});
-
-describe('the question of context: ask', () => {
-  const question = (labels: string[]): Record<string, unknown> => ({
-    questions: [
-      {
-        question: 'Send it?',
-        options: labels.map((label) => ({ label, description: '' })),
-      },
-    ],
-  });
-
-  it('is the one question with the options Send and Keep, in that order', () => {
-    expect(isShellQuestion(question([SHELL_SEND_LABEL, SHELL_KEEP_LABEL]))).toBe(true);
-  });
-
-  it('is not another question: other labels, other order, more options, more questions, none', () => {
-    expect(isShellQuestion(question(['sqlite', 'postgres']))).toBe(false);
-    expect(isShellQuestion(question([SHELL_KEEP_LABEL, SHELL_SEND_LABEL]))).toBe(false);
-    expect(isShellQuestion(question([SHELL_SEND_LABEL, SHELL_KEEP_LABEL, 'Other']))).toBe(false);
-    const two = question([SHELL_SEND_LABEL, SHELL_KEEP_LABEL]);
-    expect(
-      isShellQuestion({
-        questions: [...(two.questions as unknown[]), ...(two.questions as unknown[])],
-      }),
-    ).toBe(false);
-    expect(isShellQuestion({})).toBe(false);
-    expect(isShellQuestion({ questions: ['x'] })).toBe(false);
   });
 });
 

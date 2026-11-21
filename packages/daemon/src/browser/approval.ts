@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { JsonValue } from '@otheater/core';
-import { buildDaemonEvent, type BrowserAction } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type BrowserAction,
+  type SHELL_ASK_SOURCE,
+  type ShellAskMark,
+} from '@otheater/protocol';
 import { ToolFailure } from '../mcp/handlers.js';
 import { ToolRefusal } from '../tools/context.js';
 
@@ -15,7 +20,15 @@ export interface ApprovalQuestion {
 
 export type AskApproval = (
   scenarioId: string,
-  input: { questions: ApprovalQuestion[] },
+  input: {
+    questions: ApprovalQuestion[];
+    /**
+     * Where the question comes from, for a client to tell it apart (P26, N205): `shell` for the
+     * question of `chat.shell_command.context: ask`, with `shell` saying what it is about.
+     */
+    source?: typeof SHELL_ASK_SOURCE;
+    shell?: ShellAskMark;
+  },
 ) => Promise<{ readonly decisionId: string; readonly answer: Promise<JsonValue> } | undefined>;
 
 export const APPROVE_LABEL = 'Allow';
