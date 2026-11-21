@@ -144,6 +144,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # `verify licenses` reads the crates of native/ offline (`cargo metadata --offline`): without
+      # this fetch the first docs-only PR (#245) failed with "no matching package named windows-sys".
+      - run: cargo fetch --locked
+        working-directory: native/job-launcher
       - run: pnpm exec tsc -b tools/verify/tsconfig.src.json
       - run: pnpm verify:docs
 
