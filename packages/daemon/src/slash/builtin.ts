@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import {
-  AdapterUnavailable,
-  InvalidInput,
-  type JsonValue,
-  type PlayRecord,
-  type ProfileFact,
-} from '@otheater/core';
+import { AdapterUnavailable, InvalidInput, type JsonValue, type ProfileFact } from '@otheater/core';
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { redactConfig } from '../api/routes/redact.js';
-import { playOf, scenarioOf } from '../api/routes/projections.js';
+import { isPausedPlay, playOf, scenarioOf } from '../api/routes/projections.js';
 import { REMOVED_REASON } from '../executors/service.js';
 import { resolveScenarioRoleExecutors } from '../orchestration/role-executors.js';
 import type { SlashAction, SlashRunContext, SlashOutcome } from './types.js';
@@ -25,11 +19,7 @@ const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as
 
 const time = (ms: number): string => new Date(ms).toISOString();
 
-/** Whether the play is paused: that lives in the snapshot of its machine (N176). */
-export function isPausedPlay(play: PlayRecord): boolean {
-  const context = (play.snapshot as { context?: { paused?: unknown } } | null)?.context;
-  return context?.paused !== undefined && context.paused !== null;
-}
+export { isPausedPlay };
 
 /** Erases the type of the arguments, so the registry keeps one list of actions. */
 function define<Args>(action: SlashAction<Args>): SlashAction {
@@ -278,7 +268,7 @@ const plays = define({
             }),
           ),
         ),
-        json(facts.plays.map((play) => ({ ...playOf(play), paused: isPausedPlay(play) }))),
+        json(facts.plays.map(playOf)),
       ),
     );
   },

@@ -287,6 +287,28 @@ describe('scenarios, plays and decisions', () => {
     expect(play.demands.map((item) => item.id)).toEqual(['D1']);
   });
 
+  it('says in `paused` whether a play is paused, from the snapshot, and never for a finished one (P25)', async () => {
+    await seedScenario('s1');
+    const { store } = daemon;
+    const snapshot = { context: { paused: { mode: 'drain', at: 1 } } };
+    await store.plays.update('s1-p1', { snapshot });
+    const listed = await page<{ id: string; paused: boolean }>('/v1/scenarios/s1/plays');
+    expect(listed.items[0]).toMatchObject({ id: 's1-p1', paused: true });
+    const shown = (await get('/v1/plays/s1-p1')).json<{ play: { paused: boolean } }>();
+    expect(shown.play.paused).toBe(true);
+
+    await store.plays.update('s1-p1', { snapshot: { context: { paused: null } } });
+    expect((await get('/v1/plays/s1-p1')).json<{ play: { paused: boolean } }>().play.paused).toBe(
+      false,
+    );
+
+    // A play that finished is not paused, whatever its last snapshot says.
+    await store.plays.update('s1-p1', { snapshot, state: 'DONE', finishedAt: 9 });
+    expect((await get('/v1/plays/s1-p1')).json<{ play: { paused: boolean } }>().play.paused).toBe(
+      false,
+    );
+  });
+
   it('answers 404 not_found for an id that does not exist', async () => {
     for (const path of [
       '/v1/scenarios/none',

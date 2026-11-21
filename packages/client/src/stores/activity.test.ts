@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiEventEnvelope } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
-import { applyEvents, initialActivity, installActivity, reduceActivity } from './index.js';
-import { event } from './fixtures.test-support.js';
+import {
+  UNKNOWN_MODEL,
+  applyEvents,
+  initialActivity,
+  installActivity,
+  reduceActivity,
+} from './index.js';
+import { attempt, event, play } from './fixtures.test-support.js';
 
 const EXECUTOR = { client: 'claude', profile: 'main', model: 'sonnet' };
 
@@ -157,6 +163,46 @@ describe('the activity store', () => {
     );
     expect(done.pausedPlays).toEqual({});
     expect(done.actors).toEqual({});
+  });
+
+  it('builds the Actors and the paused plays from the snapshot, for the open plays only (P25)', () => {
+    const plays = [
+      play('P1', 'S1', { paused: true, updatedAt: 42 }),
+      play('P2', 'S1'),
+      play('P0', 'S1', { paused: true, finishedAt: 5 }),
+    ];
+    const attempts = [
+      attempt('P1', 'D1', { state: 'awaiting_resume', cause: 'paused', paused: 'play' }),
+      attempt('P2', 'D1', { model: null }),
+      attempt('P0', 'D1'),
+    ];
+    const state = installActivity(9, plays, attempts);
+    expect(state).toMatchObject({ loaded: true, lastEventId: 9 });
+    expect(state.pausedPlays).toEqual({ P1: 42 });
+    expect(Object.keys(state.actors).sort()).toEqual(['P1/D1/1', 'P2/D1/1']);
+    expect(state.actors['P1/D1/1']).toMatchObject({
+      playId: 'P1',
+      demandId: 'D1',
+      paused: 'play',
+      executor: { client: 'codex', profile: 'main', model: 'gpt-5' },
+    });
+    // The daemon lost the model (it restarted): the store says `?`, not a made-up name.
+    expect(state.actors['P2/D1/1']).toMatchObject({
+      paused: undefined,
+      executor: { model: UNKNOWN_MODEL },
+    });
+  });
+
+  it('goes on from the snapshot: the events resume the Actor and the play (P25)', () => {
+    const plays = [play('P1', 'S1', { paused: true })];
+    const attempts = [attempt('P1', 'D1', { state: 'awaiting_resume', paused: 'play' })];
+    const state = installActivity(9, plays, attempts);
+    const resumed = applyEvents(
+      state,
+      [transition(10, 'RESUME', 'EXECUTING', 'EXECUTING')],
+      reduceActivity,
+    );
+    expect(resumed.pausedPlays).toEqual({});
   });
 
   it('is not woken by an event that is not its business', () => {

@@ -508,6 +508,19 @@ export class AttemptRunner {
   }
 
   /**
+   * P25 (N200 item 1): what the daemon holds in memory about an attempt that is in flight: the model
+   * its current Executor works with (it changes when the baton passes) and who paused it, if
+   * anyone. `undefined` for an attempt no live process holds (it ended, or the daemon restarted).
+   */
+  liveAttempt(
+    attemptId: string,
+  ): { readonly model: string; readonly paused: PauseOrigin | undefined } | undefined {
+    const context = this.#running.get(attemptId)?.context;
+    if (context === undefined) return undefined;
+    return { model: context.spec.executor.model, paused: context.held?.origin };
+  }
+
+  /**
    * N176: pauses an attempt in flight. The turn in progress is interrupted with the cause `paused`,
    * the checkpoint is saved and the session is closed; the attempt waits for `resumeAttempt` (or a
    * cancel). Resolves when the pause took hold, with `false` if the attempt ended first. A pause

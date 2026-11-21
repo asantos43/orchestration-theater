@@ -182,6 +182,7 @@ describe('plays', () => {
       createdAt: 1_700_000_000_001,
       updatedAt: 1_700_000_000_004,
       finishedAt: 1_700_000_000_004,
+      paused: false,
     });
     expect(ApiPlaySchema.safeParse(state.byId.P1).success).toBe(true);
     expect(state.lastEventId).toBe(4);
@@ -194,6 +195,24 @@ describe('plays', () => {
     expect(cancelled.byId.P1?.finishedAt).toBe(1_700_000_000_005);
     expect(selectOpenPlays(mid).map((p) => p.id)).toEqual(['P1']);
     expect(selectOpenPlays(cancelled)).toEqual([]);
+  });
+
+  it('keeps the `paused` flag of a play from PAUSE and RESUME, and clears it when the play ends (P25)', () => {
+    const named = (id: number, name: string, to = 'EXECUTING'): ApiEventEnvelope => ({
+      ...playTransitioned(id, 'S1', 'P1', to),
+      payload: { event: name, from: 'EXECUTING', to, counters: {}, effects: [] },
+    });
+    const base = applyEvents(initialPlays(), sequence.slice(0, 3), reducePlays);
+    expect(base.byId.P1?.paused).toBe(false);
+    const paused = applyEvents(base, [named(5, 'PAUSE')], reducePlays);
+    expect(paused.byId.P1?.paused).toBe(true);
+    // Another transition keeps the flag; RESUME clears it; a final state clears it too.
+    const moved = applyEvents(paused, [named(6, 'SOMETHING')], reducePlays);
+    expect(moved.byId.P1?.paused).toBe(true);
+    expect(applyEvents(moved, [named(7, 'RESUME')], reducePlays).byId.P1?.paused).toBe(false);
+    expect(applyEvents(moved, [named(7, 'CANCEL', 'CANCELLED')], reducePlays).byId.P1?.paused).toBe(
+      false,
+    );
   });
 
   it('gives the same state when the same sequence is applied twice', () => {
