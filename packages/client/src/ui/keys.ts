@@ -29,6 +29,7 @@ export const UI_TAB_CONTEXTS = [
   'usage',
   'trajectories',
   'directives',
+  'direct',
   'settings',
 ] as const;
 export type UiTabContext = (typeof UI_TAB_CONTEXTS)[number];

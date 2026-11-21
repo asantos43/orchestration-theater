@@ -8,6 +8,7 @@ import { commandRegistrar } from './command.js';
 import { registerConfigCommands } from './config-commands.js';
 import { registerDecisionCommands } from './decision-commands.js';
 import type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
+import { registerDirectCommands, registerDirectRoutes } from './direct.js';
 import { registerExecutorRoutes } from './executors.js';
 import { registerIdeaCommands } from './idea-commands.js';
 import { registerIdeaRoutes } from './ideas.js';
@@ -45,6 +46,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerLayoutRoutes(handlers, deps);
   registerSlashRoutes(handlers, deps);
   registerSetupRoutes(handlers, deps);
+  registerDirectRoutes(handlers, deps);
   registerTrajectoryRoutes(handlers, deps);
 }
 
@@ -68,4 +70,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerLayoutCommands(register, deps);
   registerSlashCommands(register, deps);
   registerSetupCommands(register, deps);
+  registerDirectCommands(register, deps);
 }

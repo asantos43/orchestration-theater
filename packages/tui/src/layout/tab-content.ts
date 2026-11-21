@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createElement } from 'react';
+import { directTab } from '../tabs/direct/index.js';
 import { DirectivesTab, SECTION_IDS as DIRECTIVES_SECTIONS } from '../tabs/directives/index.js';
 import { overviewTab } from '../tabs/overview/index.js';
 import { settingsTab } from '../tabs/settings/index.js';
@@ -19,6 +20,7 @@ export const TAB_CONTENT: TabContentMap = {
   overview: overviewTab, // P13
   trajectories: trajectoriesTab, // P14
   usage: usageTab, // P13
+  direct: directTab, // P19
   directives: {
     sections: DIRECTIVES_SECTIONS,
     render: (props) => createElement(DirectivesTab, props),

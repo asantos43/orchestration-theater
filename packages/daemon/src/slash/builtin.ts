@@ -628,6 +628,34 @@ const effort = define({
   },
 });
 
+const direct = define({
+  id: 'direct',
+  origin: 'daemon',
+  group: 'session',
+  descriptionKey: 'desc.direct',
+  argsKey: 'args.direct',
+  permission: 'write',
+  confirm: false,
+  appliesTo: { scoped: true, states: ['active'] },
+  args: REASON,
+  async run(context) {
+    const { args, t, deps, scenario } = context;
+    if (deps.direct === undefined) throw new AdapterUnavailable(t('error.noDirect'));
+    const opened = await deps.direct.open(scenario.id, { executor: args });
+    if (opened.session === undefined) {
+      return done(t('out.direct.confirm'), { status: opened.status, workspace: opened.workspace });
+    }
+    return done(
+      t('out.direct.opened', {
+        id: opened.session.id,
+        executor: opened.session.executor,
+        workspace: opened.workspace,
+      }),
+      { status: opened.status, session: opened.session.id },
+    );
+  },
+});
+
 const profile = define({
   id: 'profile',
   origin: 'daemon',
@@ -855,6 +883,7 @@ export const BUILTIN_ACTIONS: readonly SlashAction[] = [
   model,
   effort,
   profile,
+  direct,
   directives,
   config,
   trajectory,

@@ -74,6 +74,7 @@ import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
 import { AttachmentService } from './scenarios/attachments.js';
+import { DirectSessionService } from './direct/service.js';
 import { ShellCommandService } from './shell/service.js';
 import { createDaemonExhaustion } from './orchestration/exhaustion-wiring.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
@@ -585,6 +586,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // the services it reads exist, so it asks for the registry at each command.
   const slashRef: { current: SlashCommandService | undefined } = { current: undefined };
   let shellCommands: ShellCommandService | undefined;
+  let direct: DirectSessionService | undefined;
   if (execution !== undefined) {
     // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
     orchestration = startOrchestration({
@@ -640,6 +642,21 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         terminal: config.terminal,
       }),
       logger,
+    });
+    // P19 (Phase 7, N44/N190): the direct sessions with an Actor. They take a lease of the same pool
+    // as any Actor, so the launcher, the sandbox and the quota of the profile apply.
+    direct = new DirectSessionService({
+      store,
+      config,
+      clock,
+      logger,
+      pool: execution.pool,
+      selection: orchestration.selection,
+      registries,
+      vcs: composition.vcs,
+      worktreeRoot: paths.worktrees,
+      ideas: orchestration.ideas,
+      opening: orchestration.opening,
     });
     // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
     registerChatRoutes({
@@ -829,6 +846,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('api', () => api.stop());
       // The `!` commands end (their whole process tree) before the services they report to stop.
       await attempt('shell commands', async () => shellCommands?.close());
+      // The direct sessions end (their worktrees are taken) before the pool they lease from stops.
+      await attempt('direct sessions', async () => direct?.shutdown());
       // A login left open is cancelled: its process must not outlive the daemon.
       await attempt('logins', () => logins.stop());
       await attempt('scheduler', () => scheduler.stop());
@@ -922,6 +941,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     channel: orchestration?.channel,
     runner: orchestration?.runner,
     directors: orchestration?.directors,
+    direct,
     pauseMode: () => config.pause.mode,
     trajectory,
   });
@@ -959,6 +979,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   registerReadRoutes(api.handlers, {
     store,
     slash,
+    direct,
     trajectory,
     config,
     quota,
@@ -1012,6 +1033,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     ideas: orchestration?.ideas,
     slash,
     setup,
+    direct,
   });
 
   const handle: DaemonHandle = {
