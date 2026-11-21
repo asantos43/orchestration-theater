@@ -2,12 +2,12 @@
 
 Versão 1, de 2026-11-20. Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
-O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levanta oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), resumidas em "Decisões que surgem deste plano", no fim. **Nenhum passo de código começa antes de o dono decidir a N185 (dependências) e a N192 (merge).**
+O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levantou oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), tomadas pelo dono em 2026-11-20, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim.
 
 ## Como usar
 
 - Cada passo tem uma branch e um PR com título "Fase 7: ...". O PR que conclui um passo também muda o estado dele na tabela de passos.
-- O merge é feito pelo `merge-pr.sh`, com squash, depois da CI verde e com a branch atualizada com a main. Nunca com `gh pr merge --auto`. A autorização sem ok por PR das Fases 3 a 6 (N171) **não** cobre a Fase 7, até a decisão da N192.
+- O merge é feito pelo `merge-pr.sh`, com squash, depois da CI verde e com a branch atualizada com a main. Nunca com `gh pr merge --auto`. A autorização sem ok por PR das Fases 3 a 6 (N171) vale também para a Fase 7 (N192).
 - Todo passo exige, além do aceite próprio, `build`, `lint`, `format:check`, `test`, `verify` e `deps` verdes na máquina e na CI. O job `linux` roda em todo PR. Os jobs `cross` e `windows-launcher` rodam nos PRs que mexem em código (N162).
 - O que está marcado **[proposta]** é detalhe deste plano, ainda sem decisão. Todo padrão novo vira uma chave de configuração, com um padrão e os seus modos. Se a chave mudar algum comportamento visível, a escolha vai ao dono, por múltipla escolha, ao abrir o passo.
 - Paralelismo:
@@ -58,7 +58,7 @@ O que já existe foi conferido no código em 2026-11-20, no commit `29af929` **[
 
 ## Dependências novas
 
-Dados do registro npm, consultados em 2026-11-20 **[S]**. Todas são MIT. A decisão é a N185.
+Dados do registro npm, consultados em 2026-11-20 **[S]**. Todas são MIT. Aprovadas pelo dono na N185 (2026-11-20).
 
 | Pacote | Versão | Licença | Publicada | Passo | Observação |
 |---|---|---|---|---|---|
@@ -79,7 +79,7 @@ Não entram **[proposta]**:
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano e decisões (este documento) | nada | nada | em revisão |
+| P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #203) |
 | P1 | Eventos que faltam (N173) | P0 | P2, P4, P5, P6, P7, P8 | a fazer |
 | P2 | Pausar e retomar peça; pausar, retomar e cancelar Ator (N176) | P0 | P1, P4, P5, P6, P7, P8 | a fazer |
 | P3 | Registro de comandos `/` no daemon (N44) | P2 | P4 a P11 | a fazer |
@@ -87,7 +87,7 @@ Não entram **[proposta]**:
 | P5 | Login oficial pela API (N186) | P0 | P1, P2, P4, P6 a P8 | a fazer |
 | P6 | Comando `!` do Produtor no daemon (N43, N187) | P0 | P1, P2, P4, P5, P7, P8 | a fazer |
 | P7 | Registro de interface e chaves `ui.*` no `packages/client` | P0 | P1, P2, P4 a P6, P8 | a fazer |
-| P8 | `packages/tui`: base, desempenho e testes | P0 (N185) | P1, P2, P4 a P7 | a fazer |
+| P8 | `packages/tui`: base, desempenho e testes | P0 | P1, P2, P4 a P7 | a fazer |
 | P9 | Layout: lateral, chat, painel de abas, rolagem e paleta | P7, P8 | P3, P10, P11 | a fazer |
 | P10 | Caixa de texto do Produtor (N35) | P7, P8 | P3, P9, P11 | a fazer |
 | P11 | Mouse e cópia (N34, N36) | P9 | P3, P10 | a fazer |
@@ -156,7 +156,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 ### P5. Login oficial pela API (N186; §5.6, N158)
 
-**Escopo** (na forma recomendada da N186):
+**Escopo** (na forma escolhida na N186):
 - rotas `POST /v1/profiles/:client/:name/login` (abre o `LoginFlow` do adaptador e devolve o modo, a URL e o código), `POST .../login/code` (o `submitCode`), `POST .../login/cancel` e o fim do login por evento **[proposta]**;
 - eventos `profile.login.started`, `profile.login.completed` e `profile.login.failed`, sem token, sem código e sem URL no log. A URL e o código vão só na resposta da rota a quem abriu o login;
 - no modo `terminal`, que exige um terminal de verdade (o `opencode auth login`, N155), a rota responde que o login é local, e a TUI suspende a tela e roda `ot profile exec <cliente>/<perfil> login` no próprio terminal (P16).
@@ -165,7 +165,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 ### P6. Comando `!` do Produtor no daemon (N43, N187; §5.13)
 
-**Escopo** (na forma recomendada da N187):
+**Escopo** (na forma escolhida na N187):
 - uma mensagem do chat que começa com `!` roda como comando, no worktree do cenário, pelo `ProcessLauncher`, sob o modo de `app.terminal` (`sandbox`, padrão, `host` ou `off`), com a entrada padrão fechada e sem PTY. Não vai ao Diretor;
 - a saída vira um anexo `terminal_snippet` (5.19), com `terminal.snippet.max_lines` (padrão 200) e o arquivo inteiro no log da sessão. Pela `chat.shell_command.context` (`auto | ask | never`, padrão `auto`), entra na conversa sempre, depois de perguntar ou nunca;
 - um comando que espera entrada recebe fim de arquivo e termina; a conversa registra que ele pediu entrada. O caso interativo, com a TUI entregando o terminal, fica para quando houver PTY (N187);
@@ -265,13 +265,13 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 ### P19. Sessão direta com um Ator (N44, N190; §5.20)
 
-**Escopo** (se a N190 a mantiver nesta fase): a aba de sessão direta no cenário, com o Executor escolhido da lista do perfil, a chave `direct_session.workspace: worktree | readonly | scenario` (padrão `worktree`; `scenario` pede confirmação), a cota e o orçamento do perfil, o lançador e a sandbox, o log e as trajetórias, as permissões pedidas na própria aba, os comandos do cliente e a promoção do resultado a demanda ou peça. Daemon e TUI no mesmo passo, porque um não se testa sem o outro **[proposta]**.
+**Escopo** (mantida nesta fase pela N190, fora do aceite): a aba de sessão direta no cenário, com o Executor escolhido da lista do perfil, a chave `direct_session.workspace: worktree | readonly | scenario` (padrão `worktree`; `scenario` pede confirmação), a cota e o orçamento do perfil, o lançador e a sandbox, o log e as trajetórias, as permissões pedidas na própria aba, os comandos do cliente e a promoção do resultado a demanda ou peça. Daemon e TUI no mesmo passo, porque um não se testa sem o outro **[proposta]**.
 
 **Aceite:** com o `fake-agent`, a sessão abre, conversa, roda um comando do cliente e é promovida a demanda; com `readonly`, uma escrita é barrada.
 
 ### P20. Terminais: testes de fumaça e roteiro manual (N191; §5.13)
 
-**Escopo** (na forma recomendada da N191):
+**Escopo** (na forma escolhida na N191):
 - um teste de fumaça na CI Linux que abre a TUI num tmux de verdade (instalado no job), manda as teclas do mapa e confere os quadros, como o `spikes/tui-keys`;
 - os testes do `ink-testing-library` também nos jobs `cross` (Windows e macOS), que já rodam o `pnpm check`;
 - um roteiro manual curto (`tools/acceptance/tui-terminals.md` **[proposta]**) para o dono passar no Windows Terminal e num terminal de macOS ou Linux: teclas, mouse, cópia, colagem, redimensionar, Option como Meta no macOS e SSH. O que não for conferido fica **[N]** na tabela de terminais.
@@ -298,7 +298,7 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 
 ## Decisões que surgem deste plano
 
-Abertas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), a decidir pelo dono por múltipla escolha. A recomendação vem primeiro:
+Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item:
 - **N185, dependências novas:** `ink` 8.0.0, `react` 19.3.1, `@types/react` 19.3.0, `@inkjs/ui` 2.0.0, `ink-testing-library` 4.0.0 e `react-i18next` 17.1.13, todas MIT. Alternativas: sem o `@inkjs/ui` (componentes próprios); sem o `react-i18next` (um gancho próprio sobre o i18next).
 - **N186, login oficial na TUI:** o daemon expõe o `LoginFlow` pela REST, e o modo `terminal` suspende a TUI e roda o login no próprio terminal. Alternativas: sempre suspender a TUI e rodar o CLI; ou o daemon com PTY transmitindo o login (exige `node-pty`).
 - **N187, `!` nesta fase:** no daemon, sem PTY e com a entrada fechada; o caso interativo fica para quando houver PTY. Alternativas: `node-pty` já nesta fase, com a TUI entregando o terminal; ou o `!` inteiro na Fase 12.

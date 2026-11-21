@@ -3344,7 +3344,7 @@ Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/17
 **Critério de aceite:** criar um projeto, adicionar uma assinatura (login oficial dentro da TUI), configurar papéis, pedir uma necessidade no chat, responder a uma decisão e acompanhar até o PR só pela TUI, no Windows Terminal e num terminal de macOS/Linux, nos dois idiomas.
 **Estimativa:** 2,5–3 semanas (era 2–2,5 como fase opcional; agora cobre configuração e plugins completos).
 
-Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/18](../18-PLANO-DA-FASE-7.md) (2026-11-20). Ele leva a N173 e a N176, da Fase 6, e abre as decisões N185 a N192 (dependências, login na TUI, `!`, recarga da configuração, aba Plugins, sessão direta, terminais do aceite e merge).
+Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/18](../18-PLANO-DA-FASE-7.md) (2026-11-20). Ele leva a N173 e a N176, da Fase 6, e traz as decisões N185 a N192 (dependências, login na TUI, `!`, recarga da configuração, aba Plugins, sessão direta, terminais do aceite e merge), tomadas pelo dono no mesmo dia, todas iguais à recomendação.
 
 ### Fase 8 — Observabilidade
 
