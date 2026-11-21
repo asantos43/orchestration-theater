@@ -11,6 +11,7 @@ import {
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
+  UI_USAGE_SECTIONS,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
 } from './ui-config.js';
@@ -113,11 +114,39 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiUsageConfigSchema.parse({})).toEqual({
       groupBy: 'profile',
       refreshSeconds: 30,
+      sections: ['totals', 'groups', 'budget', 'trend', 'bottlenecks', 'play', 'telemetry'],
+      trendDays: 14,
+      spanRows: 40,
     });
     expect(UiUsageConfigSchema.parse({ groupBy: 'none' }).groupBy).toBe('none');
     expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
     expect(UiUsageConfigSchema.parse({ refreshSeconds: 0 }).refreshSeconds).toBe(0);
     expect(UiUsageConfigSchema.safeParse({ refreshSeconds: 4000 }).success).toBe(false);
+  });
+
+  it('takes the sections, the trend window and the span rows of the Usage tab (P10)', () => {
+    expect(UI_USAGE_SECTIONS).toEqual([
+      'totals',
+      'groups',
+      'budget',
+      'trend',
+      'bottlenecks',
+      'play',
+      'telemetry',
+    ]);
+    expect(UiUsageConfigSchema.parse({ sections: ['telemetry', 'totals'] }).sections).toEqual([
+      'telemetry',
+      'totals',
+    ]);
+    expect(UiUsageConfigSchema.parse({ sections: [] }).sections).toEqual([]);
+    expect(UiUsageConfigSchema.safeParse({ sections: ['totals', 'totals'] }).success).toBe(false);
+    expect(UiUsageConfigSchema.safeParse({ sections: ['costs'] }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({ trendDays: 90 }).trendDays).toBe(90);
+    expect(UiUsageConfigSchema.safeParse({ trendDays: 0 }).success).toBe(false);
+    expect(UiUsageConfigSchema.safeParse({ trendDays: 91 }).success).toBe(false);
+    expect(UiUsageConfigSchema.parse({ spanRows: 5 }).spanRows).toBe(5);
+    expect(UiUsageConfigSchema.safeParse({ spanRows: 4 }).success).toBe(false);
+    expect(UiUsageConfigSchema.safeParse({ spanRows: 501 }).success).toBe(false);
   });
 
   it('has the default of the newProject block (P22), takes its other modes and refuses the rest', () => {

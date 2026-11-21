@@ -24,9 +24,19 @@ describe('the settings of the Overview and Usage tabs', () => {
     });
     expect(parseOverviewSettings({ hiddenEvents: [] }).hiddenEvents).toEqual([]);
     expect(parseUsageSettings({ groupBy: 'executor', refreshSeconds: 0 })).toEqual({
+      ...DEFAULT_USAGE_SETTINGS,
       groupBy: 'executor',
       refreshSeconds: 0,
     });
+    expect(
+      parseUsageSettings({ sections: ['telemetry', 'totals'], trendDays: 30, spanRows: 100 }),
+    ).toEqual({
+      ...DEFAULT_USAGE_SETTINGS,
+      sections: ['telemetry', 'totals'],
+      trendDays: 30,
+      spanRows: 100,
+    });
+    expect(parseUsageSettings({ sections: [] }).sections).toEqual([]);
   });
 
   it('never throw on invalid values', () => {
@@ -35,5 +45,10 @@ describe('the settings of the Overview and Usage tabs', () => {
     );
     expect(parseOverviewSettings('text')).toEqual(DEFAULT_OVERVIEW_SETTINGS);
     expect(parseUsageSettings({ groupBy: 4, refreshSeconds: -1 })).toEqual(DEFAULT_USAGE_SETTINGS);
+    expect(
+      parseUsageSettings({ sections: ['totals', 'totals'], trendDays: 0, spanRows: 9999 }),
+    ).toEqual(DEFAULT_USAGE_SETTINGS);
+    expect(parseUsageSettings({ sections: ['costs'] })).toEqual(DEFAULT_USAGE_SETTINGS);
+    expect(parseUsageSettings({ sections: 'trend' })).toEqual(DEFAULT_USAGE_SETTINGS);
   });
 });

@@ -14,9 +14,15 @@ const STORE: TelemetryStore = {
   readSpans: () => Promise.resolve([]),
   readMetrics: () => Promise.resolve([]),
   readLogs: () => Promise.resolve([]),
+  readSince: () => Promise.resolve([]),
   readCursor: () => Promise.resolve(null),
   writeCursor: () => Promise.resolve(),
   deleteOlderThan: () => Promise.resolve({ spans: 0, metrics: 0, logs: 0 }),
+  replaceRollupDay: () => Promise.resolve(),
+  readRollups: () => Promise.resolve([]),
+  readRollupsReadyThrough: () => Promise.resolve(null),
+  markRollupsReady: () => Promise.resolve(),
+  deleteRollupsBefore: () => Promise.resolve(0),
   health: () =>
     Promise.resolve({
       state: 'ok',

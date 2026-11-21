@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../../ink.test-support.js';
 import { fakeOnline, MemoryLayoutFile, type FakeOnline } from '../../layout.test-support.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings } from '../../settings.js';
+import { stubPanels } from './usage-panels.test-support.js';
 
 /**
  * The Usage tab over `ink-testing-library` and a fake daemon that is online (N57): what it draws
@@ -90,22 +91,23 @@ interface Stub {
   usage: () => Promise<ApiUsage>;
 }
 
-/** Answers `getUsage` and `getBudget` of the client from the fixtures above. */
+/**
+ * Answers `getUsage` and `getBudget` of the client from the fixtures above; the three routes of
+ * the telemetry panels (P10) answer their own fixtures (`usage-panels.test-support.ts`).
+ */
 function stubCalls(fake: FakeOnline, usage: Stub['usage'] = () => Promise.resolve(USAGE)): Stub {
   const stub: Stub = { calls: [], usage };
-  vi.spyOn(fake.client, 'call').mockImplementation(
-    (route: unknown, input?: { query?: unknown }) => {
-      if (route === API_ROUTES.getUsage) {
-        stub.calls.push({ id: 'getUsage', query: input?.query });
-        return stub.usage();
-      }
-      if (route === API_ROUTES.getBudget) {
-        stub.calls.push({ id: 'getBudget', query: undefined });
-        return Promise.resolve(BUDGET);
-      }
-      return Promise.reject(new Error('unexpected route'));
-    },
-  );
+  stubPanels(fake, (route: unknown, input?: { query?: unknown }) => {
+    if (route === API_ROUTES.getUsage) {
+      stub.calls.push({ id: 'getUsage', query: input?.query });
+      return stub.usage();
+    }
+    if (route === API_ROUTES.getBudget) {
+      stub.calls.push({ id: 'getBudget', query: undefined });
+      return Promise.resolve(BUDGET);
+    }
+    return undefined;
+  });
   return stub;
 }
 

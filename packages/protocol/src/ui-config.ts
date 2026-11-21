@@ -279,13 +279,48 @@ export const UiOverviewConfigSchema = z.strictObject({
 export type UiOverviewConfig = z.output<typeof UiOverviewConfigSchema>;
 
 /**
+ * The sections of the Usage tab, by the name `ui.usage.sections` takes (the id of a section is
+ * `usage.<name>`). The first three are P13 of docs/18; the others are the telemetry panels of
+ * Phase 8, P10 [proposta]: `trend` (tokens and cost by day), `bottlenecks` (where the time goes and
+ * what is waited for), `play` (the tree of spans of the play followed by the Trajectories tab) and
+ * `telemetry` (the receiver, the base and the export).
+ */
+export const UI_USAGE_SECTIONS = [
+  'totals',
+  'groups',
+  'budget',
+  'trend',
+  'bottlenecks',
+  'play',
+  'telemetry',
+] as const;
+export type UiUsageSection = (typeof UI_USAGE_SECTIONS)[number];
+
+/**
  * `ui.usage` (P13). `groupBy`: what the totals of `/v1/usage` are split by (`profile`, default).
- * `refreshSeconds`: how often the tab reads the two routes again while it is open (30; `0` reads only
+ * `refreshSeconds`: how often the tab reads its routes again while it is open (30; `0` reads only
  * when it opens and on the refresh key). The defaults are [proposta].
+ *
+ * Phase 8, P10 (all [proposta]):
+ * - `sections`: which sections the tab draws and in what order (default: all seven, in the order of
+ *   {@link UI_USAGE_SECTIONS}). A section left out is not drawn and its route is not read, so a
+ *   person who wants only the totals pays for no other read.
+ * - `trendDays`: how many days the `trend` section lists, counting back from yesterday (14; 1 to
+ *   90). Today is not in it: the aggregates only hold the days that are over.
+ * - `spanRows`: the most lines the tree of the `play` section draws (40; 5 to 500); the rest is
+ *   said in a last line.
  */
 export const UiUsageConfigSchema = z.strictObject({
   groupBy: z.enum(UI_USAGE_GROUPS).default('profile'),
   refreshSeconds: z.int().min(0).max(3600).default(30),
+  sections: z
+    .array(z.enum(UI_USAGE_SECTIONS))
+    .refine((list) => new Set(list).size === list.length, {
+      message: 'ui.usage.sections lists a section twice',
+    })
+    .default([...UI_USAGE_SECTIONS]),
+  trendDays: z.int().min(1).max(90).default(14),
+  spanRows: z.int().min(5).max(500).default(40),
 });
 export type UiUsageConfig = z.output<typeof UiUsageConfigSchema>;
 

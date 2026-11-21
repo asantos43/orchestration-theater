@@ -207,13 +207,30 @@ describe('parseConfig', () => {
       recentEvents: 8,
       hiddenEvents: ['session.update'],
     });
-    expect(ui.usage).toEqual({ groupBy: 'profile', refreshSeconds: 30 });
+    expect(ui.usage).toEqual({
+      groupBy: 'profile',
+      refreshSeconds: 30,
+      sections: ['totals', 'groups', 'budget', 'trend', 'bottlenecks', 'play', 'telemetry'],
+      trendDays: 14,
+      spanRows: 40,
+    });
     const yaml =
       'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
     expect(parseConfig(yaml).ui.overview.confirm).toBe('off');
     expect(parseConfig(yaml).ui.usage.groupBy).toBe('executor');
     expect(parseConfig(yaml).ui.usage.refreshSeconds).toBe(0);
     expect(() => parseConfig('ui:\n  usage:\n    groupBy: day\n')).toThrow(/ui\.usage\.groupBy/);
+    // P10: the sections of the tab, the days of the trend and the rows of the tree of spans
+    const panels = parseConfig(
+      'ui:\n  usage:\n    sections: [telemetry, totals]\n    trendDays: 30\n    spanRows: 100\n',
+    ).ui.usage;
+    expect(panels.sections).toEqual(['telemetry', 'totals']);
+    expect(panels.trendDays).toBe(30);
+    expect(panels.spanRows).toBe(100);
+    expect(() => parseConfig('ui:\n  usage:\n    sections: [costs]\n')).toThrow(
+      /ui\.usage\.sections/,
+    );
+    expect(() => parseConfig('ui:\n  usage:\n    trendDays: 0\n')).toThrow(/ui\.usage\.trendDays/);
   });
 
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
@@ -1343,6 +1360,21 @@ describe('telemetry (P1 of Phase 8)', () => {
       receiver: { port: 'auto', max_body: 8 * 1024 * 1024 },
       redaction: 'default',
       daemon_spans: { enabled: 'on', waits: 'all' },
+      export: 'off',
+      otlp: {
+        endpoint: null,
+        protocol: 'http/json',
+        headers: {},
+        compression: 'none',
+        timeout: 10_000,
+        interval: 10_000,
+        batch: 500,
+        signals: { traces: 'on', metrics: 'on', logs: 'on' },
+        retry: { retries: 3, backoff: 'exponential', initial: 1000, max: 30_000 },
+        on_failure: 'drop',
+        failure_report: 60_000,
+      },
+      prometheus: { cache_ttl: 5000 },
     });
     expect(config.backup.telemetry).toBe('exclude');
   });
@@ -1410,6 +1442,93 @@ describe('telemetry (P1 of Phase 8)', () => {
       enabled: 'off',
       waits: 'off',
     });
+  });
+
+  it('takes the modes of the export (P7)', () => {
+    const export_ = (yaml: string) => parseConfig(`telemetry:\n${yaml}`).telemetry;
+    for (const mode of ['off', 'prometheus']) {
+      expect(export_(`  export: ${mode}\n`).export).toBe(mode);
+    }
+    const otlp = export_(
+      [
+        '  export: both',
+        '  otlp:',
+        '    endpoint: https://collector.example.org:4318',
+        '    headers:',
+        '      Authorization: otlp.auth',
+        '    compression: gzip',
+        '    timeout: 3s',
+        '    interval: 500ms',
+        '    batch: 50',
+        '    signals:',
+        '      logs: off',
+        '    retry:',
+        '      retries: 0',
+        '      backoff: fixed',
+        '      initial: 200ms',
+        '      max: 2s',
+        '    on_failure: hold',
+        '    failure_report: 5m',
+        '  prometheus:',
+        '    cache_ttl: 1s',
+        '',
+      ].join('\n'),
+    );
+    expect(otlp.export).toBe('both');
+    expect(otlp.otlp).toEqual({
+      endpoint: 'https://collector.example.org:4318',
+      protocol: 'http/json',
+      headers: { Authorization: 'otlp.auth' },
+      compression: 'gzip',
+      timeout: 3000,
+      interval: 500,
+      batch: 50,
+      signals: { traces: 'on', metrics: 'on', logs: 'off' },
+      retry: { retries: 0, backoff: 'fixed', initial: 200, max: 2000 },
+      on_failure: 'hold',
+      failure_report: 300_000,
+    });
+    expect(otlp.prometheus.cache_ttl).toBe(1000);
+    // Plain http is fine on this machine, and with no headers anywhere.
+    expect(
+      export_(
+        '  export: otlp\n  otlp:\n    endpoint: http://127.0.0.1:4318\n    headers:\n      X-Key: k\n',
+      ).otlp.endpoint,
+    ).toBe('http://127.0.0.1:4318');
+    expect(
+      export_('  export: otlp\n  otlp:\n    endpoint: http://collector.internal:4318\n').otlp
+        .endpoint,
+    ).toBe('http://collector.internal:4318');
+  });
+
+  it('refuses the export that cannot work', () => {
+    for (const bad of [
+      'telemetry:\n  export: otlp\n',
+      'telemetry:\n  export: both\n',
+      'telemetry:\n  export: sometimes\n',
+      'telemetry:\n  enabled: off\n  export: otlp\n  otlp:\n    endpoint: http://127.0.0.1:4318\n',
+      'telemetry:\n  otlp:\n    endpoint: ftp://x\n',
+      'telemetry:\n  otlp:\n    endpoint: not a url\n',
+      'telemetry:\n  otlp:\n    protocol: http/protobuf\n',
+      'telemetry:\n  otlp:\n    protocol: grpc\n',
+      'telemetry:\n  otlp:\n    protocol: carrier-pigeon\n',
+      'telemetry:\n  otlp:\n    headers:\n      "bad name": k\n',
+      'telemetry:\n  otlp:\n    headers:\n      X-Key: "not a key!"\n',
+      'telemetry:\n  otlp:\n    endpoint: http://collector.internal:4318\n    headers:\n      X-Key: k\n',
+      'telemetry:\n  otlp:\n    compression: brotli\n',
+      'telemetry:\n  otlp:\n    batch: 0\n',
+      'telemetry:\n  otlp:\n    retry:\n      retries: -1\n',
+      'telemetry:\n  otlp:\n    retry:\n      backoff: random\n',
+      'telemetry:\n  otlp:\n    on_failure: crash\n',
+      'telemetry:\n  otlp:\n    signals:\n      events: on\n',
+      'telemetry:\n  prometheus:\n    cache_ttl: soon\n',
+      'telemetry:\n  prometheus:\n    other: 1\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+    expect(() => parseConfig('telemetry:\n  otlp:\n    protocol: grpc\n')).toThrow(/future modes/);
+    // Prometheus alone needs no telemetry base: `/metrics` answers with the telemetry off.
+    expect(() => parseConfig('telemetry:\n  enabled: off\n  export: prometheus\n')).not.toThrow();
   });
 
   it('refuses unknown values and keys', () => {

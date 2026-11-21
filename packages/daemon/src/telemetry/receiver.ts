@@ -60,6 +60,16 @@ export interface TelemetryReceiverOptions {
   readonly windowMs?: number;
 }
 
+/**
+ * What the receiver took and refused since it started (Phase 8, P10, [proposta]): whole batches, by
+ * signal and by reason. Unlike the windows that are told in `telemetry.batch_rejected` and then
+ * cleared, these only grow, so a screen can show them at any moment. No body, no token.
+ */
+export interface TelemetryReceiverStats {
+  readonly accepted: Readonly<Record<OtlpSignal, number>>;
+  readonly rejected: Readonly<Record<TelemetryBatchRejectReason, number>>;
+}
+
 const gunzipAsync = promisify(gunzip);
 
 function digest(text: string): Buffer {
@@ -96,6 +106,12 @@ export class TelemetryReceiver {
     string,
     { reason: TelemetryBatchRejectReason; signal: OtlpSignal | null; count: number }
   >();
+  readonly #acceptedTotal: Record<OtlpSignal, number> = { traces: 0, metrics: 0, logs: 0 };
+  readonly #rejectedTotal: Record<TelemetryBatchRejectReason, number> = {
+    format: 0,
+    size: 0,
+    token: 0,
+  };
   #port = 0;
   #timer: NodeJS.Timeout | undefined;
   #stopped = false;
@@ -162,6 +178,11 @@ export class TelemetryReceiver {
     return this.#token;
   }
 
+  /** The batches taken and refused since the start (cumulative, unlike the windows of the events). */
+  get stats(): TelemetryReceiverStats {
+    return { accepted: { ...this.#acceptedTotal }, rejected: { ...this.#rejectedTotal } };
+  }
+
   /** Tells what was refused and what was redacted since the last window, now. */
   flushSituations(): void {
     const sink = this.#options.situations;
@@ -190,6 +211,7 @@ export class TelemetryReceiver {
   }
 
   #reject(signal: OtlpSignal | null, refusal: Refusal): void {
+    this.#rejectedTotal[refusal.reason] += 1;
     const key = `${refusal.reason}|${signal ?? ''}`;
     const known = this.#rejected.get(key);
     if (known === undefined) this.#rejected.set(key, { reason: refusal.reason, signal, count: 1 });
@@ -224,6 +246,7 @@ export class TelemetryReceiver {
       if (request.method !== 'POST') throw new Refusal(405, 'format', 'method not allowed');
       const batch = await this.#read(request, signal);
       this.#accept(batch);
+      this.#acceptedTotal[signal] += 1;
       this.#send(response, 200, {});
     } catch (error) {
       if (error instanceof Refusal) {
