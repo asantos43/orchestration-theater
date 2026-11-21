@@ -8176,7 +8176,8 @@
                           "stuck",
                           "refusal",
                           "permission",
-                          "profile_removed"
+                          "profile_removed",
+                          "paused"
                         ]
                       },
                       "fromExecutor": {

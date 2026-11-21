@@ -93,10 +93,13 @@ import {
 } from './scenario-events.js';
 import {
   AttemptAbortedPayloadSchema,
+  AttemptCancelledPayloadSchema,
   AttemptCheckpointFailedPayloadSchema,
   AttemptCheckpointPayloadSchema,
+  AttemptPausedPayloadSchema,
   AttemptResetWaitEndedPayloadSchema,
   AttemptResetWaitStartedPayloadSchema,
+  AttemptResumedPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
   SessionClosedPayloadSchema,
@@ -330,6 +333,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'attempt.submit_failed',
     schemaVersion: 1,
     payload: AttemptSubmitFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.paused',
+    schemaVersion: 1,
+    payload: AttemptPausedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.resumed',
+    schemaVersion: 1,
+    payload: AttemptResumedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.cancelled',
+    schemaVersion: 1,
+    payload: AttemptCancelledPayloadSchema,
   }),
   defineEventType({
     type: 'tool.called',
@@ -728,6 +746,9 @@ export type PermissionAnsweredPayload = DaemonEventPayloads['permission.answered
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
+export type AttemptPausedPayload = DaemonEventPayloads['attempt.paused'];
+export type AttemptResumedPayload = DaemonEventPayloads['attempt.resumed'];
+export type AttemptCancelledPayload = DaemonEventPayloads['attempt.cancelled'];
 export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
 export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
 export type BrowserActionPayload = DaemonEventPayloads['browser.action'];

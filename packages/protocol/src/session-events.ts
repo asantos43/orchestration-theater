@@ -288,6 +288,40 @@ export const AttemptAbortedPayloadSchema = z.strictObject({
 });
 
 /**
+ * `attempt.paused`: a person (or the play pause in `interrupt` mode) paused the attempt (N176,
+ * 5.16). The turn in flight was interrupted with the cause `paused` and the checkpoint was saved;
+ * the attempt waits for `attempt.resumed`. [proposta]
+ */
+export const AttemptPausedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  /** `actor` for a pause of the attempt itself, `play` for the play pause in `interrupt` mode. */
+  origin: z.enum(['actor', 'play']),
+  /** Whether the checkpoint was saved (it is not when the attempt had no work to save). */
+  checkpointed: z.boolean(),
+  ...correlation,
+});
+
+/**
+ * `attempt.resumed`: a paused attempt went on, by the resume policy of the cause `paused`
+ * (5.16): `native` reloads the conversation, `handoff` starts a new session from the summary.
+ * [proposta]
+ */
+export const AttemptResumedPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  strategy: z.enum(['native', 'handoff']),
+  ...correlation,
+});
+
+/**
+ * `attempt.cancelled`: a person cancelled the attempt (N176). The attempt ends as `cancelled`,
+ * the work done so far is kept, and the Director judges the demand. [proposta]
+ */
+export const AttemptCancelledPayloadSchema = z.strictObject({
+  sessionId: id.optional(),
+  ...correlation,
+});
+
+/**
  * `session.processes_left`: the process tree of a session was killed and some processes are still
  * alive (P18b, N146). `pids` are the ones that remain. [proposta]
  */
