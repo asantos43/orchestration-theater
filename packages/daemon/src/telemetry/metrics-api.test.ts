@@ -56,6 +56,10 @@ describe('GET /metrics', () => {
           'otheater_scheduler_queue_depth',
           'otheater_attempts_total',
           'otheater_telemetry_dropped_total',
+          'otheater_waits_active',
+          'otheater_waits_total',
+          'otheater_wait_seconds_total',
+          'otheater_telemetry_batches_rejected_total',
         ]) {
           expect(text).toContain(`# HELP ${name} `);
           expect(text).toContain(`# TYPE ${name} `);
@@ -65,6 +69,25 @@ describe('GET /metrics', () => {
       });
     },
   );
+
+  it('shows the batches the receiver refused, by reason (Phase 9, P2)', async () => {
+    await withDaemon('  export: prometheus\n', async (daemon, token) => {
+      const before = await (await scrape(daemon, token)).text();
+      expect(before).toContain('otheater_telemetry_batches_rejected_total{reason="token"} 0');
+      // The receiver has a token of its own: a request without it is refused with the reason `token`.
+      const refused = await fetch(`${daemon.telemetryUrl ?? ''}/v1/logs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      expect(refused.status).toBe(401);
+      const after = await (await scrape(daemon, token)).text();
+      expect(after).toContain('otheater_telemetry_batches_rejected_total{reason="token"} 1');
+      expect(after).toContain('otheater_telemetry_batches_rejected_total{reason="format"} 0');
+      expect(after).toContain('otheater_waits_active{kind="pool_admission"} 0');
+      expect(after).toContain('otheater_waits_active{kind="prompt_queue"} 0');
+    });
+  });
 
   it('asks for the token, like every route of the API', async () => {
     await withDaemon('  export: prometheus\n', async (daemon) => {
