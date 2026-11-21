@@ -6,6 +6,16 @@
  * which tools, and how the stream ended. The run of 2026-11-20 with OpenCode had a reviewer turn
  * that emitted 2133 updates in ~25 minutes, and the summary did not say what they were.
  *
+ * Session ids go out whole. The ids of OpenCode (`ses_<time><random>`) and of Codex (UUIDv7) of one
+ * run share a long prefix, and the ids of Claude Code (UUIDv4) do not, so no fixed-size cut (the
+ * first 8 characters made every session of the run of 2026-11-20 with OpenCode look the same) and
+ * no prefix or suffix fits the three: the whole id is the only form that is never ambiguous, and
+ * it can be searched for in the log of the daemon.
+ *
+ * The Director has no line on purpose: its updates are not `session.update` events (the Director
+ * keeps only the text of its reply, in memory and for the chat; see `#turn` in `orchestration/
+ * director.ts`), so its session never shows up here, and the summary says so in one line.
+ *
  * Privacy and size of the log: the lines carry only the kind of each update, the name of a tool
  * and its status. They never carry the text of a message or a thought, the plan, the arguments of
  * a tool or its output. The name of a tool is the first word of its title (the title of some
@@ -36,7 +46,6 @@ export interface UpdateSummaryOptions {
   readonly lastUpdates?: number;
 }
 
-const SHORT_ID_CHARS = 8;
 const TOOL_NAME_CHARS = 32;
 
 interface SessionStats {
@@ -88,6 +97,55 @@ function ranked(map: ReadonlyMap<string, number>, limit?: number): string[] {
   );
 }
 
+/** What decides the role of a session: the attempt it belongs to, or the play and its opening. */
+export interface RoleQuery {
+  readonly attemptId?: string | undefined;
+  readonly playId?: string | undefined;
+  /** The id of the event that opened the session (or of its first event): selections after it do not count. */
+  readonly beforeEventId: number;
+}
+
+/**
+ * Reads the roles out of `events`: the one an event names with an `attemptId` (a `submit*`, a tool
+ * call, a handoff) wins; failing that, the latest `executor.selected` of the same play before the
+ * session opened, marked with `?` because it is an inference. `undefined` when neither is known.
+ */
+export function createRoleResolver(
+  events: readonly SummarizableEvent[],
+): (query: RoleQuery) => string | undefined {
+  const attemptRoles = new Map<string, string>();
+  const selections: { id: number; playId: string | undefined; role: string }[] = [];
+  for (const event of events) {
+    const payload = asRecord(event.payload);
+    if (payload === undefined) continue;
+    const attemptId = asString(payload.attemptId) ?? event.attemptId;
+    const role = asString(payload.role);
+    if (event.type === 'executor.selected') {
+      if (role !== undefined && payload.outcome === 'selected') {
+        selections.push({ id: event.id, playId: asString(payload.playId) ?? event.playId, role });
+      }
+    } else if (event.type !== 'session.opened' && event.type !== 'session.update') {
+      if (role !== undefined && attemptId !== undefined && !attemptRoles.has(attemptId)) {
+        attemptRoles.set(attemptId, role);
+      }
+    }
+  }
+  return ({ attemptId, playId, beforeEventId }) => {
+    if (attemptId !== undefined) {
+      const known = attemptRoles.get(attemptId);
+      if (known !== undefined) return known;
+    }
+    if (playId !== undefined) {
+      let found: string | undefined;
+      for (const selection of selections) {
+        if (selection.playId === playId && selection.id < beforeEventId) found = selection.role;
+      }
+      if (found !== undefined) return `${found}?`;
+    }
+    return undefined;
+  };
+}
+
 /**
  * The diagnostic lines for the `session.update` events of `events`. Empty when there is none.
  * The role of a session is read from the events that name it with an `attemptId` (a `submit*`, a
@@ -101,8 +159,7 @@ export function summarizeSessionUpdates(
 ): string[] {
   const { prefix = '', maxSessions = 8, topTools = 5, lastUpdates = 5 } = options;
   const sessions = new Map<string, SessionStats>();
-  const attemptRoles = new Map<string, string>();
-  const selections: { id: number; playId: string | undefined; role: string }[] = [];
+  const resolveRole = createRoleResolver(events);
 
   const statsOf = (sessionId: string, event: SummarizableEvent): SessionStats => {
     let stats = sessions.get(sessionId);
@@ -132,13 +189,7 @@ export function summarizeSessionUpdates(
     const attemptId = asString(payload.attemptId) ?? event.attemptId;
     const playId = asString(payload.playId) ?? event.playId;
 
-    if (event.type === 'executor.selected') {
-      const role = asString(payload.role);
-      if (role !== undefined && payload.outcome === 'selected') {
-        selections.push({ id: event.id, playId, role });
-      }
-      continue;
-    }
+    if (event.type === 'executor.selected') continue;
 
     if (event.type === 'session.opened') {
       const sessionId = asString(payload.sessionId);
@@ -151,13 +202,7 @@ export function summarizeSessionUpdates(
       continue;
     }
 
-    if (event.type !== 'session.update') {
-      const role = asString(payload.role);
-      if (role !== undefined && attemptId !== undefined && !attemptRoles.has(attemptId)) {
-        attemptRoles.set(attemptId, role);
-      }
-      continue;
-    }
+    if (event.type !== 'session.update') continue;
 
     const sessionId = asString(payload.sessionId);
     const update = asRecord(payload.update);
@@ -195,25 +240,16 @@ export function summarizeSessionUpdates(
   if (withUpdates.length === 0) return [];
   withUpdates.sort((a, b) => b.count - a.count || a.firstAt - b.firstAt);
 
-  const roleOf = (stats: SessionStats): string => {
-    if (stats.attemptId !== undefined) {
-      const known = attemptRoles.get(stats.attemptId);
-      if (known !== undefined) return known;
-    }
-    if (stats.playId !== undefined) {
-      const before = stats.openedEventId ?? stats.firstEventId;
-      let found: string | undefined;
-      for (const selection of selections) {
-        if (selection.playId === stats.playId && selection.id < before) found = selection.role;
-      }
-      if (found !== undefined) return `${found}?`;
-    }
-    return stats.attemptId === undefined && stats.playId === undefined ? 'chat' : 'unknown';
-  };
+  const roleOf = (stats: SessionStats): string =>
+    resolveRole({
+      attemptId: stats.attemptId,
+      playId: stats.playId,
+      beforeEventId: stats.openedEventId ?? stats.firstEventId,
+    }) ?? (stats.attemptId === undefined && stats.playId === undefined ? 'chat' : 'unknown');
 
   const lines: string[] = [];
   for (const stats of withUpdates.slice(0, maxSessions)) {
-    const id = stats.sessionId.slice(0, SHORT_ID_CHARS);
+    const id = stats.sessionId;
     lines.push(
       `${prefix}updates ${id} (${roleOf(stats)}): ${String(stats.count)} (${ranked(stats.kinds).join(', ')}) over ${((stats.lastAt - stats.firstAt) / 1000).toFixed(1)}s`,
     );
@@ -223,8 +259,13 @@ export function summarizeSessionUpdates(
   }
   const busiest = withUpdates[0];
   if (busiest !== undefined) {
+    lines.push(`${prefix}last updates ${busiest.sessionId}: ${busiest.recent.join(', ')}`);
+  }
+  // The Director records no `session.update` (see the header), so say it instead of leaving the
+  // reader to wonder why the session that answered the chat is not there.
+  if (!withUpdates.some((stats) => roleOf(stats) === 'chat')) {
     lines.push(
-      `${prefix}last updates ${busiest.sessionId.slice(0, SHORT_ID_CHARS)}: ${busiest.recent.join(', ')}`,
+      `${prefix}updates: no session of the Director in the log (the Director does not record session.update)`,
     );
   }
   if (withUpdates.length > maxSessions) {
