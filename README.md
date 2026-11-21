@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.35): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.90): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
@@ -75,7 +75,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [15-PLANO-DA-FASE-4.md](docs/15-PLANO-DA-FASE-4.md) | Plano de passos da Fase 4, com dependências, paralelismo, aceite de cada passo e o marco 4a |
 | [16-PLANO-DA-FASE-5.md](docs/16-PLANO-DA-FASE-5.md) | Plano de passos da Fase 5 (assinaturas, cotas e seleção), com dependências, paralelismo, aceite de cada passo e o marco 5a [proposta] |
 | [17-PLANO-DA-FASE-6.md](docs/17-PLANO-DA-FASE-6.md) | Plano de passos da Fase 6 (API do daemon e `packages/client`), com dependências, paralelismo e aceite de cada passo |
-| [18-PLANO-DA-FASE-7.md](docs/18-PLANO-DA-FASE-7.md) | Plano de passos da Fase 7 (TUI), com dependências novas, paralelismo, aceite de cada passo e as decisões N185 a N192; o aceite (P21) passou no nível automático e no real |
+| [18-PLANO-DA-FASE-7.md](docs/18-PLANO-DA-FASE-7.md) | Plano de passos da Fase 7 (TUI), com dependências novas, paralelismo, aceite de cada passo e as decisões N185 a N192; o aceite (P21) passou no nível automático e no real, e a onda 6 de acertos (P22 a P27) está concluída; a fase só fecha com o roteiro dos terminais e o login oficial pelo dono (N209) |
 | [19-PLANO-DA-FASE-8.md](docs/19-PLANO-DA-FASE-8.md) | Plano de passos da Fase 8 (observabilidade), com dependências candidatas, paralelismo, aceite de cada passo e as decisões N211 a N219 |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
 | [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
