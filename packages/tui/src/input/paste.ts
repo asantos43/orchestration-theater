@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { isAbsolute } from 'node:path';
+import { posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { InputSettings } from './settings.js';
 
@@ -101,9 +101,10 @@ export function parsePastedPaths(text: string, options: PathOptions): string[] |
 }
 
 function toPath(word: string, options: PathOptions): string | undefined {
+  const windows = (options.platform ?? process.platform) === 'win32';
   if (word.startsWith('file://')) {
     try {
-      return fileURLToPath(word);
+      return fileURLToPath(word, { windows });
     } catch {
       return undefined;
     }
@@ -111,7 +112,7 @@ function toPath(word: string, options: PathOptions): string | undefined {
   if (word === '~' || word.startsWith('~/')) {
     return options.homedir === '' ? undefined : `${options.homedir}${word.slice(1)}`;
   }
-  if (isAbsolute(word) || (options.platform === 'win32' && /^[A-Za-z]:[\\/]/.test(word))) {
+  if (windows ? win32.isAbsolute(word) : posix.isAbsolute(word)) {
     return word;
   }
   return undefined;
