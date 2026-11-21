@@ -174,7 +174,9 @@ describe('a decision of the Producer', () => {
 
   it('shows the card, moves with the arrows and answers with Enter', async () => {
     const { app, online, socket } = await open();
-    online.stores.decisions.setState({ byScenario: { [scenarioOf(online)]: [{ id: 'D1' }] } } as never);
+    online.stores.decisions.setState({
+      byScenario: { [scenarioOf(online)]: [{ id: 'D1' }] },
+    } as never);
     socket().emit(question);
     const frame = await app.waitForText('Which database?');
     expect(frame).toContain('sqlite');

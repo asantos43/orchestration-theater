@@ -54,9 +54,9 @@ describe('messageOf', () => {
     expect(messageOf(t, entry({ kind: 'play', playId: 'P1', state: 'EXECUTING' })).text).toBe(
       '[layout.chat.entry.play id=P1,state=EXECUTING]',
     );
-    expect(
-      messageOf(t, entry({ kind: 'local', key: 'reconnected', params: {} })).text,
-    ).toBe('[layout.chat.entry.local.reconnected]');
+    expect(messageOf(t, entry({ kind: 'local', key: 'reconnected', params: {} })).text).toBe(
+      '[layout.chat.entry.local.reconnected]',
+    );
     expect(
       messageOf(t, entry({ kind: 'error', error: { code: 'not_found', message: 'gone' } })).text,
     ).toBe('[layout.chat.entry.error message=gone]');

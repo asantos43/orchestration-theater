@@ -59,10 +59,7 @@ describe('the reply of the Director', () => {
   });
 
   it('takes the queued mark off a message once the Director answers', () => {
-    const state = run([
-      { type: 'sent', text: 'do it', at: 0, queued: true },
-      part(1, 'ok', true),
-    ]);
+    const state = run([{ type: 'sent', text: 'do it', at: 0, queued: true }, part(1, 'ok', true)]);
     expect(state.entries[0]?.queued).toBe(false);
   });
 });

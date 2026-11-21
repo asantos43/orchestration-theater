@@ -67,9 +67,7 @@ export class FakeChatSocket implements ChatSocketLike {
   }
 
   /** What the session sent of one type, in order. */
-  sentOf<Type extends ChatOutgoing['type']>(
-    type: Type,
-  ): Extract<ChatOutgoing, { type: Type }>[] {
+  sentOf<Type extends ChatOutgoing['type']>(type: Type): Extract<ChatOutgoing, { type: Type }>[] {
     return this.sent.filter(
       (message): message is Extract<ChatOutgoing, { type: Type }> => message.type === type,
     );
