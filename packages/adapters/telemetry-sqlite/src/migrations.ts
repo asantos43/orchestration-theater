@@ -174,6 +174,44 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  /**
+   * The daily aggregates of the analysis (Phase 8, P9; N217 (a)). [proposta] They live apart from
+   * the raw tables because their retention is another one (`analysis.retention.days`), and the
+   * purge of the raw telemetry (P8) never touches them. The primary key makes a row one number of
+   * one group in one origin; the day is the leading column, so a range of days and the retention
+   * cut are index reads.
+   */
+  '0003_rollups_daily': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('rollups_daily')
+        .ifNotExists()
+        .addColumn('day', 'text', (col) =>
+          col.notNull().check(sql`"day" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`),
+        )
+        .addColumn('scenario_id', 'text', (col) => col.notNull())
+        .addColumn('executor', 'text', (col) => col.notNull())
+        .addColumn('role', 'text', (col) => col.notNull())
+        .addColumn('metric', 'text', (col) => col.notNull())
+        .addColumn('facet', 'text', (col) => col.notNull())
+        .addColumn('origin', 'text', (col) => col.notNull())
+        .addColumn('count', 'integer', (col) => col.notNull().check(sql`"count" >= 0`))
+        .addColumn('sum', 'real')
+        .addColumn('p50', 'real')
+        .addColumn('p95', 'real')
+        .addColumn('max', 'real')
+        .addPrimaryKeyConstraint('rollups_daily_pk', [
+          'day',
+          'scenario_id',
+          'executor',
+          'role',
+          'metric',
+          'facet',
+          'origin',
+        ])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */

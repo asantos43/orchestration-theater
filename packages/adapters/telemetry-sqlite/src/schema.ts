@@ -76,10 +76,31 @@ export interface MetaTable {
   value: string;
 }
 
+/**
+ * The daily aggregates of the analysis (Phase 8, P9). The key is `(day, scenario_id, executor,
+ * role, metric, facet, origin)`; the dimensions are empty strings (not NULL) when unknown, so the
+ * key is a real primary key. `sum`, `p50`, `p95` and `max` are NULL when no sample knew the value.
+ */
+export interface RollupsDailyTable {
+  day: string;
+  scenario_id: string;
+  executor: string;
+  role: string;
+  metric: string;
+  facet: string;
+  origin: string;
+  count: number;
+  sum: number | null;
+  p50: number | null;
+  p95: number | null;
+  max: number | null;
+}
+
 export interface TelemetryDatabase {
   resources: ResourcesTable;
   spans: SpansTable;
   metric_points: MetricPointsTable;
   log_records: LogRecordsTable;
   meta: MetaTable;
+  rollups_daily: RollupsDailyTable;
 }

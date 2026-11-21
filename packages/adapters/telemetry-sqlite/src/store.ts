@@ -5,10 +5,13 @@ import {
   AdapterUnavailable,
   InvalidInput,
   isOTheaterError,
+  ROLLUP_DAY_PATTERN,
   splitUnixNano,
   TELEMETRY_STORE_PORT_VERSION,
   Transient,
   type Clock,
+  type RollupFilter,
+  type RollupRow,
   type TelemetryBatch,
   type TelemetryDeleteResult,
   type TelemetryHealth,
@@ -62,6 +65,47 @@ function cursorKey(name: string): string {
     throw new InvalidInput('a cursor name must be a string of 1 to 128 characters');
   }
   return `cursor:${name}`;
+}
+
+/** The `meta` key of the day up to which the daily aggregates are ready. */
+const ROLLUPS_READY_KEY = 'rollups:ready_through';
+
+function assertDay(day: string): void {
+  if (typeof day !== 'string' || !ROLLUP_DAY_PATTERN.test(day)) {
+    throw new InvalidInput('a rollup day must be YYYY-MM-DD');
+  }
+}
+
+function assertRollupRow(row: RollupRow): void {
+  assertDay(row.day);
+  if (!Number.isSafeInteger(row.count) || row.count < 0) {
+    throw new InvalidInput('a rollup count must be an integer >= 0');
+  }
+  for (const value of [row.sum, row.p50, row.p95, row.max]) {
+    if (value !== null && !Number.isFinite(value)) {
+      throw new InvalidInput('a rollup value must be a finite number or null');
+    }
+  }
+  if (row.metric.length === 0 || row.origin.length === 0) {
+    throw new InvalidInput('a rollup row needs a metric and an origin');
+  }
+}
+
+function toRollupColumns(row: RollupRow) {
+  return {
+    day: row.day,
+    scenario_id: row.scenarioId,
+    executor: row.executor,
+    role: row.role,
+    metric: row.metric,
+    facet: row.facet,
+    origin: row.origin,
+    count: row.count,
+    sum: row.sum,
+    p50: row.p50,
+    p95: row.p95,
+    max: row.max,
+  };
 }
 
 /** Rows per `INSERT`: well under SQLite's limit of bound variables (32766) for the widest table. */
@@ -407,6 +451,20 @@ export class SqliteTelemetryStore implements TelemetryStore {
       const to = splitUnixNano(filter.toUnixNano);
       where.push(sql`(${ms} < ${to.ms} or (${ms} = ${to.ms} and ${sub} < ${to.subNs}))`);
     }
+    if (table === 'spans') {
+      const endMs = sql.ref('t.end_ms');
+      const endSub = sql.ref('t.end_sub_ns');
+      if (filter.endedFromUnixNano !== undefined) {
+        const from = splitUnixNano(filter.endedFromUnixNano);
+        where.push(
+          sql`(${endMs} > ${from.ms} or (${endMs} = ${from.ms} and ${endSub} >= ${from.subNs}))`,
+        );
+      }
+      if (filter.endedToUnixNano !== undefined) {
+        const to = splitUnixNano(filter.endedToUnixNano);
+        where.push(sql`(${endMs} < ${to.ms} or (${endMs} = ${to.ms} and ${endSub} < ${to.subNs}))`);
+      }
+    }
     const clause = where.length === 0 ? sql`` : sql`where ${sql.join(where, sql` and `)}`;
     try {
       const result = await sql<never>`
@@ -509,6 +567,138 @@ export class SqliteTelemetryStore implements TelemetryStore {
           .values({ key, value: String(value) })
           .onConflict((conflict) => conflict.column('key').doUpdateSet({ value: String(value) }))
           .execute();
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  // ---- the daily aggregates (port 0.3.0) --------------------------------------------------------
+
+  async replaceRollupDay(day: string, rows: readonly RollupRow[]): Promise<void> {
+    assertDay(day);
+    const seen = new Set<string>();
+    for (const row of rows) {
+      assertRollupRow(row);
+      if (row.day !== day)
+        throw new InvalidInput(`a row of day ${row.day} cannot go in day ${day}`);
+      const key = [row.scenarioId, row.executor, row.role, row.metric, row.facet, row.origin].join(
+        '\u0000',
+      );
+      if (seen.has(key)) throw new InvalidInput('two rollup rows share one key');
+      seen.add(key);
+    }
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    try {
+      await this.#enqueue(async () => {
+        const conn = this.#conn;
+        if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+        await conn.writer.transaction().execute(async (trx) => {
+          await trx.deleteFrom('rollups_daily').where('day', '=', day).execute();
+          for (let at = 0; at < rows.length; at += ROWS_PER_INSERT) {
+            const part = rows.slice(at, at + ROWS_PER_INSERT).map(toRollupColumns);
+            await trx.insertInto('rollups_daily').values(part).execute();
+          }
+        });
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async readRollups(filter: RollupFilter = {}): Promise<readonly RollupRow[]> {
+    if (filter.fromDay !== undefined) assertDay(filter.fromDay);
+    if (filter.toDay !== undefined) assertDay(filter.toDay);
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    const conn = this.#conn;
+    if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+    try {
+      let query = conn.reader.selectFrom('rollups_daily').selectAll();
+      if (filter.fromDay !== undefined) query = query.where('day', '>=', filter.fromDay);
+      if (filter.toDay !== undefined) query = query.where('day', '<=', filter.toDay);
+      if (filter.scenarioId !== undefined)
+        query = query.where('scenario_id', '=', filter.scenarioId);
+      if (filter.executor !== undefined) query = query.where('executor', '=', filter.executor);
+      if (filter.role !== undefined) query = query.where('role', '=', filter.role);
+      const rows = await query
+        .orderBy('day')
+        .orderBy('scenario_id')
+        .orderBy('executor')
+        .orderBy('role')
+        .orderBy('metric')
+        .orderBy('facet')
+        .orderBy('origin')
+        .execute();
+      return rows.map((row) => ({
+        day: row.day,
+        scenarioId: row.scenario_id,
+        executor: row.executor,
+        role: row.role,
+        metric: row.metric,
+        facet: row.facet,
+        origin: row.origin,
+        count: row.count,
+        sum: row.sum,
+        p50: row.p50,
+        p95: row.p95,
+        max: row.max,
+      }));
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async readRollupsReadyThrough(): Promise<string | null> {
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    const conn = this.#conn;
+    if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+    try {
+      const row = await conn.reader
+        .selectFrom('meta')
+        .select('value')
+        .where('key', '=', ROLLUPS_READY_KEY)
+        .executeTakeFirst();
+      return row !== undefined && ROLLUP_DAY_PATTERN.test(row.value) ? row.value : null;
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async markRollupsReady(day: string): Promise<void> {
+    assertDay(day);
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    try {
+      await this.#enqueue(async () => {
+        const conn = this.#conn;
+        if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+        // The day strings sort as dates, so "keep the later one" is a string comparison.
+        await sql`
+          insert into meta (key, value) values (${ROLLUPS_READY_KEY}, ${day})
+          on conflict (key) do update set value = excluded.value
+          where excluded.value > meta.value`.execute(conn.writer);
+      });
+    } catch (error) {
+      await this.#afterFailure(error);
+      throw toTelemetryError(error);
+    }
+  }
+
+  async deleteRollupsBefore(day: string): Promise<number> {
+    assertDay(day);
+    if (this.#closed) throw new AdapterUnavailable('The telemetry store is closed');
+    try {
+      return await this.#enqueue(async () => {
+        const conn = this.#conn;
+        if (conn === undefined) throw new AdapterUnavailable('The telemetry base is not available');
+        const result = await conn.writer
+          .deleteFrom('rollups_daily')
+          .where('day', '<', day)
+          .execute();
+        return Number(result[0]?.numDeletedRows ?? 0n);
       });
     } catch (error) {
       await this.#afterFailure(error);
