@@ -76,6 +76,9 @@ function build(options: Partial<CodexAdapterOptions> = {}): {
     sandbox: { fields: ['nativeTools', 'nativeShell', 'network'] },
     onWarning: (warning) => warnings.push(warning),
     ...options,
+    // The wrapper is POSIX only: these tests check what is generated, so they name a POSIX platform
+    // even on a Windows runner; the win32 case passes its own.
+    otel: { platform: 'linux', ...options.otel },
   });
   return { adapter, launcher, warnings };
 }
