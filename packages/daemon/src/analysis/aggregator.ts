@@ -241,6 +241,7 @@ export class DayAggregator {
       if (!isDaemonSpan(span)) continue;
       const attrs = span.attributes;
       const scenarioId = span.scenarioId ?? '';
+      const agentId = str(attrs[GEN_AI.agentId]);
       if (span.name === SPAN_NAME.stage) {
         const state = str(attrs[OT.stage]);
         if (state === undefined) continue;
@@ -268,8 +269,8 @@ export class DayAggregator {
           origin,
           num(attrs[OT.waitMs]) ?? durationMs(span),
         );
-      } else if (str(attrs[GEN_AI.agentId]) !== undefined && span.name.startsWith('invoke_agent')) {
-        const attemptId = str(attrs[GEN_AI.agentId]) as string;
+      } else if (agentId !== undefined && span.name.startsWith('invoke_agent')) {
+        const attemptId = agentId;
         const dims: RollupDims = {
           scenarioId,
           executor: executorOf(str(attrs[OT.client]), str(attrs[OT.profile])),

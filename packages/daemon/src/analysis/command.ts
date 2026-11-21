@@ -201,17 +201,18 @@ function print(context: CommandContext, report: AnalysisReport, json: boolean): 
 /** A duration in milliseconds as `850ms`, `12.5s`, `3m05s` or `2h10m`; a gap is `n/a`. */
 export function formatDuration(ms: number | null, gap: string): string {
   if (ms === null) return gap;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 1000) return `${String(Math.round(ms))}ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
+  if (seconds < 60) return `${seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
+  if (minutes < 60)
+    return `${String(minutes)}m${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h${String(minutes % 60).padStart(2, '0')}m`;
+  return `${String(hours)}h${String(minutes % 60).padStart(2, '0')}m`;
 }
 
 function percent(fraction: number | null, gap: string): string {
-  return fraction === null ? gap : `${Math.round(fraction * 100)}%`;
+  return fraction === null ? gap : `${String(Math.round(fraction * 100))}%`;
 }
 
 function usd(value: number | null, gap: string): string {
@@ -312,14 +313,14 @@ function formatMetric(metric: string, value: number | null, gap: string): string
 
 function statText(stat: AnalysisStat | undefined, gap: string): string {
   if (stat === undefined || stat.count === 0) return gap;
-  return `${formatDuration(stat.sumMs, gap)} (p50 ${formatDuration(stat.p50Ms, gap)}, p95 ${formatDuration(stat.p95Ms, gap)}, n=${stat.count})`;
+  return `${formatDuration(stat.sumMs, gap)} (p50 ${formatDuration(stat.p50Ms, gap)}, p95 ${formatDuration(stat.p95Ms, gap)}, n=${String(stat.count)})`;
 }
 
 function summaryLines(context: CommandContext, s: AnalysisSummary, gap: string): string[] {
   const { t } = context;
   const lines: string[] = [];
   const ends = Object.entries(s.attempts.byEnd)
-    .map(([end, n]) => `${end} ${n}`)
+    .map(([end, n]) => `${end} ${String(n)}`)
     .join(', ');
   lines.push(
     t('analysis.attempts', {
@@ -329,7 +330,7 @@ function summaryLines(context: CommandContext, s: AnalysisSummary, gap: string):
     }),
   );
   const interruptions = Object.entries(s.interruptions)
-    .map(([cause, n]) => `${cause} ${n}`)
+    .map(([cause, n]) => `${cause} ${String(n)}`)
     .join(', ');
   lines.push(
     t('analysis.rejections', {

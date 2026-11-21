@@ -8,9 +8,9 @@ import { z } from 'zod';
  * the plan of the phase.
  *
  * - `analysis.schedule.mode` (default `daily`): when the daemon builds the daily aggregates.
- *   `daily`: when it starts (the days that are missing, and the last one again to catch late
- *   records) and every time the day rolls over; `startup`: only when it starts; `off`: never by
- *   itself (a day is built only when asked for).
+ *   `daily`: when it starts (the closed days that are missing, up to yesterday) and every time the
+ *   day rolls over; `startup`: only when it starts; `off`: never by itself (a day is built only
+ *   when asked for). Today is never built, and a day already marked ready is not built again.
  * - `analysis.day_boundary` (default `local`): where a day starts and ends. `local`: the time zone
  *   of the machine; `utc`; or a fixed offset `+HH:MM` / `-HH:MM` from UTC.
  * - `analysis.producer_wait_states` (default `["AWAITING_PRODUCER"]`): the states of the play whose
