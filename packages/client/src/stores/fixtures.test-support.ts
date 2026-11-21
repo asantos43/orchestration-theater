@@ -4,6 +4,7 @@ import {
   sseMessageOf,
   type ApiDecision,
   type ApiEventEnvelope,
+  type ApiOrder,
   type ApiPlay,
   type ApiPlayDetail,
   type ApiProfile,
@@ -140,6 +141,62 @@ export function profileOf(
   };
 }
 
+/** An order (a directive) as the API lists it: a global instruction, in force. */
+export function order(id: string, extra: Partial<ApiOrder> = {}): ApiOrder {
+  return {
+    id,
+    seq: Number(id.slice(1)),
+    scope: 'global',
+    scenarioId: null,
+    kind: 'instruction',
+    text: `Order ${id}`,
+    ruleKey: null,
+    ruleValue: null,
+    suspendsId: null,
+    roles: [],
+    startsAt: T0,
+    endsAt: null,
+    timezone: 'America/Sao_Paulo',
+    state: 'active',
+    origin: 'tui',
+    replacesId: null,
+    createdAt: T0,
+    updatedAt: T0,
+    revokedAt: null,
+    revokeReason: null,
+    ...extra,
+  };
+}
+
+/** `directive.created` with the whole record (P15): the order the daemon wrote. */
+export function directiveCreated(
+  id: number,
+  record: ApiOrder,
+  withRecord = true,
+): ApiEventEnvelope {
+  return event(
+    id,
+    'directive.created',
+    {
+      directiveId: record.id,
+      scope: record.scope,
+      scenarioId: record.scenarioId,
+      kind: record.kind,
+      roles: record.roles,
+      startsAt: record.startsAt,
+      endsAt: record.endsAt,
+      timezone: record.timezone,
+      state: record.state,
+      origin: record.origin,
+      ruleKey: record.ruleKey,
+      suspendsId: record.suspendsId,
+      replacesId: record.replacesId,
+      ...(withRecord ? { order: record } : {}),
+    },
+    record.scenarioId === null ? {} : { scenarioId: record.scenarioId },
+  );
+}
+
 /** An event of the log: the id says the order, the timestamp is `T0 + id`. */
 export function event(
   id: number,
@@ -262,6 +319,7 @@ export class FakeDaemon {
   details = new Map<string, ApiPlayDetail>();
   decisions = new Map<string, ApiDecision[]>();
   profiles: ApiProfile[] = [];
+  orders: ApiOrder[] = [];
   /** The newest id of the log, written as the first frame of a stream. `undefined`: no frame. */
   head: number | undefined = 0;
   /** Runs before the tables answer: return a response to take over the request. */
@@ -392,6 +450,12 @@ export class FakeDaemon {
     const playOne = /^\/v1\/plays\/([^/]+)$/.exec(path);
     if (playOne !== null) {
       const found = this.details.get(playOne[1] ?? '');
+      return found === undefined ? this.#notFound() : Response.json(found);
+    }
+    if (path === '/v1/orders') return this.#page(this.orders, query);
+    const orderOne = /^\/v1\/orders\/([^/]+)$/.exec(path);
+    if (orderOne !== null) {
+      const found = this.orders.find((item) => item.id === orderOne[1]);
       return found === undefined ? this.#notFound() : Response.json(found);
     }
     if (path === '/v1/profiles') return this.#page(this.profiles, query, (item) => item.profile.id);

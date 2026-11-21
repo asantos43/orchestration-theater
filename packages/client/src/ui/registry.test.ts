@@ -4,8 +4,10 @@ import {
   DEFAULT_UI_REGISTRY,
   DEFAULT_UI_REGISTRY_DEFINITION,
   UiRegistryError,
+  contextsOverlap,
   createUiRegistry,
   registryTextKeys,
+  tabContextOf,
   type UiRegistryDefinition,
 } from './index.js';
 
@@ -47,6 +49,29 @@ describe('interface registry', () => {
     const duplicate = DEFAULT_UI_REGISTRY_DEFINITION.actions[0];
     if (duplicate === undefined) throw new Error('no action');
     expect(() => createUiRegistry(withAction({ ...duplicate, keys: {} }))).toThrow(UiRegistryError);
+  });
+
+  it('lets two tabs take the same key, but not a tab and the panel (P15 and P16)', () => {
+    expect(contextsOverlap('directives', 'settings')).toBe(false);
+    expect(contextsOverlap('directives', 'panel')).toBe(true);
+    expect(contextsOverlap('global', 'settings')).toBe(true);
+    expect(contextsOverlap('chat', 'settings')).toBe(false);
+    expect(tabContextOf('settings')).toBe('settings');
+    expect(tabContextOf('plugins')).toBeUndefined();
+    // E is taken by directives.extend and settings.edit, each in its own tab.
+    expect(DEFAULT_UI_REGISTRY.entry('directives.extend')?.context).toBe('directives');
+    expect(DEFAULT_UI_REGISTRY.entry('settings.edit')?.context).toBe('settings');
+    const inPanel = () =>
+      createUiRegistry(
+        withAction({
+          id: 'demo.panelE',
+          textKey: 'actions.demo.panelE',
+          group: 'general',
+          context: 'panel',
+          keys: keys(['E']),
+        }),
+      );
+    expect(inPanel).toThrow(/"E" is claimed by/);
   });
 
   it('refuses a shortcut two entries claim', () => {

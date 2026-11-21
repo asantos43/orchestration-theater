@@ -6,9 +6,10 @@ import {
   type UiRegistry,
   type UiTranslate,
 } from '@otheater/client';
-import { Box, Text, useApp, useInput, usePaste } from 'ink';
+import { Box, Text, useInput, usePaste } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { type ProducerMessage, draftsInText } from './attachments.js';
 import { readClipboardImage, errorMessage } from './clipboard-image.js';
@@ -52,6 +53,13 @@ export interface TextBoxProps {
   readonly onSubmit: (message: ProducerMessage) => void | Promise<void>;
   /** The text changed (for the owner to keep a draft, or to show something else). */
   readonly onChange?: ((text: string) => void) | undefined;
+  /**
+   * Enter completes instead of sending when this returns a text for the current one (the / command
+   * suggestions of the chat); `undefined` lets Enter send as usual.
+   */
+  readonly complete?: ((text: string) => string | undefined) | undefined;
+  /** How many rows the box takes now (it grows with the text), for the owner to lay out around it. */
+  readonly onRows?: ((rows: number) => void) | undefined;
   /** Whether the box has the keyboard (the context `textBox` of the keymap is alive). Default: true. */
   readonly isActive?: boolean | undefined;
 }
@@ -73,7 +81,8 @@ export function TextBox(props: TextBoxProps): ReactNode {
   const settings = props.settings ?? DEFAULT_INPUT_SETTINGS;
   const active = props.isActive ?? true;
   const { t } = useTranslation();
-  const { suspendTerminal } = useApp();
+  // The editor of Ctrl+G takes the terminal: the mouse reports are off while it runs (N34).
+  const suspendTerminal = useSuspendTerminal();
   const { afterKey } = useRenderControl();
 
   const ports = useMemo(() => props.ports ?? createBoxPorts(), [props.ports]);
@@ -195,6 +204,14 @@ export function TextBox(props: TextBoxProps): ReactNode {
   useInput(
     (input, key) => {
       const id = actionOf(keymap, registry, input, key);
+      if (id === 'input.submit' && props.complete !== undefined) {
+        const completed = props.complete(current.current.editor.text);
+        if (completed !== undefined) {
+          dispatch({ type: 'replace', text: completed });
+          afterKey();
+          return;
+        }
+      }
       if (id !== undefined) {
         dispatch({ type: 'action', id });
       } else {
@@ -227,6 +244,17 @@ export function TextBox(props: TextBoxProps): ReactNode {
   );
   const translate = t as unknown as UiTranslate;
   const attached = draftsInText(state.editor.text, state.drafts).map((draft) => draft.marker);
+  const rows =
+    layout.lines.length +
+    (layout.above > 0 ? 1 : 0) +
+    (layout.below > 0 ? 1 : 0) +
+    (state.search === undefined ? 0 : 1) +
+    (attached.length > 0 ? 1 : 0) +
+    (state.status === undefined ? 0 : 1);
+  const { onRows } = props;
+  useEffect(() => {
+    onRows?.(rows);
+  }, [onRows, rows]);
 
   return (
     <Box flexDirection="column">

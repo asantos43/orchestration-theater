@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LayoutPreferences } from '@otheater/protocol';
-import { cleanupApps, renderApp, type RenderedApp } from './ink.test-support.js';
+import { cleanupApps, renderApp, waitFor, type RenderedApp } from './ink.test-support.js';
 import {
   fakeOnline,
   MemoryLayoutFile,
   seedStores,
   type FakeOnline,
 } from './layout.test-support.js';
-import type { ChatMessage } from './layout/chat.js';
 
 /**
  * The four screens of the mockup (`docs/framework-ideas/mockup/tui.html`, a grid of 140x42) over
@@ -31,16 +30,9 @@ function prefs(change: Partial<LayoutPreferences>): string {
   return JSON.stringify({ ...base, ...change });
 }
 
-async function open(
-  online: FakeOnline,
-  options: { messages?: readonly ChatMessage[] } = {},
-): Promise<RenderedApp> {
+async function open(online: FakeOnline): Promise<RenderedApp> {
   seedStores(online.stores);
-  const app = await renderApp({
-    connector: online.connector,
-    size: SIZE,
-    messages: options.messages,
-  });
+  const app = await renderApp({ connector: online.connector, size: SIZE });
   await app.waitForText('127.0.0.1');
   return app;
 }
@@ -282,14 +274,23 @@ describe('closing and reopening', () => {
 
 describe('a long chat', () => {
   it('draws only what fits when there are 5,000 messages, from the last up to the first', async () => {
-    const messages: ChatMessage[] = Array.from({ length: 5000 }, (_, index) => ({
-      id: `m${String(index)}`,
-      who: index % 2 === 0 ? 'you' : 'director',
-      at: '09:12',
-      text: `message number ${String(index + 1)}`,
-    }));
     const online = fakeOnline();
-    const app = await open(online, { messages });
+    const app = await open(online);
+    const socket = await waitFor(
+      () => [...online.chat.sockets.values()][0]?.at(-1),
+      'the chat socket',
+    );
+    // The daemon tells 5,000 turns of the Director; each one is a reply with its own id.
+    for (let index = 0; index < 5000; index += 1) {
+      socket.emit({
+        type: 'director_reply',
+        eventId: index + 1,
+        replyId: index + 1,
+        text: `message number ${String(index + 1)}`,
+        final: true,
+      });
+    }
+    await app.waitForText('message number 5000');
     let frame = app.frame();
     expect(frame).toContain('message number 5000');
     expect(frame).not.toContain('message number 4900');

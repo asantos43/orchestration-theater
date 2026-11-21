@@ -19,6 +19,7 @@ import {
   ApiVersionError,
   DaemonIdMismatchError,
 } from './errors.js';
+import { order } from './stores/fixtures.test-support.js';
 import { startTestDaemon, type TestDaemon } from './test-daemon.test-support.js';
 
 const open: TestDaemon[] = [];
@@ -263,6 +264,45 @@ describe('pause, resume and cancel (N176)', () => {
       `/v1/attempts/${encoded}/cancel`,
     ]);
     expect(started.requests[1]?.headers['idempotency-key']).toBe('k-2');
+  });
+});
+
+describe('orders (P15)', () => {
+  it('gives, extends, suspends and revokes an order, with the body and the key as the daemon reads them', async () => {
+    const started = await daemon({
+      handler: (request) =>
+        request.target.startsWith('/v1/orders') ? { json: { order: order('O1') } } : undefined,
+    });
+    const client = clientOf(started);
+    await client.createOrder(
+      { text: 'Be brief.', scope: 'global', validity: { for: '3d' } },
+      { idempotencyKey: 'k-1' },
+    );
+    await client.extendOrder('O1', { for: '1d' });
+    await client.suspendOrder('O1', { scenarioId: 's1' });
+    await client.suspendOrder('O1', {
+      scenarioId: 's1',
+      text: 'Not here.',
+      validity: { for: '2h' },
+    });
+    await client.revokeOrder('O1', 'not needed');
+    const sent = started.requests.map((request) => [
+      request.method,
+      request.target,
+      JSON.parse(request.body) as unknown,
+    ]);
+    expect(sent).toEqual([
+      ['POST', '/v1/orders', { text: 'Be brief.', scope: 'global', validity: { for: '3d' } }],
+      ['POST', '/v1/orders/O1/extend', { validity: { for: '1d' } }],
+      ['POST', '/v1/orders/O1/suspend', { scenarioId: 's1' }],
+      [
+        'POST',
+        '/v1/orders/O1/suspend',
+        { scenarioId: 's1', text: 'Not here.', validity: { for: '2h' } },
+      ],
+      ['POST', '/v1/orders/O1/revoke', { reason: 'not needed' }],
+    ]);
+    expect(started.requests[0]?.headers['idempotency-key']).toBe('k-1');
   });
 });
 

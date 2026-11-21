@@ -106,6 +106,18 @@ describe('parseConfig', () => {
     });
   });
 
+  it('has the defaults of ui.tuiMouse, takes the auto copy mode and refuses bad values (P11)', () => {
+    expect(parseConfig('').ui.tuiMouse).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    const yaml = 'ui:\n  clipboard:\n    copy: auto\n  tuiMouse:\n    wheelLines: 5\n';
+    const { ui } = parseConfig(yaml);
+    expect(ui.clipboard.copy).toBe('auto');
+    expect(ui.tuiMouse).toEqual({ wheelLines: 5, copyMaxBytes: 100_000 });
+    expect(() => parseConfig('ui:\n  tuiMouse:\n    wheelLines: 0\n')).toThrow(
+      /ui\.tuiMouse\.wheelLines/,
+    );
+    expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
+  });
+
   it('has the defaults of ui.input and takes its other modes (N35)', () => {
     expect(parseConfig('').ui.input).toEqual({
       paste: { mode: 'marker', lines: 10, chars: 2000 },
@@ -120,6 +132,39 @@ describe('parseConfig', () => {
     expect(input.history).toEqual({ store: 'memory', size: 500 });
     expect(input.image.tool).toBe('off');
     expect(() => parseConfig('ui:\n  input:\n    editor: vim\n')).toThrow(/ui\.input\.editor/);
+  });
+
+  it('has the defaults of ui.chat and takes its other modes (P12)', () => {
+    expect(parseConfig('').ui.chat).toEqual({
+      queue: 'daemon',
+      suggestions: 6,
+      decisionFocus: 'auto',
+      esc: 'stop',
+    });
+    const yaml = 'ui:\n  chat:\n    queue: hold\n    suggestions: 0\n    esc: off\n';
+    expect(parseConfig(yaml).ui.chat).toEqual({
+      queue: 'hold',
+      suggestions: 0,
+      decisionFocus: 'auto',
+      esc: 'off',
+    });
+    expect(() => parseConfig('ui:\n  chat:\n    queue: later\n')).toThrow(/ui\.chat\.queue/);
+  });
+
+  it('has the defaults of ui.overview and ui.usage and takes their other modes (P13)', () => {
+    const { ui } = parseConfig('');
+    expect(ui.overview).toEqual({
+      confirm: 'always',
+      recentEvents: 8,
+      hiddenEvents: ['session.update'],
+    });
+    expect(ui.usage).toEqual({ groupBy: 'profile', refreshSeconds: 30 });
+    const yaml =
+      'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
+    expect(parseConfig(yaml).ui.overview.confirm).toBe('off');
+    expect(parseConfig(yaml).ui.usage.groupBy).toBe('executor');
+    expect(parseConfig(yaml).ui.usage.refreshSeconds).toBe(0);
+    expect(() => parseConfig('ui:\n  usage:\n    groupBy: day\n')).toThrow(/ui\.usage\.groupBy/);
   });
 
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {

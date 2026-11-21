@@ -6,13 +6,20 @@ import {
   clientLayoutFile,
   createNodeDaemonDirectory,
   resolveClientConfigDir,
+  resolveDataDir,
 } from '@otheater/client/node';
 import type { Resource } from 'i18next';
 import { directoryConnector, type DaemonConnector } from './daemon-connection.js';
+import {
+  FileHistoryStore,
+  MemoryHistoryStore,
+  inputHistoryFile,
+  type HistoryStore,
+} from './input/index.js';
 import { applyInkPatches, type InkPatchDeps, type InkPatchOutcome } from './ink-patch.js';
 import type { SystemLocaleEnv } from './locale.js';
 import type { RunningTui } from './run.js';
-import { parseUiSettings } from './settings.js';
+import { parseUiSettings, type UiSettings } from './settings.js';
 import type { ProcessHost } from './terminal.js';
 
 export interface StartTuiOptions {
@@ -32,6 +39,8 @@ export interface StartTuiOptions {
    * `resolveClientConfigDir`). A test passes its own, so the real home is never read.
    */
   readonly layoutFile?: LayoutFileStore | undefined;
+  /** The history of the text box. Default: the one `ui.input.history.store` chooses. */
+  readonly history?: HistoryStore | undefined;
   readonly inkPatchDeps?: InkPatchDeps | undefined;
   readonly catalogs?: Resource | undefined;
   readonly interactive?: boolean | undefined;
@@ -65,6 +74,7 @@ export async function startTui(options: StartTuiOptions): Promise<StartedTui> {
     connector,
     settings,
     patch,
+    history: options.history ?? defaultHistory(settings, options.dataDir),
     process: options.process,
     env: options.env,
     catalogs: options.catalogs,
@@ -81,4 +91,17 @@ function defaultLayoutFile(): LayoutFileStore {
     homedir: homedir(),
   });
   return new FileLayoutStore(clientLayoutFile(configDir, 'tui'));
+}
+
+/** The history of the text box: a file in the data folder, or only in memory (`ui.input.history.store`). */
+function defaultHistory(settings: UiSettings, dataDir: string | undefined): HistoryStore {
+  const { store, size } = settings.input.history;
+  if (store === 'memory') return new MemoryHistoryStore(size);
+  const folder = resolveDataDir({
+    explicit: dataDir,
+    env: process.env,
+    platform: process.platform,
+    homedir: homedir(),
+  });
+  return new FileHistoryStore(inputHistoryFile(folder), size);
 }

@@ -11,10 +11,11 @@ import {
   type KeyEnvironment,
   type TuiKeymap,
 } from './keys/use-keymap.js';
-import type { ChatMessage } from './layout/chat.js';
+import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import { Shell } from './layout/shell.js';
 import type { TabContentMap } from './layout/tab-content.js';
 import type { LocaleController } from './locale.js';
+import { MouseLayer, type MouseLayerProps, type MouseTerminal } from './mouse/index.js';
 import { RenderControlProvider, useRenderControl, type RenderControl } from './render-control.js';
 import type { UiSettings } from './settings.js';
 import { StatusScreen } from './status-screen.js';
@@ -29,12 +30,21 @@ export interface AppProps {
   readonly patch?: InkPatchOutcome | undefined;
   /** Makes Ink paint the frame at once (`ui.render.keyRender: flush`). */
   readonly flush?: (() => void) | undefined;
-  /** [proposta] The messages of the chat until P12 feeds it from the daemon. */
-  readonly messages?: readonly ChatMessage[] | undefined;
+  /** How the chat opens its sockets (tests give a fake `WebSocket` and fast retries). */
+  readonly chatSocket?: ChatPanelConfig['socket'];
+  /** Where the history of the text box lives; in memory when absent. */
+  readonly history?: ChatPanelConfig['history'];
   /** What each tab of the panel draws; they come in empty and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
   /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
   readonly keyEnvironment?: KeyEnvironment | undefined;
+  /**
+   * Where the mouse modes and the OSC 52 copy are written (the terminal of the TUI, N34/N36). With
+   * none the mouse layer does nothing, which is what the tests that do not look at it want.
+   */
+  readonly mouseTerminal?: MouseTerminal | undefined;
+  /** The ports of the copy (the tool of the system, the environment); the real ones by default. For tests. */
+  readonly mouseClipboard?: MouseLayerProps['clipboard'];
 }
 
 /**
@@ -89,12 +99,19 @@ function Screen(props: AppProps): ReactNode {
     return (
       <Shell
         stores={view.stores}
+        client={view.client}
+        settings={props.settings}
         layout={view.layout}
         address={view.address}
         tuning={props.settings.tuiLayout}
-        settings={props.settings}
         keymap={keymap}
-        messages={props.messages}
+        chat={{
+          client: view.client,
+          socket: props.chatSocket,
+          chat: props.settings.chat,
+          input: props.settings.input,
+          history: props.history,
+        }}
         tabContent={props.tabContent}
       />
     );
@@ -133,7 +150,15 @@ export function App(props: AppProps): ReactNode {
   return (
     <I18nextProvider i18n={props.i18n}>
       <RenderControlProvider value={control}>
-        <Screen {...props} />
+        <MouseLayer
+          mode={props.settings.mouse}
+          copy={props.settings.clipboardCopy}
+          tuning={props.settings.tuiMouse}
+          terminal={props.mouseTerminal}
+          clipboard={props.mouseClipboard}
+        >
+          <Screen {...props} />
+        </MouseLayer>
       </RenderControlProvider>
     </I18nextProvider>
   );

@@ -53,6 +53,38 @@ function textBoxActions(): NonNullable<UiRegistryDefinition['actions']> {
 }
 
 /**
+ * The actions of the tab Settings (P16 of docs/18): the keys of its items, in the context `settings`
+ * (alive with `panel`, so the arrows and Enter keep walking and folding the sections; the tab
+ * Directives may take the same letters). [proposta] The letters are bare
+ * because the tab has no text field open while they act; with a field open the shell hands every
+ * key to it. They are not commands of the palette: they act on the item under the cursor.
+ */
+const SETTINGS_KEYS: readonly (readonly [name: string, keys: readonly string[]])[] = [
+  ['itemPrev', ['K']],
+  ['itemNext', ['J']],
+  ['moveUp', ['Shift+Up']],
+  ['moveDown', ['Shift+Down']],
+  ['login', ['L']],
+  ['add', ['A']],
+  ['remove', ['X']],
+  ['edit', ['E']],
+  ['unset', ['U']],
+  ['scope', ['S']],
+];
+
+function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
+  return SETTINGS_KEYS.map(([name, keys]) => ({
+    id: `settings.${name}`,
+    textKey: `actions.settings.${name}`,
+    group: 'settings',
+    context: 'settings' as const,
+    surfaces: ['tui' as const],
+    palette: false,
+    keys: terminalKeys(keys),
+  }));
+}
+
+/**
  * The entries of the registry for the terminal, from the table of 5.13 ("Mapa de teclas") and the
  * tabs of the work panel. The tab Agenda (Phase 9b) and the tab Plugins (Phase 9) are not here
  * yet: each one enters with a line of `tabs`, and the catalog `tui` gets its name.
@@ -64,6 +96,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'navigation', textKey: 'groups.navigation', order: 25 },
     { id: 'decision', textKey: 'groups.decision', order: 30 },
     { id: 'input', textKey: 'groups.input', order: 35 },
+    { id: 'settings', textKey: 'groups.settings', order: 37 },
     { id: 'general', textKey: 'groups.general', order: 40 },
   ],
   tabs: [
@@ -261,6 +294,58 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Enter']),
       bar: { textKey: 'bar.panel.activate', order: 14 },
     },
+    // The tab Directives (P15 of docs/18, 5.17): the panel is focused and the tab is the open one
+    // (the context `directives`). The keys are bare letters, which a tab context allows (the text box
+    // is not in focus); another tab may take the same letters.
+    // They are not commands of the palette: each one acts on the order the tab has selected.
+    {
+      id: 'directives.new',
+      textKey: 'actions.directives.new',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['N']),
+    },
+    {
+      id: 'directives.extend',
+      textKey: 'actions.directives.extend',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['E']),
+    },
+    {
+      id: 'directives.suspend',
+      textKey: 'actions.directives.suspend',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['S']),
+    },
+    {
+      id: 'directives.revoke',
+      textKey: 'actions.directives.revoke',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['R']),
+    },
+    {
+      id: 'directives.previous',
+      textKey: 'actions.directives.previous',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['Shift+Up', 'K']),
+    },
+    {
+      id: 'directives.next',
+      textKey: 'actions.directives.next',
+      group: 'navigation',
+      context: 'directives',
+      palette: false,
+      keys: terminalKeys(['Shift+Down', 'J']),
+    },
     {
       id: 'overlay.close',
       textKey: 'actions.overlay.close',
@@ -294,10 +379,102 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Up', 'Down', 'Space', 'Enter']),
       bar: { textKey: 'bar.decision.answer', order: 15 },
     },
+    // The chat of the Producer (P12 of docs/18): the Director's decision card, the / suggestions and
+    // the stop of the Director's reply. `decision.answer` above stays the card's own keys.
+    {
+      id: 'decision.aside',
+      textKey: 'actions.decision.aside',
+      group: 'decision',
+      context: 'decision',
+      palette: false,
+      keys: terminalKeys(['Esc']),
+      bar: { textKey: 'bar.decision.aside', order: 16 },
+    },
+    {
+      id: 'decision.open',
+      textKey: 'actions.decision.open',
+      group: 'decision',
+      context: 'chat',
+      keys: terminalKeys(['Ctrl+O']),
+    },
+    {
+      id: 'chat.suggestNext',
+      textKey: 'actions.chat.suggestNext',
+      group: 'navigation',
+      context: 'chat',
+      palette: false,
+      keys: terminalKeys(['Ctrl+N']),
+    },
+    {
+      id: 'chat.suggestPrev',
+      textKey: 'actions.chat.suggestPrev',
+      group: 'navigation',
+      context: 'chat',
+      palette: false,
+      keys: terminalKeys(['Ctrl+P']),
+    },
+    {
+      id: 'chat.stop',
+      textKey: 'actions.chat.stop',
+      group: 'navigation',
+      context: 'chat',
+      keys: terminalKeys(['Esc']),
+    },
+    // The Overview and Usage tabs (P13 of docs/18), each in the context of its tab. None shows in the
+    // palette: the tab draws the keys it offers. Each can be rebound in `ui.keymap.overrides`.
+    {
+      id: 'overview.pausePlay',
+      textKey: 'actions.overview.pausePlay',
+      group: 'general',
+      context: 'overview',
+      palette: false,
+      keys: terminalKeys(['Shift+P']),
+    },
+    {
+      id: 'overview.resumePlay',
+      textKey: 'actions.overview.resumePlay',
+      group: 'general',
+      context: 'overview',
+      palette: false,
+      keys: terminalKeys(['Shift+R']),
+    },
+    {
+      id: 'overview.nextActor',
+      textKey: 'actions.overview.nextActor',
+      group: 'general',
+      context: 'overview',
+      palette: false,
+      keys: terminalKeys(['Shift+N']),
+    },
+    {
+      id: 'overview.pauseActor',
+      textKey: 'actions.overview.pauseActor',
+      group: 'general',
+      context: 'overview',
+      palette: false,
+      keys: terminalKeys(['Shift+A']),
+    },
+    {
+      id: 'overview.resumeActor',
+      textKey: 'actions.overview.resumeActor',
+      group: 'general',
+      context: 'overview',
+      palette: false,
+      keys: terminalKeys(['Shift+U']),
+    },
+    {
+      id: 'usage.refresh',
+      textKey: 'actions.usage.refresh',
+      group: 'general',
+      context: 'usage',
+      palette: false,
+      keys: terminalKeys(['Shift+L']),
+    },
     // The text box of the Producer (N35, P10 of docs/18). In `agents` it has the editing keys of the
     // coding agents and of the readline; in `classic` the Ctrl keys the layout used in v0.7 stay with
     // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.
     ...textBoxActions(),
+    ...settingsActions(),
     {
       id: 'palette.open',
       textKey: 'actions.palette.open',

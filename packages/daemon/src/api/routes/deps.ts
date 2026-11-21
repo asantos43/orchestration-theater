@@ -59,6 +59,11 @@ export interface CommandRouteDeps {
   readonly logins: ProfileLoginService;
   /** `<data>/config.yaml`, the file `PUT /v1/config` edits. */
   readonly configPath: string;
+  /**
+   * The configuration the daemon runs with. `PUT /v1/config` reloads `ui`, `chat`, `limits` and
+   * `roles` into it in place (N188); absent, every edit applies on restart.
+   */
+  readonly config?: DaemonConfig | undefined;
   /** `api.idempotency_ttl`, read at each command. */
   readonly idempotencyTtlMs: () => number;
   /** The Producer's channel: opens scenarios, attaches files and answers decisions. */

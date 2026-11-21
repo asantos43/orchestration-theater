@@ -5,7 +5,8 @@ import { Box, Text } from 'ink';
 import { useEffect, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Section } from '../../layout/section.js';
-import type { TabContentProps, TabDefinition } from '../../layout/tab-content.js';
+import { useTabHost } from '../../layout/tab-host.js';
+import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import { fit } from '../../layout/text.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
@@ -245,9 +246,13 @@ function AttemptView(props: {
 }
 
 function TrajectoriesTab(props: TabContentProps): ReactNode {
-  const { stores, scenarioId, settings, width, sections } = props;
+  const { stores, settings } = useTabHost();
+  const { scenarioId, width, sections } = props;
   const { t } = useTranslation();
-  const say = useMemo<Say>(() => (key, values) => (values === undefined ? t(key) : t(key, values)), [t]);
+  const say = useMemo<Say>(
+    () => (key, values) => (values === undefined ? t(key) : t(key, values)),
+    [t],
+  );
   const config = settings.trajectories;
   const playId = useStoreValue(stores.plays, (state) => latestPlayId(state.byId, scenarioId));
   const held = useStoreValue(stores.trajectories, (state) =>
@@ -374,11 +379,7 @@ function TransitionsView(props: {
     >
       <Box flexDirection="column" paddingLeft={2} width={width}>
         {trajectory.transitions.map((move, index) => (
-          <Text
-            key={index}
-            dimColor
-            wrap="truncate"
-          >
+          <Text key={index} dimColor wrap="truncate">
             {fit(`${move.demandId}: ${move.from ?? '-'} -> ${move.to}`, width - 2)}
           </Text>
         ))}

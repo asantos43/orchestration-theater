@@ -661,6 +661,7 @@ export class DirectiveService {
         ruleKey: record.ruleKey,
         suspendsId: record.suspendsId,
         replacesId: record.replacesId,
+        order: record,
       }),
     );
     if (record.kind === 'suspension' && record.state === 'active') {

@@ -293,6 +293,21 @@ export class DirectorSessions {
   }
 
   /**
+   * Stops the reply the Director is giving (Phase 7, P12: Esc of the TUI, `/stop`). The turn is
+   * cancelled the way the client's protocol has it (`session/cancel`): it ends with what was said
+   * so far, which stays as the reply, and the prompt counts as delivered. Nothing else is touched:
+   * the plays go on, and the queue moves to its next message. Resolves `false` when there is no
+   * turn running (a sleeping Director, an idle one, one that is still opening).
+   */
+  async interrupt(scenarioId: string): Promise<boolean> {
+    const session = this.#opened.get(scenarioId);
+    const lease = session?.lease;
+    if (session === undefined || lease === undefined || !session.active) return false;
+    await lease.session.cancel().catch(() => undefined);
+    return true;
+  }
+
+  /**
    * The `/` commands the client of the open session announced (Phase 7, P3), the id of that client
    * (`claude-code`, `codex`, `opencode`) and whether the Director is in a turn (a turn running, a
    * session opening, or a prompt of the queue still to be delivered: `busy`). `undefined` when

@@ -28,6 +28,13 @@ describe('parseUiSettings', () => {
         scrollStep: 'half',
       },
       trajectories: { open: 'last', keep: 5000, diffLines: 200 },
+      chat: { queue: 'daemon', suggestions: 6, decisionFocus: 'auto', esc: 'stop' },
+      input: DEFAULT_UI_SETTINGS.input,
+      overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
+      usage: { groupBy: 'profile', refreshSeconds: 30 },
+      mouse: 'full',
+      clipboardCopy: 'osc52',
+      tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
     });
   });
 
@@ -38,6 +45,20 @@ describe('parseUiSettings', () => {
     expect(
       parseUiSettings({ trajectories: { open: 'some', keep: 5, diff_lines: 50 } }).trajectories,
     ).toEqual({ open: 'last', keep: 5000, diffLines: 50 });
+  });
+
+  it('reads ui.chat and ui.input, and falls back for what is not valid (P12)', () => {
+    const settings = parseUiSettings({
+      chat: { queue: 'hold', suggestions: 0, decisionFocus: 'sometimes', esc: 'off' },
+      input: { maxVisibleLines: 3 },
+    });
+    expect(settings.chat).toEqual({
+      queue: 'hold',
+      suggestions: 0,
+      decisionFocus: 'auto',
+      esc: 'off',
+    });
+    expect(settings.input.maxVisibleLines).toBe(3);
   });
 
   it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
@@ -90,7 +111,32 @@ describe('parseUiSettings', () => {
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
       trajectories: DEFAULT_UI_SETTINGS.trajectories,
+      chat: DEFAULT_UI_SETTINGS.chat,
+      input: DEFAULT_UI_SETTINGS.input,
+      overview: DEFAULT_UI_SETTINGS.overview,
+      usage: DEFAULT_UI_SETTINGS.usage,
+      mouse: DEFAULT_UI_SETTINGS.mouse,
+      clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
+      tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
     });
+  });
+
+  it('reads the mouse keys of P11 and falls back key by key', () => {
+    expect(parseUiSettings({}).mouse).toBe('full');
+    expect(parseUiSettings({}).clipboardCopy).toBe('osc52');
+    expect(parseUiSettings({}).tuiMouse).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    const set = parseUiSettings({
+      mouse: 'wheel',
+      clipboard: { copy: 'auto' },
+      tuiMouse: { wheelLines: 5, copyMaxBytes: 'x' },
+    });
+    expect(set.mouse).toBe('wheel');
+    expect(set.clipboardCopy).toBe('auto');
+    expect(set.tuiMouse).toEqual({ wheelLines: 5, copyMaxBytes: 100_000 });
+    const bad = parseUiSettings({ mouse: 'some', clipboard: { copy: 'paste' }, tuiMouse: 4 });
+    expect(bad.mouse).toBe('full');
+    expect(bad.clipboardCopy).toBe('osc52');
+    expect(bad.tuiMouse).toEqual(DEFAULT_UI_SETTINGS.tuiMouse);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {

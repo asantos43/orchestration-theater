@@ -111,6 +111,8 @@ export type BoxEvent =
         | { readonly kind: 'missing' }
         | { readonly kind: 'failed'; readonly message: string };
     }
+  /** The owner sets the text (a completion), with the cursor at its end. */
+  | { readonly type: 'replace'; readonly text: string }
   | { readonly type: 'historyLoaded'; readonly texts: readonly string[] }
   | { readonly type: 'historyFailed'; readonly message: string }
   /** The owner's `onSubmit` refused the message: it goes back to the box when the box is empty. */
@@ -432,6 +434,10 @@ export function reduceBox(state: BoxState, event: BoxEvent, ctx: BoxContext): Bo
       return step(withEditor(current, insert(current.editor, sanitizeForBox(event.value))));
     case 'paste':
       return reducePaste(current, event.text, ctx);
+    case 'replace':
+      return step(
+        withEditor(current, { ...createEditor(event.text), killed: current.editor.killed }),
+      );
     case 'imageRead': {
       const { result } = event;
       const free: BoxState = { ...current, busy: undefined };
