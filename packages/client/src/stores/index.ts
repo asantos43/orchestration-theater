@@ -6,4 +6,5 @@ export * from './demands.js';
 export * from './decisions.js';
 export * from './quotas.js';
 export * from './recent-events.js';
+export * from './trajectories.js';
 export * from './sync.js';
