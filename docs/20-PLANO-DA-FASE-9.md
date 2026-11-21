@@ -1,6 +1,6 @@
 # 20. Plano da Fase 9
 
-Versão 2, de 2026-11-21 (a versão 1 era a mesma data, antes das decisões N232 a N241). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
+Versão 3, de 2026-11-21 (a versão 1 era a mesma data, antes das decisões N232 a N241; a 2 não tinha o P14, da N242). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
 
 A fase começa depois do fim da Fase 8 (decisões N224 a N231, de 2026-11-21). Pela N231, os PRs desta fase mesclam sem ok por PR, com a CI verde e squash. O que depende do dono fica para o fim da fase.
 
@@ -84,16 +84,19 @@ Dados do registro npm, consultados em 2026-11-21 **[S]**. A regra é a das fases
 | P10 | Rotas `/v1/plugins`: lista, painel e ação | P6, P8 | P12 | a fazer |
 | P11 | Aba Plugins da TUI (F6) com o painel declarativo | P10 | P12 | a fazer |
 | P12 | Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241) | P3 | P4 a P11 | a fazer |
+| P14 | Troca manual do Diretor pela TUI e por `/director` (N242) | nada | P3 a P12 | a fazer |
 | P13 | Aceite da fase | todos | nada | a fazer |
 
 Ondas **[proposta]**:
 - **onda 1:** P0, P1, P2 e P3;
-- **onda 2:** P4, P5, P9 e P12;
+- **onda 2:** P4, P5, P9, P12 e P14;
 - **onda 3:** P6, P7 e P8;
 - **onda 4:** P10 e depois P11;
 - **fim:** P13.
 
 O P12 só depende do validador do P3. Ele mexe no pipeline e na configuração do cenário, não no código dos plugins.
+
+O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no Diretor, nos comandos `/` e no chat da TUI; com o P12, divide só a configuração do cenário, com blocos novos de cada lado.
 
 ### P1. Árvore única de spans (N230 (2); §5.11)
 
@@ -297,6 +300,28 @@ O desenho segue a N241 (a) **[proposta]**:
   - o snapshot guarda o fluxo;
   - a troca da configuração não afeta a peça em curso.
 
+### P14. Troca manual do Diretor pela TUI e por `/director` (N242; §5.13, §5.4, §5.16)
+
+Pedido do dono em 2026-11-21: clicar no modelo e no esforço que ficam embaixo da caixa de texto, como no Claude Code, e escolher outro Diretor; um comando `/` serve onde a TUI não der. Hoje o Diretor só troca de Executor no failover, e `/model` e `/effort` só mostram o valor [V].
+
+O desenho segue a N242:
+- **Rodapé da TUI:** abaixo da caixa de texto do chat, o Executor, o modelo e o esforço do Diretor do cenário. Um clique (com `ui.mouse` ligado) ou um atalho do mapa de teclas **[proposta]** abre o seletor.
+- **Seletor:** os Executores da lista do papel do Diretor do cenário, com validade e cota, e os modelos e esforços que cada cliente anuncia (config options, §5.7). Uma linha "voltar ao padrão" tira o override.
+- **Comando:** `/director` lista; `/director <executor>` troca; `/director default` volta ao padrão. `/model <modelo>` e `/effort <esforço>` passam a aceitar o valor e trocam no mesmo Executor **[proposta]**.
+- **Duração:** override do cenário, gravado no store, até o Produtor voltar ao padrão. Sobrevive ao sono do Diretor e ao reinício do daemon. O failover segue a lista do papel a partir do escolhido.
+- **Sessão:** automática.
+  - Mesmo cliente e perfil, só modelo ou esforço: a config option muda na sessão viva. Se o cliente não anunciar a opção, vale a passagem de bastão.
+  - Outro Executor: passagem de bastão. A sessão nova recebe o prefixo do papel e o resumo do estado do store, pelo mesmo caminho do failover e do sono.
+  - O chat mostra um aviso com a forma usada, e a troca gera um evento **[proposta]**.
+- **Durante um turno:** a troca espera o fim do turno, com a chave `scenarios.director_switch.in_turn: wait | interrupt`, padrão `wait` **[proposta]**.
+- **Aceite**, com o `fake-agent`:
+  - trocar para outro Executor abre uma sessão nova, cujo primeiro prompt traz o resumo do estado;
+  - trocar só o esforço no mesmo Executor muda a sessão viva, sem sessão nova;
+  - o override sobrevive ao sono e ao reinício, e "voltar ao padrão" o tira;
+  - a troca pedida durante um turno espera o fim dele;
+  - na TUI, o rodapé aparece, e o clique e o atalho abrem o seletor;
+  - o comando e a TUI dão o mesmo resultado.
+
 ### P13. Aceite da fase
 
 - **Automático**, um e2e com o `fake-agent` e o plugin de exemplo instalado numa pasta temporária:
@@ -337,6 +362,7 @@ Decididas pelo dono em 2026-11-21, por múltipla escolha ([docs/13](13-DECISOES-
 | N239, os segredos | (a) `plugin/<id>/<NOME>` com a variante por projeto |
 | N240, o exemplo | (a) `examples/plugin-notes` |
 | N241, os fluxos | (a) o `play` oficial com etapas opcionais, em ordem fixa |
+| N242, a troca do Diretor | Executores do papel; override do cenário; sessão viva ou bastão, automático; passo P14 desta fase |
 
 As opções, como foram apresentadas:
 
