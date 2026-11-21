@@ -36,7 +36,10 @@ const detail = z.string().min(1).max(512).nullable();
  * - `account_rotated` (P26, N157): `profiles.rotate_on_exhaustion.<provider>` is `on` and a
  *   subscription account of that provider ran out, so the work passed to another account of the
  *   same provider (`subject`: the role; `detail`: the provider, the profile that ran out and the
- *   profile that took the work; the envelope carries the play and the attempt) [proposta].
+ *   profile that took the work; the envelope carries the play and the attempt) [proposta];
+ * - `daemon_spans_failed` (Phase 8, P4, N214; [proposta]): the projector of the spans of the daemon
+ *   could not read the log or write the base (`subject`: what failed; `detail`: why). It is told once
+ *   per episode and the projector tries again; the orchestration does not depend on it.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -51,6 +54,7 @@ export const DAEMON_NOTICE_KINDS = [
   'browser_warning',
   'cross_check_unsatisfiable',
   'account_rotated',
+  'daemon_spans_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

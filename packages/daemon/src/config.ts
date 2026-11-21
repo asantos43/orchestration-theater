@@ -1245,6 +1245,13 @@ const DirectSessionConfigSchema = z
 
 /** `telemetry.enabled`, `telemetry.clients.<client>` and `telemetry.clients.<client>.<option>`: on or off. */
 export const TELEMETRY_SWITCH_MODES = ['on', 'off'] as const;
+/**
+ * `telemetry.daemon_spans.waits` (Phase 8, P4; [proposta]): which `otheater.wait` spans the daemon
+ * makes. `all`: those the log tells (quota, executor selection, tool semaphore) and those recorded
+ * where the daemon waits (the prompt queue, the pool); `log`: only those the log tells, so the
+ * whole set can be rebuilt from the log; `off`: none.
+ */
+export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'log', 'off'] as const;
 /** `telemetry.synchronous` (`PRAGMA synchronous` of the telemetry base only; the `Store` stays full). */
 export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
 /** `backup.telemetry`: whether the backup carries the telemetry file. */
@@ -1302,6 +1309,13 @@ const TelemetryConfigSchema = z
         opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
       })
       .prefault({}),
+    /**
+     * The spans of the daemon itself (P4; N214 (a)): the play, its stages, the attempts, the
+     * sessions, the tool calls and the waits, made by reading the event log with a cursor of their
+     * own. `on` or `off`, or an object with `enabled` and `waits` ({@link TELEMETRY_DAEMON_WAITS_MODES}).
+     * Default `on`. [proposta]
+     */
+    daemon_spans: telemetryClient({ waits: z.enum(TELEMETRY_DAEMON_WAITS_MODES).default('all') }),
   })
   .prefault({});
 

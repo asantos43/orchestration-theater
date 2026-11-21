@@ -1315,6 +1315,7 @@ describe('telemetry (P1 of Phase 8)', () => {
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
+      daemon_spans: { enabled: 'on', waits: 'all' },
     });
     expect(config.backup.telemetry).toBe('exclude');
   });
@@ -1362,6 +1363,17 @@ describe('telemetry (P1 of Phase 8)', () => {
     ).toEqual({ enabled: 'on', traces: 'on' });
   });
 
+  it('takes the modes of the spans of the daemon (P4)', () => {
+    const spans = (yaml: string) => parseConfig(`telemetry:\n${yaml}`).telemetry.daemon_spans;
+    expect(spans('  daemon_spans: off\n')).toEqual({ enabled: 'off', waits: 'all' });
+    expect(spans('  daemon_spans: on\n')).toEqual({ enabled: 'on', waits: 'all' });
+    expect(spans('  daemon_spans:\n    waits: log\n')).toEqual({ enabled: 'on', waits: 'log' });
+    expect(spans('  daemon_spans:\n    enabled: off\n    waits: off\n')).toEqual({
+      enabled: 'off',
+      waits: 'off',
+    });
+  });
+
   it('refuses unknown values and keys, and does not own the receiver yet', () => {
     for (const bad of [
       'telemetry:\n  enabled: maybe\n',
@@ -1375,6 +1387,9 @@ describe('telemetry (P1 of Phase 8)', () => {
       'telemetry:\n  clients:\n    gemini: on\n',
       'telemetry:\n  receiver:\n    port: 1\n',
       'telemetry:\n  other: 1\n',
+      'telemetry:\n  daemon_spans: maybe\n',
+      'telemetry:\n  daemon_spans:\n    waits: some\n',
+      'telemetry:\n  daemon_spans:\n    other: on\n',
       'backup:\n  telemetry: sometimes\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
