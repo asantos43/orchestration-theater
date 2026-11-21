@@ -1,6 +1,6 @@
 # 18. Plano da Fase 7
 
-Versão 1, de 2026-11-20. Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
+Versão 2, de 2026-11-20 (a onda 1 está concluída; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
 O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levantou oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), tomadas pelo dono em 2026-11-20, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim.
 
@@ -80,14 +80,14 @@ Não entram **[proposta]**:
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #203) |
-| P1 | Eventos que faltam (N173) | P0 | P2, P4, P5, P6, P7, P8 | a fazer |
-| P2 | Pausar e retomar peça; pausar, retomar e cancelar Ator (N176) | P0 | P1, P4, P5, P6, P7, P8 | a fazer |
+| P1 | Eventos que faltam (N173) | P0 | P2, P4, P5, P6, P7, P8 | concluído (PR #209) |
+| P2 | Pausar e retomar peça; pausar, retomar e cancelar Ator (N176) | P0 | P1, P4, P5, P6, P7, P8 | concluído (PR #211) |
 | P3 | Registro de comandos `/` no daemon (N44) | P2 | P4 a P11 | a fazer |
-| P4 | Assistente de configuração no daemon (§5.7) | P0 | P1, P2, P5 a P8 | a fazer |
-| P5 | Login oficial pela API (N186) | P0 | P1, P2, P4, P6 a P8 | a fazer |
-| P6 | Comando `!` do Produtor no daemon (N43, N187) | P0 | P1, P2, P4, P5, P7, P8 | a fazer |
-| P7 | Registro de interface e chaves `ui.*` no `packages/client` | P0 | P1, P2, P4 a P6, P8 | a fazer |
-| P8 | `packages/tui`: base, desempenho e testes | P0 | P1, P2, P4 a P7 | a fazer |
+| P4 | Assistente de configuração no daemon (§5.7) | P0 | P1, P2, P5 a P8 | concluído (PR #212) |
+| P5 | Login oficial pela API (N186) | P0 | P1, P2, P4, P6 a P8 | concluído (PR #207) |
+| P6 | Comando `!` do Produtor no daemon (N43, N187) | P0 | P1, P2, P4, P5, P7, P8 | concluído (PR #208) |
+| P7 | Registro de interface e chaves `ui.*` no `packages/client` | P0 | P1, P2, P4 a P6, P8 | concluído (PR #206) |
+| P8 | `packages/tui`: base, desempenho e testes | P0 | P1, P2, P4 a P7 | concluído (PR #210) |
 | P9 | Layout: lateral, chat, painel de abas, rolagem e paleta | P7, P8 | P3, P10, P11 | a fazer |
 | P10 | Caixa de texto do Produtor (N35) | P7, P8 | P3, P9, P11 | a fazer |
 | P11 | Mouse e cópia (N34, N36) | P9 | P3, P10 | a fazer |
@@ -102,7 +102,7 @@ Não entram **[proposta]**:
 | P20 | Terminais: testes de fumaça e roteiro manual (N191) | P12 | P17 a P19 | a fazer |
 | P21 | Aceite da fase | todos | nada | a fazer |
 
-Ordem em ondas **[proposta]**:
+Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20; os sete PRs estão nas linhas dos passos):
 1. P1, P2, P4, P5, P6, P7 e P8. Os cinco primeiros são do daemon; P7 e P8 abrem o lado da TUI. Sete passos de uma vez passam do limite de dois subagentes com a suíte completa: os do daemon rodam a suíte em fila, e P7 e P8 testam só os pacotes deles até o PR.
 2. P3, P9 e P10.
 3. P11, P12, P13, P14, P15 e P16.
@@ -123,6 +123,15 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** o teste que monta os stores por eventos e compara com a REST (o mesmo do aceite da Fase 6) passa sem as leituras extras; cada evento tem teste de emissão com o `fake-agent`; o catálogo `api-routes.json` e o de eventos estão regenerados.
 
+**Estado:** feito em 2026-11-20, PR #209. Os quatro eventos saem pelo decorador `recordFeedStore`, na mesma transação do registro (N177). Sem chave nova.
+
+**Divergências:**
+- não há rota para arquivar cenário: o `scenario.archived` sai em qualquer `scenarios.update` que mude `active` para `archived`;
+- `decision.answered` leva `decisionId`, `kind`, `state` e `decidedBy`, mas não o texto da resposta;
+- `demand.transitioned` leva o registro da demanda só no nascimento (`from` nulo); nas outras transições leva `from` e `to`;
+- as etapas não ganharam evento, e o `scenario.created` ainda marca o cenário como velho (`stale`);
+- `scenario.decision_answered` continua, como previsto.
+
 ### P2. Pausar e retomar peça; pausar, retomar e cancelar Ator (N176; §5.12, §5.16)
 
 **Escopo:**
@@ -131,7 +140,20 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - rotas `POST /v1/plays/:playId/pause`, `/resume` e `POST /v1/attempts/:attemptId/pause`, `/resume` e `/cancel` **[proposta]**, com `Idempotency-Key` e atrás do `RecoveryGate`, como o `cancel` da peça;
 - eventos: as transições saem como `play.transitioned` e pelos eventos da tentativa que já existem; o que faltar entra como evento novo, aditivo.
 
-**Aceite:** com o `fake-agent`, pausar uma peça em `EXECUTING` não abre tentativa nova, retomar continua do ponto, e a peça pausada continua pausada depois do reinício do daemon; pausar e retomar um Ator retoma a sessão pela política da causa; a mesma `Idempotency-Key` não repete o efeito; durante a reconciliação, as rotas respondem `recovering`.
+**Aceite:** com o `fake-agent`, pausar uma peça em `EXECUTING` não abre tentativa nova, retomar continua do ponto, e a peça pausada continua pausada depois do reinício do daemon; pausar e retomar um Ator retoma a sessão pela política da causa; a mesma `Idempotency-Key` não repete o efeito; durante a reconciliação, as rotas esperam o fim dela.
+
+**Estado:** feito em 2026-11-20, PR #211. Chave nova: `pause.mode: drain | interrupt`, padrão `drain` (N193), no topo do `DaemonConfigSchema`; o corpo do `pause` da peça pode trazer `mode` para valer só naquela pausa. Eventos novos: `attempt.paused`, `attempt.resumed` e `attempt.cancelled`; o `play.transitioned` ganha `held`.
+
+**Divergências:**
+- **durante a reconciliação, as rotas esperam (`await gate.wait()`) em vez de responder `recovering`**; `recovering` só aparece em `/v1/status`. O aceite acima já está corrigido para isso;
+- a pausa de Ator não sobrevive ao reinício do daemon (a tentativa fica `interrupted/paused` e a peça reabre a demanda); só a pausa da peça sobrevive;
+- a pausa durante a espera de reset (`when_exhausted: wait`) é descartada ou dá conflito;
+- a pausa de um Ator não congela o prazo por demanda; no modo `interrupt` só os prazos da peça congelam;
+- no `drain`, um Executor adquirido enquanto a peça está pausada guarda vaga e lease até o `RESUME`;
+- o julgamento do Diretor não é pausado;
+- o resultado de uma tentativa retomada não volta para a peça (lacuna que já existia);
+- não há teste que reinicie o daemon inteiro; o reinício é testado no nível do `PlayRunner`;
+- as telas de pausa ficam no P13, e não no P3, como o texto do PR diz.
 
 ### P3. Registro de comandos `/` no daemon (N44; §5.13)
 
@@ -154,6 +176,18 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** com perfis falsos, o fluxo inteiro vai do começo à confirmação e grava a configuração esperada; parar no meio, reiniciar o daemon e retomar volta ao mesmo passo; `back` desfaz só o estado do passo; cancelar não deixa nada no `config.yaml`.
 
+**Estado:** feito em 2026-11-20, PR #212. Porta do store 0.7.0, com o registro `setupRuns` (migração 0010). Eventos `setup.started`, `setup.step`, `setup.back`, `setup.confirmed` e `setup.cancelled`. Chaves **[proposta]**: `setup.role_lists: explicit | preset` (padrão `explicit`) e `setup.suggested_budget.daily_usd` (20) e `.monthly_usd` (200).
+
+**Divergências:**
+- as rotas são seis, como no plano (um `GET` e cinco de ação); não houve mudança real;
+- `executors.on_register: ask` vira `preset_only` no assistente, porque a revisão do passo final já é a pergunta;
+- o fluxo `first_run` é completo; `add_account` e `change_preset` usam o mesmo mecanismo, só com os passos e os testes de aceite;
+- com `roles.api_fallback` ativo, os Executores por API vão ao fim das listas; `explicit` troca as listas do Produtor (nota `lists_replaced`) e avisa do formato antigo `orchestration.executor/roles` (nota `legacy_executors`); o plano é recalculado na confirmação;
+- a confirmação roda numa cadeia de promessas própria, e pode correr com um `PUT /v1/config` (o último vence);
+- o modo `preset` de `role_lists` usa a ordem do store;
+- `notes[].message` fica em inglês;
+- o cadastro do Executor do OpenCode e a sessão de teste do Executor (`testSession: 'off'`) ficam fora; a tela é do P17.
+
 ### P5. Login oficial pela API (N186; §5.6, N158)
 
 **Escopo** (na forma escolhida na N186):
@@ -162,6 +196,15 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - no modo `terminal`, que exige um terminal de verdade (o `opencode auth login`, N155), a rota responde que o login é local, e a TUI suspende a tela e roda `ot profile exec <cliente>/<perfil> login` no próprio terminal (P16).
 
 **Aceite:** com um adaptador falso que simula os três modos, o login abre, recebe o código e termina; cancelar mata o processo do login; nenhum log, evento ou resposta além da primeira traz URL, código ou token.
+
+**Estado:** feito em 2026-11-20, PR #207. Serviço `ProfileLoginService`; eventos `profile.login.started`, `.completed` e `.failed`; porta `ClientAdapter` 0.3.3, com `loginMode()` opcional. Sem chave nova: o modo já é `clients.<id>.login.mode`.
+
+**Divergências:**
+- um login por perfil; perfil `api`, `draining` ou `removed` dá `conflict`, e cliente sem adaptador dá `unavailable`;
+- no modo `terminal`, a rota responde `status: local` com o comando `ot profile exec <cliente>/<perfil> login`, sem rodar nada e sem evento. Sem `loginMode`, o serviço abre o login, vê `terminal`, cancela e responde `local`;
+- o cache de idempotência, em memória, guarda a resposta com URL e código; a mesma `Idempotency-Key` devolve a resposta inteira, o que vai além do "só na primeira resposta" do aceite;
+- não há tempo limite para o login aberto;
+- o `FakeLoginFlow` ficou em `@otheater/core/testing`.
 
 ### P6. Comando `!` do Produtor no daemon (N43, N187; §5.13)
 
@@ -174,15 +217,36 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** com `app.terminal: sandbox`, um comando que escreve fora do worktree é barrado; `off` recusa; a saída longa é cortada em `max_lines`; um `read` termina por fim de arquivo; o prazo mata a árvore do processo.
 
+**Estado:** feito em 2026-11-20, PR #208. Serviço `ShellCommandService`, com `/bin/sh -c` (no Windows, `cmd.exe /d /s /c`) pelo `ProcessLauncher`. Chaves: `chat.shell_command` (`on`), `chat.shell_command.timeout` (`5m`, N194), `chat.shell_command.context` (`auto`), `app.terminal` (`sandbox`), `terminal.snippet.max_lines` (200), e, **[proposta]**, `chat.shell_command.max_running` (4), `terminal.snippet.keep` (`tail`) e `terminal.log_max_size` (`16MB`). Mensagens novas do WebSocket: `shell_started` e `shell_finished`.
+
+**Divergências:**
+- "pediu entrada" é uma heurística, e na sandbox não há rede (`app.terminal: host` para ter rede);
+- `!` com anexos pendentes é recusado (`InvalidInput`);
+- o `terminal_snippet` é um anexo de texto comum, sem registro de indicações tipado;
+- os textos da pergunta (`context: ask`) e da mensagem ao Diretor estão em inglês e não passam pelo catálogo;
+- acima de `max_running` o comando dá `Conflict`;
+- o `!` na TUI é do P18; os comandos `/` são do P3.
+
 ### P7. Registro de interface e chaves `ui.*` no `packages/client` (§5.13, §5.18; N35, N39)
 
 **Escopo:**
 - o registro de interface: abas, comandos da paleta e ações do mapa de teclas, uma entrada por ação (id, chave de catálogo, grupo, combinações por plataforma e superfície). A paleta, a ajuda (F1) e a barra de atalhos são geradas dele;
 - o mapa de teclas da TUI (§5.13): presets `agents` (padrão) e `classic`, padrões por ambiente (macOS, `TMUX`, `TERM_PROGRAM=vscode`), `ui.keymap.overrides` e a checagem de conflito (rejeita repetido e avisa sobre a lista de colisões);
-- as chaves `ui.keymap`, `ui.clipboard.copy` (`osc52 | system | off`), `ui.mouse` (`full | wheel | off`), `ui.render` (`keyRender`, `maxFps`, `coalesceMs`, `memo`, `inkPatches`, `historyWindow`) e `ui.runtime` (`maxSemiSpaceMB`, `maxOldSpaceMB`) no `DaemonConfigSchema`, com os padrões da §5.13. O `maxOldSpaceMB` fica sem teto por padrão até a medição do P8 **[proposta]**;
+- as chaves `ui.keymap`, `ui.clipboard.copy` (`osc52 | system | off`), `ui.mouse` (`full | wheel | off`), `ui.render` (`keyRender`, `maxFps`, `coalesceMs`, `memo`, `inkPatches`, `historyWindow`) e `ui.runtime` (`maxSemiSpaceMB`, `maxOldSpaceMB`) no `DaemonConfigSchema`, com os padrões da §5.13. O `maxOldSpaceMB` fica sem teto por padrão até a medição do P8 **[proposta]** (a medição saiu no PR #210: ver o P8);
 - o carregamento do catálogo de tela, `locales/<idioma>/tui.json`, pelo `packages/client`, para a TUI e depois a web.
 
 **Aceite:** o mapa sai certo nos três ambientes simulados; um atalho repetido é recusado; toda ação do registro tem texto em `en` e `pt-BR`; as chaves novas passam pela validação da subida.
+
+**Estado:** feito em 2026-11-20, PR #206. O registro e o mapa de teclas ficam em `packages/client/src/ui/`, a gramática de combinação em `packages/protocol/src/key-combo.ts`, e os catálogos em `locales/<idioma>/tui.json`; `@otheater/client/node` traz o `loadUiCatalogs`.
+
+**Divergências:**
+- as chaves de `ui.render` e `ui.runtime` usam camelCase, como a arquitetura, e não o snake_case do daemon;
+- chave nova **[proposta]**: `ui.keymap.environment: auto | none` (padrão `auto`); faixas **[proposta]**: `ui.render.maxFps` de 1 a 240 e `coalesceMs` de 0 a 1000;
+- um atalho repetido, ou um id desconhecido em `overrides`, impede a subida do daemon (o `superRefine` roda o `resolveKeymap`);
+- no `classic`, a largura do chat usa Ctrl+←/→ **[proposta]**; os contextos de atalho são `global` e `decision` **[proposta]**;
+- os avisos de ambiente (Option e Fn no macOS, Ctrl+B no tmux, VS Code) são **[hipótese: não confirmada em terminal real]**;
+- `maxOldSpaceMB` ficou sem teto, como no plano; a medição e a proposta de padrão vieram no P8;
+- as superfícies `web` e `desktop` existem só como tipo, e as abas Agenda e Plugins não entraram.
 
 ### P8. `packages/tui`: base, desempenho e testes (N37; N185)
 
@@ -196,6 +260,18 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - a medição do `maxOldSpaceMB` com um histórico de conversa grande, para propor o padrão.
 
 **Aceite:** a TUI abre, mostra o estado do daemon e fecha devolvendo o terminal como estava; com outra versão do Ink, o patch é recusado e a TUI roda sem ele; trocar `ui.locale` muda o texto na hora; a regra de lint reprova um texto escrito direto num componente.
+
+**Estado:** feito em 2026-11-20, PR #210. Pacote `packages/tui` com `ink` 8.0.0, `react` 19.3.1, `react-i18next` 17.1.13 e `i18next` 26.6.0; de desenvolvimento, `@types/react` 19.3.0 e `ink-testing-library` 4.0.0. Chave nova: `ui.bare_command: tui | help`, padrão `tui` (N195). 61 testes no pacote e 8 da regra de lint.
+
+**Divergências:**
+- **`maxOldSpaceMB`: proposta de 256, medida** (Node v24.18.0, `--max-semi-space-size=2`). Uma janela de 1.000 mensagens tem pico de 122 MB (passa com 128 MB e aborta com 96 MB); 200 mensagens, 46 a 61 MB; 50, 33 a 49 MB; desenhar as 5.000 chega a cerca de 1,5 GB, com 0,9 a 2,8 s por atualização, e é inviável. O padrão é decisão do dono, e a chave segue sem teto até lá;
+- o `@inkjs/ui` não entrou (entra no P9), nem `zod` nem `zustand` no pacote;
+- a TUI só lê `ui.render` e `ui.runtime` de forma tolerante, com os padrões repetidos em `settings.ts`, porque o P8 correu junto com o P7; `coalesceMs` e `historyWindow` são lidas e ainda não usadas. A ligação ao `loadUiCatalogs` do P7 é um ajuste que resta;
+- o patch `cache,grid` não mostrou ganho na carga sintética **[N]** (o ganho do spike era no eco de teclas);
+- a ligação daemon→TUI é só pelo `cli.ts`, com `import('@otheater/tui/launcher')`; o lançador é leve (sem ink nem react) e dá `spawn` de `node [flags V8] <tui>/dist/main.js --data-dir <dir>`, com a configuração `ui` em JSON na variável `OT_TUI_UI`. As regras do depcruise `tui-never-daemon` e `tui-launcher-only-from-cli` guardam essa fronteira;
+- o patch do Ink é recusado fora da 8.0.0 (`version_mismatch`, com aviso na tela); o arquivo copiado entra em `tools/verify/copied-code.json`;
+- o `eslint .` passou a usar 5 a 6 GB, e o lint importa `tools/eslint-rules/dist`: o `build` vem antes do `lint` (o `pnpm check` já faz nessa ordem);
+- a base de testes usa um daemon real em processo, sem clientes; a jogada com o `fake-agent` fica para o P12.
 
 ### P9. Layout: lateral, chat, painel de abas, rolagem e paleta (§5.13)
 
@@ -298,7 +374,7 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 
 ## Decisões que surgem deste plano
 
-Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação:
+Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação. A onda 1 implementou as três: a N193 no PR #211, a N194 no PR #208 e a N195 no PR #210:
 - **N185, dependências novas:** `ink` 8.0.0, `react` 19.3.1, `@types/react` 19.3.0, `@inkjs/ui` 2.0.0, `ink-testing-library` 4.0.0 e `react-i18next` 17.1.13, todas MIT. Alternativas: sem o `@inkjs/ui` (componentes próprios); sem o `react-i18next` (um gancho próprio sobre o i18next).
 - **N186, login oficial na TUI:** o daemon expõe o `LoginFlow` pela REST, e o modo `terminal` suspende a TUI e roda o login no próprio terminal. Alternativas: sempre suspender a TUI e rodar o CLI; ou o daemon com PTY transmitindo o login (exige `node-pty`).
 - **N187, `!` nesta fase:** no daemon, sem PTY e com a entrada fechada; o caso interativo fica para quando houver PTY. Alternativas: `node-pty` já nesta fase, com a TUI entregando o terminal; ou o `!` inteiro na Fase 12.
