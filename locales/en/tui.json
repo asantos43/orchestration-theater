@@ -290,6 +290,9 @@
         "system": "System"
       },
       "noConnection": "The chat is not connected to the daemon.",
+      "shellNoAttachments": "A ! command takes no attachments.",
+      "shellRunning_one": "running: ! {{command}}",
+      "shellRunning_other": "{{count}} commands running",
       "stage": "stage: {{state}}",
       "pending_one": "{{count}} decision pending",
       "pending_other": "{{count}} decisions pending",
@@ -316,6 +319,15 @@
         },
         "other": "Other (type the answer)",
         "keepPrompt": "Which ideas do you keep?",
+        "shell": {
+          "prompt": "Send the output of ! {{command}} to the Director?",
+          "result_one": "Ended with code {{code}}; {{count}} line of output.",
+          "result_other": "Ended with code {{code}}; {{count}} lines of output.",
+          "send": "Send",
+          "sendDescription": "The Director reads the result and the output.",
+          "keep": "Keep here",
+          "keepDescription": "The output stays in the chat and the log only."
+        },
         "option": {
           "redefine_need": "Redefine the need",
           "raise_limit": "Raise the limit",
@@ -371,7 +383,7 @@
           "play_ended": "the play {{playId}} ended"
         },
         "play": "Play {{id}} is now {{state}}.",
-        "shellStarted": "Running in {{place}}: {{command}}",
+        "shellStarted": "Running in {{place}}…",
         "shell": {
           "exited": "Finished with code {{code}} in {{seconds}} s.",
           "timeout": "Stopped after {{seconds}} s (time limit).",
@@ -382,6 +394,19 @@
           "tail": "(last {{shown}} of {{total}} lines)"
         },
         "shellAskedInput": "The command asked for input; it was not given.",
+        "shellContext": {
+          "sent": "The Director got the result and the output.",
+          "asked": "The Director has not seen it yet: your answer decides.",
+          "never": "Kept out of what the Director reads."
+        },
+        "shellRefused": {
+          "forbidden": "The ! command is off (settings chat.shell_command and app.terminal).",
+          "conflict": "Too many ! commands are running; wait for one to end.",
+          "unavailable": "The ! command cannot run now: {{message}}",
+          "invalid_input": "The ! command is empty.",
+          "not_found": "This scenario was not found.",
+          "other": "The ! command was refused: {{message}}"
+        },
         "error": "Error: {{message}}",
         "local": {
           "reconnected": "Reconnected to the daemon.",

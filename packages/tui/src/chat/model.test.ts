@@ -188,3 +188,147 @@ describe('the size', () => {
     expect(state.entries[0]?.body).toMatchObject({ text: 'm5' });
   });
 });
+
+describe('a ! command (P18)', () => {
+  const started = (eventId: number, commandId = 'sh_1', command = 'ls'): ChatEvent =>
+    frame({
+      type: 'shell_started',
+      eventId,
+      command: { commandId, command, place: 'host' },
+    });
+  const finished = (
+    eventId: number,
+    snippet = 'a\nb',
+    result: Partial<Extract<ChatServerMessage, { type: 'shell_finished' }>['result']> = {},
+    commandId = 'sh_1',
+  ): ChatEvent =>
+    frame({
+      type: 'shell_finished',
+      eventId,
+      snippet,
+      result: {
+        commandId,
+        outcome: 'exited',
+        exitCode: 0,
+        durationMs: 40,
+        totalLines: 2,
+        shownLines: 2,
+        keep: 'tail',
+        logTruncated: false,
+        attachmentId: 'A1',
+        askedInput: false,
+        context: 'sent',
+        logPath: null,
+        ...result,
+      },
+    });
+  const shellAsk = (eventId: number, labels = ['Send', 'Keep']): ChatEvent =>
+    frame({
+      type: 'ask',
+      eventId,
+      decisionId: `D${String(eventId)}`,
+      kind: 'producer_question',
+      playId: null,
+      input: {
+        questions: [{ question: 'Send it?', options: labels.map((label) => ({ label })) }],
+      },
+    });
+
+  it('has no entry for the line typed, and one block that starts as running and ends with the output', () => {
+    const sent = run([{ type: 'sent', text: '!ls', at: 1, queued: false, shell: true }]);
+    expect(sent.entries).toEqual([]);
+    expect(sent.shellSending).toBe(1);
+    const running = run([started(1)], sent);
+    expect(running.shellSending).toBe(0);
+    expect(running.shells).toMatchObject([{ commandId: 'sh_1', command: 'ls' }]);
+    expect(running.entries).toHaveLength(1);
+    expect(running.entries[0]?.body.kind).toBe('shellStarted');
+    const done = run([finished(2)], running);
+    // The same entry, now with the output: the block does not grow a second line.
+    expect(done.entries).toHaveLength(1);
+    expect(done.entries[0]?.id).toBe(running.entries[0]?.id);
+    expect(done.entries[0]?.body).toMatchObject({
+      kind: 'shellFinished',
+      command: 'ls',
+      snippet: 'a\nb',
+    });
+    expect(done.shells).toEqual([]);
+  });
+
+  it('keeps two commands apart and finishes the one whose id ends', () => {
+    const state = run([started(1, 'sh_1', 'sleep 5'), started(2, 'sh_2', 'ls')]);
+    expect(state.shells.map((shell) => shell.command)).toEqual(['sleep 5', 'ls']);
+    const after = run([finished(3, 'x', {}, 'sh_2')], state);
+    expect(after.shells.map((shell) => shell.commandId)).toEqual(['sh_1']);
+    expect(after.entries.map((entry) => entry.body.kind)).toEqual([
+      'shellStarted',
+      'shellFinished',
+    ]);
+  });
+
+  it('draws an end whose start was not seen (a resume past it) as a block of its own', () => {
+    const state = run([finished(5)]);
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]?.body).toMatchObject({ kind: 'shellFinished', command: '' });
+  });
+
+  it('does not repeat a start or an end that comes again after a resume', () => {
+    const once = run([started(1), finished(2)]);
+    const again = run([started(1), finished(2), started(3, 'sh_2')], once);
+    expect(again.entries.map((entry) => entry.body.kind)).toEqual([
+      'shellFinished',
+      'shellStarted',
+    ]);
+    expect(again.shells.map((shell) => shell.commandId)).toEqual(['sh_2']);
+  });
+
+  it('attaches the command to the question of context: ask, and only to that question', () => {
+    const asked = run([
+      started(1),
+      finished(2, 'a\nb', { context: 'asked', exitCode: 3 }),
+      shellAsk(3),
+    ]);
+    expect(asked.asks).toHaveLength(1);
+    expect(asked.asks[0]?.shell).toEqual({ command: 'ls', exitCode: 3, lines: 2 });
+    expect(asked.shellAsks).toEqual([]);
+    // A question of the Director with other options, with no command waiting, is not it.
+    const other = run([shellAsk(4, ['sqlite', 'postgres'])], asked);
+    expect(other.asks[1]?.shell).toBeUndefined();
+    // Nor is a Send/Keep question that no command announced.
+    const alone = run([shellAsk(1)]);
+    expect(alone.asks[0]?.shell).toBeUndefined();
+  });
+
+  it('pairs two questions with their commands in the order they were announced', () => {
+    const state = run([
+      started(1, 'sh_1', 'first'),
+      finished(2, '', { context: 'asked' }, 'sh_1'),
+      started(3, 'sh_2', 'second'),
+      finished(4, '', { context: 'asked' }, 'sh_2'),
+      shellAsk(5),
+      shellAsk(6),
+    ]);
+    expect(state.asks.map((ask) => ask.shell?.command)).toEqual(['first', 'second']);
+  });
+
+  it('turns the refusal of the daemon into an entry of its own, once per line sent', () => {
+    const refused: ChatEvent = frame({
+      type: 'error',
+      eventId: null,
+      error: { code: 'forbidden', message: 'The ! command is off (chat.shell_command: off)' },
+    });
+    const sent = run([{ type: 'sent', text: '!ls', at: 1, queued: false, shell: true }]);
+    const state = run([refused], sent);
+    expect(state.entries.map((entry) => entry.body.kind)).toEqual(['shellRefused']);
+    expect(state.shellSending).toBe(0);
+    // The same error with no `!` line in flight is an ordinary error.
+    const plain = run([refused]);
+    expect(plain.entries.map((entry) => entry.body.kind)).toEqual(['error']);
+  });
+
+  it('forgets the lines in flight when the socket falls: their answer may never come', () => {
+    const sent = run([{ type: 'sent', text: '!ls', at: 1, queued: false, shell: true }]);
+    expect(sent.shellSending).toBe(1);
+    expect(run([{ type: 'connection', state: 'retrying', at: 0 }], sent).shellSending).toBe(0);
+  });
+});

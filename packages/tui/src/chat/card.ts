@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { clip, wrapText } from '../layout/text.js';
 import type { PendingAsk } from './model.js';
+import { SHELL_KEEP_LABEL, SHELL_SEND_LABEL, type ShellAsk } from './shell.js';
 
 /**
  * The decision card (P12 of docs/18): a pending decision of the Producer (`ask` frame) as a list to
@@ -49,6 +50,19 @@ export interface CardTexts {
   readonly idea: (id: string, text: string) => string;
   readonly leftOut: (id: string, reason: string, question: string) => string;
   readonly need: (need: string) => string;
+  /** The words of the question of `chat.shell_command.context: ask` (P18), for the command it is about. */
+  readonly shell: (ask: ShellAsk) => ShellTexts;
+}
+
+/** What the card of a `!` command shows in place of the English question of the daemon. */
+export interface ShellTexts {
+  readonly prompt: string;
+  /** Context lines under the prompt (how the command ended). */
+  readonly lines: readonly string[];
+  readonly send: string;
+  readonly sendDescription: string;
+  readonly keep: string;
+  readonly keepDescription: string;
 }
 
 export interface CardModel {
@@ -148,6 +162,41 @@ function questionModel(ask: PendingAsk, texts: CardTexts): CardModel {
         return pick === undefined ? '' : answerOf(pick, question);
       });
       return { answer: { answers }, summary: answers.join(' / ') };
+    },
+  };
+}
+
+/**
+ * The question of `context: ask` (P18): the daemon asks it in English with the two labels `Send` and
+ * `Keep`, which are also what it reads back, so the card shows the words of the catalog and answers
+ * with the labels.
+ */
+function shellModel(ask: PendingAsk, shell: ShellAsk, texts: CardTexts): CardModel {
+  const words = texts.shell(shell);
+  const step: CardStep = {
+    prompt: words.prompt,
+    lines: words.lines,
+    options: [
+      { id: '0', label: words.send, description: words.sendDescription, text: 'none' },
+      { id: '1', label: words.keep, description: words.keepDescription, text: 'none' },
+    ],
+    multi: false,
+    freeText: false,
+  };
+  const labels = [SHELL_SEND_LABEL, SHELL_KEEP_LABEL];
+  return {
+    decisionId: ask.decisionId,
+    shape: 'questions',
+    total: 1,
+    stepAt: (index) => (index === 0 ? step : undefined),
+    complete: (picks) => {
+      const id = picks[0]?.optionIds[0];
+      const label = id === undefined ? undefined : labels[Number(id)];
+      if (label === undefined) return undefined;
+      return {
+        answer: { answers: [label] },
+        summary: id === '0' ? words.send : words.keep,
+      };
     },
   };
 }
@@ -263,7 +312,9 @@ function ideasModel(ask: PendingAsk, texts: CardTexts): CardModel {
 
 /** The card of one pending decision. */
 export function buildCard(ask: PendingAsk, texts: CardTexts): CardModel {
-  if (ask.kind === 'producer_question') return questionModel(ask, texts);
+  if (ask.kind === 'producer_question') {
+    return ask.shell === undefined ? questionModel(ask, texts) : shellModel(ask, ask.shell, texts);
+  }
   if (ask.kind === 'ideas.group') return ideasModel(ask, texts);
   return menuModel(ask, texts);
 }

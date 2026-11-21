@@ -399,3 +399,128 @@ describe('a drop of the socket in the middle of a reply', () => {
     expect(id).toBeDefined();
   });
 });
+
+describe('a ! command (P18)', () => {
+  const started = (eventId: number, command = 'ls'): ChatServerMessage => ({
+    type: 'shell_started',
+    eventId,
+    command: { commandId: `sh_${String(eventId)}`, command, place: 'host' },
+  });
+  const finished = (
+    eventId: number,
+    snippet: string,
+    extra: Partial<Extract<ChatServerMessage, { type: 'shell_finished' }>['result']> = {},
+  ): ChatServerMessage => ({
+    type: 'shell_finished',
+    eventId,
+    snippet,
+    result: {
+      commandId: `sh_${String(eventId - 1)}`,
+      outcome: 'exited',
+      exitCode: 0,
+      durationMs: 30,
+      totalLines: snippet === '' ? 0 : snippet.split('\n').length,
+      shownLines: snippet === '' ? 0 : snippet.split('\n').length,
+      keep: 'tail',
+      logTruncated: false,
+      attachmentId: 'A1',
+      askedInput: false,
+      context: 'sent',
+      logPath: null,
+      ...extra,
+    },
+  });
+
+  it('sends the line, then shows the command running and, at the end, its output in the block', async () => {
+    const { app, socket } = await open();
+    await typeText(app, '!ls');
+    app.press(ENTER);
+    await waitFor(() => (socket().sentOf('message').length > 0 ? true : undefined), 'the message');
+    expect(socket().sentOf('message')).toEqual([{ type: 'message', text: '!ls' }]);
+    socket().emit(started(1));
+    const running = await app.waitForText('Running in host');
+    expect(running).toContain('! ls');
+    expect(running).toContain('running: ! ls');
+    socket().emit(finished(2, 'one.txt\n  two.txt'));
+    const done = await app.waitForText('Finished with code 0');
+    expect(done).toContain('│ one.txt');
+    expect(done).toContain('│   two.txt');
+    expect(done).not.toContain('Running in host');
+    expect(done).not.toContain('running: !');
+    expect(count(done, '! ls')).toBe(1);
+  });
+
+  it('shows the warning when the command asked for input', async () => {
+    const { app, socket } = await open();
+    socket().emit(started(1, 'read x'));
+    socket().emit(finished(2, 'Continue?', { askedInput: true, exitCode: 1 }));
+    const frame = await app.waitForText('The command asked for input; it was not given.');
+    expect(frame).toContain('Finished with code 1');
+  });
+
+  it('shows what was left out of a long output', async () => {
+    const { app, socket } = await open();
+    socket().emit(started(1, 'seq 1 500'));
+    socket().emit(finished(2, '499\n500', { totalLines: 500, shownLines: 2 }));
+    const frame = await app.waitForText('last 2 of 500 lines');
+    expect(frame).toContain('│ 500');
+  });
+
+  it('shows the refusal of chat.shell_command: off in the words of the catalog', async () => {
+    const { app, socket } = await open();
+    await typeText(app, '!ls');
+    app.press(ENTER);
+    await waitFor(() => (socket().sentOf('message').length > 0 ? true : undefined), 'the message');
+    socket().emit({
+      type: 'error',
+      eventId: null,
+      error: { code: 'forbidden', message: 'The ! command is off (chat.shell_command: off)' },
+    });
+    const frame = await app.waitForText('The ! command is off (settings chat.shell_command');
+    expect(frame).not.toContain('Error: The ! command is off (chat.shell_command: off)');
+  });
+
+  it('with context: ask, asks in the card and answers with the label the daemon reads', async () => {
+    const { app, socket } = await open();
+    socket().emit(started(1));
+    socket().emit(finished(2, 'one.txt', { context: 'asked' }));
+    socket().emit({
+      type: 'ask',
+      eventId: 3,
+      decisionId: 'D9',
+      kind: 'producer_question',
+      playId: null,
+      input: {
+        questions: [
+          {
+            question: 'Send the result of "ls" (exit code 0, 1 lines) to the Director?',
+            options: [
+              { label: 'Send', description: 'The Director reads the result and the output.' },
+              { label: 'Keep', description: 'The output stays in the chat and the log only.' },
+            ],
+            multi_select: false,
+            open: false,
+            recommended: 'Send',
+          },
+        ],
+      },
+    });
+    const card = await app.waitForText('Send the output of ! ls to the Director?');
+    expect(card).toContain('Keep here');
+    expect(card).toContain('The Director has not seen it yet');
+    app.press('2');
+    await waitFor(() => (socket().sentOf('answer').length > 0 ? true : undefined), 'the answer');
+    expect(socket().sentOf('answer')).toEqual([
+      { type: 'answer', decisionId: 'D9', answer: { answers: ['Keep'] } },
+    ]);
+  });
+
+  it('keeps the text in the box when the line is a ! command with nothing after it', async () => {
+    const { app, socket } = await open();
+    await typeText(app, '!');
+    app.press(ENTER);
+    const frame = await app.waitForText('the ! command is empty');
+    expect(socket().sentOf('message')).toEqual([]);
+    expect(frame).toContain('!');
+  });
+});

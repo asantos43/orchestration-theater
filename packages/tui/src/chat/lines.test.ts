@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { clockOf, messageOf, messagesOf, waitReason, type Translate } from './lines.js';
 import type { ChatEntry } from './model.js';
+import type { ShellCommandFinishedPayload } from '@otheater/protocol';
 
 /** A catalog that shows the key and the values it was given. */
 const t: Translate = (key, options) => {
@@ -100,5 +101,136 @@ describe('waitReason', () => {
       ],
     });
     expect(text.match(/waitReason\.quota/g)).toHaveLength(1);
+  });
+});
+
+describe('a ! command (P18)', () => {
+  const result = (
+    extra: Partial<ShellCommandFinishedPayload> = {},
+  ): ShellCommandFinishedPayload => ({
+    commandId: 'sh_1',
+    outcome: 'exited',
+    exitCode: 0,
+    durationMs: 1400,
+    totalLines: 2,
+    shownLines: 2,
+    keep: 'tail',
+    logTruncated: false,
+    attachmentId: 'A1',
+    askedInput: false,
+    context: 'sent',
+    logPath: null,
+    ...extra,
+  });
+  const finished = (
+    extra: Partial<ShellCommandFinishedPayload> = {},
+    snippet = 'a\n  b\n',
+  ): ChatEntry =>
+    entry(
+      { kind: 'shellFinished', result: result(extra), snippet, command: 'ls -la' },
+      { who: 'system' },
+    );
+
+  it('draws the command in progress as a block with its place and no output', () => {
+    const message = messageOf(
+      t,
+      entry(
+        { kind: 'shellStarted', command: { commandId: 'sh_1', command: 'sleep 3', place: 'host' } },
+        { who: 'system' },
+      ),
+    );
+    expect(message.terminal).toEqual({
+      header: '! sleep 3',
+      output: [],
+      notes: [{ text: '[layout.chat.entry.shellStarted place=host]', tone: 'dim' }],
+    });
+  });
+
+  it('draws the end as the command, the output with its indentation and how it ended', () => {
+    const message = messageOf(t, finished());
+    expect(message.terminal).toEqual({
+      header: '! ls -la',
+      output: ['a', '  b'],
+      notes: [
+        { text: '[layout.chat.entry.shell.exited code=0,seconds=1,error=]', tone: 'ok' },
+        { text: '[layout.chat.entry.shellContext.sent]', tone: 'dim' },
+      ],
+    });
+    // The same things as plain text, for what does not draw a block.
+    expect(message.text.split('\n')).toEqual([
+      '! ls -la',
+      'a',
+      '  b',
+      '[layout.chat.entry.shell.exited code=0,seconds=1,error=]',
+      '[layout.chat.entry.shellContext.sent]',
+    ]);
+  });
+
+  it('says what was left out, from which end', () => {
+    const notes = messageOf(t, finished({ totalLines: 50, shownLines: 2, keep: 'head' })).terminal
+      ?.notes;
+    expect(notes?.[0]).toEqual({
+      text: '[layout.chat.entry.shellCut.head shown=2,total=50]',
+      tone: 'dim',
+    });
+  });
+
+  it('warns when the command asked for input', () => {
+    const notes = messageOf(t, finished({ askedInput: true, exitCode: 1 })).terminal?.notes ?? [];
+    expect(notes.map((note) => [note.text, note.tone])).toContainEqual([
+      '[layout.chat.entry.shellAskedInput]',
+      'warn',
+    ]);
+  });
+
+  it('tells a non-zero code and a timeout (warn) from a command that did not start (error)', () => {
+    const tone = (extra: Partial<ShellCommandFinishedPayload>): string | undefined =>
+      messageOf(t, finished(extra)).terminal?.notes.find((note) =>
+        note.text.includes('entry.shell.'),
+      )?.tone;
+    expect(tone({ exitCode: 2 })).toBe('warn');
+    expect(tone({ outcome: 'timeout', exitCode: null })).toBe('warn');
+    expect(tone({ outcome: 'failed', exitCode: null, error: 'no launcher' })).toBe('error');
+  });
+
+  it('says what became of the output with the Director, and nothing when there was none', () => {
+    const contexts = (context: ShellCommandFinishedPayload['context']): string[] =>
+      (messageOf(t, finished({ context })).terminal?.notes ?? []).map((note) => note.text);
+    expect(contexts('asked')).toContain('[layout.chat.entry.shellContext.asked]');
+    expect(contexts('never')).toContain('[layout.chat.entry.shellContext.never]');
+    expect(contexts('none').join('')).not.toContain('shellContext');
+  });
+
+  it('shortens a long command to one line and draws a bare ! when the start was not seen', () => {
+    const long = messageOf(
+      t,
+      entry(
+        {
+          kind: 'shellStarted',
+          command: { commandId: 'sh_1', command: `echo ${'x'.repeat(200)}\nmore`, place: 'host' },
+        },
+        { who: 'system' },
+      ),
+    );
+    expect(long.terminal?.header.length).toBeLessThanOrEqual(62);
+    expect(long.terminal?.header).toMatch(/…$/u);
+    const unknown = messageOf(
+      t,
+      entry({ kind: 'shellFinished', result: result(), snippet: '', command: '' }),
+    );
+    expect(unknown.terminal?.header).toBe('!');
+  });
+
+  it('shows a refusal by its code, with the message of the daemon as the fallback', () => {
+    const text = (code: 'forbidden' | 'internal'): string =>
+      messageOf(
+        t,
+        entry({ kind: 'shellRefused', error: { code, message: 'nope' } }, { who: 'system' }),
+      ).text;
+    expect(text('forbidden')).toContain('layout.chat.entry.shellRefused.forbidden');
+    expect(
+      messageOf(t, entry({ kind: 'shellRefused', error: { code: 'forbidden', message: 'x' } }))
+        .terminal,
+    ).toBeUndefined();
   });
 });
