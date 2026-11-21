@@ -21,6 +21,16 @@ export function registerTrajectoryRoutes(handlers: ApiHandlers, deps: ReadRouteD
     };
   });
 
+  handlers.register('listDirectTrajectory', async ({ params, query }) => {
+    if (trajectory === undefined) throw unavailable();
+    const after = query.after === undefined ? 0 : Number(decodeCursor(query.after, [0])[0]);
+    const page = await trajectory.directEvents(params.sessionId, after, query.limit);
+    return {
+      items: page.items,
+      nextCursor: page.nextId === null ? null : encodeCursor([page.nextId]),
+    };
+  });
+
   handlers.register('getDemandDiff', async ({ params }) => {
     if (trajectory === undefined) throw unavailable();
     return trajectory.diff(params.playId, params.demandId);

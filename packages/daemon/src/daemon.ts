@@ -226,6 +226,8 @@ export interface DaemonHandle {
    * `on_exceeded` and `in_flight`.
    */
   readonly budget: BudgetService;
+  /** The direct sessions (the Producer talking to an Actor outside any play): `undefined` when the execution is off. */
+  readonly direct: DirectSessionService | undefined;
   /**
    * The accounts (architecture 5.6; Phase 5, P2 and P21): add, list, drain and remove. With the
    * execution on, a drain and a removal count and release the live sessions (the baton of P18).
@@ -659,6 +661,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       ideas: orchestration.ideas,
       opening: orchestration.opening,
     });
+    // P27 (N206): the worktrees of direct sessions a dead daemon left behind, by
+    // `direct_session.orphans`. It runs before any request can open a session.
+    await direct.sweepOrphans();
     // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
     registerChatRoutes({
       api,
@@ -1074,6 +1079,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     usage,
     usageAudit,
     budget,
+    direct,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },
