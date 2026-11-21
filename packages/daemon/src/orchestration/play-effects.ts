@@ -187,6 +187,15 @@ export interface OrchestrationEffectsOptions {
 /** How much of the diff of an earlier attempt goes into the prompt of the next one. */
 const CARRIED_DIFF_CHARS = 20_000;
 
+/** N176: what work that was held back waits on while its play is paused. */
+interface PauseGate {
+  readonly wait: Promise<void>;
+  readonly release: () => void;
+}
+
+/** The reason the Director reads when an Actor was cancelled (N176). */
+const ACTOR_CANCELLED_REASON = 'The attempt was cancelled by the Producer.';
+
 /** The demands a play wants running now, and when that was last asked. */
 interface Wanted {
   readonly generation: number;
@@ -230,6 +239,8 @@ export class OrchestrationEffects implements PlayEffects {
   readonly #locks = new Map<string, Promise<unknown>>();
   /** What lets go of the work of a play that waits for an Executor (`abort_work`, `close()`). */
   readonly #selectionWaits = new Map<string, AbortController>();
+  /** N176: the plays that are paused; what they hold back waits on the gate until `resume_work`. */
+  readonly #pauses = new Map<string, PauseGate>();
   #runner: PlayRunner | undefined;
   #closed = false;
 
@@ -258,6 +269,21 @@ export class OrchestrationEffects implements PlayEffects {
         this.#stopAskWatcher(scope.playId);
         this.#selectionWaits.get(scope.playId)?.abort();
         this.#selectionWaits.delete(scope.playId);
+        // N176: what waits on a pause cannot go on, and a paused attempt would wait for ever.
+        this.#openGate(scope.playId);
+        this.#spawn('cancel paused attempts', scope, async () => {
+          await this.#cancelPaused(scope.playId);
+        });
+        return;
+      case 'pause_work':
+        this.#spawn('pause_work', scope, async () => {
+          await this.#pauseWork(effect, scope);
+        });
+        return;
+      case 'resume_work':
+        this.#spawn('resume_work', scope, async () => {
+          await this.#resumeWork(scope);
+        });
         return;
       case 'run_stage':
         this.#spawn(`run_stage ${effect.stage}`, scope, async () => {
@@ -317,6 +343,92 @@ export class OrchestrationEffects implements PlayEffects {
     this.#askWatchers.clear();
     for (const wait of this.#selectionWaits.values()) wait.abort();
     this.#selectionWaits.clear();
+    for (const playId of [...this.#pauses.keys()]) this.#openGate(playId);
+  }
+
+  // ---- pause (N176) ----
+
+  /**
+   * Pauses the work of a play. `drain`: what runs finishes and `#schedule` starts nothing new.
+   * `interrupt`: the attempts in flight are interrupted too (cause `paused`, checkpoint saved).
+   * Idempotent: the runner asks again after a restart, with the work already gone.
+   */
+  async #pauseWork(
+    effect: Extract<PlayEffect, { type: 'pause_work' }>,
+    scope: PlayEffectScope,
+  ): Promise<void> {
+    const { playId } = scope;
+    if (!this.#pauses.has(playId)) {
+      let release: () => void = () => undefined;
+      const wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      this.#pauses.set(playId, { wait, release });
+    }
+    if (effect.mode !== 'interrupt') return;
+    const { execution, logger } = this.#options;
+    for (const running of execution.runner.attemptsOfPlay(playId)) {
+      if (running.paused !== undefined) continue;
+      try {
+        await execution.runner.pauseAttempt(running.attemptId, 'play');
+      } catch (error) {
+        // It ended or was paused by someone else meanwhile: nothing to hold.
+        logger.debug({ err: error, attemptId: running.attemptId }, 'an attempt was not paused');
+      }
+    }
+  }
+
+  /** Lets the work of the play go on: the attempts the play paused resume, the held demands start. */
+  async #resumeWork(scope: PlayEffectScope): Promise<void> {
+    const { playId } = scope;
+    this.#openGate(playId);
+    const { execution, logger } = this.#options;
+    for (const running of execution.runner.attemptsOfPlay(playId)) {
+      if (running.paused !== 'play') continue;
+      try {
+        execution.runner.resumeAttempt(running.attemptId, 'play');
+      } catch (error) {
+        logger.debug({ err: error, attemptId: running.attemptId }, 'an attempt was not resumed');
+      }
+    }
+    const wanted = this.#wanted.get(playId);
+    if (wanted !== undefined) await this.#schedule(scope, wanted.generation);
+  }
+
+  /** Ends the attempts of a play that wait on a pause (the play was cancelled or went back). */
+  async #cancelPaused(playId: string): Promise<void> {
+    const { execution, logger } = this.#options;
+    for (const running of execution.runner.attemptsOfPlay(playId)) {
+      if (running.paused === undefined) continue;
+      try {
+        await execution.runner.cancelAttempt(running.attemptId);
+      } catch (error) {
+        logger.debug(
+          { err: error, attemptId: running.attemptId },
+          'a paused attempt was not ended',
+        );
+      }
+    }
+  }
+
+  #openGate(playId: string): void {
+    const gate = this.#pauses.get(playId);
+    if (gate === undefined) return;
+    this.#pauses.delete(playId);
+    gate.release();
+  }
+
+  /**
+   * Waits while the play is paused. False when the work must not go on: the play was aborted since
+   * `generation` or the daemon is stopping.
+   */
+  async #unpaused(playId: string, generation: number): Promise<boolean> {
+    for (;;) {
+      const gate = this.#pauses.get(playId);
+      if (gate === undefined) break;
+      await gate.wait;
+    }
+    return !this.#closed && generation === this.#generationOf(playId);
   }
 
   // ---- plumbing ----
@@ -618,7 +730,7 @@ export class OrchestrationEffects implements PlayEffects {
       this.#send(playId, generation, { type: 'SUBMIT_FAILED', reason: clip(reason) });
     let submission: Submission | string | undefined;
     try {
-      submission = await this.#runStageAttempt(effect, scope);
+      submission = await this.#runStageAttempt(effect, scope, generation);
     } catch (error) {
       await fail(messageOf(error));
       return;
@@ -659,6 +771,7 @@ export class OrchestrationEffects implements PlayEffects {
   async #runStageAttempt(
     effect: Extract<PlayEffect, { type: 'run_stage' }>,
     scope: PlayEffectScope,
+    generation: number,
   ): Promise<Submission | string | undefined> {
     const { store, execution, config, vcs } = this.#options;
     const { playId, scenarioId } = scope;
@@ -686,6 +799,8 @@ export class OrchestrationEffects implements PlayEffects {
     );
     if (picked === undefined)
       return `The ${effect.role} was cancelled while it waited for an Executor.`;
+    if (!(await this.#unpaused(playId, generation)))
+      return `The ${effect.role} was cancelled while the play was paused.`;
     if (picked.kind === 'unavailable') throw new AdapterUnavailable(picked.reason);
     const base = effect.stage === 'CRITIQUING' ? integrationBranch(playId) : playBranch(playId);
     const body = stagePrompt({
@@ -1057,6 +1172,8 @@ export class OrchestrationEffects implements PlayEffects {
     await this.#locked(`schedule:${playId}`, async () => {
       const wanted = this.#wanted.get(playId);
       if (this.#closed || wanted?.generation !== generation) return;
+      // N176: a paused play starts nothing; `resume_work` calls this again.
+      if (this.#pauses.has(playId)) return;
       const script = await this.#script(playId);
       if (script === undefined) return;
       for (const id of [...wanted.ids]) {
@@ -1112,6 +1229,8 @@ export class OrchestrationEffects implements PlayEffects {
       this.#watchOf(scope, 'actor', demand.id, demandKey(playId, demand.id, generation)),
     );
     if (picked === undefined) return; // abort_work or the daemon stopped while it waited
+    // N176: an Executor that came while the play was paused waits here, before the deadline is armed.
+    if (!(await this.#unpaused(playId, generation))) return;
     await this.#send(playId, generation, {
       type: 'DEMAND_STARTED',
       demandId: demand.id,
@@ -1183,6 +1302,16 @@ export class OrchestrationEffects implements PlayEffects {
       if (outcome.state === 'timed_out') {
         await store.demands.update(playId, demand.id, { state: 'failed' });
         await this.#send(playId, generation, { type: 'ACTOR_TIMED_OUT', demandId: demand.id });
+        return;
+      }
+      if (outcome.state === 'cancelled') {
+        // N176: someone cancelled the Actor; the Director judges what to do with the demand.
+        await store.demands.update(playId, demand.id, { state: 'failed' });
+        await this.#send(playId, generation, {
+          type: 'ACTOR_CANCELLED',
+          demandId: demand.id,
+          reason: ACTOR_CANCELLED_REASON,
+        });
         return;
       }
       if (outcome.state === 'failed') {

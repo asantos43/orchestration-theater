@@ -938,6 +938,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     layout,
     channel: orchestration?.channel,
     runner: orchestration?.runner,
+    attempts: execution?.runner,
+    pauseMode: () => config.pause.mode,
     ideas: orchestration?.ideas,
   });
 

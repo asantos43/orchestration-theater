@@ -247,6 +247,22 @@ const TABLE: readonly Row[] = [
     facts: factsOf('daemon_restart', { resumes: 50, repeated: 50 }),
     expect: { action: 'resume_native', form: 'native', counts: false },
   },
+  // ---- paused ----
+  {
+    name: 'paused: the conversation is there, so the resume reloads it and no attempt is spent',
+    facts: factsOf('paused'),
+    expect: { action: 'resume_native', form: 'native', counts: false },
+  },
+  {
+    name: 'paused: the files are gone, so a handoff',
+    facts: factsOf('paused', { reloadable: false }),
+    expect: { action: 'handoff', form: 'handoff', counts: false },
+  },
+  {
+    name: 'paused: never limited by max_resumes nor by a repeat',
+    facts: factsOf('paused', { resumes: 50, repeated: 50 }),
+    expect: { action: 'resume_native', form: 'native', counts: false },
+  },
   // ---- timeout ----
   {
     name: 'timeout: the Director judges the partial result and it costs an attempt',

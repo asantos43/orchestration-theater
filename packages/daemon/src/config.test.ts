@@ -552,6 +552,13 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('rescript:\n  extra: 1\n')).toThrow(/extra/);
   });
 
+  it('defaults pause.mode to drain (N176) and takes the two modes', () => {
+    expect(parseConfig('').pause).toEqual({ mode: 'drain' });
+    expect(parseConfig('pause:\n  mode: interrupt\n').pause.mode).toBe('interrupt');
+    expect(() => parseConfig('pause:\n  mode: kill\n')).toThrow(/mode/);
+    expect(() => parseConfig('pause:\n  extra: 1\n')).toThrow(/extra/);
+  });
+
   it('defaults security.catalog_probe to allow and takes refuse', () => {
     expect(parseConfig('').security.catalog_probe).toBe('allow');
     expect(parseConfig('security:\n  catalog_probe: refuse\n').security.catalog_probe).toBe(

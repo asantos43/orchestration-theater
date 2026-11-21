@@ -15,6 +15,8 @@ export const ATTEMPT_STATES = [
   'completed',
   'failed',
   'timed_out',
+  /** The Producer or the Director cancelled the attempt (Phase 7, P2, N176). */
+  'cancelled',
 ] as const;
 export type AttemptState = (typeof ATTEMPT_STATES)[number];
 
