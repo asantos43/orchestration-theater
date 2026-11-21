@@ -3,6 +3,7 @@
     "layout": "Layout",
     "tabs": "Tabs",
     "decision": "Decisions",
+    "input": "Text box",
     "general": "General"
   },
   "tabs": {
@@ -35,6 +36,28 @@
     },
     "app": {
       "quit": "Quit"
+    },
+    "input": {
+      "submit": "Send the message",
+      "newline": "Add a new line",
+      "left": "Move the cursor one character left",
+      "right": "Move the cursor one character right",
+      "wordLeft": "Move the cursor one word left",
+      "wordRight": "Move the cursor one word right",
+      "lineStart": "Go to the start of the line",
+      "lineEnd": "Go to the end of the line",
+      "up": "Line up, or the previous message of the history",
+      "down": "Line down, or the next message of the history",
+      "backspace": "Delete the character before the cursor",
+      "delete": "Delete the character at the cursor",
+      "killToEnd": "Cut from the cursor to the end of the line",
+      "killToStart": "Cut from the cursor to the start of the line",
+      "killWordBack": "Cut the word before the cursor",
+      "killWordForward": "Cut the word after the cursor",
+      "yank": "Paste the text last cut",
+      "historySearch": "Search the history of messages",
+      "externalEditor": "Write the message in the external editor",
+      "pasteImage": "Attach the image on the clipboard"
     }
   },
   "bar": {
@@ -125,6 +148,29 @@
       "open": "open",
       "retrying": "retrying",
       "closed": "closed"
+    }
+  },
+  "input": {
+    "moreAbove": "… {{count}} more lines above",
+    "moreBelow": "… {{count}} more lines below",
+    "search": {
+      "prompt": "Search the history: {{query}}",
+      "none": "no message matches"
+    },
+    "attachments": "Attachments: {{list}}",
+    "status": {
+      "imageAdded": "Image attached as {{marker}}.",
+      "filesAdded": "Attached: {{names}}.",
+      "noImage": "There is no image on the clipboard.",
+      "imageOff": "Pasting an image is off (ui.clipboard.paste).",
+      "toolMissing": "To paste an image, install one of: {{tools}}.",
+      "toolFailed": "{{tool}} could not read the clipboard: {{message}}",
+      "toolTimeout": "{{tool}} did not answer in {{seconds}} s.",
+      "imageTooBig": "The image is larger than the limit of {{limit}} MB (ui.clipboard.pasteMaxBytes).",
+      "saveFailed": "Could not save the image: {{message}}",
+      "editorOff": "The external editor is off (ui.input.editor).",
+      "editorMissing": "Set the variable VISUAL or EDITOR to write in an editor.",
+      "editorFailed": "The editor could not run: {{message}}"
     }
   }
 }
