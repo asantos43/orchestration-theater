@@ -163,6 +163,7 @@ describe('session and checkpoint events', () => {
       'refusal',
       'permission',
       'profile_removed',
+      'paused',
     ]);
     expect([...RESUME_FORMS]).toEqual(['native', 'handoff']);
     expect([...CHECKPOINT_REASONS]).toEqual(['edit_batch', 'interval', 'interruption']);
