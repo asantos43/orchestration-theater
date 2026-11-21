@@ -80,5 +80,51 @@
       "browserTab": "o navegador a usa para fechar uma aba",
       "terminalAlias": "o terminal envia o mesmo código de outra tecla"
     }
+  },
+  "app": {
+    "title": "OTheater",
+    "quit_hint": "Ctrl+Q sai",
+    "crash": "A TUI parou por causa de um erro: {{message}}",
+    "patch": {
+      "version_mismatch": "Os patches de renderização estão desligados: o Ink instalado é o {{version}} e eles são só para o Ink {{supported}}.",
+      "ink_not_found": "Os patches de renderização estão desligados: não foi possível ler a versão do Ink.",
+      "hook_unavailable": "Os patches de renderização estão desligados: este Node não consegue carregar o gancho de módulos."
+    }
+  },
+  "status": {
+    "heading": "Daemon",
+    "connecting": "Conectando ao daemon...",
+    "offline": "Nenhum daemon está rodando. Inicie com \"ot daemon\" em outro terminal.",
+    "failed": "Não foi possível conectar ao daemon: {{message}}",
+    "label": {
+      "daemon": "Daemon",
+      "state": "Estado",
+      "sync": "Sincronização",
+      "stream": "Fluxo de eventos",
+      "scenarios": "Cenários",
+      "plays": "Peças",
+      "decisions": "Decisões pendentes",
+      "events": "Eventos recentes"
+    },
+    "daemon_line": "{{version}}, pid {{pid}}",
+    "state": {
+      "starting": "iniciando",
+      "recovering": "recuperando",
+      "running": "rodando",
+      "stopping": "parando"
+    },
+    "sync": {
+      "idle": "parada",
+      "starting": "lendo os instantâneos",
+      "live": "ao vivo",
+      "failed": "falhou",
+      "closed": "encerrada"
+    },
+    "connection": {
+      "connecting": "conectando",
+      "open": "aberto",
+      "retrying": "tentando de novo",
+      "closed": "fechado"
+    }
   }
 }

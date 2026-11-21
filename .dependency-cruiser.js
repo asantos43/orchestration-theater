@@ -117,11 +117,35 @@ export default {
       },
     },
     {
+      name: 'tui-never-daemon',
+      comment:
+        'The TUI (Phase 7, P8) talks to the daemon only by the API, through the client: outside its tests, no file of packages/tui imports the daemon, an adapter or the fake-agent.',
+      severity: 'error',
+      from: { path: '^packages/tui/', pathNot: '\\.(test|test-support)\\.tsx?$' },
+      to: {
+        path: [
+          '^packages/(daemon|adapters|fake-agent)/',
+          '(^|/)node_modules/@otheater/(daemon|adapter-|fake-agent)',
+        ],
+      },
+    },
+    {
+      name: 'tui-launcher-only-from-cli',
+      comment:
+        'The daemon loads the TUI only through its light launcher, from cli.ts: nothing else of the daemon imports the package (a cycle with the app would follow).',
+      severity: 'error',
+      from: { pathNot: ['^packages/tui/', '^packages/daemon/src/cli\\.ts$'] },
+      to: {
+        path: ['^packages/tui/', '(^|/)node_modules/@otheater/tui/'],
+        pathNot: ['^packages/tui/(src|dist)/launcher\\.'],
+      },
+    },
+    {
       name: 'testing-only-from-tests',
       comment:
         'The fakes of @otheater/core/testing are for tests: outside testing/ itself, only *.test.ts files may import them (decision N50).',
       severity: 'error',
-      from: { pathNot: ['^packages/core/src/testing/', '\\.test\\.ts$'] },
+      from: { pathNot: ['^packages/core/src/testing/', '\\.test\\.tsx?$'] },
       to: {
         path: [
           '^packages/core/(src|dist)/testing/',
@@ -174,7 +198,9 @@ export default {
     // Excluding `dist/` would drop those edges from the graph and hide them from every rule, so
     // build output is kept as leaves (not followed) and only `coverage/` is excluded.
     doNotFollow: { path: '(^|/)node_modules/|/dist(-test)?/' },
-    exclude: { path: '(^|/)coverage/' },
+    // `packages/tui/patches/ink/` is a copy of a file of Ink: its imports (Ink's own dependencies)
+    // resolve where Node loads it, inside `node_modules/ink`, not next to the copy.
+    exclude: { path: '(^|/)coverage/|^packages/tui/patches/ink/' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {

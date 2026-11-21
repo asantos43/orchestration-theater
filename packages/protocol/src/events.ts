@@ -42,6 +42,13 @@ import {
 } from './api-command-events.js';
 import { LayoutAdjustedPayloadSchema, LayoutChangedPayloadSchema } from './layout-events.js';
 import {
+  SetupBackPayloadSchema,
+  SetupCancelledPayloadSchema,
+  SetupConfirmedPayloadSchema,
+  SetupStartedPayloadSchema,
+  SetupStepPayloadSchema,
+} from './setup-events.js';
+import {
   ApiChatClosedPayloadSchema,
   ApiChatMessageDroppedPayloadSchema,
   ChatAskClosedPayloadSchema,
@@ -50,6 +57,10 @@ import {
   ChatDirectorSilentPayloadSchema,
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
+import {
+  ShellCommandFinishedPayloadSchema,
+  ShellCommandStartedPayloadSchema,
+} from './shell-events.js';
 import {
   DecisionAnsweredPayloadSchema,
   DecisionCreatedPayloadSchema,
@@ -102,10 +113,13 @@ import {
 } from './scenario-events.js';
 import {
   AttemptAbortedPayloadSchema,
+  AttemptCancelledPayloadSchema,
   AttemptCheckpointFailedPayloadSchema,
   AttemptCheckpointPayloadSchema,
+  AttemptPausedPayloadSchema,
   AttemptResetWaitEndedPayloadSchema,
   AttemptResetWaitStartedPayloadSchema,
+  AttemptResumedPayloadSchema,
   AttemptSubmitFailedPayloadSchema,
   AttemptSubmittedPayloadSchema,
   SessionClosedPayloadSchema,
@@ -339,6 +353,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'attempt.submit_failed',
     schemaVersion: 1,
     payload: AttemptSubmitFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.paused',
+    schemaVersion: 1,
+    payload: AttemptPausedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.resumed',
+    schemaVersion: 1,
+    payload: AttemptResumedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'attempt.cancelled',
+    schemaVersion: 1,
+    payload: AttemptCancelledPayloadSchema,
   }),
   defineEventType({
     type: 'tool.called',
@@ -683,6 +712,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ChatAskClosedPayloadSchema,
   }),
   defineEventType({
+    type: 'chat.shell_command.started',
+    schemaVersion: 1,
+    payload: ShellCommandStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.shell_command.finished',
+    schemaVersion: 1,
+    payload: ShellCommandFinishedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.chat_closed',
     schemaVersion: 1,
     payload: ApiChatClosedPayloadSchema,
@@ -701,6 +740,19 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'layout.changed',
     schemaVersion: 1,
     payload: LayoutChangedPayloadSchema,
+  }),
+  defineEventType({ type: 'setup.started', schemaVersion: 1, payload: SetupStartedPayloadSchema }),
+  defineEventType({ type: 'setup.step', schemaVersion: 1, payload: SetupStepPayloadSchema }),
+  defineEventType({ type: 'setup.back', schemaVersion: 1, payload: SetupBackPayloadSchema }),
+  defineEventType({
+    type: 'setup.confirmed',
+    schemaVersion: 1,
+    payload: SetupConfirmedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'setup.cancelled',
+    schemaVersion: 1,
+    payload: SetupCancelledPayloadSchema,
   }),
   defineEventType({
     type: 'decision.created',
@@ -772,6 +824,9 @@ export type PermissionAnsweredPayload = DaemonEventPayloads['permission.answered
 export type AttemptCheckpointPayload = DaemonEventPayloads['attempt.checkpoint'];
 export type AttemptSubmittedPayload = DaemonEventPayloads['attempt.submitted'];
 export type AttemptSubmitFailedPayload = DaemonEventPayloads['attempt.submit_failed'];
+export type AttemptPausedPayload = DaemonEventPayloads['attempt.paused'];
+export type AttemptResumedPayload = DaemonEventPayloads['attempt.resumed'];
+export type AttemptCancelledPayload = DaemonEventPayloads['attempt.cancelled'];
 export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
 export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
 export type BrowserActionPayload = DaemonEventPayloads['browser.action'];
@@ -857,10 +912,17 @@ export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'
 export type ChatDirectorSilentPayload = DaemonEventPayloads['chat.director_silent'];
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
 export type ChatAskClosedPayload = DaemonEventPayloads['chat.ask_closed'];
+export type ShellCommandStartedPayload = DaemonEventPayloads['chat.shell_command.started'];
+export type ShellCommandFinishedPayload = DaemonEventPayloads['chat.shell_command.finished'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];
 export type LayoutChangedPayload = DaemonEventPayloads['layout.changed'];
+export type SetupStartedPayload = DaemonEventPayloads['setup.started'];
+export type SetupStepPayload = DaemonEventPayloads['setup.step'];
+export type SetupBackPayload = DaemonEventPayloads['setup.back'];
+export type SetupConfirmedPayload = DaemonEventPayloads['setup.confirmed'];
+export type SetupCancelledPayload = DaemonEventPayloads['setup.cancelled'];
 export type DecisionCreatedPayload = DaemonEventPayloads['decision.created'];
 export type DecisionAnsweredPayload = DaemonEventPayloads['decision.answered'];
 export type ScenarioArchivedPayload = DaemonEventPayloads['scenario.archived'];

@@ -24,6 +24,11 @@ export const INTERRUPTION_CAUSE_NAMES = [
   'permission',
   /** The profile of the session was removed (P21b, N152): an external cause, no fault of the Executor. */
   'profile_removed',
+  /**
+   * The Producer (or the Director) paused the attempt or its play (Phase 7, P2, N176): an external
+   * cause, no fault of the Executor and no attempt spent. It is not in the table of 5.16 yet.
+   */
+  'paused',
 ] as const;
 export type InterruptionCauseName = (typeof INTERRUPTION_CAUSE_NAMES)[number];
 

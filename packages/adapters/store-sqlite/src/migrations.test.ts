@@ -466,7 +466,7 @@ describe.each(DRIVERS)(
               name: string;
             }[]
           ).map((row) => row.name);
-          expect(applied.at(-1)).toBe('0009_profiles_executors_quota_usage');
+          expect(applied.at(-1)).toBe('0010_setup_runs');
           expect(applied).toEqual(Object.keys(MIGRATIONS));
         } finally {
           check.close();
@@ -502,3 +502,74 @@ describe.each(DRIVERS)(
     });
   },
 );
+
+describe.each(DRIVERS)('Phase 7 migration 0010_setup_runs on %s', (driver: SqliteDriverName) => {
+  it('climbs from a 0009 database, creates setup_runs and the table works', async () => {
+    const { dir, dispose } = await makeTempDir();
+    try {
+      const path = join(dir, 'phase6.db');
+      const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+      raw.exec('PRAGMA journal_mode = WAL');
+      const old = new Kysely<StoreDatabase>({
+        dialect: new ImmediateSqliteDialect({ database: raw }),
+      });
+      const before = Object.fromEntries(
+        Object.entries(MIGRATIONS).filter(([name]) => name < '0010'),
+      );
+      const migrator = new Migrator({
+        db: old,
+        provider: { getMigrations: () => Promise.resolve(before) },
+      });
+      expect((await migrator.migrateToLatest()).error).toBeUndefined();
+      expect(Object.keys(before).at(-1)).toBe('0009_profiles_executors_quota_usage');
+      await old.destroy();
+
+      const store = await SqliteStore.open({ path, driver }, clock);
+      try {
+        const run = await store.setupRuns.create({ flow: 'first_run', step: 'detect' });
+        await store.setupRuns.update(run.id, {
+          step: 'preset',
+          done: [{ step: 'detect', input: {}, output: { clients: ['codex'] } }],
+        });
+      } finally {
+        await store.close();
+      }
+      const again = await SqliteStore.open({ path, driver }, clock);
+      try {
+        expect(await again.setupRuns.get('SR1')).toMatchObject({
+          step: 'preset',
+          state: 'active',
+          done: [{ step: 'detect', input: {}, output: { clients: ['codex'] } }],
+        });
+      } finally {
+        await again.close();
+      }
+    } finally {
+      await dispose();
+    }
+  });
+
+  it('the database itself refuses a second active run of a flow', async () => {
+    const { dir, dispose } = await makeTempDir();
+    try {
+      const path = join(dir, 'setup.db');
+      const store = await SqliteStore.open({ path, driver }, clock);
+      await store.close();
+      const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+      try {
+        const insert = raw.prepare(
+          `INSERT INTO setup_runs (id, seq, flow, state, step, done, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        insert.run(['SR1', 1, 'first_run', 'active', 'detect', '[]', 1, 1]);
+        expect(() => insert.run(['SR2', 2, 'first_run', 'active', 'detect', '[]', 1, 1])).toThrow();
+        insert.run(['SR3', 3, 'first_run', 'cancelled', 'detect', '[]', 1, 1]);
+        insert.run(['SR4', 4, 'add_account', 'active', 'detect', '[]', 1, 1]);
+      } finally {
+        raw.close();
+      }
+    } finally {
+      await dispose();
+    }
+  });
+});

@@ -297,6 +297,13 @@ function withoutJudgments(
   );
 }
 
+/** How long the play has been paused (ms); with `only`, 0 unless it was paused in that mode. */
+function pausedFor(context: PlayContext, now: number, only?: 'drain' | 'interrupt'): number {
+  const paused = context.paused ?? null;
+  if (paused === null || (only !== undefined && paused.mode !== only)) return 0;
+  return Math.max(0, now - paused.at);
+}
+
 function withoutDeadline(context: PlayContext, demandId: string): Record<string, number> {
   return Object.fromEntries(Object.entries(context.deadlines).filter(([id]) => id !== demandId));
 }
@@ -385,6 +392,21 @@ function openJudgment(point: JudgmentPointId) {
           dependentIds: event.type === 'DEPENDENCY_REDONE' ? event.dependentIds : [],
         },
       ]),
+    ],
+  };
+}
+
+/**
+ * [proposta] N176: a person cancelled the attempt. Opens judgment point 2 like a timeout does, and
+ * hands the Director the reason (what the next attempt, if any, is told).
+ */
+function cancelledAttempt() {
+  const base = openJudgment('actor_timeout');
+  return {
+    guard: base.guard,
+    actions: [
+      patch(({ event }) => ({ feedback: reasonOf(event) ?? 'The attempt was cancelled.' })),
+      ...base.actions,
     ],
   };
 }
@@ -882,7 +904,44 @@ export const playMachine = setup({
       // not in a final state; the built-in `stateIn` guard is not typed against `setup`
       guard: and([not(stateIn('DONE')), not(stateIn('CANCELLED'))]) as never,
       target: '.CANCELLED',
-      actions: [abort('cancelled')],
+      actions: [patch(() => ({ paused: null })), abort('cancelled')],
+    },
+    // [proposta] N176: pause and resume, in any state that is not final (the runner refuses an
+    // event for a finished play before it gets here). The held effects are kept by the runner.
+    PAUSE: {
+      guard: and([
+        ({ context }: Args) => (context.paused ?? null) === null,
+        not(stateIn('DONE')),
+        not(stateIn('CANCELLED')),
+      ]) as never,
+      actions: [
+        patch(({ event }) =>
+          event.type === 'PAUSE'
+            ? { paused: { mode: event.mode, at: event.at, reason: event.reason ?? null, held: [] } }
+            : {},
+        ),
+        emit(({ event }) =>
+          event.type === 'PAUSE' ? [{ type: 'pause_work', mode: event.mode }] : [],
+        ),
+      ],
+    },
+    RESUME: {
+      guard: ({ context }) => (context.paused ?? null) !== null,
+      actions: [
+        emit(({ context, event }) => [
+          { type: 'resume_work', pausedMs: pausedFor(context, event.at) },
+        ]),
+        patch(({ context, event }) => {
+          // `interrupt` froze the deadlines: they move forward by the time the play was paused
+          const shift = pausedFor(context, event.at, 'interrupt');
+          return {
+            paused: null,
+            deadlines: Object.fromEntries(
+              Object.entries(context.deadlines).map(([id, at]) => [id, at + shift]),
+            ),
+          };
+        }),
+      ],
     },
   },
   states: {
@@ -1017,6 +1076,8 @@ export const playMachine = setup({
         ATTEMPT_FAILED: failAttempt(isKnownPending, 'same'),
         DEMAND_BLOCKED: scriptReturn(isKnownPending),
         ACTOR_TIMED_OUT: openJudgment('actor_timeout'),
+        // N176: a cancelled attempt is judged like one that ran out of time (point 2)
+        ACTOR_CANCELLED: cancelledAttempt(),
         ACTOR_REFUSED: openJudgment('refusal_or_permission'),
         RESUMES_EXCEEDED: openJudgment('resumes_exceeded'),
         DEPENDENCY_REDONE: openJudgment('dependency_redone'),

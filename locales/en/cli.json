@@ -1,6 +1,6 @@
 {
   "usage": {
-    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n  profile <action> [...]       Accounts of the clients (the daemon must be stopped); actions:\n                                 add <client> <name>, list, drain <client>/<name>, remove <client>/<name>,\n                                 exec <client>/<name> [-- <args>] (also with the daemon running),\n                                 shims sync, shims path [--install|--uninstall] (the commands by profile)\n  executor <action> [...]      Executors of the models (the daemon must be stopped); actions:\n                                 models <profile>, add <profile> <model>, list, check [id], remove <id>\n  api rotate-token              Swap the API token (works with the daemon stopped or running)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nOptions of \"ot profile\":\n  --kind <kind>     add: token_plan (default, a subscription) or api (a key)\n  --provider <p>    add: the provider of the account (default: anthropic for claude-code, openai for codex)\n  --api-key-env <NAME>   add --kind api: the NAME of the environment variable that holds the key (never type the key as an argument)\n  --api-key-stdin   add --kind api: read the key from the first line of the standard input\n  --accept-notice   add: go on after the notice about a second subscription account of the same provider\n  --client <client> list: only this client\n  --all             list: also the removed profiles\n  --check-login     list: ask each client whether the profile has a login\n  --json            Print JSON instead of text\n  exec runs the client's own CLI inside the profile, in this terminal. The common words\n  login, logout, status, run and --model (and those of profiles.commands and profiles.options)\n  become the client's own; after \"--\" the arguments go as they are.\n  shims sync writes one command per profile (codex-personal) in the bin folder of the data;\n  shims path says how to put that folder in PATH:\n  --install / --uninstall   shims path: write or take out the line in the rc file of the shell (asks first)\n  --shell <s>       shims path: zsh, bash or fish (default: the one of SHELL)\n  -y, --yes         shims path --install: do not ask\n\nOptions of \"ot executor\":\n  --effort <e>      add: low, medium or high (default: what the catalog suggests)\n  --family <f>      add: the family (provider) of a model whose catalog gives none\n  --as <name>       add: the name of the model inside the Executor id (default: derived)\n  --local-url <url> add: URL of the local model server (default: the one in the catalog)\n  --local-server <s> add: llama-cpp (default) or ollama\n  --role <r>[:<n>]  add: also put it in this role, at position n (repeat it for more roles)\n  --test-session    add: run the short test session (it calls the model); --no-test-session skips it\n  --dry-run         add: report the fields and the checks, write nothing\n  --profile <id>    list: only the Executors of this profile\n  --all             list: also the removed ones\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n  tui                          Open the terminal interface (the daemon must be running)\n  profile <action> [...]       Accounts of the clients (the daemon must be stopped); actions:\n                                 add <client> <name>, list, drain <client>/<name>, remove <client>/<name>,\n                                 exec <client>/<name> [-- <args>] (also with the daemon running),\n                                 shims sync, shims path [--install|--uninstall] (the commands by profile)\n  executor <action> [...]      Executors of the models (the daemon must be stopped); actions:\n                                 models <profile>, add <profile> <model>, list, check [id], remove <id>\n  api rotate-token              Swap the API token (works with the daemon stopped or running)\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nOptions of \"ot profile\":\n  --kind <kind>     add: token_plan (default, a subscription) or api (a key)\n  --provider <p>    add: the provider of the account (default: anthropic for claude-code, openai for codex)\n  --api-key-env <NAME>   add --kind api: the NAME of the environment variable that holds the key (never type the key as an argument)\n  --api-key-stdin   add --kind api: read the key from the first line of the standard input\n  --accept-notice   add: go on after the notice about a second subscription account of the same provider\n  --client <client> list: only this client\n  --all             list: also the removed profiles\n  --check-login     list: ask each client whether the profile has a login\n  --json            Print JSON instead of text\n  exec runs the client's own CLI inside the profile, in this terminal. The common words\n  login, logout, status, run and --model (and those of profiles.commands and profiles.options)\n  become the client's own; after \"--\" the arguments go as they are.\n  shims sync writes one command per profile (codex-personal) in the bin folder of the data;\n  shims path says how to put that folder in PATH:\n  --install / --uninstall   shims path: write or take out the line in the rc file of the shell (asks first)\n  --shell <s>       shims path: zsh, bash or fish (default: the one of SHELL)\n  -y, --yes         shims path --install: do not ask\n\nOptions of \"ot executor\":\n  --effort <e>      add: low, medium or high (default: what the catalog suggests)\n  --family <f>      add: the family (provider) of a model whose catalog gives none\n  --as <name>       add: the name of the model inside the Executor id (default: derived)\n  --local-url <url> add: URL of the local model server (default: the one in the catalog)\n  --local-server <s> add: llama-cpp (default) or ollama\n  --role <r>[:<n>]  add: also put it in this role, at position n (repeat it for more roles)\n  --test-session    add: run the short test session (it calls the model); --no-test-session skips it\n  --dry-run         add: report the fields and the checks, write nothing\n  --profile <id>    list: only the Executors of this profile\n  --all             list: also the removed ones\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nWithout a command, \"ot\" opens the terminal interface when the input and the output are a terminal\n(ui.bare_command: tui, the default); with ui.bare_command: help, or without a terminal, it shows this help.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
     "hint": "Run \"ot --help\" for usage.",
     "unknownCommand": "Unknown command \"{{command}}\".",
     "missingCommand": "No command given.",
@@ -11,6 +11,8 @@
     "invalidOption": "Invalid option: {{message}}",
     "missingRepo": "\"ot chat\" needs a repository: use --repo <folder>.",
     "noInput": "\"ot chat\" needs a place to read the messages from.",
+    "tuiNeedsTerminal": "\"ot tui\" needs a terminal: the input and the output must be a terminal.",
+    "tuiNotBuilt": "The terminal interface is not built: run \"pnpm build\" (missing: {{file}}).",
     "missingDirectivesAction": "\"ot directives\" needs an action: list, show, add, extend, suspend or revoke.",
     "unknownDirectivesAction": "Unknown action \"{{action}}\" for \"ot directives\".",
     "directiveNeedsId": "This action needs the order id (for example O1).",
@@ -90,6 +92,18 @@
     },
     "play": "Play {{id}}: {{state}}",
     "playEnded": "Play {{id}} ended.",
+    "shellStarted": "$ {{command}} ({{place}})",
+    "shellEnded": {
+      "exited": "Command ended with exit code {{code}}.",
+      "timeout": "Command stopped after {{seconds}} s (time limit); its processes were ended.",
+      "failed": "Command did not run: {{error}}"
+    },
+    "shellCut": {
+      "tail": "  ... only the last {{shown}} of {{total}} lines are shown; the whole output is in the log.",
+      "head": "  ... only the first {{shown}} of {{total}} lines are shown; the whole output is in the log."
+    },
+    "shellAskedInput": "The command asked for input, but a ! command has no keyboard: it got the end of the input and ended.",
+    "shellContextAsked": "The Director was not told yet: a question waits for your answer.",
     "waiting": "{{what}} ({{who}}).",
     "waitingFor_quota": "waiting for quota of {{profiles}}",
     "waitingFor_budget": "waiting for the spending cap of {{profiles}}",
@@ -247,5 +261,42 @@
     "removed": "Executor {{id}} removed.",
     "removedFromRoles": "Taken out of the lists of the roles: {{roles}}.",
     "rolesEmptied": "These lists became empty and were taken out (the role goes back to its preset): {{roles}}."
+  },
+  "setup": {
+    "flow": {
+      "first_run": "First run",
+      "add_account": "Add an account",
+      "change_preset": "Change the preset"
+    },
+    "step": {
+      "detect": "Clients and accounts",
+      "account": "Account",
+      "preset": "Preset",
+      "executors": "Executors by API and caps",
+      "review": "Review"
+    },
+    "hint": {
+      "detect": "Confirm which accounts take part. Only their state is read: the content of a key or a login is never read.",
+      "account": "Choose the registered account to bring into the roles.",
+      "preset": "Choose the preset: it gives the list of Executors of each role.",
+      "executors": "Register the Executors by API and give the spending cap of each API account (empty is valid).",
+      "review": "This is what will be written. Nothing is in config.yaml until you confirm."
+    },
+    "note": {
+      "catalog_unavailable": "The model catalog of the account could not be read: its models are not proposed.",
+      "effort_not_accepted": "The model does not accept the effort the preset names: it is left out.",
+      "legacy_executors": "orchestration.executor and orchestration.roles are the old format: the lists written here take their place.",
+      "lists_replaced": "The list of the role in the file is replaced by the list of the preset.",
+      "budget_suggested": "API account with no cap: the suggested cap (setup.suggested_budget) is proposed.",
+      "no_accounts": "No account takes part: the lists of the roles stay empty until one is added.",
+      "no_account": "The preset names a model that no account of this machine has: it is left out.",
+      "not_registered": "The list names an Executor that is not registered.",
+      "invalid_executor": "The list has an Executor that is invalid.",
+      "profile_not_allowed": "The Executor is left out: its account is not in roles.allowed_profiles.",
+      "below_minimum": "The Executor is below the minimum of the role.",
+      "empty_list": "No Executor is left in the list of the role."
+    },
+    "confirmed": "Setup confirmed: {{executors}} Executor(s) registered, {{written}} key(s) written to config.yaml.",
+    "cancelled": "Setup cancelled. Nothing was written."
   }
 }

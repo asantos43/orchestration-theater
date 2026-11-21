@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Clock, Store } from '@otheater/core';
 import type { BudgetService } from '../../budget/index.js';
-import type { DaemonConfig } from '../../config.js';
+import type { DaemonConfig, PauseMode } from '../../config.js';
 import type { DirectiveService } from '../../directives/index.js';
+import type { AttemptRunner } from '../../execution/attempt-runner.js';
 import type { IdeaQueueService } from '../../ideas/index.js';
 import type { LayoutPreferencesStore } from '../../layout/preferences.js';
 import type { Logger } from '../../logger.js';
@@ -12,6 +13,7 @@ import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
+import type { SetupService } from '../../setup/index.js';
 import type { UsageService } from '../../usage/index.js';
 
 /**
@@ -31,6 +33,8 @@ export interface ReadRouteDeps {
   readonly attachments: AttachmentService;
   /** The layout preferences of the interfaces (P12). */
   readonly layout: LayoutPreferencesStore;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }
 
 /**
@@ -54,7 +58,13 @@ export interface CommandRouteDeps {
   /** The Producer's channel: opens scenarios, attaches files and answers decisions. */
   readonly channel?: ProducerChannel | undefined;
   readonly runner?: PlayRunner | undefined;
+  /** N176: the runner of the attempts, for pausing, resuming and cancelling one Actor. */
+  readonly attempts?: AttemptRunner | undefined;
+  /** N176: `pause.mode`, read at each pause that does not name its own mode. */
+  readonly pauseMode?: (() => PauseMode) | undefined;
   readonly ideas?: IdeaQueueService | undefined;
   /** The layout preferences of the interfaces (P12). */
   readonly layout: LayoutPreferencesStore;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }

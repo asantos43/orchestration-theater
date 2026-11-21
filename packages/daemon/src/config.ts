@@ -47,6 +47,17 @@ import {
   SelectionConfigSchema,
 } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
+import {
+  APP_TERMINAL_MODES,
+  SHELL_COMMAND_MODES,
+  SHELL_CONTEXT_MODES,
+  SHELL_TIMEOUT_DEFAULT,
+  SNIPPET_KEEP_MODES,
+} from './shell-config.js';
+
+/** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
+export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
+export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -434,6 +445,15 @@ export interface PlayLimits {
  */
 export const TURN_TIMEOUT_MODES = ['cancel', 'notice', 'off'] as const;
 export type TurnTimeoutMode = (typeof TURN_TIMEOUT_MODES)[number];
+
+/**
+ * What `pause.mode` does with the work in flight when a play is paused (N176, owner, 2026-11-20):
+ * `drain` (default) lets the running stage or Actor finish and opens nothing new; `interrupt`
+ * interrupts the running attempts with the cause `paused`, saving the checkpoint, and they resume
+ * where they stopped. The request of the pause may name its own mode.
+ */
+export const PAUSE_MODES = ['drain', 'interrupt'] as const;
+export type PauseMode = (typeof PAUSE_MODES)[number];
 
 /**
  * The resolved `limits` of the configuration: the values plus the name of the preset and the
@@ -1117,6 +1137,43 @@ export const OpenCodeClientSchema = z.strictObject({
 /** A section whose keys belong to an adapter: `compose.ts` validates it with the adapter's schema. */
 const AdapterSection = z.record(z.string(), z.unknown());
 
+/** A duration, or `off` (no deadline: `null` once parsed). */
+const OffOrDurationSchema = z.union([z.literal('off').transform(() => null), DurationSchema]);
+
+const ShellCommandSectionSchema = z.strictObject({
+  mode: z.enum(SHELL_COMMAND_MODES).default('on'),
+  timeout: OffOrDurationSchema.prefault(SHELL_TIMEOUT_DEFAULT),
+  context: z.enum(SHELL_CONTEXT_MODES).default('auto'),
+  /** [proposta] How many `!` commands of one scenario may run at once. */
+  max_running: z.int().min(1).default(4),
+});
+
+/**
+ * `chat.shell_command` is `on` | `off` (the scalar) or a section with `mode`, `timeout` and
+ * `context`; both normalise to the section, so `chat.shell_command: off` and
+ * `chat.shell_command.timeout: 30s` are each valid on their own.
+ */
+const ShellCommandConfigSchema = z
+  .union([
+    z.enum(SHELL_COMMAND_MODES).transform((mode) => ShellCommandSectionSchema.parse({ mode })),
+    ShellCommandSectionSchema,
+  ])
+  .prefault({});
+
+const TerminalConfigSchema = z
+  .strictObject({
+    snippet: z
+      .strictObject({
+        max_lines: z.int().min(1).default(200),
+        keep: z.enum(SNIPPET_KEEP_MODES).default('tail'),
+      })
+      .prefault({}),
+    log_max_size: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
+      '16MB',
+    ),
+  })
+  .prefault({});
+
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
  * section is optional and every key has a default, so a missing file means the defaults. Strict at
@@ -1289,6 +1346,13 @@ export const DaemonConfigSchema = z
         message: 'demand_timeout must not exceed demand_timeout_max',
         path: ['demand_timeout'],
       }),
+    /** Pausing a play (architecture 5.12; N176, owner, 2026-11-20). */
+    pause: z
+      .strictObject({
+        /** `drain` (default) or `interrupt`; see {@link PAUSE_MODES}. */
+        mode: z.enum(PAUSE_MODES).default('drain'),
+      })
+      .prefault({}),
     /**
      * How a play runs (architecture 5.4; P8). [proposta] Until the executor catalog and the role
      * presets exist (`roles.preset`, 5.7), the Executor of each role is a key here:
@@ -1350,8 +1414,22 @@ export const DaemonConfigSchema = z
         presence_window: DurationSchema.prefault('30s'),
         /** [proposta] A turn of the Director with no text: see {@link SILENT_TURN_MODES}. */
         silent_turn: z.enum(SILENT_TURN_MODES).default('notice'),
+        /**
+         * [proposta] The `!` command of the Producer (N43, N187): `on` | `off` or a section with
+         * `mode`, `timeout` (a duration or `off`; default 5m) and `context` (`auto` | `ask` | `never`).
+         * See `shell-config.ts`.
+         */
+        shell_command: ShellCommandConfigSchema,
       })
       .prefault({}),
+    /** [proposta] Where the `!` command of the Producer runs (architecture 5.13): see `shell-config.ts`. */
+    app: z
+      .strictObject({
+        terminal: z.enum(APP_TERMINAL_MODES).default('sandbox'),
+      })
+      .prefault({}),
+    /** [proposta] The snippet and the log of a `!` command (architecture 5.19): see `shell-config.ts`. */
+    terminal: TerminalConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({
@@ -2009,6 +2087,12 @@ export const DaemonConfigSchema = z
       .strictObject({
         locale: z.enum(LOCALE_SETTINGS).default('auto'),
         /**
+         * What `ot` does with no command (Phase 7, P8; owner's choice of 2026-11-20): `tui` opens
+         * the terminal interface when the input and the output are a terminal, `help` always shows
+         * the usage, as before. Without a terminal it is the usage in either mode.
+         */
+        bare_command: z.enum(['tui', 'help']).default('tui'),
+        /**
          * The layout preferences of the interfaces (architecture 5.13, N170; P12 of docs/17). The
          * daemon keeps them either way; these keys are what a client reads (`GET /v1/config`) to
          * know where to keep its own.
@@ -2062,6 +2146,32 @@ export const DaemonConfigSchema = z
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */
         runtime: UiRuntimeConfigSchema.prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The setup assistant (architecture 5.7, N121; P4 of docs/18). [proposta] Both keys are what
+     * the assistant proposes; the Producer changes them in the `executors` step or by hand later.
+     */
+    setup: z
+      .strictObject({
+        /**
+         * The cap the `executors` step proposes for an API account that got an Executor and was
+         * given no cap (5.6: an API account should always have one). A step may answer a cap of its
+         * own, or `null` in both fields for "no cap".
+         */
+        suggested_budget: z
+          .strictObject({
+            daily_usd: z.number().gt(0).default(20),
+            monthly_usd: z.number().gt(0).default(200),
+          })
+          .prefault({}),
+        /**
+         * What `confirm` writes of the lists of the roles: `explicit` writes `roles.<role>.executors`
+         * for every role (what the Producer saw at the review stays as it is even if the preset
+         * changes later); `preset` writes only `roles.preset` and the Executors, and the lists keep
+         * following the preset.
+         */
+        role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
       })
       .prefault({}),
     log: z

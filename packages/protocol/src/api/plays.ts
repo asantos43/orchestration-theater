@@ -55,8 +55,8 @@ export const getPlay = defineRoute({
 
 /**
  * Cancels a play (P6 of docs/17). [proposta] It sends `CANCEL` to the machine of the play, which
- * takes it to the end state `CANCELLED` from any state that is not final. Pausing, resuming and
- * cancelling one Actor are not here: the daemon has no such command yet.
+ * takes it to the end state `CANCELLED` from any state that is not final. Pausing and resuming a
+ * play are below (N176); the commands on one Actor are in `attempts.ts`.
  */
 export const CancelPlayBodySchema = z.strictObject({
   reason: z.string().min(1).max(2000).optional(),
@@ -75,4 +75,53 @@ export const cancelPlay = defineRoute({
   errors: ['not_found', 'conflict', 'unavailable'],
 });
 
-export const PLAY_ROUTES = defineRoutes(listScenarioPlays, getPlay, cancelPlay);
+/**
+ * Pauses a play (Phase 7, P2, N176; architecture 5.12). [proposta] It sends `PAUSE` to the machine
+ * of the play. A paused play opens no new stage, attempt or judgment, and stays paused after a
+ * restart of the daemon. `mode` overrides the key `pause.mode` of the daemon for this pause:
+ * `drain` lets what runs finish, `interrupt` interrupts the attempts in flight with the cause
+ * `paused` (checkpoint saved). A play that is already paused or finished answers `conflict`.
+ */
+export const PausePlayBodySchema = z.strictObject({
+  mode: z.enum(['drain', 'interrupt']).optional(),
+  reason: z.string().min(1).max(2000).optional(),
+});
+export type PausePlayBody = z.input<typeof PausePlayBodySchema>;
+
+export const pausePlay = defineRoute({
+  id: 'pausePlay',
+  method: 'POST',
+  path: '/v1/plays/:playId/pause',
+  summary: 'Pauses a play: nothing new opens until it resumes; idempotent by Idempotency-Key',
+  params: PlayParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  body: PausePlayBodySchema.optional(),
+  response: z.strictObject({ play: ApiPlaySchema }),
+  errors: ['not_found', 'conflict', 'unavailable'],
+});
+
+/** Resumes a paused play (N176): what was held back starts, and the attempts it interrupted resume. */
+export const ResumePlayBodySchema = z.strictObject({
+  reason: z.string().min(1).max(2000).optional(),
+});
+export type ResumePlayBody = z.input<typeof ResumePlayBodySchema>;
+
+export const resumePlay = defineRoute({
+  id: 'resumePlay',
+  method: 'POST',
+  path: '/v1/plays/:playId/resume',
+  summary: 'Resumes a paused play; idempotent by Idempotency-Key',
+  params: PlayParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  body: ResumePlayBodySchema.optional(),
+  response: z.strictObject({ play: ApiPlaySchema }),
+  errors: ['not_found', 'conflict', 'unavailable'],
+});
+
+export const PLAY_ROUTES = defineRoutes(
+  listScenarioPlays,
+  getPlay,
+  cancelPlay,
+  pausePlay,
+  resumePlay,
+);
