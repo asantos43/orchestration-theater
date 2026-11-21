@@ -218,6 +218,10 @@ describe('the setup screen: first run', () => {
     await second.seen('Pick the accounts that take part');
     expect(second.frame()).toContain('leaves; the run stays saved');
     await second.press(ESC);
+    await waitFor(
+      () => (second.outcomes.length > 0 ? true : undefined),
+      'the setup screen to leave',
+    );
     expect(second.outcomes).toEqual(['left']);
     expect(api.active.has('first_run')).toBe(true);
     expect(api.calls.filter((call) => call === 'cancel')).toEqual([]);
@@ -304,6 +308,10 @@ describe('the setup screen: first run', () => {
     const screen = mount('first_run', api);
     await screen.seen('Could not open the assistant');
     await screen.press(ESC);
+    await waitFor(
+      () => (screen.outcomes.length > 0 ? true : undefined),
+      'the setup screen to leave',
+    );
     expect(screen.outcomes).toEqual(['left']);
   });
 
@@ -363,8 +371,9 @@ describe('the setup screen: executors and caps', () => {
     await screen.press('a');
     await screen.type('x y');
     await screen.press(ESC);
-    expect(screen.frame()).not.toContain('Executor as:');
-    expect(screen.frame()).toContain('None. Enter continues without one.');
+    // Esc is a lone escape byte, so Ink may only settle it after a short wait.
+    const closed = await screen.seen(/^(?![\s\S]*Executor as:)/);
+    expect(closed).toContain('None. Enter continues without one.');
   });
 
   it('moves the cursor with the arrows over the rows and the caps', async () => {
