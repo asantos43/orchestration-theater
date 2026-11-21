@@ -14,7 +14,14 @@ import {
 } from './index.js';
 import { FakeOllamaServer, type FakeOllamaBehavior } from './testing/fake-ollama-server.js';
 
-const SHORT_TIMEOUT_MS = 300;
+/**
+ * Timeout of the tests where the fake server hangs: short, so the test does not wait long.
+ * The conformance suite runs hung and answering servers on one instance, so it takes the middle one.
+ */
+const HANG_TIMEOUT_MS = 300;
+const CONFORMANCE_TIMEOUT_MS = 2_000;
+/** Timeout of the tests where the fake server answers: wide, so a slow runner does not fail them (macOS CI, PR #246). */
+const ANSWER_TIMEOUT_MS = 10_000;
 
 /** Awaits a promise that must reject and returns the error. */
 async function failure(promise: Promise<unknown>): Promise<Error> {
@@ -74,10 +81,10 @@ describeLocalModelServerConformance('OllamaServer', () => {
   const parallelOf = new Map<string, number>();
   return {
     server: new OllamaServer({
-      timeoutMs: SHORT_TIMEOUT_MS,
+      timeoutMs: CONFORMANCE_TIMEOUT_MS,
       parallel: (url) => parallelOf.get(url),
     }),
-    timeoutMs: SHORT_TIMEOUT_MS,
+    timeoutMs: CONFORMANCE_TIMEOUT_MS,
     serve: async (behavior: LocalServerBehavior) => {
       let fake: FakeOllamaServer;
       switch (behavior.kind) {
@@ -126,7 +133,7 @@ describe('OllamaServer', () => {
   }
 
   function make(options: OllamaServerOptions = {}): OllamaServer {
-    return new OllamaServer({ timeoutMs: SHORT_TIMEOUT_MS, ...options });
+    return new OllamaServer({ timeoutMs: ANSWER_TIMEOUT_MS, ...options });
   }
 
   const server = make();
@@ -301,7 +308,10 @@ describe('OllamaServer', () => {
 
     it('says "no answer" with the timeout in the message when the server hangs', async () => {
       const fake = await start({ fault: 'hang' });
-      await expectUnavailable(server.models(fake.url), /no answer within 300 ms/);
+      await expectUnavailable(
+        make({ timeoutMs: HANG_TIMEOUT_MS }).models(fake.url),
+        /no answer within 300 ms/,
+      );
     });
   });
 
@@ -413,7 +423,7 @@ describe('OllamaServer', () => {
     it('createOllamaServer applies parallel_by_url over parallel, by base URL', async () => {
       const fake = await start({ loaded: [{ name: 'a:latest', contextLength: 16_384 }] });
       const config = OllamaConfigSchema.parse({
-        timeout_ms: SHORT_TIMEOUT_MS,
+        timeout_ms: ANSWER_TIMEOUT_MS,
         parallel: 2,
         parallel_by_url: { [`${fake.url}/`]: 4 },
       });
@@ -430,7 +440,7 @@ describe('OllamaServer', () => {
       });
       const built = createOllamaServer(
         OllamaConfigSchema.parse({
-          timeout_ms: SHORT_TIMEOUT_MS,
+          timeout_ms: ANSWER_TIMEOUT_MS,
           health_probe: 'root',
           models_source: 'loaded',
           context_window: 'none',
