@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import * as nodeModule from 'node:module';
 import { describe, expect, it } from 'vitest';
@@ -101,7 +102,7 @@ async function outputIsPatched(
     console.log(typeof output.caches.getLines === 'function' ? 'patched' : 'original');
   `;
   const { stdout } = await run(process.execPath, ['--input-type=module', '-e', script], {
-    cwd: new URL(TUI_DIR).pathname,
+    cwd: fileURLToPath(TUI_DIR),
     timeout: 20_000,
   });
   return stdout.trim();
