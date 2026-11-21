@@ -905,6 +905,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // After the clients ended (`execution`): their last batches have arrived or never will.
       await attempt('telemetry', async () => telemetry?.stop());
       await attempt('browser', async () => browserTools?.close());
+      // The timers of the waits that are still going on stop; they write nothing from here on.
+      composition.waitEvents?.close();
       // The spans of the last events are written before the telemetry store closes with the composition.
       await attempt('daemon spans', async () => composition.daemonSpans?.stop());
       // The situations recorded so far are written before `daemon.stopped` closes the log.
@@ -1266,9 +1268,7 @@ function buildExecution(
     handoff,
     exhaustion,
     ...(telemetry === undefined ? {} : { telemetry: telemetry.clients }),
-    ...(composition.daemonSpans === undefined
-      ? {}
-      : { onWait: composition.daemonSpans.recordWait }),
+    ...(composition.waitEvents === undefined ? {} : { waits: composition.waitEvents }),
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }
