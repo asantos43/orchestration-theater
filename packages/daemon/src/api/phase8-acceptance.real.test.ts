@@ -538,10 +538,11 @@ ${mode === undefined || mode === '' ? '' : `    mode: ${json(mode)}\n`}`);
             log(`email-shaped texts in the tables: ${String(shapedInTables.length)}`);
             expect(inTables, 'the email of the account must be in no table').toBe(false);
             if (accountEmails.length === 0) {
+              // The count only: a failure must not print the texts, which may be personal data.
               expect(
-                shapedInTables,
+                shapedInTables.length,
                 'no email-shaped text without a known email to compare',
-              ).toEqual([]);
+              ).toBe(0);
             }
 
             // 4. The ATIF of the play, in both contents: the schema, and no email.
@@ -572,7 +573,8 @@ ${mode === undefined || mode === '' ? '' : `    mode: ${json(mode)}\n`}`);
             }
             log(`the email of the account in the ATIF: ${emailInAtif ? 'PRESENT' : 'absent'}`);
             expect(emailInAtif, 'the email of the account must be in no ATIF').toBe(false);
-            if (accountEmails.length === 0) expect([...shapedInAtif]).toEqual([]);
+            if (accountEmails.length === 0)
+              expect(shapedInAtif.size, 'no email-shaped text in the ATIF').toBe(0);
 
             // 5. The API: /metrics (P7), the state of the telemetry (P10).
             const metricsResponse = await get('/metrics');
