@@ -26,6 +26,7 @@ import {
   cardKeyOf,
   cardLines,
   createCardState,
+  type CardKeymap,
   type CardModel,
   type CardState,
   type CardTexts,
@@ -99,6 +100,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
   const owner = useRef<ApiClient | undefined>(undefined);
   const socketOptions = config.socket;
   const queueMode = config.chat.queue;
+  const historyCount = config.chat.history;
   const session = useMemo((): ChatSession | undefined => {
     if (scenarioId === undefined || client === undefined) return undefined;
     if (owner.current !== client) {
@@ -112,14 +114,16 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       open: (resumeFrom): ChatSocketLike =>
         client.chat(scenarioId, {
           ...socketOptions,
-          ...(resumeFrom === undefined ? {} : { resumeFrom }),
+          // Reopened on a scenario that already talked, the chat shows its last events (P26); with a
+          // cursor in hand it resumes from it and asks for no history.
+          ...(resumeFrom === undefined ? { history: historyCount } : { resumeFrom }),
         }),
       now: () => Date.now(),
       queue: queueMode,
     });
     sessions.current.set(scenarioId, made);
     return made;
-  }, [client, scenarioId, socketOptions, queueMode]);
+  }, [client, scenarioId, socketOptions, queueMode, historyCount]);
   useEffect(() => {
     session?.setQueueMode(queueMode);
   }, [session, queueMode]);
@@ -350,6 +354,12 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     session?.local('sendFailed', { message: errorText(error) });
   };
 
+  // The keys of the card come from the keymap, so `ui.keymap.overrides` reaches them (P26, N203).
+  const cardKeys: CardKeymap = {
+    decision: (combo) => keymap.match(combo, ['decision']),
+    textBox: (combo) => keymap.match(combo, ['textBox']),
+  };
+
   const onKey = (event: KeyEvent): boolean => {
     if (session === undefined) return false;
     const { confirm } = state;
@@ -370,7 +380,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     }
     const current = card.current;
     if (!cardFocused || current === undefined) return false;
-    const key = cardKeyOf(event);
+    const key = cardKeyOf(event, cardKeys, current.state.typing);
     if (key === undefined) return false;
     const result = cardKey(model, current.state, key);
     current.state = result.state;

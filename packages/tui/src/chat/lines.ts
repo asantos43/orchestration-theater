@@ -160,11 +160,19 @@ function bodyText(t: Translate, body: EntryBody): string {
     case 'shellStarted':
     case 'shellFinished':
       return terminalText(shellBlock(t, body));
-    case 'shellRefused':
-      return t(`${ROOT}.shellRefused.${body.error.code}`, {
+    case 'shellRefused': {
+      const reason = t(`${ROOT}.shellRefused.${body.error.code}`, {
         defaultValue: t(`${ROOT}.shellRefused.other`, { message: body.error.message }),
         message: body.error.message,
       });
+      // N205: the refusal says which line it is for (several may be in flight).
+      return body.command === ''
+        ? reason
+        : t(`${ROOT}.shellRefusedFor`, {
+            command: oneLine(body.command, SHELL_COMMAND_SHOWN),
+            reason,
+          });
+    }
     case 'command':
       return body.result.text;
     case 'error':

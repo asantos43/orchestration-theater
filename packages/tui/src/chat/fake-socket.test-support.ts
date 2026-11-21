@@ -15,13 +15,16 @@ export class FakeChatSocket implements ChatSocketLike {
   closed = false;
   /** The cursor the session asked to resume from when it opened this socket. */
   readonly resumeFrom: number | undefined;
+  /** How many past events the socket asked for on a first opening (P26), if it did. */
+  readonly history: number | undefined;
   /** What the next `send` throws, when set (a socket that is not open). */
   failSend: Error | undefined;
   readonly #messages = new Set<(message: ChatServerMessage) => void>();
   readonly #states = new Set<(state: ConnectionState) => void>();
 
-  constructor(resumeFrom?: number) {
+  constructor(resumeFrom?: number, history?: number) {
     this.resumeFrom = resumeFrom;
+    this.history = history;
     this.lastEventId = resumeFrom;
   }
 
@@ -79,8 +82,11 @@ export class FakeChatServer {
   readonly sockets = new Map<string, FakeChatSocket[]>();
 
   /** What `ApiClient.chat` is replaced with. */
-  readonly open = (scenarioId: string, options?: { resumeFrom?: number }): FakeChatSocket => {
-    const socket = new FakeChatSocket(options?.resumeFrom);
+  readonly open = (
+    scenarioId: string,
+    options?: { resumeFrom?: number; history?: number },
+  ): FakeChatSocket => {
+    const socket = new FakeChatSocket(options?.resumeFrom, options?.history);
     const list = this.sockets.get(scenarioId) ?? [];
     list.push(socket);
     this.sockets.set(scenarioId, list);

@@ -225,12 +225,39 @@ describe('a ! command (P18)', () => {
     const text = (code: 'forbidden' | 'internal'): string =>
       messageOf(
         t,
-        entry({ kind: 'shellRefused', error: { code, message: 'nope' } }, { who: 'system' }),
+        entry(
+          {
+            kind: 'shellRefused',
+            error: { code, message: 'nope' },
+            command: '',
+            clientId: undefined,
+          },
+          { who: 'system' },
+        ),
       ).text;
     expect(text('forbidden')).toContain('layout.chat.entry.shellRefused.forbidden');
     expect(
-      messageOf(t, entry({ kind: 'shellRefused', error: { code: 'forbidden', message: 'x' } }))
-        .terminal,
+      messageOf(
+        t,
+        entry({
+          kind: 'shellRefused',
+          error: { code: 'forbidden', message: 'x' },
+          command: '',
+          clientId: undefined,
+        }),
+      ).terminal,
     ).toBeUndefined();
+    // With the line it is for, the refusal says which one (several may be in flight).
+    const named = messageOf(
+      t,
+      entry({
+        kind: 'shellRefused',
+        error: { code: 'forbidden', message: 'x' },
+        command: 'ls -la',
+        clientId: 'sh-1',
+      }),
+    ).text;
+    expect(named).toContain('layout.chat.entry.shellRefusedFor');
+    expect(named).toContain('ls -la');
   });
 });

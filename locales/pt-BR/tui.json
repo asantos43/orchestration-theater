@@ -34,6 +34,9 @@
     "decision": {
       "answer": "Responder a decisão pendente",
       "aside": "Pôr a decisão de lado",
+      "up": "Subir nas opções da decisão",
+      "down": "Descer nas opções da decisão",
+      "mark": "Marcar a opção da decisão",
       "open": "Abrir a decisão pendente"
     },
     "palette": {
@@ -425,6 +428,7 @@
           "asked": "O Diretor ainda não viu: a sua resposta decide.",
           "never": "Fica fora do que o Diretor lê."
         },
+        "shellRefusedFor": "! {{command}}: {{reason}}",
         "shellRefused": {
           "forbidden": "O comando ! está desligado (chaves chat.shell_command e app.terminal).",
           "conflict": "Há comandos ! demais rodando; espere um terminar.",

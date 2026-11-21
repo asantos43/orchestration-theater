@@ -56,3 +56,28 @@ export const ShellCommandFinishedPayloadSchema = z.strictObject({
   logPath: z.string().min(1).nullable(),
   error: z.string().optional(),
 });
+
+/**
+ * The mark of the question of `chat.shell_command.context: ask` (P26, N205). The daemon puts it in
+ * the `input` of the decision (and so in the `input` of the `ask` frame) beside `questions`, so a
+ * client knows where the question comes from without reading its options: `source` is
+ * {@link SHELL_ASK_SOURCE} and `shell` says what the question is about. Additive: a question of the
+ * Director has neither member. [proposta]
+ */
+export const SHELL_ASK_SOURCE = 'shell';
+export const ShellAskMarkSchema = z.strictObject({
+  commandId: z.string().min(1),
+  /** The command as the Producer typed it, cut at the limit of the events. */
+  command: z.string().min(1).max(2000),
+  /** `null` when a signal ended the command, or it did not start. */
+  exitCode: z.int().nullable(),
+  lines: z.int().min(0),
+});
+export type ShellAskMark = z.infer<typeof ShellAskMarkSchema>;
+
+/** What `input` says about a question of `context: ask`; `undefined` for any other question. */
+export function shellAskMarkOf(input: Readonly<Record<string, unknown>>): ShellAskMark | undefined {
+  if (input.source !== SHELL_ASK_SOURCE) return undefined;
+  const parsed = ShellAskMarkSchema.safeParse(input.shell);
+  return parsed.success ? parsed.data : undefined;
+}

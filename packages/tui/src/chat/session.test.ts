@@ -220,13 +220,17 @@ describe('the listeners', () => {
 });
 
 describe('a ! command (P18)', () => {
-  it('sends the line as a message and counts it as in flight, with no entry of its own', () => {
+  it('sends the line as a message with an id of its own, and makes no entry for it', () => {
     const server = new FakeChatServer();
     const session = sessionOver(server);
     session.connect();
     session.submit('!ls -la');
-    expect(server.latest('S1')?.sent).toEqual([{ type: 'message', text: '!ls -la' }]);
-    expect(session.state.shellSending).toBe(1);
+    session.submit('!pwd');
+    // The id comes back in the refusal of the line (N205): each line has its own.
+    expect(server.latest('S1')?.sent).toEqual([
+      { type: 'message', text: '!ls -la', clientId: 'sh-1' },
+      { type: 'message', text: '!pwd', clientId: 'sh-2' },
+    ]);
     expect(session.state.entries).toEqual([]);
   });
 
@@ -237,7 +241,7 @@ describe('a ! command (P18)', () => {
     const socket = server.latest('S1');
     socket?.emit({ type: 'busy', eventId: 1, busy: true });
     session.submit('!ls');
-    expect(socket?.sent).toEqual([{ type: 'message', text: '!ls' }]);
+    expect(socket?.sent).toEqual([{ type: 'message', text: '!ls', clientId: 'sh-1' }]);
   });
 
   it('throws on an empty command and on attachments, and sends nothing', () => {
@@ -251,7 +255,6 @@ describe('a ! command (P18)', () => {
       session.submit('!cat', ['A1']);
     }).toThrow(/attachment/u);
     expect(server.latest('S1')?.sent).toEqual([]);
-    expect(session.state.shellSending).toBe(0);
   });
 
   it('answers the question of context: ask with the labels the daemon reads', () => {

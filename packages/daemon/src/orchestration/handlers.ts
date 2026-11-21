@@ -10,6 +10,7 @@ import {
   stateSummaryOf,
   type Store,
 } from '@otheater/core';
+import type { SHELL_ASK_SOURCE, ShellAskMark } from '@otheater/protocol';
 import type { z } from 'zod';
 import type { DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
@@ -400,7 +401,10 @@ export class OrchestrationHandlers {
    */
   async openApproval(
     scenarioId: string,
-    input: z.infer<typeof askProducerInput>,
+    input: z.infer<typeof askProducerInput> & {
+      source?: typeof SHELL_ASK_SOURCE;
+      shell?: ShellAskMark;
+    },
   ): Promise<{ decisionId: string; answer: Promise<JsonValue> } | undefined> {
     const rt = this.#runtime;
     if (rt === undefined) return undefined;
@@ -409,7 +413,13 @@ export class OrchestrationHandlers {
       id,
       scenarioId,
       kind: DECISION_KINDS.question,
-      input: { questions: JSON.parse(JSON.stringify(input.questions)) as JsonValue },
+      input: {
+        questions: JSON.parse(JSON.stringify(input.questions)) as JsonValue,
+        // The mark of the question of `chat.shell_command.context: ask` (P26, N205).
+        ...(input.source === undefined || input.shell === undefined
+          ? {}
+          : { source: input.source, shell: input.shell }),
+      },
     });
     const waiting = this.board.wait(id);
     await rt.chatFlow?.sync(scenarioId, 'ask_producer', { decisionId: id });
