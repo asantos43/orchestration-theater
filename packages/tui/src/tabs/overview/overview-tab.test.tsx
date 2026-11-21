@@ -343,6 +343,9 @@ describe('following a play without reading the REST API', () => {
     const fetched = vi.spyOn(globalThis, 'fetch');
     const called = vi.spyOn(w.online.client, 'call');
     const app = await open(w);
+    // The shell reads the finished plays of the side bar once, when it opens (P11); the redraws
+    // below must not read anything else.
+    called.mockClear();
     const stores: DaemonStores = w.online.stores;
     stores.plays.setState({
       byId: { [w.play.id]: { ...w.play, state: 'INTEGRATING' } },

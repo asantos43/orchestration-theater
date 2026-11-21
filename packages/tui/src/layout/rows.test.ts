@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import { frameLine } from './frame.js';
-import { fillBar, quotaRows, scenarioRows } from './scenario-rows.js';
+import { fillBar, finishedRows, quotaRows, scenarioRows } from './scenario-rows.js';
 import { sidebarItems, SIDEBAR_SECTIONS } from './sidebar.js';
 import { play, quota, scenario } from '../layout.test-support.js';
 import { cellWidth } from './text.js';
@@ -74,6 +74,70 @@ describe('sidebarItems', () => {
     ).toEqual([SIDEBAR_SECTIONS.scenarios, SIDEBAR_SECTIONS.subscriptions]);
     expect(sidebarItems(rows, new Set(), 'rail').map((item) => item.id)).toEqual(['S1', 'S2']);
     expect(sidebarItems(rows, new Set([SIDEBAR_SECTIONS.scenarios]), 'rail')).toEqual([]);
+  });
+
+  it('puts the finished section between the scenarios and the subscriptions, with its plays only when open (P11)', () => {
+    const finishedRow = {
+      id: 'P1',
+      scenarioId: 'S1',
+      scenarioName: 'One',
+      need: 'ship it',
+      outcome: 'done' as const,
+      finishedAt: 5,
+    };
+    expect(
+      sidebarItems(rows, new Set(), 'expanded', { rows: [finishedRow], open: false }).map(
+        (item) => item.id,
+      ),
+    ).toEqual([
+      'sidebar.scenarios',
+      'S1',
+      'S2',
+      SIDEBAR_SECTIONS.finished,
+      SIDEBAR_SECTIONS.subscriptions,
+    ]);
+    expect(
+      sidebarItems(rows, new Set(), 'expanded', { rows: [finishedRow], open: true }).slice(3, 5),
+    ).toEqual([
+      { kind: 'section', id: SIDEBAR_SECTIONS.finished },
+      { kind: 'finished', id: 'P1', scenarioId: 'S1' },
+    ]);
+    // The rail never has the section.
+    expect(
+      sidebarItems(rows, new Set(), 'rail', { rows: [finishedRow], open: true }).map(
+        (item) => item.id,
+      ),
+    ).toEqual(['S1', 'S2']);
+  });
+});
+
+describe('finishedRows (P11)', () => {
+  const index = <T extends { id: string }>(...items: T[]): Record<string, T> =>
+    Object.fromEntries(items.map((item) => [item.id, item]));
+
+  it('lists the finished plays of the active scenarios, the latest first, up to the limit', () => {
+    const active = scenario('Billing API');
+    const archived = scenario('Old one', { state: 'archived' });
+    const older = play(active.id, { state: 'DONE', finishedAt: 10, need: 'older' });
+    const newer = play(active.id, { state: 'CANCELLED', finishedAt: 30, need: 'newer' });
+    const middle = play(active.id, { state: 'DONE', finishedAt: 20, need: 'middle' });
+    const running = play(active.id);
+    const hidden = play(archived.id, { state: 'DONE', finishedAt: 99 });
+    const orphan = play('S-unknown', { state: 'DONE', finishedAt: 98 });
+    const rows = finishedRows(
+      index(active, archived),
+      index(older, newer, middle, running, hidden, orphan),
+      10,
+    );
+    expect(rows.map((row) => [row.need, row.outcome, row.scenarioName])).toEqual([
+      ['newer', 'cancelled', 'Billing API'],
+      ['middle', 'done', 'Billing API'],
+      ['older', 'done', 'Billing API'],
+    ]);
+    expect(
+      finishedRows(index(active), index(older, newer, middle), 2).map((row) => row.need),
+    ).toEqual(['newer', 'middle']);
+    expect(finishedRows(index(active), index(older), 0)).toEqual([]);
   });
 });
 

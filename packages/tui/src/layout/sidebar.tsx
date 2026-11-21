@@ -4,20 +4,39 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ClickTarget } from '../mouse/index.js';
 import { Frame } from './frame.js';
-import { fillBar, type QuotaRow, type ScenarioMark, type ScenarioRow } from './scenario-rows.js';
+import {
+  fillBar,
+  type FinishedRow,
+  type QuotaRow,
+  type ScenarioMark,
+  type ScenarioRow,
+} from './scenario-rows.js';
 import { cellWidth, fit, fitRight } from './text.js';
 import { COLOR, paint } from './theme.js';
 
-/** The two sections of the side bar, by the id the `LayoutStore` keeps them under. */
+/**
+ * The sections of the side bar. `scenarios` and `subscriptions` fold through the `LayoutStore`;
+ * `finished` (P11 of docs/19) starts as `ui.sidebar.finishedPlays` says and the person opens and
+ * closes it in the session (the key `sidebar.toggleFinished`, Enter or a click).
+ */
 export const SIDEBAR_SECTIONS = {
   scenarios: 'sidebar.scenarios',
+  finished: 'sidebar.finished',
   subscriptions: 'sidebar.subscriptions',
 } as const;
 
-/** What the cursor of the side bar can be on: a section header or a scenario. */
+/** What the cursor of the side bar can be on: a section header, a scenario or a finished play. */
 export interface SidebarItem {
-  readonly kind: 'section' | 'scenario';
+  readonly kind: 'section' | 'scenario' | 'finished';
   readonly id: string;
+  /** The scenario a `finished` item belongs to (what the chat shows when it is opened). */
+  readonly scenarioId?: string | undefined;
+}
+
+/** The "Terminadas" section: absent when `ui.sidebar.finishedPlays` is `hidden`. */
+export interface SidebarFinished {
+  readonly rows: readonly FinishedRow[];
+  readonly open: boolean;
 }
 
 /** The items the cursor walks, top to bottom; the rail has the scenarios only. */
@@ -25,12 +44,25 @@ export function sidebarItems(
   rows: readonly ScenarioRow[],
   folded: ReadonlySet<string>,
   mode: 'expanded' | 'rail',
+  finished?: SidebarFinished,
 ): SidebarItem[] {
   const scenarios = rows.map((row): SidebarItem => ({ kind: 'scenario', id: row.id }));
   if (mode === 'rail') return folded.has(SIDEBAR_SECTIONS.scenarios) ? [] : scenarios;
   return [
     { kind: 'section', id: SIDEBAR_SECTIONS.scenarios },
     ...(folded.has(SIDEBAR_SECTIONS.scenarios) ? [] : scenarios),
+    ...(finished === undefined
+      ? []
+      : [
+          { kind: 'section', id: SIDEBAR_SECTIONS.finished } satisfies SidebarItem,
+          ...(finished.open
+            ? finished.rows.map((row): SidebarItem => ({
+                kind: 'finished',
+                id: row.id,
+                scenarioId: row.scenarioId,
+              }))
+            : []),
+        ]),
     { kind: 'section', id: SIDEBAR_SECTIONS.subscriptions },
   ];
 }
@@ -55,6 +87,8 @@ export interface SidebarProps {
   readonly height: number;
   readonly focused: boolean;
   readonly rows: readonly ScenarioRow[];
+  /** The "Terminadas" section; `undefined` leaves it out (`ui.sidebar.finishedPlays: hidden`). */
+  readonly finished?: SidebarFinished | undefined;
   readonly quotas: readonly QuotaRow[];
   readonly folded: ReadonlySet<string>;
   /** The scenario the chat is about. */
@@ -135,6 +169,32 @@ function ScenarioLine(props: {
   );
 }
 
+function FinishedLine(props: {
+  readonly row: FinishedRow;
+  readonly inner: number;
+  readonly cursor: boolean;
+  readonly onClick?: (() => void) | undefined;
+}): ReactNode {
+  const { t } = useTranslation();
+  const { row, inner } = props;
+  const state = t(`layout.sidebar.finishedState.${row.outcome}`);
+  const need = fit(row.need, Math.max(1, inner - 4 - cellWidth(state) - 1));
+  return (
+    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+      <Text wrap="truncate" {...paint(undefined, props.cursor ? COLOR.selected : undefined)}>
+        {'  '}
+        <Text
+          {...paint(row.outcome === 'done' ? COLOR.ok : undefined)}
+          dimColor={row.outcome !== 'done'}
+        >
+          {row.outcome === 'done' ? '✓' : '✗'}
+        </Text>{' '}
+        {need} <Text dimColor>{state}</Text>
+      </Text>
+    </ClickTarget>
+  );
+}
+
 function SectionHead(props: {
   readonly title: string;
   readonly right: string;
@@ -209,6 +269,38 @@ function Expanded(props: SidebarProps): ReactNode {
           <Text dimColor wrap="truncate">
             {`  ${t('layout.sidebar.empty')}`}
           </Text>
+        )}
+        {props.finished !== undefined && (
+          <>
+            <Text> </Text>
+            <SectionHead
+              title={t('layout.sidebar.finished')}
+              right={String(props.finished.rows.length)}
+              inner={inner}
+              folded={!props.finished.open}
+              cursor={props.focused && props.cursor === SIDEBAR_SECTIONS.finished}
+              onClick={activate({ kind: 'section', id: SIDEBAR_SECTIONS.finished })}
+            />
+            {props.finished.open &&
+              props.finished.rows.map((row) => (
+                <FinishedLine
+                  key={row.id}
+                  row={row}
+                  inner={inner}
+                  cursor={props.focused && props.cursor === row.id}
+                  onClick={activate({
+                    kind: 'finished',
+                    id: row.id,
+                    scenarioId: row.scenarioId,
+                  })}
+                />
+              ))}
+            {props.finished.open && props.finished.rows.length === 0 && (
+              <Text dimColor wrap="truncate">
+                {`  ${t('layout.sidebar.noFinished')}`}
+              </Text>
+            )}
+          </>
         )}
         <Text> </Text>
         <SectionHead

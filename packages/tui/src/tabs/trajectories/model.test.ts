@@ -141,6 +141,36 @@ describe('entryLines', () => {
     expect(lines[2]?.tone).toBe('ok');
   });
 
+  it('shows the terminal output dimmed and says when it was cut (P11)', () => {
+    const plain = entryLines(
+      { kind: 'terminal', at: 0, toolCallId: 'T1', text: 'hello\nworld' },
+      80,
+      say,
+    );
+    expect(plain.map((line) => line.tone)).toEqual(['dim', 'dim']);
+    expect(plain[0]?.text).toContain('hello');
+    const cut = entryLines(
+      {
+        kind: 'terminal',
+        at: 0,
+        toolCallId: 'T1',
+        text: 'hello',
+        truncated: true,
+        omittedBytes: 12,
+      },
+      80,
+      say,
+    );
+    expect(cut.at(-1)).toMatchObject({ tone: 'warn' });
+    expect(cut.at(-1)?.text).toContain('trajectories.terminalCut(12)');
+    const unknown = entryLines(
+      { kind: 'terminal', at: 0, toolCallId: undefined, text: '', truncated: true },
+      80,
+      say,
+    );
+    expect(unknown.map((line) => line.text.trim())).toEqual(['trajectories.terminalCutUnknown']);
+  });
+
   it('wraps a long message and cuts it after the limit of lines', () => {
     const long = Array.from({ length: 30 }, (_, i) => `word${String(i)}`).join(' ');
     const lines = entryLines({ kind: 'message', at: 0, text: long }, 20, say);
