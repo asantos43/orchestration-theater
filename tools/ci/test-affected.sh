@@ -14,7 +14,9 @@
 #   .github/ (the dependencies, the build and the CI itself);
 # - packages/protocol/src and packages/core/src (almost every test imports them);
 # - locales/, prompts/, native/ and docs/reference/ (read as files by tests and by the daemon);
-# - any file under packages/ or tools/ that is not .ts, .tsx or .md (fixtures, catalogs, patches).
+# - any file under packages/ or tools/ that is not .ts, .tsx or .md (fixtures, catalogs, patches),
+#   except tools/atif-validate/ (the Python validator of ATIF, which no vitest test reads: it has its
+#   own job in the CI, `atif`).
 # Otherwise it runs, in one `vitest run`, the union of:
 # - the tests `vitest list --changed <base-ref>` finds through the module graph (the aliases of
 #   vitest.config.ts send every @otheater/* import to its sources, so the graph crosses packages);
@@ -50,7 +52,7 @@ printf 'test-affected: %s changed file(s) since %s\n' "$(printf '%s' "$changed" 
 global=$(printf '%s\n' "$changed" | grep -E \
   '^(pnpm-lock\.yaml|pnpm-workspace\.yaml|vitest\.config\.[^/]+|tools/ci/test-affected\.sh)$|(^|/)package\.json$|(^|/)tsconfig[^/]*\.json$|^\.github/|^packages/(protocol|core)/src/|^(locales|prompts|native|docs/reference)/' \
   || true)
-other=$(printf '%s\n' "$changed" | grep -E '^(packages|tools)/' | grep -vE '\.(ts|tsx|md)$' || true)
+other=$(printf '%s\n' "$changed" | grep -E '^(packages|tools)/' | grep -vE '\.(ts|tsx|md)$|^tools/atif-validate/' || true)
 trigger=$(printf '%s\n%s\n' "$global" "$other" | grep . | head -n 1 || true)
 if [ -n "$trigger" ]; then
   full "global file: $trigger"
