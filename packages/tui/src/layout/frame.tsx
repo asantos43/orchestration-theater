@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
-import type { ReactNode } from 'react';
+import { Box, Text, type DOMElement } from 'ink';
+import type { ReactNode, Ref } from 'react';
 import { cellWidth, clip, fit } from './text.js';
 import { COLOR } from './theme.js';
 
@@ -30,6 +30,8 @@ export interface FrameProps {
   /** In the bottom line, right. */
   readonly bottomLabel?: string | undefined;
   readonly handle?: FrameHandle | undefined;
+  /** The box of the right border, for what answers to the mouse on it (the drag that widens the chat). */
+  readonly edgeRef?: Ref<DOMElement> | undefined;
   readonly children: ReactNode;
 }
 
@@ -79,7 +81,7 @@ export function Frame(props: FrameProps): ReactNode {
         <Box width={Math.max(0, width - 2)} height={inner} flexDirection="column" overflow="hidden">
           {props.children}
         </Box>
-        <Box width={1} flexDirection="column">
+        <Box ref={props.edgeRef} width={1} flexDirection="column">
           {before > 0 && <Text color={color}>{column('│', before)}</Text>}
           {handle !== undefined && handleRows > 0 && (
             <Text color={handle.active ? COLOR.borderActive : COLOR.border} bold={handle.active}>

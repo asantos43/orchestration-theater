@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { Box, Text, type DOMElement } from 'ink';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useMouseTarget } from '../mouse/index.js';
+import { isEmptySelection, rowSpan, selectionRange } from '../mouse/selection.js';
 import { scrollWindow } from './scroll.js';
-import { fit } from './text.js';
+import { fit, sliceCells } from './text.js';
 import { paint } from './theme.js';
 
 /** One line of a list, as it is drawn. */
@@ -65,17 +67,32 @@ export function ScrollList(props: ScrollListProps): ReactNode {
     if (window.offset !== offset) onOffset?.(window.offset);
   }, [window.offset, offset, onOffset]);
   const last = window.rows.length - 1;
+  // What each row shows, and what it is when copied (without the mark of "more above/below").
+  const shown = window.rows.map((row, index) => {
+    const plain = fit(row.text, width).trimEnd();
+    const mark =
+      index === 0 && window.more.above
+        ? marks.above
+        : index === last && window.more.below
+          ? marks.below
+          : '';
+    return { plain, text: mark === '' ? plain : `${fit(row.text, width - 1)}${mark}` };
+  });
+  // The wheel scrolls the list and the drag selects inside it (N34, N36).
+  const ref = useRef<DOMElement>(null);
+  const { selection } = useMouseTarget(ref, {
+    onWheel: (lines) => {
+      onOffset?.(Math.max(0, window.offset + (anchor === 'bottom' ? -lines : lines)));
+    },
+    rows: () => shown.map((row) => row.plain),
+  });
+  const range =
+    selection === undefined || isEmptySelection(selection) ? undefined : selectionRange(selection);
   return (
-    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+    <Box ref={ref} flexDirection="column" width={width} height={height} overflow="hidden">
       {window.rows.map((row, index) => {
-        let text = row.text;
-        const mark =
-          index === 0 && window.more.above
-            ? marks.above
-            : index === last && window.more.below
-              ? marks.below
-              : '';
-        text = mark === '' ? fit(text, width).trimEnd() : `${fit(text, width - 1)}${mark}`;
+        const text = shown[index]?.text ?? '';
+        const span = range === undefined ? undefined : rowSpan(range, index, width);
         return (
           <Text
             key={index}
@@ -84,7 +101,19 @@ export function ScrollList(props: ScrollListProps): ReactNode {
             dimColor={row.dim === true}
             wrap="truncate"
           >
-            {text === '' ? ' ' : text}
+            {span === undefined ? (
+              text === '' ? (
+                ' '
+              ) : (
+                text
+              )
+            ) : (
+              <>
+                {sliceCells(text, 0, span[0])}
+                <Text inverse>{sliceCells(text, span[0], span[1]) || ' '}</Text>
+                {sliceCells(text, span[1], width)}
+              </>
+            )}
           </Text>
         );
       })}

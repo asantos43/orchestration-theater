@@ -30,6 +30,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiTuiMouseConfigSchema,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -2214,6 +2215,8 @@ export const DaemonConfigSchema = z
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
         input: UiInputConfigSchema.prefault({}),
+        /** The wheel step and the copy limit of the mouse of the terminal interface (P11). */
+        tuiMouse: UiTuiMouseConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

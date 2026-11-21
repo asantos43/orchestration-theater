@@ -2,6 +2,7 @@
 import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ClickTarget } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import { fillBar, type QuotaRow, type ScenarioMark, type ScenarioRow } from './scenario-rows.js';
 import { cellWidth, fit, fitRight } from './text.js';
@@ -67,6 +68,12 @@ export interface SidebarProps {
     readonly toggle: string | undefined;
     readonly settings: string | undefined;
   };
+  /** A click on a section or a scenario (N34); the same as Enter with the cursor on it. */
+  readonly onActivate?: ((item: SidebarItem) => void) | undefined;
+  /** A click on the settings line. */
+  readonly onSettings?: (() => void) | undefined;
+  /** A click on the `«` of the title, or on the `»` of the rail. */
+  readonly onToggle?: (() => void) | undefined;
 }
 
 function quotaColor(row: QuotaRow): string {
@@ -109,17 +116,20 @@ function ScenarioLine(props: {
   readonly inner: number;
   readonly selected: boolean;
   readonly cursor: boolean;
+  readonly onClick?: (() => void) | undefined;
 }): ReactNode {
   const { t } = useTranslation();
   const { row, inner } = props;
   const state = t(`layout.state.${row.mark}`);
   const nameWidth = Math.max(1, inner - 4 - cellWidth(state) - 1);
   return (
-    <Text wrap="truncate" {...paint(undefined, props.cursor ? COLOR.selected : undefined)}>
-      <Text color={COLOR.accent}>{props.selected ? '▸ ' : '  '}</Text>
-      <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>{' '}
-      {fit(row.name, nameWidth)} <Text dimColor>{state}</Text>
-    </Text>
+    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+      <Text wrap="truncate" {...paint(undefined, props.cursor ? COLOR.selected : undefined)}>
+        <Text color={COLOR.accent}>{props.selected ? '▸ ' : '  '}</Text>
+        <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>{' '}
+        {fit(row.name, nameWidth)} <Text dimColor>{state}</Text>
+      </Text>
+    </ClickTarget>
   );
 }
 
@@ -129,18 +139,21 @@ function SectionHead(props: {
   readonly inner: number;
   readonly folded: boolean;
   readonly cursor: boolean;
+  readonly onClick?: (() => void) | undefined;
 }): ReactNode {
   const head = `${props.folded ? '▸' : '▾'} ${props.title}`;
   const line = `${fit(head, Math.max(1, props.inner - cellWidth(props.right) - 1))} ${props.right}`;
   return (
-    <Text
-      bold
-      dimColor={!props.cursor}
-      {...paint(undefined, props.cursor ? COLOR.selected : undefined)}
-      wrap="truncate"
-    >
-      {fit(line, props.inner)}
-    </Text>
+    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+      <Text
+        bold
+        dimColor={!props.cursor}
+        {...paint(undefined, props.cursor ? COLOR.selected : undefined)}
+        wrap="truncate"
+      >
+        {fit(line, props.inner)}
+      </Text>
+    </ClickTarget>
   );
 }
 
@@ -152,6 +165,12 @@ function Expanded(props: SidebarProps): ReactNode {
   const quotaLegend = `█${t('layout.sidebar.fiveHour')} ━${t('layout.sidebar.week')}`;
   const settings = t('layout.sidebar.settings');
   const daemon = t('layout.sidebar.daemon', { address: props.address });
+  const activate = (item: SidebarItem): (() => void) | undefined =>
+    props.onActivate === undefined
+      ? undefined
+      : () => {
+          props.onActivate?.(item);
+        };
   return (
     <>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
@@ -161,6 +180,7 @@ function Expanded(props: SidebarProps): ReactNode {
           inner={inner}
           folded={scenariosFolded}
           cursor={props.focused && props.cursor === SIDEBAR_SECTIONS.scenarios}
+          onClick={activate({ kind: 'section', id: SIDEBAR_SECTIONS.scenarios })}
         />
         {!scenariosFolded &&
           props.rows.map((row) => (
@@ -170,6 +190,7 @@ function Expanded(props: SidebarProps): ReactNode {
               inner={inner}
               selected={props.selectedId === row.id}
               cursor={props.focused && props.cursor === row.id}
+              onClick={activate({ kind: 'scenario', id: row.id })}
             />
           ))}
         {!scenariosFolded && props.rows.length === 0 && (
@@ -184,6 +205,7 @@ function Expanded(props: SidebarProps): ReactNode {
           inner={inner}
           folded={subsFolded}
           cursor={props.focused && props.cursor === SIDEBAR_SECTIONS.subscriptions}
+          onClick={activate({ kind: 'section', id: SIDEBAR_SECTIONS.subscriptions })}
         />
         {!subsFolded &&
           props.quotas.map((row) => <ExpandedQuota key={row.profile} row={row} inner={inner} />)}
@@ -194,12 +216,14 @@ function Expanded(props: SidebarProps): ReactNode {
         )}
       </Box>
       <Text dimColor>{'─'.repeat(inner)}</Text>
-      <Text wrap="truncate">
-        {fit(`⚙ ${settings}`, Math.max(1, inner - (props.keys.settings?.length ?? 0) - 1))}{' '}
-        <Text color={COLOR.key}>
-          {fitRight(props.keys.settings ?? '', (props.keys.settings ?? '').length)}
+      <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
+        <Text wrap="truncate">
+          {fit(`⚙ ${settings}`, Math.max(1, inner - (props.keys.settings?.length ?? 0) - 1))}{' '}
+          <Text color={COLOR.key}>
+            {fitRight(props.keys.settings ?? '', (props.keys.settings ?? '').length)}
+          </Text>
         </Text>
-      </Text>
+      </ClickTarget>
       <Text wrap="truncate">
         <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text>{' '}
         {fit(daemon, Math.max(1, inner - 2))}
@@ -213,24 +237,31 @@ function Rail(props: SidebarProps): ReactNode {
   return (
     <>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
-        <Text dimColor>{fit('»', inner)}</Text>
+        <ClickTarget onClick={() => props.onToggle?.()} enabled={props.onToggle !== undefined}>
+          <Text dimColor>{fit('»', inner)}</Text>
+        </ClickTarget>
         {props.rows.map((row) => (
-          <Text
+          <ClickTarget
             key={row.id}
-            wrap="truncate"
-            {...paint(
-              undefined,
-              props.focused && props.cursor === row.id ? COLOR.selected : undefined,
-            )}
+            onClick={() => props.onActivate?.({ kind: 'scenario', id: row.id })}
+            enabled={props.onActivate !== undefined}
           >
             <Text
-              {...paint(props.selectedId === row.id ? COLOR.accent : undefined)}
-              bold={props.selectedId === row.id}
+              wrap="truncate"
+              {...paint(
+                undefined,
+                props.focused && props.cursor === row.id ? COLOR.selected : undefined,
+              )}
             >
-              {fit(Array.from(row.name)[0]?.toUpperCase() ?? ' ', 1)}
+              <Text
+                {...paint(props.selectedId === row.id ? COLOR.accent : undefined)}
+                bold={props.selectedId === row.id}
+              >
+                {fit(Array.from(row.name)[0]?.toUpperCase() ?? ' ', 1)}
+              </Text>
+              <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>
             </Text>
-            <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>
-          </Text>
+          </ClickTarget>
         ))}
         <Text dimColor>+</Text>
         <Text> </Text>
@@ -240,7 +271,9 @@ function Rail(props: SidebarProps): ReactNode {
           </Text>
         ))}
       </Box>
-      <Text>⚙</Text>
+      <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
+        <Text>⚙</Text>
+      </ClickTarget>
       <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text>
     </>
   );
@@ -251,14 +284,26 @@ export function Sidebar(props: SidebarProps): ReactNode {
   const { t } = useTranslation();
   const right = props.mode === 'expanded' ? `« ${props.keys.toggle ?? ''}`.trimEnd() : undefined;
   return (
-    <Frame
+    <ClickTarget
       width={props.width}
       height={props.height}
-      active={props.focused}
-      title={props.mode === 'expanded' ? t('layout.sidebar.title') : undefined}
-      titleRight={right}
+      onClick={(point) => {
+        // The `«` of the title, in the top line, before the corner.
+        if (right === undefined || point.y !== 0) return;
+        const from = props.width - 2 - cellWidth(right) - 2;
+        if (point.x >= from && point.x < props.width - 2) props.onToggle?.();
+      }}
+      enabled={props.onToggle !== undefined && right !== undefined}
     >
-      {props.mode === 'expanded' ? <Expanded {...props} /> : <Rail {...props} />}
-    </Frame>
+      <Frame
+        width={props.width}
+        height={props.height}
+        active={props.focused}
+        title={props.mode === 'expanded' ? t('layout.sidebar.title') : undefined}
+        titleRight={right}
+      >
+        {props.mode === 'expanded' ? <Expanded {...props} /> : <Rail {...props} />}
+      </Frame>
+    </ClickTarget>
   );
 }

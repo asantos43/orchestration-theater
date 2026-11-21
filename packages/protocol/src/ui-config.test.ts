@@ -8,6 +8,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiTuiMouseConfigSchema,
 } from './ui-config.js';
 
 describe('ui.* schemas of the terminal', () => {
@@ -48,6 +49,18 @@ describe('ui.* schemas of the terminal', () => {
   it('takes every mode of the mouse and refuses the rest', () => {
     for (const mode of ['full', 'wheel', 'off']) expect(UiMouseModeSchema.parse(mode)).toBe(mode);
     expect(UiMouseModeSchema.safeParse('some').success).toBe(false);
+  });
+
+  it('has the defaults of the mouse block, takes the auto copy mode and refuses what is out of range', () => {
+    expect(UiTuiMouseConfigSchema.parse({})).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    expect(UiTuiMouseConfigSchema.safeParse({ wheelLines: 0 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.safeParse({ copyMaxBytes: 0 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.safeParse({ speed: 2 }).success).toBe(false);
+    expect(UiTuiMouseConfigSchema.parse({ wheelLines: 5 }).wheelLines).toBe(5);
+    for (const mode of ['osc52', 'system', 'auto', 'off'])
+      expect(UiClipboardConfigSchema.parse({ copy: mode }).copy).toBe(mode);
+    expect(UiClipboardConfigSchema.parse({}).copy).toBe('osc52');
+    expect(UiClipboardConfigSchema.safeParse({ copy: 'paste' }).success).toBe(false);
   });
 
   it('refuses a shortcut that is not a key combination, and unknown keys', () => {
