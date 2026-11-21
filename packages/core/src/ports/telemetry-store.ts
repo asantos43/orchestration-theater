@@ -6,7 +6,7 @@ import type { JsonValue } from './event-log.js';
  * contratos"). It moves on its own, apart from `STORE_PORT_VERSION`: the telemetry base is a
  * different file with a different life (N54).
  */
-export const TELEMETRY_STORE_PORT_VERSION = '0.2.0';
+export const TELEMETRY_STORE_PORT_VERSION = '0.3.0';
 
 /**
  * Attributes of a resource, span, metric point or log record (the OTLP `KeyValue` list read as an
@@ -118,6 +118,23 @@ export interface TelemetryReadFilter {
   readonly limit?: number | undefined;
 }
 
+/** The record type of each signal. */
+export interface TelemetryRecordOf {
+  readonly spans: TelemetrySpan;
+  readonly metrics: TelemetryMetricPoint;
+  readonly logs: TelemetryLogRecord;
+}
+
+/**
+ * A record with the position the base gave it. `rowId` grows with the order of insertion within a
+ * signal and is never reused, so it is a cursor for "everything written after this" (port 0.3.0,
+ * Phase 8, P7). It means nothing outside the base it came from: a recreated base starts again.
+ */
+export interface TelemetryRow<T> {
+  readonly rowId: number;
+  readonly record: T;
+}
+
 /** What `write` reports: what it queued now, and what it had to drop to make room or because it has no base. */
 export interface TelemetryWriteReceipt {
   readonly accepted: number;
@@ -185,6 +202,19 @@ export interface TelemetryStore {
   readSpans(filter?: TelemetryReadFilter): Promise<readonly TelemetrySpan[]>;
   readMetrics(filter?: TelemetryReadFilter): Promise<readonly TelemetryMetricPoint[]>;
   readLogs(filter?: TelemetryReadFilter): Promise<readonly TelemetryLogRecord[]>;
+  /**
+   * Reads what was written after a position (port 0.3.0; the exporter of Phase 8, P7): the records
+   * of `signal` whose `rowId` is greater than `afterRowId`, in the order they were written, at most
+   * `limit` of them (default 1000, ceiling 10000). `afterRowId` is a non-negative integer (0 reads
+   * from the start). Unlike the time reads it is not affected by a producer that writes a record
+   * with an old timestamp late. It first writes what is queued, and rejects with
+   * `AdapterUnavailable` when the base cannot be used.
+   */
+  readSince<S extends TelemetrySignal>(
+    signal: S,
+    afterRowId: number,
+    limit?: number,
+  ): Promise<readonly TelemetryRow<TelemetryRecordOf[S]>[]>;
   /**
    * Deletes what is older than `cutoffUnixNano`: spans by their end, points and records by their
    * time. The retention policy that decides the cutoff is not part of the port (Phase 8, P8).

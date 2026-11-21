@@ -72,6 +72,9 @@ import { registerBrowserTools, secretPathCheck, type BrowserTools } from './brow
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
+import { exportsPrometheus } from './telemetry/export-config.js';
+import { MetricsCollector } from './telemetry/metrics.js';
+import { EventMetrics } from './telemetry/metrics-events.js';
 import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
@@ -382,6 +385,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       logger: composition.logger,
       situations: composition.situations,
       scenarioOf: async (playId) => (await composition?.store.plays.get(playId))?.scenarioId,
+      clock: composition.clock,
     });
     mcp = await FrameworkMcpServer.start({
       registries,
@@ -430,6 +434,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     await directives?.stop().catch(() => undefined);
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
+    await telemetry?.stopExporter().catch(() => undefined);
     await telemetry?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
     await composition?.close().catch(() => undefined);
@@ -602,6 +607,23 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   }
   // The catch-up and the readings start here.
   await quota.start();
+  // P7 (Phase 8, N218): `GET /metrics`, when `telemetry.export` is `prometheus` or `both`. Otherwise the
+  // route is a 404 and nothing is counted.
+  const eventMetrics = exportsPrometheus(config.telemetry.export) ? new EventMetrics() : undefined;
+  if (eventMetrics !== undefined) {
+    eventMetrics.start(composition.eventHub, logger);
+    const collector = new MetricsCollector({
+      clock,
+      store,
+      pool: () => execution?.pool.stats(),
+      events: eventMetrics,
+      telemetry: composition.telemetry,
+      exporter: () => telemetry?.exporter?.stats,
+      cacheTtl: config.telemetry.prometheus.cache_ttl,
+      logger,
+    });
+    api.setMetrics(() => collector.render());
+  }
   let attemptsInterrupted = 0;
   let attempts: { resuming: readonly string[] } = { resuming: [] };
   if (execution !== undefined) {
@@ -907,6 +929,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('browser', async () => browserTools?.close());
       // The spans of the last events are written before the telemetry store closes with the composition.
       await attempt('daemon spans', async () => composition.daemonSpans?.stop());
+      // P7: the last pass of the OTLP export, with the spans just written, before the base closes.
+      await attempt('telemetry export', async () => telemetry?.stopExporter());
+      await attempt('metrics events', async () => eventMetrics?.stop());
       // The situations recorded so far are written before `daemon.stopped` closes the log.
       await attempt('situations', () => composition.situations.idle());
       await attempt('daemon.stopped', () =>
