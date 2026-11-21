@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ChatWait, ScenarioSystemMessagePayload } from '@otheater/protocol';
-import type { ChatMessage } from '../layout/chat.js';
+import type { ChatMessage, ChatTerminal, ChatTerminalNote } from '../layout/chat.js';
 import type { ChatEntry, EntryBody } from './model.js';
+import { oneLine, outputLines, SHELL_COMMAND_SHOWN } from './shell.js';
 
 /**
  * From the entries of the chat state to the messages the layout draws. Every text of the screen is
@@ -75,6 +76,58 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
   }
 }
 
+/** The line that names the command, as the Producer typed it (shortened to one line). */
+function commandHeader(command: string): string {
+  return command === '' ? '!' : `! ${oneLine(command, SHELL_COMMAND_SHOWN)}`;
+}
+
+/** A `!` command as the block the layout draws: the command, the output, how it ended. */
+export function shellBlock(
+  t: Translate,
+  body: Extract<EntryBody, { kind: 'shellStarted' | 'shellFinished' }>,
+): ChatTerminal {
+  if (body.kind === 'shellStarted') {
+    return {
+      header: commandHeader(body.command.command),
+      output: [],
+      notes: [{ text: t(`${ROOT}.shellStarted`, { place: body.command.place }), tone: 'dim' }],
+    };
+  }
+  const { result } = body;
+  const notes: ChatTerminalNote[] = [];
+  if (result.shownLines < result.totalLines) {
+    notes.push({
+      text: t(`${ROOT}.shellCut.${result.keep}`, {
+        shown: result.shownLines,
+        total: result.totalLines,
+      }),
+      tone: 'dim',
+    });
+  }
+  const failed = result.outcome === 'failed' || result.outcome === 'timeout';
+  notes.push({
+    text: t(`${ROOT}.shell.${result.outcome}`, {
+      code: result.exitCode ?? '?',
+      seconds: Math.round(result.durationMs / 1000),
+      error: result.error ?? '',
+    }),
+    tone: result.outcome === 'failed' ? 'error' : failed || result.exitCode !== 0 ? 'warn' : 'ok',
+  });
+  if (result.askedInput) notes.push({ text: t(`${ROOT}.shellAskedInput`), tone: 'warn' });
+  if (result.context !== 'none') {
+    notes.push({ text: t(`${ROOT}.shellContext.${result.context}`), tone: 'dim' });
+  }
+  return {
+    header: commandHeader(body.command),
+    output: outputLines(body.snippet),
+    notes,
+  };
+}
+
+function terminalText(block: ChatTerminal): string {
+  return [block.header, ...block.output, ...block.notes.map((note) => note.text)].join('\n');
+}
+
 function bodyText(t: Translate, body: EntryBody): string {
   switch (body.kind) {
     case 'text':
@@ -105,27 +158,13 @@ function bodyText(t: Translate, body: EntryBody): string {
     case 'play':
       return t(`${ROOT}.play`, { id: body.playId, state: body.state });
     case 'shellStarted':
-      return t(`${ROOT}.shellStarted`, {
-        command: body.command.command,
-        place: body.command.place,
+    case 'shellFinished':
+      return terminalText(shellBlock(t, body));
+    case 'shellRefused':
+      return t(`${ROOT}.shellRefused.${body.error.code}`, {
+        defaultValue: t(`${ROOT}.shellRefused.other`, { message: body.error.message }),
+        message: body.error.message,
       });
-    case 'shellFinished': {
-      const { result } = body;
-      const head = t(`${ROOT}.shell.${result.outcome}`, {
-        code: result.exitCode ?? '?',
-        seconds: Math.round(result.durationMs / 1000),
-        error: result.error ?? '',
-      });
-      const cut =
-        result.shownLines < result.totalLines
-          ? t(`${ROOT}.shellCut.${result.keep}`, {
-              shown: result.shownLines,
-              total: result.totalLines,
-            })
-          : '';
-      const asked = result.askedInput ? t(`${ROOT}.shellAskedInput`) : '';
-      return [body.snippet.trimEnd(), cut, head, asked].filter((part) => part !== '').join('\n');
-    }
     case 'command':
       return body.result.text;
     case 'error':
@@ -140,7 +179,9 @@ export function messageOf(t: Translate, entry: ChatEntry): ChatMessage {
   let text = bodyText(t, entry.body);
   if (entry.queued === true) text = `${text} ${t(`${ROOT}.queued`)}`;
   if (entry.partial === true) text = `${text} …`;
-  return { id: entry.id, who: entry.who, at: clockOf(entry.at), text };
+  const message: ChatMessage = { id: entry.id, who: entry.who, at: clockOf(entry.at), text };
+  if (entry.body.kind !== 'shellStarted' && entry.body.kind !== 'shellFinished') return message;
+  return { ...message, terminal: shellBlock(t, entry.body) };
 }
 
 export function messagesOf(t: Translate, entries: readonly ChatEntry[]): ChatMessage[] {

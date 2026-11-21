@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ChatOutgoing, ConnectionState } from '@otheater/client';
 import type { ChatServerMessage } from '@otheater/protocol';
+import { isShellLine, shellCommandOf } from './shell.js';
 import { createChatState, reduceChat, type ChatEvent, type ChatState } from './model.js';
 
 /** The part of `ChatSocket` the session uses; the real socket and a fake one both fit. */
@@ -101,10 +102,15 @@ export class ChatSession {
   }
 
   /**
-   * What the Producer typed: a line with a slash is a command, anything else a message for the
-   * Director. Throws when the socket is not open (the text box keeps the text and says so).
+   * What the Producer typed: a line with a slash is a command, a line with `!` runs in the worktree
+   * (P18), anything else is a message for the Director. Throws when the socket is not open (the text
+   * box keeps the text and says so).
    */
   submit(text: string, attachments: readonly string[] = []): void {
+    if (isShellLine(text)) {
+      this.sendShell(text, attachments);
+      return;
+    }
     if (/^\/\S/.test(text) && attachments.length === 0) {
       this.sendCommand(text);
       return;
@@ -122,6 +128,19 @@ export class ChatSession {
     }
     this.#require().send(messageOf(text, attachments));
     this.#dispatch({ type: 'sent', text, at: this.#options.now(), queued: busy });
+  }
+
+  /**
+   * A `!` command (N43, N187): the daemon runs it and never gives it to the Director, so it does not
+   * wait behind the turn of the Director whatever `ui.chat.queue` says. Its start, its end and its
+   * output come back as frames. Throws when the line is empty or has attachments, which the daemon
+   * would refuse (`InvalidInput`): the box keeps the text.
+   */
+  sendShell(text: string, attachments: readonly string[] = []): void {
+    if (attachments.length > 0) throw new Error('a ! command takes no attachments');
+    if (shellCommandOf(text) === '') throw new Error('the ! command is empty');
+    this.#require().send({ type: 'message', text });
+    this.#dispatch({ type: 'sent', text, at: this.#options.now(), queued: false, shell: true });
   }
 
   sendCommand(text: string, confirm?: boolean): void {
