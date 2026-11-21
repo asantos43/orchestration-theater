@@ -244,6 +244,23 @@ describe('compose: the telemetry base (Phase 8, P1)', () => {
     }
   });
 
+  it('builds the writer of the waits by default (it needs no telemetry base), and not with events.wait_threshold: off', async () => {
+    for (const [yaml, expected] of [
+      ['', true],
+      ['telemetry:\n  enabled: off\n', true],
+      ['events:\n  wait_threshold: always\n', true],
+      ['events:\n  wait_threshold: off\n', false],
+    ] as const) {
+      const { composition, dispose } = await composed(yaml);
+      try {
+        expect(composition.waitEvents !== undefined).toBe(expected);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    }
+  });
+
   it('recreates a corrupted file and records telemetry.store_reset without a path', async () => {
     const { composition, dir, dispose } = await composed('', async (data) => {
       await writeFile(join(data, 'telemetry.sqlite'), Buffer.alloc(8192, 0x61));

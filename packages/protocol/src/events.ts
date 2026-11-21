@@ -159,6 +159,7 @@ import {
   BrowserRefusedPayloadSchema,
 } from './browser-events.js';
 import { TerminalOutputPayloadSchema } from './terminal-events.js';
+import { WaitEndedPayloadSchema, WaitStartedPayloadSchema } from './wait-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -607,6 +608,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: DemandResumedPayloadSchema,
   }),
   defineEventType({
+    type: 'wait.started',
+    schemaVersion: 1,
+    payload: WaitStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'wait.ended',
+    schemaVersion: 1,
+    payload: WaitEndedPayloadSchema,
+  }),
+  defineEventType({
     type: 'play.notice',
     schemaVersion: 1,
     payload: PlayNoticePayloadSchema,
@@ -992,6 +1003,8 @@ export type ScenarioDirectorWaitingPayload = DaemonEventPayloads['scenario.direc
 export type ScenarioDirectorResumedPayload = DaemonEventPayloads['scenario.director_resumed'];
 export type DemandWaitingPayload = DaemonEventPayloads['demand.waiting'];
 export type DemandResumedPayload = DaemonEventPayloads['demand.resumed'];
+export type WaitStartedEventPayload = DaemonEventPayloads['wait.started'];
+export type WaitEndedEventPayload = DaemonEventPayloads['wait.ended'];
 export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
 export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
 export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];

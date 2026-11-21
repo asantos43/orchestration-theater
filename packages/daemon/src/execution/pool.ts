@@ -38,7 +38,7 @@ import type {
 } from '../telemetry/client-telemetry.js';
 import { type PoolSettings, sessionsPerProcessFor } from './settings.js';
 import { WAIT_KIND } from '../telemetry/span-conventions.js';
-import type { DirectWaitCorrelation, WaitRecorder } from '../telemetry/wait-recorder.js';
+import type { WaitCorrelation, WaitHandle, WaitTracker } from '../telemetry/wait-events.js';
 
 /** Why a session waited in the queue of the pool (`otheater.wait.reason` of the spans). */
 export const POOL_WAIT_REASON = {
@@ -53,6 +53,7 @@ export const POOL_WAIT_REASON = {
   /** The RAM could not be read and `pool.admission.unknown_ram` is `wait`. */
   ramUnknown: 'ram_unknown',
 } as const;
+type PoolWaitReason = (typeof POOL_WAIT_REASON)[keyof typeof POOL_WAIT_REASON];
 
 /** What a caller asks the pool for: one session of one `(client, profile)`. */
 export interface PoolRequest {
@@ -86,10 +87,11 @@ export interface PoolRequest {
    */
   readonly telemetry?: TelemetryContext;
   /**
-   * The ids of the log this session is for (Phase 8, P4): a wait in the queue of the pool is a span
-   * of this attempt. Absent, the wait is recorded with no attempt. [proposta]
+   * The ids of the log this session is for (Phase 8, P4, P15): a wait in the queue of the pool is
+   * told with them (`wait.started`, `wait.ended`) and is a span of this attempt. Absent, the wait
+   * is told with no attempt. [proposta]
    */
-  readonly correlation?: DirectWaitCorrelation;
+  readonly correlation?: WaitCorrelation;
   /** Aborts the wait for admission. */
   readonly signal?: AbortSignal;
 }
@@ -160,10 +162,11 @@ export interface SessionPoolOptions {
    */
   readonly telemetry?: SessionTelemetry;
   /**
-   * Phase 8, P4 (N217 (a)): told when a session leaves the queue after it was held back, with why
-   * and for how long. The log has no event for this wait. It never throws and never waits.
+   * Phase 8, P15 (N222 (a)): told when a session is held back in the queue and when it leaves it;
+   * the tracker writes `wait.started` and `wait.ended` for a wait that lasts the threshold. It never
+   * throws and never waits.
    */
-  readonly onWait?: WaitRecorder;
+  readonly waits?: WaitTracker;
 }
 
 /** A session waiting for admission, and what it costs. */
@@ -173,8 +176,8 @@ interface Waiter {
   /** When it entered the queue (the clock of the pool). */
   readonly since: number;
   readonly key: string;
-  /** What held it back so far (`POOL_WAIT_REASON`); empty while nothing did. */
-  readonly reasons: Set<string>;
+  /** The wait that holds it back (reasons: `POOL_WAIT_REASON`); absent while nothing did. */
+  wait: WaitHandle | undefined;
   readonly resolve: (slot: Slot) => void;
   readonly reject: (error: unknown) => void;
 }
@@ -286,7 +289,7 @@ export class SessionPool {
   readonly #canAdmit: CanAdmit;
   readonly #localInstance: LocalInstanceResolver | undefined;
   readonly #telemetry: SessionTelemetry | undefined;
-  readonly #onWait: WaitRecorder | undefined;
+  readonly #waits: WaitTracker | undefined;
   #waitSeq = 0;
   /** Sessions holding a slot of their local instance, by profile id. */
   readonly #load = new Map<string, ProfileLoad>();
@@ -316,7 +319,7 @@ export class SessionPool {
     this.#canAdmit = options.canAdmit ?? ALWAYS_ADMIT;
     this.#localInstance = options.localInstance;
     this.#telemetry = options.telemetry;
-    this.#onWait = options.onWait;
+    this.#waits = options.waits;
     if (this.#admission.mode !== 'slots' && this.#memory === undefined) {
       throw new InvalidInput(
         `pool.admission.mode ${this.#admission.mode} needs a MemoryProbe to read the free RAM`,
@@ -421,7 +424,7 @@ export class SessionPool {
         mb: this.#costOf(request.client),
         since,
         key: `${request.correlation?.attemptId ?? request.profile.id}|${String(since)}|${String(this.#waitSeq)}`,
-        reasons: new Set(),
+        wait: undefined,
         resolve: (slot) => {
           signal?.removeEventListener('abort', onAbort);
           resolve(slot);
@@ -445,20 +448,23 @@ export class SessionPool {
   }
 
   /**
-   * A session left the queue: if something held it back, that wait is told (N217 (a)). A session
-   * admitted at its first look waited for nothing, and says nothing.
+   * Something holds the session back: the first reason opens the wait (`wait.started` follows when
+   * it lasts the threshold), the others are added to it. A session admitted at its first look never
+   * gets here and says nothing.
    */
-  #reportWait(waiter: Waiter, outcome: 'admitted' | 'cancelled' | 'pool_closed'): void {
-    if (this.#onWait === undefined || waiter.reasons.size === 0) return;
+  #hold(waiter: Waiter, reason: PoolWaitReason): void {
+    if (this.#waits === undefined) return;
+    if (waiter.wait !== undefined) {
+      waiter.wait.hold(reason);
+      return;
+    }
     const { request } = waiter;
     try {
-      this.#onWait({
+      waiter.wait = this.#waits.begin({
         kind: WAIT_KIND.poolAdmission,
-        key: waiter.key,
-        startMs: waiter.since,
-        endMs: this.#clock.now(),
-        reason: [...waiter.reasons].sort().join(','),
-        outcome,
+        id: waiter.key,
+        since: waiter.since,
+        reason,
         correlation: {
           ...request.correlation,
           client: request.client,
@@ -466,7 +472,16 @@ export class SessionPool {
         },
       });
     } catch {
-      // A recorder that throws must not hold the pool.
+      // A tracker that throws must not hold the pool.
+    }
+  }
+
+  /** A session left the queue: the wait it was in, if any, ends (N222 (a)). */
+  #reportWait(waiter: Waiter, outcome: 'admitted' | 'cancelled' | 'pool_closed'): void {
+    try {
+      waiter.wait?.end(outcome);
+    } catch {
+      // A tracker that throws must not hold the pool.
     }
   }
 
@@ -540,7 +555,7 @@ export class SessionPool {
     for (let index = 0; index < this.#waiters.length;) {
       if (this.#sessions >= this.#settings.maxSessions) {
         for (const held of this.#waiters.slice(index)) {
-          held.reasons.add(POOL_WAIT_REASON.maxSessions);
+          this.#hold(held, POOL_WAIT_REASON.maxSessions);
         }
         return;
       }
@@ -555,12 +570,12 @@ export class SessionPool {
         instance !== undefined &&
         !slotFree(instance, load, director, this.#listedForDirector(profileId))
       ) {
-        waiter.reasons.add(POOL_WAIT_REASON.localSlot);
+        this.#hold(waiter, POOL_WAIT_REASON.localSlot);
         index += 1;
         continue;
       }
       if (quota?.get(profileId) === false) {
-        waiter.reasons.add(POOL_WAIT_REASON.quota);
+        this.#hold(waiter, POOL_WAIT_REASON.quota);
         index += 1;
         continue;
       }
@@ -568,14 +583,14 @@ export class SessionPool {
       if (mode !== 'slots') {
         if (ramUnknown) {
           if (unknownRam === 'wait') {
-            waiter.reasons.add(POOL_WAIT_REASON.ramUnknown);
+            this.#hold(waiter, POOL_WAIT_REASON.ramUnknown);
             index += 1;
             continue;
           }
         } else {
           if (ramBlocked || headroom < waiter.mb) {
             ramBlocked = true;
-            waiter.reasons.add(POOL_WAIT_REASON.ram);
+            this.#hold(waiter, POOL_WAIT_REASON.ram);
             index += 1;
             continue;
           }
