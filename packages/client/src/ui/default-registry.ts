@@ -294,6 +294,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Up', 'Down', 'Space', 'Enter']),
       bar: { textKey: 'bar.decision.answer', order: 15 },
     },
+<<<<<<< HEAD
     // The chat of the Producer (P12 of docs/18): the Director's decision card, the / suggestions and
     // the stop of the Director's reply. `decision.answer` above stays the card's own keys.
     {
@@ -335,6 +336,8 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       context: 'chat',
       keys: terminalKeys(['Esc']),
     },
+=======
+>>>>>>> origin/main
     // The Overview and Usage tabs (P13 of docs/18). They act in the `panel` context, which every tab
     // shares, so the keys are capital letters (Shift) that no other tab should take, and none shows in
     // the palette: the tab draws the keys it offers. Each can be rebound in `ui.keymap.overrides`.

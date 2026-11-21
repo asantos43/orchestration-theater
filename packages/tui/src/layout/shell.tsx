@@ -534,6 +534,7 @@ export function Shell(props: ShellProps): ReactNode {
             stateLine={
               selectedRow === undefined
                 ? ''
+<<<<<<< HEAD
                 : [
                     t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) }),
                     ...chat.stateParts,
@@ -545,6 +546,15 @@ export function Shell(props: ShellProps): ReactNode {
             onResizeDrag={dragChatEdge}
             input={chat.input}
             inputRows={chat.inputRows}
+=======
+                : t('layout.chat.state', { state: t(`layout.state.${selectedRow.mark}`) })
+            }
+            messages={messages}
+            offset={chatOffset}
+            onOffset={setChatOffset}
+            onResizeDrag={dragChatEdge}
+            input={<InputSlot width={Math.max(1, geometry.chat.width - 2)} />}
+>>>>>>> origin/main
           />
           {geometry.panel !== undefined && content !== undefined && (
             <Panel
@@ -609,7 +619,11 @@ export function Shell(props: ShellProps): ReactNode {
             hint={closeHint}
             onRun={(id) => {
               setOverlay(undefined);
+<<<<<<< HEAD
               if (!chat.onAction(id)) runAction(id);
+=======
+              runAction(id);
+>>>>>>> origin/main
             }}
           />
         )}

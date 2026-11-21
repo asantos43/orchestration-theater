@@ -43,6 +43,16 @@
     "usage": {
       "refresh": "Read the consumption again (Usage tab)"
     },
+    "overview": {
+      "pausePlay": "Pause the play of the scenario (Overview tab)",
+      "resumePlay": "Resume the play of the scenario (Overview tab)",
+      "nextActor": "Pick the next Actor (Overview tab)",
+      "pauseActor": "Pause the picked Actor (Overview tab)",
+      "resumeActor": "Resume the picked Actor (Overview tab)"
+    },
+    "usage": {
+      "refresh": "Read the consumption again (Usage tab)"
+    },
     "palette": {
       "open": "Open the command palette"
     },

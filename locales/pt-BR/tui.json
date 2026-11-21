@@ -43,6 +43,16 @@
     "usage": {
       "refresh": "Ler o consumo de novo (aba Consumo)"
     },
+    "overview": {
+      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
+      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
+      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
+      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
+      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
+    },
+    "usage": {
+      "refresh": "Ler o consumo de novo (aba Consumo)"
+    },
     "palette": {
       "open": "Abrir a paleta de comandos"
     },

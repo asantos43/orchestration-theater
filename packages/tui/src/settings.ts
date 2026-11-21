@@ -8,11 +8,14 @@
  * repeated on purpose.
  */
 import {
+<<<<<<< HEAD
   DEFAULT_INPUT_SETTINGS,
   parseInputSettings,
   type InputSettings,
 } from './input/settings.js';
 import {
+=======
+>>>>>>> origin/main
   DEFAULT_OVERVIEW_SETTINGS,
   DEFAULT_USAGE_SETTINGS,
   parseOverviewSettings,
@@ -112,9 +115,12 @@ export interface UiSettings {
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+<<<<<<< HEAD
   readonly chat: UiChatSettings;
   /** `ui.input`: the text box (P10). */
   readonly input: InputSettings;
+=======
+>>>>>>> origin/main
   readonly overview: OverviewSettings;
   readonly usage: UsageSettings;
   /** `ui.mouse` (N34). */
@@ -171,8 +177,11 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+<<<<<<< HEAD
   chat: DEFAULT_CHAT,
   input: DEFAULT_INPUT_SETTINGS,
+=======
+>>>>>>> origin/main
   overview: DEFAULT_OVERVIEW_SETTINGS,
   usage: DEFAULT_USAGE_SETTINGS,
   mouse: 'full',
@@ -299,6 +308,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
     },
+<<<<<<< HEAD
     chat: {
       queue: oneOf(field(chat, 'queue'), CHAT_QUEUE_MODES, DEFAULT_CHAT.queue),
       suggestions: integer(field(chat, 'suggestions'), 0, 30, DEFAULT_CHAT.suggestions),
@@ -310,6 +320,8 @@ export function parseUiSettings(ui: unknown): UiSettings {
       esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
     },
     input: parseInputSettings(field(source, 'input')),
+=======
+>>>>>>> origin/main
     overview: parseOverviewSettings(field(source, 'overview')),
     usage: parseUsageSettings(field(source, 'usage')),
     mouse: oneOf(field(source, 'mouse'), MOUSE_MODES, DEFAULT_UI_SETTINGS.mouse),

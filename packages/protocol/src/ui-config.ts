@@ -178,6 +178,7 @@ export const UiInputConfigSchema = z.strictObject({
 });
 export type UiInputConfig = z.output<typeof UiInputConfigSchema>;
 
+<<<<<<< HEAD
 // ---- The chat of the terminal interface (P12 of docs/18) ----------------------------------------
 
 /**
@@ -211,6 +212,8 @@ export const UiChatConfigSchema = z.strictObject({
 });
 export type UiChatConfig = z.output<typeof UiChatConfigSchema>;
 
+=======
+>>>>>>> origin/main
 // ---- The Overview and Usage tabs (P13 of docs/18) -----------------------------------------------
 
 /** `always`: pausing or resuming asks `y` first; `off`: the key acts at once. */
