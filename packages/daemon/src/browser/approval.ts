@@ -49,7 +49,7 @@ export interface ApprovalRequest {
  * questions. The shape of the answer is not pinned by the channel, so this reads all of them
  * and the caller trusts only an exact label.
  */
-function answersOf(value: JsonValue): string[] {
+export function answersOf(value: JsonValue): string[] {
   if (typeof value === 'string') return [value];
   if (Array.isArray(value)) return value.flatMap((entry) => answersOf(entry));
   if (value !== null && typeof value === 'object') {

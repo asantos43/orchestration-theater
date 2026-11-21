@@ -1121,6 +1121,8 @@ const ShellCommandSectionSchema = z.strictObject({
   mode: z.enum(SHELL_COMMAND_MODES).default('on'),
   timeout: OffOrDurationSchema.prefault(SHELL_TIMEOUT_DEFAULT),
   context: z.enum(SHELL_CONTEXT_MODES).default('auto'),
+  /** [proposta] How many `!` commands of one scenario may run at once. */
+  max_running: z.int().min(1).default(4),
 });
 
 /**

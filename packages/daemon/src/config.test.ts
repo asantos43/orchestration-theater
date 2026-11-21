@@ -787,7 +787,7 @@ describe('chat', () => {
       presence: 'connected',
       presence_window: 30_000,
       silent_turn: 'notice',
-      shell_command: { mode: 'on', timeout: 300_000, context: 'auto' },
+      shell_command: { mode: 'on', timeout: 300_000, context: 'auto', max_running: 4 },
     });
   });
 
@@ -830,7 +830,12 @@ describe('chat', () => {
 describe('the ! command (N43, N187)', () => {
   it('is on, with a 5 minute timeout and the output going to the Director by default', () => {
     const config = parseConfig('');
-    expect(config.chat.shell_command).toEqual({ mode: 'on', timeout: 300_000, context: 'auto' });
+    expect(config.chat.shell_command).toEqual({
+      mode: 'on',
+      timeout: 300_000,
+      context: 'auto',
+      max_running: 4,
+    });
     expect(config.app).toEqual({ terminal: 'sandbox' });
     expect(config.terminal).toEqual({
       snippet: { max_lines: 200, keep: 'tail' },
@@ -843,11 +848,12 @@ describe('the ! command (N43, N187)', () => {
       mode: 'off',
       timeout: 300_000,
       context: 'auto',
+      max_running: 4,
     });
     expect(
       parseConfig('chat:\n  shell_command:\n    timeout: 30s\n    context: ask\n').chat
         .shell_command,
-    ).toEqual({ mode: 'on', timeout: 30_000, context: 'ask' });
+    ).toEqual({ mode: 'on', timeout: 30_000, context: 'ask', max_running: 4 });
     expect(
       parseConfig('chat:\n  shell_command: { timeout: off }\n').chat.shell_command.timeout,
     ).toBe(null);
@@ -860,6 +866,7 @@ describe('the ! command (N43, N187)', () => {
       'chat:\n  shell_command: { timeout: soon }\n',
       'chat:\n  shell_command: { context: sometimes }\n',
       'chat:\n  shell_command: { other: 1 }\n',
+      'chat:\n  shell_command: { max_running: 0 }\n',
       'app:\n  terminal: docker\n',
       'terminal:\n  snippet: { max_lines: 0 }\n',
       'terminal:\n  snippet: { keep: middle }\n',

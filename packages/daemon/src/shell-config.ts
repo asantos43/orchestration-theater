@@ -35,6 +35,8 @@ export interface ShellCommandConfig {
   readonly mode: ShellCommandMode;
   readonly timeout: number | null;
   readonly context: ShellContextMode;
+  /** How many commands of one scenario may run at once. */
+  readonly max_running: number;
 }
 
 /** The `terminal` section once parsed (sizes in bytes). */
