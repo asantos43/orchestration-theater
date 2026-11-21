@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { AttemptRecordSchema } from '@otheater/core';
 import { z } from 'zod';
-import { IdempotencyHeadersSchema } from './page.js';
+import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
+import { PlayParamsSchema } from './plays.js';
 import { defineRoute, defineRoutes } from './route.js';
 
 /**
@@ -67,4 +68,48 @@ export const cancelAttempt = defineRoute({
   errors: ['not_found', 'conflict', 'unavailable'],
 });
 
-export const ATTEMPT_ROUTES = defineRoutes(pauseAttempt, resumeAttempt, cancelAttempt);
+/**
+ * An attempt of a play as the list of its attempts shows it (P25 of docs/18, N200 item 1;
+ * [proposta]): the registry row without the worktree, plus what an interface needs to draw the
+ * Actor that works on it. `model` is the one the Actor works with now; it is `null` when the daemon
+ * does not know it (an attempt that no live process holds). `paused` says who paused the attempt: the
+ * person (`actor`) or the pause of the play (`play`); `null` when it is not paused.
+ */
+export const ApiPlayAttemptSchema = ApiAttemptSchema.extend({
+  model: z.string().min(1).nullable(),
+  paused: z.enum(['actor', 'play']).nullable(),
+});
+export type ApiPlayAttempt = z.infer<typeof ApiPlayAttemptSchema>;
+
+export const ListPlayAttemptsQuerySchema = PageQuerySchema.extend({
+  /**
+   * `true`: only the attempts still open (`executing`, `interrupted`, `awaiting_resume`,
+   * `resuming`); `false`: only the ones that ended. Omitted: all of them.
+   */
+  open: z.enum(['true', 'false']).optional(),
+});
+export type ListPlayAttemptsQuery = z.input<typeof ListPlayAttemptsQuerySchema>;
+
+/**
+ * The attempts of a play, oldest first, by cursor (P25). An interface that connects after the play
+ * began reads the open ones here to know who is working and who is paused, and the ended ones
+ * (`open=false`) for the recent history; the events keep both right afterwards.
+ */
+export const listPlayAttempts = defineRoute({
+  id: 'listPlayAttempts',
+  method: 'GET',
+  path: '/v1/plays/:playId/attempts',
+  summary:
+    'Attempts of a play, oldest first, by cursor, with Actor, state and pause; filter by open',
+  params: PlayParamsSchema,
+  query: ListPlayAttemptsQuerySchema,
+  response: pageOf(ApiPlayAttemptSchema),
+  errors: ['not_found'],
+});
+
+export const ATTEMPT_ROUTES = defineRoutes(
+  pauseAttempt,
+  resumeAttempt,
+  cancelAttempt,
+  listPlayAttempts,
+);

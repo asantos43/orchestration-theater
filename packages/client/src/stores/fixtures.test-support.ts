@@ -6,6 +6,7 @@ import {
   type ApiEventEnvelope,
   type ApiOrder,
   type ApiPlay,
+  type ApiPlayAttempt,
   type ApiPlayDetail,
   type ApiProfile,
   type ApiQuotaStatus,
@@ -55,6 +56,37 @@ export function play(id: string, scenarioId: string, extra: Partial<ApiPlay> = {
     createdAt: T0,
     updatedAt: T0,
     finishedAt: null,
+    paused: false,
+    ...extra,
+  };
+}
+
+/** An attempt as `GET /v1/plays/:playId/attempts` lists it (P25): open, running, model known. */
+export function attempt(
+  playId: string,
+  demandId: string,
+  extra: Partial<ApiPlayAttempt> = {},
+): ApiPlayAttempt {
+  return {
+    attemptId: `${playId}/${demandId}/1`,
+    playId,
+    demandId,
+    attempt: 1,
+    client: 'codex',
+    profile: 'main',
+    state: 'executing',
+    cause: null,
+    sessionId: `session-${demandId}`,
+    branch: `attempt/${demandId}`,
+    lastCheckpoint: null,
+    lastCheckpointAt: null,
+    lastEventAt: null,
+    resumes: 0,
+    freeResumes: 0,
+    createdAt: T0,
+    updatedAt: T0,
+    model: 'gpt-5',
+    paused: null,
     ...extra,
   };
 }
@@ -320,6 +352,8 @@ export class FakeDaemon {
   decisions = new Map<string, ApiDecision[]>();
   profiles: ApiProfile[] = [];
   orders: ApiOrder[] = [];
+  /** The attempts of the plays, by `attemptId` (P25). */
+  attempts: ApiPlayAttempt[] = [];
   /** The newest id of the log, written as the first frame of a stream. `undefined`: no frame. */
   head: number | undefined = 0;
   /** Runs before the tables answer: return a response to take over the request. */
@@ -446,6 +480,20 @@ export class FakeDaemon {
         repos: [],
         counts: { openPlays: 0, pendingDecisions: 0, attachments: 0 },
       });
+    }
+    const playAttempts = /^\/v1\/plays\/([^/]+)\/attempts$/.exec(path);
+    if (playAttempts !== null) {
+      const open = query.get('open');
+      const OPEN = ['executing', 'interrupted', 'awaiting_resume', 'resuming'];
+      return this.#page(
+        this.attempts.filter(
+          (item) =>
+            item.playId === playAttempts[1] &&
+            (open === null || (open === 'true') === OPEN.includes(item.state)),
+        ),
+        query,
+        (item) => item.attemptId,
+      );
     }
     const playOne = /^\/v1\/plays\/([^/]+)$/.exec(path);
     if (playOne !== null) {

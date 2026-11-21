@@ -22,17 +22,19 @@ export interface Controls {
 }
 
 /**
- * [proposta] A play can be paused while it is open and not paused as far as this client saw. It
- * can be resumed whenever it is open: a pause from before this client connected leaves no trace
- * in the stores (the API has no paused flag), so the resume is offered and the daemon answers
- * `conflict` when there is nothing to resume.
+ * [proposta] A play can be paused while it is open and not paused; it can be resumed only while it
+ * is paused. Since P25 (N200 item 2) the paused play is known from the start: `ApiPlay.paused` and
+ * the activity store (hydrated from it) carry the flag, and the events keep it, so "resume" is not
+ * offered to a play that is not paused and the `conflict` of the daemon is no longer the way to
+ * learn it.
  */
 export function playControls(
   play: ApiPlay | undefined,
   pausedPlays: ReadonlySet<string>,
 ): Controls {
   if (play?.finishedAt !== null) return { pause: false, resume: false };
-  return { pause: !pausedPlays.has(play.id), resume: true };
+  const paused = play.paused || pausedPlays.has(play.id);
+  return { pause: !paused, resume: paused };
 }
 
 /** An Actor in flight can be paused; one that was paused can be resumed. */

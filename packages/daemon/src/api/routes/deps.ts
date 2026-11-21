@@ -44,6 +44,11 @@ export interface ReadRouteDeps {
   readonly direct?: DirectSessionService | undefined;
   /** The trajectory of a play (P14 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly trajectory?: TrajectoryService | undefined;
+  /**
+   * The runner of the attempts (P25 of docs/18): the list of the attempts of a play asks it for the
+   * model and the pause of the ones in flight. Absent, the list answers from the registry alone.
+   */
+  readonly attempts?: AttemptRunner | undefined;
 }
 
 /**

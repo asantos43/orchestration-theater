@@ -80,7 +80,8 @@ export function useOverviewData(
   const pausedPlays = useMemo(() => new Set(Object.keys(paused)), [paused]);
 
   const pipeline = useMemo(
-    () => (play === undefined ? undefined : pipelineView(play, pausedPlays.has(play.id))),
+    () =>
+      play === undefined ? undefined : pipelineView(play, play.paused || pausedPlays.has(play.id)),
     [play, pausedPlays],
   );
   const demands = useMemo(() => {
