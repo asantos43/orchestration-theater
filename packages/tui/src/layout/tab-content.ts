@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import { createElement } from 'react';
+import { DirectivesTab, SECTION_IDS as DIRECTIVES_SECTIONS } from '../tabs/directives/index.js';
 import { overviewTab } from '../tabs/overview/index.js';
 import { usageTab } from '../tabs/usage/index.js';
 import type { TabContentMap } from './tab-types.js';
@@ -14,4 +16,8 @@ export type { TabContentMap, TabContentProps, TabDefinition } from './tab-types.
 export const TAB_CONTENT: TabContentMap = {
   overview: overviewTab, // P13
   usage: usageTab, // P13
+  directives: {
+    sections: DIRECTIVES_SECTIONS,
+    render: (props) => createElement(DirectivesTab, props),
+  }, // P15
 };

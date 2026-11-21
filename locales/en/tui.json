@@ -43,16 +43,6 @@
     "usage": {
       "refresh": "Read the consumption again (Usage tab)"
     },
-    "overview": {
-      "pausePlay": "Pause the play of the scenario (Overview tab)",
-      "resumePlay": "Resume the play of the scenario (Overview tab)",
-      "nextActor": "Pick the next Actor (Overview tab)",
-      "pauseActor": "Pause the picked Actor (Overview tab)",
-      "resumeActor": "Resume the picked Actor (Overview tab)"
-    },
-    "usage": {
-      "refresh": "Read the consumption again (Usage tab)"
-    },
     "palette": {
       "open": "Open the command palette"
     },
@@ -116,6 +106,14 @@
       "externalEditor": "Write the message in the external editor",
       "pasteImage": "Attach the image on the clipboard",
       "cancel": "Leave the history search"
+    },
+    "directives": {
+      "new": "Give an order",
+      "extend": "Extend the selected order",
+      "suspend": "Suspend the selected order in a scenario",
+      "revoke": "Revoke the selected order",
+      "previous": "Select the previous order",
+      "next": "Select the next order"
     }
   },
   "bar": {
@@ -572,6 +570,99 @@
       "readingImage": "Reading the image from the clipboard...",
       "historyFailed": "The history could not be saved: {{message}}",
       "submitFailed": "The message was not sent: {{message}}"
+    }
+  },
+  "directives": {
+    "tab": {
+      "hint": "{{new}} give  {{extend}} extend  {{suspend}} suspend  {{revoke}} revoke  {{move}} select",
+      "sections": {
+        "inForce": "In force",
+        "scheduled": "Scheduled",
+        "ended": "Ended"
+      },
+      "empty": "No orders yet. Press {{key}} to give the first one.",
+      "none": "none",
+      "scope": {
+        "global": "Global",
+        "local": "Scenario {{name}}"
+      },
+      "kind": {
+        "instruction": "instruction",
+        "rule": "rule",
+        "suspension": "suspension"
+      },
+      "deadline": {
+        "endsIn": "ends in {{span}}",
+        "untilRevoked": "until revoked",
+        "startsIn": "starts in {{span}}",
+        "endedAgo": "ended {{span}} ago",
+        "revokedAgo": "revoked {{span}} ago",
+        "expiring": "ending soon: {{span}}"
+      },
+      "timeline": {
+        "open": "until revoked"
+      },
+      "detail": {
+        "roles": "Roles: {{roles}}",
+        "allRoles": "all",
+        "rule": "Rule: {{key}} = {{value}}",
+        "suspends": "Takes {{id}} out of the scenario",
+        "replaces": "Replaces {{id}}",
+        "reason": "Revoked: {{reason}}",
+        "zone": "Time zone {{zone}}",
+        "origin": "Given by {{origin}}"
+      }
+    },
+    "form": {
+      "title": {
+        "new": "Give an order",
+        "extend": "Extend {{subject}}",
+        "suspend": "Suspend {{subject}} in a scenario",
+        "revoke": "Revoke {{subject}}"
+      },
+      "field": {
+        "text": "Text",
+        "scope": "Scope",
+        "scenario": "Scenario",
+        "kind": "Kind",
+        "ruleKey": "Rule key",
+        "ruleValue": "Rule value",
+        "from": "Starts (YYYY-MM-DD HH:mm; empty: now)",
+        "until": "Ends (YYYY-MM-DD HH:mm)",
+        "for": "Lasts (30m, 2h, 3d)",
+        "forever": "Until revoked",
+        "reason": "Reason"
+      },
+      "choice": {
+        "global": "global",
+        "local": "one scenario",
+        "instruction": "instruction",
+        "rule": "rule",
+        "yes": "yes",
+        "no": "no"
+      },
+      "noScenario": "(no scenario)",
+      "hint": "Tab next field  Enter send  Esc cancel",
+      "hintChoice": "Tab next field  ←/→ change  Enter send  Esc cancel",
+      "problem": {
+        "textRequired": "Write the text of the order.",
+        "scenarioRequired": "There is no scenario to choose.",
+        "ruleKeyRequired": "A rule needs the configuration key it changes.",
+        "ruleValueRequired": "A rule needs the value for that key.",
+        "reasonRequired": "Say why the order is revoked."
+      }
+    },
+    "status": {
+      "sending": "Sending...",
+      "created": "Order {{id}} given.",
+      "extended": "Order {{id}} extended.",
+      "suspended": "Suspension {{id}} given.",
+      "revoked": "Order {{id}} revoked.",
+      "failed": "Not done: {{message}}",
+      "needOrder": "Select an order first.",
+      "onlyGlobal": "Only a global order can be suspended in a scenario.",
+      "alreadyRevoked": "The order is already revoked.",
+      "noScenario": "There is no scenario to suspend the order in."
     }
   }
 }
