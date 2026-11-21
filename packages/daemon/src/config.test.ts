@@ -130,7 +130,8 @@ describe('parseConfig', () => {
       hiddenEvents: ['session.update'],
     });
     expect(ui.usage).toEqual({ groupBy: 'profile', refreshSeconds: 30 });
-    const yaml = 'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
+    const yaml =
+      'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
     expect(parseConfig(yaml).ui.overview.confirm).toBe('off');
     expect(parseConfig(yaml).ui.usage.groupBy).toBe('executor');
     expect(parseConfig(yaml).ui.usage.refreshSeconds).toBe(0);
