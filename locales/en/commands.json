@@ -1,0 +1,170 @@
+{
+  "group": {
+    "query": "Query",
+    "control": "Control the play",
+    "session": "Session and scenario",
+    "configure": "Configure",
+    "help": "Help",
+    "client": "Commands of the client"
+  },
+  "desc": {
+    "help": "Lists the commands that are valid now, or explains one",
+    "status": "Shows the scenario: its plays, its pending decisions and the Director",
+    "quota": "Shows the quota of every profile",
+    "cost": "Shows the spending: tokens, real cost and caps",
+    "executors": "Lists the Executors and whether each is valid",
+    "plays": "Lists the open plays of the scenario",
+    "logs": "Shows the last events of the scenario",
+    "doctor": "Checks the daemon, the profiles and the Executors",
+    "pause": "Pauses the open plays of the scenario",
+    "resume": "Resumes the paused plays of the scenario",
+    "cancel": "Cancels the open plays of the scenario (asks for confirmation)",
+    "new": "Opens a new chat scenario",
+    "attach": "Attaches a file to the scenario",
+    "export": "Exports the scenario with its plays and decisions",
+    "model": "Shows the model of the Director",
+    "effort": "Shows the effort of the Director",
+    "profile": "Lists the profiles and their state",
+    "directives": "Lists the orders in force for the scenario",
+    "config": "Shows a key of the configuration, or its sections",
+    "template": "Sends to the Director: {{text}}"
+  },
+  "args": {
+    "help": "[command]",
+    "logs": "[n]",
+    "pause": "[reason]",
+    "cancel": "[reason]",
+    "new": "[name]",
+    "attach": "<path>",
+    "config": "[key]",
+    "template": "<text>"
+  },
+  "confirm": {
+    "ask": "/{{command}} asks for your confirmation before it runs. Send it again confirmed to go on."
+  },
+  "error": {
+    "unknown": "There is no command /{{name}}. /help lists the ones that are valid now.",
+    "notNow": "/{{name}} is not valid now: {{reason}}",
+    "forbidden": "/{{name}} changes things, and chat.slash_access is read_only.",
+    "off": "The / commands are off (chat.slash_commands: off).",
+    "usage": "Usage: {{usage}}",
+    "noArgs": "/{{name}} takes no arguments.",
+    "clientOff": "The commands of the client are off (chat.client_commands: off).",
+    "clientNotAllowed": "/{{name}} is not in chat.client_commands_allow.",
+    "clientInTurn": "The Director is in a turn: the commands of the client wait for it to finish.",
+    "clientNotStarted": "The Director has not had its first turn yet: the command of the client would go inside the first prompt.",
+    "clientNoSession": "The Director has no open session now (it sleeps or has not started).",
+    "noChannel": "This daemon cannot talk to the Director: it runs no plays.",
+    "noRunner": "This daemon cannot run plays.",
+    "notAvailable": {
+      "kind": "scenarios of this type have no plays",
+      "archived": "the scenario is archived",
+      "noOpenPlay": "there is no open play",
+      "noUnpausedPlay": "every open play is already paused",
+      "noPausedPlay": "no play is paused"
+    },
+    "unknownKey": "There is no configuration key \"{{key}}\".",
+    "noDirector": "No Executor is set for the Director."
+  },
+  "out": {
+    "none": "none",
+    "yes": "yes",
+    "no": "no",
+    "status": {
+      "scenario": "Scenario {{name}} ({{kind}}, {{state}}).",
+      "counts": "Open plays: {{plays}}. Pending decisions: {{decisions}}.",
+      "director": {
+        "busy": "The Director is in a turn.",
+        "idle": "The Director is waiting.",
+        "asleep": "The Director sleeps.",
+        "none": "The Director is not open."
+      }
+    },
+    "quota": {
+      "line": "{{profile}}: {{state}}{{until}}",
+      "until": " (until {{time}})",
+      "empty": "There is no profile."
+    },
+    "cost": {
+      "total": "{{turns}} turns, {{input}} tokens in, {{output}} tokens out.",
+      "usd": "Real cost: ${{real}}. Equivalent by API: ${{equivalent}}.",
+      "unknown": "{{count}} turns have no known cost: the figures are a lower bound.",
+      "exceeded": "Cap exceeded on {{profile}}, back at {{time}}."
+    },
+    "executors": {
+      "line": "{{id}}: {{model}}, effort {{effort}}, {{validity}}",
+      "empty": "There is no Executor."
+    },
+    "plays": {
+      "line": "{{id}}: {{state}}{{paused}} - {{need}}",
+      "paused": " (paused)",
+      "empty": "There is no open play."
+    },
+    "logs": {
+      "line": "#{{id}} {{time}} {{type}}",
+      "empty": "There are no events for this scenario yet."
+    },
+    "doctor": {
+      "ok": "OK",
+      "problem": "PROBLEM",
+      "store": "{{status}} Store: the log is at event {{last}}.",
+      "profiles": "{{status}} Profiles: {{active}} active of {{total}}.",
+      "executors": "{{status}} Executors: {{valid}} valid, {{invalid}} invalid.",
+      "quota": "{{status}} Quota: {{exhausted}} of {{total}} profiles exhausted.",
+      "plays": "{{status}} Plays: {{state}}.",
+      "playsOn": "this daemon runs plays",
+      "playsOff": "this daemon runs no plays",
+      "summary": "{{problems}} problem(s) found."
+    },
+    "pause": {
+      "done": "Paused {{count}} play(s).",
+      "mode": "Mode: {{mode}}."
+    },
+    "resume": {
+      "done": "Resumed {{count}} play(s)."
+    },
+    "cancel": {
+      "done": "Cancelled {{count}} play(s)."
+    },
+    "new": {
+      "done": "Opened the scenario {{id}}."
+    },
+    "attach": {
+      "done": "Attached {{name}} as {{id}}."
+    },
+    "export": {
+      "done": "Exported the scenario {{name}}: {{plays}} play(s), {{decisions}} decision(s)."
+    },
+    "model": {
+      "line": "The Director uses {{model}} ({{id}})."
+    },
+    "effort": {
+      "line": "The Director works with effort {{effort}} ({{id}})."
+    },
+    "profile": {
+      "line": "{{id}}: {{kind}}, {{state}}",
+      "empty": "There is no profile."
+    },
+    "directives": {
+      "line": "{{id}} ({{scope}}, {{kind}}): {{text}}",
+      "empty": "There is no order in force."
+    },
+    "config": {
+      "sections": "Sections: {{names}}.",
+      "value": "{{key}} = {{value}}"
+    },
+    "help": {
+      "header": "Commands valid now:",
+      "line": "{{name}}{{args}} - {{description}}",
+      "one": "{{name}}{{args}} - {{description}}",
+      "confirm": "It asks for confirmation.",
+      "access": "It {{access}}.",
+      "reads": "only reads",
+      "writes": "changes things"
+    },
+    "forwarded": {
+      "template": "Sent to the Director.",
+      "client": "Sent to the client of the Director."
+    }
+  }
+}
