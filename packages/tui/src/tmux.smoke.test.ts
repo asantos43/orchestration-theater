@@ -103,10 +103,8 @@ suite(
       const ended = session;
       session = undefined;
       try {
-        // The way out a person has first: Ctrl+Q. Killing the server of tmux closes the terminal under
-        // the TUI, and a TUI that is left that way does not always end (it can spin on the dead
-        // terminal, see the report of P20), so `kill()` below is only the net, not the way out.
-        await ended?.quit();
+        // Killing the server of tmux closes the terminal under whatever is left in it, as closing the
+        // window does: the TUI must end by itself, and `kill()` fails the test if a process outlives it.
         await ended?.kill();
       } finally {
         try {
@@ -344,6 +342,19 @@ suite(
         expect((await tmux.processTree()).length).toBeGreaterThan(0);
         await tmux.keys('C-q');
         await tmux.waitExit();
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      'a terminal that closes under the TUI ends it, with no process left',
+      async () => {
+        // No Ctrl+Q: the pty goes away under the TUI, as when the window of the terminal is closed.
+        // The TUI used to spin at full CPU on the writes that failed with EIO and never ended.
+        const tmux = await openTui();
+        const tree = await tmux.killServer();
+        expect(tree.length).toBeGreaterThan(0);
+        expect(await tmux.waitProcessesGone(tree, 8_000)).toEqual([]);
       },
       TEST_TIMEOUT,
     );

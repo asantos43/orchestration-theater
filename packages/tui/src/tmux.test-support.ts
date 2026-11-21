@@ -86,10 +86,18 @@ export class TmuxSession {
   readonly socket: string;
   readonly #dir: string;
   readonly #seen = new Set<number>();
+  /** The socket file; tmux leaves it behind when the server is killed, so `kill()` deletes it. */
+  #socketPath: string;
 
   private constructor(socket: string, dir: string) {
     this.socket = socket;
     this.#dir = dir;
+    // tmux puts the socket in `$TMUX_TMPDIR` (else /tmp), in a `tmux-<uid>` folder.
+    this.#socketPath = join(
+      process.env.TMUX_TMPDIR ?? '/tmp',
+      `tmux-${String(process.getuid?.() ?? 0)}`,
+      socket,
+    );
   }
 
   /** Starts a server of its own and a session that runs `start.command`. */
@@ -135,11 +143,19 @@ export class TmuxSession {
         ...start.command,
       ]);
       if (result.code !== 0) throw new Error(`tmux new-session failed: ${result.stderr.trim()}`);
+      await session.#learnSocketPath();
       return session;
     } catch (error) {
       await session.kill();
       throw error;
     }
+  }
+
+  /** Asks the server where its socket is, which is the truth the guess from the folder only mirrors. */
+  async #learnSocketPath(): Promise<void> {
+    const asked = await this.#tmux('display-message', '-p', '#{socket_path}');
+    const path = asked.stdout.trim();
+    if (asked.code === 0 && path !== '') this.#socketPath = path;
   }
 
   async #tmux(...args: string[]): Promise<Executed> {
@@ -255,18 +271,6 @@ export class TmuxSession {
     }
   }
 
-  /** Asks the program to end with Ctrl+Q and waits a few seconds for it; never throws (a net follows it). */
-  async quit(timeoutMs = 5_000): Promise<void> {
-    try {
-      await this.processTree();
-      if (!(await this.alive())) return;
-      await this.keys('C-q');
-      await this.waitExit(timeoutMs);
-    } catch {
-      // Still running (a screen that keeps Ctrl+Q for itself, say): `kill()` ends it.
-    }
-  }
-
   /**
    * The pane's process and everything below it, as `ps` sees them (empty when it cannot be known).
    * Every pid seen is remembered, so `kill()` checks them even after the program ended by itself.
@@ -299,7 +303,29 @@ export class TmuxSession {
   }
 
   /**
-   * Kills this server (and so the programs in its pane) and deletes its folder. Safe to call twice
+   * Kills the tmux server only, as closing the window of a terminal does: the pty goes away under
+   * the program, which gets no key and no signal from the test. The pane's process tree is
+   * remembered first; `waitProcessesGone` then says whether it ended by itself.
+   */
+  async killServer(): Promise<number[]> {
+    const tree = await this.processTree();
+    await this.#tmux('kill-server');
+    return tree;
+  }
+
+  /** Waits for these pids to end by themselves; returns the ones still running at the deadline. */
+  async waitProcessesGone(pids: readonly number[], timeoutMs: number): Promise<number[]> {
+    const deadline = Date.now() + timeoutMs;
+    let left = pids.filter(isRunning);
+    while (left.length > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      left = left.filter(isRunning);
+    }
+    return left;
+  }
+
+  /**
+   * Kills this server (and so the programs in its pane) and deletes its folder and its socket file. Safe to call twice
    * and after a failed start; it never touches another tmux server. Whatever of the pane's process
    * tree is still running after a few seconds is killed by its pid and the call FAILS, so a program
    * that outlives its test is never silent.
@@ -323,6 +349,7 @@ export class TmuxSession {
       }
     }
     await rm(this.#dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await rm(this.#socketPath, { force: true });
     if (left.length > 0) {
       throw new Error(`Processes outlived the tmux server and were killed: ${left.join(', ')}`);
     }

@@ -131,8 +131,8 @@ no shell...) para ver o que foi copiado.
    **Esperado:** a TUI acompanha o novo tamanho.
 4. **Faça:** feche o terminal sem sair da TUI (fecha a janela, ou derruba a conexão).
    **Esperado:** na máquina remota **nenhum** processo `node ... tui/dist/main.js` fica para trás, parado ou
-   gastando CPU (confira com `ps`). Achado do P20: com o terminal desaparecendo debaixo dela (o tmux
-   derrubado), a TUI deixou um processo gastando CPU num teste local; vale conferir também no terminal real.
+   gastando CPU (confira com `ps`). O teste de fumaça já cobre o pty que some num tmux (a TUI sai sozinha); este item confere o caso real,
+   de uma conexão SSH que cai.
 
 ## Tabela de terminais
 
