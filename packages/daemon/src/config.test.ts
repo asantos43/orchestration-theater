@@ -134,6 +134,22 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  input:\n    editor: vim\n')).toThrow(/ui\.input\.editor/);
   });
 
+  it('has the defaults of ui.overview and ui.usage and takes their other modes (P13)', () => {
+    const { ui } = parseConfig('');
+    expect(ui.overview).toEqual({
+      confirm: 'always',
+      recentEvents: 8,
+      hiddenEvents: ['session.update'],
+    });
+    expect(ui.usage).toEqual({ groupBy: 'profile', refreshSeconds: 30 });
+    const yaml =
+      'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
+    expect(parseConfig(yaml).ui.overview.confirm).toBe('off');
+    expect(parseConfig(yaml).ui.usage.groupBy).toBe('executor');
+    expect(parseConfig(yaml).ui.usage.refreshSeconds).toBe(0);
+    expect(() => parseConfig('ui:\n  usage:\n    groupBy: day\n')).toThrow(/ui\.usage\.groupBy/);
+  });
+
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
     const yaml = [
       'ui:',

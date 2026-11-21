@@ -178,6 +178,37 @@ export const UiInputConfigSchema = z.strictObject({
 });
 export type UiInputConfig = z.output<typeof UiInputConfigSchema>;
 
+// ---- The Overview and Usage tabs (P13 of docs/18) -----------------------------------------------
+
+/** `always`: pausing or resuming asks `y` first; `off`: the key acts at once. */
+export const UI_CONFIRM_MODES = ['always', 'off'] as const;
+/** What the Usage tab splits the totals by (`none`: only the totals). */
+export const UI_USAGE_GROUPS = ['profile', 'executor', 'play', 'session', 'none'] as const;
+
+/**
+ * `ui.overview` (P13). `confirm`: `always` (default) asks before pausing or resuming a play or an
+ * Actor, `off` acts at once; `recentEvents`: how many recent events the tab lists (8);
+ * `hiddenEvents`: the event types it leaves out of that list because they come in floods
+ * (`session.update` by default). The ranges and defaults are [proposta].
+ */
+export const UiOverviewConfigSchema = z.strictObject({
+  confirm: z.enum(UI_CONFIRM_MODES).default('always'),
+  recentEvents: z.int().min(1).max(100).default(8),
+  hiddenEvents: z.array(z.string().min(1)).default(['session.update']),
+});
+export type UiOverviewConfig = z.output<typeof UiOverviewConfigSchema>;
+
+/**
+ * `ui.usage` (P13). `groupBy`: what the totals of `/v1/usage` are split by (`profile`, default).
+ * `refreshSeconds`: how often the tab reads the two routes again while it is open (30; `0` reads only
+ * when it opens and on the refresh key). The defaults are [proposta].
+ */
+export const UiUsageConfigSchema = z.strictObject({
+  groupBy: z.enum(UI_USAGE_GROUPS).default('profile'),
+  refreshSeconds: z.int().min(0).max(3600).default(30),
+});
+export type UiUsageConfig = z.output<typeof UiUsageConfigSchema>;
+
 // ---- The mouse of the terminal interface (N34, N36; P11 of docs/18) -----------------------------
 
 /**

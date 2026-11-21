@@ -45,6 +45,8 @@ export class MemoryLayoutFile implements LayoutFileStore {
 export interface FakeOnline {
   readonly connector: DaemonConnector;
   readonly stores: DaemonStores;
+  /** The REST client of the fake daemon: a test stubs its methods (P13). */
+  readonly client: ApiClient;
   readonly file: MemoryLayoutFile;
   /** The layout stores opened (one per app that connected). */
   readonly layouts: LayoutStore[];
@@ -81,6 +83,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
       apiVersion: API_VERSION,
     },
     address: options.address ?? '127.0.0.1:7777',
+    client,
     stores,
     readSettings: () => Promise.resolve(DEFAULT_UI_SETTINGS),
     openLayout: async () => {
@@ -101,6 +104,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   const result: ConnectResult = { kind: 'online', daemon };
   return {
     connector: { connect: () => Promise.resolve(result) },
+    client,
     stores,
     file,
     layouts,
