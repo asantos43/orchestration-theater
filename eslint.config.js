@@ -3,6 +3,7 @@ import eslint from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import otheaterRules from './tools/eslint-rules/dist/index.js';
 
 export default tseslint.config(
   {
@@ -14,6 +15,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '.claude/**',
+      // Copied from Ink (MIT) and patched: not our code to lint (tools/verify/copied-code.json).
+      'packages/tui/patches/**',
     ],
   },
   eslint.configs.recommended,
@@ -31,6 +34,13 @@ export default tseslint.config(
   {
     files: ['*.js', '*.ts'],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    // N50: the screen text of the TUI comes from the catalog, never written in a component.
+    files: ['packages/tui/src/**/*.tsx'],
+    ignores: ['**/*.test.tsx', '**/*.test-support.tsx'],
+    plugins: { otheater: otheaterRules },
+    rules: { 'otheater/no-literal-jsx-text': 'error' },
   },
   prettier,
 );
