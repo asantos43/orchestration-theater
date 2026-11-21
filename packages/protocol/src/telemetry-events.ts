@@ -72,18 +72,10 @@ export const TelemetryRedactedPayloadSchema = z.strictObject({
 });
 
 /**
- * Payload of `telemetry.export_failed` (Phase 8, P7, N70; architecture 5.11): the OTLP exporter
- * could not deliver a batch to `telemetry.otlp.endpoint` after its retries. Aggregated: one event
- * per signal and reason per window (`telemetry.otlp.failure_report`), `count` records and `batches`
- * batches in it. Strict, with no telemetry content, no header and no secret: `destination` is the
- * scheme, host and port of the endpoint (never its path, query or user info). Registered in
- * `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1. [proposta] The name and the fields.
- */
-
-/**
  * Why a batch was not taken: the destination did not answer (`unreachable`, `timeout`), answered
  * with a server error (`server_error`), refused the credentials (`unauthorized`) or the batch
- * (`rejected`), or a header secret was not in the vault (`secret_missing`, nothing was sent), or the telemetry base could not be read (`store_unavailable`).
+ * (`rejected`), a header secret was not in the vault (`secret_missing`, nothing was sent), or the
+ * telemetry base could not be read (`store_unavailable`).
  */
 export const TELEMETRY_EXPORT_FAILURE_REASONS = [
   'unreachable',
@@ -96,6 +88,14 @@ export const TELEMETRY_EXPORT_FAILURE_REASONS = [
 ] as const;
 export type TelemetryExportFailureReason = (typeof TELEMETRY_EXPORT_FAILURE_REASONS)[number];
 
+/**
+ * Payload of `telemetry.export_failed` (Phase 8, P7, N70; architecture 5.11): the OTLP exporter
+ * could not deliver a batch to `telemetry.otlp.endpoint` after its retries. Aggregated: one event
+ * per signal and reason per window (`telemetry.otlp.failure_report`), `count` records and `batches`
+ * batches in it. Strict, with no telemetry content, no header and no secret: `destination` is the
+ * scheme, host and port of the endpoint (never its path, query or user info). Registered in
+ * `DAEMON_EVENT_DEFINITIONS` (events.ts) at `schemaVersion` 1. [proposta] The name and the fields.
+ */
 export const TelemetryExportFailedPayloadSchema = z.strictObject({
   destination: z.string().min(1).max(256),
   signal: z.enum(TELEMETRY_SIGNALS),
