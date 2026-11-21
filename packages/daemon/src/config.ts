@@ -37,6 +37,13 @@ import {
   SelectionConfigSchema,
 } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
+import {
+  APP_TERMINAL_MODES,
+  SHELL_COMMAND_MODES,
+  SHELL_CONTEXT_MODES,
+  SHELL_TIMEOUT_DEFAULT,
+  SNIPPET_KEEP_MODES,
+} from './shell-config.js';
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -1107,6 +1114,41 @@ export const OpenCodeClientSchema = z.strictObject({
 /** A section whose keys belong to an adapter: `compose.ts` validates it with the adapter's schema. */
 const AdapterSection = z.record(z.string(), z.unknown());
 
+/** A duration, or `off` (no deadline: `null` once parsed). */
+const OffOrDurationSchema = z.union([z.literal('off').transform(() => null), DurationSchema]);
+
+const ShellCommandSectionSchema = z.strictObject({
+  mode: z.enum(SHELL_COMMAND_MODES).default('on'),
+  timeout: OffOrDurationSchema.prefault(SHELL_TIMEOUT_DEFAULT),
+  context: z.enum(SHELL_CONTEXT_MODES).default('auto'),
+});
+
+/**
+ * `chat.shell_command` is `on` | `off` (the scalar) or a section with `mode`, `timeout` and
+ * `context`; both normalise to the section, so `chat.shell_command: off` and
+ * `chat.shell_command.timeout: 30s` are each valid on their own.
+ */
+const ShellCommandConfigSchema = z
+  .union([
+    z.enum(SHELL_COMMAND_MODES).transform((mode) => ShellCommandSectionSchema.parse({ mode })),
+    ShellCommandSectionSchema,
+  ])
+  .prefault({});
+
+const TerminalConfigSchema = z
+  .strictObject({
+    snippet: z
+      .strictObject({
+        max_lines: z.int().min(1).default(200),
+        keep: z.enum(SNIPPET_KEEP_MODES).default('tail'),
+      })
+      .prefault({}),
+    log_max_size: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
+      '16MB',
+    ),
+  })
+  .prefault({});
+
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
  * section is optional and every key has a default, so a missing file means the defaults. Strict at
@@ -1340,8 +1382,22 @@ export const DaemonConfigSchema = z
         presence_window: DurationSchema.prefault('30s'),
         /** [proposta] A turn of the Director with no text: see {@link SILENT_TURN_MODES}. */
         silent_turn: z.enum(SILENT_TURN_MODES).default('notice'),
+        /**
+         * [proposta] The `!` command of the Producer (N43, N187): `on` | `off` or a section with
+         * `mode`, `timeout` (a duration or `off`; default 5m) and `context` (`auto` | `ask` | `never`).
+         * See `shell-config.ts`.
+         */
+        shell_command: ShellCommandConfigSchema,
       })
       .prefault({}),
+    /** [proposta] Where the `!` command of the Producer runs (architecture 5.13): see `shell-config.ts`. */
+    app: z
+      .strictObject({
+        terminal: z.enum(APP_TERMINAL_MODES).default('sandbox'),
+      })
+      .prefault({}),
+    /** [proposta] The snippet and the log of a `!` command (architecture 5.19): see `shell-config.ts`. */
+    terminal: TerminalConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({

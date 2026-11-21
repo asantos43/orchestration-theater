@@ -787,6 +787,7 @@ describe('chat', () => {
       presence: 'connected',
       presence_window: 30_000,
       silent_turn: 'notice',
+      shell_command: { mode: 'on', timeout: 300_000, context: 'auto' },
     });
   });
 
@@ -823,6 +824,59 @@ describe('chat', () => {
       expect(() => parseConfig(`chat:\n  history: ${bad}\n`)).toThrow(/history/);
     }
     expect(() => parseConfig('chat:\n  port: 80\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('the ! command (N43, N187)', () => {
+  it('is on, with a 5 minute timeout and the output going to the Director by default', () => {
+    const config = parseConfig('');
+    expect(config.chat.shell_command).toEqual({ mode: 'on', timeout: 300_000, context: 'auto' });
+    expect(config.app).toEqual({ terminal: 'sandbox' });
+    expect(config.terminal).toEqual({
+      snippet: { max_lines: 200, keep: 'tail' },
+      log_max_size: 16 * 1024 * 1024,
+    });
+  });
+
+  it('takes chat.shell_command as the scalar on | off or as a section', () => {
+    expect(parseConfig('chat:\n  shell_command: off\n').chat.shell_command).toEqual({
+      mode: 'off',
+      timeout: 300_000,
+      context: 'auto',
+    });
+    expect(
+      parseConfig('chat:\n  shell_command:\n    timeout: 30s\n    context: ask\n').chat
+        .shell_command,
+    ).toEqual({ mode: 'on', timeout: 30_000, context: 'ask' });
+    expect(
+      parseConfig('chat:\n  shell_command: { timeout: off }\n').chat.shell_command.timeout,
+    ).toBe(null);
+  });
+
+  it('refuses a bad mode, timeout, context, terminal mode or snippet size', () => {
+    for (const bad of [
+      'chat:\n  shell_command: maybe\n',
+      'chat:\n  shell_command: { timeout: 0 }\n',
+      'chat:\n  shell_command: { timeout: soon }\n',
+      'chat:\n  shell_command: { context: sometimes }\n',
+      'chat:\n  shell_command: { other: 1 }\n',
+      'app:\n  terminal: docker\n',
+      'terminal:\n  snippet: { max_lines: 0 }\n',
+      'terminal:\n  snippet: { keep: middle }\n',
+      'terminal:\n  log_max_size: 0B\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+
+  it('takes each app.terminal mode and the snippet keys', () => {
+    for (const mode of ['sandbox', 'host', 'off']) {
+      expect(parseConfig(`app:\n  terminal: ${mode}\n`).app.terminal).toBe(mode);
+    }
+    const terminal = parseConfig(
+      'terminal:\n  snippet: { max_lines: 5, keep: head }\n  log_max_size: 1MB\n',
+    ).terminal;
+    expect(terminal).toEqual({ snippet: { max_lines: 5, keep: 'head' }, log_max_size: 1_048_576 });
   });
 });
 

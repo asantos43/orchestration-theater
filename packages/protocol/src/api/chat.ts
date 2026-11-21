@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { CHAT_ASK_CLOSED_STATES, ChatToolCallSchema } from '../chat-events.js';
 import { IdeaQueueHeldPayloadSchema } from '../idea-events.js';
 import { ScenarioSystemMessagePayloadSchema } from '../scenario-events.js';
+import {
+  ShellCommandFinishedPayloadSchema,
+  ShellCommandStartedPayloadSchema,
+} from '../shell-events.js';
 import { ApiErrorBodySchema } from './errors.js';
 import { ScenarioIdSchema } from './ids.js';
 import { defineRoute, defineRoutes } from './route.js';
@@ -142,6 +146,25 @@ export const ChatServerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('busy'),
     eventId,
     busy: z.boolean(),
+  }),
+  /** A `!` command began (N43, N187). The payload is the one of `chat.shell_command.started`. [proposta] */
+  z.strictObject({
+    type: z.literal('shell_started'),
+    eventId,
+    command: ShellCommandStartedPayloadSchema,
+  }),
+  /**
+   * A `!` command ended. `result` is the payload of `chat.shell_command.finished` (no output in
+   * the event); `snippet` is the output the snippet kept (`terminal.snippet.max_lines` lines, as
+   * the `terminal_snippet` attachment holds them; `result.totalLines - result.shownLines` lines were
+   * left out, from the start or the end as `result.keep` says). `snippet` is empty when there was
+   * no output or the attachment is gone. [proposta]
+   */
+  z.strictObject({
+    type: z.literal('shell_finished'),
+    eventId,
+    result: ShellCommandFinishedPayloadSchema,
+    snippet: z.string(),
   }),
   /**
    * A message of the client the daemon refused, or a failure of the socket. `eventId` is `null`

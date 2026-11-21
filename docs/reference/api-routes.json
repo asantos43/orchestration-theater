@@ -8468,6 +8468,179 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "shell_started"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "command": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "place": {
+                    "type": "string",
+                    "enum": [
+                      "sandbox",
+                      "host"
+                    ]
+                  }
+                },
+                "required": [
+                  "commandId",
+                  "command",
+                  "place"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "shell_finished"
+              },
+              "eventId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "exited",
+                      "timeout",
+                      "failed"
+                    ]
+                  },
+                  "exitCode": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "totalLines": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "shownLines": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "keep": {
+                    "type": "string",
+                    "enum": [
+                      "tail",
+                      "head"
+                    ]
+                  },
+                  "logTruncated": {
+                    "type": "boolean"
+                  },
+                  "attachmentId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "askedInput": {
+                    "type": "boolean"
+                  },
+                  "context": {
+                    "type": "string",
+                    "enum": [
+                      "sent",
+                      "asked",
+                      "never",
+                      "none"
+                    ]
+                  },
+                  "logPath": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "commandId",
+                  "outcome",
+                  "exitCode",
+                  "durationMs",
+                  "totalLines",
+                  "shownLines",
+                  "keep",
+                  "logTruncated",
+                  "attachmentId",
+                  "askedInput",
+                  "context",
+                  "logPath"
+                ],
+                "additionalProperties": false
+              },
+              "snippet": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "result",
+              "snippet"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "error"
               },
               "eventId": {
