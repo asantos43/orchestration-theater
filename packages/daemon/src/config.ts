@@ -15,6 +15,7 @@ import {
   PROMPT_ORDER_MODES,
   ROLE_IDS,
   ROTATE_ON_EXHAUSTION_MODES,
+  SecretKeySchema,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
@@ -58,6 +59,16 @@ import {
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
+import {
+  exportsOtlp,
+  HEADER_NAME_PATTERN,
+  SUPPORTED_OTLP_PROTOCOLS,
+  TELEMETRY_EXPORT_FAILURE_MODES,
+  TELEMETRY_EXPORT_MODES,
+  TELEMETRY_OTLP_COMPRESSIONS,
+  TELEMETRY_OTLP_PROTOCOLS,
+  TELEMETRY_RETRY_BACKOFFS,
+} from './telemetry/export-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1286,6 +1297,87 @@ function telemetryClient<Shape extends z.ZodRawShape>(options: Shape) {
 }
 
 /**
+ * `telemetry.otlp` (Phase 8, P7; N70, N211): where the daemon sends what the telemetry base holds
+ * when `telemetry.export` is `otlp` or `both`. `endpoint`, `protocol` and `headers` are the keys of
+ * the architecture (5.11); the rest is [proposta].
+ * - `endpoint`: the base URL of an OTLP/HTTP receiver; the exporter posts to `/v1/traces`,
+ *   `/v1/metrics` and `/v1/logs` under it. `null` is only valid while the export is not OTLP.
+ * - `protocol`: `http/json` (N211, code of our own). `http/protobuf` and `grpc` are future modes and
+ *   the config refuses them with that message, so no value parses and then does nothing.
+ * - `headers`: header name to the **key of a secret in the vault**; the value is read when a request
+ *   is sent and never kept in the config, the log or an event. Over `http://` to a host that is not
+ *   loopback, headers are refused (they would cross the network in clear text).
+ * - `compression`: `none` or `gzip`; `timeout`: per request; `interval`: how often the exporter
+ *   looks for what is new; `batch`: records per request (per signal);
+ *   `signals.<signal>`: `on` or `off` for traces, metrics and logs.
+ * - `retry`: after a failed request it tries again `retries` times, waiting `initial` and then, with
+ *   `backoff: exponential`, double each time up to `max` (`fixed` waits `initial` every time).
+ * - `on_failure`: `drop` (default) or `hold`, see {@link TELEMETRY_EXPORT_FAILURE_MODES};
+ *   `failure_report`: the window in which the failures are told once, in `telemetry.export_failed`.
+ */
+const TelemetryOtlpConfigSchema = z
+  .strictObject({
+    endpoint: z
+      .url({ protocol: /^https?$/u, message: 'expected an http or https URL' })
+      .nullable()
+      .default(null),
+    protocol: z
+      .enum(TELEMETRY_OTLP_PROTOCOLS)
+      .refine((protocol) => SUPPORTED_OTLP_PROTOCOLS.includes(protocol), {
+        message:
+          'only http/json exists for now; http/protobuf and grpc are future modes of telemetry.otlp.protocol (N211)',
+      })
+      .default('http/json'),
+    headers: z
+      .record(
+        z.string().regex(HEADER_NAME_PATTERN, 'expected an HTTP header name'),
+        SecretKeySchema,
+      )
+      .default({}),
+    compression: z.enum(TELEMETRY_OTLP_COMPRESSIONS).default('none'),
+    timeout: DurationSchema.prefault('10s'),
+    interval: DurationSchema.prefault('10s'),
+    batch: z.int().min(1).max(10_000).default(500),
+    signals: z
+      .strictObject({
+        traces: TelemetrySwitch.default('on'),
+        metrics: TelemetrySwitch.default('on'),
+        logs: TelemetrySwitch.default('on'),
+      })
+      .prefault({}),
+    retry: z
+      .strictObject({
+        retries: z.int().min(0).max(10).default(3),
+        backoff: z.enum(TELEMETRY_RETRY_BACKOFFS).default('exponential'),
+        initial: DurationSchema.prefault('1s'),
+        max: DurationSchema.prefault('30s'),
+      })
+      .prefault({}),
+    on_failure: z.enum(TELEMETRY_EXPORT_FAILURE_MODES).default('drop'),
+    failure_report: DurationSchema.prefault('1m'),
+  })
+  .prefault({});
+
+/**
+ * `telemetry.prometheus` (P7; N218): `cache_ttl` is how long `GET /metrics` reuses what it
+ * computed from the usage records, so a scrape every few seconds does not read the table each time.
+ * [proposta]
+ */
+const TelemetryPrometheusConfigSchema = z
+  .strictObject({ cache_ttl: DurationSchema.prefault('5s') })
+  .prefault({});
+
+/** True for a host that is this machine: the only one `http://` may reach with headers. */
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '[::1]' ||
+    /^127\.\d+\.\d+\.\d+$/u.test(hostname)
+  );
+}
+
+/**
  * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block; P2 added
  * `receiver.*` and `redaction` after these keys. Every key is [proposta] except where the plan names it.
  */
@@ -1348,6 +1440,45 @@ const TelemetryConfigSchema = z
      * Default `on`. [proposta]
      */
     daemon_spans: telemetryClient({ waits: z.enum(TELEMETRY_DAEMON_WAITS_MODES).default('all') }),
+    /**
+     * What leaves the daemon (P7, N70): `off` (default: nothing leaves, `/metrics` answers 404),
+     * `otlp` (the exporter of `telemetry.otlp`), `prometheus` (`GET /metrics`) or `both`.
+     */
+    export: z.enum(TELEMETRY_EXPORT_MODES).default('off'),
+    otlp: TelemetryOtlpConfigSchema,
+    prometheus: TelemetryPrometheusConfigSchema,
+  })
+  .superRefine((telemetry, ctx) => {
+    const { endpoint, headers } = telemetry.otlp;
+    if (exportsOtlp(telemetry.export) && endpoint === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['otlp', 'endpoint'],
+        message: 'telemetry.otlp.endpoint is required when telemetry.export is otlp or both',
+      });
+    }
+    // The exporter reads the telemetry base: with telemetry off there is nothing to send [proposta].
+    if (exportsOtlp(telemetry.export) && telemetry.enabled === 'off') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['export'],
+        message:
+          'telemetry.export otlp or both needs telemetry.enabled on: the exporter reads the telemetry base',
+      });
+    }
+    if (
+      endpoint !== null &&
+      Object.keys(headers).length > 0 &&
+      new URL(endpoint).protocol === 'http:' &&
+      !isLoopbackHost(new URL(endpoint).hostname)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['otlp', 'headers'],
+        message:
+          'telemetry.otlp.headers over http:// to a host that is not this machine would cross the network in clear text; use https://',
+      });
+    }
   })
   .prefault({});
 
