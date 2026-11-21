@@ -1,6 +1,6 @@
 # 20. Plano da Fase 9
 
-Versão 1, de 2026-11-21. Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
+Versão 2, de 2026-11-21 (a versão 1 era a mesma data, antes das decisões N232 a N241). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
 
 A fase começa depois do fim da Fase 8 (decisões N224 a N231, de 2026-11-21). Pela N231, os PRs desta fase mesclam sem ok por PR, com a CI verde e squash. O que depende do dono fica para o fim da fase.
 
@@ -10,7 +10,7 @@ O plano traz dois passos curtos que a Fase 8 deixou para cá:
 - a árvore única de spans (N230 (2));
 - as métricas da espera e dos lotes recusados (N225 (2) e (3)).
 
-O plano levanta dez decisões novas, N232 a N241 ([docs/13](13-DECISOES-EM-ABERTO.md)). Elas estão resumidas em "Decisões que surgem deste plano", no fim, cada uma com a recomendação em primeiro lugar.
+O plano levantou dez decisões novas, N232 a N241 ([docs/13](13-DECISOES-EM-ABERTO.md)). O dono as decidiu em 2026-11-21, por múltipla escolha, todas iguais à recomendação, menos a N236: ele escolheu as três origens de instalação (pasta, npm e git), sem scripts de ciclo de vida. O resumo está em "Decisões deste plano", no fim.
 
 ## Como usar
 
@@ -28,7 +28,7 @@ O plano levanta dez decisões novas, N232 a N241 ([docs/13](13-DECISOES-EM-ABERT
     - os catálogos `locales/<idioma>/*.json`;
   - no máximo dois subagentes rodam a suíte completa ao mesmo tempo.
 - **Nada real roda nos testes (N57).** Os plugins dos testes são o plugin de exemplo (P9) e servidores MCP de teste do próprio processo. Os clientes são o `fake-agent`. As rodadas reais ficam no nível real do aceite (P13).
-- **Nenhum download novo sem decisão do dono.** A única dependência em pauta é o cliente MCP oficial (N232); ver "Dependências novas".
+- **Nenhum download novo sem decisão do dono.** O único aprovado é o cliente MCP oficial, com as transitivas (N232 (a)); ver "Dependências novas".
 - **Nenhum código de plugin roda no daemon nem na interface (§5.14, P5).** O servidor do plugin é um processo à parte. O painel é dado validado por schema.
 
 ## Ponto de partida
@@ -64,8 +64,8 @@ Dados do registro npm, consultados em 2026-11-21 **[S]**. A regra é a das fases
 
 | Pacote | Versão | Licença | Publicada | Passo | Observação |
 |---|---|---|---|---|---|
-| `@modelcontextprotocol/client` | 2.4.0 | Apache-2.0 | 2026-10-23 | P5 | Só na N232 (a). Mesmo monorepo e versão do `server` que o daemon já usa; depende do `@modelcontextprotocol/core` 2.4.0, já no lock. Traz como transitivas novas `jose` 6, `eventsource` 3, `eventsource-parser` 3 e `pkce-challenge` 5, todas MIT; o `cross-spawn` 7 e o `zod` já estão no lock |
-| `ajv` | 8.x | MIT | a fixar | P5 | Só na N233 (b), para validar os argumentos das ferramentas do plugin contra o `inputSchema` antes de repassar |
+| `@modelcontextprotocol/client` | 2.4.0 | Apache-2.0 | 2026-10-23 | P5 | Aprovado pela N232 (a), em 2026-11-21. Mesmo monorepo e versão do `server` que o daemon já usa; depende do `@modelcontextprotocol/core` 2.4.0, já no lock. Traz como transitivas novas `jose` 6, `eventsource` 3, `eventsource-parser` 3 e `pkce-challenge` 5, todas MIT; o `cross-spawn` 7 e o `zod` já estão no lock |
+| `ajv` | 8.x | MIT | a fixar | P5 | Não entra: a N233 ficou na (a), e os argumentos são validados pelo servidor do plugin |
 
 ## Passos
 
@@ -145,9 +145,13 @@ O P12 só depende do validador do P3. Ele mexe no pipeline e na configuração d
 
 ### P4. Registro, instalação e ativação por projeto (N235, N236; §5.14)
 
-- **Comandos** `ot plugin install <pasta> | list | remove <id> | enable <id> --project <p> | disable <id> --project <p>`. Pela N236 (a), a instalação só aceita uma pasta local.
-  - O daemon guarda o caminho e o hash do manifesto em `<dados>/plugins.json` **[proposta]**, sem copiar a pasta.
-  - Se o manifesto mudar, o plugin fica desligado até o Produtor aprovar de novo.
+- **Comandos** `ot plugin install <origem> | list | remove <id> | enable <id> --project <p> | disable <id> --project <p>`. Pela N236, a origem pode ser:
+  - uma pasta local (`ot plugin install ./meu-plugin`). O daemon guarda o caminho e o hash do manifesto em `<dados>/plugins.json` **[proposta]**, sem copiar a pasta;
+  - um pacote npm (`npm:<pacote>@<versão>` **[proposta]**), instalado em `<dados>/plugins/<id>/<versão>/` **[proposta]** com `--ignore-scripts`. A versão é exata, e o registro guarda a versão e o hash do pacote;
+  - um repositório git (`git:<url>#<ref>` **[proposta]**), clonado sem hooks e fixado no commit que o `<ref>` tinha na instalação, que o registro guarda.
+  - Nenhuma origem roda scripts de ciclo de vida (N236, pergunta seguinte): o plugin já vem pronto, com o `dist` incluído.
+  - Chave `plugins.install.sources: [path, npm, git]` **[proposta]**, para limitar as origens aceitas.
+  - Atualizar (`ot plugin update <id>` **[proposta]**) é instalar de novo. Se o manifesto mudar, o plugin fica desligado até o Produtor aprovar de novo; isso vale também para a pasta local editada.
 - **Ativação por projeto:** `projects.<p>.plugins: [<id>]`, ou uma lista por projeto no registro **[proposta]**. Ao ativar, o Produtor vê:
   - as ferramentas, com os papéis e os efeitos;
   - os segredos pedidos;
@@ -156,6 +160,8 @@ O P12 só depende do validador do P3. Ele mexe no pipeline e na configuração d
 - **Registros:** pela N235 (a), os plugins instalados entram nos registros da subida. Instalar, remover, ativar ou desativar troca o retrato congelado por um novo, de uma vez. A sessão em curso segue com o retrato com que abriu.
 - **Aceite:**
   - instalar, listar, ativar, desativar e remover;
+  - instalar das três origens: uma pasta, um tarball feito com `npm pack` de uma fixture e um repositório git local (`file://`), sem rede;
+  - um pacote com script `postinstall` e um repositório com hook instalam sem rodá-los;
   - manifesto inválido recusado com a mensagem do P3;
   - manifesto mudado desliga o plugin;
   - a troca a quente não altera uma sessão aberta.
@@ -312,11 +318,27 @@ Ficam depois da v1 (§5.14):
 
 Ficam para outras fases ou outros PRs:
 - o painel do plugin na interface web (Fase 12);
-- a instalação por pacote npm ou por git (N236 (b) e (c));
 - a autenticação de servidores `http` de plugin fora do loopback;
 - a Fase 9b (agendador e tarefas): a entrega por plugin espera esta fase.
 
-## Decisões que surgem deste plano
+## Decisões deste plano
+
+Decididas pelo dono em 2026-11-21, por múltipla escolha ([docs/13](13-DECISOES-EM-ABERTO.md)):
+
+| Decisão | Escolha |
+|---|---|
+| N232, o cliente MCP | (a) o `@modelcontextprotocol/client` 2.4.0, com o download aprovado |
+| N233, a validação | (a) zod, com o JSON Schema gerado só para a documentação |
+| N234, o agregador | (a) próprio, no daemon |
+| N235, a ativação | (a) troca a quente do retrato congelado |
+| N236, a instalação | (a), (b) e (c): pasta local, npm e git, sem scripts de ciclo de vida |
+| N237, os efeitos | (a) o código adota o vocabulário da §5.14 |
+| N238, o processo | (a) um por plugin e projeto, sob demanda |
+| N239, os segredos | (a) `plugin/<id>/<NOME>` com a variante por projeto |
+| N240, o exemplo | (a) `examples/plugin-notes` |
+| N241, os fluxos | (a) o `play` oficial com etapas opcionais, em ordem fixa |
+
+As opções, como foram apresentadas:
 
 Todas abertas em 2026-11-21 e levadas ao dono por múltipla escolha, com a recomendação em primeiro lugar. Os detalhes e o estado de cada uma estão em [docs/13](13-DECISOES-EM-ABERTO.md).
 
