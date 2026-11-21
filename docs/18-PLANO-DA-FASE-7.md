@@ -357,6 +357,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - Enter completa a sugestão de `/`, sem tecla separada para aceitar; com a busca do histórico ativa, o Esc cancela a busca e pode também enviar `/stop`; o menu só oferece motivo opcional para `refuse` (e texto obrigatório para `redefine_need`) [S];
 - o clique nas opções de decisão (`ClickTarget`, P11) **não foi ligado**: o P12 diz "não depende do mouse" [S] e o código não o usa [V]. O histórico da caixa fica em `<dados>/tui/input-history.json`, e a linha de estado do chat é cortada na largura do chat [S];
 - o teste de aceite fica no pacote da TUI, porque a regra `tui-launcher-only-from-cli` proíbe o daemon de importar a TUI [S].
+- **o `chat.e2e.test.tsx` falhava de vez em quando na CI** (Linux e macOS, nas ondas 3 e 4), por asserções lidas logo depois da tecla: a espera do cartão casava com quase qualquer quadro, o eco da resposta casava com o próprio cartão, e a linha de estado tem tique próprio (`state_interval`). O PR #229 (mesclado em 2026-11-21, 706a1b9 [V: `git log`]) fez as esperas aguardarem o cartão, o eco e os dois textos no mesmo quadro, só no teste; não se achou corrida no produto [S]. Passou 10 de 10 seguidas e 10 de 10 sob carga, local, e a CI ficou verde nos três sistemas [V]. A falha antiga não foi reproduzida no código anterior, então a causa vem da leitura do código e dos quadros [S].
 
 ### P13. Visão geral e Consumo (§5.13)
 
