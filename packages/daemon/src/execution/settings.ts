@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SharedCancelMode } from '@otheater/core';
+import type { TerminalOutputMode } from '@otheater/protocol';
 import {
   type DaemonConfig,
   type PACKAGE_DIFF_MODES,
@@ -114,6 +115,15 @@ export interface ExecutionSettings {
   readonly continuePrompt: string;
   /** `resume.package.*`. */
   readonly package: PackageSettings;
+  /** `events.terminal_output` and `events.terminal_output_max` [proposta] (P11 of Phase 8). */
+  readonly terminalOutput: TerminalOutputSettings;
+}
+
+/** How the live output of a terminal of the Actor goes to the log. */
+export interface TerminalOutputSettings {
+  readonly mode: TerminalOutputMode;
+  /** With `truncated`: the most of one terminal that is kept, in bytes. */
+  readonly maxBytes: number;
 }
 
 /** The execution constants of a validated configuration. */
@@ -173,6 +183,15 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
       diffMaxChars: config.resume.package.diff_max_chars,
       shortOutputRoles: config.resume.package.short_output_roles,
       shortOutput: config.resume.package.short_output,
+    },
+    // `events.*` follow `PUT /v1/config` at the next attempt, like `limits.*` (N188).
+    terminalOutput: {
+      get mode() {
+        return config.events.terminal_output;
+      },
+      get maxBytes() {
+        return config.events.terminal_output_max;
+      },
     },
   };
 }

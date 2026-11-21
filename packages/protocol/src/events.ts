@@ -153,6 +153,7 @@ import {
   BrowserApprovalPayloadSchema,
   BrowserRefusedPayloadSchema,
 } from './browser-events.js';
+import { TerminalOutputPayloadSchema } from './terminal-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -392,6 +393,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'tool.finished',
     schemaVersion: 1,
     payload: ToolFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'terminal.output',
+    schemaVersion: 1,
+    payload: TerminalOutputPayloadSchema,
   }),
   defineEventType({
     type: 'browser.action',
@@ -908,6 +914,7 @@ export type AttemptResumedPayload = DaemonEventPayloads['attempt.resumed'];
 export type AttemptCancelledPayload = DaemonEventPayloads['attempt.cancelled'];
 export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
 export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
+export type TerminalOutputEventPayload = DaemonEventPayloads['terminal.output'];
 export type BrowserActionPayload = DaemonEventPayloads['browser.action'];
 export type BrowserRefusedPayload = DaemonEventPayloads['browser.refused'];
 export type BrowserApprovalPayload = DaemonEventPayloads['browser.approval'];

@@ -440,6 +440,33 @@ describe('fake agent in process', () => {
     });
   });
 
+  it('terminal shows the command, its output in deltas and its exit, in the _meta', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      const response = await prompt(
+        h,
+        '#script:terminal {"command":"ls","chunks":["a\\n","b\\n"],"exitCode":2}',
+      );
+      expect(response.stopReason).toBe('end_turn');
+      const metas = h.recorded.updates.map((u) => (u as { _meta?: Record<string, unknown> })._meta);
+      const id = (h.recorded.updates[0] as { toolCallId: string }).toolCallId;
+      expect(metas[0]).toEqual({ terminal_info: { terminal_id: id } });
+      expect(metas[1]).toEqual({ terminal_output_delta: { terminal_id: id, data: 'a\n' } });
+      expect(metas[2]).toEqual({ terminal_output_delta: { terminal_id: id, data: 'b\n' } });
+      expect(metas[3]).toEqual({ terminal_exit: { terminal_id: id, exit_code: 2, signal: null } });
+      expect(h.recorded.updates[3]).toMatchObject({ status: 'failed' });
+    });
+  });
+
+  it('terminal repeats the chunks and can send the older terminal_output', async () => {
+    await withSession(createFakeAgent(), async (h) => {
+      await prompt(h, '#script:terminal {"chunks":["x"],"repeat":3,"delta":false}');
+      const outputs = h.recorded.updates.filter(
+        (u) => (u as { _meta?: Record<string, unknown> })._meta?.terminal_output !== undefined,
+      );
+      expect(outputs).toHaveLength(3);
+    });
+  });
+
   it('rejects an invalid script and an unknown session', async () => {
     await withSession(createFakeAgent(), async (h) => {
       expect((await rejection(prompt(h, '#script:nope'))).code).toBe(-32602);

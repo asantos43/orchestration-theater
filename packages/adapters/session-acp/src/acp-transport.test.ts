@@ -207,6 +207,22 @@ describe('AcpTransport against a stub agent', () => {
     await session.close();
   });
 
+  it('declares _meta.terminal_output_delta only when asked to (P11)', async () => {
+    const off = await params('terminal-off');
+    const closedOff = await new AcpTransport().open(off.open);
+    const [initializeOff] = await recorded(off.record);
+    expect(JSON.stringify(initializeOff?.params)).not.toContain('terminal_output_delta');
+    await closedOff.close();
+
+    const on = await params('terminal-on');
+    const session = await new AcpTransport({ terminalOutput: true }).open(on.open);
+    const [initializeOn] = await recorded(on.record);
+    expect(initializeOn?.params).toMatchObject({
+      clientCapabilities: { terminal: false, _meta: { terminal_output_delta: true } },
+    });
+    await session.close();
+  });
+
   describe('agentInfo of the initialize (N63)', () => {
     const seen = async (config: Record<string, unknown>, name: string) => {
       const { open } = await params(name, { config });

@@ -65,7 +65,8 @@
       "up": "Move up in the side bar",
       "down": "Move down in the side bar",
       "activate": "Open the scenario or fold the section",
-      "newProject": "Open a new project"
+      "newProject": "Open a new project",
+      "toggleFinished": "Open or close the finished plays"
     },
     "panel": {
       "prevTab": "Go to the previous tab",
@@ -190,7 +191,8 @@
     },
     "sidebar": {
       "activate": "Open",
-      "newProject": "New project"
+      "newProject": "New project",
+      "toggleFinished": "Finished"
     },
     "panel": {
       "tabs": "Tabs",
@@ -300,6 +302,12 @@
       "title": "Navigation",
       "scenarios": "SCENARIOS",
       "subscriptions": "SUBSCRIPTIONS",
+      "finished": "FINISHED",
+      "noFinished": "No finished play yet",
+      "finishedState": {
+        "done": "done",
+        "cancelled": "cancelled"
+      },
       "empty": "No scenarios yet",
       "noQuota": "No subscription read yet",
       "noReading": "no reading",
@@ -554,6 +562,8 @@
     "running": "running",
     "emptyTurn": "Nothing recorded in this turn.",
     "more": "... {{count}} more lines",
+    "terminalCut": "... output cut at the limit (events.terminal_output_max), {{bytes}} bytes left out",
+    "terminalCutUnknown": "... output cut at the limit (events.terminal_output_max)",
     "state": {
       "running": "running",
       "closed": "session closed",

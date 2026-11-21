@@ -27,6 +27,7 @@ import type {
   UpdateListener,
 } from './ports/agent-session.js';
 import type { CancelOutcome, LaunchedProcess } from './ports/process-launcher.js';
+import { terminalUpdateOf } from './terminal-output.js';
 
 /** Default wait for the client to end a cancelled turn by itself before its process tree is killed. [proposta] */
 export const DEFAULT_CANCEL_GRACE_MS = 2000;
@@ -217,7 +218,10 @@ export class ManagedAgentSession implements AgentSession {
     try {
       const main = this.#normalizer.normalizeUpdate(raw);
       const extras = this.#normalizer.normalizeExtraUpdates?.(raw) ?? [];
-      updates = main === null ? [...extras] : [main, ...extras];
+      // The live output of a terminal is a convention of the `_meta`, the same for every client.
+      const terminal = terminalUpdateOf(raw);
+      const tail = terminal === undefined ? extras : [...extras, terminal];
+      updates = main === null ? [...tail] : [main, ...tail];
     } catch (error) {
       this.#warn({ kind: 'normalizer_threw', error });
       return;

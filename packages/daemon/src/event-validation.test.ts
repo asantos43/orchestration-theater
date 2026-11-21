@@ -184,3 +184,28 @@ describe('the config key events.unknown_type', () => {
     expect(() => parseConfig('events:\n  other: 1\n')).toThrow();
   });
 });
+
+describe('the config keys events.terminal_output and events.terminal_output_max', () => {
+  it('default to truncated and 64KB', () => {
+    const events = parseConfig('backup:\n  when: manual\n').events;
+    expect(events.terminal_output).toBe('truncated');
+    expect(events.terminal_output_max).toBe(64 * 1024);
+  });
+
+  it('accept the three modes and a size', () => {
+    for (const mode of ['on', 'off', 'truncated'] as const) {
+      expect(parseConfig(`events:\n  terminal_output: ${mode}\n`).events.terminal_output).toBe(
+        mode,
+      );
+    }
+    expect(parseConfig('events:\n  terminal_output_max: 8KB\n').events.terminal_output_max).toBe(
+      8 * 1024,
+    );
+  });
+
+  it('reject another mode, a size that is not one and a size of zero', () => {
+    expect(() => parseConfig('events:\n  terminal_output: some\n')).toThrow();
+    expect(() => parseConfig('events:\n  terminal_output_max: lots\n')).toThrow();
+    expect(() => parseConfig('events:\n  terminal_output_max: 0\n')).toThrow();
+  });
+});
