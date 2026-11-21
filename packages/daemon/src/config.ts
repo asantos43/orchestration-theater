@@ -57,6 +57,7 @@ import {
   DIRECT_ORPHANS_MODES,
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
+import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
@@ -1634,6 +1635,8 @@ export const DaemonConfigSchema = z
     direct_session: DirectSessionConfigSchema,
     /** [proposta] The ATIF export of the trajectories (architecture 5.11, N219): see `atif/atif-config.ts`. */
     atif: AtifConfigSchema,
+    /** [proposta] The analysis of the system (architecture 5.11, N55 and N217): see `analysis/analysis-config.ts`. */
+    analysis: AnalysisConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({
