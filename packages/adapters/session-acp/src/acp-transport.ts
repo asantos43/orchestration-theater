@@ -70,7 +70,18 @@ export interface AcpTransportOptions {
    * [proposta] One session per process behaves the same in both modes.
    */
   readonly connectionLifetime?: ConnectionLifetime;
+  /**
+   * Whether `initialize` asks the client to send the live output of its terminals
+   * (`clientCapabilities._meta.terminal_output_delta`, P11 of Phase 8). Read at each `initialize`, so
+   * a change of `events.terminal_output` takes effect on the next process. Default `false`: the
+   * clients that do not know the convention ignore the key. [V: `claude-agent-acp` 0.107.0 reads it]
+   */
+  readonly terminalOutput?: boolean | (() => boolean);
   readonly onWarning?: (warning: AcpTransportWarning) => void;
+}
+
+function wantsTerminalOutput(option: AcpTransportOptions['terminalOutput']): boolean {
+  return typeof option === 'function' ? option() : option === true;
 }
 
 /** See {@link AcpTransportOptions.connectionLifetime}. */
@@ -615,7 +626,13 @@ export class AcpTransport implements SessionTransport {
       .request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
         // Explicitly nothing: no file system and no terminal for the client to call back into.
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          ...(wantsTerminalOutput(options.terminalOutput)
+            ? { _meta: { terminal_output_delta: true } }
+            : {}),
+        },
         clientInfo: {
           name: options.clientName ?? 'otheater',
           version: options.clientVersion ?? '0.0.0',

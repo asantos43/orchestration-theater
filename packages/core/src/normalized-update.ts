@@ -151,6 +151,9 @@ const messageChunk = {
  *   `config_option_update` and `current_mode_update`, which the normalizer turns into this).
  * - `rate_limit`: the client's own rate-limit signal (the `rate_limit_event` of Claude). It comes
  *   with `resetsAt` as epoch ms when the client says it.
+ * - `terminal_output` (P11 of Phase 8, N200): output the Actor's terminal printed (`text`, a delta)
+ *   and, when the command ended, how (`exit`). The daemon turns it into `terminal.output` events
+ *   (masked and cut), never into a `session.update`. [proposta]
  */
 export const NormalizedUpdateSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('agent_message_chunk'), ...messageChunk }),
@@ -230,6 +233,19 @@ export const NormalizedUpdateSchema = z.discriminatedUnion('kind', [
     usedPercent: z.number().min(0).optional(),
     resetsAt: z.int().min(0).optional(),
   }),
+  z
+    .strictObject({
+      kind: z.literal('terminal_output'),
+      terminalId: nonEmpty,
+      toolCallId: nonEmpty.optional(),
+      text: z.string().min(1).optional(),
+      exit: z
+        .strictObject({ code: z.int().nullable(), signal: z.string().min(1).nullable() })
+        .optional(),
+    })
+    .refine((u) => u.text !== undefined || u.exit !== undefined, {
+      message: 'A terminal_output update needs text or an exit',
+    }),
 ]);
 export type NormalizedUpdate = z.infer<typeof NormalizedUpdateSchema>;
 export type NormalizedUpdateKind = NormalizedUpdate['kind'];
@@ -245,4 +261,5 @@ export const NORMALIZED_UPDATE_KINDS = [
   'available_commands',
   'config_changed',
   'rate_limit',
+  'terminal_output',
 ] as const satisfies readonly NormalizedUpdateKind[];

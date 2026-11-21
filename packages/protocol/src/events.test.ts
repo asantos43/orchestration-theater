@@ -51,6 +51,7 @@ describe('daemon event registry', () => {
       'attempt.cancelled',
       'tool.called',
       'tool.finished',
+      'terminal.output',
       'browser.action',
       'browser.refused',
       'browser.approval',

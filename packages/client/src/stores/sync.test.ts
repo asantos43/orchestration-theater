@@ -148,6 +148,32 @@ describe('DaemonStores: the first read', () => {
     expect(Object.keys(hub.plays.getState().byId).sort()).toEqual(['P0', 'P1']);
   });
 
+  it('reads the last finished plays when asked, before and after going live (P11)', async () => {
+    const daemon = populated();
+    // The fake lists in the order of insertion, as the daemon lists, oldest first: F1, F2.
+    setPlay(daemon, play('F1', 'S1', { state: 'CANCELLED', finishedAt: 6, createdAt: 1 }));
+    setPlay(daemon, play('F2', 'S1', { state: 'DONE', finishedAt: 7, createdAt: 2 }));
+    const early = hubOf(daemon);
+    await early.loadFinishedPlays(1);
+    // Not live yet: the limit is kept for the snapshot.
+    expect(early.plays.getState().byId).toEqual({});
+    await early.start();
+    expect(Object.keys(early.plays.getState().byId).sort()).toEqual(['F2', 'P1']);
+
+    // Asked after the start: it merges and keeps what it had.
+    const late = hubOf(daemon);
+    await late.start();
+    expect(Object.keys(late.plays.getState().byId)).toEqual(['P1']);
+    await late.loadFinishedPlays(5);
+    expect(Object.keys(late.plays.getState().byId).sort()).toEqual(['F1', 'F2', 'P0', 'P1']);
+    expect(late.plays.getState().byId.P1?.state).toBe('PLANNING');
+
+    // Zero turns it off for the next snapshot.
+    await late.loadFinishedPlays(0);
+    await late.resync();
+    expect(Object.keys(late.plays.getState().byId)).toEqual(['P1']);
+  });
+
   it('reads every page of a list', async () => {
     const daemon = populated();
     daemon.scenarios = ['S1', 'S2', 'S3'].map((id) => scenario(id));

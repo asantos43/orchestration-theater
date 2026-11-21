@@ -23,6 +23,7 @@ import {
   BACKUP_CONTENTS,
   LAYOUT_STORES,
   LAYOUT_SYNCS,
+  TERMINAL_OUTPUT_MODES,
   UiClipboardConfigSchema,
   UiChatConfigSchema,
   UiInputConfigSchema,
@@ -33,6 +34,7 @@ import {
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
+  UiSidebarConfigSchema,
   UiTuiLayoutConfigSchema,
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
@@ -1907,6 +1909,19 @@ export const DaemonConfigSchema = z
       .strictObject({
         /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
         unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
+        /**
+         * P11 of Phase 8 (N200 item 3) [proposta]: the live output of the terminal of the Actor.
+         * `truncated` (default) writes `terminal.output` events up to `terminal_output_max` of each
+         * terminal and marks the cut; `on` writes all of it; `off` writes none and the client is not
+         * asked to send it (`_meta.terminal_output_delta` is left out of `initialize`). The shapes of a
+         * credential are masked in every mode.
+         */
+        terminal_output: z.enum(TERMINAL_OUTPUT_MODES).default('truncated'),
+        /** P11 [proposta]: the most output of one terminal that `terminal_output: truncated` keeps. */
+        terminal_output_max: SizeSchema.refine(
+          (bytes) => bytes > 0,
+          'expected a size above zero',
+        ).prefault('64KB'),
       })
       .prefault({}),
     /**
@@ -2327,6 +2342,8 @@ export const DaemonConfigSchema = z
         setup: UiSetupConfigSchema.prefault({}),
         /** What the prompt of "new project" starts with (P22 of docs/18). */
         newProject: UiNewProjectConfigSchema.prefault({}),
+        /** The finished plays in the side bar of the terminal interface (P11 of docs/19). */
+        sidebar: UiSidebarConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

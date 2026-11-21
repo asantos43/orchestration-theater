@@ -34,6 +34,7 @@ export * from './state-summary.js';
 export * from './ports/secret-vault.js';
 export * from './disposable.js';
 export * from './normalized-update.js';
+export * from './terminal-output.js';
 export * from './ports/executor.js';
 export * from './ports/process-launcher.js';
 export * from './ports/memory-probe.js';
