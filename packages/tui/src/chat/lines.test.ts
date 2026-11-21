@@ -98,7 +98,7 @@ describe('waitReason', () => {
         { profile: 'one', reason: 'quota' },
         { profile: 'two', reason: 'quota' },
       ],
-    } as never);
+    });
     expect(text.match(/waitReason\.quota/g)).toHaveLength(1);
   });
 });

@@ -188,7 +188,7 @@ function reply(
     (entry) => entry.replyId === frame.replyId && entry.body.kind === 'text',
   );
   const existing = at$ === -1 ? undefined : base.entries[at$];
-  if (existing !== undefined && existing.body.kind === 'text') {
+  if (existing?.body.kind === 'text') {
     const merged: ChatEntry = {
       ...existing,
       body: { kind: 'text', text: existing.body.text + frame.text },

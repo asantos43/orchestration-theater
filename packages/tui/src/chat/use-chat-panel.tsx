@@ -168,7 +168,6 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     };
     return buildCard(ask, texts);
     // The card is rebuilt when the ask changes or the language does.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `ask` is compared by its id
   }, [ask?.decisionId, t]);
   const card = useRef<{ id: string; state: CardState } | undefined>(undefined);
   if (model !== undefined && card.current?.id !== model.decisionId) {
@@ -198,7 +197,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     scenarioId !== undefined &&
     typingCommandName(text);
   useEffect(() => {
-    if (!suggesting || client === undefined || scenarioId === undefined) return undefined;
+    if (!suggesting) return undefined;
     let live = true;
     client
       .call(API_ROUTES.listCommands, { query: { scenario: scenarioId, lang } })
@@ -337,7 +336,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       return false;
     }
     const current = card.current;
-    if (!cardFocused || model === undefined || current === undefined) return false;
+    if (!cardFocused || current === undefined) return false;
     const key = cardKeyOf(event);
     if (key === undefined) return false;
     const result = cardKey(model, current.state, key);
@@ -377,7 +376,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         }
         return true;
       case 'decision.open':
-        if (!showCard || model === undefined) return false;
+        if (!showCard) return false;
         if (auto) toggled.current.delete(model.decisionId);
         else toggled.current.add(model.decisionId);
         redraw();
@@ -390,11 +389,13 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
   // ---- Drawing ----------------------------------------------------------------------------------
   const maxCard = Math.max(4, Math.floor((props.height - 6) / 2));
   const lines =
-    cardFocused && model !== undefined && cardState !== undefined
+    cardFocused && cardState !== undefined
       ? cardLines(model, cardState, props.width, maxCard, {
           typingPrompt: t('layout.chat.card.typing'),
           progress:
-            model.total > 1 ? `${Math.min(cardState.step + 1, model.total)}/${model.total}` : '',
+            model.total > 1
+              ? `${String(Math.min(cardState.step + 1, model.total))}/${String(model.total)}`
+              : '',
         })
       : [];
   const hint =

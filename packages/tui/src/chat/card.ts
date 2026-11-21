@@ -484,7 +484,7 @@ export function cardLines(
   const options: CardLine[][] = step.options.map((option, index) => {
     const here = !state.typing && index === state.cursor;
     const mark = step.multi ? (state.marked.includes(option.id) ? '[x] ' : '[ ] ') : '';
-    const lead = `${here ? '›' : ' '} ${index + 1}. ${mark}`;
+    const lead = `${here ? '›' : ' '} ${String(index + 1)}. ${mark}`;
     const label = clip(`${lead}${option.label}`, width);
     const out: CardLine[] = [{ text: label, ...(here ? { inverse: true } : {}) }];
     if (option.description !== '' && here) {
