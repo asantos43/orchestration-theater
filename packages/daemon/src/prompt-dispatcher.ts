@@ -2,7 +2,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   PROMPT_PRIORITY,
-  type Clock,
   type Disposable,
   type JsonObject,
   type PromptOrderMode,
@@ -10,8 +9,8 @@ import {
   type PromptQueueItem,
   type Store,
 } from '@otheater/core';
-import { WAIT_KIND, OT } from './telemetry/span-conventions.js';
-import type { WaitRecorder } from './telemetry/wait-recorder.js';
+import { WAIT_KIND } from './telemetry/span-conventions.js';
+import type { WaitHandle, WaitTracker } from './telemetry/wait-events.js';
 
 /** What the dispatcher needs of the store. */
 export type PromptDispatcherStore = Pick<Store, 'promptQueue'>;
@@ -39,13 +38,11 @@ export interface PromptDispatcherOptions {
    */
   readonly onQueued?: (item: PromptQueueItem) => void;
   /**
-   * Phase 8, P4 (N217 (a)): told when a prompt leaves the queue for the Director, with the time it
-   * waited and why. Needs `clock`. It never throws and never waits; the log has no event for this
-   * wait, so the span is made here. [proposta]
+   * Phase 8, P15 (N222 (a)): told when a prompt enters the queue and when it leaves it for the
+   * Director; the tracker writes `wait.started` and `wait.ended` for a prompt that waits the
+   * threshold. It never throws and never waits. [proposta]
    */
-  readonly onWait?: WaitRecorder;
-  /** The clock of `onWait`. */
-  readonly clock?: Pick<Clock, 'now'>;
+  readonly waits?: WaitTracker;
 }
 
 /** Why a prompt waited (`otheater.wait.reason` of the `prompt_queue` spans). */
@@ -59,6 +56,7 @@ export const PROMPT_WAIT_REASON = {
   /** It was found in the queue after a restart. */
   restart: 'restart',
 } as const;
+type PromptWaitReason = (typeof PROMPT_WAIT_REASON)[keyof typeof PROMPT_WAIT_REASON];
 
 export interface SubmitPrompt {
   readonly scenarioId: string;
@@ -107,10 +105,9 @@ export class PromptDispatcher {
   readonly #newId: () => string;
   readonly #onError: PromptDispatcherOptions['onError'];
   readonly #onQueued: PromptDispatcherOptions['onQueued'];
-  readonly #onWait: PromptDispatcherOptions['onWait'];
-  readonly #clock: PromptDispatcherOptions['clock'];
-  /** Why each prompt submitted here waited, by item id; read when it is handed over. */
-  readonly #reasons = new Map<string, string>();
+  readonly #waits: PromptDispatcherOptions['waits'];
+  /** The wait of each prompt this dispatcher has seen, by item id, until it is delivered. */
+  readonly #held = new Map<string, WaitHandle | undefined>();
   readonly #lanes = new Map<string, ScenarioLane>();
 
   constructor(options: PromptDispatcherOptions) {
@@ -119,8 +116,7 @@ export class PromptDispatcher {
     this.#newId = options.newId ?? randomUUID;
     this.#onError = options.onError;
     this.#onQueued = options.onQueued;
-    this.#onWait = options.onWait;
-    this.#clock = options.clock;
+    this.#waits = options.waits;
   }
 
   /** Writes the prompt to the queue and, once it is written, starts delivering. */
@@ -133,15 +129,18 @@ export class PromptDispatcher {
       priority,
       content: { ...input.extra, text: input.text },
     });
-    if (this.#onWait !== undefined) {
+    if (this.#waits !== undefined) {
       const lane = this.#lanes.get(input.scenarioId);
-      this.#reasons.set(
+      this.#held.set(
         item.id,
-        lane?.running !== undefined
-          ? PROMPT_WAIT_REASON.directorBusy
-          : lane?.sender === undefined
-            ? PROMPT_WAIT_REASON.noDirector
-            : PROMPT_WAIT_REASON.queued,
+        this.#track(
+          item,
+          lane?.running !== undefined
+            ? PROMPT_WAIT_REASON.directorBusy
+            : lane?.sender === undefined
+              ? PROMPT_WAIT_REASON.noDirector
+              : PROMPT_WAIT_REASON.queued,
+        ),
       );
     }
     try {
@@ -197,24 +196,38 @@ export class PromptDispatcher {
     return lane;
   }
 
-  /** The prompt leaves the queue: the wait ends here. */
-  #reportWait(item: PromptQueueItem): void {
-    const reason = this.#reasons.get(item.id) ?? PROMPT_WAIT_REASON.restart;
-    this.#reasons.delete(item.id);
-    if (this.#onWait === undefined || this.#clock === undefined) return;
+  /** The wait of a prompt begins (`since` is when it was written, which a past run may have done). */
+  #track(item: PromptQueueItem, reason: PromptWaitReason): WaitHandle | undefined {
     try {
-      this.#onWait({
+      return this.#waits?.begin({
         kind: WAIT_KIND.promptQueue,
-        key: item.id,
-        startMs: item.createdAt,
-        endMs: this.#clock.now(),
+        id: item.id,
+        since: item.createdAt,
         reason,
-        outcome: 'delivered',
         correlation: { scenarioId: item.scenarioId },
-        attributes: { [OT.waitSource]: item.source, [OT.waitPriority]: item.priority },
+        prompt: { source: item.source, priority: item.priority },
       });
     } catch {
-      // A recorder that throws must not stop the prompt.
+      // A tracker that throws must not stop the prompt.
+      return undefined;
+    }
+  }
+
+  /**
+   * The prompt leaves the queue: the wait ends here. A prompt this dispatcher did not see written
+   * (one a restart found) begins its wait now, with the time it was written, so a long one is told.
+   * The handle stays until the prompt is marked delivered, so a prompt sent again after a failing
+   * sender does not tell its wait twice.
+   */
+  #reportWait(item: PromptQueueItem): void {
+    if (this.#waits === undefined) return;
+    if (!this.#held.has(item.id)) {
+      this.#held.set(item.id, this.#track(item, PROMPT_WAIT_REASON.restart));
+    }
+    try {
+      this.#held.get(item.id)?.end('delivered');
+    } catch {
+      // A tracker that throws must not stop the prompt.
     }
   }
 
@@ -244,6 +257,7 @@ export class PromptDispatcher {
           return;
         }
         await this.#store.promptQueue.markDelivered(item.id);
+        this.#held.delete(item.id);
       }
     } catch (error) {
       // The store failed (it was closed, say): stop, and say so; the items stay where they are.
