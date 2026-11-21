@@ -118,6 +118,35 @@ async function seen(app: RenderedApp, text: string): Promise<string> {
   });
 }
 
+/**
+ * Waits for one frame that shows every text. The conversation and the state line are fed by
+ * different frames of the socket (the state line ticks every `api.chat.state_interval`), so a test
+ * that read one and then asserted on the other would race.
+ */
+async function seenAll(app: RenderedApp, texts: readonly string[]): Promise<string> {
+  return waitUntil(`the texts ${JSON.stringify(texts)} (last frame: ${app.frame()})`, () => {
+    const frame = app.frame();
+    return Promise.resolve(texts.every((text) => frame.includes(text)) ? frame : undefined);
+  });
+}
+
+/** Waits for the frame to stop showing `text`. */
+async function gone(app: RenderedApp, text: string): Promise<string> {
+  return waitUntil(`the text "${text}" to leave (last frame: ${app.frame()})`, () => {
+    const frame = app.frame();
+    return Promise.resolve(frame.includes(text) ? undefined : frame);
+  });
+}
+
+/** Waits for an event of the log (the daemon writes it a moment after the TUI shows its cause). */
+async function eventOf(chat: ChatDaemon, type: string, atLeast = 1): Promise<void> {
+  await waitUntil(`${String(atLeast)} event(s) ${type}`, async () =>
+    (await chat.events()).filter((event) => event.type === type).length >= atLeast
+      ? true
+      : undefined,
+  );
+}
+
 describe.skipIf(NO_LAUNCHER)(
   'the chat of the TUI against the daemon with the fake agent (P12)',
   () => {
@@ -139,8 +168,8 @@ describe.skipIf(NO_LAUNCHER)(
         );
         expect(daemon.codeHost.pullRequests()).toHaveLength(1);
         // The conversation follows the play to its end, and the state line says the scenario is done.
-        const frame = await seen(app, 'is now DONE');
-        expect(frame).toContain('State: done');
+        // The state line has its own tick (`state_interval`), so it is waited for as well.
+        await seenAll(app, ['is now DONE', 'State: done']);
       });
     }, 120_000);
 
@@ -166,10 +195,7 @@ describe.skipIf(NO_LAUNCHER)(
           (await daemon.plays())[0]?.state !== 'AWAITING_PRODUCER' ? true : undefined,
         );
         await seen(app, 'is now PLANNING');
-        const answered = (await daemon.events()).filter(
-          (event) => event.type === 'decision.answered',
-        );
-        expect(answered.length).toBeGreaterThan(0);
+        await eventOf(daemon, 'decision.answered');
         // The fake agent keeps the marker of the first need, so the play runs out again: a second
         // decision, answered by key as well, to end the play.
         await waitUntil('the play to wait again', async () =>
@@ -222,42 +248,41 @@ describe.skipIf(NO_LAUNCHER)(
         await typeText(app, '#ot-ask What color is the sky?');
         app.press(ENTER);
         await seen(app, 'What color is the sky?');
-        // The question is on the card; the connection falls and comes back.
-        await waitUntil('the card', () =>
-          Promise.resolve(
-            app.frame().includes('1.') || app.frame().includes('1 ') ? true : undefined,
-          ),
-        );
+        // The question is on the card (the Director asked and the daemon wrote the ask); only then
+        // the connection falls and comes back.
+        await seen(app, 'Type the answer');
+        await eventOf(daemon, 'chat.ask');
         recorder.sockets[0]?.drop();
         await waitUntil('a second socket', () =>
           Promise.resolve(recorder.sockets.length >= 2 ? true : undefined),
         );
-        await waitUntil('the chat to be open again', () =>
-          Promise.resolve(app.frame().includes('Reconnected') ? true : undefined),
-        );
+        await seen(app, 'Reconnected');
         // The second socket sent `resume` with the cursor, and the card was not drawn twice.
         const resume = recorder.sockets[1]?.sent.map(
           (line) => JSON.parse(line) as { type: string },
         );
         expect(resume?.some((frame) => frame.type === 'resume')).toBe(true);
         const frame = await app.settle();
+        // Once as the line of the Producer and once on the card: not drawn again by the resume.
         expect(count(frame, 'What color is the sky?')).toBeLessThanOrEqual(2);
         // The decision is still one: answering it by key gives one reply, once.
         const asks = (await daemon.events()).filter((event) => event.type === 'chat.ask');
         expect(asks).toHaveLength(1);
-        app.press('1');
-        const reply = await seen(app, 'answer:');
-        expect(count(reply, 'answer:')).toBe(1);
+        // The card asks for text: the answer is typed, and the reply of the Director is its echo.
+        await typeText(app, 'blue');
+        app.press(ENTER);
+        const reply = await seen(app, 'answer: {');
+        expect(count(reply, 'answer: {')).toBe(1);
         // A second drop right after the answer: the reply is not drawn again.
         recorder.sockets.at(-1)?.drop();
         await waitUntil('a third socket', () =>
           Promise.resolve(recorder.sockets.length >= 3 ? true : undefined),
         );
         await waitUntil('the third socket to be open', () =>
-          Promise.resolve(count(app.frame(), 'Reconnected') >= 1 ? true : undefined),
+          Promise.resolve(count(app.frame(), 'Reconnected') >= 2 ? true : undefined),
         );
         await new Promise((resolve) => setTimeout(resolve, 300));
-        expect(count(await app.settle(), 'answer:')).toBe(1);
+        expect(count(await app.settle(), 'answer: {')).toBe(1);
       });
     }, 120_000);
 
@@ -274,12 +299,14 @@ describe.skipIf(NO_LAUNCHER)(
         await typeText(app, '!ls');
         app.press(ENTER);
         // The block of the command: its line, the output of the repository and how it ended.
-        const frame = await seen(app, 'Finished with code 0');
-        expect(frame).toContain('! ls');
-        expect(frame).toContain('shared.txt');
+        const frame = await seenAll(app, [
+          'Finished with code 0',
+          '! ls',
+          'shared.txt',
+          'Kept out of what the Director reads.',
+        ]);
         // The state line goes back to the Director, and the line of the box is not repeated as a message.
         expect(count(frame, '! ls')).toBe(1);
-        expect(frame).toContain('Kept out of what the Director reads.');
         const events = (await daemon.events()).filter((event) => event.id > before);
         expect(events.map((event) => event.type)).toEqual(
           expect.arrayContaining(['chat.shell_command.started', 'chat.shell_command.finished']),
@@ -293,13 +320,11 @@ describe.skipIf(NO_LAUNCHER)(
         const app = await openTui(daemon);
         await typeText(app, '!sleep 2; echo done-sleeping');
         app.press(ENTER);
-        const running = await seen(app, 'Running in');
-        expect(running).toContain('! sleep 2; echo done-sleeping');
-        expect(running).toContain('running: ! sleep 2');
-        const frame = await seen(app, 'Finished with code 0');
-        expect(frame).toContain('done-sleeping');
-        expect(frame).not.toContain('Running in');
-        expect(frame).not.toContain('running: !');
+        await seenAll(app, ['Running in', '! sleep 2; echo done-sleeping', 'running: ! sleep 2']);
+        await seenAll(app, ['Finished with code 0', 'done-sleeping']);
+        // The running marks go with the end of the command (the state line catches up on its tick).
+        await gone(app, 'Running in');
+        await gone(app, 'running: !');
       });
     }, 120_000);
 
@@ -341,10 +366,10 @@ describe.skipIf(NO_LAUNCHER)(
           app.press(ENTER);
           await seen(app, 'Send the output of ! ls to the Director?');
           app.press('2');
-          await seen(app, 'Keep here');
+          await eventOf(daemon, 'chat.ask_closed');
+          await gone(app, 'Send the output of');
           await new Promise((resolve) => setTimeout(resolve, 500));
           expect((await daemon.events()).filter((e) => e.type === 'prompt.queued')).toEqual([]);
-          expect(app.frame()).not.toContain('Send the output of');
         },
       );
     }, 120_000);
