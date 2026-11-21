@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-test",
+    "emitDeclarationOnly": true,
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.test-support.ts",
+    "src/**/*.test-support.tsx"
+  ],
+  "references": [
+    { "path": "tsconfig.src.json" },
+    { "path": "../protocol/tsconfig.src.json" },
+    { "path": "../client/tsconfig.src.json" },
+    { "path": "../core/tsconfig.src.json" },
+    { "path": "../daemon/tsconfig.src.json" }
+  ]
+}

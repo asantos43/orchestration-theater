@@ -38,6 +38,7 @@
     "@otheater/client": "workspace:*",
     "@otheater/core": "workspace:*",
     "@otheater/protocol": "workspace:*",
+    "@otheater/tui": "workspace:*",
     "hono": "4.13.16",
     "i18next": "26.6.0",
     "pino": "10.4.0",

@@ -24,6 +24,12 @@ import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings
 import { makeTempDataDir } from './test-helpers.js';
 
 describe('parseDuration / parseTimeOfDay', () => {
+  it('ui.bare_command accepts tui and help, and nothing else', () => {
+    expect(parseConfig('ui:\n  bare_command: help\n').ui.bare_command).toBe('help');
+    expect(parseConfig('ui:\n  bare_command: tui\n').ui.bare_command).toBe('tui');
+    expect(() => parseConfig('ui:\n  bare_command: gui\n')).toThrow(/ui\.bare_command/);
+  });
+
   it('reads units and rejects the rest', () => {
     expect(parseDuration('30m')).toBe(1_800_000);
     expect(parseDuration('2h')).toBe(7_200_000);
@@ -67,6 +73,7 @@ describe('parseConfig', () => {
       pages_per_step: 'all',
     });
     expect(config.ui.locale).toBe('auto');
+    expect(config.ui.bare_command).toBe('tui');
     expect(config.log).toEqual({ level: 'info', destination: 'file' });
   });
 
