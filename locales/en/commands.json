@@ -11,6 +11,7 @@
     "pause": "Pauses the open plays of the scenario",
     "resume": "Resumes the paused plays of the scenario",
     "cancel": "Cancels the open plays of the scenario (asks for confirmation)",
+    "stop": "Stops the reply the Director is giving; the plays go on",
     "new": "Opens a new chat scenario",
     "attach": "Attaches a file to the scenario",
     "export": "Exports the scenario with its plays and decisions",
@@ -114,6 +115,10 @@
     },
     "cancel": {
       "done": "Cancelled {{count}} play(s)."
+    },
+    "stop": {
+      "done": "Stopped the reply of the Director.",
+      "idle": "The Director is not giving a reply."
     },
     "new": {
       "done": "Opened the scenario {{id}}."

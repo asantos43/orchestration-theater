@@ -7,4 +7,5 @@ export * from './decisions.js';
 export * from './orders.js';
 export * from './quotas.js';
 export * from './recent-events.js';
+export * from './activity.js';
 export * from './sync.js';

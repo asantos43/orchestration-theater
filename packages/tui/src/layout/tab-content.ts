@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createElement, type ReactNode } from 'react';
+import { createElement } from 'react';
 import { DirectivesTab, SECTION_IDS as DIRECTIVES_SECTIONS } from '../tabs/directives/index.js';
-import type { TabContentProps } from './tab-props.js';
+import { overviewTab } from '../tabs/overview/index.js';
+import { usageTab } from '../tabs/usage/index.js';
+import type { TabContentMap } from './tab-types.js';
 
-export type { TabContentProps } from './tab-props.js';
-
-/** The content of one tab of the panel. */
-export interface TabDefinition {
-  /** The ids of its sections, top to bottom. The cursor of the panel walks them and Enter folds the one it is on. */
-  readonly sections?: readonly string[] | undefined;
-  readonly render: (props: TabContentProps) => ReactNode;
-}
-
-export type TabContentMap = Readonly<Record<string, TabDefinition>>;
+export type { TabContentMap, TabContentProps, TabDefinition } from './tab-types.js';
 
 /**
  * The content of the tabs, by the id of the tab in the registry. [proposta] "The tabs come in
@@ -21,8 +14,10 @@ export type TabContentMap = Readonly<Record<string, TabDefinition>>;
  * placeholder of the panel.
  */
 export const TAB_CONTENT: TabContentMap = {
+  overview: overviewTab, // P13
+  usage: usageTab, // P13
   directives: {
     sections: DIRECTIVES_SECTIONS,
     render: (props) => createElement(DirectivesTab, props),
-  },
+  }, // P15
 };

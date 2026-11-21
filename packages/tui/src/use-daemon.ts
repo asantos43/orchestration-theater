@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DaemonStores, LayoutStore } from '@otheater/client';
+import type { ApiClient, DaemonStores, LayoutStore } from '@otheater/client';
 import type { ApiStatus } from '@otheater/protocol';
 import { useEffect, useState } from 'react';
 import type { DaemonConnector, LiveDaemon } from './daemon-connection.js';
@@ -14,6 +14,8 @@ export type DaemonView =
       readonly status: ApiStatus;
       readonly address: string;
       readonly stores: DaemonStores;
+      /** The client of the daemon: the chat (P12) and the tabs (P13). */
+      readonly client: ApiClient;
       /** The saved layout, already read: the first frame of the screen is the one the person left. */
       readonly layout: LayoutStore;
     };
@@ -60,6 +62,7 @@ export function useDaemon(connector: DaemonConnector, options: UseDaemonOptions 
         status: live.status,
         address: live.address,
         stores: live.stores,
+        client: live.client,
         layout,
       });
       let wasLive = false;

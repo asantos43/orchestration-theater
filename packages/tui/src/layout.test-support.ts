@@ -11,7 +11,9 @@ import {
   type ApiPlay,
   type ApiQuotaStatus,
   type ApiScenario,
+  type ApiSlashCommand,
 } from '@otheater/protocol';
+import { FakeChatServer } from './chat/fake-socket.test-support.js';
 import type { ConnectResult, DaemonConnector, LiveDaemon } from './daemon-connection.js';
 import { DEFAULT_UI_SETTINGS, type UiSettings } from './settings.js';
 
@@ -45,10 +47,14 @@ export class MemoryLayoutFile implements LayoutFileStore {
 export interface FakeOnline {
   readonly connector: DaemonConnector;
   readonly stores: DaemonStores;
+  /** The REST client of the fake daemon: a test stubs its methods (P13). */
+  readonly client: ApiClient;
   readonly file: MemoryLayoutFile;
   /** The layout stores opened (one per app that connected). */
   readonly layouts: LayoutStore[];
   readonly closed: () => number;
+  /** The chat sockets the app opened (P12): the test plays the daemon's frames on them. */
+  readonly chat: FakeChatServer;
 }
 
 export interface FakeOnlineOptions {
@@ -56,6 +62,8 @@ export interface FakeOnlineOptions {
   readonly address?: string | undefined;
   /** Whether the stream is live (the default) or still being read. */
   readonly live?: boolean | undefined;
+  /** What `GET /v1/commands` answers (P12). Default: none. */
+  readonly commands?: readonly ApiSlashCommand[] | undefined;
 }
 
 /** A connector that is online with stores that no network feeds: the test fills them with `setState`. */
@@ -63,6 +71,17 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   const file = options.file ?? new MemoryLayoutFile();
   // The client is never asked for anything: the stores are not started.
   const client = new ApiClient({ url: 'http://127.0.0.1:9', token: 'test' });
+  // The chat of P12 opens its sockets and reads the commands through the client: both are fakes.
+  const chat = new FakeChatServer();
+  const fake = client as unknown as { chat: unknown; call: unknown };
+  fake.chat = chat.open;
+  // Only `GET /v1/commands` answers. Any other read (the Usage tab of P13) never settles: the tab
+  // stays in its reading state, the same in every frame, instead of a wrong shape or a failure
+  // whose moment depends on the machine.
+  fake.call = (route: { readonly path: string }) =>
+    route.path === '/v1/commands'
+      ? Promise.resolve({ commands: options.commands ?? [] })
+      : new Promise<never>(() => undefined);
   const stores = new DaemonStores(client);
   stores.start = () => Promise.resolve();
   if (options.live !== false) {
@@ -81,6 +100,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
       apiVersion: API_VERSION,
     },
     address: options.address ?? '127.0.0.1:7777',
+    client,
     stores,
     readSettings: () => Promise.resolve(DEFAULT_UI_SETTINGS),
     openLayout: async () => {
@@ -101,10 +121,12 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   const result: ConnectResult = { kind: 'online', daemon };
   return {
     connector: { connect: () => Promise.resolve(result) },
+    client,
     stores,
     file,
     layouts,
     closed: () => closes,
+    chat,
   };
 }
 

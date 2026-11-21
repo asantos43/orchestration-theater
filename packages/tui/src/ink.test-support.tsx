@@ -4,11 +4,12 @@ import { cleanup, render } from 'ink-testing-library';
 import type { i18n as I18nInstance } from 'i18next';
 import type { ReactNode } from 'react';
 import { App } from './app.js';
-import type { ChatMessage } from './layout/chat.js';
+import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import type { TabContentMap } from './layout/tab-content.js';
 import type { KeyEnvironment } from './keys/use-keymap.js';
 import type { ConnectResult, DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
+import type { MouseLayerProps } from './mouse/index.js';
 import {
   LocaleController,
   createTuiI18n,
@@ -83,10 +84,19 @@ export interface RenderAppOptions {
   readonly systemLocale?: string | undefined;
   /** The size of the terminal (the test stdout has 100 columns and no rows). */
   readonly size?: { readonly columns: number; readonly rows: number } | undefined;
-  readonly messages?: readonly ChatMessage[] | undefined;
+  /** How the chat opens its sockets, and where the history of the text box lives. */
+  readonly chatSocket?: ChatPanelConfig['socket'];
+  readonly history?: ChatPanelConfig['history'];
   readonly tabContent?: TabContentMap | undefined;
   /** The system the keymap adapts to. Default: Linux with no terminal variables, on every OS. */
   readonly keyEnvironment?: KeyEnvironment | undefined;
+  /**
+   * Turns the mouse layer on: what it writes to the terminal (the mode sequences and the OSC 52
+   * copy) goes to this list. Without it the layer does nothing, as in the tests that ignore it.
+   */
+  readonly mouseWrites?: string[] | undefined;
+  /** The ports of the copy; the test one is Linux with no tool and no tmux, so only OSC 52 and `system` failing are reachable. */
+  readonly mouseClipboard?: MouseLayerProps['clipboard'];
 }
 
 /** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */
@@ -109,9 +119,18 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       locale={locale}
       settings={settings}
       patch={options.patch}
-      messages={options.messages}
+      chatSocket={options.chatSocket}
+      history={options.history}
       tabContent={options.tabContent}
       keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
+      mouseTerminal={
+        options.mouseWrites === undefined
+          ? undefined
+          : { write: (text) => options.mouseWrites?.push(text) }
+      }
+      mouseClipboard={
+        options.mouseClipboard ?? { environment: { platform: 'linux', env: {} }, tmux: false }
+      }
       flush={() => {
         flushes += 1;
       }}

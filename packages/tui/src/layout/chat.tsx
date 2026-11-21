@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
-import { useMemo, type ReactNode } from 'react';
+import { Box, Text, type DOMElement } from 'ink';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMouseTarget, type DragInfo } from '../mouse/index.js';
 import { Frame } from './frame.js';
-import { INPUT_ROWS } from './input-slot.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
 import { wrapText } from './text.js';
 import { COLOR } from './theme.js';
 
-/**
- * One message of the chat as the layout draws it. [proposta] Provisional: P12 feeds the chat from
- * the daemon (`/v1/chat`); until then the app takes the messages as a prop, so the layout, the
- * scroll and the tests are about the same list the chat will be.
- */
+/** One message of the chat as the layout draws it; `chat/lines.ts` makes them from the chat state. */
 export interface ChatMessage {
   readonly id: string;
   readonly who: 'you' | 'director' | 'system';
@@ -36,8 +32,15 @@ export interface ChatProps {
   readonly messages: readonly ChatMessage[];
   readonly offset: number;
   readonly onOffset: (offset: number) => void;
+  /** The border is dragged with the mouse (N34): the same width action as the keys of the border. */
+  readonly onResizeDrag?: ((drag: DragInfo) => void) | undefined;
   readonly input: ReactNode;
+  /** Rows the input region takes (the text box, the decision card, the suggestions). */
+  readonly inputRows?: number | undefined;
 }
+
+/** Rows of the input region when nothing is open: the text box of one line, and its status line. */
+export const INPUT_ROWS = 2;
 
 const WHO_COLOR: Readonly<Record<ChatMessage['who'], string>> = {
   you: 'cyanBright',
@@ -46,15 +49,15 @@ const WHO_COLOR: Readonly<Record<ChatMessage['who'], string>> = {
 };
 
 /** Rows left to the messages in a chat of `height` rows. */
-export function chatMessageRows(height: number): number {
-  return Math.max(0, height - 6 - INPUT_ROWS);
+export function chatMessageRows(height: number, inputRows: number = INPUT_ROWS): number {
+  return Math.max(0, height - 6 - inputRows);
 }
 
 /** The chat in full height: title, state, the messages (a window over the list), and the input. */
 export function Chat(props: ChatProps): ReactNode {
   const { t } = useTranslation();
   const inner = Math.max(1, props.width - 2);
-  const rows = chatMessageRows(props.height);
+  const rows = chatMessageRows(props.height, props.inputRows);
   const { messages } = props;
   const lines = useMemo(
     () =>
@@ -73,6 +76,13 @@ export function Chat(props: ChatProps): ReactNode {
       },
     [messages, t],
   );
+  // The right border is what the mouse drags to widen or narrow the chat.
+  const edgeRef = useRef<DOMElement>(null);
+  useMouseTarget(
+    edgeRef,
+    { onDrag: props.onResizeDrag },
+    { enabled: props.resizable && props.onResizeDrag !== undefined },
+  );
   const handleRows = Math.min(6, Math.max(0, props.height - 2));
   return (
     <Frame
@@ -81,6 +91,7 @@ export function Chat(props: ChatProps): ReactNode {
       active={props.focused}
       title={t('layout.chat.title')}
       bottomLabel={props.widthLabel}
+      edgeRef={edgeRef}
       handle={
         props.resizable
           ? {

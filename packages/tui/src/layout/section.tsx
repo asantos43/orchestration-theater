@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
-import type { ReactNode } from 'react';
+import { Box, Text, type DOMElement } from 'ink';
+import { useRef, type ReactNode } from 'react';
+import { useMouseTarget } from '../mouse/index.js';
 import { fit, fitRight } from './text.js';
 import { COLOR, paint } from './theme.js';
 
@@ -12,6 +13,8 @@ import { COLOR, paint } from './theme.js';
 export interface SectionControl {
   readonly folded: ReadonlySet<string>;
   readonly cursor: string | undefined;
+  /** A click on the header folds or unfolds the section (N34); without it the header is not clickable. */
+  readonly toggle?: ((id: string) => void) | undefined;
 }
 
 export interface SectionProps {
@@ -30,6 +33,16 @@ export function Section(props: SectionProps): ReactNode {
   const { id, width, control } = props;
   const folded = control.folded.has(id);
   const onCursor = control.cursor === id;
+  const headRef = useRef<DOMElement>(null);
+  useMouseTarget(
+    headRef,
+    {
+      onClick: () => {
+        control.toggle?.(id);
+      },
+    },
+    { enabled: control.toggle !== undefined },
+  );
   const rightText = props.right ?? '';
   const head = `${folded ? '▸' : '▾'} ${props.title}`;
   const line =
@@ -38,9 +51,16 @@ export function Section(props: SectionProps): ReactNode {
       : `${fit(head, Math.max(1, width - rightText.length - 1))} ${fitRight(rightText, rightText.length)}`;
   return (
     <Box flexDirection="column" width={width}>
-      <Text bold inverse={onCursor} {...paint(onCursor ? COLOR.accent : undefined)} wrap="truncate">
-        {fit(line, width)}
-      </Text>
+      <Box ref={headRef} width={width} height={1}>
+        <Text
+          bold
+          inverse={onCursor}
+          {...paint(onCursor ? COLOR.accent : undefined)}
+          wrap="truncate"
+        >
+          {fit(line, width)}
+        </Text>
+      </Box>
       {!folded && props.children}
     </Box>
   );

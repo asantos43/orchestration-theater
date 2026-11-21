@@ -15,6 +15,12 @@ import { ApiRequestError } from '../errors.js';
 import type { EventStream, EventStreamOptions } from '../event-stream.js';
 import { applyEvent, type EventReducer, type SyncFields } from './core.js';
 import {
+  initialActivity,
+  installActivity,
+  reduceActivity,
+  type ActivityState,
+} from './activity.js';
+import {
   createDemandsReducer,
   initialDemands,
   installDemands,
@@ -190,6 +196,8 @@ export class DaemonStores {
   readonly events: StoreApi<RecentEventsState> = createStore<RecentEventsState>(() =>
     initialRecentEvents(),
   );
+  /** Who is working and what is paused, from the events alone (P13). */
+  readonly activity: StoreApi<ActivityState> = createStore<ActivityState>(() => initialActivity());
   readonly status: StoreApi<SyncStatus> = createStore<SyncStatus>(() => ({
     phase: 'idle',
     connection: 'connecting',
@@ -417,6 +425,7 @@ export class DaemonStores {
     this.orders.setState(installOrders(orders, head), true);
     if (!this.#recentLoaded) {
       this.events.setState(installRecentEvents(head), true);
+      this.activity.setState(installActivity(head), true);
       this.#recentLoaded = true;
     }
   }
@@ -480,6 +489,7 @@ export class DaemonStores {
     this.quotas.setState((s) => applyEvent(s, event, reduceQuotas), true);
     this.orders.setState((s) => applyEvent(s, event, reduceOrders), true);
     this.events.setState((s) => applyEvent(s, event, this.#reduceEvents), true);
+    this.activity.setState((s) => applyEvent(s, event, reduceActivity), true);
     this.status.setState({ cursor: event.id });
   }
 

@@ -11,6 +11,7 @@
     "pause": "Pausa as peças abertas do cenário",
     "resume": "Retoma as peças pausadas do cenário",
     "cancel": "Cancela as peças abertas do cenário (pede confirmação)",
+    "stop": "Para a resposta que o Diretor está dando; as peças seguem",
     "new": "Abre um novo cenário de conversa",
     "attach": "Anexa um arquivo ao cenário",
     "export": "Exporta o cenário com as peças e as decisões",
@@ -114,6 +115,10 @@
     },
     "cancel": {
       "done": "{{count}} peça(s) cancelada(s)."
+    },
+    "stop": {
+      "done": "A resposta do Diretor foi interrompida.",
+      "idle": "O Diretor não está dando uma resposta."
     },
     "new": {
       "done": "Cenário {{id}} aberto."
