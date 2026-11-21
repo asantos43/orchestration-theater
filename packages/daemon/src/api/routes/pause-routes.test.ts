@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- the answers of the API are read as loose JSON */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- the answers of the API are read as loose JSON */
 import { join } from 'node:path';
 import { Conflict } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';

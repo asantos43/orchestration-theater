@@ -95,7 +95,7 @@ describe('AttemptRunner, pause and resume of an Actor (N176)', () => {
       expect(interrupted[0]?.payload).toMatchObject({
         cause: 'paused',
         form: 'native',
-        checkpointSha: expect.any(String),
+        checkpointSha: expect.any(String) as string,
       });
       const paused = await eventsOf(r, 'attempt.paused');
       expect(paused[0]?.payload).toMatchObject({

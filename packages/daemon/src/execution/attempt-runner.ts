@@ -2548,7 +2548,10 @@ export class AttemptRunner {
         const onCancel = (): void => {
           resolve('cancel');
         };
-        if (context.halt.signal.aborted) return onCancel();
+        if (context.halt.signal.aborted) {
+          onCancel();
+          return;
+        }
         context.halt.signal.addEventListener('abort', onCancel, {
           once: true,
           signal: guard.signal,
@@ -2556,7 +2559,10 @@ export class AttemptRunner {
         const onStop = (): void => {
           resolve('stopped');
         };
-        if (context.stop.signal.aborted) return onStop();
+        if (context.stop.signal.aborted) {
+          onStop();
+          return;
+        }
         context.stop.signal.addEventListener('abort', onStop, { once: true, signal: guard.signal });
         // A profile that leaves while the attempt is paused lets go of it (`releaseProfile` does not
         // wait for a pause); the resume finds the profile released and passes the baton.

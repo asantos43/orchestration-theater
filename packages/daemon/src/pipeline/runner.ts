@@ -518,7 +518,7 @@ const BYPASSES_PAUSE: ReadonlySet<PlayEffect['type']> = new Set([
 /** Writes the held effects into the persisted snapshot (the machine does not know them). */
 function setHeld(persisted: JsonObject, held: readonly PlayEffect[]): void {
   const context = persisted.context as { paused?: { held?: unknown } | null } | undefined;
-  if (context?.paused != null) context.paused.held = toJson(held.length === 0 ? [] : held) as never;
+  if (context?.paused != null) context.paused.held = toJson(held.length === 0 ? [] : held);
 }
 
 function sameEffect(a: PlayEffect, b: PlayEffect): boolean {
