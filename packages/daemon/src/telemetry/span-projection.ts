@@ -13,7 +13,6 @@ import {
   providerNameOf,
   type WaitKind,
 } from './span-conventions.js';
-import type { DirectWait } from './wait-recorder.js';
 import {
   attemptSpanId,
   playSpanId,
@@ -65,6 +64,34 @@ function num(value: JsonValue | undefined): number | undefined {
 
 function record(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined;
+}
+
+/** The kinds of wait that `wait.started` can carry (P15). */
+function waitKindOf(value: JsonValue | undefined): WaitKind | undefined {
+  if (value === WAIT_KIND.promptQueue) return WAIT_KIND.promptQueue;
+  if (value === WAIT_KIND.poolAdmission) return WAIT_KIND.poolAdmission;
+  return undefined;
+}
+
+function reasonsOf(value: JsonValue | undefined): Set<string> {
+  const reasons = new Set<string>();
+  for (const entry of Array.isArray(value) ? value : []) {
+    const reason = str(entry);
+    if (reason !== undefined) reasons.add(reason);
+  }
+  return reasons;
+}
+
+/** What the payload of `wait.started` says about who waited. */
+function waitExtra(event: EventEnvelope): Record<string, JsonValue | undefined> {
+  const { payload } = event;
+  return {
+    [OT.client]: str(payload.client),
+    [OT.profile]: str(payload.profile),
+    [OT.role]: str(payload.role),
+    [OT.waitSource]: str(payload.promptSource),
+    [OT.waitPriority]: num(payload.promptPriority),
+  };
 }
 
 /** An attribute bag without the keys whose value is `undefined`. */
@@ -169,6 +196,8 @@ interface WaitState {
   readonly kind: WaitKind;
   /** What it hangs from when it has no attempt: the stage (or the play) it started in. */
   readonly parentSpanId: string | null;
+  /** A wait with no play or attempt (a prompt in the queue) has a trace of its own, from this key. */
+  readonly traceKey?: string;
   readonly reasons: Set<string>;
   readonly extra: Record<string, JsonValue | undefined>;
 }
@@ -254,6 +283,8 @@ export class SpanProjection {
   readonly #tools = new Map<string, ToolState>();
   readonly #resetWaits = new Map<string, WaitState>();
   readonly #demandWaits = new Map<string, WaitState>();
+  /** `wait.started` of the prompt queue and the pool (P15), by kind and id of the wait. */
+  readonly #eventWaits = new Map<string, WaitState>();
   /** `executor.selected` of each play, to give a session the role it was chosen for. */
   readonly #selections = new Map<string, { role: string; key: string }[]>();
 
@@ -297,6 +328,15 @@ export class SpanProjection {
       case 'demand.resumed':
         this.#demandResumed(event, out);
         break;
+      case 'wait.started':
+        this.#waitStarted(event);
+        break;
+      case 'wait.ended':
+        this.#waitEnded(event, out);
+        break;
+      case 'daemon.started':
+        this.#daemonStarted(event, out);
+        break;
       case 'attempt.submitted':
       case 'attempt.cancelled':
       case 'attempt.aborted':
@@ -327,6 +367,7 @@ export class SpanProjection {
     for (const tool of this.#tools.values()) consider(tool.startId);
     for (const wait of this.#resetWaits.values()) consider(wait.startId);
     for (const wait of this.#demandWaits.values()) consider(wait.startId);
+    for (const wait of this.#eventWaits.values()) consider(wait.startId);
     return Number.isFinite(lowest) ? Math.min(lowest - 1, lastReadId) : lastReadId;
   }
 
@@ -341,7 +382,8 @@ export class SpanProjection {
       this.#sessions.size +
       this.#tools.size +
       this.#resetWaits.size +
-      this.#demandWaits.size
+      this.#demandWaits.size +
+      this.#eventWaits.size
     );
   }
 
@@ -426,6 +468,14 @@ export class SpanProjection {
     for (const [key, wait] of [...this.#demandWaits]) {
       if (wait.ids.playId !== playId) continue;
       this.#demandWaits.delete(key);
+      pushSpan(
+        out,
+        this.#waitSpan(wait, event.timestamp, undefined, { [OT.closedBy]: CLOSED_BY.playEnd }),
+      );
+    }
+    for (const [key, wait] of [...this.#eventWaits]) {
+      if (wait.ids.playId !== playId) continue;
+      this.#eventWaits.delete(key);
       pushSpan(
         out,
         this.#waitSpan(wait, event.timestamp, undefined, { [OT.closedBy]: CLOSED_BY.playEnd }),
@@ -633,6 +683,11 @@ export class SpanProjection {
     if (reset !== undefined) {
       this.#resetWaits.delete(attempt.attemptId);
       pushSpan(out, this.#waitSpan(reset, endMs, undefined, { [OT.closedBy]: closing }));
+    }
+    for (const [key, wait] of [...this.#eventWaits]) {
+      if (wait.ids.attemptId !== attempt.attemptId) continue;
+      this.#eventWaits.delete(key);
+      pushSpan(out, this.#waitSpan(wait, endMs, undefined, { [OT.closedBy]: closing }));
     }
   }
 
@@ -892,6 +947,67 @@ export class SpanProjection {
     );
   }
 
+  /**
+   * `wait.started` (P15): a wait of the prompt queue or of the pool that went past
+   * `events.wait_threshold`. Told again for an open wait (a restart found the prompt still queued),
+   * it changes nothing: the wait is one span, from the first `since`.
+   */
+  #waitStarted(event: EventEnvelope): void {
+    const waitId = str(event.payload.waitId);
+    const kind = waitKindOf(event.payload.kind);
+    if (waitId === undefined || kind === undefined) return;
+    const key = `${kind}|${waitId}`;
+    if (this.#eventWaits.has(key)) return;
+    const ids = idsOf(event);
+    this.#eventWaits.set(key, {
+      key: `${waitId}|${String(event.id)}`,
+      ids,
+      startId: event.id,
+      startTs: Math.min(event.timestamp, num(event.payload.since) ?? event.timestamp),
+      kind,
+      parentSpanId: null,
+      traceKey: waitId,
+      reasons: reasonsOf(event.payload.reasons),
+      extra: waitExtra(event),
+    });
+  }
+
+  #waitEnded(event: EventEnvelope, out: TelemetrySpan[]): void {
+    const waitId = str(event.payload.waitId);
+    const kind = waitKindOf(event.payload.kind);
+    if (waitId === undefined || kind === undefined) return;
+    const key = `${kind}|${waitId}`;
+    const wait = this.#eventWaits.get(key);
+    // An end with no start is a wait that stayed under the threshold: nothing to close.
+    if (wait === undefined) return;
+    this.#eventWaits.delete(key);
+    for (const reason of reasonsOf(event.payload.reasons)) wait.reasons.add(reason);
+    pushSpan(
+      out,
+      this.#waitSpan(wait, event.timestamp, str(event.payload.outcome), {
+        [OT.waitMs]: num(event.payload.waitedMs),
+      }),
+    );
+  }
+
+  /**
+   * A new run of the daemon: the sessions waiting in the pool of the last run are gone and their
+   * `wait.ended` will not come, so those spans end here. A prompt still queued is kept: the
+   * dispatcher tells it again and delivers it.
+   */
+  #daemonStarted(event: EventEnvelope, out: TelemetrySpan[]): void {
+    for (const [key, wait] of [...this.#eventWaits]) {
+      if (wait.kind !== WAIT_KIND.poolAdmission) continue;
+      this.#eventWaits.delete(key);
+      pushSpan(
+        out,
+        this.#waitSpan(wait, event.timestamp, undefined, {
+          [OT.closedBy]: CLOSED_BY.daemonRestart,
+        }),
+      );
+    }
+  }
+
   #waitSpan(
     wait: WaitState,
     endMs: number,
@@ -901,7 +1017,9 @@ export class SpanProjection {
     const { ids } = wait;
     const attempt = ids.attemptId === undefined ? undefined : this.#attempts.get(ids.attemptId);
     const parent = ids.attemptId !== undefined ? attemptSpanId(ids.attemptId) : wait.parentSpanId;
-    const traceId = traceIdForAttempt(ids);
+    const traceId =
+      traceIdForAttempt(ids) ??
+      (wait.traceKey === undefined ? undefined : traceIdForKey(wait.kind, wait.traceKey));
     if (traceId === undefined) return undefined;
     return buildSpan({
       traceId,
@@ -924,40 +1042,4 @@ export class SpanProjection {
       sessionId: attempt?.activeSessionId ?? str(wait.extra[OT.sessionId]),
     });
   }
-}
-
-/**
- * The span of a wait that the daemon recorded where it happened ({@link DirectWait}). It lives in
- * the trace of the attempt it delayed (and hangs from the attempt), or, when it has no attempt (a
- * prompt in the queue), in a trace of its own.
- */
-export function directWaitSpan(wait: DirectWait): TelemetrySpan {
-  const correlation = wait.correlation ?? {};
-  const ids: Ids = {
-    scenarioId: correlation.scenarioId,
-    playId: correlation.playId,
-    attemptId: correlation.attemptId,
-  };
-  const traceId = traceIdForAttempt(ids) ?? traceIdForKey(wait.kind, wait.key);
-  return buildSpan({
-    traceId,
-    spanId: waitSpanId(wait.kind, wait.key),
-    parentSpanId: ids.attemptId === undefined ? null : attemptSpanId(ids.attemptId),
-    name: SPAN_NAME.wait,
-    kind: SPAN_KIND.internal,
-    startMs: wait.startMs,
-    endMs: wait.endMs,
-    attributes: attrs({
-      [OT.waitKind]: wait.kind,
-      [OT.waitReason]: wait.reason,
-      [OT.waitOutcome]: wait.outcome,
-      [OT.waitMs]: Math.max(0, wait.endMs - wait.startMs),
-      [OT.waitOrigin]: 'direct',
-      [OT.role]: correlation.role,
-      [OT.client]: correlation.client,
-      [OT.profile]: correlation.profile,
-      ...wait.attributes,
-    }),
-    ids,
-  });
 }

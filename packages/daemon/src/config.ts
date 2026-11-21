@@ -1261,12 +1261,19 @@ const DirectSessionConfigSchema = z
 /** `telemetry.enabled`, `telemetry.clients.<client>` and `telemetry.clients.<client>.<option>`: on or off. */
 export const TELEMETRY_SWITCH_MODES = ['on', 'off'] as const;
 /**
- * `telemetry.daemon_spans.waits` (Phase 8, P4; [proposta]): which `otheater.wait` spans the daemon
- * makes. `all`: those the log tells (quota, executor selection, tool semaphore) and those recorded
- * where the daemon waits (the prompt queue, the pool); `log`: only those the log tells, so the
- * whole set can be rebuilt from the log; `off`: none.
+ * `telemetry.daemon_spans.waits` (Phase 8, P4, P15; [proposta]): whether the daemon makes the
+ * `otheater.wait` spans. `all`: every wait the log tells (quota, executor selection, tool
+ * semaphore, and the prompt queue and the pool past `events.wait_threshold`, P15); `off`: none.
+ * Every span is made from the log, so a recreated base gets them all again.
  */
-export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'log', 'off'] as const;
+export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'off'] as const;
+/**
+ * `events.wait_threshold` (Phase 8, P15, N222 (a); [proposta]): how long a wait of the prompt queue
+ * or of the pool must last to be told in the log (`wait.started`, `wait.ended`). A duration (default
+ * `1s`); `always`: every wait that began, even one that ended at once; `off`: none. Parsed to
+ * milliseconds, `0` for `always` and `null` for `off`.
+ */
+export const EVENT_WAIT_THRESHOLD_ALWAYS = 'always';
 /** `telemetry.synchronous` (`PRAGMA synchronous` of the telemetry base only; the `Store` stays full). */
 export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
 /** `backup.telemetry`: whether the backup carries the telemetry file. */
@@ -2095,6 +2102,18 @@ export const DaemonConfigSchema = z
           (bytes) => bytes > 0,
           'expected a size above zero',
         ).prefault('64KB'),
+        /**
+         * P15 of Phase 8 (N222 (a)) [proposta]: a wait of the prompt queue or of the session pool that
+         * lasts this long is written as `wait.started` and `wait.ended` (the spans `otheater.wait` are
+         * made from them). `always` writes every wait that began; `off` writes none.
+         */
+        wait_threshold: z
+          .union([
+            z.literal('off').transform(() => null),
+            z.literal(EVENT_WAIT_THRESHOLD_ALWAYS).transform(() => 0),
+            DurationSchema,
+          ])
+          .prefault('1s'),
       })
       .prefault({}),
     /**
