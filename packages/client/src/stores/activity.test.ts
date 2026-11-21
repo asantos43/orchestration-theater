@@ -42,8 +42,7 @@ function transition(id: number, name: string, from: string, to: string): ApiEven
   );
 }
 
-const run = (events: ApiEventEnvelope[]) =>
-  applyEvents(initialActivity(), events, reduceActivity);
+const run = (events: ApiEventEnvelope[]) => applyEvents(initialActivity(), events, reduceActivity);
 
 describe('the activity store', () => {
   it('starts empty and an install sets the cursor', () => {
@@ -86,11 +85,21 @@ describe('the activity store', () => {
     expect(state.actors['P1/D1/1']?.startedAt).toBe(1_700_000_000_001);
   });
 
-  it('a paused attempt stays on the list after its session closes, until it resumes', () => {
+  it('an interrupted session keeps the attempt in flight until its end', () => {
+    const state = run([
+      opened(1, 'P1/D1/1', 's1'),
+      onAttempt(2, 'session.closed', { sessionId: 's1', reason: 'interrupted' }),
+    ]);
+    expect(Object.keys(state.actors)).toEqual(['P1/D1/1']);
+    const ended = applyEvents(state, [onAttempt(3, 'attempt.cancelled', {})], reduceActivity);
+    expect(ended.actors).toEqual({});
+  });
+
+  it('a paused attempt stays on the list after its session closes (closed first, then paused), until it resumes', () => {
     const paused = run([
       opened(1, 'P1/D1/1'),
-      onAttempt(2, 'attempt.paused', { origin: 'actor', checkpointed: true }),
-      onAttempt(3, 'session.closed', { sessionId: 's1', reason: 'interrupted' }),
+      onAttempt(2, 'session.closed', { sessionId: 's1', reason: 'interrupted' }),
+      onAttempt(3, 'attempt.paused', { origin: 'actor', checkpointed: true }),
     ]);
     expect(paused.actors['P1/D1/1']?.paused).toBe('actor');
     const resumed = applyEvents(
@@ -102,7 +111,10 @@ describe('the activity store', () => {
     // the new session of the resume replaces the old one
     const again = applyEvents(
       resumed,
-      [opened(5, 'P1/D1/1', 's2'), onAttempt(6, 'session.closed', { sessionId: 's2', reason: 'completed' })],
+      [
+        opened(5, 'P1/D1/1', 's2'),
+        onAttempt(6, 'session.closed', { sessionId: 's2', reason: 'completed' }),
+      ],
       reduceActivity,
     );
     expect(again.actors).toEqual({});

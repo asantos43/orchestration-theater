@@ -106,7 +106,7 @@ function world(extra: { paused?: boolean } = {}): World {
     state: 'EXECUTING',
     need: 'Charge by usage',
     createdAt: NOW,
-  } as Partial<ApiPlay>);
+  });
   const { stores } = online;
   stores.scenarios.setState({ byId: { [scenario.id]: scenario } } as never);
   stores.plays.setState({ byId: { [play.id]: play } } as never);
@@ -323,20 +323,23 @@ describe('following a play without reading the REST API', () => {
       byId: { [w.play.id]: { ...w.play, state: 'INTEGRATING' } },
     } as never);
     await app.waitForText('● Integrating');
-    stores.demands.setState((s) => ({
-      byPlay: {
-        ...s.byPlay,
-        [w.play.id]: {
-          demands: [
-            demand(w.play.id, 'D1', 'approved'),
-            demand(w.play.id, 'D2', 'approved', ['D1']),
-            demand(w.play.id, 'D3', 'approved', ['D1']),
-            demand(w.play.id, 'D4', 'approved', ['D2', 'D3']),
-          ],
-          stages: [],
-        },
-      },
-    }));
+    stores.demands.setState(
+      (s) =>
+        ({
+          byPlay: {
+            ...s.byPlay,
+            [w.play.id]: {
+              demands: [
+                demand(w.play.id, 'D1', 'approved'),
+                demand(w.play.id, 'D2', 'approved', ['D1']),
+                demand(w.play.id, 'D3', 'approved', ['D1']),
+                demand(w.play.id, 'D4', 'approved', ['D2', 'D3']),
+              ],
+              stages: [],
+            },
+          },
+        }) as never,
+    );
     await app.waitForText('4/4');
     stores.activity.setState({ actors: {}, pausedPlays: {} } as never);
     await app.waitForText('No Actor at work.');

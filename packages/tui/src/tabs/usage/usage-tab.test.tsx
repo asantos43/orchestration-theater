@@ -93,20 +93,19 @@ interface Stub {
 /** Answers `getUsage` and `getBudget` of the client from the fixtures above. */
 function stubCalls(fake: FakeOnline, usage: Stub['usage'] = () => Promise.resolve(USAGE)): Stub {
   const stub: Stub = { calls: [], usage };
-  vi.spyOn(fake.client, 'call').mockImplementation(((
-    route: unknown,
-    input?: { query?: unknown },
-  ) => {
-    if (route === API_ROUTES.getUsage) {
-      stub.calls.push({ id: 'getUsage', query: input?.query });
-      return stub.usage();
-    }
-    if (route === API_ROUTES.getBudget) {
-      stub.calls.push({ id: 'getBudget', query: undefined });
-      return Promise.resolve(BUDGET);
-    }
-    return Promise.reject(new Error('unexpected route'));
-  }) as never);
+  vi.spyOn(fake.client, 'call').mockImplementation(
+    (route: unknown, input?: { query?: unknown }) => {
+      if (route === API_ROUTES.getUsage) {
+        stub.calls.push({ id: 'getUsage', query: input?.query });
+        return stub.usage();
+      }
+      if (route === API_ROUTES.getBudget) {
+        stub.calls.push({ id: 'getBudget', query: undefined });
+        return Promise.resolve(BUDGET);
+      }
+      return Promise.reject(new Error('unexpected route'));
+    },
+  );
   return stub;
 }
 

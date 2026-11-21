@@ -87,8 +87,16 @@ export const reduceActivity: EventReducer<ActivityState> = (state, event) => {
       const key = attemptId ?? payload.sessionId;
       const actor = state.actors[key];
       if (actor?.sessionId !== payload.sessionId) return state;
-      // A paused attempt stays on the list: its session ended, but the attempt waits to be resumed.
-      if (actor.paused !== undefined) return state;
+      // An interrupted session leaves the attempt in flight: a pause (the runner writes
+      // `session.closed` first and `attempt.paused` right after), a resume or a handoff go on in a
+      // new session. The attempt leaves the list by its own end (`attempt.cancelled`, `aborted`
+      // or `submitted`) or by the end of the play.
+      if (
+        actor.paused !== undefined ||
+        (payload.reason === 'interrupted' && attemptId !== undefined)
+      ) {
+        return state;
+      }
       return { ...state, actors: without(state.actors, key) };
     }
     case 'attempt.paused': {

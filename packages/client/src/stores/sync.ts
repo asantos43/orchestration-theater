@@ -187,9 +187,7 @@ export class DaemonStores {
     initialRecentEvents(),
   );
   /** Who is working and what is paused, from the events alone (P13). */
-  readonly activity: StoreApi<ActivityState> = createStore<ActivityState>(() =>
-    initialActivity(),
-  );
+  readonly activity: StoreApi<ActivityState> = createStore<ActivityState>(() => initialActivity());
   readonly status: StoreApi<SyncStatus> = createStore<SyncStatus>(() => ({
     phase: 'idle',
     connection: 'connecting',
