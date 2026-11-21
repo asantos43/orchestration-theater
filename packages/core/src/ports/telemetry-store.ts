@@ -115,6 +115,13 @@ export interface TelemetryReadFilter {
   readonly sessionId?: string | undefined;
   readonly fromUnixNano?: bigint | undefined;
   readonly toUnixNano?: bigint | undefined;
+  /**
+   * Spans only (ignored by the other signals): the window `[endedFromUnixNano, endedToUnixNano)`
+   * is over the **end** of the span, so "the spans that ended on this day" is one read, whatever
+   * their start. Port 0.3.0.
+   */
+  readonly endedFromUnixNano?: bigint | undefined;
+  readonly endedToUnixNano?: bigint | undefined;
   readonly limit?: number | undefined;
 }
 
@@ -148,6 +155,46 @@ export interface TelemetryDeleteResult {
   readonly metrics: number;
   readonly logs: number;
 }
+
+/**
+ * One row of the daily aggregates (`rollups_daily`, Phase 8, P9; N55, N217 (a)). [proposta] A row
+ * is one number of the analysis for one day, scenario, Executor and role, and the **origin** it
+ * came from: the same metric of the same group in two origins is two rows, so a figure that came
+ * from the client and one the daemon priced are never added together.
+ *
+ * - `day`: `YYYY-MM-DD` in the time zone the aggregation was configured with.
+ * - `scenarioId`, `executor` (`<client>/<profile>`) and `role`: empty when the source does not say.
+ * - `metric` and `facet`: what is counted and its breakdown (the state of the stage, the kind of
+ *   wait, the interruption cause...); `facet` is empty when there is none.
+ * - `count`: the samples behind the row. `sum`, `p50`, `p95` and `max` are `null` when no sample
+ *   knew the value: a gap, never a zero.
+ */
+export interface RollupRow {
+  readonly day: string;
+  readonly scenarioId: string;
+  readonly executor: string;
+  readonly role: string;
+  readonly metric: string;
+  readonly facet: string;
+  readonly origin: string;
+  readonly count: number;
+  readonly sum: number | null;
+  readonly p50: number | null;
+  readonly p95: number | null;
+  readonly max: number | null;
+}
+
+/** Filter of `readRollups`: the days are inclusive (`YYYY-MM-DD`); the rest match exactly. */
+export interface RollupFilter {
+  readonly fromDay?: string | undefined;
+  readonly toDay?: string | undefined;
+  readonly scenarioId?: string | undefined;
+  readonly executor?: string | undefined;
+  readonly role?: string | undefined;
+}
+
+/** A calendar day, `YYYY-MM-DD`. */
+export const ROLLUP_DAY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /**
  * `ok`: writing and reading. `degraded`: the last write or read failed and the next one tries
@@ -233,6 +280,26 @@ export interface TelemetryStore {
    * that write failed or the base cannot be used, and then the cursor is not saved. Port 0.2.0.
    */
   writeCursor(name: string, value: number): Promise<void>;
+  /**
+   * Replaces **every** row of `day` with `rows` in one transaction (a day that is aggregated again
+   * gives the same rows, never a sum of two runs). Every row must carry that `day`, and a row is
+   * identified by `(day, scenarioId, executor, role, metric, facet, origin)`; anything else is
+   * `InvalidInput`. Rejects with `AdapterUnavailable` when the base cannot be used. Port 0.3.0.
+   */
+  replaceRollupDay(day: string, rows: readonly RollupRow[]): Promise<void>;
+  /** The aggregates of the days in the filter, in the order of the key. Port 0.3.0. */
+  readRollups(filter?: RollupFilter): Promise<readonly RollupRow[]>;
+  /**
+   * The last day up to which the aggregates are ready: every day up to it, inclusive, was
+   * aggregated and kept. The retention of the raw telemetry (P8) never removes what is of a later
+   * day. `null` when none is (or the base was recreated since, which is the point: with the base
+   * went the aggregates). Port 0.3.0.
+   */
+  readRollupsReadyThrough(): Promise<string | null>;
+  /** Moves the marker of {@link TelemetryStore.readRollupsReadyThrough} forward; an earlier day is ignored. Port 0.3.0. */
+  markRollupsReady(day: string): Promise<void>;
+  /** Deletes the aggregates of the days before `day` (exclusive); returns how many rows. Port 0.3.0. */
+  deleteRollupsBefore(day: string): Promise<number>;
   health(): Promise<TelemetryHealth>;
   close(): Promise<void>;
 }

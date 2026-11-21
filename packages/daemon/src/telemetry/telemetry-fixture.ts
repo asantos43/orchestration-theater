@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type {
+  RollupFilter,
+  RollupRow,
   TelemetryBatch,
   TelemetryDeleteResult,
   TelemetryHealth,
@@ -29,6 +31,8 @@ export class MemoryTelemetryStore implements TelemetryStore {
   readonly #logs: TelemetryRow<TelemetryLogRecord>[] = [];
   #nextRow = { spans: 1, metrics: 1, logs: 1 };
   readonly #cursors = new Map<string, number>();
+  readonly #rollups = new Map<string, RollupRow>();
+  #readyThrough: string | null = null;
   #resets = 0;
   #closed = false;
 
@@ -64,16 +68,108 @@ export class MemoryTelemetryStore implements TelemetryStore {
       .filter((span) => filter.attemptId === undefined || span.attemptId === filter.attemptId)
       .filter((span) => filter.sessionId === undefined || span.sessionId === filter.sessionId)
       .filter((span) => filter.scenarioId === undefined || span.scenarioId === filter.scenarioId)
+      .filter(
+        (span) =>
+          filter.fromUnixNano === undefined || span.startTimeUnixNano >= filter.fromUnixNano,
+      )
+      .filter(
+        (span) => filter.toUnixNano === undefined || span.startTimeUnixNano < filter.toUnixNano,
+      )
+      .filter(
+        (span) =>
+          filter.endedFromUnixNano === undefined ||
+          span.endTimeUnixNano >= filter.endedFromUnixNano,
+      )
+      .filter(
+        (span) =>
+          filter.endedToUnixNano === undefined || span.endTimeUnixNano < filter.endedToUnixNano,
+      )
       .sort((a, b) => Number(a.startTimeUnixNano - b.startTimeUnixNano));
     return Promise.resolve(spans.slice(0, filter.limit ?? 10_000));
   }
 
-  readMetrics(): Promise<readonly TelemetryMetricPoint[]> {
-    return Promise.resolve(this.#metrics.map((row) => row.record));
+  readMetrics(filter: TelemetryReadFilter = {}): Promise<readonly TelemetryMetricPoint[]> {
+    return Promise.resolve(
+      this.#metrics
+        .map((row) => row.record)
+        .filter((point) => filter.attemptId === undefined || point.attemptId === filter.attemptId)
+        .filter((point) => filter.playId === undefined || point.playId === filter.playId)
+        .filter(
+          (point) => filter.fromUnixNano === undefined || point.timeUnixNano >= filter.fromUnixNano,
+        )
+        .filter(
+          (point) => filter.toUnixNano === undefined || point.timeUnixNano < filter.toUnixNano,
+        )
+        .slice(0, filter.limit ?? 10_000),
+    );
   }
 
-  readLogs(): Promise<readonly TelemetryLogRecord[]> {
-    return Promise.resolve(this.#logs.map((row) => row.record));
+  readLogs(filter: TelemetryReadFilter = {}): Promise<readonly TelemetryLogRecord[]> {
+    return Promise.resolve(
+      this.#logs
+        .map((row) => row.record)
+        .filter((record) => filter.attemptId === undefined || record.attemptId === filter.attemptId)
+        .filter((record) => filter.playId === undefined || record.playId === filter.playId)
+        .filter(
+          (record) =>
+            filter.fromUnixNano === undefined || record.timeUnixNano >= filter.fromUnixNano,
+        )
+        .filter(
+          (record) => filter.toUnixNano === undefined || record.timeUnixNano < filter.toUnixNano,
+        )
+        .slice(0, filter.limit ?? 10_000),
+    );
+  }
+
+  replaceRollupDay(day: string, rows: readonly RollupRow[]): Promise<void> {
+    for (const [key, row] of this.#rollups) if (row.day === day) this.#rollups.delete(key);
+    for (const row of rows) {
+      const key = [
+        row.day,
+        row.scenarioId,
+        row.executor,
+        row.role,
+        row.metric,
+        row.facet,
+        row.origin,
+      ].join('|');
+      this.#rollups.set(key, row);
+    }
+    return Promise.resolve();
+  }
+
+  readRollups(filter: RollupFilter = {}): Promise<readonly RollupRow[]> {
+    const rows = [...this.#rollups.values()]
+      .filter((row) => filter.fromDay === undefined || row.day >= filter.fromDay)
+      .filter((row) => filter.toDay === undefined || row.day <= filter.toDay)
+      .filter((row) => filter.scenarioId === undefined || row.scenarioId === filter.scenarioId)
+      .filter((row) => filter.executor === undefined || row.executor === filter.executor)
+      .filter((row) => filter.role === undefined || row.role === filter.role);
+    const key = (row: RollupRow): string =>
+      [row.day, row.scenarioId, row.executor, row.role, row.metric, row.facet, row.origin].join(
+        '|',
+      );
+    return Promise.resolve(rows.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)));
+  }
+
+  readRollupsReadyThrough(): Promise<string | null> {
+    return Promise.resolve(this.#readyThrough);
+  }
+
+  markRollupsReady(day: string): Promise<void> {
+    if (this.#readyThrough === null || day > this.#readyThrough) this.#readyThrough = day;
+    return Promise.resolve();
+  }
+
+  deleteRollupsBefore(day: string): Promise<number> {
+    let removed = 0;
+    for (const [key, row] of this.#rollups) {
+      if (row.day < day) {
+        this.#rollups.delete(key);
+        removed += 1;
+      }
+    }
+    return Promise.resolve(removed);
   }
 
   readSince<S extends TelemetrySignal>(
@@ -127,6 +223,10 @@ export class MemoryTelemetryStore implements TelemetryStore {
     this.#logs.length = 0;
     this.#nextRow = { spans: 1, metrics: 1, logs: 1 };
     this.#cursors.clear();
+    this.#metrics.length = 0;
+    this.#logs.length = 0;
+    this.#rollups.clear();
+    this.#readyThrough = null;
     this.#resets += 1;
   }
 

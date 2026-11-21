@@ -31,6 +31,7 @@ import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
+import { AnalysisService } from './analysis/analysis-service.js';
 import { AtifAutoExport } from './atif/atif-follower.js';
 import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
@@ -882,6 +883,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   let stopping: Promise<void> | undefined;
   // P5 (Phase 8): the automatic ATIF export; it follows the log until the daemon stops.
   let atifAuto: AtifAutoExport | undefined;
+  // P9 (Phase 8): the schedule of the daily aggregates; it runs until the daemon stops.
+  let analysisService: AnalysisService | undefined;
   let markStopped: () => void = () => undefined;
   const stopped = new Promise<void>((resolve) => {
     markStopped = resolve;
@@ -923,6 +926,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('effects', async () => orchestration?.drain());
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
+      await attempt('analysis', async () => analysisService?.stop());
       await attempt('mcp', () => mcp.stop());
       // After the clients ended (`execution`): their last batches have arrived or never will.
       await attempt('telemetry', async () => telemetry?.stop());
@@ -1013,6 +1017,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     });
     atifAuto.start();
   }
+  // P9 (Phase 8, N55 and N217): the daily aggregates and the report over them. `analysis.*` is
+  // cold, like `atif.*`: a restart applies it. Without the telemetry base there is nothing to
+  // aggregate, and the route answers 503.
+  if (composition.telemetry !== undefined) {
+    analysisService = new AnalysisService({
+      clock,
+      telemetry: composition.telemetry,
+      events: store.events,
+      usage: store.usage,
+      daemonSpans: composition.daemonSpans,
+      settings: () => config.analysis,
+      situations: composition.situations,
+      logger,
+    });
+    analysisService.start();
+  }
   const slash = new SlashCommandService({
     store,
     clock,
@@ -1088,6 +1108,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     direct,
     trajectory,
     atif,
+    analysis: analysisService,
     attempts: execution?.runner,
     config,
     quota,

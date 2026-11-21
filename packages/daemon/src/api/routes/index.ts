@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiHandlers } from '../handlers.js';
+import { registerAnalysisRoutes } from './analysis.js';
 import { registerAtifRoutes } from './atif.js';
 import { registerAttachmentRoutes } from './attachments.js';
 import { registerAttemptCommands } from './attempt-commands.js';
@@ -52,6 +53,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerDirectRoutes(handlers, deps);
   registerTrajectoryRoutes(handlers, deps);
   registerAtifRoutes(handlers, deps);
+  registerAnalysisRoutes(handlers, deps);
 }
 
 /**
