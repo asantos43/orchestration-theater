@@ -3,6 +3,7 @@ import type { Adapter } from './adapter.js';
 import type { AgentSession, McpServerRef, SessionTransport } from './agent-session.js';
 import type { ConfigCategory } from '../normalized-update.js';
 import type { PermissionOutcome, PermissionRule } from '../permission-rules.js';
+import type { ClientOtel } from './client-otel.js';
 import type { Profile } from './executor.js';
 import type { ModelCatalog } from './model-catalog.js';
 import type { QuotaProbe } from './quota-probe.js';
@@ -252,6 +253,14 @@ export interface SessionStartOptions {
    * would only run without the framework tools, and every descendant of `ClientAdapterBase` honours it.
    */
   readonly mcpServers?: readonly McpServerRef[];
+  /**
+   * Where this session's client sends its own telemetry, and the resource attributes that tie it to
+   * the play, stage, attempt and session (Phase 8, P3). Absent: the client starts as before and no
+   * `OTEL_*` variable reaches it. A `multi-session` client takes the process-level part (Codex's
+   * `-c otel.*`, OpenCode's environment) from `launchSpec`, so the pool passes
+   * the same value to both calls. Additive, without a new port version. [proposta]
+   */
+  readonly otel?: ClientOtel;
   /**
    * What the daemon hands to the layer 2 answer of this session (Phase 4, P2). Additive, without
    * a new port version: a session that ignored it would answer as before, without telling anyone

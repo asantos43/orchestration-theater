@@ -12,7 +12,9 @@ import {
   PermissionDenied,
   QuotaExhausted,
 } from './errors.js';
-import type { PermissionRequest } from './ports/agent-session.js';
+import type { PermissionRequest, SessionSetup } from './ports/agent-session.js';
+import type { ClientOtel } from './ports/client-otel.js';
+import type { OtelLaunch } from './client-adapter-base.js';
 import {
   ROLE_POLICY_FIELDS,
   type ConformanceReport,
@@ -1218,5 +1220,103 @@ describe('ClientAdapter, process owned by the caller (session pool)', () => {
     await expect(
       adapter.loadSessionOn(process, policy, '/work', 'x', new FakeSessionTransport()),
     ).rejects.toBeInstanceOf(AdapterUnavailable);
+  });
+});
+
+describe('ClientAdapter telemetry hooks (Phase 8, P3)', () => {
+  const otel: ClientOtel = {
+    endpoint: 'http://127.0.0.1:4318',
+    headers: { Authorization: 'Bearer tok-1' },
+    resource: { 'otheater.attempt_id': 'a1' },
+  };
+
+  /** A client that exports telemetry through the two hooks. */
+  class Exporting extends FakeClientAdapter {
+    seenEnv: Readonly<Record<string, string>> | undefined;
+    unavailable: string | undefined;
+    protected override otelLaunch(
+      _profile: Profile,
+      given: ClientOtel,
+      _via: 'acp' | 'headless',
+      env: Readonly<Record<string, string>>,
+    ): Promise<OtelLaunch> {
+      this.seenEnv = env;
+      if (this.unavailable !== undefined) return Promise.resolve({ unavailable: this.unavailable });
+      return Promise.resolve({
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: given.endpoint },
+        args: ['--otel'],
+      });
+    }
+    protected override otelSetup(setup: SessionSetup, given: ClientOtel): SessionSetup {
+      return setup.via === 'acp'
+        ? { ...setup, title: given.resource['otheater.attempt_id'] ?? 'untitled' }
+        : setup;
+    }
+  }
+
+  function exporting() {
+    const launcher = new FakeProcessLauncher();
+    const warnings: ClientAdapterWarning[] = [];
+    const adapter = new Exporting({
+      launcher,
+      baseEnv: { PATH: '/bin' },
+      adapterVersion: '1.0.0',
+      command: { cmd: 'fake-client', args: ['--acp'] },
+      env: { PROFILE_VAR: 'p' },
+      onWarning: (warning) => warnings.push(warning),
+    });
+    return { adapter, launcher, warnings };
+  }
+
+  it('a client with no telemetry hooks starts the same with or without otel', async () => {
+    const { adapter, launcher } = setup();
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), { otel });
+    expect(launcher.launched[1]?.options).toEqual(launcher.launched[0]?.options);
+  });
+
+  it('adds the env and the args of the hook after the command and the profile, only with otel', async () => {
+    const { adapter, launcher } = exporting();
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), { otel });
+    expect(launcher.launched[0]?.options.args).toEqual(['--acp']);
+    expect(launcher.launched[0]?.options.env).not.toHaveProperty('OTEL_EXPORTER_OTLP_ENDPOINT');
+    expect(launcher.launched[1]?.options.args).toEqual(['--acp', '--otel']);
+    expect(launcher.launched[1]?.options.env).toMatchObject({
+      PATH: '/bin',
+      PROFILE_VAR: 'p',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318',
+    });
+    expect(adapter.seenEnv).toMatchObject({ PATH: '/bin', PROFILE_VAR: 'p' });
+  });
+
+  it('hands the transport the setup the hook returned, only with otel', async () => {
+    const { adapter } = exporting();
+    const plain = new FakeSessionTransport();
+    const withOtel = new FakeSessionTransport();
+    await adapter.openSession(profile, policy, '/work', plain);
+    await adapter.openSession(profile, policy, '/work', withOtel, { otel });
+    expect(plain.opened[0]?.setup).not.toHaveProperty('title');
+    expect(withOtel.opened[0]?.setup).toMatchObject({ via: 'acp', title: 'a1' });
+  });
+
+  it('launchSpec gives a pool the same process-level telemetry', async () => {
+    const { adapter } = exporting();
+    const spec = await adapter.launchSpec(profile, policy, '/work', 'acp', 'work', otel);
+    expect(spec.args).toEqual(['--acp', '--otel']);
+    expect(spec.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://127.0.0.1:4318');
+    const plain = await adapter.launchSpec(profile, policy, '/work');
+    expect(plain.args).toEqual(['--acp']);
+  });
+
+  it('an unavailable answer starts the client without telemetry and warns, naming no secret', async () => {
+    const { adapter, launcher, warnings } = exporting();
+    adapter.unavailable = 'this client cannot';
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport(), { otel });
+    expect(launcher.launched[0]?.options.args).toEqual(['--acp']);
+    expect(launcher.launched[0]?.options.env).not.toHaveProperty('OTEL_EXPORTER_OTLP_ENDPOINT');
+    expect(warnings).toEqual([
+      { kind: 'otel_unavailable', clientId: 'fake', reason: 'this client cannot' },
+    ]);
   });
 });

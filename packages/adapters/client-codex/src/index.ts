@@ -6,6 +6,7 @@ export {
   DEFAULT_LOGIN_COMMANDS,
   DEFAULT_LOGOUT_COMMAND,
   type CodexAdapterOptions,
+  type CodexOtelOptions,
   type CodexQuotaOptions,
 } from './codex-adapter.js';
 export {
@@ -58,5 +59,15 @@ export {
   type CodexQuotaProbeOptions,
   type QuotaWatchMode,
 } from './quota-probe.js';
+export {
+  CODEX_OTEL_WRAPPER,
+  CODEX_OTEL_WRAPPER_DIR,
+  CODEX_OTEL_WRAPPER_FILE,
+  OTEL_REAL_ENV,
+  OTEL_SETTINGS_ENV,
+  codexOtelSettings,
+  codexOtelTitle,
+  ensureCodexOtelWrapper,
+} from './otel.js';
 export { LIMIT_REACHED_WINDOW, windowNameOf } from './rate-limits.js';
 export type { CommandSpec, LoginOptions, LoginProbeResult, LoginState } from './official-login.js';
