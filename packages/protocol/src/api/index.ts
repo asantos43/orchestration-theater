@@ -25,5 +25,6 @@ export * from './setup.js';
 export * from './usage.js';
 export * from './commands.js';
 export * from './trajectories.js';
+export * from './atif.js';
 export * from './registry.js';
 export * from './catalog.js';
