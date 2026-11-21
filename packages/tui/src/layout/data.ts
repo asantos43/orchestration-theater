@@ -2,7 +2,14 @@
 import type { DaemonStores } from '@otheater/client';
 import { useMemo } from 'react';
 import { useStoreValue } from '../use-store-value.js';
-import { quotaRows, scenarioRows, type QuotaRow, type ScenarioRow } from './scenario-rows.js';
+import {
+  finishedRows,
+  quotaRows,
+  scenarioRows,
+  type FinishedRow,
+  type QuotaRow,
+  type ScenarioRow,
+} from './scenario-rows.js';
 
 /** The scenarios of the side bar, each with its marker, from the stores of the client. */
 export function useScenarioRows(stores: DaemonStores): ScenarioRow[] {
@@ -10,6 +17,13 @@ export function useScenarioRows(stores: DaemonStores): ScenarioRow[] {
   const plays = useStoreValue(stores.plays, (s) => s.byId);
   const decisions = useStoreValue(stores.decisions, (s) => s.byScenario);
   return useMemo(() => scenarioRows(scenarios, plays, decisions), [scenarios, plays, decisions]);
+}
+
+/** The finished plays of the "Terminadas" section (P11 of docs/19), the most recent `limit`. */
+export function useFinishedRows(stores: DaemonStores, limit: number): FinishedRow[] {
+  const scenarios = useStoreValue(stores.scenarios, (s) => s.byId);
+  const plays = useStoreValue(stores.plays, (s) => s.byId);
+  return useMemo(() => finishedRows(scenarios, plays, limit), [scenarios, plays, limit]);
 }
 
 /** One row per account with a reading of its quota. */

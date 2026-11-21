@@ -39,6 +39,13 @@ const good: Record<(typeof NORMALIZED_UPDATE_KINDS)[number], unknown> = {
     options: [{ id: 'mode', category: 'mode', value: 'plan' }],
   },
   rate_limit: { kind: 'rate_limit', status: 'warning', window: 'five_hour', usedPercent: 91 },
+  terminal_output: {
+    kind: 'terminal_output',
+    terminalId: 'toolu_1',
+    toolCallId: 'toolu_1',
+    text: 'ok\n',
+    exit: { code: 0, signal: null },
+  },
 };
 
 describe('NormalizedUpdateSchema', () => {
@@ -58,6 +65,8 @@ describe('NormalizedUpdateSchema', () => {
       { kind: 'tool_call_update', toolCallId: '' },
       { kind: 'agent_message_chunk', content: { type: 'text' } },
       { kind: 'usage', inputTokens: -1 },
+      { kind: 'terminal_output', terminalId: 't1' },
+      { kind: 'terminal_output', terminalId: 't1', text: '' },
       { kind: 'usage', inputTokens: 1.5 },
       { kind: 'config_changed', options: [] },
       { kind: 'rate_limit', status: 'blocked' },

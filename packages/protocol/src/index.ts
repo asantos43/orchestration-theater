@@ -16,6 +16,7 @@ export * from './profile-events.js';
 export * from './scenario-events.js';
 export * from './permission-events.js';
 export * from './tool-events.js';
+export * from './terminal-events.js';
 export * from './browser-events.js';
 export * from './quota-events.js';
 export * from './usage-events.js';

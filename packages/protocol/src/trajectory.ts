@@ -95,6 +95,10 @@ export type TrajectoryEntry =
       readonly at: number;
       readonly toolCallId: string | undefined;
       readonly text: string;
+      /** The output was cut at the limit of `events.terminal_output_max` (P11). */
+      readonly truncated?: boolean;
+      /** What the cut left out, in bytes, when the event says it. */
+      readonly omittedBytes?: number;
     };
 
 export interface TrajectoryTurn {
@@ -622,14 +626,31 @@ export function buildTrajectory(playId: string, events: readonly TrajectoryEvent
         break;
       }
       case TERMINAL_OUTPUT_EVENT: {
-        const output = text(payload.text);
+        const cut = payload.truncated === true;
+        const output = text(payload.text) ?? (cut ? '' : undefined);
         if (output === undefined) break;
-        openTurn(attempt, at).entries.push({
-          kind: 'terminal',
-          at,
-          toolCallId: text(payload.toolCallId),
-          text: output,
-        });
+        const omitted = cut && typeof payload.omittedBytes === 'number' ? payload.omittedBytes : 0;
+        const toolCallId = text(payload.toolCallId);
+        const entries = openTurn(attempt, at).entries;
+        const last = entries[entries.length - 1];
+        if (last?.kind === 'terminal' && last.toolCallId === toolCallId) {
+          // The blocks of one terminal read as one output; `omittedBytes` is the total of the terminal.
+          entries[entries.length - 1] = {
+            ...last,
+            text: last.text + output,
+            ...(cut ? { truncated: true } : {}),
+            ...(omitted > 0 ? { omittedBytes: omitted } : {}),
+          };
+        } else {
+          entries.push({
+            kind: 'terminal',
+            at,
+            toolCallId,
+            text: output,
+            ...(cut ? { truncated: true } : {}),
+            ...(omitted > 0 ? { omittedBytes: omitted } : {}),
+          });
+        }
         break;
       }
       default: {

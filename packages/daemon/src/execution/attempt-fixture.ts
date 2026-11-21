@@ -48,6 +48,7 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   onProfileRemoved: 'handoff',
   continuePrompt: 'carry on',
   package: DEFAULT_PACKAGE_SETTINGS,
+  terminalOutput: { mode: 'truncated', maxBytes: 64 * 1024 },
 };
 
 /** A real git repository with one commit, in a temporary directory. */

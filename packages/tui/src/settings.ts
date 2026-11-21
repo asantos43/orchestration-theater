@@ -142,6 +142,16 @@ export interface UiNewProjectSettings {
   readonly repo: NewProjectRepoMode;
 }
 
+export const SIDEBAR_FINISHED_MODES = ['collapsed', 'hidden', 'expanded'] as const;
+export type SidebarFinishedMode = (typeof SIDEBAR_FINISHED_MODES)[number];
+
+/** `ui.sidebar` (P11 of docs/19): the "Terminadas" section of the side bar. */
+export interface UiSidebarSettings {
+  readonly finishedPlays: SidebarFinishedMode;
+  /** How many finished plays are read and listed at most. */
+  readonly finishedLimit: number;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -161,6 +171,7 @@ export interface UiSettings {
   readonly tuiMouse: UiTuiMouseSettings;
   readonly setup: UiSetupSettings;
   readonly newProject: UiNewProjectSettings;
+  readonly sidebar: UiSidebarSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -217,6 +228,8 @@ export const DEFAULT_SETUP: UiSetupSettings = { open: 'auto', readTimeoutMs: 500
 
 export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd' };
 
+export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', finishedLimit: 20 };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -233,6 +246,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   tuiMouse: DEFAULT_TUI_MOUSE,
   setup: DEFAULT_SETUP,
   newProject: DEFAULT_NEW_PROJECT,
+  sidebar: DEFAULT_SIDEBAR,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -293,6 +307,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const tuiMouse = record(field(source, 'tuiMouse'));
   const setup = record(field(source, 'setup'));
   const newProject = record(field(source, 'newProject'));
+  const sidebar = record(field(source, 'sidebar'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -413,6 +428,19 @@ export function parseUiSettings(ui: unknown): UiSettings {
     },
     newProject: {
       repo: oneOf(field(newProject, 'repo'), NEW_PROJECT_REPO_MODES, DEFAULT_NEW_PROJECT.repo),
+    },
+    sidebar: {
+      finishedPlays: oneOf(
+        field(sidebar, 'finishedPlays'),
+        SIDEBAR_FINISHED_MODES,
+        DEFAULT_SIDEBAR.finishedPlays,
+      ),
+      finishedLimit: integer(
+        field(sidebar, 'finishedLimit'),
+        1,
+        500,
+        DEFAULT_SIDEBAR.finishedLimit,
+      ),
     },
   };
 }
