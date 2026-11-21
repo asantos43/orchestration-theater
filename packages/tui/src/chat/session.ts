@@ -115,7 +115,7 @@ export class ChatSession {
   sendMessage(text: string, attachments: readonly string[] = []): void {
     const busy = this.#state.busy;
     if (this.#queue === 'hold' && busy) {
-      this.#dispatch({ type: 'sent', text, at: this.#options.now(), queued: true });
+      this.#dispatch({ type: 'sent', text, at: this.#options.now(), queued: true, held: true });
       const last = this.#state.entries[this.#state.entries.length - 1];
       if (last !== undefined) this.#held.push({ entryId: last.id, text, attachments });
       return;

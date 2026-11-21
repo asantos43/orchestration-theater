@@ -56,6 +56,8 @@ export interface ChatEntry {
   readonly body: EntryBody;
   /** The message of the Producer waits (the Director is in a turn, or the box holds it). */
   readonly queued?: boolean | undefined;
+  /** The box itself holds the message (`ui.chat.queue: hold`): only its release takes the mark off. */
+  readonly held?: boolean | undefined;
   /** The turn of the Director this text belongs to. */
   readonly replyId?: number | undefined;
   /** More parts of this reply are still to come. */
@@ -107,6 +109,7 @@ export type ChatEvent =
       readonly text: string;
       readonly at: number;
       readonly queued: boolean;
+      readonly held?: boolean;
     }
   | { readonly type: 'released'; readonly entryId: string }
   | { readonly type: 'commandSent'; readonly text: string }
@@ -166,7 +169,7 @@ function reply(
   const replies = { ...state.replies, [frame.replyId]: frame.eventId };
   // The Director answered: what was waiting for its turn has been taken.
   const entries = state.entries.map((entry) =>
-    entry.queued === true ? { ...entry, queued: false } : entry,
+    entry.queued === true && entry.held !== true ? { ...entry, queued: false } : entry,
   );
   const base = { ...state, replies, entries };
   if (frame.generated === true) {
@@ -274,7 +277,9 @@ function applyFrame(state: ChatState, frame: ChatServerMessage, at: number): Cha
         entries: frame.busy
           ? state.entries
           : state.entries.map((entry) =>
-              entry.queued === true && entry.who === 'you' ? { ...entry, queued: false } : entry,
+              entry.queued === true && entry.who === 'you' && entry.held !== true
+                ? { ...entry, queued: false }
+                : entry,
             ),
       };
     case 'command_result': {
@@ -311,13 +316,14 @@ export function reduceChat(state: ChatState, event: ChatEvent): ChatState {
         who: 'you',
         at: event.at,
         queued: event.queued,
+        ...(event.held === true ? { held: true } : {}),
         body: { kind: 'text', text: event.text },
       });
     case 'released':
       return {
         ...state,
         entries: state.entries.map((entry) =>
-          entry.id === event.entryId ? { ...entry, queued: false } : entry,
+          entry.id === event.entryId ? { ...entry, queued: false, held: false } : entry,
         ),
       };
     case 'commandSent':
