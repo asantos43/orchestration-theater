@@ -106,6 +106,18 @@ describe('parseConfig', () => {
     });
   });
 
+  it('has the defaults of ui.tuiMouse, takes the auto copy mode and refuses bad values (P11)', () => {
+    expect(parseConfig('').ui.tuiMouse).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    const yaml = 'ui:\n  clipboard:\n    copy: auto\n  tuiMouse:\n    wheelLines: 5\n';
+    const { ui } = parseConfig(yaml);
+    expect(ui.clipboard.copy).toBe('auto');
+    expect(ui.tuiMouse).toEqual({ wheelLines: 5, copyMaxBytes: 100_000 });
+    expect(() => parseConfig('ui:\n  tuiMouse:\n    wheelLines: 0\n')).toThrow(
+      /ui\.tuiMouse\.wheelLines/,
+    );
+    expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
+  });
+
   it('has the defaults of ui.input and takes its other modes (N35)', () => {
     expect(parseConfig('').ui.input).toEqual({
       paste: { mode: 'marker', lines: 10, chars: 2000 },

@@ -65,12 +65,29 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
 }
 
+export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
+export type MouseMode = (typeof MOUSE_MODES)[number];
+
+export const CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as const;
+export type ClipboardCopyMode = (typeof CLIPBOARD_COPY_MODES)[number];
+
+/** `ui.tuiMouse` (P11): the lines a wheel notch moves and the most one selection copies, in bytes. */
+export interface UiTuiMouseSettings {
+  readonly wheelLines: number;
+  readonly copyMaxBytes: number;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  /** `ui.mouse` (N34). */
+  readonly mouse: MouseMode;
+  /** `ui.clipboard.copy` (N36). */
+  readonly clipboardCopy: ClipboardCopyMode;
+  readonly tuiMouse: UiTuiMouseSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -102,12 +119,20 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   scrollStep: 'half',
 };
 
+export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
+  wheelLines: 3,
+  copyMaxBytes: 100_000,
+};
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  mouse: 'full',
+  clipboardCopy: 'osc52',
+  tuiMouse: DEFAULT_TUI_MOUSE,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -162,6 +187,8 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
+  const clipboard = record(field(source, 'clipboard'));
+  const tuiMouse = record(field(source, 'tuiMouse'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -224,6 +251,21 @@ export function parseUiSettings(ui: unknown): UiSettings {
         field(tuiLayout, 'scrollStep'),
         SCROLL_STEPS,
         DEFAULT_TUI_LAYOUT.scrollStep,
+      ),
+    },
+    mouse: oneOf(field(source, 'mouse'), MOUSE_MODES, DEFAULT_UI_SETTINGS.mouse),
+    clipboardCopy: oneOf(
+      field(clipboard, 'copy'),
+      CLIPBOARD_COPY_MODES,
+      DEFAULT_UI_SETTINGS.clipboardCopy,
+    ),
+    tuiMouse: {
+      wheelLines: integer(field(tuiMouse, 'wheelLines'), 1, 50, DEFAULT_TUI_MOUSE.wheelLines),
+      copyMaxBytes: integer(
+        field(tuiMouse, 'copyMaxBytes'),
+        1,
+        10_000_000,
+        DEFAULT_TUI_MOUSE.copyMaxBytes,
       ),
     },
   };

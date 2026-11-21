@@ -27,6 +27,9 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
+      mouse: 'full',
+      clipboardCopy: 'osc52',
+      tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
     });
   });
 
@@ -79,7 +82,28 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
+      mouse: DEFAULT_UI_SETTINGS.mouse,
+      clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
+      tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
     });
+  });
+
+  it('reads the mouse keys of P11 and falls back key by key', () => {
+    expect(parseUiSettings({}).mouse).toBe('full');
+    expect(parseUiSettings({}).clipboardCopy).toBe('osc52');
+    expect(parseUiSettings({}).tuiMouse).toEqual({ wheelLines: 3, copyMaxBytes: 100_000 });
+    const set = parseUiSettings({
+      mouse: 'wheel',
+      clipboard: { copy: 'auto' },
+      tuiMouse: { wheelLines: 5, copyMaxBytes: 'x' },
+    });
+    expect(set.mouse).toBe('wheel');
+    expect(set.clipboardCopy).toBe('auto');
+    expect(set.tuiMouse).toEqual({ wheelLines: 5, copyMaxBytes: 100_000 });
+    const bad = parseUiSettings({ mouse: 'some', clipboard: { copy: 'paste' }, tuiMouse: 4 });
+    expect(bad.mouse).toBe('full');
+    expect(bad.clipboardCopy).toBe('osc52');
+    expect(bad.tuiMouse).toEqual(DEFAULT_UI_SETTINGS.tuiMouse);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {
