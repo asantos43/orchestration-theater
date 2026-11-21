@@ -76,6 +76,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [16-PLANO-DA-FASE-5.md](docs/16-PLANO-DA-FASE-5.md) | Plano de passos da Fase 5 (assinaturas, cotas e seleção), com dependências, paralelismo, aceite de cada passo e o marco 5a [proposta] |
 | [17-PLANO-DA-FASE-6.md](docs/17-PLANO-DA-FASE-6.md) | Plano de passos da Fase 6 (API do daemon e `packages/client`), com dependências, paralelismo e aceite de cada passo |
 | [18-PLANO-DA-FASE-7.md](docs/18-PLANO-DA-FASE-7.md) | Plano de passos da Fase 7 (TUI), com dependências novas, paralelismo, aceite de cada passo e as decisões N185 a N192; o aceite (P21) passou no nível automático e no real |
+| [19-PLANO-DA-FASE-8.md](docs/19-PLANO-DA-FASE-8.md) | Plano de passos da Fase 8 (observabilidade), com dependências candidatas, paralelismo, aceite de cada passo e as decisões N211 a N219 |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
 | [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
 
