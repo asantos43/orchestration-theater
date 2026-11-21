@@ -22,14 +22,28 @@ export const ScenarioDecisionAnsweredPayloadSchema = z.strictObject({
   playId: z.string().min(1).nullable(),
 });
 
+/** When an edit of the configuration takes effect: now, at the next start, or each part by its own rule. */
+export const CONFIG_APPLIES_ON = ['hot', 'restart', 'mixed'] as const;
+
 /**
  * `config.edited`: the configuration file was edited through `PUT /v1/config`. [proposta]
  * `set` and `removed` are dotted key paths (`quota.near_limit`), never values: a value could be
- * private, and the edit is in the file. `appliesOn` is always `restart`: the running daemon keeps
- * the configuration it started with.
+ * private, and the edit is in the file. `appliesOn` says whether every key was taken in at once
+ * (`hot`), none was (`restart`) or some were (`mixed`): see `config.changed`.
  */
 export const ConfigEditedPayloadSchema = z.strictObject({
   set: z.array(z.string().min(1)),
   removed: z.array(z.string().min(1)),
-  appliesOn: z.literal('restart'),
+  appliesOn: z.enum(CONFIG_APPLIES_ON),
+});
+
+/**
+ * `config.changed` (P16 of Phase 7, N188): the running daemon took in an edit of the configuration
+ * without a restart. `hot` lists the dotted key paths that already changed behaviour (`ui.*`,
+ * `chat.*`, `limits.*`, `roles.*`); `restart` lists the ones the file now holds but the daemon only
+ * reads at its next start. Paths only, never values. It is not written when nothing was hot.
+ */
+export const ConfigChangedPayloadSchema = z.strictObject({
+  hot: z.array(z.string().min(1)),
+  restart: z.array(z.string().min(1)),
 });

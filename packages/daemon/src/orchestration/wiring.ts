@@ -164,8 +164,13 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
   }
   const presence = new ChatPresence({
     clock: composition.clock,
-    mode: config.chat.presence,
-    windowMs: config.chat.presence_window,
+    // N188: getters, so `chat.presence*` follow `PUT /v1/config`.
+    get mode() {
+      return config.chat.presence;
+    },
+    get windowMs() {
+      return config.chat.presence_window;
+    },
   });
   const effects = new OrchestrationEffects({
     store,

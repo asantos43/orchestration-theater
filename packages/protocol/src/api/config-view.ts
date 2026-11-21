@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { JsonObjectSchema } from '@otheater/core';
 import { z } from 'zod';
+import { CONFIG_APPLIES_ON } from '../api-command-events.js';
 import { IdempotencyHeadersSchema } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
 
@@ -57,10 +58,18 @@ export const ConfigEditBodySchema = z
 export type ConfigEditBody = z.input<typeof ConfigEditBodySchema>;
 
 export const ConfigEditResultSchema = z.strictObject({
-  appliesOn: z.literal('restart'),
+  /**
+   * When the edit takes effect (N188): `hot` when every key was taken in at once, `restart` when
+   * none was, `mixed` when `hot` and `restart` both list keys.
+   */
+  appliesOn: z.enum(CONFIG_APPLIES_ON),
   /** The dotted paths that were set and the ones taken out (never the values). */
   set: z.array(z.string()),
   removed: z.array(z.string()),
+  /** The edited paths that changed behaviour without a restart (`ui.*`, `chat.*`, `limits.*`, `roles.*`). */
+  hot: z.array(z.string()),
+  /** The edited paths the daemon only reads at its next start. */
+  restart: z.array(z.string()),
 });
 export type ConfigEditResult = z.infer<typeof ConfigEditResultSchema>;
 
@@ -69,7 +78,7 @@ export const putConfig = defineRoute({
   method: 'PUT',
   path: '/v1/config',
   summary:
-    'Edits keys of the configuration file with the validation of a start; applies on restart',
+    'Edits keys of the configuration file with the validation of a start; ui, chat, limits and roles apply at once, the rest on restart',
   headers: IdempotencyHeadersSchema,
   body: ConfigEditBodySchema,
   response: ConfigEditResultSchema,
