@@ -4,6 +4,7 @@ import type { ApiClient, DaemonStores } from '@otheater/client';
 import { Box, Text } from 'ink';
 import { randomUUID } from 'node:crypto';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -19,10 +20,12 @@ import { keyLabel } from '../keys/labels.js';
 import type { ChatMessage } from '../layout/chat.js';
 import { resolveRepo } from '../layout/new-project.js';
 import { clip } from '../layout/text.js';
+import { ClickTarget } from '../mouse/index.js';
 import type { UiChatSettings } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
 import {
   buildCard,
+  cardClick,
   cardKey,
   cardKeyOf,
   cardLines,
@@ -30,6 +33,7 @@ import {
   type CardKeymap,
   type CardModel,
   type CardState,
+  type CardStepResult,
   type CardTexts,
 } from './card.js';
 import { messagesOf, waitReason, type Translate } from './lines.js';
@@ -414,7 +418,14 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     if (!cardFocused || current === undefined) return false;
     const key = cardKeyOf(event, cardKeys, current.state.typing);
     if (key === undefined) return false;
-    const result = cardKey(model, current.state, key);
+    applyCard(cardKey(model, current.state, key));
+    return true;
+  };
+
+  /** What a step of the card does to the panel: the new state, the card set aside, the answer sent. */
+  const applyCard = (result: CardStepResult): void => {
+    const current = card.current;
+    if (session === undefined || current === undefined || model === undefined) return;
     current.state = result.state;
     if (result.aside === true) {
       if (auto) toggled.current.add(model.decisionId);
@@ -429,7 +440,15 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
       }
     }
     redraw();
-    return true;
+  };
+
+  // A click on an option does what the keys of the card do (P14, N34); the mouse layer only calls
+  // it with `ui.mouse: full`, and with the confirmation of a command on the screen it is not heard.
+  const onOption = (index: number): void => {
+    const current = card.current;
+    if (session === undefined || state.confirm !== undefined) return;
+    if (!cardFocused || current === undefined) return;
+    applyCard(cardClick(model, current.state, index, config.chat.decisionClick));
   };
 
   const onAction = (actionId: string): boolean => {
@@ -497,18 +516,33 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
 
   const input = (
     <Box flexDirection="column" width={props.width}>
-      {lines.map((line, index) => (
-        <Text
-          key={index}
-          wrap="truncate"
-          bold={line.bold === true}
-          dimColor={line.dim === true}
-          inverse={line.inverse === true}
-          {...(line.color === undefined ? {} : { color: line.color })}
-        >
-          {line.text === '' ? ' ' : line.text}
-        </Text>
-      ))}
+      {lines.map((line, index) => {
+        const text = (
+          <Text
+            wrap="truncate"
+            bold={line.bold === true}
+            dimColor={line.dim === true}
+            inverse={line.inverse === true}
+            {...(line.color === undefined ? {} : { color: line.color })}
+          >
+            {line.text === '' ? ' ' : line.text}
+          </Text>
+        );
+        const option = line.option;
+        if (option === undefined) return <Fragment key={index}>{text}</Fragment>;
+        return (
+          <ClickTarget
+            key={index}
+            width={props.width}
+            enabled={cardState?.typing !== true}
+            onClick={() => {
+              onOption(option);
+            }}
+          >
+            {text}
+          </ClickTarget>
+        );
+      })}
       {hint !== undefined && (
         <Text wrap="truncate" color="yellow">
           {hint}
