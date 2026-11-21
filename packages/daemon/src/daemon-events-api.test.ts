@@ -378,11 +378,13 @@ describe('GET /v1/events', () => {
 
   it('does not leave a subscriber behind when the clients go away', async () => {
     await withDaemon('', async ({ daemon, open }) => {
+      // the automatic ATIF export (atif.export.on: play_end) follows the hub for as long as the daemon lives
+      const resident = daemon.eventHub.subscriberCount;
       const streams = await Promise.all([open(), open(), open()]);
       await Promise.all(streams.map(({ reader }) => reader.next()));
-      // The daemon follows its own log too (the spans projector, P4 of Phase 8): count the clients.
+      // The daemon follows its own log too (the spans projector of P4 and the ATIF export of P5): count the clients.
       const during = daemon.eventHub.subscriberCount;
-      expect(during).toBeGreaterThanOrEqual(streams.length);
+      expect(during).toBeGreaterThanOrEqual(resident + streams.length);
       await Promise.all(streams.map(({ reader }) => reader.close()));
       const left = during - streams.length;
       for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > left; i += 1) {

@@ -31,6 +31,8 @@ import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
+import { AtifAutoExport } from './atif/atif-follower.js';
+import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
 import { detectSystemLocale, resolveLocale } from './i18n.js';
@@ -833,6 +835,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   logger.info({ version, dataDir: paths.dataDir }, 'daemon running');
 
   let stopping: Promise<void> | undefined;
+  // P5 (Phase 8): the automatic ATIF export; it follows the log until the daemon stops.
+  let atifAuto: AtifAutoExport | undefined;
   let markStopped: () => void = () => undefined;
   const stopped = new Promise<void>((resolve) => {
     markStopped = resolve;
@@ -872,6 +876,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('quota', () => quota.stop());
       await attempt('execution', async () => execution?.stop());
       await attempt('effects', async () => orchestration?.drain());
+      // After the plays and the effects settle, so the end of a play still reaches the export.
+      await attempt('atif export', async () => atifAuto?.stop());
       await attempt('mcp', () => mcp.stop());
       await attempt('browser', async () => browserTools?.close());
       // The spans of the last events are written before the telemetry store closes with the composition.
@@ -934,6 +940,27 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P3 (Phase 7, N44): the registry of the `/` commands, on the services above. The chat socket
   // and both groups of routes read it.
   const trajectory = new TrajectoryService({ store, config: () => config, vcs: composition.vcs });
+  // P5 (Phase 8, N219): the ATIF export of a play. `atif.*` is read at each export, but the block
+  // is cold: `PUT /v1/config` writes it and a restart applies it (the follower starts here).
+  const atif = new AtifExporter({
+    store,
+    clock,
+    vault,
+    version,
+    dataDir: paths.dataDir,
+    settings: () => config.atif.export,
+    pricing: () => usageSettingsOf(config).pricing,
+    situations: composition.situations,
+  });
+  if (config.atif.export.on !== 'manual') {
+    atifAuto = new AtifAutoExport({
+      hub: composition.eventHub,
+      exporter: atif,
+      settings: () => config.atif.export,
+      logger,
+    });
+    atifAuto.start();
+  }
   const slash = new SlashCommandService({
     store,
     clock,
@@ -1008,6 +1035,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     slash,
     direct,
     trajectory,
+    atif,
     attempts: execution?.runner,
     config,
     quota,
