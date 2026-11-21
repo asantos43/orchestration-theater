@@ -445,6 +445,35 @@ function toggle(marked: readonly string[], id: string): string[] {
   return marked.includes(id) ? marked.filter((item) => item !== id) : [...marked, id];
 }
 
+/**
+ * What a click on an option does (`ui.chat.decisionClick`, [proposta]): `answer` does what the key
+ * of the card does on that option (the same as moving the cursor there and pressing `decision.mark`
+ * or `decision.answer`: it answers a simple choice and marks or unmarks a multiple one); `select`
+ * only moves the cursor with the first click, and the click on the option under the cursor then does
+ * what `answer` does.
+ */
+export type CardClickMode = 'answer' | 'select';
+
+/**
+ * A click on the option `index` of the current step (P14 of docs/19, N34): the cursor goes there and,
+ * unless the mode is `select` and the cursor was elsewhere, the option is chosen as the key of the
+ * card would (`decision.mark`, which is also `decision.answer` on a simple choice). While the
+ * Producer types the text of a choice the list has no cursor, as for the keys, and a click is
+ * ignored; so is a click on a row that is not an option.
+ */
+export function cardClick(
+  model: CardModel,
+  state: CardState,
+  index: number,
+  mode: CardClickMode,
+): CardStepResult {
+  const step = model.stepAt(state.step, state.picks);
+  if (step === undefined || state.typing) return { state };
+  if (!Number.isInteger(index) || index < 0 || index >= step.options.length) return { state };
+  if (mode === 'select' && index !== state.cursor) return { state: { ...state, cursor: index } };
+  return cardKey(model, { ...state, cursor: index }, { kind: 'space' });
+}
+
 /** One key press of the card. */
 export function cardKey(model: CardModel, state: CardState, key: CardKey): CardStepResult {
   const step = model.stepAt(state.step, state.picks);
@@ -513,6 +542,8 @@ export interface CardLine {
   readonly dim?: boolean;
   readonly color?: string;
   readonly inverse?: boolean;
+  /** The option of the step this line belongs to (its label and its description), for the mouse. */
+  readonly option?: number;
 }
 
 export interface CardView {
@@ -552,10 +583,10 @@ export function cardLines(
     const mark = step.multi ? (state.marked.includes(option.id) ? '[x] ' : '[ ] ') : '';
     const lead = `${here ? '›' : ' '} ${String(index + 1)}. ${mark}`;
     const label = clip(`${lead}${option.label}`, width);
-    const out: CardLine[] = [{ text: label, ...(here ? { inverse: true } : {}) }];
+    const out: CardLine[] = [{ text: label, option: index, ...(here ? { inverse: true } : {}) }];
     if (option.description !== '' && here) {
       for (const line of wrapText(option.description, Math.max(1, width - 5))) {
-        out.push({ text: `     ${line}`, dim: true });
+        out.push({ text: `     ${line}`, dim: true, option: index });
       }
     }
     return out;
