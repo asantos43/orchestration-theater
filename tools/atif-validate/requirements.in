@@ -1,0 +1,12 @@
+# The Harbor validator of ATIF (Phase 8, P6, N215). Pins only, no dependencies of Harbor: the
+# validator needs the `pydantic` models and nothing else (checked with harbor 0.25.0 on 2026-11-21).
+# harbor 0.25.0 is the newest release with two weeks of age on 2026-11-21 (published 2026-10-25)
+# that accepts ATIF-v1.8; the others are the dependencies of pydantic, each at least two weeks old.
+# Regenerate requirements.txt with:
+#   uv pip compile --no-deps --generate-hashes --python-version 3.13 -o requirements.txt requirements.in
+harbor==0.25.0
+pydantic==2.14.3
+pydantic-core==2.50.4
+annotated-types==0.8.0
+typing-extensions==4.16.0
+typing-inspection==0.4.4
