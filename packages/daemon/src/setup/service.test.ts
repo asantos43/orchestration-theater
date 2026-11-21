@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { join } from 'node:path';
-import { Conflict, InvalidInput, NotFound, type EventEnvelope } from '@otheater/core';
-import { FakeClock } from '@otheater/core/testing';
-import { SqliteStore } from '@otheater/adapter-store-sqlite';
+import { Conflict, InvalidInput, NotFound, type EventEnvelope, type Store } from '@otheater/core';
+import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import type { SetupRunView } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -19,14 +17,19 @@ import {
 } from './rig-fixture.js';
 
 const rigs: SetupRig[] = [];
-const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  for (const close of closers.splice(0)) await close();
   for (const rig of rigs.splice(0)) await rig.dispose();
 });
 
-async function rigOf(options: Parameters<typeof makeSetupRig>[0] = {}): Promise<SetupRig> {
-  const rig = await makeSetupRig(options);
+async function rigOf(
+  options: Omit<Parameters<typeof makeSetupRig>[0], 'store' | 'clock'> & { store?: Store } = {},
+): Promise<SetupRig> {
+  const clock = new FakeClock(T0);
+  const rig = await makeSetupRig({
+    ...options,
+    clock,
+    store: options.store ?? new InMemoryStore({ clock }),
+  });
   rigs.push(rig);
   return rig;
 }
@@ -337,31 +340,6 @@ describe('resuming', () => {
     const done = await second.confirm(run.id);
     expect(done.state).toBe('confirmed');
     expect((await rig.config()).roles.preset).toBe('balanced');
-  });
-
-  it('survives the restart of a real SQLite store: the run, then the confirmation', async () => {
-    const path = join((await rigOf()).dir, 'resume.sqlite');
-    const open = async (): Promise<SqliteStore> => {
-      const store = await SqliteStore.open(
-        { path, driver: 'better-sqlite3', synchronous: 'full', busyTimeoutMs: 5000 },
-        new FakeClock(T0),
-      );
-      closers.push(() => store.close());
-      return store;
-    };
-    const first = await open();
-    const rig = await rigOf({ store: first });
-    const service = rig.service();
-    const run = await service.start('first_run');
-    await service.submit(run.id, { step: 'detect', input: {} });
-    await first.close();
-
-    // The profiles are rows of the same file: the new rig does not create them again.
-    const second = await open();
-    const rig2 = await rigOf({ store: second, profiles: [] });
-    const resumed = await rig2.service().get(run.id);
-    expect(resumed).toMatchObject({ step: 'preset', state: 'active' });
-    expect(resumed.done.map((entry) => entry.step)).toEqual(['detect']);
   });
 });
 

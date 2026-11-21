@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { InvalidInput, isOTheaterError, type JsonObject, type JsonValue } from '@otheater/core';
+import { InvalidInput, isOTheaterError } from '@otheater/core';
 import { editConfigFile } from '../../config-edit.js';
 import { writeSituation } from '../../situations.js';
 import type { CommandRegistrar } from './command.js';
 import type { CommandRouteDeps } from './deps.js';
-import { redactTree } from './redact.js';
-
-/** The value as the tree `config.yaml` would hold it at `path`, to ask the redaction about it. */
-export function treeAt(path: readonly string[], value: JsonValue): JsonObject {
-  let node: JsonValue = value;
-  for (const key of [...path].reverse()) node = { [key]: node };
-  return node as JsonObject;
-}
+import { redactTree, treeAt } from './redact.js';
 
 /**
  * The command that edits the configuration file (P6 of docs/17). [proposta] The rules:

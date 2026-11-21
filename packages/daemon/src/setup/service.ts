@@ -39,8 +39,7 @@ import {
   type SetupStepId,
   type SetupStepSubmission,
 } from '@otheater/protocol';
-import { treeAt } from '../api/routes/config-commands.js';
-import { redactTree } from '../api/routes/redact.js';
+import { redactTree, treeAt } from '../api/routes/redact.js';
 import { editConfigFile } from '../config-edit.js';
 import { loadConfig, type DaemonConfig } from '../config.js';
 import { executorConfigEntry, type ExecutorService } from '../executors/service.js';

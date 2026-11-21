@@ -184,4 +184,45 @@ describe('the setup routes', () => {
     expect(done.status, done.text).toBe(200);
     expect(await readFile(dataPaths(tmp.dir).config, 'utf8')).toContain('preset: quality');
   });
+
+  // No override of the store: the daemon opens its own SQLite file in the data directory, which is
+  // what survives a restart.
+  it('after the daemon restarts on the same data directory, the run is at the same step', async () => {
+    await daemon.stop();
+    const other = await makeTempDataDir();
+    const dir = other.dir;
+    const open = async (): Promise<DaemonHandle> =>
+      startDaemon({
+        dataDir: dir,
+        clientSearch: NO_CLIENTS,
+        config: parseConfig('backup:\n  when: manual\n'),
+        overrides: { clock: new FakeClock(), vault: new InMemorySecretVault() },
+        logger: captureLogger().logger,
+        version: '0.0.0-test',
+      });
+    daemon = await open();
+    token = (await readFile(dataPaths(dir).apiToken, 'utf8')).trim();
+    const started = await send('POST', '/v1/setup/first_run/start', {});
+    const run = started.view();
+    const first = await send('POST', `/v1/setup/${run.id}/step`, { step: 'detect', input: {} });
+    expect(first.status).toBe(200);
+    await daemon.stop();
+
+    daemon = await open();
+    token = (await readFile(dataPaths(dir).apiToken, 'utf8')).trim();
+    const overview = JSON.parse((await send('GET', '/v1/setup')).text) as {
+      flows: { flow: string; active: SetupRunView | null }[];
+    };
+    const active = overview.flows.find((flow) => flow.flow === 'first_run')?.active;
+    expect(active?.id).toBe(run.id);
+    expect(active?.step).toBe('preset');
+    expect(active?.done.map((entry) => entry.step)).toEqual(['detect']);
+    const next = await send('POST', `/v1/setup/${run.id}/step`, {
+      step: 'preset',
+      input: { preset: 'balanced' },
+    });
+    expect(next.status).toBe(200);
+    await daemon.stop();
+    await other.dispose();
+  });
 });

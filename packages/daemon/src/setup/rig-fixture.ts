@@ -6,10 +6,10 @@ import {
   type ExecutorDraft,
   type ModelCatalog,
   type ModelInfo,
+  type Clock,
   type Store,
   type ValidationResult,
 } from '@otheater/core';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { loadConfig } from '../config.js';
 import { ExecutorService } from '../executors/service.js';
 import { fixtureOpenCodeCatalog } from '../executors/opencode-catalog-fixture.js';
@@ -93,7 +93,9 @@ export interface SetupRig {
 export interface RigOptions {
   readonly configYaml?: string;
   readonly profiles?: readonly FakeProfile[];
-  readonly store?: Store;
+  /** The store and the clock come from the test file (rule testing-only-from-tests). */
+  readonly store: Store;
+  readonly clock: Clock;
   readonly catalogs?: Partial<Record<string, ModelCatalog>>;
   readonly installed?: readonly string[];
 }
@@ -102,11 +104,11 @@ export interface RigOptions {
  * Fake profiles over the store (no vault, no probe, no client): the key of an API account is a
  * reference name in the row, never a secret.
  */
-export async function makeSetupRig(options: RigOptions = {}): Promise<SetupRig> {
+export async function makeSetupRig(options: RigOptions): Promise<SetupRig> {
   const data = await makeTempDataDir();
   const configPath = join(data.dir, 'config.yaml');
   if (options.configYaml !== undefined) await writeFile(configPath, options.configYaml);
-  const store = options.store ?? new InMemoryStore({ clock: new FakeClock(T0) });
+  const { store, clock } = options;
   const logins = new Map<string, 'logged_in' | 'logged_out' | 'unknown'>();
   for (const profile of options.profiles ?? DEFAULT_PROFILES) {
     const created = await store.profiles.create({
@@ -154,7 +156,6 @@ export async function makeSetupRig(options: RigOptions = {}): Promise<SetupRig> 
   };
   const installed = new Set(options.installed ?? ['claude-code', 'codex', 'opencode']);
   const service = (): SetupService => {
-    const clock = new FakeClock(T0);
     const lookup = (client: string): ModelCatalog | undefined => catalogs[client];
     return new SetupService({
       store,
