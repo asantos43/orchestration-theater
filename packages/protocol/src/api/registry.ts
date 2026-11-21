@@ -5,6 +5,7 @@ import { LAYOUT_ROUTES } from './layout.js';
 import { assertUniqueRoutes, type AnyApiRoute } from './route.js';
 import { EVENT_ROUTES } from './sse.js';
 import { STATUS_ROUTES } from './status.js';
+import { ATIF_ROUTES } from './atif.js';
 import { ATTACHMENT_ROUTES } from './attachments.js';
 import { ATTEMPT_ROUTES } from './attempts.js';
 import { BLACKBOARD_ROUTES } from './blackboard.js';
@@ -50,6 +51,7 @@ export const API_ROUTES = {
   ...USAGE_ROUTES,
   ...SLASH_COMMAND_ROUTES,
   ...TRAJECTORY_ROUTES,
+  ...ATIF_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

@@ -378,14 +378,16 @@ describe('GET /v1/events', () => {
 
   it('does not leave a subscriber behind when the clients go away', async () => {
     await withDaemon('', async ({ daemon, open }) => {
+      // the automatic ATIF export (atif.export.on: play_end) follows the hub for as long as the daemon lives
+      const resident = daemon.eventHub.subscriberCount;
       const streams = await Promise.all([open(), open(), open()]);
       await Promise.all(streams.map(({ reader }) => reader.next()));
-      expect(daemon.eventHub.subscriberCount).toBeGreaterThan(0);
+      expect(daemon.eventHub.subscriberCount).toBeGreaterThan(resident);
       await Promise.all(streams.map(({ reader }) => reader.close()));
-      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > 0; i += 1) {
+      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > resident; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(daemon.eventHub.subscriberCount).toBe(0);
+      expect(daemon.eventHub.subscriberCount).toBe(resident);
     });
   });
 });

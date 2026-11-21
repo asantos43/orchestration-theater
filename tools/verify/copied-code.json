@@ -7,6 +7,25 @@
       "commit": "26d2c3f83008142061c22267482489588cc3823c",
       "localFiles": ["packages/tui/patches/ink/output.js"],
       "copyrightNotice": "Copyright (c) Vadym Demedes <vadimdemedes@hey.com> (https://github.com/vadimdemedes)\nCopyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)"
+    },
+    {
+      "project": "harbor",
+      "license": "Apache-2.0",
+      "sourcePath": "rfcs/0001-trajectory-format.md (example of section IV, ATIF-v1.5)",
+      "commit": "74cc6312018c349c6bd2400c89a0ac4983ac1085",
+      "localFiles": [
+        "packages/protocol/src/atif/fixtures/rfc-0001-stock-price.json",
+        "packages/protocol/src/atif/fixtures/LICENSE-harbor.txt"
+      ],
+      "copyrightNotice": "Harbor (https://github.com/harbor-framework/harbor), licensed under the Apache License, Version 2.0. The upstream LICENSE file has no copyright line and the repository has no NOTICE file (read on 2026-11-21); the license text is in packages/protocol/src/atif/fixtures/LICENSE-harbor.txt."
+    },
+    {
+      "project": "harbor",
+      "license": "Apache-2.0",
+      "sourcePath": "examples/tasks/hello-load-atif-trajectory-run-level/environment/trajectory.json",
+      "commit": "646874a7bfc23c45228f6d25bc900eac5ddc4541",
+      "localFiles": ["packages/protocol/src/atif/fixtures/harbor-hello-claude-code.json"],
+      "copyrightNotice": "Harbor (https://github.com/harbor-framework/harbor), licensed under the Apache License, Version 2.0. The upstream LICENSE file has no copyright line and the repository has no NOTICE file (read on 2026-11-21); the license text is in packages/protocol/src/atif/fixtures/LICENSE-harbor.txt."
     }
   ]
 }
