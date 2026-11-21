@@ -4,7 +4,8 @@ import { otelBaseEnv, type ClientOtel, type SessionSetup } from '@otheater/core'
 /**
  * The variables that make Claude Code export its own telemetry to the daemon's receiver (Phase 8,
  * P3; architecture 5.11). Metrics and logs always; traces only with `otel.traces` (the enhanced
- * telemetry beta, which the Phase 0 spike measured). OTLP over HTTP with JSON, because the receiver
+ * telemetry beta, which the Phase 0 spike measured), and the export interval of the metrics when
+ * `otel.metricsIntervalMs` says one. OTLP over HTTP with JSON, because the receiver
  * of the daemon speaks JSON only. The `OTEL_LOG_*` flags that put prompts, tool arguments or tool
  * results in the logs are never set: the client keeps its default (off). [V: Phase 0 spike]
  */
@@ -15,6 +16,9 @@ export function claudeOtelEnv(otel: ClientOtel): Record<string, string> {
     OTEL_LOGS_EXPORTER: 'otlp',
     OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
     ...otelBaseEnv(otel),
+    ...(otel.metricsIntervalMs === undefined
+      ? {}
+      : { OTEL_METRIC_EXPORT_INTERVAL: String(Math.round(otel.metricsIntervalMs)) }),
     ...(otel.traces === true
       ? { CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: '1', OTEL_TRACES_EXPORTER: 'otlp' }
       : {}),

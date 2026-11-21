@@ -87,6 +87,8 @@ import {
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
 import {
   TelemetryBatchRejectedPayloadSchema,
+  TelemetryExportFailedPayloadSchema,
+  TelemetryPurgedPayloadSchema,
   TelemetryReceiverStartedPayloadSchema,
   TelemetryRedactedPayloadSchema,
   TelemetryStoreResetPayloadSchema,
@@ -159,6 +161,7 @@ import {
   BrowserRefusedPayloadSchema,
 } from './browser-events.js';
 import { TerminalOutputPayloadSchema } from './terminal-events.js';
+import { WaitEndedPayloadSchema, WaitStartedPayloadSchema } from './wait-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -607,6 +610,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: DemandResumedPayloadSchema,
   }),
   defineEventType({
+    type: 'wait.started',
+    schemaVersion: 1,
+    payload: WaitStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'wait.ended',
+    schemaVersion: 1,
+    payload: WaitEndedPayloadSchema,
+  }),
+  defineEventType({
     type: 'play.notice',
     schemaVersion: 1,
     payload: PlayNoticePayloadSchema,
@@ -705,6 +718,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'telemetry.redacted',
     schemaVersion: 1,
     payload: TelemetryRedactedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'telemetry.export_failed',
+    schemaVersion: 1,
+    payload: TelemetryExportFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'telemetry.purged',
+    schemaVersion: 1,
+    payload: TelemetryPurgedPayloadSchema,
   }),
   defineEventType({
     type: 'api.started',
@@ -992,6 +1015,8 @@ export type ScenarioDirectorWaitingPayload = DaemonEventPayloads['scenario.direc
 export type ScenarioDirectorResumedPayload = DaemonEventPayloads['scenario.director_resumed'];
 export type DemandWaitingPayload = DaemonEventPayloads['demand.waiting'];
 export type DemandResumedPayload = DaemonEventPayloads['demand.resumed'];
+export type WaitStartedEventPayload = DaemonEventPayloads['wait.started'];
+export type WaitEndedEventPayload = DaemonEventPayloads['wait.ended'];
 export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
 export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
 export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];
@@ -1014,6 +1039,8 @@ export type TelemetryStoreResetPayload = DaemonEventPayloads['telemetry.store_re
 export type TelemetryReceiverStartedPayload = DaemonEventPayloads['telemetry.receiver_started'];
 export type TelemetryBatchRejectedPayload = DaemonEventPayloads['telemetry.batch_rejected'];
 export type TelemetryRedactedPayload = DaemonEventPayloads['telemetry.redacted'];
+export type TelemetryExportFailedPayload = DaemonEventPayloads['telemetry.export_failed'];
+export type TelemetryPurgedPayload = DaemonEventPayloads['telemetry.purged'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];

@@ -384,6 +384,31 @@ describe('TelemetryReceiver: events', () => {
     );
   });
 
+  it('counts the batches taken and refused since the start, and the windows do not clear it (P10)', async () => {
+    const { receiver } = await start({ maxBody: 1024 });
+    expect(receiver.stats).toEqual({
+      accepted: { traces: 0, metrics: 0, logs: 0 },
+      rejected: { format: 0, size: 0, token: 0 },
+    });
+    await send(receiver.port, { headers: json(), body: JSON.stringify(LOGS) });
+    await send(receiver.port, { path: '/v1/traces', headers: json(), body: '{}' });
+    await send(receiver.port, { headers: json('bad'), body: '{}' });
+    await send(receiver.port, {
+      headers: { ...json(), 'content-type': 'application/x-protobuf' },
+      body: 'x',
+    });
+    await send(receiver.port, {
+      path: '/v1/traces',
+      headers: json(),
+      body: JSON.stringify({ pad: 'y'.repeat(4096) }),
+    });
+    receiver.flushSituations();
+    expect(receiver.stats).toEqual({
+      accepted: { traces: 1, metrics: 0, logs: 1 },
+      rejected: { format: 1, size: 1, token: 1 },
+    });
+  });
+
   it('tells what the redaction removed, by name, aggregated (telemetry.redacted)', async () => {
     const { receiver, situations } = await start();
     await send(receiver.port, { headers: json(), body: JSON.stringify(LOGS) });

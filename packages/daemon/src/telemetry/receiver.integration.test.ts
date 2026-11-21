@@ -86,6 +86,9 @@ class RecordingStore implements TelemetryStore {
   readLogs() {
     return Promise.resolve(this.logs);
   }
+  readSince() {
+    return Promise.resolve([]);
+  }
   readCursor(): Promise<number | null> {
     return Promise.resolve(null);
   }
@@ -94,6 +97,27 @@ class RecordingStore implements TelemetryStore {
   }
   deleteOlderThan() {
     return Promise.resolve({ spans: 0, metrics: 0, logs: 0 });
+  }
+  footprint() {
+    return Promise.resolve({ usedBytes: 0, fileBytes: null, oldestUnixNano: null });
+  }
+  compact(): Promise<void> {
+    return Promise.resolve();
+  }
+  replaceRollupDay() {
+    return Promise.resolve();
+  }
+  readRollups() {
+    return Promise.resolve([]);
+  }
+  readRollupsReadyThrough(): Promise<string | null> {
+    return Promise.resolve(null);
+  }
+  markRollupsReady() {
+    return Promise.resolve();
+  }
+  deleteRollupsBefore() {
+    return Promise.resolve(0);
   }
   health() {
     return Promise.resolve({

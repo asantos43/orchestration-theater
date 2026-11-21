@@ -258,7 +258,9 @@ describe('closing and reopening', () => {
     app.press('\x1b[1;6D');
     await waitUntil(() => first.layouts[0]?.layout.chatWidth === 54);
     await app.settle();
-    const before = app.frame();
+    // The play ids come from a counter of the test support, so the second seed numbers them anew.
+    const sameIds = (frame: string): string => frame.replace(/\bP\d+\b/g, 'P#');
+    const before = sameIds(app.frame());
     app.press('\x11');
     await waitUntil(() => savedLayout(file)?.chatWidth === 54);
     const saved = file.text;
@@ -266,7 +268,7 @@ describe('closing and reopening', () => {
 
     const second = fakeOnline({ file });
     const again = await open(second);
-    expect(again.frame()).toBe(before);
+    expect(sameIds(again.frame())).toBe(before);
     expect(second.layouts[0]?.layout).toEqual(first.layouts[0]?.layout);
     expect(file.text).toBe(saved);
   });

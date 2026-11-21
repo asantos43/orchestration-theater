@@ -15,6 +15,7 @@ import {
   PROMPT_ORDER_MODES,
   ROLE_IDS,
   ROTATE_ON_EXHAUSTION_MODES,
+  SecretKeySchema,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
 } from '@otheater/core';
@@ -57,7 +58,23 @@ import {
   DIRECT_ORPHANS_MODES,
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
+import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
+import {
+  exportsOtlp,
+  HEADER_NAME_PATTERN,
+  SUPPORTED_OTLP_PROTOCOLS,
+  TELEMETRY_EXPORT_FAILURE_MODES,
+  TELEMETRY_EXPORT_MODES,
+  TELEMETRY_OTLP_COMPRESSIONS,
+  TELEMETRY_OTLP_PROTOCOLS,
+  TELEMETRY_RETRY_BACKOFFS,
+} from './telemetry/export-config.js';
+import {
+  LOG_ROTATE_MODES,
+  TELEMETRY_RETENTION_GUARDS,
+  TELEMETRY_RETENTION_MODES,
+} from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1249,12 +1266,19 @@ const DirectSessionConfigSchema = z
 /** `telemetry.enabled`, `telemetry.clients.<client>` and `telemetry.clients.<client>.<option>`: on or off. */
 export const TELEMETRY_SWITCH_MODES = ['on', 'off'] as const;
 /**
- * `telemetry.daemon_spans.waits` (Phase 8, P4; [proposta]): which `otheater.wait` spans the daemon
- * makes. `all`: those the log tells (quota, executor selection, tool semaphore) and those recorded
- * where the daemon waits (the prompt queue, the pool); `log`: only those the log tells, so the
- * whole set can be rebuilt from the log; `off`: none.
+ * `telemetry.daemon_spans.waits` (Phase 8, P4, P15; [proposta]): whether the daemon makes the
+ * `otheater.wait` spans. `all`: every wait the log tells (quota, executor selection, tool
+ * semaphore, and the prompt queue and the pool past `events.wait_threshold`, P15); `off`: none.
+ * Every span is made from the log, so a recreated base gets them all again.
  */
-export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'log', 'off'] as const;
+export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'off'] as const;
+/**
+ * `events.wait_threshold` (Phase 8, P15, N222 (a); [proposta]): how long a wait of the prompt queue
+ * or of the pool must last to be told in the log (`wait.started`, `wait.ended`). A duration (default
+ * `1s`); `always`: every wait that began, even one that ended at once; `off`: none. Parsed to
+ * milliseconds, `0` for `always` and `null` for `off`.
+ */
+export const EVENT_WAIT_THRESHOLD_ALWAYS = 'always';
 /** `telemetry.synchronous` (`PRAGMA synchronous` of the telemetry base only; the `Store` stays full). */
 export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
 /** `backup.telemetry`: whether the backup carries the telemetry file. */
@@ -1277,6 +1301,111 @@ function telemetryClient<Shape extends z.ZodRawShape>(options: Shape) {
     )
     .prefault({});
 }
+
+/**
+ * `telemetry.otlp` (Phase 8, P7; N70, N211): where the daemon sends what the telemetry base holds
+ * when `telemetry.export` is `otlp` or `both`. `endpoint`, `protocol` and `headers` are the keys of
+ * the architecture (5.11); the rest is [proposta].
+ * - `endpoint`: the base URL of an OTLP/HTTP receiver; the exporter posts to `/v1/traces`,
+ *   `/v1/metrics` and `/v1/logs` under it. `null` is only valid while the export is not OTLP.
+ * - `protocol`: `http/json` (N211, code of our own). `http/protobuf` and `grpc` are future modes and
+ *   the config refuses them with that message, so no value parses and then does nothing.
+ * - `headers`: header name to the **key of a secret in the vault**; the value is read when a request
+ *   is sent and never kept in the config, the log or an event. Over `http://` to a host that is not
+ *   loopback, headers are refused (they would cross the network in clear text).
+ * - `compression`: `none` or `gzip`; `timeout`: per request; `interval`: how often the exporter
+ *   looks for what is new; `batch`: records per request (per signal);
+ *   `signals.<signal>`: `on` or `off` for traces, metrics and logs.
+ * - `retry`: after a failed request it tries again `retries` times, waiting `initial` and then, with
+ *   `backoff: exponential`, double each time up to `max` (`fixed` waits `initial` every time).
+ * - `on_failure`: `drop` (default) or `hold`, see {@link TELEMETRY_EXPORT_FAILURE_MODES};
+ *   `failure_report`: the window in which the failures are told once, in `telemetry.export_failed`.
+ */
+const TelemetryOtlpConfigSchema = z
+  .strictObject({
+    endpoint: z
+      .url({ protocol: /^https?$/u, message: 'expected an http or https URL' })
+      .nullable()
+      .default(null),
+    protocol: z
+      .enum(TELEMETRY_OTLP_PROTOCOLS)
+      .refine((protocol) => SUPPORTED_OTLP_PROTOCOLS.includes(protocol), {
+        message:
+          'only http/json exists for now; http/protobuf and grpc are future modes of telemetry.otlp.protocol (N211)',
+      })
+      .default('http/json'),
+    headers: z
+      .record(
+        z.string().regex(HEADER_NAME_PATTERN, 'expected an HTTP header name'),
+        SecretKeySchema,
+      )
+      .default({}),
+    compression: z.enum(TELEMETRY_OTLP_COMPRESSIONS).default('none'),
+    timeout: DurationSchema.prefault('10s'),
+    interval: DurationSchema.prefault('10s'),
+    batch: z.int().min(1).max(10_000).default(500),
+    signals: z
+      .strictObject({
+        traces: TelemetrySwitch.default('on'),
+        metrics: TelemetrySwitch.default('on'),
+        logs: TelemetrySwitch.default('on'),
+      })
+      .prefault({}),
+    retry: z
+      .strictObject({
+        retries: z.int().min(0).max(10).default(3),
+        backoff: z.enum(TELEMETRY_RETRY_BACKOFFS).default('exponential'),
+        initial: DurationSchema.prefault('1s'),
+        max: DurationSchema.prefault('30s'),
+      })
+      .prefault({}),
+    on_failure: z.enum(TELEMETRY_EXPORT_FAILURE_MODES).default('drop'),
+    failure_report: DurationSchema.prefault('1m'),
+  })
+  .prefault({});
+
+/**
+ * `telemetry.prometheus` (P7; N218): `cache_ttl` is how long `GET /metrics` reuses what it
+ * computed from the usage records, so a scrape every few seconds does not read the table each time.
+ * [proposta]
+ */
+const TelemetryPrometheusConfigSchema = z
+  .strictObject({ cache_ttl: DurationSchema.prefault('5s') })
+  .prefault({});
+
+/** True for a host that is this machine: the only one `http://` may reach with headers. */
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '[::1]' ||
+    /^127\.\d+\.\d+\.\d+$/u.test(hostname)
+  );
+}
+
+/**
+ * `telemetry.retention` (Phase 8, P8; N216 (a)): how long the raw telemetry stays in the telemetry
+ * base, and how big the base may get. The store and its event log are not touched (N216 (a)), and
+ * the daily aggregates keep their own retention (`analysis.retention.days`). [proposta] Names and
+ * modes, except `days` (30) and `max_mb` (1024), which are in the plan.
+ *
+ * - `mode` (default `daily`): when the purge runs, see {@link TELEMETRY_RETENTION_MODES}.
+ * - `interval` (default `24h`): the time between two passes of `daily`.
+ * - `days` (default 30): records older than this go; `0` keeps them whatever their age.
+ * - `max_mb` (default 1024): the data in the base may not pass this size; the oldest go first;
+ *   `0` sets no cap. A base that stays over it is compacted (the file is rewritten) so the disk
+ *   is really freed.
+ * - `guard` (default `rollups`): see {@link TELEMETRY_RETENTION_GUARDS}.
+ */
+const TelemetryRetentionSchema = z
+  .strictObject({
+    mode: z.enum(TELEMETRY_RETENTION_MODES).default('daily'),
+    interval: DurationSchema.prefault('24h'),
+    days: z.int().min(0).max(36_500).default(30),
+    max_mb: z.int().min(0).max(1_048_576).default(1024),
+    guard: z.enum(TELEMETRY_RETENTION_GUARDS).default('rollups'),
+  })
+  .prefault({});
 
 /**
  * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block; P2 added
@@ -1306,11 +1435,17 @@ const TelemetryConfigSchema = z
      * Which clients send telemetry to the daemon (P3 turns them on at launch). Each accepts `on` or
      * `off`, or an object with `enabled` and its options:
      * - `claude-code.traces`: also ask for the traces (beta); default `off`;
+     * - `claude-code.metrics_interval`: how often Claude Code exports its metrics, a duration
+     *   (default `5s`) or `client` (its own default, 60 s). A session ends with a SIGTERM, so what
+     *   was not exported by then is lost; with 60 s a short session sends no metric. [proposta]
      * - `opencode.ai_spans`: `experimental.openTelemetry` for the AI spans (N213); default `off`.
      */
     clients: z
       .strictObject({
-        'claude-code': telemetryClient({ traces: TelemetrySwitch.default('off') }),
+        'claude-code': telemetryClient({
+          traces: TelemetrySwitch.default('off'),
+          metrics_interval: z.union([z.literal('client'), DurationSchema]).prefault('5s'),
+        }),
         codex: telemetryClient({}),
         opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
       })
@@ -1341,6 +1476,47 @@ const TelemetryConfigSchema = z
      * Default `on`. [proposta]
      */
     daemon_spans: telemetryClient({ waits: z.enum(TELEMETRY_DAEMON_WAITS_MODES).default('all') }),
+    /**
+     * What leaves the daemon (P7, N70): `off` (default: nothing leaves, `/metrics` answers 404),
+     * `otlp` (the exporter of `telemetry.otlp`), `prometheus` (`GET /metrics`) or `both`.
+     */
+    export: z.enum(TELEMETRY_EXPORT_MODES).default('off'),
+    otlp: TelemetryOtlpConfigSchema,
+    prometheus: TelemetryPrometheusConfigSchema,
+    /** How long the raw telemetry stays and how big the base may get (P8, N216 (a)). */
+    retention: TelemetryRetentionSchema,
+  })
+  .superRefine((telemetry, ctx) => {
+    const { endpoint, headers } = telemetry.otlp;
+    if (exportsOtlp(telemetry.export) && endpoint === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['otlp', 'endpoint'],
+        message: 'telemetry.otlp.endpoint is required when telemetry.export is otlp or both',
+      });
+    }
+    // The exporter reads the telemetry base: with telemetry off there is nothing to send [proposta].
+    if (exportsOtlp(telemetry.export) && telemetry.enabled === 'off') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['export'],
+        message:
+          'telemetry.export otlp or both needs telemetry.enabled on: the exporter reads the telemetry base',
+      });
+    }
+    if (
+      endpoint !== null &&
+      Object.keys(headers).length > 0 &&
+      new URL(endpoint).protocol === 'http:' &&
+      !isLoopbackHost(new URL(endpoint).hostname)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['otlp', 'headers'],
+        message:
+          'telemetry.otlp.headers over http:// to a host that is not this machine would cross the network in clear text; use https://',
+      });
+    }
   })
   .prefault({});
 
@@ -1634,6 +1810,8 @@ export const DaemonConfigSchema = z
     direct_session: DirectSessionConfigSchema,
     /** [proposta] The ATIF export of the trajectories (architecture 5.11, N219): see `atif/atif-config.ts`. */
     atif: AtifConfigSchema,
+    /** [proposta] The analysis of the system (architecture 5.11, N55 and N217): see `analysis/analysis-config.ts`. */
+    analysis: AnalysisConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({
@@ -1961,6 +2139,18 @@ export const DaemonConfigSchema = z
           (bytes) => bytes > 0,
           'expected a size above zero',
         ).prefault('64KB'),
+        /**
+         * P15 of Phase 8 (N222 (a)) [proposta]: a wait of the prompt queue or of the session pool that
+         * lasts this long is written as `wait.started` and `wait.ended` (the spans `otheater.wait` are
+         * made from them). `always` writes every wait that began; `off` writes none.
+         */
+        wait_threshold: z
+          .union([
+            z.literal('off').transform(() => null),
+            z.literal(EVENT_WAIT_THRESHOLD_ALWAYS).transform(() => 0),
+            DurationSchema,
+          ])
+          .prefault('1s'),
       })
       .prefault({}),
     /**
@@ -2415,6 +2605,18 @@ export const DaemonConfigSchema = z
       .strictObject({
         level: z.enum(LOG_LEVELS).default('info'),
         destination: z.enum(LOG_DESTINATIONS).default('file'),
+        /**
+         * The rotation of `daemon.log` (Phase 8, P8; [proposta]). `mode: size` (default): when the
+         * file would pass `max_mb` it becomes `daemon.log.1` (the older copies move up) and a new
+         * file starts; `keep` copies stay (`0`: none, the full file is dropped); `off`: it grows.
+         */
+        rotate: z
+          .strictObject({
+            mode: z.enum(LOG_ROTATE_MODES).default('size'),
+            max_mb: z.int().min(1).max(10_240).default(20),
+            keep: z.int().min(0).max(100).default(5),
+          })
+          .prefault({}),
       })
       .prefault({}),
   })

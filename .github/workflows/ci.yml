@@ -124,7 +124,7 @@ jobs:
             full) full=true ;;
             *) echo "::error::OT_DOCS_CI=$DOCS_MODE: use light or full"; exit 1 ;;
           esac
-          if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|tools/atif-validate/)'; then
+          if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|packages/daemon/src/phase8-acceptance\.e2e\.test\.ts|tools/atif-validate/)'; then
             atif=true
           else
             atif=false
@@ -160,7 +160,8 @@ jobs:
 
   # The trajectories of the ATIF exporter against the TrajectoryValidator of Harbor (Phase 8, P6,
   # N215). It runs on a pull request that touches packages/protocol/src/atif/,
-  # packages/daemon/src/atif/ or tools/atif-validate/, and on a dispatch; not on a push to main (the
+  # packages/daemon/src/atif/, the acceptance of Phase 8 (packages/daemon/src/phase8-acceptance.e2e.test.ts,
+  # whose play is validated too, P13) or tools/atif-validate/, and on a dispatch; not on a push to main (the
   # pull request already ran it). The only Python of the CI: uv installs the pinned and hashed
   # `harbor` (0.25.0) and the `pydantic` it needs, without the other dependencies of harbor
   # (tools/atif-validate/requirements.txt). tools/atif-validate/run.sh generates the trajectories of

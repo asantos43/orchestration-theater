@@ -50,6 +50,7 @@ describe('ClientTelemetry.prepare', () => {
         'otheater.attempt_id': 'play-1/stage-a/1',
       },
       traces: false,
+      metricsIntervalMs: 5000,
       experimental: false,
     });
   });
@@ -84,6 +85,22 @@ describe('ClientTelemetry.prepare', () => {
       'telemetry:\n  clients:\n    claude-code:\n      traces: on\n',
     ).clients.prepare('codex', 'p', undefined);
     expect(codex?.session.traces).toBe(false);
+  });
+
+  it('gives Claude Code a metrics interval of 5s by default, none with client, and none to others', async () => {
+    expect(
+      (await build().clients.prepare('claude-code', 'p', undefined))?.session.metricsIntervalMs,
+    ).toBe(5000);
+    const yaml = 'telemetry:\n  clients:\n    claude-code:\n      metrics_interval: 30s\n';
+    expect(
+      (await build(yaml).clients.prepare('claude-code', 'p', undefined))?.process.metricsIntervalMs,
+    ).toBe(30_000);
+    const client = await build(
+      'telemetry:\n  clients:\n    claude-code:\n      metrics_interval: client\n',
+    ).clients.prepare('claude-code', 'p', undefined);
+    expect(client?.session).not.toHaveProperty('metricsIntervalMs');
+    const codex = await build().clients.prepare('codex', 'p', undefined);
+    expect(codex?.session).not.toHaveProperty('metricsIntervalMs');
   });
 
   it('turns the experimental AI spans on for OpenCode only with ai_spans: on', async () => {

@@ -82,7 +82,7 @@ A retenção é configurável, com política de expurgo.
 ## Visualizadores
 
 - **Dashboard próprio:** a TUI e, a partir da Fase 12, a web, lendo o store. As listas são virtualizadas e as trajetórias paginadas.
-- **Arize Phoenix** (opcional): roda como processo único sem Docker, ingere OTLP e importa ATIF. É ELv2, aceito só como **ferramenta local**, nunca embutido nem distribuído (§6.0 e §6.2).
+- **Arize Phoenix** (opcional): roda como processo único sem Docker, ingere OTLP e importa ATIF. É ELv2, aceito só como **ferramenta local**, nunca embutido nem distribuído (§6.0 e §6.2). A receita, com o que o Phoenix aceita de fato (o OTLP dele é só protobuf, e o OTheater manda JSON), está em [reference/phoenix.md](reference/phoenix.md).
 - **OpenLIT** e **Laminar** (Apache-2.0) exigem Docker + ClickHouse.
 
 ## Telemetria agregada (a mostrar no dashboard)

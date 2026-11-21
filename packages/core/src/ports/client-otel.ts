@@ -31,6 +31,14 @@ export interface ClientOtel {
    */
   readonly traces?: boolean;
   /**
+   * How often the client exports its metrics, in milliseconds (Claude Code:
+   * `OTEL_METRIC_EXPORT_INTERVAL`). Absent: the client keeps its own default (60 s for Claude Code
+   * [V: Phase 0 spike]). A session ends with a SIGTERM to its process tree, so whatever the client
+   * did not export by then is lost: with the default, a session shorter than a minute sends no
+   * metric at all [V: Phase 8, P13 real acceptance]. (`telemetry.clients.claude-code.metrics_interval`.)
+   */
+  readonly metricsIntervalMs?: number;
+  /**
    * Default off. OpenCode: turns on `experimental.openTelemetry` (the AI SDK spans, with prompt and
    * response in clear text, which the receiver must redact). (`telemetry.clients.opencode.ai_spans`.)
    */

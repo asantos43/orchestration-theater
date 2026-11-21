@@ -4,8 +4,7 @@ import type { EventHub } from '../events/event-hub.js';
 import type { Logger } from '../logger.js';
 import { situationSubject, situationText, type SituationSink } from '../situations.js';
 import { SPAN_NAME } from './span-conventions.js';
-import { SpanProjection, directWaitSpan } from './span-projection.js';
-import type { DirectWait, WaitRecorder } from './wait-recorder.js';
+import { SpanProjection } from './span-projection.js';
 
 /**
  * The spans of the daemon (Phase 8, P4; N214 (a); architecture 5.11). [proposta] A projector reads
@@ -41,8 +40,8 @@ export interface DaemonSpansOptions {
   readonly clock: Clock;
   readonly logger: Pick<Logger, 'warn' | 'debug'>;
   readonly situations?: SituationSink | undefined;
-  /** `telemetry.daemon_spans.waits`: `all` makes the waits recorded where they happen too. */
-  readonly waits: 'all' | 'log' | 'off';
+  /** `telemetry.daemon_spans.waits`: `off` leaves the `otheater.wait` spans out. */
+  readonly waits: 'all' | 'off';
   /** Events read per page; the default of the hub. */
   readonly pageSize?: number | undefined;
 }
@@ -71,7 +70,7 @@ export class DaemonSpans {
     this.#o = options;
   }
 
-  /** The spans written since the start (the closing ones of the log and the waits recorded). */
+  /** The spans written since the start (the ones the log closes). */
   get written(): number {
     return this.#written;
   }
@@ -134,27 +133,13 @@ export class DaemonSpans {
   /**
    * Reads the log from the first event again and writes every span (the ones already in the base
    * are ignored). What a recreated base needs; also what a person wants after a change in the
-   * conventions. The waits recorded where they happened are not in the log, so they are not back.
+   * conventions.
+   * The waits come back too: they are events of the log (`wait.started`, `wait.ended`, P15).
    */
   reproject(): void {
     this.#rewind = true;
     this.#run?.abort();
   }
-
-  /**
-   * The wait recorder for the places that wait with no event (the queue of prompts, the pool). It
-   * does nothing unless `telemetry.daemon_spans.waits` is `all`.
-   */
-  readonly recordWait: WaitRecorder = (wait: DirectWait) => {
-    if (this.#o.waits !== 'all' || this.#stopSignal.signal.aborted) return;
-    try {
-      const receipt = this.#o.telemetry.write({ spans: [directWaitSpan(wait)] });
-      this.#written += receipt.accepted;
-    } catch (error) {
-      // `write` never throws; a span that cannot even be built is not worth more than a line.
-      this.#o.logger.debug({ err: error }, 'a wait span was not recorded');
-    }
-  };
 
   // ---- the loop -----------------------------------------------------------------------------------
 

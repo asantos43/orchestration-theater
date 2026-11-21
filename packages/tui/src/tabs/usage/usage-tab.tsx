@@ -8,7 +8,7 @@ import {
   type UsageView,
 } from '@otheater/client';
 import { Box, Text } from 'ink';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keyLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
@@ -18,11 +18,22 @@ import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import { cellWidth, fit } from '../../layout/text.js';
 import { COLOR } from '../../layout/theme.js';
+import { useStoreValue } from '../../use-store-value.js';
+import { DEFAULT_USAGE_SETTINGS, type UsageSectionName } from '../settings.js';
+import { followedSubject } from '../trajectories/model.js';
 import { formatClock } from '../use-now.js';
+import { BottlenecksSection } from './bottlenecks.js';
+import { trendWindow } from './panels-model.js';
+import { PlaySection, type PlayPanelSubject } from './play-panel.js';
+import { TelemetrySection } from './telemetry-panel.js';
+import { TrendSection } from './trend.js';
+import { usePanels } from './use-panels.js';
 import { useUsage } from './use-usage.js';
 
-/** The ids of the sections, top to bottom. */
-export const USAGE_SECTIONS = ['usage.totals', 'usage.groups', 'usage.budget'] as const;
+/** Every section the tab can draw, in the default order (`ui.usage.sections` picks and orders them). */
+export const USAGE_SECTIONS = DEFAULT_USAGE_SETTINGS.sections.map(
+  (name) => `usage.${name}`,
+) as readonly string[];
 
 /** `23/11 14:05`: the moment a cap starts over, in the local time of the terminal. */
 function formatMoment(timestamp: number): string {
@@ -132,17 +143,58 @@ function BudgetLines(props: { readonly budget: BudgetView; readonly width: numbe
   );
 }
 
+/** The most spans one read of the tree asks for (the rows drawn are `ui.usage.spanRows`). */
+const SPAN_READ_LIMIT = 1000;
+
+/** What the section of the play draws about: the play the Trajectories tab follows, by its own rule. */
+function usePlaySubject(scenarioId: string | undefined): PlayPanelSubject {
+  const { stores, settings } = useTabHost();
+  const plays = useStoreValue(stores.plays, (state) => state.byId);
+  const direct = useStoreValue(stores.trajectories, (state) => state.direct);
+  if (scenarioId === undefined) return { kind: 'none', why: 'noScenario' };
+  const subject = followedSubject(plays, direct, scenarioId, settings.trajectories.follow);
+  if (subject === undefined) return { kind: 'none', why: 'noPlay' };
+  return subject.kind === 'direct'
+    ? { kind: 'none', why: 'direct' }
+    : { kind: 'play', id: subject.id };
+}
+
 function UsageTab(props: TabContentProps): ReactNode {
   const { t } = useTranslation();
   const host = useTabHost();
   const { width, sections, focused } = props;
   const settings = host.settings.usage;
-  const reader = useUsage(host.client, settings.groupBy, settings.refreshSeconds, host.now);
+  const wanted = new Set<UsageSectionName>(settings.sections);
+  // The totals, the groups and the budget share one read of two routes: with none of the three
+  // drawn, it is not made.
+  const wantsUsage = wanted.has('totals') || wanted.has('groups') || wanted.has('budget');
+  const reader = useUsage(
+    wantsUsage ? host.client : undefined,
+    settings.groupBy,
+    settings.refreshSeconds,
+    host.now,
+  );
+  const subject = usePlaySubject(props.scenarioId);
+  const panels = usePanels(
+    host.client,
+    {
+      analysis: wanted.has('trend') || wanted.has('bottlenecks'),
+      trendDays: settings.trendDays,
+      spansOf: wanted.has('play') && subject.kind === 'play' ? subject.id : undefined,
+      spanLimit: SPAN_READ_LIMIT,
+      telemetry: wanted.has('telemetry'),
+    },
+    settings.refreshSeconds,
+    host.now,
+  );
 
   useRawKeys(
     (event: KeyEvent) => {
       if (event.combo === undefined) return;
-      if (host.keymap.match(event.combo, ['usage']) === 'usage.refresh') reader.refresh();
+      if (host.keymap.match(event.combo, ['usage']) === 'usage.refresh') {
+        reader.refresh();
+        panels.refresh();
+      }
     },
     { isActive: focused && host.client !== undefined },
   );
@@ -158,6 +210,13 @@ function UsageTab(props: TabContentProps): ReactNode {
         {t('usage.offline')}
       </Text>
     );
+  } else if (!wantsUsage) {
+    notice =
+      refreshKey === undefined ? undefined : (
+        <Text dimColor wrap="truncate">
+          {t('usage.hint', { key: refreshKey })}
+        </Text>
+      );
   } else if (load.status === 'loading') {
     notice = (
       <Text dimColor wrap="truncate">
@@ -183,9 +242,8 @@ function UsageTab(props: TabContentProps): ReactNode {
     );
   }
 
-  return (
-    <Box flexDirection="column" width={width}>
-      {notice}
+  const parts: Readonly<Record<UsageSectionName, ReactNode>> = {
+    totals: (
       <Section
         id="usage.totals"
         title={t('usage.totals.title')}
@@ -203,6 +261,8 @@ function UsageTab(props: TabContentProps): ReactNode {
           <TotalsLines usage={shown.usage} width={width} />
         )}
       </Section>
+    ),
+    groups: (
       <Section
         id="usage.groups"
         title={
@@ -227,6 +287,8 @@ function UsageTab(props: TabContentProps): ReactNode {
           ))
         )}
       </Section>
+    ),
+    budget: (
       <Section
         id="usage.budget"
         title={t('usage.budget.title')}
@@ -242,12 +304,46 @@ function UsageTab(props: TabContentProps): ReactNode {
           <BudgetLines budget={shown.budget} width={width} />
         )}
       </Section>
+    ),
+    trend: (
+      <TrendSection
+        load={panels.analysis}
+        window={trendWindow(host.now(), settings.trendDays)}
+        days={settings.trendDays}
+        width={width}
+        control={sections}
+      />
+    ),
+    bottlenecks: <BottlenecksSection load={panels.analysis} width={width} control={sections} />,
+    play: (
+      <PlaySection
+        subject={subject}
+        load={panels.spans}
+        rows={settings.spanRows}
+        width={width}
+        control={sections}
+      />
+    ),
+    telemetry: <TelemetrySection load={panels.telemetry} width={width} control={sections} />,
+  };
+
+  return (
+    <Box flexDirection="column" width={width}>
+      {notice}
+      {settings.sections.map((name) => (
+        <Fragment key={name}>{parts[name]}</Fragment>
+      ))}
     </Box>
   );
 }
 
-/** The Usage tab: the totals of `/v1/usage` split by `ui.usage.groupBy`, and the caps of `/v1/budget`. */
+/**
+ * The Usage tab: the totals of `/v1/usage` split by `ui.usage.groupBy`, the caps of `/v1/budget`,
+ * and the telemetry panels of Phase 8 (P10): the trend per day, the bottlenecks, the span tree of
+ * the followed play and the state of the telemetry. `ui.usage.sections` says which are drawn and in
+ * which order, and a section that is left out reads nothing.
+ */
 export const usageTab: TabDefinition = {
-  sections: USAGE_SECTIONS,
+  sections: (context) => context.settings.usage.sections.map((name) => `usage.${name}`),
   render: (props) => <UsageTab {...props} />,
 };

@@ -11,7 +11,9 @@
 #    harbor (the heavy ones do not take part in the validator). If the validator does not import,
 #    it falls back to the full install of harbor ONLY with OT_ATIF_HARBOR_FULL=1 (N215).
 # 2. Runs packages/daemon/src/atif/atif-harbor.test.ts, which writes, into <out-dir>, `valid/`
-#    (the three units of atif.export.unit in both contents) and `broken/` (defects on purpose).
+#    (the three units of atif.export.unit in both contents) and `broken/` (defects on purpose), and
+#    packages/daemon/src/phase8-acceptance.e2e.test.ts (P13), which adds to `valid/` the ATIF of a
+#    play that ran with the whole telemetry on (`phase8-acceptance-full` and `-redacted`).
 # 3. Passes valid/ to the validator (all must pass) and each file of broken/ (each must fail).
 #
 # Outside GitHub Actions the script downloads nothing unless OT_TEST_HARBOR=1 (owner, 2026-11-21):
@@ -51,7 +53,7 @@ out="${1:-$(mktemp -d)}"
 mkdir -p "$out"
 rm -rf "$out/valid" "$out/broken"
 echo "atif-validate: trajectories in $out"
-(cd "$root" && OT_ATIF_OUT="$out" pnpm exec vitest run packages/daemon/src/atif/atif-harbor.test.ts)
+(cd "$root" && OT_ATIF_OUT="$out" pnpm exec vitest run packages/daemon/src/atif/atif-harbor.test.ts packages/daemon/src/phase8-acceptance.e2e.test.ts)
 
 mapfile -t valid < <(find "$out/valid" -name '*.json' | sort)
 [ "${#valid[@]}" -gt 0 ] || { echo "atif-validate: no valid trajectory was written" >&2; exit 1; }
@@ -60,6 +62,10 @@ for unit in play attempt play_files; do
   for content in full redacted; do
     [ -d "$out/valid/$unit-$content" ] || { echo "atif-validate: missing $unit-$content" >&2; exit 1; }
   done
+done
+# The play of the acceptance of Phase 8 (P13), in both contents.
+for content in full redacted; do
+  [ -d "$out/valid/phase8-acceptance-$content" ] || { echo "atif-validate: missing phase8-acceptance-$content" >&2; exit 1; }
 done
 echo "atif-validate: ${#valid[@]} trajectories that must pass"
 "$py" -I "$here/atif_validate.py" "${valid[@]}" > "$out/report-valid.json" || {

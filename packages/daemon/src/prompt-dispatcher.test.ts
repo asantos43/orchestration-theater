@@ -8,8 +8,8 @@ import {
   PromptDispatcher,
   type PromptDispatcherOptions,
 } from './prompt-dispatcher.js';
-import { OT, WAIT_KIND } from './telemetry/span-conventions.js';
-import type { DirectWait } from './telemetry/wait-recorder.js';
+import { WaitEvents } from './telemetry/wait-events.js';
+import { RecordingSituations } from './telemetry/wait-events-fixture.js';
 
 /** A scenario to queue prompts for (the read-tools fixture has `s1` and `s2`). */
 async function seededStore(): Promise<InMemoryStore> {
@@ -317,12 +317,13 @@ describe('PromptDispatcher: a prompt in the queue survives a restart', () => {
   });
 });
 
-describe('PromptDispatcher: the wait of a prompt in the queue (P4, N217 (a))', () => {
-  it('tells why and for how long each prompt waited, when it is handed over', async () => {
+describe('PromptDispatcher: the wait of a prompt in the queue (P15, N222 (a))', () => {
+  it('tells why and for how long each prompt past the threshold waited, when it is handed over', async () => {
     const store = await seededStore();
     const clock = new FakeClock(5_000);
-    const waits: DirectWait[] = [];
-    const dispatcher = dispatcherOf(store, { onWait: (wait) => waits.push(wait), clock });
+    const situations = new RecordingSituations();
+    const waits = new WaitEvents({ situations, clock, thresholdMs: 100 });
+    const dispatcher = dispatcherOf(store, { waits });
     await dispatcher.submit({ scenarioId: 's1', source: 'producer', text: 'first' });
     await clock.advance(200);
     const sender = gatedSender();
@@ -332,28 +333,48 @@ describe('PromptDispatcher: the wait of a prompt in the queue (P4, N217 (a))', (
     await clock.advance(300);
     sender.release();
     await dispatcher.idle('s1');
-    expect(waits.map((wait) => [wait.reason, wait.kind, wait.outcome])).toEqual([
-      [PROMPT_WAIT_REASON.noDirector, WAIT_KIND.promptQueue, 'delivered'],
-      [PROMPT_WAIT_REASON.directorBusy, WAIT_KIND.promptQueue, 'delivered'],
+    const ended = situations.told.filter((entry) => entry.type === 'wait.ended');
+    expect(ended.map((entry) => [entry.payload.reasons, entry.payload.outcome])).toEqual([
+      [[PROMPT_WAIT_REASON.noDirector], 'delivered'],
+      [[PROMPT_WAIT_REASON.directorBusy], 'delivered'],
     ]);
-    expect(waits[0]?.correlation).toEqual({ scenarioId: 's1' });
-    expect(waits[0]?.attributes).toMatchObject({ [OT.waitSource]: 'producer' });
-    expect((waits[0]?.endMs ?? 0) - (waits[0]?.startMs ?? 0)).toBeGreaterThanOrEqual(200);
-    expect(new Set(waits.map((wait) => wait.key)).size).toBe(2);
+    expect(ended[0]?.payload).toMatchObject({
+      kind: 'prompt_queue',
+      scenarioId: 's1',
+      promptSource: 'producer',
+    });
+    expect(Number(ended[0]?.payload.waitedMs)).toBeGreaterThanOrEqual(200);
+    expect(ended[0]?.correlation).toEqual({
+      scenarioId: 's1',
+      playId: undefined,
+      attemptId: undefined,
+    });
+    expect(new Set(ended.map((entry) => entry.payload.waitId)).size).toBe(2);
+    expect(situations.types.filter((type) => type === 'wait.started')).toHaveLength(2);
   });
 
-  it('says restart for what it finds in the queue and never lets a recorder that throws stop a prompt', async () => {
+  it('tells nothing for a prompt handed over under the threshold', async () => {
+    const store = await seededStore();
+    // The clock of the store starts at 1_000: the prompt is written "now" for the tracker too.
+    const clock = new FakeClock(1_000);
+    const situations = new RecordingSituations();
+    const dispatcher = dispatcherOf(store, {
+      waits: new WaitEvents({ situations, clock, thresholdMs: 1_000 }),
+    });
+    dispatcher.attach('s1', () => Promise.resolve());
+    await dispatcher.submit({ scenarioId: 's1', source: 'producer', text: 'quick' });
+    await dispatcher.idle('s1');
+    expect(situations.told).toEqual([]);
+  });
+
+  it('says restart for what it finds in the queue, tells it at once when it is old, and never lets a tracker that throws stop a prompt', async () => {
     const store = await seededStore();
     const first = dispatcherOf(store);
     await first.submit({ scenarioId: 's1', source: 'producer', text: 'left behind' });
-    const waits: DirectWait[] = [];
     const clock = new FakeClock(5_000);
+    const situations = new RecordingSituations();
     const second = dispatcherOf(store, {
-      onWait: (wait) => {
-        waits.push(wait);
-        throw new Error('recorder is broken');
-      },
-      clock,
+      waits: new WaitEvents({ situations, clock, thresholdMs: 100 }),
     });
     const sent: PromptQueueItem[] = [];
     second.attach('s1', (item) => {
@@ -362,6 +383,27 @@ describe('PromptDispatcher: the wait of a prompt in the queue (P4, N217 (a))', (
     });
     await second.idle('s1');
     expect(texts(sent)).toEqual(['left behind']);
-    expect(waits.map((wait) => wait.reason)).toEqual([PROMPT_WAIT_REASON.restart]);
+    expect(situations.types).toEqual(['wait.started', 'wait.ended']);
+    expect(situations.told[0]?.payload).toMatchObject({
+      reasons: [PROMPT_WAIT_REASON.restart],
+      since: 1_000,
+    });
+
+    const broken = dispatcherOf(store, {
+      newId: () => 'z1',
+      waits: {
+        begin: () => {
+          throw new Error('tracker is broken');
+        },
+      },
+    });
+    const resent: PromptQueueItem[] = [];
+    broken.attach('s2', (item) => {
+      resent.push(item);
+      return Promise.resolve();
+    });
+    await broken.submit({ scenarioId: 's2', source: 'producer', text: 'still goes' });
+    await broken.idle('s2');
+    expect(texts(resent)).toEqual(['still goes']);
   });
 });

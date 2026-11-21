@@ -120,6 +120,7 @@ import {
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
 import { DaemonSpans } from './telemetry/daemon-spans.js';
+import { WaitEvents } from './telemetry/wait-events.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
 import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
@@ -277,6 +278,11 @@ export interface Composition {
    * `daemon.started` and stops it before the situations are closed.
    */
   readonly daemonSpans: DaemonSpans | undefined;
+  /**
+   * The events of the waits of the daemon (P15 of Phase 8, N222 (a)): `undefined` when
+   * `events.wait_threshold` is `off`. The daemon closes it (its timers) before the situations are.
+   */
+  readonly waitEvents: WaitEvents | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -645,6 +651,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       clock = new SystemClock();
     }
 
+    // P8: a rotation of `daemon.log` can fail before the situations exist; the error waits here.
+    const rotateErrors: unknown[] = [];
+    const rotate: { notice?: (error: unknown) => void } = {};
     let logger = options.logger;
     if (logger === undefined) {
       daemonLogger = createLogger({
@@ -652,6 +661,15 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
         destination: config.log.destination,
         logFile: paths.logFile,
         clock,
+        // P8: `daemon.log` rotates by size; a failure is a notice once the situations exist.
+        rotate:
+          config.log.rotate.mode === 'size'
+            ? { maxBytes: config.log.rotate.max_mb * 1024 * 1024, keep: config.log.rotate.keep }
+            : undefined,
+        onRotateError: (error) => {
+          if (rotate.notice === undefined) rotateErrors.push(error);
+          else rotate.notice(error);
+        },
       });
       logger = daemonLogger.logger;
     }
@@ -711,6 +729,15 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     // P24 (N146): what the daemon only wrote to the log is also an event. Closed until the daemon
     // wrote `daemon.started`, so what compose notices below is written after it.
     const situations = new SituationLog({ events: store.events, logger });
+    // P8: the rotations that failed before the situations existed, and the ones after.
+    rotate.notice = (error) => {
+      situations.record('daemon.notice', {
+        kind: 'log_rotate_failed',
+        subject: 'daemon.log',
+        detail: situationText(error),
+      });
+    };
+    for (const error of rotateErrors.splice(0)) rotate.notice(error);
     const sandbox = await composeSandbox(config, paths, overrides, logger, situations);
     const browser =
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
@@ -756,6 +783,12 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
           })
         : undefined;
 
+    // Phase 8, P15 (N222 (a)): the waits of the queue of prompts and of the pool, told in the log.
+    const waitEvents =
+      config.events.wait_threshold === null
+        ? undefined
+        : new WaitEvents({ situations, clock, thresholdMs: config.events.wait_threshold });
+
     const opened = { store, vault, sandbox, browser, situations, eventHub, telemetry };
     let closing: Promise<void> | undefined;
     return {
@@ -778,6 +811,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       telemetry,
       telemetryBackup,
       daemonSpans,
+      waitEvents,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
