@@ -7,8 +7,9 @@ import {
   type TrajectoryEntry,
   type TrajectoryEvent,
 } from '@otheater/protocol';
+import type { DirectTrajectorySubject } from '@otheater/client';
 import { wrapText } from '../../layout/text.js';
-import type { TrajectoryOpenMode } from '../../settings.js';
+import type { TrajectoryFollowMode, TrajectoryOpenMode } from '../../settings.js';
 
 /**
  * What the Trajectories tab shows and which of its sections are open (P14 of docs/18, architecture
@@ -33,6 +34,57 @@ export function latestPlayId(
     }
   }
   return found?.id;
+}
+
+/** What the tab follows: a play, or a direct session of the scenario (P27 of docs/18). */
+export interface FollowedSubject {
+  readonly kind: 'play' | 'direct';
+  /** The play id, or the direct session id: the key the trajectory is held under. */
+  readonly id: string;
+}
+
+/** The direct session of the scenario the tab follows: the one that moved last (the id breaks a tie). */
+export function latestDirectId(
+  direct: Readonly<Record<string, DirectTrajectorySubject>>,
+  scenarioId: string | undefined,
+): string | undefined {
+  if (scenarioId === undefined) return undefined;
+  let found: DirectTrajectorySubject | undefined;
+  for (const session of Object.values(direct)) {
+    if (session.scenarioId !== scenarioId) continue;
+    if (
+      found === undefined ||
+      session.at > found.at ||
+      (session.at === found.at && session.sessionId > found.sessionId)
+    ) {
+      found = session;
+    }
+  }
+  return found?.sessionId;
+}
+
+/**
+ * What the tab follows, by `ui.trajectories.follow` [proposta]: `play` is the latest play only;
+ * `direct` is the latest direct session, or the latest play when the scenario has none; `latest`
+ * (the default) is whichever of the two moved last, the play on a tie.
+ */
+export function followedSubject(
+  plays: Readonly<Record<string, ApiPlay>>,
+  direct: Readonly<Record<string, DirectTrajectorySubject>>,
+  scenarioId: string | undefined,
+  follow: TrajectoryFollowMode,
+): FollowedSubject | undefined {
+  const playId = latestPlayId(plays, scenarioId);
+  const directId = follow === 'play' ? undefined : latestDirectId(direct, scenarioId);
+  if (directId === undefined)
+    return playId === undefined ? undefined : { kind: 'play', id: playId };
+  if (playId === undefined || follow === 'direct') return { kind: 'direct', id: directId };
+  const play = plays[playId];
+  const session = direct[directId];
+  if (play !== undefined && session !== undefined && session.at > play.updatedAt) {
+    return { kind: 'direct', id: directId };
+  }
+  return { kind: 'play', id: playId };
 }
 
 const built = new WeakMap<readonly TrajectoryEvent[], Map<string, Trajectory>>();
@@ -228,6 +280,13 @@ export function entryLines(entry: TrajectoryEntry, width: number, say: Say): Ent
   switch (entry.kind) {
     case 'message':
       return clipped(entry.text, width, say, `${say('trajectories.entry.message')} `);
+    case 'prompt':
+      return clipped(
+        entry.text,
+        width,
+        say,
+        `${say(entry.command ? 'trajectories.entry.command' : 'trajectories.entry.prompt')} `,
+      );
     case 'thought':
       return clipped(entry.text, width, say, `${say('trajectories.entry.thought')} `).map(
         (line) => ({ ...line, tone: 'dim' }),

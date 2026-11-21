@@ -5,8 +5,10 @@ import {
   diffLines,
   diffOwners,
   entryLines,
+  followedSubject,
   foldedSet,
   isFolded,
+  latestDirectId,
   latestPlayId,
   trajectoryOf,
   visibleSections,
@@ -144,5 +146,64 @@ describe('entryLines', () => {
     const lines = entryLines({ kind: 'message', at: 0, text: long }, 20, say);
     expect(lines.length).toBeGreaterThan(2);
     expect(lines.at(-1)?.text.trim()).toMatch(/^trajectories\.more\(\d+\)$/);
+  });
+});
+
+describe('followedSubject (P27)', () => {
+  const direct = (...items: [string, string, number][]) =>
+    Object.fromEntries(
+      items.map(([sessionId, scenarioId, at]) => [
+        sessionId,
+        { sessionId, scenarioId, at, closed: true },
+      ]),
+    );
+  const all = plays(['P1', 'S1', 50]);
+
+  it('the latest direct session of the scenario, with the id breaking a tie', () => {
+    const sessions = direct(['direct-a', 'S1', 5], ['direct-b', 'S1', 9], ['direct-c', 'S2', 99]);
+    expect(latestDirectId(sessions, 'S1')).toBe('direct-b');
+    expect(latestDirectId(sessions, 'S3')).toBeUndefined();
+    expect(latestDirectId(sessions, undefined)).toBeUndefined();
+    expect(latestDirectId(direct(['direct-a', 'S1', 9], ['direct-b', 'S1', 9]), 'S1')).toBe(
+      'direct-b',
+    );
+  });
+
+  it('play follows only plays; direct follows the session, or the play when there is none', () => {
+    const sessions = direct(['direct-a', 'S1', 5]);
+    expect(followedSubject(all, sessions, 'S1', 'play')).toEqual({ kind: 'play', id: 'P1' });
+    expect(followedSubject(all, sessions, 'S1', 'direct')).toEqual({
+      kind: 'direct',
+      id: 'direct-a',
+    });
+    expect(followedSubject(all, {}, 'S1', 'direct')).toEqual({ kind: 'play', id: 'P1' });
+    expect(followedSubject({}, sessions, 'S1', 'play')).toBeUndefined();
+  });
+
+  it('latest follows whichever moved last, the play on a tie', () => {
+    expect(followedSubject(all, direct(['direct-a', 'S1', 51]), 'S1', 'latest')).toEqual({
+      kind: 'direct',
+      id: 'direct-a',
+    });
+    expect(followedSubject(all, direct(['direct-a', 'S1', 50]), 'S1', 'latest')).toEqual({
+      kind: 'play',
+      id: 'P1',
+    });
+    expect(followedSubject({}, direct(['direct-a', 'S1', 1]), 'S1', 'latest')).toEqual({
+      kind: 'direct',
+      id: 'direct-a',
+    });
+  });
+});
+
+describe('the entries of a direct session turn (P27)', () => {
+  it('a prompt of the Producer and a command of the client have their own label', () => {
+    const at = 1;
+    expect(
+      entryLines({ kind: 'prompt', at, text: 'fix it', command: false }, 80, say)[0]?.text,
+    ).toBe('trajectories.entry.prompt fix it');
+    expect(
+      entryLines({ kind: 'prompt', at, text: '/compact', command: true }, 80, say)[0]?.text,
+    ).toBe('trajectories.entry.command /compact');
   });
 });

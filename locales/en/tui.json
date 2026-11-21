@@ -519,6 +519,7 @@
   },
   "trajectories": {
     "play": "Play {{id}}",
+    "direct": "Direct session {{id}}",
     "noScenario": "Select a scenario to see its trajectory.",
     "noPlay": "This scenario has no play yet.",
     "loading": "Reading the trajectory...",
@@ -527,6 +528,7 @@
     "empty": "Nothing happened in this play yet.",
     "dropped": "The first {{count}} events were left out (ui.trajectories.keep).",
     "attempt": "Attempt {{n}} · demand {{demand}}",
+    "session": "Session",
     "turn": "Turn {{n}}",
     "turns_one": "{{count}} turn",
     "turns_other": "{{count}} turns",
@@ -543,6 +545,8 @@
     },
     "entry": {
       "message": "say",
+      "prompt": "you",
+      "command": "run",
       "thought": "think",
       "terminal": "term",
       "toolCall": "call",

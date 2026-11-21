@@ -13,9 +13,19 @@ import { NormalizedUpdateSchema, type EventEnvelope } from '@otheater/core';
  * The ATIF export is Phase 8 and builds on the same events, not on this view.
  */
 
+/**
+ * The events of a direct session with an Actor that the trajectory of the session is made of
+ * (P27 of docs/18, N206). [proposta] `direct.session.refused` is left out: a session that did not
+ * open has no id, so there is nothing to fold it into; it stays in the log.
+ */
+export function isDirectTrajectoryEvent(type: string): boolean {
+  return type.startsWith('direct.session.') && type !== 'direct.session.refused';
+}
+
 /** The events the trajectory is made of, as `GET /v1/plays/:playId/trajectory` selects them. */
 export function isTrajectoryEvent(type: string): boolean {
   return (
+    isDirectTrajectoryEvent(type) ||
     type.startsWith('session.') ||
     type.startsWith('attempt.') ||
     type.startsWith('permission.') ||
@@ -36,6 +46,13 @@ export type TrajectoryEvent = Pick<
 
 export type TrajectoryEntry =
   | { readonly kind: 'message'; readonly at: number; readonly text: string }
+  /** What the Producer wrote to the Actor in a direct session, or the command of the client it ran. [proposta] */
+  | {
+      readonly kind: 'prompt';
+      readonly at: number;
+      readonly text: string;
+      readonly command: boolean;
+    }
   | { readonly kind: 'thought'; readonly at: number; readonly text: string }
   | {
       readonly kind: 'tool_call';
@@ -133,6 +150,19 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+/**
+ * What an event belongs to: the play it names, or, for an event of a direct session, the id of the
+ * session. [proposta] A trajectory is built per "subject": a play, or a direct session, and a
+ * session id (`direct-<hex>`) never collides with a play id. `undefined` for an event of neither.
+ */
+export function trajectorySubjectOf(
+  event: Pick<TrajectoryEvent, 'type' | 'playId' | 'payload'>,
+): string | undefined {
+  if (event.playId !== undefined) return event.playId;
+  if (isDirectTrajectoryEvent(event.type)) return text(event.payload.sessionId);
+  return text(event.payload.playId);
+}
+
 function strings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
@@ -200,6 +230,20 @@ function detailOf(type: string, payload: Readonly<Record<string, unknown>>): str
     case 'attempt.submitted':
       add('branch', payload.branch);
       break;
+    case 'direct.session.opened':
+      add('client', payload.client);
+      add('workspace', payload.workspace);
+      add('branch', payload.branch);
+      break;
+    case 'direct.session.closed':
+      add('reason', payload.reason);
+      add('work', payload.work);
+      add('branch', payload.branch);
+      break;
+    case 'direct.session.promoted':
+      add('target', payload.target);
+      add('ref', payload.ref);
+      break;
     case 'attempt.paused':
     case 'attempt.cancelled':
     case 'attempt.aborted':
@@ -236,9 +280,123 @@ function lifecycleState(
 }
 
 /**
+ * The turn `number` of a direct session, created when the first event of it arrives. A session
+ * counts its turns from 1; an event of turn 0 (nothing said yet) goes to the first one.
+ */
+function directTurn(attempt: MutableAttempt, number: number, at: number): MutableTurn {
+  const index = Math.max(1, number);
+  let turn = attempt.turns.find((item) => item.index === index);
+  if (turn === undefined) {
+    turn = { index, startedAt: at, endedAt: undefined, stopReason: undefined, entries: [] };
+    attempt.turns.push(turn);
+    attempt.turns.sort((a, b) => a.index - b.index);
+  }
+  return turn;
+}
+
+/**
+ * Folds one `direct.session.*` event into the single attempt of its session. [proposta] A direct
+ * session is drawn as one attempt (the session) with no demand, whose turns are the turns of the
+ * conversation: what the Producer wrote or ran, what the Actor said, its tool calls and the
+ * answers of the policy.
+ */
+function foldDirect(attempt: MutableAttempt, event: TrajectoryEvent): void {
+  const { payload } = event;
+  const at = event.timestamp;
+  const turnNumber = typeof payload.turn === 'number' ? payload.turn : 1;
+  switch (event.type) {
+    case 'direct.session.message': {
+      const body = text(payload.text) ?? '';
+      const entries = directTurn(attempt, turnNumber, at).entries;
+      if (payload.from === 'producer') {
+        entries.push({ kind: 'prompt', at, text: body, command: false });
+      } else {
+        entries.push({ kind: 'message', at, text: body });
+      }
+      return;
+    }
+    case 'direct.session.command':
+      directTurn(attempt, turnNumber, at).entries.push({
+        kind: 'prompt',
+        at,
+        text: text(payload.command) ?? '',
+        command: true,
+      });
+      return;
+    case 'direct.session.tool': {
+      const toolCallId = text(payload.toolCallId);
+      if (toolCallId === undefined) return;
+      const entries = directTurn(attempt, turnNumber, at).entries;
+      const index = entries.findLastIndex(
+        (entry) => entry.kind === 'tool_call' && entry.toolCallId === toolCallId,
+      );
+      const old = entries[index];
+      const title = text(payload.title) ?? 'tool';
+      const status = text(payload.status) ?? 'pending';
+      if (old?.kind === 'tool_call') {
+        entries[index] = { ...old, title, status };
+      } else {
+        entries.push({
+          kind: 'tool_call',
+          at,
+          toolCallId,
+          title,
+          toolKind: 'tool',
+          status,
+          paths: [],
+        });
+      }
+      return;
+    }
+    case 'direct.session.permission':
+      directTurn(attempt, turnNumber, at).entries.push({
+        kind: 'permission',
+        at,
+        tool: text(payload.title) ?? 'unknown',
+        toolCallId: undefined,
+        paths: [],
+        answer: text(payload.answered),
+        rule: text(payload.rule),
+        reason: text(payload.reason),
+      });
+      return;
+    case 'direct.session.turn_finished': {
+      const turn = directTurn(attempt, turnNumber, at);
+      turn.endedAt = at;
+      turn.stopReason = text(payload.stopReason);
+      const error = text(payload.error);
+      if (error !== undefined) {
+        attempt.notices.push({
+          at,
+          eventId: event.id,
+          type: event.type,
+          detail: `turn=${String(turnNumber)} error=${error.slice(0, 80)}`,
+        });
+      }
+      return;
+    }
+    default: {
+      // opened, closed and promoted: the life of the session.
+      if (event.type === 'direct.session.closed') {
+        attempt.state = 'closed';
+        attempt.endedAt = at;
+      }
+      attempt.notices.push({
+        at,
+        eventId: event.id,
+        type: event.type,
+        detail: detailOf(event.type, payload),
+      });
+    }
+  }
+}
+
+/**
  * Folds the events of one play, in the order of the log, into its trajectory. The events of other
  * plays are skipped. Folding the same events twice gives the same trajectory, so a history read
- * and the live stream may overlap.
+ * and the live stream may overlap. [proposta] `playId` may also be the id of a direct session
+ * (P27 of docs/18): then the `direct.session.*` events of that session are folded into one
+ * attempt with no demand (see {@link foldDirect}).
  */
 export function buildTrajectory(playId: string, events: readonly TrajectoryEvent[]): Trajectory {
   const attempts = new Map<string, MutableAttempt>();
@@ -270,10 +428,26 @@ export function buildTrajectory(playId: string, events: readonly TrajectoryEvent
   };
 
   for (const event of events) {
-    if (event.playId !== undefined && event.playId !== playId) continue;
-    if (event.playId === undefined && text(event.payload.playId) !== playId) continue;
+    if (trajectorySubjectOf(event) !== playId) continue;
     if (!isTrajectoryEvent(event.type)) continue;
     lastEventId = Math.max(lastEventId, event.id);
+    if (isDirectTrajectoryEvent(event.type)) {
+      let session = attempts.get(playId);
+      if (session === undefined) {
+        session = {
+          attemptId: playId,
+          demandId: undefined,
+          startedAt: event.timestamp,
+          endedAt: undefined,
+          state: 'running',
+          turns: [],
+          notices: [],
+        };
+        attempts.set(playId, session);
+      }
+      foldDirect(session, event);
+      continue;
+    }
     const payload = event.payload;
     const demandId = text(payload.demandId);
 

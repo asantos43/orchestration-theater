@@ -519,6 +519,7 @@
   },
   "trajectories": {
     "play": "Peça {{id}}",
+    "direct": "Sessão direta {{id}}",
     "noScenario": "Escolha um cenário para ver a trajetória dele.",
     "noPlay": "Este cenário ainda não tem peça.",
     "loading": "Lendo a trajetória...",
@@ -527,6 +528,7 @@
     "empty": "Ainda não aconteceu nada nesta peça.",
     "dropped": "Os primeiros {{count}} eventos ficaram de fora (ui.trajectories.keep).",
     "attempt": "Tentativa {{n}} · demanda {{demand}}",
+    "session": "Sessão",
     "turn": "Turno {{n}}",
     "turns_one": "{{count}} turno",
     "turns_other": "{{count}} turnos",
@@ -543,6 +545,8 @@
     },
     "entry": {
       "message": "diz",
+      "prompt": "você",
+      "command": "rodou",
       "thought": "pensa",
       "terminal": "term",
       "toolCall": "chama",

@@ -17,7 +17,7 @@ import {
   diffSectionId,
   entryLines,
   foldedSet,
-  latestPlayId,
+  followedSubject,
   trajectoryOf,
   TRANSITIONS_SECTION_ID,
   turnSectionId,
@@ -204,10 +204,11 @@ function AttemptView(props: {
   return (
     <Section
       id={attemptSectionId(props.number)}
-      title={say('trajectories.attempt', {
-        n: props.number,
-        demand: attempt.demandId ?? '-',
-      })}
+      title={
+        attempt.demandId === undefined
+          ? say('trajectories.session')
+          : say('trajectories.attempt', { n: props.number, demand: attempt.demandId })
+      }
       right={right}
       width={width}
       control={props.control}
@@ -254,7 +255,13 @@ function TrajectoriesTab(props: TabContentProps): ReactNode {
     [t],
   );
   const config = settings.trajectories;
-  const playId = useStoreValue(stores.plays, (state) => latestPlayId(state.byId, scenarioId));
+  const plays = useStoreValue(stores.plays, (state) => state.byId);
+  const direct = useStoreValue(stores.trajectories, (state) => state.direct);
+  const subject = useMemo(
+    () => followedSubject(plays, direct, scenarioId, config.follow),
+    [plays, direct, scenarioId, config.follow],
+  );
+  const playId = subject?.id;
   const held = useStoreValue(stores.trajectories, (state) =>
     playId === undefined ? undefined : state.plays[playId],
   );
@@ -270,19 +277,26 @@ function TrajectoriesTab(props: TabContentProps): ReactNode {
     stores.setTrajectoryKeep(config.keep);
   }, [stores, config.keep]);
   useEffect(() => {
-    if (playId !== undefined) void stores.loadTrajectory(playId);
-  }, [stores, playId]);
+    if (scenarioId !== undefined && config.follow !== 'play')
+      void stores.loadDirectSessions(scenarioId);
+  }, [stores, scenarioId, config.follow]);
+  const isDirect = subject?.kind === 'direct';
+  useEffect(() => {
+    if (playId === undefined) return;
+    if (isDirect) void stores.loadDirectTrajectory(playId);
+    else void stores.loadTrajectory(playId);
+  }, [stores, playId, isDirect]);
   const wanted = useMemo(
     () => wantedDiffs(trajectory, config.open, toggled),
     [trajectory, config.open, toggled],
   );
   useEffect(() => {
-    if (playId === undefined) return;
+    if (playId === undefined || isDirect) return;
     for (const demandId of wanted) {
       if (diffs[`${playId}/${demandId}`] === undefined)
         void stores.loadDemandDiff(playId, demandId);
     }
-  }, [stores, playId, wanted, diffs]);
+  }, [stores, playId, isDirect, wanted, diffs]);
 
   if (playId === undefined) {
     return (
@@ -293,7 +307,7 @@ function TrajectoriesTab(props: TabContentProps): ReactNode {
   }
   const header = (
     <Text bold wrap="truncate">
-      {fit(say('trajectories.play', { id: playId }), width)}
+      {fit(say(isDirect ? 'trajectories.direct' : 'trajectories.play', { id: playId }), width)}
     </Text>
   );
   if (held === undefined || (held.load === 'loading' && held.events.length === 0)) {
@@ -395,10 +409,16 @@ function foldedToggled(folded: ReadonlySet<string>): ReadonlySet<string> {
 
 export const trajectoriesTab: TabDefinition = {
   sections: (context, toggledSet) => {
-    const playId = latestPlayId(context.stores.plays.getState().byId, context.scenarioId);
-    if (playId === undefined) return [];
-    const held = context.stores.trajectories.getState().plays[playId];
-    const trajectory = held === undefined ? undefined : trajectoryOf(playId, held.events);
+    const { trajectories, plays } = context.stores;
+    const subject = followedSubject(
+      plays.getState().byId,
+      trajectories.getState().direct,
+      context.scenarioId,
+      context.settings.trajectories.follow,
+    );
+    if (subject === undefined) return [];
+    const held = trajectories.getState().plays[subject.id];
+    const trajectory = held === undefined ? undefined : trajectoryOf(subject.id, held.events);
     return visibleSections(
       trajectory,
       context.settings.trajectories.open,
