@@ -92,6 +92,7 @@ function Screen(props: AppProps): ReactNode {
         layout={view.layout}
         address={view.address}
         tuning={props.settings.tuiLayout}
+        settings={props.settings}
         keymap={keymap}
         messages={props.messages}
         tabContent={props.tabContent}

@@ -7,10 +7,11 @@ import {
   type TrajectoryEvent,
 } from './trajectory.js';
 
+type Payload = Extract<TrajectoryEvent['payload'][string], Record<string, unknown>>;
 let counter = 0;
 function event(
   type: string,
-  payload: Record<string, unknown> = {},
+  payload: TrajectoryEvent['payload'] = {},
   extra: { attemptId?: string; playId?: string; at?: number } = {},
 ): TrajectoryEvent {
   counter += 1;
@@ -24,7 +25,7 @@ function event(
   };
 }
 
-const update = (value: Record<string, unknown>, attemptId?: string): TrajectoryEvent =>
+const update = (value: Payload, attemptId?: string): TrajectoryEvent =>
   event('session.update', { update: value }, attemptId === undefined ? {} : { attemptId });
 
 describe('isTrajectoryEvent', () => {

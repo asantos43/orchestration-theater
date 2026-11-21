@@ -27,7 +27,17 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
       },
+      trajectories: { open: 'last', keep: 5000, diffLines: 200 },
     });
+  });
+
+  it('reads ui.trajectories (snake_case keys, as the daemon writes them) and falls back key by key', () => {
+    expect(
+      parseUiSettings({ trajectories: { open: 'all', keep: 1000, diff_lines: 50 } }).trajectories,
+    ).toEqual({ open: 'all', keep: 1000, diffLines: 50 });
+    expect(
+      parseUiSettings({ trajectories: { open: 'some', keep: 5, diff_lines: 50 } }).trajectories,
+    ).toEqual({ open: 'last', keep: 5000, diffLines: 50 });
   });
 
   it('reads ui.keymap and ui.tuiLayout, and falls back for what is not valid', () => {
@@ -79,6 +89,7 @@ describe('parseUiSettings', () => {
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
+      trajectories: DEFAULT_UI_SETTINGS.trajectories,
     });
   });
 

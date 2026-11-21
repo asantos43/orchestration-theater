@@ -65,12 +65,23 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
 }
 
+export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
+export type TrajectoryOpenMode = (typeof TRAJECTORY_OPEN_MODES)[number];
+
+/** `ui.trajectories` (P14): which steps of the Trajectories tab start open, how much it keeps and shows of a diff. */
+export interface UiTrajectoriesSettings {
+  readonly open: TrajectoryOpenMode;
+  readonly keep: number;
+  readonly diffLines: number;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
   readonly runtime: UiRuntimeSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
+  readonly trajectories: UiTrajectoriesSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -102,12 +113,19 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   scrollStep: 'half',
 };
 
+export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
+  open: 'last',
+  keep: 5000,
+  diffLines: 200,
+};
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
   runtime: DEFAULT_RUNTIME,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
+  trajectories: DEFAULT_TRAJECTORIES,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -162,6 +180,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
+  const trajectories = record(field(source, 'trajectories'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -224,6 +243,16 @@ export function parseUiSettings(ui: unknown): UiSettings {
         field(tuiLayout, 'scrollStep'),
         SCROLL_STEPS,
         DEFAULT_TUI_LAYOUT.scrollStep,
+      ),
+    },
+    trajectories: {
+      open: oneOf(field(trajectories, 'open'), TRAJECTORY_OPEN_MODES, DEFAULT_TRAJECTORIES.open),
+      keep: integer(field(trajectories, 'keep'), 100, 100_000, DEFAULT_TRAJECTORIES.keep),
+      diffLines: integer(
+        field(trajectories, 'diff_lines'),
+        10,
+        10_000,
+        DEFAULT_TRAJECTORIES.diffLines,
       ),
     },
   };

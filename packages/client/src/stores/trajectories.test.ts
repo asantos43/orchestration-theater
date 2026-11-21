@@ -29,7 +29,8 @@ const chunk = (id: number, text: string, playId = 'P1') =>
 
 /** What the REST read answers: the envelope of the log, which has no `daemonId`. */
 const plain = (value: ReturnType<typeof chunk>) => {
-  const { daemonId: _daemonId, ...rest } = value;
+  const rest: Partial<typeof value> = { ...value };
+  delete rest.daemonId;
   return rest;
 };
 

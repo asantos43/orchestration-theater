@@ -15,8 +15,8 @@ import { useTranslation } from 'react-i18next';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
-import type { UiTuiLayoutSettings } from '../settings.js';
-import { useStoreValue } from '../use-store-value.js';
+import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
+import { useStoreValue, type ReadableStore } from '../use-store-value.js';
 import { Chat, chatMessageRows, type ChatMessage } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
 import { computeGeometry, steppedChatWidth } from './geometry.js';
@@ -27,6 +27,7 @@ import { Panel, panelContentSize } from './panel.js';
 import { scrollStepLines } from './scroll.js';
 import { Sidebar, sidebarItems } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
+import { useWatched } from './use-watched.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
 import {
   foldedSections,
@@ -62,6 +63,8 @@ export interface ShellProps {
   readonly layout: LayoutStore;
   readonly address: string;
   readonly tuning: UiTuiLayoutSettings;
+  /** The `ui` settings the tabs read (P14); the defaults when the shell is drawn without them. */
+  readonly settings?: UiSettings | undefined;
   readonly keymap: TuiKeymap;
   /**
    * [proposta] Provisional until P12 feeds the chat from the daemon: the messages the chat shows.
@@ -74,6 +77,7 @@ export interface ShellProps {
 /** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
 export function Shell(props: ShellProps): ReactNode {
   const { stores, layout: layoutStore, keymap: tuiKeymap, tuning } = props;
+  const settings = props.settings ?? DEFAULT_UI_SETTINGS;
   const { t } = useTranslation();
   const ut = useUiTranslate();
   const { exit } = useApp();
@@ -134,12 +138,24 @@ export function Shell(props: ShellProps): ReactNode {
   const activeTab = savedActiveTab(preferences);
   const currentTab = openTabs.some((tab) => tab.id === activeTab) ? activeTab : openTabs[0]?.id;
   const definition = currentTab === undefined ? undefined : tabContent[currentTab];
-  const tabSections = definition?.sections ?? NO_SECTIONS;
-  const cursorInTab =
-    panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
+  const watched = useMemo(() => definition?.watch?.(stores) ?? NO_STORES, [definition, stores]);
+  const watchVersion = useWatched(watched);
 
   // The scenario the chat is about, and what the header says of it.
   const selectedRow = scenarioRowsNow.find((row) => row.id === selected) ?? scenarioRowsNow[0];
+  const tabSections = useMemo(
+    () => {
+      const sections = definition?.sections;
+      if (sections === undefined) return NO_SECTIONS;
+      return typeof sections === 'function'
+        ? sections({ stores, scenarioId: selectedRow?.id, settings }, folded)
+        : sections;
+    },
+    // `watchVersion` changes when a store the tab named changes: the list is asked again.
+    [definition, stores, selectedRow?.id, settings, folded, watchVersion],
+  );
+  const cursorInTab =
+    panelCursor !== undefined && tabSections.includes(panelCursor) ? panelCursor : tabSections[0];
   const play = useMemo(() => {
     if (selectedRow === undefined) return undefined;
     let found: { need: string; updatedAt: number } | undefined;
@@ -456,6 +472,9 @@ export function Shell(props: ShellProps): ReactNode {
                 width={content.width}
               >
                 {definition.render({
+                  stores,
+                  scenarioId: selectedRow?.id,
+                  settings,
                   width: content.width,
                   height: content.height,
                   focused: focus === 'panel',
@@ -511,6 +530,7 @@ export function Shell(props: ShellProps): ReactNode {
 
 const NO_MESSAGES: readonly ChatMessage[] = [];
 const NO_SECTIONS: readonly string[] = [];
+const NO_STORES: readonly ReadableStore<unknown>[] = [];
 
 /** The first thing wrong with the keymap, or the first notice, in the person's language. */
 function firstProblem(keymap: TuiKeymap, t: UiTranslate): string | undefined {

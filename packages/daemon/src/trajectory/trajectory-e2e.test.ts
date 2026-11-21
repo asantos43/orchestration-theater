@@ -7,6 +7,7 @@ import {
   FakeCodeHost,
   InMemorySecretVault,
 } from '@otheater/core/testing';
+import { buildTrajectory, type TrajectoryEvent } from '@otheater/protocol';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { describeWithLauncher } from '../launcher-fixture.js';
@@ -72,26 +73,25 @@ describeWithLauncher('the trajectory of a play (P14)', { timeout: 180_000 }, () 
         async () => (await harness.daemon.store.plays.get(play.id))?.state === 'DONE',
       );
 
-      const items: any[] = [];
+      const items: TrajectoryEvent[] = [];
       let cursor: string | null = null;
       do {
-        const page: any = await get(
+        const page = await get(
           `/v1/plays/${play.id}/trajectory?limit=200${cursor === null ? '' : `&after=${cursor}`}`,
         );
         expect(page.status, page.text).toBe(200);
         items.push(...page.json.items);
         cursor = page.json.nextCursor;
       } while (cursor !== null);
-      const types = items.map((event: any) => event.type);
+      const types = items.map((event) => event.type);
       expect(types).toContain('session.update');
       expect(types).toContain('attempt.submitted');
-      expect(items.every((event: any) => event.playId === play.id)).toBe(true);
+      expect(items.every((event) => event.playId === play.id)).toBe(true);
 
       // the whole trajectory is the fold of those events: a turn per prompt of each attempt
-      const { buildTrajectory } = await import('@otheater/protocol');
       const folded = buildTrajectory(play.id, items);
       expect(folded.attempts.length).toBeGreaterThan(0);
-      const prompts = items.filter((e: any) => e.type === 'session.prompt_finished');
+      const prompts = items.filter((e) => e.type === 'session.prompt_finished');
       const turns = folded.attempts.flatMap((attempt) => attempt.turns);
       expect(turns.length).toBeGreaterThanOrEqual(prompts.length);
       expect(turns.some((turn) => turn.entries.length > 0)).toBe(true);
@@ -100,7 +100,7 @@ describeWithLauncher('the trajectory of a play (P14)', { timeout: 180_000 }, () 
       const attempts = await harness.daemon.store.attempts.list();
       const mine = attempts.filter((record) => record.playId === play.id);
       expect(mine.length).toBeGreaterThan(0);
-      const withDemand = mine.find((record) => record.demandId !== null);
+      const withDemand = mine[0];
       expect(withDemand).toBeDefined();
       const diff = await get(`/v1/plays/${play.id}/demands/${withDemand?.demandId}/diff`);
       expect(diff.status, diff.text).toBe(200);

@@ -210,6 +210,7 @@ export class DaemonStores {
 
   readonly #client: ApiClient;
   readonly #options: DaemonStoresOptions;
+  #keepOverride: number | undefined;
   readonly #clock: Clock;
   readonly #limit: Semaphore;
   readonly #reduceDemands: EventReducer<DemandsState>;
@@ -286,7 +287,7 @@ export class DaemonStores {
   async loadTrajectory(playId: string, options: { readonly force?: boolean } = {}): Promise<void> {
     const held = this.trajectories.getState().plays[playId];
     if (held !== undefined && held.load !== 'failed' && options.force !== true) return;
-    const keep = this.#options.trajectories?.keep ?? DEFAULT_TRAJECTORY_KEEP;
+    const keep = this.#trajectoryKeep();
     this.trajectories.setState((state) => openTrajectory(state, playId), true);
     try {
       const signal = this.#abort.signal;
@@ -298,6 +299,18 @@ export class DaemonStores {
       const message = error instanceof Error ? error.message : String(error);
       this.trajectories.setState((state) => failTrajectory(state, playId, message), true);
     }
+  }
+
+  /**
+   * `client.trajectories.keep` for a client that reads its settings after the stores exist (the
+   * TUI): from now on the trajectories keep at most this many events per play.
+   */
+  setTrajectoryKeep(keep: number): void {
+    this.#keepOverride = Math.max(1, Math.floor(keep));
+  }
+
+  #trajectoryKeep(): number {
+    return this.#keepOverride ?? this.#options.trajectories?.keep ?? DEFAULT_TRAJECTORY_KEEP;
   }
 
   /** Reads the diff of a demand (the latest attempt against the play branch) and keeps it. */
@@ -520,7 +533,7 @@ export class DaemonStores {
     this.decisions.setState((s) => applyEvent(s, event, reduceDecisions), true);
     this.quotas.setState((s) => applyEvent(s, event, reduceQuotas), true);
     this.events.setState((s) => applyEvent(s, event, this.#reduceEvents), true);
-    const keep = this.#options.trajectories?.keep ?? DEFAULT_TRAJECTORY_KEEP;
+    const keep = this.#trajectoryKeep();
     this.trajectories.setState((s) => reduceTrajectories(s, event, keep), true);
     this.status.setState({ cursor: event.id });
   }
