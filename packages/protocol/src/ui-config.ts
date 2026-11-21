@@ -86,11 +86,14 @@ export const UiRenderConfigSchema = z.strictObject({
 /**
  * `ui.runtime` (N37). `maxSemiSpaceMB`: 2, the young heap of V8 (`--max-semi-space-size`).
  * `maxOldSpaceMB`: a hard cap (the process dies above it); absent by default, until the
- * measurement with the real client (P8) gives a number [proposta].
+ * measurement with the real client (P8) gives a number [proposta]. `exitGraceMs`: 2000, how long
+ * the TUI process waits for its own end (the layout save on unmount) before it forces the exit; 0
+ * exits at once [proposta].
  */
 export const UiRuntimeConfigSchema = z.strictObject({
   maxSemiSpaceMB: z.int().min(1).default(2),
   maxOldSpaceMB: z.int().min(1).optional(),
+  exitGraceMs: z.int().min(0).max(60_000).default(2000),
 });
 
 /**

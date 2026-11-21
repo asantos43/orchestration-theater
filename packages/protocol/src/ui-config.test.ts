@@ -29,7 +29,7 @@ describe('ui.* schemas of the terminal', () => {
       inkPatches: ['cache', 'grid'],
       historyWindow: 0,
     });
-    expect(UiRuntimeConfigSchema.parse({})).toEqual({ maxSemiSpaceMB: 2 });
+    expect(UiRuntimeConfigSchema.parse({})).toEqual({ maxSemiSpaceMB: 2, exitGraceMs: 2000 });
     expect(UiTuiLayoutConfigSchema.parse({})).toEqual({
       sidebarWidth: 30,
       railWidth: 5,

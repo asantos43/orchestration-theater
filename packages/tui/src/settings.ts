@@ -49,6 +49,8 @@ export interface UiRuntimeSettings {
   readonly maxSemiSpaceMB: number;
   /** V8 `--max-old-space-size`, in MB (a hard cap); `undefined` leaves V8's default. */
   readonly maxOldSpaceMB: number | undefined;
+  /** How long the process waits for its own end before it forces the exit, in ms. */
+  readonly exitGraceMs: number;
 }
 
 export const KEYMAP_PRESETS = ['agents', 'classic'] as const;
@@ -147,6 +149,7 @@ export const DEFAULT_RENDER: UiRenderSettings = {
 export const DEFAULT_RUNTIME: UiRuntimeSettings = {
   maxSemiSpaceMB: 2,
   maxOldSpaceMB: undefined,
+  exitGraceMs: 2000,
 };
 
 export const DEFAULT_KEYMAP: UiKeymapSettings = {
@@ -281,6 +284,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
       ),
       // 0 means "not set or not valid": V8 keeps its own limit.
       maxOldSpaceMB: oldSpace === 0 ? DEFAULT_RUNTIME.maxOldSpaceMB : oldSpace,
+      exitGraceMs: integer(field(runtime, 'exitGraceMs'), 0, 60_000, DEFAULT_RUNTIME.exitGraceMs),
     },
     keymap: {
       preset: oneOf(field(keymap, 'preset'), KEYMAP_PRESETS, DEFAULT_KEYMAP.preset),

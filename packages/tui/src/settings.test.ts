@@ -17,7 +17,7 @@ describe('parseUiSettings', () => {
         inkPatches: ['cache', 'grid'],
         historyWindow: 0,
       },
-      runtime: { maxSemiSpaceMB: 2, maxOldSpaceMB: undefined },
+      runtime: { maxSemiSpaceMB: 2, maxOldSpaceMB: undefined, exitGraceMs: 2000 },
       keymap: { preset: 'agents', environment: 'auto', overrides: {} },
       tuiLayout: {
         sidebarWidth: 30,
@@ -95,7 +95,7 @@ describe('parseUiSettings', () => {
         inkPatches: ['grid'],
         historyWindow: 500,
       },
-      runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
+      runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192, exitGraceMs: 500 },
     });
     expect(settings).toEqual({
       locale: 'pt-BR',
@@ -107,7 +107,7 @@ describe('parseUiSettings', () => {
         inkPatches: ['grid'],
         historyWindow: 500,
       },
-      runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192 },
+      runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192, exitGraceMs: 500 },
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
       trajectories: DEFAULT_UI_SETTINGS.trajectories,
@@ -143,7 +143,7 @@ describe('parseUiSettings', () => {
     const settings = parseUiSettings({
       locale: 'fr',
       render: { keyRender: 'sometimes', maxFps: 0, memo: 'yes', historyWindow: -1, coalesceMs: 5 },
-      runtime: { maxSemiSpaceMB: 1.5, maxOldSpaceMB: 'big' },
+      runtime: { maxSemiSpaceMB: 1.5, maxOldSpaceMB: 'big', exitGraceMs: -5 },
       unknown: true,
     });
     expect(settings.locale).toBe('auto');

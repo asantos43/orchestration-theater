@@ -30,8 +30,8 @@ jobs:
       # namespaces through AppArmor: the sysctl lifts the general restriction, and the second step
       # unloads the profile that strips the capabilities of what runs inside bwrap (the seccomp
       # helper of the sandbox-runtime needs a nested user namespace). Both ONLY on the disposable
-      # runner, never on a developer machine.
-      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      # runner, never on a developer machine. tmux is for the smoke test of the TUI (P20, N191).
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep tmux
       - run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
@@ -46,10 +46,13 @@ jobs:
         working-directory: native/job-launcher
       # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
       # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
+      # OT_REQUIRE_TMUX=1 [proposta]: the same for the smoke test of the TUI, which fails, not skips,
+      # if tmux or the build is missing.
       - run: pnpm check
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           OT_REQUIRE_SANDBOX: '1'
+          OT_REQUIRE_TMUX: '1'
       - run: cargo fmt --check
         working-directory: native/job-launcher
       - run: cargo clippy --locked --all-targets -- -D warnings
