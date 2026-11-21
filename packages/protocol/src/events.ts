@@ -84,6 +84,7 @@ import {
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
+import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
 import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryReceiverStartedPayloadSchema,
@@ -868,6 +869,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DemandTransitionedPayloadSchema,
   }),
+  defineEventType({
+    type: 'atif.exported',
+    schemaVersion: 1,
+    payload: AtifExportedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'atif.export_failed',
+    schemaVersion: 1,
+    payload: AtifExportFailedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -985,6 +996,8 @@ export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
 export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
 export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];
 export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
+export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
+export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

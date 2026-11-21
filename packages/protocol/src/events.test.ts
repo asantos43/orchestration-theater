@@ -153,6 +153,8 @@ describe('daemon event registry', () => {
       'decision.answered',
       'scenario.archived',
       'demand.transitioned',
+      'atif.exported',
+      'atif.export_failed',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
