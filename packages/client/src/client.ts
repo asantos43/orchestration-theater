@@ -9,6 +9,8 @@ import {
   type ApiStatus,
   type CreateOrderBody,
   type DaemonId,
+  type DirectPromoteBody,
+  type OpenDirectBody,
   type ExtendOrderBody,
   type OrderValidity,
   type RouteBody,
@@ -368,6 +370,104 @@ export class ApiClient {
       scenarioId,
       rest,
     );
+  }
+
+  // ---- direct sessions with an Actor (Phase 7, P19) ----
+
+  /** `POST /v1/scenarios/:scenarioId/direct`: opens a session, or asks to confirm `scenario`. */
+  openDirectSession(
+    scenarioId: string,
+    body: OpenDirectBody = {},
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.openDirectSession>> {
+    return this.call(API_ROUTES.openDirectSession, {
+      params: { scenarioId },
+      body,
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `GET /v1/scenarios/:scenarioId/direct`: the open sessions and the last closed ones. */
+  listDirectSessions(
+    scenarioId: string,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.listDirectSessions>> {
+    return this.call(API_ROUTES.listDirectSessions, { params: { scenarioId }, ...options });
+  }
+
+  /** `GET /v1/direct/:sessionId`: the session with what was said and done in it. */
+  getDirectSession(
+    sessionId: string,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.getDirectSession>> {
+    return this.call(API_ROUTES.getDirectSession, { params: { sessionId }, ...options });
+  }
+
+  /** `POST /v1/direct/:sessionId/messages`: a message for the Actor; the turn runs in the background. */
+  sendDirectMessage(
+    sessionId: string,
+    text: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.sendDirectMessage>> {
+    return this.call(API_ROUTES.sendDirectMessage, {
+      params: { sessionId },
+      body: { text },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/direct/:sessionId/commands`: a `/` command of the Executor's client. */
+  runDirectCommand(
+    sessionId: string,
+    text: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.runDirectCommand>> {
+    return this.call(API_ROUTES.runDirectCommand, {
+      params: { sessionId },
+      body: { text },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/direct/:sessionId/cancel`: stops the turn in flight (the session stays open). */
+  cancelDirectTurn(
+    sessionId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.cancelDirectTurn>> {
+    return this.call(API_ROUTES.cancelDirectTurn, {
+      params: { sessionId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/direct/:sessionId/close`: closes the session and settles its work. */
+  closeDirectSession(
+    sessionId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.closeDirectSession>> {
+    return this.call(API_ROUTES.closeDirectSession, {
+      params: { sessionId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/direct/:sessionId/promote`: the result becomes a demand (an idea) or a piece (a play). */
+  promoteDirectSession(
+    sessionId: string,
+    body: DirectPromoteBody,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.promoteDirectSession>> {
+    return this.call(API_ROUTES.promoteDirectSession, {
+      params: { sessionId },
+      body,
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
   }
 
   /** The global reference of a scenario of this daemon (N168). Needs the id of the daemon. */

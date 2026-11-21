@@ -154,6 +154,8 @@ export interface ChatDaemon {
 export interface ChatDaemonOptions {
   /** Extra top-level YAML (the timers of `api.chat`, limits...). */
   readonly extra?: string;
+  /** Runs once the daemon is up and before the scenario opens (a test creates its profiles here). */
+  readonly prepare?: (daemon: DaemonHandle, dataDir: string) => Promise<void>;
 }
 
 /** Polls `read` until it returns something, or fails after `timeoutMs` of real time. */
@@ -279,6 +281,7 @@ ${options.extra ?? ''}
   };
   try {
     fakes.codeHost.seedRemote(repo, 'main');
+    await options.prepare?.(daemon, dataDir);
     const { producer } = daemon;
     if (producer === undefined) throw new Error('the daemon has no Producer channel');
     const { scenarioId } = await producer.openChat({ repo });

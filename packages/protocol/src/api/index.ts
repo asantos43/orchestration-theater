@@ -14,6 +14,7 @@ export * from './attempts.js';
 export * from './blackboard.js';
 export * from './config-view.js';
 export * from './decisions.js';
+export * from './direct.js';
 export * from './executors.js';
 export * from './ideas.js';
 export * from './orders.js';

@@ -265,6 +265,66 @@ describe('pause, resume and cancel (N176)', () => {
     ]);
     expect(started.requests[1]?.headers['idempotency-key']).toBe('k-2');
   });
+  it('opens, drives, promotes and closes a direct session, with the ids percent-encoded', async () => {
+    const session = {
+      id: 'direct-1',
+      scenarioId: 'scn-1',
+      executor: 'fake/one',
+      profile: 'fake/one',
+      client: 'fake',
+      model: null,
+      workspace: 'worktree',
+      branch: 'direct/direct-1',
+      state: 'idle',
+      turns: 0,
+      openedAt: 1,
+      lastActivityAt: 1,
+      closedAt: null,
+      commands: [],
+    };
+    const answers: Record<string, unknown> = {
+      'POST /v1/scenarios/scn-1/direct': {
+        status: 'opened',
+        workspace: 'worktree',
+        session: { ...session, items: [] },
+      },
+      'GET /v1/scenarios/scn-1/direct': { sessions: [session] },
+      'GET /v1/direct/direct-1': { ...session, items: [] },
+      'POST /v1/direct/direct-1/messages': { turn: 1 },
+      'POST /v1/direct/direct-1/commands': { turn: 2 },
+      'POST /v1/direct/direct-1/cancel': { cancelled: false },
+      'POST /v1/direct/direct-1/promote': { target: 'demand', ref: 'idea-1' },
+      'POST /v1/direct/direct-1/close': { work: 'none', branch: null },
+    };
+    const started = await daemon({
+      handler: (request) => {
+        const answer = answers[`${request.method} ${request.target.split('?')[0] ?? ''}`];
+        return answer === undefined ? undefined : { json: answer };
+      },
+    });
+    const client = clientOf(started);
+    const opened = await client.openDirectSession(
+      'scn-1',
+      { executor: 'fake/one' },
+      { idempotencyKey: 'k-3' },
+    );
+    expect(opened.status).toBe('opened');
+    expect((await client.listDirectSessions('scn-1')).sessions).toHaveLength(1);
+    expect((await client.getDirectSession('direct-1')).items).toEqual([]);
+    expect((await client.sendDirectMessage('direct-1', 'hello')).turn).toBe(1);
+    expect((await client.runDirectCommand('direct-1', '/fake:fake-command x')).turn).toBe(2);
+    expect((await client.cancelDirectTurn('direct-1')).cancelled).toBe(false);
+    expect((await client.promoteDirectSession('direct-1', { target: 'demand' })).ref).toBe(
+      'idea-1',
+    );
+    expect((await client.closeDirectSession('direct-1')).work).toBe('none');
+    const [open, , , message, command, , promote] = started.requests;
+    expect(JSON.parse(open?.body ?? '')).toEqual({ executor: 'fake/one' });
+    expect(open?.headers['idempotency-key']).toBe('k-3');
+    expect(JSON.parse(message?.body ?? '')).toEqual({ text: 'hello' });
+    expect(JSON.parse(command?.body ?? '')).toEqual({ text: '/fake:fake-command x' });
+    expect(JSON.parse(promote?.body ?? '')).toEqual({ target: 'demand' });
+  });
 });
 
 describe('orders (P15)', () => {
