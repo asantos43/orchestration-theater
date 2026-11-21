@@ -216,6 +216,7 @@ export const runDirectCommand = defineRoute({
 });
 
 export const DirectCancelResultSchema = z.strictObject({ cancelled: z.boolean() });
+export type DirectCancelResult = z.infer<typeof DirectCancelResultSchema>;
 
 export const cancelDirectTurn = defineRoute({
   id: 'cancelDirectTurn',

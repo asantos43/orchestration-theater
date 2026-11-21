@@ -12,6 +12,7 @@
     "overview": "Visão geral",
     "trajectories": "Trajetórias",
     "usage": "Uso",
+    "direct": "Sessão direta",
     "directives": "Diretrizes",
     "settings": "Configurações"
   },
@@ -119,6 +120,16 @@
     },
     "usage": {
       "refresh": "Ler o consumo de novo (aba Consumo)"
+    },
+    "direct": {
+      "new": "Abrir uma sessão direta com um Ator",
+      "talk": "Escrever ao Ator da sessão",
+      "cancel": "Parar o turno do Ator em andamento",
+      "close": "Fechar a sessão direta",
+      "promoteDemand": "Mandar o resultado da sessão para a fila de demandas",
+      "promotePiece": "Abrir uma peça (play) a partir do resultado da sessão",
+      "previous": "Selecionar a sessão anterior",
+      "next": "Selecionar a próxima sessão"
     },
     "directives": {
       "new": "Dar uma ordem",
@@ -735,6 +746,71 @@
       "network": "Não foi possível falar com o daemon.",
       "unavailable": "O daemon não pode responder agora.",
       "other": "Não foi possível ler o consumo ({{code}})."
+    }
+  },
+  "direct": {
+    "tab": {
+      "hint": "{{new}} nova  {{talk}} escrever  {{cancel}} parar  {{close}} encerrar  {{demand}} para demanda  {{piece}} para peça  {{move}} selecionar",
+      "noScenario": "Selecione um cenário para conversar com um dos Atores dele.",
+      "empty": "Nenhuma sessão direta ainda. Aperte {{key}} para abrir uma.",
+      "info": "Executor {{executor}} · modelo {{model}} · pasta {{workspace}} · branch {{branch}} · {{turns}} turnos",
+      "commands": "Comandos do cliente: {{list}}"
+    },
+    "who": {
+      "producer": "você",
+      "actor": "ator"
+    },
+    "state": {
+      "idle": "parada",
+      "running": "em turno",
+      "closed": "encerrada"
+    },
+    "workspace": {
+      "worktree": "worktree própria",
+      "readonly": "só leitura",
+      "scenario": "pasta do cenário"
+    },
+    "item": {
+      "tool": "{{title}}",
+      "decision": {
+        "allow": "permitido: {{title}} ({{rule}})",
+        "reject": "barrado: {{title}} ({{rule}}: {{reason}})",
+        "cancelled": "cancelado: {{title}} ({{rule}})"
+      }
+    },
+    "form": {
+      "title": "Abrir uma sessão direta",
+      "field": {
+        "executor": "Executor",
+        "workspace": "Pasta"
+      },
+      "firstExecutor": "o primeiro que puder assumir",
+      "configuredWorkspace": "a configurada (direct_session.workspace)",
+      "confirmScenario": "Esta sessão escreve na própria pasta do cenário, sem worktree. Confirmar?",
+      "hint": "Tab próximo campo  ←/→ muda  Enter abre  Esc cancela",
+      "hintConfirm": "Enter confirma  Esc cancela"
+    },
+    "status": {
+      "needScenario": "Selecione um cenário antes.",
+      "needSession": "Não há sessão aberta selecionada.",
+      "noTurn": "Nenhum turno está rodando nesta sessão.",
+      "loadingExecutors": "Lendo os Executores...",
+      "opening": "Abrindo a sessão...",
+      "opened": "Sessão {{id}} aberta.",
+      "cancelled": "Turno parado.",
+      "nothingToPromote": "O Ator ainda não respondeu: não há o que encaminhar.",
+      "promoted": {
+        "demand": "Resultado enviado para a fila de demandas ({{ref}}).",
+        "piece": "Peça aberta a partir do resultado ({{ref}})."
+      },
+      "closed": {
+        "none": "Sessão encerrada. Nada mudou na pasta.",
+        "kept": "Sessão encerrada. O trabalho ficou na branch {{branch}}.",
+        "discarded": "Sessão encerrada. O trabalho foi descartado.",
+        "not_applicable": "Sessão encerrada."
+      },
+      "quota": "Este perfil está sem cota ou sem dinheiro agora: {{message}}",
+      "failed": "Não foi possível: {{message}}"
     }
   },
   "directives": {

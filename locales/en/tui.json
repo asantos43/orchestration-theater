@@ -12,6 +12,7 @@
     "overview": "Overview",
     "trajectories": "Trajectories",
     "usage": "Usage",
+    "direct": "Direct session",
     "directives": "Directives",
     "settings": "Settings"
   },
@@ -119,6 +120,16 @@
     },
     "usage": {
       "refresh": "Read the consumption again (Usage tab)"
+    },
+    "direct": {
+      "new": "Open a direct session with an Actor",
+      "talk": "Write to the Actor of the session",
+      "cancel": "Stop the Actor turn in flight",
+      "close": "Close the direct session",
+      "promoteDemand": "Send the result of the session to the demand queue",
+      "promotePiece": "Open a piece (play) from the result of the session",
+      "previous": "Select the previous session",
+      "next": "Select the next session"
     },
     "directives": {
       "new": "Give an order",
@@ -735,6 +746,71 @@
       "network": "Could not reach the daemon.",
       "unavailable": "The daemon cannot answer now.",
       "other": "Could not read consumption ({{code}})."
+    }
+  },
+  "direct": {
+    "tab": {
+      "hint": "{{new}} new  {{talk}} write  {{cancel}} stop  {{close}} close  {{demand}} to demand  {{piece}} to piece  {{move}} select",
+      "noScenario": "Select a scenario to talk to one of its Actors.",
+      "empty": "No direct session yet. Press {{key}} to open one.",
+      "info": "Executor {{executor}} · model {{model}} · folder {{workspace}} · branch {{branch}} · {{turns}} turns",
+      "commands": "Client commands: {{list}}"
+    },
+    "who": {
+      "producer": "you",
+      "actor": "actor"
+    },
+    "state": {
+      "idle": "idle",
+      "running": "running",
+      "closed": "closed"
+    },
+    "workspace": {
+      "worktree": "own worktree",
+      "readonly": "read only",
+      "scenario": "scenario folder"
+    },
+    "item": {
+      "tool": "{{title}}",
+      "decision": {
+        "allow": "allowed: {{title}} ({{rule}})",
+        "reject": "barred: {{title}} ({{rule}}: {{reason}})",
+        "cancelled": "cancelled: {{title}} ({{rule}})"
+      }
+    },
+    "form": {
+      "title": "Open a direct session",
+      "field": {
+        "executor": "Executor",
+        "workspace": "Folder"
+      },
+      "firstExecutor": "the first that can take it",
+      "configuredWorkspace": "as configured (direct_session.workspace)",
+      "confirmScenario": "This session writes in the folder of the scenario itself, with no worktree. Confirm?",
+      "hint": "Tab next field  ←/→ change  Enter open  Esc cancel",
+      "hintConfirm": "Enter confirm  Esc cancel"
+    },
+    "status": {
+      "needScenario": "Select a scenario first.",
+      "needSession": "There is no open session selected.",
+      "noTurn": "No turn is running in this session.",
+      "loadingExecutors": "Reading the Executors...",
+      "opening": "Opening the session...",
+      "opened": "Session {{id}} open.",
+      "cancelled": "Turn stopped.",
+      "nothingToPromote": "The Actor has not answered yet: there is nothing to send on.",
+      "promoted": {
+        "demand": "Result sent to the demand queue ({{ref}}).",
+        "piece": "Piece opened from the result ({{ref}})."
+      },
+      "closed": {
+        "none": "Session closed. Nothing was changed in the folder.",
+        "kept": "Session closed. The work stayed in the branch {{branch}}.",
+        "discarded": "Session closed. The work was discarded.",
+        "not_applicable": "Session closed."
+      },
+      "quota": "No quota or money left for this profile now: {{message}}",
+      "failed": "Could not do it: {{message}}"
     }
   },
   "directives": {
