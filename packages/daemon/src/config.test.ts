@@ -94,6 +94,22 @@ describe('parseConfig', () => {
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
   });
 
+  it('has the defaults of ui.input and takes its other modes (N35)', () => {
+    expect(parseConfig('').ui.input).toEqual({
+      paste: { mode: 'marker', lines: 10, chars: 2000 },
+      dropPaths: 'attach',
+      history: { store: 'file', size: 500 },
+      editor: 'auto',
+      maxVisibleLines: 8,
+      image: { tool: 'auto', timeoutMs: 3000, maxBytes: 20 * 1024 * 1024 },
+    });
+    const yaml = 'ui:\n  input:\n    history:\n      store: memory\n    image:\n      tool: off\n';
+    const { input } = parseConfig(yaml).ui;
+    expect(input.history).toEqual({ store: 'memory', size: 500 });
+    expect(input.image.tool).toBe('off');
+    expect(() => parseConfig('ui:\n  input:\n    editor: vim\n')).toThrow(/ui\.input\.editor/);
+  });
+
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
     const yaml = [
       'ui:',
@@ -149,8 +165,8 @@ describe('parseConfig', () => {
     expect(() => parseConfig(overrides('      tabs.add: Cmd+T\n'))).toThrow(/Cmd/);
     expect(() => parseConfig(overrides('      tabs.add: Alt+Foo\n'))).toThrow(/key combination/);
     // a shortcut on the list of collisions only warns: the config loads
-    expect(parseConfig(overrides('      tabs.add: Ctrl+A\n')).ui.keymap.overrides['tabs.add']).toBe(
-      'Ctrl+A',
+    expect(parseConfig(overrides('      tabs.add: Ctrl+T\n')).ui.keymap.overrides['tabs.add']).toBe(
+      'Ctrl+T',
     );
     // moving two shortcuts around is fine
     expect(() =>

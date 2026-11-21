@@ -83,3 +83,60 @@ export const UiRuntimeConfigSchema = z.strictObject({
   maxSemiSpaceMB: z.int().min(1).default(2),
   maxOldSpaceMB: z.int().min(1).optional(),
 });
+
+// ---- The text box (N35; P10 of docs/18) ---------------------------------------------------------
+
+/** `marker`: a long paste becomes `[Pasted text #n]` plus an attachment; `inline`: it stays in the text. */
+export const UI_PASTE_MODES = ['marker', 'inline'] as const;
+/** `attach`: a pasted path of an existing file becomes an attachment; `text`: it stays as text. */
+export const UI_DROP_PATH_MODES = ['attach', 'text'] as const;
+/** `file`: the history of the box lives in the data folder; `memory`: only while the TUI runs. */
+export const UI_HISTORY_STORES = ['file', 'memory'] as const;
+/** `auto`: `$VISUAL`, then `$EDITOR`; `off`: Ctrl+G does nothing but say so. */
+export const UI_EDITOR_MODES = ['auto', 'off'] as const;
+/**
+ * The tool Ctrl+V reads an image with. `auto` picks by the system (`wl-paste` or `xclip` on Linux,
+ * `osascript` on macOS, PowerShell on Windows); `off` turns the image paste off.
+ */
+export const UI_IMAGE_TOOLS = ['auto', 'wl-paste', 'xclip', 'osascript', 'powershell', 'off'] as const;
+
+export type UiImageTool = (typeof UI_IMAGE_TOOLS)[number];
+
+/**
+ * `ui.input` (N35; P10). Every default and range here is [proposta], since the architecture fixes
+ * the keys of the box and not these limits:
+ * - `paste`: `mode` (`marker`, default), and the limit of a long paste, `lines` (10) or `chars`
+ *   (2000), whichever is passed first;
+ * - `dropPaths`: `attach` (default) or `text`;
+ * - `history`: `store` (`file`, default) and `size`, the messages kept (500);
+ * - `editor`: `auto` (default) or `off`;
+ * - `maxVisibleLines`: the height of the box before it scrolls (8);
+ * - `image`: the clipboard image of Ctrl+V: `tool` (`auto`), `timeoutMs` (3000) and `maxBytes`
+ *   (20 MiB).
+ */
+export const UiInputConfigSchema = z.strictObject({
+  paste: z
+    .strictObject({
+      mode: z.enum(UI_PASTE_MODES).default('marker'),
+      lines: z.int().min(1).default(10),
+      chars: z.int().min(1).default(2000),
+    })
+    .prefault({}),
+  dropPaths: z.enum(UI_DROP_PATH_MODES).default('attach'),
+  history: z
+    .strictObject({
+      store: z.enum(UI_HISTORY_STORES).default('file'),
+      size: z.int().min(1).max(100_000).default(500),
+    })
+    .prefault({}),
+  editor: z.enum(UI_EDITOR_MODES).default('auto'),
+  maxVisibleLines: z.int().min(1).max(100).default(8),
+  image: z
+    .strictObject({
+      tool: z.enum(UI_IMAGE_TOOLS).default('auto'),
+      timeoutMs: z.int().min(100).max(60_000).default(3000),
+      maxBytes: z.int().min(1).default(20 * 1024 * 1024),
+    })
+    .prefault({}),
+});
+export type UiInputConfig = z.output<typeof UiInputConfigSchema>;
