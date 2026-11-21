@@ -7,7 +7,11 @@
  * default here, and nothing throws. This package never imports the daemon, so the defaults are
  * repeated on purpose.
  */
-import { DEFAULT_INPUT_SETTINGS, parseInputSettings, type InputSettings } from './input/settings.js';
+import {
+  DEFAULT_INPUT_SETTINGS,
+  parseInputSettings,
+  type InputSettings,
+} from './input/settings.js';
 
 export const KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export type KeyRenderMode = (typeof KEY_RENDER_MODES)[number];

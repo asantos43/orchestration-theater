@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { App } from './app.js';
 import type { DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
+import type { HistoryStore } from './input/index.js';
 import {
   LocaleController,
   createTuiI18n,
@@ -27,6 +28,8 @@ export interface RunTuiOptions {
   readonly connector: DaemonConnector;
   readonly settings: UiSettings;
   readonly patch?: InkPatchOutcome | undefined;
+  /** The history of the text box (P12). */
+  readonly history?: HistoryStore | undefined;
   readonly process?: ProcessHost | undefined;
   readonly env?: SystemLocaleEnv | undefined;
   readonly catalogs?: Resource | undefined;
@@ -70,6 +73,7 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
       locale={locale}
       settings={settings}
       patch={options.patch}
+      history={options.history}
       flush={flush}
     />
   );

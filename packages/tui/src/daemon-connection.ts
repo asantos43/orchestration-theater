@@ -21,6 +21,8 @@ export interface LiveDaemon {
   readonly address: string;
   /** Starts the stores (REST snapshots and the event stream). Rejects when they cannot. */
   readonly stores: DaemonStores;
+  /** The client of the daemon: the chat opens its sockets and reads the commands with it (P12). */
+  readonly client?: ApiClient | undefined;
   /** Reads `ui` of the effective configuration again (`GET /v1/config`), tolerantly. */
   readSettings(): Promise<UiSettings>;
   /**
@@ -69,6 +71,7 @@ export function liveDaemon(
     status,
     address: options.address ?? '',
     stores,
+    client,
     readSettings: () => readUiSettings(client),
     openLayout: async () => {
       if (layout !== undefined) return layout;

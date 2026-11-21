@@ -4,7 +4,7 @@ import { cleanup, render } from 'ink-testing-library';
 import type { i18n as I18nInstance } from 'i18next';
 import type { ReactNode } from 'react';
 import { App } from './app.js';
-import type { ChatMessage } from './layout/chat.js';
+import type { ChatPanelConfig } from './chat/use-chat-panel.js';
 import type { TabContentMap } from './layout/tab-content.js';
 import type { KeyEnvironment } from './keys/use-keymap.js';
 import type { ConnectResult, DaemonConnector } from './daemon-connection.js';
@@ -83,7 +83,9 @@ export interface RenderAppOptions {
   readonly systemLocale?: string | undefined;
   /** The size of the terminal (the test stdout has 100 columns and no rows). */
   readonly size?: { readonly columns: number; readonly rows: number } | undefined;
-  readonly messages?: readonly ChatMessage[] | undefined;
+  /** How the chat opens its sockets, and where the history of the text box lives. */
+  readonly chatSocket?: ChatPanelConfig['socket'];
+  readonly history?: ChatPanelConfig['history'];
   readonly tabContent?: TabContentMap | undefined;
   /** The system the keymap adapts to. Default: Linux with no terminal variables, on every OS. */
   readonly keyEnvironment?: KeyEnvironment | undefined;
@@ -109,7 +111,8 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       locale={locale}
       settings={settings}
       patch={options.patch}
-      messages={options.messages}
+      chatSocket={options.chatSocket}
+      history={options.history}
       tabContent={options.tabContent}
       keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
       flush={() => {
