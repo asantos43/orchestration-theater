@@ -18,6 +18,7 @@ import type { UiSettings } from './settings.js';
 import {
   SIGNAL_EXIT_CODES,
   installExitGuards,
+  isTerminalGone,
   type ExitSignal,
   type ProcessHost,
 } from './terminal.js';
@@ -90,10 +91,47 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
     ...(options.interactive === undefined ? {} : { interactive: options.interactive }),
   });
 
+  const reportCrash = (error: unknown): void => {
+    try {
+      options.stderr.write(`${i18n.t('app.crash', { message: messageOf(error) })}\n`);
+    } catch {
+      // The terminal went away in the meantime: the message has nowhere to go.
+    }
+  };
   let exitCode = 0;
   const unmount = (): void => {
     running.unmount();
   };
+  // The terminal is gone (the window closed, the connection dropped): there is nothing to give back
+  // and nowhere to report. The app is unmounted once, with the code of a hang-up, and no more is
+  // written: a write to a terminal that is gone fails, and an error nobody catches would start the
+  // whole thing again.
+  let terminalGone = false;
+  const onTerminalGone = (): void => {
+    if (terminalGone) return;
+    terminalGone = true;
+    exitCode = SIGNAL_EXIT_CODES.SIGHUP;
+    try {
+      unmount();
+    } catch {
+      // Ink wrote its last frames to the terminal that is gone.
+    }
+  };
+  const onFatal = (error: unknown): void => {
+    if (isTerminalGone(error)) {
+      onTerminalGone();
+      return;
+    }
+    exitCode = 1;
+    unmount();
+    reportCrash(error);
+  };
+  // The errors of the streams of the terminal would be uncaught exceptions without a listener.
+  const terminalStreams = [options.stdin, options.stdout, options.stderr];
+  const onStreamError = (error: Error): void => {
+    onFatal(error);
+  };
+  for (const stream of terminalStreams) stream.on('error', onStreamError);
   const removeGuards =
     options.process === undefined
       ? () => undefined
@@ -102,25 +140,29 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
             exitCode = SIGNAL_EXIT_CODES[signal];
             unmount();
           },
-          onFatal: (error: unknown) => {
-            exitCode = 1;
-            unmount();
-            options.stderr.write(`${i18n.t('app.crash', { message: messageOf(error) })}\n`);
-          },
+          onFatal,
+          onTerminalGone,
         });
 
   const done = running.waitUntilExit().then(
     () => exitCode,
     (error: unknown) => {
       // An error in a component: Ink already unmounted (and left the alternate screen).
-      options.stderr.write(`${i18n.t('app.crash', { message: messageOf(error) })}\n`);
+      reportCrash(error);
       return 1;
     },
   );
   const finished = done.finally(() => {
     // However it ended, the terminal does not keep the mouse reports on (N34).
-    if (settings.mouse !== 'off') options.stdout.write(MOUSE_DISABLE_SEQUENCE);
+    if (settings.mouse !== 'off' && !terminalGone) {
+      try {
+        options.stdout.write(MOUSE_DISABLE_SEQUENCE);
+      } catch {
+        // The terminal is gone: the mouse reports went with it.
+      }
+    }
     removeGuards();
+    for (const stream of terminalStreams) stream.off('error', onStreamError);
   });
   return { done: finished, locale, stop: unmount };
 }
