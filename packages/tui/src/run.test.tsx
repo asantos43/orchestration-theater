@@ -172,3 +172,58 @@ describe('startTuiApp, the terminal', () => {
     await session.running.done;
   });
 });
+
+describe('startTuiApp, a terminal that is gone', () => {
+  const errno = (code: string): Error => Object.assign(new Error(`write ${code}`), { code });
+
+  it.each(['EIO', 'EPIPE', 'ENXIO'])(
+    'an uncaught %s ends with 129 and writes nothing to the terminal that is gone',
+    async (code) => {
+      const session = await open();
+      const before = session.err.writes.length;
+      session.host.bus.emit('uncaughtException', errno(code));
+      await expect(session.running.done).resolves.toBe(129);
+      // The crash message would be a write to the terminal that failed: it is not written.
+      expect(session.err.writes.length).toBe(before);
+      expect(session.err.output).toBe('');
+    },
+  );
+
+  it.each(['stdout', 'stderr', 'stdin'] as const)(
+    'an error of %s that says the terminal is gone ends with 129, and does not loop',
+    async (stream) => {
+      const session = await open();
+      const target = { stdout: session.tty, stderr: session.err, stdin: session.stdin }[stream];
+      target.emit('error', errno('EIO'));
+      // The same error again (the next write fails too) is told once.
+      target.emit('error', errno('EIO'));
+      await expect(session.running.done).resolves.toBe(129);
+      expect(session.err.output).toBe('');
+    },
+  );
+
+  it('an error of a stream that is not about the terminal is a crash, as before', async () => {
+    const session = await open();
+    session.tty.emit('error', errno('ENOSPC'));
+    await expect(session.running.done).resolves.toBe(1);
+    expect(session.err.output).toContain('The TUI stopped on an error');
+  });
+
+  it('a crash message that fails to be written does not throw', async () => {
+    const session = await open();
+    session.err.write = () => {
+      throw errno('EIO');
+    };
+    session.host.bus.emit('uncaughtException', new Error('boom'));
+    await expect(session.running.done).resolves.toBe(1);
+  });
+
+  it('takes its listeners off the streams when it ends', async () => {
+    const session = await open();
+    session.running.stop();
+    await session.running.done;
+    expect(session.tty.listenerCount('error')).toBe(0);
+    expect(session.err.listenerCount('error')).toBe(0);
+    expect(session.stdin.listenerCount('error')).toBe(0);
+  });
+});

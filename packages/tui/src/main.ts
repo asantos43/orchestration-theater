@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { UI_ENV } from './launcher.js';
+import { parseUiSettings } from './settings.js';
 import { startTui } from './start.js';
+import { endProcess } from './terminal.js';
 
 /**
  * The entry of the process the launcher starts (`node [flags] main.js --data-dir <dir>`). The
@@ -21,12 +23,21 @@ function parseUi(raw: string | undefined): unknown {
   }
 }
 
+const ui = parseUi(process.env[UI_ENV]);
 const running = await startTui({
   dataDir: parseDataDir(process.argv.slice(2)),
-  ui: parseUi(process.env[UI_ENV]),
+  ui,
   stdin: process.stdin,
   stdout: process.stdout,
   stderr: process.stderr,
   process,
 });
-process.exitCode = await running.done;
+const code = await running.done;
+// A socket to the daemon or a timer could hold the process after the TUI is gone, and a process
+// with no terminal is an orphan that spins: the end is forced after `ui.runtime.exitGraceMs`.
+endProcess(code, parseUiSettings(ui).runtime.exitGraceMs, {
+  exit: (exitCode) => process.exit(exitCode),
+  setExitCode: (exitCode) => {
+    process.exitCode = exitCode;
+  },
+});

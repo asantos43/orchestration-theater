@@ -14,10 +14,10 @@ import {
 
 describe('runtimeFlags', () => {
   it('always sets the young heap, and the old heap cap only when it is set', () => {
-    expect(runtimeFlags({ maxSemiSpaceMB: 2, maxOldSpaceMB: undefined })).toEqual([
-      '--max-semi-space-size=2',
-    ]);
-    expect(runtimeFlags({ maxSemiSpaceMB: 4, maxOldSpaceMB: 192 })).toEqual([
+    expect(
+      runtimeFlags({ maxSemiSpaceMB: 2, maxOldSpaceMB: undefined, exitGraceMs: 2000 }),
+    ).toEqual(['--max-semi-space-size=2']);
+    expect(runtimeFlags({ maxSemiSpaceMB: 4, maxOldSpaceMB: 192, exitGraceMs: 2000 })).toEqual([
       '--max-semi-space-size=4',
       '--max-old-space-size=192',
     ]);

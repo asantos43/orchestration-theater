@@ -94,7 +94,7 @@ describe('parseConfig', () => {
       inkPatches: ['cache', 'grid'],
       historyWindow: 0,
     });
-    expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2 });
+    expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2, exitGraceMs: 2000 });
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
     expect(ui.tuiLayout).toEqual({
       sidebarWidth: 30,
@@ -1088,6 +1088,52 @@ describe('the ! command (N43, N187)', () => {
       'terminal:\n  snippet: { max_lines: 5, keep: head }\n  log_max_size: 1MB\n',
     ).terminal;
     expect(terminal).toEqual({ snippet: { max_lines: 5, keep: 'head' }, log_max_size: 1_048_576 });
+  });
+});
+
+describe('the direct session (P19, N44, N190)', () => {
+  it('opens in its own worktree by default, asks for the scenario and times out at 30 minutes', () => {
+    expect(parseConfig('').direct_session).toEqual({
+      workspace: 'worktree',
+      confirm_scenario: 'ask',
+      max_open: 3,
+      on_close: 'keep',
+      history_max: 200,
+      closed_kept: 10,
+      idle_timeout: 1_800_000,
+    });
+  });
+
+  it('takes each workspace, confirm and close mode and the idle timeout', () => {
+    for (const workspace of ['worktree', 'readonly', 'scenario']) {
+      expect(
+        parseConfig(`direct_session:\n  workspace: ${workspace}\n`).direct_session.workspace,
+      ).toBe(workspace);
+    }
+    const section = parseConfig(
+      'direct_session:\n  confirm_scenario: never\n  on_close: discard\n  max_open: 1\n  idle_timeout: off\n',
+    ).direct_session;
+    expect(section).toMatchObject({
+      confirm_scenario: 'never',
+      on_close: 'discard',
+      max_open: 1,
+      idle_timeout: null,
+    });
+  });
+
+  it('refuses a bad mode, size or key', () => {
+    for (const bad of [
+      'direct_session:\n  workspace: host\n',
+      'direct_session:\n  confirm_scenario: maybe\n',
+      'direct_session:\n  on_close: move\n',
+      'direct_session:\n  max_open: 0\n',
+      'direct_session:\n  history_max: 0\n',
+      'direct_session:\n  closed_kept: -1\n',
+      'direct_session:\n  idle_timeout: soon\n',
+      'direct_session:\n  other: 1\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
   });
 });
 

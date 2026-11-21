@@ -136,6 +136,8 @@ class RealHeadCodeHost implements CodeHost {
 }
 
 export interface ChatDaemon {
+  /** Stops the daemon and deletes its folders. Called once, by the one that started it. */
+  readonly dispose: () => Promise<void>;
   readonly daemon: DaemonHandle;
   readonly codeHost: FakeCodeHostLike;
   readonly dataDir: string;
@@ -152,6 +154,8 @@ export interface ChatDaemon {
 export interface ChatDaemonOptions {
   /** Extra top-level YAML (the timers of `api.chat`, limits...). */
   readonly extra?: string;
+  /** Runs once the daemon is up and before the scenario opens (a test creates its profiles here). */
+  readonly prepare?: (daemon: DaemonHandle, dataDir: string) => Promise<void>;
 }
 
 /** Polls `read` until it returns something, or fails after `timeoutMs` of real time. */
@@ -180,6 +184,23 @@ export async function withChatDaemon(
   options: ChatDaemonOptions,
   body: (chat: ChatDaemon) => Promise<void>,
 ): Promise<void> {
+  const chat = await startChatDaemon(fakes, options);
+  try {
+    await body(chat);
+  } finally {
+    await chat.dispose();
+  }
+}
+
+/**
+ * The same daemon, for a test that cannot hold it in one callback (a `beforeAll` and an `afterAll`):
+ * the caller owns `dispose()`, which stops the daemon and deletes the folders. If the start fails,
+ * everything that was created is already cleaned up.
+ */
+export async function startChatDaemon(
+  fakes: ChatFakes,
+  options: ChatDaemonOptions,
+): Promise<ChatDaemon> {
   assertFakeAgentBuilt();
   const launcher = defaultLauncher();
   if (launcher === undefined) throw new Error('this platform has no process launcher');
@@ -251,12 +272,21 @@ ${options.extra ?? ''}
     logger: createSilentLogger(),
     version: '0.0.0-test',
   });
+  const dispose = async (): Promise<void> => {
+    try {
+      await daemon.stop();
+    } finally {
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  };
   try {
     fakes.codeHost.seedRemote(repo, 'main');
+    await options.prepare?.(daemon, dataDir);
     const { producer } = daemon;
     if (producer === undefined) throw new Error('the daemon has no Producer channel');
     const { scenarioId } = await producer.openChat({ repo });
-    await body({
+    return {
+      dispose,
       daemon,
       codeHost: fakes.codeHost,
       dataDir,
@@ -264,9 +294,9 @@ ${options.extra ?? ''}
       scenarioId,
       plays: () => daemon.store.plays.list({ scenarioId }),
       events: () => daemon.store.events.readFrom(0, 100_000),
-    });
-  } finally {
-    await daemon.stop();
-    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    };
+  } catch (error) {
+    await dispose();
+    throw error;
   }
 }

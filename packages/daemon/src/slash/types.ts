@@ -13,6 +13,7 @@ import type { ApiSlashCommand, SlashCommandGroup } from '@otheater/protocol';
 import type { z } from 'zod';
 import type { BudgetService } from '../budget/index.js';
 import type { DaemonConfig, PauseMode } from '../config.js';
+import type { DirectSessionService } from '../direct/service.js';
 import type { DirectiveService } from '../directives/index.js';
 import type { Logger } from '../logger.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
@@ -119,6 +120,8 @@ export interface SlashDeps {
   readonly channel?: ProducerChannel | undefined;
   readonly runner?: PlayRunner | undefined;
   readonly directors?: DirectorSessions | undefined;
+  /** The direct sessions with an Actor (P19); absent: `/direct` answers 503. */
+  readonly direct?: Pick<DirectSessionService, 'open'> | undefined;
   /** `pause.mode`, read at each pause. */
   readonly pauseMode?: (() => PauseMode) | undefined;
   /** The trajectory of a play (P14): `/trajectory` reads it. */

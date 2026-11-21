@@ -21,6 +21,7 @@
     "directives": "Lists the orders in force for the scenario",
     "config": "Shows a key of the configuration, or its sections",
     "template": "Sends to the Director: {{text}}",
+    "direct": "Opens a direct session with an Actor, outside the Director",
     "trajectory": "Shows the trajectory of a play, or the diff of one of its demands"
   },
   "args": {
@@ -32,6 +33,7 @@
     "attach": "<path>",
     "config": "[key]",
     "template": "<text>",
+    "direct": "[executor]",
     "trajectory": "[play] [demand]"
   },
   "confirm": {
@@ -60,6 +62,7 @@
     },
     "unknownKey": "There is no configuration key \"{{key}}\".",
     "noDirector": "No Executor is set for the Director.",
+    "noDirect": "This daemon cannot hold direct sessions: it runs no plays.",
     "noTrajectory": "This daemon has no trajectory service.",
     "trajectory": {
       "noPlay": "The scenario has no play yet.",
@@ -163,6 +166,10 @@
     "forwarded": {
       "template": "Sent to the Director.",
       "client": "Sent to the client of the Director."
+    },
+    "direct": {
+      "opened": "Opened the direct session {{id}} with {{executor}} (workspace: {{workspace}}). Continue it in the Direct tab.",
+      "confirm": "The session would write in the folder of the scenario. Open it from the Direct tab to confirm."
     },
     "trajectory": {
       "header": "Trajectory of {{play}} ({{state}}).",
