@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput, isOTheaterError } from '@otheater/core';
-import { applyHotSections, splitByReload } from '../../config-hot.js';
 import type { DaemonConfig } from '../../config.js';
 import { editConfigFile } from '../../config-edit.js';
+import { createConfigReloader } from '../../config-reload.js';
 import { writeSituation } from '../../situations.js';
 import type { CommandRegistrar } from './command.js';
 import type { CommandRouteDeps } from './deps.js';
@@ -16,13 +16,22 @@ import { redactTree, treeAt } from './redact.js';
  *   never to the YAML, and the edit would otherwise return it to anyone who reads the file);
  * - edits that arrive together run one after the other (the file is read, changed and written whole;
  *   `editConfigFile` keeps one queue per file, shared with the setup assistant);
- * - N188 (P16 of Phase 7): the sections `ui`, `chat`, `limits` and `roles` are reloaded into the
- *   running configuration right after the write, with the event `config.changed`; the other keys
- *   apply on restart, and the answer lists which is which. Both events carry the paths, never the
- *   values.
+ * - N188 (P16 of Phase 7): the sections `ui`, `chat`, `limits` and `roles` (and, since P23,
+ *   `executors.*` and the `budget` and `local` blocks of a profile) are reloaded into the running
+ *   configuration right after the write, with the event `config.changed`; the other keys apply on
+ *   restart, and the answer lists which is which. The reload is the one of `config-reload.ts`, the
+ *   same the setup assistant and the cadastro of an Executor use. Both events carry the paths,
+ *   never the values.
  */
 export function registerConfigCommands(register: CommandRegistrar, deps: CommandRouteDeps): void {
   const { store, logger, configPath, config: live } = deps;
+  // The daemon hands over its reloader (the one that also re-reads the spending caps); a bare `config`
+  // gets one that only copies the paths in.
+  const reloader =
+    deps.reloader ??
+    (live === undefined
+      ? undefined
+      : createConfigReloader({ config: live, events: store.events, logger }));
 
   /** The failure with the path of the file replaced, so a response does not say where the daemon lives. */
   const scrubbed = (error: unknown): unknown =>
@@ -58,19 +67,18 @@ export function registerConfigCommands(register: CommandRegistrar, deps: Command
       );
     }
     const setPaths = set.map((entry) => entry.path.join('.'));
-    const { hot, restart } =
-      live === undefined
-        ? { hot: [], restart: [...setPaths, ...removed] }
-        : splitByReload([...setPaths, ...removed]);
-    if (live !== undefined && hot.length > 0) applyHotSections(live, next);
-    const appliesOn = restart.length === 0 ? 'hot' : hot.length === 0 ? 'restart' : 'mixed';
+    const paths = [...setPaths, ...removed];
+    const result =
+      reloader === undefined
+        ? { hot: [], restart: paths, appliesOn: 'restart' as const }
+        : await reloader.apply({ next, paths });
+    const { hot, restart, appliesOn } = result;
     await writeSituation(store.events, logger, 'config.edited', {
       set: setPaths,
       removed,
       appliesOn,
     });
-    if (hot.length > 0)
-      await writeSituation(store.events, logger, 'config.changed', { hot, restart });
-    return { appliesOn, set: setPaths, removed, hot, restart } as const;
+    await reloader?.announce(result);
+    return { appliesOn, set: setPaths, removed, hot: [...hot], restart: [...restart] } as const;
   });
 }

@@ -47,6 +47,7 @@ import {
   type ProductionClientsOptions,
 } from './compose.js';
 import { CLIENT_IDS, loadConfig, type DaemonConfig } from './config.js';
+import { createConfigReloader } from './config-reload.js';
 import { Execution } from './execution/service.js';
 import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
@@ -227,6 +228,8 @@ export interface DaemonHandle {
    * `on_exceeded` and `in_flight`.
    */
   readonly budget: BudgetService;
+  /** The direct sessions (the Producer talking to an Actor outside any play): `undefined` when the execution is off. */
+  readonly direct: DirectSessionService | undefined;
   /**
    * The accounts (architecture 5.6; Phase 5, P2 and P21): add, list, drain and remove. With the
    * execution on, a drain and a removal count and release the live sessions (the baton of P18).
@@ -660,6 +663,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       ideas: orchestration.ideas,
       opening: orchestration.opening,
     });
+    // P27 (N206): the worktrees of direct sessions a dead daemon left behind, by
+    // `direct_session.orphans`. It runs before any request can open a session.
+    await direct.sweepOrphans();
     // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
     registerChatRoutes({
       api,
@@ -983,18 +989,34 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       return undefined;
     }
   };
+  // P23 (Phase 7, N208 item 3, N202 (c)): one reload of a write of `config.yaml` into the running
+  // configuration, shared by `PUT /v1/config`, the confirmation of the assistant and the cadastro
+  // of an Executor. The spending caps are copied at the start, so they are read again when a hot
+  // path touches `profiles` or `executors`.
+  const configReloader = createConfigReloader({
+    config,
+    events: store.events,
+    logger,
+    onHot: async (hot) => {
+      if (hot.some((path) => path.startsWith('profiles.') || path.startsWith('executors.'))) {
+        await budget.applySettings(budgetSettingsOf(config));
+      }
+    },
+  });
   const setup = new SetupService({
     store,
     clock,
     logger,
     configPath: paths.config,
     profiles,
+    reload: configReloader.reload,
     executors: new ExecutorService({
       store,
       clock,
       logger,
       configPath: paths.config,
       catalogs: (client) => clientAdapter(client)?.models,
+      reload: configReloader.reload,
     }),
     catalogs: (client) => clientAdapter(client)?.models,
     installedClients: () =>
@@ -1052,6 +1074,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logins,
     configPath: paths.config,
     config,
+    reloader: configReloader,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
     layout,
     channel: orchestration?.channel,
@@ -1084,6 +1107,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     usage,
     usageAudit,
     budget,
+    direct,
     get vaultLocked() {
       return isLockableSecretVault(vault) && vault.isLocked;
     },

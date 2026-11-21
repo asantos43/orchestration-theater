@@ -52,6 +52,7 @@ import {
   DIRECT_CONFIRM_MODES,
   DIRECT_IDLE_TIMEOUT_DEFAULT,
   DIRECT_ON_CLOSE_MODES,
+  DIRECT_ORPHANS_MODES,
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
@@ -1239,6 +1240,7 @@ const DirectSessionConfigSchema = z
     history_max: z.int().min(1).default(200),
     closed_kept: z.int().min(0).default(10),
     idle_timeout: OffOrDurationSchema.prefault(DIRECT_IDLE_TIMEOUT_DEFAULT),
+    orphans: z.enum(DIRECT_ORPHANS_MODES).default('on_close'),
   })
   .prefault({});
 

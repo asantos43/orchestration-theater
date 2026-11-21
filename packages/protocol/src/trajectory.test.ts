@@ -2,8 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTrajectory,
+  isDirectTrajectoryEvent,
   isTrajectoryEvent,
   TERMINAL_OUTPUT_EVENT,
+  trajectorySubjectOf,
   type TrajectoryEvent,
 } from './trajectory.js';
 
@@ -135,5 +137,163 @@ describe('buildTrajectory', () => {
     expect(once.attempts[0]?.turns[0]?.entries).toHaveLength(1);
     expect(buildTrajectory('p1', events)).toEqual(once);
     expect(once.lastEventId).toBe(events[3]?.id);
+  });
+});
+
+/** A `direct.session.*` event: it carries the scenario and the id of the session, never a play. */
+function direct(
+  type: string,
+  payload: TrajectoryEvent['payload'] = {},
+  extra: { sessionId?: string; at?: number } = {},
+): TrajectoryEvent {
+  counter += 1;
+  return {
+    id: counter,
+    type,
+    timestamp: extra.at ?? counter * 10,
+    payload: { sessionId: extra.sessionId ?? 'direct-0a1b2c3d', ...payload },
+    playId: undefined,
+    attemptId: undefined,
+  };
+}
+
+describe('the direct session in the trajectory (P27, N206)', () => {
+  const SESSION = 'direct-0a1b2c3d';
+
+  it('takes the events of a session, but not a refusal, which has no session', () => {
+    for (const type of [
+      'direct.session.opened',
+      'direct.session.message',
+      'direct.session.tool',
+      'direct.session.permission',
+      'direct.session.command',
+      'direct.session.turn_finished',
+      'direct.session.closed',
+      'direct.session.promoted',
+    ]) {
+      expect(isDirectTrajectoryEvent(type), type).toBe(true);
+      expect(isTrajectoryEvent(type), type).toBe(true);
+    }
+    expect(isDirectTrajectoryEvent('direct.session.refused')).toBe(false);
+    expect(isTrajectoryEvent('direct.session.refused')).toBe(false);
+  });
+
+  it('names the subject of an event: the play, or the id of the session', () => {
+    expect(trajectorySubjectOf(direct('direct.session.opened'))).toBe(SESSION);
+    expect(trajectorySubjectOf(event('session.opened', {}))).toBe('p1');
+    expect(
+      trajectorySubjectOf({
+        type: 'attempt.submitted',
+        playId: undefined,
+        payload: { playId: 'p9' },
+      }),
+    ).toBe('p9');
+    expect(
+      trajectorySubjectOf({ type: 'daemon.started', playId: undefined, payload: {} }),
+    ).toBeUndefined();
+  });
+
+  it('folds a closed session into one attempt with no demand, turn by turn', () => {
+    const built = buildTrajectory(SESSION, [
+      direct('direct.session.opened', {
+        profile: 'fake/one',
+        client: 'fake',
+        workspace: 'worktree',
+        branch: `direct/${SESSION}`,
+      }),
+      direct('direct.session.message', { turn: 1, from: 'producer', text: 'fix the bug' }),
+      direct('direct.session.tool', {
+        turn: 1,
+        toolCallId: 't1',
+        title: 'Edit a.ts',
+        status: 'in_progress',
+      }),
+      direct('direct.session.tool', {
+        turn: 1,
+        toolCallId: 't1',
+        title: 'Edit a.ts',
+        status: 'completed',
+      }),
+      direct('direct.session.permission', {
+        turn: 1,
+        title: 'Edit a.ts',
+        answered: 'allow',
+        rule: 'edit_in_worktree',
+        reason: 'inside the worktree',
+      }),
+      direct('direct.session.message', { turn: 1, from: 'actor', text: 'done' }),
+      direct('direct.session.turn_finished', { turn: 1, stopReason: 'end_turn' }),
+      direct('direct.session.command', { turn: 2, command: '/compact' }),
+      direct('direct.session.turn_finished', { turn: 2, stopReason: 'end_turn' }),
+      direct('direct.session.promoted', { target: 'demand', ref: 'idea-1' }),
+      direct('direct.session.closed', {
+        reason: 'closed',
+        turns: 2,
+        work: 'kept',
+        branch: `direct/${SESSION}`,
+      }),
+    ]);
+    expect(built.playId).toBe(SESSION);
+    expect(built.attempts).toHaveLength(1);
+    const [session] = built.attempts;
+    expect(session).toMatchObject({ attemptId: SESSION, demandId: undefined, state: 'closed' });
+    expect(session?.endedAt).toBeDefined();
+    expect(session?.turns.map((turn) => [turn.index, turn.stopReason])).toEqual([
+      [1, 'end_turn'],
+      [2, 'end_turn'],
+    ]);
+    expect(session?.turns[0]?.entries.map((entry) => entry.kind)).toEqual([
+      'prompt',
+      'tool_call',
+      'permission',
+      'message',
+    ]);
+    expect(session?.turns[0]?.entries[0]).toMatchObject({ text: 'fix the bug', command: false });
+    // The two events of one tool call are one entry, at its last status.
+    expect(session?.turns[0]?.entries[1]).toMatchObject({ toolCallId: 't1', status: 'completed' });
+    expect(session?.turns[0]?.entries[2]).toMatchObject({
+      answer: 'allow',
+      rule: 'edit_in_worktree',
+    });
+    expect(session?.turns[1]?.entries[0]).toMatchObject({ text: '/compact', command: true });
+    expect(session?.notices.map((notice) => [notice.type, notice.detail])).toEqual([
+      ['direct.session.opened', 'client=fake workspace=worktree branch=direct/direct-0a1b2c3d'],
+      ['direct.session.promoted', 'target=demand ref=idea-1'],
+      ['direct.session.closed', 'reason=closed work=kept branch=direct/direct-0a1b2c3d'],
+    ]);
+  });
+
+  it('keeps a session that is still open running, and tells a turn that ended in an error', () => {
+    const built = buildTrajectory(SESSION, [
+      direct('direct.session.opened', { client: 'fake', workspace: 'readonly', branch: null }),
+      direct('direct.session.message', { turn: 1, from: 'producer', text: 'go' }),
+      direct('direct.session.turn_finished', { turn: 1, stopReason: 'error', error: 'it broke' }),
+    ]);
+    const [session] = built.attempts;
+    expect(session?.state).toBe('running');
+    expect(session?.endedAt).toBeUndefined();
+    expect(session?.turns[0]?.endedAt).toBeDefined();
+    expect(session?.notices.at(-1)?.detail).toBe('turn=1 error=it broke');
+  });
+
+  it('leaves out the events of another session and of a play, and folds twice the same', () => {
+    const events: TrajectoryEvent[] = [
+      direct('direct.session.opened', { client: 'fake', workspace: 'worktree', branch: 'b' }),
+      direct('direct.session.message', { turn: 1, from: 'producer', text: 'mine' }),
+      direct(
+        'direct.session.message',
+        { turn: 1, from: 'producer', text: 'not mine' },
+        { sessionId: 'direct-ffffffff' },
+      ),
+      event('session.opened', {}),
+    ];
+    const once = buildTrajectory(SESSION, events);
+    expect(once.attempts).toHaveLength(1);
+    expect(once.attempts[0]?.turns[0]?.entries).toHaveLength(1);
+    expect(buildTrajectory(SESSION, events)).toEqual(once);
+    // The same log read as the trajectory of a play has nothing of the session.
+    expect(buildTrajectory('p1', events).attempts.map((attempt) => attempt.attemptId)).toEqual([
+      'p1/a/1',
+    ]);
   });
 });

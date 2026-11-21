@@ -38,7 +38,8 @@ export const getConfig = defineRoute({
  * start would validate it (an edit that leaves a config the daemon would refuse is `invalid_input`,
  * naming the key) and written atomically. A value that could be a secret (see `getConfig`) is
  * refused: a secret goes to the vault, never to the YAML. The keys of the sections that can change
- * without a restart (`ui`, `chat`, `limits`, `roles`; N188) are applied to the running daemon at once and
+ * without a restart (`ui`, `chat`, `limits`, `roles`; N188), the `executors` entries and the `budget` and
+ * `local` blocks of a profile (P23 of Phase 7, N208 item 3) are applied to the running daemon at once and
  * announced by the event `config.changed`; the others apply on restart. The answer says which is which
  * (`appliesOn`, `hot`, `restart`).
  */

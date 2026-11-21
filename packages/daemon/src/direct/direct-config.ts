@@ -22,6 +22,12 @@ import { DIRECT_WORKSPACES, type DirectWorkspace } from '@otheater/protocol';
  *   still lists and reads (the conversation of an older one is in the event log alone; 0: none).
  * - `direct_session.idle_timeout` (default 30m, `off` for none): a session with no turn for this
  *   long is closed (reason `idle`), so it does not hold a slot of the profile forever.
+ * - `direct_session.orphans` (default `on_close`; P27, N206): what the start-up does with the
+ *   worktree of a direct session that has no live session (the daemon died before closing it).
+ *   `on_close`: it follows `direct_session.on_close`; `keep`: it only records it
+ *   (`recovery.notice` `direct_orphan_found`); `discard`: it removes the worktree and its branch
+ *   (`direct_orphan_removed`); `off`: it does not look. Only `direct-<id>` folders under
+ *   `<data>/worktrees/direct` are ever touched.
  */
 export { DIRECT_WORKSPACES };
 export type { DirectWorkspace };
@@ -32,6 +38,9 @@ export type DirectConfirmMode = (typeof DIRECT_CONFIRM_MODES)[number];
 export const DIRECT_ON_CLOSE_MODES = ['keep', 'discard'] as const;
 export type DirectOnCloseMode = (typeof DIRECT_ON_CLOSE_MODES)[number];
 
+export const DIRECT_ORPHANS_MODES = ['on_close', 'keep', 'discard', 'off'] as const;
+export type DirectOrphansMode = (typeof DIRECT_ORPHANS_MODES)[number];
+
 /** The `direct_session` section once parsed; `idle_timeout` is milliseconds, `null` for `off`. */
 export interface DirectSessionConfig {
   readonly workspace: DirectWorkspace;
@@ -41,6 +50,7 @@ export interface DirectSessionConfig {
   readonly history_max: number;
   readonly closed_kept: number;
   readonly idle_timeout: number | null;
+  readonly orphans: DirectOrphansMode;
 }
 
 export const DIRECT_IDLE_TIMEOUT_DEFAULT = '30m';
