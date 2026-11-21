@@ -105,6 +105,32 @@ describe('buildTrajectory', () => {
     expect(entries[1]).toMatchObject({ kind: 'terminal', text: 'ok\n' });
   });
 
+  it('joins the blocks of one terminal and keeps the mark of a cut', () => {
+    const built = buildTrajectory('p1', [
+      event(TERMINAL_OUTPUT_EVENT, { toolCallId: 't1', text: 'one\n' }),
+      event(TERMINAL_OUTPUT_EVENT, { toolCallId: 't1', text: 'two\n', truncated: true }),
+      event(TERMINAL_OUTPUT_EVENT, {
+        toolCallId: 't1',
+        text: '',
+        truncated: true,
+        omittedBytes: 900,
+      }),
+      event(TERMINAL_OUTPUT_EVENT, { toolCallId: 't2', text: 'other\n' }),
+      event(TERMINAL_OUTPUT_EVENT, { toolCallId: 't2', text: '' }),
+    ]);
+    const entries = built.attempts[0]?.turns[0]?.entries ?? [];
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'terminal',
+      toolCallId: 't1',
+      text: 'one\ntwo\n',
+      truncated: true,
+      omittedBytes: 900,
+    });
+    expect(entries[1]).toMatchObject({ kind: 'terminal', toolCallId: 't2', text: 'other\n' });
+    expect(entries[1]).not.toHaveProperty('truncated');
+  });
+
   it('keeps the attempts apart, in order, and the moves of the demands', () => {
     const built = buildTrajectory('p1', [
       event('session.opened', { demandId: 'alpha' }, { attemptId: 'p1/alpha/1', at: 10 }),

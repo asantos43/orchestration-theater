@@ -689,6 +689,47 @@ async function playUsageSignal(
   return END_TURN;
 }
 
+/**
+ * A command with a terminal: the live output a client that knows `_meta.terminal_output_delta` sends
+ * (P11 of Phase 8), then the end of the command. The terminal id is the id of the tool call, like
+ * the real adapter does.
+ */
+async function playTerminal(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'terminal' }>,
+): Promise<PromptResponse> {
+  const toolCallId = nextToolCallId(turn.session);
+  await update(turn, {
+    sessionUpdate: 'tool_call',
+    toolCallId,
+    title: script.command,
+    kind: 'execute',
+    status: 'in_progress',
+    content: [{ type: 'terminal', terminalId: toolCallId }],
+    _meta: { terminal_info: { terminal_id: toolCallId } },
+  });
+  for (let round = 0; round < script.repeat; round += 1) {
+    for (const data of script.chunks) {
+      if (turn.signal.aborted) return CANCELLED;
+      const output = { terminal_id: toolCallId, data };
+      await update(turn, {
+        sessionUpdate: 'tool_call_update',
+        toolCallId,
+        _meta: script.delta ? { terminal_output_delta: output } : { terminal_output: output },
+      });
+    }
+  }
+  await update(turn, {
+    sessionUpdate: 'tool_call_update',
+    toolCallId,
+    status: script.exitCode === 0 ? 'completed' : 'failed',
+    _meta: {
+      terminal_exit: { terminal_id: toolCallId, exit_code: script.exitCode, signal: null },
+    },
+  });
+  return END_TURN;
+}
+
 function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
   switch (script.name) {
     case 'echo':
@@ -719,6 +760,8 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playQuotaSignal(turn, script);
     case 'usage-signal':
       return playUsageSignal(turn, script);
+    case 'terminal':
+      return playTerminal(turn, script);
   }
 }
 

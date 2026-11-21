@@ -331,3 +331,24 @@ export const UiNewProjectConfigSchema = z.strictObject({
   repo: z.enum(UI_NEW_PROJECT_REPO_MODES).default('cwd'),
 });
 export type UiNewProjectConfig = z.output<typeof UiNewProjectConfigSchema>;
+
+// ---- The finished plays in the side bar (N200 item 5; P11 of docs/19) ---------------------------
+
+/**
+ * How the side bar shows the plays that are finished: `collapsed` (default) a "Terminadas" section
+ * that starts folded, `expanded` the same section starting open, `hidden` no section (and no read
+ * of the finished plays).
+ */
+export const UI_SIDEBAR_FINISHED_MODES = ['collapsed', 'hidden', 'expanded'] as const;
+export type UiSidebarFinishedMode = (typeof UI_SIDEBAR_FINISHED_MODES)[number];
+
+/**
+ * `ui.sidebar` (P11 of docs/19), [proposta]: `finishedPlays` is {@link UI_SIDEBAR_FINISHED_MODES}
+ * (default `collapsed`); `finishedLimit` is how many finished plays the interface reads and lists
+ * at most, the most recent ones (default 20, 1 to 500).
+ */
+export const UiSidebarConfigSchema = z.strictObject({
+  finishedPlays: z.enum(UI_SIDEBAR_FINISHED_MODES).default('collapsed'),
+  finishedLimit: z.int().min(1).max(500).default(20),
+});
+export type UiSidebarConfig = z.output<typeof UiSidebarConfigSchema>;

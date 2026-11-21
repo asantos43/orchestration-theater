@@ -149,4 +149,18 @@ describe('interface registry', () => {
     );
     expect(taken).toEqual([]);
   });
+
+  it('has "open or close the finished plays" in the side bar (P11), remappable and in the palette', () => {
+    const entry = DEFAULT_UI_REGISTRY.entry('sidebar.toggleFinished');
+    expect(entry?.context).toBe('sidebar');
+    expect(entry?.text.key).toBe('actions.sidebar.toggleFinished');
+    expect(entry?.keys.tui?.agents?.default).toEqual(['F']);
+    const taken = DEFAULT_UI_REGISTRY.entries.filter(
+      (other) =>
+        other.id !== 'sidebar.toggleFinished' &&
+        (other.context === 'sidebar' || other.context === 'global') &&
+        (other.keys.tui?.agents?.default ?? []).includes('F'),
+    );
+    expect(taken).toEqual([]);
+  });
 });

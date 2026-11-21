@@ -291,10 +291,23 @@ export function entryLines(entry: TrajectoryEntry, width: number, say: Say): Ent
       return clipped(entry.text, width, say, `${say('trajectories.entry.thought')} `).map(
         (line) => ({ ...line, tone: 'dim' }),
       );
-    case 'terminal':
-      return clipped(entry.text, width, say, `${say('trajectories.entry.terminal')} `).map(
-        (line) => ({ ...line, tone: 'dim' }),
-      );
+    case 'terminal': {
+      const lines =
+        entry.text.trim() === ''
+          ? []
+          : clipped(entry.text, width, say, `${say('trajectories.entry.terminal')} `);
+      if (entry.truncated === true) {
+        lines.push({
+          text: `${' '.repeat(say('trajectories.entry.terminal').length + 1)}${
+            entry.omittedBytes === undefined
+              ? say('trajectories.terminalCutUnknown')
+              : say('trajectories.terminalCut', { bytes: entry.omittedBytes })
+          }`,
+          tone: 'warn',
+        });
+      }
+      return lines.map((line) => (line.tone === 'warn' ? line : { ...line, tone: 'dim' }));
+    }
     case 'tool_call': {
       const where = entry.paths.length === 0 ? '' : ` ${entry.paths.join(', ')}`;
       return [
