@@ -32,6 +32,7 @@ import {
   sameToken,
   writePrivateFile,
 } from './files.js';
+import { PROMETHEUS_CONTENT_TYPE } from '../telemetry/prometheus.js';
 import { ApiFailure, ApiHandlers, type HandlerEntry } from './handlers.js';
 
 /** Where the API listens: the loopback only, like the MCP server and the Producer channel. */
@@ -121,6 +122,7 @@ export class ApiServer {
   readonly #rejections = new Map<ApiRejectionReason, { lastAt: number; suppressed: number }>();
   #token: string;
   #rotating: Promise<void> = Promise.resolve();
+  #metrics: (() => Promise<string>) | undefined;
   #stopped: Promise<void> | undefined;
 
   private constructor(
@@ -230,6 +232,16 @@ export class ApiServer {
    */
   guard(request: Request): Response | undefined {
     return this.#checkHost(request) ?? this.#checkOrigin(request) ?? this.#checkToken(request);
+  }
+
+  /**
+   * Turns `GET /metrics` on (Phase 8, P7, N218): `render` gives the body of a scrape in the
+   * Prometheus text format. The route is not part of the contract (`API_ROUTE_LIST`): it answers in
+   * text, not JSON, and goes through the same guard as every route (loopback, Host, Origin, token).
+   * `undefined` turns it off again. With no renderer the path is a 404, like any other.
+   */
+  setMetrics(render: (() => Promise<string>) | undefined): void {
+    this.#metrics = render;
   }
 
   /**
@@ -479,6 +491,13 @@ export class ApiServer {
     for (const route of API_ROUTE_LIST) {
       app.on(route.method, route.path, (c) => server().#dispatch(c, route.id));
     }
+    app.get('/metrics', async () => {
+      const render = server().#metrics;
+      if (render === undefined) return failure(new ApiFailure('not_found', 'No such route'));
+      return new Response(await render(), {
+        headers: { 'content-type': PROMETHEUS_CONTENT_TYPE, 'cache-control': 'no-store' },
+      });
+    });
     app.notFound(() => failure(new ApiFailure('not_found', 'No such route')));
     app.onError((error) => {
       if (!(error instanceof ApiFailure) && apiErrorCodeOf(error) === 'internal') {

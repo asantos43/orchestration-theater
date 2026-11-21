@@ -6,6 +6,9 @@ import type {
   TelemetryLogRecord,
   TelemetryMetricPoint,
   TelemetryReadFilter,
+  TelemetryRecordOf,
+  TelemetryRow,
+  TelemetrySignal,
   TelemetrySpan,
   TelemetryStore,
   TelemetryWriteReceipt,
@@ -20,6 +23,11 @@ import type {
  */
 export class MemoryTelemetryStore implements TelemetryStore {
   readonly #spans = new Map<string, TelemetrySpan>();
+  /** Row ids by signal, as the real base gives them (they only grow, even after a delete). */
+  readonly #spanRows = new Map<string, number>();
+  readonly #metrics: TelemetryRow<TelemetryMetricPoint>[] = [];
+  readonly #logs: TelemetryRow<TelemetryLogRecord>[] = [];
+  #nextRow = { spans: 1, metrics: 1, logs: 1 };
   readonly #cursors = new Map<string, number>();
   #resets = 0;
   #closed = false;
@@ -28,9 +36,22 @@ export class MemoryTelemetryStore implements TelemetryStore {
     if (this.#closed) return { accepted: 0, dropped: (batch.spans ?? []).length };
     for (const span of batch.spans ?? []) {
       const key = `${span.traceId}/${span.spanId}`;
-      if (!this.#spans.has(key)) this.#spans.set(key, span);
+      if (!this.#spans.has(key)) {
+        this.#spans.set(key, span);
+        this.#spanRows.set(key, this.#nextRow.spans++);
+      }
     }
-    return { accepted: (batch.spans ?? []).length, dropped: 0 };
+    for (const record of batch.metrics ?? []) {
+      this.#metrics.push({ rowId: this.#nextRow.metrics++, record });
+    }
+    for (const record of batch.logs ?? []) {
+      this.#logs.push({ rowId: this.#nextRow.logs++, record });
+    }
+    return {
+      accepted:
+        (batch.spans ?? []).length + (batch.metrics ?? []).length + (batch.logs ?? []).length,
+      dropped: 0,
+    };
   }
 
   flush(): Promise<void> {
@@ -48,11 +69,33 @@ export class MemoryTelemetryStore implements TelemetryStore {
   }
 
   readMetrics(): Promise<readonly TelemetryMetricPoint[]> {
-    return Promise.resolve([]);
+    return Promise.resolve(this.#metrics.map((row) => row.record));
   }
 
   readLogs(): Promise<readonly TelemetryLogRecord[]> {
-    return Promise.resolve([]);
+    return Promise.resolve(this.#logs.map((row) => row.record));
+  }
+
+  readSince<S extends TelemetrySignal>(
+    signal: S,
+    afterRowId: number,
+    limit = 1000,
+  ): Promise<readonly TelemetryRow<TelemetryRecordOf[S]>[]> {
+    const rows: TelemetryRow<unknown>[] =
+      signal === 'spans'
+        ? [...this.#spans].map(([key, record]) => ({
+            rowId: this.#spanRows.get(key) ?? 0,
+            record,
+          }))
+        : signal === 'metrics'
+          ? this.#metrics
+          : this.#logs;
+    return Promise.resolve(
+      rows
+        .filter((row) => row.rowId > afterRowId)
+        .sort((a, b) => a.rowId - b.rowId)
+        .slice(0, limit) as TelemetryRow<TelemetryRecordOf[S]>[],
+    );
   }
 
   deleteOlderThan(cutoffUnixNano: bigint): Promise<TelemetryDeleteResult> {
@@ -60,6 +103,7 @@ export class MemoryTelemetryStore implements TelemetryStore {
     for (const [key, span] of this.#spans) {
       if (span.endTimeUnixNano < cutoffUnixNano) {
         this.#spans.delete(key);
+        this.#spanRows.delete(key);
         spans += 1;
       }
     }
@@ -78,6 +122,10 @@ export class MemoryTelemetryStore implements TelemetryStore {
   /** What a recreated base is: empty, no cursor, one more reset. */
   reset(): void {
     this.#spans.clear();
+    this.#spanRows.clear();
+    this.#metrics.length = 0;
+    this.#logs.length = 0;
+    this.#nextRow = { spans: 1, metrics: 1, logs: 1 };
     this.#cursors.clear();
     this.#resets += 1;
   }
