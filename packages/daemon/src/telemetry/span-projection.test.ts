@@ -10,7 +10,7 @@ import {
   traceIdForAttempt,
   traceIdForPlay,
 } from './span-ids.js';
-import { SpanProjection, directWaitSpan } from './span-projection.js';
+import { SpanProjection } from './span-projection.js';
 
 const T0 = 1_800_000_000_000;
 
@@ -308,46 +308,161 @@ describe('the waits that the log tells (P4, N217 (a))', () => {
     expect(wait.endTimeUnixNano).toBeLessThanOrEqual(call.endTimeUnixNano);
   });
 
-  it('turns a wait recorded where it happened into a span in the trace of its attempt', () => {
-    const span = directWaitSpan({
-      kind: WAIT_KIND.poolAdmission,
-      key: 'p1/alpha/1|10|1',
-      startMs: T0,
-      endMs: T0 + 40,
-      reason: 'max_sessions',
-      outcome: 'admitted',
-      correlation: {
-        playId: 'p1',
-        attemptId: 'p1/alpha/1',
+  it('turns wait.started and wait.ended of the pool into a span of the attempt, with the time since the wait began', () => {
+    const log = new Log();
+    log.add('play.created', { flowId: 'play' }, PLAY);
+    log.add(
+      'wait.started',
+      {
+        waitId: 'p1/alpha/1|10|1',
+        kind: 'pool_admission',
+        reasons: ['max_sessions'],
+        since: T0 + 5,
         client: 'claude-code',
         profile: 'main',
+        thresholdMs: 1_000,
       },
-    });
-    expect(span.name).toBe(SPAN_NAME.wait);
-    expect(span.traceId).toBe(traceIdForPlay('p1'));
-    expect(span.parentSpanId).toBe(attemptSpanId('p1/alpha/1'));
-    expect(span.attributes).toMatchObject({
-      [OT.waitReason]: 'max_sessions',
-      [OT.waitMs]: 40,
-      [OT.waitOrigin]: 'direct',
+      ATTEMPT,
+    );
+    log.add(
+      'wait.ended',
+      {
+        waitId: 'p1/alpha/1|10|1',
+        kind: 'pool_admission',
+        reasons: ['max_sessions', 'quota'],
+        since: T0 + 5,
+        client: 'claude-code',
+        profile: 'main',
+        outcome: 'admitted',
+        waitedMs: 1_040,
+      },
+      ATTEMPT,
+      1_040,
+    );
+    const spans = project(log.events).filter((span) => span.name === SPAN_NAME.wait);
+    expect(spans).toHaveLength(1);
+    const span = spans[0];
+    expect(span?.traceId).toBe(traceIdForPlay('p1'));
+    expect(span?.parentSpanId).toBe(attemptSpanId('p1/alpha/1'));
+    expect(ms(span?.startTimeUnixNano ?? 0n)).toBe(T0 + 5);
+    expect(span?.attributes).toMatchObject({
+      [OT.waitKind]: WAIT_KIND.poolAdmission,
+      [OT.waitReason]: 'max_sessions,quota',
+      [OT.waitOutcome]: 'admitted',
+      [OT.waitMs]: 1_040,
+      [OT.waitOrigin]: 'log',
       [OT.profile]: 'main',
     });
   });
 
-  it('gives a wait with no play and no attempt a trace of its own', () => {
-    const wait = {
-      kind: WAIT_KIND.promptQueue,
-      key: 'prompt-1',
-      startMs: T0,
-      endMs: T0 + 5,
-      reason: 'director_busy',
-      outcome: 'delivered',
-      correlation: { scenarioId: 's1' },
-    } as const;
-    const span = directWaitSpan(wait);
-    expect(span.parentSpanId).toBeNull();
-    expect(span.traceId).toMatch(/^[0-9a-f]{32}$/);
-    expect(directWaitSpan(wait).spanId).toBe(span.spanId);
+  it('gives a prompt wait with no play and no attempt a trace of its own, the same on every read', () => {
+    const build = () => {
+      const log = new Log();
+      log.add(
+        'wait.started',
+        {
+          waitId: 'prompt-1',
+          kind: 'prompt_queue',
+          reasons: ['director_busy'],
+          since: T0,
+          scenarioId: 's1',
+          promptSource: 'producer',
+          promptPriority: 5,
+          thresholdMs: 1_000,
+        },
+        { scenarioId: 's1' },
+      );
+      log.add(
+        'wait.ended',
+        {
+          waitId: 'prompt-1',
+          kind: 'prompt_queue',
+          reasons: ['director_busy'],
+          since: T0,
+          scenarioId: 's1',
+          outcome: 'delivered',
+          waitedMs: 2_000,
+        },
+        { scenarioId: 's1' },
+      );
+      return project(log.events);
+    };
+    const [span] = build();
+    expect(span?.parentSpanId).toBeNull();
+    expect(span?.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(span?.attributes).toMatchObject({
+      [OT.waitKind]: WAIT_KIND.promptQueue,
+      [OT.waitSource]: 'producer',
+      [OT.waitPriority]: 5,
+    });
+    expect(build()[0]?.spanId).toBe(span?.spanId);
+    expect(build()[0]?.traceId).toBe(span?.traceId);
+  });
+
+  it('ignores a wait.ended with no wait.started and a second wait.started for an open wait', () => {
+    const log = new Log();
+    const base = { waitId: 'q1', kind: 'prompt_queue', reasons: ['queued'], since: T0 };
+    log.add('wait.ended', { ...base, outcome: 'delivered', waitedMs: 10 }, { scenarioId: 's1' });
+    log.add('wait.started', { ...base, thresholdMs: 0 }, { scenarioId: 's1' });
+    log.add(
+      'wait.started',
+      { ...base, reasons: ['restart'], since: T0 + 50, thresholdMs: 0 },
+      { scenarioId: 's1' },
+    );
+    log.add('wait.ended', { ...base, outcome: 'delivered', waitedMs: 70 }, { scenarioId: 's1' });
+    const spans = project(log.events);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.attributes).toMatchObject({ [OT.waitReason]: 'queued', [OT.waitMs]: 70 });
+  });
+
+  describe('a wait.started that gets no wait.ended', () => {
+    const open = (log: Log, waitId: string, kind: string, ids: Record<string, string>) =>
+      log.add(
+        'wait.started',
+        { waitId, kind, reasons: ['max_sessions'], since: T0, thresholdMs: 0 },
+        ids,
+      );
+    const waitSpans = (spans: readonly TelemetrySpan[]) =>
+      spans
+        .filter((span) => span.name === SPAN_NAME.wait)
+        .map((span) => [span.attributes[OT.waitKind], span.attributes[OT.closedBy]]);
+
+    it('is closed by the restart of the daemon when it is a wait of the pool, and a prompt wait stays open', () => {
+      const log = new Log();
+      log.add('play.created', { flowId: 'play' }, PLAY);
+      open(log, 'w-attempt', 'pool_admission', ATTEMPT);
+      open(log, 'w-pool', 'pool_admission', { scenarioId: 's9' });
+      open(log, 'w-prompt', 'prompt_queue', { scenarioId: 's9' });
+      const projection = new SpanProjection();
+      for (const event of log.events) projection.apply(event);
+      expect(projection.open).toBe(5);
+      const restart = log.add('daemon.started', { pid: 1 });
+      const closed = projection.apply(restart);
+      expect(waitSpans(closed)).toEqual([
+        ['pool_admission', 'daemon_restart'],
+        ['pool_admission', 'daemon_restart'],
+      ]);
+      expect(projection.open).toBe(3);
+      // The prompt wait keeps the watermark back: a rebuild must read it again.
+      expect(projection.watermark(restart.id)).toBeLessThan(restart.id);
+    });
+
+    it('is closed with the attempt', () => {
+      const log = new Log();
+      open(log, 'w1', 'pool_admission', ATTEMPT);
+      const end = log.add('attempt.cancelled', {}, ATTEMPT);
+      const projection = new SpanProjection();
+      const spans = [...log.events.slice(0, 1), end].flatMap((event) => projection.apply(event));
+      expect(waitSpans(spans)).toEqual([['pool_admission', 'attempt_end']]);
+    });
+
+    it('is closed with the play', () => {
+      const log = new Log();
+      log.add('play.created', { flowId: 'play' }, PLAY);
+      open(log, 'w1', 'pool_admission', PLAY);
+      log.add('play.transitioned', { event: 'CANCEL', from: 'NEED', to: 'CANCELLED' }, PLAY);
+      expect(waitSpans(project(log.events))).toEqual([['pool_admission', 'play_end']]);
+    });
   });
 });
 

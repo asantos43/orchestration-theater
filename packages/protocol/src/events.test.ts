@@ -98,6 +98,8 @@ describe('daemon event registry', () => {
       'scenario.director_resumed',
       'demand.waiting',
       'demand.resumed',
+      'wait.started',
+      'wait.ended',
       'play.notice',
       'quota.probe_failed',
       'quota.signal_dropped',

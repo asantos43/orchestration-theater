@@ -880,6 +880,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('mcp', () => mcp.stop());
       await attempt('browser', async () => browserTools?.close());
+      // The timers of the waits that are still going on stop; they write nothing from here on.
+      composition.waitEvents?.close();
       // The spans of the last events are written before the telemetry store closes with the composition.
       await attempt('daemon spans', async () => composition.daemonSpans?.stop());
       // The situations recorded so far are written before `daemon.stopped` closes the log.
@@ -1234,9 +1236,7 @@ function buildExecution(
     memory: composition.memory,
     handoff,
     exhaustion,
-    ...(composition.daemonSpans === undefined
-      ? {}
-      : { onWait: composition.daemonSpans.recordWait }),
+    ...(composition.waitEvents === undefined ? {} : { waits: composition.waitEvents }),
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
 }

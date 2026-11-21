@@ -9,7 +9,7 @@ import type {
   Vcs,
 } from '@otheater/core';
 import type { Logger } from '../logger.js';
-import type { WaitRecorder } from '../telemetry/wait-recorder.js';
+import type { WaitTracker } from '../telemetry/wait-events.js';
 import type { McpAccess } from '../mcp/access.js';
 import type { CanAdmit, LocalInstanceResolver } from './admission.js';
 import { AttemptRunner, type AttemptRunnerOptions } from './attempt-runner.js';
@@ -43,8 +43,8 @@ export interface ExecutionOptions {
   readonly canAdmit?: CanAdmit;
   /** The local instance behind a profile: its `slots` are the vacancies of that profile. */
   readonly localInstance?: LocalInstanceResolver;
-  /** Where the waits of the pool are told (P4, N217 (a)): they are not in the event log. */
-  readonly onWait?: WaitRecorder;
+  /** Who writes the events of the waits of the pool (P15, N222 (a)); absent when they are off. */
+  readonly waits?: WaitTracker;
   /** The baton of an attempt (P18): the next Executor and the package. Without it a handoff parks. */
   readonly handoff?: HandoffPort;
 }
@@ -70,7 +70,7 @@ export class Execution {
       ...(options.memory === undefined ? {} : { memory: options.memory }),
       ...(options.canAdmit === undefined ? {} : { canAdmit: options.canAdmit }),
       ...(options.localInstance === undefined ? {} : { localInstance: options.localInstance }),
-      ...(options.onWait === undefined ? {} : { onWait: options.onWait }),
+      ...(options.waits === undefined ? {} : { waits: options.waits }),
     });
     this.runner = new AttemptRunner({
       store: options.store,
