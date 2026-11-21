@@ -57,7 +57,8 @@
       "yank": "Paste the text last cut",
       "historySearch": "Search the history of messages",
       "externalEditor": "Write the message in the external editor",
-      "pasteImage": "Attach the image on the clipboard"
+      "pasteImage": "Attach the image on the clipboard",
+      "cancel": "Leave the history search"
     }
   },
   "bar": {
@@ -170,7 +171,10 @@
       "saveFailed": "Could not save the image: {{message}}",
       "editorOff": "The external editor is off (ui.input.editor).",
       "editorMissing": "Set the variable VISUAL or EDITOR to write in an editor.",
-      "editorFailed": "The editor could not run: {{message}}"
+      "editorFailed": "The editor could not run: {{message}}",
+      "readingImage": "Reading the image from the clipboard...",
+      "historyFailed": "The history could not be saved: {{message}}",
+      "submitFailed": "The message was not sent: {{message}}"
     }
   }
 }

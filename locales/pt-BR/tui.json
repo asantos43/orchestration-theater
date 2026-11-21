@@ -57,7 +57,8 @@
       "yank": "Colar o último texto recortado",
       "historySearch": "Buscar no histórico de mensagens",
       "externalEditor": "Escrever a mensagem no editor externo",
-      "pasteImage": "Anexar a imagem da área de transferência"
+      "pasteImage": "Anexar a imagem da área de transferência",
+      "cancel": "Sair da busca no histórico"
     }
   },
   "bar": {
@@ -170,7 +171,10 @@
       "saveFailed": "Não foi possível salvar a imagem: {{message}}",
       "editorOff": "O editor externo está desligado (ui.input.editor).",
       "editorMissing": "Defina a variável VISUAL ou EDITOR para escrever num editor.",
-      "editorFailed": "Não foi possível executar o editor: {{message}}"
+      "editorFailed": "Não foi possível executar o editor: {{message}}",
+      "readingImage": "Lendo a imagem da área de transferência...",
+      "historyFailed": "Não foi possível salvar o histórico: {{message}}",
+      "submitFailed": "A mensagem não foi enviada: {{message}}"
     }
   }
 }

@@ -36,6 +36,7 @@ const TEXT_BOX_KEYS: readonly TextBoxRow[] = [
   ['historySearch', ['Ctrl+R']],
   ['externalEditor', ['Ctrl+G']],
   ['pasteImage', ['Ctrl+V']],
+  ['cancel', ['Esc']],
 ];
 
 function textBoxActions(): NonNullable<UiRegistryDefinition['actions']> {
