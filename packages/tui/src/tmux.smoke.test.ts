@@ -16,6 +16,7 @@ import {
   FAKE_AGENT_CLI,
   NO_LAUNCHER,
   startChatDaemon,
+  waitUntil,
   type ChatDaemon,
 } from './chat/fake-agent.test-support.js';
 import { PANE_TERM, TmuxSession, detectTmux } from './tmux.test-support.js';
@@ -291,6 +292,32 @@ suite(
         // It really went through the daemon: the log has the Director's reply.
         const types = (await chat.events()).map((event) => event.type);
         expect(types).toContain('chat.director_reply');
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      'answers the decision of a play by a click on its option (P14, N34)',
+      async () => {
+        const tmux = await openTui();
+        await tmux.type('#ot-play write alpha #outcome:exhausted');
+        await tmux.keys('Enter');
+        // The play runs out of attempts and the card of the menu takes the keyboard.
+        const card = await tmux.waitFor('Cancel the play');
+        expect(card).toContain('The play needs you');
+        expect((await chat.plays())[0]?.state).toBe('AWAITING_PRODUCER');
+        // The click is on the line of the option, where a person points at what they see; the pane
+        // asked for the mouse by itself (`ui.mouse` is `full`), so no key is involved.
+        const lines = card.split('\n');
+        const row = lines.findIndex((line) => line.includes('Cancel the play'));
+        const col = (lines[row] ?? '').indexOf('Cancel the play');
+        expect(row).toBeGreaterThanOrEqual(0);
+        await tmux.click(col, row);
+        await waitUntil('the play to be cancelled', async () =>
+          (await chat.plays())[0]?.state === 'CANCELLED' ? true : undefined,
+        );
+        await tmux.waitGone('The play needs you');
+        expect(await tmux.alive()).toBe(true);
       },
       TEST_TIMEOUT,
     );
