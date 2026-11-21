@@ -3510,6 +3510,8 @@ Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/18
 - Análise do sistema para achar gargalos e melhorias (N55, seção 12): o desenho fecha nesta fase, com dados reais.
 
 **Critério de aceite:** trace completo de uma peça; trajetória ATIF válida; com `telemetry.export: both`, o trace da peça chega a um coletor OTLP de teste e o `/metrics` responde.
+
+Plano de passos, com dependências, paralelismo e aceite de cada passo: [docs/19](../19-PLANO-DA-FASE-8.md) (2026-11-21). Ele traz o `terminal.output` e as peças terminadas na lateral, que a Fase 7 deixou para cá (N200, itens 3 e 5), e abre as decisões N211 a N219 (docs/13), entre elas o desenho da análise do sistema (N217, que fecha a N55).
 **Estimativa:** 1 semana.
 
 ### Fase 9 — Plugins
