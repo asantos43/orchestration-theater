@@ -380,12 +380,15 @@ describe('GET /v1/events', () => {
     await withDaemon('', async ({ daemon, open }) => {
       const streams = await Promise.all([open(), open(), open()]);
       await Promise.all(streams.map(({ reader }) => reader.next()));
-      expect(daemon.eventHub.subscriberCount).toBeGreaterThan(0);
+      // The daemon follows its own log too (the spans projector, P4 of Phase 8): count the clients.
+      const during = daemon.eventHub.subscriberCount;
+      expect(during).toBeGreaterThanOrEqual(streams.length);
       await Promise.all(streams.map(({ reader }) => reader.close()));
-      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > 0; i += 1) {
+      const left = during - streams.length;
+      for (let i = 0; i < 100 && daemon.eventHub.subscriberCount > left; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      expect(daemon.eventHub.subscriberCount).toBe(0);
+      expect(daemon.eventHub.subscriberCount).toBe(left);
     });
   });
 });
