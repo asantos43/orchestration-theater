@@ -2,6 +2,7 @@
 import type { Clock, Store } from '@otheater/core';
 import type { BudgetService } from '../../budget/index.js';
 import type { DaemonConfig, PauseMode } from '../../config.js';
+import type { DirectSessionService } from '../../direct/service.js';
 import type { DirectiveService } from '../../directives/index.js';
 import type { AttemptRunner } from '../../execution/attempt-runner.js';
 import type { IdeaQueueService } from '../../ideas/index.js';
@@ -38,6 +39,8 @@ export interface ReadRouteDeps {
   readonly slash?: SlashCommandService | undefined;
   /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly setup?: SetupService | undefined;
+  /** The direct sessions with an Actor (P19 of Phase 7); absent: their routes answer 503. */
+  readonly direct?: DirectSessionService | undefined;
 }
 
 /**
@@ -72,4 +75,6 @@ export interface CommandRouteDeps {
   readonly slash?: SlashCommandService | undefined;
   /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
   readonly setup?: SetupService | undefined;
+  /** The direct sessions with an Actor (P19 of Phase 7); absent: their routes answer 503. */
+  readonly direct?: DirectSessionService | undefined;
 }

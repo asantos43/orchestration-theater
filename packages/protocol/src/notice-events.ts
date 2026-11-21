@@ -97,7 +97,8 @@ export const RecoveryNoticePayloadSchema = z.strictObject({
  * - `idea_not_returned`: an idea of a group lost in a restart could not be given back (`subject`: the idea);
  * - `consult_worktree_stayed`: the worktree of a consultant could not be removed;
  * - `consult_files_refused`: the files of a consultant were not merged (`subject`: the branch; `detail`: why);
- * - `conventions_not_confirmed`: the confirmation of the conventions of the project failed.
+ * - `conventions_not_confirmed`: the confirmation of the conventions of the project failed;
+ * - `direct_worktree_stayed`: the worktree of a direct session could not be removed (P19; `subject`: the branch).
  */
 export const SCENARIO_NOTICE_KINDS = [
   'ideas_setting_ignored',
@@ -105,6 +106,7 @@ export const SCENARIO_NOTICE_KINDS = [
   'consult_worktree_stayed',
   'consult_files_refused',
   'conventions_not_confirmed',
+  'direct_worktree_stayed',
 ] as const;
 export type ScenarioNoticeKind = (typeof SCENARIO_NOTICE_KINDS)[number];
 

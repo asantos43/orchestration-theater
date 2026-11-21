@@ -22,6 +22,7 @@ import { ProducerChannel } from './channel.js';
 import { DirectorSessions } from './director.js';
 import { createDaemonHandoff, type LateHandoff } from './handoff-wiring.js';
 import type { OrchestrationHandlers } from './handlers.js';
+import type { PlayOpening } from './open-play.js';
 import { OrchestrationEffects } from './play-effects.js';
 import { ChatPresence } from './presence.js';
 import { RoleSelection } from './role-selection.js';
@@ -60,6 +61,8 @@ export interface Orchestration {
   readonly chatFlow: ChatFlow;
   /** The idea queue of the scenarios (5.20). */
   readonly ideas: IdeaQueueService;
+  /** What opens a play from a need: the Director's `open_play`, the idea queue and the direct session (P19). */
+  readonly opening: PlayOpening;
   /** The choice of the Executor of each role, and the demands waiting for one (P16). */
   readonly selection: RoleSelection;
   /** The Director sessions of the scenarios (P21b: the removal of a profile moves them). */
@@ -239,6 +242,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     adapters: execution.pool,
     config,
   });
+  const opening: PlayOpening = { store, runner, workspace, config };
   const ideas = new IdeaQueueService({
     store,
     vcs: composition.vcs,
@@ -247,7 +251,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     prompts,
     config,
     paths,
-    opening: { store, runner, workspace, config },
+    opening,
     selection,
     logger,
   });
@@ -292,6 +296,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     attachments,
     chatFlow,
     ideas,
+    opening,
     selection,
     quiesce: () =>
       (quiet ??= (async () => {

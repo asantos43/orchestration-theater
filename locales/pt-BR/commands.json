@@ -20,7 +20,8 @@
     "profile": "Lista os perfis e o estado de cada um",
     "directives": "Lista as ordens em vigor no cenário",
     "config": "Mostra uma chave da configuração, ou as seções",
-    "template": "Envia ao Diretor: {{text}}"
+    "template": "Envia ao Diretor: {{text}}",
+    "direct": "Abre uma sessão direta com um Ator, sem passar pelo Diretor"
   },
   "args": {
     "help": "[comando]",
@@ -30,7 +31,8 @@
     "new": "[nome]",
     "attach": "<caminho>",
     "config": "[chave]",
-    "template": "<texto>"
+    "template": "<texto>",
+    "direct": "[executor]"
   },
   "confirm": {
     "ask": "/{{command}} pede a sua confirmação antes de rodar. Envie de novo, confirmado, para seguir."
@@ -57,7 +59,8 @@
       "noPausedPlay": "nenhuma peça está pausada"
     },
     "unknownKey": "Não há a chave de configuração \"{{key}}\".",
-    "noDirector": "Nenhum Executor está definido para o Diretor."
+    "noDirector": "Nenhum Executor está definido para o Diretor.",
+    "noDirect": "Este daemon não mantém sessões diretas: ele não roda peças."
   },
   "out": {
     "status": {
@@ -156,6 +159,10 @@
     "forwarded": {
       "template": "Enviado ao Diretor.",
       "client": "Enviado ao cliente do Diretor."
+    },
+    "direct": {
+      "opened": "Sessão direta {{id}} aberta com {{executor}} (espaço de trabalho: {{workspace}}). Continue na aba Direta.",
+      "confirm": "A sessão escreveria na pasta do cenário. Abra-a pela aba Direta para confirmar."
     }
   }
 }

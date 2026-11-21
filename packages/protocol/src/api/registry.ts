@@ -11,6 +11,7 @@ import { BLACKBOARD_ROUTES } from './blackboard.js';
 import { SLASH_COMMAND_ROUTES } from './commands.js';
 import { CONFIG_VIEW_ROUTES } from './config-view.js';
 import { DECISION_ROUTES } from './decisions.js';
+import { DIRECT_ROUTES } from './direct.js';
 import { EXECUTOR_ROUTES } from './executors.js';
 import { IDEA_ROUTES } from './ideas.js';
 import { ORDER_ROUTES } from './orders.js';
@@ -37,6 +38,7 @@ export const API_ROUTES = {
   ...BLACKBOARD_ROUTES,
   ...CONFIG_VIEW_ROUTES,
   ...DECISION_ROUTES,
+  ...DIRECT_ROUTES,
   ...EXECUTOR_ROUTES,
   ...IDEA_ROUTES,
   ...ORDER_ROUTES,

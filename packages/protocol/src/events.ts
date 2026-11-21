@@ -58,6 +58,17 @@ import {
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import {
+  DirectSessionClosedPayloadSchema,
+  DirectSessionCommandPayloadSchema,
+  DirectSessionMessagePayloadSchema,
+  DirectSessionOpenedPayloadSchema,
+  DirectSessionPermissionPayloadSchema,
+  DirectSessionPromotedPayloadSchema,
+  DirectSessionRefusedPayloadSchema,
+  DirectSessionToolPayloadSchema,
+  DirectSessionTurnFinishedPayloadSchema,
+} from './direct-events.js';
+import {
   ShellCommandFinishedPayloadSchema,
   ShellCommandStartedPayloadSchema,
 } from './shell-events.js';
@@ -722,6 +733,51 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ShellCommandFinishedPayloadSchema,
   }),
   defineEventType({
+    type: 'direct.session.opened',
+    schemaVersion: 1,
+    payload: DirectSessionOpenedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.message',
+    schemaVersion: 1,
+    payload: DirectSessionMessagePayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.tool',
+    schemaVersion: 1,
+    payload: DirectSessionToolPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.permission',
+    schemaVersion: 1,
+    payload: DirectSessionPermissionPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.command',
+    schemaVersion: 1,
+    payload: DirectSessionCommandPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.turn_finished',
+    schemaVersion: 1,
+    payload: DirectSessionTurnFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.closed',
+    schemaVersion: 1,
+    payload: DirectSessionClosedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.promoted',
+    schemaVersion: 1,
+    payload: DirectSessionPromotedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'direct.session.refused',
+    schemaVersion: 1,
+    payload: DirectSessionRefusedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.chat_closed',
     schemaVersion: 1,
     payload: ApiChatClosedPayloadSchema,
@@ -914,6 +970,15 @@ export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
 export type ChatAskClosedPayload = DaemonEventPayloads['chat.ask_closed'];
 export type ShellCommandStartedPayload = DaemonEventPayloads['chat.shell_command.started'];
 export type ShellCommandFinishedPayload = DaemonEventPayloads['chat.shell_command.finished'];
+export type DirectSessionOpenedPayload = DaemonEventPayloads['direct.session.opened'];
+export type DirectSessionMessagePayload = DaemonEventPayloads['direct.session.message'];
+export type DirectSessionToolPayload = DaemonEventPayloads['direct.session.tool'];
+export type DirectSessionPermissionPayload = DaemonEventPayloads['direct.session.permission'];
+export type DirectSessionCommandPayload = DaemonEventPayloads['direct.session.command'];
+export type DirectSessionTurnFinishedPayload = DaemonEventPayloads['direct.session.turn_finished'];
+export type DirectSessionClosedPayload = DaemonEventPayloads['direct.session.closed'];
+export type DirectSessionPromotedPayload = DaemonEventPayloads['direct.session.promoted'];
+export type DirectSessionRefusedPayload = DaemonEventPayloads['direct.session.refused'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];

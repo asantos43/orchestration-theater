@@ -45,6 +45,12 @@ import {
   UNKNOWN_RAM_MODES,
 } from './execution/admission.js';
 import { BUDGET_ON_CAP_CHANGE_MODES, BUDGET_UNKNOWN_COST_MODES } from './budget-config.js';
+import {
+  DIRECT_CONFIRM_MODES,
+  DIRECT_IDLE_TIMEOUT_DEFAULT,
+  DIRECT_ON_CLOSE_MODES,
+  DIRECT_WORKSPACES,
+} from './direct/direct-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1219,6 +1225,19 @@ const TerminalConfigSchema = z
   })
   .prefault({});
 
+/** [proposta] The direct session with an Actor (P19, N44, N190): see `direct/direct-config.ts`. */
+const DirectSessionConfigSchema = z
+  .strictObject({
+    workspace: z.enum(DIRECT_WORKSPACES).default('worktree'),
+    confirm_scenario: z.enum(DIRECT_CONFIRM_MODES).default('ask'),
+    max_open: z.int().min(1).default(3),
+    on_close: z.enum(DIRECT_ON_CLOSE_MODES).default('keep'),
+    history_max: z.int().min(1).default(200),
+    closed_kept: z.int().min(0).default(10),
+    idle_timeout: OffOrDurationSchema.prefault(DIRECT_IDLE_TIMEOUT_DEFAULT),
+  })
+  .prefault({});
+
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
  * section is optional and every key has a default, so a missing file means the defaults. Strict at
@@ -1498,6 +1517,8 @@ export const DaemonConfigSchema = z
       .prefault({}),
     /** [proposta] The snippet and the log of a `!` command (architecture 5.19): see `shell-config.ts`. */
     terminal: TerminalConfigSchema,
+    /** [proposta] The direct session with an Actor (architecture 5.20): see `direct/direct-config.ts`. */
+    direct_session: DirectSessionConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({
