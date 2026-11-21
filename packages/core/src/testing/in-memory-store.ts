@@ -50,6 +50,7 @@ export class InMemoryStore implements Store {
   readonly quotaSnapshots: Store['quotaSnapshots'];
   readonly usage: Store['usage'];
   readonly wakeups: Store['wakeups'];
+  readonly setupRuns: Store['setupRuns'];
   readonly #clock: Pick<Clock, 'now'>;
   readonly #committed: InMemoryEventLog;
   readonly #committedAttempts: InMemoryAttemptRegistry;
@@ -90,6 +91,7 @@ export class InMemoryStore implements Store {
     this.quotaSnapshots = aggregates.quotaSnapshots;
     this.usage = aggregates.usage;
     this.wakeups = aggregates.wakeups;
+    this.setupRuns = aggregates.setupRuns;
   }
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {

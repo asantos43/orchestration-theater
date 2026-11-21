@@ -108,6 +108,7 @@ export class SqliteStore implements Store, StoreMaintenance {
   readonly quotaSnapshots: StoreAggregates['quotaSnapshots'];
   readonly usage: StoreAggregates['usage'];
   readonly wakeups: StoreAggregates['wakeups'];
+  readonly setupRuns: StoreAggregates['setupRuns'];
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -172,6 +173,7 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.quotaSnapshots = aggregates.quotaSnapshots;
     this.usage = aggregates.usage;
     this.wakeups = aggregates.wakeups;
+    this.setupRuns = aggregates.setupRuns;
   }
 
   /**

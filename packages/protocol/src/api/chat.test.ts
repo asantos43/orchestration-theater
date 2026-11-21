@@ -70,6 +70,30 @@ const serverMessages = [
     eventId: null,
     result: { status: 'done', command: 'plays', text: '1 play', data: { plays: [] } },
   },
+  {
+    type: 'shell_started',
+    eventId: 13,
+    command: { commandId: 'sh_1', command: 'ls', place: 'sandbox' },
+  },
+  {
+    type: 'shell_finished',
+    eventId: 14,
+    result: {
+      commandId: 'sh_1',
+      outcome: 'exited',
+      exitCode: 0,
+      durationMs: 5,
+      totalLines: 2,
+      shownLines: 2,
+      keep: 'tail',
+      logTruncated: false,
+      attachmentId: 'A1',
+      askedInput: false,
+      context: 'sent',
+      logPath: '/data/scenarios/S1/terminal/sh_1.log',
+    },
+    snippet: 'a\nb',
+  },
   { type: 'error', eventId: null, error: { code: 'invalid_input', message: 'bad message' } },
 ];
 

@@ -14,6 +14,7 @@ import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
 import type { SlashCommandService } from '../../slash/index.js';
+import type { SetupService } from '../../setup/index.js';
 import type { UsageService } from '../../usage/index.js';
 
 /**
@@ -35,6 +36,8 @@ export interface ReadRouteDeps {
   readonly layout: LayoutPreferencesStore;
   /** The registry of the `/` commands (P3 of Phase 7); absent: the routes answer 503. */
   readonly slash?: SlashCommandService | undefined;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }
 
 /**
@@ -67,4 +70,6 @@ export interface CommandRouteDeps {
   readonly layout: LayoutPreferencesStore;
   /** The registry of the `/` commands (P3 of Phase 7); absent: the route answers 503. */
   readonly slash?: SlashCommandService | undefined;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }
