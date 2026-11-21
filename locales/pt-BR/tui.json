@@ -30,7 +30,9 @@
       "open": "Ir para a aba {{tab}}"
     },
     "decision": {
-      "answer": "Responder a decisão pendente"
+      "answer": "Responder a decisão pendente",
+      "aside": "Pôr a decisão de lado",
+      "open": "Abrir a decisão pendente"
     },
     "palette": {
       "open": "Abrir a paleta de comandos"
@@ -45,7 +47,10 @@
       "scrollUp": "Rolar o chat para cima",
       "scrollDown": "Rolar o chat para baixo",
       "scrollTop": "Ir ao início do chat",
-      "scrollBottom": "Ir ao fim do chat"
+      "scrollBottom": "Ir ao fim do chat",
+      "suggestNext": "Próxima sugestão de comando",
+      "suggestPrev": "Sugestão de comando anterior",
+      "stop": "Parar a resposta do Diretor"
     },
     "edge": {
       "narrow": "Estreitar o chat (borda com o foco)",
@@ -104,6 +109,24 @@
       "edit": "Mudar o valor ou a regra",
       "unset": "Tirar a chave (volta ao padrão)",
       "scope": "Alternar entre o escopo global e o do projeto"
+    },
+    "overview": {
+      "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
+      "resumePlay": "Retomar a peça do cenário (aba Visão geral)",
+      "nextActor": "Escolher o próximo Ator (aba Visão geral)",
+      "pauseActor": "Pausar o Ator escolhido (aba Visão geral)",
+      "resumeActor": "Retomar o Ator escolhido (aba Visão geral)"
+    },
+    "usage": {
+      "refresh": "Ler o consumo de novo (aba Consumo)"
+    },
+    "directives": {
+      "new": "Dar uma ordem",
+      "extend": "Prorrogar a ordem selecionada",
+      "suspend": "Suspender a ordem selecionada em um cenário",
+      "revoke": "Revogar a ordem selecionada",
+      "previous": "Selecionar a ordem anterior",
+      "next": "Selecionar a ordem seguinte"
     }
   },
   "bar": {
@@ -117,7 +140,8 @@
       "close": "Fechar aba"
     },
     "decision": {
-      "answer": "Responder"
+      "answer": "Responder",
+      "aside": "De lado"
     },
     "palette": {
       "open": "Comandos"
@@ -253,6 +277,123 @@
         "you": "Você",
         "director": "Diretor",
         "system": "Sistema"
+      },
+      "noConnection": "O chat não está ligado ao daemon.",
+      "stage": "etapa: {{state}}",
+      "pending_one": "{{count}} decisão pendente",
+      "pending_other": "{{count}} decisões pendentes",
+      "director": {
+        "asleep": "Diretor adormecido",
+        "turn": "Diretor em turno",
+        "turnStop": "Diretor em turno ({{key}} para)",
+        "active": "Diretor ativo"
+      },
+      "waits": "esperando: {{what}}",
+      "connection": {
+        "connecting": "conectando",
+        "open": "conectado",
+        "retrying": "reconectando",
+        "closed": "desconectado"
+      },
+      "confirmLine": "{{command}}: {{prompt}} Enter confirma, Esc cancela.",
+      "card": {
+        "title": {
+          "default": "O Diretor precisa de uma decisão",
+          "producer_question": "O Diretor pergunta a você",
+          "producer_menu": "A peça precisa de você",
+          "ideas_group": "Um grupo de ideias espera a sua aprovação"
+        },
+        "other": "Outra (digite a resposta)",
+        "keepPrompt": "Quais ideias você mantém?",
+        "option": {
+          "redefine_need": "Redefinir a necessidade",
+          "raise_limit": "Aumentar o limite",
+          "deliver_ready": "Entregar o que está pronto",
+          "accept_as_is": "Aceitar como está",
+          "redo_on_new_base": "Refazer na nova base",
+          "deliver_with_conflict": "Entregar com os conflitos listados",
+          "deliver_pr": "Abrir um pull request",
+          "deliver_merge": "Mesclar na base",
+          "cancel": "Cancelar a peça",
+          "not_done": "Não concluído",
+          "done": "Concluído",
+          "approve": "Aprovar",
+          "refuse": "Recusar",
+          "edit": "Editar a necessidade",
+          "keep": "Manter só algumas ideias"
+        },
+        "idea": "{{id}}: {{text}}",
+        "leftOut": "Ficou de fora {{id}}: {{reason}}{{question}}",
+        "need": "Necessidade: {{need}}",
+        "typing": "Digite a resposta: ",
+        "hint_one": "{{count}} decisão está esperando. {{key}} abre.",
+        "hint_other": "{{count}} decisões estão esperando. {{key}} abre."
+      },
+      "entry": {
+        "sometime": "depois",
+        "waitReason": {
+          "quota": "cota de {{profiles}}",
+          "spend_cap": "teto de gasto de {{profiles}}",
+          "budget": "orçamento de {{profiles}}",
+          "rate_limit": "limite de taxa de {{profiles}}",
+          "unavailable": "{{profiles}} indisponível"
+        },
+        "handoff": "A tentativa {{attemptId}} passou de {{from}} para {{to}} ({{cause}}).",
+        "selectionWait": "O papel {{role}} espera um Executor: {{on}}. Próxima olhada às {{until}}.",
+        "resetWait": "A tentativa {{attemptId}} espera {{executor}} até {{until}}.",
+        "failover": {
+          "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
+          "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
+          "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt."
+        },
+        "recovery": "Depois da reinicialização: {{resumed}} retomadas, {{settled}} resolvidas, {{waiting}} esperando.",
+        "generatedNone": "O Diretor respondeu sem nenhuma ação.",
+        "generatedTools": "O Diretor agiu: {{tools}}.{{play}}",
+        "generatedPlay": "Peça {{id}}.",
+        "toolFailed": "{{name}} (falhou)",
+        "held": "A fila de ideias parou: {{what}} ({{reason}}).",
+        "heldWhat": {
+          "author_failed": "o autor falhou",
+          "author_left_all_out": "o autor deixou todas as ideias de fora",
+          "group_refused": "o grupo foi recusado",
+          "play_not_opened": "a peça não abriu",
+          "play_ended": "a peça {{playId}} terminou"
+        },
+        "play": "A peça {{id}} está agora em {{state}}.",
+        "shellStarted": "Rodando em {{place}}: {{command}}",
+        "shell": {
+          "exited": "Terminou com o código {{code}} em {{seconds}} s.",
+          "timeout": "Parado após {{seconds}} s (limite de tempo).",
+          "failed": "Falhou: {{error}}"
+        },
+        "shellCut": {
+          "head": "(primeiras {{shown}} de {{total}} linhas)",
+          "tail": "(últimas {{shown}} de {{total}} linhas)"
+        },
+        "shellAskedInput": "O comando pediu uma entrada; ela não foi dada.",
+        "error": "Erro: {{message}}",
+        "local": {
+          "reconnected": "Reconectado ao daemon.",
+          "connectionLost": "A conexão com o daemon caiu; tentando de novo.",
+          "sendFailed": "Não foi possível enviar: {{message}}"
+        },
+        "queued": "(na fila)"
+      },
+      "stageName": {
+        "NEED": "necessidade",
+        "PLANNING": "planejando",
+        "CLARIFYING": "esclarecendo",
+        "REVIEWING_PLAN": "revisando o plano",
+        "SCRIPTING": "roteirizando",
+        "REVIEWING_SCRIPT": "revisando o roteiro",
+        "EXECUTING": "executando",
+        "INTEGRATING": "integrando",
+        "CRITIQUING": "criticando",
+        "DECIDING": "decidindo",
+        "DELIVERING": "entregando",
+        "AWAITING_PRODUCER": "esperando você",
+        "DONE": "concluída",
+        "CANCELLED": "cancelada"
       }
     },
     "panel": {
@@ -278,6 +419,15 @@
     "link": {
       "syncing": "sincronizando",
       "lost": "conexão perdida"
+    },
+    "mouse": {
+      "copied": "{{chars}} caracteres copiados.",
+      "copyFailed": {
+        "off": "A cópia pelo mouse está desligada (ui.clipboard.copy).",
+        "too_long": "A seleção é longa demais para copiar (ui.tuiMouse.copyMaxBytes).",
+        "no_tool": "Nenhuma ferramenta de área de transferência foi achada para ui.clipboard.copy: system.",
+        "tool_failed": "A ferramenta de área de transferência não conseguiu copiar."
+      }
     }
   },
   "input": {
@@ -405,6 +555,231 @@
       "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
       "nothing": "Nada sob o cursor.",
       "noLogin": "Só uma conta de assinatura entra por login."
+    }
+  },
+  "overview": {
+    "noScenario": "Escolha um cenário na barra lateral.",
+    "noPlay": "Este cenário ainda não tem peça.",
+    "paused": "pausada",
+    "busy": "Esperando o daemon…",
+    "pipeline": {
+      "title": "Pipeline",
+      "need": "Necessidade: {{need}}"
+    },
+    "state": {
+      "NEED": "Necessidade",
+      "PLANNING": "Planejamento",
+      "CLARIFYING": "Esclarecimento",
+      "REVIEWING_PLAN": "Revisão do plano",
+      "SCRIPTING": "Roteiro",
+      "REVIEWING_SCRIPT": "Revisão do roteiro",
+      "EXECUTING": "Execução",
+      "INTEGRATING": "Integração",
+      "CRITIQUING": "Crítica",
+      "DECIDING": "Decisão",
+      "DELIVERING": "Entrega",
+      "AWAITING_PRODUCER": "Aguardando você",
+      "DONE": "Concluída",
+      "CANCELLED": "Cancelada"
+    },
+    "demands": {
+      "title": "Demandas",
+      "empty": "Nenhuma demanda ainda.",
+      "waiting": "esperando um Executor",
+      "state": {
+        "pending": "pendente",
+        "ready": "pronta",
+        "running": "em curso",
+        "in_review": "em revisão",
+        "approved": "aprovada",
+        "failed": "falhou",
+        "blocked": "bloqueada",
+        "cancelled": "cancelada"
+      }
+    },
+    "actors": {
+      "title": "Atores",
+      "empty": "Nenhum Ator trabalhando.",
+      "paused": "pausado",
+      "left": "faltam {{time}}",
+      "over": "{{time}} a mais"
+    },
+    "events": {
+      "title": "Eventos recentes",
+      "empty": "Nenhum evento ainda."
+    },
+    "quota": {
+      "title": "Cota",
+      "empty": "Nenhuma conta lida ainda."
+    },
+    "hint": {
+      "pausePlay": "pausar a peça",
+      "resumePlay": "retomar a peça",
+      "nextActor": "próximo Ator",
+      "pauseActor": "pausar o Ator",
+      "resumeActor": "retomar o Ator"
+    },
+    "confirm": {
+      "pausePlay": "Pausar a peça “{{subject}}”? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "resumePlay": "Retomar a peça “{{subject}}”? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "pauseActor": "Pausar o Ator {{subject}}? Tecle y para confirmar; qualquer outra tecla cancela.",
+      "resumeActor": "Retomar o Ator {{subject}}? Tecle y para confirmar; qualquer outra tecla cancela."
+    },
+    "done": {
+      "pausePlay": "Peça pausada.",
+      "resumePlay": "Peça retomada.",
+      "pauseActor": "Ator {{subject}} pausado.",
+      "resumeActor": "Ator {{subject}} retomado."
+    },
+    "failed": {
+      "conflict": "Nada a fazer: ela não está num estado que permita isso.",
+      "not_found": "Não encontrada: pode ter terminado.",
+      "unavailable": "O daemon não pode fazer isso agora.",
+      "network": "O daemon não respondeu.",
+      "other": "O daemon recusou ({{code}})."
+    }
+  },
+  "usage": {
+    "offline": "Sem conexão com o daemon: nada a ler.",
+    "loading": "Lendo o consumo…",
+    "empty": "Nada lido ainda.",
+    "hint": "{{key}} lê de novo",
+    "updated": "lido às {{time}}",
+    "totals": {
+      "title": "Totais",
+      "tokens": "{{turns}} turnos · entrada {{input}} · saída {{output}} · cache {{cached}}",
+      "money": "Real {{real}} · equivalente em API {{api}}",
+      "incomplete_one": "{{count}} turno de custo desconhecido: as somas são um mínimo.",
+      "incomplete_other": "{{count}} turnos de custo desconhecido: as somas são um mínimo."
+    },
+    "groups": {
+      "title": "Por {{by}}",
+      "titleNone": "Grupos",
+      "off": "Sem divisão (ui.usage.groupBy é none).",
+      "empty": "Nenhum consumo ainda.",
+      "noKey": "(sem peça)",
+      "by": {
+        "profile": "conta",
+        "executor": "Executor",
+        "play": "peça",
+        "session": "sessão"
+      }
+    },
+    "budget": {
+      "title": "Orçamento",
+      "empty": "Nenhum teto de gasto definido.",
+      "scope": {
+        "profile": "Conta",
+        "executor": "Executor",
+        "run": "Execução"
+      },
+      "period": {
+        "day": "dia",
+        "month": "mês",
+        "run": "execução"
+      },
+      "exceeded": "estourado",
+      "blocked": "bloqueado: custo desconhecido",
+      "resets": "recomeça {{time}}",
+      "profileExceeded": "{{profile}} passou do teto até {{time}}"
+    },
+    "failed": {
+      "network": "Não foi possível falar com o daemon.",
+      "unavailable": "O daemon não pode responder agora.",
+      "other": "Não foi possível ler o consumo ({{code}})."
+    }
+  },
+  "directives": {
+    "tab": {
+      "hint": "{{new}} dar  {{extend}} prorrogar  {{suspend}} suspender  {{revoke}} revogar  {{move}} selecionar",
+      "sections": {
+        "inForce": "Vigentes",
+        "scheduled": "Agendadas",
+        "ended": "Encerradas"
+      },
+      "empty": "Ainda não há ordens. Aperte {{key}} para dar a primeira.",
+      "none": "nenhuma",
+      "scope": {
+        "global": "Global",
+        "local": "Cenário {{name}}"
+      },
+      "kind": {
+        "instruction": "instrução",
+        "rule": "regra",
+        "suspension": "suspensão"
+      },
+      "deadline": {
+        "endsIn": "termina em {{span}}",
+        "untilRevoked": "até ser revogada",
+        "startsIn": "começa em {{span}}",
+        "endedAgo": "terminou há {{span}}",
+        "revokedAgo": "revogada há {{span}}",
+        "expiring": "acaba logo: {{span}}"
+      },
+      "timeline": {
+        "open": "até ser revogada"
+      },
+      "detail": {
+        "roles": "Papéis: {{roles}}",
+        "allRoles": "todos",
+        "rule": "Regra: {{key}} = {{value}}",
+        "suspends": "Tira {{id}} do cenário",
+        "replaces": "Substitui {{id}}",
+        "reason": "Revogada: {{reason}}",
+        "zone": "Fuso {{zone}}",
+        "origin": "Dada por {{origin}}"
+      }
+    },
+    "form": {
+      "title": {
+        "new": "Dar uma ordem",
+        "extend": "Prorrogar {{subject}}",
+        "suspend": "Suspender {{subject}} em um cenário",
+        "revoke": "Revogar {{subject}}"
+      },
+      "field": {
+        "text": "Texto",
+        "scope": "Escopo",
+        "scenario": "Cenário",
+        "kind": "Tipo",
+        "ruleKey": "Chave da regra",
+        "ruleValue": "Valor da regra",
+        "from": "Começa (AAAA-MM-DD HH:mm; vazio: agora)",
+        "until": "Termina (AAAA-MM-DD HH:mm)",
+        "for": "Dura (30m, 2h, 3d)",
+        "forever": "Até ser revogada",
+        "reason": "Motivo"
+      },
+      "choice": {
+        "global": "global",
+        "local": "um cenário",
+        "instruction": "instrução",
+        "rule": "regra",
+        "yes": "sim",
+        "no": "não"
+      },
+      "noScenario": "(nenhum cenário)",
+      "hint": "Tab próximo campo  Enter enviar  Esc cancelar",
+      "hintChoice": "Tab próximo campo  ←/→ mudar  Enter enviar  Esc cancelar",
+      "problem": {
+        "textRequired": "Escreva o texto da ordem.",
+        "scenarioRequired": "Não há cenário para escolher.",
+        "ruleKeyRequired": "Uma regra precisa da chave de configuração que ela muda.",
+        "ruleValueRequired": "Uma regra precisa do valor dessa chave.",
+        "reasonRequired": "Diga por que a ordem é revogada."
+      }
+    },
+    "status": {
+      "sending": "Enviando...",
+      "created": "Ordem {{id}} dada.",
+      "extended": "Ordem {{id}} prorrogada.",
+      "suspended": "Suspensão {{id}} dada.",
+      "revoked": "Ordem {{id}} revogada.",
+      "failed": "Não foi feito: {{message}}",
+      "needOrder": "Selecione uma ordem antes.",
+      "onlyGlobal": "Só uma ordem global pode ser suspensa em um cenário.",
+      "alreadyRevoked": "A ordem já está revogada.",
+      "noScenario": "Não há cenário em que suspender a ordem."
     }
   }
 }

@@ -24,9 +24,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { keyLabel } from '../../keys/labels.js';
-import { usePanelServices } from '../../layout/panel-context.js';
+import { useTabHost } from '../../layout/tab-host.js';
+import type { TabContentProps } from '../../layout/tab-types.js';
 import { useRenderControl } from '../../render-control.js';
-import { Section, type SectionControl } from '../../layout/section.js';
+import { Section } from '../../layout/section.js';
 import { fit, wrapText } from '../../layout/text.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
@@ -78,19 +79,6 @@ export const runInTerminal: LocalRunner = (command) =>
       resolve(code);
     });
   });
-
-/**
- * What the panel gives a tab and what it takes back (`TabContentProps` and `TabDefinition` of
- * `layout/tab-content.ts`), written here as the shapes they are: `tab-content.ts` imports this
- * tab, so importing its types would close a cycle (`pnpm verify` refuses one).
- */
-interface TabContentProps {
-  readonly width: number;
-  readonly height: number;
-  readonly focused: boolean;
-  readonly scroll: number;
-  readonly sections: SectionControl;
-}
 
 export interface SettingsTabDefinition {
   readonly sections: readonly string[];
@@ -205,7 +193,8 @@ interface TabProps {
 
 function SettingsTab({ content, options }: TabProps): ReactNode {
   const { t } = useTranslation();
-  const { stores, keymap, capture, scenarioId } = usePanelServices();
+  const { stores, keymap, capture } = useTabHost();
+  const scenarioId = content.scenarioId;
   const { suspendTerminal } = useApp();
   const { afterKey } = useRenderControl();
   const api = useMemo(() => options.api ?? apiOf(stores.client), [options.api, stores]);
@@ -240,7 +229,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     return () => {
       mounted.current = false;
       if (reloadTimer.current !== undefined) clearTimeout(reloadTimer.current);
-      capture(false);
+      capture.current = false;
     };
   }, [capture]);
 
@@ -248,7 +237,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     (next: Mode): void => {
       modeRef.current = next;
       setModeState(next);
-      capture(next.kind !== 'idle');
+      capture.current = next.kind !== 'idle';
     },
     [capture],
   );
@@ -582,7 +571,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
 
   const handleIdle = (event: KeyEvent): void => {
     if (event.combo === undefined) return;
-    const action = keymap.match(event.combo, ['panel']);
+    const action = keymap.match(event.combo, ['settings']);
     if (!action?.startsWith('settings.')) return;
     if (message !== undefined) setMessage(undefined);
     const data = loadedRef.current;

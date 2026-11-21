@@ -1,6 +1,6 @@
 # 18. Plano da Fase 7
 
-Versão 2, de 2026-11-20 (a onda 1 está concluída; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
+Versão 3, de 2026-11-21 (as ondas 1 e 2 estão concluídas; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
 O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levantou oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), tomadas pelo dono em 2026-11-20, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim.
 
@@ -82,14 +82,14 @@ Não entram **[proposta]**:
 | P0 | Plano e decisões (este documento) | nada | nada | concluído (PR #203) |
 | P1 | Eventos que faltam (N173) | P0 | P2, P4, P5, P6, P7, P8 | concluído (PR #209) |
 | P2 | Pausar e retomar peça; pausar, retomar e cancelar Ator (N176) | P0 | P1, P4, P5, P6, P7, P8 | concluído (PR #211) |
-| P3 | Registro de comandos `/` no daemon (N44) | P2 | P4 a P11 | a fazer |
+| P3 | Registro de comandos `/` no daemon (N44) | P2 | P4 a P11 | concluído (PR #215) |
 | P4 | Assistente de configuração no daemon (§5.7) | P0 | P1, P2, P5 a P8 | concluído (PR #212) |
 | P5 | Login oficial pela API (N186) | P0 | P1, P2, P4, P6 a P8 | concluído (PR #207) |
 | P6 | Comando `!` do Produtor no daemon (N43, N187) | P0 | P1, P2, P4, P5, P7, P8 | concluído (PR #208) |
 | P7 | Registro de interface e chaves `ui.*` no `packages/client` | P0 | P1, P2, P4 a P6, P8 | concluído (PR #206) |
 | P8 | `packages/tui`: base, desempenho e testes | P0 | P1, P2, P4 a P7 | concluído (PR #210) |
-| P9 | Layout: lateral, chat, painel de abas, rolagem e paleta | P7, P8 | P3, P10, P11 | a fazer |
-| P10 | Caixa de texto do Produtor (N35) | P7, P8 | P3, P9, P11 | a fazer |
+| P9 | Layout: lateral, chat, painel de abas, rolagem e paleta | P7, P8 | P3, P10, P11 | concluído (PR #216) |
+| P10 | Caixa de texto do Produtor (N35) | P7, P8 | P3, P9, P11 | concluído (PR #213) |
 | P11 | Mouse e cópia (N34, N36) | P9 | P3, P10 | a fazer |
 | P12 | Chat: conversa, decisões e comandos `/` | P3, P9, P10 | P13 a P16 | a fazer |
 | P13 | Visão geral e Consumo | P1, P9 | P12, P14 a P16 | a fazer |
@@ -102,7 +102,7 @@ Não entram **[proposta]**:
 | P20 | Terminais: testes de fumaça e roteiro manual (N191) | P12 | P17 a P19 | a fazer |
 | P21 | Aceite da fase | todos | nada | a fazer |
 
-Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20; os sete PRs estão nas linhas dos passos):
+Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20 e a onda 2 em 2026-11-21; os PRs estão nas linhas dos passos):
 1. P1, P2, P4, P5, P6, P7 e P8. Os cinco primeiros são do daemon; P7 e P8 abrem o lado da TUI. Sete passos de uma vez passam do limite de dois subagentes com a suíte completa: os do daemon rodam a suíte em fila, e P7 e P8 testam só os pacotes deles até o PR.
 2. P3, P9 e P10.
 3. P11, P12, P13, P14, P15 e P16.
@@ -162,9 +162,23 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - rotas `GET /v1/commands?scenario=` (a lista que vale naquele cenário, com os comandos do cliente) e `POST /v1/scenarios/:scenarioId/commands` (executa, com `Idempotency-Key`) **[proposta]**. A mensagem `{type: 'command'}` do WebSocket passa a ir ao registro, e só os modelos para o Diretor (os terminados em "…") viram mensagem;
 - a lista inicial da §5.13, só com o que o daemon já faz: consultar (`/status`, `/quota`, `/cost`, `/executors`, `/plays`, `/logs`, `/doctor`), controlar a peça (`/pause`, `/resume` e `/cancel` sobre o P2; `/retry` e `/approve` onde o daemon já tem a ação), sessão e cenário (`/new`, `/attach`, `/export`), configurar (`/model`, `/effort`, `/profile`, `/directives`, `/config`) e `/help`. Os que não têm ação no daemon (`/fork`, `/direct` antes do P19, `/trajectory` antes do P14, `/keys`) ficam de fora até o passo que os traz;
 - os comandos do cliente, vindos do `available_commands_update` do ACP, com o prefixo do cliente (`/claude:compact`), na sessão do Diretor só fora de turno; os Atores de uma peça nunca os recebem;
-- chaves `chat.slash_commands: on | off` (padrão `on`) e `chat.client_commands: on | off | allowlist` (padrão `on`), com `chat.client_commands.allow`.
+- chaves `chat.slash_commands: on | off` (padrão `on`) e `chat.client_commands: on | off | allowlist` (padrão `on`), com `chat.client_commands.allow` (no código, `chat.client_commands_allow`: ver as divergências).
 
 **Aceite:** a lista muda com o tipo e o estado do cenário; um comando de consulta responde sem chamar o modelo (nenhum turno do Diretor no log); `/cancel` pede confirmação; um comando do cliente com o Diretor em turno é recusado com `conflict`; o catálogo de rotas está regenerado.
+
+**Estado:** feito em 2026-11-21, PR #215 [S: descrição do PR; os nomes das chaves, as rotas, o quadro `command_result` e o prefixo conferidos no código da main]. Registro em `packages/daemon/src/slash/`, rotas `GET /v1/commands?scenario=&lang=` e `POST /v1/scenarios/:scenarioId/commands` (com `Idempotency-Key`; resposta `{status: done | confirm | forwarded, command, text, data?}`), quadro `command_result` no WebSocket do chat (`eventId: null`) e catálogo `locales/<idioma>/commands.json` (namespace `commands`). Nenhum tipo de evento novo. Chaves, todas **[proposta]** e com modos e padrão documentados: `chat.slash_commands` (`on`), `chat.client_commands` (`on`), `chat.client_commands_allow` (`[]`), `chat.slash_confirm: always | never` (`always`), `chat.slash_logs_lines` (1 a 500; 20), `chat.slash_access: full | read_only` (`full`) e `chat.slash_templates` (mapa nome para texto; `plan`, `explain` e `review`).
+
+**Divergências:**
+- **a lista de permitidos é `chat.client_commands_allow`**, plana, e não `chat.client_commands.allow`: uma chave YAML não pode ser valor (`on | off | allowlist`) e mapa ao mesmo tempo [V: comentário do schema em `packages/daemon/src/config.ts`];
+- o prefixo dos comandos do cliente é o nome curto do cliente: `claude` para o `claude-code` (`/claude:compact`), e o nome do cliente nos outros [V: `clientPrefixOf`, em `slash/parse.ts`]. Não há chave para isso;
+- `/retry` e `/approve` ficaram de fora: o daemon ainda não tem a ação pronta. `/fork`, `/direct`, `/trajectory` (entra no P14) e `/keys` seguem de fora, como no plano;
+- `/model`, `/effort`, `/profile` e `/config` são só de leitura; mudar a configuração por comando fica para depois. `/export` devolve os dados na resposta e não grava arquivo; `/cost` mostra os tetos só quando estouraram; `/doctor` é básico;
+- `/new` cria um cenário do tipo `chat` [V: `slash/builtin.ts`], e `/logs` varre os últimos 5.000 eventos (`LOGS_SCAN_EVENTS`) [V]. As duas são escolhas sem chave;
+- os comandos do cliente valem só na sessão do Diretor, só fora de turno e depois do primeiro turno; com o Diretor em turno, antes do primeiro turno ou sem sessão, a resposta é `conflict` (409) [S]. Com `chat.slash_commands: off`, a lista vem vazia e a linha vai ao Diretor como mensagem, como antes [S];
+- só os modelos para o Diretor (os que terminam em "…") viram mensagem na fila de prompts [S];
+- a falha ao carregar o catálogo `commands` (erro de empacotamento) derruba a partida do daemon, em vez de degradar [S];
+- `scenarioOf` e `playOf` saíram de `scenarios.ts` para `api/routes/projections.ts`, que `scenarios.ts` reexporta, para não criar ciclo de imports [S];
+- o `eslint .` precisa de `NODE_OPTIONS=--max-old-space-size=8192` (com 4 GB estoura o heap) [S].
 
 ### P4. Assistente de configuração no daemon (§5.7; N121)
 
@@ -279,11 +293,36 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** com `ink-testing-library`, as quatro telas do mockup saem no layout esperado; a rolagem de 5.000 mensagens desenha só o que cabe na tela; o layout volta igual depois de fechar e abrir a TUI.
 
+**Estado:** feito em 2026-11-21, PR #216 [S: descrição do PR; a chave, os contextos, o grupo e os marcadores conferidos no código da main]. Layout em `packages/tui/src/layout/` (`shell.tsx`, `geometry.ts`, `sidebar.tsx`, `chat.tsx`, `panel.tsx`, `scroll-list.tsx`, `overlays.tsx` e outros); leitura de teclas em `packages/tui/src/keys/`. O `LayoutStore` é o de `packages/client/src/layout/store.ts`, aberto pelo TUI ao conectar (`openLayout`) e gravado ao sair; `ui.layout.store: daemon` (padrão) grava pela rota REST e `local` grava `layout.tui.json` na pasta de configuração do cliente. Sem o daemon, a tela de status do P8 continua. Entrou a dependência `@inkjs/ui` 2.0.0 (N185), com `pnpm-lock.yaml` e `THIRD_PARTY_NOTICES.md`. Chave nova `ui.tuiLayout` **[proposta]**: `sidebarWidth` (30; 16 a 80), `railWidth` (5; 3 a 16), `minChatWidth` e `minPanelWidth` (30; 20 a 200), `chatStep` (2; 1 a 20) e `scrollStep: page | half | line` (`half`). No registro de interface: contextos novos `chat`, `edge`, `sidebar`, `panel` e `overlay`, grupo `navigation` (19 ações) e `layout.focusNext` e `layout.focusPrev`.
+
+**Divergências:**
+- **o painel fechado (Alt+J) e a aba ativa ficam como marcadores em `collapsedSections`** (`layout.panelClosed` e `layout.activeTab.<id>`), porque o registro de preferências do `LayoutStore` não tem campo para eles; o painel não os enxerga como seções dobradas [V: `use-layout.ts`]. Dar campos próprios muda o protocolo e o daemon: **ponto aberto para o dono**, não decidido aqui;
+- as abas entram vazias, com o conteúdo no mapa `TAB_CONTENT` (`layout/tab-content.ts`), que cada passo seguinte preenche [V];
+- a única tecla fixa é Ctrl+C (interrupção do terminal); todas as outras passam pelo mapa de teclas do P7 [S]. F1 abre a paleta, e a ajuda completa sai por ela (`help.show`); Tab e Shift+Tab percorrem chat, borda, painel e barra lateral; na borda, as setas movem a largura do chat [S];
+- marcadores da barra lateral: `!` decisão, `●` rodando, `✓` concluído, `○` parado; não há `✗` porque os stores não trazem jogada que falhou. Barras de cota: `█` para 5h e `━` para 7d [S];
+- o sinal de fluxo perdido tem texto (`layout.link.syncing` e `layout.link.lost`), e o aviso do mapa de teclas ocupa a linha da barra até a primeira tecla [S];
+- o chat não acompanha a última mensagem enquanto a pessoa rolou para cima [S];
+- a entrada de texto é provisória, de uma linha (`input-slot.tsx`), e as mensagens vêm por prop: o P12 troca pela caixa do P10 e pelo `/v1/chat`. O cartão de decisão é do P12 [V: `input-slot.tsx`];
+- F6 (Plugins) fora, como no registro do P7, e sem mouse (P11);
+- o `eslint .` precisa de `NODE_OPTIONS=--max-old-space-size=8192` nesta máquina [S].
+
 ### P10. Caixa de texto do Produtor (N35; §5.13)
 
 **Escopo:** o comportamento da caixa dos agentes de código, como na §5.13: Enter envia; Ctrl+J e Shift+Enter (onde o terminal distingue) fazem nova linha; a edição do readline; o histórico com ↑/↓, Ctrl+R e Ctrl+G no `$EDITOR` (a TUI se suspende e volta); a colagem por bracketed paste, com a colagem longa virando marcador `[Pasted text #n]` e anexo; Ctrl+V com imagem pela ferramenta do sistema, virando anexo `A<n>`; caminho de arquivo existente colado virando anexo.
 
 **Aceite:** cada tecla da tabela da N35 tem teste; uma colagem de 2.000 linhas vira marcador e o anexo guarda o texto inteiro; sem a ferramenta de imagem instalada, o Ctrl+V diz o que falta e não trava.
+
+**Estado:** feito em 2026-11-21, PR #213 [S: descrição do PR; as chaves, o contexto e as ações conferidos no código da main]. Componente `TextBox` em `packages/tui/src/input/` (reducer `reduceBox` com efeitos, edição por grafema com anel de recortes, histórico, marcadores, imagem da área de transferência e editor externo). Contexto novo `textBox` e ações `input.*` (grupo `input`) no registro de interface, para o preset (`agents` ou `classic`), o ambiente e `ui.keymap.overrides` valerem para elas. Chaves `ui.input.*` **[proposta]**: `paste.mode: marker | inline` (`marker`), `paste.lines` (10) e `paste.chars` (2.000), `dropPaths: attach | text` (`attach`), `history.store: file | memory` (`file`) e `history.size` (500), `editor: auto | off` (`auto`), `maxVisibleLines` (8) e `image.tool: auto | wl-paste | xclip | osascript | powershell | off` (`auto`), `image.timeoutMs` (3.000) e `image.maxBytes` (20 MiB).
+
+**Divergências:**
+- **as chaves ficam em `ui.input.*` (inclusive `ui.input.image.*`), e não em `ui.clipboard`**; `ui.clipboard.copy` continua sendo só a cópia de texto do P11 (N36) [V: `UiInputConfigSchema`, em `packages/protocol/src/ui-config.ts`];
+- a caixa não envia anexos: o dono do componente (P12) chama `bindAttachments` com o id do cenário, que troca o número do marcador pelo `A<n>`. Imagem e arquivo vão como `{path, mode: 'copy'}`, e a colagem longa como `{text, name}` [S];
+- o histórico guarda só o texto, então os marcadores de anexo não sobrevivem a um reinício [S]. O arquivo do histórico vem da pasta de dados, nunca do HOME real [S];
+- o arquivo temporário da imagem só é apagado ao desmontar a caixa, para a recuperação pelo histórico valer na sessão [S];
+- Shift+Enter só se distingue de Enter com o protocolo kitty de teclado [V: `input/keys.ts`]. O PR diz que a opção `kittyKeyboard` do Ink, em `run.tsx`, fica com o P9 ou o P12, mas ela **não existe na main** [V: busca em `packages/tui/src`]: ligar o protocolo é um item pendente. Sem ele, Ctrl+J e Alt+Enter fazem a nova linha. Esc (`input.cancel`) só age dentro da busca do histórico [S];
+- vários caracteres que chegam juntos, sem colagem entre colchetes, são tratados como colagem, inclusive na busca do Ctrl+R [S];
+- só o `wl-paste` foi exercitado, e só em parte; `xclip`, `osascript` e PowerShell foram escritos pela documentação e não rodaram **[hipótese]** [S]. Os testes usam portas falsas (área de transferência, editor e sistema de arquivos);
+- ligar a caixa ao layout e ao envio real é do P12.
 
 ### P11. Mouse e cópia (N34, N36; §5.13)
 
@@ -374,7 +413,7 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 
 ## Decisões que surgem deste plano
 
-Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação. A onda 1 implementou as três: a N193 no PR #211, a N194 no PR #208 e a N195 no PR #210:
+Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação. A onda 1 implementou as três: a N193 no PR #211, a N194 no PR #208 e a N195 no PR #210. A onda 2 implementou a N44 (os comandos `/` do daemon, PR #215) e a N35 (a caixa de texto, PR #213), e o PR #216 trouxe o `@inkjs/ui` da N185:
 - **N185, dependências novas:** `ink` 8.0.0, `react` 19.3.1, `@types/react` 19.3.0, `@inkjs/ui` 2.0.0, `ink-testing-library` 4.0.0 e `react-i18next` 17.1.13, todas MIT. Alternativas: sem o `@inkjs/ui` (componentes próprios); sem o `react-i18next` (um gancho próprio sobre o i18next).
 - **N186, login oficial na TUI:** o daemon expõe o `LoginFlow` pela REST, e o modo `terminal` suspende a TUI e roda o login no próprio terminal. Alternativas: sempre suspender a TUI e rodar o CLI; ou o daemon com PTY transmitindo o login (exige `node-pty`).
 - **N187, `!` nesta fase:** no daemon, sem PTY e com a entrada fechada; o caso interativo fica para quando houver PTY. Alternativas: `node-pty` já nesta fase, com a TUI entregando o terminal; ou o `!` inteiro na Fase 12.

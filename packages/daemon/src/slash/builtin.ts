@@ -492,6 +492,26 @@ const cancel = define({
   },
 });
 
+/**
+ * Esc of the TUI (Phase 7, P12): stops the reply the Director is giving, without pausing the play.
+ * It is valid even in a turn, which is its point; a plain action of the daemon, no turn of its own.
+ */
+const stop = define({
+  id: 'stop',
+  origin: 'daemon',
+  group: 'control',
+  descriptionKey: 'desc.stop',
+  argsKey: undefined,
+  permission: 'write',
+  confirm: false,
+  appliesTo: { scoped: true, states: ['active'] },
+  args: NO_ARGS,
+  async run({ scenario, t, deps }) {
+    const stopped = (await deps.directors?.interrupt(scenario.id)) === true;
+    return done(t(stopped ? 'out.stop.done' : 'out.stop.idle'), { stopped });
+  },
+});
+
 // ---- session and scenario ----
 
 const NAME = z
@@ -745,6 +765,7 @@ export const BUILTIN_ACTIONS: readonly SlashAction[] = [
   pause,
   resume,
   cancel,
+  stop,
   newScenario,
   attach,
   exportScenario,

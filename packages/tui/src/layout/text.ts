@@ -111,3 +111,19 @@ export function wrapText(text: string, width: number): string[] {
   }
   return lines;
 }
+
+/**
+ * The part of `text` that sits in cells `from` (included) to `to` (excluded): a character belongs
+ * to the slice when the cell it starts in does, so a wide character cut in the middle goes whole
+ * to the side that holds its first cell.
+ */
+export function sliceCells(text: string, from: number, to: number): string {
+  let used = 0;
+  let out = '';
+  for (const char of text) {
+    if (used >= to) break;
+    if (used >= from) out += char;
+    used += charWidth(char);
+  }
+  return out;
+}
