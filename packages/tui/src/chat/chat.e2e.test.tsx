@@ -261,6 +261,121 @@ describe.skipIf(NO_LAUNCHER)(
       });
     }, 120_000);
 
+    // ---- The `!` command (P18) -----------------------------------------------------------------
+
+    const SHELL_ON = 'app:\n  terminal: host\n';
+
+    it('!ls shows the command and its output in the conversation, and the line is not a message to the Director', async () => {
+      // `never`: what the Director gets is not what this test is about.
+      const never = `${SHELL_ON}chat:\n  shell_command:\n    context: never\n`;
+      await withChatDaemon(fakes(), { extra: never }, async (daemon) => {
+        const app = await openTui(daemon);
+        const before = (await daemon.events()).at(-1)?.id ?? 0;
+        await typeText(app, '!ls');
+        app.press(ENTER);
+        // The block of the command: its line, the output of the repository and how it ended.
+        const frame = await seen(app, 'Finished with code 0');
+        expect(frame).toContain('! ls');
+        expect(frame).toContain('shared.txt');
+        // The state line goes back to the Director, and the line of the box is not repeated as a message.
+        expect(count(frame, '! ls')).toBe(1);
+        expect(frame).toContain('Kept out of what the Director reads.');
+        const events = (await daemon.events()).filter((event) => event.id > before);
+        expect(events.map((event) => event.type)).toEqual(
+          expect.arrayContaining(['chat.shell_command.started', 'chat.shell_command.finished']),
+        );
+        expect(events.filter((event) => event.type === 'prompt.queued')).toEqual([]);
+      });
+    }, 120_000);
+
+    it('a command in progress shows its state in the chat until it ends', async () => {
+      await withChatDaemon(fakes(), { extra: SHELL_ON }, async (daemon) => {
+        const app = await openTui(daemon);
+        await typeText(app, '!sleep 2; echo done-sleeping');
+        app.press(ENTER);
+        const running = await seen(app, 'Running in');
+        expect(running).toContain('! sleep 2; echo done-sleeping');
+        expect(running).toContain('running: ! sleep 2');
+        const frame = await seen(app, 'Finished with code 0');
+        expect(frame).toContain('done-sleeping');
+        expect(frame).not.toContain('Running in');
+        expect(frame).not.toContain('running: !');
+      });
+    }, 120_000);
+
+    it('with context: ask, the TUI asks before the output goes to the Director', async () => {
+      await withChatDaemon(
+        fakes(),
+        { extra: `${SHELL_ON}chat:\n  shell_command:\n    context: ask\n` },
+        async (daemon) => {
+          const app = await openTui(daemon);
+          await typeText(app, '!ls');
+          app.press(ENTER);
+          const card = await seen(app, 'Send the output of ! ls to the Director?');
+          // The words are the catalog's, not the English question of the daemon.
+          expect(card).not.toContain('Send the result of');
+          expect(card).toContain('Keep here');
+          expect(card).toContain('shared.txt');
+          const asks = (await daemon.events()).filter((event) => event.type === 'chat.ask');
+          expect(asks).toHaveLength(1);
+          // Nothing went to the Director while the question is open.
+          expect((await daemon.events()).filter((e) => e.type === 'prompt.queued')).toEqual([]);
+          app.press('1');
+          await seen(app, 'Send');
+          await waitUntil('the output to reach the Director', async () =>
+            (await daemon.events()).some((event) => event.type === 'prompt.queued')
+              ? true
+              : undefined,
+          );
+        },
+      );
+    }, 120_000);
+
+    it('with context: ask, Keep leaves the output out of the Director', async () => {
+      await withChatDaemon(
+        fakes(),
+        { extra: `${SHELL_ON}chat:\n  shell_command:\n    context: ask\n` },
+        async (daemon) => {
+          const app = await openTui(daemon);
+          await typeText(app, '!ls');
+          app.press(ENTER);
+          await seen(app, 'Send the output of ! ls to the Director?');
+          app.press('2');
+          await seen(app, 'Keep here');
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          expect((await daemon.events()).filter((e) => e.type === 'prompt.queued')).toEqual([]);
+          expect(app.frame()).not.toContain('Send the output of');
+        },
+      );
+    }, 120_000);
+
+    it('a command that asks for input shows the warning', async () => {
+      await withChatDaemon(fakes(), { extra: SHELL_ON }, async (daemon) => {
+        const app = await openTui(daemon);
+        await typeText(app, "!printf 'Continue? '; read answer");
+        app.press(ENTER);
+        const frame = await seen(app, 'The command asked for input; it was not given.');
+        expect(frame).toContain('Continue?');
+      });
+    }, 120_000);
+
+    it('chat.shell_command: off shows the refusal', async () => {
+      await withChatDaemon(
+        fakes(),
+        { extra: `${SHELL_ON}chat:\n  shell_command:\n    mode: off\n` },
+        async (daemon) => {
+          const app = await openTui(daemon);
+          await typeText(app, '!ls');
+          app.press(ENTER);
+          const frame = await seen(app, 'The ! command is off');
+          expect(frame).toContain('chat.shell_command');
+          expect((await daemon.events()).filter((e) => e.type.startsWith('chat.shell'))).toEqual(
+            [],
+          );
+        },
+      );
+    }, 120_000);
+
     it('Esc stops the reply of the Director and the play is not paused', async () => {
       await withChatDaemon(fakes(), {}, async (daemon) => {
         const app = await openTui(daemon);
