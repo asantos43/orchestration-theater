@@ -1080,6 +1080,11 @@ export class AttemptRunner {
         profile: spec.profile,
         policy: spec.policy,
         cwd: context.worktree,
+        correlation: {
+          playId: spec.playId,
+          attemptId: context.attemptId,
+          ...(spec.role === undefined ? {} : { role: spec.role }),
+        },
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
         ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
         permissions: {

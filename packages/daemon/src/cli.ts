@@ -41,6 +41,11 @@ import { isProfileAction, runProfileCommand, type ProfileOptions } from './profi
 import { runProfileExec, type ExecSignals, type ExecSpawn } from './profiles/exec.js';
 import { runProfileShims, type ShimsOptions } from './profiles/shims-command.js';
 import type { OtLauncher } from './profiles/shims.js';
+import {
+  isTrajectoryAction,
+  runTrajectoryCommand,
+  type TrajectoryOptions,
+} from './atif/command.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -116,6 +121,7 @@ const COMMANDS = [
   'profile',
   'executor',
   'api',
+  'trajectory',
   'tui',
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -309,6 +315,19 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           executorOptions(values),
         );
       }
+      case 'trajectory': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingTrajectoryAction'));
+        if (!isTrajectoryAction(action))
+          return usageError(t('usage.unknownTrajectoryAction', { action }));
+        return await runTrajectoryCommand(
+          context,
+          { passwordPrompt: deps.passwordPrompt?.(t), cwd: deps.cwd },
+          action,
+          args,
+          trajectoryOptions(values),
+        );
+      }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
@@ -391,10 +410,18 @@ function parseCliArgs(argv: readonly string[]) {
       'no-test-session': { type: 'boolean' },
       'dry-run': { type: 'boolean' },
       profile: { type: 'string' },
+      // The options of `ot trajectory` (`json` is not used there).
+      unit: { type: 'string' },
+      content: { type: 'string' },
+      out: { type: 'string' },
     },
     allowPositionals: true,
     strict: true,
   });
+}
+
+function trajectoryOptions(values: ParsedValues): TrajectoryOptions {
+  return { unit: values.unit, content: values.content, out: values.out };
 }
 
 function directivesOptions(values: ParsedValues): DirectivesOptions {

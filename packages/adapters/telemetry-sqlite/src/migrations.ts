@@ -153,6 +153,27 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
         .execute();
     }),
   },
+  /**
+   * P4 of Phase 8: a span is identified by `(trace_id, span_id)`, so the daemon can project its
+   * spans from the event log again and get the same rows. A duplicate already in the base (nothing
+   * wrote one on purpose; a client that exported twice could) keeps its first row. The index
+   * replaces the plain one of `0001`, which had the same columns.
+   */
+  '0002_span_identity': {
+    up: transactional(async (db) => {
+      await sql`
+        delete from spans
+        where id not in (select min(id) from spans group by trace_id, span_id)`.execute(db);
+      await sql`drop index if exists spans_trace_id`.execute(db);
+      await db.schema
+        .createIndex('spans_trace_span')
+        .ifNotExists()
+        .unique()
+        .on('spans')
+        .columns(['trace_id', 'span_id'])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */
