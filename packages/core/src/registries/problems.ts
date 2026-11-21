@@ -35,9 +35,9 @@ export const REGISTRY_PROBLEM_CODES = [
   'missing_schema',
   /** The version of an event schema or of a flow is not an integer >= 1. */
   'invalid_version',
-  /** The effect class is not `none`, `worktree` or `external_write`. */
+  /** The effect class is not `read`, `local_write`, `network` or `external_write`. */
   'invalid_effect_class',
-  /** An `external_write` tool has no idempotency key (architecture 5.16, 5.18). */
+  /** A `network` or `external_write` tool has no idempotency key (architecture 5.16, 5.18). */
   'missing_idempotency_key',
   /** A plugin event outside `plugin.<id>.*`, or an official event inside it. */
   'plugin_prefix',
