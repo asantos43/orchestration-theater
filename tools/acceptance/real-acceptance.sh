@@ -116,6 +116,20 @@
 #            O código que o navegador mostra para colar vai do terminal ao teste por um FIFO (P27b).
 #            Um login que pede terminal (OpenCode) é pulado na hora e fica [N], a menos que
 #            OT_TEST_PROFILES_TERMINAL_LOGIN=wait (P27c). Ctrl+C para o teste inteiro (P27c).
+#   phase7   [proposta] o aceite da Fase 7 no nível real (P21): a TUI compilada num tmux de verdade
+#            (socket e servidor próprios, como o smoke da TUI) contra um daemon real com o Claude Code
+#            (um modelo pequeno) em todos os papéis. O teste faz só o que uma pessoa faria nas teclas:
+#            digita a necessidade no chat, responde às perguntas do Diretor, escolhe "abrir um pull
+#            request" no cartão da entrega e espera a peça chegar a DONE com o PR no CodeHost falso
+#            (phase7-acceptance.real.test.ts). Depois sai pela tecla (Ctrl+Q) e confere que nenhum
+#            processo sobrou (a árvore do painel e os processos dos clientes). Exige tmux no PATH, a
+#            TUI compilada e OT_TEST_CLAUDE_PROFILE_DIR (perfil já logado, só apontado: o script e o
+#            teste nunca leem credencial) e OT_TEST_CLAUDE_MODEL. OT_TEST_REAL_CLIENTS=1,
+#            OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PHASE7=1; lê OT_TEST_PLAY_TIMEOUT_MS do nível play.
+#            NÃO exercita o login oficial (o perfil já está logado) nem o assistente de primeira
+#            execução (o nível automático cobre) e não cria o projeto pela TUI (ela ainda não sabe: o
+#            cenário é aberto pelo daemon). Gasta cota da conta do perfil (a mesma ordem de grandeza
+#            do nível play). Resumo no log com o prefixo [phase7-real].
 #   phase6   [proposta] o aceite da Fase 6 no nível real (P13): UMA peça inteira com UM cliente em
 #            todos os papéis (OT_TEST_PHASE6_CLIENT: claude-code, o padrão, codex ou opencode),
 #            seguida por um cliente de `@otheater/client` como uma tela faria: abre o cenário por
@@ -144,7 +158,7 @@
 #            medição curta, use também OT_TEST_PLAY_TIMEOUT_MS (mínimo 60000).
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -163,7 +177,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -204,11 +218,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|phase6|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
-# Os níveis play e phase6 [proposta] rodam uma peça inteira com um só cliente: mesmas exigências. O
-# play é só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT (claude-code, o padrão).
+case "$level" in clients|prompts|k|play|phase6|phase7|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
+# Os níveis play, phase6 e phase7 [proposta] rodam uma peça inteira com um só cliente: mesmas
+# exigências. O play e o phase7 são só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT
+# (claude-code, o padrão).
 play_like=0
-if [ "$level" = play ] || [ "$level" = phase6 ]; then play_like=1; fi
+if [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ]; then play_like=1; fi
 play_key=CLAUDE
 if [ "$level" = phase6 ]; then
   case "${OT_TEST_PHASE6_CLIENT:-claude-code}" in
@@ -224,7 +239,7 @@ fi
 # minutos (teto de 5m na tentativa). O do nível escape [proposta] também: até 8m por cliente, com
 # três clientes, mais o sandbox subindo e parando.
 if [ -z "$run_timeout" ]; then
-  case "$level" in k|play|phase6|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
+  case "$level" in k|play|phase6|phase7|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -303,6 +318,9 @@ fi
 for tool in pnpm git timeout; do
   if command -v "$tool" >/dev/null 2>&1; then ok "$tool"; else fail "$tool não está no PATH"; fi
 done
+if [ "$level" = phase7 ]; then
+  if command -v tmux >/dev/null 2>&1; then ok "tmux"; else fail "tmux não está no PATH (o nível phase7 roda a TUI num tmux)"; fi
+fi
 if [ -d node_modules ]; then ok "node_modules presente"; else fail "falta node_modules: rode 'pnpm install --frozen-lockfile'"; fi
 
 # ---- clientes (só procura no PATH; não executa nenhum) ------------------------------------------
@@ -315,7 +333,7 @@ k_left_out=()
 declare -A executable=([CLAUDE]=claude-agent-acp [CODEX]=codex-acp [OPENCODE]=opencode)
 for key in CLAUDE CODEX OPENCODE; do
   exe="${executable[$key]}"
-  # Os níveis play e phase6 rodam a peça com um só cliente; os outros não entram.
+  # Os níveis play, phase6 e phase7 rodam a peça com um só cliente; os outros não entram.
   if [ "$play_like" = 1 ] && [ "$key" != "$play_key" ]; then
     printf '  [--]    %s: fora do nível %s (só %s)\n' "$exe" "$level" "${executable[$play_key]}"
     continue
@@ -491,6 +509,9 @@ elif [ "$level" = play ]; then
 elif [ "$level" = phase6 ]; then
   tests=(packages/daemon/src/api/phase6-acceptance.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase6: roda só a peça seguida pelo cliente da API"
+elif [ "$level" = phase7 ]; then
+  tests=(packages/tui/src/phase7-acceptance.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase7: roda só a TUI no tmux com a peça real"
 elif [ "$level" = mcp ]; then
   tests=(packages/daemon/src/execution/mcp-submit.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível mcp: roda só a chamada MCP"
@@ -520,6 +541,8 @@ if [ "$level" = play ]; then
   for t in "${tests[@]}"; do echo "  vitest run $t"; done
 elif [ "$level" = phase6 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE6=1 vitest run --silent=false ${tests[*]}"
+elif [ "$level" = phase7 ]; then
+  echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE7=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = quota ]; then
   echo "Vai rodar: OT_TEST_REAL_QUOTA=1 OT_TEST_QUOTA_OUT=$log_dir/quota-<hora>.json vitest run --silent=false ${tests[*]}"
 elif [ "$level" = profiles ]; then
@@ -552,6 +575,14 @@ if [ "$level" = phase6 ]; then
   if [ -n "${OT_TEST_TURN_TIMEOUT:-}" ]; then
     echo "  MODO DE MEDIÇÃO DO PRAZO POR TURNO: limits.turn_timeout=$OT_TEST_TURN_TIMEOUT, on_turn_timeout=${OT_TEST_ON_TURN_TIMEOUT:-cancel}. O teste não exige a peça em DONE: exige pelo menos um session.turn_timeout, a sessão cortada encerrada (cancel), nenhum processo vivo e o daemon parando sem erro."
   fi
+fi
+if [ "$level" = phase7 ]; then
+  echo "Atenção: o nível phase7 roda a TUI compilada num tmux de verdade (socket próprio) e UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis, tudo pelas teclas: a necessidade no chat, as respostas ao Diretor e a escolha do pull request. Gasta cota da conta do perfil."
+  # [proposta] Estimativa, não medida: a mesma ordem de grandeza da peça do nível play (N88).
+  echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz; com repetições até cerca de 50."
+  echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. A entrega vai para o CodeHost falso: nada vai ao GitHub. O perfil é só apontado: nada é copiado nem lido."
+  echo "  Fica de fora: o login oficial, o assistente de primeira execução (nível automático) e a criação do projeto pela TUI."
+  echo "  O resumo (eventos, caminho da peça, cartões respondidos, tempo, processos) sai no log com o prefixo [phase7-real]."
 fi
 if [ "$level" = quota ]; then
   echo "Atenção: o nível quota LÊ a cota real pela sonda do daemon e NÃO provoca esgotamento. Roda os clientes com sandbox.mode: off (o sandbox padrão recusa o perfil apontado por link e o host da OpenAI; verificado em 2026-11-18). Gasta um turno curtíssimo no Claude Code e outro no OpenCode (o modelo de OT_TEST_CLAUDE_MODEL e OT_TEST_OPENCODE_MODEL; um Haiku basta); o Codex é lido pelo app-server, sem turno."
@@ -625,6 +656,7 @@ printf 'hora\tdisponivel_mb\tswap_livre_mb\n' >"$mem_log"
 export OT_TEST_REAL_CLIENTS=1
 if [ "$level" = play ]; then export OT_TEST_REAL_PLAY=1; else unset OT_TEST_REAL_PLAY; fi
 if [ "$level" = phase6 ]; then export OT_TEST_REAL_PHASE6=1; else unset OT_TEST_REAL_PHASE6; fi
+if [ "$level" = phase7 ]; then export OT_TEST_REAL_PHASE7=1; else unset OT_TEST_REAL_PHASE7; fi
 if [ "$level" = escape ]; then export OT_TEST_REAL_ESCAPE=1; else unset OT_TEST_REAL_ESCAPE; fi
 if [ "$level" = quota ]; then
   export OT_TEST_REAL_QUOTA=1
@@ -666,7 +698,7 @@ if [ "$level" = profiles ]; then
 else
   unset OT_TEST_REAL_PROFILES OT_TEST_PROFILES_CODE_FIFO
 fi
-if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
+if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
   # O teste grava k-measure-<stamp>.* na pasta de logs, com o mesmo carimbo deste log.
@@ -687,7 +719,7 @@ else
   # resposta do modelo) é o que o dono lê; sem --silent=false o vitest esconde o console dos testes
   # que passam [V: rodada de 2026-11-17, só a linha do Codex, que falhou, saiu no log].
   extra=()
-  { [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = phase6 ] || [ "$level" = quota ] || [ "$level" = profiles ]; } && extra=(--silent=false)
+  { [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = quota ] || [ "$level" = profiles ]; } && extra=(--silent=false)
   setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${extra[@]}" "${tests[@]}" >"$log" 2>&1 &
 fi
 runner=$!
@@ -753,7 +785,7 @@ if [ -n "$tailer" ]; then sleep 1; kill "$tailer" 2>/dev/null || true; wait "$ta
 cleanup_code_fifo
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[phase7-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"
