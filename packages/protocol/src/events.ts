@@ -58,6 +58,10 @@ import {
   PromptQueuedPayloadSchema,
 } from './chat-events.js';
 import {
+  ShellCommandFinishedPayloadSchema,
+  ShellCommandStartedPayloadSchema,
+} from './shell-events.js';
+import {
   DecisionAnsweredPayloadSchema,
   DecisionCreatedPayloadSchema,
   DemandTransitionedPayloadSchema,
@@ -708,6 +712,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ChatAskClosedPayloadSchema,
   }),
   defineEventType({
+    type: 'chat.shell_command.started',
+    schemaVersion: 1,
+    payload: ShellCommandStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'chat.shell_command.finished',
+    schemaVersion: 1,
+    payload: ShellCommandFinishedPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.chat_closed',
     schemaVersion: 1,
     payload: ApiChatClosedPayloadSchema,
@@ -898,6 +912,8 @@ export type ChatDirectorReplyPayload = DaemonEventPayloads['chat.director_reply'
 export type ChatDirectorSilentPayload = DaemonEventPayloads['chat.director_silent'];
 export type ChatAskPayload = DaemonEventPayloads['chat.ask'];
 export type ChatAskClosedPayload = DaemonEventPayloads['chat.ask_closed'];
+export type ShellCommandStartedPayload = DaemonEventPayloads['chat.shell_command.started'];
+export type ShellCommandFinishedPayload = DaemonEventPayloads['chat.shell_command.finished'];
 export type ApiChatClosedPayload = DaemonEventPayloads['api.chat_closed'];
 export type ApiChatMessageDroppedPayload = DaemonEventPayloads['api.chat_message_dropped'];
 export type LayoutAdjustedPayload = DaemonEventPayloads['layout.adjusted'];

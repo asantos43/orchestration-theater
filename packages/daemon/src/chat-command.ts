@@ -24,6 +24,8 @@ import {
   type ScenarioSelectionWaitNotice,
   type ScenarioRecoveryNotice,
   type ScenarioSystemMessagePayload,
+  type ShellCommandFinishedPayload,
+  type ShellCommandStartedPayload,
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
@@ -121,6 +123,43 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
   if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
   if (notice.kind === 'director_failover') return renderDirectorFailoverMessage(t, notice);
   return renderRecoveryMessage(t, notice);
+}
+
+/** The line that says a `!` command began (N43, N187). */
+export function renderShellStarted(t: TFunction, started: ShellCommandStartedPayload): string {
+  return t('chat.shellStarted', { place: started.place, command: started.command });
+}
+
+/**
+ * The lines of a `!` command that ended (N43, N187): how it ended, the snippet, what was left out
+ * and what became of it with the Director. No exit code for a command a signal ended.
+ */
+export function renderShellFinished(
+  t: TFunction,
+  result: ShellCommandFinishedPayload,
+  snippet: string,
+): string[] {
+  const lines: string[] = [];
+  const left = result.totalLines - result.shownLines;
+  if (result.outcome === 'failed') {
+    lines.push(t('chat.shellEnded.failed', { error: result.error ?? '' }));
+  } else if (result.outcome === 'timeout') {
+    lines.push(t('chat.shellEnded.timeout', { seconds: (result.durationMs / 1000).toFixed(1) }));
+  } else {
+    lines.push(t('chat.shellEnded.exited', { code: result.exitCode ?? '?' }));
+  }
+  if (snippet !== '') lines.push(...snippet.split('\n').map((line) => `  ${line}`));
+  if (left > 0) {
+    lines.push(
+      t(result.keep === 'tail' ? 'chat.shellCut.tail' : 'chat.shellCut.head', {
+        shown: result.shownLines,
+        total: result.totalLines,
+      }),
+    );
+  }
+  if (result.askedInput) lines.push(t('chat.shellAskedInput'));
+  if (result.context === 'asked') lines.push(t('chat.shellContextAsked'));
+  return lines;
 }
 
 /**
@@ -626,6 +665,12 @@ export async function runChatCommand(
       }
       case 'busy':
         busy = message.busy;
+        return;
+      case 'shell_started':
+        out(renderShellStarted(t, message.command));
+        return;
+      case 'shell_finished':
+        for (const line of renderShellFinished(t, message.result, message.snippet)) out(line);
         return;
       case 'error':
         err(

@@ -123,6 +123,8 @@ describe('daemon event registry', () => {
       'chat.director_silent',
       'chat.ask',
       'chat.ask_closed',
+      'chat.shell_command.started',
+      'chat.shell_command.finished',
       'api.chat_closed',
       'api.chat_message_dropped',
       'layout.adjusted',
