@@ -256,6 +256,28 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
+  packages/adapters/telemetry-sqlite:
+    dependencies:
+      '@otheater/core':
+        specifier: workspace:*
+        version: link:../../core
+      better-sqlite3:
+        specifier: 13.2.0
+        version: 13.2.0
+      kysely:
+        specifier: 0.29.9
+        version: 0.29.9
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: 9.6.0
+        version: 9.6.0
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(yaml@2.9.1))
+
   packages/adapters/usage-ccusage:
     dependencies:
       '@otheater/core':
@@ -382,6 +404,9 @@ importers:
       '@otheater/adapter-store-sqlite':
         specifier: workspace:*
         version: link:../adapters/store-sqlite
+      '@otheater/adapter-telemetry-sqlite':
+        specifier: workspace:*
+        version: link:../adapters/telemetry-sqlite
       '@otheater/adapter-usage-ccusage':
         specifier: workspace:*
         version: link:../adapters/usage-ccusage
