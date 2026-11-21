@@ -48,7 +48,7 @@ export const reduceDecisions: EventReducer<DecisionsState> = (state, event) => {
     }
     case 'decision.created': {
       const payload = payloadOf(DecisionCreatedPayloadSchema, event);
-      if (payload === undefined || payload.decision.state !== 'pending') return state;
+      if (payload?.decision.state !== 'pending') return state;
       const id = payload.decision.scenarioId;
       const list = state.byScenario[id] ?? [];
       if (list.some((decision) => decision.id === payload.decision.id)) return state;
@@ -62,7 +62,7 @@ export const reduceDecisions: EventReducer<DecisionsState> = (state, event) => {
       const id = event.scenarioId;
       if (payload === undefined || id === undefined) return state;
       const list = state.byScenario[id];
-      if (list === undefined || !list.some((decision) => decision.id === payload.decisionId)) {
+      if (!list?.some((decision) => decision.id === payload.decisionId)) {
         return state;
       }
       return {
