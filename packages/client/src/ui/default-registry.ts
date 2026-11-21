@@ -60,16 +60,32 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Ctrl+Shift+Right'], ['Ctrl+Right']),
     },
     {
+      // Tab moves the focus between the chat, its edge, the work panel and the side bar; P9.
+      id: 'layout.focusNext',
+      textKey: 'actions.layout.focusNext',
+      group: 'layout',
+      keys: terminalKeys(['Tab']),
+      bar: { textKey: 'bar.layout.focusNext', order: 25 },
+    },
+    {
+      id: 'layout.focusPrev',
+      textKey: 'actions.layout.focusPrev',
+      group: 'layout',
+      keys: terminalKeys(['Shift+Tab']),
+    },
+    {
       id: 'tabs.add',
       textKey: 'actions.tabs.add',
       group: 'tabs',
       keys: terminalKeys(['Alt+A'], ['Ctrl+T']),
+      bar: { textKey: 'bar.tabs.add', order: 22 },
     },
     {
       id: 'tabs.close',
       textKey: 'actions.tabs.close',
       group: 'tabs',
       keys: terminalKeys(['Alt+W'], ['Ctrl+W']),
+      bar: { textKey: 'bar.tabs.close', order: 24 },
     },
     {
       id: 'decision.answer',

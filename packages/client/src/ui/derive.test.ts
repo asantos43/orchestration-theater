@@ -69,10 +69,13 @@ describe('palette, help and bar are derived from the registry and the keymap', (
     expect(global.map((item) => item.id)).toEqual([
       'layout.toggleSidebar',
       'layout.togglePanel',
+      'tabs.add',
+      'tabs.close',
+      'layout.focusNext',
       'palette.open',
       'app.quit',
     ]);
-    expect(global[2]?.label).toBe('Alt+K');
+    expect(global[5]?.label).toBe('Alt+K');
     const decision = deriveShortcutBar(DEFAULT_UI_REGISTRY, keymap, ['global', 'decision']);
     expect(decision.map((item) => item.id)).toContain('decision.answer');
     // an action with its shortcut taken away leaves the bar

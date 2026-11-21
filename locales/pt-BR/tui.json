@@ -17,7 +17,9 @@
       "toggleSidebar": "Mostrar ou ocultar a barra lateral",
       "togglePanel": "Mostrar ou ocultar o painel de trabalho",
       "narrowChat": "Estreitar o chat",
-      "widenChat": "Alargar o chat"
+      "widenChat": "Alargar o chat",
+      "focusNext": "Mover o foco para a próxima área",
+      "focusPrev": "Mover o foco para a área anterior"
     },
     "tabs": {
       "add": "Abrir uma aba",
@@ -40,7 +42,12 @@
   "bar": {
     "layout": {
       "toggleSidebar": "Barra lateral",
-      "togglePanel": "Painel"
+      "togglePanel": "Painel",
+      "focusNext": "Foco"
+    },
+    "tabs": {
+      "add": "Abrir aba",
+      "close": "Fechar aba"
     },
     "decision": {
       "answer": "Responder"

@@ -17,7 +17,9 @@
       "toggleSidebar": "Show or hide the side bar",
       "togglePanel": "Show or hide the work panel",
       "narrowChat": "Make the chat narrower",
-      "widenChat": "Make the chat wider"
+      "widenChat": "Make the chat wider",
+      "focusNext": "Move the focus to the next area",
+      "focusPrev": "Move the focus to the previous area"
     },
     "tabs": {
       "add": "Open a tab",
@@ -40,7 +42,12 @@
   "bar": {
     "layout": {
       "toggleSidebar": "Side bar",
-      "togglePanel": "Panel"
+      "togglePanel": "Panel",
+      "focusNext": "Focus"
+    },
+    "tabs": {
+      "add": "Open tab",
+      "close": "Close tab"
     },
     "decision": {
       "answer": "Answer"
