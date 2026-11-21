@@ -3,6 +3,7 @@ import {
   API_ROUTES,
   type ApiDecision,
   type ApiEventEnvelope,
+  type ApiOrder,
   type ApiPlay,
   type ApiQuotaStatus,
   type ApiScenario,
@@ -29,6 +30,13 @@ import {
   settleDecisions,
   type DecisionsState,
 } from './decisions.js';
+import {
+  initialOrders,
+  installOrders,
+  reduceOrders,
+  settleOrder,
+  type OrdersState,
+} from './orders.js';
 import { initialPlays, installPlays, reducePlays, settlePlay, type PlaysState } from './plays.js';
 import {
   DEFAULT_EVENTS_KEEP,
@@ -177,6 +185,8 @@ export class DaemonStores {
     initialDecisions(),
   );
   readonly quotas: StoreApi<QuotasState> = createStore<QuotasState>(() => initialQuotas());
+  /** The orders of the Producer (P15 of docs/18), kept by the `directive.*` events. */
+  readonly orders: StoreApi<OrdersState> = createStore<OrdersState>(() => initialOrders());
   readonly events: StoreApi<RecentEventsState> = createStore<RecentEventsState>(() =>
     initialRecentEvents(),
   );
@@ -249,6 +259,11 @@ export class DaemonStores {
       throw error;
     }
     this.#drain(head);
+  }
+
+  /** The client of this daemon, for the commands a screen sends (the stores only read). */
+  get client(): ApiClient {
+    return this.#client;
   }
 
   /** Follows a play: its demands and stages are read at the next refresh and kept after. */
@@ -347,7 +362,7 @@ export class DaemonStores {
     );
     const active = scenarios.filter((scenario) => scenario.state === 'active');
     const playsOption = this.#options.plays ?? 'open';
-    const [perScenarioPlays, perScenarioDecisions, quotas] = await Promise.all([
+    const [perScenarioPlays, perScenarioDecisions, quotas, orders] = await Promise.all([
       Promise.all(
         active.map((scenario) =>
           this.#limit.run(() =>
@@ -376,6 +391,7 @@ export class DaemonStores {
         ),
       ),
       this.#readQuotas(),
+      this.#readAll((query) => this.#client.call(API_ROUTES.listOrders, { query, signal })),
     ]);
     const plays = perScenarioPlays.flat();
     const details: { playId: string; parts: PlayParts }[] =
@@ -398,6 +414,7 @@ export class DaemonStores {
     this.demands.setState(installDemands(details, head), true);
     this.decisions.setState(installDecisions(perScenarioDecisions, head), true);
     this.quotas.setState(installQuotas(quotas, head), true);
+    this.orders.setState(installOrders(orders, head), true);
     if (!this.#recentLoaded) {
       this.events.setState(installRecentEvents(head), true);
       this.#recentLoaded = true;
@@ -461,6 +478,7 @@ export class DaemonStores {
     this.demands.setState((s) => applyEvent(s, event, this.#reduceDemands), true);
     this.decisions.setState((s) => applyEvent(s, event, reduceDecisions), true);
     this.quotas.setState((s) => applyEvent(s, event, reduceQuotas), true);
+    this.orders.setState((s) => applyEvent(s, event, reduceOrders), true);
     this.events.setState((s) => applyEvent(s, event, this.#reduceEvents), true);
     this.status.setState({ cursor: event.id });
   }
@@ -556,6 +574,15 @@ export class DaemonStores {
         },
         settle: (key, revision, value) => {
           this.quotas.setState((s) => settleQuota(s, key, revision, value), true);
+        },
+      }),
+      target<ApiOrder>({
+        name: 'orders',
+        store: this.orders,
+        read: (key, signal) =>
+          notFound(() => call(API_ROUTES.getOrder, { params: { orderId: key }, signal })),
+        settle: (key, revision, value) => {
+          this.orders.setState((s) => settleOrder(s, key, revision, value), true);
         },
       }),
     ];
