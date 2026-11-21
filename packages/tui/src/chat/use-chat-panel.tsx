@@ -272,6 +272,10 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
   const openKey = keyLabel(keymap, 'decision.open') ?? '';
   const stateParts = useMemo((): string[] => {
     const parts: string[] = [];
+    // First, so a line the width of the chat cuts does not hide that the socket is down.
+    if (state.connection !== 'open' && scenarioId !== undefined) {
+      parts.push(t(`layout.chat.connection.${state.connection}`));
+    }
     if (stage !== undefined) {
       parts.push(
         t('layout.chat.stage', {
@@ -295,9 +299,6 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     } else parts.push(t('layout.chat.director.active'));
     const wait = state.waits[0];
     if (wait !== undefined) parts.push(t('layout.chat.waits', { what: waitReason(t, wait) }));
-    if (state.connection !== 'open' && scenarioId !== undefined) {
-      parts.push(t(`layout.chat.connection.${state.connection}`));
-    }
     return parts;
   }, [
     t,
