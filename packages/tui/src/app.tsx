@@ -5,7 +5,12 @@ import { I18nextProvider, useTranslation } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
 import type { DaemonConnector } from './daemon-connection.js';
 import { SUPPORTED_INK_VERSION, type InkPatchOutcome } from './ink-patch.js';
-import { useRawKeys, useTuiKeymap, type TuiKeymap } from './keys/use-keymap.js';
+import {
+  useRawKeys,
+  useTuiKeymap,
+  type KeyEnvironment,
+  type TuiKeymap,
+} from './keys/use-keymap.js';
 import type { ChatMessage } from './layout/chat.js';
 import { Shell } from './layout/shell.js';
 import type { TabContentMap } from './layout/tab-content.js';
@@ -28,6 +33,8 @@ export interface AppProps {
   readonly messages?: readonly ChatMessage[] | undefined;
   /** What each tab of the panel draws; they come in empty and each step fills its own. */
   readonly tabContent?: TabContentMap | undefined;
+  /** The system the keymap adapts to; default: this process (`process.platform` and its env). */
+  readonly keyEnvironment?: KeyEnvironment | undefined;
 }
 
 /**
@@ -68,7 +75,7 @@ function Screen(props: AppProps): ReactNode {
   const { t } = useTranslation();
   const { columns, rows } = useWindowSize();
   const { locale: controller, connector } = props;
-  const keymap = useTuiKeymap(props.settings.keymap);
+  const keymap = useTuiKeymap(props.settings.keymap, props.keyEnvironment);
   const onSettings = useCallback(
     (settings: UiSettings): void => {
       void controller.apply(settings.locale);

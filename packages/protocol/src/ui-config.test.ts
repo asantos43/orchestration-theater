@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   UiClipboardConfigSchema,
+  UiInputConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
   UiRenderConfigSchema,
@@ -64,5 +65,21 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiRenderConfigSchema.safeParse({ inkPatches: [] }).success).toBe(true);
     expect(UiRuntimeConfigSchema.safeParse({ maxOldSpaceMB: 0 }).success).toBe(false);
     expect(UiRuntimeConfigSchema.parse({ maxOldSpaceMB: 512 }).maxOldSpaceMB).toBe(512);
+  });
+
+  it('has the defaults of the text box and refuses what is out of range', () => {
+    expect(UiInputConfigSchema.parse({})).toEqual({
+      paste: { mode: 'marker', lines: 10, chars: 2000 },
+      dropPaths: 'attach',
+      history: { store: 'file', size: 500 },
+      editor: 'auto',
+      maxVisibleLines: 8,
+      image: { tool: 'auto', timeoutMs: 3000, maxBytes: 20 * 1024 * 1024 },
+    });
+    expect(UiInputConfigSchema.parse({ image: { tool: 'wl-paste' } }).image.timeoutMs).toBe(3000);
+    expect(UiInputConfigSchema.safeParse({ paste: { mode: 'always' } }).success).toBe(false);
+    expect(UiInputConfigSchema.safeParse({ image: { tool: 'gimp' } }).success).toBe(false);
+    expect(UiInputConfigSchema.safeParse({ maxVisibleLines: 0 }).success).toBe(false);
+    expect(UiInputConfigSchema.safeParse({ speed: 1 }).success).toBe(false);
   });
 });

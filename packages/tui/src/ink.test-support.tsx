@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { App } from './app.js';
 import type { ChatMessage } from './layout/chat.js';
 import type { TabContentMap } from './layout/tab-content.js';
+import type { KeyEnvironment } from './keys/use-keymap.js';
 import type { ConnectResult, DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
 import {
@@ -84,7 +85,12 @@ export interface RenderAppOptions {
   readonly size?: { readonly columns: number; readonly rows: number } | undefined;
   readonly messages?: readonly ChatMessage[] | undefined;
   readonly tabContent?: TabContentMap | undefined;
+  /** The system the keymap adapts to. Default: Linux with no terminal variables, on every OS. */
+  readonly keyEnvironment?: KeyEnvironment | undefined;
 }
+
+/** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */
+const LINUX_KEYS: KeyEnvironment = { env: {}, platform: 'linux' };
 
 /** A frame is on screen before its passive effects (the key listeners) have run. */
 const SETTLE_MS = 20;
@@ -105,6 +111,7 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       patch={options.patch}
       messages={options.messages}
       tabContent={options.tabContent}
+      keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
       flush={() => {
         flushes += 1;
       }}
