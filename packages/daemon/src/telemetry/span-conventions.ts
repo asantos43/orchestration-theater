@@ -64,6 +64,12 @@ export const OT = {
   client: 'otheater.client',
   role: 'otheater.role',
   traceId: 'otheater.trace_id',
+  /**
+   * What the client had before the receiver put its span under the daemon's tree (Phase 9, P1): the
+   * trace id it used, and the parent span id it had, when it had one.
+   */
+  clientTraceId: 'otheater.client.trace_id',
+  clientParentSpanId: 'otheater.client.parent_span_id',
   /** The state of the play machine a stage is a visit of. */
   stage: 'otheater.stage',
   stageEvent: 'otheater.stage.event',

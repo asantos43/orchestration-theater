@@ -1361,7 +1361,7 @@ describe('telemetry (P1 of Phase 8)', () => {
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
-      receiver: { port: 'auto', max_body: 8 * 1024 * 1024 },
+      receiver: { port: 'auto', max_body: 8 * 1024 * 1024, reparent: 'session' },
       redaction: 'default',
       daemon_spans: { enabled: 'on', waits: 'all' },
       export: 'off',
@@ -1451,10 +1451,26 @@ describe('telemetry (P1 of Phase 8)', () => {
     const config = parseConfig(
       'telemetry:\n  receiver:\n    port: 4318\n    max_body: 1MB\n  redaction: full\n',
     );
-    expect(config.telemetry.receiver).toEqual({ port: 4318, max_body: 1024 * 1024 });
+    expect(config.telemetry.receiver).toEqual({
+      port: 4318,
+      max_body: 1024 * 1024,
+      reparent: 'session',
+    });
     expect(config.telemetry.redaction).toBe('full');
     expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
       'auto',
+    );
+  });
+
+  it('takes the modes of telemetry.receiver.reparent (Phase 9, P1) and refuses another', () => {
+    expect(
+      parseConfig('telemetry:\n  receiver:\n    reparent: session\n').telemetry.receiver.reparent,
+    ).toBe('session');
+    expect(
+      parseConfig("telemetry:\n  receiver:\n    reparent: 'off'\n").telemetry.receiver.reparent,
+    ).toBe('off');
+    expect(() => parseConfig('telemetry:\n  receiver:\n    reparent: always\n')).toThrow(
+      /reparent/,
     );
   });
 
