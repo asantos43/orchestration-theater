@@ -232,7 +232,7 @@ export class PlayRunner {
       if (pausedNow !== null && before !== null) {
         // an abort or a new state makes what was held stale (it was for the work that is gone)
         const stale = record.state !== to || effects.some((effect) => effect.type === 'abort_work');
-        setHeld(persisted, [...(stale ? [] : before.held), ...held]);
+        setHeld(persisted, [...(stale ? [] : heldEffects(before)), ...held]);
       } else if (pausedNow !== null) {
         setHeld(persisted, held);
       }
@@ -304,7 +304,7 @@ export class PlayRunner {
         this.#reconcileDeadlines(playId, paused.mode === 'interrupt' ? {} : context.deadlines);
         this.#restartHeld.set(
           playId,
-          effects.filter((effect) => !paused.held.some((held) => sameEffect(held, effect))),
+          effects.filter((effect) => !heldEffects(paused).some((held) => sameEffect(held, effect))),
         );
         await this.#dispatch([{ type: 'pause_work', mode: paused.mode }], scope);
         return;
@@ -362,7 +362,7 @@ export class PlayRunner {
 
   /** The effects that wait for `RESUME`: the ones held in the snapshot, then the ones of a restart. */
   #heldOf(playId: string, paused: PausedPlay): PlayEffect[] {
-    const all = [...paused.held, ...(this.#restartHeld.get(playId) ?? [])];
+    const all = [...heldEffects(paused), ...(this.#restartHeld.get(playId) ?? [])];
     return all.filter(
       (effect, index) => all.findIndex((other) => sameEffect(other, effect)) === index,
     );
@@ -519,6 +519,11 @@ const BYPASSES_PAUSE: ReadonlySet<PlayEffect['type']> = new Set([
 function setHeld(persisted: JsonObject, held: readonly PlayEffect[]): void {
   const context = persisted.context as { paused?: { held?: unknown } | null } | undefined;
   if (context?.paused != null) context.paused.held = toJson(held.length === 0 ? [] : held);
+}
+
+/** `PausedPlay.held` is typed loosely (see its doc); what the runner holds there is `PlayEffect`s. */
+function heldEffects(paused: PausedPlay): readonly PlayEffect[] {
+  return paused.held as readonly PlayEffect[];
 }
 
 function sameEffect(a: PlayEffect, b: PlayEffect): boolean {

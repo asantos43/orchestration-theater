@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { PlayLimits } from '../config.js';
 import type { CounterKey, CriticalException, PlayState } from './definitions.js';
-import type { PlayEffect } from './effects.js';
 import type { JudgmentPointId } from './judgment.js';
 
 /**
@@ -71,7 +70,11 @@ export interface PausedPlay {
   /** When it was paused (epoch ms, from the event). */
   readonly at: number;
   readonly reason: string | null;
-  readonly held: readonly PlayEffect[];
+  /**
+   * Typed as `{ type }` because `effects.ts` imports this file, so this file cannot name
+   * `PlayEffect`; the runner reads them back as `PlayEffect` through `heldEffects`.
+   */
+  readonly held: readonly { readonly type: string }[];
 }
 
 /**
