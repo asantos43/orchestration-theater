@@ -93,6 +93,21 @@ export const scriptSchema = z.discriminatedUnion('name', [
     /** Also starts a child process (a tool of the turn) and says its pid in a message chunk. */
     child: z.boolean().default(false),
   }),
+  /**
+   * A command with a terminal, as `claude-agent-acp` shows it (P11 of Phase 8): a `tool_call` whose
+   * `_meta.terminal_info` names the terminal, `tool_call_update`s whose `_meta.terminal_output_delta`
+   * carry `chunks` (the whole list `repeat` times), and a last update with `_meta.terminal_exit`.
+   * `delta: false` sends the older `_meta.terminal_output` instead. A test that wants a secret in the
+   * output, or an output past the limit, writes it in `chunks` and `repeat`.
+   */
+  z.strictObject({
+    name: z.literal('terminal'),
+    command: z.string().min(1).default('echo hello'),
+    chunks: z.array(z.string().min(1)).default(['hello\n']),
+    repeat: z.number().int().min(1).max(20_000).default(1),
+    exitCode: z.number().int().nullable().default(0),
+    delta: z.boolean().default(true),
+  }),
   z.strictObject({
     name: z.literal('quota-signal'),
     usedPercent: z.number().min(0).max(100).default(100),
@@ -128,6 +143,7 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'deaf',
   'quota-signal',
   'usage-signal',
+  'terminal',
 ];
 
 /** Thrown when a script spec cannot be parsed or fails validation. */

@@ -37,6 +37,7 @@ describe('parseUiSettings', () => {
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
       setup: { open: 'auto', readTimeoutMs: 5000 },
       newProject: { repo: 'cwd' },
+      sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
     });
   });
 
@@ -128,6 +129,7 @@ describe('parseUiSettings', () => {
       tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
       setup: DEFAULT_UI_SETTINGS.setup,
       newProject: DEFAULT_UI_SETTINGS.newProject,
+      sidebar: DEFAULT_UI_SETTINGS.sidebar,
     });
   });
 
@@ -169,6 +171,20 @@ describe('parseUiSettings', () => {
       DEFAULT_UI_SETTINGS.newProject,
     );
     expect(parseUiSettings({ newProject: 3 }).newProject).toEqual(DEFAULT_UI_SETTINGS.newProject);
+  });
+
+  it('reads ui.sidebar of P11 and falls back key by key', () => {
+    expect(parseUiSettings({}).sidebar).toEqual({ finishedPlays: 'collapsed', finishedLimit: 20 });
+    expect(
+      parseUiSettings({ sidebar: { finishedPlays: 'expanded', finishedLimit: 5 } }).sidebar,
+    ).toEqual({ finishedPlays: 'expanded', finishedLimit: 5 });
+    expect(parseUiSettings({ sidebar: { finishedPlays: 'hidden' } }).sidebar.finishedPlays).toBe(
+      'hidden',
+    );
+    expect(
+      parseUiSettings({ sidebar: { finishedPlays: 'always', finishedLimit: 0 } }).sidebar,
+    ).toEqual(DEFAULT_UI_SETTINGS.sidebar);
+    expect(parseUiSettings({ sidebar: 3 }).sidebar).toEqual(DEFAULT_UI_SETTINGS.sidebar);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {

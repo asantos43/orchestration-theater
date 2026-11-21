@@ -44,7 +44,13 @@ import {
   type SetupFlow,
 } from '../setup/index.js';
 import { Chat, chatMessageRows } from './chat.js';
-import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
+import {
+  useFinishedRows,
+  useLink,
+  usePendingDecisions,
+  useQuotaRows,
+  useScenarioRows,
+} from './data.js';
 import { computeGeometry, steppedChatWidth } from './geometry.js';
 import { Header } from './header.js';
 import { initialRepo, NewProjectPrompt } from './new-project.js';
@@ -52,7 +58,13 @@ import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { Panel, panelContentSize } from './panel.js';
 import type { TabBarHit } from './tab-bar-hit.js';
 import { scrollStepLines } from './scroll.js';
-import { Sidebar, sidebarItems, type SidebarItem } from './sidebar.js';
+import {
+  Sidebar,
+  SIDEBAR_SECTIONS,
+  sidebarItems,
+  type SidebarFinished,
+  type SidebarItem,
+} from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
 import { useWatched } from './use-watched.js';
@@ -155,6 +167,22 @@ export function Shell(props: ShellProps): ReactNode {
   const link = useLink(stores);
   const live = link === 'live';
   const plays = useStoreValue(stores.plays, (s) => s.byId);
+  // The "Terminadas" section (P11 of docs/19): `ui.sidebar.finishedPlays` says whether it exists
+  // and how it starts; the person opens and closes it for the session.
+  const finishedMode = (props.settings ?? DEFAULT_UI_SETTINGS).sidebar.finishedPlays;
+  const finishedLimit = (props.settings ?? DEFAULT_UI_SETTINGS).sidebar.finishedLimit;
+  const finishedRowsNow = useFinishedRows(stores, finishedLimit);
+  const [finishedToggled, setFinishedToggled] = useState<boolean | undefined>(undefined);
+  const finishedOpen = finishedToggled ?? finishedMode === 'expanded';
+  const finished = useMemo(
+    (): SidebarFinished | undefined =>
+      finishedMode === 'hidden' ? undefined : { rows: finishedRowsNow, open: finishedOpen },
+    [finishedMode, finishedRowsNow, finishedOpen],
+  );
+  // The stores read the last finished plays with their snapshot; they only need to be told how many.
+  useEffect(() => {
+    void stores.loadFinishedPlays(finishedMode === 'hidden' ? 0 : finishedLimit);
+  }, [stores, finishedMode, finishedLimit, live]);
 
   const geometry = computeGeometry({
     columns,
@@ -221,8 +249,13 @@ export function Shell(props: ShellProps): ReactNode {
 
   const items = useMemo(
     () =>
-      sidebarItems(scenarioRowsNow, folded, geometry.sidebar.mode === 'rail' ? 'rail' : 'expanded'),
-    [scenarioRowsNow, folded, geometry.sidebar.mode],
+      sidebarItems(
+        scenarioRowsNow,
+        folded,
+        geometry.sidebar.mode === 'rail' ? 'rail' : 'expanded',
+        finished,
+      ),
+    [scenarioRowsNow, folded, geometry.sidebar.mode, finished],
   );
   const cursorInSide = items.some((item) => item.id === sideCursor) ? sideCursor : items[0]?.id;
 
@@ -370,7 +403,11 @@ export function Shell(props: ShellProps): ReactNode {
 
   const activateSideItem = (item: SidebarItem): void => {
     if (item.kind === 'section') {
-      layoutStore.setSectionCollapsed(item.id);
+      if (item.id === SIDEBAR_SECTIONS.finished) setFinishedToggled(!finishedOpen);
+      else layoutStore.setSectionCollapsed(item.id);
+    } else if (item.kind === 'finished') {
+      // A finished play has no screen of its own: the chat goes to the scenario it belongs to.
+      if (item.scenarioId !== undefined) selectScenario(item.scenarioId);
     } else {
       setSelected(item.id);
       setChatOffset(0);
@@ -473,6 +510,9 @@ export function Shell(props: ShellProps): ReactNode {
         setSideCursor(walk(ids, cursorInSide, id === 'sidebar.up' ? -1 : 1));
         return;
       }
+      case 'sidebar.toggleFinished':
+        if (finished !== undefined) setFinishedToggled(!finishedOpen);
+        return;
       case 'sidebar.newProject':
         setNewProject({ initial: initialRepo(projectRepo, cwd) });
         return;
@@ -647,6 +687,7 @@ export function Shell(props: ShellProps): ReactNode {
               height={height}
               focused={focus === 'sidebar'}
               rows={scenarioRowsNow}
+              finished={finished}
               quotas={quotas}
               folded={folded}
               selectedId={selectedRow?.id}

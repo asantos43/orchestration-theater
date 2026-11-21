@@ -65,7 +65,8 @@
       "up": "Subir na barra lateral",
       "down": "Descer na barra lateral",
       "activate": "Abrir o cenário ou recolher a seção",
-      "newProject": "Abrir um novo projeto"
+      "newProject": "Abrir um novo projeto",
+      "toggleFinished": "Abrir ou fechar as peças terminadas"
     },
     "panel": {
       "prevTab": "Ir para a aba anterior",
@@ -190,7 +191,8 @@
     },
     "sidebar": {
       "activate": "Abrir",
-      "newProject": "Novo projeto"
+      "newProject": "Novo projeto",
+      "toggleFinished": "Terminadas"
     },
     "panel": {
       "tabs": "Abas",
@@ -300,6 +302,12 @@
       "title": "Navegação",
       "scenarios": "CENÁRIOS",
       "subscriptions": "ASSINATURAS",
+      "finished": "TERMINADAS",
+      "noFinished": "Nenhuma peça terminada ainda",
+      "finishedState": {
+        "done": "concluída",
+        "cancelled": "cancelada"
+      },
       "empty": "Nenhum cenário ainda",
       "noQuota": "Nenhuma assinatura lida ainda",
       "noReading": "sem leitura",
@@ -554,6 +562,8 @@
     "running": "em andamento",
     "emptyTurn": "Nada registrado neste turno.",
     "more": "... mais {{count}} linhas",
+    "terminalCut": "... saída cortada no limite (events.terminal_output_max), {{bytes}} bytes ficaram de fora",
+    "terminalCutUnknown": "... saída cortada no limite (events.terminal_output_max)",
     "state": {
       "running": "em andamento",
       "closed": "sessão fechada",
