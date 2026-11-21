@@ -126,7 +126,7 @@ export const SetupPlanSchema = z.strictObject({
   flow: SetupFlowSchema,
   /** The `roles.preset` to write; `null` when the flow leaves it as it is. */
   preset: z.enum(ROLE_PRESET_NAMES).nullable(),
-  /** The list of each role after the plan; empty when the plan leaves the lists as they are. */
+  /** The list of each role as it will be after the confirmation (resolved, whether or not written). */
   roles: z.array(SetupRoleListSchema),
   executors: z.array(SetupExecutorSchema),
   budgets: z.array(SetupBudgetSchema),
@@ -151,7 +151,12 @@ export const SetupDetectOutputSchema = z.strictObject({
 
 /** `account`: the registered account the flow brings into the roles. */
 export const SetupAccountInputSchema = z.strictObject({ profileId });
-export const SetupAccountOutputSchema = z.strictObject({ profile: SetupDetectedProfileSchema });
+export const SetupAccountOutputSchema = z.strictObject({
+  profile: SetupDetectedProfileSchema,
+  /** What the catalog of an official client gave for the heads of the preset in force. */
+  discovered: z.array(SetupExecutorSchema),
+  notes: z.array(SetupNoteSchema),
+});
 
 /** `preset`: the preset to apply. */
 export const SetupPresetInputSchema = z.strictObject({ preset: z.enum(ROLE_PRESET_NAMES) });
@@ -188,7 +193,10 @@ export const SetupExecutorsInputSchema = z.strictObject({
 });
 export const SetupExecutorsOutputSchema = z.strictObject({
   executors: z.array(SetupExecutorSchema),
+  /** The caps that will be written: the ones given plus the suggested ones, never one that exists. */
   budgets: z.array(SetupBudgetSchema),
+  /** What the checks of the cadastro said that is not an error (a warning on the model). */
+  notes: z.array(SetupNoteSchema),
 });
 
 /** What the Producer answers at a step: the id says which step, so a stale screen is refused. */

@@ -38,6 +38,10 @@ import {
 } from './role-executors-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 
+/** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
+export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
+export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
+
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
@@ -2026,6 +2030,32 @@ export const DaemonConfigSchema = z
             sync: z.enum(LAYOUT_SYNCS).default('live'),
           })
           .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The setup assistant (architecture 5.7, N121; P4 of docs/18). [proposta] Both keys are what
+     * the assistant proposes; the Producer changes them in the `executors` step or by hand later.
+     */
+    setup: z
+      .strictObject({
+        /**
+         * The cap the `executors` step proposes for an API account that got an Executor and was
+         * given no cap (5.6: an API account should always have one). A step may answer a cap of its
+         * own, or `null` in both fields for "no cap".
+         */
+        suggested_budget: z
+          .strictObject({
+            daily_usd: z.number().gt(0).default(20),
+            monthly_usd: z.number().gt(0).default(200),
+          })
+          .prefault({}),
+        /**
+         * What `confirm` writes of the lists of the roles: `explicit` writes `roles.<role>.executors`
+         * for every role (what the Producer saw at the review stays as it is even if the preset
+         * changes later); `preset` writes only `roles.preset` and the Executors, and the lists keep
+         * following the preset.
+         */
+        role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
       })
       .prefault({}),
     log: z

@@ -7,7 +7,7 @@ import type { CommandRouteDeps } from './deps.js';
 import { redactTree } from './redact.js';
 
 /** The value as the tree `config.yaml` would hold it at `path`, to ask the redaction about it. */
-function treeAt(path: readonly string[], value: JsonValue): JsonObject {
+export function treeAt(path: readonly string[], value: JsonValue): JsonObject {
   let node: JsonValue = value;
   for (const key of [...path].reverse()) node = { [key]: node };
   return node as JsonObject;
