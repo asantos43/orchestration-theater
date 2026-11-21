@@ -9,12 +9,12 @@ import {
   NotFound,
   PermissionDenied,
   type Clock,
-  type LaunchOptions,
   type ProcessLauncher,
   type Store,
 } from '@otheater/core';
 import { buildDaemonEvent, type ShellCommandFinishedPayload } from '@otheater/protocol';
 import { answersOf, type AskApproval } from '../browser/approval.js';
+import type { CommandConfiner } from '../sandbox-wiring.js';
 import type { Logger } from '../logger.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
 import type { AttachmentService } from '../scenarios/attachments.js';
@@ -42,7 +42,7 @@ export interface ShellCommandServiceOptions {
   /** `undefined` on a platform with no launcher: the command is refused. */
   readonly launcher: ProcessLauncher | undefined;
   /** The sandbox of layer 3; `undefined` when there is none (`app.terminal: sandbox` then refuses). */
-  readonly confine: ((launch: LaunchOptions) => Promise<LaunchOptions>) | undefined;
+  readonly confine: CommandConfiner | undefined;
   readonly attachments: Pick<AttachmentService, 'addText' | 'get' | 'read'>;
   readonly channel: Pick<ProducerChannel, 'send'>;
   /** The question of `chat.shell_command.context: ask`; `undefined` refuses that mode. */
@@ -148,6 +148,8 @@ export class ShellCommandService {
         `${String(shell.max_running)} ! commands are already running in this scenario (chat.shell_command.max_running)`,
       );
     }
+    // Only `sandbox` confines; `host` runs as the daemon's own user (the Producer chose it).
+    const confine = terminalMode === 'sandbox' ? o.confine : undefined;
     const repos = await o.store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
     const commandId = `sh_${randomUUID().slice(0, 8)}`;
@@ -172,7 +174,7 @@ export class ShellCommandService {
           logPath,
           logMaxBytes: terminal.log_max_size,
         },
-        terminalMode === 'sandbox' ? o.confine : undefined,
+        confine === undefined ? undefined : (launch) => confine(launch, cwd),
       );
     } catch (error) {
       this.#running.delete(commandId);
@@ -194,9 +196,18 @@ export class ShellCommandService {
   /** The text of the snippet attachment of a finished command; empty when it had no output. */
   async snippetOf(scenarioId: string, attachmentId: string | null): Promise<string> {
     if (attachmentId === null) return '';
-    const record = await this.#o.attachments.get(scenarioId, attachmentId);
-    const content = await this.#o.attachments.read(record);
-    return content.encoding === 'utf8' ? content.content : '';
+    try {
+      const record = await this.#o.attachments.get(scenarioId, attachmentId);
+      const content = await this.#o.attachments.read(record);
+      return content.encoding === 'utf8' ? content.content : '';
+    } catch (failure) {
+      // The chat still learns that the command ended; the output is in the log.
+      this.#o.logger.warn(
+        { err: failure, scenarioId, attachmentId },
+        'the snippet of a ! command could not be read',
+      );
+      return '';
+    }
   }
 
   /** Ends the commands still running (the daemon is stopping) and waits for their last events. */
