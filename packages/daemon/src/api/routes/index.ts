@@ -26,6 +26,7 @@ import { registerScenarioCommands } from './scenario-commands.js';
 import { registerScenarioRoutes } from './scenarios.js';
 import { registerSlashCommands, registerSlashRoutes } from './slash-commands.js';
 import { registerSetupCommands, registerSetupRoutes } from './setup.js';
+import { registerTelemetryRoutes } from './telemetry.js';
 import { registerTrajectoryRoutes } from './trajectories.js';
 import { registerUsageRoutes } from './usage.js';
 
@@ -54,6 +55,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerTrajectoryRoutes(handlers, deps);
   registerAtifRoutes(handlers, deps);
   registerAnalysisRoutes(handlers, deps);
+  registerTelemetryRoutes(handlers, deps);
 }
 
 /**

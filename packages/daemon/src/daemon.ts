@@ -77,7 +77,9 @@ import { FrameworkMcpServer } from './mcp/server.js';
 import { exportsPrometheus } from './telemetry/export-config.js';
 import { MetricsCollector } from './telemetry/metrics.js';
 import { EventMetrics } from './telemetry/metrics-events.js';
+import { PlaySpansService } from './telemetry/play-spans.js';
 import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
+import { TelemetryStatusService } from './telemetry/status.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
@@ -1126,6 +1128,19 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     trajectory,
     atif,
     analysis: analysisService,
+    // P10 (Phase 8): the telemetry panels of the Usage tab. The spans need the base; the state is
+    // told even without it (`off`, `no_base`).
+    playSpans:
+      composition.telemetry === undefined
+        ? undefined
+        : new PlaySpansService({ telemetry: composition.telemetry, plays: store.plays }),
+    telemetryStatus: new TelemetryStatusService({
+      config,
+      store: composition.telemetry,
+      daemonSpans: composition.daemonSpans !== undefined,
+      receiver: () => telemetry?.receiver,
+      exporter: () => telemetry?.exporter?.stats,
+    }),
     attempts: execution?.runner,
     config,
     quota,

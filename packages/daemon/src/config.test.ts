@@ -211,13 +211,30 @@ describe('parseConfig', () => {
       recentEvents: 8,
       hiddenEvents: ['session.update'],
     });
-    expect(ui.usage).toEqual({ groupBy: 'profile', refreshSeconds: 30 });
+    expect(ui.usage).toEqual({
+      groupBy: 'profile',
+      refreshSeconds: 30,
+      sections: ['totals', 'groups', 'budget', 'trend', 'bottlenecks', 'play', 'telemetry'],
+      trendDays: 14,
+      spanRows: 40,
+    });
     const yaml =
       'ui:\n  overview:\n    confirm: off\n  usage:\n    groupBy: executor\n    refreshSeconds: 0\n';
     expect(parseConfig(yaml).ui.overview.confirm).toBe('off');
     expect(parseConfig(yaml).ui.usage.groupBy).toBe('executor');
     expect(parseConfig(yaml).ui.usage.refreshSeconds).toBe(0);
     expect(() => parseConfig('ui:\n  usage:\n    groupBy: day\n')).toThrow(/ui\.usage\.groupBy/);
+    // P10: the sections of the tab, the days of the trend and the rows of the tree of spans
+    const panels = parseConfig(
+      'ui:\n  usage:\n    sections: [telemetry, totals]\n    trendDays: 30\n    spanRows: 100\n',
+    ).ui.usage;
+    expect(panels.sections).toEqual(['telemetry', 'totals']);
+    expect(panels.trendDays).toBe(30);
+    expect(panels.spanRows).toBe(100);
+    expect(() => parseConfig('ui:\n  usage:\n    sections: [costs]\n')).toThrow(
+      /ui\.usage\.sections/,
+    );
+    expect(() => parseConfig('ui:\n  usage:\n    trendDays: 0\n')).toThrow(/ui\.usage\.trendDays/);
   });
 
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {

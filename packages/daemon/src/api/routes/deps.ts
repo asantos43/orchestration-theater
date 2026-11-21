@@ -19,6 +19,8 @@ import type { AtifExporter } from '../../atif/atif-exporter.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
 import type { SlashCommandService } from '../../slash/index.js';
 import type { SetupService } from '../../setup/index.js';
+import type { PlaySpansService } from '../../telemetry/play-spans.js';
+import type { TelemetryStatusService } from '../../telemetry/status.js';
 import type { TrajectoryService } from '../../trajectory/service.js';
 import type { UsageService } from '../../usage/index.js';
 
@@ -51,6 +53,10 @@ export interface ReadRouteDeps {
   readonly atif?: AtifExporter | undefined;
   /** The report of the analysis (P9 of Phase 8); absent: its route answers 503 `unavailable`. */
   readonly analysis?: AnalysisService | undefined;
+  /** The spans of a play (P10 of Phase 8); absent: its route answers 503 `unavailable`. */
+  readonly playSpans?: PlaySpansService | undefined;
+  /** The state of the telemetry (P10 of Phase 8); absent: its route answers 503 `unavailable`. */
+  readonly telemetryStatus?: TelemetryStatusService | undefined;
   /**
    * The runner of the attempts (P25 of docs/18): the list of the attempts of a play asks it for the
    * model and the pause of the ones in flight. Absent, the list answers from the registry alone.
