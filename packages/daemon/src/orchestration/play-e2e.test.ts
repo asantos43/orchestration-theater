@@ -242,7 +242,7 @@ describe('ot chat with the fake Director (P8)', { timeout: 120_000 }, () => {
   );
 
   itWithLauncher(
-    'leaves no file of the old Producer channel and opens only the MCP server and the API server (P8 of docs/17)',
+    'leaves no file of the old Producer channel and opens only the MCP, API and telemetry receiver servers (P8 of docs/17)',
     async () => {
       // A listening server shows up as a `TCPServerWrap` among the active resources of the process.
       const listeners = () =>
@@ -253,8 +253,9 @@ describe('ot chat with the fake Director (P8)', { timeout: 120_000 }, () => {
           [],
         );
         expect(existsSync(join(harness.dataDir, 'api.json'))).toBe(true);
-        // Before P8 the Producer channel was a third loopback server.
-        expect(listeners() - before).toBe(2);
+        // Before P8 the Producer channel was a third loopback server (and since Phase 8, P2, the
+        // OTLP receiver of the clients' telemetry is the third one).
+        expect(listeners() - before).toBe(3);
         return Promise.resolve();
       });
     },

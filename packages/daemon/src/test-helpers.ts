@@ -23,13 +23,17 @@ import type { SituationCorrelation, SituationSink } from './situations.js';
  * What a start with the default sandbox and no client writes on this platform after
  * `daemon.started`: the `api.started` of the API server (P3 of Phase 6), the execution that stays
  * `daemon.notice` (no client) and, where layer 3 is missing (Windows, 5.9), first the
- * `sandbox_unavailable` of the composition, which the log writes before the API starts.
+ * `sandbox_unavailable` of the composition, which the log writes before the API starts. With the
+ * default config the `telemetry.receiver_started` of the OTLP receiver (P2 of Phase 8) comes
+ * after the composition and before the API.
  */
-export async function startNotices(): Promise<('api.started' | 'daemon.notice')[]> {
+export async function startNotices(): Promise<
+  ('api.started' | 'daemon.notice' | 'telemetry.receiver_started')[]
+> {
   const layer3 = await probeSandbox();
   return layer3.ok
-    ? ['api.started', 'daemon.notice']
-    : ['daemon.notice', 'api.started', 'daemon.notice'];
+    ? ['telemetry.receiver_started', 'api.started', 'daemon.notice']
+    : ['daemon.notice', 'telemetry.receiver_started', 'api.started', 'daemon.notice'];
 }
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */
