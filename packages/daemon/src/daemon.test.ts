@@ -151,6 +151,10 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.wakeups;
   }
 
+  get setupRuns(): Store['setupRuns'] {
+    return this.inner.setupRuns;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }
