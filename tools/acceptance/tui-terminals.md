@@ -64,6 +64,9 @@ Padrão `full`. Teste também `wheel` e `off` (chave `ui.mouse` na configuraçã
    seção; clique numa entrada da barra lateral; arraste a borda do chat.
    **Esperado:** a roda rola o chat, o clique troca a aba, dobra e desdobra a seção, abre o item e a borda
    acompanha o mouse. O teclado continua fazendo tudo.
+   Com um cartão de decisão aberto (por exemplo `#ot-play write alpha #outcome:exhausted`), clique numa opção:
+   **Esperado:** numa escolha simples a opção é respondida; numa múltipla ela é marcada ou desmarcada e o
+   Enter responde (com `ui.chat.decisionClick` em `select`, o primeiro clique só move o cursor).
 2. **Faça** (`wheel`): repita.
    **Esperado:** só a roda age; clique e arrasto não fazem nada na TUI, e a seleção normal do terminal volta.
 3. **Faça** (`off`): repita.
@@ -150,6 +153,7 @@ aplica ao terminal). O que não foi conferido fica `[N]`.
 | 2. Teclas: `Alt+B`, `Alt+F`, `Alt+Backspace` | [N] | [N] | [N] | [N] |
 | 2. Teclas: `PageUp`, `PageDown`, `Ctrl+Home`, `Ctrl+End` | [N] | [N] | [N] | [N] |
 | 3. Mouse `full` | [N] | [N] | [N] | [N] |
+| 3. Mouse `full`, clique no cartão de decisão | [N] | [N] | [N] | [N] |
 | 3. Mouse `wheel` e `off` | [N] | [N] | [N] | [N] |
 | 4. Cópia `osc52` | [N] | [N] | [N] | [N] |
 | 4. Cópia Shift+arrastar (Option no macOS) | [N] | [N] | [N] | [N] |
