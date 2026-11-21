@@ -137,10 +137,19 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
         CLIENT_IDS.map((client) => [client, sessionMbOf(config.pool, client)]),
       ),
     },
-    timeoutMs: config.limits.demand_timeout,
-    timeoutMaxMs: config.limits.demand_timeout_max,
-    turnTimeoutMs: config.limits.turn_timeout,
-    onTurnTimeout: config.limits.on_turn_timeout,
+    // N188: getters, so `limits.*` follow `PUT /v1/config` at the next attempt, without a restart.
+    get timeoutMs() {
+      return config.limits.demand_timeout;
+    },
+    get timeoutMaxMs() {
+      return config.limits.demand_timeout_max;
+    },
+    get turnTimeoutMs() {
+      return config.limits.turn_timeout;
+    },
+    get onTurnTimeout() {
+      return config.limits.on_turn_timeout;
+    },
     checkpointEveryMs: config.resume.checkpoint_every,
     checkpointEditBatch: config.resume.checkpoint_edit_batch,
     maxResumes: config.resume.max_resumes,

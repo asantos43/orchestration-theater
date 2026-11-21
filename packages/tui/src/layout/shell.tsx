@@ -7,6 +7,7 @@ import {
   type ApiClient,
   type DaemonStores,
   type LayoutStore,
+  tabContextOf,
   type UiContext,
   type UiTranslate,
 } from '@otheater/client';
@@ -439,14 +440,20 @@ export function Shell(props: ShellProps): ReactNode {
       ? ['global', focus === 'chat' && chat.decisionFocused ? 'decision' : FOCUS_CONTEXT[focus]]
       : ['overlay'];
   const barItems = deriveShortcutBar(registry, tuiKeymap.keymap, contexts);
+  // The panel's keys and those of the open tab (each tab has a context of its own).
+  const panelTabContext = tabContextOf(currentTab);
   const panelFooter = useMemo(
     (): Hint[] =>
-      deriveShortcutBar(registry, tuiKeymap.keymap, ['panel']).map((item) => ({
+      deriveShortcutBar(
+        registry,
+        tuiKeymap.keymap,
+        panelTabContext === undefined ? ['panel'] : ['panel', panelTabContext],
+      ).map((item) => ({
         id: item.id,
         label: item.label,
         text: translateUiText(ut, item.text),
       })),
-    [registry, tuiKeymap, ut],
+    [registry, tuiKeymap, ut, panelTabContext],
   );
   const paletteRows = useMemo(
     () => derivePalette(registry, tuiKeymap.keymap),

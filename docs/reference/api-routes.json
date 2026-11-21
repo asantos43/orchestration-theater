@@ -1152,14 +1152,18 @@
       "method": "PUT",
       "path": "/v1/config",
       "kind": "json",
-      "summary": "Edits keys of the configuration file with the validation of a start; applies on restart",
+      "summary": "Edits keys of the configuration file with the validation of a start; ui, chat, limits and roles apply at once, the rest on restart",
       "pathParams": [],
       "response": {
         "type": "object",
         "properties": {
           "appliesOn": {
             "type": "string",
-            "const": "restart"
+            "enum": [
+              "hot",
+              "restart",
+              "mixed"
+            ]
           },
           "set": {
             "type": "array",
@@ -1172,12 +1176,26 @@
             "items": {
               "type": "string"
             }
+          },
+          "hot": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restart": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "appliesOn",
           "set",
-          "removed"
+          "removed",
+          "hot",
+          "restart"
         ],
         "additionalProperties": false
       },

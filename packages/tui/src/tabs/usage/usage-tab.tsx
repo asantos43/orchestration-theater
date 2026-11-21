@@ -142,7 +142,7 @@ function UsageTab(props: TabContentProps): ReactNode {
   useRawKeys(
     (event: KeyEvent) => {
       if (event.combo === undefined) return;
-      if (host.keymap.match(event.combo, ['global', 'panel']) === 'usage.refresh') reader.refresh();
+      if (host.keymap.match(event.combo, ['usage']) === 'usage.refresh') reader.refresh();
     },
     { isActive: focused && host.client !== undefined },
   );

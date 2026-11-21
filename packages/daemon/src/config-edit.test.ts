@@ -104,4 +104,42 @@ describe('editConfigFile', () => {
     await expect(editConfigFile(path, () => undefined)).rejects.toBeInstanceOf(InvalidInput);
     expect(await readFile(path, 'utf8')).toBe(text);
   });
+
+  it('keeps edits that overlap, from different callers, one after the other (the race of P4 and PUT /v1/config)', async () => {
+    const { path: file } = await fileWith('backup:\n  when: manual\n');
+    const keys = ['api', 'directives', 'pause', 'chat', 'limits'] as const;
+    const values: Record<(typeof keys)[number], [string[], unknown]> = {
+      api: [['api', 'idempotency_ttl'], '1h'],
+      directives: [['directives', 'timezone'], 'UTC'],
+      pause: [['pause', 'mode'], 'interrupt'],
+      chat: [['chat', 'presence'], 'never'],
+      limits: [['limits', 'submit_retries'], 3],
+    };
+    await Promise.all(
+      keys.map((key) =>
+        editConfigFile(file, (editor) => {
+          editor.set(...values[key]);
+        }),
+      ),
+    );
+    const written = parse(await readFile(file, 'utf8')) as Record<string, Record<string, unknown>>;
+    expect(written.api?.idempotency_ttl).toBe('1h');
+    expect(written.directives?.timezone).toBe('UTC');
+    expect(written.pause?.mode).toBe('interrupt');
+    expect(written.chat?.presence).toBe('never');
+    expect(written.limits?.submit_retries).toBe(3);
+  });
+
+  it('lets a failed edit pass without blocking the ones behind it', async () => {
+    const { path: file } = await fileWith('backup:\n  when: manual\n');
+    const bad = editConfigFile(file, (editor) => {
+      editor.set(['api', 'idempotency_ttl'], 'whenever');
+    });
+    const good = editConfigFile(file, (editor) => {
+      editor.set(['limits', 'submit_retries'], 4);
+    });
+    await expect(bad).rejects.toBeInstanceOf(InvalidInput);
+    await expect(good).resolves.toBeDefined();
+    expect(await readFile(file, 'utf8')).toContain('submit_retries: 4');
+  });
 });
