@@ -11,7 +11,9 @@ import {
   type UiContext,
   type UiTranslate,
 } from '@otheater/client';
+import { API_ROUTES } from '@otheater/protocol';
 import { Box, Text, useApp, useWindowSize } from 'ink';
+import { randomUUID } from 'node:crypto';
 import {
   useCallback,
   useEffect,
@@ -33,7 +35,7 @@ import {
   type UiTuiLayoutSettings,
 } from '../settings.js';
 import { useStoreValue, type ReadableStore } from '../use-store-value.js';
-import { useChatPanel, type ChatPanelConfig } from '../chat/use-chat-panel.js';
+import { useChatPanel, type ChatNewProject, type ChatPanelConfig } from '../chat/use-chat-panel.js';
 import {
   SetupScreen,
   firstRunNeeded,
@@ -45,6 +47,7 @@ import { Chat, chatMessageRows } from './chat.js';
 import { useLink, usePendingDecisions, useQuotaRows, useScenarioRows } from './data.js';
 import { computeGeometry, steppedChatWidth } from './geometry.js';
 import { Header } from './header.js';
+import { initialRepo, NewProjectPrompt } from './new-project.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { Panel, panelContentSize } from './panel.js';
 import type { TabBarHit } from './tab-bar-hit.js';
@@ -106,6 +109,8 @@ export interface ShellProps {
    * Default: `settings.setup`.
    */
   readonly setupGate?: SetupGate | undefined;
+  /** [P22] The folder the TUI was opened in, where "new project" starts; default: this process's. */
+  readonly cwd?: string | undefined;
 }
 
 /** `ui.setup` for the gate of the first run, or `pending` while the daemon's one is being read. */
@@ -135,6 +140,9 @@ export function Shell(props: ShellProps): ReactNode {
   const capture = useRef(false);
   // The setup assistant (P17) takes the whole screen while it is open.
   const [assistant, setAssistant] = useState<SetupFlow | undefined>(undefined);
+  // The prompt of "new project" (P22): what its field starts with, while it is open.
+  const [newProject, setNewProject] = useState<{ readonly initial: string } | undefined>(undefined);
+  const cwd = props.cwd ?? process.cwd();
   const settings = props.settings ?? DEFAULT_UI_SETTINGS;
   const setupApi = useMemo(
     () => props.setupApi ?? (props.client === undefined ? undefined : setupApiOf(props.client)),
@@ -218,6 +226,37 @@ export function Shell(props: ShellProps): ReactNode {
   );
   const cursorInSide = items.some((item) => item.id === sideCursor) ? sideCursor : items[0]?.id;
 
+  // "New project" (P22): the same opening as `ot chat --type project --repo .`, and the screen goes to it.
+  const selectScenario = useCallback((id: string): void => {
+    setSelected(id);
+    setChatOffset(0);
+    setFocus('chat');
+  }, []);
+  const projectRepo = settings.newProject.repo;
+  const chatNewProject = useMemo(
+    (): ChatNewProject => ({
+      cwd,
+      prompt: () => {
+        setNewProject({ initial: initialRepo(projectRepo, cwd) });
+      },
+      opened: selectScenario,
+    }),
+    [cwd, projectRepo, selectScenario],
+  );
+  const projectClient = props.client ?? props.chat.client;
+  const openProject = useCallback(
+    async (repo: string): Promise<void> => {
+      if (projectClient === undefined) throw new Error(t('layout.newProject.noConnection'));
+      const opened = await projectClient.call(API_ROUTES.openScenario, {
+        body: { type: 'project', repo },
+        headers: { 'idempotency-key': randomUUID() },
+      });
+      selectScenario(opened.scenario.id);
+      setNotice(t('layout.newProject.opened', { name: opened.scenario.name }));
+    },
+    [projectClient, selectScenario, t],
+  );
+
   const chat = useChatPanel({
     stores,
     config: props.chat,
@@ -225,7 +264,12 @@ export function Shell(props: ShellProps): ReactNode {
     keymap: tuiKeymap,
     width: Math.max(1, geometry.chat.width - 2),
     height: geometry.bodyHeight,
-    active: focus === 'chat' && overlay === undefined && assistant === undefined,
+    active:
+      focus === 'chat' &&
+      overlay === undefined &&
+      assistant === undefined &&
+      newProject === undefined,
+    newProject: chatNewProject,
   });
   const messageRows = chatMessageRows(geometry.bodyHeight, chat.inputRows);
   const step = scrollStepLines(tuning.scrollStep, messageRows);
@@ -429,6 +473,9 @@ export function Shell(props: ShellProps): ReactNode {
         setSideCursor(walk(ids, cursorInSide, id === 'sidebar.up' ? -1 : 1));
         return;
       }
+      case 'sidebar.newProject':
+        setNewProject({ initial: initialRepo(projectRepo, cwd) });
+        return;
       case 'sidebar.activate': {
         const item = items.find((candidate) => candidate.id === cursorInSide);
         if (item !== undefined) activateSideItem(item);
@@ -621,6 +668,9 @@ export function Shell(props: ShellProps): ReactNode {
               onToggle={() => {
                 runAction('layout.toggleSidebar');
               }}
+              onNewProject={() => {
+                runAction('sidebar.newProject');
+              }}
             />
           )}
           <Chat
@@ -737,6 +787,18 @@ export function Shell(props: ShellProps): ReactNode {
             onPick={(id) => {
               setOverlay(undefined);
               showPanel(id);
+            }}
+          />
+        )}
+        {newProject !== undefined && (
+          <NewProjectPrompt
+            screen={screen}
+            initial={newProject.initial}
+            cwd={cwd}
+            open={openProject}
+            capture={capture}
+            onClose={() => {
+              setNewProject(undefined);
             }}
           />
         )}

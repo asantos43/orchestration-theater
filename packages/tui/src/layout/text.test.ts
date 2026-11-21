@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { breakLine, cellWidth } from './text.js';
+import { breakLine, cellWidth, clipStart } from './text.js';
 
 describe('breakLine', () => {
   it('leaves a line that fits as it is, with its spaces', () => {
@@ -20,5 +20,23 @@ describe('breakLine', () => {
     // A width of zero or one cell still ends.
     expect(breakLine('abc', 0)).toEqual(['a', 'b', 'c']);
     expect(breakLine('日日', 1).join('')).toBe('日日');
+  });
+});
+
+describe('clipStart', () => {
+  it('keeps a text that fits', () => {
+    expect(clipStart('/tmp/repo', 9)).toBe('/tmp/repo');
+    expect(clipStart('', 3)).toBe('');
+  });
+
+  it('keeps the end after an ellipsis, in the width', () => {
+    expect(clipStart('/private/var/folders/repo', 8)).toBe('…rs/repo');
+    expect(cellWidth(clipStart('/private/var/folders/repo', 8))).toBeLessThanOrEqual(8);
+    expect(clipStart('abcdef', 1)).toBe('…');
+    expect(clipStart('abcdef', 0)).toBe('');
+  });
+
+  it('counts wide characters by their cells', () => {
+    expect(clipStart('ab漢字', 4)).toBe('…字');
   });
 });

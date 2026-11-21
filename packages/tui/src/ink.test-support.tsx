@@ -100,6 +100,8 @@ export interface RenderAppOptions {
   readonly mouseWrites?: string[] | undefined;
   /** The ports of the copy; the test one is Linux with no tool and no tmux, so only OSC 52 and `system` failing are reachable. */
   readonly mouseClipboard?: MouseLayerProps['clipboard'];
+  /** The folder the TUI was opened in, where "new project" starts (P22). Default: the process's. */
+  readonly cwd?: string | undefined;
 }
 
 /**
@@ -137,6 +139,7 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       tabContent={options.tabContent}
       setupApi={options.setupApi}
       keyEnvironment={options.keyEnvironment ?? LINUX_KEYS}
+      cwd={options.cwd}
       mouseTerminal={
         options.mouseWrites === undefined
           ? undefined

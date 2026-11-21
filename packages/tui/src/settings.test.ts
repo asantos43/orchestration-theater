@@ -36,6 +36,7 @@ describe('parseUiSettings', () => {
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
       setup: { open: 'auto', readTimeoutMs: 5000 },
+      newProject: { repo: 'cwd' },
     });
   });
 
@@ -123,6 +124,7 @@ describe('parseUiSettings', () => {
       clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
       tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
       setup: DEFAULT_UI_SETTINGS.setup,
+      newProject: DEFAULT_UI_SETTINGS.newProject,
     });
   });
 
@@ -154,6 +156,16 @@ describe('parseUiSettings', () => {
       DEFAULT_UI_SETTINGS.setup,
     );
     expect(parseUiSettings({ setup: 3 }).setup).toEqual(DEFAULT_UI_SETTINGS.setup);
+  });
+
+  it('reads ui.newProject of P22 and falls back key by key', () => {
+    expect(parseUiSettings({}).newProject).toEqual({ repo: 'cwd' });
+    expect(parseUiSettings({ newProject: { repo: 'git_root' } }).newProject.repo).toBe('git_root');
+    expect(parseUiSettings({ newProject: { repo: 'empty' } }).newProject.repo).toBe('empty');
+    expect(parseUiSettings({ newProject: { repo: 'home' } }).newProject).toEqual(
+      DEFAULT_UI_SETTINGS.newProject,
+    );
+    expect(parseUiSettings({ newProject: 3 }).newProject).toEqual(DEFAULT_UI_SETTINGS.newProject);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {
