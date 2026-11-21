@@ -73,7 +73,7 @@ Não entram **[proposta]**:
 | P3 | Clientes e `fake-agent` mandam ao receptor (N213) | P0, N212 | P1, P5, P11 | concluído (PR #243, 803fb50) |
 | P4 | Spans do daemon (N214) | P1 | P2, P6 | concluído (PR #249, 7fa8685) |
 | P5 | ATIF: schema zod e exportador (N219) | P0 | P1, P3, P11 | concluído (PR #244, ad8bc79) |
-| P6 | Validação pelo `TrajectoryValidator` do Harbor (N215) | P5 | P2, P4 | em PR (#252) |
+| P6 | Validação pelo `TrajectoryValidator` do Harbor (N215) | P5 | P2, P4 | concluído (#252, d40b20d) |
 | P7 | Exportação: OTLP para fora e `/metrics` (N70, N218) | P2, P4 | P9 | por fazer |
 | P8 | Retenção e expurgo (N216) | P9 | P10, P12 | por fazer |
 | P9 | Análise do sistema (N55, N217) | P4 | P7 | por fazer |
