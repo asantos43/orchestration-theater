@@ -22,6 +22,7 @@ export {
   type OpenCodeModelCatalogOptions,
   type ParsedModels,
 } from './model-catalog.js';
+export { OPENCODE_CONFIG_CONTENT_ENV, opencodeOtelEnv } from './otel.js';
 export {
   normalizeOpenCodeError,
   normalizeOpenCodeUpdate,

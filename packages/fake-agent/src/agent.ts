@@ -25,10 +25,16 @@ import {
   type QuotaExhaustedData,
   type QuotaSignalParams,
 } from '@otheater/protocol';
+import { z } from 'zod';
 import { playEscape } from './escape-scripts.js';
 import { McpClient, type SessionMcpServer } from './mcp-client.js';
+import { type FakeOtel, type OtelTurn } from './otel.js';
 import { directorHangs, directorQuotaFailure, playRolePlay } from './role-play.js';
 import { parsePrompt, ScriptError, type Script } from './scripts.js';
+
+/** `session/set_title` is an unstable method of ACP: the SDK has no handler slot for it. */
+const SET_TITLE_METHOD = 'session/set_title';
+const setTitleParamsSchema = z.object({ sessionId: z.string(), title: z.string() });
 
 export const FAKE_AGENT_NAME = 'otheater-fake-agent';
 export const FAKE_AGENT_VERSION = '0.0.0';
@@ -42,6 +48,12 @@ export interface FakeAgentOptions {
    * the fake agent says nothing outside a prompt turn.
    */
   updatesOnConfig?: boolean;
+  /**
+   * Where the telemetry goes (Phase 8, P3): one span per turn, the token metrics and one log per
+   * tool call, as OTLP/JSON. Default none: the library never reads the environment, the binary
+   * builds it from `OTEL_*` ({@link FakeOtel.fromEnv}).
+   */
+  otel?: FakeOtel;
 }
 
 /** The commands the fake agent announces when `updatesOnConfig` is on. */
@@ -56,6 +68,8 @@ interface Session {
   /** Aborted by `session/cancel`; present only while a prompt is running. */
   turn: AbortController | undefined;
   toolCalls: number;
+  /** The title the client set (`session/set_title`). */
+  title: string | undefined;
   /** The MCP servers of `session/new` or `session/load`: HTTP with its headers, or stdio. */
   mcpServers: SessionMcpServer[];
 }
@@ -66,6 +80,8 @@ interface TurnContext {
   session: Session;
   signal: AbortSignal;
   text: string;
+  /** The telemetry of the turn, when the agent has an exporter. */
+  otel?: OtelTurn;
 }
 
 const ALLOW: PermissionOption = { optionId: 'allow', name: 'Allow', kind: 'allow_once' };
@@ -109,6 +125,11 @@ const CANCELLED: PromptResponse = { stopReason: 'cancelled' };
 const END_TURN: PromptResponse = { stopReason: 'end_turn' };
 
 function update(turn: TurnContext, content: SessionUpdate): Promise<void> {
+  if (content.sessionUpdate === 'tool_call') {
+    turn.otel?.toolCall(content.title, content.toolCallId);
+  } else if (content.sessionUpdate === 'agent_message_chunk' && content.content.type === 'text') {
+    turn.otel?.outputText(content.content.text.length);
+  }
   return turn.client.notify(methods.client.session.update, {
     sessionId: turn.sessionId,
     update: content,
@@ -672,6 +693,11 @@ async function playUsageSignal(
   script: Extract<Script, { name: 'usage-signal' }>,
 ): Promise<PromptResponse> {
   const cost = script.costUsd === undefined ? {} : { costUsd: script.costUsd };
+  turn.otel?.usage({
+    model: script.model,
+    inputTokens: script.inputTokens * script.repeat,
+    outputTokens: script.outputTokens * script.repeat,
+  });
   for (let sent = 0; sent < script.repeat; sent += 1) {
     if (turn.signal.aborted) return CANCELLED;
     const params: QuotaSignalParams = {
@@ -737,6 +763,7 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       config: new Map(),
       turn: undefined,
       toolCalls: 0,
+      title: undefined,
       mcpServers: mcpServersOf(mcpServers),
     });
   };
@@ -774,6 +801,11 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       // No history to replay: the fake agent only recreates the session state.
       open(params.sessionId, params.cwd, params.mcpServers);
       return { configOptions: configOptionsOf(find(params.sessionId)) };
+    })
+    .onRequest(SET_TITLE_METHOD, setTitleParamsSchema, ({ params }) => {
+      // What Codex takes before the first prompt: a titled session opens no extra thread.
+      find(params.sessionId).title = params.title;
+      return {};
     })
     .onRequest(methods.agent.session.setConfigOption, async ({ params, client }) => {
       const session = find(params.sessionId);
@@ -817,19 +849,31 @@ export function createFakeAgent(options: FakeAgentOptions = {}): AgentApp {
       const script = parsed.script ?? options.defaultScript ?? ({ name: 'echo' } as const);
       const controller = new AbortController();
       session.turn = controller;
+      const otel = options.otel?.beginTurn({
+        sessionId: params.sessionId,
+        script: script.name,
+        model: session.config.get('model') ?? 'fake-model',
+        promptChars: raw.length,
+      });
+      let stopReason = 'error';
       try {
-        return await play(
+        const response = await play(
           {
             client,
             sessionId: params.sessionId,
             session,
             signal: AbortSignal.any([controller.signal, signal]),
             text: parsed.text,
+            ...(otel === undefined ? {} : { otel }),
           },
           script,
         );
+        stopReason = response.stopReason;
+        return response;
       } finally {
         session.turn = undefined;
+        // After the turn, before its answer is gone: the receiver has the turn when the client does.
+        await otel?.end(stopReason);
       }
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => {

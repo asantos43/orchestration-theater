@@ -228,6 +228,12 @@ export type SessionSetup =
       readonly meta?: unknown;
       /** Config option id to value, applied with `session/set_config_option`. */
       readonly configOptions: Readonly<Record<string, string>>;
+      /**
+       * Additive (Phase 8, P3): the title the transport sets with `session/set_title` right after
+       * `session/new`/`session/load`, before the first prompt. Codex (`codex-acp`) opens one more
+       * model thread to write a title when the session has none; with a title it does not.
+       */
+      readonly title?: string;
     }
   | {
       readonly via: 'headless';

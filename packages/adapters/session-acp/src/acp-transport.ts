@@ -45,6 +45,9 @@ export const DEFAULT_START_TIMEOUT_MS = 30_000;
 
 /** ACP `resource not found`: the code a client answers `session/load` with for a conversation it does not have. */
 const ACP_RESOURCE_NOT_FOUND = -32002;
+/** `session/set_title` (unstable in ACP; the SDK's stable `methods` does not list it). */
+const SET_TITLE_METHOD = 'session/set_title';
+
 /** JSON-RPC `invalid params`: what a client answers `session/set_config_option` with for an id or value it does not offer. */
 const JSON_RPC_INVALID_PARAMS = -32602;
 
@@ -79,6 +82,11 @@ export type AcpTransportWarning =
   | { readonly kind: 'permission_handler_threw'; readonly error: unknown }
   | { readonly kind: 'extension_handler_threw'; readonly method: string; readonly error: unknown }
   | { readonly kind: 'agent_info_handler_threw'; readonly error: unknown }
+  /**
+   * The client refused `session/set_title` (the setup asked for a title) or does not know it. The
+   * session opens without the title. [proposta]
+   */
+  | { readonly kind: 'set_title_failed'; readonly error: unknown }
   /**
    * A `session/update` or `session/request_permission` named a session this connection never had
    * (not one it has closed, and not while a `session/new` is still answering). The message is
@@ -447,6 +455,7 @@ class AcpDriver implements SessionDriver {
  * 2. `session/new` with the worktree, the HTTP MCP servers and the `_meta` of the setup, or
  *    `session/load` when the client announced `loadSession`.
  * 3. `session/set_config_option` for each config option of the setup.
+ * 4. `session/set_title` when the setup has a title (a client that refuses it still opens).
  *
  * Then `session/update` goes through `normalizer.normalizeUpdate` to the listeners,
  * `session/request_permission` goes to `onPermission` (layer 2), a failure goes through
@@ -493,7 +502,7 @@ export class AcpTransport implements SessionTransport {
     if (params.setup.via !== 'acp') {
       throw new InvalidInput(`the acp transport needs an acp setup, got ${params.setup.via}`);
     }
-    const { meta, configOptions } = params.setup;
+    const { meta, configOptions, title } = params.setup;
     if (meta !== undefined && !isRecord(meta)) {
       throw new InvalidInput('the _meta of the session setup must be an object');
     }
@@ -514,7 +523,7 @@ export class AcpTransport implements SessionTransport {
     );
     try {
       return await Promise.race([
-        this.#handshake(shared, params, route, known, loadId, meta, configOptions),
+        this.#handshake(shared, params, route, known, loadId, meta, configOptions, title),
         timeout.promise,
       ]);
     } catch (error) {
@@ -640,6 +649,7 @@ export class AcpTransport implements SessionTransport {
     loadId: string | undefined,
     meta: unknown,
     configOptions: Readonly<Record<string, string>>,
+    title: string | undefined,
   ): Promise<ManagedAgentSession> {
     const options = this.#options;
     const { connection } = shared;
@@ -699,6 +709,15 @@ export class AcpTransport implements SessionTransport {
       });
       if (Array.isArray(answer.configOptions)) {
         session.updateConfigOptions(configOptionsOf(answer.configOptions));
+      }
+    }
+    if (title !== undefined) {
+      // Before the first prompt: Codex writes a title with an extra model call when it has none.
+      try {
+        // Not in the stable protocol of the SDK (v1): the method name goes as text.
+        await connection.agent.request(SET_TITLE_METHOD, { sessionId, title });
+      } catch (error) {
+        options.onWarning?.({ kind: 'set_title_failed', error });
       }
     }
     if (route.abandoned) throw new AdapterUnavailable('the session start was given up');

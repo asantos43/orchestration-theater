@@ -6,6 +6,7 @@ import {
   type ProfileCli,
   type AcpExtensionHandler,
   type ClientAdapterOptions,
+  type ClientOtel,
   type ClientCapabilities,
   type Clock,
   type ConformanceProbe,
@@ -36,6 +37,7 @@ import {
   type LoginRun,
 } from './official-login.js';
 import { normalizeClaudeError } from './normalize-error.js';
+import { withClaudeOtel } from './otel.js';
 import {
   normalizeClaudeUpdate,
   rateLimitExtrasOf,
@@ -243,6 +245,11 @@ export class ClaudeCodeAdapter extends ClientAdapter {
       // later, by `session.setConfig`, so it wins.
       configOptions: { mode: sessionModeOf(policy) },
     };
+  }
+
+  /** Telemetry of this client belongs to the session (`_meta.claudeCode.options.env`), see {@link withClaudeOtel}. */
+  protected override otelSetup(setup: SessionSetup, otel: ClientOtel): SessionSetup {
+    return withClaudeOtel(setup, otel);
   }
 
   /**
