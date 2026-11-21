@@ -103,7 +103,7 @@ export async function makeWorkspaceRig(parts: {
       return head;
     },
     async dispose() {
-      await rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     },
   };
 }
