@@ -131,6 +131,26 @@ describe('AttemptRunner, pause and resume of an Actor (N176)', () => {
   );
 
   it(
+    'tells the model and who paused a live attempt, and nothing about one it does not hold (P25)',
+    async () => {
+      const r = await rig();
+      const running = r.runner.run(specOf(r, '#script:hang'));
+      await untilHangs(r, 1);
+      expect(r.runner.liveAttempt(ATTEMPT)).toEqual({
+        model: expect.any(String) as string,
+        paused: undefined,
+      });
+      await r.runner.pauseAttempt(ATTEMPT, 'play');
+      expect(r.runner.liveAttempt(ATTEMPT)?.paused).toBe('play');
+      expect(r.runner.liveAttempt('play-1/ghost/1')).toBeUndefined();
+      await r.runner.cancelAttempt(ATTEMPT);
+      await running;
+      expect(r.runner.liveAttempt(ATTEMPT)).toBeUndefined();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     'the time paused does not run against the deadline of the attempt',
     async () => {
       const r = await rig();

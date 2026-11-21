@@ -7,6 +7,7 @@ import { waitFor } from '../test-clock.test-support.js';
 import {
   DAEMON_ID,
   FakeDaemon,
+  attempt,
   decision,
   decisionAnswered,
   decisionCreated,
@@ -109,6 +110,35 @@ describe('DaemonStores: the first read', () => {
     ]) {
       expect(store.getState()).toMatchObject({ loaded: true, lastEventId: 10 });
     }
+  });
+
+  it('shows a play paused before the connection as paused, with its Actors (P25)', async () => {
+    const daemon = populated();
+    setPlay(daemon, play('P1', 'S1', { state: 'EXECUTING', paused: true }), [demand('P1', 'D1')]);
+    daemon.attempts = [
+      attempt('P1', 'D1', { state: 'awaiting_resume', cause: 'paused', paused: 'play' }),
+      attempt('P1', 'D2', { state: 'completed' }),
+      attempt('P0', 'D1'),
+    ];
+    const hub = hubOf(daemon);
+    await hub.start();
+    expect(hub.plays.getState().byId.P1?.paused).toBe(true);
+    const activity = hub.activity.getState();
+    expect(activity.pausedPlays).toHaveProperty('P1');
+    // Only the attempts still open, of the plays still open.
+    expect(Object.keys(activity.actors)).toEqual(['P1/D1/1']);
+    expect(activity.actors['P1/D1/1']).toMatchObject({ paused: 'play', playId: 'P1' });
+    expect(count(daemon, '/v1/plays/P1/attempts')).toBe(1);
+    expect(count(daemon, '/v1/plays/P0/attempts')).toBe(0);
+  });
+
+  it('does not read the attempts when `activity` is `none` (P25)', async () => {
+    const daemon = populated();
+    daemon.attempts = [attempt('P1', 'D1')];
+    const hub = hubOf(daemon, { activity: 'none' });
+    await hub.start();
+    expect(hub.activity.getState().actors).toEqual({});
+    expect(count(daemon, '/v1/plays/P1/attempts')).toBe(0);
   });
 
   it('asks the finished plays too when `plays` is `all`', async () => {

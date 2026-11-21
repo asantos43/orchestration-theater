@@ -18,5 +18,17 @@ function without<Row extends object, Name extends keyof Row>(
 export const scenarioOf = (record: ScenarioRecord): ApiScenario =>
   without(record, ['conventions', 'configOverride']);
 
-/** The play without the machine's own snapshot. */
-export const playOf = (record: PlayRecord): ApiPlay => without(record, ['snapshot']);
+/** Whether the play is paused: that lives in the snapshot of its machine (N176). */
+export function isPausedPlay(play: PlayRecord): boolean {
+  const context = (play.snapshot as { context?: { paused?: unknown } } | null)?.context;
+  return context?.paused !== undefined && context.paused !== null;
+}
+
+/**
+ * The play without the machine's own snapshot, with `paused` (P25, N200 item 2): a play that
+ * finished is not paused, whatever its last snapshot says.
+ */
+export const playOf = (record: PlayRecord): ApiPlay => ({
+  ...without(record, ['snapshot']),
+  paused: record.finishedAt === null && isPausedPlay(record),
+});

@@ -19,8 +19,13 @@ const ACTOR: ActorActivity = {
 describe('what the controls offer', () => {
   it('pauses an open play and resumes it once paused; a finished play has neither', () => {
     const open = play('P1', 'S1', { state: 'EXECUTING' });
-    expect(playControls(open, new Set())).toEqual({ pause: true, resume: true });
+    expect(playControls(open, new Set())).toEqual({ pause: true, resume: false });
     expect(playControls(open, new Set(['P1']))).toEqual({ pause: false, resume: true });
+    // The flag of the record says it too (a play paused before this client connected, P25).
+    expect(playControls({ ...open, paused: true }, new Set())).toEqual({
+      pause: false,
+      resume: true,
+    });
     expect(playControls({ ...open, finishedAt: 5 }, new Set())).toEqual({
       pause: false,
       resume: false,

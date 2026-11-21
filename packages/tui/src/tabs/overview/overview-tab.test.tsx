@@ -98,7 +98,7 @@ interface World {
 }
 
 /** One scenario with an open play in EXECUTING, three demands, an Actor, two events and a quota. */
-function world(extra: { paused?: boolean } = {}): World {
+function world(extra: { paused?: boolean; playPaused?: boolean } = {}): World {
   const file = new MemoryLayoutFile();
   file.text = prefs();
   const online = fakeOnline({ file });
@@ -127,7 +127,7 @@ function world(extra: { paused?: boolean } = {}): World {
   } as never);
   stores.activity.setState({
     actors: { A1: actor(play.id, extra.paused === true ? { paused: 'actor' } : {}) },
-    pausedPlays: {},
+    pausedPlays: extra.playPaused === true ? { [play.id]: NOW } : {},
   } as never);
   stores.events.setState({
     events: [
@@ -272,8 +272,8 @@ describe('the controls', () => {
     expect(pause).not.toHaveBeenCalled();
   });
 
-  it('Shift+R resumes the play, and a conflict of the daemon is said in words', async () => {
-    const w = world();
+  it('Shift+R resumes a paused play, and a conflict of the daemon is said in words', async () => {
+    const w = world({ playPaused: true });
     const resume = vi.spyOn(w.online.client, 'resumePlay').mockRejectedValue(
       new ApiRequestError({
         status: 409,
@@ -286,6 +286,30 @@ describe('the controls', () => {
     await waitFor(() => resume.mock.calls.length > 0, 'the call of resumePlay');
     expect(resume).toHaveBeenCalledWith(w.play.id);
     await app.waitForText('Nothing to do');
+  });
+
+  it('does not offer "resume" for a play that is not paused (P25)', async () => {
+    const w = world();
+    const resume = vi.spyOn(w.online.client, 'resumePlay').mockResolvedValue(REPLY);
+    const app = await open(w, settingsConfirm('off'));
+    await focusPanel(app);
+    app.press('R');
+    await app.settle();
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('offers "resume" for a play paused before the TUI connected (P25)', async () => {
+    // The stores come from the snapshot (`ApiPlay.paused`), with no `play.paused` event.
+    const w = world();
+    w.online.stores.plays.setState({
+      byId: { [w.play.id]: { ...w.play, paused: true } },
+    } as never);
+    const resume = vi.spyOn(w.online.client, 'resumePlay').mockResolvedValue(REPLY);
+    const app = await open(w, settingsConfirm('off'));
+    await focusPanel(app);
+    app.press('R');
+    await waitFor(() => resume.mock.calls.length > 0, 'the call of resumePlay');
+    expect(resume).toHaveBeenCalledWith(w.play.id);
   });
 
   it('Shift+A pauses the Actor by its attempt, and Shift+U resumes a paused one', async () => {

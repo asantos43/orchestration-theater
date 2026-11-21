@@ -2,6 +2,7 @@
 import type { ApiHandlers } from '../handlers.js';
 import { registerAttachmentRoutes } from './attachments.js';
 import { registerAttemptCommands } from './attempt-commands.js';
+import { registerAttemptRoutes } from './attempts.js';
 import { registerBlackboardRoutes } from './blackboard.js';
 import { registerConfigRoutes } from './config-view.js';
 import { commandRegistrar } from './command.js';
@@ -35,6 +36,7 @@ export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
  */
 export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): void {
   registerScenarioRoutes(handlers, deps);
+  registerAttemptRoutes(handlers, deps);
   registerBlackboardRoutes(handlers, deps);
   registerAttachmentRoutes(handlers, deps);
   registerProfileRoutes(handlers, deps);

@@ -54,6 +54,7 @@ export const reducePlays: EventReducer<PlaysState> = (state, event) => {
         createdAt: event.timestamp,
         updatedAt: event.timestamp,
         finishedAt: null,
+        paused: false,
       };
       return { ...state, byId: { ...state.byId, [id]: play } };
     }
@@ -64,6 +65,16 @@ export const reducePlays: EventReducer<PlaysState> = (state, event) => {
       const payload = payloadOf(PlayTransitionedPayloadSchema, event);
       // A play this store never saw (a closed one, say), or a payload it cannot read: read it.
       if (known === undefined || payload === undefined) return markStale(state, id);
+      const finished = isFinalPlayState(payload.to);
+      // `PAUSE` and `RESUME` move no state, they flip the flag the machine keeps in its context;
+      // a play that finishes is not paused.
+      const paused = finished
+        ? false
+        : payload.event === 'PAUSE'
+          ? true
+          : payload.event === 'RESUME'
+            ? false
+            : known.paused;
       return {
         ...state,
         byId: {
@@ -73,7 +84,8 @@ export const reducePlays: EventReducer<PlaysState> = (state, event) => {
             state: payload.to,
             counters: payload.counters,
             updatedAt: event.timestamp,
-            finishedAt: isFinalPlayState(payload.to) ? event.timestamp : null,
+            finishedAt: finished ? event.timestamp : null,
+            paused,
           },
         },
       };

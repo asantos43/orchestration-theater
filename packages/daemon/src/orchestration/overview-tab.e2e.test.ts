@@ -8,6 +8,7 @@ import {
   demandRows,
   eventRows,
   pipelineView,
+  playControls,
   runControl,
   type ActorActivity,
   type FetchLike,
@@ -344,6 +345,62 @@ describe('pausing from the tab, end to end with the fake agent', { timeout: 180_
           await waitForPlay(harness, scenarioId, 'DONE');
           await caughtUp();
           expect(stores.activity.getState().actors[attemptId]).toBeUndefined();
+        } finally {
+          stores.close();
+        }
+      });
+    },
+  );
+  itWithLauncher(
+    'a play paused before the stores connect shows paused, with its Actors, and "resume" works (P25)',
+    async () => {
+      await withRig('pause:\n  mode: interrupt\n', async ({ harness, client, watched }) => {
+        const scenarioId = await harness.openChat();
+        await harness.producer.send(scenarioId, HANGING_PLAY);
+        const play = await waitFor('the play', async () => (await harness.plays(scenarioId))[0]);
+        const attemptId = `${play.id}/alpha/1`;
+        await waitFor('alpha to be executing', async () =>
+          (await harness.daemon.store.attempts.get(attemptId))?.sessionId != null
+            ? true
+            : undefined,
+        );
+        expect(await runControl(client, { kind: 'play', playId: play.id }, 'pause')).toEqual({
+          ok: true,
+        });
+        await waitFor('alpha to be paused', async () =>
+          (await harness.daemon.store.attempts.get(attemptId))?.state === 'awaiting_resume'
+            ? true
+            : undefined,
+        );
+
+        // The TUI connects now: nothing in the stream tells it about the pause, the snapshot does.
+        const stores = new DaemonStores(watched, { refreshDebounceMs: 10 });
+        await stores.start();
+        try {
+          expect(stores.plays.getState().byId[play.id]?.paused).toBe(true);
+          expect(stores.activity.getState().pausedPlays).toHaveProperty(play.id);
+          expect(stores.activity.getState().actors[attemptId]).toMatchObject({
+            attemptId,
+            demandId: 'alpha',
+            paused: 'play',
+          });
+          const shown = stores.plays.getState().byId[play.id];
+          expect(
+            playControls(shown, new Set(Object.keys(stores.activity.getState().pausedPlays))),
+          ).toEqual({
+            pause: false,
+            resume: true,
+          });
+
+          expect(await runControl(client, { kind: 'play', playId: play.id }, 'resume')).toEqual({
+            ok: true,
+          });
+          await waitForPlay(harness, scenarioId, 'DONE');
+          await waitFor('the stores to see the play resumed', () =>
+            Promise.resolve(
+              stores.activity.getState().pausedPlays[play.id] === undefined ? true : undefined,
+            ),
+          );
         } finally {
           stores.close();
         }

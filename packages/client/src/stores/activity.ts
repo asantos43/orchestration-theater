@@ -5,6 +5,8 @@ import {
   SessionClosedPayloadSchema,
   SessionOpenedPayloadSchema,
   isFinalPlayState,
+  type ApiPlay,
+  type ApiPlayAttempt,
   type ExecutorPayload,
 } from '@otheater/protocol';
 import { emptySync, payloadOf, without, type EventReducer, type SyncFields } from './core.js';
@@ -20,8 +22,9 @@ import { emptySync, payloadOf, without, type EventReducer, type SyncFields } fro
  * - `pausedPlays`: the plays that got a `PAUSE` and no `RESUME` yet, with the stamp of the pause.
  *
  * [proposta] What the events cannot say: an Actor that opened, or a play that paused, before this
- * client connected. There is no REST route that lists attempts, and `ApiPlay` has no paused flag,
- * so the store starts empty and fills as events come (a gap reported in the PR of P13).
+ * client connected. The snapshot says it (P25, N200): `installActivity` takes the open plays, with
+ * their `paused` flag, and their attempts still open (`GET /v1/plays/:playId/attempts?open=true`),
+ * and the events keep it right from there.
  */
 
 export interface ActorActivity {
@@ -147,7 +150,50 @@ export const reduceActivity: EventReducer<ActivityState> = (state, event) => {
   }
 };
 
-/** A snapshot: nothing to read, the store starts empty at the head of the log. */
-export function installActivity(lastEventId: number): ActivityState {
-  return { loaded: true, lastEventId, stale: {}, actors: {}, pausedPlays: {} };
+/** What an attempt the snapshot found open says of the Actor: the model is `?` when the daemon lost it. */
+function actorOf(attempt: ApiPlayAttempt): ActorActivity {
+  return {
+    key: attempt.attemptId,
+    // Empty when the session did not open yet: the next `session.opened` of the attempt fills it.
+    sessionId: attempt.sessionId ?? '',
+    attemptId: attempt.attemptId,
+    playId: attempt.playId,
+    demandId: attempt.demandId,
+    executor: {
+      client: attempt.client,
+      profile: attempt.profile,
+      model: attempt.model ?? UNKNOWN_MODEL,
+    },
+    startedAt: attempt.createdAt,
+    paused: attempt.paused ?? undefined,
+  };
+}
+
+/** The model shown for an Actor whose model the daemon does not know (it restarted). */
+export const UNKNOWN_MODEL = '?';
+
+/**
+ * A snapshot (P25): the Actors are the attempts of the open plays that are still open, and the
+ * paused plays are the open ones the daemon says are paused (the stamp is the last update of the
+ * play, the closest to the pause the snapshot has). Called with no arguments the store starts empty.
+ */
+export function installActivity(
+  lastEventId: number,
+  plays: readonly ApiPlay[] = [],
+  attempts: readonly ApiPlayAttempt[] = [],
+): ActivityState {
+  const open = new Set(plays.filter((play) => play.finishedAt === null).map((play) => play.id));
+  return {
+    loaded: true,
+    lastEventId,
+    stale: {},
+    actors: Object.fromEntries(
+      attempts.filter((attempt) => open.has(attempt.playId)).map((a) => [a.attemptId, actorOf(a)]),
+    ),
+    pausedPlays: Object.fromEntries(
+      plays
+        .filter((play) => play.finishedAt === null && play.paused)
+        .map((p) => [p.id, p.updatedAt]),
+    ),
+  };
 }
