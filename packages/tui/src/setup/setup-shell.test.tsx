@@ -28,8 +28,10 @@ async function mount(
   setupApi: FakeSetupApi,
   settings: UiSettings,
   tabContent?: TabContentMap,
+  // What the daemon says `ui` is; default: the same as the settings of the process.
+  readSettings: () => Promise<UiSettings> = () => Promise.resolve(settings),
 ): Promise<RenderedApp> {
-  const online = fakeOnline();
+  const online = fakeOnline({ readSettings });
   seedStores(online.stores);
   return renderApp({ connector: online.connector, size: SIZE, settings, setupApi, tabContent });
 }
@@ -115,6 +117,49 @@ describe('the first run', () => {
     const frame = await app.waitForText('Could not check whether the first run is needed');
     expect(frame).toContain('no answer in 100 ms');
     expect(frame).toContain('SCENARIOS');
+  });
+});
+
+describe('the gate waits for the settings of the daemon', () => {
+  it('a never of the daemon that arrives after the layout is online keeps the assistant closed', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES });
+    let answer: (settings: UiSettings) => void = () => undefined;
+    const read = new Promise<UiSettings>((resolve) => {
+      answer = resolve;
+    });
+    // This process knows nothing (open: auto); only the daemon says never, and it says so late.
+    const app = await mount(api, settingsWith('auto'), undefined, () => read);
+    await app.waitForText('SCENARIOS');
+    await app.settle();
+    // Online and not yet read: the gate has not asked anything.
+    expect(api.calls).toEqual([]);
+    answer(settingsWith('never'));
+    await app.settle();
+    await app.settle();
+    expect(app.frame()).not.toContain('Setup assistant');
+    expect(api.calls).toEqual([]);
+  });
+
+  it('an auto of the daemon, read late, opens the assistant with the timeout the daemon says', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: true });
+    let answer: (settings: UiSettings) => void = () => undefined;
+    const read = new Promise<UiSettings>((resolve) => {
+      answer = resolve;
+    });
+    const app = await mount(api, settingsWith('auto', 100), undefined, () => read);
+    await app.waitForText('SCENARIOS');
+    expect(api.calls).toEqual([]);
+    answer(settingsWith('auto', 7000));
+    const frame = await app.waitForText('Setup assistant: first run');
+    expect(frame).toContain('Pick the accounts that take part');
+  });
+
+  it('when the settings of the daemon cannot be read, the gate goes on with the ones of the process [proposta]', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: true });
+    const app = await mount(api, settingsWith('auto'), undefined, () =>
+      Promise.reject(new Error('no config')),
+    );
+    await app.waitForText('Setup assistant: first run');
   });
 });
 

@@ -64,6 +64,8 @@ export interface FakeOnlineOptions {
   readonly live?: boolean | undefined;
   /** What `GET /v1/commands` answers (P12). Default: none. */
   readonly commands?: readonly ApiSlashCommand[] | undefined;
+  /** What `readSettings` of the fake daemon answers (the `ui` of its configuration). Default: the defaults. */
+  readonly readSettings?: (() => Promise<UiSettings>) | undefined;
 }
 
 /** A connector that is online with stores that no network feeds: the test fills them with `setState`. */
@@ -102,7 +104,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
     address: options.address ?? '127.0.0.1:7777',
     client,
     stores,
-    readSettings: () => Promise.resolve(DEFAULT_UI_SETTINGS),
+    readSettings: options.readSettings ?? (() => Promise.resolve(DEFAULT_UI_SETTINGS)),
     openLayout: async () => {
       const layout = new LayoutStore({
         interface: 'tui',

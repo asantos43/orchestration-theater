@@ -26,7 +26,12 @@ import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
-import { DEFAULT_UI_SETTINGS, type UiSettings, type UiTuiLayoutSettings } from '../settings.js';
+import {
+  DEFAULT_UI_SETTINGS,
+  type UiSettings,
+  type UiSetupSettings,
+  type UiTuiLayoutSettings,
+} from '../settings.js';
 import { useStoreValue, type ReadableStore } from '../use-store-value.js';
 import { useChatPanel, type ChatPanelConfig } from '../chat/use-chat-panel.js';
 import {
@@ -95,7 +100,16 @@ export interface ShellProps {
   readonly now?: (() => number) | undefined;
   /** [P17] The routes of the setup assistant; default: the ones of `client`. Tests pass a fake. */
   readonly setupApi?: SetupApi | undefined;
+  /**
+   * [P17] What decides if the first run opens the assistant: `ui.setup` as the daemon says, or
+   * `pending` while that is not read (the gate waits, so a `never` of the daemon is not outrun).
+   * Default: `settings.setup`.
+   */
+  readonly setupGate?: SetupGate | undefined;
 }
+
+/** `ui.setup` for the gate of the first run, or `pending` while the daemon's one is being read. */
+export type SetupGate = UiSetupSettings | 'pending';
 
 /** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
 export function Shell(props: ShellProps): ReactNode {
@@ -232,11 +246,15 @@ export function Shell(props: ShellProps): ReactNode {
   const onGateFailed = useEffectEvent((message: string): void => {
     setNotice(t('setup.gateFailed', { message }));
   });
+  const gate = props.setupGate ?? settings.setup;
+  const gateOpen = gate === 'pending' ? undefined : gate.open;
+  const gateTimeoutMs = gate === 'pending' ? undefined : gate.readTimeoutMs;
   useEffect(() => {
-    if (firstRunChecked.current || setupApi === undefined || settings.setup.open !== 'auto') return;
+    if (firstRunChecked.current || setupApi === undefined) return;
+    if (gateOpen !== 'auto' || gateTimeoutMs === undefined) return;
     firstRunChecked.current = true;
     let mounted = true;
-    firstRunNeeded(setupApi, settings.setup.readTimeoutMs)
+    firstRunNeeded(setupApi, gateTimeoutMs)
       .then((needed) => {
         if (needed && mounted) setAssistant('first_run');
       })
@@ -246,7 +264,7 @@ export function Shell(props: ShellProps): ReactNode {
     return () => {
       mounted = false;
     };
-  }, [setupApi, settings.setup.open, settings.setup.readTimeoutMs]);
+  }, [setupApi, gateOpen, gateTimeoutMs]);
 
   // Whatever way the TUI ends (Ctrl+Q, Ctrl+C, the terminal going away), the layout is saved.
   useEffect(
