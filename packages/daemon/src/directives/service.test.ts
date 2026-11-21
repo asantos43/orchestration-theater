@@ -82,7 +82,7 @@ describe('DirectiveService, orders in force (architecture 5.17)', () => {
       validity: { until: '2026-11-20 18:00' },
     });
     const [created] = await eventsOf(store, 'directive.created');
-    expect(created?.payload['order']).toEqual(order);
+    expect(created?.payload.order).toEqual(order);
   });
 
   it('puts the orders in the prefix of a session', async () => {
