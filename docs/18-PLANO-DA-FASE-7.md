@@ -126,7 +126,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 ### P2. Pausar e retomar peça; pausar, retomar e cancelar Ator (N176; §5.12, §5.16)
 
 **Escopo:**
-- `PAUSE` e `RESUME` no `PlayRunner`, com a semântica da §5.16: a pausa não abre etapa nova nem tentativa nova; a etapa em curso termina ou é interrompida, conforme `pause.mode` **[proposta: `drain | interrupt`, padrão `drain`]**. A peça pausada sobrevive ao reinício do daemon (§5.21);
+- `PAUSE` e `RESUME` no `PlayRunner`, com a semântica da §5.16: a pausa não abre etapa nova nem tentativa nova; a etapa em curso termina ou é interrompida, conforme `pause.mode: drain | interrupt`, padrão `drain` (N193). A peça pausada sobrevive ao reinício do daemon (§5.21);
 - pausar, retomar e cancelar um Ator (uma tentativa em curso): pausar interrompe com a causa `paused` da tabela da §5.16 e guarda o checkpoint; retomar segue a política de retomada da causa; cancelar termina a tentativa como `cancelled`, e o Diretor julga;
 - rotas `POST /v1/plays/:playId/pause`, `/resume` e `POST /v1/attempts/:attemptId/pause`, `/resume` e `/cancel` **[proposta]**, com `Idempotency-Key` e atrás do `RecoveryGate`, como o `cancel` da peça;
 - eventos: as transições saem como `play.transitioned` e pelos eventos da tentativa que já existem; o que faltar entra como evento novo, aditivo.
@@ -169,7 +169,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - uma mensagem do chat que começa com `!` roda como comando, no worktree do cenário, pelo `ProcessLauncher`, sob o modo de `app.terminal` (`sandbox`, padrão, `host` ou `off`), com a entrada padrão fechada e sem PTY. Não vai ao Diretor;
 - a saída vira um anexo `terminal_snippet` (5.19), com `terminal.snippet.max_lines` (padrão 200) e o arquivo inteiro no log da sessão. Pela `chat.shell_command.context` (`auto | ask | never`, padrão `auto`), entra na conversa sempre, depois de perguntar ou nunca;
 - um comando que espera entrada recebe fim de arquivo e termina; a conversa registra que ele pediu entrada. O caso interativo, com a TUI entregando o terminal, fica para quando houver PTY (N187);
-- chaves `chat.shell_command: on | off` (padrão `on`) e um prazo por comando, `chat.shell_command.timeout` **[proposta: 5 min]**;
+- chaves `chat.shell_command: on | off` (padrão `on`) e um prazo por comando, `chat.shell_command.timeout`, padrão 5 min ou `off` (N194);
 - eventos `chat.shell_command.started` e `.finished`, com o código de saída e sem a saída.
 
 **Aceite:** com `app.terminal: sandbox`, um comando que escreve fora do worktree é barrado; `off` recusa; a saída longa é cortada em `max_lines`; um `read` termina por fim de arquivo; o prazo mata a árvore do processo.
@@ -187,7 +187,7 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 ### P8. `packages/tui`: base, desempenho e testes (N37; N185)
 
 **Escopo:**
-- o pacote `packages/tui`, com `ink` 8.0.0 e `react` 19.3.1 travados, e o comando de abrir **[proposta: `ot tui`, e `ot` sem argumento abre a TUI quando o terminal é interativo]**;
+- o pacote `packages/tui`, com `ink` 8.0.0 e `react` 19.3.1 travados, e o comando de abrir: `ot tui`, e `ot` sem argumento abre a TUI quando o terminal é interativo, numa chave `ui.*` de modos `tui | help` (N195);
 - tela cheia no buffer alternativo, redesenho ao redimensionar e a volta limpa do terminal na saída, no Ctrl+Q, no erro e no sinal;
 - desempenho da N37: `keyRender: flush`, memoização, o lançador com `--max-semi-space-size` e `--max-old-space-size` de `ui.runtime`, e o patch do `output.js` carregado por gancho de módulos, **recusado se a versão do Ink não for 8.0.0** (a trava que faltava no spike);
 - `react-i18next` com o catálogo do P7, trocando por `ui.locale` sem reiniciar;
@@ -298,7 +298,7 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 
 ## Decisões que surgem deste plano
 
-Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item:
+Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação:
 - **N185, dependências novas:** `ink` 8.0.0, `react` 19.3.1, `@types/react` 19.3.0, `@inkjs/ui` 2.0.0, `ink-testing-library` 4.0.0 e `react-i18next` 17.1.13, todas MIT. Alternativas: sem o `@inkjs/ui` (componentes próprios); sem o `react-i18next` (um gancho próprio sobre o i18next).
 - **N186, login oficial na TUI:** o daemon expõe o `LoginFlow` pela REST, e o modo `terminal` suspende a TUI e roda o login no próprio terminal. Alternativas: sempre suspender a TUI e rodar o CLI; ou o daemon com PTY transmitindo o login (exige `node-pty`).
 - **N187, `!` nesta fase:** no daemon, sem PTY e com a entrada fechada; o caso interativo fica para quando houver PTY. Alternativas: `node-pty` já nesta fase, com a TUI entregando o terminal; ou o `!` inteiro na Fase 12.

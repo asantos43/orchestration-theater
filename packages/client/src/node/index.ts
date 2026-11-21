@@ -43,3 +43,4 @@ export function createNodeDaemonDirectory(
     timeoutMs: options.timeoutMs,
   });
 }
+export * from './ui-catalog.js';
