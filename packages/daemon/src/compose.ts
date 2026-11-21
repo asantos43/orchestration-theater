@@ -611,7 +611,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
     const memory = overrides.memory ?? defaultMemoryProbe();
-    const transport = overrides.transport ?? new AcpTransport();
+    const transport =
+      overrides.transport ??
+      new AcpTransport({ terminalOutput: () => config.events.terminal_output !== 'off' });
     // P24 (N146): what the daemon only wrote to the log is also an event. Closed until the daemon
     // wrote `daemon.started`, so what compose notices below is written after it.
     const situations = new SituationLog({ events: store.events, logger });

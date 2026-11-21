@@ -118,6 +118,25 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
   });
 
+  it('has the default of ui.sidebar, takes its modes and refuses bad values (P11)', () => {
+    expect(parseConfig('').ui.sidebar).toEqual({ finishedPlays: 'collapsed', finishedLimit: 20 });
+    for (const mode of ['collapsed', 'hidden', 'expanded']) {
+      expect(
+        parseConfig(`ui:\n  sidebar:\n    finishedPlays: ${mode}\n`).ui.sidebar.finishedPlays,
+      ).toBe(mode);
+    }
+    expect(parseConfig('ui:\n  sidebar:\n    finishedLimit: 100\n').ui.sidebar.finishedLimit).toBe(
+      100,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    finishedPlays: always\n')).toThrow(
+      /ui\.sidebar\.finishedPlays/,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    finishedLimit: 0\n')).toThrow(
+      /ui\.sidebar\.finishedLimit/,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    other: 1\n')).toThrow();
+  });
+
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
     expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
     expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(
