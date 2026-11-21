@@ -13,6 +13,9 @@ import { makeTempDataDir, NO_CLIENTS } from '../../test-helpers.js';
 
 /** `GET /v1/plays/:playId/spans` and `GET /v1/telemetry` (P10) against the daemon as it starts. */
 
+/** The clock of the daemon; the seeded spans are of this moment, or the purge of P8 removes them. */
+const NOW = Date.UTC(2026, 10, 21, 15, 0, 0);
+
 let tmp: Awaited<ReturnType<typeof makeTempDataDir>> | undefined;
 let daemon: DaemonHandle | undefined;
 
@@ -28,7 +31,7 @@ async function start(
   yaml = 'backup:\n  when: manual\n',
 ): Promise<string> {
   tmp = await makeTempDataDir();
-  const clock = new FakeClock(Date.UTC(2026, 10, 21, 15, 0, 0));
+  const clock = new FakeClock(NOW);
   daemon = await startDaemon({
     dataDir: tmp.dir,
     clientSearch: NO_CLIENTS,
@@ -79,8 +82,8 @@ function stageSpan(
     parentSpanId: parent,
     name: 'otheater.stage',
     kind: 1,
-    startTimeUnixNano: BigInt(startMs) * 1_000_000n,
-    endTimeUnixNano: BigInt(endMs) * 1_000_000n,
+    startTimeUnixNano: BigInt(NOW + startMs) * 1_000_000n,
+    endTimeUnixNano: BigInt(NOW + endMs) * 1_000_000n,
     status: 'ok',
     statusMessage: null,
     attributes: { 'otheater.stage': 'PLANNING' },
