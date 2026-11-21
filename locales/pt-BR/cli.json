@@ -92,6 +92,18 @@
     },
     "play": "Peça {{id}}: {{state}}",
     "playEnded": "A peça {{id}} terminou.",
+    "shellStarted": "$ {{command}} ({{place}})",
+    "shellEnded": {
+      "exited": "O comando terminou com o código de saída {{code}}.",
+      "timeout": "O comando foi interrompido após {{seconds}} s (limite de tempo); os processos dele foram encerrados.",
+      "failed": "O comando não rodou: {{error}}"
+    },
+    "shellCut": {
+      "tail": "  ... só as últimas {{shown}} de {{total}} linhas aparecem; a saída inteira está no log.",
+      "head": "  ... só as primeiras {{shown}} de {{total}} linhas aparecem; a saída inteira está no log."
+    },
+    "shellAskedInput": "O comando pediu entrada, mas um comando ! não tem teclado: recebeu o fim da entrada e terminou.",
+    "shellContextAsked": "O Diretor ainda não foi avisado: uma pergunta espera a sua resposta.",
     "waiting": "{{what}} ({{who}}).",
     "waitingFor_quota": "esperando cota de {{profiles}}",
     "waitingFor_budget": "esperando o teto de gasto de {{profiles}}",

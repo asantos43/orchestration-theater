@@ -33,7 +33,7 @@ import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
 import { SetupService } from './setup/index.js';
-import type { ClientFactory, ClientFactoryParts } from './clients.js';
+import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
 import {
   compose,
   productionClients,
@@ -71,6 +71,7 @@ import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
 import { AttachmentService } from './scenarios/attachments.js';
+import { ShellCommandService } from './shell/service.js';
 import { createDaemonExhaustion } from './orchestration/exhaustion-wiring.js';
 import { createLateHandoff } from './orchestration/handoff-wiring.js';
 import { startOrchestration, type Orchestration } from './orchestration/wiring.js';
@@ -574,6 +575,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     void report.done;
   }
   let orchestration: Orchestration | undefined;
+  let shellCommands: ShellCommandService | undefined;
   if (execution !== undefined) {
     // The plays: the queue, the Director sessions, the effects and the Producer channel (P8).
     orchestration = startOrchestration({
@@ -590,10 +592,51 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handoff,
       home: homedir(),
     });
+    // P6 (Phase 7): the `!` command of the Producer (N43). Its processes are written down like the
+    // clients' (5.21); the sandbox is the one of layer 3, and `app.terminal` says whether it is used.
+    shellCommands = new ShellCommandService({
+      store,
+      clock,
+      launcher:
+        composition.launcher === undefined
+          ? undefined
+          : new TrackingLauncher(
+              composition.launcher,
+              store,
+              clock,
+              logger,
+              composition.situations,
+            ),
+      confine: composition.sandbox?.confineCommand,
+      attachments: new AttachmentService({
+        store,
+        clock,
+        scenariosDir: paths.scenarios,
+        limits: () => ({
+          maxSize: config.scenarios.attachment_max_size,
+          readMax: config.scenarios.attachment_read_max,
+        }),
+      }),
+      channel: orchestration.channel,
+      ask: (scenarioId, question) => input.orchestrationHandlers.openApproval(scenarioId, question),
+      env: () =>
+        buildClientEnv(
+          { env_inherit: config.tools.env_inherit, env_allow: config.tools.env_allow, env: {} },
+          options.clientSearch?.env ?? process.env,
+        ),
+      scenariosDir: paths.scenarios,
+      settings: () => ({
+        shell: config.chat.shell_command,
+        terminalMode: config.app.terminal,
+        terminal: config.terminal,
+      }),
+      logger,
+    });
     // P7 (Phase 6): the chat socket, over the Producer channel of the orchestration.
     registerChatRoutes({
       api,
       channel: orchestration.channel,
+      shell: shellCommands,
       store,
       hub: composition.eventHub,
       situations: composition.situations,
@@ -774,6 +817,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       };
       // First: no new request reaches a service that is about to stop (and `api.json` goes away).
       await attempt('api', () => api.stop());
+      // The `!` commands end (their whole process tree) before the services they report to stop.
+      await attempt('shell commands', async () => shellCommands?.close());
       // A login left open is cancelled: its process must not outlive the daemon.
       await attempt('logins', () => logins.stop());
       await attempt('scheduler', () => scheduler.stop());

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import type { ScenarioSystemMessagePayload } from '@otheater/protocol';
-import { renderGeneratedReply, renderSystemMessage } from './chat-command.js';
+import type { ScenarioSystemMessagePayload, ShellCommandFinishedPayload } from '@otheater/protocol';
+import {
+  renderGeneratedReply,
+  renderShellFinished,
+  renderShellStarted,
+  renderSystemMessage,
+} from './chat-command.js';
 import { createTranslator } from './i18n.js';
 
 /** The system message of the reconciliation, in the language of the Producer (5.22). */
@@ -218,6 +223,78 @@ describe('renderGeneratedReply (N183)', () => {
     const t = await createTranslator('pt-BR');
     expect(renderGeneratedReply(t, [], undefined)).toBe(
       'Sistema: o Diretor terminou o turno sem responder.',
+    );
+  });
+});
+
+describe('renderShellFinished, the ! command (N43, N187)', () => {
+  const RESULT: ShellCommandFinishedPayload = {
+    commandId: 'sh_1',
+    outcome: 'exited',
+    exitCode: 2,
+    durationMs: 1500,
+    totalLines: 300,
+    shownLines: 3,
+    keep: 'tail',
+    logTruncated: false,
+    attachmentId: 'A1',
+    askedInput: false,
+    context: 'sent',
+    logPath: '/tmp/x.log',
+  };
+
+  it('says how it ended, shows the snippet and what was left out, in English', async () => {
+    const t = await createTranslator('en');
+    expect(renderShellFinished(t, RESULT, '298\n299\n300')).toEqual([
+      'Command ended with exit code 2.',
+      '  298',
+      '  299',
+      '  300',
+      '  ... only the last 3 of 300 lines are shown; the whole output is in the log.',
+    ]);
+  });
+
+  it('says it in Brazilian Portuguese, for a timeout and for a command that asked for input', async () => {
+    const t = await createTranslator('pt-BR');
+    expect(
+      renderShellFinished(
+        t,
+        { ...RESULT, outcome: 'timeout', exitCode: null, totalLines: 1, shownLines: 1 },
+        'x',
+      ),
+    ).toEqual([
+      'O comando foi interrompido após 1.5 s (limite de tempo); os processos dele foram encerrados.',
+      '  x',
+    ]);
+    const asked = renderShellFinished(
+      t,
+      { ...RESULT, totalLines: 1, shownLines: 1, askedInput: true, context: 'asked' },
+      'Continue? ',
+    );
+    expect(asked.at(-2)).toContain('pediu entrada');
+    expect(asked.at(-1)).toContain('pergunta espera');
+  });
+
+  it('says a command that did not run, and the line that began it', async () => {
+    const t = await createTranslator('en');
+    expect(
+      renderShellFinished(
+        t,
+        {
+          ...RESULT,
+          outcome: 'failed',
+          exitCode: null,
+          totalLines: 0,
+          shownLines: 0,
+          attachmentId: null,
+          context: 'none',
+          error: 'no shell',
+        },
+        '',
+      ),
+    ).toEqual(['Command did not run: no shell']);
+    expect(renderShellStarted(t, { commandId: 'sh_1', command: 'ls -la', place: 'sandbox' })).toBe(
+      '$ ls -la (sandbox)',
     );
   });
 });

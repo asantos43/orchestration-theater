@@ -92,6 +92,18 @@
     },
     "play": "Play {{id}}: {{state}}",
     "playEnded": "Play {{id}} ended.",
+    "shellStarted": "$ {{command}} ({{place}})",
+    "shellEnded": {
+      "exited": "Command ended with exit code {{code}}.",
+      "timeout": "Command stopped after {{seconds}} s (time limit); its processes were ended.",
+      "failed": "Command did not run: {{error}}"
+    },
+    "shellCut": {
+      "tail": "  ... only the last {{shown}} of {{total}} lines are shown; the whole output is in the log.",
+      "head": "  ... only the first {{shown}} of {{total}} lines are shown; the whole output is in the log."
+    },
+    "shellAskedInput": "The command asked for input, but a ! command has no keyboard: it got the end of the input and ended.",
+    "shellContextAsked": "The Director was not told yet: a question waits for your answer.",
     "waiting": "{{what}} ({{who}}).",
     "waitingFor_quota": "waiting for quota of {{profiles}}",
     "waitingFor_budget": "waiting for the spending cap of {{profiles}}",

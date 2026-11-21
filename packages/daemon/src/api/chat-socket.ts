@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  AdapterUnavailable,
+  InvalidInput,
   NotFound,
   isOTheaterError,
   type EventEnvelope,
@@ -14,6 +16,8 @@ import {
   CHAT_DROP_REASONS,
   IdeaQueueHeldPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
+  ShellCommandFinishedPayloadSchema,
+  ShellCommandStartedPayloadSchema,
   apiError,
   apiErrorCodeOf,
   invalidInputDetails,
@@ -27,6 +31,7 @@ import type { WebSocket } from 'ws';
 import type { EventHub } from '../events/event-hub.js';
 import type { Logger } from '../logger.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
+import { isShellCommand, type ShellCommandService } from '../shell/service.js';
 import type { SituationSink } from '../situations.js';
 import { ChatTickets } from './chat-tickets.js';
 import { ApiFailure, type ApiSocketEvents } from './handlers.js';
@@ -50,6 +55,8 @@ export interface ChatRoutesOptions {
   readonly hub: EventHub;
   readonly situations: SituationSink;
   readonly logger: Logger;
+  /** The `!` command of the Producer (N43). Without it a message that starts with `!` is refused. */
+  readonly shell?: ShellCommandService | undefined;
   readonly now: () => number;
   /** `api.chat.ticket_ttl`. */
   readonly ticketTtlMs: number;
@@ -69,6 +76,7 @@ const FEED_TYPES = [
   'scenario.system_message',
   'idea.queue_held',
   'play.transitioned',
+  'chat.shell_command',
 ] as const;
 
 /** Events read per page when a resume looks for the questions the replay will bring. */
@@ -302,6 +310,12 @@ class ChatSession {
     const { channel } = this.#options;
     switch (message.type) {
       case 'message':
+        // N43: a message that starts with `!` is a command for the worktree, not a message for the
+        // Director; its end comes back as events (`shell_started`, `shell_finished`).
+        if (isShellCommand(message.text)) {
+          await this.#shell(message.text, message.attachments ?? []);
+          return;
+        }
         // The single prompt queue, with the Producer's source: `prompt.queued` is the record.
         await channel.send(this.#scenarioId, message.text, message.attachments ?? []);
         return;
@@ -314,6 +328,17 @@ class ChatSession {
         await channel.answer(message.decisionId, message.answer);
         return;
     }
+  }
+
+  async #shell(text: string, attachments: readonly string[]): Promise<void> {
+    const { shell } = this.#options;
+    if (attachments.length > 0) {
+      throw new InvalidInput('A ! command takes no attachments');
+    }
+    if (shell === undefined) {
+      throw new AdapterUnavailable('The ! command is not available in this daemon');
+    }
+    await shell.start(this.#scenarioId, text);
   }
 
   #fail(error: unknown): void {
@@ -543,6 +568,29 @@ class ChatSession {
           return;
         }
         this.#send({ type: 'system', eventId, message: payload.data });
+        return;
+      }
+      case 'chat.shell_command.started': {
+        const payload = ShellCommandStartedPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        this.#send({ type: 'shell_started', eventId, command: payload.data });
+        return;
+      }
+      case 'chat.shell_command.finished': {
+        const payload = ShellCommandFinishedPayloadSchema.safeParse(event.payload);
+        if (!payload.success) {
+          this.#skipped(event);
+          return;
+        }
+        // The event carries no output: the snippet is read from its attachment.
+        const snippet =
+          this.#options.shell === undefined
+            ? ''
+            : await this.#options.shell.snippetOf(this.#scenarioId, payload.data.attachmentId);
+        this.#send({ type: 'shell_finished', eventId, result: payload.data, snippet });
         return;
       }
       case 'idea.queue_held': {
