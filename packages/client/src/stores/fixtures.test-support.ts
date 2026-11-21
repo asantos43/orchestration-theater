@@ -183,6 +183,64 @@ export function playTransitioned(
   );
 }
 
+/** `decision.created` (N173): the whole record, in the log of its scenario. */
+export function decisionCreated(id: number, record: ApiDecision): ApiEventEnvelope {
+  return event(
+    id,
+    'decision.created',
+    { decision: record },
+    {
+      scenarioId: record.scenarioId,
+      ...(record.playId === null ? {} : { playId: record.playId }),
+    },
+  );
+}
+
+/** `decision.answered` (N173): the decision left `pending`. */
+export function decisionAnswered(
+  id: number,
+  record: ApiDecision,
+  state: 'decided' | 'cancelled' = 'decided',
+): ApiEventEnvelope {
+  return event(
+    id,
+    'decision.answered',
+    {
+      decisionId: record.id,
+      kind: record.kind,
+      state,
+      decidedBy: state === 'decided' ? 'producer' : null,
+    },
+    {
+      scenarioId: record.scenarioId,
+      ...(record.playId === null ? {} : { playId: record.playId }),
+    },
+  );
+}
+
+/** `scenario.archived` (N173). */
+export function scenarioArchived(id: number, scenarioId: string): ApiEventEnvelope {
+  return event(id, 'scenario.archived', { scenarioId }, { scenarioId });
+}
+
+/** `demand.transitioned` (N173): the birth carries the record, a later move does not. */
+export function demandTransitioned(
+  id: number,
+  scenarioId: string,
+  playId: string,
+  demandId: string,
+  from: ApiPlayDetail['demands'][number]['state'] | null,
+  to: ApiPlayDetail['demands'][number]['state'],
+  record?: ApiPlayDetail['demands'][number],
+): ApiEventEnvelope {
+  return event(
+    id,
+    'demand.transitioned',
+    { playId, demandId, from, to, ...(record === undefined ? {} : { demand: record }) },
+    { scenarioId, playId },
+  );
+}
+
 /** The frame of an event, as the daemon writes it. */
 export function frame(envelope: ApiEventEnvelope): string {
   const message = sseMessageOf(envelope, DAEMON_ID);

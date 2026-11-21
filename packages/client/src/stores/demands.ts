@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   DemandResumedPayloadSchema,
+  DemandTransitionedPayloadSchema,
   DemandWaitingPayloadSchema,
   type ApiPlayDetail,
 } from '@otheater/protocol';
 import type { z } from 'zod';
 import {
+  byNumberThenId,
   clearStale,
   emptySync,
   markStale,
@@ -16,12 +18,15 @@ import {
 } from './core.js';
 
 /**
- * The demands (and the stages) of the plays, by play id. [proposta] The daemon writes a demand
- * with no event of its own: what the log says is that the play moved (`play.transitioned`), so a
- * tracked play whose machine moved is marked to be read again by `GET /v1/plays/:id`, and the
- * events that say a demand waits for an Executor (`demand.waiting`, `demand.resumed`) are kept as
- * they come, in `waiting`. A play is tracked once its detail was read (the snapshot of the open
- * plays, `track`, or a new play when `followNewPlays` is on).
+ * The demands (and the stages) of the plays, by play id. [proposta] Built from the events alone,
+ * with no read per transition (N173, P1 of docs/18): `demand.transitioned` with `from: null`
+ * carries the whole record of a new demand, and a later one moves its `state` (the stamp of the
+ * event is the `updatedAt`, N177). A new play starts with no demand (`play.created`). The events
+ * that say a demand waits for an Executor (`demand.waiting`, `demand.resumed`) are kept as they
+ * come, in `waiting`. A play is tracked once its detail was read (the snapshot of the open plays,
+ * `track`) or when a new play is born and `followNewPlays` is on; the stages stay as the read left
+ * them (the daemon writes none today). A key is marked stale only when an event cannot be applied:
+ * a demand this store does not have, or a birth with no record.
  */
 
 /** The demand and stage lists of one play, as `GET /v1/plays/:id` answers. */
@@ -62,12 +67,36 @@ export function createDemandsReducer(
       case 'play.created': {
         const id = event.playId;
         if (!followNewPlays || id === undefined || id in state.byPlay) return state;
-        return markStale(state, id);
+        // A new play has no demand yet: each one comes with its own `demand.transitioned`.
+        return { ...state, byPlay: { ...state.byPlay, [id]: { demands: [], stages: [] } } };
       }
-      case 'play.transitioned': {
-        const id = event.playId;
-        if (id === undefined || !(id in state.byPlay)) return state;
-        return markStale(state, id);
+      case 'demand.transitioned': {
+        const payload = payloadOf(DemandTransitionedPayloadSchema, event);
+        if (payload === undefined) return state;
+        const parts = state.byPlay[payload.playId];
+        // A play this store does not follow: its demands are not kept.
+        if (parts === undefined) return state;
+        const known = parts.demands.find((demand) => demand.id === payload.demandId);
+        let demands: PlayParts['demands'];
+        if (payload.demand !== undefined) {
+          demands = [
+            ...parts.demands.filter((demand) => demand.id !== payload.demandId),
+            payload.demand,
+          ].sort(byNumberThenId((demand) => demand.createdAt));
+        } else if (known !== undefined) {
+          demands = parts.demands.map((demand) =>
+            demand.id === payload.demandId
+              ? {
+                  ...demand,
+                  state: payload.to,
+                  updatedAt: Math.max(demand.updatedAt, event.timestamp),
+                }
+              : demand,
+          );
+        } else {
+          return markStale(state, payload.playId);
+        }
+        return { ...state, byPlay: { ...state.byPlay, [payload.playId]: { ...parts, demands } } };
       }
       case 'demand.waiting': {
         const payload = payloadOf(DemandWaitingPayloadSchema, event);

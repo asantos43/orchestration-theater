@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ApiDecision } from '@otheater/protocol';
+import {
+  DecisionAnsweredPayloadSchema,
+  DecisionCreatedPayloadSchema,
+  type ApiDecision,
+} from '@otheater/protocol';
 import {
   byNumberThenId,
   clearStale,
   emptySync,
-  markStale,
+  payloadOf,
+  without,
   type EventReducer,
   type SyncFields,
 } from './core.js';
 
 /**
- * The judgment points still pending (state `pending`) of each scenario. [proposta] The daemon
- * writes a decision, and the answer to it, with no event of its own, so there is nothing to apply
- * to a list: what the log does say is that something moved in the scenario (`play.transitioned`,
- * `scenario.chat_transitioned`, `scenario.created`), and the list of that scenario is marked to
- * be read again by `GET /v1/scenarios/:id/decisions?state=pending`. A finding of P11: events
- * `decision.created` and `decision.answered` in the catalog would let this store keep the list
- * by itself and save those reads.
+ * The judgment points still pending (state `pending`) of each scenario. [proposta] Built from the
+ * events alone, with no read per transition (N173, P1 of docs/18): `decision.created` carries the
+ * whole record and adds it to the list of its scenario, `decision.answered` (a decision `decided`
+ * or `cancelled`) takes it out, `scenario.created` opens an empty list and `scenario.archived`
+ * drops the list, as a new snapshot would (it reads the active scenarios only). A decision of any
+ * kind goes in, the way `GET /v1/scenarios/:id/decisions?state=pending` lists them. Nothing marks a
+ * key stale any more: the REST read of a list (`settleDecisions`) stays for a snapshot and for a
+ * client that asks for one.
  */
 
 export interface DecisionsState extends SyncFields {
@@ -30,12 +36,42 @@ export function initialDecisions(): DecisionsState {
 
 export const reduceDecisions: EventReducer<DecisionsState> = (state, event) => {
   switch (event.type) {
-    case 'play.transitioned':
-    case 'scenario.chat_transitioned':
     case 'scenario.created': {
       const id = event.scenarioId ?? scenarioIdOf(event.payload);
-      if (id === undefined) return state;
-      return markStale(state, id);
+      if (id === undefined || id in state.byScenario) return state;
+      return { ...state, byScenario: { ...state.byScenario, [id]: [] } };
+    }
+    case 'scenario.archived': {
+      const id = event.scenarioId ?? scenarioIdOf(event.payload);
+      if (id === undefined || !(id in state.byScenario)) return state;
+      return { ...state, byScenario: without(state.byScenario, id) };
+    }
+    case 'decision.created': {
+      const payload = payloadOf(DecisionCreatedPayloadSchema, event);
+      if (payload?.decision.state !== 'pending') return state;
+      const id = payload.decision.scenarioId;
+      const list = state.byScenario[id] ?? [];
+      if (list.some((decision) => decision.id === payload.decision.id)) return state;
+      return {
+        ...state,
+        byScenario: { ...state.byScenario, [id]: sorted([...list, payload.decision]) },
+      };
+    }
+    case 'decision.answered': {
+      const payload = payloadOf(DecisionAnsweredPayloadSchema, event);
+      const id = event.scenarioId;
+      if (payload === undefined || id === undefined) return state;
+      const list = state.byScenario[id];
+      if (!list?.some((decision) => decision.id === payload.decisionId)) {
+        return state;
+      }
+      return {
+        ...state,
+        byScenario: {
+          ...state.byScenario,
+          [id]: list.filter((decision) => decision.id !== payload.decisionId),
+        },
+      };
     }
     default:
       return state;
