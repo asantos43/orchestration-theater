@@ -40,7 +40,9 @@ export const ConfigEditedPayloadSchema = z.strictObject({
 /**
  * `config.changed` (P16 of Phase 7, N188): the running daemon took in an edit of the configuration
  * without a restart. `hot` lists the dotted key paths that already changed behaviour (`ui.*`,
- * `chat.*`, `limits.*`, `roles.*`); `restart` lists the ones the file now holds but the daemon only
+ * `chat.*`, `limits.*`, `roles.*`, and, since P23, `executors.*` and the `budget` and `local` blocks of a
+ * profile); the confirmation of the setup assistant and the cadastro of an Executor write this event too, not
+ * only `PUT /v1/config`; `restart` lists the ones the file now holds but the daemon only
  * reads at its next start. Paths only, never values. It is not written when nothing was hot.
  */
 export const ConfigChangedPayloadSchema = z.strictObject({
