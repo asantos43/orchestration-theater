@@ -32,6 +32,7 @@ import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
+import { SetupService } from './setup/index.js';
 import type { ClientFactory, ClientFactoryParts } from './clients.js';
 import {
   compose,
@@ -40,7 +41,7 @@ import {
   type Composition,
   type ProductionClientsOptions,
 } from './compose.js';
-import { loadConfig, type DaemonConfig } from './config.js';
+import { CLIENT_IDS, loadConfig, type DaemonConfig } from './config.js';
 import { Execution } from './execution/service.js';
 import type { EventHub } from './events/event-hub.js';
 import type { AttemptResolver } from './execution/reconcile.js';
@@ -81,6 +82,7 @@ import { situationSubject, situationText, type SituationSink } from './situation
 import { liveProfileSessions } from './profiles/live-sessions.js';
 import { roleListsOf } from './profiles/role-lists.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
+import { ExecutorService } from './executors/service.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -841,6 +843,33 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
   });
 
+  // P4 (Phase 7, N121): the setup assistant. It cadastres Executors through the same service as
+  // `ot executor add` (only its dry run: nothing enters `config.yaml` before the confirmation) and
+  // reads the model catalogs of the clients the pool has; with no execution it sees no client.
+  const clientAdapter = (client: string) => {
+    try {
+      return execution?.pool.adapterOf(client);
+    } catch {
+      return undefined;
+    }
+  };
+  const setup = new SetupService({
+    store,
+    clock,
+    logger,
+    configPath: paths.config,
+    profiles,
+    executors: new ExecutorService({
+      store,
+      clock,
+      logger,
+      configPath: paths.config,
+      catalogs: (client) => clientAdapter(client)?.models,
+    }),
+    catalogs: (client) => clientAdapter(client)?.models,
+    installedClients: () => new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
+  });
+
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
@@ -851,6 +880,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     budget,
     profiles,
     layout,
+    setup,
     attachments: new AttachmentService({
       store,
       clock,
@@ -876,6 +906,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     channel: orchestration?.channel,
     runner: orchestration?.runner,
     ideas: orchestration?.ideas,
+    setup,
   });
 
   const handle: DaemonHandle = {

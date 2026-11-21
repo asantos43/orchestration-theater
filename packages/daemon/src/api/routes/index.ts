@@ -19,6 +19,7 @@ import { registerProfileCommands } from './profile-commands.js';
 import { registerProfileRoutes } from './profiles.js';
 import { registerScenarioCommands } from './scenario-commands.js';
 import { registerScenarioRoutes } from './scenarios.js';
+import { registerSetupCommands, registerSetupRoutes } from './setup.js';
 import { registerUsageRoutes } from './usage.js';
 
 export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
@@ -39,6 +40,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerUsageRoutes(handlers, deps);
   registerConfigRoutes(handlers, deps);
   registerLayoutRoutes(handlers, deps);
+  registerSetupRoutes(handlers, deps);
 }
 
 /**
@@ -58,4 +60,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerProfileCommands(register, deps);
   registerConfigCommands(register, deps);
   registerLayoutCommands(register, deps);
+  registerSetupCommands(register, deps);
 }

@@ -11,6 +11,7 @@ import type { PlayRunner } from '../../pipeline/runner.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
 import type { AttachmentService } from '../../scenarios/attachments.js';
+import type { SetupService } from '../../setup/index.js';
 import type { UsageService } from '../../usage/index.js';
 
 /**
@@ -30,6 +31,8 @@ export interface ReadRouteDeps {
   readonly attachments: AttachmentService;
   /** The layout preferences of the interfaces (P12). */
   readonly layout: LayoutPreferencesStore;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }
 
 /**
@@ -54,4 +57,6 @@ export interface CommandRouteDeps {
   readonly ideas?: IdeaQueueService | undefined;
   /** The layout preferences of the interfaces (P12). */
   readonly layout: LayoutPreferencesStore;
+  /** The setup assistant (P4 of docs/18); absent: its routes answer 503 `unavailable`. */
+  readonly setup?: SetupService | undefined;
 }

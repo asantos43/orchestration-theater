@@ -9,11 +9,11 @@ import {
   type RolePresetName,
   type RoleId,
   type RolesLayer,
+  type SetupFlow,
 } from '@otheater/core';
 import type {
   SetupBudget,
   SetupExecutor,
-  SetupFlow,
   SetupNote,
   SetupPlan,
 } from '@otheater/protocol';
@@ -55,7 +55,7 @@ export interface PlanInput {
 export interface PlanApply {
   /** `roles.preset` to write, or `null`. */
   readonly preset: RolePresetName | null;
-  /** `roles.<role>.executors` to write whole (`setup.role_lists: explicit`); never an empty list. */
+  /** `roles.<role>.executors` to write whole (`setup.role_lists: explicit`); an empty list takes the key out. */
   readonly lists: readonly { readonly role: RoleId; readonly executors: readonly string[] }[];
   /** Places in a list that already is the Producer's (`insert` at `position`). */
   readonly insertions: readonly {
@@ -231,10 +231,12 @@ export function buildPlan(input: PlanInput): PlanResult {
   // What gets written, as the dotted keys of `config.yaml`.
   const writes: string[] = [];
   if (choosesPreset) writes.push('roles.preset');
+  // An empty list is never written: a role that has none in the file falls back to the preset, and
+  // a list the file had for a role that now has none is taken out.
   const listsToWrite = rewriteLists
     ? ROLE_IDS.flatMap((role) => {
         const ids = lists.get(role) ?? [];
-        return ids.length === 0 ? [] : [{ role, executors: ids }];
+        return ids.length === 0 && base[role]?.executors === undefined ? [] : [{ role, executors: ids }];
       })
     : [];
   for (const list of listsToWrite) writes.push(`roles.${list.role}.executors`);
