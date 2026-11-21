@@ -90,7 +90,7 @@ export const OT = {
   waitOutcome: 'otheater.wait.outcome',
   waitMs: 'otheater.wait.ms',
   waitResetsAt: 'otheater.wait.resets_at',
-  /** `log` when a projected event pair says it, `direct` when the daemon recorded it where it waited. */
+  /** Always `log`: every wait span is made from events (`direct` went out with P15). */
   waitOrigin: 'otheater.wait.origin',
   waitSource: 'otheater.wait.source',
   waitPriority: 'otheater.wait.priority',
@@ -112,7 +112,12 @@ export const WAIT_KIND = {
 export type WaitKind = (typeof WAIT_KIND)[keyof typeof WAIT_KIND];
 
 /** The values of `otheater.closed_by`. */
-export const CLOSED_BY = { playEnd: 'play_end', attemptEnd: 'attempt_end' } as const;
+export const CLOSED_BY = {
+  playEnd: 'play_end',
+  attemptEnd: 'attempt_end',
+  /** A wait of the pool that a restart of the daemon cut short (its sessions did not survive). */
+  daemonRestart: 'daemon_restart',
+} as const;
 
 /**
  * `gen_ai.provider.name` of a client (the id of its adapter). Claude Code and Codex talk to one

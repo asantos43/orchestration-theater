@@ -209,3 +209,24 @@ describe('the config keys events.terminal_output and events.terminal_output_max'
     expect(() => parseConfig('events:\n  terminal_output_max: 0\n')).toThrow();
   });
 });
+
+describe('the config key events.wait_threshold (P15, N222 (a))', () => {
+  it('defaults to one second', () => {
+    expect(parseConfig('backup:\n  when: manual\n').events.wait_threshold).toBe(1_000);
+  });
+
+  it('takes a duration, always (every wait that began) and off (none)', () => {
+    const threshold = (value: string) =>
+      parseConfig(`events:\n  wait_threshold: ${value}\n`).events.wait_threshold;
+    expect(threshold('250ms')).toBe(250);
+    expect(threshold('5s')).toBe(5_000);
+    expect(threshold('always')).toBe(0);
+    expect(threshold('off')).toBeNull();
+  });
+
+  it('rejects a value that is neither', () => {
+    expect(() => parseConfig('events:\n  wait_threshold: soon\n')).toThrow();
+    expect(() => parseConfig('events:\n  wait_threshold: 0\n')).toThrow();
+    expect(() => parseConfig('events:\n  wait_threshold: -1s\n')).toThrow();
+  });
+});
