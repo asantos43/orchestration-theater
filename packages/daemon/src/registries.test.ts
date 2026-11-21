@@ -13,7 +13,7 @@ import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 const MANUAL = parseConfig('backup:\n  when: manual\n');
 
 describe('the daemon registries', () => {
-  it('are valid with the official entries and hold the 135 daemon and 2 play event types', () => {
+  it('are valid with the official entries and hold the 137 daemon and 2 play event types', () => {
     const registries = buildDaemonRegistries();
     expect(registries.events.size).toBe(139);
     expect(registries.events.has('daemon.started')).toBe(true);
