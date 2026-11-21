@@ -272,8 +272,11 @@ function daemonResourceIds(resources: Row[]): Set<unknown> {
   );
 }
 
+/** JSON of anything the stores return; the nanosecond times are `bigint`, written as text. */
 function json(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === 'bigint' ? item.toString() : item,
+  );
 }
 
 async function startDestination(): Promise<{
