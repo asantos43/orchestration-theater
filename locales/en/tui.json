@@ -1,0 +1,48 @@
+{
+  "app": {
+    "title": "OTheater",
+    "quit_hint": "Ctrl+Q quits",
+    "crash": "The TUI stopped on an error: {{message}}",
+    "patch": {
+      "version_mismatch": "The render patches are off: Ink {{version}} is installed and they are only for Ink {{supported}}.",
+      "ink_not_found": "The render patches are off: the version of Ink could not be read.",
+      "hook_unavailable": "The render patches are off: this Node cannot load the module hook."
+    }
+  },
+  "status": {
+    "heading": "Daemon",
+    "connecting": "Connecting to the daemon...",
+    "offline": "No daemon is running. Start it with \"ot daemon\" in another terminal.",
+    "failed": "Could not connect to the daemon: {{message}}",
+    "label": {
+      "daemon": "Daemon",
+      "state": "State",
+      "sync": "Sync",
+      "stream": "Event stream",
+      "scenarios": "Scenarios",
+      "plays": "Plays",
+      "decisions": "Pending decisions",
+      "events": "Recent events"
+    },
+    "daemon_line": "{{version}}, pid {{pid}}",
+    "state": {
+      "starting": "starting",
+      "recovering": "recovering",
+      "running": "running",
+      "stopping": "stopping"
+    },
+    "sync": {
+      "idle": "idle",
+      "starting": "reading the snapshots",
+      "live": "live",
+      "failed": "failed",
+      "closed": "closed"
+    },
+    "connection": {
+      "connecting": "connecting",
+      "open": "open",
+      "retrying": "retrying",
+      "closed": "closed"
+    }
+  }
+}

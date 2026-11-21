@@ -1,0 +1,34 @@
+{
+  "name": "@otheater/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "exports": {
+    "./launcher": {
+      "types": "./dist/launcher.d.ts",
+      "default": "./dist/launcher.js"
+    },
+    "./main": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    }
+  },
+  "files": [
+    "dist",
+    "patches"
+  ],
+  "dependencies": {
+    "@otheater/client": "workspace:*",
+    "@otheater/protocol": "workspace:*",
+    "i18next": "26.6.0",
+    "ink": "8.0.0",
+    "react": "19.3.1",
+    "react-i18next": "17.1.13"
+  },
+  "devDependencies": {
+    "@otheater/daemon": "workspace:*",
+    "@types/react": "19.3.0",
+    "ink-testing-library": "4.0.0"
+  }
+}
