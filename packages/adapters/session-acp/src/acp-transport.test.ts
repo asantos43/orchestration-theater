@@ -82,6 +82,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'session/set_config_option':
       send({ id: message.id, result: { configOptions: cfg.afterSet ?? [] } });
       return;
+    case 'session/set_title':
+      send(
+        cfg.titleError
+          ? { id: message.id, error: { code: -32601, message: 'method not found' } }
+          : { id: message.id, result: {} },
+      );
+      return;
     case 'session/prompt':
       if (cfg.script) {
         void play(message.params.sessionId, message.id);
@@ -138,6 +145,7 @@ interface StubOptions {
   readonly mcpServers?: SessionOpenParams['mcpServers'];
   readonly meta?: unknown;
   readonly configOptions?: Record<string, string>;
+  readonly title?: string;
 }
 
 async function params(
@@ -161,6 +169,7 @@ async function params(
         via: 'acp',
         ...(options.meta === undefined ? {} : { meta: options.meta }),
         configOptions: options.configOptions ?? {},
+        ...(options.title === undefined ? {} : { title: options.title }),
       },
       mcpServers: options.mcpServers ?? [],
       normalizer,
@@ -203,6 +212,22 @@ describe('AcpTransport against a stub agent', () => {
         terminal: false,
       },
       clientInfo: { name: 'otheater', version: '9.9.9' },
+    });
+    await session.close();
+  });
+
+  it('declares _meta.terminal_output_delta only when asked to (P11)', async () => {
+    const off = await params('terminal-off');
+    const closedOff = await new AcpTransport().open(off.open);
+    const [initializeOff] = await recorded(off.record);
+    expect(JSON.stringify(initializeOff?.params)).not.toContain('terminal_output_delta');
+    await closedOff.close();
+
+    const on = await params('terminal-on');
+    const session = await new AcpTransport({ terminalOutput: true }).open(on.open);
+    const [initializeOn] = await recorded(on.record);
+    expect(initializeOn?.params).toMatchObject({
+      clientCapabilities: { terminal: false, _meta: { terminal_output_delta: true } },
     });
     await session.close();
   });
@@ -295,6 +320,46 @@ describe('AcpTransport against a stub agent', () => {
       _meta: { claudeCode: { options: { settingSources: [] } } },
     });
     await session.close();
+  });
+
+  describe('title of the setup (Phase 8, P3)', () => {
+    it('sends session/set_title after the config options and before the first prompt', async () => {
+      const { open, record } = await params('title', {
+        title: 'OTheater a-1',
+        configOptions: { mode: 'default' },
+      });
+      const session = await new AcpTransport().open(open);
+      const methods = (await recorded(record)).map((entry) => entry.method);
+      expect(methods.slice(-3)).toEqual([
+        'session/new',
+        'session/set_config_option',
+        'session/set_title',
+      ]);
+      const titled = (await recorded(record)).find((entry) => entry.method === 'session/set_title');
+      expect(titled?.params).toEqual({ sessionId: 'stub-1', title: 'OTheater a-1' });
+      await session.close();
+    });
+
+    it('sends nothing without a title', async () => {
+      const { open, record } = await params('no-title');
+      const session = await new AcpTransport().open(open);
+      expect((await recorded(record)).map((entry) => entry.method)).not.toContain(
+        'session/set_title',
+      );
+      await session.close();
+    });
+
+    it('a client that refuses it still opens; the refusal is a warning', async () => {
+      const { open } = await params('title-refused', {
+        title: 'x',
+        config: { titleError: true },
+      });
+      const warnings: AcpTransportWarning[] = [];
+      const session = await new AcpTransport({ onWarning: (w) => warnings.push(w) }).open(open);
+      expect(session.sessionId).toBe('stub-1');
+      expect(warnings.map((w) => w.kind)).toEqual(['set_title_failed']);
+      await session.close();
+    });
   });
 
   it('sends a server with stdio as a process to start, also to a client without HTTP MCP (N161)', async () => {

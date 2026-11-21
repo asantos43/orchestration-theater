@@ -37,6 +37,7 @@ import {
 } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
+import { TerminalRecorder, type TerminalBlock } from './terminal-recorder.js';
 import { CheckpointTracker } from './checkpoints.js';
 import {
   eventErrorText,
@@ -364,6 +365,8 @@ interface AttemptContext {
    * `session.opened` is already in the log). It belongs to one go (`#once`), not to the attempt.
    */
   pending: PendingUpdate[] | undefined;
+  /** The live output of the terminals of the attempt, on its way to `terminal.output` (P11 of Phase 8). */
+  readonly terminals: TerminalRecorder;
   lastEventAt: number;
   lastError: { key: string; count: number } | undefined;
   /** Drops of the client process of this attempt that cost no free allowance (`client_crash`). */
@@ -826,6 +829,7 @@ export class AttemptRunner {
       sessionOpen: false,
       lease: undefined,
       pending: undefined,
+      terminals: new TerminalRecorder(() => settings.terminalOutput),
       lastEventAt: clock.now(),
       lastError: undefined,
       crashes: 0,
@@ -1076,6 +1080,11 @@ export class AttemptRunner {
         profile: spec.profile,
         policy: spec.policy,
         cwd: context.worktree,
+        correlation: {
+          playId: spec.playId,
+          attemptId: context.attemptId,
+          ...(spec.role === undefined ? {} : { role: spec.role }),
+        },
         ...(step.resumeSessionId === undefined ? {} : { resumeSessionId: step.resumeSessionId }),
         ...(grant === undefined ? {} : { mcpServers: [grant.server] }),
         permissions: {
@@ -1116,6 +1125,7 @@ export class AttemptRunner {
     } finally {
       guard.abort();
       subscription.dispose();
+      if (this.#updatesDelivered(context)) this.#flushTerminals(context, lease.session.sessionId);
       this.#dropPending(context);
     }
     await context.tracker.settled();
@@ -1552,6 +1562,11 @@ export class AttemptRunner {
   }
 
   #record(context: AttemptContext, sessionId: string, update: NormalizedUpdate, now: number): void {
+    if (update.kind === 'terminal_output') {
+      // The output of a terminal is not a `session.update`: it is masked, cut and written as `terminal.output`.
+      this.#writeTerminal(context, sessionId, context.terminals.push(update), now);
+      return;
+    }
     void context.journal.write(
       buildDaemonEvent('session.update', {
         sessionId,
@@ -1561,6 +1576,42 @@ export class AttemptRunner {
       { lastEventAt: now },
     );
     context.tracker.observe(update);
+  }
+
+  /** Writes the blocks of terminal output the recorder gave, in order, with the correlation of the attempt. */
+  #writeTerminal(
+    context: AttemptContext,
+    sessionId: string,
+    blocks: readonly TerminalBlock[],
+    now: number,
+  ): void {
+    for (const block of blocks) {
+      void context.journal.write(
+        buildDaemonEvent('terminal.output', {
+          sessionId,
+          ...block,
+          ...this.#correlation(context),
+        }),
+        { lastEventAt: now },
+      );
+    }
+  }
+
+  /** The turn ended: what the terminals still hold goes to the log, while the session id is known. */
+  /** False while the updates of the turn still wait for the next safe point (`pending` is set). */
+  #updatesDelivered(context: AttemptContext): boolean {
+    return context.pending === undefined;
+  }
+
+  #flushTerminals(context: AttemptContext, sessionId: string): void {
+    try {
+      this.#writeTerminal(context, sessionId, context.terminals.flush(), context.journal.touch());
+    } catch (error) {
+      this.#options.logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'terminal output not recorded',
+      );
+    }
   }
 
   /**

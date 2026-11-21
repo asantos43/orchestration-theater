@@ -36,7 +36,10 @@ const detail = z.string().min(1).max(512).nullable();
  * - `account_rotated` (P26, N157): `profiles.rotate_on_exhaustion.<provider>` is `on` and a
  *   subscription account of that provider ran out, so the work passed to another account of the
  *   same provider (`subject`: the role; `detail`: the provider, the profile that ran out and the
- *   profile that took the work; the envelope carries the play and the attempt) [proposta].
+ *   profile that took the work; the envelope carries the play and the attempt) [proposta];
+ * - `daemon_spans_failed` (Phase 8, P4, N214; [proposta]): the projector of the spans of the daemon
+ *   could not read the log or write the base (`subject`: what failed; `detail`: why). It is told once
+ *   per episode and the projector tries again; the orchestration does not depend on it.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -51,6 +54,7 @@ export const DAEMON_NOTICE_KINDS = [
   'browser_warning',
   'cross_check_unsatisfiable',
   'account_rotated',
+  'daemon_spans_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 
@@ -68,6 +72,8 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  * What a `recovery.notice` tells: backup and recovery (architecture 5.21) that went worse than
  * planned, and that no other event says.
  * - `backup_rotation_failed`: the new copy is good, but the rotation of the old ones failed;
+ * - `backup_telemetry_failed` (P1 of Phase 8): `backup.telemetry: include` and the copy of the telemetry
+ *   file failed; the copy of the store is good and carries no telemetry;
  * - `retention_remove_failed`: retention could not remove an old copy (`subject`: its folder name);
  * - `process_not_tracked`: a process a client started is not written down, so the next daemon cannot
  *   find it as an orphan;
@@ -84,6 +90,7 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  */
 export const RECOVERY_NOTICE_KINDS = [
   'backup_rotation_failed',
+  'backup_telemetry_failed',
   'retention_remove_failed',
   'process_not_tracked',
   'effect_unsettled',

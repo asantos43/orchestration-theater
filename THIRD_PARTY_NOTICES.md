@@ -9031,6 +9031,30 @@ SOFTWARE.
 
 ## Copied code (level A)
 
+### harbor
+
+- License: Apache-2.0
+- Origin: examples/tasks/hello-load-atif-trajectory-run-level/environment/trajectory.json at commit 646874a7bfc23c45228f6d25bc900eac5ddc4541
+- Local files: `packages/protocol/src/atif/fixtures/harbor-hello-claude-code.json`
+
+Copyright notice:
+
+```text
+Harbor (https://github.com/harbor-framework/harbor), licensed under the Apache License, Version 2.0. The upstream LICENSE file has no copyright line and the repository has no NOTICE file (read on 2026-11-21); the license text is in packages/protocol/src/atif/fixtures/LICENSE-harbor.txt.
+```
+
+### harbor
+
+- License: Apache-2.0
+- Origin: rfcs/0001-trajectory-format.md (example of section IV, ATIF-v1.5) at commit 74cc6312018c349c6bd2400c89a0ac4983ac1085
+- Local files: `packages/protocol/src/atif/fixtures/rfc-0001-stock-price.json`, `packages/protocol/src/atif/fixtures/LICENSE-harbor.txt`
+
+Copyright notice:
+
+```text
+Harbor (https://github.com/harbor-framework/harbor), licensed under the Apache License, Version 2.0. The upstream LICENSE file has no copyright line and the repository has no NOTICE file (read on 2026-11-21); the license text is in packages/protocol/src/atif/fixtures/LICENSE-harbor.txt.
+```
+
 ### ink
 
 - License: MIT

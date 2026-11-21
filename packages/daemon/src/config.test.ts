@@ -73,6 +73,7 @@ describe('parseConfig', () => {
       keep_days: 2,
       copies: 7,
       content: 'without_runs',
+      telemetry: 'exclude',
       method: 'online_api',
       pages_per_step: 'all',
     });
@@ -116,6 +117,25 @@ describe('parseConfig', () => {
       /ui\.tuiMouse\.wheelLines/,
     );
     expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
+  });
+
+  it('has the default of ui.sidebar, takes its modes and refuses bad values (P11)', () => {
+    expect(parseConfig('').ui.sidebar).toEqual({ finishedPlays: 'collapsed', finishedLimit: 20 });
+    for (const mode of ['collapsed', 'hidden', 'expanded']) {
+      expect(
+        parseConfig(`ui:\n  sidebar:\n    finishedPlays: ${mode}\n`).ui.sidebar.finishedPlays,
+      ).toBe(mode);
+    }
+    expect(parseConfig('ui:\n  sidebar:\n    finishedLimit: 100\n').ui.sidebar.finishedLimit).toBe(
+      100,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    finishedPlays: always\n')).toThrow(
+      /ui\.sidebar\.finishedPlays/,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    finishedLimit: 0\n')).toThrow(
+      /ui\.sidebar\.finishedLimit/,
+    );
+    expect(() => parseConfig('ui:\n  sidebar:\n    other: 1\n')).toThrow();
   });
 
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
@@ -1297,6 +1317,101 @@ describe('loadConfig', () => {
       await expect(loadConfig(file)).rejects.toThrow(/ui\.keymap\.overrides\.tabs\.add/);
     } finally {
       await tmp.dispose();
+    }
+  });
+});
+
+describe('telemetry (P1 of Phase 8)', () => {
+  it('has the defaults of the plan', () => {
+    const config = parseConfig('');
+    expect(config.telemetry).toEqual({
+      enabled: 'on',
+      file: 'telemetry.sqlite',
+      synchronous: 'normal',
+      write: { batch: 500, queue_max: 20_000, flush_interval: 1000, retry_after: 60_000 },
+      clients: {
+        'claude-code': { enabled: 'on', traces: 'off' },
+        codex: { enabled: 'on' },
+        opencode: { enabled: 'on', ai_spans: 'off' },
+      },
+      daemon_spans: { enabled: 'on', waits: 'all' },
+    });
+    expect(config.backup.telemetry).toBe('exclude');
+  });
+
+  it('takes every mode of the new keys', () => {
+    const config = parseConfig(
+      [
+        'telemetry:',
+        '  enabled: off',
+        '  file: sub/t.sqlite',
+        '  synchronous: full',
+        '  write:',
+        '    batch: 10',
+        '    queue_max: 100',
+        '    flush_interval: 500ms',
+        '    retry_after: 5m',
+        '  clients:',
+        '    claude-code: off',
+        '    codex:',
+        '      enabled: off',
+        '    opencode:',
+        '      ai_spans: on',
+        'backup:',
+        '  telemetry: include',
+        '',
+      ].join('\n'),
+    );
+    expect(config.telemetry.enabled).toBe('off');
+    expect(config.telemetry.file).toBe('sub/t.sqlite');
+    expect(config.telemetry.synchronous).toBe('full');
+    expect(config.telemetry.write).toEqual({
+      batch: 10,
+      queue_max: 100,
+      flush_interval: 500,
+      retry_after: 300_000,
+    });
+    expect(config.telemetry.clients['claude-code']).toEqual({ enabled: 'off', traces: 'off' });
+    expect(config.telemetry.clients.codex).toEqual({ enabled: 'off' });
+    expect(config.telemetry.clients.opencode).toEqual({ enabled: 'on', ai_spans: 'on' });
+    expect(config.backup.telemetry).toBe('include');
+    expect(
+      parseConfig('telemetry:\n  clients:\n    claude-code:\n      traces: on\n').telemetry.clients[
+        'claude-code'
+      ],
+    ).toEqual({ enabled: 'on', traces: 'on' });
+  });
+
+  it('takes the modes of the spans of the daemon (P4)', () => {
+    const spans = (yaml: string) => parseConfig(`telemetry:\n${yaml}`).telemetry.daemon_spans;
+    expect(spans('  daemon_spans: off\n')).toEqual({ enabled: 'off', waits: 'all' });
+    expect(spans('  daemon_spans: on\n')).toEqual({ enabled: 'on', waits: 'all' });
+    expect(spans('  daemon_spans:\n    waits: log\n')).toEqual({ enabled: 'on', waits: 'log' });
+    expect(spans('  daemon_spans:\n    enabled: off\n    waits: off\n')).toEqual({
+      enabled: 'off',
+      waits: 'off',
+    });
+  });
+
+  it('refuses unknown values and keys, and does not own the receiver yet', () => {
+    for (const bad of [
+      'telemetry:\n  enabled: maybe\n',
+      'telemetry:\n  synchronous: off\n',
+      'telemetry:\n  file: ""\n',
+      'telemetry:\n  write:\n    batch: 0\n',
+      'telemetry:\n  write:\n    queue_max: 1.5\n',
+      'telemetry:\n  write:\n    flush_interval: soon\n',
+      'telemetry:\n  clients:\n    codex: maybe\n',
+      'telemetry:\n  clients:\n    codex:\n      traces: on\n',
+      'telemetry:\n  clients:\n    gemini: on\n',
+      'telemetry:\n  receiver:\n    port: 1\n',
+      'telemetry:\n  other: 1\n',
+      'telemetry:\n  daemon_spans: maybe\n',
+      'telemetry:\n  daemon_spans:\n    waits: some\n',
+      'telemetry:\n  daemon_spans:\n    other: on\n',
+      'backup:\n  telemetry: sometimes\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }
   });
 });

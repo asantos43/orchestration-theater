@@ -22,6 +22,7 @@ import type {
   ProcessLauncher,
   PullRequest,
   SecretVault,
+  TelemetryStore,
 } from '@otheater/core';
 import { testGit } from '@otheater/sdk';
 import { defaultLauncher, productionClients } from '../compose.js';
@@ -154,6 +155,8 @@ export interface PlayHarnessOptions {
    * confirmation of an imported repository does not take the place of the one a test waits for.
    */
   readonly conventions?: 'ask' | 'detect' | 'off';
+  /** The telemetry store the daemon runs with (P4): the test reads the spans from it. */
+  readonly telemetry?: TelemetryStore;
 }
 
 /**
@@ -198,6 +201,7 @@ ${options.extra ?? ''}
       vault: fakes.vault,
       launcher,
       codeHost: realHead,
+      ...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
     },
     clients: (parts) => [
       ...productionClients(config)(parts),

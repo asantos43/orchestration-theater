@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { PlaywrightBrowserSession } from '@otheater/adapter-browser-playwright';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
@@ -40,6 +40,13 @@ import {
   SqliteStoreConfigSchema,
   type SqliteStoreConfig,
 } from '@otheater/adapter-store-sqlite';
+import {
+  backupTelemetryFile,
+  SQLITE_TELEMETRY_ADAPTER,
+  SqliteTelemetryStore,
+  type SqliteTelemetryConfigInput,
+  type TelemetryResetInfo,
+} from '@otheater/adapter-telemetry-sqlite';
 import { CcusageSource } from '@otheater/adapter-usage-ccusage';
 import {
   EncryptedFileVault,
@@ -64,6 +71,7 @@ import {
   SANDBOX_PORT_VERSION,
   SECRET_VAULT_PORT_VERSION,
   STORE_PORT_VERSION,
+  TELEMETRY_STORE_PORT_VERSION,
   USAGE_SOURCE_PORT_VERSION,
   VCS_PORT_VERSION,
   type Adapter,
@@ -84,6 +92,7 @@ import {
   type UsageSource,
   type StoreBackupOptions,
   type StoreBackupResult,
+  type TelemetryStore,
   type Vcs,
 } from '@otheater/core';
 import semver from 'semver';
@@ -110,6 +119,7 @@ import {
 } from './config.js';
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
+import { DaemonSpans } from './telemetry/daemon-spans.js';
 import { chatFeedStore } from './orchestration/chat-feed.js';
 import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
@@ -126,7 +136,8 @@ export type PortName =
   | 'Sandbox'
   | 'BrowserSession'
   | 'MemoryProbe'
-  | 'UsageSource';
+  | 'UsageSource'
+  | 'TelemetryStore';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -143,6 +154,11 @@ export interface AdapterRecord {
 export interface ComposeOverrides {
   readonly clock?: Clock;
   readonly store?: Store;
+  /**
+   * The telemetry base (P1 of Phase 8). `SqliteTelemetryStore` over `<data>/<telemetry.file>` by
+   * default; `'none'` runs the daemon without one, whatever `telemetry.enabled` says.
+   */
+  readonly telemetry?: TelemetryStore | 'none';
   readonly vault?: SecretVault;
   /** Version control for the worktrees of the attempts (`GitVcs` by default). */
   readonly vcs?: Vcs;
@@ -245,6 +261,22 @@ export interface Composition {
    * Closed until the daemon calls `open()` after `daemon.started`; wait for `idle()` before closing.
    */
   readonly situations: SituationLog;
+  /**
+   * The telemetry base (P1 of Phase 8, N54), or `undefined` when `telemetry.enabled` is `off`.
+   * Never what the orchestration depends on: a failure here is a counted loss, not an error.
+   */
+  readonly telemetry: TelemetryStore | undefined;
+  /**
+   * Consistent copy of the telemetry file into `dest` for `backup.telemetry: include`; resolves
+   * `false` when there is nothing to copy. `undefined` when the base is off or is an override.
+   */
+  readonly telemetryBackup: ((dest: string) => Promise<boolean>) | undefined;
+  /**
+   * The spans of the daemon (P4 of Phase 8): the projector of the event log, or `undefined` when
+   * there is no telemetry base or `telemetry.daemon_spans` is `off`. The daemon starts it after
+   * `daemon.started` and stops it before the situations are closed.
+   */
+  readonly daemonSpans: DaemonSpans | undefined;
   /** Closes the store, locks the vault and flushes the log. Idempotent. */
   close(): Promise<void>;
 }
@@ -309,6 +341,68 @@ const SqliteSectionSchema = SqliteStoreConfigSchema.omit({ path: true });
 function storeSection(config: DaemonConfig, paths: DataPaths): SqliteStoreConfig {
   const section = parseSection('store', SqliteSectionSchema, config.store);
   return { ...section, path: paths.store };
+}
+
+/** Where the telemetry base lives: `telemetry.file`, relative to the data folder or absolute. */
+export function telemetryPath(config: DaemonConfig, dataDir: string): string {
+  const file = config.telemetry.file;
+  return isAbsolute(file) ? file : join(dataDir, file);
+}
+
+/** The adapter's config from the `telemetry.*` keys; the driver and the lock wait come from `store.*`. */
+function telemetrySection(
+  config: DaemonConfig,
+  dataDir: string,
+  paths: DataPaths,
+): SqliteTelemetryConfigInput {
+  const store = storeSection(config, paths);
+  const { write, synchronous } = config.telemetry;
+  return {
+    path: telemetryPath(config, dataDir),
+    driver: store.driver,
+    busyTimeoutMs: store.busyTimeoutMs,
+    synchronous,
+    writeBatch: write.batch,
+    queueMax: write.queue_max,
+    flushIntervalMs: write.flush_interval,
+    retryAfterMs: write.retry_after,
+  };
+}
+
+/**
+ * What the daemon does when the adapter recreates the base or gives up: a warning with the full
+ * path in the log, and the event `telemetry.store_reset` (basename only, no content).
+ */
+function telemetryResetHandler(
+  logger: Logger,
+  situations: SituationSink,
+): (info: TelemetryResetInfo) => void {
+  return (info) => {
+    logger.warn(
+      { reason: info.reason, outcome: info.outcome, brokenFile: info.brokenFile },
+      `the telemetry base was ${info.outcome === 'recreated' ? 'recreated' : 'left unavailable'}: ${info.error}`,
+    );
+    situations.record('telemetry.store_reset', {
+      reason: info.reason,
+      outcome: info.outcome,
+      brokenFile: info.brokenFile === null ? null : basename(info.brokenFile),
+      resets: info.resets,
+    });
+  };
+}
+
+/**
+ * The copy of the telemetry file for `ot backup` while a daemon runs (the base is not ours to open):
+ * a consistent snapshot read from the file. Resolves `false` when there is no file.
+ */
+export function composeTelemetryBackup(
+  config: DaemonConfig,
+  dataDir: string,
+): (dest: string) => Promise<boolean> {
+  const paths = dataPaths(dataDir);
+  const path = telemetryPath(config, dataDir);
+  const { driver } = storeSection(config, paths);
+  return (destPath) => backupTelemetryFile({ path, destPath, driver });
 }
 
 /** The `Vcs` of the daemon: git, after the range check like every adapter. */
@@ -611,7 +705,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     const vcs = overrides.vcs ?? defaultVcs();
     const launcher = overrides.launcher ?? defaultLauncher();
     const memory = overrides.memory ?? defaultMemoryProbe();
-    const transport = overrides.transport ?? new AcpTransport();
+    const transport =
+      overrides.transport ??
+      new AcpTransport({ terminalOutput: () => config.events.terminal_output !== 'off' });
     // P24 (N146): what the daemon only wrote to the log is also an event. Closed until the daemon
     // wrote `daemon.started`, so what compose notices below is written after it.
     const situations = new SituationLog({ events: store.events, logger });
@@ -621,7 +717,46 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
 
     const usageSource = composeUsageSource(config, paths, overrides, adapters, logger, situations);
 
-    const opened = { store, vault, sandbox, browser, situations, eventHub };
+    // Phase 8, P1 (N54): the telemetry base opens after the situations, which it reports to. It
+    // never stops the daemon: a bad file is recreated, and a base that cannot be had is `no_base`.
+    let telemetry: TelemetryStore | undefined;
+    let telemetryBackup: Composition['telemetryBackup'];
+    if (overrides.telemetry === 'none' || config.telemetry.enabled === 'off') {
+      telemetry = undefined;
+    } else if (overrides.telemetry !== undefined) {
+      telemetry = overrides.telemetry;
+      adapters.push(overrideRecord('TelemetryStore', TELEMETRY_STORE_PORT_VERSION));
+    } else {
+      adapters.push(
+        checkAdapterRange(SQLITE_TELEMETRY_ADAPTER, 'TelemetryStore', TELEMETRY_STORE_PORT_VERSION),
+      );
+      const sqlite = await SqliteTelemetryStore.open(
+        telemetrySection(config, paths.dataDir, paths),
+        { clock, onReset: telemetryResetHandler(logger, situations) },
+      );
+      telemetry = sqlite;
+      telemetryBackup = async (dest) => {
+        if ((await sqlite.health()).state === 'no_base') return false;
+        await sqlite.backupTo(dest);
+        return true;
+      };
+    }
+
+    // Phase 8, P4 (N214 (a)): the spans of the daemon, read from the event log. Started by the daemon.
+    const daemonSpans =
+      telemetry !== undefined && config.telemetry.daemon_spans.enabled === 'on'
+        ? new DaemonSpans({
+            telemetry,
+            hub: eventHub,
+            events: store.events,
+            clock,
+            logger,
+            situations,
+            waits: config.telemetry.daemon_spans.waits,
+          })
+        : undefined;
+
+    const opened = { store, vault, sandbox, browser, situations, eventHub, telemetry };
     let closing: Promise<void> | undefined;
     return {
       clock,
@@ -640,6 +775,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       codeHost: overrides.codeHost,
       usageSource,
       situations,
+      telemetry,
+      telemetryBackup,
+      daemonSpans,
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
@@ -658,6 +796,7 @@ async function closeParts(
     browser?: BrowserSession | undefined;
     situations?: SituationLog | undefined;
     eventHub?: EventHub | undefined;
+    telemetry?: TelemetryStore | undefined;
   },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
@@ -670,6 +809,12 @@ async function closeParts(
   }
   try {
     await parts.sandbox?.close();
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    // Writes what is queued; it may still report a reset, which is a situation, so it goes first.
+    await parts.telemetry?.close();
   } catch (error) {
     failures.push(error);
   }

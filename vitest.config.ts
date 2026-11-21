@@ -13,6 +13,7 @@ const alias = {
   '@otheater/client': `${import.meta.dirname}/packages/client/src/index.ts`,
   '@otheater/protocol': `${import.meta.dirname}/packages/protocol/src/index.ts`,
   '@otheater/adapter-store-sqlite': `${import.meta.dirname}/packages/adapters/store-sqlite/src/index.ts`,
+  '@otheater/adapter-telemetry-sqlite': `${import.meta.dirname}/packages/adapters/telemetry-sqlite/src/index.ts`,
   '@otheater/adapter-vault-file': `${import.meta.dirname}/packages/adapters/vault-file/src/index.ts`,
   '@otheater/adapter-vault-keyring': `${import.meta.dirname}/packages/adapters/vault-keyring/src/index.ts`,
   '@otheater/adapter-clock-system': `${import.meta.dirname}/packages/adapters/clock-system/src/index.ts`,

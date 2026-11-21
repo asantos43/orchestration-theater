@@ -23,6 +23,7 @@ import {
   BACKUP_CONTENTS,
   LAYOUT_STORES,
   LAYOUT_SYNCS,
+  TERMINAL_OUTPUT_MODES,
   UiClipboardConfigSchema,
   UiChatConfigSchema,
   UiInputConfigSchema,
@@ -33,6 +34,7 @@ import {
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
+  UiSidebarConfigSchema,
   UiTuiLayoutConfigSchema,
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
@@ -55,6 +57,7 @@ import {
   DIRECT_ORPHANS_MODES,
   DIRECT_WORKSPACES,
 } from './direct/direct-config.js';
+import { AtifConfigSchema } from './atif/atif-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1243,6 +1246,82 @@ const DirectSessionConfigSchema = z
   })
   .prefault({});
 
+/** `telemetry.enabled`, `telemetry.clients.<client>` and `telemetry.clients.<client>.<option>`: on or off. */
+export const TELEMETRY_SWITCH_MODES = ['on', 'off'] as const;
+/**
+ * `telemetry.daemon_spans.waits` (Phase 8, P4; [proposta]): which `otheater.wait` spans the daemon
+ * makes. `all`: those the log tells (quota, executor selection, tool semaphore) and those recorded
+ * where the daemon waits (the prompt queue, the pool); `log`: only those the log tells, so the
+ * whole set can be rebuilt from the log; `off`: none.
+ */
+export const TELEMETRY_DAEMON_WAITS_MODES = ['all', 'log', 'off'] as const;
+/** `telemetry.synchronous` (`PRAGMA synchronous` of the telemetry base only; the `Store` stays full). */
+export const TELEMETRY_SYNCHRONOUS_MODES = ['normal', 'full'] as const;
+/** `backup.telemetry`: whether the backup carries the telemetry file. */
+export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
+
+const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
+
+/**
+ * One entry of `telemetry.clients.<client>`: `on` or `off` (shorthand for `enabled`), or an object
+ * with `enabled` and the options of that client. After parsing it is always the object. [proposta]
+ */
+function telemetryClient<Shape extends z.ZodRawShape>(options: Shape) {
+  return z
+    .preprocess(
+      (value) => (typeof value === 'string' ? { enabled: value } : value),
+      z.strictObject({ enabled: TelemetrySwitch.default('on'), ...options }),
+    )
+    .prefault({});
+}
+
+/**
+ * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block: P2 adds
+ * `receiver.*` next to these keys. Every key is [proposta] except where the plan names it.
+ */
+const TelemetryConfigSchema = z
+  .strictObject({
+    /** `off`: no telemetry base is opened and nothing is received or kept. */
+    enabled: TelemetrySwitch.default('on'),
+    /** The telemetry base, in the data folder (or absolute). Apart from `store.sqlite` (N54). */
+    file: z.string().min(1).default('telemetry.sqlite'),
+    /** `normal` (default): a power cut may lose the last commits, never corrupts. */
+    synchronous: z.enum(TELEMETRY_SYNCHRONOUS_MODES).default('normal'),
+    write: z
+      .strictObject({
+        /** Records per transaction; a queue that reaches it is written at once. */
+        batch: z.int().min(1).max(100_000).default(500),
+        /** Records the queue holds; when full the oldest are dropped and counted. */
+        queue_max: z.int().min(1).max(10_000_000).default(20_000),
+        /** A queue that did not fill up is written after this long. */
+        flush_interval: DurationSchema.prefault('1s'),
+        /** With no base, how long to wait before trying to open it again. */
+        retry_after: DurationSchema.prefault('1m'),
+      })
+      .prefault({}),
+    /**
+     * Which clients send telemetry to the daemon (P3 turns them on at launch). Each accepts `on` or
+     * `off`, or an object with `enabled` and its options:
+     * - `claude-code.traces`: also ask for the traces (beta); default `off`;
+     * - `opencode.ai_spans`: `experimental.openTelemetry` for the AI spans (N213); default `off`.
+     */
+    clients: z
+      .strictObject({
+        'claude-code': telemetryClient({ traces: TelemetrySwitch.default('off') }),
+        codex: telemetryClient({}),
+        opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
+      })
+      .prefault({}),
+    /**
+     * The spans of the daemon itself (P4; N214 (a)): the play, its stages, the attempts, the
+     * sessions, the tool calls and the waits, made by reading the event log with a cursor of their
+     * own. `on` or `off`, or an object with `enabled` and `waits` ({@link TELEMETRY_DAEMON_WAITS_MODES}).
+     * Default `on`. [proposta]
+     */
+    daemon_spans: telemetryClient({ waits: z.enum(TELEMETRY_DAEMON_WAITS_MODES).default('all') }),
+  })
+  .prefault({});
+
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
  * section is optional and every key has a default, so a missing file means the defaults. Strict at
@@ -1269,6 +1348,8 @@ export const DaemonConfigSchema = z
      * without it the versioned `prompts/` folder of the repository is used). [proposta]
      */
     prompts: AdapterSection.prefault({}),
+    /** The telemetry of the clients and its own base (architecture 5.11, N54). */
+    telemetry: TelemetryConfigSchema,
     backup: z
       .strictObject({
         when: z.enum(BACKUP_WHEN).default('daily_after'),
@@ -1280,6 +1361,11 @@ export const DaemonConfigSchema = z
         keep_days: z.number().positive().default(2),
         copies: z.int().min(1).default(7),
         content: z.enum(BACKUP_CONTENTS).default('without_runs'),
+        /**
+         * `exclude` (default): the telemetry file is left out of the backup (it is a mirror that is
+         * cheap to lose, and it grows). `include`: a consistent copy goes in as `telemetry.sqlite`. [proposta]
+         */
+        telemetry: z.enum(BACKUP_TELEMETRY_MODES).default('exclude'),
         method: z.enum(BACKUP_METHOD_NAMES).default('online_api'),
         /**
          * `online_api` only (ignored with `vacuum_into`): pages copied per `sqlite3_backup_step`.
@@ -1524,6 +1610,8 @@ export const DaemonConfigSchema = z
     terminal: TerminalConfigSchema,
     /** [proposta] The direct session with an Actor (architecture 5.20): see `direct/direct-config.ts`. */
     direct_session: DirectSessionConfigSchema,
+    /** [proposta] The ATIF export of the trajectories (architecture 5.11, N219): see `atif/atif-config.ts`. */
+    atif: AtifConfigSchema,
     /** What the start-up does after a crash or a restart (architecture 5.21). */
     recovery: z
       .strictObject({
@@ -1838,6 +1926,19 @@ export const DaemonConfigSchema = z
       .strictObject({
         /** N80: `reject` (default) refuses an unknown type or an invalid payload; `warn` stores it and logs. */
         unknown_type: z.enum(EVENT_UNKNOWN_TYPE_MODES).default('reject'),
+        /**
+         * P11 of Phase 8 (N200 item 3) [proposta]: the live output of the terminal of the Actor.
+         * `truncated` (default) writes `terminal.output` events up to `terminal_output_max` of each
+         * terminal and marks the cut; `on` writes all of it; `off` writes none and the client is not
+         * asked to send it (`_meta.terminal_output_delta` is left out of `initialize`). The shapes of a
+         * credential are masked in every mode.
+         */
+        terminal_output: z.enum(TERMINAL_OUTPUT_MODES).default('truncated'),
+        /** P11 [proposta]: the most output of one terminal that `terminal_output: truncated` keeps. */
+        terminal_output_max: SizeSchema.refine(
+          (bytes) => bytes > 0,
+          'expected a size above zero',
+        ).prefault('64KB'),
       })
       .prefault({}),
     /**
@@ -2258,6 +2359,8 @@ export const DaemonConfigSchema = z
         setup: UiSetupConfigSchema.prefault({}),
         /** What the prompt of "new project" starts with (P22 of docs/18). */
         newProject: UiNewProjectConfigSchema.prefault({}),
+        /** The finished plays in the side bar of the terminal interface (P11 of docs/19). */
+        sidebar: UiSidebarConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

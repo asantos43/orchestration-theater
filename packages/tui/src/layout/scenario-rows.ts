@@ -45,6 +45,45 @@ export function scenarioRows(
     });
 }
 
+/** One finished play of the "Terminadas" section of the side bar (P11 of docs/19). */
+export interface FinishedRow {
+  readonly id: string;
+  readonly scenarioId: string;
+  readonly scenarioName: string;
+  readonly need: string;
+  /** `DONE` is `done`; any other final state (`CANCELLED`) is `cancelled`. */
+  readonly outcome: 'done' | 'cancelled';
+  readonly finishedAt: number;
+}
+
+/**
+ * The finished plays of the active scenarios, the most recent first, at most `limit`. A play
+ * whose scenario is not active (or unknown) is left out, as its scenario is not in the list.
+ */
+export function finishedRows(
+  scenarios: Readonly<Record<string, ApiScenario>>,
+  plays: Readonly<Record<string, ApiPlay>>,
+  limit: number,
+): FinishedRow[] {
+  const rows: FinishedRow[] = [];
+  for (const play of Object.values(plays)) {
+    if (play.finishedAt === null) continue;
+    const scenario = scenarios[play.scenarioId];
+    if (scenario?.state !== 'active') continue;
+    rows.push({
+      id: play.id,
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
+      need: play.need,
+      outcome: play.state === 'DONE' ? 'done' : 'cancelled',
+      finishedAt: play.finishedAt,
+    });
+  }
+  return rows
+    .sort((a, b) => b.finishedAt - a.finishedAt || a.id.localeCompare(b.id))
+    .slice(0, Math.max(0, limit));
+}
+
 export interface QuotaRow {
   readonly profile: string;
   readonly state: ApiQuotaStatus['state'];

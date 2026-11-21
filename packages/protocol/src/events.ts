@@ -84,6 +84,8 @@ import {
   RecoveryNoticePayloadSchema,
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
+import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
+import { TelemetryStoreResetPayloadSchema } from './telemetry-events.js';
 import { UsageNoticePayloadSchema, UsageRecordedPayloadSchema } from './usage-events.js';
 import {
   PermissionAnsweredPayloadSchema,
@@ -151,6 +153,7 @@ import {
   BrowserApprovalPayloadSchema,
   BrowserRefusedPayloadSchema,
 } from './browser-events.js';
+import { TerminalOutputPayloadSchema } from './terminal-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -390,6 +393,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'tool.finished',
     schemaVersion: 1,
     payload: ToolFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'terminal.output',
+    schemaVersion: 1,
+    payload: TerminalOutputPayloadSchema,
   }),
   defineEventType({
     type: 'browser.action',
@@ -674,6 +682,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ScenarioNoticePayloadSchema,
   }),
   defineEventType({
+    type: 'telemetry.store_reset',
+    schemaVersion: 1,
+    payload: TelemetryStoreResetPayloadSchema,
+  }),
+  defineEventType({
     type: 'api.started',
     schemaVersion: 1,
     payload: ApiStartedPayloadSchema,
@@ -836,6 +849,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DemandTransitionedPayloadSchema,
   }),
+  defineEventType({
+    type: 'atif.exported',
+    schemaVersion: 1,
+    payload: AtifExportedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'atif.export_failed',
+    schemaVersion: 1,
+    payload: AtifExportFailedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -891,6 +914,7 @@ export type AttemptResumedPayload = DaemonEventPayloads['attempt.resumed'];
 export type AttemptCancelledPayload = DaemonEventPayloads['attempt.cancelled'];
 export type ToolCalledPayload = DaemonEventPayloads['tool.called'];
 export type ToolFinishedPayload = DaemonEventPayloads['tool.finished'];
+export type TerminalOutputEventPayload = DaemonEventPayloads['terminal.output'];
 export type BrowserActionPayload = DaemonEventPayloads['browser.action'];
 export type BrowserRefusedPayload = DaemonEventPayloads['browser.refused'];
 export type BrowserApprovalPayload = DaemonEventPayloads['browser.approval'];
@@ -952,6 +976,8 @@ export type PlayNoticePayload = DaemonEventPayloads['play.notice'];
 export type QuotaProbeFailedPayload = DaemonEventPayloads['quota.probe_failed'];
 export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_dropped'];
 export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
+export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
+export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];
@@ -964,6 +990,7 @@ export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];
 export type ScenarioNoticePayload = DaemonEventPayloads['scenario.notice'];
+export type TelemetryStoreResetPayload = DaemonEventPayloads['telemetry.store_reset'];
 export type ApiStartedPayload = DaemonEventPayloads['api.started'];
 export type ApiClientRejectedPayload = DaemonEventPayloads['api.client_rejected'];
 export type ApiStreamLaggedPayload = DaemonEventPayloads['api.stream_lagged'];

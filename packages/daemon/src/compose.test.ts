@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { access } from 'node:fs/promises';
+import { access, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AdapterUnavailable,
@@ -61,8 +61,10 @@ describe('compose', () => {
         'Clock:system',
         'SecretVault:encrypted-file',
         'Store:sqlite',
+        'TelemetryStore:sqlite',
       ]);
       await access(join(tmp.dir, 'store.sqlite'));
+      await access(join(tmp.dir, 'telemetry.sqlite'));
       await composition.close();
       await composition.close(); // memoized: no second close of the store
     } finally {
@@ -116,7 +118,7 @@ describe('compose', () => {
       const closeSpy = vi.spyOn(store, 'close');
       const composition = await compose(parseConfig(''), {
         dataDir: tmp.dir,
-        overrides: { clock, store, vault: new InMemorySecretVault() },
+        overrides: { clock, store, vault: new InMemorySecretVault(), telemetry: 'none' },
       });
       expect(composition.clock).toBe(clock);
       // The store the daemon uses is the override behind the event hub: same data, same close.
@@ -176,6 +178,102 @@ function fakeSandbox(availability: SandboxAvailability): Sandbox & {
     },
   };
 }
+
+describe('compose: the telemetry base (Phase 8, P1)', () => {
+  async function composed(config: string, before?: (dir: string) => Promise<void>) {
+    const tmp = await makeTempDataDir();
+    await before?.(tmp.dir);
+    const clock = new FakeClock(1000);
+    const composition = await compose(parseConfig(config), {
+      dataDir: tmp.dir,
+      overrides: {
+        clock,
+        store: new InMemoryStore({ clock }),
+        vault: new InMemorySecretVault(),
+        sandbox: 'none',
+      },
+      events: { registry: buildDaemonRegistries().events, unknownType: 'reject' },
+    });
+    return { composition, dir: tmp.dir, dispose: tmp.dispose };
+  }
+
+  it('opens <data>/telemetry.sqlite by default and uses telemetry.file when set', async () => {
+    const first = await composed('');
+    try {
+      expect(first.composition.telemetry).toBeDefined();
+      await access(join(first.dir, 'telemetry.sqlite'));
+      expect(first.composition.adapters.map((r) => r.port)).toContain('TelemetryStore');
+    } finally {
+      await first.composition.close();
+      await first.dispose();
+    }
+    const second = await composed('telemetry:\n  file: sub/t.db\n');
+    try {
+      await access(join(second.dir, 'sub', 't.db'));
+    } finally {
+      await second.composition.close();
+      await second.dispose();
+    }
+  });
+
+  it('does not open a base with telemetry.enabled: off', async () => {
+    const { composition, dir, dispose } = await composed('telemetry:\n  enabled: off\n');
+    try {
+      expect(composition.telemetry).toBeUndefined();
+      expect(composition.telemetryBackup).toBeUndefined();
+      await expect(access(join(dir, 'telemetry.sqlite'))).rejects.toThrow();
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('builds the projector of the spans of the daemon by default, and not with off or without a base', async () => {
+    for (const [yaml, expected] of [
+      ['', true],
+      ['telemetry:\n  daemon_spans: off\n', false],
+      ['telemetry:\n  enabled: off\n', false],
+    ] as const) {
+      const { composition, dispose } = await composed(yaml);
+      try {
+        expect(composition.daemonSpans !== undefined).toBe(expected);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    }
+  });
+
+  it('recreates a corrupted file and records telemetry.store_reset without a path', async () => {
+    const { composition, dir, dispose } = await composed('', async (data) => {
+      await writeFile(join(data, 'telemetry.sqlite'), Buffer.alloc(8192, 0x61));
+    });
+    try {
+      composition.situations.open();
+      await composition.situations.idle();
+      const events = (await composition.store.events.readFrom(0, 1000)).filter(
+        (event) => event.type === 'telemetry.store_reset',
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload).toEqual({
+        reason: 'corrupt',
+        outcome: 'recreated',
+        brokenFile: expect.stringMatching(/^telemetry\.sqlite\.broken-\d{8}-\d{6}$/) as string,
+        resets: 1,
+      });
+      expect((await readdir(dir)).some((name) => name.startsWith('telemetry.sqlite.broken-'))).toBe(
+        true,
+      );
+      await expect(composition.telemetry?.health()).resolves.toMatchObject({
+        state: 'ok',
+        resets: 1,
+      });
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+});
 
 describe('compose: layer 3 (the sandbox)', () => {
   async function composed(config: string, sandbox: Sandbox | 'none') {

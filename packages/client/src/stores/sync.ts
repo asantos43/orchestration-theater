@@ -249,6 +249,8 @@ export class DaemonStores {
   /** Events held while a snapshot is being read (`undefined` when live). */
   #buffer: ApiEventEnvelope[] | undefined;
   #recentLoaded = false;
+  /** How many finished plays of each scenario the snapshot also reads (0: none); see {@link loadFinishedPlays}. */
+  #finishedLimit = 0;
 
   constructor(client: ApiClient, options: DaemonStoresOptions = {}) {
     this.#client = client;
@@ -379,6 +381,61 @@ export class DaemonStores {
    */
   setTrajectoryKeep(keep: number): void {
     this.#keepOverride = Math.max(1, Math.floor(keep));
+  }
+
+  /**
+   * The finished plays of the side bar (N200 item 5, P11 of docs/19), for a client that reads its
+   * settings after the stores exist (the TUI). From now on every snapshot also reads, for each
+   * active scenario, the last `limit` finished plays (`GET /v1/scenarios/:id/plays?open=false`,
+   * oldest first, so it reads the pages and keeps the tail); `0` stops reading them. When the
+   * stores are live it reads them now and adds the ones it did not have: a play that finished
+   * while the screen was open is already in the store and is kept as it is. Resolves when the
+   * plays are in; a failed read is a `refresh_failed` problem, not a throw.
+   */
+  async loadFinishedPlays(limit: number): Promise<void> {
+    this.#finishedLimit = Math.max(0, Math.floor(limit));
+    if (this.#finishedLimit === 0 || this.status.getState().phase !== 'live') return;
+    // Every active scenario known now; `plays: all` already has them.
+    if ((this.#options.plays ?? 'open') === 'all') return;
+    try {
+      const finished = await this.#readFinishedPlays(
+        Object.values(this.scenarios.getState().byId).filter((s) => s.state === 'active'),
+      );
+      if (this.#abort.signal.aborted) return;
+      this.plays.setState((state) => {
+        const added = finished.filter((play) => !(play.id in state.byId));
+        if (added.length === 0) return state;
+        return {
+          ...state,
+          byId: { ...Object.fromEntries(added.map((play) => [play.id, play])), ...state.byId },
+        };
+      }, true);
+    } catch (error) {
+      if (this.#abort.signal.aborted) return;
+      const problem = error instanceof Error ? error : new Error(String(error));
+      this.#options.onProblem?.({ kind: 'refresh_failed', store: 'plays', error: problem });
+    }
+  }
+
+  async #readFinishedPlays(scenarios: readonly ApiScenario[]): Promise<ApiPlay[]> {
+    const signal = this.#abort.signal;
+    const limit = this.#finishedLimit;
+    const perScenario = await Promise.all(
+      scenarios.map((scenario) =>
+        this.#limit.run(async () =>
+          (
+            await this.#readAll((query) =>
+              this.#client.call(API_ROUTES.listScenarioPlays, {
+                params: { scenarioId: scenario.id },
+                query: { ...query, open: 'false' as const },
+                signal,
+              }),
+            )
+          ).slice(-limit),
+        ),
+      ),
+    );
+    return perScenario.flat();
   }
 
   #trajectoryKeep(): number {
@@ -521,7 +578,12 @@ export class DaemonStores {
       this.#readQuotas(),
       this.#readAll((query) => this.#client.call(API_ROUTES.listOrders, { query, signal })),
     ]);
-    const plays = perScenarioPlays.flat();
+    // The last finished plays (P11 of docs/19), when the client asked for them and `plays` is `open`.
+    const finishedPlays =
+      this.#finishedLimit > 0 && playsOption === 'open'
+        ? await this.#readFinishedPlays(active)
+        : [];
+    const plays = [...perScenarioPlays.flat(), ...finishedPlays];
     const details: { playId: string; parts: PlayParts }[] =
       (this.#options.demands ?? 'open') === 'none'
         ? []

@@ -293,6 +293,15 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       bar: { textKey: 'bar.sidebar.newProject', order: 14 },
     },
     {
+      // [proposta] `F` in the side bar opens and closes the "Terminadas" section (P11 of docs/19).
+      id: 'sidebar.toggleFinished',
+      textKey: 'actions.sidebar.toggleFinished',
+      group: 'navigation',
+      context: 'sidebar',
+      keys: terminalKeys(['F']),
+      bar: { textKey: 'bar.sidebar.toggleFinished', order: 15 },
+    },
+    {
       id: 'panel.prevTab',
       textKey: 'actions.panel.prevTab',
       group: 'navigation',
