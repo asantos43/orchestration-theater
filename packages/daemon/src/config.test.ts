@@ -79,7 +79,11 @@ describe('parseConfig', () => {
     });
     expect(config.ui.locale).toBe('auto');
     expect(config.ui.bare_command).toBe('tui');
-    expect(config.log).toEqual({ level: 'info', destination: 'file' });
+    expect(config.log).toEqual({
+      level: 'info',
+      destination: 'file',
+      rotate: { mode: 'size', max_mb: 20, keep: 5 },
+    });
   });
 
   it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render and ui.runtime (N34 to N37)', () => {
@@ -1352,7 +1356,9 @@ describe('telemetry (P1 of Phase 8)', () => {
         failure_report: 60_000,
       },
       prometheus: { cache_ttl: 5000 },
+      retention: { mode: 'daily', interval: 86_400_000, days: 30, max_mb: 1024, guard: 'rollups' },
     });
+    expect(config.log.rotate).toEqual({ mode: 'size', max_mb: 20, keep: 5 });
     expect(config.backup.telemetry).toBe('exclude');
   });
 
@@ -1506,6 +1512,61 @@ describe('telemetry (P1 of Phase 8)', () => {
     expect(() => parseConfig('telemetry:\n  otlp:\n    protocol: grpc\n')).toThrow(/future modes/);
     // Prometheus alone needs no telemetry base: `/metrics` answers with the telemetry off.
     expect(() => parseConfig('telemetry:\n  enabled: off\n  export: prometheus\n')).not.toThrow();
+  });
+
+  it('takes the retention of the raw telemetry and the rotation of daemon.log', () => {
+    const config = parseConfig(
+      [
+        'telemetry:',
+        '  retention:',
+        '    mode: startup',
+        '    interval: 6h',
+        '    days: 0',
+        '    max_mb: 0',
+        '    guard: none',
+        'log:',
+        '  rotate:',
+        '    mode: off',
+        '    max_mb: 1',
+        '    keep: 0',
+        '',
+      ].join('\n'),
+    );
+    expect(config.telemetry.retention).toEqual({
+      mode: 'startup',
+      interval: 6 * 3_600_000,
+      days: 0,
+      max_mb: 0,
+      guard: 'none',
+    });
+    expect(config.log.rotate).toEqual({ mode: 'off', max_mb: 1, keep: 0 });
+    for (const mode of ['daily', 'startup', 'off']) {
+      expect(
+        parseConfig(`telemetry:\n  retention:\n    mode: ${mode}\n`).telemetry.retention.mode,
+      ).toBe(mode);
+    }
+    for (const mode of ['size', 'off']) {
+      expect(parseConfig(`log:\n  rotate:\n    mode: ${mode}\n`).log.rotate.mode).toBe(mode);
+    }
+  });
+
+  it('refuses bad values and unknown keys of the retention and the rotation', () => {
+    for (const bad of [
+      'telemetry:\n  retention:\n    mode: hourly\n',
+      'telemetry:\n  retention:\n    interval: often\n',
+      'telemetry:\n  retention:\n    days: -1\n',
+      'telemetry:\n  retention:\n    days: 1.5\n',
+      'telemetry:\n  retention:\n    max_mb: -5\n',
+      'telemetry:\n  retention:\n    guard: maybe\n',
+      'telemetry:\n  retention:\n    other: 1\n',
+      'log:\n  rotate:\n    mode: daily\n',
+      'log:\n  rotate:\n    max_mb: 0\n',
+      'log:\n  rotate:\n    keep: -1\n',
+      'log:\n  rotate:\n    keep: 2.5\n',
+      'log:\n  rotate:\n    other: 1\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
   });
 
   it('refuses unknown values and keys', () => {

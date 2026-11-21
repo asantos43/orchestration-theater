@@ -70,6 +70,11 @@ import {
   TELEMETRY_OTLP_PROTOCOLS,
   TELEMETRY_RETRY_BACKOFFS,
 } from './telemetry/export-config.js';
+import {
+  LOG_ROTATE_MODES,
+  TELEMETRY_RETENTION_GUARDS,
+  TELEMETRY_RETENTION_MODES,
+} from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
@@ -1372,6 +1377,30 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 /**
+ * `telemetry.retention` (Phase 8, P8; N216 (a)): how long the raw telemetry stays in the telemetry
+ * base, and how big the base may get. The store and its event log are not touched (N216 (a)), and
+ * the daily aggregates keep their own retention (`analysis.retention.days`). [proposta] Names and
+ * modes, except `days` (30) and `max_mb` (1024), which are in the plan.
+ *
+ * - `mode` (default `daily`): when the purge runs, see {@link TELEMETRY_RETENTION_MODES}.
+ * - `interval` (default `24h`): the time between two passes of `daily`.
+ * - `days` (default 30): records older than this go; `0` keeps them whatever their age.
+ * - `max_mb` (default 1024): the data in the base may not pass this size; the oldest go first;
+ *   `0` sets no cap. A base that stays over it is compacted (the file is rewritten) so the disk
+ *   is really freed.
+ * - `guard` (default `rollups`): see {@link TELEMETRY_RETENTION_GUARDS}.
+ */
+const TelemetryRetentionSchema = z
+  .strictObject({
+    mode: z.enum(TELEMETRY_RETENTION_MODES).default('daily'),
+    interval: DurationSchema.prefault('24h'),
+    days: z.int().min(0).max(36_500).default(30),
+    max_mb: z.int().min(0).max(1_048_576).default(1024),
+    guard: z.enum(TELEMETRY_RETENTION_GUARDS).default('rollups'),
+  })
+  .prefault({});
+
+/**
  * The telemetry of the clients (architecture 5.11, N54; Phase 8, P1). Owns the whole block; P2 added
  * `receiver.*` and `redaction` after these keys. Every key is [proposta] except where the plan names it.
  */
@@ -1441,6 +1470,8 @@ const TelemetryConfigSchema = z
     export: z.enum(TELEMETRY_EXPORT_MODES).default('off'),
     otlp: TelemetryOtlpConfigSchema,
     prometheus: TelemetryPrometheusConfigSchema,
+    /** How long the raw telemetry stays and how big the base may get (P8, N216 (a)). */
+    retention: TelemetryRetentionSchema,
   })
   .superRefine((telemetry, ctx) => {
     const { endpoint, headers } = telemetry.otlp;
@@ -2549,6 +2580,18 @@ export const DaemonConfigSchema = z
       .strictObject({
         level: z.enum(LOG_LEVELS).default('info'),
         destination: z.enum(LOG_DESTINATIONS).default('file'),
+        /**
+         * The rotation of `daemon.log` (Phase 8, P8; [proposta]). `mode: size` (default): when the
+         * file would pass `max_mb` it becomes `daemon.log.1` (the older copies move up) and a new
+         * file starts; `keep` copies stay (`0`: none, the full file is dropped); `off`: it grows.
+         */
+        rotate: z
+          .strictObject({
+            mode: z.enum(LOG_ROTATE_MODES).default('size'),
+            max_mb: z.int().min(1).max(10_240).default(20),
+            keep: z.int().min(0).max(100).default(5),
+          })
+          .prefault({}),
       })
       .prefault({}),
   })
