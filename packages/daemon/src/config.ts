@@ -1999,6 +1999,12 @@ export const DaemonConfigSchema = z
       .strictObject({
         locale: z.enum(LOCALE_SETTINGS).default('auto'),
         /**
+         * What `ot` does with no command (Phase 7, P8; owner's choice of 2026-11-20): `tui` opens
+         * the terminal interface when the input and the output are a terminal, `help` always shows
+         * the usage, as before. Without a terminal it is the usage in either mode.
+         */
+        bare_command: z.enum(['tui', 'help']).default('tui'),
+        /**
          * The layout preferences of the interfaces (architecture 5.13, N170; P12 of docs/17). The
          * daemon keeps them either way; these keys are what a client reads (`GET /v1/config`) to
          * know where to keep its own.

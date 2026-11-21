@@ -127,6 +127,158 @@ describe('ot: usage and information', () => {
   });
 });
 
+describe('ot tui and ot with no command (Phase 7, P8)', () => {
+  /** A launcher that records what it was given and returns `code`. */
+  function recorder(code = 0): {
+    runs: Parameters<NonNullable<CliDeps['launchTui']>>[0][];
+    launch: NonNullable<CliDeps['launchTui']>;
+  } {
+    const runs: Parameters<NonNullable<CliDeps['launchTui']>>[0][] = [];
+    return {
+      runs,
+      launch: (run) => {
+        runs.push(run);
+        return Promise.resolve(code);
+      },
+    };
+  }
+
+  it('ot tui hands the data folder and the ui section to the launcher and returns its code', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      await writeFile(join(tmp.dir, 'config.yaml'), 'ui:\n  locale: pt-BR\n');
+      const tui = recorder(7);
+      const result = await ot(['tui', '--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: tui.launch,
+      });
+      expect(result).toMatchObject({ code: 7, out: [], err: [] });
+      expect(tui.runs).toHaveLength(1);
+      expect(tui.runs[0]?.dataDir).toBe(tmp.dir);
+      expect(tui.runs[0]?.ui).toMatchObject({ locale: 'pt-BR', bare_command: 'tui' });
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('ot tui without a terminal is a usage error and does not start the interface', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const tui = recorder();
+      const result = await ot(['tui', '--data-dir', tmp.dir], tmp.dir, {
+        interactive: false,
+        launchTui: tui.launch,
+      });
+      expect(result.code).toBe(2);
+      expect(result.err.join('\n')).toMatch(/needs a terminal/);
+      expect(tui.runs).toEqual([]);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('ot tui with an argument is a usage error', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const result = await ot(['tui', 'x', '--data-dir', tmp.dir], tmp.dir, { interactive: true });
+      expect(result.code).toBe(2);
+      expect(result.err.join('\n')).toMatch(/Too many arguments for "ot tui"/);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('a bare ot opens the interface in a terminal (ui.bare_command: tui is the default)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const tui = recorder();
+      const result = await ot(['--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: tui.launch,
+      });
+      expect(result).toMatchObject({ code: 0, out: [], err: [] });
+      expect(tui.runs).toHaveLength(1);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('a bare ot shows the usage as before without a terminal, or with ui.bare_command: help', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const tui = recorder();
+      const pipe = await ot(['--data-dir', tmp.dir], tmp.dir, {
+        interactive: false,
+        launchTui: tui.launch,
+      });
+      expect(pipe.code).toBe(2);
+      expect(pipe.err.join('\n')).toMatch(/No command given/);
+
+      await writeFile(join(tmp.dir, 'config.yaml'), 'ui:\n  bare_command: help\n');
+      const help = await ot(['--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: tui.launch,
+      });
+      expect(help.code).toBe(2);
+      expect(help.err.join('\n')).toMatch(/No command given/);
+      expect(tui.runs).toEqual([]);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('a broken config.yaml keeps the bare ot on the usage; ot tui still opens with the defaults', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      await writeFile(join(tmp.dir, 'config.yaml'), 'ui: [not, a, map\n');
+      const tui = recorder();
+      const bare = await ot(['--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: tui.launch,
+      });
+      expect(bare.code).toBe(2);
+      const explicit = await ot(['tui', '--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: tui.launch,
+      });
+      expect(explicit.code).toBe(0);
+      expect(tui.runs).toHaveLength(1);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('says how to build the interface when it is not built', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const notBuilt = Object.assign(new Error('missing'), {
+        name: 'TuiNotBuiltError',
+        file: '/x/main.js',
+      });
+      const result = await ot(['tui', '--data-dir', tmp.dir], tmp.dir, {
+        interactive: true,
+        launchTui: () => Promise.reject(notBuilt),
+      });
+      expect(result.code).toBe(1);
+      expect(result.err.join('\n')).toMatch(/pnpm build.*\/x\/main\.js/);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('lists ot tui in the help, in both languages', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const en = await ot(['--help', '--data-dir', tmp.dir], tmp.dir);
+      expect(en.out.join('\n')).toMatch(/^ {2}tui {10,}Open the terminal interface/m);
+      const pt = await ot(['--help', '--data-dir', tmp.dir], tmp.dir, { systemLocale: 'pt_BR' });
+      expect(pt.out.join('\n')).toMatch(/^ {2}tui {10,}Abre a interface de terminal/m);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+});
+
 describe('ot backup and restore', () => {
   it('backs up with the real SQLite store and reports the folder', async () => {
     const tmp = await makeTempDataDir();

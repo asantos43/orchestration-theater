@@ -77,7 +77,32 @@ export interface CliDeps {
   readonly otLauncher?: OtLauncher | undefined;
   /** Asks a yes or no in the terminal (`ot profile shims path --install`); none without a terminal. */
   readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
+  /** True when the input and the output are a terminal (`ot tui`, and `ot` with no command). */
+  readonly interactive?: boolean | undefined;
+  /**
+   * Runs the terminal interface and gives its exit code (default: the launcher of `@otheater/tui`,
+   * loaded only when it is needed, which starts the interface in a process of its own).
+   */
+  readonly launchTui?: TuiRunner | undefined;
 }
+
+/** What `ot tui` hands to the launcher: the data folder and the `ui` part of the configuration. */
+export interface TuiRun {
+  readonly dataDir: string;
+  readonly ui: unknown;
+  readonly env: Env;
+}
+
+export type TuiRunner = (run: TuiRun) => Promise<number>;
+
+/**
+ * The default {@link TuiRunner}. The import is dynamic: `ot daemon`, `ot backup` and the others
+ * never load the package, and the package never imports the daemon (no cycle).
+ */
+const launchBuiltTui: TuiRunner = async (run) => {
+  const { launchTui } = await import('@otheater/tui/launcher');
+  return await launchTui({ dataDir: run.dataDir, ui: run.ui, env: run.env as NodeJS.ProcessEnv });
+};
 
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
@@ -91,6 +116,7 @@ const COMMANDS = [
   'profile',
   'executor',
   'api',
+  'tui',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -110,6 +136,17 @@ async function localeFor(dataDir: string, deps: CliDeps): Promise<Locale> {
     // Reported by the command itself if it needs the config.
   }
   return resolveLocale(setting, deps.systemLocale ?? detectSystemLocale(deps.env));
+}
+
+/** The configuration of the data folder, or `undefined` when it cannot be read. */
+async function readConfig(
+  dataDir: string,
+): Promise<Awaited<ReturnType<typeof loadConfig>> | undefined> {
+  try {
+    return await loadConfig(dataPaths(dataDir).config);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -142,6 +179,18 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     return EXIT_USAGE;
   };
 
+  const runTui = async (ui: unknown): Promise<number> => {
+    try {
+      return await (deps.launchTui ?? launchBuiltTui)({ dataDir, ui, env: deps.env });
+    } catch (error) {
+      const file = (error as { readonly file?: unknown }).file;
+      if (error instanceof Error && error.name === 'TuiNotBuiltError' && typeof file === 'string') {
+        deps.err(t('usage.tuiNotBuilt', { file }));
+        return EXIT_FAILED;
+      }
+      throw error;
+    }
+  };
   if (usageProblem !== undefined)
     return usageError(t('usage.invalidOption', { message: usageProblem }));
   if (values.help === true) {
@@ -153,7 +202,14 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     return EXIT_OK;
   }
   const [command, ...rest] = positionals;
-  if (command === undefined) return usageError(t('usage.missingCommand'));
+  if (command === undefined) {
+    // `ui.bare_command: tui` (the default): a terminal gets the interface, anything else the usage.
+    if (deps.interactive === true) {
+      const config = await readConfig(dataDir);
+      if (config?.ui.bare_command === 'tui') return await runTui(config.ui);
+    }
+    return usageError(t('usage.missingCommand'));
+  }
   if (!isCommand(command)) return usageError(t('usage.unknownCommand', { command }));
 
   const context: CommandContext = {
@@ -252,6 +308,12 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           args,
           executorOptions(values),
         );
+      }
+      case 'tui': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
+        // A config that cannot be read is not an error here: the TUI reads the same defaults.
+        return await runTui((await readConfig(dataDir))?.ui ?? {});
       }
       case 'chat': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
@@ -554,6 +616,7 @@ async function entry(): Promise<void> {
     passwordPrompt: process.stdin.isTTY ? terminalPasswordPrompt : undefined,
     otLauncher: otLauncherOf(),
     confirm: process.stdin.isTTY ? terminalConfirm : undefined,
+    interactive: process.stdin.isTTY && process.stdout.isTTY,
   });
   process.exitCode = code;
   process.off('SIGINT', onSignal);

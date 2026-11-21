@@ -403,6 +403,9 @@ importers:
       '@otheater/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@otheater/tui':
+        specifier: workspace:*
+        version: link:../tui
       hono:
         specifier: 4.13.16
         version: 4.13.16

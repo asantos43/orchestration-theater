@@ -10,6 +10,7 @@
     { "path": "../core/tsconfig.src.json" },
     { "path": "../protocol/tsconfig.src.json" },
     { "path": "../client/tsconfig.src.json" },
+    { "path": "../tui/tsconfig.src.json" },
     { "path": "../adapters/browser-playwright/tsconfig.src.json" },
     { "path": "../adapters/client-claude-code/tsconfig.src.json" },
     { "path": "../adapters/client-codex/tsconfig.src.json" },
