@@ -426,6 +426,15 @@ export const TURN_TIMEOUT_MODES = ['cancel', 'notice', 'off'] as const;
 export type TurnTimeoutMode = (typeof TURN_TIMEOUT_MODES)[number];
 
 /**
+ * What `pause.mode` does with the work in flight when a play is paused (N176, owner, 2026-11-20):
+ * `drain` (default) lets the running stage or Actor finish and opens nothing new; `interrupt`
+ * interrupts the running attempts with the cause `paused`, saving the checkpoint, and they resume
+ * where they stopped. The request of the pause may name its own mode.
+ */
+export const PAUSE_MODES = ['drain', 'interrupt'] as const;
+export type PauseMode = (typeof PAUSE_MODES)[number];
+
+/**
  * The resolved `limits` of the configuration: the values plus the name of the preset and the
  * limit of a single turn (N184), which is no counter of the pipeline and so is not in `PlayLimits`.
  */
@@ -1279,6 +1288,13 @@ export const DaemonConfigSchema = z
         message: 'demand_timeout must not exceed demand_timeout_max',
         path: ['demand_timeout'],
       }),
+    /** Pausing a play (architecture 5.12; N176, owner, 2026-11-20). */
+    pause: z
+      .strictObject({
+        /** `drain` (default) or `interrupt`; see {@link PAUSE_MODES}. */
+        mode: z.enum(PAUSE_MODES).default('drain'),
+      })
+      .prefault({}),
     /**
      * How a play runs (architecture 5.4; P8). [proposta] Until the executor catalog and the role
      * presets exist (`roles.preset`, 5.7), the Executor of each role is a key here:
