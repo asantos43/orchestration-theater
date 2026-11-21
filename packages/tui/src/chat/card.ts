@@ -356,31 +356,46 @@ export type CardKey =
   | { readonly kind: 'up' | 'down' | 'space' | 'enter' | 'esc' | 'backspace' }
   | { readonly kind: 'text'; readonly text: string };
 
-/** The key of the card a raw key press is, or `undefined` for what the card ignores. */
-export function cardKeyOf(event: {
-  readonly combo: string | undefined;
-  readonly data: string;
-}): CardKey | undefined {
-  switch (event.combo) {
-    case 'Up':
-      return { kind: 'up' };
-    case 'Down':
-      return { kind: 'down' };
-    case 'Space':
-      return { kind: 'space' };
-    case 'Enter':
-      return { kind: 'enter' };
-    case 'Esc':
-      return { kind: 'esc' };
-    case 'Backspace':
-      return { kind: 'backspace' };
-    default:
-      break;
-  }
+/**
+ * How the card reads a key press from the keymap (P26 of docs/18, N203): the action of the registry
+ * a combination triggers among the contexts `decision` and `textBox`, so `ui.keymap.overrides`
+ * reaches the card. `TuiKeymap.match` is one; tests give their own.
+ */
+export interface CardKeymap {
+  /** The action of the context `decision` the combination triggers (`decision.up`, `decision.answer`...). */
+  readonly decision: (combo: string) => string | undefined;
+  /** The action of the context `textBox` the combination triggers (`input.backspace`). */
+  readonly textBox: (combo: string) => string | undefined;
+}
+
+const CARD_ACTIONS: Readonly<Record<string, CardKey>> = {
+  'decision.up': { kind: 'up' },
+  'decision.down': { kind: 'down' },
+  'decision.mark': { kind: 'space' },
+  'decision.answer': { kind: 'enter' },
+  'decision.aside': { kind: 'esc' },
+};
+
+/**
+ * The key of the card a raw key press is, or `undefined` for what the card ignores. What the person
+ * types is text before it is a key (a key bound to a letter does not take the letter away from the
+ * typing line); outside the typing line a key bound to a letter acts, and a digit picks an option.
+ */
+export function cardKeyOf(
+  event: { readonly combo: string | undefined; readonly data: string },
+  keys: CardKeymap,
+  typing: boolean,
+): CardKey | undefined {
   // eslint-disable-next-line no-control-regex -- what is not printable is not text
-  return event.data !== '' && !/[\x00-\x1f\x7f]/u.test(event.data)
-    ? { kind: 'text', text: event.data }
-    : undefined;
+  const printable = event.data !== '' && !/[\x00-\x1f\x7f]/u.test(event.data);
+  if (typing && printable) return { kind: 'text', text: event.data };
+  if (event.combo !== undefined) {
+    const action = keys.decision(event.combo);
+    const key = action === undefined ? undefined : CARD_ACTIONS[action];
+    if (key !== undefined) return key;
+    if (keys.textBox(event.combo) === 'input.backspace') return { kind: 'backspace' };
+  }
+  return printable ? { kind: 'text', text: event.data } : undefined;
 }
 
 export interface CardStepResult {

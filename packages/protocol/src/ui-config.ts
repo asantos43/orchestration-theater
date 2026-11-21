@@ -235,13 +235,17 @@ export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
  * - `queue`: `daemon` (default) or `hold`;
  * - `suggestions`: how many commands the list of `/` shows at most (6); 0 turns the list off;
  * - `decisionFocus`: `auto` (default) or `manual`;
- * - `esc`: `stop` (default) or `off`.
+ * - `esc`: `stop` (default) or `off`;
+ * - `history` (P26, N203 item 2): how many of the last events of the scenario the chat shows when it
+ *   opens on a scenario that already talked (40); `0` opens it empty, as before. The most is
+ *   `CHAT_HISTORY_MAX` (200), the limit of the `history` message of the socket.
  */
 export const UiChatConfigSchema = z.strictObject({
   queue: z.enum(UI_CHAT_QUEUE_MODES).default('daemon'),
   suggestions: z.int().min(0).max(30).default(6),
   decisionFocus: z.enum(UI_CHAT_DECISION_FOCUS_MODES).default('auto'),
   esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
+  history: z.int().min(0).max(200).default(40),
 });
 export type UiChatConfig = z.output<typeof UiChatConfigSchema>;
 

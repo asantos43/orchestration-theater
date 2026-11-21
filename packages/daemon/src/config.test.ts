@@ -148,6 +148,7 @@ describe('parseConfig', () => {
       suggestions: 6,
       decisionFocus: 'auto',
       esc: 'stop',
+      history: 40,
     });
     const yaml = 'ui:\n  chat:\n    queue: hold\n    suggestions: 0\n    esc: off\n';
     expect(parseConfig(yaml).ui.chat).toEqual({
@@ -155,7 +156,10 @@ describe('parseConfig', () => {
       suggestions: 0,
       decisionFocus: 'auto',
       esc: 'off',
+      history: 40,
     });
+    expect(parseConfig('ui:\n  chat:\n    history: 0\n').ui.chat.history).toBe(0);
+    expect(() => parseConfig('ui:\n  chat:\n    history: 201\n')).toThrow(/ui\.chat\.history/);
     expect(() => parseConfig('ui:\n  chat:\n    queue: later\n')).toThrow(/ui\.chat\.queue/);
   });
 

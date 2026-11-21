@@ -109,6 +109,8 @@ export interface UiChatSettings {
   readonly suggestions: number;
   readonly decisionFocus: ChatDecisionFocus;
   readonly esc: ChatEscMode;
+  /** How many of the last events of the scenario the chat shows on opening (P26); 0 opens it empty. */
+  readonly history: number;
 }
 
 export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
@@ -194,6 +196,7 @@ export const DEFAULT_CHAT: UiChatSettings = {
   suggestions: 6,
   decisionFocus: 'auto',
   esc: 'stop',
+  history: 40,
 };
 
 export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
@@ -366,6 +369,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_CHAT.decisionFocus,
       ),
       esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
+      history: integer(field(chat, 'history'), 0, 200, DEFAULT_CHAT.history),
     },
     input: parseInputSettings(field(source, 'input')),
     overview: parseOverviewSettings(field(source, 'overview')),
