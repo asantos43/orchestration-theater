@@ -1,27 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { DaemonStores, SyncStatus } from '@otheater/client';
 import { Box, Text } from 'ink';
-import { memo, useSyncExternalStore, type ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRenderControl } from './render-control.js';
 import type { DaemonView } from './use-daemon.js';
-
-/** What the TUI needs of a store of the client (they are zustand stores; this package does not depend on it). */
-interface ReadableStore<State> {
-  getState(): State;
-  subscribe(listener: (state: State, previous: State) => void): () => void;
-}
-
-/** Reads one value of a store; `select` must return a primitive (or a stable reference). */
-function useStoreValue<State, Value>(
-  store: ReadableStore<State>,
-  select: (state: State) => Value,
-): Value {
-  return useSyncExternalStore(
-    (listener) => store.subscribe(listener),
-    () => select(store.getState()),
-  );
-}
+import { useStoreValue } from './use-store-value.js';
 
 interface RowProps {
   readonly label: string;

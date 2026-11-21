@@ -4,6 +4,8 @@ import { cleanup, render } from 'ink-testing-library';
 import type { i18n as I18nInstance } from 'i18next';
 import type { ReactNode } from 'react';
 import { App } from './app.js';
+import type { ChatMessage } from './layout/chat.js';
+import type { TabContentMap } from './layout/tab-content.js';
 import type { ConnectResult, DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
 import {
@@ -61,8 +63,12 @@ export interface RenderedApp {
   frame(): string;
   /** Writes keys to the app, as the terminal would. */
   press(keys: string): void;
-  /** Waits for the frame to contain the text; returns the frame. */
+  /** Resizes the terminal and waits for the app to see it. */
+  resize(columns: number, rows: number): void;
+  /** Waits for the frame to contain the text, and for the effects of that frame (the key listeners) to run. */
   waitForText(text: string | RegExp): Promise<string>;
+  /** Lets the pending renders and effects run, then returns the frame. */
+  settle(): Promise<string>;
   /** How many times the app asked Ink to paint at once (`ui.render.keyRender: flush`). */
   readonly flushes: () => number;
   unmount(): void;
@@ -74,7 +80,14 @@ export interface RenderAppOptions {
   readonly patch?: InkPatchOutcome | undefined;
   /** Ends up as `LANG` of the environment the locale is detected from. Default: English. */
   readonly systemLocale?: string | undefined;
+  /** The size of the terminal (the test stdout has 100 columns and no rows). */
+  readonly size?: { readonly columns: number; readonly rows: number } | undefined;
+  readonly messages?: readonly ChatMessage[] | undefined;
+  readonly tabContent?: TabContentMap | undefined;
 }
+
+/** A frame is on screen before its passive effects (the key listeners) have run. */
+const SETTLE_MS = 20;
 
 /** Mounts the app over `ink-testing-library`. */
 export async function renderApp(options: RenderAppOptions): Promise<RenderedApp> {
@@ -90,12 +103,20 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
       locale={locale}
       settings={settings}
       patch={options.patch}
+      messages={options.messages}
+      tabContent={options.tabContent}
       flush={() => {
         flushes += 1;
       }}
     />
   );
   const view = render(tree);
+  const resize = (columns: number, rows: number): void => {
+    Object.defineProperty(view.stdout, 'columns', { value: columns, configurable: true });
+    Object.defineProperty(view.stdout, 'rows', { value: rows, configurable: true });
+    view.stdout.emit('resize');
+  };
+  if (options.size !== undefined) resize(options.size.columns, options.size.rows);
   const frame = (): string => plain(view.lastFrame() ?? '');
   return {
     i18n,
@@ -104,15 +125,23 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
     press: (keys) => {
       view.stdin.write(keys);
     },
-    waitForText: (text) =>
-      waitFor(
+    settle: async () => {
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+      return frame();
+    },
+    waitForText: async (text) => {
+      await waitFor(
         () => {
           const current = frame();
           const found = typeof text === 'string' ? current.includes(text) : text.test(current);
           return found ? current : undefined;
         },
         `the text ${String(text)} (last frame: ${frame()})`,
-      ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+      return frame();
+    },
+    resize,
     flushes: () => flushes,
     unmount: () => {
       view.unmount();

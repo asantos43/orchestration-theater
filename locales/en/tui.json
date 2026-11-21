@@ -179,5 +179,68 @@
       "retrying": "retrying",
       "closed": "closed"
     }
+  },
+  "layout": {
+    "header": {
+      "noScenario": "No scenario",
+      "decisions_one": "{{count}} decision",
+      "decisions_other": "{{count}} decisions",
+      "daemon": "daemon {{address}}"
+    },
+    "state": {
+      "decision": "decision",
+      "running": "running",
+      "done": "done",
+      "idle": "idle"
+    },
+    "sidebar": {
+      "title": "Navigation",
+      "scenarios": "SCENARIOS",
+      "subscriptions": "SUBSCRIPTIONS",
+      "empty": "No scenarios yet",
+      "noQuota": "No subscription read yet",
+      "noReading": "no reading",
+      "fiveHour": "5h",
+      "week": "7d",
+      "settings": "Settings",
+      "daemon": "daemon {{address}}"
+    },
+    "chat": {
+      "title": "Chat",
+      "empty": "Nothing said yet.",
+      "placeholder": "Write to the Director",
+      "inputHint": "The text box arrives with the chat step.",
+      "state": "State: {{state}}",
+      "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
+      "who": {
+        "you": "You",
+        "director": "Director",
+        "system": "System"
+      }
+    },
+    "panel": {
+      "empty": "This tab has no content yet.",
+      "noTabs": "No tab open. Add one to fill the panel."
+    },
+    "palette": {
+      "title": "Command palette",
+      "placeholder": "Type to filter the commands",
+      "empty": "No command matches."
+    },
+    "help": {
+      "title": "Shortcuts",
+      "paletteOnly": "(palette only)"
+    },
+    "picker": {
+      "title": "Open a tab",
+      "allOpen": "Every tab is already open."
+    },
+    "overlay": {
+      "closeHint": "{{key}} closes"
+    },
+    "link": {
+      "syncing": "syncing",
+      "lost": "connection lost"
+    }
   }
 }

@@ -179,5 +179,68 @@
       "retrying": "tentando de novo",
       "closed": "fechado"
     }
+  },
+  "layout": {
+    "header": {
+      "noScenario": "Sem cenário",
+      "decisions_one": "{{count}} decisão",
+      "decisions_other": "{{count}} decisões",
+      "daemon": "daemon {{address}}"
+    },
+    "state": {
+      "decision": "decisão",
+      "running": "executando",
+      "done": "concluído",
+      "idle": "parado"
+    },
+    "sidebar": {
+      "title": "Navegação",
+      "scenarios": "CENÁRIOS",
+      "subscriptions": "ASSINATURAS",
+      "empty": "Nenhum cenário ainda",
+      "noQuota": "Nenhuma assinatura lida ainda",
+      "noReading": "sem leitura",
+      "fiveHour": "5h",
+      "week": "7d",
+      "settings": "Configurações",
+      "daemon": "daemon {{address}}"
+    },
+    "chat": {
+      "title": "Chat",
+      "empty": "Nada dito ainda.",
+      "placeholder": "Escreva para o Diretor",
+      "inputHint": "A caixa de texto chega com o passo do chat.",
+      "state": "Estado: {{state}}",
+      "widthLabel": "◂ {{cols}} col ▸ {{keys}}",
+      "who": {
+        "you": "Você",
+        "director": "Diretor",
+        "system": "Sistema"
+      }
+    },
+    "panel": {
+      "empty": "Esta aba ainda não tem conteúdo.",
+      "noTabs": "Nenhuma aba aberta. Adicione uma para preencher o painel."
+    },
+    "palette": {
+      "title": "Paleta de comandos",
+      "placeholder": "Digite para filtrar os comandos",
+      "empty": "Nenhum comando combina."
+    },
+    "help": {
+      "title": "Atalhos",
+      "paletteOnly": "(só pela paleta)"
+    },
+    "picker": {
+      "title": "Abrir uma aba",
+      "allOpen": "Todas as abas já estão abertas."
+    },
+    "overlay": {
+      "closeHint": "{{key}} fecha"
+    },
+    "link": {
+      "syncing": "sincronizando",
+      "lost": "conexão perdida"
+    }
   }
 }
