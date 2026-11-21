@@ -6984,6 +6984,333 @@
       }
     },
     {
+      "id": "startProfileLogin",
+      "method": "POST",
+      "path": "/v1/profiles/:client/:name/login",
+      "kind": "json",
+      "summary": "Opens the official login of a subscription account and answers its mode, URL and code",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "started"
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "browser",
+                  "device_code"
+                ]
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "code": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "takesCode": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "status",
+              "profileId",
+              "mode",
+              "url",
+              "code",
+              "takesCode"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "local"
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "type": "string",
+                "const": "terminal"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "status",
+              "profileId",
+              "mode",
+              "command"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "cancelProfileLogin",
+      "method": "POST",
+      "path": "/v1/profiles/:client/:name/login/cancel",
+      "kind": "json",
+      "summary": "Cancels the open login of an account and ends the process of the login",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cancelled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "profileId",
+          "cancelled"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "submitProfileLoginCode",
+      "method": "POST",
+      "path": "/v1/profiles/:client/:name/login/code",
+      "kind": "json",
+      "summary": "Hands the open login of an account the code the browser shows",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "submitted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "profileId",
+          "submitted"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "listRoles",
       "method": "GET",
       "path": "/v1/roles",

@@ -82,6 +82,9 @@ import {
   ProfileRemovedPayloadSchema,
   ProfileExecEndedPayloadSchema,
   ProfileExecStartedPayloadSchema,
+  ProfileLoginCompletedPayloadSchema,
+  ProfileLoginFailedPayloadSchema,
+  ProfileLoginStartedPayloadSchema,
   ProfileShimsRcChangedPayloadSchema,
   ProfileShimsSyncedPayloadSchema,
   ProfileWarningPayloadSchema,
@@ -593,6 +596,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ProfileShimsRcChangedPayloadSchema,
   }),
   defineEventType({
+    type: 'profile.login.started',
+    schemaVersion: 1,
+    payload: ProfileLoginStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.login.completed',
+    schemaVersion: 1,
+    payload: ProfileLoginCompletedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'profile.login.failed',
+    schemaVersion: 1,
+    payload: ProfileLoginFailedPayloadSchema,
+  }),
+  defineEventType({
     type: 'executor.changed',
     schemaVersion: 1,
     payload: ExecutorChangedPayloadSchema,
@@ -810,6 +828,9 @@ export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.starte
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];
 export type ProfileShimsSyncedPayload = DaemonEventPayloads['profile.shims.synced'];
 export type ProfileShimsRcChangedPayload = DaemonEventPayloads['profile.shims.rc_changed'];
+export type ProfileLoginStartedPayload = DaemonEventPayloads['profile.login.started'];
+export type ProfileLoginCompletedPayload = DaemonEventPayloads['profile.login.completed'];
+export type ProfileLoginFailedPayload = DaemonEventPayloads['profile.login.failed'];
 export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];

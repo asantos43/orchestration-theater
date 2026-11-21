@@ -82,6 +82,7 @@ import { situationSubject, situationText, type SituationSink } from './situation
 import { liveProfileSessions } from './profiles/live-sessions.js';
 import { roleListsOf } from './profiles/role-lists.js';
 import { profileSecretEnv } from './profiles/secret-env.js';
+import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
 import { buildDaemonRegistries } from './registries.js';
@@ -816,6 +817,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('api', () => api.stop());
       // The `!` commands end (their whole process tree) before the services they report to stop.
       await attempt('shell commands', async () => shellCommands?.close());
+      // A login left open is cancelled: its process must not outlive the daemon.
+      await attempt('logins', () => logins.stop());
       await attempt('scheduler', () => scheduler.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
@@ -907,6 +910,20 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     }),
   });
 
+  // P5 (Phase 7, N186): the official login of the accounts, opened from an interface.
+  const logins = new ProfileLoginService({
+    store,
+    clock,
+    logger,
+    adapters: (client) => {
+      try {
+        return execution?.pool.adapterOf(client);
+      } catch {
+        return undefined;
+      }
+    },
+  });
+
   // P6 (Phase 6): the commands of the REST API, on the same services. They wait for `gate` (the
   // reconciliation of the start-up) before they run, which the server does for every command.
   registerCommandRoutes(api.handlers, {
@@ -915,6 +932,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
     directives,
     profiles,
+    logins,
     configPath: paths.config,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
     layout,

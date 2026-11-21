@@ -677,6 +677,8 @@ export abstract class ClientAdapter implements ClientAdapterContract {
   abstract logout(profile: Profile): Promise<void>;
   /** See {@link ClientAdapterContract.profileCli}: optional, an adapter that has it overrides it. */
   profileCli?(profile: Profile): Promise<ProfileCli>;
+  /** See {@link ClientAdapterContract.loginMode}: optional, an adapter that has it overrides it. */
+  loginMode?(): LoginFlow['mode'] | undefined;
 
   /** See {@link ClientAdapterContract.setUpProfile}: `prepareProfile` made public. */
   setUpProfile(profile: Profile, policy: RolePolicy): Promise<void> {

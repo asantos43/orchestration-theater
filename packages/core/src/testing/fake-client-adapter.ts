@@ -114,6 +114,13 @@ export interface FakeClientAdapterOptions extends ClientAdapterOptions {
    * Default `unknown`. A function is asked on every probe.
    */
   readonly loginState?: LoginState | ((profile: Profile) => LoginState);
+  /**
+   * What `login` opens, for a profile (P5 of Phase 7). Default: `login` rejects with
+   * `AdapterUnavailable`, as before. A {@link FakeLoginFlow} stands for the process of the login.
+   */
+  readonly login?: (profile: Profile) => LoginFlow | Promise<LoginFlow>;
+  /** What `loginMode` answers, with no login started. Default: `undefined` (the adapter cannot say). */
+  readonly loginMode?: LoginFlow['mode'];
   /** Called by `logout`, to see which profile the caller logged out. */
   readonly onLogout?: (profile: Profile) => void;
   /** The config options of the ACP setup of every session (`SessionSetup.configOptions`). Default none. */
@@ -316,8 +323,20 @@ export class FakeClientAdapter extends ClientAdapter {
     return [...(this.#options.probes ?? [])];
   }
 
-  login(): Promise<LoginFlow> {
-    return Promise.reject(new AdapterUnavailable('the fake client has no login'));
+  /** Profiles `login` was called for, in order. */
+  readonly loginsOpened: Profile[] = [];
+
+  override loginMode(): LoginFlow['mode'] | undefined {
+    return this.#options.loginMode;
+  }
+
+  async login(profile?: Profile): Promise<LoginFlow> {
+    const open = this.#options.login;
+    if (open === undefined || profile === undefined) {
+      throw new AdapterUnavailable('the fake client has no login');
+    }
+    this.loginsOpened.push(profile);
+    return open(profile);
   }
 
   logout(profile?: Profile): Promise<void> {
