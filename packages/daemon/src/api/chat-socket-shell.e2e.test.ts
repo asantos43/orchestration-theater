@@ -170,7 +170,7 @@ chat:
       async (harness) => {
         const scenarioId = await harness.openGenericChat('shell');
         const chat = await openChat(harness, scenarioId);
-        chat.send({ type: 'message', text: '!echo nope' });
+        chat.send({ type: 'message', text: '!echo nope', clientId: 'sh-7' });
         const error = await waitFor('the error frame', () =>
           Promise.resolve(
             chat.frames.find(
@@ -180,12 +180,46 @@ chat:
           ),
         );
         expect(error.error.code).toBe('forbidden');
+        // N205: the refusal says it is of a `!` line, and which one.
+        expect(error.error.details).toEqual({
+          source: 'shell',
+          command: 'echo nope',
+          clientId: 'sh-7',
+        });
         expect(chat.frames.some((frame) => frame.type === 'shell_started')).toBe(false);
         expect(
           (await harness.daemon.store.events.readFrom(0, 100_000)).some((event) =>
             event.type.startsWith('chat.shell_command.'),
           ),
         ).toBe(false);
+        chat.close();
+      },
+    );
+  });
+
+  it("marks the question of context: ask as the shell's, in the input of the ask frame (N205)", async () => {
+    await withShellDaemon(
+      `app:
+  terminal: host
+chat:
+  shell_command:
+    context: ask
+`,
+      async (harness) => {
+        const scenarioId = await harness.openGenericChat('shell');
+        const chat = await openChat(harness, scenarioId);
+        chat.send({ type: 'message', text: '!echo marked' });
+        const ask = await waitFor('the ask frame', () =>
+          Promise.resolve(
+            chat.frames.find(
+              (frame): frame is Extract<ChatServerMessage, { type: 'ask' }> => frame.type === 'ask',
+            ),
+          ),
+        );
+        expect(ask.input).toMatchObject({
+          source: 'shell',
+          shell: { command: 'echo marked', exitCode: 0, lines: 1 },
+        });
         chat.close();
       },
     );

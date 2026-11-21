@@ -413,6 +413,66 @@ describeWithLauncher('the chat WebSocket with the fake agent (P7)', { timeout: 1
     });
   });
 
+  it('history brings the last events of the scenario on a first opening, and only as the first message (P26)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      const first = await ChatClient.open(harness, scenarioId);
+      for (const word of ['one', 'two', 'three']) {
+        first.send({ type: 'message', text: `#ot-chat ${word}` });
+        await replyWith(first, word);
+      }
+      await first.close();
+      const replies = async (count: number, expected: number): Promise<string[]> => {
+        const client = await ChatClient.open(harness, scenarioId, { type: 'history', count });
+        await client.next('the state', (frame) => frame.type === 'busy');
+        if (expected > 0) {
+          await waitFor('the replayed replies', () =>
+            Promise.resolve(client.of('director_reply').length >= expected || undefined),
+          );
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+        const texts = client.of('director_reply').map((frame) => frame.text);
+        await client.close();
+        return texts;
+      };
+      // The last two replies, in order, and not the first.
+      const last = await replies(2, 2);
+      expect(last).toHaveLength(2);
+      expect(last[0]).toContain('two');
+      expect(last[1]).toContain('three');
+      // More than there is: all of them, once each. None asked for: a socket as live as any other.
+      expect(await replies(100, 3)).toHaveLength(3);
+      expect(await replies(0, 0)).toEqual([]);
+
+      // After a first message it is a refusal, and the socket stays open.
+      const late = await ChatClient.open(harness, scenarioId);
+      late.send({ type: 'message', text: '#ot-chat four' });
+      await replyWith(late, 'four');
+      late.send({ type: 'history', count: 1 });
+      const error = await late.next(
+        'the refusal',
+        (frame): frame is Extract<ChatServerMessage, { type: 'error' }> => frame.type === 'error',
+      );
+      expect(error.error.code).toBe('invalid_input');
+      await late.close();
+    });
+  });
+
+  it('a history that comes after the resume window is no error: the chat opens without it (P26)', async () => {
+    await withChatDaemon({}, async (harness) => {
+      const scenarioId = await harness.openGenericChat('talk');
+      const slow = await ChatClient.open(harness, scenarioId);
+      // The window is 50 ms: the feed is live by now, with no history in it.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      slow.send({ type: 'history', count: 5 });
+      slow.send({ type: 'message', text: '#ot-chat five' });
+      await replyWith(slow, 'five');
+      expect(slow.frames.filter((frame) => frame.type === 'error')).toEqual([]);
+      await slow.close();
+    });
+  });
+
   it('takes a question back from the other clients when one of them answers it (N179, item 2)', async () => {
     await withChatDaemon({}, async (harness) => {
       const scenarioId = await harness.openGenericChat('talk');

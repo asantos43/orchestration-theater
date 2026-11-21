@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiSlashCommand, ChatServerMessage } from '@otheater/protocol';
-import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../ink.test-support.js';
+import {
+  cleanupApps,
+  renderApp,
+  TEST_UI_SETTINGS,
+  waitFor,
+  type RenderedApp,
+} from '../ink.test-support.js';
+import type { UiSettings } from '../settings.js';
 import { fakeOnline, seedStores, type FakeOnline } from '../layout.test-support.js';
 import type { FakeChatSocket } from './fake-socket.test-support.js';
 
@@ -40,10 +47,13 @@ interface Open {
   readonly socket: () => FakeChatSocket;
 }
 
-async function open(commands: readonly ApiSlashCommand[] = []): Promise<Open> {
+async function open(
+  commands: readonly ApiSlashCommand[] = [],
+  settings: UiSettings = TEST_UI_SETTINGS,
+): Promise<Open> {
   const online = fakeOnline({ commands });
   seedStores(online.stores);
-  const app = await renderApp({ connector: online.connector, size: SIZE });
+  const app = await renderApp({ connector: online.connector, size: SIZE, settings });
   await app.waitForText('127.0.0.1');
   const socket = (): FakeChatSocket => {
     const [first] = [...online.chat.sockets.keys()];
@@ -285,6 +295,74 @@ describe('a decision of the Producer', () => {
   });
 });
 
+describe('the keys of the card come from the registry (P26)', () => {
+  const question: Extract<ChatServerMessage, { type: 'ask' }> = {
+    type: 'ask',
+    eventId: 1,
+    decisionId: 'D1',
+    kind: 'producer_question',
+    playId: null,
+    input: {
+      questions: [
+        {
+          question: 'Which database?',
+          options: [{ label: 'sqlite' }, { label: 'postgres' }],
+          multi_select: false,
+        },
+      ],
+    },
+  };
+
+  it('moves and answers with the keys of ui.keymap.overrides', async () => {
+    const settings: UiSettings = {
+      ...TEST_UI_SETTINGS,
+      keymap: {
+        ...TEST_UI_SETTINGS.keymap,
+        overrides: { 'decision.down': 'J', 'decision.answer': 'Ctrl+Y' },
+      },
+    };
+    const { app, socket } = await open([], settings);
+    socket().emit(question);
+    await app.waitForText('Which database?');
+    // Enter is no longer the answer: nothing goes out.
+    app.press(ENTER);
+    await app.settle();
+    expect(socket().sentOf('answer')).toEqual([]);
+    app.press('j');
+    app.press('\x19');
+    await waitFor(
+      () => (socket().sentOf('answer').length > 0 ? true : undefined),
+      'the answer to the decision',
+    );
+    expect(socket().sentOf('answer')).toEqual([
+      { type: 'answer', decisionId: 'D1', answer: { answers: ['postgres'] } },
+    ]);
+  });
+});
+
+describe('the chat reopened (P26)', () => {
+  it('asks the daemon for the last messages and draws what it replays', async () => {
+    const { app, socket } = await open();
+    expect(socket().history).toBe(40);
+    expect(socket().resumeFrom).toBeUndefined();
+    socket().emit(reply(1, 'Where we stopped.'));
+    socket().emit(reply(2, '', true));
+    await app.waitForText('Where we stopped.');
+  });
+
+  it('asks for the amount of ui.chat.history, and for none when it is 0', async () => {
+    const withHistory = (history: number): UiSettings => ({
+      ...TEST_UI_SETTINGS,
+      chat: { ...TEST_UI_SETTINGS.chat, history },
+    });
+    const twelve = await open([], withHistory(12));
+    expect(twelve.socket().history).toBe(12);
+    cleanupApps();
+    const none = await open([], withHistory(0));
+    expect(none.socket().history).toBe(0);
+  });
+});
+
 describe('the commands with a slash', () => {
   const commands = [
     command('status'),
@@ -436,7 +514,9 @@ describe('a ! command (P18)', () => {
     await typeText(app, '!ls');
     app.press(ENTER);
     await waitFor(() => (socket().sentOf('message').length > 0 ? true : undefined), 'the message');
-    expect(socket().sentOf('message')).toEqual([{ type: 'message', text: '!ls' }]);
+    expect(socket().sentOf('message')).toEqual([
+      { type: 'message', text: '!ls', clientId: 'sh-1' },
+    ]);
     socket().emit(started(1));
     const running = await app.waitForText('Running in host');
     expect(running).toContain('! ls');
@@ -474,9 +554,13 @@ describe('a ! command (P18)', () => {
     socket().emit({
       type: 'error',
       eventId: null,
-      error: { code: 'forbidden', message: 'The ! command is off (chat.shell_command: off)' },
+      error: {
+        code: 'forbidden',
+        message: 'The ! command is off (chat.shell_command: off)',
+        details: { source: 'shell', command: 'ls', clientId: 'sh-1' },
+      },
     });
-    const frame = await app.waitForText('The ! command is off (settings chat.shell_command');
+    const frame = await app.waitForText('! ls: The ! command is off (settings chat.shell_command');
     expect(frame).not.toContain('Error: The ! command is off (chat.shell_command: off)');
   });
 
@@ -491,6 +575,8 @@ describe('a ! command (P18)', () => {
       kind: 'producer_question',
       playId: null,
       input: {
+        source: 'shell',
+        shell: { commandId: 'C1', command: 'ls', exitCode: 0, lines: 1 },
         questions: [
           {
             question: 'Send the result of "ls" (exit code 0, 1 lines) to the Director?',
@@ -513,6 +599,34 @@ describe('a ! command (P18)', () => {
     expect(socket().sentOf('answer')).toEqual([
       { type: 'answer', decisionId: 'D9', answer: { answers: ['Keep'] } },
     ]);
+  });
+
+  it('does not take a Director question with Send and Keep for the one of the ! command (N205)', async () => {
+    const { app, socket } = await open();
+    socket().emit(started(1));
+    socket().emit(finished(2, 'one.txt', { context: 'asked' }));
+    socket().emit({
+      type: 'ask',
+      eventId: 3,
+      decisionId: 'D10',
+      kind: 'producer_question',
+      playId: null,
+      input: {
+        questions: [
+          {
+            question: 'Ship the draft?',
+            options: [
+              { label: 'Send', description: 'now' },
+              { label: 'Keep', description: 'later' },
+            ],
+            multi_select: false,
+          },
+        ],
+      },
+    });
+    const card = await app.waitForText('Ship the draft?');
+    expect(card).not.toContain('Send the output of ! ls to the Director?');
+    expect(card).not.toContain('Keep here');
   });
 
   it('keeps the text in the box when the line is a ! command with nothing after it', async () => {

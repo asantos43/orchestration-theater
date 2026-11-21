@@ -456,6 +456,20 @@ describeWithLauncher('the ! command: chat.shell_command.context', () => {
     expect(rig.sent[0]?.attachments).toEqual([done.attachmentId]);
   });
 
+  it('ask: the question says where it comes from, with the command it is about (N205)', async () => {
+    const rig = await rigOf({ answer: { selected: [KEEP_LABEL] } });
+    rig.set({ shell: { context: 'ask' } });
+    await rig.service.start('s1', '!echo hi');
+    const done = await rig.finished();
+    await vi.waitFor(() => {
+      expect(rig.asked).toHaveLength(1);
+    });
+    expect(rig.asked[0]).toMatchObject({
+      source: 'shell',
+      shell: { commandId: done.commandId, command: 'echo hi', exitCode: 0, lines: 1 },
+    });
+  });
+
   it('ask: Keep, free text or anything else sends nothing', async () => {
     for (const answer of [{ selected: [KEEP_LABEL] }, 'sure, why not', [SEND_LABEL, KEEP_LABEL]]) {
       const rig = await rigOf({ answer });

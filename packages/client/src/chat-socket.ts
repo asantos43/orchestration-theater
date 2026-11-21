@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   CHAT_TICKET_PARAM,
+  CHAT_HISTORY_MAX,
   ChatClientMessageSchema,
   ChatServerMessageSchema,
   invalidInputDetails,
@@ -77,14 +78,21 @@ export interface ChatSocketOptions extends ReconnectOptions {
    */
   readonly resumeFrom?: number | undefined;
   /**
+   * How many of the last events of the scenario the first connection asks the daemon to send again
+   * (P26, N203 item 2), so a chat opened on a scenario that already talked does not look empty. It
+   * is a `history` message, sent only while the client has no cursor; with `resumeFrom`, or on a
+   * connection after the first, `resume` is what goes. `0` or absent: no history.
+   */
+  readonly history?: number | undefined;
+  /**
    * What to do with a message of the daemon outside the contract. `fail` (default) closes the chat
    * with an {@link ApiProtocolError}; `skip` drops it and tells {@link ChatSocket.onInvalid}. [proposta]
    */
   readonly invalidMessages?: 'fail' | 'skip' | undefined;
 }
 
-/** What the Producer sends. `resume` is the client's own business, so it is not here. */
-export type ChatOutgoing = Exclude<ChatClientMessage, { type: 'resume' }>;
+/** What the Producer sends. `resume` and `history` are the client's own business, so they are not here. */
+export type ChatOutgoing = Exclude<ChatClientMessage, { type: 'resume' | 'history' }>;
 
 /** Close code of a client that gives up on a message it cannot accept. */
 const PROTOCOL_ERROR_CLOSE_CODE = 1002;
@@ -95,6 +103,7 @@ export class ChatSocket extends ReconnectingConnection {
   readonly #scenarioId: string;
   readonly #base: string;
   readonly #invalidMessages: 'fail' | 'skip';
+  readonly #history: number;
   readonly #messages = new Listeners<[ChatServerMessage]>();
   readonly #invalid = new Listeners<[ApiClientError]>();
   #cursor: number | undefined;
@@ -117,6 +126,7 @@ export class ChatSocket extends ReconnectingConnection {
     this.#scenarioId = scenarioId;
     this.#base = base;
     this.#cursor = options.resumeFrom;
+    this.#history = Math.max(0, Math.trunc(options.history ?? 0));
     this.#invalidMessages = options.invalidMessages ?? 'fail';
   }
 
@@ -143,12 +153,12 @@ export class ChatSocket extends ReconnectingConnection {
   send(message: ChatOutgoing): void {
     const context = this.#context();
     const parsed = ChatClientMessageSchema.safeParse(message);
-    if (!parsed.success || parsed.data.type === 'resume') {
+    if (!parsed.success || parsed.data.type === 'resume' || parsed.data.type === 'history') {
       throw new ApiInputError(
         {
           part: 'body',
           issues: parsed.success
-            ? [{ path: ['type'], message: 'resume is sent by the client itself' }]
+            ? [{ path: ['type'], message: `${parsed.data.type} is sent by the client itself` }]
             : invalidInputDetails(parsed.error).issues,
         },
         context,
@@ -238,16 +248,22 @@ export class ChatSocket extends ReconnectingConnection {
         if (settled) return;
         wasOpen = true;
         this.#socket = socket;
-        // First thing on a connection that follows an earlier one: say where we were.
-        if (this.#cursor !== undefined) {
-          const resume: ChatClientMessage = { type: 'resume', lastEventId: this.#cursor };
+        // First thing on a connection that follows an earlier one: say where we were. On the first
+        // one, with nothing in hand, ask for the history (when it was asked for).
+        const first: ChatClientMessage | undefined =
+          this.#cursor !== undefined
+            ? { type: 'resume', lastEventId: this.#cursor }
+            : this.#history > 0
+              ? { type: 'history', count: Math.min(this.#history, CHAT_HISTORY_MAX) }
+              : undefined;
+        if (first !== undefined) {
           try {
-            socket.send(JSON.stringify(resume));
+            socket.send(JSON.stringify(first));
           } catch (cause) {
             finish(
               new ConnectionFailure({
                 error: new ApiNetworkError(
-                  { reason: 'connection', origin, detail: 'resume failed' },
+                  { reason: 'connection', origin, detail: `${first.type} failed` },
                   context,
                   { cause },
                 ),

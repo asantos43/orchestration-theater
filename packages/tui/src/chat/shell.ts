@@ -2,8 +2,9 @@
 
 /**
  * The `!` command of the Producer on the side of the TUI (P18 of docs/18; N43, N187): what makes a
- * line of the box a command, how the question of `chat.shell_command.context: ask` is told apart
- * from the questions of the Director, and how the output of a command is cleaned to be drawn. Pure.
+ * line of the box a command and how the output of a command is cleaned to be drawn. Pure. The
+ * question of `chat.shell_command.context: ask` and the refusal of a `!` line carry the mark of the
+ * daemon (`source: 'shell'`, N205), so nothing here guesses them.
  * The daemon runs the command and decides everything else (`ShellCommandService`).
  */
 
@@ -31,27 +32,6 @@ export interface ShellAsk {
   /** `null` when a signal ended the command, or it did not start. */
   readonly exitCode: number | null;
   readonly lines: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * Whether the `input` of a `producer_question` has the shape of the question of `context: ask`: one
- * question with the two options `Send` and `Keep` and nothing else. The ask does not say where it
- * comes from, so the model also waits for the `shell_finished` frame that announced it (`context:
- * 'asked'`) before it takes the question for this one.
- */
-export function isShellQuestion(input: Readonly<Record<string, unknown>>): boolean {
-  const { questions } = input;
-  if (!Array.isArray(questions) || questions.length !== 1) return false;
-  const [question] = questions as unknown[];
-  if (!isRecord(question) || !Array.isArray(question.options)) return false;
-  const labels = (question.options as unknown[]).map((option) =>
-    isRecord(option) ? option.label : undefined,
-  );
-  return labels.length === 2 && labels[0] === SHELL_SEND_LABEL && labels[1] === SHELL_KEEP_LABEL;
 }
 
 /** The longest command the screen repeats (the state line, the question). */

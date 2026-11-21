@@ -11463,6 +11463,11 @@
                   "type": "string",
                   "minLength": 1
                 }
+              },
+              "clientId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
               }
             },
             "required": [
@@ -11536,6 +11541,25 @@
             "required": [
               "type",
               "lastEventId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "history"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200
+              }
+            },
+            "required": [
+              "type",
+              "count"
             ],
             "additionalProperties": false
           }
