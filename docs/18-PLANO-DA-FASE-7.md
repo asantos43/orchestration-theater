@@ -1,6 +1,6 @@
 # 18. Plano da Fase 7
 
-Versão 3, de 2026-11-21 (as ondas 1 e 2 estão concluídas; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
+Versão 4, de 2026-11-21 (as ondas 1, 2 e 3 estão concluídas, com o P16 ainda em PR aberto; cada passo feito leva o PR e as divergências). Este é o plano de passos da Fase 7 da [arquitetura](framework-ideas/arquitetura.md), §10, "TUI (interface principal)". A arquitetura continua sendo a referência: este plano só divide a fase em passos, diz o que pode correr em paralelo e dá o aceite de cada passo. Se os dois divergirem, vale a arquitetura, e este documento é corrigido.
 
 O plano também leva as duas decisões da Fase 6 que ficaram para esta fase: os eventos que faltam (N173) e o controle de peça e de Ator pela REST (N176). Ele levantou oito decisões novas, N185 a N192 ([docs/13](13-DECISOES-EM-ABERTO.md)), tomadas pelo dono em 2026-11-20, todas iguais à recomendação; o resumo está em "Decisões que surgem deste plano", no fim.
 
@@ -90,26 +90,26 @@ Não entram **[proposta]**:
 | P8 | `packages/tui`: base, desempenho e testes | P0 | P1, P2, P4 a P7 | concluído (PR #210) |
 | P9 | Layout: lateral, chat, painel de abas, rolagem e paleta | P7, P8 | P3, P10, P11 | concluído (PR #216) |
 | P10 | Caixa de texto do Produtor (N35) | P7, P8 | P3, P9, P11 | concluído (PR #213) |
-| P11 | Mouse e cópia (N34, N36) | P9 | P3, P10 | a fazer |
-| P12 | Chat: conversa, decisões e comandos `/` | P3, P9, P10 | P13 a P16 | a fazer |
-| P13 | Visão geral e Consumo | P1, P9 | P12, P14 a P16 | a fazer |
-| P14 | Trajetórias | P9 | P12, P13, P15, P16 | a fazer |
-| P15 | Ordens | P9 | P12 a P14, P16 | a fazer |
-| P16 | Configurações: Assinaturas, Executores, Papéis e Limites | P5, P9, N188 | P12 a P15 | a fazer |
+| P11 | Mouse e cópia (N34, N36) | P9 | P3, P10 | concluído (PR #218) |
+| P12 | Chat: conversa, decisões e comandos `/` | P3, P9, P10 | P13 a P16 | concluído (PR #220) |
+| P13 | Visão geral e Consumo | P1, P9 | P12, P14 a P16 | concluído (PR #219) |
+| P14 | Trajetórias | P9 | P12, P13, P15, P16 | concluído (PR #224) |
+| P15 | Ordens | P9 | P12 a P14, P16 | concluído (PR #221) |
+| P16 | Configurações: Assinaturas, Executores, Papéis e Limites | P5, P9, N188 | P12 a P15 | concluído (PR #222) |
 | P17 | Assistente de configuração na TUI | P4, P16 | P18, P19 | a fazer |
 | P18 | `!` na TUI | P6, P12 | P17, P19 | a fazer |
 | P19 | Sessão direta com um Ator (N190) | P12 | P17, P18 | a fazer |
 | P20 | Terminais: testes de fumaça e roteiro manual (N191) | P12 | P17 a P19 | a fazer |
 | P21 | Aceite da fase | todos | nada | a fazer |
 
-Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20 e a onda 2 em 2026-11-21; os PRs estão nas linhas dos passos):
+Ordem em ondas **[proposta]** (a onda 1 terminou em 2026-11-20 e as ondas 2 e 3 em 2026-11-21; os PRs estão nas linhas dos passos; o PR do P16 estava aberto ao escrever isto):
 1. P1, P2, P4, P5, P6, P7 e P8. Os cinco primeiros são do daemon; P7 e P8 abrem o lado da TUI. Sete passos de uma vez passam do limite de dois subagentes com a suíte completa: os do daemon rodam a suíte em fila, e P7 e P8 testam só os pacotes deles até o PR.
 2. P3, P9 e P10.
 3. P11, P12, P13, P14, P15 e P16.
 4. P17, P18, P19 e P20.
 5. P21.
 
-Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e conversa com o Diretor contra o `fake-agent`. É o ponto em que o dono pode abrir a TUI e mudar o rumo antes das telas de configuração e do aceite.
+Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e conversa com o Diretor contra o `fake-agent`. É o ponto em que o dono pode abrir a TUI e mudar o rumo antes das telas de configuração e do aceite. **Atingido em 2026-11-21** [S: os testes de aceite dos PRs #218 a #221, #222 e do P14 rodam contra o `fake-agent`]; o P17 em diante ainda não começou. Falta o dono abrir a TUI num terminal real: nenhum teste da onda 3 rodou num terminal de verdade [N].
 
 **Estimativa:** 2,5 a 3 semanas, como na §10. Pelo ritmo medido nas Fases 1 a 6, com agentes, fica mais perto de 1,5 semana **[proposta]**. São 22 passos, contra 14 da Fase 6 e 23 da Fase 5.
 
@@ -330,11 +330,33 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** sequências SGR gravadas (incluindo cortadas ao meio) chegam como eventos e nada delas aparece na caixa de texto; o clique em cada área faz a ação; a cópia sai como OSC 52 válido.
 
+**Estado:** feito em 2026-11-21, PR #218 (mesclado às 05:45 UTC) [S: descrição do PR; os modos, o `auto`, os limites e a cópia conferidos no código da main]. Camada em `packages/tui/src/mouse/`: `sgr.ts` (`SgrMouseParser`, que segura prefixos cortados), `stdin-tap.ts` (o Ink descarta CSI que não vira tecla, então a camada se põe no `stdin.read`; um Esc solto passa depois de 20 ms), `modes.ts`, `registry.ts` (hit-test por `measureElement`, com recorte pelos `overflow: hidden`), `selection.ts`, `clipboard.ts` e `target.tsx` (`useMouseTarget`, `ClickTarget` e `MouseModalScope`). Ligações: roda no chat, no painel e no `ScrollList`; clique em aba, ✕, `+` e `⟩`; cabeçalhos de seção; cenários, seções, configurações e `«` da lateral; arrasto da borda do chat; seleção e cópia nas listas; overlays modais. Chaves: `ui.mouse` (`full` padrão, `wheel`, `off`; já existia no protocolo), `ui.clipboard.copy` (`osc52` padrão, `system`, `auto`, `off`; o `auto` é novo) e o bloco novo `ui.tuiMouse` **[proposta]**: `wheelLines` (3; 1 a 50) e `copyMaxBytes` (100.000; 1 a 10.000.000) [V: `ui-config.ts`].
+
+**Divergências:**
+- **correção da N36: só `off` devolve a seleção normal do terminal.** No modo `wheel` o rastreio continua ligado (`?1000h` e `?1006h`) e o terminal só deixa selecionar com Shift+arrasto, que funciona na maioria dos terminais [V: `mouse/modes.ts`; o Shift+arrasto não foi testado num terminal real, [N]]. O texto da N36 dizia que `wheel` e `off` devolviam; ele foi corrigido em [docs/13](13-DECISOES-EM-ABERTO.md);
+- o modo `full` liga também `?1002h`, para o arrasto; o `wheel` liga só `?1000h` e `?1006h`; desligar é idempotente [V: `modes.ts`];
+- **o modo `auto` da cópia faz o contrário do que o PR diz.** O PR descreve "OSC 52 e, se o terminal não for confiável, a ferramenta do sistema"; o código escolhe a **ferramenta do sistema quando a sessão não é remota (sem `SSH_*`) e há uma ferramenta instalada**, e o OSC 52 nos outros casos [V: `mouse/clipboard.ts`]. O padrão continua `osc52`. O OSC 52 passa pelo tmux embrulhado em `\x1bPtmux;...` (`tmuxPassthrough`), e a cópia devolve `too_long`, `no_tool` ou `tool_failed` [V];
+- `ClickTarget` é o ponto de registro genérico, e o PR diz que o P12 o usa nas opções de decisão. **O código do chat não o usa**: não há uso de mouse em `packages/tui/src/chat/` [V: busca no código da main]. O clique nas opções de decisão ficou sem ligação (a decisão responde por tecla); ver a N200;
+- `SectionControl` ganhou o campo opcional `toggle`, compatível com o contrato anterior [V: `layout/section.tsx`];
+- fora: mouse X10 legado, duplo e triplo clique; seleção dentro das abas do painel (cada aba teria de informar `rows`); clique nas opções da paleta e do seletor de abas (os overlays são modais, só a roda da ajuda); a região viva é suposta na origem do terminal [S];
+- não verificado num terminal real: Shift+arrasto, OSC 52 nos terminais e no tmux, e as ferramentas do sistema **[N]**. Os testes usam bytes exatos (`Copied 17 characters.`) e a árvore Ink real [S].
+
 ### P12. Chat: conversa, decisões e comandos `/` (§5.3, §5.13, §5.20)
 
 **Escopo:** o chat com o Diretor pelo `ChatSocket`, com resposta em fluxo, estado do Diretor (ativo, em turno, adormecido) e os dados da peça no topo (título, etapa, decisão pendente); as decisões do Produtor como lista navegável (setas ou número, Espaço na escolha múltipla, Enter); o `/` com autocompletar a partir do `GET /v1/commands` (P3), a confirmação dos comandos que pedem e a resposta dos comandos do daemon na própria conversa; os anexos do P10; a troca de cenário pela lateral; a fila quando o Diretor está em turno; e o Esc parando a resposta do Diretor, sem pausar a peça.
 
 **Aceite:** contra o `fake-agent`, uma necessidade pedida no chat vira peça, uma decisão é respondida por tecla e a peça segue; `/status` responde sem turno do Diretor; uma queda do socket no meio da resposta volta sem perder nem repetir texto.
+
+**Estado:** feito em 2026-11-21, PR #220 (mesclado às 06:25 UTC) [S: descrição do PR; as chaves, o `/stop` e o cartão conferidos no código da main]. Chat em `packages/tui/src/chat/` (`model.ts`, `session.ts`, `card.ts`, `lines.ts`, `suggest.ts`, `use-chat-panel.tsx`) sobre o `ChatSocket` do `packages/client`: resposta em fluxo por `replyId`, estado do Diretor, dados do cenário no topo, decisões (`producer_question`, `producer_menu`, `ideas.group`) como cartão com setas, número, Espaço e Enter, `/` com autocompletar por `GET /v1/commands` e confirmação, fila e Esc. O `input-slot.tsx` provisório saiu; a caixa é o `TextBox` do P10 com `bindAttachments`, mais as props `complete` e `onRows`. **`/stop`** é um comando embutido do daemon (`deps.directors?.interrupt`): interrompe só o turno do Diretor, sem pausar a peça [V: `slash/builtin.ts`]. Chaves `ui.chat.*` **[proposta]**: `queue` (`daemon` padrão, ou `hold`, em que a TUI retém a mensagem até o Diretor liberar), `suggestions` (6; 0 a 30; 0 desliga), `decisionFocus` (`auto` padrão, em que o cartão toma o teclado ao chegar, ou `manual`, só depois de abrir com Ctrl+O) e `esc` (`stop` padrão, ou `off`) [V: `UiChatConfigSchema`].
+
+**Divergências:**
+- **o cartão de decisão lê as teclas direto pela combinação**, e não pelas teclas remapeáveis de `decision.answer` [V: `cardKeyOf`, em `chat/card.ts`]. O `ui.keymap` não muda as teclas do cartão; ver a N203;
+- **na primeira abertura de um cenário não há histórico**: o socket novo nasce no fim do log. O cursor guardado entre quedas evita perder ou repetir texto, mas não recupera o que veio antes [S];
+- o `busy` do Diretor é aproximado para "em turno" [S];
+- a resposta de múltipla escolha vai como uma só string, com os itens unidos por `", "` **[proposta]** [S];
+- Enter completa a sugestão de `/`, sem tecla separada para aceitar; com a busca do histórico ativa, o Esc cancela a busca e pode também enviar `/stop`; o menu só oferece motivo opcional para `refuse` (e texto obrigatório para `redefine_need`) [S];
+- o clique nas opções de decisão (`ClickTarget`, P11) **não foi ligado**: o P12 diz "não depende do mouse" [S] e o código não o usa [V]. O histórico da caixa fica em `<dados>/tui/input-history.json`, e a linha de estado do chat é cortada na largura do chat [S];
+- o teste de aceite fica no pacote da TUI, porque a regra `tui-launcher-only-from-cli` proíbe o daemon de importar a TUI [S].
 
 ### P13. Visão geral e Consumo (§5.13)
 
@@ -342,17 +364,45 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 
 **Aceite:** a Visão geral acompanha uma peça inteira do `fake-agent` sem leitura REST a cada evento; pausar pela aba produz o mesmo efeito do `/pause`.
 
+**Estado:** feito em 2026-11-21, PR #219 (mesclado às 06:04 UTC) [S: descrição do PR; os stores, as chaves e o contrato conferidos no código da main]. Cliente: store `activity` (`stores/activity.ts`, montado só pelos eventos), `views/overview.ts`, `views/usage.ts` e `views/controls.ts` (`runControl` traduz o erro em resultado, sem lançar). TUI: `tabs/overview/` e `tabs/usage/`, registradas em `TAB_CONTENT`, e **o contrato de aba**: `layout/tab-types.ts` (`TabContentProps`, `TabDefinition`, tirados de `tab-content.ts`, que os reexporta, para não fechar um ciclo no `pnpm deps`) e `layout/tab-host.tsx` (`TabHostProvider` e `useTabHost()` entregam à aba `{stores, client, keymap, settings, now}`) [V]. Chaves **[proposta]**: `ui.overview.confirm` (`always` padrão, ou `off`), `ui.overview.recentEvents` (8; 1 a 100), `ui.overview.hiddenEvents` (`['session.update']`), `ui.usage.groupBy` (`profile` padrão; `executor`, `play`, `session`, `none`) e `ui.usage.refreshSeconds` (30; 0 a 3.600; 0 é só ao abrir e sob demanda) [V: `ui-config.ts`]. Teclas no contexto `panel`: Shift+P e Shift+R (pausar e retomar a peça), Shift+N (próximo Ator), Shift+A e Shift+U (pausar e retomar o Ator) e Shift+L (atualizar o Consumo) [S].
+
+**Divergências:**
+- **não há rota que liste tentativas**: o store `activity` só conhece Atores abertos depois que a TUI conectou, e o mesmo vale para uma pausa anterior à conexão [S: o PR]. Ver a N200;
+- **`ApiPlay` não traz o flag de pausa**; por isso "retomar" é oferecido sempre que a peça está aberta, e um 409 aparece como mensagem ("nada a fazer") [S];
+- o **tempo restante do Ator é uma estimativa** **[proposta]**: `startedAt + timeoutMin * 60000 - now`, com `startedAt` do primeiro `session.opened` da tentativa; o cronômetro do daemon é quem decide [V: `views/overview.ts`];
+- **`session.closed` com `interrupted` chega antes de `attempt.paused`** (o runner escreve nessa ordem), então o store mantém a tentativa em curso nesse caso, para o Ator não sumir da lista ao pausar [V: `stores/activity.ts`];
+- as teclas Shift+P/R/N/A/U/L eram escolha da onda, não do plano; a linha de controles rola junto com o conteúdo, e o Ator se escolhe por Shift+N, sem clique [S];
+- o aceite foi provado em `overview-tab.e2e.test.ts` (daemon de teste e `fake-agent`, contando as chamadas REST depois do snapshot) e a pausa pela aba produz as mesmas listas de eventos que o `/pause` [S].
+
 ### P14. Trajetórias (§5.11, §5.13)
 
 **Escopo:** a aba Trajetórias, ao vivo e histórica, com os passos expansíveis (turnos, chamadas de ferramenta, permissões, saída de terminal do Ator quando o cliente a manda) e os diffs, a partir dos eventos e do blackboard. O formato ATIF é da Fase 8. O comando `/trajectory` entra aqui.
 
 **Aceite:** a trajetória de uma peça do `fake-agent` mostra todos os turnos, abre e fecha cada passo e mostra o diff da demanda.
 
+**Estado:** feito em 2026-11-21, PR #224 [S: descrição do PR, que ainda não estava na main ao escrever isto; **nada deste passo foi conferido no código da main** [N]]. Protocolo: `buildTrajectory` (função pura que dobra os eventos de uma peça em tentativas, turnos e entradas: mensagem, pensamento, chamada de ferramenta, resultado, permissão, plano e saída de terminal), os esquemas das rotas e `ui.trajectories`. Daemon: serviço de trajetória, rotas `GET /v1/plays/:playId/trajectory` (paginada, com cursor) e `GET /v1/plays/:playId/demands/:demandId/diff` (por `Vcs.diffBetween`), o bloco `trajectory` no registro de comandos `/` (**`/trajectory`**) e o catálogo `api-routes.json` regenerado. Cliente: store `trajectories` (reducers puros, histórico paginado e eventos ao vivo), `loadTrajectory`, `loadDemandDiff` e `setTrajectoryKeep`. TUI: `packages/tui/src/tabs/trajectories/`, em `TAB_CONTENT`. Chaves `ui.trajectories.*` **[proposta]**: `open` (`last` padrão, `all`, `none`: quais passos começam abertos), `keep` (5.000; 100 a 100.000: eventos de trajetória guardados por peça no cliente) e `diff_lines` (200; 10 a 10.000: linhas do diff antes do corte).
+
+**Divergências:**
+- **o contrato de aba foi estendido** [S]: `TabContext {stores, scenarioId, settings}`; `TabContentProps` o estende; `TabDefinition.sections` pode ser uma função `(context, folded)`, e `TabDefinition.watch` lista os stores que reavaliam as seções; o `shell.tsx` ganhou a prop `settings` e o gancho `use-watched.ts`. Isso convive com o `TabHost` do P13 e com o `capture` do P15; a unificação é da N199;
+- ids de seção curtos por posição (`trajectories.a<n>`, `.a<n>.t<m>`, `.a<n>.diff` e `trajectories.transitions`); o estado final é o padrão `open` com a inversão dos toggles guardados no `LayoutStore` **[proposta]** [S];
+- a peça mostrada é a mais recente do cenário selecionado, e o diff pende da última tentativa de cada demanda **[proposta]** [S]. Peças terminadas só aparecem na barra lateral se a opção `plays` do hub for `all`; senão, vale `/trajectory <peça>` [S];
+- **a saída de terminal do Ator não aparece**: o construtor reconhece `terminal.output`, mas nada no daemon emite esse evento [S]. A aba a mostrará quando o cliente a mandar (ver a N200);
+- ATIF ficou de fora (Fase 8), como no plano [S].
+
 ### P15. Ordens (§5.17)
 
 **Escopo:** a aba Ordens: vigentes, agendadas e encerradas por escopo, a linha do tempo da vigência e os prazos; criar, prorrogar, suspender e revogar pelas rotas `/v1/orders` que já existem.
 
 **Aceite:** cada ação muda o estado na aba pelo evento `directive.*`, sem recarregar.
+
+**Estado:** feito em 2026-11-21, PR #221 (mesclado às 06:49 UTC) [S: descrição do PR; o campo `order` e o contexto conferidos no código da main]. Aba `directives` (rótulo "Diretrizes") em `packages/tui/src/tabs/directives/` (`view.ts`, `form.ts`, `line-input.ts`, `directives-tab.tsx`): ordens vigentes, agendadas e encerradas por escopo, com a linha do tempo da vigência e os prazos, e quatro formulários (dar, prorrogar, suspender, revogar) pelas rotas `/v1/orders` que já existiam. Cliente: store `orders` (`reduceOrders`, `installOrders`, `settleOrder`, `orderStateAt`, `ordersInOrder`), `DaemonStores.orders` e `DaemonStores.client`, e `ApiClient.createOrder`, `extendOrder`, `suspendOrder` e `revokeOrder`, todos com `Idempotency-Key`. **O evento `directive.created` passou a levar a ordem inteira no campo opcional `order`** **[proposta]**, para a lista se montar só dos eventos [V: `directive-events.ts`, `order: DirectiveRecordSchema.optional()`]; sem ele, o store marca a ordem como defasada e relê só ela (`getOrder`), nunca a lista [S]. **Nenhuma chave de configuração nova**: as teclas são ações do registro, trocáveis por `ui.keymap`; no contexto `panel`: `n` (nova), `e` (prorrogar), `s` (suspender), `r` (revogar), `Shift+↑` ou `k` (anterior) e `Shift+↓` ou `j` (próxima) [S].
+
+**Divergências:**
+- **`capture` do teclado**: o Shell dá a uma aba que age o `TabEnvironment` (`layout/tab-environment.tsx`: stores, mapa de teclas e `capture`), com retorno antecipado quando um formulário tem o teclado, e o `focused` da aba passou a excluir sobreposição aberta (paleta, ajuda, seletor) [S]. **Os arquivos `tab-environment.tsx` e `tab-props.ts` não existem na main**: o PR #221 mexeu no `tab-host.tsx` do P13, que ganhou o `capture`, e `TabContentProps` ficou em `tab-types.ts` [V: `git log` e a listagem de `packages/tui/src/layout/`]. O contrato final está na N199;
+- o formulário de ordem nova cobre instrução e regra; a suspensão sai pela ação "suspender"; **o campo de papéis (`roles`) e a substituição de uma ordem (`replaces`) não são oferecidos** [S]. O campo de uma linha é próprio (`line-input.ts`), não o `TextBox` do Produtor [S];
+- a aba não tem tecla própria para abrir (abre pela paleta ou por Alt+A) [S];
+- as teclas `n`, `e`, `s`, `r` e `j`/`k` podiam colidir com as de P13, P14 e P16 no contexto `panel`; o orquestrador resolveu com um contexto por aba, no PR #222 (**[proposta]**, N199). Os testes de integração rodam num daemon de teste em memória e provam que não há `GET` depois da ação [S];
+- as ações ficam no grupo `navigation`, porque `derive.test.ts` fixa a lista de grupos [S].
 
 ### P16. Configurações: Assinaturas, Executores, Papéis e Limites (§5.13; N186, N188)
 
@@ -365,6 +415,17 @@ Marco interno **[proposta]**: ao fim da onda 3, a TUI já acompanha uma peça e 
 - a gravação pelo `PUT /v1/config`, com o efeito da N188.
 
 **Aceite:** com perfis falsos, o login pelo painel termina; reordenar papéis grava a ordem nova; uma configuração inválida mostra a chave que falhou e não grava.
+
+**Estado:** feito em 2026-11-21, PR #222, **ainda aberto ao escrever isto** [S: descrição do PR; nada foi conferido no código da main [N]]. Duas partes. **N188 (reload a quente):** `packages/daemon/src/config-hot.ts` com as seções quentes `ui`, `chat`, `limits` e `roles`, `splitByReload` e `applyHotSections`; o `PUT /v1/config` responde `{appliesOn: hot|restart|mixed, set, removed, hot, restart}`, emite `config.edited` (com `appliesOn`) e, quando há chave quente, `config.changed {hot, restart}`, evento novo no catálogo; fila de promessas por arquivo em `config-edit.ts`, contra a corrida com o assistente de configuração (P4); getters nos consumidores (`deps.ts`, `wiring.ts`, `execution/settings.ts`) para seguir os valores quentes. **N186 (login oficial):** a aba `settings` em `packages/tui/src/tabs/settings/`: **Assinaturas** (estado, cota viva do store `quotas`, reset, adicionar com `A` e remover com `X`, com confirmação; chave de API em campo mascarado; `needs_notice` pede confirmação e reenvia com `acceptNotice`), **login oficial** com `L` (só `token_plan`: modo, URL, código e campo para o código do navegador; o fim vem por `profile.login.completed` ou `failed`; no modo `terminal` a rota responde `local` e a TUI se suspende e roda o login no próprio terminal), **Executores** (lista com validade e papéis, **somente leitura**), **Papéis** (`Shift+↑/↓` move o Executor e grava a lista inteira; `E` alterna `next` e `wait`; `U` volta ao padrão) e **Limites** (`preset`, contagens, durações e `on_turn_timeout`; `E` e `U`), com `S` alternando o escopo global e o de projeto. A aba recarrega só quando um evento diz que o que ela mostra mudou (`profile.*`, `executor.changed`, `config.changed`, `config.edited`), com debounce. Ações `settings.*` no contexto `panel`, só TUI, remapeáveis por `ui.keymap` (`K`, `J`, `Shift+↑`, `Shift+↓`, `L`, `A`, `X`, `E`, `U`, `S`). **Nenhuma chave nova no `config.yaml`**: a aba edita `roles.*` e `limits.*`, que já existem.
+
+**Divergências:**
+- **só o `PUT /v1/config` emite `config.changed`**: as gravações do assistente (P4), as do serviço de Executores e a edição à mão só entram nas seções quentes no próximo `PUT` (que ressincroniza as seções do arquivo) ou no reinício; uma peça em andamento mantém os limites com que abriu [S]. Ver a N202;
+- **`appliesOn`** (`hot`, `restart` ou `mixed`) diz, em cada gravação, o que vale já e o que vale no reinício, como a N188 pedia [S];
+- **o override por projeto é só leitura**: a aba mostra o `configOverride` do cenário, mas nenhuma rota o grava. **O modelo e o esforço dos Executores não se editam**: a aba lista, mas não há rota de catálogo de config options. O escopo do plano ("modelo e esforço a partir das config options") fica, então, em leitura [S]. Ver a N202;
+- os valores de `limits` vêm de `GET /v1/config` já resolvidos, e a aba não distingue o valor escrito do valor da predefinição [S];
+- **contextos de tecla por aba, [proposta] do orquestrador**: cada aba ganhou o seu contexto no registro (`overview`, `usage`, `trajectories`, `directives` e `settings`, em `packages/client/src/ui/keys.ts` e `default-registry.ts`), para a mesma tecla ter ações diferentes em cada aba sem colidir. O orquestrador decidiu isso ao integrar as abas da onda 3, e a arquitetura não fixa o desenho [S: o PR; na main, `UI_CONTEXTS` ainda tem só `global`, `decision`, `textBox`, `chat`, `edge`, `sidebar`, `panel` e `overlay` [V]]. Ver a N199;
+- a infraestrutura `PanelContext` (stores, mapa de teclas, `capture` e id do cenário) é fornecida pelo `shell.tsx`, e `capture(true)` faz o shell largar as teclas enquanto um campo de texto está aberto [S]. É a terceira forma do contrato de aba (depois do `TabHost` do P13 e do `TabContext` do P14), e o orquestrador as unificou no PR [S];
+- a corrida do P4 com o `PUT` foi resolvida por fila de promessas por arquivo, e não por trava de arquivo [S].
 
 ### P17. Assistente de configuração na TUI (§5.7)
 
@@ -413,7 +474,7 @@ O critério da §10: criar um projeto, adicionar uma assinatura (com o login ofi
 
 ## Decisões que surgem deste plano
 
-Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação. A onda 1 implementou as três: a N193 no PR #211, a N194 no PR #208 e a N195 no PR #210. A onda 2 implementou a N44 (os comandos `/` do daemon, PR #215) e a N35 (a caixa de texto, PR #213), e o PR #216 trouxe o `@inkjs/ui` da N185:
+Abertas e decididas em 2026-11-20 ([docs/13](13-DECISOES-EM-ABERTO.md)), pelo dono, por múltipla escolha. Nas oito, a escolha foi a recomendação, que vem primeiro em cada item. Ao abrir a onda 1, no mesmo dia, vieram a N193 (`pause.mode`, padrão `drain`), a N194 (prazo do `!`, padrão 5 min) e a N195 (`ot` sem argumento abre a TUI), também iguais à recomendação. A onda 1 implementou as três: a N193 no PR #211, a N194 no PR #208 e a N195 no PR #210. A onda 2 implementou a N44 (os comandos `/` do daemon, PR #215) e a N35 (a caixa de texto, PR #213), e o PR #216 trouxe o `@inkjs/ui` da N185. A onda 3 implementou a N34 e a N36 (mouse e cópia, PR #218, com a correção da N36: só `off` devolve a seleção do terminal), a N186 (o login oficial na aba Configurações, PR #222) e a N188 (a recarga a quente e o evento `config.changed`, PR #222), e levantou as perguntas N198 a N203 ([docs/13](13-DECISOES-EM-ABERTO.md)), ainda abertas:
 - **N185, dependências novas:** `ink` 8.0.0, `react` 19.3.1, `@types/react` 19.3.0, `@inkjs/ui` 2.0.0, `ink-testing-library` 4.0.0 e `react-i18next` 17.1.13, todas MIT. Alternativas: sem o `@inkjs/ui` (componentes próprios); sem o `react-i18next` (um gancho próprio sobre o i18next).
 - **N186, login oficial na TUI:** o daemon expõe o `LoginFlow` pela REST, e o modo `terminal` suspende a TUI e roda o login no próprio terminal. Alternativas: sempre suspender a TUI e rodar o CLI; ou o daemon com PTY transmitindo o login (exige `node-pty`).
 - **N187, `!` nesta fase:** no daemon, sem PTY e com a entrada fechada; o caso interativo fica para quando houver PTY. Alternativas: `node-pty` já nesta fase, com a TUI entregando o terminal; ou o `!` inteiro na Fase 12.
