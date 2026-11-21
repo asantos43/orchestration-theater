@@ -23,5 +23,6 @@ export * from './scenarios.js';
 export * from './setup.js';
 export * from './usage.js';
 export * from './commands.js';
+export * from './trajectories.js';
 export * from './registry.js';
 export * from './catalog.js';

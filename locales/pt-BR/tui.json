@@ -480,6 +480,54 @@
       "submitFailed": "A mensagem não foi enviada: {{message}}"
     }
   },
+  "trajectories": {
+    "play": "Peça {{id}}",
+    "noScenario": "Escolha um cenário para ver a trajetória dele.",
+    "noPlay": "Este cenário ainda não tem peça.",
+    "loading": "Lendo a trajetória...",
+    "failed": "Não foi possível ler a trajetória: {{error}}",
+    "stale": "Desatualizada: {{error}}",
+    "empty": "Ainda não aconteceu nada nesta peça.",
+    "dropped": "Os primeiros {{count}} eventos ficaram de fora (ui.trajectories.keep).",
+    "attempt": "Tentativa {{n}} · demanda {{demand}}",
+    "turn": "Turno {{n}}",
+    "turns_one": "{{count}} turno",
+    "turns_other": "{{count}} turnos",
+    "entries_one": "{{count}} passo",
+    "entries_other": "{{count}} passos",
+    "running": "em andamento",
+    "emptyTurn": "Nada registrado neste turno.",
+    "more": "... mais {{count}} linhas",
+    "state": {
+      "running": "em andamento",
+      "closed": "sessão fechada",
+      "interrupted": "interrompida",
+      "ended": "encerrada"
+    },
+    "entry": {
+      "message": "diz",
+      "thought": "pensa",
+      "terminal": "term",
+      "toolCall": "chama",
+      "tool": "ferr.",
+      "permission": "pede",
+      "plan": "plano",
+      "running": "em andamento",
+      "waiting": "esperando"
+    },
+    "diff": "Diff · demanda {{demand}}",
+    "diffLoading": "Lendo o diff...",
+    "diffFailed": "Não foi possível ler o diff: {{error}}",
+    "diffEmpty": "Esta tentativa não mudou nada.",
+    "diffMore": "... mais {{count}} linhas",
+    "diffCut": "O diff foi cortado no limite de saída.",
+    "diffUnavailable": {
+      "no_vcs": "A peça não tem controle de versão para comparar.",
+      "no_attempt": "A demanda ainda não tem tentativa.",
+      "no_branch": "A tentativa não tem branch para comparar."
+    },
+    "transitions": "Movimentos das demandas"
+  },
   "settings": {
     "sections": {
       "subscriptions": "Assinaturas",

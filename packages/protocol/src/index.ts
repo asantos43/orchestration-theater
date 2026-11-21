@@ -30,3 +30,4 @@ export * from './shell-events.js';
 export * from './record-events.js';
 export * from './key-combo.js';
 export * from './ui-config.js';
+export * from './trajectory.js';
