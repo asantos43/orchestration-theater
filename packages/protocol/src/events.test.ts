@@ -118,6 +118,8 @@ describe('daemon event registry', () => {
       'telemetry.receiver_started',
       'telemetry.batch_rejected',
       'telemetry.redacted',
+      'telemetry.export_failed',
+      'telemetry.purged',
       'api.started',
       'api.client_rejected',
       'api.stream_lagged',

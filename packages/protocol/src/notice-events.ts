@@ -43,6 +43,18 @@ const detail = z.string().min(1).max(512).nullable();
  * - `daemon_spans_failed` (Phase 8, P4, N214; [proposta]): the projector of the spans of the daemon
  *   could not read the log or write the base (`subject`: what failed; `detail`: why). It is told once
  *   per episode and the projector tries again; the orchestration does not depend on it.
+ * - `analysis_failed` (Phase 8, P9, N55; [proposta]): the build of the daily aggregates failed for
+ *   a day (`subject`: the day, `YYYY-MM-DD`, or `retention`; `detail`: why). The schedule tries the
+ *   day again at the next start and at the next rollover; the raw telemetry stays where it is.
+ * - `telemetry_purge_failed` (Phase 8, P8, N216; [proposta]): the purge of the raw telemetry could
+ *   not run (`subject`: `purge` or `compact`; `detail`: why). The next pass tries again; the base
+ *   keeps what it has.
+ * - `telemetry_purge_blocked` (Phase 8, P8; [proposta]): the telemetry base is over a limit
+ *   (`telemetry.retention.max_mb` or `.days`) and the purge may not remove more: the daily
+ *   aggregates do not cover the oldest days yet (`subject`: `size` or `age`; `detail`: the numbers
+ *   and the reason). Nothing is removed past the last day the aggregates cover.
+ * - `log_rotate_failed` (Phase 8, P8; [proposta]): `daemon.log` could not be rotated (`subject`:
+ *   `daemon.log`; `detail`: why). The daemon writes on to the same file and tries again later.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -59,6 +71,10 @@ export const DAEMON_NOTICE_KINDS = [
   'account_rotated',
   'telemetry_receiver_unavailable',
   'daemon_spans_failed',
+  'analysis_failed',
+  'telemetry_purge_failed',
+  'telemetry_purge_blocked',
+  'log_rotate_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 
