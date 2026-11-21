@@ -8,7 +8,7 @@ import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { fit, fitRight, wrapText } from '../../layout/text.js';
 import { Section } from '../../layout/section.js';
 import { useTabEnvironment } from '../../layout/tab-environment.js';
-import type { TabContentProps } from '../../layout/tab-content.js';
+import type { TabContentProps } from '../../layout/tab-props.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { useRenderControl } from '../../render-control.js';
 import { useStoreValue } from '../../use-store-value.js';
