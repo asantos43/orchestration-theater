@@ -53,6 +53,37 @@ function textBoxActions(): NonNullable<UiRegistryDefinition['actions']> {
 }
 
 /**
+ * The actions of the tab Settings (P16 of docs/18): the keys of its items, in the context `panel`
+ * (the arrows and Enter keep walking and folding the sections). [proposta] The letters are bare
+ * because the tab has no text field open while they act; with a field open the shell hands every
+ * key to it. They are not commands of the palette: they act on the item under the cursor.
+ */
+const SETTINGS_KEYS: readonly (readonly [name: string, keys: readonly string[]])[] = [
+  ['itemPrev', ['K']],
+  ['itemNext', ['J']],
+  ['moveUp', ['Shift+Up']],
+  ['moveDown', ['Shift+Down']],
+  ['login', ['L']],
+  ['add', ['A']],
+  ['remove', ['X']],
+  ['edit', ['E']],
+  ['unset', ['U']],
+  ['scope', ['S']],
+];
+
+function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
+  return SETTINGS_KEYS.map(([name, keys]) => ({
+    id: `settings.${name}`,
+    textKey: `actions.settings.${name}`,
+    group: 'settings',
+    context: 'panel' as const,
+    surfaces: ['tui' as const],
+    palette: false,
+    keys: terminalKeys(keys),
+  }));
+}
+
+/**
  * The entries of the registry for the terminal, from the table of 5.13 ("Mapa de teclas") and the
  * tabs of the work panel. The tab Agenda (Phase 9b) and the tab Plugins (Phase 9) are not here
  * yet: each one enters with a line of `tabs`, and the catalog `tui` gets its name.
@@ -64,6 +95,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'navigation', textKey: 'groups.navigation', order: 25 },
     { id: 'decision', textKey: 'groups.decision', order: 30 },
     { id: 'input', textKey: 'groups.input', order: 35 },
+    { id: 'settings', textKey: 'groups.settings', order: 37 },
     { id: 'general', textKey: 'groups.general', order: 40 },
   ],
   tabs: [
@@ -298,6 +330,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     // coding agents and of the readline; in `classic` the Ctrl keys the layout used in v0.7 stay with
     // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.
     ...textBoxActions(),
+    ...settingsActions(),
     {
       id: 'palette.open',
       textKey: 'actions.palette.open',

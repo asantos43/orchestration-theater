@@ -37,8 +37,10 @@ export const getConfig = defineRoute({
  * `config-edit.ts`: the comments and the order of the file stay, the result is validated like a
  * start would validate it (an edit that leaves a config the daemon would refuse is `invalid_input`,
  * naming the key) and written atomically. A value that could be a secret (see `getConfig`) is
- * refused: a secret goes to the vault, never to the YAML. The running daemon keeps the configuration
- * it started with, so the answer says the edit applies on restart.
+ * refused: a secret goes to the vault, never to the YAML. The keys of the sections that can change
+ * without a restart (`ui`, `chat`, `limits`, `roles`; N188) are applied to the running daemon at once and
+ * announced by the event `config.changed`; the others apply on restart. The answer says which is which
+ * (`appliesOn`, `hot`, `restart`).
  */
 export const ConfigKeyPathSchema = z.array(z.string().min(1).max(256)).min(1).max(16);
 

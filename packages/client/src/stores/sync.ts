@@ -203,6 +203,11 @@ export class DaemonStores {
   #buffer: ApiEventEnvelope[] | undefined;
   #recentLoaded = false;
 
+  /** The client the stores read through, for the commands a screen sends (P16 of Phase 7). */
+  get client(): ApiClient {
+    return this.#client;
+  }
+
   constructor(client: ApiClient, options: DaemonStoresOptions = {}) {
     this.#client = client;
     this.#options = options;
