@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ReactNode } from 'react';
+import { createElement, type ReactNode } from 'react';
+import { DirectivesTab, SECTION_IDS as DIRECTIVES_SECTIONS } from '../tabs/directives/index.js';
 import type { SectionControl } from './section.js';
 
 /** What a tab is given to draw its content in the panel. */
@@ -7,7 +8,7 @@ export interface TabContentProps {
   /** Cells and rows of the content area (the tab bar and the footer are not in it). */
   readonly width: number;
   readonly height: number;
-  /** The panel has the focus. */
+  /** The panel has the focus and no overlay (palette, help, picker) is open: the tab may read keys. */
   readonly focused: boolean;
   /** Lines the person scrolled (PageUp and PageDown in the panel). A tab that scrolls uses it. */
   readonly scroll: number;
@@ -30,4 +31,9 @@ export type TabContentMap = Readonly<Record<string, TabDefinition>>;
  * (Overview, Trajectories, Usage, Directives, Settings). A tab with no entry shows the
  * placeholder of the panel.
  */
-export const TAB_CONTENT: TabContentMap = {};
+export const TAB_CONTENT: TabContentMap = {
+  directives: {
+    sections: DIRECTIVES_SECTIONS,
+    render: (props) => createElement(DirectivesTab, props),
+  },
+};
