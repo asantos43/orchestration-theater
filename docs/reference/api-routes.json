@@ -10531,10 +10531,24 @@
                                     "properties": {
                                       "profile": {
                                         "$ref": "#/$defs/__schema5"
+                                      },
+                                      "discovered": {
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/__schema6"
+                                        }
+                                      },
+                                      "notes": {
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/__schema7"
+                                        }
                                       }
                                     },
                                     "required": [
-                                      "profile"
+                                      "profile",
+                                      "discovered",
+                                      "notes"
                                     ],
                                     "additionalProperties": false
                                   }
@@ -10590,13 +10604,13 @@
                                       "roles": {
                                         "type": "array",
                                         "items": {
-                                          "$ref": "#/$defs/__schema7"
+                                          "$ref": "#/$defs/__schema8"
                                         }
                                       },
                                       "notes": {
                                         "type": "array",
                                         "items": {
-                                          "$ref": "#/$defs/__schema8"
+                                          "$ref": "#/$defs/__schema7"
                                         }
                                       }
                                     },
@@ -10663,11 +10677,18 @@
                                         "items": {
                                           "$ref": "#/$defs/__schema10"
                                         }
+                                      },
+                                      "notes": {
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/__schema7"
+                                        }
                                       }
                                     },
                                     "required": [
                                       "executors",
-                                      "budgets"
+                                      "budgets",
+                                      "notes"
                                     ],
                                     "additionalProperties": false
                                   }
@@ -10844,7 +10865,7 @@
                                         "roles": {
                                           "type": "array",
                                           "items": {
-                                            "$ref": "#/$defs/__schema7"
+                                            "$ref": "#/$defs/__schema8"
                                           }
                                         },
                                         "executors": {
@@ -10869,7 +10890,7 @@
                                         "notes": {
                                           "type": "array",
                                           "items": {
-                                            "$ref": "#/$defs/__schema8"
+                                            "$ref": "#/$defs/__schema7"
                                           }
                                         }
                                       },
@@ -11229,43 +11250,6 @@
           "__schema7": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema8": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -11305,6 +11289,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema8": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
@@ -11524,10 +11545,24 @@
                       "properties": {
                         "profile": {
                           "$ref": "#/$defs/__schema4"
+                        },
+                        "discovered": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema5"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
-                        "profile"
+                        "profile",
+                        "discovered",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -11583,13 +11618,13 @@
                         "roles": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema6"
+                            "$ref": "#/$defs/__schema7"
                           }
                         },
                         "notes": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema7"
+                            "$ref": "#/$defs/__schema6"
                           }
                         }
                       },
@@ -11656,11 +11691,18 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -11837,7 +11879,7 @@
                           "roles": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema6"
+                              "$ref": "#/$defs/__schema7"
                             }
                           },
                           "executors": {
@@ -11862,7 +11904,7 @@
                           "notes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema7"
+                              "$ref": "#/$defs/__schema6"
                             }
                           }
                         },
@@ -12163,43 +12205,6 @@
           "__schema6": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema7": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -12239,6 +12244,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
@@ -12493,10 +12535,24 @@
                       "properties": {
                         "profile": {
                           "$ref": "#/$defs/__schema4"
+                        },
+                        "discovered": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema5"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
-                        "profile"
+                        "profile",
+                        "discovered",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -12552,13 +12608,13 @@
                         "roles": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema6"
+                            "$ref": "#/$defs/__schema7"
                           }
                         },
                         "notes": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema7"
+                            "$ref": "#/$defs/__schema6"
                           }
                         }
                       },
@@ -12625,11 +12681,18 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -12806,7 +12869,7 @@
                           "roles": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema6"
+                              "$ref": "#/$defs/__schema7"
                             }
                           },
                           "executors": {
@@ -12831,7 +12894,7 @@
                           "notes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema7"
+                              "$ref": "#/$defs/__schema6"
                             }
                           }
                         },
@@ -13132,43 +13195,6 @@
           "__schema6": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema7": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -13208,6 +13234,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
@@ -13461,10 +13524,24 @@
                       "properties": {
                         "profile": {
                           "$ref": "#/$defs/__schema4"
+                        },
+                        "discovered": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema5"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
-                        "profile"
+                        "profile",
+                        "discovered",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -13520,13 +13597,13 @@
                         "roles": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema6"
+                            "$ref": "#/$defs/__schema7"
                           }
                         },
                         "notes": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema7"
+                            "$ref": "#/$defs/__schema6"
                           }
                         }
                       },
@@ -13593,11 +13670,18 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -13774,7 +13858,7 @@
                           "roles": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema6"
+                              "$ref": "#/$defs/__schema7"
                             }
                           },
                           "executors": {
@@ -13799,7 +13883,7 @@
                           "notes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema7"
+                              "$ref": "#/$defs/__schema6"
                             }
                           }
                         },
@@ -14100,43 +14184,6 @@
           "__schema6": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema7": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -14176,6 +14223,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
@@ -14429,10 +14513,24 @@
                       "properties": {
                         "profile": {
                           "$ref": "#/$defs/__schema4"
+                        },
+                        "discovered": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema5"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
-                        "profile"
+                        "profile",
+                        "discovered",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -14488,13 +14586,13 @@
                         "roles": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema6"
+                            "$ref": "#/$defs/__schema7"
                           }
                         },
                         "notes": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema7"
+                            "$ref": "#/$defs/__schema6"
                           }
                         }
                       },
@@ -14561,11 +14659,18 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -14742,7 +14847,7 @@
                           "roles": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema6"
+                              "$ref": "#/$defs/__schema7"
                             }
                           },
                           "executors": {
@@ -14767,7 +14872,7 @@
                           "notes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema7"
+                              "$ref": "#/$defs/__schema6"
                             }
                           }
                         },
@@ -15068,43 +15173,6 @@
           "__schema6": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema7": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -15144,6 +15212,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
@@ -15397,10 +15502,24 @@
                       "properties": {
                         "profile": {
                           "$ref": "#/$defs/__schema4"
+                        },
+                        "discovered": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema5"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
-                        "profile"
+                        "profile",
+                        "discovered",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -15456,13 +15575,13 @@
                         "roles": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema6"
+                            "$ref": "#/$defs/__schema7"
                           }
                         },
                         "notes": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema7"
+                            "$ref": "#/$defs/__schema6"
                           }
                         }
                       },
@@ -15529,11 +15648,18 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema6"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "notes"
                       ],
                       "additionalProperties": false
                     }
@@ -15710,7 +15836,7 @@
                           "roles": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema6"
+                              "$ref": "#/$defs/__schema7"
                             }
                           },
                           "executors": {
@@ -15735,7 +15861,7 @@
                           "notes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/$defs/__schema7"
+                              "$ref": "#/$defs/__schema6"
                             }
                           }
                         },
@@ -16036,43 +16162,6 @@
           "__schema6": {
             "type": "object",
             "properties": {
-              "role": {
-                "type": "string",
-                "enum": [
-                  "director",
-                  "consultant",
-                  "author",
-                  "reviewer",
-                  "scriptwriter",
-                  "actor",
-                  "critic"
-                ]
-              },
-              "executors": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "whenExhausted": {
-                "type": "string",
-                "enum": [
-                  "next",
-                  "wait"
-                ]
-              }
-            },
-            "required": [
-              "role",
-              "executors",
-              "whenExhausted"
-            ],
-            "additionalProperties": false
-          },
-          "__schema7": {
-            "type": "object",
-            "properties": {
               "severity": {
                 "type": "string",
                 "enum": [
@@ -16112,6 +16201,43 @@
               "code",
               "role",
               "message"
+            ],
+            "additionalProperties": false
+          },
+          "__schema7": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "director",
+                  "consultant",
+                  "author",
+                  "reviewer",
+                  "scriptwriter",
+                  "actor",
+                  "critic"
+                ]
+              },
+              "executors": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "whenExhausted": {
+                "type": "string",
+                "enum": [
+                  "next",
+                  "wait"
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "executors",
+              "whenExhausted"
             ],
             "additionalProperties": false
           },
