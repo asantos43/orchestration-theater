@@ -74,6 +74,8 @@ export interface SidebarProps {
   readonly onSettings?: (() => void) | undefined;
   /** A click on the `«` of the title, or on the `»` of the rail. */
   readonly onToggle?: (() => void) | undefined;
+  /** [P22] A click on the `+` of the scenarios (the same as the key of `sidebar.newProject`). */
+  readonly onNewProject?: (() => void) | undefined;
 }
 
 function quotaColor(row: QuotaRow): string {
@@ -140,11 +142,20 @@ function SectionHead(props: {
   readonly folded: boolean;
   readonly cursor: boolean;
   readonly onClick?: (() => void) | undefined;
+  /** A click on the right side of the head (the `+` of the scenarios) answers with this instead. */
+  readonly onRight?: (() => void) | undefined;
 }): ReactNode {
   const head = `${props.folded ? '▸' : '▾'} ${props.title}`;
   const line = `${fit(head, Math.max(1, props.inner - cellWidth(props.right) - 1))} ${props.right}`;
+  const rightFrom = props.inner - cellWidth(props.right) - 1;
   return (
-    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+    <ClickTarget
+      onClick={(point) => {
+        if (props.onRight !== undefined && point.x >= rightFrom) props.onRight();
+        else props.onClick?.();
+      }}
+      enabled={props.onClick !== undefined || props.onRight !== undefined}
+    >
       <Text
         bold
         dimColor={!props.cursor}
@@ -181,6 +192,7 @@ function Expanded(props: SidebarProps): ReactNode {
           folded={scenariosFolded}
           cursor={props.focused && props.cursor === SIDEBAR_SECTIONS.scenarios}
           onClick={activate({ kind: 'section', id: SIDEBAR_SECTIONS.scenarios })}
+          onRight={props.onNewProject}
         />
         {!scenariosFolded &&
           props.rows.map((row) => (
@@ -263,7 +275,12 @@ function Rail(props: SidebarProps): ReactNode {
             </Text>
           </ClickTarget>
         ))}
-        <Text dimColor>+</Text>
+        <ClickTarget
+          onClick={() => props.onNewProject?.()}
+          enabled={props.onNewProject !== undefined}
+        >
+          <Text dimColor>+</Text>
+        </ClickTarget>
         <Text> </Text>
         {props.quotas.map((row) => (
           <Text key={row.profile} color={quotaColor(row)} wrap="truncate">

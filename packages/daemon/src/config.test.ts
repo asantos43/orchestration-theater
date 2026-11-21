@@ -118,6 +118,17 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  tuiMouse:\n    speed: 1\n')).toThrow(/ui\.tuiMouse/);
   });
 
+  it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
+    expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
+    expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(
+      'git_root',
+    );
+    expect(parseConfig('ui:\n  newProject:\n    repo: empty\n').ui.newProject.repo).toBe('empty');
+    expect(() => parseConfig('ui:\n  newProject:\n    repo: home\n')).toThrow(
+      /ui\.newProject\.repo/,
+    );
+  });
+
   it('has the defaults of ui.setup, takes its other mode and refuses bad values (P17)', () => {
     expect(parseConfig('').ui.setup).toEqual({ open: 'auto', readTimeoutMs: 5000 });
     const { ui } = parseConfig('ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n');

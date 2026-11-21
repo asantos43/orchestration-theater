@@ -8,6 +8,7 @@ import {
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
+  UiNewProjectConfigSchema,
   UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
   UiUsageConfigSchema,
@@ -117,6 +118,14 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiUsageConfigSchema.safeParse({ groupBy: 'day' }).success).toBe(false);
     expect(UiUsageConfigSchema.parse({ refreshSeconds: 0 }).refreshSeconds).toBe(0);
     expect(UiUsageConfigSchema.safeParse({ refreshSeconds: 4000 }).success).toBe(false);
+  });
+
+  it('has the default of the newProject block (P22), takes its other modes and refuses the rest', () => {
+    expect(UiNewProjectConfigSchema.parse({})).toEqual({ repo: 'cwd' });
+    expect(UiNewProjectConfigSchema.parse({ repo: 'git_root' }).repo).toBe('git_root');
+    expect(UiNewProjectConfigSchema.parse({ repo: 'empty' }).repo).toBe('empty');
+    expect(UiNewProjectConfigSchema.safeParse({ repo: 'home' }).success).toBe(false);
+    expect(UiNewProjectConfigSchema.safeParse({ path: '.' }).success).toBe(false);
   });
 
   it('has the defaults of the setup block (P17), takes its other mode and refuses the rest', () => {
