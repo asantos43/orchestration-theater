@@ -33,6 +33,7 @@ import {
   UiRuntimeConfigSchema,
   UiSetupConfigSchema,
   UiTuiLayoutConfigSchema,
+  UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
 } from '@otheater/protocol';
@@ -2219,6 +2220,8 @@ export const DaemonConfigSchema = z
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
         input: UiInputConfigSchema.prefault({}),
+        /** The Trajectories tab of the terminal interface (P14 of docs/18). */
+        trajectories: UiTrajectoriesConfigSchema.prefault({}),
         /** The chat of the terminal interface (P12): queue, suggestions, decisions and Esc. */
         chat: UiChatConfigSchema.prefault({}),
         /** The Overview tab: confirmation, recent events (P13 of docs/18). */
