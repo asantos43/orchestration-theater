@@ -92,6 +92,14 @@ describe('parseConfig', () => {
     });
     expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2 });
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
+    expect(ui.tuiLayout).toEqual({
+      sidebarWidth: 30,
+      railWidth: 5,
+      minChatWidth: 30,
+      minPanelWidth: 30,
+      chatStep: 2,
+      scrollStep: 'half',
+    });
   });
 
   it('takes the other modes of the ui.* keys of the terminal and refuses bad values', () => {
