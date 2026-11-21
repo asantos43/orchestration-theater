@@ -524,8 +524,19 @@ export class SpanProjection {
     this.#selections.set(playId, list);
   }
 
+  /**
+   * The ids of an event. The events of an attempt (its sessions and calls) do not carry the
+   * scenario: it is the one of the play they belong to.
+   */
+  #idsOf(event: EventEnvelope): Ids {
+    const seen = idsOf(event);
+    if (seen.scenarioId !== undefined || seen.playId === undefined) return seen;
+    const scenarioId = this.#plays.get(seen.playId)?.scenarioId;
+    return scenarioId === undefined ? seen : { ...seen, scenarioId };
+  }
+
   #ensureAttempt(event: EventEnvelope): AttemptState | undefined {
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     if (ids.attemptId === undefined) return undefined;
     const known = this.#attempts.get(ids.attemptId);
     if (known !== undefined) {
@@ -550,7 +561,7 @@ export class SpanProjection {
   #sessionOpened(event: EventEnvelope): void {
     const sessionId = str(event.payload.sessionId);
     if (sessionId === undefined) return;
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     const executor = executorOf(event.payload.executor);
     const attempt = this.#ensureAttempt(event);
     if (attempt !== undefined) {
@@ -752,7 +763,7 @@ export class SpanProjection {
   #toolCalled(event: EventEnvelope): void {
     const callId = str(event.payload.callId);
     if (callId === undefined) return;
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     const attempt = this.#ensureAttempt(event);
     if (attempt !== undefined) attempt.role ??= str(event.payload.role);
     const key = this.#toolKey(ids, callId);
@@ -865,7 +876,7 @@ export class SpanProjection {
   // ---- waits that the log already tells -----------------------------------------------------------
 
   #resetWaitStarted(event: EventEnvelope): void {
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     if (ids.attemptId === undefined || this.#resetWaits.has(ids.attemptId)) return;
     const executor = executorOf(event.payload.executor);
     const attempt = this.#ensureAttempt(event);
@@ -903,7 +914,7 @@ export class SpanProjection {
   }
 
   #demandWaiting(event: EventEnvelope): void {
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     const demandId = str(event.payload.demandId);
     if (ids.playId === undefined || demandId === undefined) return;
     const reasons = new Set<string>();
@@ -958,7 +969,7 @@ export class SpanProjection {
     if (waitId === undefined || kind === undefined) return;
     const key = `${kind}|${waitId}`;
     if (this.#eventWaits.has(key)) return;
-    const ids = idsOf(event);
+    const ids = this.#idsOf(event);
     this.#eventWaits.set(key, {
       key: `${waitId}|${String(event.id)}`,
       ids,

@@ -1357,7 +1357,7 @@ describe('telemetry (P1 of Phase 8)', () => {
       synchronous: 'normal',
       write: { batch: 500, queue_max: 20_000, flush_interval: 1000, retry_after: 60_000 },
       clients: {
-        'claude-code': { enabled: 'on', traces: 'off' },
+        'claude-code': { enabled: 'on', traces: 'off', metrics_interval: 5000 },
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
@@ -1417,7 +1417,11 @@ describe('telemetry (P1 of Phase 8)', () => {
       flush_interval: 500,
       retry_after: 300_000,
     });
-    expect(config.telemetry.clients['claude-code']).toEqual({ enabled: 'off', traces: 'off' });
+    expect(config.telemetry.clients['claude-code']).toEqual({
+      enabled: 'off',
+      traces: 'off',
+      metrics_interval: 5000,
+    });
     expect(config.telemetry.clients.codex).toEqual({ enabled: 'off' });
     expect(config.telemetry.clients.opencode).toEqual({ enabled: 'on', ai_spans: 'on' });
     expect(config.backup.telemetry).toBe('include');
@@ -1425,7 +1429,22 @@ describe('telemetry (P1 of Phase 8)', () => {
       parseConfig('telemetry:\n  clients:\n    claude-code:\n      traces: on\n').telemetry.clients[
         'claude-code'
       ],
-    ).toEqual({ enabled: 'on', traces: 'on' });
+    ).toEqual({ enabled: 'on', traces: 'on', metrics_interval: 5000 });
+  });
+
+  it('takes metrics_interval of Claude Code as a duration or client, and refuses anything else', () => {
+    const clients = (yaml: string) => parseConfig(yaml).telemetry.clients['claude-code'];
+    expect(
+      clients('telemetry:\n  clients:\n    claude-code:\n      metrics_interval: 30s\n')
+        .metrics_interval,
+    ).toBe(30_000);
+    expect(
+      clients('telemetry:\n  clients:\n    claude-code:\n      metrics_interval: client\n')
+        .metrics_interval,
+    ).toBe('client');
+    expect(() =>
+      parseConfig('telemetry:\n  clients:\n    claude-code:\n      metrics_interval: soon\n'),
+    ).toThrow();
   });
 
   it('takes the receiver and redaction keys of P2', () => {

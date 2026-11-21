@@ -1435,11 +1435,17 @@ const TelemetryConfigSchema = z
      * Which clients send telemetry to the daemon (P3 turns them on at launch). Each accepts `on` or
      * `off`, or an object with `enabled` and its options:
      * - `claude-code.traces`: also ask for the traces (beta); default `off`;
+     * - `claude-code.metrics_interval`: how often Claude Code exports its metrics, a duration
+     *   (default `5s`) or `client` (its own default, 60 s). A session ends with a SIGTERM, so what
+     *   was not exported by then is lost; with 60 s a short session sends no metric. [proposta]
      * - `opencode.ai_spans`: `experimental.openTelemetry` for the AI spans (N213); default `off`.
      */
     clients: z
       .strictObject({
-        'claude-code': telemetryClient({ traces: TelemetrySwitch.default('off') }),
+        'claude-code': telemetryClient({
+          traces: TelemetrySwitch.default('off'),
+          metrics_interval: z.union([z.literal('client'), DurationSchema]).prefault('5s'),
+        }),
         codex: telemetryClient({}),
         opencode: telemetryClient({ ai_spans: TelemetrySwitch.default('off') }),
       })

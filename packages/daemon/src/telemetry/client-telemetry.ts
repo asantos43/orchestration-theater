@@ -153,6 +153,9 @@ export class ClientTelemetry implements SessionTelemetry {
       headers: { Authorization: `Bearer ${this.#options.token}` },
       resource,
       traces: client === 'claude-code' && own?.traces === 'on',
+      ...(client === 'claude-code' && typeof own?.metrics_interval === 'number'
+        ? { metricsIntervalMs: own.metrics_interval }
+        : {}),
       experimental: client === 'opencode' && own?.ai_spans === 'on',
     };
   }

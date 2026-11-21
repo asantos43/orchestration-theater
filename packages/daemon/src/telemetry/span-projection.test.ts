@@ -104,6 +104,23 @@ describe('the tree of spans a play leaves (P4)', () => {
     expect(new Set(spans.map((span) => span.traceId))).toEqual(new Set([traceIdForPlay('p1')]));
   });
 
+  it('gives the spans of an attempt the scenario of its play when its events do not carry one', () => {
+    const log = new Log();
+    log.add('play.created', { flowId: 'play' }, PLAY);
+    log.add('play.transitioned', { event: 'START', from: 'NEED', to: 'EXECUTING' }, PLAY);
+    const bare = { playId: 'p1', attemptId: 'p1/alpha/1' };
+    log.add('session.opened', { sessionId: 'sess-1', via: 'new', executor: EXECUTOR }, bare);
+    log.add('tool.called', { callId: 'c1', tool: 'submit', role: 'actor', heavy: false }, bare);
+    log.add('tool.finished', { callId: 'c1', outcome: 'ok', durationMs: 5, queuedMs: 0 }, bare);
+    log.add('attempt.submitted', {}, bare);
+    log.add('session.closed', { sessionId: 'sess-1', reason: 'completed' }, bare);
+    log.add('play.transitioned', { event: 'DONE', from: 'EXECUTING', to: 'DONE' }, PLAY);
+    const spans = project(log.events);
+    const ofAttempt = spans.filter((span) => span.attemptId === 'p1/alpha/1');
+    expect(ofAttempt.length).toBeGreaterThanOrEqual(3);
+    for (const span of ofAttempt) expect(span.scenarioId, span.name).toBe('s1');
+  });
+
   it('keeps every child inside its parent in time, and ends the attempt with its last session', () => {
     const log = wholePlay();
     const spans = project(log.events);
