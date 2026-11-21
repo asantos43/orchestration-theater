@@ -37,6 +37,8 @@ interface Rig {
   readonly attached: string[];
   readonly opened: string[];
   readonly setDirector: (state: ReturnType<typeof director>) => void;
+  readonly interrupted: string[];
+  readonly setInterruptible: (value: boolean) => void;
 }
 
 function director(options: {
@@ -81,6 +83,8 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
   const attached: string[] = [];
   const opened: string[] = [];
   let current: ReturnType<typeof director> | undefined;
+  const interrupted: string[] = [];
+  let interruptible = true;
   const config: DaemonConfig = parseConfig(yaml);
   const service = new SlashCommandService({
     store,
@@ -133,6 +137,10 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
     directors: {
       isAsleep: () => false,
       clientCommands: () => Promise.resolve(current),
+      interrupt: (scenarioId: string) => {
+        interrupted.push(scenarioId);
+        return Promise.resolve(interruptible);
+      },
     } as unknown as DirectorSessions,
     pauseMode: () => 'drain',
   });
@@ -145,6 +153,10 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
     opened,
     setDirector: (state) => {
       current = state;
+    },
+    interrupted,
+    setInterruptible: (value) => {
+      interruptible = value;
     },
   };
 }
@@ -312,6 +324,19 @@ describe('running a line', () => {
     expect(cost.text).toContain('1.50');
     const status = await service.execute('project-1', { text: '/status' });
     expect(status.data).toMatchObject({ openPlays: 1, pendingDecisions: 0, director: 'none' });
+  });
+
+  it('/stop interrupts the reply of the Director, with no turn and no confirmation', async () => {
+    const { service, interrupted, setInterruptible, messages } = await rig();
+    const stopped = await service.execute('project-1', { text: '/stop' });
+    expect(stopped).toMatchObject({ status: 'done', data: { stopped: true } });
+    setInterruptible(false);
+    const idle = await service.execute('project-1', { text: '/stop' });
+    expect(idle).toMatchObject({ status: 'done', data: { stopped: false } });
+    expect(interrupted).toEqual(['project-1', 'project-1']);
+    expect(messages).toEqual([]);
+    const listed = idsOf(await service.list({ scenarioId: 'project-1' }));
+    expect(listed).toContain('stop');
   });
 
   it('/config reads a key of the configuration and refuses an unknown one', async () => {
