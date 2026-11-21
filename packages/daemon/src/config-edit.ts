@@ -94,10 +94,31 @@ async function readOrEmpty(path: string): Promise<string> {
  * configuration. Throws `InvalidInput` (naming the key) when the file is not valid YAML or the
  * edited one would not be a valid configuration; the file is not written in that case.
  */
-export async function editConfigFile(
+export function editConfigFile(
   path: string,
   edit: (editor: ConfigEditor) => void,
 ): Promise<DaemonConfig> {
+  // The file is read, changed and written whole, so two edits of the same file must not overlap:
+  // `PUT /v1/config`, the setup assistant (P4) and the cadastro of an Executor all come through
+  // here, and the queue keeps the last one from silently undoing the first (P16, N188).
+  const previous = queues.get(path) ?? Promise.resolve();
+  const run = (): Promise<DaemonConfig> => editNow(path, edit);
+  const next = previous.then(run, run);
+  const tail = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  queues.set(path, tail);
+  void tail.then(() => {
+    if (queues.get(path) === tail) queues.delete(path);
+  });
+  return next;
+}
+
+/** The edits waiting or running, by file: the tail of each file's queue. */
+const queues = new Map<string, Promise<void>>();
+
+async function editNow(path: string, edit: (editor: ConfigEditor) => void): Promise<DaemonConfig> {
   const text = await readOrEmpty(path);
   const doc: Document = parseDocument(text, { keepSourceTokens: false });
   if (doc.errors.length > 0) {

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiClient, DaemonStores } from '@otheater/client';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { TuiKeymap } from '../keys/use-keymap.js';
 import type { UiSettings } from '../settings.js';
 
 /**
  * What a tab needs from the screen and that `TabContentProps` does not carry (P13): the stores,
- * the REST client and the settings. The Shell provides it; a tab reads it with {@link useTabHost}.
+ * the REST client, the keymap (to know which action a key is), the settings and, for a tab that
+ * reads text (P15), a way to take the keyboard. The Shell provides it; a tab reads it with
+ * {@link useTabHost}.
  * [proposta] A context, so the contract of `TabContentProps` stays as P9 fixed it.
  */
 export interface TabHost {
@@ -17,6 +19,12 @@ export interface TabHost {
   readonly settings: UiSettings;
   /** The clock of the tab (epoch ms). The tests pass a fake one. */
   readonly now: () => number;
+  /**
+   * While `capture.current` is true the `Shell` leaves the keys alone (Ctrl+C still quits): the tab
+   * is reading text in a form. The tab clears it after the `Shell` saw the key that closed the form
+   * (in a microtask), so that key does not also act as a command of the panel.
+   */
+  readonly capture: RefObject<boolean>;
 }
 
 const TabHostContext = createContext<TabHost | undefined>(undefined);

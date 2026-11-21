@@ -360,12 +360,88 @@ describe('configuration', () => {
       appliesOn: 'restart',
       set: ['api.idempotency_ttl'],
       removed: ['backup.when'],
+      hot: [],
+      restart: ['api.idempotency_ttl', 'backup.when'],
     });
     const text = await readFile(file, 'utf8');
     expect(text).toContain('# kept by the edit');
     expect(text).toContain('idempotency_ttl: 1h');
     expect(text).not.toContain('when: manual');
     expect(await eventsOf('config.edited')).toHaveLength(1);
+    expect(await eventsOf('config.changed')).toHaveLength(0);
+  });
+
+  it('takes in the hot sections at once, with config.changed, and leaves the rest for a restart (N188)', async () => {
+    const before = await send('GET', '/v1/config');
+    expect(before.json<{ config: { limits: { preset: string } } }>().config.limits.preset).toBe(
+      'moderate',
+    );
+    const answer = await send('PUT', '/v1/config', {
+      set: [
+        { path: ['limits', 'preset'], value: 'persistent' },
+        { path: ['limits', 'submit_retries'], value: 7 },
+        { path: ['chat', 'presence'], value: 'never' },
+        { path: ['api', 'idempotency_ttl'], value: '2h' },
+      ],
+    });
+    expect(answer.status, answer.text).toBe(200);
+    expect(answer.json()).toEqual({
+      appliesOn: 'mixed',
+      set: ['limits.preset', 'limits.submit_retries', 'chat.presence', 'api.idempotency_ttl'],
+      removed: [],
+      hot: ['limits.preset', 'limits.submit_retries', 'chat.presence'],
+      restart: ['api.idempotency_ttl'],
+    });
+    const after = (await send('GET', '/v1/config')).json<{
+      config: {
+        limits: { preset: string; submit_retries: number };
+        chat: { presence: string };
+        api: { idempotency_ttl: unknown };
+      };
+    }>().config;
+    // The hot keys changed in the running daemon, with no restart...
+    expect(after.limits).toMatchObject({ preset: 'persistent', submit_retries: 7 });
+    expect(after.chat.presence).toBe('never');
+    // ...and the key that needs a restart did not.
+    expect(after.api.idempotency_ttl).not.toBe('2h');
+    const changed = await eventsOf('config.changed');
+    expect(changed).toHaveLength(1);
+    expect(changed[0]?.payload).toEqual({
+      hot: ['limits.preset', 'limits.submit_retries', 'chat.presence'],
+      restart: ['api.idempotency_ttl'],
+    });
+    expect((await eventsOf('config.edited'))[0]?.payload).toMatchObject({ appliesOn: 'mixed' });
+  });
+
+  it('removes a hot key and goes back to its default at once, answering hot', async () => {
+    await send('PUT', '/v1/config', { set: [{ path: ['limits', 'submit_retries'], value: 9 }] });
+    const answer = await send('PUT', '/v1/config', { remove: [['limits', 'submit_retries']] });
+    expect(answer.status, answer.text).toBe(200);
+    expect(answer.json()).toMatchObject({ appliesOn: 'hot', hot: ['limits.submit_retries'] });
+    const config = (await send('GET', '/v1/config')).json<{
+      config: { limits: { submit_retries: number } };
+    }>().config;
+    expect(config.limits.submit_retries).not.toBe(9);
+    expect(await eventsOf('config.changed')).toHaveLength(2);
+  });
+
+  it('keeps the running configuration and the file when a hot key is invalid, naming it', async () => {
+    const before = await readFile(dataPaths(tmp.dir).config, 'utf8');
+    const answer = await send('PUT', '/v1/config', {
+      set: [
+        { path: ['limits', 'preset'], value: 'persistent' },
+        { path: ['roles', 'reviewer', 'when_exhausted'], value: 'sometimes' },
+      ],
+    });
+    expect(answer.status).toBe(400);
+    expect(answer.text).toContain('when_exhausted');
+    expect(await readFile(dataPaths(tmp.dir).config, 'utf8')).toBe(before);
+    const config = (await send('GET', '/v1/config')).json<{
+      config: { limits: { preset: string } };
+    }>().config;
+    expect(config.limits.preset).toBe('moderate');
+    expect(await eventsOf('config.edited')).toHaveLength(0);
+    expect(await eventsOf('config.changed')).toHaveLength(0);
   });
 
   it('refuses an edit the daemon would not start with, naming the key and not the file', async () => {

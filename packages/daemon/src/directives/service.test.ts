@@ -74,6 +74,17 @@ describe('DirectiveService, orders in force (architecture 5.17)', () => {
     expect(created[1]?.scenarioId).toBe('s1');
   });
 
+  it('announces the whole record of a new order, so a client needs no read to list it', async () => {
+    const { service, store } = setup();
+    const order = await service.create({
+      text: 'Never touch the migrations folder.',
+      scope: 'global',
+      validity: { until: '2026-11-20 18:00' },
+    });
+    const [created] = await eventsOf(store, 'directive.created');
+    expect(created?.payload.order).toEqual(order);
+  });
+
   it('puts the orders in the prefix of a session', async () => {
     const { service } = setup();
     await service.create({
