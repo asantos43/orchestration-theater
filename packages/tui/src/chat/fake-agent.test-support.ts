@@ -27,11 +27,15 @@ import type {
 } from '@otheater/core';
 import {
   createSilentLogger,
+  dataPaths,
   defaultLauncher,
   parseConfig,
   productionClients,
+  profileDirOf,
   startDaemon,
+  type ClientId,
   type DaemonHandle,
+  type ProfileNames,
 } from '@otheater/daemon';
 import { directoryConnector, type DaemonConnector } from '../daemon-connection.js';
 
@@ -141,6 +145,8 @@ export interface ChatDaemon {
   readonly daemon: DaemonHandle;
   readonly codeHost: FakeCodeHostLike;
   readonly dataDir: string;
+  /** The repository of the scenario (a real clone, with a bare `origin`). */
+  readonly repo: string;
   /** What the TUI connects through: discovery in `dataDir`. */
   readonly connector: DaemonConnector;
   /** The scenario of the repository, the one the TUI opens on. */
@@ -151,11 +157,33 @@ export interface ChatDaemon {
   events(): Promise<readonly EventEnvelope[]>;
 }
 
+/**
+ * A real client in every role instead of the fake agent (the acceptance at the real level of
+ * Phase 7, P21). The profile is the person's logged-in one, pointed at and never copied or read; the
+ * clock is the real one (a play with a real client cannot run on a frozen clock) and the launcher
+ * is the real one, which `wrapLauncher` may record. `fakes.client` and `fakes.clock` are not used.
+ */
+export interface RealClientOptions {
+  readonly client: ClientId;
+  readonly model: string;
+  /** The folder of the logged-in profile of `client`, already resolved (`realpath`). */
+  readonly profileDir: string;
+  readonly wrapLauncher?: (inner: ProcessLauncher) => ProcessLauncher;
+}
+
 export interface ChatDaemonOptions {
+  /** Runs the roles with a real client instead of the fake agent. */
+  readonly real?: RealClientOptions;
   /** Extra top-level YAML (the timers of `api.chat`, limits...). */
   readonly extra?: string;
   /** Runs once the daemon is up and before the scenario opens (a test creates its profiles here). */
-  readonly prepare?: (daemon: DaemonHandle, dataDir: string) => Promise<void>;
+  readonly prepare?: (daemon: DaemonHandle, dataDir: string, repo: string) => Promise<void>;
+  /**
+   * Writes the configuration the daemon runs with to `<data>/config.yaml` too, as a real install
+   * has it. The setup assistant and the tab Settings read and edit that file, and a hot reload
+   * puts what is in it into the running daemon, so a test of those must start with the two equal.
+   */
+  readonly persistConfig?: boolean;
 }
 
 /** Polls `read` until it returns something, or fails after `timeoutMs` of real time. */
@@ -231,20 +259,19 @@ export async function startChatDaemon(
   await git(repo, 'remote', 'add', 'origin', remote);
   await git(repo, 'push', '--quiet', 'origin', 'main');
 
-  const config = parseConfig(`
+  const { real } = options;
+  const configYaml = `
 backup:
   when: manual
 security:
   unenforced: warn
-limits:
-  submit_retries: 1
-project:
+${real === undefined ? 'limits:\n  submit_retries: 1\n' : ''}project:
   conventions: detect
 orchestration:
   executor:
-    client: fake
-    profile: one
-    model: fake-model
+    client: ${real?.client ?? 'fake'}
+    profile: ${real === undefined ? 'one' : 'real'}
+    model: ${JSON.stringify(real?.model ?? 'fake-model')}
 api:
   chat:
     resume_window: 50ms
@@ -252,23 +279,40 @@ api:
     state_interval: 100ms
     close_grace: 200ms
 ${options.extra ?? ''}
-`);
+`;
+  if (options.persistConfig === true) await writeFile(join(dataDir, 'config.yaml'), configYaml);
+  const config = parseConfig(configYaml);
   const realHead = new RealHeadCodeHost(fakes.codeHost, git);
   const noClients = { env: { PATH: '' }, findExecutable: () => undefined };
+  const profileDir = (ref: ProfileNames): string =>
+    real?.client === ref.client && ref.profile === 'real'
+      ? real.profileDir
+      : profileDirOf(dataPaths(dataDir), ref);
   const daemon = await startDaemon({
     dataDir,
     config,
-    overrides: { clock: fakes.clock, vault: fakes.vault, launcher, codeHost: realHead },
-    clients: (parts) => [
-      ...productionClients(config, noClients)(parts),
-      ...[
-        fakes.client(
-          parts.launcher,
-          { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
-          { FAKE_AGENT_SCRIPT: 'role-play', FAKE_AGENT_STATE_DIR: stateDir },
-        ),
-      ].flat(),
-    ],
+    overrides:
+      real === undefined
+        ? { clock: fakes.clock, vault: fakes.vault, launcher, codeHost: realHead }
+        : {
+            vault: fakes.vault,
+            launcher: real.wrapLauncher?.(launcher) ?? launcher,
+            codeHost: realHead,
+            profileDir,
+          },
+    clients:
+      real === undefined
+        ? (parts) => [
+            ...productionClients(config, noClients)(parts),
+            ...[
+              fakes.client(
+                parts.launcher,
+                { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
+                { FAKE_AGENT_SCRIPT: 'role-play', FAKE_AGENT_STATE_DIR: stateDir },
+              ),
+            ].flat(),
+          ]
+        : productionClients(config),
     logger: createSilentLogger(),
     version: '0.0.0-test',
   });
@@ -281,7 +325,7 @@ ${options.extra ?? ''}
   };
   try {
     fakes.codeHost.seedRemote(repo, 'main');
-    await options.prepare?.(daemon, dataDir);
+    await options.prepare?.(daemon, dataDir, repo);
     const { producer } = daemon;
     if (producer === undefined) throw new Error('the daemon has no Producer channel');
     const { scenarioId } = await producer.openChat({ repo });
@@ -290,6 +334,7 @@ ${options.extra ?? ''}
       daemon,
       codeHost: fakes.codeHost,
       dataDir,
+      repo,
       connector: directoryConnector(createNodeDaemonDirectory({ dataDir })),
       scenarioId,
       plays: () => daemon.store.plays.list({ scenarioId }),
