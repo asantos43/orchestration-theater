@@ -13,6 +13,45 @@ function terminalKeys(agents: readonly string[], classic: readonly string[] = ag
   };
 }
 
+/** The text box actions: id, keys in `agents` and keys in `classic`. */
+type TextBoxRow = readonly [name: string, agents: readonly string[], classic?: readonly string[]];
+const TEXT_BOX_KEYS: readonly TextBoxRow[] = [
+  ['submit', ['Enter']],
+  ['newline', ['Ctrl+J', 'Shift+Enter', 'Alt+Enter'], ['Shift+Enter', 'Alt+Enter']],
+  ['left', ['Left', 'Ctrl+B'], ['Left']],
+  ['right', ['Right', 'Ctrl+F'], ['Right']],
+  ['wordLeft', ['Ctrl+Left', 'Alt+B'], ['Alt+B']],
+  ['wordRight', ['Ctrl+Right', 'Alt+F'], ['Alt+F']],
+  ['lineStart', ['Home', 'Ctrl+A']],
+  ['lineEnd', ['End', 'Ctrl+E']],
+  ['up', ['Up']],
+  ['down', ['Down']],
+  ['backspace', ['Backspace']],
+  ['delete', ['Delete']],
+  ['killToEnd', ['Ctrl+K'], []],
+  ['killToStart', ['Ctrl+U']],
+  ['killWordBack', ['Ctrl+W', 'Alt+Backspace'], ['Alt+Backspace']],
+  ['killWordForward', ['Alt+D']],
+  ['yank', ['Ctrl+Y']],
+  ['historySearch', ['Ctrl+R']],
+  ['externalEditor', ['Ctrl+G']],
+  ['pasteImage', ['Ctrl+V']],
+  ['cancel', ['Esc']],
+];
+
+function textBoxActions(): NonNullable<UiRegistryDefinition['actions']> {
+  return TEXT_BOX_KEYS.map(([name, agents, classic]) => ({
+    id: `input.${name}`,
+    textKey: `actions.input.${name}`,
+    group: 'input',
+    context: 'textBox' as const,
+    surfaces: ['tui' as const],
+    // The editing keys are not commands of the palette: they act on the text the cursor is in.
+    palette: false,
+    keys: terminalKeys(agents, classic),
+  }));
+}
+
 /**
  * The entries of the registry for the terminal, from the table of 5.13 ("Mapa de teclas") and the
  * tabs of the work panel. The tab Agenda (Phase 9b) and the tab Plugins (Phase 9) are not here
@@ -23,6 +62,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'layout', textKey: 'groups.layout', order: 10 },
     { id: 'tabs', textKey: 'groups.tabs', order: 20 },
     { id: 'decision', textKey: 'groups.decision', order: 30 },
+    { id: 'input', textKey: 'groups.input', order: 35 },
     { id: 'general', textKey: 'groups.general', order: 40 },
   ],
   tabs: [
@@ -79,6 +119,10 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Up', 'Down', 'Space', 'Enter']),
       bar: { textKey: 'bar.decision.answer', order: 15 },
     },
+    // The text box of the Producer (N35, P10 of docs/18). In `agents` it has the editing keys of the
+    // coding agents and of the readline; in `classic` the Ctrl keys the layout used in v0.7 stay with
+    // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.
+    ...textBoxActions(),
     {
       id: 'palette.open',
       textKey: 'actions.palette.open',

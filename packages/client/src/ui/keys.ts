@@ -14,9 +14,11 @@ export type UiSurface = (typeof UI_SURFACES)[number];
 /**
  * When the keys of an entry are alive. `global` keys work everywhere; `decision` keys work only
  * while a pending decision of the Director has the focus (5.3), so `Enter` there does not collide
- * with the text box.
+ * with the text box. `textBox` keys work only while the text box of the Producer has the focus
+ * (N35): they are the editing keys, and they may repeat a key of `decision`, which never has the
+ * focus at the same time.
  */
-export const UI_CONTEXTS = ['global', 'decision'] as const;
+export const UI_CONTEXTS = ['global', 'decision', 'textBox'] as const;
 export type UiContext = (typeof UI_CONTEXTS)[number];
 
 /** The platforms the combinations are written for: `default` (Windows and Linux) and `mac`. */
