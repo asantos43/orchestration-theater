@@ -8,6 +8,7 @@ import {
   ShellCommandStartedPayloadSchema,
 } from '../shell-events.js';
 import { ApiErrorBodySchema } from './errors.js';
+import { SlashCommandResultSchema } from './commands.js';
 import { ScenarioIdSchema } from './ids.js';
 import { defineRoute, defineRoutes } from './route.js';
 
@@ -44,10 +45,15 @@ export const ChatClientMessageSchema = z.discriminatedUnion('type', [
     decisionId: DecisionIdSchema,
     answer: AnswerSchema,
   }),
-  /** A command typed with a slash (`/idea add ...`). The daemon parses it; the line goes as typed. */
+  /**
+   * A command typed with a slash. The daemon looks it up in its registry of commands (Phase 7, P3;
+   * `POST /v1/scenarios/:scenarioId/commands` is the same thing by REST) and answers with a
+   * `command_result`. `confirm` confirms a command that asked for it.
+   */
   z.strictObject({
     type: z.literal('command'),
     text: z.string().regex(/^\//),
+    confirm: z.boolean().optional(),
   }),
   /**
    * After a reconnection: the id of the last event the client got. The daemon sends again what
@@ -72,7 +78,7 @@ export const ChatWaitSchema = z.strictObject({
 export type ChatWait = z.infer<typeof ChatWaitSchema>;
 
 /**
- * `eventId` of every message of the daemon but `error`: the id of the event of the log that
+ * `eventId` of every message of the daemon but `error` and `command_result`: the id of the event of the log that
  * produced it, so the client keeps one cursor for the stream and the chat.
  */
 const eventId = z.int().min(1);
@@ -165,6 +171,16 @@ export const ChatServerMessageSchema = z.discriminatedUnion('type', [
     eventId,
     result: ShellCommandFinishedPayloadSchema,
     snippet: z.string(),
+  }),
+  /**
+   * The answer to a `command` of the client (Phase 7, P3): what the command did, or that it waits
+   * for a confirmation. `eventId` is `null`: it answers one client, no event of the log produced
+   * it. A command that failed answers an `error`.
+   */
+  z.strictObject({
+    type: z.literal('command_result'),
+    eventId: z.null(),
+    result: SlashCommandResultSchema,
   }),
   /**
    * A message of the client the daemon refused, or a failure of the socket. `eventId` is `null`

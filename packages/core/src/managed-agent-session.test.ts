@@ -352,6 +352,28 @@ describe('ManagedAgentSession', () => {
     expect(session.configOptions).toEqual([low]);
   });
 
+  it('keeps the last list of / commands the client announced, even with no listener (P3 of Phase 7)', () => {
+    const commands = {
+      normalizeUpdate: (raw: unknown): NormalizedUpdate | null =>
+        Array.isArray(raw)
+          ? {
+              kind: 'available_commands',
+              commands: raw.map((name) => ({ name: String(name), description: 'd' })),
+            }
+          : null,
+      normalizeError: (raw) => normalizer.normalizeError(raw),
+    } satisfies SessionNormalizer;
+    const { session } = setup({ normalizer: commands });
+    expect(session.availableCommands).toEqual([]);
+    session.deliver(['compact']);
+    expect(session.availableCommands).toEqual([{ name: 'compact', description: 'd' }]);
+    session.deliver(['compact', 'review']);
+    expect(session.availableCommands.map((command) => command.name)).toEqual(['compact', 'review']);
+    // A message that is not a list leaves it alone.
+    session.deliver('x');
+    expect(session.availableCommands).toHaveLength(2);
+  });
+
   it('seeds the config options from the options of the constructor', () => {
     const seeded: SessionConfigOption = { id: 'model', type: 'select' };
     const process = new FakeLaunchedProcess(1, { cmd: 'x', args: [], cwd: '/', env: {} });

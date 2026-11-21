@@ -1,26 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { NotFound, type JsonObject, type PlayRecord, type ScenarioRecord } from '@otheater/core';
-import type { ApiPlay, ApiScenario } from '@otheater/protocol';
+import { NotFound, type JsonObject, type ScenarioRecord } from '@otheater/core';
 import type { ApiHandlers } from '../handlers.js';
 import type { ReadRouteDeps } from './deps.js';
 import { paginate } from './paging.js';
+import { playOf, scenarioOf } from './projections.js';
 import { redactTree } from './redact.js';
 
-/** A copy of the record without the named fields. */
-function without<Row extends object, Name extends keyof Row>(
-  record: Row,
-  names: readonly Name[],
-): Omit<Row, Name> {
-  const kept = Object.entries(record).filter(([name]) => !names.includes(name as Name));
-  return Object.fromEntries(kept) as Omit<Row, Name>;
-}
-
-/** The scenario as a list shows it: without the parts the detail carries. */
-export const scenarioOf = (record: ScenarioRecord): ApiScenario =>
-  without(record, ['conventions', 'configOverride']);
-
-/** The play without the machine's own snapshot. */
-export const playOf = (record: PlayRecord): ApiPlay => without(record, ['snapshot']);
+export { playOf, scenarioOf };
 
 /** A tree of the scenario (conventions, overrides) with what could be a secret held back. */
 const safe = (tree: JsonObject): JsonObject => redactTree(tree).value;

@@ -958,6 +958,119 @@
       }
     },
     {
+      "id": "listCommands",
+      "method": "GET",
+      "path": "/v1/commands",
+      "kind": "json",
+      "summary": "The / commands valid for a scenario now, by its type and state, the commands of the client of the Director included",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^\\/"
+                },
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "daemon",
+                    "template",
+                    "client"
+                  ]
+                },
+                "group": {
+                  "type": "string",
+                  "enum": [
+                    "query",
+                    "control",
+                    "session",
+                    "configure",
+                    "help",
+                    "client"
+                  ]
+                },
+                "descriptionKey": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "args": {
+                  "type": "string"
+                },
+                "confirm": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "origin",
+                "group",
+                "descriptionKey",
+                "description",
+                "args",
+                "confirm"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "commands"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "pt-BR"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "getConfig",
       "method": "GET",
       "path": "/v1/config",
@@ -9954,6 +10067,53 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "command_result"
+              },
+              "eventId": {
+                "type": "null"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "done",
+                      "confirm",
+                      "forwarded"
+                    ]
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "$ref": "#/$defs/__schema4"
+                  }
+                },
+                "required": [
+                  "status",
+                  "command",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "eventId",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "error"
               },
               "eventId": {
@@ -9987,7 +10147,7 @@
                       "type": "string"
                     },
                     "additionalProperties": {
-                      "$ref": "#/$defs/__schema4"
+                      "$ref": "#/$defs/__schema5"
                     }
                   }
                 },
@@ -10078,6 +10238,37 @@
                 },
                 "additionalProperties": {
                   "$ref": "#/$defs/__schema4"
+                }
+              }
+            ]
+          },
+          "__schema5": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema5"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema5"
                 }
               }
             ]
@@ -10193,6 +10384,9 @@
               "text": {
                 "type": "string",
                 "pattern": "^\\/"
+              },
+              "confirm": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -11110,6 +11304,144 @@
         "required": [
           "scenarioId",
           "attachmentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "runScenarioCommand",
+      "method": "POST",
+      "path": "/v1/scenarios/:scenarioId/commands",
+      "kind": "json",
+      "summary": "Runs a / command on a scenario; idempotent by Idempotency-Key",
+      "pathParams": [
+        "scenarioId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "confirm",
+              "forwarded"
+            ]
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "status",
+          "command",
+          "text"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "scenarioId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 8000,
+            "pattern": "^\\/\\S"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text"
         ],
         "additionalProperties": false
       }

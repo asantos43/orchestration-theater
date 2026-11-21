@@ -50,6 +50,17 @@ export interface SessionConfigOption {
 }
 
 /**
+ * One `/` command a client announced for the session (ACP `available_commands_update`), in
+ * neutral terms. Phase 7, P3: the daemon lists them for the Director session, with the client's
+ * prefix, and runs one only outside a turn.
+ */
+export interface SessionCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly inputHint?: string | undefined;
+}
+
+/**
  * The normalized conversation with an Executor (architecture 5.2, "Casca de agente"; 5.18): the
  * only thing the Director, the pipeline and the interfaces see of a client. Whatever the
  * transport (ACP, headless, SDK), it looks like this. The `ClientAdapter` hands it out.
@@ -80,6 +91,11 @@ export interface AgentSession {
   readonly canLoad: boolean;
   /** Snapshot of the config options the client announced; see the contract above. */
   readonly configOptions: readonly SessionConfigOption[];
+  /**
+   * [proposta] The `/` commands the client announced, the last list it sent (Phase 7, P3); absent
+   * on a session that does not keep them, empty when the client announced none.
+   */
+  readonly availableCommands?: readonly SessionCommand[];
   prompt(blocks: readonly ContentBlock[]): Promise<PromptOutcome>;
   onUpdate(listener: UpdateListener): Disposable;
   cancel(): Promise<void>;

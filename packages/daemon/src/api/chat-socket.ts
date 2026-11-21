@@ -33,6 +33,7 @@ import type { Logger } from '../logger.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
 import { isShellCommand, type ShellCommandService } from '../shell/service.js';
 import type { SituationSink } from '../situations.js';
+import type { SlashCommandService } from '../slash/index.js';
 import { ChatTickets } from './chat-tickets.js';
 import { ApiFailure, type ApiSocketEvents } from './handlers.js';
 import type { ApiServer } from './server.js';
@@ -66,6 +67,12 @@ export interface ChatRoutesOptions {
   readonly stateIntervalMs: number;
   /** `api.chat.resume_window`. */
   readonly resumeWindowMs: number;
+  /**
+   * The registry of the `/` commands (P3 of Phase 7), asked for at each `command` message: the
+   * services it reads are built after the chat routes. Absent, or off (`chat.slash_commands`),
+   * the line goes to the Director as typed.
+   */
+  readonly commands?: (() => SlashCommandService | undefined) | undefined;
 }
 
 /** The types of event the chat turns into messages. The filter of the hub takes them as prefixes. */
@@ -319,11 +326,21 @@ class ChatSession {
         // The single prompt queue, with the Producer's source: `prompt.queued` is the record.
         await channel.send(this.#scenarioId, message.text, message.attachments ?? []);
         return;
-      case 'command':
-        // [proposta] The registry of the commands is of Phase 7: for now the line goes to the
-        // Director as typed, like a message.
-        await channel.send(this.#scenarioId, message.text);
+      case 'command': {
+        // [proposta] The registry answers with a `command_result`; without it (or with the commands
+        // off) the line goes to the Director as typed, like a message.
+        const slash = this.#options.commands?.();
+        if (!slash?.enabled()) {
+          await channel.send(this.#scenarioId, message.text);
+          return;
+        }
+        const result = await slash.execute(this.#scenarioId, {
+          text: message.text,
+          confirm: message.confirm,
+        });
+        this.#send({ type: 'command_result', eventId: null, result });
         return;
+      }
       case 'answer':
         await channel.answer(message.decisionId, message.answer);
         return;

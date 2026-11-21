@@ -1,0 +1,156 @@
+{
+  "desc": {
+    "help": "Lista os comandos que valem agora, ou explica um",
+    "status": "Mostra o cenário: as peças, as decisões pendentes e o Diretor",
+    "quota": "Mostra a cota de cada perfil",
+    "cost": "Mostra o gasto: tokens, custo real e tetos",
+    "executors": "Lista os Executores e se cada um é válido",
+    "plays": "Lista as peças abertas do cenário",
+    "logs": "Mostra os últimos eventos do cenário",
+    "doctor": "Confere o daemon, os perfis e os Executores",
+    "pause": "Pausa as peças abertas do cenário",
+    "resume": "Retoma as peças pausadas do cenário",
+    "cancel": "Cancela as peças abertas do cenário (pede confirmação)",
+    "new": "Abre um novo cenário de conversa",
+    "attach": "Anexa um arquivo ao cenário",
+    "export": "Exporta o cenário com as peças e as decisões",
+    "model": "Mostra o modelo do Diretor",
+    "effort": "Mostra o esforço do Diretor",
+    "profile": "Lista os perfis e o estado de cada um",
+    "directives": "Lista as ordens em vigor no cenário",
+    "config": "Mostra uma chave da configuração, ou as seções",
+    "template": "Envia ao Diretor: {{text}}"
+  },
+  "args": {
+    "help": "[comando]",
+    "logs": "[n]",
+    "pause": "[motivo]",
+    "cancel": "[motivo]",
+    "new": "[nome]",
+    "attach": "<caminho>",
+    "config": "[chave]",
+    "template": "<texto>"
+  },
+  "confirm": {
+    "ask": "/{{command}} pede a sua confirmação antes de rodar. Envie de novo, confirmado, para seguir."
+  },
+  "error": {
+    "unknown": "Não há o comando /{{name}}. /help lista os que valem agora.",
+    "notNow": "/{{name}} não vale agora: {{reason}}",
+    "forbidden": "/{{name}} muda coisas, e chat.slash_access é read_only.",
+    "off": "Os comandos / estão desligados (chat.slash_commands: off).",
+    "usage": "Uso: {{usage}}",
+    "noArgs": "/{{name}} não recebe argumentos.",
+    "clientOff": "Os comandos do cliente estão desligados (chat.client_commands: off).",
+    "clientNotAllowed": "/{{name}} não está em chat.client_commands_allow.",
+    "clientInTurn": "O Diretor está num turno: os comandos do cliente esperam o turno acabar.",
+    "clientNotStarted": "O Diretor ainda não teve o primeiro turno: o comando do cliente iria dentro do primeiro prompt.",
+    "clientNoSession": "O Diretor não tem sessão aberta agora (dorme ou ainda não começou).",
+    "noChannel": "Este daemon não fala com o Diretor: ele não roda peças.",
+    "noRunner": "Este daemon não roda peças.",
+    "notAvailable": {
+      "kind": "os cenários deste tipo não têm peças",
+      "archived": "o cenário está arquivado",
+      "noOpenPlay": "não há peça aberta",
+      "noUnpausedPlay": "toda peça aberta já está pausada",
+      "noPausedPlay": "nenhuma peça está pausada"
+    },
+    "unknownKey": "Não há a chave de configuração \"{{key}}\".",
+    "noDirector": "Nenhum Executor está definido para o Diretor."
+  },
+  "out": {
+    "status": {
+      "scenario": "Cenário {{name}} ({{kind}}, {{state}}).",
+      "counts": "Peças abertas: {{plays}}. Decisões pendentes: {{decisions}}.",
+      "director": {
+        "busy": "O Diretor está num turno.",
+        "idle": "O Diretor está esperando.",
+        "asleep": "O Diretor dorme.",
+        "none": "O Diretor não está aberto."
+      }
+    },
+    "quota": {
+      "line": "{{profile}}: {{state}}{{until}}",
+      "until": " (até {{time}})",
+      "empty": "Não há perfil."
+    },
+    "cost": {
+      "total": "{{turns}} turnos, {{input}} tokens de entrada, {{output}} tokens de saída.",
+      "usd": "Custo real: US$ {{real}}. Equivalente por API: US$ {{equivalent}}.",
+      "unknown": "{{count}} turnos não têm custo conhecido: os valores são um mínimo.",
+      "exceeded": "Teto estourado em {{profile}}, volta em {{time}}."
+    },
+    "executors": {
+      "line": "{{id}}: {{model}}, esforço {{effort}}, {{validity}}",
+      "empty": "Não há Executor."
+    },
+    "plays": {
+      "line": "{{id}}: {{state}}{{paused}} - {{need}}",
+      "paused": " (pausada)",
+      "empty": "Não há peça aberta."
+    },
+    "logs": {
+      "line": "#{{id}} {{time}} {{type}}",
+      "empty": "Ainda não há eventos deste cenário."
+    },
+    "doctor": {
+      "ok": "OK",
+      "problem": "PROBLEMA",
+      "store": "{{status}} Store: o log está no evento {{last}}.",
+      "profiles": "{{status}} Perfis: {{active}} ativos de {{total}}.",
+      "executors": "{{status}} Executores: {{valid}} válidos, {{invalid}} inválidos.",
+      "quota": "{{status}} Cota: {{exhausted}} de {{total}} perfis esgotados.",
+      "plays": "{{status}} Peças: {{state}}.",
+      "playsOn": "este daemon roda peças",
+      "playsOff": "este daemon não roda peças",
+      "summary": "{{problems}} problema(s) achado(s)."
+    },
+    "pause": {
+      "done": "{{count}} peça(s) pausada(s).",
+      "mode": "Modo: {{mode}}."
+    },
+    "resume": {
+      "done": "{{count}} peça(s) retomada(s)."
+    },
+    "cancel": {
+      "done": "{{count}} peça(s) cancelada(s)."
+    },
+    "new": {
+      "done": "Cenário {{id}} aberto."
+    },
+    "attach": {
+      "done": "{{name}} anexado como {{id}}."
+    },
+    "export": {
+      "done": "Cenário {{name}} exportado: {{plays}} peça(s), {{decisions}} decisão(ões)."
+    },
+    "model": {
+      "line": "O Diretor usa {{model}} ({{id}})."
+    },
+    "effort": {
+      "line": "O Diretor trabalha com esforço {{effort}} ({{id}})."
+    },
+    "profile": {
+      "line": "{{id}}: {{kind}}, {{state}}",
+      "empty": "Não há perfil."
+    },
+    "directives": {
+      "line": "{{id}} ({{scope}}, {{kind}}): {{text}}",
+      "empty": "Não há ordem em vigor."
+    },
+    "config": {
+      "sections": "Seções: {{names}}.",
+      "value": "{{key}} = {{value}}"
+    },
+    "help": {
+      "header": "Comandos que valem agora:",
+      "line": "{{name}}{{args}} - {{description}}",
+      "one": "{{name}}{{args}} - {{description}}",
+      "confirm": "Pede confirmação."
+    },
+    "forwarded": {
+      "template": "Enviado ao Diretor.",
+      "client": "Enviado ao cliente do Diretor."
+    }
+  }
+}

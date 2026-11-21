@@ -8,6 +8,7 @@ import { STATUS_ROUTES } from './status.js';
 import { ATTACHMENT_ROUTES } from './attachments.js';
 import { ATTEMPT_ROUTES } from './attempts.js';
 import { BLACKBOARD_ROUTES } from './blackboard.js';
+import { SLASH_COMMAND_ROUTES } from './commands.js';
 import { CONFIG_VIEW_ROUTES } from './config-view.js';
 import { DECISION_ROUTES } from './decisions.js';
 import { EXECUTOR_ROUTES } from './executors.js';
@@ -44,6 +45,7 @@ export const API_ROUTES = {
   ...SCENARIO_ROUTES,
   ...SETUP_ROUTES,
   ...USAGE_ROUTES,
+  ...SLASH_COMMAND_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

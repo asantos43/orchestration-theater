@@ -19,6 +19,7 @@ import {
   type Registries,
   renderStateSummary,
   stateSummaryOf,
+  type SessionCommand,
   type Store,
 } from '@otheater/core';
 import type { DaemonConfig } from '../config.js';
@@ -289,6 +290,33 @@ export class DirectorSessions {
       states: ['pending'],
     });
     return pending.length > 0;
+  }
+
+  /**
+   * The `/` commands the client of the open session announced (Phase 7, P3), the id of that client
+   * (`claude-code`, `codex`, `opencode`) and whether the Director is in a turn (a turn running, a
+   * session opening, or a prompt of the queue still to be delivered: `busy`). `undefined` when
+   * there is no open session to ask: no Director yet, or it sleeps.
+   */
+  async clientCommands(scenarioId: string): Promise<
+    | {
+        readonly client: string;
+        readonly commands: readonly SessionCommand[];
+        readonly inTurn: boolean;
+        /** Whether the Director had its first turn: until then the prompt carries the prefix, and a `/` in it is no command. */
+        readonly started: boolean;
+      }
+    | undefined
+  > {
+    const session = this.#opened.get(scenarioId);
+    const lease = session?.lease;
+    if (session === undefined || lease === undefined) return undefined;
+    return {
+      client: lease.client,
+      commands: lease.session.availableCommands ?? [],
+      inTurn: await this.busy(scenarioId),
+      started: session.prefixed,
+    };
   }
 
   /**
