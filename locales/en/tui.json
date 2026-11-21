@@ -1,4 +1,86 @@
 {
+  "groups": {
+    "layout": "Layout",
+    "tabs": "Tabs",
+    "decision": "Decisions",
+    "general": "General"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "trajectories": "Trajectories",
+    "usage": "Usage",
+    "directives": "Directives",
+    "settings": "Settings"
+  },
+  "actions": {
+    "layout": {
+      "toggleSidebar": "Show or hide the side bar",
+      "togglePanel": "Show or hide the work panel",
+      "narrowChat": "Make the chat narrower",
+      "widenChat": "Make the chat wider"
+    },
+    "tabs": {
+      "add": "Open a tab",
+      "close": "Close the tab",
+      "open": "Go to the tab {{tab}}"
+    },
+    "decision": {
+      "answer": "Answer the pending decision"
+    },
+    "palette": {
+      "open": "Open the command palette"
+    },
+    "help": {
+      "show": "Show the keyboard shortcuts"
+    },
+    "app": {
+      "quit": "Quit"
+    }
+  },
+  "bar": {
+    "layout": {
+      "toggleSidebar": "Side bar",
+      "togglePanel": "Panel"
+    },
+    "decision": {
+      "answer": "Answer"
+    },
+    "palette": {
+      "open": "Commands"
+    },
+    "app": {
+      "quit": "Quit"
+    }
+  },
+  "keymap": {
+    "errors": {
+      "unknownAction": "The action {{action}} does not exist.",
+      "invalidCombo": "\"{{combo}}\" is not a valid key combination (action {{action}}).",
+      "duplicate": "The shortcut {{combo}} is used by \"{{action}}\" and by \"{{other}}\".",
+      "repeated": "The shortcut {{combo}} is repeated in \"{{action}}\".",
+      "terminal": {
+        "cmd": "{{combo}} cannot be used in the terminal: it does not send the Cmd key (action {{action}}).",
+        "ctrl_shift_letter": "{{combo}} cannot be used in the terminal: Ctrl+Shift+letter reaches the program as Ctrl+letter (action {{action}}).",
+        "bare_printable": "{{combo}} cannot be a global shortcut: it would take a character from the text box (action {{action}})."
+      }
+    },
+    "notices": {
+      "collision": "{{combo}} for \"{{action}}\" may clash: {{reason}}.",
+      "tmuxPrefix": "{{combo}} (\"{{action}}\") is the default prefix of tmux: press it twice or change the shortcut.",
+      "vscodeCapture": "{{combo}} (\"{{action}}\") may be taken by VS Code before it reaches the terminal.",
+      "macOption": "On macOS, the Alt shortcuts use the Option key: turn on \"Use Option as Meta\" in the terminal.",
+      "macFn": "On macOS, the function keys may need the Fn key."
+    },
+    "reasons": {
+      "readline": "it is an editing key of the text box and of the shell",
+      "textBox": "the text box uses it",
+      "wordJump": "it jumps between words in the text box",
+      "flowControl": "some terminals use it to pause the output",
+      "tmuxPrefix": "it is the prefix of tmux",
+      "browserTab": "the browser uses it to close a tab",
+      "terminalAlias": "the terminal sends the same code as another key"
+    }
+  },
   "app": {
     "title": "OTheater",
     "quit_hint": "Ctrl+Q quits",

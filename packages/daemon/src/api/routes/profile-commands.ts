@@ -4,13 +4,15 @@ import type { CommandRegistrar } from './command.js';
 import type { CommandRouteDeps } from './deps.js';
 
 /**
- * The commands on profiles (P6 of docs/17): register, drain and remove. The login of a subscription
- * stays at the terminal (it is interactive). A key of an `api` profile becomes a `Secret` here and
+ * The commands on profiles (P6 of docs/17): register, drain and remove; and, from P5 of Phase 7
+ * (N186), the official login of a subscription (open, hand it the code, cancel). The URL and the
+ * code of a login are in the answer that opens it and nowhere else; a login whose client needs a
+ * terminal is answered as local and run by nothing here. A key of an `api` profile becomes a `Secret` here and
  * goes to the vault; nothing that is answered, recorded or logged holds it. The service writes the
  * events (`profile.*`).
  */
 export function registerProfileCommands(register: CommandRegistrar, deps: CommandRouteDeps): void {
-  const { profiles } = deps;
+  const { profiles, logins } = deps;
 
   register('addProfile', async ({ body }) => {
     const result = await profiles.add({
@@ -62,6 +64,20 @@ export function registerProfileCommands(register: CommandRegistrar, deps: Comman
       secretDeleted: result.secretDeleted,
       executorsInvalidated: [...result.executorsInvalidated],
     };
+  });
+  register('startProfileLogin', async ({ params }) =>
+    logins.start(`${params.client}/${params.name}`),
+  );
+
+  register('submitProfileLoginCode', async ({ params, body }) => {
+    const profileId = `${params.client}/${params.name}`;
+    await logins.submitCode(profileId, body.code);
+    return { profileId, submitted: true as const };
+  });
+
+  register('cancelProfileLogin', async ({ params }) => {
+    const profileId = `${params.client}/${params.name}`;
+    return { profileId, cancelled: await logins.cancel(profileId) };
   });
 }
 

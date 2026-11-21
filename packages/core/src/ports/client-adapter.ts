@@ -22,8 +22,12 @@ import type { QuotaProbe } from './quota-probe.js';
  * `0.3.2` (Phase 5, P28a, N159): `profileCli`, optional, the official CLI of the client inside one
  * profile, for `ot profile exec`. An adapter of `0.3.1` leaves it out, and `exec` refuses that
  * client. [proposta]
+ * `0.3.3` (Phase 7, P5, N186): `loginMode`, optional, the mode the official login of the client
+ * will run in, told without starting anything, so the daemon can refuse to run a `terminal` login
+ * it cannot hand a terminal to. An adapter of `0.3.2` leaves it out, and the daemon starts the
+ * login to learn the mode. [proposta]
  */
-export const CLIENT_ADAPTER_PORT_VERSION = '0.3.2';
+export const CLIENT_ADAPTER_PORT_VERSION = '0.3.3';
 
 /**
  * The tools of one MCP server that a role may call: the names, or `all` for a server whose tools
@@ -333,6 +337,12 @@ export interface ClientAdapterContract extends Adapter {
    * profile directories, as the login does; never opens what the client keeps there.
    */
   profileCli?(profile: Profile): Promise<ProfileCli>;
+  /**
+   * Phase 7 (P5, N186). [proposta] Optional: the mode the official login of the client runs in
+   * (`clients.<id>.login.mode`, or the default of the client), told WITHOUT starting the login.
+   * `undefined` means the adapter cannot say before it starts one.
+   */
+  loginMode?(): LoginFlow['mode'] | undefined;
 }
 
 /**

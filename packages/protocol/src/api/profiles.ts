@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { PROFILE_KINDS, PROFILE_STATES, ProfileRecordSchema } from '@otheater/core';
 import { z } from 'zod';
+import { PROFILE_LOGIN_MODES } from '../profile-events.js';
 import { QUOTA_CAUSES, QUOTA_STATES } from '../quota-events.js';
 import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
@@ -177,10 +178,101 @@ export const removeProfile = defineRoute({
   errors: ['not_found', 'conflict'],
 });
 
+/**
+ * The official login of a subscription profile, opened from an interface (P5 of Phase 7, N186;
+ * architecture 5.6). [proposta] The daemon runs the client's own login in the profile directory and
+ * never reads the token. The URL and the code the client prints are in the answer of the route that
+ * opens the login and nowhere else: the events (`profile.login.*`) and the log carry neither, so a
+ * repeat under the same `Idempotency-Key` is the only other answer that holds them. The end of the
+ * login arrives as `profile.login.completed` or `profile.login.failed`.
+ *
+ * A login whose mode is `terminal` (OpenCode: `opencode auth login` needs a terminal) is not run by
+ * the daemon: the answer is `status: local` with the command the interface runs in the terminal of
+ * the person (`ot profile exec <client>/<name> login`).
+ */
+export const StartProfileLoginResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('started'),
+    profileId: z.string().min(1),
+    mode: z.enum(PROFILE_LOGIN_MODES),
+    /** Where the person signs in; null when the client printed none (yet). */
+    url: z.string().min(1).nullable(),
+    /** The one-time code to type there (`device_code`); null when the mode has none. */
+    code: z.string().min(1).nullable(),
+    /** Whether `POST .../login/code` can hand the login the code the browser shows. */
+    takesCode: z.boolean(),
+  }),
+  z.strictObject({
+    status: z.literal('local'),
+    profileId: z.string().min(1),
+    mode: z.literal('terminal'),
+    /** What to run in a terminal, as one line. */
+    command: z.string().min(1),
+  }),
+]);
+export type StartProfileLoginResult = z.infer<typeof StartProfileLoginResultSchema>;
+
+export const startProfileLogin = defineRoute({
+  id: 'startProfileLogin',
+  method: 'POST',
+  path: '/v1/profiles/:client/:name/login',
+  summary: 'Opens the official login of a subscription account and answers its mode, URL and code',
+  params: ProfileParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  response: StartProfileLoginResultSchema,
+  errors: ['not_found', 'conflict', 'unavailable'],
+});
+
+/** The code the browser shows at the end of a sign-in; one line. It is never logged or kept. */
+export const SubmitProfileLoginCodeBodySchema = z.strictObject({
+  code: z.string().min(1).max(4096),
+});
+export type SubmitProfileLoginCodeBody = z.input<typeof SubmitProfileLoginCodeBodySchema>;
+
+export const SubmitProfileLoginCodeResultSchema = z.strictObject({
+  profileId: z.string().min(1),
+  /** The login was handed the code. Whether it accepted it arrives as `profile.login.completed` or `.failed`. */
+  submitted: z.literal(true),
+});
+export type SubmitProfileLoginCodeResult = z.infer<typeof SubmitProfileLoginCodeResultSchema>;
+
+export const submitProfileLoginCode = defineRoute({
+  id: 'submitProfileLoginCode',
+  method: 'POST',
+  path: '/v1/profiles/:client/:name/login/code',
+  summary: 'Hands the open login of an account the code the browser shows',
+  params: ProfileParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  body: SubmitProfileLoginCodeBodySchema,
+  response: SubmitProfileLoginCodeResultSchema,
+  errors: ['invalid_input', 'not_found', 'conflict', 'unavailable'],
+});
+
+export const CancelProfileLoginResultSchema = z.strictObject({
+  profileId: z.string().min(1),
+  /** False when no login was open (it had ended). Otherwise the process of the login was ended. */
+  cancelled: z.boolean(),
+});
+export type CancelProfileLoginResult = z.infer<typeof CancelProfileLoginResultSchema>;
+
+export const cancelProfileLogin = defineRoute({
+  id: 'cancelProfileLogin',
+  method: 'POST',
+  path: '/v1/profiles/:client/:name/login/cancel',
+  summary: 'Cancels the open login of an account and ends the process of the login',
+  params: ProfileParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  response: CancelProfileLoginResultSchema,
+  errors: ['not_found'],
+});
+
 export const PROFILE_ROUTES = defineRoutes(
   listProfiles,
   getProfile,
   addProfile,
   drainProfile,
   removeProfile,
+  startProfileLogin,
+  submitProfileLoginCode,
+  cancelProfileLogin,
 );
