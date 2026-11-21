@@ -16,7 +16,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The full suite. On a pull request it waits for `changes` and does not run when the PR only
+  # touches documentation and the mode is `light` (job `docs` below). On a push to main and on a
+  # dispatch, `changes` is skipped and this job always runs.
   linux:
+    needs: [changes]
+    # `!cancelled()`: on a push or a dispatch the job `changes` is skipped, and a skipped need would
+    # skip this one.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.full == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,15 +67,20 @@ jobs:
       - run: cargo test --locked
         working-directory: native/job-launcher
 
-  # Decides whether a pull request runs the Windows and macOS jobs (owner, 2026-11-19): by default
-  # only when it touches code, so a PR of docs or spikes stays on linux alone. The repository
-  # variable OT_CROSS_CI picks the mode: `code` (default), `always` or `manual` (dispatch only).
+  # Decides what a pull request runs. A PR is "docs only" when every changed path is under docs/
+  # (except docs/reference/, whose api-routes.json the tests check against the code), spikes/ or
+  # .claude/, or is a .md at the root or LICENSE.
+  # - Windows and macOS (owner, 2026-11-19): the repository variable OT_CROSS_CI picks the mode:
+  #   `code` (default: only when the PR is not docs only), `always` or `manual` (dispatch only).
+  # - The full suite on linux (owner, 2026-11-21): the variable OT_DOCS_CI picks the mode: `light`
+  #   (default: a docs-only PR runs the job `docs` instead) or `full` (always the full suite).
   # On a pull request the checkout is the merge commit, so HEAD^1 is the tip of the base branch.
   changes:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       cross: ${{ steps.decide.outputs.cross }}
+      full: ${{ steps.decide.outputs.full }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,22 +88,50 @@ jobs:
       - id: decide
         env:
           MODE: ${{ vars.OT_CROSS_CI || 'code' }}
+          DOCS_MODE: ${{ vars.OT_DOCS_CI || 'light' }}
         run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -vE '^docs/reference/' | grep -qvE '^(docs/|spikes/|\.claude/|[^/]+\.md$|LICENSE$|$)' \
+            || printf '%s\n' "$changed" | grep -qE '^docs/reference/'; then
+            code=true
+          else
+            code=false
+          fi
           case "$MODE" in
             always) cross=true ;;
             manual) cross=false ;;
-            code)
-              changed=$(git diff --name-only HEAD^1 HEAD)
-              echo "$changed"
-              if printf '%s\n' "$changed" | grep -qvE '^(docs/|spikes/|\.claude/|[^/]+\.md$|LICENSE$|$)'; then
-                cross=true
-              else
-                cross=false
-              fi ;;
+            code) cross=$code ;;
             *) echo "::error::OT_CROSS_CI=$MODE: use code, always or manual"; exit 1 ;;
           esac
-          echo "cross=$cross (mode $MODE)"
+          case "$DOCS_MODE" in
+            light) full=$code ;;
+            full) full=true ;;
+            *) echo "::error::OT_DOCS_CI=$DOCS_MODE: use light or full"; exit 1 ;;
+          esac
+          echo "code=$code cross=$cross (mode $MODE) full=$full (mode $DOCS_MODE)"
           echo "cross=$cross" >> "$GITHUB_OUTPUT"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+
+  # The light path of a docs-only PR (OT_DOCS_CI=light): the checks of `pnpm verify` that read the
+  # tree as text (licenses, notices, headers, credentials and catalogs), without building the
+  # packages or running the tests. The credential scan matters most: the repository is public.
+  # `deps` stays out: it resolves the imports through the built packages and only concerns code.
+  # Prettier ignores docs/ and *.md (.prettierignore), so format:check has nothing to say here.
+  docs:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.full == 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc -b tools/verify/tsconfig.src.json
+      - run: pnpm verify:docs
 
   cross:
     needs: [changes]
