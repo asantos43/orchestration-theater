@@ -3,7 +3,12 @@ import { useApp, useStdin } from 'ink';
 import { useCallback, useEffect, useMemo, useContext, type ReactNode } from 'react';
 import type { ClipboardCopyMode, MouseMode, UiTuiMouseSettings } from '../settings.js';
 import { copyText, runClipboardTool, type ClipboardPorts, type CopyOutcome } from './clipboard.js';
-import { MouseContext, type MouseContextValue } from './context.js';
+import {
+  CopyContext,
+  MouseContext,
+  type CopyToClipboard,
+  type MouseContextValue,
+} from './context.js';
 import { MouseModes, type MouseTerminal } from './modes.js';
 import { MouseRegistry } from './registry.js';
 import { tapStdin } from './stdin-tap.js';
@@ -53,6 +58,10 @@ export function MouseLayer(props: MouseLayerProps): ReactNode {
     wheelLines: tuning.wheelLines,
     copy: (text) => copyText(text, { mode: props.copy, maxBytes: tuning.copyMaxBytes }, ports),
   });
+  const copyToClipboard = useCallback<CopyToClipboard>(
+    (text) => copyText(text, { mode: props.copy, maxBytes: tuning.copyMaxBytes }, ports),
+    [props.copy, tuning.copyMaxBytes, ports],
+  );
   const active = modes !== undefined && mode !== 'off';
 
   useEffect(() => {
@@ -82,7 +91,11 @@ export function MouseLayer(props: MouseLayerProps): ReactNode {
   const value = useMemo((): MouseContextValue | undefined => {
     return active ? { registry, suspend } : undefined;
   }, [active, registry, suspend]);
-  return <MouseContext.Provider value={value}>{props.children}</MouseContext.Provider>;
+  return (
+    <CopyContext.Provider value={copyToClipboard}>
+      <MouseContext.Provider value={value}>{props.children}</MouseContext.Provider>
+    </CopyContext.Provider>
+  );
 }
 
 /**
@@ -111,4 +124,9 @@ export function useSuspendTerminal(): (callback: () => void | Promise<void>) => 
 export function useMouseCopy(listener: (outcome: CopyOutcome) => void): void {
   const mouse = useContext(MouseContext);
   useEffect(() => mouse?.registry.onCopy(listener), [mouse, listener]);
+}
+
+/** Copies a text as `ui.clipboard.copy` says; `undefined` when the screen has no mouse layer (a test of one screen). */
+export function useCopyToClipboard(): CopyToClipboard | undefined {
+  return useContext(CopyContext);
 }

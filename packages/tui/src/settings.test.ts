@@ -53,6 +53,7 @@ describe('parseUiSettings', () => {
       setup: { open: 'auto', readTimeoutMs: 5000 },
       newProject: { repo: 'cwd' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
+      login: { browser: 'auto' },
     });
   });
 
@@ -160,6 +161,7 @@ describe('parseUiSettings', () => {
       setup: DEFAULT_UI_SETTINGS.setup,
       newProject: DEFAULT_UI_SETTINGS.newProject,
       sidebar: DEFAULT_UI_SETTINGS.sidebar,
+      login: DEFAULT_UI_SETTINGS.login,
     });
   });
 
@@ -215,6 +217,16 @@ describe('parseUiSettings', () => {
       parseUiSettings({ sidebar: { finishedPlays: 'always', finishedLimit: 0 } }).sidebar,
     ).toEqual(DEFAULT_UI_SETTINGS.sidebar);
     expect(parseUiSettings({ sidebar: 3 }).sidebar).toEqual(DEFAULT_UI_SETTINGS.sidebar);
+  });
+
+  it('reads ui.login and falls back to auto', () => {
+    expect(parseUiSettings({}).login).toEqual({ browser: 'auto' });
+    expect(parseUiSettings({ login: { browser: 'key' } }).login.browser).toBe('key');
+    expect(parseUiSettings({ login: { browser: 'off' } }).login.browser).toBe('off');
+    expect(parseUiSettings({ login: { browser: 'always' } }).login).toEqual(
+      DEFAULT_UI_SETTINGS.login,
+    );
+    expect(parseUiSettings({ login: 3 }).login).toEqual(DEFAULT_UI_SETTINGS.login);
   });
 
   it('falls back key by key: a bad value does not spoil the good ones', () => {

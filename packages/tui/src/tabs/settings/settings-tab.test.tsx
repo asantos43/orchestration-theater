@@ -14,9 +14,18 @@ import type {
   StartProfileLoginResult,
 } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanupApps, renderApp, type RenderedApp } from '../../ink.test-support.js';
+import {
+  cleanupApps,
+  plain,
+  renderApp,
+  TEST_UI_SETTINGS,
+  type RenderAppOptions,
+  type RenderedApp,
+} from '../../ink.test-support.js';
 import { fakeOnline, seedStores, type FakeOnline } from '../../layout.test-support.js';
 import type { TabContentMap } from '../../layout/tab-content.js';
+import type { OpenCommand, OpenPorts } from '../../open-url.js';
+import type { UiSettings } from '../../settings.js';
 import type { SettingsApi } from './api.js';
 import { createSettingsTab, errorText } from './settings-tab.js';
 
@@ -219,24 +228,58 @@ function emit(online: FakeOnline, type: string, payload: Record<string, unknown>
   } as never);
 }
 
+/** What the fake opener of the browser was asked to run: no test starts a browser. */
+class FakeOpener {
+  readonly commands: OpenCommand[] = [];
+  works = true;
+  readonly run = (command: OpenCommand): Promise<boolean> => {
+    this.commands.push(command);
+    return Promise.resolve(this.works);
+  };
+}
+
+const LOCAL_LINUX = { platform: 'linux', env: {} } as const;
+
 async function open(
   api: FakeSettingsApi,
-  options: { runLocal?: (command: string) => Promise<number | null> } = {},
-): Promise<{ app: RenderedApp; online: FakeOnline }> {
+  options: {
+    runLocal?: (command: string) => Promise<number | null>;
+    opener?: FakeOpener;
+    environment?: OpenPorts['environment'];
+    browser?: 'auto' | 'key' | 'off';
+    columns?: number;
+    mouseWrites?: string[];
+    mouseClipboard?: RenderAppOptions['mouseClipboard'];
+    clipboardCopy?: UiSettings['clipboardCopy'];
+  } = {},
+): Promise<{ app: RenderedApp; online: FakeOnline; opener: FakeOpener }> {
   const online = fakeOnline();
   seedStores(online.stores);
+  const opener = options.opener ?? new FakeOpener();
   const tabContent: TabContentMap = {
-    settings: createSettingsTab({ api, now: () => NOW, runLocal: options.runLocal }),
+    settings: createSettingsTab({
+      api,
+      now: () => NOW,
+      runLocal: options.runLocal,
+      open: { run: opener.run, environment: options.environment ?? LOCAL_LINUX },
+    }),
   };
   const app = await renderApp({
     connector: online.connector,
-    size: { columns: 140, rows: 60 },
+    size: { columns: options.columns ?? 140, rows: 60 },
     tabContent,
+    settings: {
+      ...TEST_UI_SETTINGS,
+      login: { browser: options.browser ?? 'off' },
+      clipboardCopy: options.clipboardCopy ?? TEST_UI_SETTINGS.clipboardCopy,
+    },
+    mouseWrites: options.mouseWrites,
+    mouseClipboard: options.mouseClipboard,
   });
   await app.waitForText('SCENARIOS');
   app.press('\x1b[15~');
   await app.waitForText('claude-code/main');
-  return { app, online };
+  return { app, online, opener };
 }
 
 async function key(app: RenderedApp, sequence: string): Promise<string> {
@@ -256,6 +299,28 @@ async function waitUntil(check: () => boolean, ms = 3000): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
+
+/** The text of the right column (the tab) of each row of the frame, trimmed. */
+function panelRows(frame: string): string[] {
+  return frame.split('\n').map((line) => {
+    const parts = line.split(/[│┃]/);
+    return (parts.at(-2) ?? '').trim();
+  });
+}
+
+/** The text of the tab as one line: the wrapping of the narrow column does not matter to a message. */
+function flat(frame: string): string {
+  return panelRows(frame)
+    .filter((row) => row !== '')
+    .join(' ');
+}
+
+const LONG_URL =
+  'https://auth.example.test/oauth/authorize?client_id=x&response_type=code&redirect_uri=https%3A%2F%2Fcallback.example.test%2Fcb&scope=' +
+  'a'.repeat(120) +
+  '&state=' +
+  'b'.repeat(120) +
+  '&code_challenge=zz';
 
 const DOWN = '\x1b[B';
 const SHIFT_UP = '\x1b[1;2A';
@@ -289,6 +354,167 @@ describe('the tab Settings', () => {
     });
     frame = await app.waitForText('Signed in: claude-code/main');
     expect(frame).not.toContain('https://login.example.test');
+  });
+
+  describe('the address of the sign-in (ui.login.browser)', () => {
+    async function openLogin(
+      options: Parameters<typeof open>[1] = {},
+      url: string = LONG_URL,
+      takesCode = true,
+    ): Promise<{ app: RenderedApp; opener: FakeOpener; api: FakeSettingsApi }> {
+      const api = new FakeSettingsApi();
+      api.loginAnswer = { ...(api.loginAnswer as object), url, takesCode } as never;
+      const { app, opener } = await open(api, { columns: 140, ...options });
+      await key(app, 'l');
+      await app.waitForText('Address:');
+      return { app, opener, api };
+    }
+
+    it('shows the whole address on rows, nothing cut, each row inside the same OSC 8 link', async () => {
+      const { app } = await openLogin({ columns: 100 });
+      const frame = await app.settle();
+      const rows = panelRows(frame);
+      const start = rows.indexOf('Address:');
+      const end = rows.findIndex((row, index) => index > start && row.startsWith('Ctrl+'));
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start + 3);
+      expect(rows.slice(start + 1, end).join('')).toBe(LONG_URL);
+      const raw = app.rawFrame();
+      const opening = `\x1b]8;id=otheater-login;${LONG_URL}\x1b\\`;
+      expect(raw.split(opening).length - 1).toBe(end - start - 1);
+      expect(raw.split('\x1b]8;;\x1b\\').length - 1).toBe(end - start - 1);
+      expect(plain(raw)).not.toContain('\x1b');
+    });
+
+    it('opens the whole address with Ctrl+O in the browser command of the system and says so', async () => {
+      const { app, opener } = await openLogin({ browser: 'key' });
+      expect(opener.commands).toEqual([]);
+      const frame = await key(app, '\x0f');
+      expect(opener.commands).toEqual([{ command: 'xdg-open', args: [LONG_URL] }]);
+      expect(flat(frame)).toContain('Opened in the browser (xdg-open).');
+    });
+
+    it('uses open on macOS and rundll32 on Windows, with the address as one argument', async () => {
+      const mac = await openLogin({ browser: 'key', environment: { platform: 'darwin', env: {} } });
+      await key(mac.app, '\x0f');
+      expect(mac.opener.commands).toEqual([{ command: 'open', args: [LONG_URL] }]);
+      const win = await openLogin({ browser: 'key', environment: { platform: 'win32', env: {} } });
+      await key(win.app, '\x0f');
+      expect(win.opener.commands).toEqual([
+        { command: 'rundll32', args: ['url.dll,FileProtocolHandler', LONG_URL] },
+      ]);
+    });
+
+    it('does not open over SSH and says to copy the address instead', async () => {
+      const { app, opener } = await openLogin({
+        browser: 'key',
+        environment: { platform: 'linux', env: { SSH_TTY: '/dev/pts/3' } },
+      });
+      const frame = await key(app, '\x0f');
+      expect(opener.commands).toEqual([]);
+      expect(flat(frame)).toContain('runs over SSH');
+      expect(flat(frame)).toContain('Ctrl+Y');
+    });
+
+    it('does not open an address that is not http or https, and does not make it a link', async () => {
+      const { app, opener } = await openLogin({ browser: 'key' }, 'file:///etc/passwd?client_id=x');
+      const frame = await key(app, '\x0f');
+      expect(opener.commands).toEqual([]);
+      expect(flat(frame)).toContain('Only http and https addresses are opened.');
+      expect(app.rawFrame()).not.toContain('\x1b]8;');
+    });
+
+    it('says when the opener could not start', async () => {
+      const opener = new FakeOpener();
+      opener.works = false;
+      const { app } = await openLogin({ browser: 'key', opener });
+      const frame = await key(app, '\x0f');
+      expect(opener.commands).toHaveLength(1);
+      expect(flat(frame)).toContain('Could not start xdg-open.');
+    });
+
+    it('copies the whole address with Ctrl+Y through the terminal and says which route', async () => {
+      const writes: string[] = [];
+      const { app } = await openLogin({ mouseWrites: writes });
+      const frame = await key(app, '\x19');
+      const sequence = writes.find((write) => write.includes(']52;'));
+      expect(sequence).toBeDefined();
+      const payload = /\]52;[a-z]*;([A-Za-z0-9+/=]+)/.exec(sequence ?? '')?.[1] ?? '';
+      expect(Buffer.from(payload, 'base64').toString('utf8')).toBe(LONG_URL);
+      expect(flat(frame)).toContain(
+        `Sent ${String(LONG_URL.length)} characters to the clipboard through the terminal (OSC 52).`,
+      );
+      expect(flat(frame)).toContain(
+        'Set ui.clipboard.copy to auto or system to use wl-copy or xclip.',
+      );
+    });
+
+    it('copies with the clipboard tool of the system when ui.clipboard.copy says so', async () => {
+      const ran: { command: string; text: string }[] = [];
+      const writes: string[] = [];
+      const { app } = await openLogin({
+        mouseWrites: writes,
+        clipboardCopy: 'system',
+        mouseClipboard: {
+          environment: { platform: 'linux', env: { DISPLAY: ':0' } },
+          tmux: false,
+          run: (tool, text) => {
+            ran.push({ command: tool.command, text });
+            return Promise.resolve(true);
+          },
+        },
+      });
+      const frame = await key(app, '\x19');
+      await waitUntil(() => ran.length === 1);
+      expect(ran[0]?.text).toBe(LONG_URL);
+      expect(writes.some((write) => write.includes(']52;'))).toBe(false);
+      expect(flat(await app.settle())).toContain(
+        `Copied ${String(LONG_URL.length)} characters with the clipboard tool of the system.`,
+      );
+      expect(frame).toContain('Address:');
+    });
+
+    it('lets the keys of the address stay out of the code field', async () => {
+      const { app, opener, api } = await openLogin({ browser: 'key' });
+      await type(app, 'abc');
+      await key(app, '\x0f');
+      await key(app, '\x19');
+      await type(app, '-1');
+      await key(app, '\r');
+      await waitUntil(() => api.codes.length === 1);
+      expect(api.codes).toEqual(['abc-1']);
+      expect(opener.commands).toHaveLength(1);
+    });
+
+    it('opens on its own once with auto, and the key opens it again', async () => {
+      const { app, opener } = await openLogin({ browser: 'auto' });
+      await waitUntil(() => opener.commands.length === 1);
+      expect(opener.commands).toEqual([{ command: 'xdg-open', args: [LONG_URL] }]);
+      await key(app, '\x0f');
+      expect(opener.commands).toHaveLength(2);
+    });
+
+    it('does not open on its own with key or off, and off says so on the key', async () => {
+      const onKey = await openLogin({ browser: 'key' });
+      await onKey.app.settle();
+      expect(onKey.opener.commands).toEqual([]);
+      const off = await openLogin({ browser: 'off' });
+      await off.app.settle();
+      expect(off.opener.commands).toEqual([]);
+      const frame = await key(off.app, '\x0f');
+      expect(off.opener.commands).toEqual([]);
+      expect(flat(frame)).toContain('Opening the browser is off (ui.login.browser).');
+      expect(flat(frame)).not.toContain('Ctrl+O opens');
+    });
+
+    it('does not open on its own over SSH even with auto', async () => {
+      const { app, opener } = await openLogin({
+        browser: 'auto',
+        environment: { platform: 'linux', env: { SSH_CONNECTION: '1 2 3 4' } },
+      });
+      await app.settle();
+      expect(opener.commands).toEqual([]);
+    });
   });
 
   it('shows the code of a device login and cancels it with Esc', async () => {

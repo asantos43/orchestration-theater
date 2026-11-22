@@ -419,3 +419,20 @@ export const UiSidebarConfigSchema = z.strictObject({
   finishedLimit: z.int().min(1).max(500).default(20),
 });
 export type UiSidebarConfig = z.output<typeof UiSidebarConfigSchema>;
+
+// ---- The sign-in panel of the terminal interface (the address of the login) ---------------------
+
+/**
+ * Whether the terminal interface opens the address of an official login in the browser:
+ * `auto` (default) opens it by itself when the sign-in starts, unless the interface runs over SSH
+ * (there the browser would open on the other machine); `key` opens it only when the person presses
+ * the key of the panel; `off` never opens it (the address is shown and can be copied).
+ */
+export const UI_LOGIN_BROWSER_MODES = ['auto', 'key', 'off'] as const;
+export type UiLoginBrowserMode = (typeof UI_LOGIN_BROWSER_MODES)[number];
+
+/** `ui.login` [proposta]: `browser` is {@link UI_LOGIN_BROWSER_MODES}. */
+export const UiLoginConfigSchema = z.strictObject({
+  browser: z.enum(UI_LOGIN_BROWSER_MODES).default('auto'),
+});
+export type UiLoginConfig = z.output<typeof UiLoginConfigSchema>;

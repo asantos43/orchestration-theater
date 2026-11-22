@@ -154,6 +154,15 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  sidebar:\n    other: 1\n')).toThrow();
   });
 
+  it('has the default of ui.login, takes its modes and refuses bad values', () => {
+    expect(parseConfig('').ui.login).toEqual({ browser: 'auto' });
+    for (const mode of ['auto', 'key', 'off']) {
+      expect(parseConfig(`ui:\n  login:\n    browser: ${mode}\n`).ui.login.browser).toBe(mode);
+    }
+    expect(() => parseConfig('ui:\n  login:\n    browser: always\n')).toThrow(/ui\.login\.browser/);
+    expect(() => parseConfig('ui:\n  login:\n    other: 1\n')).toThrow();
+  });
+
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
     expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
     expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(

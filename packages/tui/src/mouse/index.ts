@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-export { MouseLayer, useMouseCopy, useSuspendTerminal, type MouseLayerProps } from './provider.js';
+export {
+  MouseLayer,
+  useCopyToClipboard,
+  useMouseCopy,
+  useSuspendTerminal,
+  type MouseLayerProps,
+} from './provider.js';
 export {
   ClickTarget,
   MouseModalScope,
