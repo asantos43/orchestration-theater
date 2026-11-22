@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
-import { PLUGIN_EVENT_PREFIX } from '../registries/events.js';
+import { isReservedPluginId, PLUGIN_EVENT_PREFIX } from '../registries/events.js';
 import { EXECUTOR_ROLE_IDS } from '../registries/roles.js';
 import { OFFICIAL_TOOLS, TOOL_EFFECT_CLASSES, TOOL_NAME_PATTERN } from '../registries/tools.js';
 
@@ -277,6 +277,15 @@ function crossRules(manifest: z.output<typeof manifestObject>): RuleIssue[] {
       add(['tools', index, 'specialties'], 'a specialty is listed twice');
     }
   });
+
+  // Phase 9, P8: `plugin.installed`, `plugin.server_started`... are the events of the daemon, so a
+  // plugin cannot take one of those names as its id.
+  if (isReservedPluginId(manifest.id)) {
+    add(
+      ['id'],
+      `id "${manifest.id}" is reserved: ${PLUGIN_EVENT_PREFIX}${manifest.id} is an event of the daemon`,
+    );
+  }
 
   manifest.secrets.forEach((name, index) => {
     if (manifest.secrets.indexOf(name) !== index) {

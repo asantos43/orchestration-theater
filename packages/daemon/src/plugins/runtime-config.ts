@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DaemonConfig } from '../config.js';
+import type { DaemonConfig, PluginEventMode } from '../config.js';
 
 /**
  * What the processes of the plugins and the calls to them read of the configuration
@@ -19,6 +19,10 @@ export interface PluginRuntimeConfig {
   readonly restartBackoff: { readonly initialMs: number; readonly maxMs: number };
   /** `plugins.http`. */
   readonly http: 'loopback' | 'off';
+  /** `plugins.events` (P8): `off` refuses every event a plugin publishes. */
+  readonly events: PluginEventMode;
+  /** `plugins.event_max_bytes` (P8): the biggest payload of an event of a plugin, in bytes of JSON. */
+  readonly eventMaxBytes: number;
 }
 
 /** The defaults of `plugins.*`, the same the configuration schema gives. */
@@ -29,6 +33,8 @@ export const DEFAULT_PLUGIN_RUNTIME: PluginRuntimeConfig = {
   startTimeoutMs: 30_000,
   restartBackoff: { initialMs: 1_000, maxMs: 60_000 },
   http: 'loopback',
+  events: 'declared',
+  eventMaxBytes: 16_384,
 };
 
 /** The runtime values of a parsed `plugins` section. */
@@ -43,6 +49,8 @@ export function pluginRuntimeFromConfig(section: DaemonConfig['plugins']): Plugi
       maxMs: section.restart_backoff.max,
     },
     http: section.http,
+    events: section.events,
+    eventMaxBytes: section.event_max_bytes,
   };
 }
 
@@ -113,3 +121,17 @@ export type PluginNotice =
 
 /** Where the notices go besides the log. Must not throw: a throw is caught and logged. */
 export type PluginNoticeSink = (notice: PluginNotice) => void;
+
+/**
+ * An event notification a server of a plugin sent (P8): who sent it and the `params` as they came,
+ * unchecked (the sink checks the name, the manifest and the size). It never carries a secret of the
+ * pool; what the plugin put in `params` is the plugin's own.
+ */
+export interface PluginEventNotification {
+  readonly plugin: string;
+  readonly project: string;
+  readonly params: unknown;
+}
+
+/** Where the event notifications of the servers go. Must not throw: a throw is caught and logged. */
+export type PluginEventSink = (event: PluginEventNotification) => void;

@@ -160,6 +160,15 @@ describe('daemon event registry', () => {
       'demand.transitioned',
       'atif.exported',
       'atif.export_failed',
+      'plugin.installed',
+      'plugin.removed',
+      'plugin.enabled',
+      'plugin.disabled',
+      'plugin.server_started',
+      'plugin.server_stopped',
+      'plugin.server_failed',
+      'plugin.tool_rejected',
+      'plugin.event_rejected',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

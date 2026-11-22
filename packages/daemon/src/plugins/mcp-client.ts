@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/client';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { PluginManifest } from '@otheater/core';
+import { z } from 'zod';
 import type { Logger } from '../logger.js';
 
 /** The `server` block of a plugin manifest: how the daemon reaches its MCP server (N232). */
@@ -39,6 +40,14 @@ export interface PluginConnectSpec {
   readonly logger: Logger;
 }
 
+/**
+ * The MCP notification a plugin sends to publish one of the events its manifest declares (Phase 9,
+ * P8) [proposta]. `params` is `{ name, payload }`: the declared name with no `plugin.<id>.` prefix,
+ * and a JSON object. The SDK of the plugins (P9) sends it; the daemon reads it here and checks it
+ * in `events.ts`, because it trusts no plugin.
+ */
+export const PLUGIN_EVENT_METHOD = 'notifications/otheater/event';
+
 /** The connection to one server, however it was reached. */
 export interface PluginConnection {
   /** The pid of the process, for `stdio`; `undefined` for `http`. */
@@ -58,6 +67,11 @@ export interface PluginConnection {
    * process died, the pipe closed). Runs at most once.
    */
   onUnexpectedClose(listener: (reason: string) => void): void;
+  /**
+   * Hands over what runs for each {@link PLUGIN_EVENT_METHOD} notification the server sends, with
+   * its `params` as they came: nothing is checked here. Optional, so a double of a test may leave it.
+   */
+  onEvent?(listener: (params: unknown) => void): void;
 }
 
 /** Opens the connection to a plugin server. The pool depends on this, so tests hand in a double. */
@@ -147,6 +161,10 @@ export const connectPluginServer: PluginConnector = async (spec) => {
     ended = true;
     listener?.(reasonOf.value);
   };
+  let eventListener: ((params: unknown) => void) | undefined;
+  client.setNotificationHandler(PLUGIN_EVENT_METHOD, { params: z.unknown() }, (params) => {
+    eventListener?.(params);
+  });
   client.onerror = (error) => {
     reasonOf.value = error.message;
   };
@@ -192,6 +210,9 @@ export const connectPluginServer: PluginConnector = async (spec) => {
         },
       ),
     close,
+    onEvent(next) {
+      eventListener = next;
+    },
     onUnexpectedClose(next) {
       listener = next;
       // A process that died before the listener was given is reported at once.

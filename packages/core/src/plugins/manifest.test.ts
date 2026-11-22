@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return --
    The refusal tests break one field of a valid manifest at a time: the fixture is a loose object on purpose. */
 import { describe, expect, it } from 'vitest';
+import { PLUGIN_DAEMON_EVENT_NAMES } from '../registries/events.js';
 import {
   describeManifestProblems,
   parsePluginManifest,
@@ -120,6 +121,14 @@ describe('the manifest of a plugin', () => {
       }
       for (const version of ['1.0', 'v1.0.0', '01.0.0', 1.0, '1.0.0.0']) {
         expect(only(refused((m) => (m.version = version))).path, String(version)).toBe('version');
+      }
+    });
+
+    it('an id that is a name of the events of the daemon (plugin.installed, plugin.server_failed...)', () => {
+      for (const id of PLUGIN_DAEMON_EVENT_NAMES) {
+        const problem = only(refused((m) => (m.id = id)));
+        expect(problem.path, id).toBe('id');
+        expect(problem.message).toContain('reserved');
       }
     });
 

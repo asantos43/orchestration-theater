@@ -15,6 +15,7 @@ import {
   OFFICIAL_TOOLS,
   officialRegistryEntries,
   planOutput,
+  PLUGIN_DAEMON_EVENT_NAMES,
   reviewOutput,
   scriptOutput,
   ROLE_IDS,
@@ -312,6 +313,25 @@ describe('validateRegistries: one failing case per rule', () => {
       }),
     ];
     expect(validateRegistries(replace({ events }))).toEqual([]);
+  });
+
+  it('accepts the plugin.<name> events of the daemon, and refuses a plugin that owns a reserved name', () => {
+    const payload = z.strictObject({});
+    const official = PLUGIN_DAEMON_EVENT_NAMES.map((name) =>
+      defineEventType({ type: `plugin.${name}`, schemaVersion: 1, payload }),
+    );
+    expect(validateRegistries(replace({ events: official }))).toEqual([]);
+    // A name that is not reserved is still the namespace of the plugins, so it needs an owner.
+    const stray = [{ type: 'plugin.mystery', schemaVersion: 1, payload }];
+    expect(validateRegistries(replace({ events: stray })).map((p) => p.code)).toEqual([
+      'plugin_prefix',
+    ]);
+    const owned = [
+      { type: 'plugin.installed.done', schemaVersion: 1, payload, plugin: 'installed' },
+    ];
+    expect(validateRegistries(replace({ events: owned })).map((p) => p.code)).toEqual([
+      'plugin_prefix',
+    ]);
   });
 
   it('rejects a rule key with no value schema, a bad name and a permission family', () => {
