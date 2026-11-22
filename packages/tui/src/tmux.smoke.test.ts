@@ -216,6 +216,9 @@ suite(
         // F5 goes to the Settings tab.
         await tmux.keys('F5');
         await waitTab(tmux, 'Settings');
+        // F6 goes to the Plugins tab (Phase 9, P11).
+        await tmux.keys('F6');
+        await waitTab(tmux, 'Plugin');
         // Alt+A opens the picker; the first tab it offers is Trajectories.
         await tmux.keys('M-a');
         await tmux.waitFor('Open a tab');

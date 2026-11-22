@@ -90,6 +90,36 @@ function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
 }
 
 /**
+ * The actions of the tab Plugins (P11 of Phase 9), in the context `plugins`: alive with `panel`, so
+ * the arrows and Enter keep walking and folding the sections. [proposta] Bare letters, like the
+ * tab Settings: the tab has no text field (the secrets are set with `ot plugin secret set`, there
+ * is no route to write one), and the confirmation of a command takes the keyboard while it is
+ * open. They are not commands of the palette: they act on the plugin under the cursor.
+ */
+const PLUGINS_KEYS: readonly (readonly [name: string, keys: readonly string[]])[] = [
+  ['itemPrev', ['K']],
+  ['itemNext', ['J']],
+  ['enable', ['E']],
+  ['disable', ['D']],
+  // Picks the next action block of the panel (it wraps), and runs the one picked.
+  ['actionNext', ['N']],
+  ['action', ['A']],
+  ['reload', ['R']],
+];
+
+function pluginsActions(): NonNullable<UiRegistryDefinition['actions']> {
+  return PLUGINS_KEYS.map(([name, keys]) => ({
+    id: `plugins.${name}`,
+    textKey: `actions.plugins.${name}`,
+    group: 'plugins',
+    context: 'plugins' as const,
+    surfaces: ['tui' as const],
+    palette: false,
+    keys: terminalKeys(keys),
+  }));
+}
+
+/**
  * The actions of the setup assistant (P17 of docs/18), in the context `setup`: the screen of the
  * assistant is not an area of the layout, so these keys are alive only while it is open. [proposta]
  * The letters are bare because a field is read by the screen itself, which takes every key while a
@@ -131,8 +161,8 @@ function setupActions(): NonNullable<UiRegistryDefinition['actions']> {
 
 /**
  * The entries of the registry for the terminal, from the table of 5.13 ("Mapa de teclas") and the
- * tabs of the work panel. The tab Agenda (Phase 9b) and the tab Plugins (Phase 9) are not here
- * yet: each one enters with a line of `tabs`, and the catalog `tui` gets its name.
+ * tabs of the work panel. The tab Agenda (Phase 9b) is not here yet: it enters with a line of
+ * `tabs`, and the catalog `tui` gets its name.
  */
 export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
   groups: [
@@ -142,6 +172,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'decision', textKey: 'groups.decision', order: 30 },
     { id: 'input', textKey: 'groups.input', order: 35 },
     { id: 'settings', textKey: 'groups.settings', order: 37 },
+    { id: 'plugins', textKey: 'groups.plugins', order: 39 },
     { id: 'setup', textKey: 'groups.setup', order: 38 },
     { id: 'general', textKey: 'groups.general', order: 40 },
   ],
@@ -152,6 +183,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     { id: 'direct', textKey: 'tabs.direct', order: 40, keys: {} },
     { id: 'directives', textKey: 'tabs.directives', order: 50, keys: {} },
     { id: 'settings', textKey: 'tabs.settings', order: 60, keys: terminalKeys(['F5']) },
+    { id: 'plugins', textKey: 'tabs.plugins', order: 70, keys: terminalKeys(['F6']) },
   ],
   actions: [
     {
@@ -643,6 +675,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
     // the layout (Ctrl+B, J, K, T, W and Ctrl+←/→), so the box gives those up.
     ...textBoxActions(),
     ...settingsActions(),
+    ...pluginsActions(),
     ...setupActions(),
     {
       id: 'palette.open',
