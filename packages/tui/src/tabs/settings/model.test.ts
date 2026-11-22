@@ -10,6 +10,7 @@ import {
   limitUnsetEdit,
   moved,
   nextChoice,
+  addLoginModeOf,
   parseAddForm,
   parseLimit,
   quotaLine,
@@ -110,6 +111,17 @@ describe('the model of the tab Settings', () => {
     expect(parseAddForm('codex alt')).toBeUndefined();
     expect(parseAddForm('codex alt other codex')).toBeUndefined();
     expect(parseAddForm('a b api c d')).toBeUndefined();
+  });
+});
+
+describe('addLoginModeOf', () => {
+  it('reads profiles.add.login and takes ask for what is missing or unknown', () => {
+    expect(addLoginModeOf({ profiles: { add: { login: 'auto' } } })).toBe('auto');
+    expect(addLoginModeOf({ profiles: { add: { login: 'off' } } })).toBe('off');
+    expect(addLoginModeOf({ profiles: { add: { login: 'ask' } } })).toBe('ask');
+    expect(addLoginModeOf({ profiles: { add: { login: 'sometimes' } } })).toBe('ask');
+    expect(addLoginModeOf({ profiles: {} })).toBe('ask');
+    expect(addLoginModeOf({})).toBe('ask');
   });
 });
 

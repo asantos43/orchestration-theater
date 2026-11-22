@@ -693,6 +693,7 @@
       "limit": "Novo valor de {{key}} ({{hint}})",
       "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
+      "confirmLogin": "{{profile}} foi adicionada. Entrar agora? s/n",
       "hintEnter": "Enter confirma, Esc cancela",
       "hintConfirm": "s confirma, qualquer outra tecla cancela",
       "yes": "s"

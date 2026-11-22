@@ -693,6 +693,7 @@
       "limit": "New value of {{key}} ({{hint}})",
       "confirmRemove": "Remove {{profile}}? Its sessions drain, then its directory and key go. y/n",
       "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n",
+      "confirmLogin": "{{profile}} was added. Log in now? y/n",
       "hintEnter": "Enter confirms, Esc cancels",
       "hintConfirm": "y confirms, any other key cancels",
       "yes": "y"

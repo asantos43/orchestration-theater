@@ -232,6 +232,9 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             'codex/work',
           );
           await eventsOf(chat, 'profile.added');
+          // `profiles.add.login` is `ask` by default: the new account offers a login, and `n` leaves it.
+          await seen(app, T('settings.prompt.confirmLogin', { profile: 'codex/work' }));
+          await press(app, 'n');
 
           // 3. The roles: the cursor goes to the rule of the Director, and `e` changes it. The
           // Executors section is empty, so the first arrow lands on it with nothing to see.
