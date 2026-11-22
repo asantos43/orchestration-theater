@@ -60,6 +60,10 @@ export const PERMISSION_REASONS = [
   'mcp_tool_of_role',
   'mcp_tool_outside_role',
   'edit_in_worktree',
+  // The Producer's answer to the card of a plugin tool (Phase 9, P6): not a rule of layer 2, a
+  // decision about one call. [proposta]
+  'plugin_tool_approved',
+  'plugin_tool_refused',
 ] as const;
 export type PermissionReason = (typeof PERMISSION_REASONS)[number];
 

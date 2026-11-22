@@ -45,6 +45,13 @@ import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
+  PLUGIN_APPROVAL_DETAIL_MODES,
+  PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+  PLUGIN_EXTERNAL_WRITE_MODES,
+  PLUGIN_LOCAL_WRITE_MODES,
+  PLUGIN_NETWORK_MODES,
+} from './plugins/permissions.js';
+import {
   ADMISSION_MODES,
   DEFAULT_ADMISSION,
   DEFAULT_SESSION_MB,
@@ -1683,6 +1690,31 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         http: z.enum(['loopback', 'off']).default('loopback'),
+        /**
+         * What the effects of a plugin tool need of the policy of the role (N237, P6; every key and
+         * mode is [proposta]). A manifest only lists the roles and the effect of a tool; it never
+         * opens what the policy of the role closes, so the Critic, which only reads, gets no tool
+         * that writes (see `plugins/permissions.ts`).
+         * - `local_write`: `writes` (default) needs `edit` or `write` in the `native_tools` of the
+         *   role; `shells` needs `native_shell: shells`; `deny` gives it to no role.
+         * - `network`: `network_allow` (default) needs a domain in the `network.allow` of the
+         *   role; `any` gives it to every role the manifest lists; `deny` to none.
+         * - `external_write`: `writes` (default) needs a role that writes; `deny` to none.
+         * - `external_write_approval`: `ask` (default) asks the Producer at every call of a tool
+         *   with `external_write`, whatever the manifest says; `manifest` asks only where the
+         *   manifest has `requires_producer_approval: true` (that one always asks).
+         * - `approval_detail`: what the card of the approval shows of the arguments: `keys`
+         *   (default) their names only, `values` the JSON, cut at 300 characters.
+         */
+        permissions: z
+          .strictObject({
+            local_write: z.enum(PLUGIN_LOCAL_WRITE_MODES).default('writes'),
+            network: z.enum(PLUGIN_NETWORK_MODES).default('network_allow'),
+            external_write: z.enum(PLUGIN_EXTERNAL_WRITE_MODES).default('writes'),
+            external_write_approval: z.enum(PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES).default('ask'),
+            approval_detail: z.enum(PLUGIN_APPROVAL_DETAIL_MODES).default('keys'),
+          })
+          .prefault({}),
         install: z
           .strictObject({
             /**

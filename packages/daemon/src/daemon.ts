@@ -76,6 +76,7 @@ import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.j
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
+import { pluginPermissionsFromConfig } from './plugins/permissions.js';
 import { PluginProcessPool } from './plugins/process-pool.js';
 import { pluginRuntimeFromConfig, type PluginNoticeSink } from './plugins/runtime-config.js';
 import { exportsPrometheus } from './telemetry/export-config.js';
@@ -462,6 +463,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       registries,
       port: config.mcp.port,
       plugins: pluginAggregator,
+      // Phase 9, P6: the permissions of the plugin tools. A getter, as `plugins` is read when needed.
+      pluginPermissions: () => pluginPermissionsFromConfig(config.plugins.permissions),
+      askApproval: (scenarioId, input) => orchestrationHandlers.openApproval(scenarioId, input),
+      ...(options.pluginNotices === undefined ? {} : { onPluginNotice: options.pluginNotices }),
       projectOf: async (input) => {
         const playId = input.correlation.playId;
         if (playId === undefined) return undefined;
