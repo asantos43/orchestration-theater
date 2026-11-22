@@ -19,6 +19,7 @@ export * from './tool-events.js';
 export * from './terminal-events.js';
 export * from './wait-events.js';
 export * from './plugin-events.js';
+export * from './update-events.js';
 export * from './browser-events.js';
 export * from './quota-events.js';
 export * from './usage-events.js';

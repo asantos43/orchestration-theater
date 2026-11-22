@@ -24805,6 +24805,434 @@
       }
     },
     {
+      "id": "getUpdateStatus",
+      "method": "GET",
+      "path": "/v1/updates",
+      "kind": "json",
+      "summary": "What the daemon knows about new versions: the mode, the version found and whether it is ready",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "effectiveMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "beta"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "url"
+            ]
+          },
+          "installKind": {
+            "type": "string",
+            "enum": [
+              "own",
+              "checkout"
+            ]
+          },
+          "currentVersion": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "keyState": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "placeholder",
+              "invalid"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "auto_acts_as_notify",
+                "checkout_install",
+                "no_public_key"
+              ]
+            }
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextCheckAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastResult": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "up_to_date",
+                  "found",
+                  "ready",
+                  "rejected",
+                  "skipped",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "found": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "signature",
+                  "sha256",
+                  "size",
+                  "version_not_newer",
+                  "wrong_channel",
+                  "bad_manifest",
+                  "no_network",
+                  "bad_response",
+                  "no_public_key",
+                  "no_asset",
+                  "below_min_version",
+                  "storage"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "effectiveMode",
+          "channel",
+          "source",
+          "installKind",
+          "currentVersion",
+          "platform",
+          "keyState",
+          "notes",
+          "checkedAt",
+          "nextCheckAt",
+          "lastResult",
+          "found",
+          "ready",
+          "lastReason"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        }
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      }
+    },
+    {
+      "id": "checkUpdates",
+      "method": "POST",
+      "path": "/v1/updates/check",
+      "kind": "json",
+      "summary": "Searches for a new version now (the mode `off` answers 409 `conflict`); returns the status after the search",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "effectiveMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "beta"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "url"
+            ]
+          },
+          "installKind": {
+            "type": "string",
+            "enum": [
+              "own",
+              "checkout"
+            ]
+          },
+          "currentVersion": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "keyState": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "placeholder",
+              "invalid"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "auto_acts_as_notify",
+                "checkout_install",
+                "no_public_key"
+              ]
+            }
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextCheckAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastResult": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "up_to_date",
+                  "found",
+                  "ready",
+                  "rejected",
+                  "skipped",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "found": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "signature",
+                  "sha256",
+                  "size",
+                  "version_not_newer",
+                  "wrong_channel",
+                  "bad_manifest",
+                  "no_network",
+                  "bad_response",
+                  "no_public_key",
+                  "no_asset",
+                  "below_min_version",
+                  "storage"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "effectiveMode",
+          "channel",
+          "source",
+          "installKind",
+          "currentVersion",
+          "platform",
+          "keyState",
+          "notes",
+          "checkedAt",
+          "nextCheckAt",
+          "lastResult",
+          "found",
+          "ready",
+          "lastReason"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
       "id": "getUsage",
       "method": "GET",
       "path": "/v1/usage",
