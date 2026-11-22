@@ -302,7 +302,10 @@
       "noScenario": "Sem cenário",
       "decisions_one": "{{count}} decisão",
       "decisions_other": "{{count}} decisões",
-      "daemon": "daemon {{address}}"
+      "daemon": "daemon {{address}}",
+      "updateFound": "↑ {{version}} encontrada",
+      "updateReady": "↑ {{version}} pronta",
+      "updateApply": "aplicar"
     },
     "state": {
       "decision": "decisão",

@@ -29,6 +29,7 @@ import { registerSlashCommands, registerSlashRoutes } from './slash-commands.js'
 import { registerSetupCommands, registerSetupRoutes } from './setup.js';
 import { registerTelemetryRoutes } from './telemetry.js';
 import { registerTrajectoryRoutes } from './trajectories.js';
+import { registerUpdateCommands, registerUpdateRoutes } from './updates.js';
 import { registerUsageRoutes } from './usage.js';
 
 export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
@@ -58,6 +59,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerAnalysisRoutes(handlers, deps);
   registerTelemetryRoutes(handlers, deps);
   registerPluginRoutes(handlers, deps);
+  registerUpdateRoutes(handlers, deps);
 }
 
 /**
@@ -82,4 +84,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerSetupCommands(register, deps);
   registerDirectCommands(register, deps);
   registerPluginCommands(register, deps);
+  registerUpdateCommands(register, deps);
 }

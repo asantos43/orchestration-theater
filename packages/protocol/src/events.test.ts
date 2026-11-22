@@ -171,6 +171,7 @@ describe('daemon event registry', () => {
       'plugin.event_rejected',
       'plugin.secret_missing',
       'plugin.panel_truncated',
+      'daemon.update',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
