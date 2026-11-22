@@ -1,0 +1,131 @@
+name: Dist MSI
+
+# The .msi of Phase 10 (P4), built with WiX on a Windows runner and tested by really installing it for
+# the runner user and removing it (installer/wix/test-install.ps1). It publishes nothing: no release,
+# no tag. [proposta] Only a manual dispatch keeps the .msi as a workflow artifact (7 days), for the
+# owner to try it on a real Windows (SmartScreen, logon); the release (P9) is another job.
+#
+# WiX: the pinned version below (6.0.2, the same as installer/wix/build.ps1) is installed as a .NET tool,
+# only on this runner (approved by N249, series 6 only). Series 6 asks for no acceptance command, and
+# none is written here: see the license note in installer/wix/build.ps1 (Open Source Maintenance Fee).
+on:
+  # Main runs after each merge that touches the paths below. A pull request is decided by the job
+  # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dist-msi.yml'
+      - 'installer/wix/**'
+      - 'tools/release/**'
+      - 'native/job-launcher/**'
+      - 'packages/daemon/src/sea/**'
+      - 'packages/daemon/src/service/**'
+      - 'packages/daemon/src/commands/service*'
+      - 'pnpm-lock.yaml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-msi-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep equal to $WixVersion of installer/wix/build.ps1 (tools/release/src/msi-sources.test.ts checks it).
+  WIX_VERSION: '6.0.2'
+
+jobs:
+  # Decides whether a pull request builds and tests the .msi, by the repository variable OT_DIST_CI, the
+  # same one as dist-sea.yml [proposta]:
+  # - `affected` (default): only when the PR touches one of the paths below;
+  # - `full`: every PR;
+  # - `off`: none (a dispatch still runs).
+  # On a pull request the checkout is the merge commit, so HEAD^1 is the tip of the base branch.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_DIST_CI || 'affected' }}
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-msi\.yml|installer/wix/|tools/release/|native/job-launcher/|packages/daemon/src/(sea|service)/|packages/daemon/src/commands/service|pnpm-lock\.yaml$)'; then
+            touched=true
+          else
+            touched=false
+          fi
+          case "$MODE" in
+            affected) build=$touched ;;
+            full) build=true ;;
+            off) build=false ;;
+            *) echo "::error::OT_DIST_CI=$MODE: use affected, full or off"; exit 1 ;;
+          esac
+          echo "touched=$touched build=$build (mode $MODE)"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  msi:
+    needs: [changes]
+    # `!cancelled()`: on a push or a dispatch the job `changes` is skipped, and a skipped need would
+    # skip this one.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      # The single executable of P1 (as dist-sea.yml builds it) and the launcher of P2.
+      - name: Build the single executable (win32-x64)
+        shell: bash
+        run: node tools/release/dist/cli.js build --target win32-x64 --out dist/sea
+      - name: Build the launcher
+        working-directory: native/job-launcher
+        run: cargo build --release --locked
+      # WiX, pinned: `dotnet tool install` asks for no acceptance. The SDK is the one of the runner
+      # image; the roll-forward lets a tool made for .NET 8 run on a newer runtime [N].
+      - name: Install WiX ${{ env.WIX_VERSION }}
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: |
+          dotnet tool install --global wix --version $env:WIX_VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Build the .msi
+        id: build
+        env:
+          DOTNET_ROLL_FORWARD: Major
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: ./installer/wix/build.ps1
+      - name: Install, check, uninstall, check
+        env:
+          MSI: ${{ steps.build.outputs.msi }}
+          SEMVER: ${{ steps.build.outputs.semver }}
+        run: ./installer/wix/test-install.ps1 -Msi $env:MSI -SemVer $env:SEMVER
+      - name: Size of the package
+        run: |
+          $msi = Get-Item "${{ steps.build.outputs.msi }}"
+          "- $($msi.Name): $($msi.Length) bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Keep the package for a manual try
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: otheater-msi
+          path: ${{ steps.build.outputs.msi }}
+          retention-days: 7

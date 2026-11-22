@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!--
+  The .msi of OTheater for Windows (Phase 10, P4). WiX 6 (`wix build`), see build.ps1, which passes the
+  preprocessor variables below with `-d`.
+
+  - Per user: no administrator, no UAC. Files in %LOCALAPPDATA%\Programs\OTheater, the registry in
+    HKCU, and the PATH of the user (HKCU\Environment). The data folder (%LOCALAPPDATA%\OTheater) is
+    not part of the package: install, repair, upgrade and uninstall never touch it.
+  - No UI: a double click installs at once into the folder above (there is no wizard and no EULA
+    page). [proposta]
+  - No WiX extension (so no `wix extension add`, which would download one): the custom actions are
+    the core ones, and the .msi carries nothing of WiX besides the standard Windows Installer tables.
+  - Unsigned (N247): SmartScreen warns on the first run.
+
+  Variables (all paths absolute or relative to the working directory of `wix build`):
+    Version           MSI ProductVersion, major.minor.build (build.ps1 derives it from the semver)
+    SemVer            the full version (with the pre-release tag), recorded in HKCU\Software\OTheater
+    OtExe             the single executable (Node SEA) of the P1; installed as ot.exe
+    JobLauncher       ot-job-launcher.exe (P2); installed next to ot.exe, where the adapter looks first
+    License           the LICENSE of the repository
+    Notices           the third-party notices (installed as THIRD_PARTY_NOTICES.md)
+    LauncherNotices   optional: the notices of the launcher (installed as THIRD_PARTY_NOTICES-job-launcher.md)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="OTheater"
+    Manufacturer="OTheater"
+    Version="$(Version)"
+    UpgradeCode="b2692c03-b0c0-49ca-a331-9331c0eb0988"
+    Scope="perUser"
+    Compressed="yes"
+    InstallerVersion="500"
+  >
+    <SummaryInformation Description="OTheater (Orchestration Theater)" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of OTheater is already installed. Remove it first to install this one."
+    />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="OtProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="OTheater" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="OTheater" Level="1">
+      <ComponentGroupRef Id="OtFiles" />
+    </Feature>
+
+    <ComponentGroup Id="OtFiles">
+      <!--
+        A per-user component needs a registry key path (ICE38), and the folders it creates in the
+        profile have to be removed on uninstall (ICE64): hence the RegistryValue with KeyPath and the
+        RemoveFolder elements. The PATH entry is added at the end of the PATH of the user, and removed
+        with the component.
+      -->
+      <Component Id="OtBinaries" Directory="INSTALLFOLDER">
+        <File Id="OtExe" Name="ot.exe" Source="$(OtExe)" />
+        <File Id="OtJobLauncher" Name="ot-job-launcher.exe" Source="$(JobLauncher)" />
+        <File Id="OtLicense" Name="LICENSE" Source="$(License)" />
+        <File Id="OtNotices" Name="THIRD_PARTY_NOTICES.md" Source="$(Notices)" />
+        <?ifdef LauncherNotices ?>
+        <File Id="OtLauncherNotices" Name="THIRD_PARTY_NOTICES-job-launcher.md" Source="$(LauncherNotices)" />
+        <?endif?>
+        <Environment Id="OtUserPath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="no" Permanent="no" />
+        <RemoveFolder Id="OtRemoveInstallFolder" On="uninstall" />
+        <RegistryKey Root="HKCU" Key="Software\OTheater" ForceDeleteOnUninstall="yes">
+          <RegistryValue Name="Version" Type="string" Value="$(SemVer)" KeyPath="yes" />
+          <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+        </RegistryKey>
+      </Component>
+
+      <!-- %LOCALAPPDATA%\Programs may not exist: it goes away on uninstall only if it is empty. -->
+      <Component Id="OtProgramsFolder" Directory="OtProgramsDir">
+        <RemoveFolder Id="OtRemoveProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\OTheater\Installer" Name="ProgramsFolder" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!--
+      The logon service (P3). `ot service install` creates the Scheduled Task of the user; with
+      the flag no-start the daemon is not started by the installer (it starts at the next logon, or when
+      `ot tui` needs it). `ot service uninstall` stops the daemon the task started and removes the
+      task; it never touches the data folder. The data folder is passed explicitly because the
+      process of a custom action may not have the environment of the user. Both run as the user
+      (Impersonate), never as SYSTEM, and neither fails the installation: without the service `ot tui`
+      starts a daemon of its own, and an installation that cannot be removed would be worse. [proposta]
+    -->
+    <CustomAction
+      Id="OtServiceInstall"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; service install --no-start"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+    />
+    <CustomAction
+      Id="OtServiceUninstall"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; service uninstall"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+    />
+
+    <InstallExecuteSequence>
+      <!-- REMOVE="ALL" is also true for the old product in a major upgrade: its service goes first, the new one installs its own. -->
+      <Custom Action="OtServiceUninstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="OtServiceInstall" After="InstallFiles" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
