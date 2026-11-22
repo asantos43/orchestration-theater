@@ -11,7 +11,7 @@ import {
   waitFor,
 } from './ink.test-support.js';
 import { startTuiApp, type RunningTui } from './run.js';
-import { DEFAULT_UI_SETTINGS } from './settings.js';
+import { DEFAULT_UI_SETTINGS, type KeyboardProtocol, type UiSettings } from './settings.js';
 import type { ProcessHost } from './terminal.js';
 import type { DaemonConnector } from './daemon-connection.js';
 
@@ -42,6 +42,7 @@ function fakeProcess(): ProcessHost & { readonly bus: EventEmitter } {
 
 async function open(
   connector: DaemonConnector = fixedConnector({ kind: 'offline' }),
+  settings: UiSettings = DEFAULT_UI_SETTINGS,
 ): Promise<Session> {
   const tty = new FakeTty();
   const err = new FakeTty();
@@ -52,7 +53,7 @@ async function open(
     stdout: tty as unknown as NodeJS.WriteStream,
     stderr: err as unknown as NodeJS.WriteStream,
     connector,
-    settings: DEFAULT_UI_SETTINGS,
+    settings,
     process: host,
     env: { LANG: 'en_US.UTF-8' },
     interactive: true,
@@ -170,6 +171,59 @@ describe('startTuiApp, the terminal', () => {
     await waitFor(() => session.tty.wrote('Nenhum daemon está rodando') || undefined, 'Portuguese');
     session.running.stop();
     await session.running.done;
+  });
+});
+
+/** What Ink writes for the kitty keyboard protocol: the question, the request (flag 1), the pop. */
+const KITTY = { query: '\x1b[?u', push: '\x1b[>1u', pop: '\x1b[<u' } as const;
+
+describe('startTuiApp, ui.keyboard.protocol', () => {
+  const withProtocol = (protocol: KeyboardProtocol): UiSettings => ({
+    ...DEFAULT_UI_SETTINGS,
+    keyboard: { protocol },
+  });
+
+  it('auto asks the terminal and, as it does not answer, asks for nothing', async () => {
+    const session = await open(undefined, withProtocol('auto'));
+    expect(session.tty.wrote(KITTY.query)).toBe(true);
+    expect(session.tty.wrote(KITTY.push)).toBe(false);
+    session.running.stop();
+    await session.running.done;
+    expectRestored(session.tty);
+  });
+
+  it('auto turns the protocol on when the terminal says it knows it', async () => {
+    const session = await open(undefined, withProtocol('auto'));
+    // `CSI ? flags u` is the answer of a terminal that has the protocol.
+    session.stdin.write('\x1b[?0u');
+    await waitFor(() => session.tty.wrote(KITTY.push) || undefined, 'the protocol turned on');
+    session.running.stop();
+    await session.running.done;
+    expect(session.tty.lastIndexOf(KITTY.pop)).toBeGreaterThan(session.tty.lastIndexOf(KITTY.push));
+  });
+
+  it('kitty turns it on without asking, and turns it off when the app ends', async () => {
+    const session = await open(undefined, withProtocol('kitty'));
+    expect(session.tty.wrote(KITTY.push)).toBe(true);
+    expect(session.tty.wrote(KITTY.query)).toBe(false);
+    session.stdin.write(KEYS.ctrlQ);
+    await expect(session.running.done).resolves.toBe(0);
+    expect(session.tty.lastIndexOf(KITTY.pop)).toBeGreaterThan(session.tty.lastIndexOf(KITTY.push));
+    expectRestored(session.tty);
+  });
+
+  it('kitty turns it off when the terminal is gone and the app ends with 129', async () => {
+    const session = await open(undefined, withProtocol('kitty'));
+    session.host.bus.emit('SIGHUP');
+    await expect(session.running.done).resolves.toBe(129);
+    expect(session.tty.lastIndexOf(KITTY.pop)).toBeGreaterThan(session.tty.lastIndexOf(KITTY.push));
+  });
+
+  it('off neither asks nor turns anything on', async () => {
+    const session = await open(undefined, withProtocol('off'));
+    session.running.stop();
+    await session.running.done;
+    for (const sequence of Object.values(KITTY)) expect(session.tty.wrote(sequence)).toBe(false);
   });
 });
 

@@ -18,6 +18,7 @@ describe('parseUiSettings', () => {
         historyWindow: 0,
       },
       runtime: { maxSemiSpaceMB: 2, maxOldSpaceMB: undefined, exitGraceMs: 2000 },
+      keyboard: { protocol: 'auto' },
       keymap: { preset: 'agents', environment: 'auto', overrides: {} },
       tuiLayout: {
         sidebarWidth: 30,
@@ -145,6 +146,7 @@ describe('parseUiSettings', () => {
         historyWindow: 500,
       },
       runtime: { maxSemiSpaceMB: 4, maxOldSpaceMB: 192, exitGraceMs: 500 },
+      keyboard: DEFAULT_UI_SETTINGS.keyboard,
       keymap: DEFAULT_UI_SETTINGS.keymap,
       tuiLayout: DEFAULT_UI_SETTINGS.tuiLayout,
       trajectories: DEFAULT_UI_SETTINGS.trajectories,
@@ -225,6 +227,15 @@ describe('parseUiSettings', () => {
     expect(settings.locale).toBe('auto');
     expect(settings.render).toEqual({ ...DEFAULT_UI_SETTINGS.render, coalesceMs: 5 });
     expect(settings.runtime).toEqual(DEFAULT_UI_SETTINGS.runtime);
+  });
+
+  it('ui.keyboard.protocol is auto by default, takes the other modes and falls back on the rest', () => {
+    expect(DEFAULT_UI_SETTINGS.keyboard).toEqual({ protocol: 'auto' });
+    expect(parseUiSettings({}).keyboard).toEqual({ protocol: 'auto' });
+    expect(parseUiSettings({ keyboard: { protocol: 'kitty' } }).keyboard.protocol).toBe('kitty');
+    expect(parseUiSettings({ keyboard: { protocol: 'off' } }).keyboard.protocol).toBe('off');
+    expect(parseUiSettings({ keyboard: { protocol: 'legacy' } }).keyboard.protocol).toBe('auto');
+    expect(parseUiSettings({ keyboard: 'kitty' }).keyboard).toEqual({ protocol: 'auto' });
   });
 
   it('inkPatches: [] turns the patches off; unknown names are dropped; repeats are merged', () => {
