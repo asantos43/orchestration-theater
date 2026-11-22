@@ -8,17 +8,16 @@ export function serviceIdOf(platform: NodeJS.Platform): string {
 }
 
 /**
- * THE one place that says what the service (and the daemon child of `ot tui`) runs. Before the
- * single executable (Phase 10, P1) it is the checkout: Node and the entry of `ot`, the same pair
- * `otLauncherOf()` of `cli.ts` hands to the commands by profile. P1 replaces the body of this
- * function by `resolveSelfCommand()` (the executable plus its mode, or Node plus the script), and
- * nothing else of the service changes. `undefined` when the entry of `ot` cannot be known.
+ * THE one place that says what the service (and the daemon child of `ot tui`) runs: the launcher of
+ * `ot` that `otLauncherOf()` of `cli.ts` builds from `resolveSelfCommand()` (Phase 10, P1). In a
+ * checkout, Node and the entry of `ot`; in the single executable, the executable alone (no entry,
+ * no `--ot-internal` mode: the daemon is the `ot` CLI). `undefined` when `ot` cannot be known.
  */
 export function resolveServiceCommand(
   launcher: OtLauncher | undefined,
 ): ServiceCommand | undefined {
   if (launcher === undefined) return undefined;
-  return { command: launcher.node, args: [launcher.entry] };
+  return { command: launcher.node, args: launcher.entry === undefined ? [] : [launcher.entry] };
 }
 
 /** `<self> daemon --data-dir <dir>`: the data folder is explicit, because a service has no `OT_DATA_DIR`. */

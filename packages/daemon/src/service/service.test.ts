@@ -99,7 +99,7 @@ describe('the definitions, as pure functions, against the reference files', () =
   });
 });
 
-describe('the command the service runs (the single point P1 replaces)', () => {
+describe('the command the service runs (one point, from resolveSelfCommand)', () => {
   it('is the checkout: Node and the entry of ot, then daemon with an explicit data folder', () => {
     const self = resolveServiceCommand({ node: '/n/node', entry: '/ot/dist/cli.js' });
     expect(self).toEqual({ command: '/n/node', args: ['/ot/dist/cli.js'] });
@@ -108,6 +108,11 @@ describe('the command the service runs (the single point P1 replaces)', () => {
       args: ['/ot/dist/cli.js', 'daemon', '--data-dir', '/d'],
     });
     expect(resolveServiceCommand(undefined)).toBeUndefined();
+    // The single executable (P1): `otLauncherOf()` gives the executable with no entry script.
+    expect(resolveServiceCommand({ node: '/opt/ot/otheater' })).toEqual({
+      command: '/opt/ot/otheater',
+      args: [],
+    });
   });
 
   it('has the ids of the plan: reverse DNS on macOS, a plain name elsewhere', () => {

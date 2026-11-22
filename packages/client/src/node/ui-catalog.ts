@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UI_LANGUAGES, UI_NAMESPACE, type UiCatalog, type UiCatalogResources } from '../ui/text.js';
+import { isSeaProcess, readSeaAsset } from './sea.js';
 
 /**
  * [proposta] Folder of the catalogs: `locales/` at the repository root, relative to this file, in
@@ -23,15 +24,20 @@ function isCatalog(value: unknown): value is UiCatalog {
  * resources as i18next takes them (`resources`, with the namespace `tui`). It reads the files
  * once; a missing or malformed catalog is an error, since a screen without text is a bug.
  */
-export async function loadUiCatalogs(
-  localesDir: string = DEFAULT_UI_LOCALES_DIR,
-): Promise<UiCatalogResources> {
+export async function loadUiCatalogs(localesDir?: string): Promise<UiCatalogResources> {
+  // In the single executable (Phase 10, P1) the catalogs are assets of the executable; an explicit
+  // folder still reads the disk.
+  const fromAssets = localesDir === undefined && isSeaProcess();
+  const folder = localesDir ?? DEFAULT_UI_LOCALES_DIR;
   const entries = await Promise.all(
     UI_LANGUAGES.map(async (language) => {
-      const file = join(localesDir, language, `${UI_NAMESPACE}.json`);
+      const key = `locales/${language}/${UI_NAMESPACE}.json`;
+      const file = fromAssets ? key : join(folder, language, `${UI_NAMESPACE}.json`);
       let parsed: unknown;
       try {
-        parsed = JSON.parse(await readFile(file, 'utf8')) as unknown;
+        const text = fromAssets ? readSeaAsset(key) : await readFile(file, 'utf8');
+        if (text === undefined) throw new Error('no such asset');
+        parsed = JSON.parse(text) as unknown;
       } catch (error) {
         throw new Error(`Cannot read the screen catalog ${file}: ${(error as Error).message}`, {
           cause: error,

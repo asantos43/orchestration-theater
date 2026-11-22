@@ -61,6 +61,15 @@ describe('shimContent (P28b, N159)', () => {
     expect(() => shimContent('win32', LAUNCHER, 'C:\\100%', 'codex/p')).toThrow();
   });
 
+  it('with no entry script (the single executable) runs the executable alone', () => {
+    const posixText = shimContent('posix', { node: '/opt/ot/otheater' }, '/d', 'codex/p');
+    expect(posixText).toContain(
+      `exec '/opt/ot/otheater' --data-dir '/d' profile exec 'codex/p' -- "$@"`,
+    );
+    const cmd = shimContent('win32', { node: 'C:\\ot\\otheater.exe' }, 'C:\\d', 'codex/p');
+    expect(cmd).toContain('"C:\\ot\\otheater.exe" --data-dir "C:\\d" profile exec "codex/p" -- %*');
+  });
+
   it.runIf(posix)('passes every argument as it was, through a real sh', async () => {
     // A launcher that prints its arguments, one per line, in place of node.
     const echo = join(root, 'echo-args');

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isSeaProcess, readSeaAsset } from '@otheater/client/node';
 import { createInstance, type TFunction } from 'i18next';
 import type { Env } from './paths.js';
 
@@ -65,13 +66,16 @@ export async function createTranslator(
 ): Promise<TFunction> {
   const dir = options.localesDir ?? DEFAULT_LOCALES_DIR;
   const namespace = options.namespace ?? CLI_NAMESPACE;
+  // In the single executable (Phase 10, P1) the catalogs are assets; an explicit folder reads the disk.
+  const fromAssets = options.localesDir === undefined && isSeaProcess();
   const resources = Object.fromEntries(
-    LOCALES.map((lng) => [
-      lng,
-      {
-        [namespace]: JSON.parse(readFileSync(`${dir}/${lng}/${namespace}.json`, 'utf8')) as object,
-      },
-    ]),
+    LOCALES.map((lng) => {
+      const text = fromAssets
+        ? readSeaAsset(`locales/${lng}/${namespace}.json`)
+        : readFileSync(`${dir}/${lng}/${namespace}.json`, 'utf8');
+      if (text === undefined) throw new Error(`The executable has no catalog ${lng}/${namespace}`);
+      return [lng, { [namespace]: JSON.parse(text) as object }];
+    }),
   );
   const instance = createInstance();
   await instance.init({
