@@ -23,6 +23,7 @@ export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
+export const UI_KEYBOARD_PROTOCOLS = ['auto', 'kitty', 'off'] as const;
 
 export type UiKeymapPreset = (typeof UI_KEYMAP_PRESETS)[number];
 export type UiKeymapEnvironmentMode = (typeof UI_KEYMAP_ENVIRONMENTS)[number];
@@ -83,6 +84,20 @@ export const UiRenderConfigSchema = z.strictObject({
     .default(['cache', 'grid']),
   historyWindow: z.int().min(0).default(0),
 });
+
+/**
+ * `ui.keyboard` [proposta]: how the interface asks the terminal for a keyboard that tells more keys
+ * apart. `protocol`: `auto` (default) asks the terminal if it speaks the kitty keyboard protocol
+ * and turns it on only when it answers, so Shift+Enter is told from Enter; `kitty` turns it on
+ * without asking (a terminal that does not know it ignores the request); `off` asks for nothing,
+ * and the new line stays on Ctrl+J and Alt+Enter. The protocol is turned off again when the
+ * interface ends or hands the terminal to another program.
+ */
+export const UiKeyboardConfigSchema = z.strictObject({
+  protocol: z.enum(UI_KEYBOARD_PROTOCOLS).default('auto'),
+});
+export type UiKeyboardConfig = z.output<typeof UiKeyboardConfigSchema>;
+export type UiKeyboardProtocol = (typeof UI_KEYBOARD_PROTOCOLS)[number];
 
 /**
  * `ui.runtime` (N37). `maxSemiSpaceMB`: 2, the young heap of V8 (`--max-semi-space-size`).

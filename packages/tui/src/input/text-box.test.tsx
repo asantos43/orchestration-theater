@@ -33,6 +33,10 @@ const K = {
   ctrlJ: '\n',
   shiftEnterKitty: '\x1b[13;2u',
   altEnter: '\x1b\r',
+  altEnterKitty: '\x1b[13;3u',
+  escKitty: '\x1b[27u',
+  ctrlCKitty: '\x1b[99;5u',
+  shiftTabKitty: '\x1b[9;2u',
   backspace: '\x7f',
   delete: '\x1b[3~',
   left: '\x1b[D',
@@ -218,6 +222,7 @@ describe('the text box', () => {
       ['Ctrl+J', K.ctrlJ],
       ['Shift+Enter (kitty protocol)', K.shiftEnterKitty],
       ['Alt+Enter', K.altEnter],
+      ['Alt+Enter (kitty protocol)', K.altEnterKitty],
     ])('%s inserts a new line instead of sending', async (_name, key) => {
       const box = mount();
       expect(await result(box, 'a', key, 'b')).toBe('a\nb');
@@ -377,6 +382,22 @@ describe('the text box', () => {
       await box.waitForText('deploy the app');
       await box.press('zzz');
       await box.waitForText('no message matches');
+    });
+
+    it('leaves the search with Esc written as CSI-u (ui.keyboard.protocol on)', async () => {
+      const history = new MemoryHistoryStore(500, ['old message']);
+      const box = mount({ history });
+      await box.press('wip');
+      await box.press(K.ctrlR);
+      await box.waitForText('old message');
+      await box.press(K.escKitty);
+      await box.waitForText('wip');
+      expect(box.frame()).not.toContain('Search the history');
+    });
+
+    it('does not write the CSI-u forms of Ctrl+C and Shift+Tab as text', async () => {
+      const box = mount();
+      expect(await result(box, 'a', K.ctrlCKitty, K.shiftTabKitty, 'b')).toBe('ab');
     });
 
     it('leaves the search with Esc and brings back what was written', async () => {

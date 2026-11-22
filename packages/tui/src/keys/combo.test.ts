@@ -39,6 +39,17 @@ describe('parseTerminalKey', () => {
     expect(parseTerminalKey('\x1b[13;2u')).toBe('Shift+Enter');
   });
 
+  // With `ui.keyboard.protocol` on (flag 1 of the kitty protocol) the terminal writes these keys as
+  // CSI-u: they must come out as the same combos the keymap already has.
+  it('reads the keys the kitty protocol disambiguates (ui.keyboard.protocol)', () => {
+    expect(parseTerminalKey('\x1b[27u')).toBe('Esc');
+    expect(parseTerminalKey('\x1b[99;5u')).toBe('Ctrl+C');
+    expect(parseTerminalKey('\x1b[113;5u')).toBe('Ctrl+Q');
+    expect(parseTerminalKey('\x1b[9;2u')).toBe('Shift+Tab');
+    expect(parseTerminalKey('\x1b[13;3u')).toBe('Alt+Enter');
+    expect(parseTerminalKey('\x1b[13;5u')).toBe('Ctrl+Enter');
+  });
+
   it('reads the plain keys', () => {
     expect(parseTerminalKey('\r')).toBe('Enter');
     expect(parseTerminalKey('\t')).toBe('Tab');
