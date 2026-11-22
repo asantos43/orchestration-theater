@@ -13368,6 +13368,94 @@
                       "detail"
                     ],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema3"
+                      },
+                      "form": {
+                        "type": "string",
+                        "enum": [
+                          "live",
+                          "new_session",
+                          "baton",
+                          "stored",
+                          "unchanged"
+                        ]
+                      },
+                      "fromExecutor": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "toExecutor": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "model": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "effort": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "override": {
+                        "type": "boolean"
+                      },
+                      "waited": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "director_switch"
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "form",
+                      "fromExecutor",
+                      "toExecutor",
+                      "model",
+                      "effort",
+                      "override",
+                      "waited",
+                      "kind"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               }
