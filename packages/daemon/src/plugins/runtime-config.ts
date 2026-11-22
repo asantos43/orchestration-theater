@@ -117,6 +117,16 @@ export type PluginNotice =
       readonly project: string;
       readonly failures: number;
       readonly reason: string;
+    }
+  | {
+      /**
+       * The manifest declares secrets that have no value in the vault (Phase 9, P7, N239): the
+       * server does not start in this project. Only the names, never a value. [proposta]
+       */
+      readonly kind: 'secret_missing';
+      readonly plugin: string;
+      readonly project: string;
+      readonly secrets: readonly string[];
     };
 
 /** Where the notices go besides the log. Must not throw: a throw is caught and logged. */

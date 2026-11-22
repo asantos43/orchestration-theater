@@ -1,16 +1,34 @@
 // SPDX-License-Identifier: MPL-2.0
-import { composeClock } from '../compose.js';
+import { createInterface } from 'node:readline';
+import {
+  hasErrorCode,
+  isLockableSecretVault,
+  PLUGIN_SECRET_NAME_PATTERN,
+  Secret,
+} from '@otheater/core';
+import { composeClock, composeVault } from '../compose.js';
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, type CommandContext } from '../commands.js';
 import { loadConfig } from '../config.js';
+import { unlockVault, type PasswordPrompt } from '../daemon.js';
+import { InstanceLock } from '../instance-lock.js';
 import { createSilentLogger } from '../logger.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { defaultRegistryEntries } from '../registries.js';
 import { formatActivation, summarizeActivation } from './activation-text.js';
 import { originTextOf, PluginInstaller, type InstallResult } from './install.js';
 import { PluginRegistry, type PluginView } from './registry.js';
+import { PluginSecrets } from './secrets.js';
 import type { CommandRunner } from './sources.js';
 
-export const PLUGIN_ACTIONS = ['install', 'list', 'update', 'remove', 'enable', 'disable'] as const;
+export const PLUGIN_ACTIONS = [
+  'install',
+  'list',
+  'update',
+  'remove',
+  'enable',
+  'disable',
+  'secret',
+] as const;
 export type PluginAction = (typeof PLUGIN_ACTIONS)[number];
 
 export function isPluginAction(name: string): name is PluginAction {
@@ -35,6 +53,12 @@ export interface PluginCommandDeps {
   readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
   /** Runs `npm` and `git` (default: the real ones). Tests give the real ones with a local registry. */
   readonly runner?: CommandRunner | undefined;
+  /** `secret set`: where the value is read from when there is no terminal (the first line). */
+  readonly input?: NodeJS.ReadableStream | undefined;
+  /** `secret set` in a terminal: asks the value without echo; `undefined` when the user gave up. */
+  readonly askHidden?: ((question: string) => Promise<string | undefined>) | undefined;
+  /** `secret set`: asks the master password when the vault is locked. */
+  readonly passwordPrompt?: PasswordPrompt | undefined;
 }
 
 /**
@@ -84,6 +108,20 @@ export async function runPluginCommand(
       if (args.length > 1) return usage('usage.pluginTooMany');
       if (options.project === undefined) return usage('usage.pluginNeedsProject');
       break;
+    case 'secret':
+      // `secret set <id> <NAME>`: the value is never an argument.
+      if (args[0] !== 'set' || args.length < 3) return usage('usage.pluginSecretUsage');
+      if (args.length > 3) return usage('usage.pluginTooMany');
+      if (!PLUGIN_SECRET_NAME_PATTERN.test(args[2] ?? '')) return usage('usage.pluginSecretName');
+      if (options.project === '') return usage('usage.pluginSecretProject');
+      break;
+  }
+
+  // The value is read before anything is opened, so an empty one stops the command early.
+  let secret: Secret | undefined;
+  if (action === 'secret') {
+    secret = await readSecretValue(context, deps);
+    if (secret === undefined) return EXIT_FAILED;
   }
 
   const paths = dataPaths(context.dataDir);
@@ -139,6 +177,8 @@ export async function runPluginCommand(
       }
       case 'enable':
         return await enable(context, deps, registry, first, options);
+      case 'secret':
+        return await setSecret(context, deps, registry, config, args, secret, options);
       case 'disable': {
         const changed = await registry.disable(first, options.project ?? '');
         if (options.json)
@@ -193,6 +233,121 @@ async function enable(
   await registry.enable(id, project, hash);
   if (options.json) printJson(context, { id, project, enabled: true, manifestHash: hash, summary });
   else context.out(t('plugin.enabled', { id, project }));
+  return EXIT_OK;
+}
+
+/**
+ * The value of `secret set`: the first line of the standard input, or, in a terminal, a hidden
+ * prompt. A trailing carriage return goes; nothing else is trimmed (a secret may have spaces).
+ * Prints a message and gives `undefined` when there is no value.
+ */
+async function readSecretValue(
+  context: CommandContext,
+  deps: PluginCommandDeps,
+): Promise<Secret | undefined> {
+  const { t } = context;
+  let raw: string | undefined;
+  if (deps.askHidden !== undefined) {
+    raw = await deps.askHidden(t('plugin.secretPrompt'));
+  } else if (deps.input !== undefined) {
+    const lines = createInterface({ input: deps.input, crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        raw = line;
+        break;
+      }
+    } finally {
+      lines.close();
+    }
+  } else {
+    context.err(t('usage.pluginSecretNoInput'));
+    return undefined;
+  }
+  const value = raw?.replace(/\r$/, '') ?? '';
+  if (value === '') {
+    context.err(t('plugin.secretEmpty'));
+    return undefined;
+  }
+  return new Secret(value);
+}
+
+/**
+ * `ot plugin secret set <id> <NAME> [--project <p>]` (N239): stores the value in the vault, under
+ * `plugin/<id>/<NAME>` or, with `--project`, `plugin/<id>/<project>/<NAME>`. The plugin must be
+ * installed and must declare the name (a typo would never be read). The value is never printed.
+ * A running daemon reads it the next time the server of the plugin starts. [proposta] The
+ * encrypted-file vault belongs to one process, so with it the command refuses while the daemon runs.
+ */
+async function setSecret(
+  context: CommandContext,
+  deps: PluginCommandDeps,
+  registry: PluginRegistry,
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  args: readonly string[],
+  secret: Secret | undefined,
+  options: PluginOptions,
+): Promise<number> {
+  const { t } = context;
+  const id = args[1] ?? '';
+  const name = args[2] ?? '';
+  if (secret === undefined) return EXIT_FAILED;
+  const view = registry.get(id);
+  if (view === undefined) {
+    context.err(t('plugin.secretNotInstalled', { id }));
+    return EXIT_FAILED;
+  }
+  const manifest = view.manifest ?? (await registry.readCurrent(id)).manifest;
+  if (!manifest.secrets.includes(name)) {
+    context.err(
+      t('plugin.secretNotDeclared', {
+        id,
+        name,
+        declared:
+          manifest.secrets.length === 0 ? t('plugin.projectsNone') : manifest.secrets.join(', '),
+      }),
+    );
+    return EXIT_FAILED;
+  }
+
+  const paths = dataPaths(context.dataDir);
+  let lock: InstanceLock | undefined;
+  if (context.overrides?.vault === undefined && config.adapters.vault !== 'keyring') {
+    try {
+      lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+    } catch (error) {
+      if (!hasErrorCode(error, 'CONFLICT')) throw error;
+      context.err(t('plugin.secretDaemonRunning'));
+      return EXIT_FAILED;
+    }
+  }
+  try {
+    const { vault } = composeVault(config, paths.dataDir, context.overrides);
+    if (isLockableSecretVault(vault)) {
+      await unlockVault(vault, deps.passwordPrompt, createSilentLogger());
+      if (vault.isLocked) {
+        context.err(t('plugin.secretVaultLocked'));
+        return EXIT_FAILED;
+      }
+    }
+    try {
+      await new PluginSecrets(vault).set(id, name, secret, options.project);
+    } finally {
+      if (isLockableSecretVault(vault)) await vault.lock();
+    }
+  } finally {
+    await lock?.release();
+  }
+  if (options.json) {
+    printJson(context, { id, name, project: options.project ?? null, stored: true });
+  } else {
+    context.out(
+      t(options.project === undefined ? 'plugin.secretStored' : 'plugin.secretStoredProject', {
+        id,
+        name,
+        project: options.project ?? '',
+      }),
+    );
+  }
   return EXIT_OK;
 }
 
