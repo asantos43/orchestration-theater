@@ -56,7 +56,7 @@ function pnpmOutput(
 const NO_JSON = { json: undefined, check: false };
 
 describe('commands', () => {
-  it('lists the six subcommands', () => {
+  it('lists the subcommands', () => {
     expect([...COMMANDS]).toEqual([
       'licenses',
       'notices',
@@ -64,6 +64,7 @@ describe('commands', () => {
       'credentials',
       'catalogs',
       'deps',
+      'adapter-locks',
     ]);
   });
 
@@ -283,6 +284,6 @@ snapshots:
 
   it('every command name is dispatched', () => {
     const names: CommandName[] = [...COMMANDS];
-    expect(names).toHaveLength(6);
+    expect(names).toHaveLength(7);
   });
 });

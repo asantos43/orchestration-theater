@@ -48,7 +48,8 @@ export function readDenies(
  * the profile folders of the client, `extraWritePaths` and the temporary folder of the adapter;
  * read everything except the secret paths. A worktree or profile folder that lies INSIDE a secret
  * path (the data directory of the daemon holds both) is read again by `allowRead`, which beats
- * `denyRead` for the same path in the library.
+ * `denyRead` for the same path in the library. So is a `readPaths` folder (the managed ACP
+ * adapters, P13), which is read but never written.
  */
 export function filesystemRules(request: SandboxRequest, tempDir: string): FilesystemRules {
   const writable = unique([
@@ -57,8 +58,8 @@ export function filesystemRules(request: SandboxRequest, tempDir: string): Files
     ...request.extraWritePaths,
     tempDir,
   ]);
-  const reopened = [request.worktree, ...request.profileDirs].filter((path) =>
-    isSecretPath(path, request.secretPaths),
+  const reopened = [request.worktree, ...request.profileDirs, ...(request.readPaths ?? [])].filter(
+    (path) => isSecretPath(path, request.secretPaths),
   );
   return {
     denyRead: readDenies(request.secretPaths, [request.worktree, ...request.extraWritePaths]),
@@ -175,6 +176,7 @@ export function commandIdFor(secret: Buffer, request: SandboxRequest, tempDir: s
   const material = JSON.stringify([
     request.worktree,
     [...request.profileDirs].sort(),
+    [...(request.readPaths ?? [])].sort(),
     [...request.extraWritePaths].sort(),
     [...request.secretPaths].sort(),
     [...allowedDomains(request)].sort(),

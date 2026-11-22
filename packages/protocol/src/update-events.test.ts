@@ -71,6 +71,22 @@ describe('the notice of a refused version', () => {
   });
 });
 
+describe('the notices of the managed ACP adapters (P13)', () => {
+  it('have their own kinds', () => {
+    for (const kind of [
+      'adapter_installing',
+      'adapter_installed',
+      'adapter_install_failed',
+      'adapter_missing',
+      'adapter_fallback',
+    ]) {
+      expect(DAEMON_NOTICE_KINDS).toContain(kind);
+      const notice = { kind, subject: 'codex-acp', detail: '2.6.0' };
+      expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);
+    }
+  });
+});
+
 describe('the /v1/updates routes', () => {
   it('are in the registry, with the methods and paths', () => {
     expect(Object.values(UPDATE_ROUTES).map((r) => [r.id, r.method, r.path])).toEqual([

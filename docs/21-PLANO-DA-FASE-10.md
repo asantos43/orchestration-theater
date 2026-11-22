@@ -40,7 +40,7 @@ Conferido no código em 2026-11-22, no commit `1f331f9` **[V]**. Os caminhos sã
   - `better-sqlite3` 13.2.0 (store e telemetria), cujos binários vêm dentro do tarball npm e carregam sem script de instalação (comentário do `pnpm-workspace.yaml`, que mantém `ignoredBuiltDependencies: [better-sqlite3]`);
   - `@napi-rs/keyring` 2.1.2, com um pacote `.node` por plataforma (`@napi-rs/keyring-linux-x64-gnu`, `-win32-x64-msvc`, `-darwin-arm64` e outros) [V: `pnpm-lock.yaml`].
   - Existe a alternativa `store.driver: node-sqlite` (N49), que usa o `node:sqlite` do Node, sem `.node` **[V: N49 registra o `DatabaseSync` do Node 24.18]**.
-- **Adaptadores ACP:** o `claude-agent-acp` e o `codex-acp` não são dependências do repositório. Os adaptadores de cliente os chamam como comandos do `PATH` (`DEFAULT_CODEX_COMMAND = { cmd: 'codex-acp' }`, e o equivalente no Claude Code) **[V: `client-codex` e `client-claude-code`]**. O executável único **não** os leva, a menos que a N254 decida o contrário.
+- **Adaptadores ACP:** o `claude-agent-acp` e o `codex-acp` não são dependências do repositório e o executável único **não** os leva. Até o P12 os adaptadores de cliente os chamavam como comandos do `PATH` (`DEFAULT_CODEX_COMMAND = { cmd: 'codex-acp' }`, e o equivalente no Claude Code) **[V: `client-codex` e `client-claude-code`]**. Desde 2026-11-22 (N254 revista, P13) o OTheater os **instala** em `<dataDir>/adapters/`, baixados do registro npm na versão fixa, e os roda com o Node embutido; o `PATH` continua sendo o caminho de reserva (`clients.<id>.adapter`).
 - **Windows:**
   - o lançador Rust (`native/job-launcher`, `ot-job-launcher`, crate `windows-sys` fixa em `=0.61.2`) existe e tem o job `windows-launcher` na CI (Fase 2, N58);
   - **o adaptador TypeScript que o usa não existe**: `defaultLauncher()` (`daemon/src/compose.ts`) devolve `undefined` em `win32`, e sem lançador as tentativas e as ferramentas de navegador ficam desligadas no Windows. Por isso o P2 é código novo, e não só empacotamento.
@@ -84,6 +84,7 @@ Os passos P1 a P11 seguem a lista do pedido do dono (executável, lançador, `.m
 | P10 | `THIRD_PARTY_NOTICES` por plataforma | P1 | P4, P5, P6, P8 | a fazer |
 | P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | a fazer |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
+| P13 | Adaptadores ACP gerenciados (N254 revista) | P1, P6 | P9, P11 | feito, falta a CI |
 
 Ondas **[proposta]**:
 - onda 1, logo depois do merge deste plano: **P1, P2, P3 e P7**, em paralelo, cada um nos seus arquivos;
@@ -128,8 +129,9 @@ Levadas por múltipla escolha, com a recomendação em primeiro lugar. **Decidid
   - (a) `openssl pkeyutl -rawin` quando o `openssl` do sistema suporta Ed25519, e, se não suportar, o modo interno do executável baixado confere o manifesto, **com aviso na tela** (**recomendada**): o `openssl` 3 já confere uma assinatura feita pelo Node **[V: neste Linux, OpenSSL 4.0.3]**, e o LibreSSL do macOS **[N: não testado]** pode não suportar. O modo interno usa a chave embutida no executável, então confia no que acabou de ser baixado, e por isso o aviso;
   - (b) exigir o `openssl` com Ed25519 e recusar a instalação sem ele: mais estrito, mas pode falhar num macOS de fábrica;
   - (c) só o SHA-256 pelo script, deixando o Ed25519 para o executável na primeira atualização: não cumpre a N248 ("confere SHA-256 e Ed25519").
-- **N254, os adaptadores ACP (`claude-agent-acp`, `codex-acp`) no executável único (P1, P6):**
-  - (a) são pré-requisito externo e a v1 não os leva (**recomendada**): o `ot init` confere se os comandos existem e mostra o comando `npm` que o usuário roda, sem executar nem baixar nada (a N249 não aprova mais downloads). O P1 mede, sem entregar, se os adaptadores caberiam como modos internos;
+- **N254, os adaptadores ACP (`claude-agent-acp`, `codex-acp`) no executável único (P1, P6, P13):**
+  - **Revista em 2026-11-22 (P13), por decisão do dono:** o OTheater instala os dois adaptadores em `<dataDir>/adapters/`, sem `sudo` e sem mexer no `PATH`, baixando do registro npm a versão fixa (`@agentclientprotocol/claude-agent-acp` 0.107.0 e `@agentclientprotocol/codex-acp` 2.6.0) e conferindo o sha512 do lockfile. Eles rodam com o Node embutido, por um modo interno do executável (`--ot-internal=run-adapter <entry.js>`); fora do SEA, com `process.execPath`. O padrão é instalar sozinho quando o cliente oficial está no `PATH` e o adaptador falta, com aviso na tela e evento. **Nada é redistribuído no executável**: o `@anthropic-ai/claude-agent-sdk` tem licença comercial, então o usuário o baixa do npm. Os nomes das chaves (`clients.adapters.install: auto|ask|command|off`, `clients.<id>.adapter: managed|path|<caminho>`, `clients.adapters.registry`) são **[proposta]**.
+  - (a, a decisão original, antes da revisão) eram pré-requisito externo e a v1 não os levava (**recomendada**): o `ot init` conferia se os comandos existiam e mostrava o comando `npm` que o usuário rodava, sem executar nem baixar nada. O P1 mede, sem entregar, se os adaptadores caberiam como modos internos;
   - (b) o instalador roda o `npm` para instalá-los: exige Node e npm na máquina, o que contraria o executável único, e baixa pacotes sem aprovação;
   - (c) empacotá-los no executável como modos internos: o executável cresce e muda de licença e de versão com cada cliente **[N: não medido]**; só se o P1 mostrar que cabe.
 - **N255, as plataformas da v1 (P1, P9, P10):**
@@ -283,7 +285,7 @@ Definido aqui para que os passos em paralelo (P5, P7, P8 e P9) concordem **[prop
 
 **O que fazer:** o comando mínimo, **sem perguntas no terminal**: instala o serviço (P3), sobe o daemon, confere se os comandos dos Executores existem e abre a TUI direto no assistente de configuração (§5.7 e §5.12; N121).
 
-- **Passos do comando:** (1) `ot service install` (se o serviço já existe, segue; o comando é idempotente); (2) sobe o daemon e espera a API; (3) confere os adaptadores ACP (`claude-agent-acp`, `codex-acp`) e os clientes no `PATH`, e **só mostra** o que falta, com o comando `npm` para o usuário rodar (N254 (a)); (4) abre a TUI na aba do assistente (`launchTui` já existe).
+- **Passos do comando:** (1) `ot service install` (se o serviço já existe, segue; o comando é idempotente); (2) sobe o daemon e espera a API; (3) confere os clientes no `PATH` e **só mostra** o que falta, com o comando `npm` para o usuário rodar (o OTheater nunca instala um cliente); os adaptadores ACP (`claude-agent-acp`, `codex-acp`) ele instala conforme `clients.adapters.install` (N254 revista, P13: `auto` instala, `ask` pergunta, `command` e `off` só mostram); (4) abre a TUI na aba do assistente (`launchTui` já existe).
 - **Idempotência e erros:** rodar duas vezes não duplica o serviço. Se algum passo falha, o comando sai com o motivo e o comando que repete aquele passo, sem desfazer o que deu certo.
 - **`--no-tui`** **[proposta]**: faz os passos 1 a 3 e sai, para os scripts (`install.sh` e `.msi`) e para os testes.
 - **Eventos e chaves:** nenhuma chave nova; o assistente é do daemon.
@@ -424,6 +426,29 @@ Limites da CI **[N: o P12 mede e registra o que o runner não permite]**: não h
 
 **Como ficou:** a preencher quando o passo for mesclado.
 
+### P13. Adaptadores ACP gerenciados (N254 revista)
+
+**O que fazer:** o OTheater instala o `claude-agent-acp` e o `codex-acp` em `<dataDir>/adapters/`, sem `sudo`, sem mexer no `PATH` e sem redistribuir nada no executável (o `@anthropic-ai/claude-agent-sdk` tem licença comercial: o usuário o baixa do npm).
+
+- **Versões fixas e conferência:** `@agentclientprotocol/claude-agent-acp` 0.107.0 e `@agentclientprotocol/codex-acp` 2.6.0, com o lockfile da subárvore de cada um em `daemon/src/adapters/locks/*.lock.json` (sha512 de cada pacote). O comando `adapter-locks [--check]` do `tools/verify` regera ou confere esses arquivos a partir dos lockfiles npm dos spikes, sem rede; o instalador nunca resolve versões sozinho.
+- **Instalador:** baixa cada tarball do registro (`clients.adapters.registry`), confere o sha512, lê o `tar.gz` com um leitor próprio e instala de forma atômica (pasta temporária e `rename`), com trava por arquivo (com retomada de trava velha) e uma marca com o resumo do lockfile. É idempotente: o `ot init` e o daemon instalando juntos é seguro.
+- **Execução:** o daemon chama o adaptador pelo caminho absoluto. Dentro do SEA, o modo interno `--ot-internal=run-adapter <entry.js>` carrega o módulo ES com `import()`; fora do SEA, roda `process.execPath <entry.js>`. `CODEX_PATH` e `CLAUDE_CODE_EXECUTABLE` apontam o adaptador para o cliente oficial do usuário, achado no `PATH`.
+- **Chaves [proposta]:** `clients.adapters.install: auto|ask|command|off` (padrão `auto`); `clients.<id>.adapter: managed|path|<caminho absoluto>` (padrão `managed`, que cai no `PATH` quando a instalação está desligada ou falhou, com aviso e evento); `clients.adapters.registry` (padrão `https://registry.npmjs.org`).
+- **Modos de `install`:** `auto` instala sozinho em segundo plano quando o cliente oficial está no `PATH` e o adaptador falta, com aviso na tela e evento; `ask` pergunta no `ot init` e instala depois de um sim (a pergunta na aba de configurações da TUI **não foi feita neste passo**); `command` só instala pelo `ot adapters install`; `off` nunca instala.
+- **Comando novo:** `ot adapters status|install [claude-code|codex]` (`--json` no `status`).
+- **Eventos (regra "situações viram eventos"):** `daemon.notice` com os tipos novos `adapter_installing`, `adapter_installed`, `adapter_install_failed`, `adapter_missing` e `adapter_fallback`.
+- **Integração:** `enabled: auto` de um cliente vale quando há o cliente oficial e o adaptador (instalado, em instalação ou no `PATH`); os adaptadores de cliente recebem o comando resolvido a cada início de processo (`command` aceita `{cmd,args}` ou uma função); a mensagem `AdapterUnavailable` de `ot profile ... login` diz o que fazer. A camada 3 do sandbox nega a leitura de `<data>`: o novo `SandboxRequest.readPaths` reabre `<data>/adapters`.
+
+**Arquivos:** `daemon/src/adapters/{manager,install,lock,tar}.ts` (novos), `daemon/src/commands/adapters.ts` (novo), `daemon/src/sea/{self-command,main}.ts`, `daemon/src/{clients,compose,config,paths,sandbox-wiring}.ts`, `daemon/src/commands/init.ts`, `daemon/src/profiles/login.ts`, `core/src/ports/sandbox.ts`, `adapters/sandbox-srt/src/policy.ts`, `adapters/client-{claude-code,codex}`, `protocol/src/notice-events.ts`, `tools/verify/src/adapter-locks.ts`, `tools/release/src/smoke.ts`, `locales/{en,pt-BR}/cli.json`.
+
+**Como ficou:** (2026-11-22)
+- **[V: testado aqui, com registro falso em `127.0.0.1`, `HOME` e dados temporários, `PATH` injetado]** o instalador (sha512, `tar.gz` cortado ou adulterado, trava, falha de rede com nova tentativa, idempotência); o `AdapterManager` (estados, eventos, reserva no `PATH`, "em instalação, tente de novo"); `selectClients` e a composição (`enabled: auto`); `ot adapters` (status em texto, em JSON e em pt-BR; instalar um ou os dois; `off` recusa com saída 1; cliente ou ação desconhecidos com saída 2; falha de instalação com saída 1); `ot init` (os modos `auto`, `ask` com sim e com não, `command`, `off`, cliente oficial ausente e falha de instalação); o modo `run-adapter` sob o Node comum; as regras do sandbox com `readPaths`; os catálogos `en` e `pt-BR`; `headers`, `credentials`, `catalogs`, `deps` e `adapter-locks --check` do `tools/verify`.
+- **Nenhum teste usa o registro real nem o `PATH` real** (esta máquina tem `claude` e `codex` no `PATH`): os testes injetam o registro falso ou o `NO_CLIENTS`, e o `cli-process.test.ts`, que roda o `dist/cli.js` de verdade, ganhou `clients.adapters.install: off` na configuração.
+- **[N: não verificado]** o `import()` de um módulo ES do disco dentro de um SEA de verdade: esta máquina só tem o Node da distribuição, sem a "sentinela" do SEA, e o build recusa injetar nele. A etapa `run-adapter` do `smoke` (`tools/release/src/smoke.ts`) foi escrita e fica para a CI (job do P1/P9). Também **[N]** a instalação real do `claude-agent-acp` 0.107.0 e do `codex-acp` 2.6.0 a partir do `registry.npmjs.org` (nada foi baixado), e qual `codex` o `codex-acp` roda: **[V]** o `codex` do `PATH` desta máquina é um script Node (`#!/usr/bin/env node`), que o `codex-acp` pode não aceitar em `CODEX_PATH`; **[N]** se aceita, e se prefere o binário nativo do pacote `@openai/codex`.
+- **Limite conhecido:** uma sessão iniciada durante a primeira instalação em segundo plano falha com a mensagem "em instalação, tente de novo"; a seguinte já usa o adaptador instalado.
+- **Para o dono conferir ([proposta]):** os nomes e os padrões das três chaves; `auto` como padrão (baixa do npm sem perguntar quando o cliente está no `PATH`); o código de saída 4 do `run-adapter` quando o módulo não carrega; os cinco tipos novos de `daemon.notice`.
+- **Para a CI:** a suíte completa (não rodou aqui: o `suite-slot.sh` não existe neste worktree, só os testes afetados), o `smoke` real e as plataformas Windows e macOS.
+
 ## Fora desta fase
 
 Ficam depois da v1 (N244, N247, N248):
@@ -444,7 +469,7 @@ Estado em 2026-11-22. As decisões de partida (N244 a N249) já estão decididas
 | N251, origem das versões | (a) o próprio repositório, em GitHub Releases | (b) um repositório só para as versões |
 | N252, artefatos do ensaio | (a) o ensaio guarda os artefatos por 1 dia, com chave efêmera | (b) o ensaio não sobe artefato |
 | N253, verificação do `install.sh` | (a) `openssl` se suporta Ed25519, senão o modo interno, com aviso | (b) exigir o `openssl`; (c) só o SHA-256 no script |
-| N254, adaptadores ACP | (a) pré-requisito externo, que o `ot init` confere e mostra | (b) o instalador roda o `npm`; (c) empacotá-los no executável |
+| N254, adaptadores ACP (revista em 2026-11-22) | o OTheater instala em `<dataDir>/adapters/` (npm, versão fixa, sha512), roda com o Node embutido; a v1 original: (a) pré-requisito externo | (b) o instalador roda o `npm`; (c) empacotá-los no executável |
 | N255, plataformas da v1 | (a) `linux-x64`, `win32-x64` e `darwin-arm64` | (b) mais `linux-arm64` e `darwin-x64` |
 
 Detalhes deste plano marcados **[proposta]** que **não** viraram pergunta (decididos como o mais conservador, para o dono rever): o layout de instalação e a troca por renomeação (P8); o prazo de 60 s da checagem de saúde; o serviço sem `linger` no Linux; a Tarefa Agendada no Windows; o release como rascunho; o formato do manifesto e a assinatura sobre os bytes exatos; os nomes das chaves (`updates.*`, `service.*`, `processes.windows_launcher`, `tui.start_daemon`, `signing.*`, `notices`); a variável `OT_RELEASE_GATE`; o `OT_DIST_CI`; a assinatura *ad hoc* no macOS arm64.

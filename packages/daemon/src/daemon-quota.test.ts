@@ -17,6 +17,7 @@ const KEY = 'sk-test-0000-not-a-real-key';
 const ALL_FOUND = {
   env: { PATH: '/usr/bin', HOME: '/home/u' },
   findExecutable: (command: string) => `/bin/${command}`,
+  adapters: { fetch: () => Promise.reject(new Error('offline')) },
 };
 
 const servers: Server[] = [];

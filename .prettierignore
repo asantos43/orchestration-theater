@@ -8,3 +8,4 @@ coverage
 LICENSE
 dist-test
 packages/tui/patches/
+packages/daemon/src/adapters/lock-data.ts

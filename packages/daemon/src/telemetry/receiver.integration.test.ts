@@ -23,7 +23,7 @@ import { makeRepo } from '../execution/attempt-fixture.js';
 import type { AttemptSpec } from '../execution/attempt-runner.js';
 import { itWithLauncher } from '../launcher-fixture.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { sessionSpanId, traceIdForPlay } from './span-ids.js';
 
 /**
@@ -378,6 +378,7 @@ telemetry:
         dataDir: tmp.dir,
         config,
         overrides: { clock: new FakeClock(), vault: new InMemorySecretVault() },
+        clientSearch: NO_CLIENTS,
         logger: createSilentLogger(),
         version: '0.0.0-test',
       });

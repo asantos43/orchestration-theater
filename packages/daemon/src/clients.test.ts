@@ -8,6 +8,7 @@ import {
   searchPath,
   selectClients,
   type FindExecutable,
+  type ManagedProbeFn,
 } from './clients.js';
 import { parseConfig } from './config.js';
 
@@ -115,6 +116,109 @@ describe('selectClients', () => {
       none,
     );
     expect(opencode).toMatchObject({ enabled: true, reason: 'forced_not_found' });
+  });
+});
+
+describe('selectClients with the managed adapters (P13)', () => {
+  const only =
+    (...names: string[]): FindExecutable =>
+    (command) =>
+      names.includes(command) ? `/bin/${command}` : undefined;
+  const probe =
+    (state: { installed?: boolean; official?: string; byItself?: boolean }): ManagedProbeFn =>
+    (id) =>
+      id === 'opencode'
+        ? undefined
+        : {
+            entry: `/data/adapters/${id}/index.js`,
+            installed: state.installed ?? false,
+            officialPath: state.official,
+            installsByItself: state.byItself ?? true,
+          };
+
+  it('turns a client on when its managed adapter is installed, without the official client or PATH', () => {
+    const [claude] = selectClients(parseConfig(''), DEFAULTS, only(), probe({ installed: true }));
+    expect(claude).toMatchObject({
+      enabled: true,
+      reason: 'managed_installed',
+      executable: '/data/adapters/claude-code/index.js',
+    });
+  });
+
+  it('turns it on while the install is pending when the official client is in PATH and install is auto', () => {
+    const [claude, codex] = selectClients(
+      parseConfig(''),
+      DEFAULTS,
+      only(),
+      probe({ official: '/bin/claude' }),
+    );
+    expect(claude).toMatchObject({ enabled: true, reason: 'managed_pending' });
+    expect(codex).toMatchObject({ enabled: true, reason: 'managed_pending' });
+  });
+
+  it('leaves it off, with its own reason, when nothing installs by itself', () => {
+    const [claude] = selectClients(
+      parseConfig(''),
+      DEFAULTS,
+      only(),
+      probe({ official: '/bin/claude', byItself: false }),
+    );
+    expect(claude).toMatchObject({ enabled: false, reason: 'adapter_missing' });
+  });
+
+  it('on a missing adapter, enabled: true still forces it on and says it will fail', () => {
+    const [claude] = selectClients(
+      parseConfig('clients:\n  claude-code:\n    enabled: true\n'),
+      DEFAULTS,
+      only(),
+      probe({ official: '/bin/claude', byItself: false }),
+    );
+    expect(claude).toMatchObject({ enabled: true, reason: 'forced_not_found' });
+  });
+
+  it('without the official client and without the adapter nothing turns on', () => {
+    const [claude] = selectClients(parseConfig(''), DEFAULTS, only(), probe({}));
+    expect(claude).toMatchObject({ enabled: false, reason: 'not_found' });
+  });
+
+  it('an adapter in PATH still turns the client on (the fallback of "managed")', () => {
+    const [claude] = selectClients(parseConfig(''), DEFAULTS, only('claude-agent-acp'), probe({}));
+    expect(claude).toMatchObject({ enabled: true, reason: 'found_in_path' });
+  });
+
+  it('an absolute adapter turns the client on and is not probed', () => {
+    const [claude, codex] = selectClients(
+      parseConfig('clients:\n  claude-code:\n    adapter: /opt/acp/claude.js\n'),
+      DEFAULTS,
+      only(),
+      probe({ installed: true }),
+    );
+    expect(claude).toMatchObject({
+      enabled: true,
+      reason: 'adapter_configured',
+      executable: '/opt/acp/claude.js',
+    });
+    expect(codex?.reason).toBe('managed_installed');
+  });
+
+  it('adapter: path ignores the managed one', () => {
+    const [claude] = selectClients(
+      parseConfig('clients:\n  claude-code:\n    adapter: path\n'),
+      DEFAULTS,
+      only(),
+      probe({ installed: true, official: '/bin/claude' }),
+    );
+    expect(claude).toMatchObject({ enabled: false, reason: 'not_found' });
+  });
+
+  it('enabled: false wins over everything', () => {
+    const [claude] = selectClients(
+      parseConfig('clients:\n  claude-code:\n    enabled: false\n'),
+      DEFAULTS,
+      only(),
+      probe({ installed: true }),
+    );
+    expect(claude).toMatchObject({ enabled: false, reason: 'disabled' });
   });
 });
 

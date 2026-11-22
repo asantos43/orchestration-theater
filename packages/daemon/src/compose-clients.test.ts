@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { type ClientAdapter, type Profile } from '@otheater/core';
 import { FakeClock, FakeProcessLauncher, FakeSessionTransport } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
+import { fixtureAdapter, startFakeRegistry } from './adapters/adapter-fixture.js';
 import { pathFinder, type ClientFactoryParts, type FindExecutable } from './clients.js';
 import { DEFAULT_CLIENT_EXECUTABLES, productionClients } from './compose.js';
 import { parseConfig } from './config.js';
@@ -17,6 +18,8 @@ import {
 
 const ALL_FOUND: FindExecutable = (command) => `/bin/${command}`;
 const NOTHING: FindExecutable = () => undefined;
+/** No test reaches the real npm registry: the managed adapters' download fails offline. */
+const OFFLINE = { fetch: () => Promise.reject(new Error('offline')) };
 /** Not a real environment: what the daemon would hand to the clients. */
 const ENV = { PATH: '/usr/bin', HOME: '/home/u', ANTHROPIC_API_KEY: 'sk-not-real', CUSTOM: 'x' };
 /** The architecture's default refuses a policy the clients cannot guarantee (no sandbox yet); the tests look at what is built. */
@@ -63,9 +66,11 @@ describe('productionClients', () => {
   it('builds the three adapters when the three executables are found, in a fixed order', async () => {
     const t = await setup();
     try {
-      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
-        t.parts,
-      );
+      const adapters = productionClients(parseConfig(''), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
+      })(t.parts);
       expect(adapters.map((a) => a.id)).toEqual(['claude-code', 'codex', 'opencode']);
       expect(byId(adapters, 'claude-code').processModel).toBe('process-per-session');
       expect(byId(adapters, 'codex').processModel).toBe('multi-session');
@@ -82,7 +87,11 @@ describe('productionClients', () => {
       const find: FindExecutable = (command) =>
         command === 'codex-acp' ? '/bin/codex-acp' : undefined;
       const config = parseConfig('clients:\n  opencode:\n    enabled: false\n');
-      const adapters = productionClients(config, { env: ENV, findExecutable: find })(t.parts);
+      const adapters = productionClients(config, {
+        env: ENV,
+        findExecutable: find,
+        adapters: OFFLINE,
+      })(t.parts);
       expect(adapters.map((a) => a.id)).toEqual(['codex']);
       const reasons: Record<string, unknown> = Object.fromEntries(
         t.lines
@@ -103,7 +112,11 @@ describe('productionClients', () => {
     const t = await setup();
     try {
       expect(
-        productionClients(parseConfig(''), { env: ENV, findExecutable: NOTHING })(t.parts),
+        productionClients(parseConfig(''), {
+          env: ENV,
+          findExecutable: NOTHING,
+          adapters: OFFLINE,
+        })(t.parts),
       ).toEqual([]);
     } finally {
       await t.dispose();
@@ -116,7 +129,11 @@ describe('productionClients', () => {
       const config = parseConfig(
         'clients:\n  codex:\n    command: { cmd: /opt/codex-acp }\n  opencode:\n    enabled: true\n',
       );
-      const adapters = productionClients(config, { env: ENV, findExecutable: NOTHING })(t.parts);
+      const adapters = productionClients(config, {
+        env: ENV,
+        findExecutable: NOTHING,
+        adapters: OFFLINE,
+      })(t.parts);
       expect(adapters.map((a) => a.id)).toEqual(['codex', 'opencode']);
       expect(t.lines.some((l) => l.level === 'warn' && l.fields.client === 'opencode')).toBe(true);
     } finally {
@@ -129,7 +146,10 @@ describe('productionClients', () => {
     try {
       const situations = new RecordingSituations();
       const config = parseConfig('clients:\n  opencode:\n    enabled: true\n');
-      productionClients(config, { env: ENV, findExecutable: NOTHING })({ ...t.parts, situations });
+      productionClients(config, { env: ENV, findExecutable: NOTHING, adapters: OFFLINE })({
+        ...t.parts,
+        situations,
+      });
       expect(situations.of('daemon.notice')).toEqual([
         { kind: 'client_not_found', subject: 'opencode', detail: expect.any(String) as string },
       ]);
@@ -163,7 +183,7 @@ describe('productionClients', () => {
     try {
       const all = parseConfig(`${OPEN}clients:\n  claude-code:\n    env_inherit: all\n`);
       const claude = byId(
-        productionClients(all, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(all, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(t.parts),
         'claude-code',
       );
       const spec = await claude.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir);
@@ -176,7 +196,9 @@ describe('productionClients', () => {
         `${OPEN}clients:\n  claude-code:\n    env_inherit: all\n    account_env: keep\n    command: { cmd: node, args: [acp.js] }\n`,
       );
       const kept = byId(
-        productionClients(keep, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(keep, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'claude-code',
       );
       const keptSpec = await kept.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir);
@@ -194,7 +216,9 @@ describe('productionClients', () => {
         `${OPEN}clients:\n  codex:\n    command: { cmd: /opt/codex-acp }\n    env_allow: [CUSTOM]\n    env: { RUST_LOG: warn }\n`,
       );
       const codex = byId(
-        productionClients(config, { env: ENV, findExecutable: NOTHING })(t.parts),
+        productionClients(config, { env: ENV, findExecutable: NOTHING, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       const spec = await codex.launchSpec(t.profile('codex'), TEST_POLICY, t.dir);
@@ -217,7 +241,9 @@ describe('productionClients', () => {
     try {
       const config = parseConfig('clients:\n  codex:\n    process_model: process-per-session\n');
       const codex = byId(
-        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       expect(codex.processModel).toBe('process-per-session');
@@ -231,7 +257,9 @@ describe('productionClients', () => {
     try {
       const config = parseConfig('clients:\n  codex:\n    quota: { timeout: 80ms }\n');
       const codex = byId(
-        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       expect(codex.quota.capabilities()).toEqual({
@@ -269,7 +297,9 @@ describe('productionClients', () => {
         ].join('\n'),
       );
       const codex = byId(
-        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       expect(codex.quota.capabilities()).toEqual({
@@ -293,7 +323,11 @@ describe('productionClients', () => {
     const t = await setup();
     try {
       const opencode = byId(
-        productionClients(parseConfig(OPEN), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(parseConfig(OPEN), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
+        })(t.parts),
         'opencode',
       );
       const profile = t.profile('opencode');
@@ -309,7 +343,7 @@ describe('productionClients', () => {
         `${OPEN}clients:\n  opencode:\n    isolation: [data, config, state, cache]\n    project_config: enabled\n    command: { cmd: /opt/opencode }\n`,
       );
       const other = byId(
-        productionClients(wide, { env: ENV, findExecutable: NOTHING })(t.parts),
+        productionClients(wide, { env: ENV, findExecutable: NOTHING, adapters: OFFLINE })(t.parts),
         'opencode',
       );
       const wideSpec = await other.launchSpec(t.profile('opencode'), TEST_POLICY, t.dir);
@@ -326,7 +360,11 @@ describe('productionClients', () => {
     try {
       const model = (text: string): string =>
         byId(
-          productionClients(parseConfig(text), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+          productionClients(parseConfig(text), {
+            env: ENV,
+            findExecutable: ALL_FOUND,
+            adapters: OFFLINE,
+          })(t.parts),
           'opencode',
         ).processModel;
       expect(model('')).toBe('multi-session');
@@ -343,7 +381,11 @@ describe('productionClients', () => {
     const t = await setup();
     try {
       const opencode = byId(
-        productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(parseConfig(''), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
+        })(t.parts),
         'opencode',
       );
       await mkdir(dataPaths(t.dir).profiles, { recursive: true });
@@ -363,7 +405,11 @@ describe('productionClients', () => {
     const t = await setup();
     try {
       const opencode = byId(
-        productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(parseConfig(''), {
+          env: ENV,
+          findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
+        })(t.parts),
         'opencode',
       );
       await expect(opencode.models.list({ client: 'opencode', profile: '../x' })).rejects.toThrow(
@@ -378,9 +424,11 @@ describe('productionClients', () => {
   it('applies security.* to every adapter: a field short of layers is refused by default', async () => {
     const t = await setup();
     try {
-      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
-        t.parts,
-      );
+      const adapters = productionClients(parseConfig(''), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
+      })(t.parts);
       for (const adapter of adapters) {
         await expect(adapter.launchSpec(t.profile(adapter.id), TEST_POLICY, t.dir)).rejects.toThrow(
           /writeScope|network/,
@@ -389,6 +437,7 @@ describe('productionClients', () => {
       const lax = productionClients(parseConfig('security:\n  unenforced: warn\n'), {
         env: ENV,
         findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
       })(t.parts);
       for (const adapter of lax) {
         await adapter.launchSpec(t.profile(adapter.id), TEST_POLICY, t.dir);
@@ -412,6 +461,7 @@ describe('the default catalog readers', () => {
       const adapters = productionClients(parseConfig('security:\n  catalog_probe: refuse\n'), {
         env: ENV,
         findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
       })(t.parts);
       const claude = byId(adapters, 'claude-code');
       const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
@@ -428,9 +478,11 @@ describe('the default catalog readers', () => {
   it('with the default catalog_probe: allow, the catalogs read the fake options although unenforced is refuse', async () => {
     const t = await setup();
     try {
-      const adapters = productionClients(parseConfig(''), { env: ENV, findExecutable: ALL_FOUND })(
-        t.parts,
-      );
+      const adapters = productionClients(parseConfig(''), {
+        env: ENV,
+        findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
+      })(t.parts);
       // The same adapters still refuse a work session.
       await expect(
         byId(adapters, 'codex').launchSpec(t.profile('codex'), TEST_POLICY, t.dir),
@@ -465,7 +517,7 @@ describe('the default catalog readers', () => {
       try {
         const adapters = productionClients(
           parseConfig(`security:\n  catalog_probe_log: ${mode}\n`),
-          { env: ENV, findExecutable: ALL_FOUND },
+          { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE },
         )(t.parts);
         for (const id of ['claude-code', 'codex']) {
           const adapter = byId(adapters, id);
@@ -496,7 +548,9 @@ describe('the default catalog readers', () => {
     const t = await setup();
     try {
       const claude = byId(
-        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'claude-code',
       );
       const models = await claude.models.list({ client: 'claude-code', profile: 'work' });
@@ -517,7 +571,9 @@ describe('the default catalog readers', () => {
     const t = await setup();
     try {
       const codexAdapter = byId(
-        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       const models = await codexAdapter.models.list({ client: 'codex', profile: 'work' });
@@ -535,6 +591,7 @@ describe('the default catalog readers', () => {
         productionClients(open('clients:\n  claude-code:\n    model_catalog: reserve\n'), {
           env: ENV,
           findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
         })(t.parts),
         'claude-code',
       );
@@ -553,6 +610,7 @@ describe('the default catalog readers', () => {
         productionClients(open('clients:\n  codex:\n    model_catalog: none\n'), {
           env: ENV,
           findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
         })(t.parts),
         'codex',
       );
@@ -572,6 +630,7 @@ describe('the default catalog readers', () => {
         productionClients(open(), {
           env: ENV,
           findExecutable: ALL_FOUND,
+          adapters: OFFLINE,
           claudeConfigOptions: () =>
             Promise.resolve([
               { id: 'model', type: 'select', options: [{ value: 'injected', name: 'Injected' }] },
@@ -591,12 +650,16 @@ describe('the default catalog readers', () => {
     const t = await setup();
     try {
       const claude = byId(
-        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'claude-code',
       );
       // `session_or_reserve` falls back to the reserve; the catalog of Codex has none and rejects.
       const codexAdapter = byId(
-        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND })(t.parts),
+        productionClients(open(), { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       await expect(codexAdapter.models.list({ client: 'codex', profile: '../x' })).rejects.toThrow(
@@ -617,6 +680,7 @@ describe('the veto of modes of the production clients', () => {
       const adapters = productionClients(parseConfig(OPEN), {
         env: ENV,
         findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
       })(t.parts);
       const vetoed: Record<string, string[]> = {
         'claude-code': ['bypassPermissions', 'dontAsk', 'auto'],
@@ -666,7 +730,9 @@ describe('clients.codex.inner_sandbox (N129)', () => {
       const config = parseConfig(`${OPEN}${yaml}`);
       const parts = withLayer3 ? { ...t.parts, sandbox: layer3 } : t.parts;
       const codex = byId(
-        productionClients(config, { env: ENV, findExecutable: ALL_FOUND })(parts),
+        productionClients(config, { env: ENV, findExecutable: ALL_FOUND, adapters: OFFLINE })(
+          parts,
+        ),
         'codex',
       );
       const profile = t.profile('codex');
@@ -744,7 +810,11 @@ describe('the client version (N63)', () => {
       for (const [id, [name, command]] of Object.entries(NAMES)) {
         const find = await fakeInstall(join(t.dir, id), name, '4.5.6', command);
         const adapter = byId(
-          productionClients(parseConfig(OPEN), { env: ENV, findExecutable: find })(t.parts),
+          productionClients(parseConfig(OPEN), {
+            env: ENV,
+            findExecutable: find,
+            adapters: OFFLINE,
+          })(t.parts),
           id,
         );
         expect(adapter.clientVersion).toEqual({ version: '4.5.6', source: 'package_json' });
@@ -765,6 +835,7 @@ describe('the client version (N63)', () => {
       const adapters = productionClients(parseConfig(OPEN), {
         env: ENV,
         findExecutable: ALL_FOUND,
+        adapters: OFFLINE,
       })(t.parts);
       for (const adapter of adapters) {
         expect(adapter.clientVersion).toEqual({ version: 'unknown', source: 'unknown' });
@@ -783,7 +854,7 @@ describe('the client version (N63)', () => {
         byId(
           productionClients(
             parseConfig(`${OPEN}clients:\n  codex:\n    version_source: ${mode}\n`),
-            { env: ENV, findExecutable: find },
+            { env: ENV, findExecutable: find, adapters: OFFLINE },
           )(t.parts),
           'codex',
         ).clientVersion.version;
@@ -805,7 +876,7 @@ describe('the client version (N63)', () => {
           `${OPEN}clients:\n  codex:\n    version_source: ${mode}\n    client_version: '7.7.7'\n`,
         );
         const codex = byId(
-          productionClients(config, { env: ENV, findExecutable: find })(t.parts),
+          productionClients(config, { env: ENV, findExecutable: find, adapters: OFFLINE })(t.parts),
           'codex',
         );
         expect(codex.clientVersion).toEqual({ version: '7.7.7', source: 'config' });
@@ -835,6 +906,7 @@ describe('the client version (N63)', () => {
           productionClients(parseConfig(`${OPEN}clients:\n  codex:\n${extra}`), {
             env: ENV,
             findExecutable: find,
+            adapters: OFFLINE,
           })(t.parts),
           'codex',
         );
@@ -852,7 +924,9 @@ describe('the client version (N63)', () => {
     try {
       const find = await fakeInstall(t.dir, '@agentclientprotocol/codex-acp', '2.6.0', 'codex-acp');
       const codex = byId(
-        productionClients(parseConfig(OPEN), { env: ENV, findExecutable: find })(t.parts),
+        productionClients(parseConfig(OPEN), { env: ENV, findExecutable: find, adapters: OFFLINE })(
+          t.parts,
+        ),
         'codex',
       );
       const before = codex.adapterVersion;
@@ -890,7 +964,7 @@ describe('the client version (N63)', () => {
       const codex = byId(
         productionClients(
           parseConfig(`${OPEN}clients:\n  codex:\n    version_source: package_json\n`),
-          { env: ENV, findExecutable: find },
+          { env: ENV, findExecutable: find, adapters: OFFLINE },
         )(t.parts),
         'codex',
       );
@@ -898,6 +972,143 @@ describe('the client version (N63)', () => {
       const session = await codex.openSession(t.profile('codex'), TEST_POLICY, t.dir, t.transport);
       await session.close();
       expect(codex.clientVersion).toEqual({ version: '2.6.0', source: 'package_json' });
+    } finally {
+      await t.dispose();
+    }
+  });
+});
+
+describe('the managed ACP adapters (P13, N254 revised)', () => {
+  const NODE = '/opt/node/bin/node';
+  const only =
+    (...names: string[]): FindExecutable =>
+    (command) =>
+      names.includes(command) ? `/bin/${command}` : undefined;
+  const LINUX = { os: 'linux', cpu: 'x64', libc: 'glibc' } as const;
+
+  it("installs the missing adapter in the background and then runs it with the daemon's Node", async () => {
+    const t = await setup();
+    const fixture = fixtureAdapter();
+    const registry = await startFakeRegistry(fixture);
+    try {
+      const situations = new RecordingSituations();
+      const config = parseConfig(`${OPEN}clients:\n  adapters:\n    registry: ${registry.url}\n`);
+      const adapters = productionClients(config, {
+        env: ENV,
+        findExecutable: only('claude'),
+        adapters: {
+          lockOf: (id) => ({ ...fixture.lock, id }),
+          platform: LINUX,
+          self: { sea: false, execPath: NODE },
+          installOptions: { retryDelayMs: 0, retries: 0 },
+        },
+      })({ ...t.parts, situations });
+      // On while it installs: the official client is in PATH and the adapter is on its way.
+      expect(adapters.map((a) => a.id)).toEqual(['claude-code']);
+      const claude = byId(adapters, 'claude-code');
+      await expect(claude.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir)).rejects.toThrow(
+        /being installed/,
+      );
+      const entry = join(
+        dataPaths(t.dir).adapters,
+        'claude-agent-acp',
+        '1.2.3',
+        'node_modules',
+        'fake-acp',
+        'dist',
+        'index.js',
+      );
+      await until(() => situations.of('daemon.notice').length >= 2);
+      const spec = await claude.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir);
+      expect(spec).toMatchObject({ cmd: NODE, args: [entry] });
+      // The adapter drives the user's own client, never a bundled one.
+      expect(spec.env.CLAUDE_CODE_EXECUTABLE).toBe('/bin/claude');
+      expect(situations.of('daemon.notice')).toMatchObject([
+        { kind: 'adapter_installing' },
+        { kind: 'adapter_installed' },
+      ]);
+    } finally {
+      await registry.close();
+      await t.dispose();
+    }
+  });
+
+  it.each(['ask', 'command', 'off'])(
+    'with install: %s downloads nothing, leaves the client off and says what is missing',
+    async (install) => {
+      const t = await setup();
+      try {
+        const situations = new RecordingSituations();
+        const adapters = productionClients(
+          parseConfig(`clients:\n  adapters:\n    install: ${install}\n`),
+          { env: ENV, findExecutable: only('codex'), adapters: OFFLINE },
+        )({ ...t.parts, situations });
+        expect(adapters).toEqual([]);
+        expect(situations.of('daemon.notice')).toMatchObject([
+          { kind: 'adapter_missing', subject: 'codex-acp' },
+        ]);
+      } finally {
+        await t.dispose();
+      }
+    },
+  );
+
+  it('falls back to the adapter in PATH, with a warning and an event, when install is off', async () => {
+    const t = await setup();
+    try {
+      const situations = new RecordingSituations();
+      const adapters = productionClients(
+        parseConfig(`${OPEN}clients:\n  adapters:\n    install: off\n`),
+        { env: ENV, findExecutable: only('claude', 'claude-agent-acp'), adapters: OFFLINE },
+      )({ ...t.parts, situations });
+      const claude = byId(adapters, 'claude-code');
+      const spec = await claude.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir);
+      expect(spec).toMatchObject({ cmd: 'claude-agent-acp', args: [] });
+      expect(situations.of('daemon.notice')).toMatchObject([{ kind: 'adapter_fallback' }]);
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('adapter: path and an absolute adapter start what they name', async () => {
+    const t = await setup();
+    try {
+      const config = parseConfig(
+        `${OPEN}clients:\n  claude-code:\n    adapter: path\n  codex:\n    adapter: /opt/acp/codex-acp\n`,
+      );
+      const adapters = productionClients(config, {
+        env: ENV,
+        findExecutable: only('claude-agent-acp', 'codex'),
+        adapters: OFFLINE,
+      })(t.parts);
+      const claude = byId(adapters, 'claude-code');
+      const codex = byId(adapters, 'codex');
+      expect(await claude.launchSpec(t.profile('claude-code'), TEST_POLICY, t.dir)).toMatchObject({
+        cmd: 'claude-agent-acp',
+      });
+      expect(await codex.launchSpec(t.profile('codex'), TEST_POLICY, t.dir)).toMatchObject({
+        cmd: '/opt/acp/codex-acp',
+      });
+    } finally {
+      await t.dispose();
+    }
+  });
+
+  it('a configured command still wins over every adapter source', async () => {
+    const t = await setup();
+    try {
+      const config = parseConfig(
+        `${OPEN}clients:\n  codex:\n    adapter: /opt/acp/other\n    command: { cmd: /opt/codex-acp }\n`,
+      );
+      const codex = byId(
+        productionClients(config, { env: ENV, findExecutable: NOTHING, adapters: OFFLINE })(
+          t.parts,
+        ),
+        'codex',
+      );
+      expect(await codex.launchSpec(t.profile('codex'), TEST_POLICY, t.dir)).toMatchObject({
+        cmd: '/opt/codex-acp',
+      });
     } finally {
       await t.dispose();
     }

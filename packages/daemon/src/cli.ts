@@ -59,6 +59,8 @@ import {
   type ServiceHost,
 } from './commands/service.js';
 import { spawnDetachedDaemon, type DaemonSpawn } from './service/ensure-daemon.js';
+import { isAdaptersAction, runAdaptersCommand, type AdaptersSeam } from './commands/adapters.js';
+import { isManagedClient } from './adapters/manager.js';
 import { runInitCommand } from './commands/init.js';
 import { execRunner } from './service/command-runner.js';
 import { createServiceManager } from './service/index.js';
@@ -113,6 +115,8 @@ export interface CliDeps {
    * start a detached daemon. Without it `ot service` has no manager and `ot tui` starts no daemon.
    */
   readonly serviceHost?: ServiceHost | undefined;
+  /** The seams of the managed ACP adapters (P13): the download, the platform, how the program runs itself. Tests only. */
+  readonly adapters?: AdaptersSeam | undefined;
 }
 
 /** What `ot tui` hands to the launcher: the data folder and the `ui` part of the configuration. */
@@ -156,6 +160,7 @@ const COMMANDS = [
   'service',
   'uninstall',
   'init',
+  'adapters',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -430,10 +435,33 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
             ...serviceDeps(),
             spawnDaemon: deps.serviceHost?.spawnDaemon ?? noSpawn,
             find: deps.serviceHost?.find,
+            adapters: deps.adapters,
             // The interface is only offered in a terminal; `runTui` also checks the daemon again.
             openTui: deps.interactive === true ? (ui) => runTui(ui) : undefined,
           },
           { noTui: values['no-tui'] === true },
+        );
+      }
+      case 'adapters': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingAdaptersAction'));
+        if (!isAdaptersAction(action))
+          return usageError(t('usage.unknownAdaptersAction', { action }));
+        if (action === 'status' && args.length > 0)
+          return usageError(t('usage.tooManyArguments', { command }));
+        const unknown = args.find((name) => !isManagedClient(name));
+        if (unknown !== undefined)
+          return usageError(t('usage.unknownAdaptersClient', { client: unknown }));
+        return await runAdaptersCommand(
+          context,
+          {
+            platform: deps.platform,
+            env: deps.env,
+            find: deps.serviceHost?.find,
+            adapters: deps.adapters,
+          },
+          action,
+          { json: values.json === true, clients: args },
         );
       }
       case 'tui': {
