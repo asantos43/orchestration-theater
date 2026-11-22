@@ -67,9 +67,6 @@ describe('manual marks', () => {
 
 describe('by path', () => {
   it.each([
-    'a/flow.e2e.test.ts',
-    'a/flow-e2e.test.ts',
-    'a/view.e2e.test.tsx',
     'a/claude.real.test.ts',
     'a/store.integration.test.ts',
     'packages/adapters/platform-windows/src/x.test.ts',
@@ -82,6 +79,47 @@ describe('by path', () => {
     const verdict = classifyTest(root, file);
     expect(verdict.system).toBe(true);
     expect(verdict.reason).toMatch(/^path: /);
+  });
+
+  it.each(['a/flow.e2e.test.ts', 'a/flow-e2e.test.ts', 'a/view.e2e.test.tsx'])(
+    'an e2e test (%s) that shows no signal stays out: it runs in the process',
+    (file) => {
+      put(file, "import { FakeClock } from './clock.js';\nit('x', () => {});\n");
+      expect(classifyTest(root, file)).toMatchObject({ system: false, reason: 'no signal' });
+    },
+  );
+
+  it.each([
+    ['a spawn', "import { spawn } from 'node:child_process';\nspawn('x');\n", 'child_process'],
+    ['a signal', "process.kill(process.pid, 'SIGTERM');\n", 'signal'],
+    [
+      'a real process by the launcher fixture',
+      "describeWithLauncher('x', () => {});\n",
+      'real process',
+    ],
+  ])('an e2e test with %s enters by its content', (_name, text, signal) => {
+    put('a/run.e2e.test.ts', text);
+    expect(classifyTest(root, 'a/run.e2e.test.ts')).toMatchObject({
+      system: true,
+      reason: `signal ${signal} in test`,
+    });
+  });
+
+  it('an e2e test enters by a signal of the module it imports (one level)', () => {
+    put('a/helper.ts', "import { spawn } from 'node:child_process';\nexport const run = spawn;\n");
+    put('a/flow.e2e.test.ts', "import { run } from './helper.js';\nit('x', () => run);\n");
+    expect(classifyTest(root, 'a/flow.e2e.test.ts')).toMatchObject({
+      system: true,
+      reason: 'signal child_process in a/helper.ts',
+    });
+  });
+
+  it('the mark `cross` forces an e2e test with no signal in', () => {
+    put('a/flow.e2e.test.ts', "// ot-ci: cross\nit('x', () => {});\n");
+    expect(classifyTest(root, 'a/flow.e2e.test.ts')).toMatchObject({
+      system: true,
+      reason: 'mark: cross',
+    });
   });
 
   it('keeps a plain test of the same package out', () => {
@@ -204,6 +242,10 @@ describe('signals', () => {
       hit: 'const abs = path.resolve(dir, x);',
       miss: 'const joined = path.join(dir, x);',
     },
+    'real process': {
+      hit: "describeWithLauncher('x', () => {});",
+      miss: 'const launcher = new FakeProcessLauncher();',
+    },
     PATHEXT: { hit: "env.PATHEXT = '.EXE';", miss: 'const EXT = 1;' },
     signal: { hit: "process.on('SIGINT', stop);", miss: 'const SIGNAL_NAME = 1;' },
     'process.kill': { hit: 'process.kill(pid, 0);', miss: 'killer.run();' },
@@ -245,7 +287,7 @@ describe('signals', () => {
   );
 
   it('keeps the system paths named', () => {
-    expect(SYSTEM_PATHS.map((rule) => rule.name)).toContain('e2e/real/integration');
+    expect(SYSTEM_PATHS.map((rule) => rule.name)).toContain('real/integration');
   });
 });
 
@@ -280,11 +322,11 @@ describe.skipIf(!existsSync(cli) && !process.env.CI)('cross-classify CLI', () =>
   });
 
   it('explains every file with --explain', () => {
-    put('m/a.e2e.test.ts', 'it(1);\n');
+    put('m/a.real.test.ts', 'it(1);\n');
     put('m/b.test.ts', 'it(1);\n');
-    const result = run(['--explain', '--root', root], 'm/a.e2e.test.ts\nm/b.test.ts\n');
+    const result = run(['--explain', '--root', root], 'm/a.real.test.ts\nm/b.test.ts\n');
     expect(result.stdout).toBe(
-      'm/a.e2e.test.ts\tsystem\tpath: e2e/real/integration\nm/b.test.ts\tskip\tno signal\n',
+      'm/a.real.test.ts\tsystem\tpath: real/integration\nm/b.test.ts\tskip\tno signal\n',
     );
   });
 

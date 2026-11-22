@@ -13,9 +13,13 @@ import path from 'node:path';
  * A test file is "system" when, in this order:
  * 1. it carries a mark: `// ot-ci: cross` includes it, `// ot-ci: no-cross` excludes it. The marks
  *    beat the rules below. A file with both is included (never run less on a doubt);
- * 2. its path is an e2e, real or integration test or sits in a folder of {@link SYSTEM_PATHS};
+ * 2. its path is a real or integration test or sits in a folder of {@link SYSTEM_PATHS};
  * 3. the test itself, the module it tests (same name without `.test`) or a module it imports with a
  *    relative path (one level only) shows one of the {@link SYSTEM_SIGNALS}.
+ *
+ * An e2e test (`*.e2e.test.ts`, `*-e2e.test.ts`) gets no special treatment (owner, 2026-11-22): it
+ * enters by the same signals as any test, so one that runs in the process with the fake agent stays
+ * out and a new one that spawns a process, opens a socket or waits for a signal enters on its own.
  *
  * `node:fs` and `node:path` alone are not a signal: almost every test uses a temp folder. The sets
  * below are the knobs: add a signal or a folder here, with a test, when a test that touches the
@@ -107,6 +111,13 @@ export const SYSTEM_SIGNALS: readonly Signal[] = [
     pattern: /systemd|systemctl|launchd|launchctl|schtasks|windows[- ]service|\bnssm\b/i,
   },
   { name: 'job launcher', reach: 'direct', pattern: /job-launcher|job object/i },
+  // The fixture of the tests that run a real process (the fake agent, compiled) through the launcher
+  // of the platform: skipped where there is none (packages/daemon/src/launcher-fixture.ts).
+  {
+    name: 'real process',
+    reach: 'direct',
+    pattern: /\b(?:describeWithLauncher|itWithLauncher|NO_LAUNCHER|defaultLauncher)\b/,
+  },
   // Packages whose job is the system (a test that imports one touches it).
   {
     name: 'system package',
@@ -117,12 +128,12 @@ export const SYSTEM_SIGNALS: readonly Signal[] = [
 ];
 
 /**
- * Tests that always count as "system", by path. `*.e2e.test.ts[x]` is always one, and so are `*-e2e`
- * (18 tests spell it so), `*.real` (they run the real client) and `*.integration`. The folders are
- * those whose whole job is the system, so a test there counts even when its text shows no signal.
+ * Tests that always count as "system", by path: `*.real` (they run the real client) and
+ * `*.integration`. The folders are those whose whole job is the system, so a test there counts even
+ * when its text shows no signal. An e2e test is not here: its content decides (see above).
  */
 export const SYSTEM_PATHS: readonly PathRule[] = [
-  { name: 'e2e/real/integration', pattern: /[.-](?:e2e|real|integration)\.test\.tsx?$/ },
+  { name: 'real/integration', pattern: /\.(?:real|integration)\.test\.tsx?$/ },
   {
     name: 'adapter folder',
     pattern:
