@@ -177,6 +177,40 @@ describe('connectPluginServer (stdio, real process)', () => {
   });
 });
 
+describe('connectPluginServer, events (P8)', () => {
+  const callOptions = () => ({ signal: new AbortController().signal, timeoutMs: 10_000 });
+
+  it('hands the notifications/otheater/event of the server to the listener, as they came', async () => {
+    const connection = await connect(['--events']);
+    const heard: unknown[] = [];
+    connection.onEvent?.((params) => heard.push(params));
+    await connection.callTool('publish_events', {}, callOptions());
+    await vi.waitFor(() => {
+      expect(heard).toHaveLength(2);
+    });
+    expect(heard).toEqual([
+      { name: 'build.done', payload: { n: 1 } },
+      { name: 'not.declared', payload: {} },
+    ]);
+  });
+
+  it('hands over what is not an event too, unchecked: the sink is the one that refuses', async () => {
+    const connection = await connect(['--events']);
+    const heard: unknown[] = [];
+    connection.onEvent?.((params) => heard.push(params));
+    await connection.callTool('publish', { name: 'x', raw: { something: 'else' } }, callOptions());
+    await vi.waitFor(() => {
+      expect(heard).toEqual([{ something: 'else' }]);
+    });
+  });
+
+  it('ignores the notifications when nobody listens', async () => {
+    const connection = await connect(['--events']);
+    const result = await connection.callTool('publish_events', {}, callOptions());
+    expect(textOf(result)).toBe('published');
+  });
+});
+
 describe('connectPluginServer (http)', () => {
   const http = (url: string): PluginConnectSpec['server'] => ({ type: 'http', url });
 

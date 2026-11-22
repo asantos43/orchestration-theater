@@ -13,10 +13,15 @@ export const FIXTURE_SERVER_PATH = fileURLToPath(
 
 export interface FixturePluginOptions {
   readonly id?: string;
-  /** Modes of the test server: `--extra`, `--missing`, `--crash-on-start`, `--no-exit`. */
+  /** Modes of the test server: `--extra`, `--missing`, `--crash-on-start`, `--no-exit`, `--events`. */
   readonly args?: readonly string[];
   /** Another manifest hash, to stand for a manifest that changed. */
   readonly hash?: string;
+  /**
+   * The event names the manifest declares (P8). Giving it also declares the tools `publish` and
+   * `publish_events`, which the server has with `--events`.
+   */
+  readonly events?: readonly string[];
 }
 
 /**
@@ -39,7 +44,14 @@ export function fixtureManifest(options: FixturePluginOptions = {}): PluginManif
       { name: 'slow', roles: ['author'], effects: 'read' },
       { name: 'crash', roles: ['author'], effects: 'local_write' },
       { name: 'pid', roles: ['author', 'critic'], effects: 'read' },
+      ...(options.events === undefined
+        ? []
+        : [
+            { name: 'publish', roles: ['author'], effects: 'read' },
+            { name: 'publish_events', roles: ['author'], effects: 'read' },
+          ]),
     ],
+    ...(options.events === undefined ? {} : { events: [...options.events] }),
   });
   if (!result.ok) {
     throw new Error(`the manifest of the fixture is invalid: ${JSON.stringify(result.problems)}`);

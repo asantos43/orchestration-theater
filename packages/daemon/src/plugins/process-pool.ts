@@ -13,7 +13,12 @@ import {
   type PluginServerSpec,
   type PluginServerTool,
 } from './mcp-client.js';
-import type { PluginNotice, PluginNoticeSink, PluginRuntimeConfig } from './runtime-config.js';
+import type {
+  PluginEventSink,
+  PluginNotice,
+  PluginNoticeSink,
+  PluginRuntimeConfig,
+} from './runtime-config.js';
 
 /** What the pool needs to know of an active plugin: `ActivePlugin` has all of it. */
 export interface PluginProcessSpec {
@@ -81,6 +86,11 @@ export interface PluginPoolOptions {
   readonly onNotice?: PluginNoticeSink;
   /** Opens the connection; tests hand in a double. Default: the MCP client of the SDK. */
   readonly connector?: PluginConnector;
+  /**
+   * What runs for each event notification a server sends (P8): `params` as they came, unchecked.
+   * Must not throw: a throw is caught and logged.
+   */
+  readonly onEvent?: PluginEventSink;
 }
 
 interface Entry {
@@ -395,6 +405,7 @@ export class PluginProcessPool {
         http: runtime.http,
         logger: logger.child({ plugin: plugin.id, project: entry.project }),
       });
+      this.#forwardEvents(entry, connection);
       const tools = await connection.listTools();
       if (this.#stopped || this.#entries.get(keyOf(entry.project, entry.id)) !== entry) {
         await connection.close();
@@ -430,6 +441,23 @@ export class PluginProcessPool {
         retryInMs,
       );
     }
+  }
+
+  /** Hands the event notifications of the server to the sink of P8, with who sent them. */
+  #forwardEvents(entry: Entry, connection: PluginConnection): void {
+    const sink = this.#options.onEvent;
+    if (sink === undefined) return;
+    connection.onEvent?.((params) => {
+      // One that arrives while the server is still starting (before `listTools` ends) counts; one
+      // from a process another one replaced, or after the pool stopped, does not.
+      if (this.#stopped || this.#entries.get(keyOf(entry.project, entry.id)) !== entry) return;
+      if (entry.connection !== undefined && entry.connection !== connection) return;
+      try {
+        sink({ plugin: entry.id, project: entry.project, params });
+      } catch (error) {
+        this.#options.logger.warn({ err: error, plugin: entry.id }, 'plugin event sink failed');
+      }
+    });
   }
 
   #died(entry: Entry, connection: PluginConnection, reason: string): void {
