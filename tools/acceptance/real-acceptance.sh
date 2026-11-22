@@ -143,6 +143,25 @@
 #            OT_TEST_PHASE8_TELEMETRY_WAIT_MS (quanto o cliente ainda pode levar, depois da peça,
 #            para descarregar a telemetria; padrão 180000). Gasta cota da conta do perfil (a mesma
 #            ordem de grandeza do nível play). Resumo no log com o prefixo [phase8-real].
+#   phase9   [proposta] o aceite da Fase 9 no nível real (P13): UMA peça inteira com o Claude Code
+#            (um modelo pequeno) em todos os papéis, com o plugin de exemplo `notes` (examples/
+#            plugin-notes) instalado e ligado no projeto, conduzida como uma tela faria (REST, SSE e
+#            chat; phase9-acceptance.real.test.ts). A necessidade pede ao Ator que chame a ferramenta
+#            `add_note` do plugin. Confere que o Ator recebeu a ferramenta `notes__add_note` e nenhum
+#            outro papel recebeu (o Crítico roda e o grant dele não tem ferramenta de plugin); que a
+#            ferramenta que pede aprovação (`clear_notes`) não foi dada a papel nenhum; e que o Ator
+#            de fato chamou: o evento `plugin.notes.note_added` está no log, a nota está no arquivo
+#            do projeto e `GET /v1/plugins/notes/panel` mostra a nota. Nenhum segredo entra aqui (o
+#            segredo é coberto pelo e2e automático). [N] Não confirmado: se um cliente real lista e
+#            chama a ferramenta do servidor MCP `otheater` com o nome `notes__add_note`.
+#            OT_TEST_REAL_CLIENTS=1, OT_TEST_REAL_PROMPTS=1 e OT_TEST_REAL_PHASE9=1; lê
+#            OT_TEST_CLAUDE_PROFILE_DIR (perfil já logado, só apontado) e OT_TEST_CLAUDE_MODEL,
+#            OT_TEST_PLAY_TIMEOUT_MS e OT_TEST_PLAY_LIMITS do nível play. Opcionais (todos só de
+#            teste): OT_TEST_PHASE9_CLIENTS (lista separada por vírgulas, claude-code, codex e
+#            opencode, uma peça por cliente; o padrão é só o claude-code, como na N230; os outros
+#            pedem o OT_TEST_<CLIENTE>_PROFILE_DIR e _MODEL, e OT_TEST_PHASE9_EDIT_RULES=1 libera a
+#            edição na worktree como no phase6). Gasta cota da conta do perfil (a mesma ordem de
+#            grandeza do nível play). Resumo no log com o prefixo [phase9-real].
 #   phase7   [proposta] o aceite da Fase 7 no nível real (P21): a TUI compilada num tmux de verdade
 #            (socket e servidor próprios, como o smoke da TUI) contra um daemon real com o Claude Code
 #            (um modelo pequeno) em todos os papéis. O teste faz só o que uma pessoa faria nas teclas:
@@ -185,7 +204,7 @@
 #            medição curta, use também OT_TEST_PLAY_TIMEOUT_MS (mínimo 60000).
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|phase9|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -204,7 +223,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, phase9, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -245,13 +264,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|phase6|phase7|phase8|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
-# Os níveis play, phase6, phase7 e phase8 [proposta] rodam uma peça inteira com um só cliente: mesmas
+case "$level" in clients|prompts|k|play|phase6|phase7|phase8|phase9|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, phase9, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
+# Os níveis play, phase6, phase7, phase8 e phase9 [proposta] rodam uma peça inteira com um só cliente: mesmas
 # exigências. O play e o phase7 são só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT
 # (claude-code, o padrão); o phase8 usa os de OT_TEST_PHASE8_CLIENTS (claude-code, o padrão; uma peça
-# por cliente da lista).
+# por cliente da lista); o phase9 usa os de OT_TEST_PHASE9_CLIENTS (o mesmo padrão).
 play_like=0
-if [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ]; then play_like=1; fi
+if [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = phase9 ]; then play_like=1; fi
 play_key=CLAUDE
 play_keys=CLAUDE
 if [ "$level" = phase6 ]; then
@@ -263,19 +282,24 @@ if [ "$level" = phase6 ]; then
   esac
   play_keys=$play_key
 fi
-if [ "$level" = phase8 ] && [ -n "${OT_TEST_PHASE8_CLIENTS:-}" ]; then
+# Os níveis phase8 e phase9 aceitam uma lista de clientes (uma peça por cliente da lista).
+multi_var=""
+if [ "$level" = phase8 ]; then multi_var=OT_TEST_PHASE8_CLIENTS; fi
+if [ "$level" = phase9 ]; then multi_var=OT_TEST_PHASE9_CLIENTS; fi
+if [ -n "$multi_var" ] && [ -n "${!multi_var:-}" ]; then
   play_keys=""
-  IFS=, read -r -a phase8_names <<<"${OT_TEST_PHASE8_CLIENTS// /}"
-  for name in "${phase8_names[@]}"; do
+  multi_value=${!multi_var}
+  IFS=, read -r -a multi_names <<<"${multi_value// /}"
+  for name in "${multi_names[@]}"; do
     case "$name" in
       claude-code) key=CLAUDE ;;
       codex) key=CODEX ;;
       opencode) key=OPENCODE ;;
-      *) echo "OT_TEST_PHASE8_CLIENTS: cliente desconhecido (use claude-code, codex ou opencode): $name" >&2; exit 2 ;;
+      *) echo "$multi_var: cliente desconhecido (use claude-code, codex ou opencode): $name" >&2; exit 2 ;;
     esac
     case " $play_keys " in *" $key "*) ;; *) play_keys="${play_keys:+$play_keys }$key" ;; esac
   done
-  [ -n "$play_keys" ] || { echo "OT_TEST_PHASE8_CLIENTS está vazia" >&2; exit 2; }
+  [ -n "$play_keys" ] || { echo "$multi_var está vazia" >&2; exit 2; }
   play_key=${play_keys%% *}
 fi
 # O teto padrão do nível k é maior: são várias células, cada uma com N sessões e turnos reais. O do
@@ -284,7 +308,7 @@ fi
 # minutos (teto de 5m na tentativa). O do nível escape [proposta] também: até 8m por cliente, com
 # três clientes, mais o sandbox subindo e parando.
 if [ -z "$run_timeout" ]; then
-  case "$level" in k|play|phase6|phase7|phase8|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
+  case "$level" in k|play|phase6|phase7|phase8|phase9|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -378,7 +402,7 @@ k_left_out=()
 declare -A executable=([CLAUDE]=claude-agent-acp [CODEX]=codex-acp [OPENCODE]=opencode)
 for key in CLAUDE CODEX OPENCODE; do
   exe="${executable[$key]}"
-  # Os níveis play, phase6, phase7 e phase8 rodam a peça com os clientes escolhidos; os outros não entram.
+  # Os níveis play, phase6, phase7, phase8 e phase9 rodam a peça com os clientes escolhidos; os outros não entram.
   if [ "$play_like" = 1 ]; then
     case " $play_keys " in
       *" $key "*) ;;
@@ -567,6 +591,9 @@ elif [ "$level" = phase6 ]; then
 elif [ "$level" = phase8 ]; then
   tests=(packages/daemon/src/api/phase8-acceptance.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase8: roda só a peça com a telemetria ligada"
+elif [ "$level" = phase9 ]; then
+  tests=(packages/daemon/src/api/phase9-acceptance.real.test.ts)
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase9: roda só a peça com o plugin notes"
 elif [ "$level" = phase7 ]; then
   tests=(packages/tui/src/phase7-acceptance.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase7: roda só a TUI no tmux com a peça real"
@@ -601,6 +628,8 @@ elif [ "$level" = phase6 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE6=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = phase8 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE8=1 vitest run --silent=false ${tests[*]}"
+elif [ "$level" = phase9 ]; then
+  echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE9=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = phase7 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE7=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = quota ]; then
@@ -643,6 +672,14 @@ if [ "$level" = phase8 ]; then
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms, mais até ${OT_TEST_PHASE8_TELEMETRY_WAIT_MS:-180000} ms para a telemetria do cliente chegar. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso e a telemetria para um destino OTLP em loopback: nada sai da máquina."
   echo "  O perfil é só apontado: nada é copiado nem lido. O e-mail da conta nunca é impresso (só presente ou ausente)."
   echo "  O resumo (árvore e registros do cliente na base, e-mail presente ou ausente, análise, tempo, processos) sai no log com o prefixo [phase8-real]."
+fi
+if [ "$level" = phase9 ]; then
+  echo "Atenção: o nível phase9 roda UMA PEÇA INTEIRA por cliente (${OT_TEST_PHASE9_CLIENTS:-claude-code}) em todos os papéis, com o plugin de exemplo notes ligado no projeto${OT_TEST_SANDBOX_EXTRA_DOMAINS:+, sandbox.extra_domains=$OT_TEST_SANDBOX_EXTRA_DOMAINS}${OT_TEST_PHASE9_EDIT_RULES:+, OT_TEST_PHASE9_EDIT_RULES=$OT_TEST_PHASE9_EDIT_RULES}. Gasta cota da conta do perfil."
+  # [proposta] Estimativa, não medida: a mesma ordem de grandeza da peça do nível play (N88).
+  echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz por cliente; com repetições até cerca de 50."
+  echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso; o servidor do plugin roda dentro do daemon do teste, em loopback, sem rede nem segredo."
+  echo "  O perfil é só apontado: nada é copiado nem lido. A nota fica no arquivo .plugin-notes.json da pasta temporária do projeto."
+  echo "  O resumo (grants por papel, evento da nota, painel, tempo, processos) sai no log com o prefixo [phase9-real]."
 fi
 if [ "$level" = phase7 ]; then
   echo "Atenção: o nível phase7 roda a TUI compilada num tmux de verdade (socket próprio) e UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis, tudo pelas teclas: a necessidade no chat, as respostas ao Diretor e a escolha do pull request. Gasta cota da conta do perfil."
@@ -726,6 +763,7 @@ if [ "$level" = play ]; then export OT_TEST_REAL_PLAY=1; else unset OT_TEST_REAL
 if [ "$level" = phase6 ]; then export OT_TEST_REAL_PHASE6=1; else unset OT_TEST_REAL_PHASE6; fi
 if [ "$level" = phase7 ]; then export OT_TEST_REAL_PHASE7=1; else unset OT_TEST_REAL_PHASE7; fi
 if [ "$level" = phase8 ]; then export OT_TEST_REAL_PHASE8=1; else unset OT_TEST_REAL_PHASE8; fi
+if [ "$level" = phase9 ]; then export OT_TEST_REAL_PHASE9=1; else unset OT_TEST_REAL_PHASE9; fi
 if [ "$level" = escape ]; then export OT_TEST_REAL_ESCAPE=1; else unset OT_TEST_REAL_ESCAPE; fi
 if [ "$level" = quota ]; then
   export OT_TEST_REAL_QUOTA=1
@@ -767,7 +805,7 @@ if [ "$level" = profiles ]; then
 else
   unset OT_TEST_REAL_PROFILES OT_TEST_PROFILES_CODE_FIFO
 fi
-if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
+if [ "$level" = prompts ] || [ "$level" = k ] || [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = phase9 ] || [ "$level" = escape ] || [ "$level" = mcp ]; then export OT_TEST_REAL_PROMPTS=1; else unset OT_TEST_REAL_PROMPTS; fi
 if [ "$level" = k ]; then
   export OT_TEST_REAL_MEASURE_K=1
   # O teste grava k-measure-<stamp>.* na pasta de logs, com o mesmo carimbo deste log.
@@ -788,7 +826,7 @@ else
   # resposta do modelo) é o que o dono lê; sem --silent=false o vitest esconde o console dos testes
   # que passam [V: rodada de 2026-11-17, só a linha do Codex, que falhou, saiu no log].
   extra=()
-  { [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = quota ] || [ "$level" = profiles ]; } && extra=(--silent=false)
+  { [ "$level" = escape ] || [ "$level" = mcp ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = phase9 ] || [ "$level" = quota ] || [ "$level" = profiles ]; } && extra=(--silent=false)
   setsid timeout --kill-after=30s "$run_timeout" pnpm exec vitest run "${extra[@]}" "${tests[@]}" >"$log" 2>&1 &
 fi
 runner=$!
@@ -854,7 +892,7 @@ if [ -n "$tailer" ]; then sleep 1; kill "$tailer" 2>/dev/null || true; wait "$ta
 cleanup_code_fifo
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[phase7-real\]|\[phase8-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[phase7-real\]|\[phase8-real\]|\[phase9-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"
