@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { FlowStepId } from '@otheater/core';
 import type { PlayLimits } from '../config.js';
 import type { CounterKey, CriticalException, PlayState } from './definitions.js';
 import type { JudgmentPointId } from './judgment.js';
@@ -78,6 +79,21 @@ export interface PausedPlay {
 }
 
 /**
+ * [proposta] The flow of the configuration the play runs (P12, N133/N241): the id, the version and
+ * the hash of the flow as it was when the play opened, plus the optional steps it turns off. The
+ * play never reads `flows.<id>` again, so a change of the configuration does not touch it. The
+ * limits of the flow are already in `limits`.
+ */
+export interface PlayFlowRef {
+  readonly id: string;
+  readonly version: number;
+  /** sha256 (hex) of the canonical text of the resolved flow. */
+  readonly hash: string;
+  /** The optional steps that are off, in the order of the play. */
+  readonly skip: readonly FlowStepId[];
+}
+
+/**
  * The context of the machine. It is what `getPersistedSnapshot()` writes, so it holds only JSON
  * (no `undefined`, no functions) and nothing that is already in the store's own tables beyond what
  * the transitions need.
@@ -86,6 +102,11 @@ export interface PlayContext {
   readonly flowId: string;
   /** Version of the machine that wrote the snapshot; a snapshot is only restored on the same one. */
   readonly flowVersion: number;
+  /**
+   * [proposta] The flow of the configuration. Missing for the official `play` (and in every
+   * snapshot written before P12), so it is read as `?? null`.
+   */
+  readonly flow?: PlayFlowRef | null;
   readonly playId: string;
   readonly need: string;
   /** The limits of this play, fixed when it was created (a config change does not touch a play in flight). */
@@ -130,6 +151,11 @@ export interface PlayContext {
   readonly restart: boolean;
   /** Sequence of the decisions this play recorded; makes their ids deterministic (`<play>:d<n>`). */
   readonly decisionSeq: number;
+}
+
+/** The flow turned the (optional) step off. The official `play` turns none off. */
+export function skipsStep(context: PlayContext, step: FlowStepId): boolean {
+  return context.flow?.skip.includes(step) === true;
 }
 
 export function counterName(key: CounterKey, demandId?: string | null): string {
