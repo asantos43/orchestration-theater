@@ -16,6 +16,7 @@ describe('release.config.json', () => {
     );
     expect(config.targets).toEqual(['linux-x64', 'win32-x64', 'darwin-arm64']);
     expect(config.versionOverride).toBeNull();
+    expect(config.notices).toBe('per_platform');
   });
 
   it('an empty object takes the defaults', () => {
@@ -27,7 +28,16 @@ describe('release.config.json', () => {
       targets: ['linux-x64', 'linux-x64'],
       versionOverride: '1.2.3-rc.1',
     });
-    expect(config).toEqual({ targets: ['linux-x64'], versionOverride: '1.2.3-rc.1' });
+    expect(config).toEqual({
+      targets: ['linux-x64'],
+      versionOverride: '1.2.3-rc.1',
+      notices: 'per_platform',
+    });
+  });
+
+  it('takes the notices mode', () => {
+    expect(parseReleaseConfig({ notices: 'root_only' }).notices).toBe('root_only');
+    expect(parseReleaseConfig({ notices: 'per_platform' }).notices).toBe('per_platform');
   });
 
   it.each([
@@ -37,6 +47,8 @@ describe('release.config.json', () => {
     ['a version that is not a version', { versionOverride: 'latest' }],
     ['a version that carries a shell word', { versionOverride: '1.0.0; rm -rf /' }],
     ['an unknown key', { target: ['linux-x64'] }],
+    ['a notices mode that does not exist', { notices: 'none' }],
+    ['a notices mode that is not text', { notices: true }],
     ['something that is not an object', []],
   ])('rejects %s', (_name, raw) => {
     expect(() => parseReleaseConfig(raw)).toThrow(ReleaseConfigError);
