@@ -451,6 +451,19 @@ export const PLUGIN_EVENT_MODES = ['declared', 'off'] as const;
 export type PluginEventMode = (typeof PLUGIN_EVENT_MODES)[number];
 
 /**
+ * `plugins.event_rate` (N243 item 67, [proposta]): `off`, or the most events and refusals one plugin
+ * may send in one project in one window. A fixed window that starts at the first event; what comes
+ * after `max` is dropped until the window ends.
+ */
+const PluginEventRateSchema = z.union([
+  z.literal('off').transform(() => null),
+  z.strictObject({
+    max: z.int().min(1).max(1_000_000).default(100),
+    window: DurationSchema.prefault('10s'),
+  }),
+]);
+
+/**
  * `plugins.project_dir` (Phase 9, [proposta]): whether the process of a plugin is told the folder of
  * its project in `OTHEATER_PROJECT_DIR`.
  */
@@ -1759,6 +1772,19 @@ export const DaemonConfigSchema = z
          */
         events: z.enum(PLUGIN_EVENT_MODES).default('declared'),
         event_max_bytes: z.int().min(1).max(1_048_576).default(16_384),
+        /**
+         * How fast a plugin may send events (N243 item 67, [proposta]). A plugin is code the daemon
+         * does not trust, and every event it sends, or is refused, is a line in the log and a row in
+         * the event log; a plugin in a loop would fill both. `max` (default 100): the most events
+         * **and refusals** of one plugin in one project per `window` (default `10s`, a fixed window
+         * that starts at the first event), so a plugin may burst 100 and keep up 10 a second, which a
+         * plugin that tells a build or a deploy finished never needs, and a loop passes in the first
+         * second. What comes after the limit is dropped, counted in `otheater_plugin_events_dropped_total`
+         * (by plugin), and, once the window ends, said with one warning and one
+         * `plugin.event_rejected` (`reason: rate_limited`, with the count dropped); not one per event.
+         * `off`: no limit (the size of each payload is still `event_max_bytes`).
+         */
+        event_rate: PluginEventRateSchema.prefault({}),
         /**
          * The folder of the project the process of a plugin works on (N238 (a): one process per
          * plugin and project), handed in `OTHEATER_PROJECT_DIR` and read by

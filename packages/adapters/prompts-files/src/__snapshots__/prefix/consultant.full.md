@@ -49,10 +49,10 @@ These are the only framework tools you can call:
 - `read_indication`
 - `read_attachment`
 - `submit`
-- `http_get`
-- `browser_open`
-- `browser_read`
-- `browser_screenshot`
+- `http_get` (reaches the network)
+- `browser_open` (reaches the network)
+- `browser_read` (reaches the network)
+- `browser_screenshot` (reaches the network)
 - `browser_click` (acts outside the worktree)
 - `browser_fill` (acts outside the worktree)
 - `browser_press_key` (acts outside the worktree)

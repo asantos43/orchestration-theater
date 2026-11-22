@@ -145,6 +145,57 @@ export function maskValues(text: string, values: readonly string[]): string {
   return masked;
 }
 
+/** The text with each value replaced, also in the form a JSON string would carry it. */
+function maskInText(text: string, values: readonly string[]): string {
+  // `"a\"b"` in a JSON body is `a\"b`: the escaped form does not contain the plain value.
+  const escaped = values.map((value) => JSON.stringify(value).slice(1, -1));
+  return maskValues(
+    maskValues(text, values),
+    escaped.filter((value, index) => value !== values[index]),
+  );
+}
+
+function maskJson(value: unknown, values: readonly string[]): unknown {
+  if (typeof value === 'string') return maskInText(value, values);
+  if (Array.isArray(value)) return value.map((item) => maskJson(item, values));
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [maskInText(key, values), maskJson(item, values)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * What a tool of a plugin gives back, with the values of the secrets of that plugin replaced by
+ * `[REDACTED]` (N243, item 61): the text of every `text` part and of an embedded text resource,
+ * and every string (and key) of `structuredContent`. The Executor never gets a secret the server
+ * of the plugin was given, even when the server echoes it. Only the text is touched: the `type`,
+ * the `uri` and the `mimeType` of a part stay as they came, and an image is not read. Returns the
+ * same object when there is nothing to hide. The events of the plugin are not masked: they are its
+ * own content (item 68).
+ */
+export function maskCallResult(result: CallToolResult, values: readonly string[]): CallToolResult {
+  const hidden = values.filter((value) => value !== '');
+  if (hidden.length === 0) return result;
+  const content = result.content.map((part) => {
+    if (part.type === 'text') return { ...part, text: maskInText(part.text, hidden) };
+    if (part.type === 'resource' && 'text' in part.resource) {
+      return {
+        ...part,
+        resource: { ...part.resource, text: maskInText(part.resource.text, hidden) },
+      };
+    }
+    return part;
+  });
+  const structured = result.structuredContent;
+  return {
+    ...result,
+    content,
+    ...(structured === undefined ? {} : { structuredContent: maskJson(structured, hidden) }),
+  };
+}
+
 /** Writes what the process says on stderr in the log, a line at a time, cut short. */
 function relayStderr(transport: Transport, logger: Logger, secrets: readonly string[]): void {
   const stderr = transport instanceof StdioClientTransport ? transport.stderr : null;

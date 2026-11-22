@@ -57,6 +57,24 @@ describe('the plugin events of the daemon (P8)', () => {
     },
   );
 
+  it('takes rate_limited with the limit, the window and the count dropped', () => {
+    const sample = {
+      plugin: 'pg',
+      project: 's1',
+      reason: 'rate_limited',
+      limit: 100,
+      windowMs: 10_000,
+      dropped: 37,
+    };
+    expect(PluginEventRejectedPayloadSchema.parse(sample)).toEqual(sample);
+    expect(PluginEventRejectedPayloadSchema.safeParse({ ...sample, dropped: 0 }).success).toBe(
+      false,
+    );
+    expect(PluginEventRejectedPayloadSchema.safeParse({ ...sample, windowMs: 0 }).success).toBe(
+      false,
+    );
+  });
+
   it('refuse a reason outside the list and leave the optional fields out', () => {
     expect(
       PluginToolRejectedPayloadSchema.safeParse({

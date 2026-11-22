@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -653,7 +654,9 @@ describeWithLauncher('the acceptance of Phase 9, one daemon with a flow and two 
               arguments: { name: 'API_TOKEN' },
             });
             expect(JSON.parse(revealed.result?.content?.[0]?.text ?? '{}')).toMatchObject({
-              value: TOKEN,
+              // The server got it (the digest), and the daemon masks it on the way back (item 61).
+              value: '[REDACTED]',
+              sha256: createHash('sha256').update(TOKEN).digest('hex'),
             });
             expect(corpus()).not.toContain(TOKEN);
             expect(JSON.stringify(await events())).not.toContain(TOKEN);

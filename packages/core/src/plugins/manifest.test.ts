@@ -7,6 +7,7 @@ import {
   describeManifestProblems,
   parsePluginManifest,
   parsePluginManifestText,
+  PLUGIN_BASE_ENV_NAMES,
   PLUGIN_MANIFEST_MAX_CHARS,
   type PluginManifestProblem,
 } from './manifest.js';
@@ -317,6 +318,22 @@ describe('the manifest of a plugin', () => {
     it('a secret that is not a variable name, or that is repeated', () => {
       expect(only(refused((m) => (m.secrets = ['pg_url']))).path).toBe('secrets[0]');
       expect(only(refused((m) => (m.secrets = ['PG_URL', 'PG_URL']))).path).toBe('secrets[1]');
+    });
+
+    it('a secret named like a variable the daemon always sets (item 63)', () => {
+      for (const name of PLUGIN_BASE_ENV_NAMES) {
+        const problem = only(refused((m) => (m.secrets = ['PG_URL', name])));
+        expect(problem.path, name).toBe('secrets[1]');
+        expect(problem.message, name).toContain(
+          `secret "${name}" is a variable the daemon always sets`,
+        );
+      }
+      expect([...PLUGIN_BASE_ENV_NAMES].sort()).toEqual(
+        ['HOME', 'LANG', 'OTHEATER_PROJECT_DIR', 'PATH', 'TZ'].sort(),
+      );
+      expect(
+        parsePluginManifest({ ...postgres(), secrets: ['PG_URL', 'HOMEDIR', 'PATHS'] }).ok,
+      ).toBe(true);
     });
 
     it('collects every problem, not only the first', () => {

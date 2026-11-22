@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
 import type { TelemetrySpan } from '@otheater/core';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { PlaySpansSchema, TelemetryStatusSchema } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../../config.js';
@@ -36,7 +36,12 @@ async function start(
     dataDir: tmp.dir,
     clientSearch: NO_CLIENTS,
     config: parseConfig(yaml),
-    overrides: { clock, store: new InMemoryStore({ clock }), telemetry },
+    overrides: {
+      clock,
+      store: new InMemoryStore({ clock }),
+      telemetry,
+      vault: new InMemorySecretVault(),
+    },
     logger: createSilentLogger(),
     version: '0.0.0-test',
   });

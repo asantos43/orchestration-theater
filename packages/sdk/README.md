@@ -33,6 +33,7 @@ O plugin publica evento com `emit(name, payload)` dentro de uma ferramenta (ou c
 - `params`: `{ "name": string, "payload": { ... } }`.
 - `name` é o nome **declarado em `events:` do manifesto, sem o prefixo**. O daemon o publica como `plugin.<id>.<name>`.
 - `payload` é um objeto JSON. Limite de **16 KB** (16 384 bytes do JSON), o padrão de `plugins.event_max_bytes` do P8. O limite do SDK é uma cortesia: o daemon continua sendo quem impõe o limite configurado.
+- A **taxa** também é do daemon: `plugins.event_rate` (padrão 100 eventos e recusas por 10 s, por plugin e projeto, ou `off`) descarta o excedente da janela, conta em `otheater_plugin_events_dropped_total` e avisa uma vez por janela com `plugin.event_rejected` (`reason: rate_limited`). O SDK não limita nada; um plugin que publica em laço perde os eventos depois do limite sem receber erro [proposta].
 - O ajudante **recusa no lado do plugin** um nome não declarado, um payload que não é objeto, um payload que não é JSON (circular, BigInt) e um payload acima do limite. A recusa é um `PluginEventError` (`undeclared`, `invalid_payload` ou `too_large`); nada é enviado. Dentro de uma ferramenta, o erro volta ao chamador como resultado com `isError`.
 
 ## Suíte de conformidade

@@ -624,6 +624,26 @@ function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
 }
 
 /**
+ * The guard against a test that reaches the real keyring (N243, item 64). The default of
+ * `adapters.vault` is `keyring`, so a test of the CLI or of the composition that hands in no vault
+ * would read and write the keyring of whoever runs the suite (a first version of a Phase 9 test
+ * may have left a key there). Under the test runner (`VITEST` is set) the composition refuses the
+ * real keyring unless `OT_TEST_KEYRING=1` says the run is the one that is meant to use it (the
+ * integration test of the adapter). A test hands in `overrides.vault` or picks `encrypted-file`.
+ * Outside the test runner nothing changes. `env` is a parameter so the guard itself is tested
+ * without touching anything real.
+ */
+export function assertRealKeyringAllowed(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.VITEST === undefined || env.VITEST === '') return;
+  if (env.OT_TEST_KEYRING === '1') return;
+  throw new InvalidInput(
+    'The real keyring was asked for under the test runner: a test must not read or write the keyring of the machine. ' +
+      'Hand in a vault (`overrides.vault`, for example an `InMemorySecretVault`) or set `adapters.vault: encrypted-file`; ' +
+      'only the run that tests the keyring itself sets OT_TEST_KEYRING=1.',
+  );
+}
+
+/**
  * The vault the configuration names (`adapters.vault`), or the one a test hands in. Used by
  * {@link compose} and by `ot plugin secret set`, which needs the vault and nothing else of the
  * composition (Phase 9, P7). The returned record is the adapter's, for the list of adapters.
@@ -640,6 +660,7 @@ export function composeVault(
     };
   }
   if (config.adapters.vault === 'keyring') {
+    assertRealKeyringAllowed();
     return {
       vault: new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault)),
       record: checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
