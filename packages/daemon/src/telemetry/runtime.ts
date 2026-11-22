@@ -40,9 +40,9 @@ export interface TelemetryRuntimeInput {
   readonly situations: SituationSink;
   /** The scenario of a play, for the resource of the sessions that only know the play. */
   readonly scenarioOf: (playId: string) => Promise<string | null | undefined>;
-  /** Extra resource attributes by session (P4 puts `otheater.trace_id` here). */
   /** The clock of the exporter's waits (P7). With none, `telemetry.export` cannot send OTLP. */
   readonly clock?: Clock;
+  /** Extra resource attributes by session: the daemon puts `otheater.trace_id` here (Phase 9, P1). */
   readonly resourceExtras?: ConstructorParameters<typeof ClientTelemetry>[0]['resourceExtras'];
 }
 
@@ -77,6 +77,7 @@ export async function startTelemetry(
       }),
       port: config.telemetry.receiver.port,
       maxBody: config.telemetry.receiver.max_body,
+      reparent: config.telemetry.receiver.reparent,
       logger,
       situations,
     });
