@@ -9,6 +9,7 @@ import {
   type Registries,
   type ToolDefinition,
 } from '@otheater/core';
+import { buildDaemonEvent } from '@otheater/protocol';
 import {
   createMcpHandler,
   hostHeaderValidationResponse,
@@ -22,10 +23,18 @@ import {
   type StandardSchemaWithJSON,
 } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
+import { APPROVE_LABEL, DENY_LABEL, isApproval, type AskApproval } from '../browser/approval.js';
 import type { Logger } from '../logger.js';
 import type { PluginAggregator, PluginSnapshot, PluginToolBinding } from '../plugins/aggregate.js';
+import {
+  allowedPluginTools,
+  approvalOf,
+  DEFAULT_PLUGIN_PERMISSIONS,
+  type PluginPermissionSettings,
+} from '../plugins/permissions.js';
+import type { PluginNotice, PluginNoticeSink } from '../plugins/runtime-config.js';
 import type { RecoveryGate } from '../recovery/gate.js';
-import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
+import type { McpAccess, McpGrant, McpGrantInput, PluginToolsQuery } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
 import { notImplemented, ToolFailure, ToolHandlers, ToolWithImage } from './handlers.js';
 import { describeIssues, isSubmitTool, runSubmit, type ToolReply } from './submit.js';
@@ -68,7 +77,24 @@ export interface FrameworkMcpOptions {
    * The project of a grant that does not carry one (`McpGrantInput.project`): the daemon answers
    * from the play of the attempt. `undefined` means no project, so no plugin tool.
    */
-  readonly projectOf?: (input: McpGrantInput) => Promise<string | undefined>;
+  readonly projectOf?: (
+    input: Pick<McpGrantInput, 'correlation' | 'project'>,
+  ) => Promise<string | undefined>;
+  /**
+   * `plugins.permissions` (P6): what the effects of a plugin tool need of the policy of the role,
+   * and whether `external_write` asks the Producer. A getter, so a change of the configuration
+   * holds at the next call. Default: `DEFAULT_PLUGIN_PERMISSIONS`.
+   */
+  readonly pluginPermissions?: () => PluginPermissionSettings;
+  /**
+   * The card of the approval of a plugin tool (`requires_producer_approval`, or `external_write`
+   * under `plugins.permissions.external_write_approval: ask`): the same path of the other tools that
+   * ask the Producer (`OrchestrationHandlers.openApproval`, the chat prompt queue). Without it a
+   * tool that needs approval is refused: nobody can be asked, never a yes.
+   */
+  readonly askApproval?: AskApproval;
+  /** Where the notices of a plugin tool the permissions refused go besides the log (P8 binds it). */
+  readonly onPluginNotice?: PluginNoticeSink;
 }
 
 /**
@@ -103,6 +129,10 @@ function describe(tool: ToolDefinition): string {
     );
   }
   return `OTheater framework tool ${tool.name}.`;
+}
+
+function isRevoked(record: GrantRecord): boolean {
+  return record.revoked;
 }
 
 function asResult(reply: ToolReply): CallToolResult {
@@ -305,6 +335,29 @@ export class FrameworkMcpServer implements McpAccess {
     return this.#book.grant(input);
   }
 
+  /**
+   * The plugin tools the role may call under its policy (P6): the project's active plugins, the
+   * roles of each manifest, then the effects against the policy (`plugins/permissions.ts`). A
+   * failure here costs the plugin tools, never the framework ones.
+   */
+  async pluginTools(query: PluginToolsQuery): Promise<readonly string[]> {
+    const plugins = this.#options.plugins;
+    if (plugins === undefined) return [];
+    try {
+      const project = query.project ?? (await this.#options.projectOf?.(query));
+      if (project === undefined) return [];
+      return allowedPluginTools(
+        plugins.snapshot(project).names,
+        query.role,
+        query.policy,
+        this.#permissions(),
+      );
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'plugin tool permissions could not be worked out');
+      return [];
+    }
+  }
+
   /** Ends every token, closes the connections and stops listening. Idempotent. */
   stop(): Promise<void> {
     this.#stopped ??= (async () => {
@@ -396,20 +449,33 @@ export class FrameworkMcpServer implements McpAccess {
       }
       const resolved = await snapshot;
       if (resolved === undefined) return [];
-      return await plugins.tools(resolved, input.role, input.tools);
+      return await plugins.tools(resolved, input.role, input.pluginTools ?? input.tools);
     } catch (error) {
       this.#options.logger.warn({ err: error }, 'plugin tools could not be listed');
       return [];
     }
   }
 
-  /** One call of a plugin tool: revoked? recovery gate? then the process of the plugin. */
+  /**
+   * One call of a plugin tool: revoked? in the grant of the session? recovery gate? approval of the
+   * Producer? then the process of the plugin. A refusal never reaches the plugin (P6).
+   */
   async #callPlugin(
     record: GrantRecord,
     binding: PluginToolBinding,
     args: unknown,
   ): Promise<CallToolResult> {
     if (record.revoked) return asResult({ ok: false, value: { error: 'revoked' } });
+    const { input } = record;
+    const allow = input.pluginTools ?? input.tools;
+    if (allow !== undefined && !allow.includes(binding.name)) {
+      return this.#refuse(
+        record,
+        binding,
+        'not_allowed',
+        'The policy of your role does not allow this tool.',
+      );
+    }
     await this.#options.gate?.wait();
     const plugins = this.#options.plugins;
     if (plugins === undefined) return asResult({ ok: false, value: { error: 'revoked' } });
@@ -417,7 +483,140 @@ export class FrameworkMcpServer implements McpAccess {
       typeof args === 'object' && args !== null && !Array.isArray(args)
         ? (args as Record<string, unknown>)
         : undefined;
+    const approval = approvalOf(binding.tool, this.#permissions());
+    if (approval !== 'none') {
+      const refusal = await this.#askProducer(record, binding, given);
+      if (refusal !== undefined) return refusal;
+      // The session may have ended while the Producer decided (the flag is read again on purpose).
+      if (isRevoked(record)) return asResult({ ok: false, value: { error: 'revoked' } });
+    }
     return await plugins.call(binding, given);
+  }
+
+  #permissions(): PluginPermissionSettings {
+    return this.#options.pluginPermissions?.() ?? DEFAULT_PLUGIN_PERMISSIONS;
+  }
+
+  /** What the card shows of the arguments (`plugins.permissions.approval_detail`). */
+  #detailOf(args: Record<string, unknown> | undefined): string {
+    if (args === undefined || Object.keys(args).length === 0) return 'no arguments';
+    if (this.#permissions().approvalDetail === 'values') {
+      return `arguments ${JSON.stringify(args).slice(0, 300)}`;
+    }
+    return `arguments: ${Object.keys(args).join(', ').slice(0, 200)}`;
+  }
+
+  /**
+   * Asks the Producer whether the call may run: `undefined` when it may, the tool error otherwise.
+   * The two events of the permission (`permission.asked` and `permission.answered`) tell the
+   * answer, with the reasons `plugin_tool_approved` and `plugin_tool_refused`.
+   */
+  async #askProducer(
+    record: GrantRecord,
+    binding: PluginToolBinding,
+    args: Record<string, unknown> | undefined,
+  ): Promise<CallToolResult | undefined> {
+    const ask = this.#options.askApproval;
+    await this.#say(record, binding, 'asked');
+    let refused: 'approval_unavailable' | 'approval_cancelled' | 'approval_denied' | undefined;
+    const opened =
+      ask === undefined
+        ? undefined
+        : await ask(binding.project, {
+            questions: [
+              {
+                question:
+                  `Allow the tool ${binding.name} (${binding.tool.effects}, role ${record.input.role})? ` +
+                  this.#detailOf(args),
+                options: [
+                  { label: APPROVE_LABEL, description: 'Run this call; the next call asks again.' },
+                  {
+                    label: DENY_LABEL,
+                    description: 'Do not run it; the agent is told it was refused.',
+                  },
+                ],
+                multi_select: false,
+                open: false,
+                recommended: DENY_LABEL,
+              },
+            ],
+          }).catch(() => undefined);
+    if (opened === undefined) {
+      refused = 'approval_unavailable';
+    } else {
+      try {
+        refused = isApproval(await opened.answer) ? undefined : 'approval_denied';
+      } catch {
+        refused = 'approval_cancelled';
+      }
+    }
+    await this.#say(record, binding, refused === undefined ? 'approved' : 'refused');
+    if (refused === undefined) return undefined;
+    const message = {
+      approval_unavailable:
+        'This tool needs the Producer to approve it and nobody can be asked right now.',
+      approval_cancelled: 'The question to the Producer ended without an answer.',
+      approval_denied: `The Producer did not approve this call of ${binding.name}. Do not try it again unless the task needs it, and then say why.`,
+    }[refused];
+    return this.#refuse(record, binding, refused, message);
+  }
+
+  /** The tool error of a refused call, and the notice of it. The plugin is never called. */
+  #refuse(
+    record: GrantRecord,
+    binding: PluginToolBinding,
+    reason: Extract<PluginNotice, { kind: 'tool_refused' }>['reason'],
+    message: string,
+  ): CallToolResult {
+    this.#options.logger.warn(
+      { plugin: binding.plugin.id, tool: binding.tool.name, role: record.input.role, reason },
+      'plugin tool call refused: it did not reach the plugin',
+    );
+    try {
+      this.#options.onPluginNotice?.({
+        kind: 'tool_refused',
+        plugin: binding.plugin.id,
+        project: binding.project,
+        tool: binding.tool.name,
+        role: record.input.role,
+        reason,
+      });
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'plugin notice sink failed');
+    }
+    return asResult({ ok: false, value: { error: reason, message } });
+  }
+
+  /** `permission.asked`, then `permission.answered`, for the card of a plugin tool. */
+  async #say(
+    record: GrantRecord,
+    binding: PluginToolBinding,
+    state: 'asked' | 'approved' | 'refused',
+  ): Promise<void> {
+    const { correlation } = record.input;
+    const common = {
+      sessionId: record.sessionId ?? record.input.attemptId,
+      tool: binding.name.slice(0, 256),
+      paths: [],
+      pathCount: 0,
+      ...(correlation.playId === undefined ? {} : { playId: correlation.playId }),
+      ...(correlation.demandId === undefined ? {} : { demandId: correlation.demandId }),
+      attemptId: record.input.attemptId,
+    };
+    try {
+      await record.input.record(
+        state === 'asked'
+          ? buildDaemonEvent('permission.asked', common)
+          : buildDaemonEvent('permission.answered', {
+              ...common,
+              answer: state === 'approved' ? 'allow' : 'reject',
+              rule: `plugin:${binding.plugin.id}`.slice(0, 256),
+              reason: state === 'approved' ? 'plugin_tool_approved' : 'plugin_tool_refused',
+            }),
+      );
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'permission event of a plugin tool not recorded');
+    }
   }
 
   /** One call of a tool: the order is revoked? submit? input valid? handler? */

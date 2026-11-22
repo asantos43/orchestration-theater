@@ -127,6 +127,13 @@ export function recordPluginNotice(situations: SituationSink, notice: PluginNoti
       situations.record('plugin.server_failed', payload, correlation);
       return;
     }
+    case 'tool_refused':
+      situations.record(
+        'plugin.tool_rejected',
+        { plugin, project, tool: notice.tool, reason: notice.reason, role: notice.role },
+        correlation,
+      );
+      return;
     case 'secret_missing':
       situations.record(
         'plugin.secret_missing',
