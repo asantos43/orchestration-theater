@@ -146,3 +146,6 @@ if ($failures.Count -gt 0) {
   exit 1
 }
 Write-Host "`nAll checks passed."
+# The step takes its result from $LASTEXITCODE, which still holds the last native command (a
+# `schtasks /query` of the task that is gone returns 1): end with the result of the checks.
+exit 0
