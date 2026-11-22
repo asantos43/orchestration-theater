@@ -23,6 +23,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import type { Logger } from '../logger.js';
+import type { PluginAggregator, PluginSnapshot, PluginToolBinding } from '../plugins/aggregate.js';
 import type { RecoveryGate } from '../recovery/gate.js';
 import type { McpAccess, McpGrant, McpGrantInput } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
@@ -58,6 +59,16 @@ export interface FrameworkMcpOptions {
    * must exist; a file already at the path is removed first. Default: no socket.
    */
   readonly socketPath?: string;
+  /**
+   * The tools of the plugins active in the project of the session, added under `<id>__<tool>`
+   * (N234, Phase 9 P5). Without it the server has the framework tools only.
+   */
+  readonly plugins?: PluginAggregator;
+  /**
+   * The project of a grant that does not carry one (`McpGrantInput.project`): the daemon answers
+   * from the play of the attempt. `undefined` means no project, so no plugin tool.
+   */
+  readonly projectOf?: (input: McpGrantInput) => Promise<string | undefined>;
 }
 
 /**
@@ -110,6 +121,21 @@ function asResult(reply: ToolReply): CallToolResult {
     ],
     ...(structured === undefined ? {} : { structuredContent: structured }),
     ...(reply.ok ? {} : { isError: true }),
+  };
+}
+
+/**
+ * The schema the SDK sees for a tool of a plugin: the JSON Schema of the server of the plugin,
+ * and no validation here, because the server validates its own arguments (N233).
+ */
+function pluginSchema(schema: Record<string, unknown>): StandardSchemaWithJSON {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'otheater',
+      validate: (value: unknown) => ({ value }),
+      jsonSchema: { input: () => schema, output: () => schema },
+    },
   };
 }
 
@@ -177,6 +203,8 @@ export class FrameworkMcpServer implements McpAccess {
   readonly #http: HttpServer;
   readonly #unix: HttpServer | undefined;
   readonly #mcp: McpHttpHandler;
+  /** The plugins a grant sees, taken at its first request and kept for its life. */
+  readonly #snapshots = new WeakMap<McpGrantInput, Promise<PluginSnapshot | undefined>>();
   #url: string;
   #stopped: Promise<void> | undefined;
 
@@ -288,6 +316,8 @@ export class FrameworkMcpServer implements McpAccess {
       ]);
       const socketPath = this.socketPath;
       if (socketPath !== undefined) rmSync(socketPath, { force: true });
+      // The processes of the plugins live and die with the server that hands their tools out.
+      await this.#options.plugins?.stop().catch(() => undefined);
     })();
     return this.#stopped;
   }
@@ -316,7 +346,7 @@ export class FrameworkMcpServer implements McpAccess {
   #createHandler(): McpHttpHandler {
     const { logger, version } = this.#options;
     return createMcpHandler(
-      (context) => {
+      async (context) => {
         const record = context.authInfo?.extra?.record as GrantRecord | undefined;
         const server = new McpServer({ name: 'otheater', version });
         if (record === undefined) return server;
@@ -329,6 +359,13 @@ export class FrameworkMcpServer implements McpAccess {
             async (args) => asResult(await this.#call(record, tool, args)),
           );
         }
+        for (const binding of await this.#pluginTools(record)) {
+          server.registerTool(
+            binding.name,
+            { description: binding.description, inputSchema: pluginSchema(binding.inputSchema) },
+            async (args) => await this.#callPlugin(record, binding, args),
+          );
+        }
         return server;
       },
       {
@@ -337,6 +374,50 @@ export class FrameworkMcpServer implements McpAccess {
         },
       },
     );
+  }
+
+  /**
+   * The tools of the plugins this grant sees. The set of plugins is the one active in the project
+   * at the grant's first request (a session in course keeps it); a failure here costs the plugin
+   * tools, never the framework ones.
+   */
+  async #pluginTools(record: GrantRecord): Promise<readonly PluginToolBinding[]> {
+    const plugins = this.#options.plugins;
+    if (plugins === undefined) return [];
+    try {
+      const { input } = record;
+      let snapshot = this.#snapshots.get(input);
+      if (snapshot === undefined) {
+        snapshot = (async () => {
+          const project = input.project ?? (await this.#options.projectOf?.(input));
+          return project === undefined ? undefined : plugins.snapshot(project);
+        })();
+        this.#snapshots.set(input, snapshot);
+      }
+      const resolved = await snapshot;
+      if (resolved === undefined) return [];
+      return await plugins.tools(resolved, input.role, input.tools);
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'plugin tools could not be listed');
+      return [];
+    }
+  }
+
+  /** One call of a plugin tool: revoked? recovery gate? then the process of the plugin. */
+  async #callPlugin(
+    record: GrantRecord,
+    binding: PluginToolBinding,
+    args: unknown,
+  ): Promise<CallToolResult> {
+    if (record.revoked) return asResult({ ok: false, value: { error: 'revoked' } });
+    await this.#options.gate?.wait();
+    const plugins = this.#options.plugins;
+    if (plugins === undefined) return asResult({ ok: false, value: { error: 'revoked' } });
+    const given =
+      typeof args === 'object' && args !== null && !Array.isArray(args)
+        ? (args as Record<string, unknown>)
+        : undefined;
+    return await plugins.call(binding, given);
   }
 
   /** One call of a tool: the order is revoked? submit? input valid? handler? */
