@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   AdapterUnavailable,
   hasErrorCode,
@@ -74,11 +75,15 @@ import { registerBrowserTools, secretPathCheck, type BrowserTools } from './brow
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
+import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
+import { PluginProcessPool } from './plugins/process-pool.js';
+import { pluginRuntimeFromConfig, type PluginNoticeSink } from './plugins/runtime-config.js';
 import { exportsPrometheus } from './telemetry/export-config.js';
 import { MetricsCollector } from './telemetry/metrics.js';
 import { EventMetrics } from './telemetry/metrics-events.js';
 import { PlaySpansService } from './telemetry/play-spans.js';
 import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
+import { traceResourceExtras } from './telemetry/reparent.js';
 import { TelemetryStatusService } from './telemetry/status.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
@@ -172,6 +177,14 @@ export interface StartDaemonOptions {
    * prompt to check that the daemon refuses to start. [proposta]
    */
   readonly prompts?: PromptSource | undefined;
+  /**
+   * The plugins active in each project (Phase 9, P5; the registry of P4 binds here). Their tools
+   * join the `otheater` MCP server as `<id>__<tool>`, filtered by role. Without it there is no
+   * plugin tool and no process of a plugin. [proposta]
+   */
+  readonly plugins?: ActivePluginSource | undefined;
+  /** Where the notices about plugins go besides the log: the point P8 turns into events. */
+  readonly pluginNotices?: PluginNoticeSink | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -395,10 +408,44 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       situations: composition.situations,
       scenarioOf: async (playId) => (await composition?.store.plays.get(playId))?.scenarioId,
       clock: composition.clock,
+      // Phase 9, P1 (N230 (2)): the client is told the trace its spans will be in, and the receiver
+      // puts them under the daemon's tree. With `telemetry.receiver.reparent: off` neither happens.
+      ...(config.telemetry.receiver.reparent === 'session'
+        ? { resourceExtras: traceResourceExtras }
+        : {}),
     });
+    const pluginSource = options.plugins;
+    const pluginAggregator =
+      pluginSource === undefined
+        ? undefined
+        : new PluginAggregator({
+            source: pluginSource,
+            pool: new PluginProcessPool({
+              clock: composition.clock,
+              logger: composition.logger,
+              // A getter, so the pool reads the section as it is when it needs it (`plugins` is a section of
+              // the restart, as the others outside the hot ones).
+              runtime: () => pluginRuntimeFromConfig(config.plugins),
+              homeRoot: join(paths.dataDir, 'plugin-homes'),
+              ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+            }),
+            logger: composition.logger,
+            reservedNames: () => registries.tools.list().map((tool) => tool.name),
+            ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+          });
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
+      ...(pluginAggregator === undefined
+        ? {}
+        : {
+            plugins: pluginAggregator,
+            projectOf: async (input) => {
+              const playId = input.correlation.playId;
+              if (playId === undefined) return undefined;
+              return (await composition?.store.plays.get(playId))?.scenarioId;
+            },
+          }),
       // N188: a getter, so `PUT /v1/config` changes it without a restart.
       get submitRetries() {
         return config.limits.submit_retries;
