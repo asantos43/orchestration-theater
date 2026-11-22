@@ -67,10 +67,13 @@ if [ "$count" -eq 0 ]; then
   echo "test-affected: no test to run"
   exit 0
 fi
-# A long list of positional filters can pass the command-line limit of Windows (32 KiB); past this
-# many files the run is close to the whole suite anyway.
-if [ "$count" -gt 250 ]; then
-  full "$count affected test files"
+# A long list of positional filters can pass the command-line limit of Windows: 32 KiB for a
+# process, but 8191 characters through cmd.exe, which the `.cmd` shim of `pnpm exec` goes through.
+# So the files go to the entry point of vitest with `node` (no shim), and past this many files or
+# characters the run is close to the whole suite anyway.
+length=$(printf '%s' "$files" | wc -c | tr -d ' ')
+if [ "$count" -gt 250 ] || [ "$length" -gt 24000 ]; then
+  full "$count affected test files ($length characters)"
 fi
 
 echo "test-affected: $count test file(s) (graph and dist/)"
@@ -79,4 +82,4 @@ if [ "${OT_TEST_DRY:-}" = 1 ]; then
   exit 0
 fi
 # shellcheck disable=SC2086 # one path per word; the test paths have no spaces.
-exec pnpm exec vitest run $files
+exec node node_modules/vitest/vitest.mjs run $files
