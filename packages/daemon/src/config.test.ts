@@ -192,6 +192,7 @@ describe('parseConfig', () => {
       decisionFocus: 'auto',
       decisionClick: 'answer',
       esc: 'stop',
+      directorFooter: 'on',
       history: 40,
     });
     const yaml =
@@ -202,8 +203,15 @@ describe('parseConfig', () => {
       decisionFocus: 'auto',
       decisionClick: 'select',
       esc: 'off',
+      directorFooter: 'on',
       history: 40,
     });
+    expect(parseConfig('ui:\n  chat:\n    directorFooter: off\n').ui.chat.directorFooter).toBe(
+      'off',
+    );
+    expect(() => parseConfig('ui:\n  chat:\n    directorFooter: maybe\n')).toThrow(
+      /ui\.chat\.directorFooter/,
+    );
     expect(() => parseConfig('ui:\n  chat:\n    decisionClick: double\n')).toThrow(
       /ui\.chat\.decisionClick/,
     );
@@ -929,6 +937,20 @@ describe('parseConfig, scenarios (architecture 5.20)', () => {
     expect(() => parseConfig('scenarios:\n  director_failover: always\n')).toThrow(
       /director_failover/,
     );
+  });
+
+  it('scenarios.director_switch.in_turn: wait by default, interrupt on request (P14, N242)', () => {
+    expect(parseConfig('').scenarios.director_switch.in_turn).toBe('wait');
+    for (const mode of ['wait', 'interrupt'] as const) {
+      expect(
+        parseConfig(`scenarios:\n  director_switch:\n    in_turn: ${mode}\n`).scenarios
+          .director_switch.in_turn,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('scenarios:\n  director_switch:\n    in_turn: never\n')).toThrow(
+      /in_turn/,
+    );
+    expect(() => parseConfig('scenarios:\n  director_switch:\n    other: 1\n')).toThrow(/other/);
   });
 
   it('rejects a bad duration, a bad size and an unknown key', () => {

@@ -229,6 +229,13 @@ export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
  */
 export const DIRECTOR_FAILOVER_MODES = ['next', 'quota_only', 'off'] as const;
 export type DirectorFailoverMode = (typeof DIRECTOR_FAILOVER_MODES)[number];
+/**
+ * `scenarios.director_switch.in_turn` (P14, N242, [proposta]): what a manual switch of the Director
+ * does when the Director is in the middle of a turn. `wait` (default): the switch waits for the
+ * turn to end; `interrupt`: the turn is interrupted (as `/stop` does) and the switch happens now.
+ */
+export const DIRECTOR_SWITCH_IN_TURN_MODES = ['wait', 'interrupt'] as const;
+export type DirectorSwitchInTurnMode = (typeof DIRECTOR_SWITCH_IN_TURN_MODES)[number];
 
 /**
  * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
@@ -2287,6 +2294,8 @@ export const DaemonConfigSchema = z
      * role when the cause is a quota or a spending cap (`quota_exhausted`, `spend_cap`), a provider
      * error or a drop (`transient`, `client_crash`); `quota_only` does it for the first two causes
      * only; `off` keeps the old behaviour (the queue stops until the next prompt tries again).
+     * [proposta] `director_switch.in_turn` (P14, N242) is what a manual switch of the Director
+     * (`/director`, the TUI footer) does when the Director is in a turn: `wait` (default) or `interrupt`.
      */
     scenarios: z
       .strictObject({
@@ -2296,6 +2305,11 @@ export const DaemonConfigSchema = z
         consultant_alternatives: z.array(PlayExecutorSchema).default([]),
         consultant_writes: z.enum(['merge', 'keep', 'discard']).prefault('merge'),
         director_failover: z.enum(DIRECTOR_FAILOVER_MODES).prefault('next'),
+        director_switch: z
+          .strictObject({
+            in_turn: z.enum(DIRECTOR_SWITCH_IN_TURN_MODES).prefault('wait'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**

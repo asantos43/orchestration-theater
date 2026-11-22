@@ -578,6 +578,16 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       context: 'chat',
       keys: terminalKeys(['Esc']),
     },
+    // The picker of the Director of the scenario (P14 of Phase 9, N242): the footer under the text box
+    // shows it and a click opens it too. [proposta] `Alt+M` (M of model) in both presets: no other
+    // action of the chat, the text box or the layout takes it.
+    {
+      id: 'chat.director',
+      textKey: 'actions.chat.director',
+      group: 'navigation',
+      context: 'chat',
+      keys: terminalKeys(['Alt+M']),
+    },
     // The Overview and Usage tabs (P13 of docs/18), each in the context of its tab. None shows in the
     // palette: the tab draws the keys it offers. Each can be rebound in `ui.keymap.overrides`.
     {

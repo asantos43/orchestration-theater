@@ -200,12 +200,59 @@ export const ScenarioDirectorFailoverNoticeSchema = z.strictObject({
   detail: z.string().min(1).max(512).nullable(),
 });
 
+/**
+ * How a manual switch of the Director (P14, N242; `/director`, `/model`, `/effort`, the footer of
+ * the TUI) was carried out [proposta]:
+ * - `live`: the model or the effort changed in the open session, through its config option;
+ * - `new_session`: another Executor, so a new session opened and its first prompt carries the role
+ *   prefix and the state summary;
+ * - `baton`: the same Executor, but the client does not announce the option: the baton passed to a
+ *   new session of the same Executor, as for another one;
+ * - `stored`: no session is open (the Director sleeps, or opens now): the override is kept in the
+ *   store and the next opening uses it;
+ * - `unchanged`: the session already runs what was asked.
+ */
+export const DIRECTOR_SWITCH_FORMS = [
+  'live',
+  'new_session',
+  'baton',
+  'stored',
+  'unchanged',
+] as const;
+export type DirectorSwitchForm = (typeof DIRECTOR_SWITCH_FORMS)[number];
+
+const directorSwitchFields = {
+  scenarioId,
+  form: z.enum(DIRECTOR_SWITCH_FORMS),
+  /** The Executor (complete name) the Director ran with before; null when no session was open. */
+  fromExecutor: z.string().min(1).max(256).nullable(),
+  /** The Executor after the switch; null when no session is open (the next opening decides). */
+  toExecutor: z.string().min(1).max(256).nullable(),
+  /** The model and the effort the Director runs with after the switch; null when not known. */
+  model: z.string().min(1).max(256).nullable(),
+  effort: z.string().min(1).max(64).nullable(),
+  /** Whether an override of the scenario is in force after the switch (false: back to default). */
+  override: z.boolean(),
+  /** The switch waited for the end of a turn (`scenarios.director_switch.in_turn`). */
+  waited: z.boolean(),
+};
+
+/** `scenario.director_switched` (P14, [proposta]): the record of a manual switch, for hooks and plugins. */
+export const ScenarioDirectorSwitchedPayloadSchema = z.strictObject(directorSwitchFields);
+
+/** The `director_switch` kind of the chat notice: the same facts as the event, for the Producer. */
+export const ScenarioDirectorSwitchNoticeSchema = z.strictObject({
+  ...directorSwitchFields,
+  kind: z.literal('director_switch'),
+});
+
 export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioRecoveryNoticeSchema,
   ScenarioHandoffNoticeSchema,
   ScenarioSelectionWaitNoticeSchema,
   ScenarioResetWaitNoticeSchema,
   ScenarioDirectorFailoverNoticeSchema,
+  ScenarioDirectorSwitchNoticeSchema,
 ]);
 
 /** What a `play.notice` tells (P16b, [proposta]): a situation of the play the daemon used to only log. */
