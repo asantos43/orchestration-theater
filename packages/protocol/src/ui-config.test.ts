@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   UiClipboardConfigSchema,
   UiInputConfigSchema,
+  UiKeyboardConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
   UiOverviewConfigSchema,
@@ -164,5 +165,13 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiSetupConfigSchema.safeParse({ readTimeoutMs: 99 }).success).toBe(false);
     expect(UiSetupConfigSchema.safeParse({ readTimeoutMs: 60_001 }).success).toBe(false);
     expect(UiSetupConfigSchema.safeParse({ wait: 1 }).success).toBe(false);
+  });
+
+  it('has the default of the keyboard block, takes its other modes and refuses the rest', () => {
+    expect(UiKeyboardConfigSchema.parse({})).toEqual({ protocol: 'auto' });
+    expect(UiKeyboardConfigSchema.parse({ protocol: 'kitty' }).protocol).toBe('kitty');
+    expect(UiKeyboardConfigSchema.parse({ protocol: 'off' }).protocol).toBe('off');
+    expect(UiKeyboardConfigSchema.safeParse({ protocol: 'legacy' }).success).toBe(false);
+    expect(UiKeyboardConfigSchema.safeParse({ flags: 1 }).success).toBe(false);
   });
 });
