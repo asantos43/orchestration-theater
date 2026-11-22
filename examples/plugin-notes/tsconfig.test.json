@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-test",
+    "emitDeclarationOnly": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "tsconfig.src.json"
+    },
+    {
+      "path": "../../packages/sdk/tsconfig.src.json"
+    },
+    {
+      "path": "../../packages/core/tsconfig.src.json"
+    }
+  ]
+}
