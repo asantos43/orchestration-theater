@@ -1,6 +1,6 @@
 # 20. Plano da Fase 9
 
-Versão 4, de 2026-11-22 (a versão 1 era de 2026-11-21, antes das decisões N232 a N241; a 2 não tinha o P14, da N242; a 3 era o plano de partida; a 4 registra o que os passos mesclados fizeram, no "Como ficou" de cada um). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
+Versão 5, de 2026-11-22 (a versão 1 era de 2026-11-21, antes das decisões N232 a N241; a 2 não tinha o P14, da N242; a 3 era o plano de partida; a 4 registrava os passos mesclados até o P14; a 5 traz o P11 e o P13, e fecha a fase). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
 
 A fase começa depois do fim da Fase 8 (decisões N224 a N231, de 2026-11-21). Pela N231, os PRs desta fase mesclam sem ok por PR, com a CI verde e squash. O que depende do dono fica para o fim da fase.
 
@@ -82,10 +82,10 @@ Dados do registro npm, consultados em 2026-11-21 **[S]**. A regra é a das fases
 | P8 | Eventos `plugin.<id>.*` e eventos do ciclo dos plugins | P4, P5 | P6, P7 | feito (#275, d27a3dd) |
 | P9 | `@otheater/sdk` para plugins e o plugin de exemplo (N240) | P3 | P4, P5, P12 | feito (#271, 43908f2) |
 | P10 | Rotas `/v1/plugins`: lista, painel e ação | P6, P8 | P12 | feito (#279, 6b6e0f3) |
-| P11 | Aba Plugins da TUI (F6) com o painel declarativo | P10 | P12 | em curso |
+| P11 | Aba Plugins da TUI (F6) com o painel declarativo | P10 | P12 | feito (#280, 175ab11) |
 | P12 | Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241) | P3 | P4 a P11 | feito (#270, ff36aab) |
 | P14 | Troca manual do Diretor pela TUI e por `/director` (N242) | nada | P3 a P12 | feito (#269, 27c1185; plano #268, 303c334) |
-| P13 | Aceite da fase | todos | nada | a fazer |
+| P13 | Aceite da fase | todos | nada | feito (#282, b6a1f19) |
 
 Ondas **[proposta]**:
 - **onda 1:** P0, P1, P2 e P3;
@@ -422,6 +422,19 @@ Contrato dos dados do painel: `table` e `list` recebem um array, `metrics` um ob
   - o teste de fumaça no tmux abre a aba;
   - nenhum `import` de código do plugin no pacote da TUI, conferido por teste.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #280 (175ab11) [S: descrição do PR; a aba, o grupo e as teclas foram conferidos na main]. Arquivos: `packages/tui/src/tabs/plugins/` (`api.ts`, as rotas do P10 tipadas, com `Idempotency-Key` por comando; `model.ts`, puro: texto seguro, estados, painel em linhas, segredos e texto de ativação; `plugins-tab.tsx`) e `packages/tui/src/layout/tab-content.ts`. No registro (`packages/client/src/ui/default-registry.ts`) [V]: a aba `plugins` (F6, ordem 70), o grupo `plugins` (ordem 39 na ajuda, depois de `setup`) e as ações `plugins.*` no contexto `plugins`, fora da paleta. Teclas: `K` e `J` (anterior e próximo), `E` (ligar), `D` (desligar), `N` (próxima ação), `A` (rodar a ação) e `R` (recarregar), remapeáveis como as demais.
+- **Lista:** o estado no projeto da barra lateral (ligado, precisa de nova aprovação, inutilizável, desligado). Ligar só depois do cartão com o que o plugin pede, devolvendo o `currentManifestHash` mostrado; o 409 aparece como mensagem. Desligar com `y` (`s` em pt-BR); outra tecla cancela.
+- **Painel:** `table`, `list`, `metrics` e `action` desenhados só a partir da rota; o texto do plugin passa por `safeText`. Um bloco com erro, cortado, de tipo desconhecido ou malformado vira uma linha, e o resto do painel é desenhado. A ação mostra "aguardando sua aprovação" enquanto espera o Produtor.
+- **Segredos:** só os nomes (os declarados e os de `plugin.secret_missing`) e o comando `ot plugin secret set <id> <NOME> --project <p>`; nunca um valor. O P10 não criou rota para gravar segredo, e a aba não tem campo de texto.
+- **Eventos:** `plugin.installed`, `removed`, `enabled` e `disabled` recarregam a lista; `plugin.<id>.<nome>` do plugin selecionado recarrega o painel; `plugin.server_failed` e `server_started` marcam o detalhe.
+- Testes: `no-plugin-code.test.ts` recusa import de código de plugin na TUI, e o smoke do tmux abre o F6 (CI com `OT_REQUIRE_TMUX=1`). Textos `en` e `pt-BR`. Nenhuma chave de configuração nem evento novos (149 e 151).
+
+**Divergências:**
+- a edição mascarada dos segredos não existe, porque não há rota de gravação; a aba só mostra e orienta;
+- escolhas do PR **[proposta]**, para o dono: F6 (o VS Code pode capturar a tecla; o aviso do mapa de teclas já diz "pode"), letras nuas na aba, a confirmação por `y`/`s`, a leitura leniente dos blocos do painel (o envelope segue estrito), a falta de campo de segredo e a ordem 39 do grupo.
+
 ### P12. Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241; §12, item 29)
 
 O desenho segue a N241 (a) **[proposta]**:
@@ -501,6 +514,24 @@ O desenho segue a N242:
   - a árvore única de spans e as métricas novas da Fase 8 aparecem.
 - **Real** (`--level phase9` do `real-acceptance.sh`) **[proposta]**: uma sessão real do Claude Code (haiku) como Ator chama o `add_note` do exemplo, e o Crítico não o vê. O Codex e o OpenCode são opcionais, como na N230.
 - **Aceite:** os dois níveis verdes, e o critério da §10 cumprido.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #282 (b6a1f19) [S: descrição do PR; os arquivos foram conferidos na main]. Sem mudança de produto: só testes e o script de aceite.
+- **Automático [V: CI do PR]:** `packages/daemon/src/phase9-acceptance.e2e.test.ts`, um daemon com o `fake-agent`, relógio e cofre de teste, HOME e dados temporários, o plugin `notes` e um plugin de fixture com segredo instalados pela CLI. Cobre:
+  - o fluxo `flows.quick` com `scenario.flow` até `DONE` (P12);
+  - os spans do cliente sob o `sessionSpanId` (P1) e, no `/metrics`, `otheater_waits_*`, `otheater_wait_seconds_total` e `otheater_telemetry_batches_rejected_total{reason}` (P2);
+  - `notes__add_note` só no Ator, com a chamada direta do Crítico recusada (P5 e P6), e a aprovação do Produtor: recusada não executa, aceita executa;
+  - o segredo só no ambiente do processo do plugin, sem aparecer em log, evento, resposta de rota nem no ambiente do Executor (P7);
+  - o evento `plugin.notes.note_added` no log e a nota no arquivo (P8), e a rota do painel em `en` e `pt-BR` (P10).
+- **TUI:** `packages/tui/src/phase9-acceptance.e2e.test.tsx` desenha a aba Plugins pela rota real `GET /v1/plugins/:pluginId/panel`, com o cliente real, em `en` e `pt-BR`; a ação espera o Produtor. Não usa resposta gravada.
+- **Real** (nível `phase9` do `tools/acceptance/real-acceptance.sh`, teto de 40 min) **[proposta]**: `packages/daemon/src/api/phase9-acceptance.real.test.ts`, ligado por `OT_TEST_REAL_PHASE9`; clientes por `OT_TEST_PHASE9_CLIENTS` (padrão `claude-code`, como a N230). Rodado pelo orquestrador em 2026-11-22 com o Claude Code (haiku) [V: log local]: a peça foi até `DONE` em 99,6 s; grants por papel `actor=1` e zero nos outros; dois eventos `plugin.notes.note_added`; o painel mostrou as duas notas; 16 processos iniciados e nenhum vivo no fim; pico de memória perto de 1,1 GB. O Codex e o OpenCode não rodaram [N].
+- O critério de aceite da §10 foi cumprido: a ferramenta do plugin aparece só nos papéis declarados, e o painel do exemplo aparece na TUI sem código do plugin [V: testes e rodada real].
+
+**Divergências:**
+- com `plugins.project_dir: scenario`, o `.plugin-notes.json` fica na pasta do cenário, e não na worktree do Ator **[proposta]**, para o dono;
+- o `e2e-fixture.ts` ganhou um `logger` opcional em `PlayHarnessOptions`; o padrão continua o logger mudo;
+- nenhuma chave de configuração nem evento novos (149 e 151).
 
 ## Fora desta fase
 
