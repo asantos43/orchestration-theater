@@ -27,6 +27,8 @@ export interface PanelProps {
   readonly onBarClick?: ((hit: TabBarHit) => void) | undefined;
   /** The wheel over the content; positive lines are toward the end. */
   readonly onWheel?: ((lines: number) => void) | undefined;
+  /** The panel is pressed with the mouse: it takes the focus. */
+  readonly onFocus?: (() => void) | undefined;
   readonly children: ReactNode;
 }
 
@@ -53,7 +55,7 @@ export function Panel(props: PanelProps): ReactNode {
     },
   });
   return (
-    <Frame width={props.width} height={props.height} active={props.focused}>
+    <Frame width={props.width} height={props.height} active={props.focused} onPress={props.onFocus}>
       <Box ref={barRef} width={inner} height={1}>
         <Text wrap="truncate">
           {bar.segments.map((segment) =>

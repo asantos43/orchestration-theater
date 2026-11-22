@@ -689,6 +689,9 @@ export function Shell(props: ShellProps): ReactNode {
               width={geometry.sidebar.width}
               height={height}
               focused={focus === 'sidebar'}
+              onFocus={() => {
+                setFocus('sidebar');
+              }}
               rows={scenarioRowsNow}
               finished={finished}
               quotas={quotas}
@@ -722,6 +725,9 @@ export function Shell(props: ShellProps): ReactNode {
             height={height}
             focused={focus === 'chat'}
             edgeFocused={focus === 'edge'}
+            onFocus={() => {
+              setFocus('chat');
+            }}
             resizable={resizable}
             widthLabel={
               resizable
@@ -752,6 +758,9 @@ export function Shell(props: ShellProps): ReactNode {
               width={geometry.panel.width}
               height={height}
               focused={focus === 'panel'}
+              onFocus={() => {
+                setFocus('panel');
+              }}
               tabs={openTabs}
               active={currentTab}
               keys={{
