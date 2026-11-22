@@ -68,7 +68,7 @@ function doubleOf(): { access: McpAccess; issued: Issued[] } {
   return { access, issued };
 }
 
-function fakes() {
+function fakes(onPrepareProfile?: (policy: RolePolicy) => void) {
   const clock = new FakeClock();
   const launcher = new FakeProcessLauncher();
   return {
@@ -81,6 +81,13 @@ function fakes() {
       baseEnv: {},
       adapterVersion: '1.0.0',
       command: { cmd: 'fake-client', args: [] },
+      ...(onPrepareProfile === undefined
+        ? {}
+        : {
+            onPrepareProfile: (_profile, policy) => {
+              onPrepareProfile(policy);
+            },
+          }),
     }),
   } satisfies RigParts;
 }
@@ -89,8 +96,11 @@ type TestRig = Rig<ReturnType<typeof fakes>>;
 
 const rigs: TestRig[] = [];
 
-async function rig(access: McpAccess): Promise<TestRig> {
-  const made = await makeRig(fakes(), {}, access);
+async function rig(
+  access: McpAccess,
+  onPrepareProfile?: (policy: RolePolicy) => void,
+): Promise<TestRig> {
+  const made = await makeRig(fakes(onPrepareProfile), {}, access);
   rigs.push(made);
   return made;
 }
@@ -199,6 +209,104 @@ describe('AttemptRunner, framework MCP server', () => {
       expect(outcome.state).not.toBe('completed');
       expect(issued.length).toBeGreaterThan(0);
       expect(issued.every((grant) => grant.revoked >= 1)).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('AttemptRunner, plugin tools of the policy (P6)', () => {
+  const WITH_LIST: RolePolicy = {
+    ...TEST_POLICY,
+    mcpServers: [FRAMEWORK_MCP_NAME],
+    mcpTools: { [FRAMEWORK_MCP_NAME]: ['submit_delivery'] },
+  };
+
+  /** A double whose `pluginTools` answers `names` and remembers what it was asked. */
+  function withPlugins(names: readonly string[] | Error) {
+    const { access, issued } = doubleOf();
+    const asked: Parameters<NonNullable<McpAccess['pluginTools']>>[0][] = [];
+    const withTools: McpAccess = {
+      ...access,
+      pluginTools: (query) => {
+        asked.push(query);
+        return names instanceof Error ? Promise.reject(names) : Promise.resolve(names);
+      },
+    };
+    return { access: withTools, issued, asked };
+  }
+
+  it(
+    'puts the allowed plugin tools in the policy of the client and in the grant',
+    async () => {
+      const { access, issued, asked } = withPlugins(['demo__echo', 'demo__pid']);
+      const prepared: RolePolicy[] = [];
+      const r = await rig(access, (policy) => prepared.push(policy));
+      const outcome = await r.runner.run(specOf(r, 'hello', { role: 'author', policy: WITH_LIST }));
+      expect(outcome).toMatchObject({ state: 'completed' });
+
+      expect(asked).toHaveLength(1);
+      expect(asked[0]).toMatchObject({
+        role: 'author',
+        policy: { nativeTools: TEST_POLICY.nativeTools },
+      });
+      expect(prepared[0]?.mcpTools[FRAMEWORK_MCP_NAME]).toEqual([
+        'submit_delivery',
+        'demo__echo',
+        'demo__pid',
+      ]);
+      expect(issued[0]?.input.pluginTools).toEqual(['demo__echo', 'demo__pid']);
+      // The server reads `pluginTools` first; `tools` carries the same names for a server that does not.
+      expect(issued[0]?.input.tools).toEqual(['submit_delivery', 'demo__echo', 'demo__pid']);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a policy with no plugin tool is left as it was, and the grant says so (an empty list)',
+    async () => {
+      const { access, issued } = withPlugins([]);
+      const prepared: RolePolicy[] = [];
+      const r = await rig(access, (policy) => prepared.push(policy));
+      await r.runner.run(specOf(r, 'hello', { role: 'author', policy: WITH_LIST }));
+      expect(prepared[0]?.mcpTools[FRAMEWORK_MCP_NAME]).toEqual(['submit_delivery']);
+      expect(issued[0]?.input.pluginTools).toEqual([]);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a failure of the permissions costs the plugin tools and not the session',
+    async () => {
+      const { access, issued } = withPlugins(new Error('the registry broke'));
+      const prepared: RolePolicy[] = [];
+      const r = await rig(access, (policy) => prepared.push(policy));
+      const outcome = await r.runner.run(specOf(r, 'hello', { role: 'author', policy: WITH_LIST }));
+      expect(outcome).toMatchObject({ state: 'completed' });
+      expect(prepared[0]?.mcpTools[FRAMEWORK_MCP_NAME]).toEqual(['submit_delivery']);
+      expect(issued[0]?.input.pluginTools).toEqual([]);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'does not ask for plugin tools when the policy does not list the server',
+    async () => {
+      const { access, issued, asked } = withPlugins(['demo__echo']);
+      const r = await rig(access);
+      await r.runner.run(specOf(r, 'hello', { role: 'author' }));
+      expect(asked).toHaveLength(0);
+      expect(issued).toHaveLength(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a server that does not know plugin tools gets the grant it always got',
+    async () => {
+      const { access, issued } = doubleOf();
+      const r = await rig(access);
+      await r.runner.run(specOf(r, 'hello', { role: 'author', policy: WITH_LIST }));
+      expect(issued[0]?.input.pluginTools).toBeUndefined();
     },
     TEST_TIMEOUT_MS,
   );

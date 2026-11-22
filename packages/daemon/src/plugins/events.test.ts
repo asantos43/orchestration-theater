@@ -77,6 +77,18 @@ describe('recordPluginNotice (the pool and the aggregator)', () => {
       { plugin: 'demo', project: 'p1', failures: 3, givenUp: true, reason: 'exit 1' },
     ],
     [
+      {
+        kind: 'tool_refused',
+        plugin: 'demo',
+        project: 'p1',
+        tool: 'add_note',
+        role: 'critic',
+        reason: 'not_allowed',
+      },
+      'plugin.tool_rejected',
+      { plugin: 'demo', project: 'p1', tool: 'add_note', reason: 'not_allowed', role: 'critic' },
+    ],
+    [
       { kind: 'secret_missing', plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
       'plugin.secret_missing',
       { plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },

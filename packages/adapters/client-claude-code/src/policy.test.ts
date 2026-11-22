@@ -86,6 +86,20 @@ describe('allowedMcpRules', () => {
     ).toEqual(['mcp__otheater__submit', 'mcp__otheater__read_blackboard', 'mcp__docs__search']);
   });
 
+  it('gives a rule per plugin tool <id>__<tool> of the otheater server, and none for the one left out (P6)', () => {
+    const rules = allowedMcpRules({
+      ...base,
+      mcpServers: ['otheater'],
+      mcpTools: { otheater: ['submit_plan', 'demo__lookup', 'demo__format'] },
+    });
+    expect(rules).toEqual([
+      'mcp__otheater__submit_plan',
+      'mcp__otheater__demo__lookup',
+      'mcp__otheater__demo__format',
+    ]);
+    expect(rules).not.toContain('mcp__otheater__demo__publish');
+  });
+
   it('gives the rule of the whole server only for a server whose tools are all', () => {
     expect(allowedMcpRules({ ...base, mcpServers: ['docs'], mcpTools: { docs: 'all' } })).toEqual([
       'mcp__docs',

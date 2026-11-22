@@ -22,6 +22,21 @@ const policy = (patch: Partial<RolePolicy> = {}): RolePolicy => ({
   ...patch,
 });
 
+describe('opencodePermission, plugin tools (P6)', () => {
+  it('allows the <id>__<tool> names the policy lists for the otheater server and no other', () => {
+    const rules = opencodePermission(
+      policy({
+        mcpServers: ['otheater'],
+        mcpTools: { otheater: ['submit_plan', 'demo__lookup'] },
+      }),
+    );
+    expect(rules.otheater_submit_plan).toBe('allow');
+    expect(rules.otheater_demo__lookup).toBe('allow');
+    expect(rules.otheater_demo__format).toBeUndefined();
+    expect(rules['*']).toBe('ask');
+  });
+});
+
 describe('opencodePermission', () => {
   it('starts from "*": ask, so the first key of the object is the catch-all', () => {
     expect(Object.keys(opencodePermission(policy()))[0]).toBe('*');
