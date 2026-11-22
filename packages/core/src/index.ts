@@ -57,6 +57,7 @@ export * from './permission-rules.js';
 export * from './catalog-probe-session.js';
 export * from './mode-veto-session.js';
 export * from './registries/index.js';
+export * from './plugins/index.js';
 export * from './script/index.js';
 export * from './prompts/index.js';
 export * from './directives/index.js';

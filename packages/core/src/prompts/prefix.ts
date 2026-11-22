@@ -34,8 +34,9 @@ const ORDERS_INTRO =
 const TOOLS_INTRO = 'These are the only framework tools you can call:';
 
 const EFFECT_NOTE: Readonly<Record<ToolDefinition['effect'], string>> = {
-  none: '',
-  worktree: ' (changes your worktree)',
+  read: '',
+  local_write: ' (changes your worktree)',
+  network: ' (reaches the network)',
   external_write: ' (acts outside the worktree)',
 };
 
