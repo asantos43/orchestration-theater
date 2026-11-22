@@ -67,6 +67,7 @@ import {
 } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
+import { useUpdateHint } from './use-update-status.js';
 import { useWatched } from './use-watched.js';
 import { TabHostProvider, type TabHost } from './tab-host.js';
 import {
@@ -166,6 +167,7 @@ export function Shell(props: ShellProps): ReactNode {
   const decisions = usePendingDecisions(stores);
   const link = useLink(stores);
   const live = link === 'live';
+  const update = useUpdateHint(props.client, stores, live);
   const plays = useStoreValue(stores.plays, (s) => s.byId);
   // The "Terminadas" section (P11 of docs/19): `ui.sidebar.finishedPlays` says whether it exists
   // and how it starts; the person opens and closes it for the session.
@@ -678,6 +680,7 @@ export function Shell(props: ShellProps): ReactNode {
           decisions={decisions}
           address={props.address}
           link={link}
+          update={update}
         />
         <Box height={height}>
           {geometry.sidebar.mode !== 'hidden' && (

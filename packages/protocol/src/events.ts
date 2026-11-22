@@ -176,6 +176,7 @@ import {
   PluginServerStoppedPayloadSchema,
   PluginToolRejectedPayloadSchema,
 } from './plugin-events.js';
+import { DaemonUpdatePayloadSchema } from './update-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -975,6 +976,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'plugin.panel_truncated',
     schemaVersion: 1,
     payload: PluginPanelTruncatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'daemon.update',
+    schemaVersion: 1,
+    payload: DaemonUpdatePayloadSchema,
   }),
 ] as const;
 
