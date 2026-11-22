@@ -96,6 +96,21 @@ describe('RoleSelection', () => {
     expect(await selectedEvents(store)).toHaveLength(1);
   });
 
+  it('startAt takes that Executor first and, when it cannot serve, goes on from it (P14)', async () => {
+    const { selection, out, setup } = rig();
+    await setup();
+    const pinned = await selection.once({ role: 'actor', startAt: entry('two') });
+    expect(pinned.kind === 'selected' && pinned.executor.id).toBe(entry('two'));
+    // The one chosen is out of quota: the list goes on from it (what comes before comes last).
+    out.add('fake/two');
+    const next = await selection.once({ role: 'actor', startAt: entry('two') });
+    expect(next.kind === 'selected' && next.executor.id).toBe(entry('one'));
+    // An id that is not in the list is ignored.
+    out.clear();
+    const ignored = await selection.once({ role: 'actor', startAt: 'nobody@fake/none' });
+    expect(ignored.kind === 'selected' && ignored.executor.id).toBe(entry('one'));
+  });
+
   it('skips an exhausted profile and says why', async () => {
     const { selection, out, setup } = rig();
     await setup();

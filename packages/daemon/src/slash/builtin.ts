@@ -5,6 +5,12 @@ import { z } from 'zod';
 import { redactConfig } from '../api/routes/redact.js';
 import { isPausedPlay, playOf, scenarioOf } from '../api/routes/projections.js';
 import { REMOVED_REASON } from '../executors/service.js';
+import {
+  directorWhat,
+  type DirectorSwitchChange,
+  type DirectorSwitchResult,
+  type DirectorView,
+} from '../orchestration/director-switch.js';
 import { resolveScenarioRoleExecutors } from '../orchestration/role-executors.js';
 import type { SlashAction, SlashRunContext, SlashOutcome } from './types.js';
 
@@ -608,17 +614,51 @@ const exportScenario = define({
 
 // ---- configure ----
 
+/** The argument of `/model` and `/effort`: nothing (shows) or a value (switches the Director). */
+const VALUE_OR_NOTHING = z.string().max(256);
+
+/** What the Director runs with, as the lines of the commands write it. */
+function whatOf(view: DirectorView): string {
+  const { current } = view;
+  if (current === null) return '-';
+  return directorWhat(current.executor, current.model, current.effort);
+}
+
+/** The answer of a switch: the same for `/director`, `/model` and `/effort`. */
+function switched(context: SlashRunContext<unknown>, result: DirectorSwitchResult): SlashOutcome {
+  const { t } = context;
+  const what = whatOf(result.view);
+  const source = t(
+    result.override === null ? 'out.director.source.default' : 'out.director.source.override',
+  );
+  const text =
+    result.status === 'pending'
+      ? t('out.director.pending', { what, source })
+      : t(`out.director.form.${result.form ?? 'stored'}`, { what, source });
+  return done(text, json(result));
+}
+
 const model = define({
   id: 'model',
   origin: 'daemon',
   group: 'configure',
   descriptionKey: 'desc.model',
-  argsKey: undefined,
+  argsKey: 'args.model',
   permission: 'read',
+  writes: (text) => text.trim() !== '',
   confirm: false,
   appliesTo: { scoped: true },
-  args: NO_ARGS,
+  args: VALUE_OR_NOTHING,
   async run(context) {
+    const wanted = context.args.trim();
+    const { directors } = context.deps;
+    if (wanted !== '') {
+      if (directors === undefined) throw new AdapterUnavailable(context.t('error.noDirectors'));
+      return switched(
+        context,
+        await directors.switchDirector(context.scenario.id, { kind: 'set', model: wanted }),
+      );
+    }
     const found = await directorExecutor(context);
     return done(context.t('out.model.line', { model: found.entry.model, id: found.id }), {
       executor: found.id,
@@ -632,17 +672,89 @@ const effort = define({
   origin: 'daemon',
   group: 'configure',
   descriptionKey: 'desc.effort',
-  argsKey: undefined,
+  argsKey: 'args.effort',
   permission: 'read',
+  writes: (text) => text.trim() !== '',
   confirm: false,
   appliesTo: { scoped: true },
-  args: NO_ARGS,
+  args: VALUE_OR_NOTHING,
   async run(context) {
+    const wanted = context.args.trim();
+    const { directors } = context.deps;
+    if (wanted !== '') {
+      if (directors === undefined) throw new AdapterUnavailable(context.t('error.noDirectors'));
+      return switched(
+        context,
+        await directors.switchDirector(context.scenario.id, { kind: 'set', effort: wanted }),
+      );
+    }
     const found = await directorExecutor(context);
     return done(context.t('out.effort.line', { effort: found.entry.effort, id: found.id }), {
       executor: found.id,
       effort: found.entry.effort,
     });
+  },
+});
+
+/**
+ * `/director` lists the Executors of the Director with the one it runs with now; `/director
+ * <executor>` switches (the complete name, its number in the list or a prefix); `/director default`
+ * goes back to the default (P14, N242). The TUI does the same through this command.
+ */
+const director = define({
+  id: 'director',
+  origin: 'daemon',
+  group: 'configure',
+  descriptionKey: 'desc.director',
+  argsKey: 'args.director',
+  permission: 'read',
+  writes: (text) => text.trim() !== '',
+  confirm: false,
+  appliesTo: { scoped: true },
+  args: VALUE_OR_NOTHING,
+  async run(context) {
+    const { t, scenario, deps } = context;
+    const wanted = context.args.trim();
+    const { directors } = deps;
+    if (directors === undefined) throw new AdapterUnavailable(t('error.noDirectors'));
+    if (wanted !== '') {
+      const change: DirectorSwitchChange =
+        wanted === 'default' ? { kind: 'default' } : { kind: 'set', executor: wanted };
+      return switched(context, await directors.switchDirector(scenario.id, change));
+    }
+    const view = await directors.view(scenario.id);
+    const rows = view.executors.map((item) =>
+      t('out.director.row', {
+        index: item.index,
+        id: item.id,
+        mark: item.current ? '*' : ' ',
+        state:
+          item.validity === 'valid'
+            ? t('out.director.valid')
+            : t('out.director.invalid', { reason: item.invalidReason ?? '' }),
+        quota: item.quota ?? '-',
+        default: item.isDefault ? t('out.director.isDefault') : '',
+      }),
+    );
+    return done(
+      lines(
+        t('out.director.header', {
+          what: whatOf(view),
+          source: t(
+            view.override === null ? 'out.director.source.default' : 'out.director.source.override',
+          ),
+        }),
+        ...(rows.length === 0 ? [t('out.director.empty')] : rows),
+        ...(view.models.length === 0
+          ? []
+          : [t('out.director.models', { models: view.models.map((item) => item.id).join(', ') })]),
+        ...(view.efforts.length === 0
+          ? []
+          : [t('out.director.efforts', { efforts: view.efforts.join(', ') })]),
+        t('out.director.usage'),
+      ),
+      json({ director: view }),
+    );
   },
 });
 
@@ -900,6 +1012,7 @@ export const BUILTIN_ACTIONS: readonly SlashAction[] = [
   exportScenario,
   model,
   effort,
+  director,
   profile,
   direct,
   directives,
