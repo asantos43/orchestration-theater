@@ -624,6 +624,42 @@ function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
 }
 
 /**
+ * The vault the configuration names (`adapters.vault`), or the one a test hands in. Used by
+ * {@link compose} and by `ot plugin secret set`, which needs the vault and nothing else of the
+ * composition (Phase 9, P7). The returned record is the adapter's, for the list of adapters.
+ */
+export function composeVault(
+  config: DaemonConfig,
+  dataDir: string,
+  overrides: ComposeOverrides = {},
+): { readonly vault: SecretVault; readonly record: AdapterRecord } {
+  if (overrides.vault !== undefined) {
+    return {
+      vault: overrides.vault,
+      record: overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION),
+    };
+  }
+  if (config.adapters.vault === 'keyring') {
+    return {
+      vault: new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault)),
+      record: checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
+    };
+  }
+  const record = checkAdapterRange(
+    encryptedFileVaultAdapter,
+    'SecretVault',
+    SECRET_VAULT_PORT_VERSION,
+  );
+  const raw = config.vault;
+  const path = typeof raw.path === 'string' ? resolve(dataDir, raw.path) : raw.path;
+  const section = parseSection('vault', EncryptedFileVaultConfigSchema, {
+    ...raw,
+    path: raw.path === undefined ? resolve(dataDir, DEFAULT_VAULT_FILE) : path,
+  });
+  return { vault: new EncryptedFileVault(section), record };
+}
+
+/**
  * The composition point (architecture 5.18, "Montagem, sem container"): the only file of the
  * daemon that imports adapters. It reads `adapters.*` from the config, validates each adapter's
  * section with that adapter's own schema, checks the contract version of every adapter and hands
@@ -674,26 +710,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       logger = daemonLogger.logger;
     }
 
-    if (overrides.vault !== undefined) {
-      vault = overrides.vault;
-      adapters.push(overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION));
-    } else if (config.adapters.vault === 'keyring') {
-      adapters.push(
-        checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
-      );
-      vault = new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault));
-    } else {
-      adapters.push(
-        checkAdapterRange(encryptedFileVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
-      );
-      const raw = config.vault;
-      const path = typeof raw.path === 'string' ? resolve(paths.dataDir, raw.path) : raw.path;
-      const section = parseSection('vault', EncryptedFileVaultConfigSchema, {
-        ...raw,
-        path: raw.path === undefined ? resolve(paths.dataDir, DEFAULT_VAULT_FILE) : path,
-      });
-      vault = new EncryptedFileVault(section);
-    }
+    const composedVault = composeVault(config, paths.dataDir, overrides);
+    vault = composedVault.vault;
+    adapters.push(composedVault.record);
 
     if (overrides.store !== undefined) {
       store = overrides.store;

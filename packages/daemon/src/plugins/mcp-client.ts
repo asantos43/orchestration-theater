@@ -37,6 +37,11 @@ export interface PluginConnectSpec {
   /** `plugins.http`: `off` refuses a server of type `http`. */
   readonly http: 'loopback' | 'off';
   readonly logger: Logger;
+  /**
+   * The values of the secrets in `env` (P7): a line the server writes on stderr has them replaced
+   * before it reaches the log. Optional: without it nothing is replaced.
+   */
+  readonly secretValues?: readonly string[];
 }
 
 /** The connection to one server, however it was reached. */
@@ -117,8 +122,17 @@ function transportFor(spec: PluginConnectSpec): {
   return { transport: stdio, pid: () => stdio.pid ?? undefined };
 }
 
+/** Replaces every occurrence of each value (the secrets handed to the server) with `[REDACTED]`. */
+export function maskValues(text: string, values: readonly string[]): string {
+  let masked = text;
+  for (const value of values) {
+    if (value !== '') masked = masked.split(value).join('[REDACTED]');
+  }
+  return masked;
+}
+
 /** Writes what the process says on stderr in the log, a line at a time, cut short. */
-function relayStderr(transport: Transport, logger: Logger): void {
+function relayStderr(transport: Transport, logger: Logger, secrets: readonly string[]): void {
   const stderr = transport instanceof StdioClientTransport ? transport.stderr : null;
   if (stderr === null) return;
   let pending = '';
@@ -127,7 +141,9 @@ function relayStderr(transport: Transport, logger: Logger): void {
     const lines = pending.split('\n');
     pending = lines.pop() ?? '';
     for (const line of lines) {
-      if (line.trim() !== '') logger.debug({ line: line.slice(0, 500) }, 'plugin stderr');
+      if (line.trim() !== '') {
+        logger.debug({ line: maskValues(line, secrets).slice(0, 500) }, 'plugin stderr');
+      }
     }
     if (pending.length > 4096) pending = pending.slice(-4096);
   });
@@ -136,7 +152,7 @@ function relayStderr(transport: Transport, logger: Logger): void {
 /** Connects with the MCP client of the SDK (N232 (a)): `stdio`, or `http` in the loopback. */
 export const connectPluginServer: PluginConnector = async (spec) => {
   const { transport, pid } = transportFor(spec);
-  relayStderr(transport, spec.logger);
+  relayStderr(transport, spec.logger, spec.secretValues ?? []);
   const client = new Client({ name: 'otheater', version: '0.0.0' });
   let closing = false;
   let listener: ((reason: string) => void) | undefined;
