@@ -2654,6 +2654,13 @@ export const DaemonConfigSchema = z
               .default([...PLUGIN_INSTALL_SOURCES]),
             /** The longest an `npm` or `git` command of an install may run before it is stopped ([proposta]). */
             timeout: DurationSchema.prefault('5m'),
+            /**
+             * How `npm` is started, with no shell ([proposta]). `auto` (default): `npm` from PATH;
+             * on Windows, the `node` of the daemon on the `npm-cli.js` next to it, because Node
+             * will not start `npm.cmd` with no shell. Or the path of an `npm-cli.js` (run on the
+             * daemon's `node`) or of an npm program.
+             */
+            npm: z.string().trim().min(1).default('auto'),
           })
           .prefault({}),
       })

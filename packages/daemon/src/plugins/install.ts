@@ -20,6 +20,7 @@ import {
   fetchGit,
   fetchNpm,
   parseOrigin,
+  resolveNpmCommand,
   type CommandRunner,
   type Fetched,
 } from './sources.js';
@@ -48,6 +49,8 @@ export interface PluginInstallerOptions {
   readonly sources: readonly PluginInstallSource[];
   /** `plugins.install.timeout`, in milliseconds: the limit of each `npm` or `git` run. */
   readonly timeoutMs: number;
+  /** `plugins.install.npm`: `auto` (default) or the path of npm (see {@link resolveNpmCommand}). */
+  readonly npm?: string | undefined;
   /** The environment `npm` and `git` start from (filtered by {@link childEnv}). */
   readonly env: Env;
   /** What a relative folder is relative to. */
@@ -137,6 +140,11 @@ export class PluginInstaller {
           env: this.#options.env,
           timeoutMs: this.#options.timeoutMs,
           stage,
+          // Only npm needs the lookup: a `git` install does not fail for a missing npm.
+          npm:
+            spec.source === 'npm'
+              ? resolveNpmCommand({ configured: this.#options.npm })
+              : undefined,
         };
         fetched =
           spec.source === 'npm' ? await fetchNpm(spec, context) : await fetchGit(spec, context);

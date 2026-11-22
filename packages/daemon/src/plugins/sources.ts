@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, posix, resolve, win32 } from 'node:path';
 import { AdapterUnavailable, InvalidInput } from '@otheater/core';
 import semver from 'semver';
 import type { Env } from '../paths.js';
@@ -109,6 +110,8 @@ export function assertGitUrl(url: string): void {
 export interface CommandRun {
   readonly file: string;
   readonly args: readonly string[];
+  /** What the messages call the command when `file` is not it (npm on Windows is `node npm-cli.js`). */
+  readonly label?: string | undefined;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
   readonly timeoutMs: number;
@@ -138,20 +141,72 @@ export const execRunner: CommandRunner = (run) =>
           return;
         }
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          reject(new AdapterUnavailable(`"${run.file}" was not found in PATH`, { cause: error }));
+          reject(
+            new AdapterUnavailable(`"${run.label ?? run.file}" was not found in PATH`, {
+              cause: error,
+            }),
+          );
           return;
         }
         const tail = stderr.trim().split('\n').slice(-8).join('\n');
         const timedOut = (error as { killed?: boolean }).killed === true;
         reject(
           new InvalidInput(
-            `${run.file} ${run.args.slice(0, 2).join(' ')} ${timedOut ? 'did not finish in time' : 'failed'}${tail === '' ? '' : `:\n${tail}`}`,
+            `${run.label ?? `${run.file} ${run.args.slice(0, 2).join(' ')}`} ${timedOut ? 'did not finish in time' : 'failed'}${tail === '' ? '' : `:\n${tail}`}`,
             { cause: error },
           ),
         );
       },
     );
   });
+
+/** How to start npm: the program and the arguments that come before the ones of the command. */
+export interface NpmCommand {
+  readonly file: string;
+  readonly prefix: readonly string[];
+}
+
+/** What {@link resolveNpmCommand} reads from the machine; each part can be given by a test. */
+export interface NpmLookup {
+  /** `plugins.install.npm`: `auto` (default), or the path of `npm-cli.js` or of an npm program. */
+  readonly configured?: string | undefined;
+  readonly platform?: NodeJS.Platform | undefined;
+  /** The `node` that runs the daemon. */
+  readonly execPath?: string | undefined;
+  readonly exists?: ((path: string) => boolean) | undefined;
+}
+
+/**
+ * Finds how to run npm with no shell. [proposta] On Windows npm is `npm.cmd`, and Node refuses to
+ * start a `.cmd` with no shell (the fix of CVE-2024-27980), so the daemon runs its own `node` on the
+ * `npm-cli.js` that comes next to it (`<node folder>\node_modules\npm\bin\npm-cli.js`, the layout
+ * of the installer and of the zip of Node [S]). Elsewhere `npm` is a program and PATH finds it.
+ * `configured` other than `auto` wins: a `.js`, `.cjs` or `.mjs` file runs on `node`, anything else
+ * is started as it is. Throws `AdapterUnavailable` saying where it looked.
+ */
+export function resolveNpmCommand(lookup: NpmLookup = {}): NpmCommand {
+  const platform = lookup.platform ?? process.platform;
+  const execPath = lookup.execPath ?? process.execPath;
+  const exists = lookup.exists ?? existsSync;
+  const configured = lookup.configured?.trim() ?? 'auto';
+  if (configured !== 'auto') {
+    const path = platform === 'win32' ? win32 : posix;
+    if (path.basename(configured) !== configured && !exists(configured)) {
+      throw new AdapterUnavailable(`plugins.install.npm: "${configured}" does not exist`);
+    }
+    return /\.[cm]?js$/i.test(configured)
+      ? { file: execPath, prefix: [configured] }
+      : { file: configured, prefix: [] };
+  }
+  if (platform !== 'win32') return { file: 'npm', prefix: [] };
+  const cli = win32.join(win32.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (!exists(cli)) {
+    throw new AdapterUnavailable(
+      `npm was not found next to node (${cli}): set plugins.install.npm to the path of npm-cli.js`,
+    );
+  }
+  return { file: execPath, prefix: [cli] };
+}
 
 /** The variables a child may see: where to find programs and its own home, proxies and npm's settings. */
 const CHILD_ENV_KEYS = new Set([
@@ -213,6 +268,8 @@ export interface FetchContext {
   readonly timeoutMs: number;
   /** An empty folder the fetch may use as its workspace; the caller deletes it afterwards. */
   readonly stage: string;
+  /** How to start npm (default: {@link resolveNpmCommand} with its defaults). */
+  readonly npm?: NpmCommand | undefined;
 }
 
 /**
@@ -230,9 +287,12 @@ export async function fetchNpm(
     join(root, 'package.json'),
     JSON.stringify({ name: 'otheater-plugin-stage', version: '0.0.0', private: true }),
   );
+  const npm = context.npm ?? resolveNpmCommand();
   await context.runner({
-    file: 'npm',
+    file: npm.file,
+    label: 'npm install',
     args: [
+      ...npm.prefix,
       'install',
       '--ignore-scripts',
       '--no-audit',

@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { resolveNpmCommand } from './sources.js';
 
 const run = promisify(execFile);
 
@@ -66,6 +67,8 @@ export function isolatedEnv(
 ): Record<string, string> {
   return {
     PATH: process.env.PATH ?? '',
+    // Windows: Node and npm need it to find system libraries.
+    ...(process.env.SystemRoot === undefined ? {} : { SystemRoot: process.env.SystemRoot }),
     HOME: root,
     USERPROFILE: root,
     TMPDIR: root,
@@ -124,9 +127,10 @@ export async function packNpmFixture(
   );
   const dest = join(root, 'packed');
   await mkdir(dest, { recursive: true });
+  const npm = resolveNpmCommand();
   const { stdout } = await run(
-    'npm',
-    ['pack', src, '--pack-destination', dest, '--ignore-scripts', '--silent'],
+    npm.file,
+    [...npm.prefix, 'pack', src, '--pack-destination', dest, '--ignore-scripts', '--silent'],
     {
       cwd: root,
       env: isolatedEnv(root),

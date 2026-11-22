@@ -2,11 +2,11 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { InvalidInput } from '@otheater/core';
-import { assertGitUrl, childEnv, parseOrigin } from './sources.js';
+import { assertGitUrl, childEnv, parseOrigin, resolveNpmCommand } from './sources.js';
 
 describe('parseOrigin', () => {
   it('reads a folder, with or without "path:", against the working folder', () => {
-    expect(parseOrigin('/opt/p', '/work')).toEqual({ source: 'path', path: '/opt/p' });
+    expect(parseOrigin('/opt/p', '/work')).toEqual({ source: 'path', path: resolve('/opt/p') });
     expect(parseOrigin('path:../p', '/work/x')).toEqual({
       source: 'path',
       path: resolve('/work/x', '../p'),
@@ -128,5 +128,73 @@ describe('childEnv', () => {
 
     const git = childEnv(base, 'git', { GIT_TERMINAL_PROMPT: '0' });
     expect(Object.keys(git).sort()).toEqual(['GIT_TERMINAL_PROMPT', 'HOME', 'PATH']);
+  });
+});
+
+describe('resolveNpmCommand', () => {
+  const nodeExe = 'C:\\Program Files\\nodejs\\node.exe';
+  const cli = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+
+  it('is plain npm outside Windows, with no lookup of files', () => {
+    for (const platform of ['linux', 'darwin'] as const) {
+      expect(
+        resolveNpmCommand({
+          platform,
+          execPath: '/usr/bin/node',
+          exists: () => {
+            throw new Error('no file lookup');
+          },
+        }),
+      ).toEqual({ file: 'npm', prefix: [] });
+    }
+  });
+
+  it('on Windows runs node on the npm-cli.js next to it, with no shell and no npm.cmd', () => {
+    const looked: string[] = [];
+    const found = resolveNpmCommand({
+      platform: 'win32',
+      execPath: nodeExe,
+      exists: (path) => {
+        looked.push(path);
+        return path === cli;
+      },
+    });
+    expect(found).toEqual({ file: nodeExe, prefix: [cli] });
+    expect(looked).toEqual([cli]);
+  });
+
+  it('on Windows says where it looked when npm is not next to node', () => {
+    expect(() =>
+      resolveNpmCommand({ platform: 'win32', execPath: nodeExe, exists: () => false }),
+    ).toThrow(/npm was not found next to node \(.*npm-cli\.js\).*plugins\.install\.npm/);
+  });
+
+  it('takes the configured npm: a .js runs on node, a program is started as it is', () => {
+    const exists = (): boolean => true;
+    expect(
+      resolveNpmCommand({
+        configured: '/opt/npm/bin/npm-cli.js',
+        platform: 'linux',
+        execPath: '/usr/bin/node',
+        exists,
+      }),
+    ).toEqual({ file: '/usr/bin/node', prefix: ['/opt/npm/bin/npm-cli.js'] });
+    expect(
+      resolveNpmCommand({ configured: '/opt/bin/pnpm-npm', platform: 'linux', exists }),
+    ).toEqual({ file: '/opt/bin/pnpm-npm', prefix: [] });
+    // A bare name is left to PATH.
+    expect(
+      resolveNpmCommand({ configured: 'npm10', platform: 'win32', exists: () => false }),
+    ).toEqual({ file: 'npm10', prefix: [] });
+    expect(resolveNpmCommand({ configured: 'auto', platform: 'linux' })).toEqual({
+      file: 'npm',
+      prefix: [],
+    });
+  });
+
+  it('refuses a configured path that does not exist', () => {
+    expect(() =>
+      resolveNpmCommand({ configured: '/nope/npm-cli.js', platform: 'linux', exists: () => false }),
+    ).toThrow(/does not exist/);
   });
 });

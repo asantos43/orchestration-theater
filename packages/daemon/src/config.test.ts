@@ -1661,6 +1661,14 @@ describe('plugins.install (Phase 9, P4)', () => {
     const config = parseConfig('');
     expect(config.plugins.install.sources).toEqual([...PLUGIN_INSTALL_SOURCES]);
     expect(config.plugins.install.timeout).toBe(5 * 60_000);
+    expect(config.plugins.install.npm).toBe('auto');
+  });
+
+  it('takes the path of npm, and refuses an empty one', () => {
+    expect(
+      parseConfig('plugins:\n  install:\n    npm: /opt/npm/bin/npm-cli.js\n').plugins.install.npm,
+    ).toBe('/opt/npm/bin/npm-cli.js');
+    expect(() => parseConfig('plugins:\n  install:\n    npm: ""\n')).toThrow(InvalidInput);
   });
 
   it('takes a subset of sources, none included, and a duration', () => {

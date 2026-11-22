@@ -8,7 +8,7 @@ import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir, NO_CLIENTS } from '../test-helpers.js';
 import { isolatedEnv, manifestText, writePluginFolder } from './plugin-fixture.js';
-import { writeFile } from 'node:fs/promises';
+import { realpath, writeFile } from 'node:fs/promises';
 
 describe('a running daemon and `ot plugin` (N235 (a))', () => {
   it('swaps the snapshot when a plugin is turned on or its manifest changes; an open snapshot stays', async () => {
@@ -54,7 +54,7 @@ describe('a running daemon and `ot plugin` (N235 (a))', () => {
         expect(withPlugin.generation).toBeGreaterThan(session.generation);
         // The open session keeps the snapshot it read.
         expect(session.plugins.size).toBe(0);
-        expect(daemon.plugins.activeFor('p1')[0]?.dir).toBe(folder);
+        expect(daemon.plugins.activeFor('p1')[0]?.dir).toBe(await realpath(folder));
 
         // The manifest of the local folder is edited: the plugin goes off for the new snapshot.
         await writeFile(join(folder, 'plugin.yaml'), manifestText({ variant: 'changed' }));

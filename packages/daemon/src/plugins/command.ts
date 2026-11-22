@@ -103,6 +103,7 @@ export async function runPluginCommand(
       dataDir: paths.dataDir,
       sources: config.plugins.install.sources,
       timeoutMs: config.plugins.install.timeout,
+      npm: config.plugins.install.npm,
       env: deps.env,
       cwd: deps.cwd,
       runner: deps.runner,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Conflict, InvalidInput, NotFound } from '@otheater/core';
@@ -81,8 +81,10 @@ describe('PluginInstaller', () => {
       const folder = await writePluginFolder(join(work.dir, 'demo-db'));
       const result = await installer().install(folder);
 
-      expect(result).toMatchObject({ id: 'demo-db', version: '1.0.0', dir: folder });
-      expect(result.origin).toEqual({ kind: 'path', path: folder });
+      // The installer keeps the real path (on Windows the temp folder may be a short 8.3 name).
+      const real = await realpath(folder);
+      expect(result).toMatchObject({ id: 'demo-db', version: '1.0.0', dir: real });
+      expect(result.origin).toEqual({ kind: 'path', path: real });
       expect(result.outcome.kind).toBe('installed');
       expect(result.manifestHash).toMatch(/^[0-9a-f]{64}$/);
       // Nothing was copied into the data folder, and the plugin is on nowhere.
@@ -95,7 +97,7 @@ describe('PluginInstaller', () => {
     it('takes a relative folder against the working folder', async () => {
       await writePluginFolder(join(work.dir, 'rel'));
       const result = await installer().install('./rel');
-      expect(result.dir).toBe(join(work.dir, 'rel'));
+      expect(result.dir).toBe(await realpath(join(work.dir, 'rel')));
     });
 
     it('refuses an invalid manifest with the lines of the P3 validator, and registers nothing', async () => {
@@ -274,7 +276,7 @@ describe('PluginInstaller', () => {
         ),
       ) as { scripts: Record<string, string> };
       expect(Object.keys(manifest.scripts)).toEqual(['preinstall', 'postinstall']);
-      const npmRun = runs.find((run) => run.file === 'npm');
+      const npmRun = runs.find((run) => run.args.includes('install'));
       expect(npmRun?.args).toContain('--ignore-scripts');
     });
 
@@ -295,7 +297,7 @@ describe('PluginInstaller', () => {
     it('starts npm with a short environment: no key or token of the daemon reaches it', async () => {
       const env = { ...npmEnv(), OPENAI_API_KEY: 'sk-secret', GITHUB_TOKEN: 'ghp_secret' };
       await installer({ env }).install('npm:demo-db@1.0.0');
-      const npmRun = runs.find((run) => run.file === 'npm');
+      const npmRun = runs.find((run) => run.args.includes('install'));
       expect(npmRun?.env.OPENAI_API_KEY).toBeUndefined();
       expect(npmRun?.env.GITHUB_TOKEN).toBeUndefined();
       expect(npmRun?.env.npm_config_registry).toBe(server.url);
