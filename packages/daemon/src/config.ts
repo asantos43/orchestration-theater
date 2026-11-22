@@ -28,6 +28,7 @@ import {
   UiClipboardConfigSchema,
   UiChatConfigSchema,
   UiInputConfigSchema,
+  UiKeyboardConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
   UiOverviewConfigSchema,
@@ -2913,6 +2914,8 @@ export const DaemonConfigSchema = z
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */
         runtime: UiRuntimeConfigSchema.prefault({}),
+        /** The keyboard protocol the terminal interface asks for (Shift+Enter, kitty). */
+        keyboard: UiKeyboardConfigSchema.prefault({}),
         /** The measures and steps of the screen of the terminal interface (P9 of docs/18). */
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */

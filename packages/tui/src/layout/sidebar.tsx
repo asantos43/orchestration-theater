@@ -86,6 +86,8 @@ export interface SidebarProps {
   readonly width: number;
   readonly height: number;
   readonly focused: boolean;
+  /** The sidebar is pressed with the mouse: it takes the focus. */
+  readonly onFocus?: (() => void) | undefined;
   readonly rows: readonly ScenarioRow[];
   /** The "Terminadas" section; `undefined` leaves it out (`ui.sidebar.finishedPlays: hidden`). */
   readonly finished?: SidebarFinished | undefined;
@@ -410,6 +412,7 @@ export function Sidebar(props: SidebarProps): ReactNode {
         active={props.focused}
         title={props.mode === 'expanded' ? t('layout.sidebar.title') : undefined}
         titleRight={right}
+        onPress={props.onFocus}
       >
         {props.mode === 'expanded' ? <Expanded {...props} /> : <Rail {...props} />}
       </Frame>

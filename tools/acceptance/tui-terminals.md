@@ -5,8 +5,9 @@
 Roteiro curto (P20 da Fase 7, N191; arquitetura §5.13) para o dono passar na TUI do OTheater no **Windows
 Terminal** e num terminal de **macOS** ou **Linux**. O teste de fumaça (`packages/tui/src/tmux.smoke.test.ts`)
 prova que a TUI abre, que as teclas do mapa chegam a ela e que `ot` sozinho a abre, tudo num tmux. Ele **não**
-prova o que cada terminal envia: este roteiro cobre o que só um terminal de verdade mostra. Nada aqui foi
-conferido ainda. Quem passar o roteiro troca os `[N]` da tabela do fim por `[V: <data>]` (passou) ou
+prova o que cada terminal envia: este roteiro cobre o que só um terminal de verdade mostra. O dono passou o
+roteiro em 2026-11-22 no terminal do app desktop do Claude, no Linux (coluna "Linux" da tabela); os outros
+terminais seguem sem conferência. Quem passar o roteiro troca os `[N]` da tabela do fim por `[V: <data>]` (passou) ou
 `[X: <o que falhou>]` (falhou).
 
 ## Antes de começar
@@ -144,26 +145,42 @@ aplica ao terminal). O que não foi conferido fica `[N]`.
 
 | Item | Windows Terminal | macOS (Terminal.app ou iTerm2) | Linux (terminal do dono) | Outro |
 | --- | --- | --- | --- | --- |
-| Terminal, versão, sistema e shell | [N] | [N] | [N] | [N] |
-| 1. Abertura e saída limpa | [N] | [N] | [N] | [N] |
-| 2. Teclas: `Alt+...` (S, J, A, W, K) | [N] | [N] | [N] | [N] |
-| 2. Teclas: `F1` e `F5` | [N] | [N] | [N] | [N] |
-| 2. Teclas: `Ctrl+Shift+←/→` | [N] | [N] | [N] | [N] |
-| 2. Teclas: `Shift+Enter`, `Alt+Enter`, `Ctrl+J` | [N] | [N] | [N] | [N] |
-| 2. Teclas: `Alt+B`, `Alt+F`, `Alt+Backspace` | [N] | [N] | [N] | [N] |
-| 2. Teclas: `PageUp`, `PageDown`, `Ctrl+Home`, `Ctrl+End` | [N] | [N] | [N] | [N] |
-| 3. Mouse `full` | [N] | [N] | [N] | [N] |
-| 3. Mouse `full`, clique no cartão de decisão | [N] | [N] | [N] | [N] |
-| 3. Mouse `wheel` e `off` | [N] | [N] | [N] | [N] |
-| 4. Cópia `osc52` | [N] | [N] | [N] | [N] |
-| 4. Cópia Shift+arrastar (Option no macOS) | [N] | [N] | [N] | [N] |
-| 4. Cópia `system`, `off` | [N] | [N] | [N] | [N] |
-| 4. Cópia por OSC 52 dentro do tmux | [N] | [N] | [N] | [N] |
-| 5. Colagem de várias linhas | [N] | [N] | [N] | [N] |
-| 6. Redimensionar | [N] | [N] | [N] | [N] |
+| Terminal, versão, sistema e shell | [N] | [N] | terminal do app desktop do Claude (xterm.js [N]: o pacote do app traz a classe `xterm-viewport` [V]; `TERM=xterm-256color`, `TERM_PROGRAM=claude-desktop` [V]), Fedora 45, zsh | [N] |
+| 1. Abertura e saída limpa | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 2. Teclas: `Alt+...` (S, J, A, W, K) | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 2. Teclas: `F1` e `F5` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 2. Teclas: `Ctrl+Shift+←/→` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 2. Teclas: `Shift+Enter`, `Alt+Enter`, `Ctrl+J` | [N] | [N] | [X: 2026-11-22, `Shift+Enter` não quebrou a linha; `Alt+Enter` e `Ctrl+J` quebraram. Causa: o protocolo de teclado do kitty não era pedido; corrigido com `ui.keyboard.protocol` (ver abaixo)] | [N] |
+| 2. Teclas: `Alt+B`, `Alt+F`, `Alt+Backspace` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 2. Teclas: `PageUp`, `PageDown`, `Ctrl+Home`, `Ctrl+End` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 3. Mouse `full` | [N] | [N] | [X: 2026-11-22, o clique numa área não dava o foco a ela (só o `Tab`); corrigido (ver abaixo). O resto do item passou] | [N] |
+| 3. Mouse `full`, clique no cartão de decisão | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 3. Mouse `wheel` e `off` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 4. Cópia `osc52` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 4. Cópia Shift+arrastar (Option no macOS) | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 4. Cópia `system`, `off` | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 4. Cópia por OSC 52 dentro do tmux | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 5. Colagem de várias linhas | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 6. Redimensionar | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
 | 7. Option como Meta | [-] | [N] | [-] | [N] |
-| 8. SSH (teclas, cópia, redimensionar) | [N] | [N] | [N] | [N] |
-| 8. Terminal fechado sem processo sobrando | [N] | [N] | [N] | [N] |
+| 8. SSH (teclas, cópia, redimensionar) | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+| 8. Terminal fechado sem processo sobrando | [N] | [N] | [V: 2026-11-22, relato do dono] | [N] |
+
+### Resultado de 2026-11-22 (Linux, terminal do app desktop do Claude)
+
+- Relato do dono, por múltipla escolha: tudo passou, menos o `Shift+Enter` e o foco pelo clique. A parte 2 do
+  `ROTEIRO-E-LOGIN.md` (login oficial pela TUI) ainda não foi feita.
+- `Shift+Enter`: sem o protocolo de teclado do kitty o terminal manda `\r`, o mesmo do `Enter` [V: lido no
+  código]. A TUI passou a pedir o protocolo (`ui.keyboard.protocol`, padrão `auto`). Num terminal que não
+  responde à pergunta do protocolo, o `Shift+Enter` continua indistinguível do `Enter`, e a nova linha fica no
+  `Ctrl+J` e no `Alt+Enter`. Uma sonda (`CSI ? u` seguido de `CSI c`) no terminal do app não recebeu resposta
+  nenhuma, nem do `CSI c` [V]; então não está confirmado se esse terminal fala o protocolo [N]. Confira de novo
+  o `Shift+Enter` depois da correção, com `ui.keyboard.protocol` em `auto` e, se não funcionar, em `kitty` (liga
+  o protocolo sem perguntar; serve para um terminal que fala o protocolo mas não responde à pergunta).
+  Os modos da chave: `auto` (padrão, liga só se o terminal responder), `kitty` (liga sempre) e `off` (não pede)
+  [proposta]. Só a flag `disambiguateEscapeCodes` é pedida.
+- Foco pelo clique: um clique em qualquer ponto de uma área passou a dar o foco a ela; o clique no alvo
+  interno (aba, seção, entrada) segue agindo.
 
 Quando o roteiro for passado, o resultado (e o que sair `[X]`) vai para o PR do passo seguinte ou para um
 registro do orquestrador; este arquivo guarda só o roteiro e a tabela.

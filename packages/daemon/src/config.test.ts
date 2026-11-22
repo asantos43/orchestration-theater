@@ -94,7 +94,7 @@ describe('parseConfig', () => {
     });
   });
 
-  it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render and ui.runtime (N34 to N37)', () => {
+  it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render, ui.runtime and ui.keyboard (N34 to N37)', () => {
     const { ui } = parseConfig('');
     expect(ui.keymap).toEqual({ preset: 'agents', environment: 'auto', overrides: {} });
     expect(ui.clipboard).toEqual({ copy: 'osc52' });
@@ -109,6 +109,10 @@ describe('parseConfig', () => {
     });
     expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2, exitGraceMs: 2000 });
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
+    expect(ui.keyboard).toEqual({ protocol: 'auto' });
+    expect(parseConfig('ui:\n  keyboard:\n    protocol: kitty\n').ui.keyboard.protocol).toBe(
+      'kitty',
+    );
     expect(ui.tuiLayout).toEqual({
       sidebarWidth: 30,
       railWidth: 5,
@@ -294,6 +298,9 @@ describe('parseConfig', () => {
       /ui\.runtime\.maxSemiSpaceMB/,
     );
     expect(() => parseConfig('ui:\n  keymap:\n    preset: vim\n')).toThrow(/ui\.keymap\.preset/);
+    expect(() => parseConfig('ui:\n  keyboard:\n    protocol: legacy\n')).toThrow(
+      /ui\.keyboard\.protocol/,
+    );
   });
 
   it('refuses at start-up a ui.keymap with a repeated shortcut, an unknown action or a key a terminal cannot send', () => {
