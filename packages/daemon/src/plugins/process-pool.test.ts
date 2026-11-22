@@ -185,6 +185,34 @@ describe('PluginProcessPool', () => {
     expect(env.HOME).not.toBe(process.env.HOME);
   });
 
+  it('hands the folder of the project in OTHEATER_PROJECT_DIR, unless plugins.project_dir is off', async () => {
+    const folders: Record<string, string> = { p1: join(tmpdir(), 'ot-project-a'), p2: 'relative' };
+    const run = async (projectDir: PluginRuntimeConfig['projectDir'], project: string) => {
+      const specs: PluginConnectSpec[] = [];
+      const homeRoot = mkdtempSync(join(tmpdir(), 'ot-pool-'));
+      homes.push(homeRoot);
+      const pool = new PluginProcessPool({
+        clock: new FakeClock(),
+        logger: captureLogger().logger,
+        runtime: () => ({ ...DEFAULT_PLUGIN_RUNTIME, projectDir }),
+        homeRoot,
+        projectDir: (id) => Promise.resolve(folders[id]),
+        connector: (spec) => {
+          specs.push(spec);
+          return Promise.resolve(new FakeConnection(spec));
+        },
+      });
+      await pool.ensure(plugin, project);
+      await pool.stop();
+      return specs[0]?.env ?? {};
+    };
+    expect((await run('scenario', 'p1')).OTHEATER_PROJECT_DIR).toBe(folders.p1);
+    expect(await run('off', 'p1')).not.toHaveProperty('OTHEATER_PROJECT_DIR');
+    // A folder that is not absolute, or a project with no folder, leaves the variable out.
+    expect(await run('scenario', 'p2')).not.toHaveProperty('OTHEATER_PROJECT_DIR');
+    expect(await run('scenario', 'p3')).not.toHaveProperty('OTHEATER_PROJECT_DIR');
+  });
+
   it('stops the process after plugins.idle_timeout without a use, and starts it again', async () => {
     const { pool, clock, connections, notices } = setup({ idleTimeoutMs: 1_000 });
     await pool.call(plugin, 'p1', 'echo', undefined);
@@ -454,5 +482,14 @@ describe('pluginEnvironment', () => {
       { PATH: '/bin' },
     );
     expect(env).toEqual({ TOKEN: 'x', PATH: '/bin', HOME: '/h' });
+  });
+
+  it('sets OTHEATER_PROJECT_DIR from the folder of the project, never from a secret', () => {
+    const folder = join(tmpdir(), 'ot-project');
+    expect(pluginEnvironment('/h', { OTHEATER_PROJECT_DIR: '/evil' }, {}, folder)).toEqual({
+      HOME: '/h',
+      OTHEATER_PROJECT_DIR: folder,
+    });
+    expect(pluginEnvironment('/h', { OTHEATER_PROJECT_DIR: '/evil' }, {})).toEqual({ HOME: '/h' });
   });
 });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { Clock } from '@otheater/core';
 import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { Logger } from '../logger.js';
@@ -86,6 +86,12 @@ export interface PluginPoolOptions {
     plugin: PluginProcessSpec,
     project: string,
   ) => Promise<Readonly<Record<string, string>>>;
+  /**
+   * The folder of a project, handed to its processes in `OTHEATER_PROJECT_DIR` while
+   * `plugins.project_dir` is `scenario`. A folder that is not an absolute path, or `undefined`, leaves
+   * the variable out. Default: none.
+   */
+  readonly projectDir?: (project: string) => Promise<string | undefined>;
   /** Where the notices go besides the log (P8). */
   readonly onNotice?: PluginNoticeSink;
   /** Opens the connection; tests hand in a double. Default: the MCP client of the SDK. */
@@ -116,6 +122,9 @@ interface Entry {
 /** The environment a plugin process gets from the daemon: nothing but these. */
 const INHERITED_ENV: readonly string[] = ['PATH', 'LANG', 'TZ'];
 
+/** The variable the SDK reads the folder of the project from (`PLUGIN_PROJECT_DIR_ENV`). */
+const PROJECT_DIR_ENV = 'OTHEATER_PROJECT_DIR';
+
 /** A name that is safe as a folder name; a name that had to change gets a short digest. */
 function folderName(name: string): string {
   const safe = name.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -128,19 +137,24 @@ function folderName(name: string): string {
  * The environment of the process of a plugin (architecture 5.14): `PATH`, `LANG` and `TZ` of the
  * daemon, a `HOME` of the plugin's own, and nothing else. [proposta] The environment of the daemon
  * is never inherited: it may hold tokens, keys and the paths of the user. The secrets of the plugin
- * come in `extra` (P7), and never override these.
+ * come in `extra` (P7), and never override these. `projectDir`, when it is an absolute path, is
+ * `OTHEATER_PROJECT_DIR` (`plugins.project_dir`); a secret of the same name never replaces it.
  */
 export function pluginEnvironment(
   home: string,
   extra: Readonly<Record<string, string>> = {},
   source: NodeJS.ProcessEnv = process.env,
+  projectDir?: string,
 ): Record<string, string> {
-  const env: Record<string, string> = { ...extra };
+  const env: Record<string, string> = Object.fromEntries(
+    Object.entries(extra).filter(([key]) => key !== PROJECT_DIR_ENV),
+  );
   for (const key of INHERITED_ENV) {
     const value = source[key];
     if (value !== undefined) env[key] = value;
   }
   env.HOME = home;
+  if (projectDir !== undefined && isAbsolute(projectDir)) env[PROJECT_DIR_ENV] = projectDir;
   return env;
 }
 
@@ -401,10 +415,14 @@ export class PluginProcessPool {
       const home = join(this.#options.homeRoot, folderName(plugin.id), folderName(entry.project));
       await mkdir(home, { recursive: true });
       const extra = (await this.#options.extraEnv?.(plugin, entry.project)) ?? {};
+      const projectDir =
+        runtime.projectDir === 'scenario'
+          ? await this.#options.projectDir?.(entry.project)
+          : undefined;
       connection = await this.#connector({
         server: plugin.manifest.server,
         dir: plugin.dir,
-        env: pluginEnvironment(home, extra),
+        env: pluginEnvironment(home, extra, process.env, projectDir),
         // What `extraEnv` gave is secret by definition: the log of the server must not repeat it.
         secretValues: Object.values(extra),
         startTimeoutMs: runtime.startTimeoutMs,
