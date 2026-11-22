@@ -205,7 +205,10 @@ export class SlashCommandService {
     const { config, locale } = this.#deps;
     const reason = this.#unavailable(action, facts, t);
     if (reason !== undefined) throw new Conflict(t('error.notNow', { name: action.id, reason }));
-    if (action.permission === 'write' && config.chat.slash_access === 'read_only') {
+    if (
+      (action.permission === 'write' || action.writes?.(text) === true) &&
+      config.chat.slash_access === 'read_only'
+    ) {
       throw new PermissionDenied(t('error.forbidden', { name: action.id }));
     }
     const parsed = action.args.safeParse(text);

@@ -233,6 +233,12 @@ export const UI_CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
  * option, and a second click on it does what `answer` does.
  */
 export const UI_CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
+/**
+ * Whether the chat draws the footer of the Director under its text box (P14 of Phase 9, N242): the
+ * Executor, the model and the effort the Director runs with, and the key that opens the picker.
+ * `on` (default) or `off`; with `off` the shortcut and `/director` still work.
+ */
+export const UI_CHAT_DIRECTOR_FOOTER_MODES = ['on', 'off'] as const;
 /** What Esc does while the Director is replying: `stop` asks the daemon to stop the reply (`/stop`); `off` does nothing. */
 export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
 
@@ -244,6 +250,7 @@ export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
  * - `decisionFocus`: `auto` (default) or `manual`;
  * - `decisionClick` (P14 of docs/19): `answer` (default) or `select`;
  * - `esc`: `stop` (default) or `off`;
+ * - `directorFooter` (P14 of Phase 9): `on` (default) or `off`;
  * - `history` (P26, N203 item 2): how many of the last events of the scenario the chat shows when it
  *   opens on a scenario that already talked (40); `0` opens it empty, as before. The most is
  *   `CHAT_HISTORY_MAX` (200), the limit of the `history` message of the socket.
@@ -254,6 +261,7 @@ export const UiChatConfigSchema = z.strictObject({
   decisionFocus: z.enum(UI_CHAT_DECISION_FOCUS_MODES).default('auto'),
   decisionClick: z.enum(UI_CHAT_DECISION_CLICK_MODES).default('answer'),
   esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
+  directorFooter: z.enum(UI_CHAT_DIRECTOR_FOOTER_MODES).default('on'),
   history: z.int().min(0).max(200).default(40),
 });
 export type UiChatConfig = z.output<typeof UiChatConfigSchema>;

@@ -15,8 +15,9 @@
     "new": "Opens a new chat scenario, or a project scenario with \"new project <repo>\"",
     "attach": "Attaches a file to the scenario",
     "export": "Exports the scenario with its plays and decisions",
-    "model": "Shows the model of the Director",
-    "effort": "Shows the effort of the Director",
+    "model": "Shows the model of the Director, or changes it",
+    "effort": "Shows the effort of the Director, or changes it",
+    "director": "Lists the Executors of the Director, or switches it (default: back to the default)",
     "profile": "Lists the profiles and their state",
     "directives": "Lists the orders in force for the scenario",
     "config": "Shows a key of the configuration, or its sections",
@@ -34,6 +35,9 @@
     "config": "[key]",
     "template": "<text>",
     "direct": "[executor]",
+    "model": "[model]",
+    "effort": "[effort]",
+    "director": "[executor | number | default]",
     "trajectory": "[play] [demand]"
   },
   "confirm": {
@@ -66,6 +70,7 @@
     },
     "unknownKey": "There is no configuration key \"{{key}}\".",
     "noDirector": "No Executor is set for the Director.",
+    "noDirectors": "This daemon cannot switch the Director: it has no Director sessions.",
     "noDirect": "This daemon cannot hold direct sessions: it runs no plays.",
     "noTrajectory": "This daemon has no trajectory service.",
     "trajectory": {
@@ -149,6 +154,29 @@
     },
     "effort": {
       "line": "The Director works with effort {{effort}} ({{id}})."
+    },
+    "director": {
+      "header": "The Director runs {{what}} ({{source}}).",
+      "source": {
+        "override": "your choice",
+        "default": "the default"
+      },
+      "row": "{{mark}} {{index}}. {{id}} - {{state}}, quota {{quota}}{{default}}",
+      "valid": "valid",
+      "invalid": "invalid: {{reason}}",
+      "isDefault": " (default)",
+      "empty": "The Director has no Executor.",
+      "models": "Models the client offers: {{models}}.",
+      "efforts": "Efforts the client offers: {{efforts}}.",
+      "usage": "/director <executor | number | default>, /model <model>, /effort <effort>.",
+      "pending": "The Director is in a turn: the switch to {{what}} ({{source}}) waits for the turn to end.",
+      "form": {
+        "live": "The Director now runs {{what}} ({{source}}), changed in the open session.",
+        "new_session": "The Director moved to {{what}} ({{source}}): a new session opened, with the role and the state summary in its first prompt.",
+        "baton": "The Director goes on with {{what}} ({{source}}) in a new session: the client does not let the open one change.",
+        "stored": "The Director will use {{what}} ({{source}}) when its session opens.",
+        "unchanged": "The Director already ran {{what}} ({{source}}); nothing changed."
+      }
     },
     "profile": {
       "line": "{{id}}: {{kind}}, {{state}}",

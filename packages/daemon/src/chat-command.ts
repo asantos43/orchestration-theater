@@ -19,6 +19,7 @@ import {
   type ChatToolCall,
   type IdeaQueueHeldPayload,
   type ScenarioDirectorFailoverNotice,
+  type ScenarioDirectorSwitchNotice,
   type ScenarioHandoffNotice,
   type ScenarioResetWaitNotice,
   type ScenarioSelectionWaitNotice,
@@ -28,6 +29,7 @@ import {
   type ShellCommandStartedPayload,
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
+import { directorWhat } from './orchestration/director-switch.js';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from './commands.js';
 import {
   ideaViewOf,
@@ -122,6 +124,7 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
   if (notice.kind === 'selection_wait') return renderSelectionWaitMessage(t, notice);
   if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
   if (notice.kind === 'director_failover') return renderDirectorFailoverMessage(t, notice);
+  if (notice.kind === 'director_switch') return renderDirectorSwitchMessage(t, notice);
   return renderRecoveryMessage(t, notice);
 }
 
@@ -235,6 +238,22 @@ function renderDirectorFailoverMessage(
       to: notice.toExecutor ?? '-',
       cause: notice.cause,
       until: notice.resetsAt === null ? '' : ` (${new Date(notice.resetsAt).toISOString()})`,
+    }),
+  ];
+}
+
+/**
+ * The `director_switch` kind (Phase 9, P14, N242, [proposta]): one line that says the Producer
+ * changed the Director (or took it back to the default) and the form it took: the open session
+ * changed, a new session opened, the baton passed, or the choice was stored for the next opening.
+ */
+function renderDirectorSwitchMessage(t: TFunction, notice: ScenarioDirectorSwitchNotice): string[] {
+  return [
+    t(`chat.system.directorSwitch.${notice.form}`, {
+      from: notice.fromExecutor ?? '-',
+      what: directorWhat(notice.toExecutor, notice.model, notice.effort),
+      source: t(`chat.system.directorSwitch.source.${notice.override ? 'override' : 'default'}`),
+      waited: notice.waited ? t('chat.system.directorSwitch.waited') : '',
     }),
   ];
 }
