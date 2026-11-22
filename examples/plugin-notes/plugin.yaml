@@ -1,0 +1,52 @@
+# plugin.yaml of the example plugin (Phase 9, P9; decision N240 (a)): notes of the project in a JSON
+# file of the project folder, with no network and no dependency besides the SDK. The format is
+# described by docs/reference/plugin-manifest.schema.json.
+manifest_version: 1
+id: notes
+version: 1.0.0
+description: Notes of the project, kept in a JSON file in the project folder.
+server:
+  type: stdio
+  command: ['node', 'dist/server.js']
+tools:
+  # Read by the panel only: no role sees it, so the panel is its one caller.
+  - name: list_notes
+    roles: []
+    effects: read
+    description: Lists the notes of the project, oldest first.
+  # The Actor writes a note of the project; the write is local (one JSON file of the project).
+  - name: add_note
+    roles: [actor]
+    effects: local_write
+    description: Adds a note to the project and returns it.
+  # Erases every note: the Producer approves each call, and the panel is the one caller.
+  - name: clear_notes
+    roles: []
+    effects: local_write
+    requires_producer_approval: true
+    description: Deletes every note of the project and returns how many were deleted.
+events: [note_added]
+panel:
+  - type: table
+    title: panel.notes
+    source: list_notes
+    columns:
+      - { key: id, label: column.id }
+      - { key: text, label: column.text }
+      - { key: created_at, label: column.created_at }
+  - type: action
+    label: action.clear
+    tool: clear_notes
+i18n:
+  en:
+    panel.notes: Notes
+    column.id: '#'
+    column.text: Note
+    column.created_at: Created
+    action.clear: Delete all notes
+  pt-BR:
+    panel.notes: Notas
+    column.id: '#'
+    column.text: Nota
+    column.created_at: Criada em
+    action.clear: Apagar todas as notas

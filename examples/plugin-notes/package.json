@@ -1,0 +1,21 @@
+{
+  "name": "@otheater/example-plugin-notes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example plugin of OTheater: notes of the project in a JSON file (Phase 9, P9).",
+  "type": "module",
+  "license": "MPL-2.0",
+  "files": [
+    "dist",
+    "plugin.yaml"
+  ],
+  "dependencies": {
+    "@otheater/sdk": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@otheater/core": "workspace:*",
+    "vitest": "5.1.0",
+    "yaml": "2.9.1"
+  }
+}
