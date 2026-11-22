@@ -7,6 +7,7 @@ import { createSilentLogger } from '../logger.js';
 import type { SituationSink } from '../situations.js';
 import { RECEIVER_HOST, TelemetryReceiver, type TelemetryReceiverOptions } from './receiver.js';
 import { Redactor } from './redaction.js';
+import { sessionSpanId, traceIdForPlay } from './span-ids.js';
 import { TelemetrySessions } from './sessions.js';
 
 // The receiver binds the loopback only; every request here goes to 127.0.0.1.
@@ -234,6 +235,94 @@ describe('TelemetryReceiver: accepted', () => {
       body: '{}',
     });
     expect(reply.status).toBe(200);
+  });
+});
+
+/** A client trace of two spans (a root and its child), the child first, as a batch processor sends it. */
+function clientTrace(sessionId: string): unknown {
+  const common = {
+    traceId: 'c'.repeat(32),
+    kind: 1,
+    startTimeUnixNano: '10',
+    endTimeUnixNano: '20',
+    attributes: [{ key: 'session.id', value: { stringValue: sessionId } }],
+  };
+  return {
+    resourceSpans: [
+      {
+        resource: { attributes: [] },
+        scopeSpans: [
+          {
+            spans: [
+              { ...common, spanId: '2'.repeat(16), parentSpanId: '1'.repeat(16), name: 'tool' },
+              { ...common, spanId: '1'.repeat(16), name: 'turn' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const KNOWN = {
+  sessionId: 's1',
+  client: 'fake',
+  profile: 'p1',
+  scenarioId: 'sc-1',
+  playId: 'play-1',
+  stageId: 'stage-a',
+  attemptId: 'play-1/stage-a/1',
+} as const;
+
+describe('TelemetryReceiver: one tree (Phase 9, P1)', () => {
+  async function post(reparent: 'session' | 'off' | undefined, sessionId: string) {
+    const { receiver, records, sessions } = await start(reparent === undefined ? {} : { reparent });
+    sessions.open(KNOWN);
+    const reply = await send(receiver.port, {
+      path: '/v1/traces',
+      headers: json(),
+      body: JSON.stringify(clientTrace(sessionId)),
+    });
+    expect(reply.status).toBe(200);
+    return records.batches[0]?.spans ?? [];
+  }
+
+  it('puts the spans of a known session under its span, in the trace of the daemon', async () => {
+    for (const mode of ['session', undefined] as const) {
+      const spans = await post(mode, 's1');
+      const turn = spans.find((span) => span.name === 'turn');
+      const tool = spans.find((span) => span.name === 'tool');
+      expect(turn).toMatchObject({
+        traceId: traceIdForPlay('play-1'),
+        parentSpanId: sessionSpanId('s1'),
+        sessionId: 's1',
+      });
+      // The hierarchy of the client is its own: the child still hangs from the root.
+      expect(tool).toMatchObject({
+        traceId: traceIdForPlay('play-1'),
+        parentSpanId: '1'.repeat(16),
+      });
+      expect(turn?.attributes['otheater.client.trace_id']).toBe('c'.repeat(32));
+      expect(tool?.attributes['otheater.client.parent_span_id']).toBe('1'.repeat(16));
+    }
+  });
+
+  it('with reparent: off stores them as they came', async () => {
+    const spans = await post('off', 's1');
+    const turn = spans.find((span) => span.name === 'turn');
+    expect(turn).toMatchObject({ traceId: 'c'.repeat(32), parentSpanId: null, sessionId: 's1' });
+    expect(turn?.attributes['otheater.client.trace_id']).toBeUndefined();
+    expect(spans.find((span) => span.name === 'tool')?.parentSpanId).toBe('1'.repeat(16));
+  });
+
+  it('does not touch the spans of a session it does not know', async () => {
+    const spans = await post('session', 'someone-elses');
+    for (const span of spans) {
+      expect(span.traceId).toBe('c'.repeat(32));
+      expect(span.sessionId).toBeNull();
+      expect(span.attributes['otheater.client.trace_id']).toBeUndefined();
+    }
+    expect(spans.find((span) => span.name === 'turn')?.parentSpanId).toBeNull();
   });
 });
 

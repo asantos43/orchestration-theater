@@ -1294,6 +1294,10 @@ export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 /** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
 export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
 
+/** `telemetry.receiver.reparent` (Phase 9, P1; [proposta]): `session` puts the clients' spans under the daemon's tree; `off` keeps them in their own traces. */
+export const TELEMETRY_REPARENT_MODES = ['session', 'off'] as const;
+export type TelemetryReparentMode = (typeof TELEMETRY_REPARENT_MODES)[number];
+
 const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
 
 /**
@@ -1460,7 +1464,13 @@ const TelemetryConfigSchema = z
     /**
      * The OTLP/HTTP receiver of the daemon (P2, N211 to N213), loopback only, JSON only. [proposta]
      * - `port`: `auto` (a free port, each boot) or a fixed one;
-     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413.
+     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413;
+     * - `reparent` (Phase 9, P1, N230 (2); [proposta]): `session` (default) puts the spans of a
+     *   client under the span of their session (or attempt) in the daemon's trace, so there is one
+     *   tree; the trace and the parent the client used stay in `otheater.client.trace_id` and
+     *   `otheater.client.parent_span_id`. A span of a session the daemon does not know is left as it
+     *   came. `off`: every span stays in the trace of its client, tied by attribute only. It hangs
+     *   from the spans of `telemetry.daemon_spans`: with those `off` there is no parent to find.
      */
     receiver: z
       .strictObject({
@@ -1468,6 +1478,7 @@ const TelemetryConfigSchema = z
         max_body: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
           '8MB',
         ),
+        reparent: z.enum(TELEMETRY_REPARENT_MODES).default('session'),
       })
       .prefault({}),
     /**

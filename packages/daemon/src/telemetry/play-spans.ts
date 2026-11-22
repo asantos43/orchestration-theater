@@ -77,8 +77,10 @@ function toMs(nanos: bigint): number {
 
 /**
  * The spans of one play as the tree the interfaces draw (Phase 8, P10; [proposta]). It reads only
- * the spans the daemon itself made (`resource.otheater.component = daemon`): the spans a client
- * exported have their own trees and parents, and they are not a part of this one. The tree is built
+ * the spans the daemon itself made (`resource.otheater.component = daemon`). The spans a client
+ * exported are in the same trace and under the span of their session since Phase 9, P1
+ * (`telemetry.receiver.reparent`), but they are not drawn here: the panel shows the work of the
+ * daemon, and the client's spans are read from the base by trace. The tree is built
  * by the parent ids; a span whose parent is not in the base (the daemon writes a span when it closes,
  * so the play and whatever is still open are missing while the play runs) becomes a root. Children
  * come ordered by start. Reads, records no event.

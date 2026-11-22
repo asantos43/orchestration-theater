@@ -79,6 +79,7 @@ import { MetricsCollector } from './telemetry/metrics.js';
 import { EventMetrics } from './telemetry/metrics-events.js';
 import { PlaySpansService } from './telemetry/play-spans.js';
 import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
+import { traceResourceExtras } from './telemetry/reparent.js';
 import { TelemetryStatusService } from './telemetry/status.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
@@ -395,6 +396,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       situations: composition.situations,
       scenarioOf: async (playId) => (await composition?.store.plays.get(playId))?.scenarioId,
       clock: composition.clock,
+      // Phase 9, P1 (N230 (2)): the client is told the trace its spans will be in, and the receiver
+      // puts them under the daemon's tree. With `telemetry.receiver.reparent: off` neither happens.
+      ...(config.telemetry.receiver.reparent === 'session'
+        ? { resourceExtras: traceResourceExtras }
+        : {}),
     });
     mcp = await FrameworkMcpServer.start({
       registries,
