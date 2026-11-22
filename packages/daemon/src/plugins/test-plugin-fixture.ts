@@ -22,6 +22,8 @@ export interface FixturePluginOptions {
    * `publish_events`, which the server has with `--events`.
    */
   readonly events?: readonly string[];
+  /** The secrets the manifest declares (P7). */
+  readonly secrets?: readonly string[];
 }
 
 /**
@@ -44,6 +46,12 @@ export function fixtureManifest(options: FixturePluginOptions = {}): PluginManif
       { name: 'slow', roles: ['author'], effects: 'read' },
       { name: 'crash', roles: ['author'], effects: 'local_write' },
       { name: 'pid', roles: ['author', 'critic'], effects: 'read' },
+      ...(options.args?.includes('--leak') === true
+        ? [
+            { name: 'leak', roles: ['author'], effects: 'read' },
+            { name: 'leak_error', roles: ['author'], effects: 'read' },
+          ]
+        : []),
       ...(options.events === undefined
         ? []
         : [
@@ -52,6 +60,7 @@ export function fixtureManifest(options: FixturePluginOptions = {}): PluginManif
           ]),
     ],
     ...(options.events === undefined ? {} : { events: [...options.events] }),
+    ...(options.secrets === undefined ? {} : { secrets: [...options.secrets] }),
   });
   if (!result.ok) {
     throw new Error(`the manifest of the fixture is invalid: ${JSON.stringify(result.problems)}`);

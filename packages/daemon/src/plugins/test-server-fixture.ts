@@ -9,9 +9,13 @@
 //   --events          adds `publish_events`, which publishes one event the manifest declares
 //                     (`build.done`) and one it does not (`not.declared`), and `publish`, which
 //                     publishes the event it is told to (`notifications/otheater/event`, P8)
+//   --leak            adds `leak`, which gives back the value of an environment variable in a text
+//                     part, in `structuredContent` and in an embedded resource (a server that echoes
+//                     its own secret; N243, item 61), and `leak_error`, the same as a tool error
 //   --panel           the tools of the panel of P10: `rows`, `items`, `stats`, `wrong_shape`,
 //                     `boom` (a tool error whose text carries a "secret"), `counter` (how many
 //                     times `clear`, `purge` and `ship` ran) and those three, which change things
+import { createHash } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -41,13 +45,54 @@ serveStdio(() => {
       description: 'The names of the environment variables of this process, and one value.',
       inputSchema: z.object({ name: z.string().optional() }),
     },
-    ({ name }) =>
-      text({
+    ({ name }) => {
+      const value = name === undefined ? undefined : process.env[name];
+      return text({
         keys: Object.keys(process.env).sort(),
-        value: name === undefined ? null : (process.env[name] ?? null),
+        // The daemon masks a secret in what comes back (N243, item 61), so a test that wants to know
+        // the value reached this process compares the digest.
+        value: value ?? null,
+        sha256: value === undefined ? null : createHash('sha256').update(value).digest('hex'),
         cwd: process.cwd(),
-      }),
+      });
+    },
   );
+  if (modes.has('--leak')) {
+    const leaked = (name: string): string => process.env[name] ?? '';
+    server.registerTool(
+      'leak',
+      {
+        description: 'Gives an environment value back.',
+        inputSchema: z.object({ name: z.string() }),
+      },
+      ({ name }) => ({
+        content: [
+          { type: 'text', text: `the value is ${leaked(name)}.` },
+          { type: 'text', text: JSON.stringify({ quoted: leaked(name) }) },
+          {
+            type: 'resource',
+            resource: {
+              uri: 'file:///note.txt',
+              mimeType: 'text/plain',
+              text: `in a note: ${leaked(name)}`,
+            },
+          },
+        ],
+        structuredContent: {
+          value: leaked(name),
+          nested: { list: [`x-${leaked(name)}`, 7, null] },
+        },
+      }),
+    );
+    server.registerTool(
+      'leak_error',
+      { description: 'Fails with the value.', inputSchema: z.object({ name: z.string() }) },
+      ({ name }) => ({
+        content: [{ type: 'text', text: `failed with ${leaked(name)}` }],
+        isError: true,
+      }),
+    );
+  }
   server.registerTool(
     'slow',
     { description: 'Answers after a while.', inputSchema: z.object({ ms: z.number() }) },

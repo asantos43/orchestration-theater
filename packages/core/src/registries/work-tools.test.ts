@@ -59,6 +59,8 @@ describe('the input and output schemas of the work tools', () => {
         .success,
     ).toBe(true);
     expect(schemas('http_get').input.safeParse({ url: 'not a url' }).success).toBe(false);
+    expect(schemas('http_get').effect).toBe('network');
+    expect(schemas('http_get').idempotencyKey).toBe('attempt_step');
     const body = {
       url: 'http://127.0.0.1:1/',
       status: 200,
@@ -71,9 +73,10 @@ describe('the input and output schemas of the work tools', () => {
     expect(schemas('http_get').output.safeParse({ ...body, untrusted: false }).success).toBe(false);
   });
 
-  it('describe the browser tools: reads are plain, clicks and keys are external writes', () => {
+  it('describe the browser tools: opening and reading reach the network, clicks and keys are external writes', () => {
     for (const name of ['browser_open', 'browser_read', 'browser_screenshot']) {
-      expect(schemas(name).effect, name).toBe('read');
+      expect(schemas(name).effect, name).toBe('network');
+      expect(schemas(name).idempotencyKey, name).toBe('attempt_step');
       expect(schemas(name).roles, name).toEqual(['actor', 'consultant']);
     }
     for (const name of ['browser_click', 'browser_fill', 'browser_press_key']) {

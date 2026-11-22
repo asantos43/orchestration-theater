@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { AnalysisReportSchema } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../../config.js';
@@ -29,7 +29,12 @@ async function start(telemetry: MemoryTelemetryStore | 'none'): Promise<string> 
     dataDir: tmp.dir,
     clientSearch: NO_CLIENTS,
     config: parseConfig('backup:\n  when: manual\nanalysis:\n  day_boundary: utc\n'),
-    overrides: { clock, store: new InMemoryStore({ clock }), telemetry },
+    overrides: {
+      clock,
+      store: new InMemoryStore({ clock }),
+      telemetry,
+      vault: new InMemorySecretVault(),
+    },
     logger: createSilentLogger(),
     version: '0.0.0-test',
   });

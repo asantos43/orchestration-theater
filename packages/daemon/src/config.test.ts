@@ -1023,6 +1023,7 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       http: 'loopback',
       events: 'declared',
       event_max_bytes: 16_384,
+      event_rate: { max: 100, window: 10_000 },
       project_dir: 'scenario',
       panel: { max_rows: 200, max_bytes: 1_048_576 },
       install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
@@ -1068,6 +1069,30 @@ describe('parseConfig, plugins events (Phase 9, P8)', () => {
     for (const bad of ['0', '-1', '1.5', '2000000', '"big"']) {
       expect(() => parseConfig(`plugins:\n  event_max_bytes: ${bad}\n`)).toThrow(/event_max_bytes/);
     }
+  });
+});
+
+describe('parseConfig, plugins event_rate (N243 item 67)', () => {
+  it('is 100 events per 10 s by default, and takes off, a count and a window on their own', () => {
+    expect(parseConfig('').plugins.event_rate).toEqual({ max: 100, window: 10_000 });
+    expect(parseConfig('plugins:\n  event_rate: off\n').plugins.event_rate).toBeNull();
+    expect(parseConfig('plugins:\n  event_rate:\n    max: 5\n').plugins.event_rate).toEqual({
+      max: 5,
+      window: 10_000,
+    });
+    expect(parseConfig('plugins:\n  event_rate:\n    window: 1m\n').plugins.event_rate).toEqual({
+      max: 100,
+      window: 60_000,
+    });
+  });
+
+  it('rejects a count that is not positive, a window that is not a duration and an unknown mode', () => {
+    for (const bad of ['0', '-1', '1.5', '"many"']) {
+      expect(() => parseConfig(`plugins:\n  event_rate:\n    max: ${bad}\n`)).toThrow(/event_rate/);
+    }
+    expect(() => parseConfig('plugins:\n  event_rate:\n    window: soon\n')).toThrow(/event_rate/);
+    expect(() => parseConfig('plugins:\n  event_rate: on\n')).toThrow(/event_rate/);
+    expect(() => parseConfig('plugins:\n  event_rate:\n    extra: 1\n')).toThrow(/event_rate/);
   });
 });
 

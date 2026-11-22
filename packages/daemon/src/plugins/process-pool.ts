@@ -2,11 +2,18 @@
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import type { Clock } from '@otheater/core';
+import {
+  PLUGIN_BASE_ENV_NAMES,
+  PLUGIN_HOME_ENV,
+  PLUGIN_INHERITED_ENV,
+  PLUGIN_PROJECT_DIR_ENV,
+  type Clock,
+} from '@otheater/core';
 import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { Logger } from '../logger.js';
 import {
   connectPluginServer,
+  maskCallResult,
   PluginStartRefused,
   type PluginConnection,
   type PluginConnector,
@@ -117,13 +124,9 @@ interface Entry {
   givenUp: boolean;
   inflight: number;
   idle: AbortController | undefined;
+  /** The secrets this server was started with: what it gives back is masked with them (item 61). */
+  secretValues: readonly string[];
 }
-
-/** The environment a plugin process gets from the daemon: nothing but these. */
-const INHERITED_ENV: readonly string[] = ['PATH', 'LANG', 'TZ'];
-
-/** The variable the SDK reads the folder of the project from (`PLUGIN_PROJECT_DIR_ENV`). */
-const PROJECT_DIR_ENV = 'OTHEATER_PROJECT_DIR';
 
 /** A name that is safe as a folder name; a name that had to change gets a short digest. */
 function folderName(name: string): string {
@@ -147,14 +150,16 @@ export function pluginEnvironment(
   projectDir?: string,
 ): Record<string, string> {
   const env: Record<string, string> = Object.fromEntries(
-    Object.entries(extra).filter(([key]) => key !== PROJECT_DIR_ENV),
+    // The manifest refuses a secret with one of these names (item 63); a vault or a test that hands
+    // one in anyway never wins over the base.
+    Object.entries(extra).filter(([key]) => !PLUGIN_BASE_ENV_NAMES.includes(key)),
   );
-  for (const key of INHERITED_ENV) {
+  for (const key of PLUGIN_INHERITED_ENV) {
     const value = source[key];
     if (value !== undefined) env[key] = value;
   }
-  env.HOME = home;
-  if (projectDir !== undefined && isAbsolute(projectDir)) env[PROJECT_DIR_ENV] = projectDir;
+  env[PLUGIN_HOME_ENV] = home;
+  if (projectDir !== undefined && isAbsolute(projectDir)) env[PLUGIN_PROJECT_DIR_ENV] = projectDir;
   return env;
 }
 
@@ -273,7 +278,8 @@ export class PluginProcessPool {
         timeoutMs: timeoutMs + 5_000,
       });
       if (entry.connection === connection) entry.failures = 0;
-      return result;
+      // N243 (item 61): a server that gives back a secret it was handed does not pass it on.
+      return maskCallResult(result, entry.secretValues);
     } catch (error) {
       if (error instanceof PluginCallError) throw error;
       if (state.timedOut) {
@@ -365,6 +371,7 @@ export class PluginProcessPool {
         givenUp: false,
         inflight: 0,
         idle: undefined,
+        secretValues: [],
       };
       this.#entries.set(key, entry);
     }
@@ -415,6 +422,7 @@ export class PluginProcessPool {
       const home = join(this.#options.homeRoot, folderName(plugin.id), folderName(entry.project));
       await mkdir(home, { recursive: true });
       const extra = (await this.#options.extraEnv?.(plugin, entry.project)) ?? {};
+      entry.secretValues = Object.values(extra);
       const projectDir =
         runtime.projectDir === 'scenario'
           ? await this.#options.projectDir?.(entry.project)
@@ -424,7 +432,7 @@ export class PluginProcessPool {
         dir: plugin.dir,
         env: pluginEnvironment(home, extra, process.env, projectDir),
         // What `extraEnv` gave is secret by definition: the log of the server must not repeat it.
-        secretValues: Object.values(extra),
+        secretValues: entry.secretValues,
         startTimeoutMs: runtime.startTimeoutMs,
         http: runtime.http,
         logger: logger.child({ plugin: plugin.id, project: entry.project }),
