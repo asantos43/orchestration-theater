@@ -1,0 +1,16 @@
+# Written by "ot service install" (OTheater). A new install rewrites this file.
+[Unit]
+Description=OTheater daemon (Orchestration Theater)
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/opt/node/bin/node /work/ot/dist/cli.js daemon --data-dir "/data/ot dir"
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+Environment=PATH=/usr/local/bin:/usr/bin
+
+[Install]
+WantedBy=default.target
