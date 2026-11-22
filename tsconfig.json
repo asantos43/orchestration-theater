@@ -25,6 +25,7 @@
     { "path": "tools/verify" },
     { "path": "tools/eslint-rules" },
     { "path": "tools/bench" },
+    { "path": "tools/release" },
     { "path": "packages/adapters/local-llama-cpp" },
     { "path": "packages/adapters/local-ollama" },
     { "path": "packages/adapters/usage-ccusage" },
