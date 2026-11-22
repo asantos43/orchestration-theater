@@ -19,6 +19,7 @@ export * from './executors.js';
 export * from './ideas.js';
 export * from './orders.js';
 export * from './plays.js';
+export * from './plugins.js';
 export * from './profiles.js';
 export * from './scenarios.js';
 export * from './setup.js';

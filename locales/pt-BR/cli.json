@@ -389,6 +389,17 @@
       "events": "  Eventos que pode emitir: {{list}}",
       "eventsNone": "  Eventos: nenhum",
       "panel": "  Painel: {{count}} bloco(s), desenhado(s) pela interface a partir de dados"
+    },
+    "panel": {
+      "error": {
+        "plugin_unavailable": "O servidor do plugin não está disponível agora.",
+        "plugin_timeout": "O servidor do plugin não respondeu a tempo.",
+        "plugin_failed": "O servidor do plugin falhou ao responder.",
+        "tool_unavailable": "O servidor do plugin não oferece a ferramenta deste bloco.",
+        "tool_error": "O plugin respondeu com um erro.",
+        "invalid_result": "O plugin respondeu dados que este bloco não consegue desenhar.",
+        "not_readable": "Este bloco lê de uma ferramenta que não é só de leitura, por isso ela não é chamada."
+      }
     }
   },
   "setup": {
