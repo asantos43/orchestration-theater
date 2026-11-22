@@ -2,6 +2,7 @@ packages:
   - 'packages/*'
   - 'packages/adapters/*'
   - 'tools/*'
+  - 'examples/*'
 
 # better-sqlite3 13 ships prebuilt binaries inside the npm tarball (verified: loads without any
 # install script). pnpm only sees the implicit node-gyp rebuild, which must not run: no compiler

@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 const alias = {
   '@otheater/core/testing': `${import.meta.dirname}/packages/core/src/testing/index.ts`,
   '@otheater/core': `${import.meta.dirname}/packages/core/src/index.ts`,
+  '@otheater/sdk/plugin': `${import.meta.dirname}/packages/sdk/src/plugin/index.ts`,
   '@otheater/sdk': `${import.meta.dirname}/packages/sdk/src/index.ts`,
   '@otheater/tui/launcher': `${import.meta.dirname}/packages/tui/src/launcher.ts`,
   '@otheater/daemon': `${import.meta.dirname}/packages/daemon/src/index.ts`,
@@ -48,7 +49,11 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: 'packages',
-          include: ['packages/**/src/**/*.test.{ts,tsx}', 'tools/**/src/**/*.test.ts'],
+          include: [
+            'packages/**/src/**/*.test.{ts,tsx}',
+            'tools/**/src/**/*.test.ts',
+            'examples/**/src/**/*.test.ts',
+          ],
           exclude: ['**/node_modules/**', '**/dist/**', 'spikes/**'],
           testTimeout,
           hookTimeout,
