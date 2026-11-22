@@ -112,7 +112,7 @@ describe('buildSandboxWiring', () => {
       worktree: '/data/worktrees/w1',
       profileDirs: ['/data/profiles/codex/a'],
       // The managed ACP adapters run from `<data>/adapters` (P13).
-      readPaths: ['/data/adapters'],
+      readPaths: [join('/data', 'adapters')],
       extraWritePaths: ['/var/cache/x'],
     });
     expect(request?.domains).toEqual([
