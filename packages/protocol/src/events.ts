@@ -168,6 +168,7 @@ import {
   PluginEnabledPayloadSchema,
   PluginEventRejectedPayloadSchema,
   PluginInstalledPayloadSchema,
+  PluginPanelTruncatedPayloadSchema,
   PluginRemovedPayloadSchema,
   PluginSecretMissingPayloadSchema,
   PluginServerFailedPayloadSchema,
@@ -969,6 +970,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'plugin.secret_missing',
     schemaVersion: 1,
     payload: PluginSecretMissingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.panel_truncated',
+    schemaVersion: 1,
+    payload: PluginPanelTruncatedPayloadSchema,
   }),
 ] as const;
 

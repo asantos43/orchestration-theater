@@ -59,6 +59,7 @@ export const PLUGIN_DAEMON_EVENT_NAMES = [
   'tool_rejected',
   'event_rejected',
   'secret_missing',
+  'panel_truncated',
 ] as const;
 
 /** True when `id` is one of the {@link PLUGIN_DAEMON_EVENT_NAMES}, which no plugin may take as id. */
