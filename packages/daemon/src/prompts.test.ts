@@ -75,7 +75,11 @@ describe('starting the daemon with the prompts', () => {
         dataDir: tmp.dir,
         clientSearch: NO_CLIENTS,
         config: MANUAL,
-        overrides: { clock: new FakeClock(), store: new InMemoryStore({ clock: new FakeClock() }) },
+        overrides: {
+          clock: new FakeClock(),
+          store: new InMemoryStore({ clock: new FakeClock() }),
+          vault: new InMemorySecretVault(),
+        },
         logger: createSilentLogger(),
       });
       await daemon.stop();
