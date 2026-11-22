@@ -1747,6 +1747,9 @@ export class OrchestrationEffects implements PlayEffects {
         demands,
         partial: effect.partial,
         criticWaived: effect.criticWaived,
+        ...(effect.criticSkippedBy === undefined
+          ? {}
+          : { criticSkippedBy: effect.criticSkippedBy }),
       },
       conventions,
     );

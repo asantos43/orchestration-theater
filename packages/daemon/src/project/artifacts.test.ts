@@ -95,6 +95,13 @@ describe('buildDeliveryArtifacts', () => {
     expect(body).toContain('- `d1`: Parse the flags\n- `d2`: Write the file');
   });
 
+  it('says which flow has no Critic stage, and says nothing for the official play', () => {
+    const skipped = buildDeliveryArtifacts({ ...facts, criticSkippedBy: 'no-critic' }).body;
+    expect(skipped).toContain('The flow "no-critic" has no Critic stage.');
+    expect(skipped).not.toContain('waived');
+    expect(buildDeliveryArtifacts(facts).body).not.toContain('has no Critic stage');
+  });
+
   it('lists the demands in the merge message', () => {
     const { mergeMessage } = buildDeliveryArtifacts(facts);
     expect(mergeMessage).toBe(

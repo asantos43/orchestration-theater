@@ -15,7 +15,7 @@ import { createActor, initialTransition, transition, type SnapshotFrom } from 'x
 import type { PlayNoticeKind } from '@otheater/protocol';
 import type { PlayLimits } from '../config.js';
 import { situationText, writeSituation } from '../situations.js';
-import type { PausedPlay, PlayContext } from './context.js';
+import type { PausedPlay, PlayContext, PlayFlowRef } from './context.js';
 import { PLAY_FLOW_ID, PLAY_FLOW_VERSION, isFinalState, type PlayState } from './definitions.js';
 import {
   entryEffects,
@@ -60,6 +60,11 @@ export interface NewPlayInput {
   readonly scenarioId: string;
   readonly need: string;
   readonly limits: PlayLimits;
+  /**
+   * [proposta] The flow of the configuration (P12), already resolved: its limits are in `limits`
+   * and the play keeps this reference in its snapshot. Absent: the official `play`.
+   */
+  readonly flow?: PlayFlowRef | undefined;
   readonly parentPlayId?: string | null;
 }
 
@@ -150,6 +155,7 @@ export class PlayRunner {
       playId: input.playId,
       need: input.need,
       limits: input.limits,
+      flow: input.flow,
     });
     return this.#store.transaction(async (tx) => {
       const record = await tx.plays.create({

@@ -751,3 +751,102 @@ describe('PlayRunner', () => {
     });
   });
 });
+
+describe('PlayRunner with a flow of the configuration (P12)', () => {
+  const FLOW = {
+    id: 'quick',
+    version: 1,
+    hash: 'b'.repeat(64),
+    skip: ['plan_review'],
+  } as const;
+
+  function rig() {
+    const clock = new FakeClock();
+    const store = new InMemoryStore({ clock });
+    const effects = new FakeEffects();
+    const runner = new PlayRunner({ store, clock, effects });
+    return { clock, store, effects, runner };
+  }
+
+  it('keeps the id, the version and the hash of the flow in the snapshot of the play', async () => {
+    const { store, runner } = rig();
+    try {
+      const record = await runner.create({
+        playId: 'p1',
+        scenarioId: 's1',
+        need: NEED,
+        limits: LIMITS,
+        flow: FLOW,
+      });
+      // the machine is still the official one, so the play restores as always
+      expect(record).toMatchObject({ flowId: PLAY_FLOW_ID, flowVersion: PLAY_FLOW_VERSION });
+      const context = (await store.plays.get('p1'))?.snapshot as {
+        context: { flow: unknown };
+      };
+      expect(context.context.flow).toEqual(FLOW);
+      expect(restorePlay(record).context.flow).toEqual(FLOW);
+    } finally {
+      await runner.close();
+    }
+  });
+
+  it('runs to the delivery without the review of the plan, and a restart keeps the flow', async () => {
+    const { store, clock, effects, runner } = rig();
+    await runner.create({ playId: 'p1', scenarioId: 's1', need: NEED, limits: LIMITS, flow: FLOW });
+    await runner.send('p1', { type: 'START' });
+    await runner.close();
+
+    // a new runner on the same store: nothing is read but the snapshot
+    const again = new PlayRunner({ store, clock, effects });
+    try {
+      await again.send('p1', { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      expect((await store.plays.get('p1'))?.state).toBe('SCRIPTING');
+      await again.send('p1', { type: 'SCRIPT_VALIDATED', valid: true, demandIds: ['d1'] });
+      await again.send('p1', { type: 'SCRIPT_REVIEWED', approved: true });
+      await again.send('p1', { type: 'DEMAND_APPROVED', demandId: 'd1' });
+      await again.send('p1', { type: 'INTEGRATED', ok: true });
+      await again.send('p1', { type: 'CRITIQUED', approved: true });
+      await again.send('p1', { type: 'DELIVERED' });
+      expect((await store.plays.get('p1'))?.state).toBe('DONE');
+      const states = (await store.events.readFrom(0, 100))
+        .filter((event) => event.type === 'play.transitioned')
+        .map((event) => (event.payload as { to: string }).to);
+      expect(states).not.toContain('REVIEWING_PLAN');
+    } finally {
+      await again.close();
+    }
+  });
+
+  it('is not touched by another play, nor by a play without a flow created later', async () => {
+    const { store, runner } = rig();
+    try {
+      await runner.create({
+        playId: 'p1',
+        scenarioId: 's1',
+        need: NEED,
+        limits: LIMITS,
+        flow: FLOW,
+      });
+      // the configuration "changed": the next play has no flow, with other limits
+      await runner.create({
+        playId: 'p2',
+        scenarioId: 's1',
+        need: NEED,
+        limits: { ...LIMITS, plan_reviews: 0 },
+      });
+      for (const playId of ['p1', 'p2']) {
+        await runner.send(playId, { type: 'START' });
+        await runner.send(playId, { type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+      }
+      expect((await store.plays.get('p1'))?.state).toBe('SCRIPTING');
+      expect((await store.plays.get('p2'))?.state).toBe('REVIEWING_PLAN');
+      const first = await store.plays.get('p1');
+      const second = await store.plays.get('p2');
+      if (first === undefined || second === undefined) throw new Error('the plays are missing');
+      expect(restorePlay(first).context.limits).toEqual(LIMITS);
+      expect(restorePlay(second).context.flow ?? null).toBeNull();
+    } finally {
+      await runner.close();
+    }
+  });
+});

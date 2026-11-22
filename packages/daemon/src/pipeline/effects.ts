@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
   pendingDemands,
+  skipsStep,
   type DeliveryChoice,
   type PlayContext,
   type ProducerReason,
@@ -73,6 +74,8 @@ export type PlayEffect =
       readonly partial: boolean;
       /** The PR says the Critic was waived. */
       readonly criticWaived: boolean;
+      /** [proposta] Id of the flow that has no Critic stage (P12); the PR says so. Absent otherwise. */
+      readonly criticSkippedBy?: string;
       /** The Producer accepted the conflicts of a drifted base: no more drift check (N83). */
       readonly driftAccepted: boolean;
       /** The answer to `delivery.mode: ask` (N89); `null` before there is one. */
@@ -186,6 +189,9 @@ export function entryEffects(state: PlayState, context: PlayContext): PlayEffect
           demandIds: context.deliverOnlyApproved ? context.approvedDemands : context.demandIds,
           partial: context.deliverOnlyApproved,
           criticWaived: context.criticWaived,
+          ...(context.flow != null && skipsStep(context, 'critique')
+            ? { criticSkippedBy: context.flow.id }
+            : {}),
           driftAccepted: context.driftAccepted === true,
           deliveryChoice: context.deliveryChoice ?? null,
         },
