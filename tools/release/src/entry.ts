@@ -27,7 +27,8 @@ export function entryFiles(root: string): EntryFiles {
  * 1. `globalThis.__otSeaNative` is what the replaced loaders of the native addons call;
  * 2. the TUI handler starts yoga first (`globalThis.__otYoga`, the module that stands for
  *    `yoga-layout` reads it) and only then imports the TUI, which pulls Ink and yoga in;
- * 3. `verify-release` and `apply-update` have no handler: the runner answers "not available".
+ * 3. `verify-release` has no handler: the runner answers "not available". `apply-update` has none either,
+ *    and needs none: the runner runs the applier of the daemon (P8) by default.
  */
 export function entrySource(files: EntryFiles): string {
   const q = (file: string): string => JSON.stringify(file);

@@ -2,6 +2,7 @@
 import { SEA_INTERNAL_PREFIX } from '@otheater/client/node';
 import { entry } from '../cli.js';
 import { runShimMain } from '../mcp/stdio-shim.js';
+import { runApplyUpdate } from '../updates/apply/main.js';
 import { isSeaMode, type SeaMode } from './self-command.js';
 
 /**
@@ -24,7 +25,7 @@ export interface SeaHandlers {
   readonly cli?: (() => Promise<void>) | undefined;
   /** `mcp-shim`. Default: the one of `mcp/stdio-shim.ts`. */
   readonly mcpShim?: (() => Promise<void>) | undefined;
-  /** `verify-release` (P7) and `apply-update` (P8); absent means "not available". */
+  /** `verify-release` (P7); absent means "not available". `apply-update` (P8) defaults to the applier. */
   readonly verifyRelease?: ((argv: readonly string[]) => Promise<void>) | undefined;
   readonly applyUpdate?: ((argv: readonly string[]) => Promise<void>) | undefined;
   /** Where the messages go. Default: `process.stderr`. */
@@ -71,7 +72,10 @@ export async function runSeaMain(argv: readonly string[], handlers: SeaHandlers)
       return;
     case 'verify-release':
     case 'apply-update': {
-      const run = parsed.mode === 'verify-release' ? handlers.verifyRelease : handlers.applyUpdate;
+      const run =
+        parsed.mode === 'verify-release'
+          ? handlers.verifyRelease
+          : (handlers.applyUpdate ?? runApplyUpdate);
       if (run === undefined) {
         stderr.write(
           `otheater: the internal mode "${parsed.mode}" is not available in this build\n`,

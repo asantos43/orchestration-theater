@@ -67,15 +67,26 @@ describe('runSeaMain', () => {
     expect(calls).toEqual(['mcp-shim']);
   });
 
-  it('answers "not available" for the modes of later steps, with exit code 3', async () => {
-    for (const mode of ['verify-release', 'apply-update']) {
-      const { calls, written, handlers } = harness();
-      process.exitCode = undefined;
-      await runSeaMain([`--ot-internal=${mode}`], handlers);
-      expect(calls).toEqual([]);
-      expect(written.join('')).toContain(`"${mode}" is not available`);
-      expect(process.exitCode).toBe(EXIT_NOT_AVAILABLE);
+  it('answers "not available" for the mode of a later step, with exit code 3', async () => {
+    const { calls, written, handlers } = harness();
+    process.exitCode = undefined;
+    await runSeaMain(['--ot-internal=verify-release'], handlers);
+    expect(calls).toEqual([]);
+    expect(written.join('')).toContain('"verify-release" is not available');
+    expect(process.exitCode).toBe(EXIT_NOT_AVAILABLE);
+  });
+
+  it('runs the applier by default in apply-update (usage error without --journal)', async () => {
+    const { calls, handlers } = harness();
+    process.exitCode = undefined;
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await runSeaMain(['--ot-internal=apply-update'], handlers);
+    } finally {
+      spy.mockRestore();
     }
+    expect(calls).toEqual([]);
+    expect(process.exitCode).toBe(2);
   });
 
   it('runs a later mode as soon as a build provides it', async () => {
