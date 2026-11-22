@@ -7,7 +7,8 @@
     "navigation": "Navegação",
     "input": "Caixa de texto",
     "settings": "Configurações",
-    "setup": "Assistente de configuração"
+    "setup": "Assistente de configuração",
+    "plugins": "Plugins"
   },
   "tabs": {
     "overview": "Visão geral",
@@ -15,7 +16,8 @@
     "usage": "Uso",
     "direct": "Sessão direta",
     "directives": "Diretrizes",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "plugins": "Plugins"
   },
   "actions": {
     "layout": {
@@ -55,7 +57,8 @@
       "scrollBottom": "Ir ao fim do chat",
       "suggestNext": "Próxima sugestão de comando",
       "suggestPrev": "Sugestão de comando anterior",
-      "stop": "Parar a resposta do Diretor"
+      "stop": "Parar a resposta do Diretor",
+      "director": "Escolher o Executor, o modelo e o esforço do Diretor"
     },
     "edge": {
       "narrow": "Estreitar o chat (borda com o foco)",
@@ -84,7 +87,7 @@
     },
     "input": {
       "submit": "Enviar a mensagem",
-      "newline": "Inserir uma nova linha",
+      "newline": "Nova linha (Shift+Enter: protocolo kitty)",
       "left": "Mover o cursor um caractere para a esquerda",
       "right": "Mover o cursor um caractere para a direita",
       "wordLeft": "Mover o cursor uma palavra para a esquerda",
@@ -161,6 +164,15 @@
       "remove": "Remover o Executor",
       "reload": "Ler o passo de novo",
       "cancel": "Cancelar a execução (nada é gravado)"
+    },
+    "plugins": {
+      "itemPrev": "Plugin anterior",
+      "itemNext": "Próximo plugin",
+      "enable": "Ativar o plugin no projeto (mostra antes o que ele pede)",
+      "disable": "Desativar o plugin no projeto",
+      "actionNext": "Escolher a próxima ação do painel",
+      "action": "Executar a ação escolhida no painel",
+      "reload": "Ler os plugins de novo"
     }
   },
   "bar": {
@@ -290,7 +302,10 @@
       "noScenario": "Sem cenário",
       "decisions_one": "{{count}} decisão",
       "decisions_other": "{{count}} decisões",
-      "daemon": "daemon {{address}}"
+      "daemon": "daemon {{address}}",
+      "updateFound": "↑ {{version}} encontrada",
+      "updateReady": "↑ {{version}} pronta",
+      "updateApply": "aplicar"
     },
     "state": {
       "decision": "decisão",
@@ -340,6 +355,25 @@
         "turn": "Diretor em turno",
         "turnStop": "Diretor em turno ({{key}} para)",
         "active": "Diretor ativo"
+      },
+      "directorFooter": {
+        "line": "Diretor: {{executor}}{{settings}} ({{source}}){{wait}}  {{key}}",
+        "none": "Diretor: ainda não escolhido  {{key}}",
+        "pending": ", troca na fila",
+        "source": {
+          "override": "sua escolha",
+          "default": "padrão"
+        }
+      },
+      "directorPicker": {
+        "title": "Diretor deste cenário",
+        "current": "agora",
+        "isDefault": "padrão",
+        "invalid": "inválido: {{reason}}",
+        "quota": "cota {{state}}",
+        "model": "modelo: {{model}}",
+        "effort": "esforço: {{effort}}",
+        "default": "voltar ao padrão"
       },
       "waits": "esperando: {{what}}",
       "connection": {
@@ -407,6 +441,15 @@
           "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
           "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
           "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt."
+        },
+        "directorSwitch": {
+          "live": "O Diretor passou a rodar {{what}} ({{source}}).",
+          "new_session": "O Diretor passou de {{from}} para {{what}} ({{source}}): sessão nova.",
+          "baton": "O Diretor seguiu com {{what}} ({{source}}) numa sessão nova.",
+          "stored": "O Diretor vai usar {{what}} ({{source}}) quando a sessão abrir.",
+          "unchanged": "O Diretor já rodava {{what}} ({{source}}).",
+          "override": "sua escolha",
+          "default": "o padrão"
         },
         "recovery": "Depois da reinicialização: {{resumed}} retomadas, {{settled}} resolvidas, {{waiting}} esperando.",
         "generatedNone": "O Diretor respondeu sem nenhuma ação.",
@@ -1159,5 +1202,101 @@
       "close": "{{key}} fecha o assistente."
     },
     "gateFailed": "Não deu para checar se a primeira execução é necessária: {{message}}"
+  },
+  "plugins": {
+    "scope": {
+      "none": "Projeto: nenhum selecionado (escolha um na barra lateral para ativar ou desativar plugins)",
+      "project": "Projeto: {{name}}"
+    },
+    "loading": "Lendo os plugins...",
+    "loadFailed": "Não foi possível ler os plugins: {{message}}",
+    "empty": "Nenhum plugin instalado. Instale um no terminal: ot plugin install <origem>",
+    "sections": {
+      "installed": "Instalados",
+      "detail": "Detalhes",
+      "panel": "Painel"
+    },
+    "state": {
+      "active": "ativo",
+      "needs_approval": "pede nova aprovação",
+      "broken": "inutilizável",
+      "off": "desligado"
+    },
+    "detail": {
+      "origin": "Origem: {{origin}}",
+      "problem": "Problema: {{problem}}",
+      "serverFailed": "O servidor do plugin falhou neste projeto.",
+      "loading": "Lendo o plugin...",
+      "failed": "Não foi possível ler o plugin: {{message}}",
+      "asks": "O que ele pede ao ser ativado:"
+    },
+    "secrets": {
+      "title": "Segredos",
+      "missing": "faltando",
+      "hint": "Esta tela não grava segredos (e nunca mostra um). Grave no terminal:"
+    },
+    "enable": {
+      "question": "Ativar {{plugin}} {{version}} em {{project}}? Isto é o que ele pede:",
+      "again": "O manifesto de {{plugin}} {{version}} mudou. Aprovar de novo em {{project}}? Isto é o que ele pede:",
+      "hint": "Enter aprova e ativa, Esc cancela"
+    },
+    "disable": {
+      "question": "Desativar {{plugin}} em {{project}}? s/n",
+      "hint": "s confirma, qualquer outra tecla cancela"
+    },
+    "prompt": {
+      "yes": "s"
+    },
+    "panel": {
+      "loading": "Lendo o painel...",
+      "failed": "Não foi possível ler o painel: {{message}}",
+      "needsApproval": "O painel fica desligado até a aprovação do novo manifesto ({{key}} aprova).",
+      "broken": "A pasta do plugin não pode ser usada, então não há painel.",
+      "noProject": "Escolha um projeto na barra lateral para ver o painel.",
+      "off": "O plugin está desligado neste projeto ({{key}} ativa).",
+      "noBlocks": "O plugin não declara painel."
+    },
+    "block": {
+      "error": "{{source}}: sem dados ({{code}}) {{message}}",
+      "cutRows": "Mostrando {{kept}} de {{total}} linhas (limite {{limit}}).",
+      "cutBytes": "Cortado em {{kept}} de {{total}} bytes (limite {{limit}}).",
+      "unreadable": "Um bloco do painel não pôde ser lido por esta tela.",
+      "noColumns": "A tabela não declara coluna.",
+      "empty": "Nada a mostrar."
+    },
+    "errorCode": {
+      "plugin_unavailable": "plugin indisponível",
+      "plugin_timeout": "o plugin demorou demais",
+      "plugin_failed": "o plugin falhou",
+      "tool_unavailable": "ferramenta indisponível",
+      "tool_error": "erro da ferramenta",
+      "invalid_result": "resultado inválido",
+      "not_readable": "ferramenta não é de leitura"
+    },
+    "action": {
+      "hint": "{{next}} escolhe a próxima ação, {{run}} executa a escolhida",
+      "approval": {
+        "manifest": "(pede a sua aprovação)",
+        "policy": "(pede a sua aprovação pela política)"
+      },
+      "running": "Executando {{action}}...",
+      "waiting": "{{action}}: aguardando a sua aprovação...",
+      "failed": "{{action}} falhou: {{code}} {{message}}",
+      "tooBig": "{{action}} rodou, mas a resposta era grande demais para mostrar.",
+      "done": "{{action}} concluída.",
+      "doneWith": "{{action}} concluída: {{result}}"
+    },
+    "result": {
+      "failed": "Falhou: {{message}}",
+      "noProject": "Escolha um projeto na barra lateral primeiro.",
+      "broken": "{{plugin}} não pode ser usado: veja o problema nos detalhes.",
+      "alreadyOn": "{{plugin}} já está ativo neste projeto.",
+      "notOn": "{{plugin}} não está ativo neste projeto.",
+      "enabled": "{{plugin}} foi ativado em {{project}}.",
+      "enabledSame": "{{plugin}} já estava ativo em {{project}} com este manifesto.",
+      "disabled": "{{plugin}} foi desativado em {{project}}.",
+      "disabledSame": "{{plugin}} não estava ativo em {{project}}.",
+      "noAction": "O painel não tem ação para executar."
+    }
   }
 }

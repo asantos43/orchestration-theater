@@ -24,6 +24,13 @@ export interface SandboxRequest {
    * inside a secret path (the data directory holds every profile; only this one is re-opened).
    */
   readonly profileDirs: readonly string[];
+  /**
+   * [proposta, P13] Folders the command may READ (never write) even when they lie inside a secret
+   * path: the ACP adapters OTheater installs live in `<data>/adapters`, and the data directory is
+   * secret. Optional, so the port version does not change: an adapter that ignores it leaves the
+   * managed adapter unable to read its own code, never the command more exposed. Absent: none.
+   */
+  readonly readPaths?: readonly string[];
   /** More folders the command may write (`sandbox.extra_write_paths`). */
   readonly extraWritePaths: readonly string[];
   /** Paths the command may not READ, already resolved (`resolveSecretPaths`). */

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -19,6 +19,7 @@ import {
   type CommandContext,
 } from './commands.js';
 import type { ComposeOverrides } from './compose.js';
+import { isSeaProcess } from '@otheater/client/node';
 import type { ClientFactory } from './clients.js';
 import { loadConfig } from './config.js';
 import {
@@ -27,6 +28,7 @@ import {
   type DirectivesOptions,
 } from './directives/command.js';
 import { startDaemon, type PasswordPrompt } from './daemon.js';
+import { isPluginAction, runPluginCommand } from './plugins/command.js';
 import { isExecutorAction, runExecutorCommand, type ExecutorOptions } from './executors/command.js';
 import type { TestSession } from './executors/test-session.js';
 import {
@@ -41,12 +43,29 @@ import { isProfileAction, runProfileCommand, type ProfileOptions } from './profi
 import { runProfileExec, type ExecSignals, type ExecSpawn } from './profiles/exec.js';
 import { runProfileShims, type ShimsOptions } from './profiles/shims-command.js';
 import type { OtLauncher } from './profiles/shims.js';
+import { resolveSelfCommand } from './sea/self-command.js';
 import {
   isTrajectoryAction,
   runTrajectoryCommand,
   type TrajectoryOptions,
 } from './atif/command.js';
 import { runAnalysisCommand, type AnalysisOptions } from './analysis/command.js';
+import {
+  isServiceAction,
+  runServiceCommand,
+  runUninstallCommand,
+  startDaemonForTui,
+  type ServiceCommandDeps,
+  type ServiceHost,
+} from './commands/service.js';
+import { spawnDetachedDaemon, type DaemonSpawn } from './service/ensure-daemon.js';
+import { isAdaptersAction, runAdaptersCommand, type AdaptersSeam } from './commands/adapters.js';
+import { isManagedClient } from './adapters/manager.js';
+import { runInitCommand } from './commands/init.js';
+import { execRunner } from './service/command-runner.js';
+import { createServiceManager } from './service/index.js';
+import { resolveServiceCommand } from './service/self-command.js';
+import { recoverAtStart } from './updates/apply/recover.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -83,6 +102,8 @@ export interface CliDeps {
   readonly otLauncher?: OtLauncher | undefined;
   /** Asks a yes or no in the terminal (`ot profile shims path --install`); none without a terminal. */
   readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
+  /** Asks a line in the terminal without echo (`ot plugin secret set`); none without a terminal. */
+  readonly askHidden?: ((question: string) => Promise<string | undefined>) | undefined;
   /** True when the input and the output are a terminal (`ot tui`, and `ot` with no command). */
   readonly interactive?: boolean | undefined;
   /**
@@ -90,6 +111,13 @@ export interface CliDeps {
    * loaded only when it is needed, which starts the interface in a process of its own).
    */
   readonly launchTui?: TuiRunner | undefined;
+  /**
+   * The logon service and the daemon child (Phase 10, P3): the manager of the platform and how to
+   * start a detached daemon. Without it `ot service` has no manager and `ot tui` starts no daemon.
+   */
+  readonly serviceHost?: ServiceHost | undefined;
+  /** The seams of the managed ACP adapters (P13): the download, the platform, how the program runs itself. Tests only. */
+  readonly adapters?: AdaptersSeam | undefined;
 }
 
 /** What `ot tui` hands to the launcher: the data folder and the `ui` part of the configuration. */
@@ -110,6 +138,10 @@ const launchBuiltTui: TuiRunner = async (run) => {
   return await launchTui({ dataDir: run.dataDir, ui: run.ui, env: run.env });
 };
 
+/** The daemon child of `ot init` when the entry point gave no service host: none is started. */
+const noSpawn: DaemonSpawn = () =>
+  Promise.resolve({ ok: false, detail: 'no way to start a daemon here' });
+
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
@@ -125,6 +157,11 @@ const COMMANDS = [
   'trajectory',
   'analysis',
   'tui',
+  'plugin',
+  'service',
+  'uninstall',
+  'init',
+  'adapters',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -187,7 +224,27 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     return EXIT_USAGE;
   };
 
+  const serviceDeps = (): ServiceCommandDeps => ({
+    platform: deps.platform,
+    env: deps.env,
+    service: deps.serviceHost?.manager,
+    // The one place the command of the service comes from: `resolveSelfCommand()`, via `otLauncher`.
+    self: resolveServiceCommand(deps.otLauncher),
+    confirm: deps.confirm,
+    homedir: deps.homedir,
+    sleep: deps.serviceHost?.sleep,
+    now: deps.serviceHost?.now,
+    alive: deps.serviceHost?.alive,
+  });
   const runTui = async (ui: unknown): Promise<number> => {
+    if (deps.serviceHost !== undefined) {
+      const tuiConfig = (await readConfig(dataDir))?.tui;
+      await startDaemonForTui(
+        { dataDir, t, err: deps.err },
+        { ...serviceDeps(), spawnDaemon: deps.serviceHost.spawnDaemon },
+        tuiConfig,
+      );
+    }
     try {
       return await (deps.launchTui ?? launchBuiltTui)({ dataDir, ui, env: deps.env });
     } catch (error) {
@@ -317,6 +374,25 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           executorOptions(values),
         );
       }
+      case 'plugin': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingPluginAction'));
+        if (!isPluginAction(action)) return usageError(t('usage.unknownPluginAction', { action }));
+        return await runPluginCommand(
+          context,
+          {
+            env: deps.env,
+            cwd: deps.cwd ?? process.cwd(),
+            confirm: deps.confirm,
+            input: deps.input,
+            askHidden: deps.askHidden,
+            passwordPrompt: deps.passwordPrompt?.(t),
+          },
+          action,
+          args,
+          { project: values.project, yes: values.yes === true, json: values.json === true },
+        );
+      }
       case 'trajectory': {
         const [action, ...args] = rest;
         if (action === undefined) return usageError(t('usage.missingTrajectoryAction'));
@@ -333,6 +409,61 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
       case 'analysis': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         return await runAnalysisCommand(context, {}, analysisOptions(values));
+      }
+      case 'service': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingServiceAction'));
+        if (!isServiceAction(action))
+          return usageError(t('usage.unknownServiceAction', { action }));
+        if (args.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runServiceCommand(context, serviceDeps(), action, {
+          noStart: values['no-start'] === true,
+          json: values.json === true,
+        });
+      }
+      case 'uninstall': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runUninstallCommand(context, serviceDeps(), {
+          purgeData: values['purge-data'] === true,
+          yes: values.yes === true,
+        });
+      }
+      case 'init': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runInitCommand(
+          context,
+          {
+            ...serviceDeps(),
+            spawnDaemon: deps.serviceHost?.spawnDaemon ?? noSpawn,
+            find: deps.serviceHost?.find,
+            adapters: deps.adapters,
+            // The interface is only offered in a terminal; `runTui` also checks the daemon again.
+            openTui: deps.interactive === true ? (ui) => runTui(ui) : undefined,
+          },
+          { noTui: values['no-tui'] === true },
+        );
+      }
+      case 'adapters': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingAdaptersAction'));
+        if (!isAdaptersAction(action))
+          return usageError(t('usage.unknownAdaptersAction', { action }));
+        if (action === 'status' && args.length > 0)
+          return usageError(t('usage.tooManyArguments', { command }));
+        const unknown = args.find((name) => !isManagedClient(name));
+        if (unknown !== undefined)
+          return usageError(t('usage.unknownAdaptersClient', { client: unknown }));
+        return await runAdaptersCommand(
+          context,
+          {
+            platform: deps.platform,
+            env: deps.env,
+            find: deps.serviceHost?.find,
+            adapters: deps.adapters,
+          },
+          action,
+          { json: values.json === true, clients: args },
+        );
       }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
@@ -406,6 +537,8 @@ function parseCliArgs(argv: readonly string[]) {
       uninstall: { type: 'boolean' },
       shell: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
+      // The options of `ot plugin` (`yes`, `json` are shared).
+      project: { type: 'string' },
       // The options of `ot executor` (`role`, `all`, `json` are shared).
       effort: { type: 'string' },
       family: { type: 'string' },
@@ -426,6 +559,11 @@ function parseCliArgs(argv: readonly string[]) {
       unit: { type: 'string' },
       content: { type: 'string' },
       out: { type: 'string' },
+      // The options of `ot service` and `ot uninstall` (`json`, `yes` are shared).
+      'no-start': { type: 'boolean' },
+      'purge-data': { type: 'boolean' },
+      // The option of `ot init`.
+      'no-tui': { type: 'boolean' },
     },
     allowPositionals: true,
     strict: true,
@@ -594,15 +732,29 @@ function terminalPasswordPrompt(t: TFunction): PasswordPrompt {
   };
 }
 
-/** Node and the real path of this entry, for the commands by profile; `undefined` if unknown. */
+/**
+ * What starts `ot` again, for the commands by profile; `undefined` if unknown. Node and the real
+ * path of this entry in a checkout; the executable itself, with no script, in the single one.
+ */
 function otLauncherOf(): OtLauncher | undefined {
-  const invoked = process.argv[1];
-  if (invoked === undefined) return undefined;
-  try {
-    return { node: process.execPath, entry: realpathSync(invoked) };
-  } catch {
-    return undefined;
-  }
+  const self = resolveSelfCommand();
+  if (self === undefined) return undefined;
+  return { node: self.command, entry: self.args[0] };
+}
+
+/** The real manager of this platform and the real detached child (Phase 10, P3). */
+function realServiceHost(): ServiceHost {
+  return {
+    manager: createServiceManager({
+      platform: process.platform,
+      env: process.env,
+      homedir: homedir(),
+      uid: process.getuid?.(),
+      run: execRunner,
+      tmpDir: tmpdir(),
+    }),
+    spawnDaemon: spawnDetachedDaemon,
+  };
 }
 
 /** A yes or no on stderr; only `y` or `yes` (or `s`, `sim`) count as yes. */
@@ -637,9 +789,15 @@ export function isProfileExecArgv(argv: readonly string[]): boolean {
   return words[0] === 'profile' && words[1] === 'exec';
 }
 
-async function entry(): Promise<void> {
+/**
+ * The program: reads `process.argv` and sets the exit code. Runs by itself when this file is the
+ * script (`isMainModule`); the single executable calls it from `sea/main.ts`.
+ */
+export async function entry(): Promise<void> {
   const argv = process.argv.slice(2);
   const exec = isProfileExecArgv(argv);
+  // A swap whose applier died is finished or undone before anything else (Phase 10, P8).
+  if (isSeaProcess() && !exec) await recoverAtStart({ execPath: process.execPath });
   const controller = new AbortController();
   let signals = 0;
   const onSignal = (): void => {
@@ -668,7 +826,11 @@ async function entry(): Promise<void> {
     passwordPrompt: process.stdin.isTTY ? terminalPasswordPrompt : undefined,
     otLauncher: otLauncherOf(),
     confirm: process.stdin.isTTY ? terminalConfirm : undefined,
+    askHidden: process.stdin.isTTY
+      ? (question) => readHidden(question, process.stdin, process.stderr)
+      : undefined,
     interactive: process.stdin.isTTY && process.stdout.isTTY,
+    serviceHost: realServiceHost(),
   });
   process.exitCode = code;
   process.off('SIGINT', onSignal);
@@ -677,6 +839,8 @@ async function entry(): Promise<void> {
 
 /** Runs only when this file is the program (also through the `ot` symlink the package manager makes). */
 function isMainModule(): boolean {
+  // The single executable starts `entry()` itself, in `sea/main.ts`; its `argv[1]` is not a module.
+  if (isSeaProcess()) return false;
   const invoked = process.argv[1];
   if (invoked === undefined) return false;
   try {

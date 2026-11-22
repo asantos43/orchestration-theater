@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "codex-acp",
+  "package": "@agentclientprotocol/codex-acp",
+  "version": "2.6.0",
+  "entry": "dist/index.js",
+  "entries": [
+    {
+      "path": "node_modules/@agentclientprotocol/codex-acp",
+      "name": "@agentclientprotocol/codex-acp",
+      "version": "2.6.0",
+      "resolved": "https://registry.npmjs.org/@agentclientprotocol/codex-acp/-/codex-acp-2.6.0.tgz",
+      "integrity": "sha512-/PBsd0H6URy4bhXhAeXqwb7RqctbXfNceRihAh6nDmn5HJ873uzoHvHxF45YmeWfgOKKRrNRLZjYsket2a7EsQ=="
+    }
+  ]
+}

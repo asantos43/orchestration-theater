@@ -55,6 +55,32 @@ describe('buildTuiCommand', () => {
   it('runs main.js next to the launcher by default', () => {
     expect(defaultMainFile()).toMatch(/main\.js$/);
   });
+
+  it('in the single executable starts the executable in its tui mode, with the flags in NODE_OPTIONS', () => {
+    const ui = { runtime: { maxSemiSpaceMB: 3, maxOldSpaceMB: 128 } };
+    const command = buildTuiCommand({
+      dataDir: '/data',
+      ui,
+      env: { PATH: '/bin' },
+      execPath: '/opt/ot/otheater',
+      sea: true,
+    });
+    expect(command.command).toBe('/opt/ot/otheater');
+    expect(command.args).toEqual(['--ot-internal=tui', '--data-dir', '/data']);
+    expect(command.mainFile).toBeUndefined();
+    expect(command.env.NODE_OPTIONS).toBe('--max-semi-space-size=3 --max-old-space-size=128');
+    expect(JSON.parse(command.env[UI_ENV] ?? '')).toEqual(ui);
+  });
+
+  it('in the single executable keeps the NODE_OPTIONS the person already had', () => {
+    const command = buildTuiCommand({
+      dataDir: '/d',
+      env: { NODE_OPTIONS: '--no-warnings' },
+      execPath: '/x',
+      sea: true,
+    });
+    expect(command.env.NODE_OPTIONS).toBe('--no-warnings --max-semi-space-size=2');
+  });
 });
 
 /** A child process the test ends by hand. */
@@ -73,6 +99,19 @@ function fakeChild(): ChildProcess & { readonly killed: string[] } {
   });
   return Object.assign(child, { killed: signals });
 }
+
+describe('launchTui in the single executable', () => {
+  it('has no script to look for, so it never says the TUI is not built', async () => {
+    const child = fakeChild();
+    const exists = (): boolean => false;
+    const promise = launchTui(
+      { dataDir: '/d', env: {}, execPath: '/x', sea: true },
+      { exists, spawn: (() => child) as unknown as SpawnFn, process: new EventEmitter() as never },
+    );
+    child.emit('exit', 0, null);
+    await expect(promise).resolves.toBe(0);
+  });
+});
 
 describe('launchTui', () => {
   const base = { dataDir: '/d', env: {}, execPath: '/node', mainFile: '/pkg/main.js' };

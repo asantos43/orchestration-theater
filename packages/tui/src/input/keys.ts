@@ -11,7 +11,8 @@ import type { Key } from 'ink';
  * What the terminal tells (checked with the parser of Ink 8): Ctrl+J arrives as the line feed
  * (`\n`), Alt+Enter as `\x1b\r`, and Shift+Enter only with the kitty keyboard protocol
  * (`\x1b[13;2u`); a terminal without the protocol sends the same `\r` for Enter and Shift+Enter, and
- * there the new line is Ctrl+J or Alt+Enter.
+ * there the new line is Ctrl+J or Alt+Enter. The TUI asks for the protocol with `ui.keyboard.protocol`
+ * (`auto`, `kitty` or `off`, see `keyboard.ts`); a terminal that does not answer keeps the legacy bytes.
  */
 
 const NAMED: readonly (readonly [keyof Key, string])[] = [

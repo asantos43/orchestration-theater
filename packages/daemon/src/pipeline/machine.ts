@@ -8,10 +8,12 @@ import {
   counterName,
   exhaustedAfter,
   pendingDemands,
+  skipsStep,
   withoutAnyAttempts,
   withoutAttempts,
   type OpenJudgment,
   type PlayContext,
+  type PlayFlowRef,
   type ProducerReason,
 } from './context.js';
 import {
@@ -35,6 +37,8 @@ export interface PlayMachineInput {
   readonly playId: string;
   readonly need: string;
   readonly limits: PlayLimits;
+  /** [proposta] The flow of the configuration; none runs the official `play` (P12). */
+  readonly flow?: PlayFlowRef | undefined;
 }
 
 /**
@@ -896,6 +900,8 @@ export const playMachine = setup({
     playId: input.playId,
     need: input.need,
     limits: input.limits,
+    // only a flow of the configuration writes the key: the official play keeps today's snapshot
+    ...(input.flow === undefined ? {} : { flow: input.flow }),
     ...FRESH_CONTEXT,
   }),
   on: {
@@ -977,6 +983,12 @@ export const playMachine = setup({
             target: 'CLARIFYING',
             actions: [patch(() => ({ feedback: null, restart: false }))],
           },
+          // [proposta] a flow without the review of the plan goes straight to the script (P12)
+          {
+            guard: ({ context }) => skipsStep(context, 'plan_review'),
+            target: 'SCRIPTING',
+            actions: [patch(() => ({ feedback: null, restart: false }))],
+          },
           {
             target: 'REVIEWING_PLAN',
             actions: [patch(() => ({ feedback: null, restart: false }))],
@@ -987,7 +999,12 @@ export const playMachine = setup({
     },
     CLARIFYING: {
       entry: [enter('CLARIFYING')],
-      on: { QUESTIONS_ANSWERED: { target: 'REVIEWING_PLAN' } },
+      on: {
+        QUESTIONS_ANSWERED: [
+          { guard: ({ context }) => skipsStep(context, 'plan_review'), target: 'SCRIPTING' },
+          { target: 'REVIEWING_PLAN' },
+        ],
+      },
     },
     REVIEWING_PLAN: {
       entry: [enter('REVIEWING_PLAN')],
@@ -1093,6 +1110,8 @@ export const playMachine = setup({
           // a conflict is a script failure, without the Critic (5.4)
           ...scriptReturn(({ event }) => event.type === 'INTEGRATED' && !event.ok),
           { guard: ({ context }) => context.criticWaived, target: 'DELIVERING' },
+          // [proposta] a flow without the critique delivers after the integration (P12)
+          { guard: ({ context }) => skipsStep(context, 'critique'), target: 'DELIVERING' },
           { target: 'CRITIQUING' },
         ],
       },

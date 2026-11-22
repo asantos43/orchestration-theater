@@ -23,7 +23,8 @@ import { makeRepo } from '../execution/attempt-fixture.js';
 import type { AttemptSpec } from '../execution/attempt-runner.js';
 import { itWithLauncher } from '../launcher-fixture.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
+import { sessionSpanId, traceIdForPlay } from './span-ids.js';
 
 /**
  * Phase 8, P2, the acceptance test: the fake agent (over the real ACP stdio transport, started by
@@ -39,6 +40,17 @@ backup:
   when: manual
 security:
   unenforced: warn
+`);
+
+/** The same, with the clients' spans left in their own traces (`telemetry.receiver.reparent: off`). */
+const CONFIG_REPARENT_OFF = parseConfig(`
+backup:
+  when: manual
+security:
+  unenforced: warn
+telemetry:
+  receiver:
+    reparent: 'off'
 `);
 
 const WRITING: RolePolicy = {
@@ -228,6 +240,38 @@ describe('the fake agent exporting to the real receiver of the daemon', () => {
         });
         expect(two).toMatchObject({ attemptId: second.attemptId, sessionId: 'fake-session-1' });
 
+        // One tree (Phase 9, P1): the client's span is in the trace of the daemon, under the span of
+        // its session, and what the client had is kept. The daemon's span of that session (written
+        // when the session closes) is the very parent, in the same trace.
+        for (const [span, playId] of [
+          [one, 'play-one'],
+          [two, 'play-two'],
+        ] as const) {
+          expect(span?.traceId).toBe(traceIdForPlay(playId));
+          expect(span?.parentSpanId).toBe(sessionSpanId('fake-session-1'));
+          expect(span?.attributes['otheater.client.trace_id']).toMatch(/^[0-9a-f]{32}$/u);
+          expect(span?.attributes['otheater.client.trace_id']).not.toBe(span?.traceId);
+          expect(span?.attributes['otheater.client.parent_span_id']).toBeUndefined();
+          // The client was told the trace in its resource.
+          expect(span?.resource['otheater.trace_id']).toBe(traceIdForPlay(playId));
+        }
+        await until(() =>
+          ['play-one', 'play-two'].every((playId) =>
+            store.spans.some(
+              (span) =>
+                span.spanId === sessionSpanId('fake-session-1') &&
+                span.traceId === traceIdForPlay(playId) &&
+                span.resource['otheater.component'] === 'daemon',
+            ),
+          ),
+        );
+        // The logs of the turn follow their span to the new trace.
+        for (const record of store.logs.filter((r) => r.traceId !== null)) {
+          expect([traceIdForPlay('play-one'), traceIdForPlay('play-two')]).toContain(
+            record.traceId,
+          );
+        }
+
         // The metric and the logs of the attempt carry the same correlation.
         const metric = store.metrics.find((point) => point.playId === 'play-one');
         expect(metric).toMatchObject({
@@ -258,6 +302,67 @@ describe('the fake agent exporting to the real receiver of the daemon', () => {
   );
 
   itWithLauncher(
+    'with telemetry.receiver.reparent: off the client spans stay in their own traces, as before',
+    async () => {
+      const tmp = await makeTempDataDir();
+      const real = defaultLauncher();
+      if (real === undefined) throw new Error('this platform has no process launcher');
+      const store = new RecordingStore();
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        config: CONFIG_REPARENT_OFF,
+        overrides: {
+          clock: new FakeClock(),
+          vault: new InMemorySecretVault(),
+          launcher: real,
+          telemetry: store,
+        },
+        clients: (parts) => [
+          ...productionClients(CONFIG_REPARENT_OFF)(parts),
+          new ExportingFake({
+            launcher: parts.launcher,
+            baseEnv: {},
+            adapterVersion: '1.0.0',
+            command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
+          }),
+        ],
+        logger: createSilentLogger(),
+        version: '0.0.0-test',
+      });
+      const { repo, dispose } = await makeRepo();
+      try {
+        const runner = daemon.execution?.runner;
+        if (runner === undefined) throw new Error('the daemon has no execution');
+        const result = await runner.run({
+          playId: 'play-off',
+          demandId: 'stage-a',
+          attempt: 1,
+          repo,
+          base: 'main',
+          profile: TEST_PROFILE,
+          executor: { model: 'fake-model' },
+          policy: WRITING,
+          prompt: '#script:write-file {"path":"a.txt","content":"a\\n"}\nedit',
+        });
+        expect(result.state).toBe('completed');
+        await until(() => store.spans.some((span) => span.name === 'fake_agent.turn'));
+        const span = store.spans.find((item) => item.name === 'fake_agent.turn');
+        // Tied by attribute, as before: the trace and the parent are the client's own.
+        expect(span).toMatchObject({ playId: 'play-off', sessionId: 'fake-session-1' });
+        expect(span?.traceId).not.toBe(traceIdForPlay('play-off'));
+        expect(span?.parentSpanId).toBeNull();
+        expect(span?.attributes['otheater.client.trace_id']).toBeUndefined();
+        expect(span?.resource['otheater.trace_id']).toBeUndefined();
+      } finally {
+        await dispose();
+        await daemon.stop();
+        await tmp.dispose();
+      }
+    },
+    90_000,
+  );
+
+  itWithLauncher(
     'with telemetry.enabled: off there is no receiver and no port',
     async () => {
       const tmp = await makeTempDataDir();
@@ -273,6 +378,7 @@ telemetry:
         dataDir: tmp.dir,
         config,
         overrides: { clock: new FakeClock(), vault: new InMemorySecretVault() },
+        clientSearch: NO_CLIENTS,
         logger: createSilentLogger(),
         version: '0.0.0-test',
       });

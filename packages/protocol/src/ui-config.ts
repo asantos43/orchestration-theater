@@ -23,6 +23,7 @@ export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
+export const UI_KEYBOARD_PROTOCOLS = ['auto', 'kitty', 'off'] as const;
 
 export type UiKeymapPreset = (typeof UI_KEYMAP_PRESETS)[number];
 export type UiKeymapEnvironmentMode = (typeof UI_KEYMAP_ENVIRONMENTS)[number];
@@ -83,6 +84,20 @@ export const UiRenderConfigSchema = z.strictObject({
     .default(['cache', 'grid']),
   historyWindow: z.int().min(0).default(0),
 });
+
+/**
+ * `ui.keyboard` [proposta]: how the interface asks the terminal for a keyboard that tells more keys
+ * apart. `protocol`: `auto` (default) asks the terminal if it speaks the kitty keyboard protocol
+ * and turns it on only when it answers, so Shift+Enter is told from Enter; `kitty` turns it on
+ * without asking (a terminal that does not know it ignores the request); `off` asks for nothing,
+ * and the new line stays on Ctrl+J and Alt+Enter. The protocol is turned off again when the
+ * interface ends or hands the terminal to another program.
+ */
+export const UiKeyboardConfigSchema = z.strictObject({
+  protocol: z.enum(UI_KEYBOARD_PROTOCOLS).default('auto'),
+});
+export type UiKeyboardConfig = z.output<typeof UiKeyboardConfigSchema>;
+export type UiKeyboardProtocol = (typeof UI_KEYBOARD_PROTOCOLS)[number];
 
 /**
  * `ui.runtime` (N37). `maxSemiSpaceMB`: 2, the young heap of V8 (`--max-semi-space-size`).
@@ -233,6 +248,12 @@ export const UI_CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
  * option, and a second click on it does what `answer` does.
  */
 export const UI_CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
+/**
+ * Whether the chat draws the footer of the Director under its text box (P14 of Phase 9, N242): the
+ * Executor, the model and the effort the Director runs with, and the key that opens the picker.
+ * `on` (default) or `off`; with `off` the shortcut and `/director` still work.
+ */
+export const UI_CHAT_DIRECTOR_FOOTER_MODES = ['on', 'off'] as const;
 /** What Esc does while the Director is replying: `stop` asks the daemon to stop the reply (`/stop`); `off` does nothing. */
 export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
 
@@ -244,6 +265,7 @@ export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
  * - `decisionFocus`: `auto` (default) or `manual`;
  * - `decisionClick` (P14 of docs/19): `answer` (default) or `select`;
  * - `esc`: `stop` (default) or `off`;
+ * - `directorFooter` (P14 of Phase 9): `on` (default) or `off`;
  * - `history` (P26, N203 item 2): how many of the last events of the scenario the chat shows when it
  *   opens on a scenario that already talked (40); `0` opens it empty, as before. The most is
  *   `CHAT_HISTORY_MAX` (200), the limit of the `history` message of the socket.
@@ -254,6 +276,7 @@ export const UiChatConfigSchema = z.strictObject({
   decisionFocus: z.enum(UI_CHAT_DECISION_FOCUS_MODES).default('auto'),
   decisionClick: z.enum(UI_CHAT_DECISION_CLICK_MODES).default('answer'),
   esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
+  directorFooter: z.enum(UI_CHAT_DIRECTOR_FOOTER_MODES).default('on'),
   history: z.int().min(0).max(200).default(40),
 });
 export type UiChatConfig = z.output<typeof UiChatConfigSchema>;

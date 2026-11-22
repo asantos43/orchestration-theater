@@ -73,9 +73,10 @@ export interface ClientTelemetryOptions {
   /** The scenario of a play, when the caller did not say it. A failure is the same as `null`. */
   readonly scenarioOf?: (playId: string) => Promise<string | null | undefined>;
   /**
-   * Extra resource attributes for the session resource, by context. P4 (`traceIdForAttempt`) adds
-   * `otheater.trace_id` here, so the clients' own spans and the daemon's share a trace. Same limits
-   * as the rest of the resource: no `,`, `=`, space or control character. Default: none.
+   * Extra resource attributes for the session resource, by context. The daemon connects
+   * `traceResourceExtras` (`reparent.ts`, Phase 9, P1) here: it adds `otheater.trace_id`, the trace
+   * the receiver puts the client's spans in. Same limits as the rest of the resource: no `,`, `=`,
+   * space or control character. Default: none.
    */
   readonly resourceExtras?: (client: string, context: TelemetryContext) => Record<string, string>;
 }

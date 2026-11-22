@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { OwnSchemas } from './updates/apply/coordinator.js';
+import { newestMigration } from './updates/apply/schemas.js';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -29,10 +31,17 @@ import {
   PosixMemoryProbe,
   PosixProcessLauncher,
 } from '@otheater/adapter-platform-posix';
+import {
+  checkoutRoots,
+  locateJobLauncher,
+  WINDOWS_PROCESS_LAUNCHER_ADAPTER,
+  WindowsProcessLauncher,
+} from '@otheater/adapter-platform-windows';
 import { SRT_SANDBOX_ADAPTER, SrtSandbox } from '@otheater/adapter-sandbox-srt';
 import { AcpTransport } from '@otheater/adapter-session-acp';
 import {
   backupDatabase,
+  MIGRATIONS as STORE_MIGRATIONS,
   parseBackupMethod,
   restoreDatabase,
   SQLITE_STORE_ADAPTER,
@@ -42,6 +51,7 @@ import {
 } from '@otheater/adapter-store-sqlite';
 import {
   backupTelemetryFile,
+  MIGRATIONS as TELEMETRY_MIGRATIONS,
   SQLITE_TELEMETRY_ADAPTER,
   SqliteTelemetryStore,
   type SqliteTelemetryConfigInput,
@@ -102,10 +112,17 @@ import {
   buildClientEnv,
   pathFinder,
   selectClients,
+  type ManagedProbeFn,
   type ClientFactory,
   type ClientFactoryParts,
   type FindExecutable,
 } from './clients.js';
+import {
+  AdapterManager,
+  isManagedClient,
+  type AdapterManagerOptions,
+  type ManagedClientId,
+} from './adapters/manager.js';
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
@@ -116,6 +133,7 @@ import {
   sessionsPerProcessOf,
   type ClientId,
   type DaemonConfig,
+  type ProcessesConfig,
 } from './config.js';
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
@@ -163,8 +181,13 @@ export interface ComposeOverrides {
   readonly vault?: SecretVault;
   /** Version control for the worktrees of the attempts (`GitVcs` by default). */
   readonly vcs?: Vcs;
-  /** Starts the adapter processes (`PosixProcessLauncher` by default; none on Windows yet). */
+  /**
+   * Starts the adapter processes (the process group on Linux and macOS; on Windows the Job Object
+   * launcher chosen by `processes.windows_launcher`, see {@link chooseLauncher}).
+   */
   readonly launcher?: ProcessLauncher;
+  /** The system {@link chooseLauncher} reads, when `launcher` is not given (the tests). */
+  readonly launcherDeps?: LauncherChoiceDeps;
   /** Reads the free RAM for `pool.admission.mode: ram` (`PosixMemoryProbe` by default). */
   readonly memory?: MemoryProbe;
   /**
@@ -423,15 +446,80 @@ export function defaultMemoryProbe(): MemoryProbe {
   return new PosixMemoryProbe();
 }
 
-/** The process launcher of this platform, or `undefined` where there is none yet. */
-export function defaultLauncher(): ProcessLauncher | undefined {
-  if (process.platform === 'win32') return undefined;
+/** What {@link chooseLauncher} may be given in place of the real system (the tests). */
+export interface LauncherChoiceDeps {
+  readonly platform?: NodeJS.Platform;
+  /** The executable of the running program, where the Windows launcher is looked for first. */
+  readonly execPath?: string;
+  /** Folders that hold a checkout's `native/` (default: the one this module runs from, if any). */
+  readonly checkoutRoots?: readonly string[];
+  /** True when a file exists (the search of the Windows launcher). */
+  readonly exists?: (path: string) => boolean;
+  /** Builds the Windows launcher from the path found and `processes.windows_shims`. */
+  readonly createWindows?: (launcherPath: string, shims: 'resolve' | 'refuse') => ProcessLauncher;
+}
+
+/** The launcher of this platform and, when it fell back to none, why (told as a notice by `compose`). */
+export interface LauncherChoice {
+  readonly launcher: ProcessLauncher | undefined;
+  /** Set only when `processes.windows_launcher: auto` found no `ot-job-launcher.exe`. */
+  readonly fallback?: string;
+}
+
+/**
+ * Picks the process launcher (architecture 5.9). Linux and macOS: the process group, always.
+ * Windows (Phase 10, P2; `processes.windows_launcher`): `auto` uses the Job Object launcher when
+ * the file is found and otherwise falls to none, saying why in `fallback`; `job_object` throws
+ * `AdapterUnavailable` without the file (the daemon does not start); `off` is none.
+ */
+export function chooseLauncher(
+  settings: ProcessesConfig,
+  deps: LauncherChoiceDeps = {},
+): LauncherChoice {
+  if ((deps.platform ?? process.platform) !== 'win32') {
+    checkAdapterRange(
+      POSIX_PROCESS_LAUNCHER_ADAPTER,
+      'ProcessLauncher',
+      PROCESS_LAUNCHER_PORT_VERSION,
+    );
+    return { launcher: new PosixProcessLauncher() };
+  }
+  if (settings.windows_launcher === 'off') return { launcher: undefined };
+  const found = locateJobLauncher({
+    configuredPath: settings.windows_launcher_path ?? null,
+    execPath: deps.execPath ?? process.execPath,
+    checkoutRoots: deps.checkoutRoots ?? checkoutRoots(),
+    ...(deps.exists === undefined ? {} : { exists: deps.exists }),
+  });
+  if (!found.found) {
+    const searched = found.searched.join(', ');
+    if (settings.windows_launcher === 'job_object') {
+      throw new AdapterUnavailable(
+        `processes.windows_launcher is job_object and ot-job-launcher.exe was not found (looked at: ${searched})`,
+      );
+    }
+    return {
+      launcher: undefined,
+      fallback: `processes.windows_launcher is auto and ot-job-launcher.exe was not found (looked at: ${searched}); the execution of attempts and the browser tools stay off`,
+    };
+  }
+  const launcher =
+    deps.createWindows?.(found.path, settings.windows_shims) ??
+    new WindowsProcessLauncher({ launcherPath: found.path, shims: settings.windows_shims });
   checkAdapterRange(
-    POSIX_PROCESS_LAUNCHER_ADAPTER,
+    WINDOWS_PROCESS_LAUNCHER_ADAPTER,
     'ProcessLauncher',
     PROCESS_LAUNCHER_PORT_VERSION,
   );
-  return new PosixProcessLauncher();
+  return { launcher };
+}
+
+/** The process launcher of this platform, or `undefined` where there is none (see {@link chooseLauncher}). */
+export function defaultLauncher(
+  settings: ProcessesConfig = { windows_launcher: 'auto', windows_shims: 'resolve' },
+  deps: LauncherChoiceDeps = {},
+): ProcessLauncher | undefined {
+  return chooseLauncher(settings, deps).launcher;
 }
 
 /**
@@ -624,6 +712,63 @@ function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
 }
 
 /**
+ * The guard against a test that reaches the real keyring (N243, item 64). The default of
+ * `adapters.vault` is `keyring`, so a test of the CLI or of the composition that hands in no vault
+ * would read and write the keyring of whoever runs the suite (a first version of a Phase 9 test
+ * may have left a key there). Under the test runner (`VITEST` is set) the composition refuses the
+ * real keyring unless `OT_TEST_KEYRING=1` says the run is the one that is meant to use it (the
+ * integration test of the adapter). A test hands in `overrides.vault` or picks `encrypted-file`.
+ * Outside the test runner nothing changes. `env` is a parameter so the guard itself is tested
+ * without touching anything real.
+ */
+export function assertRealKeyringAllowed(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.VITEST === undefined || env.VITEST === '') return;
+  if (env.OT_TEST_KEYRING === '1') return;
+  throw new InvalidInput(
+    'The real keyring was asked for under the test runner: a test must not read or write the keyring of the machine. ' +
+      'Hand in a vault (`overrides.vault`, for example an `InMemorySecretVault`) or set `adapters.vault: encrypted-file`; ' +
+      'only the run that tests the keyring itself sets OT_TEST_KEYRING=1.',
+  );
+}
+
+/**
+ * The vault the configuration names (`adapters.vault`), or the one a test hands in. Used by
+ * {@link compose} and by `ot plugin secret set`, which needs the vault and nothing else of the
+ * composition (Phase 9, P7). The returned record is the adapter's, for the list of adapters.
+ */
+export function composeVault(
+  config: DaemonConfig,
+  dataDir: string,
+  overrides: ComposeOverrides = {},
+): { readonly vault: SecretVault; readonly record: AdapterRecord } {
+  if (overrides.vault !== undefined) {
+    return {
+      vault: overrides.vault,
+      record: overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION),
+    };
+  }
+  if (config.adapters.vault === 'keyring') {
+    assertRealKeyringAllowed();
+    return {
+      vault: new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault)),
+      record: checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
+    };
+  }
+  const record = checkAdapterRange(
+    encryptedFileVaultAdapter,
+    'SecretVault',
+    SECRET_VAULT_PORT_VERSION,
+  );
+  const raw = config.vault;
+  const path = typeof raw.path === 'string' ? resolve(dataDir, raw.path) : raw.path;
+  const section = parseSection('vault', EncryptedFileVaultConfigSchema, {
+    ...raw,
+    path: raw.path === undefined ? resolve(dataDir, DEFAULT_VAULT_FILE) : path,
+  });
+  return { vault: new EncryptedFileVault(section), record };
+}
+
+/**
  * The composition point (architecture 5.18, "Montagem, sem container"): the only file of the
  * daemon that imports adapters. It reads `adapters.*` from the config, validates each adapter's
  * section with that adapter's own schema, checks the contract version of every adapter and hands
@@ -674,26 +819,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       logger = daemonLogger.logger;
     }
 
-    if (overrides.vault !== undefined) {
-      vault = overrides.vault;
-      adapters.push(overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION));
-    } else if (config.adapters.vault === 'keyring') {
-      adapters.push(
-        checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
-      );
-      vault = new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault));
-    } else {
-      adapters.push(
-        checkAdapterRange(encryptedFileVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
-      );
-      const raw = config.vault;
-      const path = typeof raw.path === 'string' ? resolve(paths.dataDir, raw.path) : raw.path;
-      const section = parseSection('vault', EncryptedFileVaultConfigSchema, {
-        ...raw,
-        path: raw.path === undefined ? resolve(paths.dataDir, DEFAULT_VAULT_FILE) : path,
-      });
-      vault = new EncryptedFileVault(section);
-    }
+    const composedVault = composeVault(config, paths.dataDir, overrides);
+    vault = composedVault.vault;
+    adapters.push(composedVault.record);
 
     if (overrides.store !== undefined) {
       store = overrides.store;
@@ -721,7 +849,11 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     store = chatFeedStore(recordFeedStore(store, logger), logger);
 
     const vcs = overrides.vcs ?? defaultVcs();
-    const launcher = overrides.launcher ?? defaultLauncher();
+    const launcherChoice: LauncherChoice =
+      overrides.launcher === undefined
+        ? chooseLauncher(config.processes, overrides.launcherDeps)
+        : { launcher: overrides.launcher };
+    const { launcher } = launcherChoice;
     const memory = overrides.memory ?? defaultMemoryProbe();
     const transport =
       overrides.transport ??
@@ -738,6 +870,16 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
+    // Phase 10, P2: `processes.windows_launcher: auto` found no `ot-job-launcher.exe`. Daemon.ts tells the
+    // effect (`execution_off`, `no_launcher`); this tells the cause, in the log and as an event.
+    if (launcherChoice.fallback !== undefined) {
+      logger.warn(launcherChoice.fallback);
+      situations.record('daemon.notice', {
+        kind: 'execution_off',
+        subject: 'windows_launcher_not_found',
+        detail: situationText(launcherChoice.fallback),
+      });
+    }
     const sandbox = await composeSandbox(config, paths, overrides, logger, situations);
     const browser =
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
@@ -939,7 +1081,7 @@ export const DEFAULT_CLIENT_EXECUTABLES: Readonly<Record<ClientId, string>> = {
  * The npm packages `version_source` looks for next to each client's executable (N63):
  * the ACP adapter for Claude Code and Codex, the client itself for OpenCode.
  */
-const VERSION_PACKAGES: Readonly<Record<ClientId, readonly string[]>> = {
+export const VERSION_PACKAGES: Readonly<Record<ClientId, readonly string[]>> = {
   'claude-code': CLAUDE_CODE_ACP_PACKAGES,
   codex: CODEX_ACP_PACKAGES,
   opencode: OPENCODE_PACKAGES,
@@ -967,6 +1109,14 @@ export interface ProductionClientsOptions {
    * unless `clients.codex.model_catalog` is `none` (then `models.list` of Codex rejects).
    */
   readonly codexConfigSource?: CodexConfigSource;
+  /**
+   * Test seams of the managed ACP adapters (P13): the `fetch` that reaches the registry, the
+   * platform the install is for, how the program starts itself, and the waits of the installer.
+   */
+  readonly adapters?: Pick<
+    AdapterManagerOptions,
+    'fetch' | 'platform' | 'self' | 'installOptions' | 'lockOf'
+  >;
 }
 
 function minLayersOf(security: DaemonConfig['security']): MinLayers {
@@ -994,6 +1144,7 @@ function commonOptions(
   versioning: ClientVersioning,
   adapterVersionOf: (clientVersion: string) => string,
   client: ClientId,
+  managedEnv: Readonly<Record<string, string>> = {},
 ): ClientAdapterOptions {
   let adapterVersion = adapterVersionOf(versioning.initial.version);
   return {
@@ -1002,7 +1153,8 @@ function commonOptions(
     launcher: parts.launcher,
     // `K` for the use of the adapter without the pool above it: the same value the pool uses.
     sessionsPerProcess: sessionsPerProcessOf(config.pool, client),
-    baseEnv: buildClientEnv(section, env),
+    // `managedEnv` (the official client for the ACP adapter, P13) goes first: the user's own env wins.
+    baseEnv: { ...managedEnv, ...buildClientEnv(section, env) },
     minLayers: minLayersOf(config.security),
     unenforced: config.security.unenforced,
     ...(parts.sandbox === undefined
@@ -1031,6 +1183,7 @@ function claudeCode(
   warnings: ClientWarningLog,
   versioning: ClientVersioning,
   options: ProductionClientsOptions,
+  adapters: AdapterManager,
 ): ClientAdapter {
   const section = config.clients['claude-code'];
   const command = section.command;
@@ -1056,10 +1209,12 @@ function claudeCode(
       (clientVersion) =>
         adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', clientVersion),
       'claude-code',
+      adapters.officialEnv('claude-code'),
     ),
-    ...(command === undefined
-      ? {}
-      : { command: { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args } }),
+    command:
+      command === undefined
+        ? () => adapters.commandFor('claude-code', section.adapter)
+        : { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args },
     settingSources: section.setting_sources,
     utilizationUnit: section.utilization_unit,
     quotaStatusline: section.quota_statusline,
@@ -1082,6 +1237,7 @@ function codex(
   warnings: ClientWarningLog,
   versioning: ClientVersioning,
   options: ProductionClientsOptions,
+  adapters: AdapterManager,
 ): ClientAdapter {
   const section = config.clients.codex;
   const command = section.command;
@@ -1105,10 +1261,12 @@ function codex(
       versioning,
       (clientVersion) => adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', clientVersion),
       'codex',
+      adapters.officialEnv('codex'),
     ),
-    ...(command === undefined
-      ? {}
-      : { command: { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args } }),
+    command:
+      command === undefined
+        ? () => adapters.commandFor('codex', section.adapter)
+        : { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args },
     processModel: section.process_model,
     initialMode: section.initial_mode,
     allowedModes: section.modes,
@@ -1239,7 +1397,27 @@ export function productionClients(
       parts.logger,
       parts.situations,
     );
-    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find)) {
+    const managed = new AdapterManager({
+      adaptersDir: parts.paths.adapters,
+      install: config.clients.adapters.install,
+      registry: config.clients.adapters.registry,
+      find,
+      logger: parts.logger,
+      situations: parts.situations,
+      ...options.adapters,
+    });
+    const probe: ManagedProbeFn = (id) => {
+      if (!isManagedClient(id)) return undefined;
+      const status = managed.status(id);
+      return {
+        entry: status.entry,
+        installed: status.installed,
+        officialPath: status.officialPath,
+        installsByItself: managed.installsByItself,
+      };
+    };
+    const needing: ManagedClientId[] = [];
+    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find, probe)) {
       const { id, reason, executable } = selection;
       if (reason === 'forced_not_found') {
         parts.logger.warn(
@@ -1254,6 +1432,13 @@ export function productionClients(
       } else {
         parts.logger.info({ client: id, enabled: selection.enabled, reason, executable }, 'client');
       }
+      if (
+        isManagedClient(id) &&
+        config.clients[id].adapter === 'managed' &&
+        reason !== 'disabled'
+      ) {
+        if (selection.enabled || reason === 'adapter_missing') needing.push(id);
+      }
       if (!selection.enabled) continue;
       const section = config.clients[id];
       const versioning = resolveClientVersioning({
@@ -1261,7 +1446,9 @@ export function productionClients(
         written: section.client_version,
         command: executable,
         packages: section.version_packages ?? VERSION_PACKAGES[id],
-        find,
+        // The installed managed adapter is a script that is not in `PATH` (nor executable): its own path.
+        find: (command) =>
+          reason === 'managed_installed' && command === executable ? command : find(command),
       });
       parts.logger.info(
         { client: id, version: versioning.initial.version, source: versioning.initial.source },
@@ -1269,15 +1456,30 @@ export function productionClients(
       );
       adapters.push(
         id === 'claude-code'
-          ? claudeCode(config, env, parts, warnings, versioning, options)
+          ? claudeCode(config, env, parts, warnings, versioning, options, managed)
           : id === 'codex'
-            ? codex(config, env, parts, warnings, versioning, options)
+            ? codex(config, env, parts, warnings, versioning, options, managed)
             : opencode(config, env, parts, warnings, versioning),
       );
     }
+    // P13: the adapter of a client that is on installs in the background (`install: auto`) or is told as missing.
+    managed.prepare(needing);
     return adapters;
   };
 }
 
 /** Re-exported for the tests of the Executor cadastro (only compose.ts may import adapters, 5.18). */
 export { OpenCodeModelCatalog } from '@otheater/adapter-client-opencode';
+
+/**
+ * The schemas this daemon has, as the manifest of a release says them (`schemas.store`,
+ * `schemas.telemetry`): the number of the newest migration of each base (Phase 10, P8). [proposta]
+ * A new version whose number is larger will migrate the base when it starts, so the backup is made
+ * first. It lives here because only this file may import the adapters.
+ */
+export function composeOwnSchemas(): OwnSchemas {
+  return {
+    store: newestMigration(STORE_MIGRATIONS),
+    telemetry: newestMigration(TELEMETRY_MIGRATIONS),
+  };
+}

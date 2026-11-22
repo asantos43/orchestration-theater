@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, win32 as win32Path } from 'node:path';
 import {
   COMMON_NAME,
   DEFAULT_DIRECTIVE_TIMEZONE,
@@ -28,6 +28,7 @@ import {
   UiClipboardConfigSchema,
   UiChatConfigSchema,
   UiInputConfigSchema,
+  UiKeyboardConfigSchema,
   UiKeymapConfigSchema,
   UiMouseModeSchema,
   UiOverviewConfigSchema,
@@ -40,9 +41,22 @@ import {
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
+  UPDATE_CHANNELS,
+  UPDATE_APPLY_WHEN,
+  UPDATE_MODES,
+  UPDATE_ROLLBACK_MODES,
+  UPDATE_SOURCES,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
+import {
+  PLUGIN_APPROVAL_DETAIL_MODES,
+  PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+  PLUGIN_EXTERNAL_WRITE_MODES,
+  PLUGIN_LOCAL_WRITE_MODES,
+  PLUGIN_NETWORK_MODES,
+} from './plugins/permissions.js';
 import {
   ADMISSION_MODES,
   DEFAULT_ADMISSION,
@@ -82,6 +96,7 @@ import {
   ModelsConfigSchema,
   SelectionConfigSchema,
 } from './role-executors-config.js';
+import { FlowsConfigSchema, ScenarioConfigSchema, scenarioFlowProblem } from './flows-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 import {
   APP_TERMINAL_MODES,
@@ -94,6 +109,16 @@ import {
 /** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
+
+/** [proposta] What the logon service does when the daemon exits (`service.restart`, Phase 10, P3). */
+export const SERVICE_RESTART_MODES = ['on_failure', 'always', 'never'] as const;
+/** [proposta] When the logon service starts (`service.autostart`, Phase 10, P3). */
+export const SERVICE_AUTOSTART_MODES = ['logon', 'manual'] as const;
+/** [proposta] Whether the Windows task shows a console window (`service.console`, Phase 10, P3). */
+export const SERVICE_CONSOLE_MODES = ['hidden', 'visible'] as const;
+/** [proposta] What `ot tui` does when no daemon is running (`tui.start_daemon`, Phase 10, P3). */
+export const TUI_START_DAEMON_MODES = ['service', 'child', 'off'] as const;
+export type TuiStartDaemonMode = (typeof TUI_START_DAEMON_MODES)[number];
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -221,6 +246,13 @@ export const QUOTA_PROBE_DELIVERY_MODES = ['both', 'push', 'poll'] as const;
  */
 export const DIRECTOR_FAILOVER_MODES = ['next', 'quota_only', 'off'] as const;
 export type DirectorFailoverMode = (typeof DIRECTOR_FAILOVER_MODES)[number];
+/**
+ * `scenarios.director_switch.in_turn` (P14, N242, [proposta]): what a manual switch of the Director
+ * does when the Director is in the middle of a turn. `wait` (default): the switch waits for the
+ * turn to end; `interrupt`: the turn is interrupted (as `/stop` does) and the switch happens now.
+ */
+export const DIRECTOR_SWITCH_IN_TURN_MODES = ['wait', 'interrupt'] as const;
+export type DirectorSwitchInTurnMode = (typeof DIRECTOR_SWITCH_IN_TURN_MODES)[number];
 
 /**
  * [proposta] `quota.minimax.mode` (P8): `off` (default) makes no call; `token_plan` reads the
@@ -287,6 +319,20 @@ export const USAGE_API_GATEWAY_MODES = ['off'] as const;
 /** The clients the daemon can run attempts with (the keys of `clients`). */
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
 export type ClientId = (typeof CLIENT_IDS)[number];
+/**
+ * `clients.adapters.install` (P13, N254 revised) [proposta]: what the daemon does when the official
+ * client is on `PATH` and its ACP adapter is not installed under `<dataDir>/adapters/`.
+ * `auto` installs it without asking (with a warning and an event); `ask` shows what is missing and
+ * installs after a yes (`ot init`, the Settings tab); `command` only through `ot adapters install`;
+ * `off` never installs.
+ */
+export const ADAPTER_INSTALL_MODES = ['auto', 'ask', 'command', 'off'] as const;
+export type AdapterInstallMode = (typeof ADAPTER_INSTALL_MODES)[number];
+/** `clients.adapters.registry` default: where the pinned tarballs are downloaded from. */
+export const DEFAULT_ADAPTER_REGISTRY = 'https://registry.npmjs.org';
+/** `clients.<id>.adapter`: `managed` (the one OTheater installs) or `path` (the one found in `PATH`); else an absolute path. */
+export const ADAPTER_SOURCES = ['managed', 'path'] as const;
+
 /**
  * Values of the keys that mirror an adapter's own list. The daemon imports adapters only in
  * `compose.ts`, so the lists are repeated here; `compose.test.ts` checks them against the adapters.
@@ -413,6 +459,36 @@ export function resolveMcpBridge(
   }
   return mode;
 }
+
+/** `plugins.panel.max_bytes` (Phase 9, P10, [proposta]): a size above zero, or `off` (no limit, `null`). */
+const PluginPanelMaxBytesSchema = z.union([
+  z.literal('off').transform(() => null),
+  SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero, or off'),
+]);
+
+/** `plugins.events` (Phase 9, P8, [proposta]): whether the events a plugin publishes are written. */
+export const PLUGIN_EVENT_MODES = ['declared', 'off'] as const;
+export type PluginEventMode = (typeof PLUGIN_EVENT_MODES)[number];
+
+/**
+ * `plugins.event_rate` (N243 item 67, [proposta]): `off`, or the most events and refusals one plugin
+ * may send in one project in one window. A fixed window that starts at the first event; what comes
+ * after `max` is dropped until the window ends.
+ */
+const PluginEventRateSchema = z.union([
+  z.literal('off').transform(() => null),
+  z.strictObject({
+    max: z.int().min(1).max(1_000_000).default(100),
+    window: DurationSchema.prefault('10s'),
+  }),
+]);
+
+/**
+ * `plugins.project_dir` (Phase 9, [proposta]): whether the process of a plugin is told the folder of
+ * its project in `OTHEATER_PROJECT_DIR`.
+ */
+export const PLUGIN_PROJECT_DIR_MODES = ['scenario', 'off'] as const;
+export type PluginProjectDirMode = (typeof PLUGIN_PROJECT_DIR_MODES)[number];
 
 /**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
@@ -1029,6 +1105,47 @@ export const BrowserConfigSchema = z
   .prefault({});
 export type BrowserConfig = z.infer<typeof BrowserConfigSchema>;
 
+/**
+ * How the daemon starts the process of an Executor on Windows (Phase 10, P2; architecture 5.9,
+ * N58): `auto` uses the Job Object launcher (`ot-job-launcher.exe`) when it finds the file, and
+ * without it falls to `off` with a notice (as it was before the adapter existed: no attempts and
+ * no browser tools); `job_object` refuses to start without the launcher; `off` never uses it.
+ */
+export const WINDOWS_LAUNCHER_MODES = ['auto', 'job_object', 'off'] as const;
+export type WindowsLauncherMode = (typeof WINDOWS_LAUNCHER_MODES)[number];
+
+/**
+ * What the Windows launcher does with a `.cmd` shim of npm (`codex-acp.cmd`), which the launcher
+ * itself refuses: `resolve` reads the shim and runs `node.exe <script>` in its place; `refuse`
+ * fails with a clear error naming the shim.
+ */
+export const WINDOWS_SHIM_MODES = ['resolve', 'refuse'] as const;
+export type WindowsShimMode = (typeof WINDOWS_SHIM_MODES)[number];
+
+/**
+ * `processes` (Phase 10, P2). Only Windows reads it: Linux and macOS always use the process group.
+ * Every key is [proposta]. Needs a restart.
+ */
+export const ProcessesConfigSchema = z
+  .strictObject({
+    /** The Job Object launcher on Windows: `auto` (default), `job_object` or `off`. */
+    windows_launcher: z.enum(WINDOWS_LAUNCHER_MODES).default('auto'),
+    /**
+     * Absolute path of `ot-job-launcher.exe`. Unset, the daemon looks beside its own executable
+     * (where the installer puts both) and then in `native/job-launcher/target/{release,debug}` of
+     * the checkout it runs from. When set, only this path is tried.
+     */
+    windows_launcher_path: z
+      .string()
+      .min(1)
+      .refine((path) => win32Path.isAbsolute(path), 'expected an absolute Windows path')
+      .optional(),
+    /** The `.cmd` shims of npm on Windows: `resolve` (default) or `refuse`. */
+    windows_shims: z.enum(WINDOWS_SHIM_MODES).default('resolve'),
+  })
+  .prefault({});
+export type ProcessesConfig = z.infer<typeof ProcessesConfigSchema>;
+
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
   client: z.string().min(1),
@@ -1068,6 +1185,33 @@ const ClientCommandSchema = z.strictObject({
 });
 
 /**
+ * `clients.<id>.adapter` of the clients that have a managed ACP adapter (P13): `managed` (default;
+ * the adapter OTheater installs under `<dataDir>/adapters/`, falling back to `PATH` with a warning
+ * when it is off or failed), `path` (the one found in `PATH`), or an absolute path to the adapter's
+ * executable. `command` still wins over all three.
+ */
+const ClientAdapterSourceSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) =>
+      (ADAPTER_SOURCES as readonly string[]).includes(value) ||
+      isAbsolute(value) ||
+      win32Path.isAbsolute(value),
+    { message: 'expected "managed", "path" or an absolute path' },
+  );
+
+/**
+ * `clients.adapters` (P13, N254 revised): how the ACP adapters (`claude-agent-acp`, `codex-acp`) get
+ * installed. It lives beside the clients, which is why it is not a client id.
+ */
+export const ClientAdaptersSchema = z.strictObject({
+  install: z.enum(ADAPTER_INSTALL_MODES).default('auto'),
+  /** The npm registry the pinned tarballs come from (never `resolved` of the lock). */
+  registry: z.url().default(DEFAULT_ADAPTER_REGISTRY),
+});
+
+/**
  * Keys every client has. [proposta] names, `clients.<id>.*` (architecture 5.2).
  *
  * - `enabled`: `auto` turns the client on when its `command` is set or the default executable is
@@ -1102,6 +1246,7 @@ export const ClaudeCodeClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `claude-agent-acp`. */
   command: ClientCommandSchema.optional(),
+  adapter: ClientAdapterSourceSchema.default('managed'),
   setting_sources: z.enum(CLAUDE_SETTING_SOURCES).default('none'),
   utilization_unit: z.enum(CLAUDE_UTILIZATION_UNITS).default('ignore'),
   quota_statusline: z.enum(CLAUDE_QUOTA_STATUSLINES).default('file'),
@@ -1115,6 +1260,7 @@ export const CodexClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `codex-acp`. */
   command: ClientCommandSchema.optional(),
+  adapter: ClientAdapterSourceSchema.default('managed'),
   process_model: z.enum(CODEX_PROCESS_MODELS).default('multi-session'),
   initial_mode: z.string().min(1).default('workspace-write'),
   modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
@@ -1287,6 +1433,10 @@ export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 /** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
 export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
 
+/** `telemetry.receiver.reparent` (Phase 9, P1; [proposta]): `session` puts the clients' spans under the daemon's tree; `off` keeps them in their own traces. */
+export const TELEMETRY_REPARENT_MODES = ['session', 'off'] as const;
+export type TelemetryReparentMode = (typeof TELEMETRY_REPARENT_MODES)[number];
+
 const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
 
 /**
@@ -1374,7 +1524,7 @@ const TelemetryPrometheusConfigSchema = z
   .prefault({});
 
 /** True for a host that is this machine: the only one `http://` may reach with headers. */
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
@@ -1453,7 +1603,13 @@ const TelemetryConfigSchema = z
     /**
      * The OTLP/HTTP receiver of the daemon (P2, N211 to N213), loopback only, JSON only. [proposta]
      * - `port`: `auto` (a free port, each boot) or a fixed one;
-     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413.
+     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413;
+     * - `reparent` (Phase 9, P1, N230 (2); [proposta]): `session` (default) puts the spans of a
+     *   client under the span of their session (or attempt) in the daemon's trace, so there is one
+     *   tree; the trace and the parent the client used stay in `otheater.client.trace_id` and
+     *   `otheater.client.parent_span_id`. A span of a session the daemon does not know is left as it
+     *   came. `off`: every span stays in the trace of its client, tied by attribute only. It hangs
+     *   from the spans of `telemetry.daemon_spans`: with those `off` there is no parent to find.
      */
     receiver: z
       .strictObject({
@@ -1461,6 +1617,7 @@ const TelemetryConfigSchema = z
         max_body: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
           '8MB',
         ),
+        reparent: z.enum(TELEMETRY_REPARENT_MODES).default('session'),
       })
       .prefault({}),
     /**
@@ -1519,6 +1676,108 @@ const TelemetryConfigSchema = z
     }
   })
   .prefault({});
+
+/** The shortest `updates.check_interval`: a search is one call to the origin (GitHub limits them). */
+export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * `updates` (Phase 10, P7; architecture 5.21, N73). The search for a new version of OTheater and,
+ * its application (P8). Every key is global (the file of the daemon; a project
+ * has no say in how the daemon updates itself) and is read when the daemon starts. [proposta] The
+ * names and the defaults of the keys below, except the modes and the channels, which the
+ * architecture names.
+ *
+ * - `mode` (default `auto`): `auto` downloads, checks and applies at the moment `apply_when` says;
+ *   `notify` downloads and checks, and leaves the version ready for the Producer to apply
+ *   (`POST /v1/updates/apply`); `check` only says a new version exists (it downloads nothing);
+ *   `off` never looks. A daemon that is not the own executable (a checkout run by Node) acts as
+ *   `check`.
+ * - `channel` (default `stable`): `stable` reads the latest release; `beta` reads the newest
+ *   prerelease. A manifest of another channel is refused.
+ * - `source` (default `github`): `github` reads the releases of the public repository, with no
+ *   credential; `url` reads `<url>/manifest.json`, `<url>/manifest.json.sig` and the files of the
+ *   manifest from a base address of your own (a mirror, a test server).
+ * - `url`: the base address for `source: url`. Required there; `https://`, or `http://` only on the
+ *   loopback; no user, no password, no query.
+ * - `check_interval` (default `6h`): the time between two searches; `off` searches only when asked
+ *   (`POST /v1/updates/check`) and once at start. Not shorter than 5 minutes.
+ * - `apply_when` (P8; default `idle`): the moment a version that is ready is put in place.
+ *   `idle` waits for no attempt to be running (and holds new work back meanwhile); `park` stops
+ *   the daemon the clean way at once, the sessions go `awaiting_resume` and come back by
+ *   `session/load` (it is a restart of the daemon, so it spends no attempt); `next_start` leaves
+ *   it ready and applies at the next start of the daemon.
+ * - `max_wait` (P8; default `24h`): in `idle`, how long to wait for a quiet moment. After it the
+ *   daemon asks the Producer, in the global chat, to `park` and apply or to wait longer.
+ * - `rollback` (P8; default `auto`): `auto` takes the previous version back when the new one does
+ *   not start or does not hold; `off` leaves the state as it is and only warns.
+ * - `backup_before_migration` (P8; default `true`): when the manifest announces a store or
+ *   telemetry schema newer than the daemon's, make a backup first (the rollback restores it).
+ *   `false` skips it.
+ * - `health_timeout` (P8; default `60s`): how long the applier waits for the new daemon to answer
+ *   `GET /v1/health`; then it watches 30 s more without a drop.
+ *
+ * The public key that checks the manifest is not a key here: it is embedded in the executable
+ * (`tools/release/keys/update-public-key.pem`), so that a changed file cannot choose who signs.
+ */
+export const UpdatesConfigSchema = z
+  .strictObject({
+    mode: z.enum(UPDATE_MODES).default('auto'),
+    channel: z.enum(UPDATE_CHANNELS).default('stable'),
+    source: z.enum(UPDATE_SOURCES).default('github'),
+    url: z.string().min(1).max(2048).optional(),
+    check_interval: z
+      .union([z.literal('off'), DurationSchema])
+      .transform((value) => (value === 'off' ? null : value))
+      .refine((value) => value === null || value >= UPDATES_MIN_CHECK_INTERVAL_MS, {
+        message: 'the shortest interval is 5m (one search is one call to the origin)',
+      })
+      .prefault('6h'),
+    apply_when: z.enum(UPDATE_APPLY_WHEN).default('idle'),
+    max_wait: DurationSchema.refine((value) => value >= 1000, {
+      message: 'the shortest max_wait is 1s',
+    }).prefault('24h'),
+    rollback: z.enum(UPDATE_ROLLBACK_MODES).default('auto'),
+    backup_before_migration: z.boolean().default(true),
+    health_timeout: DurationSchema.refine((value) => value >= 1000, {
+      message: 'the shortest health_timeout is 1s',
+    }).prefault('60s'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.source === 'url' && value.url === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message: 'updates.source "url" needs updates.url',
+      });
+    }
+    if (value.url === undefined) return;
+    let parsed: URL | undefined;
+    try {
+      parsed = new URL(value.url);
+    } catch {
+      parsed = undefined;
+    }
+    const secure =
+      parsed !== undefined &&
+      (parsed.protocol === 'https:' ||
+        (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)));
+    if (
+      parsed === undefined ||
+      !secure ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message:
+          'updates.url must be https:// (http:// only on the loopback), with no user, password, query or fragment',
+      });
+    }
+  });
+export type UpdatesConfig = z.output<typeof UpdatesConfigSchema>;
 
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
@@ -1643,6 +1902,133 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     /**
+     * The processes of the plugins and the calls to them (architecture 5.14; Phase 9, P5). A plugin
+     * is an MCP server that runs outside the daemon, one process per plugin and project (N238).
+     * Every key here is [proposta]. `install` holds the keys of `ot plugin install` (P4).
+     * - `idle_timeout`: how long a process with no call lives; `off` keeps it until the daemon stops.
+     * - `max_restarts`: failures in a row (a start that fails, or a process that dies) after which
+     *   the process stays stopped until the Producer starts it again; `0` stops it at the first one.
+     * - `call_timeout`: the deadline of one call to a tool of a plugin; past it the call ends with a
+     *   tool error and the request is cancelled in the server.
+     * - `start_timeout`: how long the start of a process (spawn, handshake and `tools/list`) may take.
+     * - `restart_backoff`: the wait before a process that failed is started again, doubling from
+     *   `initial` up to `max`.
+     * - `http`: `loopback` (default) lets a manifest with `server.type: http` connect to its
+     *   address, which the manifest already confines to the loopback, with no authentication;
+     *   `off` refuses those plugins (only `stdio` runs).
+     */
+    plugins: z
+      .strictObject({
+        idle_timeout: OffOrDurationSchema.prefault('10m'),
+        max_restarts: z.int().min(0).max(100).default(3),
+        call_timeout: DurationSchema.prefault('60s'),
+        start_timeout: DurationSchema.prefault('30s'),
+        restart_backoff: z
+          .strictObject({
+            initial: DurationSchema.prefault('1s'),
+            max: DurationSchema.prefault('1m'),
+          })
+          .prefault({}),
+        http: z.enum(['loopback', 'off']).default('loopback'),
+        /**
+         * What the effects of a plugin tool need of the policy of the role (N237, P6; every key and
+         * mode is [proposta]). A manifest only lists the roles and the effect of a tool; it never
+         * opens what the policy of the role closes, so the Critic, which only reads, gets no tool
+         * that writes (see `plugins/permissions.ts`).
+         * - `local_write`: `writes` (default) needs `edit` or `write` in the `native_tools` of the
+         *   role; `shells` needs `native_shell: shells`; `deny` gives it to no role.
+         * - `network`: `network_allow` (default) needs a domain in the `network.allow` of the
+         *   role; `any` gives it to every role the manifest lists; `deny` to none.
+         * - `external_write`: `writes` (default) needs a role that writes; `deny` to none.
+         * - `external_write_approval`: `ask` (default) asks the Producer at every call of a tool
+         *   with `external_write`, whatever the manifest says; `manifest` asks only where the
+         *   manifest has `requires_producer_approval: true` (that one always asks).
+         * - `approval_detail`: what the card of the approval shows of the arguments: `keys`
+         *   (default) their names only, `values` the JSON, cut at 300 characters.
+         */
+        permissions: z
+          .strictObject({
+            local_write: z.enum(PLUGIN_LOCAL_WRITE_MODES).default('writes'),
+            network: z.enum(PLUGIN_NETWORK_MODES).default('network_allow'),
+            external_write: z.enum(PLUGIN_EXTERNAL_WRITE_MODES).default('writes'),
+            external_write_approval: z.enum(PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES).default('ask'),
+            approval_detail: z.enum(PLUGIN_APPROVAL_DETAIL_MODES).default('keys'),
+          })
+          .prefault({}),
+        /**
+         * The events a plugin publishes (P8; `plugin.<id>.<name>`, [proposta]). `declared` (default):
+         * the daemon writes the events whose name the manifest lists, and refuses the others with a
+         * notice and `plugin.event_rejected`; `off`: the plugin publishes nothing (every event it
+         * sends is refused the same way, so the Producer sees it). `event_max_bytes` is the biggest
+         * payload, in bytes of its JSON text (default 16 KB); a bigger one is refused.
+         */
+        events: z.enum(PLUGIN_EVENT_MODES).default('declared'),
+        event_max_bytes: z.int().min(1).max(1_048_576).default(16_384),
+        /**
+         * How fast a plugin may send events (N243 item 67, [proposta]). A plugin is code the daemon
+         * does not trust, and every event it sends, or is refused, is a line in the log and a row in
+         * the event log; a plugin in a loop would fill both. `max` (default 100): the most events
+         * **and refusals** of one plugin in one project per `window` (default `10s`, a fixed window
+         * that starts at the first event), so a plugin may burst 100 and keep up 10 a second, which a
+         * plugin that tells a build or a deploy finished never needs, and a loop passes in the first
+         * second. What comes after the limit is dropped, counted in `otheater_plugin_events_dropped_total`
+         * (by plugin), and, once the window ends, said with one warning and one
+         * `plugin.event_rejected` (`reason: rate_limited`, with the count dropped); not one per event.
+         * `off`: no limit (the size of each payload is still `event_max_bytes`).
+         */
+        event_rate: PluginEventRateSchema.prefault({}),
+        /**
+         * The folder of the project the process of a plugin works on (N238 (a): one process per
+         * plugin and project), handed in `OTHEATER_PROJECT_DIR` and read by
+         * `pluginProjectDirectory()` of `@otheater/sdk/plugin`. `scenario` (default): the `folder`
+         * of the scenario, when it is an absolute path; `off`: the variable is not set, and the SDK
+         * falls back to the `cwd` of the process (the folder of the plugin). [proposta]
+         */
+        project_dir: z.enum(PLUGIN_PROJECT_DIR_MODES).default('scenario'),
+        /**
+         * The data of the panel of a plugin (P10, [proposta]). The daemon calls the `source` tools of
+         * the blocks and sends what they answer to the interface; a plugin that answers too much
+         * must not weigh down the daemon or the screen. `max_rows` (default 200): the most rows (items
+         * of the list, entries of a metrics object) of a block; the rest is cut. `max_bytes` (default
+         * `1MB`, or `off`): the most bytes of the JSON of one block, tested after `max_rows`. A cut
+         * block comes with `truncated` in the answer, a warning in the log and
+         * `plugin.panel_truncated`; it never fails.
+         */
+        panel: z
+          .strictObject({
+            max_rows: z.int().min(1).max(100_000).default(200),
+            max_bytes: PluginPanelMaxBytesSchema.prefault('1MB'),
+          })
+          .prefault({}),
+        install: z
+          .strictObject({
+            /**
+             * Where `ot plugin install` may take a plugin from (N236; [proposta] for the key). `path`:
+             * a local folder (kept where it is, only the path and the hash of `plugin.yaml` are
+             * stored); `npm`: `npm:<pkg>@<version>`, installed with `--ignore-scripts`; `git`:
+             * `git:<url>#<ref>`, cloned without hooks and pinned to the commit. Take a mode out of the
+             * list to refuse it; `[]` refuses every install (what is installed keeps working).
+             */
+            sources: z
+              .array(z.enum(PLUGIN_INSTALL_SOURCES))
+              .refine((list) => new Set(list).size === list.length, {
+                message: 'each source can be listed once',
+              })
+              .default([...PLUGIN_INSTALL_SOURCES]),
+            /** The longest an `npm` or `git` command of an install may run before it is stopped ([proposta]). */
+            timeout: DurationSchema.prefault('5m'),
+            /**
+             * How `npm` is started, with no shell ([proposta]). `auto` (default): `npm` from PATH;
+             * on Windows, the `node` of the daemon on the `npm-cli.js` next to it, because Node
+             * will not start `npm.cmd` with no shell. Or the path of an `npm-cli.js` (run on the
+             * daemon's `node`) or of an npm program.
+             */
+            npm: z.string().trim().min(1).default('auto'),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
      * The single prompt queue of the Director (architecture 5.4; P7). `order`: `producer_first`
      * (default) delivers the Producer's message ahead of the notices of the daemon, `fifo` delivers
      * by arrival only. `summary_messages` is how many of the last messages the state summary lists
@@ -1729,6 +2115,15 @@ export const DaemonConfigSchema = z
      * their `configOverride`. See `role-policy-config.ts`.
      */
     roles: RolesConfigSchema.prefault({}),
+    /**
+     * The flows of the configuration (architecture 5.4 and 5.18; Phase 9, P12; N133, N241):
+     * `flows.<id>` is the official `play` with the optional steps (`plan_review`, `critique`) on or
+     * off and the limits of each step; `scenario.flow` picks the one a new play runs (default: the
+     * official `play`; a scenario overrides it in its `configOverride`). [proposta] The names of
+     * the keys. See `flows-config.ts`.
+     */
+    flows: FlowsConfigSchema.prefault({}),
+    scenario: ScenarioConfigSchema.prefault({}),
     /**
      * The Executors and how they join the roles (architecture 5.7; Phase 5, P13): `executors.<id>`
      * (`<model>-<effort>@<client>/<profile>`), `cross_client` (`api_only` default | `off` | `any`)
@@ -1926,6 +2321,7 @@ export const DaemonConfigSchema = z
      */
     clients: z
       .strictObject({
+        adapters: ClientAdaptersSchema.prefault({}),
         'claude-code': ClaudeCodeClientSchema.prefault({}),
         codex: CodexClientSchema.prefault({}),
         opencode: OpenCodeClientSchema.prefault({}),
@@ -2000,6 +2396,8 @@ export const DaemonConfigSchema = z
       .prefault({}),
     tools: ToolsConfigSchema,
     browser: BrowserConfigSchema,
+    /** How the processes of the Executors are started (Phase 10, P2). */
+    processes: ProcessesConfigSchema,
     /**
      * The API of the daemon (architecture 5.12; Phase 6, P3 of docs/17). [proposta] The names and
      * the defaults below. The API always binds `127.0.0.1` and always asks for the token.
@@ -2186,6 +2584,8 @@ export const DaemonConfigSchema = z
      * role when the cause is a quota or a spending cap (`quota_exhausted`, `spend_cap`), a provider
      * error or a drop (`transient`, `client_crash`); `quota_only` does it for the first two causes
      * only; `off` keeps the old behaviour (the queue stops until the next prompt tries again).
+     * [proposta] `director_switch.in_turn` (P14, N242) is what a manual switch of the Director
+     * (`/director`, the TUI footer) does when the Director is in a turn: `wait` (default) or `interrupt`.
      */
     scenarios: z
       .strictObject({
@@ -2195,6 +2595,11 @@ export const DaemonConfigSchema = z
         consultant_alternatives: z.array(PlayExecutorSchema).default([]),
         consultant_writes: z.enum(['merge', 'keep', 'discard']).prefault('merge'),
         director_failover: z.enum(DIRECTOR_FAILOVER_MODES).prefault('next'),
+        director_switch: z
+          .strictObject({
+            in_turn: z.enum(DIRECTOR_SWITCH_IN_TURN_MODES).prefault('wait'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
@@ -2553,6 +2958,8 @@ export const DaemonConfigSchema = z
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */
         runtime: UiRuntimeConfigSchema.prefault({}),
+        /** The keyboard protocol the terminal interface asks for (Shift+Enter, kitty). */
+        keyboard: UiKeyboardConfigSchema.prefault({}),
         /** The measures and steps of the screen of the terminal interface (P9 of docs/18). */
         tuiLayout: UiTuiLayoutConfigSchema.prefault({}),
         /** The text box of the terminal interface (N35): paste, history, editor and image. */
@@ -2601,6 +3008,40 @@ export const DaemonConfigSchema = z
         role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
       })
       .prefault({}),
+    /**
+     * The logon service of the daemon (`ot service`; Phase 10, P3; architecture 5.21, 10). [proposta]
+     * - `restart`: `on_failure` (default) starts the daemon again when it exits with an error, `always`
+     *   also when it exits cleanly, `never` leaves it stopped. The Windows Task Scheduler has no
+     *   restart after a clean exit, so there `always` behaves as `on_failure` (the install says so);
+     *   on macOS, `autostart: manual` writes no restart rule.
+     * - `autostart`: `logon` (default) registers the service and turns its trigger on; `manual`
+     *   registers it without the trigger (`ot service start` or `ot tui` starts it).
+     * - `console`: only on Windows. `hidden` (default) runs the daemon without a console window;
+     *   `visible` runs it directly, so the window shows (and the daemon stops if it is closed).
+     * It is read by `ot service install`: a change applies at the next install.
+     */
+    service: z
+      .strictObject({
+        restart: z.enum(SERVICE_RESTART_MODES).default('on_failure'),
+        autostart: z.enum(SERVICE_AUTOSTART_MODES).default('logon'),
+        console: z.enum(SERVICE_CONSOLE_MODES).default('hidden'),
+      })
+      .prefault({}),
+    /**
+     * What `ot tui` does before it opens when no daemon is running (Phase 10, P3; architecture 10).
+     * [proposta]
+     * - `start_daemon`: `service` (default) starts the logon service, and starts a daemon child of
+     *   the user's own when the service is not installed; `child` always starts the child; `off`
+     *   starts nothing (the interface says there is no daemon, as before).
+     * - `start_timeout`: how long it waits for the daemon to publish its API (default `15s`).
+     * The child is detached: it stays when the interface closes, as the service would.
+     */
+    tui: z
+      .strictObject({
+        start_daemon: z.enum(TUI_START_DAEMON_MODES).default('service'),
+        start_timeout: DurationSchema.prefault('15s'),
+      })
+      .prefault({}),
     log: z
       .strictObject({
         level: z.enum(LOG_LEVELS).default('info'),
@@ -2619,6 +3060,7 @@ export const DaemonConfigSchema = z
           .prefault({}),
       })
       .prefault({}),
+    updates: UpdatesConfigSchema.prefault({}),
   })
   .refine(
     (config) => !(hasSecretPathEntries(config.security) && hasSecretPathEntries(config.browser)),
@@ -2627,7 +3069,12 @@ export const DaemonConfigSchema = z
       message:
         'browser.secret_paths is an alias of security.secret_paths: write the list in one of them, not in both',
     },
-  );
+  )
+  .superRefine((config, ctx) => {
+    const problem = scenarioFlowProblem(config);
+    if (problem !== undefined)
+      ctx.addIssue({ code: 'custom', path: ['scenario', 'flow'], message: problem });
+  });
 
 /** Whether a block with a `secret_paths` key (`security`, `browser`) has an entry in it. */
 function hasSecretPathEntries(block: {

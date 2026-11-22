@@ -15,10 +15,13 @@
     "test": "vitest run",
     "test:affected": "bash tools/ci/test-affected.sh",
     "api:catalog": "vitest run packages/protocol/src/api/catalog.test.ts -u",
+    "plugin:schema": "vitest run packages/core/src/plugins/manifest-schema.test.ts -u",
+    "flow:schema": "vitest run packages/core/src/flows/schema.test.ts -u",
     "deps": "depcruise packages --config .dependency-cruiser.js",
     "notices": "node tools/verify/dist/cli.js notices",
     "verify": "node tools/verify/dist/cli.js licenses && node tools/verify/dist/cli.js notices --check && node tools/verify/dist/cli.js headers && node tools/verify/dist/cli.js credentials && node tools/verify/dist/cli.js catalogs && node tools/verify/dist/cli.js deps",
     "check": "pnpm build && pnpm lint && pnpm format:check && pnpm test && pnpm verify",
+    "verify:notices": "node tools/verify/dist/cli.js notices --check",
     "verify:docs": "node tools/verify/dist/cli.js licenses && node tools/verify/dist/cli.js notices --check && node tools/verify/dist/cli.js headers && node tools/verify/dist/cli.js credentials && node tools/verify/dist/cli.js catalogs"
   },
   "devDependencies": {

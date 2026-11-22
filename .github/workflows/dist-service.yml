@@ -1,0 +1,68 @@
+name: Dist service
+
+# The logon service of Phase 10 (P3): the real `systemctl --user`, `launchctl` and `schtasks` on the
+# three systems, with a test service id and a temporary HOME where the system allows. It publishes
+# nothing: no release, no tag, no upload. [proposta] OT_TEST_REAL_SERVICE=1 is set only here; the
+# test (packages/daemon/src/service/service-real.test.ts) also needs CI=true, so it never installs
+# anything on a developer machine.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/daemon/src/service/**'
+      - 'packages/daemon/src/commands/service*'
+      - 'packages/daemon/src/cli.ts'
+      - 'packages/daemon/src/config.ts'
+      - '.github/workflows/dist-service.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/daemon/src/service/**'
+      - 'packages/daemon/src/commands/service*'
+      - '.github/workflows/dist-service.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  service:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      # [N] A runner has no login session for the user, so `systemd --user` may have no bus. Linger
+      # starts the user manager of the runner user; where it still does not answer, the test says so
+      # and skips the part that needs it. Only on this disposable runner.
+      - name: Start the user manager (ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER" || true
+          sudo systemctl start "user@$(id -u).service" || true
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      # The service tests with the fake runner run on every system (the renderers, the order of the
+      # calls, `ot service`, `ot uninstall`, `ot tui`); the real ones are the file service-real.
+      - name: Service tests
+        shell: bash
+        run: |
+          pnpm --filter @otheater/daemon exec vitest run \
+            src/service src/commands/service.test.ts src/config-service.test.ts
+        env:
+          OT_TEST_REAL_SERVICE: '1'

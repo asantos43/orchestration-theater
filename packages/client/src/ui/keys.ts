@@ -31,6 +31,7 @@ export const UI_TAB_CONTEXTS = [
   'directives',
   'direct',
   'settings',
+  'plugins',
 ] as const;
 export type UiTabContext = (typeof UI_TAB_CONTEXTS)[number];
 

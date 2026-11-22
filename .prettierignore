@@ -8,3 +8,6 @@ coverage
 LICENSE
 dist-test
 packages/tui/patches/
+packages/daemon/src/adapters/lock-data.ts
+# WiX sources (installer/wix): prettier takes .wxs for a WeiXin script and cannot parse the XML.
+*.wxs

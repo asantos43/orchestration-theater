@@ -19,10 +19,13 @@ import type { Env } from '../paths.js';
 /** The line every script carries, so a sync only ever removes what it wrote. */
 export const SHIM_MARKER = 'otheater-profile-shim';
 
-/** What runs `ot`: the Node binary and the entry script, both absolute. */
+/**
+ * What runs `ot`: the Node binary and the entry script, both absolute. In the single executable
+ * (Phase 10, P1) `node` is the executable itself and there is no script: `entry` is absent.
+ */
 export interface OtLauncher {
   readonly node: string;
-  readonly entry: string;
+  readonly entry?: string | undefined;
 }
 
 export type ShimPlatform = 'posix' | 'win32';
@@ -59,19 +62,21 @@ export function shimContent(
 ): string {
   if (platform === 'win32') {
     for (const value of [launcher.node, launcher.entry, dataDir, profileId]) {
-      if (/["%\r\n]/.test(value)) throw new Error(`cannot quote ${JSON.stringify(value)} for cmd`);
+      if (value !== undefined && /["%\r\n]/.test(value)) {
+        throw new Error(`cannot quote ${JSON.stringify(value)} for cmd`);
+      }
     }
     return [
       '@echo off',
       `rem ${SHIM_MARKER}: runs ${profileId} through "ot profile exec"; it holds no secret.`,
-      `${cmdQuote(launcher.node)} ${cmdQuote(launcher.entry)} --data-dir ${cmdQuote(dataDir)} profile exec ${cmdQuote(profileId)} -- %*`,
+      `${cmdQuote(launcher.node)} ${launcher.entry === undefined ? '' : `${cmdQuote(launcher.entry)} `}--data-dir ${cmdQuote(dataDir)} profile exec ${cmdQuote(profileId)} -- %*`,
       '',
     ].join('\r\n');
   }
   return [
     '#!/bin/sh',
     `# ${SHIM_MARKER}: runs ${profileId} through "ot profile exec"; it holds no secret.`,
-    `exec ${shQuote(launcher.node)} ${shQuote(launcher.entry)} --data-dir ${shQuote(dataDir)} profile exec ${shQuote(profileId)} -- "$@"`,
+    `exec ${shQuote(launcher.node)} ${launcher.entry === undefined ? '' : `${shQuote(launcher.entry)} `}--data-dir ${shQuote(dataDir)} profile exec ${shQuote(profileId)} -- "$@"`,
     '',
   ].join('\n');
 }

@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OTheater plugin manifest (plugin.yaml)",
+  "type": "object",
+  "properties": {
+    "manifest_version": {
+      "type": "number",
+      "const": 1,
+      "description": "The version of this format; the only one is 1."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+      "description": "Plugin id; the events are plugin.<id>.<name>."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "server": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "stdio"
+            },
+            "command": {
+              "minItems": 1,
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "description": "The command as an argument list, run with no shell: [\"node\", \"dist/server.js\"]."
+            },
+            "args": {
+              "description": "More arguments, appended to the command.",
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 4096
+              }
+            },
+            "cwd": {
+              "description": "Working directory, relative to the folder of the plugin (the default).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "command"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "http"
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 2048,
+              "description": "The Streamable HTTP endpoint of the server, in the loopback only."
+            }
+          },
+          "required": [
+            "type",
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "tools": {
+      "minItems": 1,
+      "maxItems": 256,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "consultant",
+                "author",
+                "reviewer",
+                "scriptwriter",
+                "actor",
+                "critic"
+              ]
+            },
+            "description": "The roles that see the tool; empty when only the panel uses it."
+          },
+          "specialties": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            }
+          },
+          "effects": {
+            "type": "string",
+            "enum": [
+              "read",
+              "local_write",
+              "network",
+              "external_write"
+            ],
+            "description": "What the tool changes: read, local_write, network or external_write."
+          },
+          "requires_producer_approval": {
+            "default": false,
+            "description": "When true, every call waits for the approval of the Producer.",
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "name",
+          "roles",
+          "effects"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "secrets": {
+      "default": [],
+      "description": "Names read from the vault and handed only to the server of the plugin.",
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+      }
+    },
+    "events": {
+      "default": [],
+      "description": "Event names, with no prefix: the daemon publishes them as plugin.<id>.<name>.",
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64,
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$"
+      }
+    },
+    "panel": {
+      "default": [],
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "table"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+              },
+              "source": {
+                "type": "string",
+                "description": "A tool of this plugin with effects: read; its result fills the block."
+              },
+              "columns": {
+                "minItems": 1,
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "list"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+              },
+              "source": {
+                "type": "string",
+                "description": "A tool of this plugin with effects: read; its result fills the block."
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "metrics"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+              },
+              "source": {
+                "type": "string",
+                "description": "A tool of this plugin with effects: read; its result fills the block."
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "action"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+              },
+              "tool": {
+                "type": "string",
+                "description": "A tool of this plugin; the call follows its requires_producer_approval."
+              }
+            },
+            "required": [
+              "type",
+              "label",
+              "tool"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "i18n": {
+      "type": "object",
+      "properties": {
+        "en": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "description": "Screen texts by key, with \"{{name}}\" placeholders where the text has variables."
+        }
+      },
+      "required": [
+        "en"
+      ],
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+        },
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": "Screen texts by key, with \"{{name}}\" placeholders where the text has variables."
+      },
+      "description": "One catalog per language; \"en\" is required, and what a language lacks shows in \"en\"."
+    }
+  },
+  "required": [
+    "manifest_version",
+    "id",
+    "version",
+    "server",
+    "tools"
+  ],
+  "additionalProperties": false
+}

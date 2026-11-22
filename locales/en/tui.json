@@ -7,7 +7,8 @@
     "navigation": "Navigation",
     "input": "Text box",
     "settings": "Settings",
-    "setup": "Setup assistant"
+    "setup": "Setup assistant",
+    "plugins": "Plugins"
   },
   "tabs": {
     "overview": "Overview",
@@ -15,7 +16,8 @@
     "usage": "Usage",
     "direct": "Direct session",
     "directives": "Directives",
-    "settings": "Settings"
+    "settings": "Settings",
+    "plugins": "Plugins"
   },
   "actions": {
     "layout": {
@@ -55,7 +57,8 @@
       "scrollBottom": "Go to the end of the chat",
       "suggestNext": "Next command suggestion",
       "suggestPrev": "Previous command suggestion",
-      "stop": "Stop the Director's reply"
+      "stop": "Stop the Director's reply",
+      "director": "Choose the Executor, model and effort of the Director"
     },
     "edge": {
       "narrow": "Make the chat narrower (border focused)",
@@ -84,7 +87,7 @@
     },
     "input": {
       "submit": "Send the message",
-      "newline": "Add a new line",
+      "newline": "Add a new line (Shift+Enter: kitty protocol)",
       "left": "Move the cursor one character left",
       "right": "Move the cursor one character right",
       "wordLeft": "Move the cursor one word left",
@@ -161,6 +164,15 @@
       "remove": "Remove the Executor",
       "reload": "Read the step again",
       "cancel": "Cancel the run (nothing is written)"
+    },
+    "plugins": {
+      "itemPrev": "Previous plugin",
+      "itemNext": "Next plugin",
+      "enable": "Turn the plugin on in the project (shows what it asks for first)",
+      "disable": "Turn the plugin off in the project",
+      "actionNext": "Pick the next action of the panel",
+      "action": "Run the action picked in the panel",
+      "reload": "Read the plugins again"
     }
   },
   "bar": {
@@ -290,7 +302,10 @@
       "noScenario": "No scenario",
       "decisions_one": "{{count}} decision",
       "decisions_other": "{{count}} decisions",
-      "daemon": "daemon {{address}}"
+      "daemon": "daemon {{address}}",
+      "updateFound": "↑ {{version}} found",
+      "updateReady": "↑ {{version}} ready",
+      "updateApply": "apply"
     },
     "state": {
       "decision": "decision",
@@ -340,6 +355,25 @@
         "turn": "Director in a turn",
         "turnStop": "Director in a turn ({{key}} stops)",
         "active": "Director active"
+      },
+      "directorFooter": {
+        "line": "Director: {{executor}}{{settings}} ({{source}}){{wait}}  {{key}}",
+        "none": "Director: not chosen yet  {{key}}",
+        "pending": ", switch queued",
+        "source": {
+          "override": "your choice",
+          "default": "default"
+        }
+      },
+      "directorPicker": {
+        "title": "Director of this scenario",
+        "current": "now",
+        "isDefault": "default",
+        "invalid": "invalid: {{reason}}",
+        "quota": "quota {{state}}",
+        "model": "model: {{model}}",
+        "effort": "effort: {{effort}}",
+        "default": "back to the default"
       },
       "waits": "waiting: {{what}}",
       "connection": {
@@ -407,6 +441,15 @@
           "switched": "The Director moved from {{from}} to {{to}} ({{cause}}); the work goes on.",
           "waiting": "The Director of {{from}} is waiting ({{cause}}) until {{until}}.",
           "unavailable": "The Director is unavailable ({{cause}}); the queue stops until the next prompt."
+        },
+        "directorSwitch": {
+          "live": "The Director now runs {{what}} ({{source}}).",
+          "new_session": "The Director moved from {{from}} to {{what}} ({{source}}): new session.",
+          "baton": "The Director went on with {{what}} ({{source}}) in a new session.",
+          "stored": "The Director will use {{what}} ({{source}}) when its session opens.",
+          "unchanged": "The Director already ran {{what}} ({{source}}).",
+          "override": "your choice",
+          "default": "the default"
         },
         "recovery": "After the restart: {{resumed}} resumed, {{settled}} settled, {{waiting}} waiting.",
         "generatedNone": "The Director answered with no action.",
@@ -1159,5 +1202,101 @@
       "close": "{{key}} closes the assistant."
     },
     "gateFailed": "Could not check whether the first run is needed: {{message}}"
+  },
+  "plugins": {
+    "scope": {
+      "none": "Project: none selected (pick one in the side bar to turn plugins on or off)",
+      "project": "Project: {{name}}"
+    },
+    "loading": "Reading the plugins...",
+    "loadFailed": "Could not read the plugins: {{message}}",
+    "empty": "No plugin installed. Install one in the terminal: ot plugin install <origin>",
+    "sections": {
+      "installed": "Installed",
+      "detail": "Details",
+      "panel": "Panel"
+    },
+    "state": {
+      "active": "on",
+      "needs_approval": "needs a new approval",
+      "broken": "unusable",
+      "off": "off"
+    },
+    "detail": {
+      "origin": "Origin: {{origin}}",
+      "problem": "Problem: {{problem}}",
+      "serverFailed": "The server of the plugin failed in this project.",
+      "loading": "Reading the plugin...",
+      "failed": "Could not read the plugin: {{message}}",
+      "asks": "What it asks for when it is turned on:"
+    },
+    "secrets": {
+      "title": "Secrets",
+      "missing": "missing",
+      "hint": "This screen does not write secrets (and never shows one). Set them in the terminal:"
+    },
+    "enable": {
+      "question": "Turn on {{plugin}} {{version}} in {{project}}? This is what it asks for:",
+      "again": "The manifest of {{plugin}} {{version}} changed. Approve it again in {{project}}? This is what it asks for:",
+      "hint": "Enter approves and turns it on, Esc cancels"
+    },
+    "disable": {
+      "question": "Turn {{plugin}} off in {{project}}? y/n",
+      "hint": "y confirms, any other key cancels"
+    },
+    "prompt": {
+      "yes": "y"
+    },
+    "panel": {
+      "loading": "Reading the panel...",
+      "failed": "Could not read the panel: {{message}}",
+      "needsApproval": "The panel is off until the new manifest is approved ({{key}} approves it).",
+      "broken": "The folder of the plugin cannot be used, so there is no panel.",
+      "noProject": "Pick a project in the side bar to see the panel.",
+      "off": "The plugin is off in this project ({{key}} turns it on).",
+      "noBlocks": "The plugin declares no panel."
+    },
+    "block": {
+      "error": "{{source}}: no data ({{code}}) {{message}}",
+      "cutRows": "Showing {{kept}} of {{total}} rows (limit {{limit}}).",
+      "cutBytes": "Cut at {{kept}} of {{total}} bytes (limit {{limit}}).",
+      "unreadable": "A block of the panel could not be read by this screen.",
+      "noColumns": "The table declares no column.",
+      "empty": "Nothing to show."
+    },
+    "errorCode": {
+      "plugin_unavailable": "plugin unavailable",
+      "plugin_timeout": "plugin timed out",
+      "plugin_failed": "plugin failed",
+      "tool_unavailable": "tool unavailable",
+      "tool_error": "tool error",
+      "invalid_result": "invalid result",
+      "not_readable": "tool is not a read tool"
+    },
+    "action": {
+      "hint": "{{next}} picks the next action, {{run}} runs the one picked",
+      "approval": {
+        "manifest": "(asks for your approval)",
+        "policy": "(asks for your approval by the policy)"
+      },
+      "running": "Running {{action}}...",
+      "waiting": "{{action}}: waiting for your approval...",
+      "failed": "{{action}} failed: {{code}} {{message}}",
+      "tooBig": "{{action}} ran, but its answer was too big to show.",
+      "done": "{{action}} done.",
+      "doneWith": "{{action}} done: {{result}}"
+    },
+    "result": {
+      "failed": "Failed: {{message}}",
+      "noProject": "Pick a project in the side bar first.",
+      "broken": "{{plugin}} cannot be used: see the problem in the details.",
+      "alreadyOn": "{{plugin}} is already on in this project.",
+      "notOn": "{{plugin}} is not on in this project.",
+      "enabled": "{{plugin}} is on in {{project}}.",
+      "enabledSame": "{{plugin}} was already on in {{project}} with this manifest.",
+      "disabled": "{{plugin}} is off in {{project}}.",
+      "disabledSame": "{{plugin}} was not on in {{project}}.",
+      "noAction": "The panel has no action to run."
+    }
   }
 }

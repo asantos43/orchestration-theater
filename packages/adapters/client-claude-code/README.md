@@ -58,7 +58,7 @@ lacks is a warning, never an error. Ids ending in `[1m]` get a 1,000,000 token w
 
 | Option | Key | Modes | Default |
 | --- | --- | --- | --- |
-| `command` | `clients.claude-code.command` | any executable and arguments | `claude-agent-acp` [S: bin name of the package, not run] |
+| `command` | `clients.claude-code.command` | `{ cmd, args }` or a function that returns it, called at each process start (P13: the daemon passes the managed install run with its Node, or the `PATH` command as a fallback) | `claude-agent-acp` [S: bin name of the package, not run] |
 | `settingSources` | `clients.claude-code.setting_sources` | `none`, `project`, `user` | `none` |
 | `utilizationUnit` | `clients.claude-code.utilization_unit` | `ignore`, `fraction`, `percent`, `auto` (see Quota probe) | `ignore` |
 | `quotaStatusline` | `clients.claude-code.quota_statusline` | `file`, `off` | `file` |

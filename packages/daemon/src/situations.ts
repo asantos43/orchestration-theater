@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { EventLog } from '@otheater/core';
+import type { EventLog, NewEvent } from '@otheater/core';
 import {
   buildDaemonEvent,
   type DaemonEventPayloads,
@@ -95,6 +95,31 @@ export class SituationLog implements SituationSink {
   ): void {
     const write = (): Promise<void> =>
       writeSituation(this.#o.events, this.#o.logger, type, payload, correlation);
+    if (this.#open) this.#enqueue(write);
+    else this.#queue.push(write);
+  }
+
+  /**
+   * Records an event the registry of the daemon does not know by name (the `plugin.<id>.<name>` of
+   * a plugin, Phase 9, P8), with the same queue, order and failure handling as {@link record}. The
+   * event is the caller's to build; the validation of the log still checks it on `append`.
+   */
+  recordEvent(event: NewEvent, correlation: SituationCorrelation = {}): void {
+    const write = async (): Promise<void> => {
+      try {
+        await this.#o.events.append({
+          ...event,
+          ...(correlation.scenarioId === undefined ? {} : { scenarioId: correlation.scenarioId }),
+          ...(correlation.playId === undefined ? {} : { playId: correlation.playId }),
+          ...(correlation.attemptId === undefined ? {} : { attemptId: correlation.attemptId }),
+        });
+      } catch (error) {
+        this.#o.logger.error(
+          { err: situationText(error, 200), type: event.type },
+          'a situation event was not written',
+        );
+      }
+    };
     if (this.#open) this.#enqueue(write);
     else this.#queue.push(write);
   }

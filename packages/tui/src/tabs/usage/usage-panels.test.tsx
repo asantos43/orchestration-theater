@@ -179,10 +179,10 @@ describe('the bottlenecks', () => {
     const fake = online();
     stubPanels(fake);
     const app = await open(fake, only(['bottlenecks']));
-    const frame = await app.waitForText('Bottlenecks');
+    await app.waitForText('Bottlenecks');
     await waitFor(() => app.frame().includes('WRITING'), 'the stages');
     const shown = app.frame();
-    expect(frame).toContain('Time per state');
+    expect(shown).toContain('Time per state');
     expect(shown).toContain(
       `WRITING  ${formatDuration(120_000)} · 4x · p95 ${formatDuration(45_000)} · 50%`,
     );
@@ -243,10 +243,10 @@ describe('the spans of the play', () => {
     const id = followPlay(fake);
     const stub = stubPanels(fake);
     const app = await open(fake, only(['play']));
-    const frame = await app.waitForText('Spans of the play');
+    await app.waitForText('Spans of the play');
     await waitFor(() => app.frame().includes('write_file'), 'the tree');
     const shown = app.frame();
-    expect(frame).toContain(id);
+    expect(shown).toContain(id);
     expect(shown).toMatch(/play\s+2m05s/);
     expect(shown).toMatch(/ {2}stage WRITING\s+1m02s/);
     expect(shown).toContain('attempt author (fake/one)');

@@ -2,7 +2,7 @@
 // Shared by the tests of the play machine only (excluded from the build of the package).
 import { initialTransition, transition, type SnapshotFrom } from 'xstate';
 import { LIMIT_PRESETS, type LimitPresetName, type PlayLimits } from '../config.js';
-import type { PlayContext } from './context.js';
+import type { PlayContext, PlayFlowRef } from './context.js';
 import type { PlayState } from './definitions.js';
 import type { PlayEffect } from './effects.js';
 import type { PlayEvent } from './events.js';
@@ -27,8 +27,8 @@ export class Model {
   decisions: PlayDecision[] = [];
   now = 1_000_000;
 
-  constructor(limits: PlayLimits = limitsOf('moderate'), need = 'a need') {
-    [this.snapshot] = initialTransition(playMachine, { playId: 'p1', need, limits });
+  constructor(limits: PlayLimits = limitsOf('moderate'), need = 'a need', flow?: PlayFlowRef) {
+    [this.snapshot] = initialTransition(playMachine, { playId: 'p1', need, limits, flow });
   }
 
   get state(): PlayState {
@@ -93,10 +93,9 @@ export class Model {
   /** -> SCRIPTING, with the plan approved. */
   toScripting(): this {
     if (this.state === 'NEED') this.start();
-    return this.send({ type: 'PLAN_SUBMITTED', hasOpenQuestions: false }).send({
-      type: 'PLAN_REVIEWED',
-      approved: true,
-    });
+    this.send({ type: 'PLAN_SUBMITTED', hasOpenQuestions: false });
+    // a flow without the review of the plan (P12) is already in SCRIPTING
+    return this.state === 'SCRIPTING' ? this : this.send({ type: 'PLAN_REVIEWED', approved: true });
   }
 
   /** -> EXECUTING, with a valid script of these demands. */

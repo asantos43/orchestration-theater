@@ -15,6 +15,7 @@ import {
   OFFICIAL_TOOLS,
   officialRegistryEntries,
   planOutput,
+  PLUGIN_DAEMON_EVENT_NAMES,
   reviewOutput,
   scriptOutput,
   ROLE_IDS,
@@ -93,7 +94,7 @@ describe('the official entries', () => {
     expect(rolesOf('submit_critique')).toEqual(['critic']);
     expect(registries.tools.get('open_pr')?.effect).toBe('external_write');
     expect(registries.tools.get('open_pr')?.idempotencyKey).toBe('attempt_step');
-    expect(registries.tools.get('git_commit')?.effect).toBe('worktree');
+    expect(registries.tools.get('git_commit')?.effect).toBe('local_write');
   });
 
   it('give the stage tools the schemas of the stage outputs, one source for tool and daemon', () => {
@@ -314,6 +315,25 @@ describe('validateRegistries: one failing case per rule', () => {
     expect(validateRegistries(replace({ events }))).toEqual([]);
   });
 
+  it('accepts the plugin.<name> events of the daemon, and refuses a plugin that owns a reserved name', () => {
+    const payload = z.strictObject({});
+    const official = PLUGIN_DAEMON_EVENT_NAMES.map((name) =>
+      defineEventType({ type: `plugin.${name}`, schemaVersion: 1, payload }),
+    );
+    expect(validateRegistries(replace({ events: official }))).toEqual([]);
+    // A name that is not reserved is still the namespace of the plugins, so it needs an owner.
+    const stray = [{ type: 'plugin.mystery', schemaVersion: 1, payload }];
+    expect(validateRegistries(replace({ events: stray })).map((p) => p.code)).toEqual([
+      'plugin_prefix',
+    ]);
+    const owned = [
+      { type: 'plugin.installed.done', schemaVersion: 1, payload, plugin: 'installed' },
+    ];
+    expect(validateRegistries(replace({ events: owned })).map((p) => p.code)).toEqual([
+      'plugin_prefix',
+    ]);
+  });
+
   it('rejects a rule key with no value schema, a bad name and a permission family', () => {
     const ruleKeys = [
       { key: 'git.push_after_commit', value: BAD_SCHEMA, appliesAt: 'vcs' as const },
@@ -337,11 +357,35 @@ describe('validateRegistries: one failing case per rule', () => {
     });
   });
 
+  it('rejects the old effect vocabulary (none, worktree) and names the new one', () => {
+    for (const old of ['none', 'worktree']) {
+      const tool = {
+        ...requireTool('next_action'),
+        effect: old as unknown as ToolDefinition['effect'],
+      };
+      const problem = only(validateRegistries(replace({ tools: swapTool(tool) })));
+      expect(problem).toMatchObject({ entry: 'next_action', code: 'invalid_effect_class' });
+      expect(problem.message).toContain('read, local_write, network or external_write');
+    }
+  });
+
+  it('rejects a network tool with no idempotency key, as it does an external_write one', () => {
+    const tool: ToolDefinition = {
+      ...requireTool('next_action'),
+      effect: 'network',
+      idempotencyKey: undefined,
+    };
+    const problem = only(validateRegistries(replace({ tools: swapTool(tool) })));
+    expect(problem).toMatchObject({ entry: 'next_action', code: 'missing_idempotency_key' });
+    const keyed: ToolDefinition = { ...tool, idempotencyKey: 'attempt_step' };
+    expect(validateRegistries(replace({ tools: swapTool(keyed) }))).toEqual([]);
+  });
+
   it('rejects a tool with a bad effect class, a missing schema and a bad name', () => {
     const base = requireTool('next_action');
     const tools: ToolDefinition[] = [
       ...OFFICIAL_TOOLS,
-      { ...base, name: 'effect_tool', effect: 'network' as unknown as ToolDefinition['effect'] },
+      { ...base, name: 'effect_tool', effect: 'worktree' as unknown as ToolDefinition['effect'] },
       { ...base, name: 'schema_tool', input: BAD_SCHEMA, output: BAD_SCHEMA },
       { ...base, name: 'Bad-Name' },
     ];

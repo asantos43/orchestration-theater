@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Store } from '@otheater/core';
 import type { DaemonConfig, PlayLimits } from '../config.js';
+import { selectFlow } from '../pipeline/flow-selection.js';
 import type { PlayRunner } from '../pipeline/index.js';
 import type { Workspace } from '../workspace/index.js';
 
@@ -24,7 +25,7 @@ export function limitsOf(config: DaemonConfig): PlayLimits {
 
 /** What opening a play needs: the part of the runtime the Director's `open_play` also uses. */
 export interface PlayOpening {
-  readonly store: Pick<Store, 'scenarioRepos'>;
+  readonly store: Pick<Store, 'scenarios' | 'scenarioRepos'>;
   readonly runner: Pick<PlayRunner, 'create' | 'send'>;
   /** `undefined` while the daemon has no code host. */
   readonly workspace: Pick<Workspace, 'createPlayBase'> | undefined;
@@ -35,7 +36,7 @@ export type OpenedPlay =
   | { readonly ok: true; readonly playId: string }
   | {
       readonly ok: false;
-      readonly code: 'no_code_host' | 'no_repository';
+      readonly code: 'no_code_host' | 'no_repository' | 'invalid_flow';
       readonly message: string;
     };
 
@@ -65,13 +66,21 @@ export async function openPlayFromNeed(
       message: 'The scenario has no repository to work on.',
     };
   }
+  // [proposta] P12: the flow the play runs, fixed now; an unknown or invalid choice refuses the play
+  const selection = await selectFlow(
+    { config: opening.config, scenarios: opening.store.scenarios },
+    scenarioId,
+    limitsOf(opening.config),
+  );
+  if (!selection.ok) return { ok: false, code: 'invalid_flow', message: selection.message };
   // [proposta] ids of plays: a short random suffix (a valid branch name, unique enough).
   const playId = `play-${randomUUID().slice(0, 8)}`;
   await opening.runner.create({
     playId,
     scenarioId,
     need,
-    limits: limitsOf(opening.config),
+    limits: selection.limits,
+    flow: selection.flow,
   });
   await opening.workspace.createPlayBase({ repo: repo.path, playId, base: repo.mainBranch });
   await opening.runner.send(playId, { type: 'START' });

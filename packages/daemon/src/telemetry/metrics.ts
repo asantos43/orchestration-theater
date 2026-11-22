@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Clock, Store, TelemetryStore, UsageRecord } from '@otheater/core';
+import { TELEMETRY_BATCH_REJECT_REASONS } from '@otheater/protocol';
 import type { PoolStats } from '../execution/pool.js';
 import type { Logger } from '../logger.js';
 import { BUDGET_HIT_WINDOW, LIMIT_HIT_WINDOW } from '../quota/state.js';
 import type { EventMetrics } from './metrics-events.js';
 import type { OtlpExporterStats } from './otlp-exporter.js';
+import type { TelemetryReceiverStats } from './receiver.js';
+import type { UpdateCounters } from '../updates/checker.js';
 import { renderPrometheus, type MetricFamily, type MetricSample } from './prometheus.js';
 
 /**
@@ -12,8 +15,13 @@ import { renderPrometheus, type MetricFamily, type MetricSample } from './promet
  * daemon already has: the last quota readings, the usage table, the session pool and the prompt
  * queue, the health of the telemetry base and the counters of {@link EventMetrics}. A source that
  * fails is left out of that scrape (and said at `debug`): one broken table never makes the whole
- * answer an error. What has no source is not made up (see the report of the step): the wait for an
- * Executor and the batches the receiver refused have no counter in the daemon today.
+ * answer an error. What has no source is not made up.
+ *
+ * Phase 9, P2 (N225 (2) and (3)) added three metrics of the waits, which {@link EventMetrics} derives
+ * from `wait.started` and `wait.ended` (so only a wait past `events.wait_threshold` is counted), and
+ * one of the batches the receiver refused, by reason, read from its `stats`. What is still left out
+ * is the wait of the selection of an Executor itself (`demand.waiting`, `scenario.director_waiting`),
+ * which has events of its own and not `wait.*`: see the report of the step.
  *
  * - Labels never carry an e-mail or an account id. The profile goes by its name, the client by its
  *   adapter id, the Executor by its id (`<model>[-<effort>]@<client>/<profile>`).
@@ -26,11 +34,24 @@ export interface MetricsSources {
   readonly store: Pick<Store, 'quotaSnapshots' | 'usage' | 'promptQueue'>;
   /** `execution.pool.stats()`; `undefined` while there is no execution (no clients). */
   readonly pool: () => PoolStats | undefined;
-  readonly events: Pick<EventMetrics, 'attempts' | 'resumes' | 'failures'>;
+  readonly events: Pick<
+    EventMetrics,
+    'attempts' | 'resumes' | 'failures' | 'waits' | 'waitSeconds' | 'waitsActive'
+  >;
   /** The telemetry base; `undefined` when telemetry is off. */
   readonly telemetry?: Pick<TelemetryStore, 'health'> | undefined;
   /** What the OTLP exporter dropped; `undefined` when it is not running. */
   readonly exporter?: (() => OtlpExporterStats | undefined) | undefined;
+  /** What the OTLP receiver took and refused; `undefined` when it is not running. */
+  readonly receiver?: (() => Pick<TelemetryReceiverStats, 'rejected'> | undefined) | undefined;
+  /** The searches for updates and the versions refused (P7 of Phase 10); `undefined` when there is no service. */
+  readonly updates?: (() => UpdateCounters | undefined) | undefined;
+  /**
+   * What `plugins.event_rate` dropped since the daemon started, by plugin (N243 item 67); `undefined`
+   * leaves the metric out.
+   */
+  readonly pluginEventsDropped?:
+    (() => readonly { readonly plugin: string; readonly dropped: number }[]) | undefined;
   /** `telemetry.prometheus.cache_ttl` in ms. */
   readonly cacheTtl: number;
   readonly logger: Pick<Logger, 'debug'>;
@@ -88,7 +109,11 @@ export class MetricsCollector {
       () => this.#usageFamilies(),
       () => this.#queues(),
       () => this.#events(),
+      () => this.#waits(),
       () => this.#dropped(),
+      () => this.#batches(),
+      () => this.#updates(),
+      () => this.#pluginEvents(),
     ]) {
       try {
         families.push(...(await part()));
@@ -174,6 +199,79 @@ export class MetricsCollector {
         'Sessions interrupted by a failure since the daemon started, by Executor and cause.',
         'counter',
         from(this.#o.events.failures()),
+      ),
+    ];
+  }
+
+  #waits(): MetricFamily[] {
+    const from = (counts: readonly { labels: Record<string, string>; value: number }[]) =>
+      counts.map((count) => ({ labels: count.labels, value: count.value }));
+    return [
+      family(
+        'otheater_waits_active',
+        'Waits past events.wait_threshold that are going on, by kind (a prompt queued for the Director, a session queued for the pool).',
+        'gauge',
+        from(this.#o.events.waitsActive()),
+      ),
+      family(
+        'otheater_waits_total',
+        'Waits past events.wait_threshold that ended since the daemon started, by kind and outcome.',
+        'counter',
+        from(this.#o.events.waits()),
+      ),
+      family(
+        'otheater_wait_seconds_total',
+        'Seconds waited by the waits past events.wait_threshold that ended since the daemon started, by kind (the whole wait, from its start).',
+        'counter',
+        from(this.#o.events.waitSeconds()),
+      ),
+    ];
+  }
+
+  #batches(): MetricFamily[] {
+    const rejected = this.#o.receiver?.()?.rejected;
+    if (rejected === undefined) return [];
+    return [
+      family(
+        'otheater_telemetry_batches_rejected_total',
+        'Batches the OTLP receiver refused since the daemon started, by reason (format, size, token).',
+        'counter',
+        TELEMETRY_BATCH_REJECT_REASONS.map((reason) => ({
+          labels: { reason },
+          value: rejected[reason],
+        })),
+      ),
+    ];
+  }
+
+  #updates(): MetricFamily[] {
+    const counters = this.#o.updates?.();
+    if (counters === undefined) return [];
+    return [
+      family(
+        'otheater_updates_checks_total',
+        'Searches for a new version since the daemon started, by result (up_to_date, found, ready, rejected, skipped, failed).',
+        'counter',
+        Object.entries(counters.checks).map(([result, value]) => ({ labels: { result }, value })),
+      ),
+      family(
+        'otheater_updates_rejected_total',
+        'Versions refused since the daemon started, by reason (signature, sha256, size, version_not_newer, wrong_channel, bad_manifest).',
+        'counter',
+        Object.entries(counters.rejected).map(([reason, value]) => ({ labels: { reason }, value })),
+      ),
+    ];
+  }
+
+  #pluginEvents(): MetricFamily[] {
+    const dropped = this.#o.pluginEventsDropped?.();
+    if (dropped === undefined) return [];
+    return [
+      family(
+        'otheater_plugin_events_dropped_total',
+        'Events and refusals of a plugin dropped since the daemon started because the plugin passed plugins.event_rate, by plugin.',
+        'counter',
+        dropped.map((item) => ({ labels: { plugin: item.plugin }, value: item.dropped })),
       ),
     ];
   }

@@ -37,6 +37,14 @@ export interface DragInfo {
 
 /** What a target does. A target with none of these is not hit. */
 export interface TargetHandlers {
+  /**
+   * A press (the button going down) anywhere in the visible box of the target. It is not exclusive:
+   * it does not take part in the choice of the smallest target and does not start a gesture, so the
+   * click, the drag and the selection of the target under the pointer go on as if it was not there.
+   * It is how an area learns it was pressed (to take the focus) while what is inside still gets
+   * the click. It runs before the gesture starts, so the drag of an edge has the last word.
+   */
+  readonly onPress?: ((point: LocalPoint) => void) | undefined;
   /** A press and a release on the same target, with no move between. */
   readonly onClick?: ((point: LocalPoint) => void) | undefined;
   /** `lines` is positive for a notch down (toward the end of a list) and negative for a notch up. */
@@ -242,9 +250,24 @@ export class MouseRegistry {
     );
   }
 
+  /** Tells every target that has `onPress` and shows the cell that it was pressed. */
+  #announcePress(col: number, row: number): void {
+    for (const target of [...this.#targets.values()]) {
+      if (this.#modals > 0 && !target.modal) continue;
+      const onPress = target.handlers.current.onPress;
+      if (onPress === undefined) continue;
+      const node = target.node();
+      if (node === null || node === undefined) continue;
+      const box = measureBox(node);
+      if (box === undefined || !contains(box.visible, col, row)) continue;
+      onPress(this.#local(box.full, col, row));
+    }
+  }
+
   #press(event: MouseEvent): void {
     this.#setSelection(undefined);
     this.#gesture = undefined;
+    this.#announcePress(event.col, event.row);
     const hit = this.#hit(
       event.col,
       event.row,

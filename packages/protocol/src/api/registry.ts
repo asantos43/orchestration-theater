@@ -18,12 +18,15 @@ import { EXECUTOR_ROUTES } from './executors.js';
 import { IDEA_ROUTES } from './ideas.js';
 import { ORDER_ROUTES } from './orders.js';
 import { PLAY_ROUTES } from './plays.js';
+import { PLUGIN_ROUTES } from './plugins.js';
 import { PROFILE_ROUTES } from './profiles.js';
 import { SCENARIO_ROUTES } from './scenarios.js';
 import { SETUP_ROUTES } from './setup.js';
 import { TELEMETRY_ROUTES } from './telemetry.js';
 import { TRAJECTORY_ROUTES } from './trajectories.js';
 import { USAGE_ROUTES } from './usage.js';
+import { HEALTH_ROUTES } from './health.js';
+import { UPDATE_ROUTES } from './updates.js';
 
 /**
  * Every route of the daemon API, keyed by `id`. A resource keeps its routes in its own file of
@@ -47,6 +50,7 @@ export const API_ROUTES = {
   ...IDEA_ROUTES,
   ...ORDER_ROUTES,
   ...PLAY_ROUTES,
+  ...PLUGIN_ROUTES,
   ...PROFILE_ROUTES,
   ...SCENARIO_ROUTES,
   ...SETUP_ROUTES,
@@ -56,6 +60,8 @@ export const API_ROUTES = {
   ...ATIF_ROUTES,
   ...ANALYSIS_ROUTES,
   ...TELEMETRY_ROUTES,
+  ...UPDATE_ROUTES,
+  ...HEALTH_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

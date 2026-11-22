@@ -8,13 +8,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin/index.d.ts",
+      "default": "./dist/plugin/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@otheater/core": "workspace:*"
+    "@modelcontextprotocol/server": "2.4.0",
+    "@otheater/core": "workspace:*",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "vitest": "^5.1.0"

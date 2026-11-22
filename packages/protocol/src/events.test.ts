@@ -82,6 +82,7 @@ describe('daemon event registry', () => {
       'scenario.attachment_added',
       'scenario.director_slept',
       'scenario.director_woke',
+      'scenario.director_switched',
       'scenario.chat_transitioned',
       'scenario.system_message',
       'quota.updated',
@@ -159,6 +160,18 @@ describe('daemon event registry', () => {
       'demand.transitioned',
       'atif.exported',
       'atif.export_failed',
+      'plugin.installed',
+      'plugin.removed',
+      'plugin.enabled',
+      'plugin.disabled',
+      'plugin.server_started',
+      'plugin.server_stopped',
+      'plugin.server_failed',
+      'plugin.tool_rejected',
+      'plugin.event_rejected',
+      'plugin.secret_missing',
+      'plugin.panel_truncated',
+      'daemon.update',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

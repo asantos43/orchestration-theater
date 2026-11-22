@@ -37,6 +37,7 @@ import {
 } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
+import { withPluginTools } from '../plugins/permissions.js';
 import { TerminalRecorder, type TerminalBlock } from './terminal-recorder.js';
 import { CheckpointTracker } from './checkpoints.js';
 import {
@@ -427,6 +428,8 @@ export class AttemptRunner {
   /** The profiles released (P21) and how: a go that would open a session on one does not. */
   readonly #leaving = new Map<string, 'handoff' | 'force'>();
   #stopping = false;
+  /** While set, a new attempt (`run` or `resume`) waits here (Phase 10, P8: the daemon waits to update). */
+  #updateHold: { readonly gate: Promise<void>; readonly open: () => void } | undefined;
 
   constructor(options: AttemptRunnerOptions) {
     this.#options = options;
@@ -435,6 +438,33 @@ export class AttemptRunner {
   /** Attempts in progress. */
   get active(): number {
     return this.#running.size;
+  }
+
+  /**
+   * Holds back new work (Phase 10, P8; `updates.apply_when: idle`): an attempt that has not begun
+   * waits for {@link release} before it creates its worktree; the ones in progress go on to their
+   * end. Idempotent. A stop releases it, and the attempts that were waiting then fail as they
+   * do after any stop.
+   */
+  hold(): void {
+    if (this.#updateHold !== undefined) return;
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    this.#updateHold = { gate, open };
+  }
+
+  /** Lets the attempts that waited for {@link hold} begin. Idempotent. */
+  release(): void {
+    const hold = this.#updateHold;
+    this.#updateHold = undefined;
+    hold?.open();
+  }
+
+  /** True while {@link hold} is on. */
+  get held(): boolean {
+    return this.#updateHold !== undefined;
   }
 
   /**
@@ -604,6 +634,7 @@ export class AttemptRunner {
 
   /** Creates the worktree and the branch of the attempt and runs it to its end. */
   async run(spec: AttemptSpec): Promise<AttemptOutcome> {
+    await this.#updateHold?.gate;
     this.#assertOpen();
     const attemptId = attemptIdOf(spec.playId, spec.demandId, spec.attempt);
     const branch = attemptBranch(spec.playId, spec.demandId, spec.attempt);
@@ -651,6 +682,7 @@ export class AttemptRunner {
    * there is nothing to reload: the attempt is marked and the outcome says it needs a decision.
    */
   async resume(record: AttemptRecord, resolved: ResumeContext): Promise<AttemptOutcome> {
+    await this.#updateHold?.gate;
     this.#assertOpen();
     const waiting = record.state === 'awaiting_resume' && isResetWaitCause(record.cause);
     // P21b: the profile of the session was removed (`force`); its conversation is not loaded again.
@@ -770,6 +802,7 @@ export class AttemptRunner {
    */
   async stop(): Promise<void> {
     this.#stopping = true;
+    this.release();
     const all = [...this.#running.values()];
     for (const { context } of all) context.stop.abort();
     await Promise.allSettled(all.map((entry) => entry.done));
@@ -1072,13 +1105,14 @@ export class AttemptRunner {
     if (context.request !== undefined) return this.#haltEnded(context, true);
     // A new token for each go, also for the reload of a conversation (`session/load`): the MCP
     // servers of a session are the ones of the call that opens it, so the old token is gone.
-    const grant = this.#grant(context);
+    const { policy, pluginTools } = await this.#withPluginTools(context);
+    const grant = this.#grant(context, policy, pluginTools);
     let lease: SessionLease;
     try {
       lease = await pool.acquire({
         client: spec.profile.client,
         profile: spec.profile,
-        policy: spec.policy,
+        policy,
         cwd: context.worktree,
         correlation: {
           playId: spec.playId,
@@ -1193,20 +1227,64 @@ export class AttemptRunner {
   }
 
   /**
+   * The policy of the go with the plugin tools its role may call (P6): the roles of the manifests
+   * and the effects against this policy, from the server (`McpAccess.pluginTools`). The names go
+   * into the `mcpTools` of the framework server, which layers 1 and 2 of the three adapters read,
+   * and into the grant. A policy that does not list the server, an attempt with no role, or a
+   * server that does not know plugins leave the policy as it is.
+   */
+  async #withPluginTools(
+    context: AttemptContext,
+  ): Promise<{ policy: RolePolicy; pluginTools: readonly string[] }> {
+    const { mcp } = this.#options;
+    const { spec } = context;
+    if (
+      mcp?.pluginTools === undefined ||
+      spec.role === undefined ||
+      !spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)
+    ) {
+      return { policy: spec.policy, pluginTools: [] };
+    }
+    try {
+      const pluginTools = await mcp.pluginTools({
+        role: spec.role,
+        correlation: this.#correlation(context),
+        policy: spec.policy,
+      });
+      return {
+        policy: withPluginTools(spec.policy, FRAMEWORK_MCP_NAME, pluginTools),
+        pluginTools,
+      };
+    } catch (error) {
+      // No plugin tool for this go; the framework tools and the session are not at stake.
+      this.#options.logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'plugin tool permissions could not be worked out',
+      );
+      return { policy: spec.policy, pluginTools: [] };
+    }
+  }
+
+  /**
    * The door of the framework MCP server for one go of an attempt (architecture 5.3). There is one
    * only when the daemon runs the server, the attempt has a role and the policy of the role lists
    * the server (`policy.mcpServers` has `otheater`); otherwise the session runs without it.
    */
-  #grant(context: AttemptContext): McpGrant | undefined {
+  #grant(
+    context: AttemptContext,
+    policy: RolePolicy,
+    pluginTools: readonly string[],
+  ): McpGrant | undefined {
     const { mcp } = this.#options;
     const { spec } = context;
     if (mcp === undefined || spec.role === undefined) return undefined;
-    if (!spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
-    const tools = mcpToolsOf(spec.policy, FRAMEWORK_MCP_NAME);
+    if (!policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
+    const tools = mcpToolsOf(policy, FRAMEWORK_MCP_NAME);
     return mcp.grant({
       attemptId: context.attemptId,
       role: spec.role,
       ...(tools === 'all' ? {} : { tools }),
+      ...(mcp.pluginTools === undefined ? {} : { pluginTools }),
       correlation: this.#correlation(context),
       worktree: context.worktree,
       networkAllow: spec.policy.network.allow,

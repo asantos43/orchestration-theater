@@ -129,6 +129,7 @@ import {
   ScenarioSystemMessagePayloadSchema,
   ScenarioCreatedPayloadSchema,
   ScenarioDirectorSleptPayloadSchema,
+  ScenarioDirectorSwitchedPayloadSchema,
   ScenarioDirectorWokePayloadSchema,
   PlayNoticePayloadSchema,
 } from './scenario-events.js';
@@ -162,6 +163,20 @@ import {
 } from './browser-events.js';
 import { TerminalOutputPayloadSchema } from './terminal-events.js';
 import { WaitEndedPayloadSchema, WaitStartedPayloadSchema } from './wait-events.js';
+import {
+  PluginDisabledPayloadSchema,
+  PluginEnabledPayloadSchema,
+  PluginEventRejectedPayloadSchema,
+  PluginInstalledPayloadSchema,
+  PluginPanelTruncatedPayloadSchema,
+  PluginRemovedPayloadSchema,
+  PluginSecretMissingPayloadSchema,
+  PluginServerFailedPayloadSchema,
+  PluginServerStartedPayloadSchema,
+  PluginServerStoppedPayloadSchema,
+  PluginToolRejectedPayloadSchema,
+} from './plugin-events.js';
+import { DaemonUpdatePayloadSchema } from './update-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -534,6 +549,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ScenarioDirectorWokePayloadSchema,
   }),
   defineEventType({
+    type: 'scenario.director_switched',
+    schemaVersion: 1,
+    payload: ScenarioDirectorSwitchedPayloadSchema,
+  }),
+  defineEventType({
     type: 'scenario.chat_transitioned',
     schemaVersion: 1,
     payload: ScenarioChatTransitionedPayloadSchema,
@@ -902,6 +922,66 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: AtifExportFailedPayloadSchema,
   }),
+  defineEventType({
+    type: 'plugin.installed',
+    schemaVersion: 1,
+    payload: PluginInstalledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.removed',
+    schemaVersion: 1,
+    payload: PluginRemovedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.enabled',
+    schemaVersion: 1,
+    payload: PluginEnabledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.disabled',
+    schemaVersion: 1,
+    payload: PluginDisabledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_started',
+    schemaVersion: 1,
+    payload: PluginServerStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_stopped',
+    schemaVersion: 1,
+    payload: PluginServerStoppedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_failed',
+    schemaVersion: 1,
+    payload: PluginServerFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.tool_rejected',
+    schemaVersion: 1,
+    payload: PluginToolRejectedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.event_rejected',
+    schemaVersion: 1,
+    payload: PluginEventRejectedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.secret_missing',
+    schemaVersion: 1,
+    payload: PluginSecretMissingPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.panel_truncated',
+    schemaVersion: 1,
+    payload: PluginPanelTruncatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'daemon.update',
+    schemaVersion: 1,
+    payload: DaemonUpdatePayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -988,6 +1068,7 @@ export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
 export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];
+export type ScenarioDirectorSwitchedPayload = DaemonEventPayloads['scenario.director_switched'];
 export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat_transitioned'];
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 export type ScenarioRecoveryNotice = Extract<ScenarioSystemMessagePayload, { kind: 'recovery' }>;
@@ -996,6 +1077,10 @@ export type ScenarioResetWaitNotice = Extract<ScenarioSystemMessagePayload, { ki
 export type ScenarioDirectorFailoverNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'director_failover' }
+>;
+export type ScenarioDirectorSwitchNotice = Extract<
+  ScenarioSystemMessagePayload,
+  { kind: 'director_switch' }
 >;
 export type ScenarioSelectionWaitNotice = Extract<
   ScenarioSystemMessagePayload,

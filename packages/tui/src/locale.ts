@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSeaProcess, readSeaAsset } from '@otheater/client/node';
 import i18next, { type i18n as I18nInstance, type Resource } from 'i18next';
 import type { LocaleSetting } from './settings.js';
 
@@ -59,13 +60,18 @@ export function defaultLocalesDir(from: string = import.meta.url): string {
  * TODO(P7): replace with `loadUiCatalogs` of `@otheater/client/node`, which P7 adds and which reads
  * the same files. This one reads `locales/<lang>/tui.json` straight from the disk.
  */
-export function loadTuiCatalogs(localesDir: string = defaultLocalesDir()): Resource {
+export function loadTuiCatalogs(localesDir?: string): Resource {
+  // In the single executable (Phase 10, P1) the catalogs are assets, not files; an explicit folder
+  // (a test, a custom install) still wins.
+  const fromAssets = localesDir === undefined && isSeaProcess();
+  const folder = localesDir ?? (fromAssets ? '' : defaultLocalesDir());
   const resources: Resource = {};
   for (const locale of LOCALES) {
-    const file = join(localesDir, locale, `${TUI_NAMESPACE}.json`);
-    resources[locale] = {
-      [TUI_NAMESPACE]: JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>,
-    };
+    const text = fromAssets
+      ? readSeaAsset(`locales/${locale}/${TUI_NAMESPACE}.json`)
+      : readFileSync(join(folder, locale, `${TUI_NAMESPACE}.json`), 'utf8');
+    if (text === undefined) throw new Error(`The executable has no catalog for ${locale}`);
+    resources[locale] = { [TUI_NAMESPACE]: JSON.parse(text) as Record<string, unknown> };
   }
   return resources;
 }

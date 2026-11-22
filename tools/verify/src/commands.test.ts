@@ -10,6 +10,7 @@ import {
   type CommandContext,
   type CommandName,
 } from './commands.js';
+import { hostPlatform, PLATFORM_IDS } from './lockfile.js';
 import { NOTICES_PLATFORM } from './notices.js';
 import { cleanupTemp, makeTemp, REPOSITORY_ROOT, writeTree } from './test-helpers.js';
 
@@ -55,7 +56,7 @@ function pnpmOutput(
 const NO_JSON = { json: undefined, check: false };
 
 describe('commands', () => {
-  it('lists the six subcommands', () => {
+  it('lists the subcommands', () => {
     expect([...COMMANDS]).toEqual([
       'licenses',
       'notices',
@@ -63,6 +64,7 @@ describe('commands', () => {
       'credentials',
       'catalogs',
       'deps',
+      'adapter-locks',
     ]);
   });
 
@@ -144,6 +146,121 @@ describe('commands', () => {
     );
   });
 
+  describe('notices --platform', () => {
+    const LOCKFILE = `lockfileVersion: '9.0'
+
+packages:
+
+  '@n/keyring-linux-x64-gnu@1.0.0':
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@n/keyring-win32-x64-msvc@1.0.0':
+    cpu: [x64]
+    os: [win32]
+
+  '@n/keyring-darwin-arm64@1.0.0':
+    cpu: [arm64]
+    os: [darwin]
+
+snapshots:
+
+  '@n/keyring@1.0.0':
+    optionalDependencies:
+      '@n/keyring-darwin-arm64': 1.0.0
+      '@n/keyring-linux-x64-gnu': 1.0.0
+      '@n/keyring-win32-x64-msvc': 1.0.0
+`;
+    const METAFILE = JSON.stringify({
+      inputs: {
+        'node_modules/.pnpm/plain@1.0.0/node_modules/plain/index.js': {},
+        'node_modules/.pnpm/@n+keyring@1.0.0/node_modules/@n/keyring/index.js': {},
+        'packages/daemon/src/main.ts': {},
+      },
+    });
+
+    function platformRoot(): { root: string; exec: ExecFn } {
+      const make = (dir: string, files: Record<string, string>): string => {
+        const full = path.join(makeTemp('otheater-pkg-'), dir);
+        writeTree(full, files);
+        return full;
+      };
+      const plain = make('plain', { LICENSE: 'Plain license text', 'package.json': '{}' });
+      const keyring = make('keyring', { LICENSE: 'Keyring license text', 'package.json': '{}' });
+      const root = fixtureRoot({
+        'pnpm-lock.yaml': LOCKFILE,
+        'metafile.json': METAFILE,
+        'native/job-launcher/THIRD_PARTY_NOTICES.md': 'launcher crates\n',
+      });
+      const exec = pnpmOutput(
+        { plain: { license: 'MIT', dir: plain }, '@n/keyring': { license: 'MIT', dir: keyring } },
+        'prod',
+      );
+      return { root, exec };
+    }
+
+    // A platform other than the machine's, so the test does not depend on the CI host.
+    const foreign = PLATFORM_IDS.find((id) => id !== hostPlatform()) ?? 'win32-x64';
+
+    it('writes the file of the platform, then --check passes; a missing package makes --check fail', async () => {
+      const { root, exec } = platformRoot();
+      const { ctx, output } = context(root, exec);
+      const out = path.join(root, 'out', `THIRD_PARTY_NOTICES-${foreign}.md`);
+      const options = {
+        ...NO_JSON,
+        platform: foreign,
+        metafile: path.join(root, 'metafile.json'),
+        out,
+      };
+      expect(await runCommand('notices', ctx, { ...options, check: true })).toBe(1);
+      expect(await runCommand('notices', ctx, options)).toBe(0);
+      const text = readFileSync(out, 'utf8');
+      expect(text).toContain(`# Third-party notices (${foreign})`);
+      expect(text).toContain('### plain@1.0.0');
+      expect(text).toContain('### @n/keyring@1.0.0');
+      expect(text).toContain('Plain license text');
+      expect(output.join('\n')).toContain('derived from the lockfile');
+      expect(await runCommand('notices', ctx, { ...options, check: true })).toBe(0);
+      // A package that goes missing from the file is caught, whatever the machine.
+      writeFileSync(out, text.replace(/### plain@1\.0\.0[\s\S]*?(?=\n### |\n## )/, ''));
+      const result = await runCommand('notices', ctx, { ...options, check: true });
+      expect(result).toBe(1);
+      expect(output.join('\n')).toContain('package missing from the file: plain@1.0.0');
+    });
+
+    it('--platform windows has the launcher section, the others do not', async () => {
+      const { root, exec } = platformRoot();
+      const { ctx } = context(root, exec);
+      const outFor = (platform: string): string => path.join(root, 'out', `${platform}.md`);
+      for (const platform of ['win32-x64', 'darwin-arm64']) {
+        const options = {
+          ...NO_JSON,
+          platform,
+          metafile: path.join(root, 'metafile.json'),
+          out: outFor(platform),
+        };
+        expect(await runCommand('notices', ctx, options)).toBe(0);
+        const text = readFileSync(outFor(platform), 'utf8');
+        expect(text.includes('Windows job launcher')).toBe(platform === 'win32-x64');
+        expect(text.includes('@n/keyring-win32-x64-msvc')).toBe(platform === 'win32-x64');
+        expect(text.includes('@n/keyring-darwin-arm64')).toBe(platform === 'darwin-arm64');
+        expect(text).not.toContain('@n/keyring-linux-x64-gnu');
+      }
+    });
+
+    it('refuses an unknown platform and --metafile or --out without --platform', async () => {
+      const { root } = platformRoot();
+      const { ctx } = context(root, () => Promise.resolve('No licenses in packages found'));
+      await expect(
+        runCommand('notices', ctx, { ...NO_JSON, platform: 'linux-arm64' }),
+      ).rejects.toBeInstanceOf(UsageError);
+      await expect(runCommand('notices', ctx, { ...NO_JSON, out: 'x.md' })).rejects.toBeInstanceOf(
+        UsageError,
+      );
+    });
+  });
+
   it('catalogs: the fixture without locales fails, with matching locales passes', async () => {
     const empty = context(fixtureRoot(), () => Promise.resolve(''));
     expect(await runCommand('catalogs', empty.ctx, NO_JSON)).toBe(1);
@@ -167,6 +284,6 @@ describe('commands', () => {
 
   it('every command name is dispatched', () => {
     const names: CommandName[] = [...COMMANDS];
-    expect(names).toHaveLength(6);
+    expect(names).toHaveLength(7);
   });
 });

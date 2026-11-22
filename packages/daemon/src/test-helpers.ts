@@ -16,7 +16,7 @@ import {
 } from '@otheater/core';
 import pino, { type Logger } from 'pino';
 import type { DaemonEventPayloads, DaemonEventType } from '@otheater/protocol';
-import { probeSandbox } from './compose.js';
+import { chooseLauncher, probeSandbox } from './compose.js';
 import type { SituationCorrelation, SituationSink } from './situations.js';
 
 /**
@@ -25,21 +25,30 @@ import type { SituationCorrelation, SituationSink } from './situations.js';
  * `daemon.notice` (no client) and, where layer 3 is missing (Windows, 5.9), first the
  * `sandbox_unavailable` of the composition, which the log writes before the API starts. With the
  * default config the `telemetry.receiver_started` of the OTLP receiver (P2 of Phase 8) comes
- * after the composition and before the API.
+ * after the composition and before the API. On Windows without `ot-job-launcher.exe` (Phase 10, P2;
+ * the cross job of the CI does not build it), the `windows_launcher_not_found` notice comes first.
  */
 export async function startNotices(): Promise<
   ('api.started' | 'daemon.notice' | 'telemetry.receiver_started')[]
 > {
   const layer3 = await probeSandbox();
+  const launcher =
+    chooseLauncher({ windows_launcher: 'auto', windows_shims: 'resolve' }).fallback === undefined
+      ? []
+      : (['daemon.notice'] as const);
   return layer3.ok
-    ? ['telemetry.receiver_started', 'api.started', 'daemon.notice']
-    : ['daemon.notice', 'telemetry.receiver_started', 'api.started', 'daemon.notice'];
+    ? [...launcher, 'telemetry.receiver_started', 'api.started', 'daemon.notice']
+    : [...launcher, 'daemon.notice', 'telemetry.receiver_started', 'api.started', 'daemon.notice'];
 }
 
 /** A temporary data directory removed by `dispose()`. Never the real one. */
 export async function makeTempDataDir(): Promise<{ dir: string; dispose: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), 'otheater-daemon-'));
-  return { dir, dispose: () => rm(dir, { recursive: true, force: true }) };
+  // A managed-adapter install that fails offline may still be tidying its temporary files.
+  return {
+    dir,
+    dispose: () => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }),
+  };
 }
 
 /** A profile and a policy of the fake client, for the tests of the execution of sessions. */

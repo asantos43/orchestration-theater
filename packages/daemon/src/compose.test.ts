@@ -8,9 +8,22 @@ import {
   type Sandbox,
   type SandboxAvailability,
 } from '@otheater/core';
-import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
+import {
+  FakeClock,
+  FakeProcessLauncher,
+  InMemorySecretVault,
+  InMemoryStore,
+} from '@otheater/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { checkAdapterRange, compose, composeClock } from './compose.js';
+import {
+  assertRealKeyringAllowed,
+  checkAdapterRange,
+  chooseLauncher,
+  compose,
+  composeClock,
+  composeVault,
+  type LauncherChoiceDeps,
+} from './compose.js';
 import { parseConfig } from './config.js';
 import { buildDaemonRegistries } from './registries.js';
 import { makeTempDataDir } from './test-helpers.js';
@@ -46,6 +59,44 @@ describe('checkAdapterRange', () => {
     const run = (): unknown => checkAdapterRange(adapter('Store', '^0.2.0'), 'Store', '0.1.0');
     expect(run).toThrow(AdapterUnavailable);
     expect(run).toThrow(/Store version 0\.1\.0.*\^0\.2\.0/);
+  });
+});
+
+describe('the guard against the real keyring under the test runner (item 64)', () => {
+  it('refuses the real keyring when VITEST is set and OT_TEST_KEYRING is not 1', () => {
+    for (const env of [{ VITEST: 'true' }, { VITEST: '1', OT_TEST_KEYRING: '0' }]) {
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(InvalidInput);
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(/real keyring.*test runner/);
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(/OT_TEST_KEYRING=1/);
+    }
+  });
+
+  it('lets it through outside the test runner, and in the run that tests the keyring', () => {
+    expect(() => {
+      assertRealKeyringAllowed({});
+    }).not.toThrow();
+    expect(() => {
+      assertRealKeyringAllowed({ VITEST: '' });
+    }).not.toThrow();
+    expect(() => {
+      assertRealKeyringAllowed({ VITEST: 'true', OT_TEST_KEYRING: '1' });
+    }).not.toThrow();
+  });
+
+  it('composeVault refuses the default (keyring) here, before any keyring is built', () => {
+    // This suite runs under vitest, without OT_TEST_KEYRING: the default config reaches the guard.
+    const config = parseConfig('');
+    expect(config.adapters.vault).toBe('keyring');
+    expect(() => composeVault(config, '/nonexistent-data-dir')).toThrow(/real keyring/);
+    // A vault handed in, as the tests do, never reaches it.
+    const vault = new InMemorySecretVault();
+    expect(composeVault(config, '/nonexistent-data-dir', { vault }).vault).toBe(vault);
   });
 });
 
@@ -141,12 +192,16 @@ describe('compose', () => {
 
   it('names the full key when an adapter section has an unknown or bad value', async () => {
     const tmp = await makeTempDataDir();
+    const vault = new InMemorySecretVault(); // never the real keyring (item 64)
     try {
       await expect(
-        compose(parseConfig('store:\n  bogus: 1\n'), { dataDir: tmp.dir }),
+        compose(parseConfig('store:\n  bogus: 1\n'), { dataDir: tmp.dir, overrides: { vault } }),
       ).rejects.toThrow(/store\.bogus|store\..*bogus/);
       await expect(
-        compose(parseConfig('store:\n  driver: nope\n'), { dataDir: tmp.dir }),
+        compose(parseConfig('store:\n  driver: nope\n'), {
+          dataDir: tmp.dir,
+          overrides: { vault },
+        }),
       ).rejects.toThrow(/store\.driver/);
     } finally {
       await tmp.dispose();
@@ -331,13 +386,20 @@ describe('compose: layer 3 (the sandbox)', () => {
     }
   });
 
-  /** What the daemon wrote as `daemon.notice` after the sink opened (P24, N146). */
+  /**
+   * What the daemon wrote as `daemon.notice` after the sink opened (P24, N146), without the
+   * `windows_launcher_not_found` of a Windows host where `ot-job-launcher.exe` was not built (the
+   * cross job of the CI): that notice is the launcher's, not the sandbox's.
+   */
   async function noticesOf(composition: Awaited<ReturnType<typeof composed>>['composition']) {
     composition.situations.open();
     await composition.situations.idle();
     return (await composition.store.events.readFrom(0, 1000))
       .filter((event) => event.type === 'daemon.notice')
-      .map((event) => event.payload);
+      .map((event) => event.payload)
+      .filter(
+        (payload) => (payload as { subject?: string }).subject !== 'windows_launcher_not_found',
+      );
   }
 
   it('daemon.notice sandbox_unavailable: the missing layer 3 is also an event, with the reason (P24, N146)', async () => {
@@ -410,5 +472,185 @@ describe('composeClock', () => {
     const fake = new FakeClock(7);
     expect(composeClock({ clock: fake })).toBe(fake);
     expect(Math.abs(composeClock().now() - Date.now())).toBeLessThan(5000);
+  });
+});
+
+describe('chooseLauncher (processes.windows_launcher, Phase 10 P2)', () => {
+  const FOUND = 'C:\\ot\\ot-job-launcher.exe';
+  const exe = 'C:\\ot\\ot.exe';
+  const win = (exists: readonly string[], extra: Partial<LauncherChoiceDeps> = {}) => {
+    const built: string[] = [];
+    const deps: LauncherChoiceDeps = {
+      platform: 'win32',
+      execPath: exe,
+      checkoutRoots: [],
+      exists: (path) => exists.includes(path),
+      createWindows: (path) => {
+        built.push(path);
+        return new FakeProcessLauncher();
+      },
+      ...extra,
+    };
+    return { deps, built };
+  };
+  const settings = (config: string) => parseConfig(config).processes;
+
+  it('has auto as the default and takes job_object, off and an absolute path', () => {
+    expect(settings('')).toEqual({ windows_launcher: 'auto', windows_shims: 'resolve' });
+    expect(
+      settings(
+        'processes:\n  windows_launcher: job_object\n  windows_launcher_path: D:\\x\\l.exe\n',
+      ),
+    ).toEqual({
+      windows_launcher: 'job_object',
+      windows_launcher_path: 'D:\\x\\l.exe',
+      windows_shims: 'resolve',
+    });
+    expect(settings('processes:\n  windows_launcher: off\n').windows_launcher).toBe('off');
+  });
+
+  it('refuses an unknown mode, a relative path and an unknown key at start-up', () => {
+    expect(() => parseConfig('processes:\n  windows_launcher: always\n')).toThrow(
+      /windows_launcher/,
+    );
+    expect(() => parseConfig('processes:\n  windows_launcher_path: l.exe\n')).toThrow(
+      /windows_launcher_path/,
+    );
+    expect(() => parseConfig('processes:\n  nope: 1\n')).toThrow(/nope/);
+    expect(() => parseConfig('processes:\n  windows_shims: maybe\n')).toThrow(/windows_shims/);
+  });
+
+  it('windows_shims (resolve by default, or refuse) reaches the Windows launcher', () => {
+    expect(settings('processes:\n  windows_shims: refuse\n').windows_shims).toBe('refuse');
+    const modes: string[] = [];
+    for (const config of ['', 'processes:\n  windows_shims: refuse\n']) {
+      const { deps } = win([FOUND], {
+        createWindows: (_path, shims) => {
+          modes.push(shims);
+          return new FakeProcessLauncher();
+        },
+      });
+      chooseLauncher(settings(config), deps);
+    }
+    expect(modes).toEqual(['resolve', 'refuse']);
+  });
+
+  it('auto: uses the launcher beside the executable', () => {
+    const { deps, built } = win([FOUND]);
+    const choice = chooseLauncher(settings(''), deps);
+    expect(choice.launcher).toBeDefined();
+    expect(choice.fallback).toBeUndefined();
+    expect(built).toEqual([FOUND]);
+  });
+
+  it('auto: without the file, runs without a launcher and says why (fallback)', () => {
+    const { deps, built } = win([]);
+    const choice = chooseLauncher(settings(''), deps);
+    expect(choice.launcher).toBeUndefined();
+    expect(choice.fallback).toMatch(/auto and ot-job-launcher\.exe was not found/);
+    expect(choice.fallback).toContain(FOUND);
+    expect(built).toEqual([]);
+  });
+
+  it('job_object: uses the file, and refuses to start without it', () => {
+    const present = win([FOUND]);
+    expect(
+      chooseLauncher(settings('processes:\n  windows_launcher: job_object\n'), present.deps)
+        .launcher,
+    ).toBeDefined();
+    const absent = win([]);
+    expect(() =>
+      chooseLauncher(settings('processes:\n  windows_launcher: job_object\n'), absent.deps),
+    ).toThrow(expect.objectContaining({ code: 'ADAPTER_UNAVAILABLE' }) as Error);
+  });
+
+  it('off: no launcher, no search and no fallback notice', () => {
+    const exists = vi.fn(() => true);
+    const { deps, built } = win([FOUND], { exists });
+    const choice = chooseLauncher(settings('processes:\n  windows_launcher: off\n'), deps);
+    expect(choice).toEqual({ launcher: undefined });
+    expect(exists).not.toHaveBeenCalled();
+    expect(built).toEqual([]);
+  });
+
+  it('windows_launcher_path replaces the search', () => {
+    const { deps, built } = win([FOUND, 'D:\\x\\l.exe']);
+    chooseLauncher(settings('processes:\n  windows_launcher_path: D:\\x\\l.exe\n'), deps);
+    expect(built).toEqual(['D:\\x\\l.exe']);
+  });
+
+  it('Linux and macOS: the process group, whatever the key says (it is not read there)', () => {
+    for (const platform of ['linux', 'darwin'] as const) {
+      for (const mode of ['auto', 'job_object', 'off']) {
+        const choice = chooseLauncher(settings(`processes:\n  windows_launcher: ${mode}\n`), {
+          platform,
+        });
+        expect(choice.launcher?.capabilities().treeKill).toBe('process-group');
+        expect(choice.fallback).toBeUndefined();
+      }
+    }
+  });
+
+  describe('compose', () => {
+    async function composed(config: string, launcherDeps: LauncherChoiceDeps) {
+      const tmp = await makeTempDataDir();
+      const clock = new FakeClock(1000);
+      const composition = await compose(parseConfig(config), {
+        dataDir: tmp.dir,
+        overrides: {
+          clock,
+          store: new InMemoryStore({ clock }),
+          vault: new InMemorySecretVault(),
+          sandbox: 'none',
+          launcherDeps,
+        },
+      });
+      return { composition, dispose: tmp.dispose };
+    }
+    const noticesOf = async (composition: Awaited<ReturnType<typeof composed>>['composition']) => {
+      composition.situations.open();
+      await composition.situations.idle();
+      return (await composition.store.events.readFrom(0, 1000))
+        .filter((event) => event.type === 'daemon.notice')
+        .map((event) => event.payload);
+    };
+
+    it('auto without the launcher: the fall to none is a log line and a daemon.notice execution_off', async () => {
+      const { composition, dispose } = await composed('', win([]).deps);
+      try {
+        expect(composition.launcher).toBeUndefined();
+        expect(await noticesOf(composition)).toEqual([
+          expect.objectContaining({
+            kind: 'execution_off',
+            subject: 'windows_launcher_not_found',
+            detail: expect.stringContaining('ot-job-launcher.exe was not found') as string,
+          }),
+        ]);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+
+    it('auto with the launcher, and off: no notice', async () => {
+      for (const [config, deps] of [
+        ['', win([FOUND]).deps],
+        ['processes:\n  windows_launcher: off\n', win([]).deps],
+      ] as const) {
+        const { composition, dispose } = await composed(config, deps);
+        try {
+          expect(await noticesOf(composition)).toEqual([]);
+        } finally {
+          await composition.close();
+          await dispose();
+        }
+      }
+    });
+
+    it('job_object without the launcher: the composition fails', async () => {
+      await expect(
+        composed('processes:\n  windows_launcher: job_object\n', win([]).deps),
+      ).rejects.toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+    });
   });
 });

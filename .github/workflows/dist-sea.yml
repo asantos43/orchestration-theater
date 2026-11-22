@@ -1,0 +1,127 @@
+name: Dist SEA
+
+# The single executable (Node SEA, Phase 10, P1) built on a runner of each platform, and its smoke
+# test. It publishes nothing: no release, no tag, no upload (the release gate is P9). The job only
+# writes the size of each executable to its summary.
+on:
+  # Main runs after each merge that touches the paths below. A pull request is decided by the job
+  # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dist-sea.yml'
+      - 'tools/release/**'
+      - 'tools/verify/**'
+      - 'native/job-launcher/THIRD_PARTY_NOTICES.md'
+      - 'packages/daemon/src/sea/**'
+      - 'packages/daemon/src/cli.ts'
+      - 'packages/daemon/src/version.ts'
+      - 'packages/daemon/src/i18n.ts'
+      - 'packages/daemon/src/mcp/**'
+      - 'packages/daemon/src/profiles/shims.ts'
+      - 'packages/tui/src/launcher.ts'
+      - 'packages/tui/src/locale.ts'
+      - 'packages/tui/src/main.ts'
+      - 'packages/tui/src/run-main.ts'
+      - 'packages/tui/src/ink-patch.ts'
+      - 'packages/tui/patches/**'
+      - 'packages/client/src/node/**'
+      - 'packages/adapters/prompts-files/src/**'
+      - 'locales/**'
+      - 'prompts/**'
+      - 'pnpm-lock.yaml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-sea-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides whether a pull request builds the executables, by the repository variable OT_DIST_CI
+  # [proposta], as OT_CROSS_CI does for the other platforms:
+  # - `affected` (default): only when the PR touches one of the paths above;
+  # - `full`: every PR;
+  # - `off`: none (a dispatch still runs).
+  # On a pull request the checkout is the merge commit, so HEAD^1 is the tip of the base branch.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_DIST_CI || 'affected' }}
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-sea\.yml|tools/release/|tools/verify/|native/job-launcher/THIRD_PARTY_NOTICES\.md$|packages/daemon/src/sea/|packages/daemon/src/(cli|version|i18n)\.ts$|packages/daemon/src/mcp/|packages/daemon/src/profiles/shims\.ts$|packages/tui/src/(launcher|locale|main|run-main|ink-patch)\.ts$|packages/tui/patches/|packages/client/src/node/|packages/adapters/prompts-files/src/|locales/|prompts/|pnpm-lock\.yaml$)'; then
+            touched=true
+          else
+            touched=false
+          fi
+          case "$MODE" in
+            affected) build=$touched ;;
+            full) build=true ;;
+            off) build=false ;;
+            *) echo "::error::OT_DIST_CI=$MODE: use affected, full or off"; exit 1 ;;
+          esac
+          echo "touched=$touched build=$build (mode $MODE)"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  sea:
+    needs: [changes]
+    # `!cancelled()`: on a push or a dispatch the job `changes` is skipped, and a skipped need would
+    # skip this one.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true') }}
+    name: sea (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: windows-latest, target: win32-x64 }
+          # `macos-latest` is Apple Silicon.
+          - { os: macos-latest, target: darwin-arm64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # The Node of setup-node is the official standalone build, the one a SEA can be injected into
+      # (the Node of a distribution package is not). The blob has to come from the same binary.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - run: node tools/release/dist/cli.js build --target ${{ matrix.target }} --out dist/sea
+      # The acceptance of the build: --version, the daemon in a temporary folder and its API, the TUI
+      # without a real terminal, the MCP shim by internal mode, and the modes of later steps.
+      - run: node tools/release/dist/cli.js smoke dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}
+      # The notices of the platform (P10): the build already generated THIRD_PARTY_NOTICES-<target>.md
+      # next to the executable; this checks it again against the graph of the platform (no package
+      # missing or extra, no build tool) and fails when it is not there.
+      - name: Notices of the platform
+        run: |
+          notices="dist/sea/${{ matrix.target }}/THIRD_PARTY_NOTICES-${{ matrix.target }}.md"
+          node tools/verify/dist/cli.js notices --check --platform ${{ matrix.target }} --metafile dist/sea/${{ matrix.target }}/metafile.json --out "$notices"
+          echo "- ${{ matrix.target }} notices: $(grep -c '^### ' "$notices") packages" >> "$GITHUB_STEP_SUMMARY"
+      - name: Size of the executable
+        run: |
+          exe="dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}"
+          bytes=$(wc -c < "$exe")
+          echo "${{ matrix.target }}: $bytes bytes"
+          echo "- ${{ matrix.target }}: $bytes bytes" >> "$GITHUB_STEP_SUMMARY"

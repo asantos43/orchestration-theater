@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   AdapterUnavailable,
   hasErrorCode,
@@ -28,6 +29,7 @@ import {
   type DaemonStatus,
 } from '@otheater/protocol';
 import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
+import { ApiFailure } from './api/handlers.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
@@ -37,12 +39,13 @@ import { AtifAutoExport } from './atif/atif-follower.js';
 import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
-import { detectSystemLocale, resolveLocale } from './i18n.js';
+import { createTranslator, detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
 import { SetupService } from './setup/index.js';
 import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
 import {
   compose,
+  composeOwnSchemas,
   productionClients,
   type ComposeOverrides,
   type Composition,
@@ -74,11 +77,26 @@ import { registerBrowserTools, secretPathCheck, type BrowserTools } from './brow
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
+import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
+import { PluginPanelService } from './plugins/panel.js';
+import { pluginPermissionsFromConfig } from './plugins/permissions.js';
+import { PluginEventLimiter } from './plugins/event-rate.js';
+import {
+  createPluginEventHandler,
+  recordEventsDropped,
+  LiveEventRegistry,
+  pluginEventContributor,
+  recordPluginNotice,
+  recordRegistryNotice,
+} from './plugins/events.js';
+import { PluginProcessPool } from './plugins/process-pool.js';
+import { pluginRuntimeFromConfig, type PluginNoticeSink } from './plugins/runtime-config.js';
 import { exportsPrometheus } from './telemetry/export-config.js';
 import { MetricsCollector } from './telemetry/metrics.js';
 import { EventMetrics } from './telemetry/metrics-events.js';
 import { PlaySpansService } from './telemetry/play-spans.js';
 import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
+import { traceResourceExtras } from './telemetry/reparent.js';
 import { TelemetryStatusService } from './telemetry/status.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
@@ -102,13 +120,24 @@ import { ExecutorService } from './executors/service.js';
 import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
-import { buildDaemonRegistries } from './registries.js';
+import { PluginRegistry } from './plugins/registry.js';
+import { pluginExtraEnv } from './plugins/secrets.js';
+import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { RecoveryGate } from './recovery/gate.js';
 import { announceRecovery } from './recovery/notice.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
+import { ApplyCoordinator, type ApplyCoordinatorOptions } from './updates/apply/coordinator.js';
+import { launchApplier } from './updates/apply/launch.js';
+import { layoutOf } from './updates/apply/layout.js';
+import { UpdateChecker } from './updates/checker.js';
+import { detectInstallKind, updatePlatform, type UpdateInstallKind } from './updates/install.js';
+import { embeddedPublicKeyPem } from './updates/key.js';
+import { createUpdateSource, type FetchFunction } from './updates/source.js';
+import { UpdateStaging } from './updates/staging.js';
+import { parsePublicKey } from './updates/verify.js';
 import { packageVersion } from './version.js';
 
 /** How many times the master password is asked before the daemon gives up. */
@@ -172,6 +201,37 @@ export interface StartDaemonOptions {
    * prompt to check that the daemon refuses to start. [proposta]
    */
   readonly prompts?: PromptSource | undefined;
+  /**
+   * The plugins active in each project (Phase 9, P5; the registry of P4 binds here). Their tools
+   * join the `otheater` MCP server as `<id>__<tool>`, filtered by role. Without it there is no
+   * plugin tool and no process of a plugin. [proposta]
+   */
+  readonly plugins?: ActivePluginSource | undefined;
+  /** Where the notices about plugins go besides the log: the point P8 turns into events. */
+  readonly pluginNotices?: PluginNoticeSink | undefined;
+  /**
+   * What the search for updates (Phase 10, P7) is given instead of the real thing: the public key
+   * (PEM; without it, the one embedded in the build), the `fetch`, the kind of install and the
+   * platform. Tests hand them in so nothing touches the network or the real key. [proposta]
+   */
+  readonly updates?: UpdatesOptions | undefined;
+}
+
+export interface UpdatesOptions {
+  /** The executable that is replaced (Phase 10, P8); default: this process's, for the `own` install. */
+  readonly exe?: string | undefined;
+  /** Starts the applier; default: the real one (`apply/launch.ts`). Tests give a fake. */
+  readonly launch?: ApplyCoordinatorOptions['launch'] | undefined;
+  /** How the clock of the waits goes (tests): `idle` poll, journal poll, and the stable time. */
+  readonly idlePollMs?: number | undefined;
+  readonly reportPollMs?: number | undefined;
+  readonly stableMs?: number | undefined;
+  readonly releaseBuild?: boolean | undefined;
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+  readonly publicKey?: string | undefined;
+  readonly fetch?: FetchFunction | undefined;
+  readonly installKind?: UpdateInstallKind | undefined;
+  readonly platform?: string | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -197,6 +257,17 @@ export interface DaemonHandle {
   readonly vault: SecretVault;
   /** The validated registries the daemon started with (architecture 5.18). */
   readonly registries: Registries;
+  /**
+   * The installed plugins and where each is on (Phase 9, P4). `activeFor(project)` is what P5 starts
+   * the servers from; `onNotice` is the extension point of P8. The daemon watches `plugins.json`,
+   * so `ot plugin` run in another terminal reaches it.
+   */
+  readonly plugins: PluginRegistry;
+  /**
+   * The current snapshot of the registries and of the active plugins; it swaps when a plugin is
+   * turned on or off (N235 (a)). A session reads `current()` once, when it opens.
+   */
+  readonly registryHolder: RegistryHolder;
   /** Which adapter of each port is running (what `daemon.started` recorded). */
   readonly adapters: Composition['adapters'];
   /** Whether the vault is open now (a vault without a master password is always open). */
@@ -208,6 +279,11 @@ export interface DaemonHandle {
    * (`mcp.port: auto` takes a free one at each start). Handed to the sessions of the attempts.
    */
   readonly mcpUrl: string;
+  /**
+   * The door of the framework MCP server: `grant` opens a session of an attempt (what the execution
+   * does). Tests use it to see the tools the server hands a role, the plugin ones included.
+   */
+  readonly mcp: McpAccess;
   /**
    * `http://127.0.0.1:<port>`: where the OTLP receiver of the clients' telemetry listens (Phase 8,
    * P2), with the port it got. `undefined` when `telemetry.enabled` is `off` or it could not start.
@@ -298,6 +374,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let quota: QuotaService | undefined;
   let browserTools: BrowserTools | undefined;
   let telemetry: TelemetryRuntime | undefined;
+  let pluginRegistry: PluginRegistry | undefined;
+  let pluginEventLimiter: PluginEventLimiter | undefined;
   // The API server is started inside `run`; a failure after that point stops it from here.
   const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
@@ -307,12 +385,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
     const registries = buildDaemonRegistries(options.registries);
+    // Phase 9, P8: the event log validates against this one, which follows the snapshot of the
+    // registries (bound in `run`), so the `plugin.<id>.<name>` of the active plugins are known to it.
+    const liveEvents = new LiveEventRegistry(registries.events);
     // P11: a prompt that cites a tool its role cannot call stops the start-up here too.
     const prompts = options.prompts ?? defaultPromptSource(config, paths.dataDir);
     await assertValidPrompts(prompts, registries);
     composition = await compose(config, {
       dataDir: paths.dataDir,
-      events: { registry: registries.events, unknownType: config.events.unknown_type },
+      events: { registry: liveEvents, unknownType: config.events.unknown_type },
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -395,10 +476,92 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       situations: composition.situations,
       scenarioOf: async (playId) => (await composition?.store.plays.get(playId))?.scenarioId,
       clock: composition.clock,
+      // Phase 9, P1 (N230 (2)): the client is told the trace its spans will be in, and the receiver
+      // puts them under the daemon's tree. With `telemetry.receiver.reparent: off` neither happens.
+      ...(config.telemetry.receiver.reparent === 'session'
+        ? { resourceExtras: traceResourceExtras }
+        : {}),
+    });
+    // Phase 9, P4: the plugins installed with `ot plugin` are read before the MCP server starts, so
+    // the tools of the active ones are in it from the first request. The registry is the source of
+    // the aggregator of P5 unless a test hands in another one.
+    const installedPlugins = await PluginRegistry.open({
+      dataDir: paths.dataDir,
+      clock: composition.clock,
+      logger: composition.logger,
+      frameworkToolNames: registries.tools.list().map((tool) => tool.name),
+    });
+    pluginRegistry = installedPlugins;
+    const pluginSource: ActivePluginSource = options.plugins ?? installedPlugins;
+    // Phase 9, P8: what the pool, the aggregator and the registry tell about the plugins is also an
+    // event (the rule "situations become events"); the sink of the options still gets the notice.
+    const pluginSituations = composition.situations;
+    const pluginScenarios = composition.store.scenarios;
+    const pluginNotices: PluginNoticeSink = (notice) => {
+      recordPluginNotice(pluginSituations, notice);
+      options.pluginNotices?.(notice);
+    };
+    installedPlugins.onNotice((notice) => {
+      recordRegistryNotice(pluginSituations, notice);
+    });
+    const pluginLogger = composition.logger;
+    const eventLimiter = new PluginEventLimiter(composition.clock, (summary) => {
+      recordEventsDropped(pluginSituations, pluginLogger, summary);
+    });
+    pluginEventLimiter = eventLimiter;
+    const pluginAggregator = new PluginAggregator({
+      source: pluginSource,
+      pool: new PluginProcessPool({
+        clock: composition.clock,
+        logger: composition.logger,
+        // A getter, so the pool reads the section as it is when it needs it (`plugins` is a section of
+        // the restart, as the others outside the hot ones).
+        runtime: () => pluginRuntimeFromConfig(config.plugins),
+        homeRoot: join(paths.dataDir, 'plugin-homes'),
+        // Phase 9, P7 (N239): the secrets the manifest declares, read from the vault when a server
+        // is about to start and handed to that process alone.
+        extraEnv: pluginExtraEnv({
+          vault: composition.vault,
+          logger: composition.logger,
+          onNotice: pluginNotices,
+          // N243 (item 60): the redaction of the telemetry knows the values before the server runs.
+          refreshRedaction: async () => telemetry?.refreshVaultValues(),
+        }),
+        // The folder of the project (`plugins.project_dir`), read when a server is about to start:
+        // the `folder` of the scenario, which for a project is the absolute path of its repository.
+        projectDir: async (project) => (await pluginScenarios.get(project))?.folder,
+        onNotice: pluginNotices,
+        onEvent: createPluginEventHandler({
+          source: pluginSource,
+          runtime: () => pluginRuntimeFromConfig(config.plugins),
+          situations: pluginSituations,
+          logger: composition.logger,
+          // N243 item 67: `plugins.event_rate`; what it drops is counted for `/metrics` and said once
+          // per window.
+          limiter: eventLimiter,
+        }),
+      }),
+      logger: composition.logger,
+      reservedNames: () => registries.tools.list().map((tool) => tool.name),
+      onNotice: pluginNotices,
     });
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
+      plugins: pluginAggregator,
+      // Phase 9, P6: the permissions of the plugin tools. A getter, as `plugins` is read when needed.
+      pluginPermissions: () => pluginPermissionsFromConfig(config.plugins.permissions),
+      askApproval: (scenarioId, input) => orchestrationHandlers.openApproval(scenarioId, input),
+      onPluginNotice: pluginNotices,
+      projectOf: async (input) => {
+        const playId = input.correlation.playId;
+        if (playId === undefined) return undefined;
+        // The registry reads the files again before a session takes its snapshot of the plugins
+        // (a local folder whose `plugin.yaml` was edited is not seen by the watch of `plugins.json`).
+        // It never throws; a source a test handed in is not the registry's to refresh.
+        if (options.plugins === undefined) await installedPlugins.refresh();
+        return (await composition?.store.plays.get(playId))?.scenarioId;
+      },
       // N188: a getter, so `PUT /v1/config` changes it without a restart.
       get submitRetries() {
         return config.limits.submit_retries;
@@ -426,6 +589,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       mcp,
       telemetry,
       browserTools,
+      pluginRegistry: installedPlugins,
+      pluginEventLimiter: eventLimiter,
+      pluginAggregator,
+      pluginNotices,
+      liveEvents,
       directives,
       quota,
       usage,
@@ -443,6 +611,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     await directives?.stop().catch(() => undefined);
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
+    pluginRegistry?.close();
+    pluginEventLimiter?.close();
     await telemetry?.stopExporter().catch(() => undefined);
     await telemetry?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
@@ -460,6 +630,16 @@ interface RunInput {
   readonly mcp: FrameworkMcpServer;
   readonly telemetry: TelemetryRuntime | undefined;
   readonly browserTools: BrowserTools | undefined;
+  /** The installed plugins, opened before the MCP server (its aggregator reads them). */
+  readonly pluginRegistry: PluginRegistry;
+  /** `plugins.event_rate`: counts what the plugins send; its drops are a metric. */
+  readonly pluginEventLimiter: PluginEventLimiter;
+  /** The aggregator of the plugins: the panel (P10) calls the tools of a plugin through it. */
+  readonly pluginAggregator: PluginAggregator;
+  /** Where the notices about plugins go: the log, an event, and the sink of the options. */
+  readonly pluginNotices: PluginNoticeSink;
+  /** The registry of events the log validates against; `run` binds it to the registry snapshot. */
+  readonly liveEvents: LiveEventRegistry;
   readonly directives: DirectiveService;
   readonly quota: QuotaService;
   readonly usage: UsageService;
@@ -482,6 +662,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcp,
     telemetry,
     browserTools,
+    pluginRegistry: plugins,
+    pluginEventLimiter,
+    pluginAggregator,
+    pluginNotices,
+    liveEvents,
     directives,
     quota,
     usage,
@@ -493,6 +678,28 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir, options.overrides?.profileDir);
+  // Phase 9, P10: what the `/v1/plugins` routes do. The texts of the panel come in the language
+  // asked (the catalogs of the daemon have `en` and `pt-BR`; any other language gets `en`).
+  const pluginTranslators = {
+    en: await createTranslator('en'),
+    'pt-BR': await createTranslator('pt-BR'),
+  };
+  const pluginPanel = new PluginPanelService({
+    registry: plugins,
+    aggregator: pluginAggregator,
+    permissions: () => pluginPermissionsFromConfig(config.plugins.permissions),
+    runtime: () => pluginRuntimeFromConfig(config.plugins),
+    askApproval: (scenarioId, question) =>
+      input.orchestrationHandlers.openApproval(scenarioId, question),
+    situations: composition.situations,
+    onNotice: pluginNotices,
+    logger,
+    translator: (language) =>
+      language.toLowerCase().split('-')[0] === 'pt'
+        ? pluginTranslators['pt-BR']
+        : pluginTranslators.en,
+    language: () => resolveLocale(config.ui.locale, detectSystemLocale(process.env)),
+  });
   const startedAt = clock.now();
   let state: DaemonState = 'starting';
 
@@ -566,6 +773,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   apiRef.server = api;
   api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
+  // P8 (Phase 10): what the applier asks of a daemon that has just replaced another. A 200 says the
+  // recovery finished without an error (the state is `running`) and the API answers; it is not held
+  // by the gate (a read), so a daemon still recovering answers 503 `recovering` at once.
+  api.handlers.register('getHealth', () => {
+    if (state !== 'running') {
+      throw new ApiFailure(
+        state === 'stopping' ? 'unavailable' : 'recovering',
+        `The daemon is ${state}`,
+      );
+    }
+    return { status: 'ok' as const, version, pid: process.pid };
+  });
   // P4 (Phase 6): the event stream. It reads the log through the hub and heartbeats on the clock.
   registerEventRoutes({
     handlers: api.handlers,
@@ -618,6 +837,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   await quota.start();
   // P7 (Phase 8, N218): `GET /metrics`, when `telemetry.export` is `prometheus` or `both`. Otherwise the
   // route is a 404 and nothing is counted.
+  // P7 (Phase 10): the search for updates; `/metrics` reads its counters once it exists.
+  let updatesChecker: UpdateChecker | undefined;
+  let updateApply: ApplyCoordinator | undefined;
   const eventMetrics = exportsPrometheus(config.telemetry.export) ? new EventMetrics() : undefined;
   if (eventMetrics !== undefined) {
     eventMetrics.start(composition.eventHub, logger);
@@ -628,6 +850,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       events: eventMetrics,
       telemetry: composition.telemetry,
       exporter: () => telemetry?.exporter?.stats,
+      receiver: () => telemetry?.receiver.stats,
+      updates: () => updatesChecker?.counters(),
+      pluginEventsDropped: () => pluginEventLimiter.droppedByPlugin(),
       cacheTtl: config.telemetry.prometheus.cache_ttl,
       logger,
     });
@@ -937,8 +1162,23 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('telemetry retention', async () => telemetryRetention?.stop());
+      await attempt('updates', async () => {
+        await updatesChecker?.stop();
+        await updateApply?.stop();
+      });
       await attempt('analysis', async () => analysisService?.stop());
+      await attempt('registries snapshot', () => {
+        registryHolder.stop();
+        return Promise.resolve();
+      });
+      // The MCP server stops the aggregator and the processes of the plugins; only then the registry
+      // they read stops watching `plugins.json`.
       await attempt('mcp', () => mcp.stop());
+      await attempt('plugins', () => {
+        pluginEventLimiter.close();
+        plugins.close();
+        return Promise.resolve();
+      });
       // After the clients ended (`execution`): their last batches have arrived or never will.
       await attempt('telemetry', async () => telemetry?.stop());
       await attempt('browser', async () => browserTools?.close());
@@ -1057,6 +1297,79 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     });
     telemetryRetention.start();
   }
+  // P7 and P8 (Phase 10, N58 and N73): the search for updates and the apply of the one that is
+  // ready. `updates.*` is cold, like `analysis.*`. It never holds the start-up: the first search
+  // runs in the background, and an origin that does not answer only makes it `failed`.
+  {
+    const wanted = options.updates;
+    const installKind = wanted?.installKind ?? detectInstallKind();
+    const key = parsePublicKey(wanted?.publicKey ?? embeddedPublicKeyPem());
+    const staging = new UpdateStaging(join(paths.dataDir, 'updates', 'staging'));
+    const platform = wanted?.platform ?? updatePlatform();
+    const runner = execution?.runner;
+    updateApply = new ApplyCoordinator({
+      settings: config.updates,
+      version,
+      dataDir: paths.dataDir,
+      layout: installKind === 'own' ? layoutOf(wanted?.exe ?? process.execPath) : undefined,
+      key,
+      platform,
+      staging,
+      clock,
+      situations: composition.situations,
+      logger,
+      work:
+        runner === undefined
+          ? undefined
+          : {
+              active: () => runner.active,
+              hold: () => {
+                runner.hold();
+              },
+              release: () => {
+                runner.release();
+              },
+            },
+      backup: storeCanBackUp
+        ? async () => {
+            const made = await service.run('update');
+            return made.ok
+              ? { ok: true, dir: made.created.dir }
+              : { ok: false, detail: made.error.message };
+          }
+        : undefined,
+      ownSchemas: composeOwnSchemas(),
+      launch: wanted?.launch ?? ((layout, exe) => launchApplier(layout, exe)),
+      shutdown: () => stop('shutdown'),
+      effectiveMode: () => updatesChecker?.status().effectiveMode ?? 'off',
+      forget: (forgotten) => updatesChecker?.forget(forgotten),
+      releaseBuild: wanted?.releaseBuild,
+      env: wanted?.env,
+      idlePollMs: wanted?.idlePollMs,
+      reportPollMs: wanted?.reportPollMs,
+      stableMs: wanted?.stableMs,
+    });
+    updatesChecker = new UpdateChecker({
+      settings: config.updates,
+      currentVersion: version,
+      platform,
+      installKind,
+      key,
+      source: createUpdateSource(
+        config.updates.source === 'url' && config.updates.url !== undefined
+          ? { kind: 'url', url: config.updates.url }
+          : { kind: 'github' },
+        { fetch: wanted?.fetch ?? fetch },
+      ),
+      staging,
+      clock,
+      situations: composition.situations,
+      logger,
+      applier: updateApply,
+    });
+    updateApply.start();
+    updatesChecker.start();
+  }
   const slash = new SlashCommandService({
     store,
     clock,
@@ -1147,6 +1460,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       exporter: () => telemetry?.exporter?.stats,
     }),
     attempts: execution?.runner,
+    plugins: pluginPanel,
+    updates: updatesChecker,
     config,
     quota,
     usage,
@@ -1201,7 +1516,23 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     slash,
     setup,
     direct,
+    plugins: pluginPanel,
+    updates: updatesChecker,
+    updateApply,
   });
+
+  // Phase 9, P4: the snapshot of the registries follows the plugins that are on (the registry was
+  // opened with the MCP server, which starts them on a call: that is P5).
+  const registryHolder = new RegistryHolder(registries, {
+    base: options.registries ?? defaultRegistryEntries(),
+    logger,
+  });
+  // Phase 9, P8: the `plugin.<id>.<name>` of the active plugins join the registry of events, and
+  // the log validates against the snapshot in force.
+  registryHolder.contribute(pluginEventContributor);
+  liveEvents.bind(() => registryHolder.current().registries.events);
+  registryHolder.follow(plugins);
+  plugins.watch();
 
   const handle: DaemonHandle = {
     clock,
@@ -1212,9 +1543,12 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     daemonId,
     vault,
     registries,
+    plugins,
+    registryHolder,
     adapters: composition.adapters,
     execution,
     mcpUrl: mcp.url,
+    mcp,
     telemetryUrl: telemetry?.receiver.url,
     producer: orchestration?.channel,
     analysis: analysisService,

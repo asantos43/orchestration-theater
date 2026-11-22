@@ -47,6 +47,8 @@ export interface DeliveryFacts {
   readonly partial?: boolean;
   /** The Critic was waived for the play. */
   readonly criticWaived?: boolean;
+  /** [proposta] The id of the flow of the configuration that has no Critic stage (P12). */
+  readonly criticSkippedBy?: string;
 }
 
 export interface DeliveryArtifacts {
@@ -97,6 +99,9 @@ export function buildDeliveryArtifacts(
     `Delivered by OTheater (play ${facts.playId}).`,
     facts.partial === true ? 'Only the approved demands are included.' : undefined,
     facts.criticWaived === true ? 'The Critic was waived for this play.' : undefined,
+    facts.criticSkippedBy === undefined
+      ? undefined
+      : `The flow "${facts.criticSkippedBy}" has no Critic stage.`,
     `## Need\n\n${facts.need}`,
     demandLines.length === 0 ? undefined : `## Demands\n\n${demandLines.join('\n')}`,
   ]

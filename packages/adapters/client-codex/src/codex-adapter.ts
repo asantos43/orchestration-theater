@@ -126,8 +126,15 @@ export const CODEX_ACP_PACKAGES: readonly string[] = ['@agentclientprotocol/code
  * value, to be wired by the composition root. [proposta] key names, `clients.codex.*`.
  */
 export interface CodexAdapterOptions extends ClientAdapterOptions {
-  /** `clients.codex.command`. Default `codex-acp` with no arguments; the path of a binary or `node` plus a script also work. */
-  readonly command?: { readonly cmd: string; readonly args: readonly string[] };
+  /**
+   * `clients.codex.command`. Default `codex-acp` with no arguments; the path of a binary or `node`
+   * plus a script also work. A function is asked every time a process starts, so the daemon can
+   * answer with the managed adapter once it is installed (P13); it may throw (`AdapterUnavailable`)
+   * to refuse the start.
+   */
+  readonly command?:
+    | { readonly cmd: string; readonly args: readonly string[] }
+    | (() => { readonly cmd: string; readonly args: readonly string[] });
   /**
    * `clients.codex.process_model`. Default `multi-session`, what Phase 0 measured (one `codex-acp`,
    * one app-server, N sessions: 3 in parallel worked). The base shares one process per profile up
@@ -230,7 +237,7 @@ export class CodexAdapter extends ClientAdapter {
     inputTypes: ['image'],
   };
 
-  readonly #command: { readonly cmd: string; readonly args: readonly string[] };
+  readonly #command: () => { readonly cmd: string; readonly args: readonly string[] };
   readonly #modes: ModePolicy;
   readonly #innerSandbox: InnerSandboxMode;
   readonly #credentialsStore: CredentialsStore;
@@ -243,7 +250,8 @@ export class CodexAdapter extends ClientAdapter {
 
   constructor(options: CodexAdapterOptions) {
     super(options);
-    this.#command = options.command ?? DEFAULT_CODEX_COMMAND;
+    const source = options.command;
+    this.#command = typeof source === 'function' ? source : () => source ?? DEFAULT_CODEX_COMMAND;
     this.processModel = options.processModel ?? 'multi-session';
     this.#innerSandbox = options.innerSandbox ?? 'keep';
     if (!INNER_SANDBOX_MODES.includes(this.#innerSandbox)) {
@@ -311,7 +319,8 @@ export class CodexAdapter extends ClientAdapter {
 
   /** The same command for both transports: the headless one starts `codex` from `setup.args`. */
   protected command(): { cmd: string; args: string[] } {
-    return { cmd: this.#command.cmd, args: [...this.#command.args] };
+    const { cmd, args } = this.#command();
+    return { cmd, args: [...args] };
   }
 
   /**

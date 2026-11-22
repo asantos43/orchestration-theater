@@ -36,6 +36,13 @@ import {
   type CardStepResult,
   type CardTexts,
 } from './card.js';
+import {
+  directorCommandOf,
+  directorFooter,
+  directorPickerModel,
+  directorViewOf,
+  type DirectorPickView,
+} from './director-picker.js';
 import { messagesOf, waitReason, type Translate } from './lines.js';
 import { createChatState } from './model.js';
 import { newProjectLine } from './new-project.js';
@@ -385,6 +392,108 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     scenarioId,
   ]);
 
+  // ---- The Director of the scenario: the footer and the picker (P14 of Phase 9, N242) ------------
+  // Both go through the commands of the chat (`/director`, `/model`, `/effort`) on the route of the
+  // commands, so the TUI and the command give the same result and no route is needed.
+  const [directorView, setDirectorView] = useState<DirectorPickView | undefined>(undefined);
+  const [directorTick, setDirectorTick] = useState(0);
+  const directorKey = keyLabel(keymap, 'chat.director') ?? '';
+  const runDirector = useCallback(
+    (line: string) =>
+      client === undefined || scenarioId === undefined
+        ? Promise.reject(new Error(t('layout.chat.noConnection')))
+        : client.call(API_ROUTES.runScenarioCommand, {
+            params: { scenarioId },
+            body: { text: line, confirm: false },
+            headers: { 'idempotency-key': randomUUID() },
+          }),
+    [client, scenarioId, t],
+  );
+  useEffect(() => {
+    if (client === undefined || scenarioId === undefined) {
+      setDirectorView(undefined);
+      return undefined;
+    }
+    let live = true;
+    runDirector('/director')
+      .then((result) => {
+        if (live) setDirectorView(directorViewOf(result.data));
+      })
+      .catch(() => {
+        if (live) setDirectorView(undefined);
+      });
+    return () => {
+      live = false;
+    };
+    // Read again when the scenario, the Director's state, a turn, the connection or the chat changes.
+  }, [
+    client,
+    scenarioId,
+    runDirector,
+    scenarioState,
+    state.busy,
+    state.connection,
+    state.entries.length,
+    directorTick,
+  ]);
+  const picker = useRef<
+    { model: ReturnType<typeof directorPickerModel>; state: CardState } | undefined
+  >(undefined);
+  const pickerView = useRef<DirectorPickView | undefined>(undefined);
+  pickerView.current = directorView;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerFocused = pickerOpen && props.active && picker.current !== undefined;
+  useEffect(() => {
+    // Another scenario has another Director: the picker of the old one is closed.
+    picker.current = undefined;
+    setPickerOpen(false);
+  }, [scenarioId]);
+  const closePicker = (): void => {
+    picker.current = undefined;
+    setPickerOpen(false);
+  };
+  const openPicker = (): boolean => {
+    const view = pickerView.current;
+    if (view === undefined) return false;
+    const made = directorPickerModel(view, t);
+    picker.current = { model: made, state: createCardState(made) };
+    setPickerOpen(true);
+    return true;
+  };
+  /** A pick of the picker: the same line the Producer could type, sent to the daemon. */
+  const choose = (optionId: string): void => {
+    const line = directorCommandOf(optionId);
+    closePicker();
+    if (line === undefined) return;
+    runDirector(line)
+      .catch((error: unknown) => {
+        session?.local('sendFailed', { message: errorText(error) });
+      })
+      .finally(() => {
+        setDirectorTick((n) => n + 1);
+      });
+  };
+  const applyPicker = (result: CardStepResult): void => {
+    const current = picker.current;
+    if (current === undefined) return;
+    current.state = result.state;
+    if (result.aside === true) {
+      closePicker();
+      return;
+    }
+    const picked = result.done?.answer.option;
+    if (typeof picked === 'string') {
+      choose(picked);
+      return;
+    }
+    redraw();
+  };
+  const onPickerOption = (index: number): void => {
+    const current = picker.current;
+    if (current === undefined || state.confirm !== undefined) return;
+    applyPicker(cardClick(current.model, current.state, index, 'answer'));
+  };
+
   // ---- Keys -------------------------------------------------------------------------------------
   const failed = (error: unknown): void => {
     session?.local('sendFailed', { message: errorText(error) });
@@ -413,6 +522,13 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         return true;
       }
       return false;
+    }
+    const open = picker.current;
+    if (pickerFocused && open !== undefined) {
+      const pick = cardKeyOf(event, cardKeys, false);
+      if (pick === undefined) return false;
+      applyPicker(cardKey(open.model, open.state, pick));
+      return true;
     }
     const current = card.current;
     if (!cardFocused || current === undefined) return false;
@@ -469,6 +585,12 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
           failed(error);
         }
         return true;
+      case 'chat.director':
+        if (pickerOpen) {
+          closePicker();
+          return true;
+        }
+        return openPicker();
       case 'decision.open':
         if (!showCard) return false;
         if (auto) toggled.current.delete(model.decisionId);
@@ -482,16 +604,26 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
 
   // ---- Drawing ----------------------------------------------------------------------------------
   const maxCard = Math.max(4, Math.floor((props.height - 6) / 2));
+  const openPickerNow = pickerFocused ? picker.current : undefined;
   const lines =
-    cardFocused && cardState !== undefined
-      ? cardLines(model, cardState, props.width, maxCard, {
-          typingPrompt: t('layout.chat.card.typing'),
-          progress:
-            model.total > 1
-              ? `${String(Math.min(cardState.step + 1, model.total))}/${String(model.total)}`
-              : '',
+    openPickerNow !== undefined
+      ? cardLines(openPickerNow.model, openPickerNow.state, props.width, maxCard, {
+          typingPrompt: '',
+          progress: '',
         })
-      : [];
+      : cardFocused && cardState !== undefined
+        ? cardLines(model, cardState, props.width, maxCard, {
+            typingPrompt: t('layout.chat.card.typing'),
+            progress:
+              model.total > 1
+                ? `${String(Math.min(cardState.step + 1, model.total))}/${String(model.total)}`
+                : '',
+          })
+        : [];
+  const footer =
+    config.chat.directorFooter === 'on' && directorView !== undefined
+      ? clip(directorFooter(directorView, directorKey, t), props.width)
+      : undefined;
   const hint =
     showCard && !cardFocused
       ? clip(t('layout.chat.card.hint', { key: openKey, count: state.asks.length }), props.width)
@@ -506,13 +638,15 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
           }),
           props.width,
         );
-  const visible = suggestions.length > 0 && !cardFocused && state.confirm === undefined;
+  const visible =
+    suggestions.length > 0 && !cardFocused && !pickerFocused && state.confirm === undefined;
   const inputRows =
     Math.max(1, boxRows) +
     lines.length +
     (hint === undefined ? 0 : 1) +
     (confirmLine === undefined ? 0 : 1) +
-    (visible ? suggestions.length : 0);
+    (visible ? suggestions.length : 0) +
+    (footer === undefined ? 0 : 1);
 
   const input = (
     <Box flexDirection="column" width={props.width}>
@@ -534,9 +668,10 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
           <ClickTarget
             key={index}
             width={props.width}
-            enabled={cardState?.typing !== true}
+            enabled={pickerFocused || cardState?.typing !== true}
             onClick={() => {
-              onOption(option);
+              if (pickerFocused) onPickerOption(option);
+              else onOption(option);
             }}
           >
             {text}
@@ -573,15 +708,28 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         onChange={onChange}
         onRows={setBoxRows}
         complete={complete}
-        isActive={props.active && !cardFocused && state.confirm === undefined}
+        isActive={props.active && !cardFocused && !pickerFocused && state.confirm === undefined}
       />
+      {footer !== undefined && (
+        <ClickTarget
+          width={props.width}
+          onClick={() => {
+            if (pickerOpen) closePicker();
+            else openPicker();
+          }}
+        >
+          <Text wrap="truncate" dimColor>
+            {footer}
+          </Text>
+        </ClickTarget>
+      )}
     </Box>
   );
 
   return {
     messages,
     stateParts,
-    decisionFocused: cardFocused || confirmFocused,
+    decisionFocused: cardFocused || confirmFocused || pickerFocused,
     inputRows,
     input,
     onKey,

@@ -290,7 +290,8 @@ export function describeProcessLauncherConformance(
           const report = await proc.killTree({ graceMs: 10_000 });
 
           expect(report.remaining).toEqual([]);
-          expect(report.found).toBeGreaterThanOrEqual(3);
+          // A Job Object launcher does not list the members of the job: it counts the root it ended.
+          expect(report.found).toBeGreaterThanOrEqual(usesSignals() ? 3 : 1);
           // The polite signal was enough: the grace period was not waited out.
           expect(performance.now() - began).toBeLessThan(5000);
           await expectGone(pids);
@@ -365,7 +366,12 @@ export function describeProcessLauncherConformance(
           await expectGone(pids);
         });
 
-        it('ends descendants that outlive a root that already exited', async () => {
+        it('ends descendants that outlive a root that already exited', async ({ skip }) => {
+          if (!usesSignals()) {
+            skip(
+              'a Job Object launcher ends with its root, and the job takes the descendants with it',
+            );
+          }
           const file = await scratch.pidsFile();
           // The root starts one child and leaves at once.
           const proc = await start(

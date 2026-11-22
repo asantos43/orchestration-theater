@@ -24,6 +24,14 @@ import {
   SLASH_CONFIRM_MODES,
   VERIFY_MODES,
 } from './config.js';
+import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
+import {
+  PLUGIN_APPROVAL_DETAIL_MODES,
+  PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+  PLUGIN_EXTERNAL_WRITE_MODES,
+  PLUGIN_LOCAL_WRITE_MODES,
+  PLUGIN_NETWORK_MODES,
+} from './plugins/permissions.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
 import { makeTempDataDir } from './test-helpers.js';
 
@@ -86,7 +94,7 @@ describe('parseConfig', () => {
     });
   });
 
-  it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render and ui.runtime (N34 to N37)', () => {
+  it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render, ui.runtime and ui.keyboard (N34 to N37)', () => {
     const { ui } = parseConfig('');
     expect(ui.keymap).toEqual({ preset: 'agents', environment: 'auto', overrides: {} });
     expect(ui.clipboard).toEqual({ copy: 'osc52' });
@@ -101,6 +109,10 @@ describe('parseConfig', () => {
     });
     expect(ui.runtime).toEqual({ maxSemiSpaceMB: 2, exitGraceMs: 2000 });
     expect(ui.runtime.maxOldSpaceMB).toBeUndefined();
+    expect(ui.keyboard).toEqual({ protocol: 'auto' });
+    expect(parseConfig('ui:\n  keyboard:\n    protocol: kitty\n').ui.keyboard.protocol).toBe(
+      'kitty',
+    );
     expect(ui.tuiLayout).toEqual({
       sidebarWidth: 30,
       railWidth: 5,
@@ -184,6 +196,7 @@ describe('parseConfig', () => {
       decisionFocus: 'auto',
       decisionClick: 'answer',
       esc: 'stop',
+      directorFooter: 'on',
       history: 40,
     });
     const yaml =
@@ -194,8 +207,15 @@ describe('parseConfig', () => {
       decisionFocus: 'auto',
       decisionClick: 'select',
       esc: 'off',
+      directorFooter: 'on',
       history: 40,
     });
+    expect(parseConfig('ui:\n  chat:\n    directorFooter: off\n').ui.chat.directorFooter).toBe(
+      'off',
+    );
+    expect(() => parseConfig('ui:\n  chat:\n    directorFooter: maybe\n')).toThrow(
+      /ui\.chat\.directorFooter/,
+    );
     expect(() => parseConfig('ui:\n  chat:\n    decisionClick: double\n')).toThrow(
       /ui\.chat\.decisionClick/,
     );
@@ -278,6 +298,9 @@ describe('parseConfig', () => {
       /ui\.runtime\.maxSemiSpaceMB/,
     );
     expect(() => parseConfig('ui:\n  keymap:\n    preset: vim\n')).toThrow(/ui\.keymap\.preset/);
+    expect(() => parseConfig('ui:\n  keyboard:\n    protocol: legacy\n')).toThrow(
+      /ui\.keyboard\.protocol/,
+    );
   });
 
   it('refuses at start-up a ui.keymap with a repeated shortcut, an unknown action or a key a terminal cannot send', () => {
@@ -923,6 +946,20 @@ describe('parseConfig, scenarios (architecture 5.20)', () => {
     );
   });
 
+  it('scenarios.director_switch.in_turn: wait by default, interrupt on request (P14, N242)', () => {
+    expect(parseConfig('').scenarios.director_switch.in_turn).toBe('wait');
+    for (const mode of ['wait', 'interrupt'] as const) {
+      expect(
+        parseConfig(`scenarios:\n  director_switch:\n    in_turn: ${mode}\n`).scenarios
+          .director_switch.in_turn,
+      ).toBe(mode);
+    }
+    expect(() => parseConfig('scenarios:\n  director_switch:\n    in_turn: never\n')).toThrow(
+      /in_turn/,
+    );
+    expect(() => parseConfig('scenarios:\n  director_switch:\n    other: 1\n')).toThrow(/other/);
+  });
+
   it('rejects a bad duration, a bad size and an unknown key', () => {
     expect(() => parseConfig('scenarios:\n  director_idle_after: soon\n')).toThrow(
       /director_idle_after/,
@@ -979,6 +1016,118 @@ describe('parseConfig, prompt_queue (P7)', () => {
       );
     }
     expect(() => parseConfig('prompt_queue:\n  size: 3\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('parseConfig, plugins (Phase 9, P5)', () => {
+  it('defaults to ten minutes idle, three restarts and a minute per call', () => {
+    expect(parseConfig('').plugins).toEqual({
+      idle_timeout: 600_000,
+      max_restarts: 3,
+      call_timeout: 60_000,
+      start_timeout: 30_000,
+      restart_backoff: { initial: 1_000, max: 60_000 },
+      http: 'loopback',
+      events: 'declared',
+      event_max_bytes: 16_384,
+      event_rate: { max: 100, window: 10_000 },
+      project_dir: 'scenario',
+      panel: { max_rows: 200, max_bytes: 1_048_576 },
+      install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
+      permissions: {
+        local_write: 'writes',
+        network: 'network_allow',
+        external_write: 'writes',
+        external_write_approval: 'ask',
+        approval_detail: 'keys',
+      },
+    });
+  });
+
+  it('takes durations, off for the idle timeout, and each mode of http', () => {
+    const plugins = parseConfig(
+      'plugins:\n  idle_timeout: off\n  call_timeout: 90s\n  max_restarts: 0\n  http: off\n  restart_backoff:\n    initial: 500ms\n    max: 10s\n',
+    ).plugins;
+    expect(plugins.idle_timeout).toBeNull();
+    expect(plugins.call_timeout).toBe(90_000);
+    expect(plugins.max_restarts).toBe(0);
+    expect(plugins.http).toBe('off');
+    expect(plugins.restart_backoff).toEqual({ initial: 500, max: 10_000 });
+    expect(parseConfig('plugins:\n  idle_timeout: 2h\n').plugins.idle_timeout).toBe(7_200_000);
+  });
+
+  it('rejects a bad value and unknown keys', () => {
+    expect(() => parseConfig('plugins:\n  http: any\n')).toThrow(/plugins\.http/);
+    expect(() => parseConfig('plugins:\n  max_restarts: -1\n')).toThrow(/max_restarts/);
+    expect(() => parseConfig('plugins:\n  max_restarts: 1.5\n')).toThrow(/max_restarts/);
+    expect(() => parseConfig('plugins:\n  call_timeout: soon\n')).toThrow(/call_timeout/);
+    expect(() => parseConfig('plugins:\n  pool: 3\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('parseConfig, plugins events (Phase 9, P8)', () => {
+  it('takes each mode of events and a size for the payload', () => {
+    expect(parseConfig('plugins:\n  events: off\n').plugins.events).toBe('off');
+    expect(parseConfig('plugins:\n  event_max_bytes: 4096\n').plugins.event_max_bytes).toBe(4096);
+  });
+
+  it('rejects an unknown mode and a size that is not a positive count of bytes', () => {
+    expect(() => parseConfig('plugins:\n  events: any\n')).toThrow(/plugins\.events/);
+    for (const bad of ['0', '-1', '1.5', '2000000', '"big"']) {
+      expect(() => parseConfig(`plugins:\n  event_max_bytes: ${bad}\n`)).toThrow(/event_max_bytes/);
+    }
+  });
+});
+
+describe('parseConfig, plugins event_rate (N243 item 67)', () => {
+  it('is 100 events per 10 s by default, and takes off, a count and a window on their own', () => {
+    expect(parseConfig('').plugins.event_rate).toEqual({ max: 100, window: 10_000 });
+    expect(parseConfig('plugins:\n  event_rate: off\n').plugins.event_rate).toBeNull();
+    expect(parseConfig('plugins:\n  event_rate:\n    max: 5\n').plugins.event_rate).toEqual({
+      max: 5,
+      window: 10_000,
+    });
+    expect(parseConfig('plugins:\n  event_rate:\n    window: 1m\n').plugins.event_rate).toEqual({
+      max: 100,
+      window: 60_000,
+    });
+  });
+
+  it('rejects a count that is not positive, a window that is not a duration and an unknown mode', () => {
+    for (const bad of ['0', '-1', '1.5', '"many"']) {
+      expect(() => parseConfig(`plugins:\n  event_rate:\n    max: ${bad}\n`)).toThrow(/event_rate/);
+    }
+    expect(() => parseConfig('plugins:\n  event_rate:\n    window: soon\n')).toThrow(/event_rate/);
+    expect(() => parseConfig('plugins:\n  event_rate: on\n')).toThrow(/event_rate/);
+    expect(() => parseConfig('plugins:\n  event_rate:\n    extra: 1\n')).toThrow(/event_rate/);
+  });
+});
+
+describe('parseConfig, plugins project_dir', () => {
+  it('takes each mode and rejects an unknown one', () => {
+    expect(parseConfig('plugins:\n  project_dir: off\n').plugins.project_dir).toBe('off');
+    expect(() => parseConfig('plugins:\n  project_dir: repo\n')).toThrow(/project_dir/);
+  });
+});
+
+describe('parseConfig, plugins panel (Phase 9, P10)', () => {
+  it('takes a row limit and a size or off for the bytes of a block', () => {
+    expect(parseConfig('plugins:\n  panel:\n    max_rows: 50\n').plugins.panel.max_rows).toBe(50);
+    expect(parseConfig('plugins:\n  panel:\n    max_bytes: 64KB\n').plugins.panel.max_bytes).toBe(
+      65_536,
+    );
+    expect(
+      parseConfig('plugins:\n  panel:\n    max_bytes: off\n').plugins.panel.max_bytes,
+    ).toBeNull();
+  });
+
+  it('rejects a limit that is not a positive count, a size of zero and a key it does not know', () => {
+    for (const bad of ['0', '-1', '1.5', '100001', '"many"']) {
+      expect(() => parseConfig(`plugins:\n  panel:\n    max_rows: ${bad}\n`)).toThrow(/max_rows/);
+    }
+    expect(() => parseConfig('plugins:\n  panel:\n    max_bytes: 0B\n')).toThrow(/max_bytes/);
+    expect(() => parseConfig('plugins:\n  panel:\n    max_bytes: lots\n')).toThrow(/max_bytes/);
+    expect(() => parseConfig('plugins:\n  panel:\n    pages: 3\n')).toThrow(InvalidInput);
   });
 });
 
@@ -1361,7 +1510,7 @@ describe('telemetry (P1 of Phase 8)', () => {
         codex: { enabled: 'on' },
         opencode: { enabled: 'on', ai_spans: 'off' },
       },
-      receiver: { port: 'auto', max_body: 8 * 1024 * 1024 },
+      receiver: { port: 'auto', max_body: 8 * 1024 * 1024, reparent: 'session' },
       redaction: 'default',
       daemon_spans: { enabled: 'on', waits: 'all' },
       export: 'off',
@@ -1451,10 +1600,26 @@ describe('telemetry (P1 of Phase 8)', () => {
     const config = parseConfig(
       'telemetry:\n  receiver:\n    port: 4318\n    max_body: 1MB\n  redaction: full\n',
     );
-    expect(config.telemetry.receiver).toEqual({ port: 4318, max_body: 1024 * 1024 });
+    expect(config.telemetry.receiver).toEqual({
+      port: 4318,
+      max_body: 1024 * 1024,
+      reparent: 'session',
+    });
     expect(config.telemetry.redaction).toBe('full');
     expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
       'auto',
+    );
+  });
+
+  it('takes the modes of telemetry.receiver.reparent (Phase 9, P1) and refuses another', () => {
+    expect(
+      parseConfig('telemetry:\n  receiver:\n    reparent: session\n').telemetry.receiver.reparent,
+    ).toBe('session');
+    expect(
+      parseConfig("telemetry:\n  receiver:\n    reparent: 'off'\n").telemetry.receiver.reparent,
+    ).toBe('off');
+    expect(() => parseConfig('telemetry:\n  receiver:\n    reparent: always\n')).toThrow(
+      /reparent/,
     );
   });
 
@@ -1633,6 +1798,162 @@ describe('telemetry (P1 of Phase 8)', () => {
       'telemetry:\n  daemon_spans:\n    waits: log\n',
       'telemetry:\n  daemon_spans:\n    other: on\n',
       'backup:\n  telemetry: sometimes\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('plugins.install (Phase 9, P4)', () => {
+  it('defaults to every source, with a 5 minute timeout', () => {
+    const config = parseConfig('');
+    expect(config.plugins.install.sources).toEqual([...PLUGIN_INSTALL_SOURCES]);
+    expect(config.plugins.install.timeout).toBe(5 * 60_000);
+    expect(config.plugins.install.npm).toBe('auto');
+  });
+
+  it('takes the path of npm, and refuses an empty one', () => {
+    expect(
+      parseConfig('plugins:\n  install:\n    npm: /opt/npm/bin/npm-cli.js\n').plugins.install.npm,
+    ).toBe('/opt/npm/bin/npm-cli.js');
+    expect(() => parseConfig('plugins:\n  install:\n    npm: ""\n')).toThrow(InvalidInput);
+  });
+
+  it('takes a subset of sources, none included, and a duration', () => {
+    expect(
+      parseConfig('plugins:\n  install:\n    sources: [path]\n').plugins.install.sources,
+    ).toEqual(['path']);
+    expect(parseConfig('plugins:\n  install:\n    sources: []\n').plugins.install.sources).toEqual(
+      [],
+    );
+    expect(parseConfig('plugins:\n  install:\n    timeout: 30s\n').plugins.install.timeout).toBe(
+      30_000,
+    );
+  });
+
+  it('refuses an unknown source, a repeated one, an unknown key and a bad duration', () => {
+    for (const bad of [
+      'plugins:\n  install:\n    sources: [ftp]\n',
+      'plugins:\n  install:\n    sources: [path, path]\n',
+      'plugins:\n  install:\n    other: 1\n',
+      'plugins:\n  install:\n    timeout: soon\n',
+      'plugins:\n  other: 1\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('plugins.permissions (Phase 9, P6) [proposta]', () => {
+  it('takes each mode of each key', () => {
+    const modes: Record<string, readonly string[]> = {
+      local_write: PLUGIN_LOCAL_WRITE_MODES,
+      network: PLUGIN_NETWORK_MODES,
+      external_write: PLUGIN_EXTERNAL_WRITE_MODES,
+      external_write_approval: PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+      approval_detail: PLUGIN_APPROVAL_DETAIL_MODES,
+    };
+    for (const [key, values] of Object.entries(modes)) {
+      for (const value of values) {
+        const { permissions } = parseConfig(
+          `plugins:\n  permissions:\n    ${key}: ${value}\n`,
+        ).plugins;
+        expect(permissions[key as keyof typeof permissions], `${key}: ${value}`).toBe(value);
+      }
+    }
+  });
+
+  it('refuses a value that is no mode, a key that does not exist and a section that is no object', () => {
+    for (const bad of [
+      'plugins:\n  permissions:\n    local_write: always\n',
+      'plugins:\n  permissions:\n    network: true\n',
+      'plugins:\n  permissions:\n    external_write_approval: never\n',
+      'plugins:\n  permissions:\n    approval_detail: all\n',
+      'plugins:\n  permissions:\n    critic: allow\n',
+      'plugins:\n  permissions: deny\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('updates, the application (Phase 10, P8) [proposta]', () => {
+  it('takes each mode of each key', () => {
+    for (const when of ['idle', 'park', 'next_start']) {
+      expect(parseConfig(`updates:\n  apply_when: ${when}\n`).updates.apply_when).toBe(when);
+    }
+    for (const rollback of ['auto', 'off']) {
+      expect(parseConfig(`updates:\n  rollback: ${rollback}\n`).updates.rollback).toBe(rollback);
+    }
+    for (const flag of [true, false]) {
+      expect(
+        parseConfig(`updates:\n  backup_before_migration: ${String(flag)}\n`).updates
+          .backup_before_migration,
+      ).toBe(flag);
+    }
+    expect(parseConfig('updates:\n  max_wait: 2h\n').updates.max_wait).toBe(7_200_000);
+    expect(parseConfig('updates:\n  health_timeout: 90s\n').updates.health_timeout).toBe(90_000);
+  });
+
+  it('refuses what is not a mode and a wait under one second', () => {
+    for (const bad of [
+      'updates:\n  apply_when: now\n',
+      'updates:\n  rollback: maybe\n',
+      'updates:\n  backup_before_migration: sometimes\n',
+      'updates:\n  max_wait: 500ms\n',
+      'updates:\n  max_wait: forever\n',
+      'updates:\n  health_timeout: 0s\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('updates (Phase 10, P7) [proposta]', () => {
+  it('has the defaults: auto, stable, GitHub, every 6 hours', () => {
+    expect(parseConfig('').updates).toEqual({
+      mode: 'auto',
+      channel: 'stable',
+      source: 'github',
+      check_interval: 6 * 3_600_000,
+      apply_when: 'idle',
+      max_wait: 24 * 3_600_000,
+      rollback: 'auto',
+      backup_before_migration: true,
+      health_timeout: 60_000,
+    });
+  });
+
+  it('takes each mode of each key', () => {
+    for (const mode of ['auto', 'notify', 'check', 'off']) {
+      expect(parseConfig(`updates:\n  mode: ${mode}\n`).updates.mode).toBe(mode);
+    }
+    for (const channel of ['stable', 'beta']) {
+      expect(parseConfig(`updates:\n  channel: ${channel}\n`).updates.channel).toBe(channel);
+    }
+    expect(parseConfig('updates:\n  check_interval: 30m\n').updates.check_interval).toBe(1_800_000);
+    expect(parseConfig('updates:\n  check_interval: off\n').updates.check_interval).toBeNull();
+    const own = parseConfig('updates:\n  source: url\n  url: https://updates.example.org/r/\n');
+    expect(own.updates).toMatchObject({ source: 'url', url: 'https://updates.example.org/r/' });
+    expect(
+      parseConfig('updates:\n  source: url\n  url: http://127.0.0.1:8080/r\n').updates.url,
+    ).toBe('http://127.0.0.1:8080/r');
+  });
+
+  it('refuses what is not a mode, an interval under 5 minutes, and an address that is not safe', () => {
+    for (const bad of [
+      'updates:\n  mode: now\n',
+      'updates:\n  channel: nightly\n',
+      'updates:\n  source: ftp\n',
+      'updates:\n  check_interval: 1m\n',
+      'updates:\n  check_interval: never\n',
+      'updates:\n  source: url\n',
+      'updates:\n  source: url\n  url: http://updates.example.org/r\n',
+      'updates:\n  source: url\n  url: https://user:pw@updates.example.org/r\n',
+      'updates:\n  source: url\n  url: https://updates.example.org/r?x=1\n',
+      'updates:\n  source: url\n  url: not a url\n',
+      'updates:\n  key: abc\n',
+      'updates: auto\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }

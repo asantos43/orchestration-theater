@@ -91,6 +91,12 @@ function makeRig(extra: Partial<MetricsSources> = {}): Rig {
       ],
       resumes: () => [{ labels: { executor: 'e', reason: 'quota' }, value: 1 }],
       failures: () => [{ labels: { executor: 'e', kind: 'crash' }, value: 3 }],
+      waits: () => [{ labels: { kind: 'pool_admission', outcome: 'admitted' }, value: 2 }],
+      waitSeconds: () => [{ labels: { kind: 'pool_admission' }, value: 7.5 }],
+      waitsActive: () => [
+        { labels: { kind: 'prompt_queue' }, value: 0 },
+        { labels: { kind: 'pool_admission' }, value: 1 },
+      ],
     },
     cacheTtl: 5000,
     logger: createSilentLogger(),
@@ -216,6 +222,26 @@ describe('MetricsCollector', () => {
     expect(text).toContain('otheater_executor_failures_total{executor="e",kind="crash"} 3');
   });
 
+  it('shows the searches for a new version and the versions refused (P7 of Phase 10)', async () => {
+    const rig = makeRig({
+      updates: () => ({
+        checks: { up_to_date: 3, found: 1, ready: 1, rejected: 2, skipped: 0, failed: 4 },
+        rejected: { signature: 1, sha256: 1 },
+      }),
+    });
+    const text = await rig.collector.render();
+    expect(text).toContain('otheater_updates_checks_total{result="up_to_date"} 3');
+    expect(text).toContain('otheater_updates_checks_total{result="failed"} 4');
+    expect(text).toContain('otheater_updates_rejected_total{reason="signature"} 1');
+    expect(text).toContain('otheater_updates_rejected_total{reason="sha256"} 1');
+  });
+
+  it('leaves the updates out while there is no service', async () => {
+    expect(await makeRig().collector.render()).not.toContain('otheater_updates_');
+    const none = makeRig({ updates: () => undefined });
+    expect(await none.collector.render()).not.toContain('otheater_updates_');
+  });
+
   it('counts what the telemetry base and the exporter dropped', async () => {
     const rig = makeRig({
       telemetry: {
@@ -252,9 +278,52 @@ describe('MetricsCollector', () => {
       'otheater_resumes_total',
       'otheater_executor_failures_total',
       'otheater_telemetry_dropped_total',
+      'otheater_waits_active',
+      'otheater_waits_total',
+      'otheater_wait_seconds_total',
     ]) {
       expect(text).toContain(`# TYPE ${name} `);
     }
+  });
+
+  it('shows the waits past the threshold: the ones going on, the ones that ended and their seconds', async () => {
+    const text = await makeRig().collector.render();
+    expect(text).toContain('# TYPE otheater_waits_active gauge');
+    expect(text).toContain('# TYPE otheater_waits_total counter');
+    expect(text).toContain('# TYPE otheater_wait_seconds_total counter');
+    expect(text).toContain('otheater_waits_active{kind="pool_admission"} 1');
+    expect(text).toContain('otheater_waits_active{kind="prompt_queue"} 0');
+    expect(text).toContain('otheater_waits_total{kind="pool_admission",outcome="admitted"} 2');
+    expect(text).toContain('otheater_wait_seconds_total{kind="pool_admission"} 7.5');
+  });
+
+  it('shows the batches the receiver refused, one sample for every reason, zero included', async () => {
+    const rig = makeRig({ receiver: () => ({ rejected: { format: 3, size: 0, token: 1 } }) });
+    const text = await rig.collector.render();
+    expect(text).toContain('# TYPE otheater_telemetry_batches_rejected_total counter');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="format"} 3');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="size"} 0');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="token"} 1');
+  });
+
+  it('leaves the refused batches out while there is no receiver', async () => {
+    expect(await makeRig().collector.render()).not.toContain('batches_rejected');
+    const rig = makeRig({ receiver: () => undefined });
+    expect(await rig.collector.render()).not.toContain('batches_rejected');
+  });
+
+  it('counts what plugins.event_rate dropped, by plugin, and leaves it out with no source (N243 item 67)', async () => {
+    const rig = makeRig({
+      pluginEventsDropped: () => [
+        { plugin: 'demo', dropped: 7 },
+        { plugin: 'pg', dropped: 0 },
+      ],
+    });
+    const text = await rig.collector.render();
+    expect(text).toContain('# TYPE otheater_plugin_events_dropped_total counter');
+    expect(text).toContain('otheater_plugin_events_dropped_total{plugin="demo"} 7');
+    expect(text).toContain('otheater_plugin_events_dropped_total{plugin="pg"} 0');
+    expect(await makeRig().collector.render()).not.toContain('plugin_events_dropped');
   });
 
   it('leaves out the source that fails and keeps the rest', async () => {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Command line of the launcher: `ot-job-launcher [--memory-limit-bytes <n>] -- <exe> [args...]`.
+//! Command line of the launcher:
+//! `ot-job-launcher [--memory-limit-bytes <n>] [--parent-pid <pid>] -- <exe> [args...]`.
 //!
 //! Pure: nothing here touches the operating system, so it is tested on every platform.
 
@@ -8,22 +9,26 @@ use std::fmt;
 
 /// Usage text, printed for `--help` and after a usage error.
 pub const USAGE: &str = "\
-Usage: ot-job-launcher [--memory-limit-bytes <n>] -- <exe> [args...]
+Usage: ot-job-launcher [--memory-limit-bytes <n>] [--parent-pid <pid>] -- <exe> [args...]
 
 Starts <exe> inside a Windows Job Object (KILL_ON_JOB_CLOSE), waits for it and exits with its
 exit code. If the launcher dies, Windows ends the whole process tree.
 
 Options:
   --memory-limit-bytes <n>  commit-memory ceiling for the whole job (all processes together)
+  --parent-pid <pid>        watch this process: when it ends, end the job and exit; if it is
+                            already gone at start, <exe> is never started
   -h, --help                print this text and exit 0
 
-Launcher failures use exit codes 0x4F540001..0x4F540007 (see README.md).";
+Launcher failures use exit codes 0x4F540001..0x4F540009 (see README.md).";
 
 /// What to run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Commit-memory ceiling for the whole job, in bytes. `None` means no limit.
     pub memory_limit_bytes: Option<u64>,
+    /// Process to watch (`--parent-pid`): when it ends, the launcher ends the job and exits.
+    pub parent_pid: Option<u32>,
     /// The program followed by its arguments, exactly as received (never split again).
     pub argv: Vec<OsString>,
 }
@@ -65,6 +70,20 @@ fn parse_limit(text: &str) -> Result<u64, UsageError> {
     }
 }
 
+fn parse_pid(text: &str) -> Result<u32, UsageError> {
+    // Digits only, like the limit; zero is the System Idle Process and never a parent.
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return usage(format!(
+            "--parent-pid expects a positive integer, got {text:?}"
+        ));
+    }
+    match text.parse::<u32>() {
+        Ok(0) => usage("--parent-pid must be greater than zero"),
+        Ok(n) => Ok(n),
+        Err(_) => usage(format!("--parent-pid is too large: {text:?}")),
+    }
+}
+
 /// Parses the arguments that come after the program name.
 ///
 /// Everything after the first `--` belongs to the Executor and is never interpreted.
@@ -74,6 +93,7 @@ where
 {
     let mut iter = args.into_iter();
     let mut memory_limit_bytes: Option<u64> = None;
+    let mut parent_pid: Option<u32> = None;
     loop {
         let Some(arg) = iter.next() else {
             return usage("missing `--` before the program to run");
@@ -96,12 +116,29 @@ where
                 };
                 memory_limit_bytes = Some(parse_limit(value)?);
             }
+            "--parent-pid" => {
+                if parent_pid.is_some() {
+                    return usage("--parent-pid given twice");
+                }
+                let Some(value) = iter.next() else {
+                    return usage("--parent-pid needs a value");
+                };
+                let Some(value) = value.to_str() else {
+                    return usage("--parent-pid expects a positive integer");
+                };
+                parent_pid = Some(parse_pid(value)?);
+            }
             other => {
                 if let Some(value) = other.strip_prefix("--memory-limit-bytes=") {
                     if memory_limit_bytes.is_some() {
                         return usage("--memory-limit-bytes given twice");
                     }
                     memory_limit_bytes = Some(parse_limit(value)?);
+                } else if let Some(value) = other.strip_prefix("--parent-pid=") {
+                    if parent_pid.is_some() {
+                        return usage("--parent-pid given twice");
+                    }
+                    parent_pid = Some(parse_pid(value)?);
                 } else {
                     return usage(format!("unknown option {other:?} before `--`"));
                 }
@@ -114,6 +151,7 @@ where
         Some(program) if program.is_empty() => usage("the program name is empty"),
         Some(_) => Ok(Parsed::Run(Config {
             memory_limit_bytes,
+            parent_pid,
             argv,
         })),
     }
@@ -232,6 +270,48 @@ mod tests {
             .contains("twice")
         );
         assert!(error(&["--nope", "--", "a"]).contains("unknown option"));
+    }
+
+    #[test]
+    fn parent_pid_in_both_spellings_and_with_the_limit() {
+        assert_eq!(run(&["--", "a"]).parent_pid, None);
+        assert_eq!(
+            run(&["--parent-pid", "4242", "--", "a"]).parent_pid,
+            Some(4242)
+        );
+        assert_eq!(run(&["--parent-pid=7", "--", "a"]).parent_pid, Some(7));
+        let both = run(&[
+            "--parent-pid",
+            "9",
+            "--memory-limit-bytes",
+            "1024",
+            "--",
+            "a",
+        ]);
+        assert_eq!(
+            (both.parent_pid, both.memory_limit_bytes),
+            (Some(9), Some(1024))
+        );
+    }
+
+    #[test]
+    fn the_parent_pid_of_the_executor_arguments_is_never_interpreted() {
+        let config = run(&["--", "a", "--parent-pid", "1"]);
+        assert_eq!(config.parent_pid, None);
+        assert_eq!(config.argv, os(&["a", "--parent-pid", "1"]));
+    }
+
+    #[test]
+    fn bad_parent_pids() {
+        for bad in ["0", "-1", "+5", "1.5", "0x10", " 5", "abc", ""] {
+            let message = error(&["--parent-pid", bad, "--", "a"]);
+            assert!(message.contains("--parent-pid"), "{bad:?}: {message}");
+        }
+        assert!(error(&["--parent-pid", "4294967296", "--", "a"]).contains("too large"));
+        assert!(error(&["--parent-pid"]).contains("needs a value"));
+        assert!(error(&["--parent-pid=0", "--", "a"]).contains("greater than zero"));
+        assert!(error(&["--parent-pid", "1", "--parent-pid", "2", "--", "a"]).contains("twice"));
+        assert!(error(&["--parent-pid=1", "--parent-pid=2", "--", "a"]).contains("twice"));
     }
 
     #[cfg(unix)]

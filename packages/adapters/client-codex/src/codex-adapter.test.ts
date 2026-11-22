@@ -121,6 +121,24 @@ describe('CodexAdapter.openSession', () => {
     expect(launcher.launched[0]?.options.args).toEqual(['--flag']);
   });
 
+  it('asks a command given as a function every time a process starts (P13)', async () => {
+    let installed = false;
+    const { adapter, launcher } = build({
+      command: () => {
+        if (!installed) throw new Error('adapter is not installed yet');
+        return { cmd: '/opt/node', args: ['/data/adapters/index.js'] };
+      },
+    });
+    const profile = await profileIn();
+    await expect(
+      adapter.openSession(profile, policy, '/work', new FakeSessionTransport()),
+    ).rejects.toThrow('not installed yet');
+    installed = true;
+    await adapter.openSession(profile, policy, '/work', new FakeSessionTransport());
+    expect(launcher.launched.at(-1)?.options.cmd).toBe('/opt/node');
+    expect(launcher.launched.at(-1)?.options.args).toEqual(['/data/adapters/index.js']);
+  });
+
   it('writes config.toml into the profile directory, and only that', async () => {
     const { adapter } = build({ credentialsStore: 'keyring', approvalPolicy: 'untrusted' });
     const profile = await profileIn();
