@@ -645,6 +645,154 @@ describe('the text box', () => {
     });
   });
 
+  describe('with the keyboard protocol on (ui.keyboard.protocol), the keys with Ctrl and Alt as CSI-u', () => {
+    /** What a terminal writes with the flag `disambiguateEscapeCodes`: the letter, then 1 + the modifiers. */
+    const ctrl = (letter: string): string => `\x1b[${String(letter.charCodeAt(0))};5u`;
+    const alt = (letter: string): string => `\x1b[${String(letter.charCodeAt(0))};3u`;
+    const P = {
+      ctrlJ: ctrl('j'),
+      ctrlA: ctrl('a'),
+      ctrlB: ctrl('b'),
+      ctrlE: ctrl('e'),
+      ctrlF: ctrl('f'),
+      ctrlG: ctrl('g'),
+      ctrlK: ctrl('k'),
+      ctrlR: ctrl('r'),
+      ctrlU: ctrl('u'),
+      ctrlW: ctrl('w'),
+      ctrlY: ctrl('y'),
+      altB: alt('b'),
+      altD: alt('d'),
+      altF: alt('f'),
+      altBackspace: '\x1b[127;3u',
+    } as const;
+
+    it('has the bytes of the protocol', () => {
+      expect(P.ctrlJ).toBe('\x1b[106;5u');
+      expect(P.altBackspace).toBe('\x1b[127;3u');
+    });
+
+    it('Ctrl+J inserts a new line instead of sending', async () => {
+      const box = mount();
+      expect(await result(box, 'a', P.ctrlJ, 'b')).toBe('a\nb');
+      expect(box.sent).toHaveLength(1);
+    });
+
+    it.each([
+      ['Ctrl+B', [P.ctrlB], 'abXc'],
+      ['Ctrl+B and Ctrl+F', [P.ctrlB, P.ctrlB, P.ctrlF], 'abXc'],
+      ['Ctrl+A', [P.ctrlA], 'Xabc'],
+      ['Ctrl+E after Ctrl+A', [P.ctrlA, P.ctrlE], 'abcX'],
+    ])('moves the cursor with %s', async (_name, keys, expected) => {
+      const box = mount();
+      await box.press('abc');
+      for (const key of keys) await box.press(key);
+      expect(await result(box, 'X')).toBe(expected);
+    });
+
+    it('jumps by word with Alt+B and Alt+F, and with Ctrl+Left and Ctrl+Right, which keep their form', async () => {
+      const box = mount();
+      await box.press('one two three');
+      await box.press(P.altB);
+      await box.press(P.altB);
+      await box.press('X');
+      await box.press(P.altF);
+      expect(await result(box, 'Y')).toBe('one XtwoY three');
+
+      const legacy = mount();
+      await legacy.press('one two three');
+      await legacy.press(K.ctrlLeft);
+      await legacy.press(K.ctrlLeft);
+      await legacy.press('X');
+      await legacy.press(K.ctrlRight);
+      expect(await result(legacy, 'Y')).toBe('one XtwoY three');
+    });
+
+    it('cuts with Ctrl+K, Ctrl+U, Ctrl+W, Alt+Backspace and Alt+D, and Ctrl+Y puts it back', async () => {
+      const box = mount();
+      await box.press('one two three');
+      await box.press(P.ctrlW);
+      await box.press(P.altBackspace);
+      expect(await result(box)).toBe('one ');
+
+      const second = mount();
+      await second.press('one two three');
+      await second.press(K.ctrlLeft);
+      await second.press(P.ctrlK);
+      await second.press(P.ctrlY);
+      await second.press(P.ctrlY);
+      expect(await result(second)).toBe('one two threethree');
+
+      const third = mount();
+      await third.press('one two three');
+      await third.press(P.ctrlA);
+      await third.press(P.altD);
+      expect(await result(third)).toBe(' two three');
+
+      const fourth = mount();
+      await fourth.press('one two');
+      await fourth.press(P.ctrlU);
+      await fourth.press('new');
+      expect(await result(fourth)).toBe('new');
+    });
+
+    it('Alt+Backspace deletes a word, not a character, and does not type anything', async () => {
+      const box = mount();
+      await box.press('one two');
+      await box.press(P.altBackspace);
+      expect(await result(box)).toBe('one ');
+    });
+
+    it('searches the history with Ctrl+R and goes to older matches with Ctrl+R again', async () => {
+      const history = new MemoryHistoryStore(500, [
+        'deploy the app',
+        'fix the bug',
+        'deploy again',
+      ]);
+      const box = mount({ history });
+      await box.press(P.ctrlR);
+      await box.waitForText('Search the history');
+      await box.press('deploy');
+      await box.waitForText('deploy again');
+      await box.press(P.ctrlR);
+      await box.waitForText('deploy the app');
+      await box.press(K.enter);
+      expect(box.sent).toHaveLength(0);
+      expect(await result(box)).toBe('deploy the app');
+    });
+
+    it('hands the message to the external editor with Ctrl+G', async () => {
+      const files = new Map<string, string>();
+      const runs: string[][] = [];
+      const editor: EditorIo = {
+        env: { EDITOR: 'myeditor --wait' },
+        platform: 'linux',
+        prepare: (text) => {
+          files.set('/tmp/ot-edit/message.md', text);
+          return Promise.resolve('/tmp/ot-edit/message.md');
+        },
+        run: (command, file) => {
+          runs.push([...command, file]);
+          files.set(file, `${files.get(file) ?? ''} + written in the editor\n`);
+          return Promise.resolve({ code: 0 });
+        },
+        read: (path) => Promise.resolve(files.get(path) ?? ''),
+        cleanup: () => Promise.resolve(),
+      };
+      const box = mount({ ports: fakePorts({ editor }) });
+      await box.press('draft');
+      await box.press(P.ctrlG);
+      await box.waitForText('draft + written in the editor');
+      expect(runs).toEqual([['myeditor', '--wait', '/tmp/ot-edit/message.md']]);
+      expect(await result(box)).toBe('draft + written in the editor');
+    });
+
+    it('does not type the letter of a Ctrl or Alt key it does not know as text', async () => {
+      const box = mount();
+      expect(await result(box, 'a', ctrl('z'), alt('z'), 'b')).toBe('ab');
+    });
+  });
+
   describe('the keymap', () => {
     it('follows the preset: classic gives Ctrl+K to the terminal', async () => {
       const box = mount({ keymap: keymapOf('classic') });
