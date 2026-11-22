@@ -19,6 +19,7 @@
   ],
   "dependencies": {
     "@hono/node-server": "2.1.6",
+    "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
     "@otheater/adapter-browser-playwright": "workspace:*",
