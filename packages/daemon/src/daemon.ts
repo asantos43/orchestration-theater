@@ -115,6 +115,7 @@ import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
 import { PluginRegistry } from './plugins/registry.js';
+import { pluginExtraEnv } from './plugins/secrets.js';
 import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { RecoveryGate } from './recovery/gate.js';
@@ -472,6 +473,13 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         // the restart, as the others outside the hot ones).
         runtime: () => pluginRuntimeFromConfig(config.plugins),
         homeRoot: join(paths.dataDir, 'plugin-homes'),
+        // Phase 9, P7 (N239): the secrets the manifest declares, read from the vault when a server
+        // is about to start and handed to that process alone.
+        extraEnv: pluginExtraEnv({
+          vault: composition.vault,
+          logger: composition.logger,
+          onNotice: pluginNotices,
+        }),
         onNotice: pluginNotices,
         onEvent: createPluginEventHandler({
           source: pluginSource,

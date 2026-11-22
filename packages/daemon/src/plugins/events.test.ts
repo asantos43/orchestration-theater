@@ -76,6 +76,11 @@ describe('recordPluginNotice (the pool and the aggregator)', () => {
       'plugin.server_failed',
       { plugin: 'demo', project: 'p1', failures: 3, givenUp: true, reason: 'exit 1' },
     ],
+    [
+      { kind: 'secret_missing', plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
+      'plugin.secret_missing',
+      { plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
+    ],
   ];
 
   it.each(cases)('%j becomes %s', (notice, type, payload) => {

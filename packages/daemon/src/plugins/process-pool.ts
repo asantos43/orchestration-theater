@@ -23,7 +23,11 @@ import type {
 /** What the pool needs to know of an active plugin: `ActivePlugin` has all of it. */
 export interface PluginProcessSpec {
   readonly id: string;
-  readonly manifest: { readonly server: PluginServerSpec };
+  readonly manifest: {
+    readonly server: PluginServerSpec;
+    /** The names of the secrets the manifest declares (P7 reads them from the vault). */
+    readonly secrets?: readonly string[];
+  };
   /** The folder the plugin was installed in. */
   readonly dir: string;
   /** Changes when the manifest does: a process of an older manifest is not reused. */
@@ -401,6 +405,8 @@ export class PluginProcessPool {
         server: plugin.manifest.server,
         dir: plugin.dir,
         env: pluginEnvironment(home, extra),
+        // What `extraEnv` gave is secret by definition: the log of the server must not repeat it.
+        secretValues: Object.values(extra),
         startTimeoutMs: runtime.startTimeoutMs,
         http: runtime.http,
         logger: logger.child({ plugin: plugin.id, project: entry.project }),
