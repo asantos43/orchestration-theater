@@ -15,6 +15,7 @@ import {
 import { PluginCallError, PluginProcessPool, pluginEnvironment } from './process-pool.js';
 import {
   DEFAULT_PLUGIN_RUNTIME,
+  type PluginEventSink,
   type PluginNotice,
   type PluginRuntimeConfig,
 } from './runtime-config.js';
@@ -33,6 +34,7 @@ class FakeConnection implements PluginConnection {
   hang = false;
   failCall = false;
   #listener: ((reason: string) => void) | undefined;
+  #eventListener: ((params: unknown) => void) | undefined;
   constructor(readonly spec: PluginConnectSpec) {}
   listTools() {
     return Promise.resolve([
@@ -61,13 +63,23 @@ class FakeConnection implements PluginConnection {
   onUnexpectedClose(listener: (reason: string) => void): void {
     this.#listener = listener;
   }
+  onEvent(listener: (params: unknown) => void): void {
+    this.#eventListener = listener;
+  }
+  emit(params: unknown): void {
+    this.#eventListener?.(params);
+  }
   die(reason = 'exit 1'): void {
     this.closed = true;
     this.#listener?.(reason);
   }
 }
 
-function setup(runtime: Partial<PluginRuntimeConfig> = {}, connect?: PluginConnector) {
+function setup(
+  runtime: Partial<PluginRuntimeConfig> = {},
+  connect?: PluginConnector,
+  onEvent?: PluginEventSink,
+) {
   const home = mkdtempSync(join(tmpdir(), 'ot-pool-'));
   homes.push(home);
   const clock = new FakeClock();
@@ -81,6 +93,7 @@ function setup(runtime: Partial<PluginRuntimeConfig> = {}, connect?: PluginConne
     runtime: () => ({ ...DEFAULT_PLUGIN_RUNTIME, ...runtime }),
     homeRoot: home,
     onNotice: (notice) => notices.push(notice),
+    ...(onEvent === undefined ? {} : { onEvent }),
     connector:
       connect ??
       ((spec) => {
@@ -97,6 +110,46 @@ function setup(runtime: Partial<PluginRuntimeConfig> = {}, connect?: PluginConne
 }
 
 const plugin = fixturePlugin();
+
+describe('PluginProcessPool, events (P8)', () => {
+  it('hands the event notifications to the sink with the plugin and the project of the process', async () => {
+    const heard: unknown[] = [];
+    const { pool, connections } = setup({}, undefined, (event) => heard.push(event));
+    await pool.ensure(plugin, 'p1');
+    await pool.ensure(plugin, 'p2');
+    connections[0]?.emit({ name: 'tick' });
+    connections[1]?.emit({ name: 'tock', payload: { a: 1 } });
+    expect(heard).toEqual([
+      { plugin: 'demo', project: 'p1', params: { name: 'tick' } },
+      { plugin: 'demo', project: 'p2', params: { name: 'tock', payload: { a: 1 } } },
+    ]);
+  });
+
+  it('drops what a replaced process says and what comes after the pool stopped', async () => {
+    const heard: unknown[] = [];
+    const { pool, connections } = setup({}, undefined, (event) => heard.push(event));
+    await pool.ensure(plugin, 'p1');
+    const first = connections[0];
+    await pool.ensure(fixturePlugin({ hash: 'another' }), 'p1');
+    expect(connections).toHaveLength(2);
+    first?.emit({ name: 'late' });
+    expect(heard).toEqual([]);
+    await pool.stop();
+    connections[1]?.emit({ name: 'after' });
+    expect(heard).toEqual([]);
+  });
+
+  it('survives a sink that throws, and tells the log', async () => {
+    const { pool, connections, lines } = setup({}, undefined, () => {
+      throw new Error('sink broke');
+    });
+    await pool.ensure(plugin, 'p1');
+    expect(() => connections[0]?.emit({ name: 'tick' })).not.toThrow();
+    expect(
+      lines.some((line) => line.level === 'warn' && line.msg.includes('event sink failed')),
+    ).toBe(true);
+  });
+});
 
 describe('PluginProcessPool', () => {
   it('starts on the first use, once, and reuses the process', async () => {
