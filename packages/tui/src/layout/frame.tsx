@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Box, Text, type DOMElement } from 'ink';
-import type { ReactNode, Ref } from 'react';
+import { useRef, type ReactNode, type Ref } from 'react';
+import { useMouseTarget } from '../mouse/index.js';
 import { cellWidth, clip, fit } from './text.js';
 import { COLOR } from './theme.js';
 
@@ -32,6 +33,8 @@ export interface FrameProps {
   readonly handle?: FrameHandle | undefined;
   /** The box of the right border, for what answers to the mouse on it (the drag that widens the chat). */
   readonly edgeRef?: Ref<DOMElement> | undefined;
+  /** A mouse press anywhere in the frame (the area takes the focus); what is inside still gets its click. */
+  readonly onPress?: (() => void) | undefined;
   readonly children: ReactNode;
 }
 
@@ -61,6 +64,17 @@ function column(glyph: string, rows: number): string {
 
 export function Frame(props: FrameProps): ReactNode {
   const { width, height, active, handle } = props;
+  const rootRef = useRef<DOMElement>(null);
+  const { onPress } = props;
+  useMouseTarget(
+    rootRef,
+    {
+      onPress: () => {
+        onPress?.();
+      },
+    },
+    { enabled: onPress !== undefined },
+  );
   const color = active ? COLOR.borderActive : COLOR.border;
   const inner = Math.max(0, height - 2);
   const top = frameLine(width, ['╭', '╮'], props.title, props.titleRight);
@@ -70,7 +84,7 @@ export function Frame(props: FrameProps): ReactNode {
   const before = handle === undefined ? inner : Math.max(0, Math.min(handle.from, inner));
   const after = Math.max(0, inner - before - handleRows);
   return (
-    <Box flexDirection="column" width={width} height={height}>
+    <Box ref={rootRef} flexDirection="column" width={width} height={height}>
       <Text color={color} bold={active}>
         {top}
       </Text>

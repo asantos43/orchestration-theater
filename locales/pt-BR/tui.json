@@ -87,7 +87,7 @@
     },
     "input": {
       "submit": "Enviar a mensagem",
-      "newline": "Inserir uma nova linha",
+      "newline": "Nova linha (Shift+Enter: protocolo kitty)",
       "left": "Mover o cursor um caractere para a esquerda",
       "right": "Mover o cursor um caractere para a direita",
       "wordLeft": "Mover o cursor uma palavra para a esquerda",

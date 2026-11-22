@@ -27,6 +27,9 @@ export type KeyRenderMode = (typeof KEY_RENDER_MODES)[number];
 export const INK_PATCHES = ['cache', 'grid'] as const;
 export type InkPatchName = (typeof INK_PATCHES)[number];
 
+export const KEYBOARD_PROTOCOLS = ['auto', 'kitty', 'off'] as const;
+export type KeyboardProtocol = (typeof KEYBOARD_PROTOCOLS)[number];
+
 export const LOCALE_SETTINGS = ['auto', 'en', 'pt-BR'] as const;
 export type LocaleSetting = (typeof LOCALE_SETTINGS)[number];
 
@@ -42,6 +45,11 @@ export interface UiRenderSettings {
   readonly inkPatches: readonly InkPatchName[];
   /** How many messages the history view keeps rendered; 0 is all of them (P11). */
   readonly historyWindow: number;
+}
+
+/** `ui.keyboard`: the keyboard protocol the TUI asks the terminal for (see `keyboard.ts`). */
+export interface UiKeyboardSettings {
+  readonly protocol: KeyboardProtocol;
 }
 
 export interface UiRuntimeSettings {
@@ -164,6 +172,7 @@ export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
   readonly runtime: UiRuntimeSettings;
+  readonly keyboard: UiKeyboardSettings;
   readonly keymap: UiKeymapSettings;
   readonly tuiLayout: UiTuiLayoutSettings;
   readonly trajectories: UiTrajectoriesSettings;
@@ -196,6 +205,8 @@ export const DEFAULT_RUNTIME: UiRuntimeSettings = {
   maxOldSpaceMB: undefined,
   exitGraceMs: 2000,
 };
+
+export const DEFAULT_KEYBOARD: UiKeyboardSettings = { protocol: 'auto' };
 
 export const DEFAULT_KEYMAP: UiKeymapSettings = {
   preset: 'agents',
@@ -244,6 +255,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
   runtime: DEFAULT_RUNTIME,
+  keyboard: DEFAULT_KEYBOARD,
   keymap: DEFAULT_KEYMAP,
   tuiLayout: DEFAULT_TUI_LAYOUT,
   trajectories: DEFAULT_TRAJECTORIES,
@@ -309,6 +321,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const render = record(field(source, 'render'));
   const runtime = record(field(source, 'runtime'));
   const oldSpace = integer(field(runtime, 'maxOldSpaceMB'), 16, 65_536, 0);
+  const keyboard = record(field(source, 'keyboard'));
   const keymap = record(field(source, 'keymap'));
   const tuiLayout = record(field(source, 'tuiLayout'));
   const trajectories = record(field(source, 'trajectories'));
@@ -346,6 +359,9 @@ export function parseUiSettings(ui: unknown): UiSettings {
       // 0 means "not set or not valid": V8 keeps its own limit.
       maxOldSpaceMB: oldSpace === 0 ? DEFAULT_RUNTIME.maxOldSpaceMB : oldSpace,
       exitGraceMs: integer(field(runtime, 'exitGraceMs'), 0, 60_000, DEFAULT_RUNTIME.exitGraceMs),
+    },
+    keyboard: {
+      protocol: oneOf(field(keyboard, 'protocol'), KEYBOARD_PROTOCOLS, DEFAULT_KEYBOARD.protocol),
     },
     keymap: {
       preset: oneOf(field(keymap, 'preset'), KEYMAP_PRESETS, DEFAULT_KEYMAP.preset),

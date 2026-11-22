@@ -259,3 +259,49 @@ describe('the drag', () => {
     expect(frame).toContain('Copied 17 characters.');
   });
 });
+
+/** The shortcut bar (the last row) is of the area that has the focus. */
+const bar = (frame: string): string => frame.split('\n').at(-1) ?? '';
+
+describe('the focus by a press', () => {
+  it('goes to the area that is pressed, on any of its rows', async () => {
+    const { app } = await open();
+    expect(bar(app.frame())).toContain('PageUp  Scroll');
+    // A row of the panel that answers only to the wheel: the panel takes the focus.
+    let frame = await click(app, locate(app.frame(), 'panel row 3'));
+    expect(bar(frame)).toContain('Enter  Fold');
+    // A quota of the side bar, which has no click of its own: the side bar takes it.
+    frame = await click(app, locate(frame, 'codex-work'));
+    expect(bar(frame)).toContain('Enter  Open');
+    // A message of the chat: the chat takes it back.
+    frame = await click(app, locate(frame, 'message number 25'));
+    expect(bar(frame)).toContain('PageUp  Scroll');
+  });
+
+  it('does not take the click from what is inside the area', async () => {
+    const { app } = await open();
+    // The settings line of the side bar opens the tab, and the press on the side bar went before it.
+    const frame = await click(app, locate(app.frame(), '⚙ Settings'));
+    expect(frame).toContain('First section');
+  });
+
+  it('on the border of the chat leaves the focus on the border, not on the chat', async () => {
+    const { app } = await open();
+    const frame = app.frame();
+    const row = frame.split('\n')[6] ?? '';
+    const edge = row.indexOf('││', row.indexOf('││') + 2);
+    await send(app, sgrReport({ action: 'press', button: 'left', col: edge, row: 6 }));
+    await send(app, sgrReport({ action: 'drag', button: 'left', col: edge + 4, row: 6 }));
+    const released = await send(
+      app,
+      sgrReport({ action: 'release', button: 'left', col: edge + 4, row: 6 }),
+    );
+    expect(bar(released)).toContain('Width');
+  });
+
+  it('is left alone with ui.mouse wheel', async () => {
+    const { app } = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'wheel' });
+    const frame = await click(app, locate(app.frame(), 'panel row 3'));
+    expect(bar(frame)).toContain('PageUp  Scroll');
+  });
+});

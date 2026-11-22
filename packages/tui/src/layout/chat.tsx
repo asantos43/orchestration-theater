@@ -52,6 +52,8 @@ export interface ChatProps {
   readonly onOffset: (offset: number) => void;
   /** The border is dragged with the mouse (N34): the same width action as the keys of the border. */
   readonly onResizeDrag?: ((drag: DragInfo) => void) | undefined;
+  /** The chat is pressed with the mouse: it takes the focus. */
+  readonly onFocus?: (() => void) | undefined;
   readonly input: ReactNode;
   /** Rows the input region takes (the text box, the decision card, the suggestions). */
   readonly inputRows?: number | undefined;
@@ -138,6 +140,7 @@ export function Chat(props: ChatProps): ReactNode {
       title={t('layout.chat.title')}
       bottomLabel={props.widthLabel}
       edgeRef={edgeRef}
+      onPress={props.onFocus}
       handle={
         props.resizable
           ? {
