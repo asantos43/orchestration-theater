@@ -2,11 +2,21 @@
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  bundledPackageIds,
   checkNotices,
+  checkPlatformNotices,
   gatherNoticePackages,
+  gatherPlatformNotices,
+  installedSelection,
+  listedPackageIds,
+  noticesFileName,
+  platformGraph,
   renderNotices,
+  selectBundled,
   type NoticePackage,
 } from './notices.js';
+import { parseLockfile, PLATFORM_IDS, type PlatformId } from './lockfile.js';
+import type { InstalledPackage } from './pnpm.js';
 import type { CopiedEntry } from './copied-code.js';
 import { cleanupTemp, makeTemp, writeTree } from './test-helpers.js';
 import { hasErrors } from './common.js';
@@ -131,5 +141,271 @@ describe('notices', () => {
     expect(off.findings.map((f) => f.severity)).toEqual(['warning']);
     expect(hasErrors(checkNotices(expected, undefined, 'N.md', 'darwin'))).toBe(true);
     expect(checkNotices(expected, expected, 'N.md', 'win32').findings).toEqual([]);
+  });
+});
+
+// ---------- per platform (P10) ----------
+
+const LOCK = parseLockfile(`lockfileVersion: '9.0'
+
+packages:
+
+  '@n/keyring-darwin-arm64@2.0.0':
+    cpu: [arm64]
+    os: [darwin]
+
+  '@n/keyring-linux-x64-gnu@2.0.0':
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@n/keyring-linux-x64-musl@2.0.0':
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@n/keyring-win32-x64-msvc@2.0.0':
+    cpu: [x64]
+    os: [win32]
+
+snapshots:
+
+  '@n/keyring@2.0.0':
+    optionalDependencies:
+      '@n/keyring-darwin-arm64': 2.0.0
+      '@n/keyring-linux-x64-gnu': 2.0.0
+      '@n/keyring-linux-x64-musl': 2.0.0
+      '@n/keyring-win32-x64-msvc': 2.0.0
+`);
+
+const NATIVE_OF: Record<PlatformId, string> = {
+  'linux-x64': '@n/keyring-linux-x64-gnu',
+  'win32-x64': '@n/keyring-win32-x64-msvc',
+  'darwin-arm64': '@n/keyring-darwin-arm64',
+};
+
+/** An installed tree as a Linux machine has it: the parent, a plain package and the Linux binary. */
+function linuxTree(root: string): InstalledPackage[] {
+  const make = (name: string, files: Record<string, string>): InstalledPackage => ({
+    name,
+    version: name.startsWith('@n/') ? '2.0.0' : '1.0.0',
+    license: 'MIT',
+    path: installed(root, name.replace('/', '_'), files),
+  });
+  return [
+    make('@n/keyring', { LICENSE: 'Keyring MIT', 'package.json': '{}' }),
+    make('@n/keyring-linux-x64-gnu', {
+      'LICENSE.third-party.md': 'Rust crates of the Linux addon',
+      'package.json': '{}',
+    }),
+    make('plain', { LICENSE: 'Plain MIT', 'package.json': '{}' }),
+    make('unbundled', { LICENSE: 'Unbundled MIT', 'package.json': '{}' }),
+  ];
+}
+
+describe('notices per platform', () => {
+  it('the file of each platform is named after it', () => {
+    expect(noticesFileName('win32-x64')).toBe('THIRD_PARTY_NOTICES-win32-x64.md');
+    expect(PLATFORM_IDS.map(noticesFileName)).toEqual([
+      'THIRD_PARTY_NOTICES-linux-x64.md',
+      'THIRD_PARTY_NOTICES-win32-x64.md',
+      'THIRD_PARTY_NOTICES-darwin-arm64.md',
+    ]);
+  });
+
+  it('the graph of each platform has the binary of that platform and no other', () => {
+    const prod = linuxTree(makeTemp());
+    for (const platform of PLATFORM_IDS) {
+      const entries = platformGraph(prod, LOCK, platform);
+      const natives = entries.filter((e) => e.native).map((e) => e.name);
+      expect(natives).toEqual([NATIVE_OF[platform]]);
+      expect(entries.map((e) => e.name)).toContain('plain');
+      expect(entries.map((e) => e.name)).not.toContain('@n/keyring-linux-x64-musl');
+    }
+    const linux = platformGraph(prod, LOCK, 'linux-x64').find((e) => e.native);
+    expect(linux?.installed?.name).toBe('@n/keyring-linux-x64-gnu');
+    const win = platformGraph(prod, LOCK, 'win32-x64').find((e) => e.native);
+    expect(win?.installed).toBeUndefined();
+    expect(win?.parent?.name).toBe('@n/keyring');
+  });
+
+  it('a binary package that is not installed takes the license and the text of the package that declares it', () => {
+    const prod = linuxTree(makeTemp());
+    const win = gatherPlatformNotices(platformGraph(prod, LOCK, 'win32-x64'));
+    const native = win.find((p) => p.name === '@n/keyring-win32-x64-msvc');
+    expect(native?.derivedFrom).toBe('@n/keyring@2.0.0');
+    expect(native?.licenseFiles.map((f) => f.text)).toEqual(['Keyring MIT']);
+    const linux = gatherPlatformNotices(platformGraph(prod, LOCK, 'linux-x64'));
+    const own = linux.find((p) => p.name === '@n/keyring-linux-x64-gnu');
+    expect(own?.derivedFrom).toBeUndefined();
+    expect(own?.licenseFiles[0]?.text).toBe('Rust crates of the Linux addon');
+    const text = renderNotices(win, [], { platform: 'win32-x64', basis: 'bundle' });
+    expect(text).toContain('Not installed on the machine that generated this file');
+    expect(text).toContain('# Third-party notices (win32-x64)');
+    expect(text).not.toContain('Rust crates of the Linux addon');
+  });
+
+  it('reads the bundled packages from the paths of the metafile, whatever the peers suffix', () => {
+    const inputs = {
+      'node_modules/.pnpm/ink@8.0.0_@types+react@19.3.0_react@19.3.1/node_modules/ink/build/ink.js':
+        {},
+      'node_modules/.pnpm/@scope+pkg@1.2.3-rc.1/node_modules/@scope/pkg/index.js': {},
+      'node_modules\\.pnpm\\chalk@6.0.1\\node_modules\\chalk\\index.js': {},
+      'node_modules/hoisted/index.js': {},
+      'packages/daemon/dist/cli.js': {},
+    };
+    expect([...bundledPackageIds({ inputs })].sort()).toEqual([
+      '@scope/pkg@1.2.3-rc.1',
+      'chalk@6.0.1',
+      'hoisted@*',
+      'ink@8.0.0',
+    ]);
+    expect(bundledPackageIds({})).toEqual(new Set());
+  });
+
+  it('crosses the graph with the bundle: what was bundled plus the binary, and flags a bundled stranger', () => {
+    const prod = linuxTree(makeTemp());
+    const graph = platformGraph(prod, LOCK, 'darwin-arm64');
+    const { selected, unknown } = selectBundled(
+      graph,
+      prod,
+      new Set(['plain@1.0.0', '@n/keyring@2.0.0', 'stranger@9.9.9']),
+    );
+    expect(selected.map((e) => `${e.name}@${e.version}`)).toEqual([
+      '@n/keyring@2.0.0',
+      '@n/keyring-darwin-arm64@2.0.0',
+      'plain@1.0.0',
+    ]);
+    expect(unknown).toEqual(['stranger@9.9.9']);
+  });
+
+  it('on the machine own platform the installed tree and the graph give the same packages', () => {
+    const prod = linuxTree(makeTemp());
+    const bundled = new Set(['plain@1.0.0', '@n/keyring@2.0.0']);
+    const graph = selectBundled(platformGraph(prod, LOCK, 'linux-x64'), prod, bundled).selected;
+    expect(graph.map((e) => `${e.name}@${e.version}`).sort()).toEqual(
+      installedSelection(prod, LOCK, bundled).sort(),
+    );
+  });
+
+  function rendered(platform: PlatformId, drop?: string): { text: string; ids: string[] } {
+    const prod = linuxTree(makeTemp());
+    const bundled = new Set(['plain@1.0.0', '@n/keyring@2.0.0']);
+    const selected = selectBundled(platformGraph(prod, LOCK, platform), prod, bundled).selected;
+    const ids = selected.map((e) => `${e.name}@${e.version}`);
+    const packages = gatherPlatformNotices(selected).filter(
+      (p) => `${p.name}@${p.version}` !== drop,
+    );
+    const extraSections =
+      platform === 'win32-x64'
+        ? [{ title: 'Windows job launcher (native/job-launcher)', text: 'crates' }]
+        : [];
+    return { text: renderNotices(packages, [], { platform, basis: 'bundle', extraSections }), ids };
+  }
+
+  const check = (
+    platform: PlatformId,
+    text: string | undefined,
+    ids: string[],
+  ): ReturnType<typeof checkPlatformNotices> =>
+    checkPlatformNotices({ platform, expectedIds: ids, onDisk: text, fileName: 'N.md' });
+
+  it('the check passes on a file that has exactly the packages of the graph', () => {
+    for (const platform of PLATFORM_IDS) {
+      const { text, ids } = rendered(platform);
+      const result = check(platform, text, ids);
+      expect(result.findings).toEqual([]);
+      expect(result.summary[0]).toContain(`${String(ids.length)} package(s)`);
+    }
+  });
+
+  it('the check FAILS when a package is missing from the file', () => {
+    const { text, ids } = rendered('linux-x64', 'plain@1.0.0');
+    const result = check('linux-x64', text, ids);
+    expect(hasErrors(result)).toBe(true);
+    expect(result.findings.map((f) => f.message)).toContain(
+      'package missing from the file: plain@1.0.0',
+    );
+  });
+
+  it('the check fails when the binary of another platform is in the file, or the one of the platform is not', () => {
+    const win = rendered('win32-x64');
+    const wrong = check(
+      'linux-x64',
+      win.text.replace('(win32-x64)', '(linux-x64)'),
+      rendered('linux-x64').ids,
+    );
+    const messages = wrong.findings.map((f) => f.message);
+    expect(messages).toContain('package missing from the file: @n/keyring-linux-x64-gnu@2.0.0');
+    expect(messages).toContain(
+      'package not in the graph of linux-x64: @n/keyring-win32-x64-msvc@2.0.0',
+    );
+    expect(messages.some((m) => m.startsWith('section of another platform'))).toBe(true);
+  });
+
+  it('the check fails on a build tool, on a duplicate, on the wrong platform title and on a file that is not there', () => {
+    const { text, ids } = rendered('linux-x64');
+    const tool = text.replace(
+      '## Copied code (level A)',
+      '### esbuild@0.28.2\n\n- License: MIT\n\n## Copied code (level A)',
+    );
+    const withTool = check('linux-x64', tool, ids);
+    expect(withTool.findings.map((f) => f.message)).toContain(
+      'esbuild@0.28.2 is a build tool (level D) and must not be in the notices',
+    );
+    const twice = text.replace(
+      '## Copied code (level A)',
+      '### plain@1.0.0\n\n## Copied code (level A)',
+    );
+    expect(check('linux-x64', twice, ids).findings.map((f) => f.message)).toContain(
+      'a package is listed more than once',
+    );
+    expect(hasErrors(check('darwin-arm64', text, ids))).toBe(true);
+    expect(hasErrors(check('linux-x64', undefined, ids))).toBe(true);
+  });
+
+  it('the Windows file carries the launcher notices and the others do not', () => {
+    const win = rendered('win32-x64');
+    expect(win.text).toContain('## Windows job launcher (native/job-launcher)');
+    const noLauncher = win.text.replace(/## Windows job launcher[\s\S]*$/, '');
+    expect(check('win32-x64', noLauncher, win.ids).findings.map((f) => f.message)).toContain(
+      'section missing: Windows job launcher (native/job-launcher)',
+    );
+    expect(rendered('linux-x64').text).not.toContain('Windows job launcher');
+  });
+
+  it('a heading inside a license text is not a package', () => {
+    const pkg: NoticePackage = {
+      name: 'a',
+      version: '1.0.0',
+      license: 'MIT',
+      repository: undefined,
+      licenseFiles: [{ fileName: 'LICENSE', text: '### fake@9.9.9\n## Copied code (level A)' }],
+      noticeFile: undefined,
+    };
+    const text = renderNotices([pkg], [], { platform: 'linux-x64' });
+    expect(listedPackageIds(text)).toEqual(['a@1.0.0']);
+  });
+
+  it('the check tells the installed tree from the lockfile graph, and a stale file', () => {
+    const { text, ids } = rendered('linux-x64');
+    const base = {
+      platform: 'linux-x64' as const,
+      expectedIds: ids,
+      onDisk: text,
+      fileName: 'N.md',
+    };
+    expect(checkPlatformNotices({ ...base, installedIds: ids, rendered: text }).findings).toEqual(
+      [],
+    );
+    const missing = checkPlatformNotices({ ...base, installedIds: [...ids, 'ghost@1.0.0'] });
+    expect(missing.findings.map((f) => f.message)).toContain(
+      'is installed here but the graph of linux-x64 (from the lockfile) lacks it',
+    );
+    expect(
+      hasErrors(checkPlatformNotices({ ...base, installedIds: ids, rendered: `${text}x` })),
+    ).toBe(true);
+    const unknown = checkPlatformNotices({ ...base, unknownBundled: ['stranger@9.9.9'] });
+    expect(hasErrors(unknown)).toBe(true);
   });
 });
