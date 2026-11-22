@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { dataPaths } from '../../paths.js';
 import { recoverInterrupted, type ApplyPorts } from './applier.js';
@@ -57,22 +57,25 @@ const JOURNAL: UpdateJournal = {
 };
 
 describe('layoutOf and applierArguments', () => {
+  const exe = join(sep, 'opt', 'ot', 'ot');
+  const folder = join(sep, 'opt', 'ot');
+
   it('puts previous, staging and the journal beside the executable', () => {
-    const layout = layoutOf('/opt/ot/ot');
+    const layout = layoutOf(exe);
     expect(layout).toMatchObject({
-      folder: '/opt/ot',
-      previousExe: '/opt/ot/previous/ot',
-      stagingExe: '/opt/ot/staging/ot',
-      journal: '/opt/ot/update-state.json',
+      folder,
+      previousExe: join(folder, 'previous', 'ot'),
+      stagingExe: join(folder, 'staging', 'ot'),
+      journal: join(folder, 'update-state.json'),
     });
-    expect(layoutOf('C:/ot/ot.exe').previousExe.endsWith('ot.exe')).toBe(true);
+    expect(layoutOf(join(folder, 'ot.exe')).previousExe.endsWith('ot.exe')).toBe(true);
   });
 
   it('names the internal mode and the journal', () => {
-    expect(applierArguments(layoutOf('/opt/ot/ot'))).toEqual([
+    expect(applierArguments(layoutOf(exe))).toEqual([
       '--ot-internal=apply-update',
       '--journal',
-      '/opt/ot/update-state.json',
+      join(folder, 'update-state.json'),
     ]);
   });
 });
