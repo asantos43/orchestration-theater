@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanupApps, renderApp, TEST_UI_SETTINGS, type RenderedApp } from '../ink.test-support.js';
 import { fakeOnline, seedStores } from '../layout.test-support.js';
 import type { TabContentMap } from '../layout/tab-content.js';
-import type { UiSettings } from '../settings.js';
+import { parseUiSettings, type UiSettings } from '../settings.js';
 import type { SettingsApi } from '../tabs/settings/api.js';
 import { createSettingsTab } from '../tabs/settings/settings-tab.js';
 import { FakeSetupApi, profileOf, requestError } from './fake-api.test-support.js';
@@ -117,6 +117,29 @@ describe('the first run', () => {
     const frame = await app.waitForText('Could not check whether the first run is needed');
     expect(frame).toContain('no answer in 100 ms');
     expect(frame).toContain('SCENARIOS');
+  });
+});
+
+describe('ot init (P6 of Phase 10)', () => {
+  // `ot init` hands the TUI the `ui` of the configuration as it is (JSON in the environment). With
+  // no `ui.setup` written in it, the gate is the default one, and a first run opens the assistant.
+  it('the ui of a data folder with no ui.setup opens the assistant on a first run', async () => {
+    const settings: UiSettings = { ...TEST_UI_SETTINGS, setup: parseUiSettings({}).setup };
+    expect(settings.setup.open).toBe('auto');
+    const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: true });
+    const app = await mount(api, settings);
+    const frame = await app.waitForText('Setup assistant: first run');
+    expect(frame).toContain('Pick the accounts that take part');
+    expect(api.calls).toContain('start:first_run');
+  });
+
+  it('with a configuration already confirmed it opens the layout, not the assistant', async () => {
+    const settings: UiSettings = { ...TEST_UI_SETTINGS, setup: parseUiSettings({}).setup };
+    const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: false });
+    const app = await mount(api, settings);
+    await app.waitForText('SCENARIOS');
+    await app.settle();
+    expect(app.frame()).not.toContain('Setup assistant');
   });
 });
 
