@@ -239,3 +239,20 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo build --locked
       - run: cargo test --locked
+      # Phase 10, P2: the adapter packages/adapters/platform-windows against the launcher just built (it is
+      # found in native/job-launcher/target/debug). Its real tests run only where the file exists and the
+      # platform is win32: this is the job that runs them (`cross` does not build the launcher, so there
+      # they skip, and the daemon tests keep running without a launcher as before).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm build
+        working-directory: .
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - run: pnpm vitest run packages/adapters/platform-windows
+        working-directory: .
