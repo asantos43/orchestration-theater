@@ -37,6 +37,7 @@ import {
 } from '@otheater/protocol';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
+import { withPluginTools } from '../plugins/permissions.js';
 import { TerminalRecorder, type TerminalBlock } from './terminal-recorder.js';
 import { CheckpointTracker } from './checkpoints.js';
 import {
@@ -1072,13 +1073,14 @@ export class AttemptRunner {
     if (context.request !== undefined) return this.#haltEnded(context, true);
     // A new token for each go, also for the reload of a conversation (`session/load`): the MCP
     // servers of a session are the ones of the call that opens it, so the old token is gone.
-    const grant = this.#grant(context);
+    const { policy, pluginTools } = await this.#withPluginTools(context);
+    const grant = this.#grant(context, policy, pluginTools);
     let lease: SessionLease;
     try {
       lease = await pool.acquire({
         client: spec.profile.client,
         profile: spec.profile,
-        policy: spec.policy,
+        policy,
         cwd: context.worktree,
         correlation: {
           playId: spec.playId,
@@ -1193,20 +1195,64 @@ export class AttemptRunner {
   }
 
   /**
+   * The policy of the go with the plugin tools its role may call (P6): the roles of the manifests
+   * and the effects against this policy, from the server (`McpAccess.pluginTools`). The names go
+   * into the `mcpTools` of the framework server, which layers 1 and 2 of the three adapters read,
+   * and into the grant. A policy that does not list the server, an attempt with no role, or a
+   * server that does not know plugins leave the policy as it is.
+   */
+  async #withPluginTools(
+    context: AttemptContext,
+  ): Promise<{ policy: RolePolicy; pluginTools: readonly string[] }> {
+    const { mcp } = this.#options;
+    const { spec } = context;
+    if (
+      mcp?.pluginTools === undefined ||
+      spec.role === undefined ||
+      !spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)
+    ) {
+      return { policy: spec.policy, pluginTools: [] };
+    }
+    try {
+      const pluginTools = await mcp.pluginTools({
+        role: spec.role,
+        correlation: this.#correlation(context),
+        policy: spec.policy,
+      });
+      return {
+        policy: withPluginTools(spec.policy, FRAMEWORK_MCP_NAME, pluginTools),
+        pluginTools,
+      };
+    } catch (error) {
+      // No plugin tool for this go; the framework tools and the session are not at stake.
+      this.#options.logger.warn(
+        { err: error, attemptId: context.attemptId },
+        'plugin tool permissions could not be worked out',
+      );
+      return { policy: spec.policy, pluginTools: [] };
+    }
+  }
+
+  /**
    * The door of the framework MCP server for one go of an attempt (architecture 5.3). There is one
    * only when the daemon runs the server, the attempt has a role and the policy of the role lists
    * the server (`policy.mcpServers` has `otheater`); otherwise the session runs without it.
    */
-  #grant(context: AttemptContext): McpGrant | undefined {
+  #grant(
+    context: AttemptContext,
+    policy: RolePolicy,
+    pluginTools: readonly string[],
+  ): McpGrant | undefined {
     const { mcp } = this.#options;
     const { spec } = context;
     if (mcp === undefined || spec.role === undefined) return undefined;
-    if (!spec.policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
-    const tools = mcpToolsOf(spec.policy, FRAMEWORK_MCP_NAME);
+    if (!policy.mcpServers.includes(FRAMEWORK_MCP_NAME)) return undefined;
+    const tools = mcpToolsOf(policy, FRAMEWORK_MCP_NAME);
     return mcp.grant({
       attemptId: context.attemptId,
       role: spec.role,
       ...(tools === 'all' ? {} : { tools }),
+      ...(mcp.pluginTools === undefined ? {} : { pluginTools }),
       correlation: this.#correlation(context),
       worktree: context.worktree,
       networkAllow: spec.policy.network.allow,

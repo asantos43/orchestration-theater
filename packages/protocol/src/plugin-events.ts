@@ -90,22 +90,30 @@ export type PluginServerFailedPayload = z.infer<typeof PluginServerFailedPayload
 /**
  * Why a tool of a plugin stays out: the server exposes one the manifest does not declare
  * (`not_declared`), the manifest declares one the server does not expose (`not_exposed`), or the name
- * `<id>__<tool>` is too long or taken (`name_too_long`, `name_taken`).
+ * `<id>__<tool>` is too long or taken (`name_too_long`, `name_taken`). A call refused by the
+ * permissions (P6, N237): the role may not call the tool (`not_allowed`), or the Producer refused,
+ * could not be asked or cancelled the approval (`approval_denied`, `approval_unavailable`,
+ * `approval_cancelled`). [proposta]
  */
 export const PLUGIN_TOOL_REJECTED_REASONS = [
   'not_declared',
   'not_exposed',
   'name_too_long',
   'name_taken',
+  'not_allowed',
+  'approval_denied',
+  'approval_unavailable',
+  'approval_cancelled',
 ] as const;
 export type PluginToolRejectedReason = (typeof PLUGIN_TOOL_REJECTED_REASONS)[number];
 
-/** `plugin.tool_rejected`. */
+/** `plugin.tool_rejected`. `role` comes with a call the permissions refused. */
 export const PluginToolRejectedPayloadSchema = z.strictObject({
   plugin: pluginId,
   project: id,
   tool: z.string().min(1).max(128),
   reason: z.enum(PLUGIN_TOOL_REJECTED_REASONS),
+  role: z.string().min(1).max(64).optional(),
 });
 export type PluginToolRejectedPayload = z.infer<typeof PluginToolRejectedPayloadSchema>;
 

@@ -25,6 +25,13 @@ import {
   VERIFY_MODES,
 } from './config.js';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
+import {
+  PLUGIN_APPROVAL_DETAIL_MODES,
+  PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+  PLUGIN_EXTERNAL_WRITE_MODES,
+  PLUGIN_LOCAL_WRITE_MODES,
+  PLUGIN_NETWORK_MODES,
+} from './plugins/permissions.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
 import { makeTempDataDir } from './test-helpers.js';
 
@@ -1017,6 +1024,13 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       events: 'declared',
       event_max_bytes: 16_384,
       install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
+      permissions: {
+        local_write: 'writes',
+        network: 'network_allow',
+        external_write: 'writes',
+        external_write_approval: 'ask',
+        approval_detail: 'keys',
+      },
     });
   });
 
@@ -1762,6 +1776,39 @@ describe('plugins.install (Phase 9, P4)', () => {
       'plugins:\n  install:\n    other: 1\n',
       'plugins:\n  install:\n    timeout: soon\n',
       'plugins:\n  other: 1\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('plugins.permissions (Phase 9, P6) [proposta]', () => {
+  it('takes each mode of each key', () => {
+    const modes: Record<string, readonly string[]> = {
+      local_write: PLUGIN_LOCAL_WRITE_MODES,
+      network: PLUGIN_NETWORK_MODES,
+      external_write: PLUGIN_EXTERNAL_WRITE_MODES,
+      external_write_approval: PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
+      approval_detail: PLUGIN_APPROVAL_DETAIL_MODES,
+    };
+    for (const [key, values] of Object.entries(modes)) {
+      for (const value of values) {
+        const { permissions } = parseConfig(
+          `plugins:\n  permissions:\n    ${key}: ${value}\n`,
+        ).plugins;
+        expect(permissions[key as keyof typeof permissions], `${key}: ${value}`).toBe(value);
+      }
+    }
+  });
+
+  it('refuses a value that is no mode, a key that does not exist and a section that is no object', () => {
+    for (const bad of [
+      'plugins:\n  permissions:\n    local_write: always\n',
+      'plugins:\n  permissions:\n    network: true\n',
+      'plugins:\n  permissions:\n    external_write_approval: never\n',
+      'plugins:\n  permissions:\n    approval_detail: all\n',
+      'plugins:\n  permissions:\n    critic: allow\n',
+      'plugins:\n  permissions: deny\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }

@@ -120,6 +120,21 @@ export type PluginNotice =
     }
   | {
       /**
+       * A call to a plugin tool did not run because of the permissions (P6): the tool is not in
+       * the grant of the session (`not_allowed`), or the Producer refused the call
+       * (`approval_denied`), nobody could be asked (`approval_unavailable`) or the question ended
+       * with no answer (`approval_cancelled`).
+       */
+      readonly kind: 'tool_refused';
+      readonly plugin: string;
+      readonly project: string;
+      readonly tool: string;
+      readonly role: string;
+      readonly reason:
+        'not_allowed' | 'approval_denied' | 'approval_unavailable' | 'approval_cancelled';
+    }
+  | {
+      /**
        * The manifest declares secrets that have no value in the vault (Phase 9, P7, N239): the
        * server does not start in this project. Only the names, never a value. [proposta]
        */
