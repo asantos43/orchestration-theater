@@ -216,7 +216,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     platform: deps.platform,
     env: deps.env,
     service: deps.serviceHost?.manager,
-    // The one place the command of the service comes from: P1 swaps it for `resolveSelfCommand()`.
+    // The one place the command of the service comes from: `resolveSelfCommand()`, via `otLauncher`.
     self: resolveServiceCommand(deps.otLauncher),
     confirm: deps.confirm,
     homedir: deps.homedir,
