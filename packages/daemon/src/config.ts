@@ -43,6 +43,7 @@ import {
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
   ADMISSION_MODES,
   DEFAULT_ADMISSION,
@@ -2615,6 +2616,33 @@ export const DaemonConfigSchema = z
             mode: z.enum(LOG_ROTATE_MODES).default('size'),
             max_mb: z.int().min(1).max(10_240).default(20),
             keep: z.int().min(0).max(100).default(5),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * Plugins (Phase 9; architecture 5.14). P4 owns `install`; P5 adds the process keys
+     * (`idle_timeout`, `max_restarts`, `call_timeout`) to this same object.
+     */
+    plugins: z
+      .strictObject({
+        install: z
+          .strictObject({
+            /**
+             * Where `ot plugin install` may take a plugin from (N236; [proposta] for the key). `path`:
+             * a local folder (kept where it is, only the path and the hash of `plugin.yaml` are
+             * stored); `npm`: `npm:<pkg>@<version>`, installed with `--ignore-scripts`; `git`:
+             * `git:<url>#<ref>`, cloned without hooks and pinned to the commit. Take a mode out of the
+             * list to refuse it; `[]` refuses every install (what is installed keeps working).
+             */
+            sources: z
+              .array(z.enum(PLUGIN_INSTALL_SOURCES))
+              .refine((list) => new Set(list).size === list.length, {
+                message: 'each source can be listed once',
+              })
+              .default([...PLUGIN_INSTALL_SOURCES]),
+            /** The longest an `npm` or `git` command of an install may run before it is stopped ([proposta]). */
+            timeout: DurationSchema.prefault('5m'),
           })
           .prefault({}),
       })

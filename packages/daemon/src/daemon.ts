@@ -102,7 +102,8 @@ import { ExecutorService } from './executors/service.js';
 import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
-import { buildDaemonRegistries } from './registries.js';
+import { PluginRegistry } from './plugins/registry.js';
+import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { RecoveryGate } from './recovery/gate.js';
 import { announceRecovery } from './recovery/notice.js';
@@ -197,6 +198,17 @@ export interface DaemonHandle {
   readonly vault: SecretVault;
   /** The validated registries the daemon started with (architecture 5.18). */
   readonly registries: Registries;
+  /**
+   * The installed plugins and where each is on (Phase 9, P4). `activeFor(project)` is what P5 starts
+   * the servers from; `onNotice` is the extension point of P8. The daemon watches `plugins.json`,
+   * so `ot plugin` run in another terminal reaches it.
+   */
+  readonly plugins: PluginRegistry;
+  /**
+   * The current snapshot of the registries and of the active plugins; it swaps when a plugin is
+   * turned on or off (N235 (a)). A session reads `current()` once, when it opens.
+   */
+  readonly registryHolder: RegistryHolder;
   /** Which adapter of each port is running (what `daemon.started` recorded). */
   readonly adapters: Composition['adapters'];
   /** Whether the vault is open now (a vault without a master password is always open). */
@@ -939,6 +951,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('telemetry retention', async () => telemetryRetention?.stop());
       await attempt('analysis', async () => analysisService?.stop());
+      await attempt('registries snapshot', () => {
+        registryHolder.stop();
+        return Promise.resolve();
+      });
+      await attempt('plugins', () => {
+        plugins.close();
+        return Promise.resolve();
+      });
       await attempt('mcp', () => mcp.stop());
       // After the clients ended (`execution`): their last batches have arrived or never will.
       await attempt('telemetry', async () => telemetry?.stop());
@@ -1204,6 +1224,21 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     direct,
   });
 
+  // Phase 9, P4: the plugins installed with `ot plugin`, and the snapshot of the registries that
+  // follows the ones that are on. Nothing here starts a plugin (that is P5).
+  const plugins = await PluginRegistry.open({
+    dataDir: paths.dataDir,
+    clock,
+    logger,
+    frameworkToolNames: registries.tools.list().map((tool) => tool.name),
+  });
+  const registryHolder = new RegistryHolder(registries, {
+    base: options.registries ?? defaultRegistryEntries(),
+    logger,
+  });
+  registryHolder.follow(plugins);
+  plugins.watch();
+
   const handle: DaemonHandle = {
     clock,
     // The store as the adapter built it; the daemon's own code appends through the validated one.
@@ -1213,6 +1248,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     daemonId,
     vault,
     registries,
+    plugins,
+    registryHolder,
     adapters: composition.adapters,
     execution,
     mcpUrl: mcp.url,

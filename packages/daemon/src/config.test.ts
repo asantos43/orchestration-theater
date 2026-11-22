@@ -24,6 +24,7 @@ import {
   SLASH_CONFIRM_MODES,
   VERIFY_MODES,
 } from './config.js';
+import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import { executionSettingsOf, sessionsPerProcessFor } from './execution/settings.js';
 import { makeTempDataDir } from './test-helpers.js';
 
@@ -1633,6 +1634,38 @@ describe('telemetry (P1 of Phase 8)', () => {
       'telemetry:\n  daemon_spans:\n    waits: log\n',
       'telemetry:\n  daemon_spans:\n    other: on\n',
       'backup:\n  telemetry: sometimes\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
+describe('plugins.install (Phase 9, P4)', () => {
+  it('defaults to every source, with a 5 minute timeout', () => {
+    const config = parseConfig('');
+    expect(config.plugins.install.sources).toEqual([...PLUGIN_INSTALL_SOURCES]);
+    expect(config.plugins.install.timeout).toBe(5 * 60_000);
+  });
+
+  it('takes a subset of sources, none included, and a duration', () => {
+    expect(
+      parseConfig('plugins:\n  install:\n    sources: [path]\n').plugins.install.sources,
+    ).toEqual(['path']);
+    expect(parseConfig('plugins:\n  install:\n    sources: []\n').plugins.install.sources).toEqual(
+      [],
+    );
+    expect(parseConfig('plugins:\n  install:\n    timeout: 30s\n').plugins.install.timeout).toBe(
+      30_000,
+    );
+  });
+
+  it('refuses an unknown source, a repeated one, an unknown key and a bad duration', () => {
+    for (const bad of [
+      'plugins:\n  install:\n    sources: [ftp]\n',
+      'plugins:\n  install:\n    sources: [path, path]\n',
+      'plugins:\n  install:\n    other: 1\n',
+      'plugins:\n  install:\n    timeout: soon\n',
+      'plugins:\n  other: 1\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }
