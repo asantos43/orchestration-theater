@@ -116,7 +116,8 @@ function failure(error: string, message: string, extra: object = {}): CallToolRe
  *   does not expose is unavailable (listed nowhere, and a call answers `tool_unavailable`).
  * - Listing starts the process of a plugin only the first time (to know the schemas); after it
  *   stops idle, the listing comes from what it last exposed and never waits for a start. A plugin
- *   that is waiting to be started again or was given up on is left out of the listing.
+ *   that never ran, and is waiting to be started again or was given up on, is left out of the
+ *   listing; one that ran keeps its tools listed, and a call to it answers `plugin_unavailable`.
  * - [proposta] A tool with `roles: []` is for the panel only (P11) and no Executor sees it.
  * - The permissions of layers 1 and 2 generated from the manifest are P6; here the filter is the
  *   role, and the allow-list of the policy (`RolePolicy.mcpTools`), as for the framework tools.
