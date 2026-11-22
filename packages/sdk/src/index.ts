@@ -98,3 +98,27 @@ export {
   type SessionsPerProcessProbe,
   type SessionsPerProcessReport,
 } from './conformance/sessions-per-process.js';
+// Plugins (Phase 9, P9): the conformance suite and the stdio client for testing a plugin server.
+// The server side (`definePlugin`, `servePlugin`) is in `@otheater/sdk/plugin`, so that this entry
+// does not load the MCP server for those who use only the suites above.
+export {
+  describePluginConformance,
+  findPluginToolProblems,
+  type PluginToolProblems,
+  type PluginConformanceCall,
+  type PluginHarness,
+} from './plugin/conformance.js';
+export {
+  PluginStdioClient,
+  type PluginNotification,
+  type PluginProcessSpec,
+  type PluginStdioClientOptions,
+  type PluginToolDescription,
+  type PluginToolResult,
+} from './plugin/stdio-client.js';
+export {
+  PLUGIN_EVENT_MAX_BYTES,
+  PLUGIN_EVENT_METHOD,
+  type PluginEventParams,
+} from './plugin/events.js';
+export { PluginManifestError, readPluginManifest } from './plugin/manifest-file.js';
