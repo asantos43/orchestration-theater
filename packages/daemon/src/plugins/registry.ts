@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { randomBytes } from 'node:crypto';
 import { watch, type FSWatcher } from 'node:fs';
-import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rm } from 'node:fs/promises';
 import { dirname, join, relative, isAbsolute } from 'node:path';
 import {
   Conflict,
@@ -11,6 +11,7 @@ import {
   type Clock,
   type PluginManifest,
 } from '@otheater/core';
+import { writePrivateFileAtomic } from '@otheater/client/node';
 import { z } from 'zod';
 import type { Logger } from '../logger.js';
 import { readPluginManifest } from './manifest-file.js';
@@ -553,15 +554,13 @@ export class PluginRegistry {
     });
   }
 
+  /**
+   * A temporary file renamed over `plugins.json`, so a reader never sees half a file. The rename is
+   * retried while Windows refuses it because another handle (a `watch()` of another registry, an
+   * antivirus) has the file open.
+   */
   async #writeFile(file: PluginsFile): Promise<void> {
-    const temp = `${this.#paths.file}.${randomBytes(6).toString('hex')}.tmp`;
-    try {
-      await writeFile(temp, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
-      await rename(temp, this.#paths.file);
-    } catch (error) {
-      await rm(temp, { force: true });
-      throw error;
-    }
+    await writePrivateFileAtomic(this.#paths.file, `${JSON.stringify(file, null, 2)}\n`);
   }
 
   /**
