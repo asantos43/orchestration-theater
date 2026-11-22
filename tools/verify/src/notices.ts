@@ -346,10 +346,19 @@ export function platformGraph(
   );
 }
 
+/** A version with major, minor and patch (and an optional prerelease and build). */
+const WHOLE_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
 /**
  * The packages an esbuild metafile says went into the bundle, as `name@version` (`name@*` when the
  * path has no version, which a layout other than pnpm's gives). The source of truth is the `inputs`
  * paths: `node_modules/.pnpm/<name>@<version>[_<peers>]/node_modules/<name>/...`.
+ *
+ * pnpm shortens a store folder whose name is longer than `virtual-store-dir-max-length` (by
+ * default 60 on Windows and 120 elsewhere [S: pnpm docs]) to a prefix and a hash, which can cut the
+ * version (`@agentclientprotocol+sdk@2._<hash>` on the Windows runner [V: CI log of 2026-11-22]).
+ * A version that is not a whole semver is read as `name@*`: the name is still checked against the
+ * graph, the version is not.
  */
 export function bundledPackageIds(metafile: unknown): Set<string> {
   const inputs = isRecord(metafile) && isRecord(metafile.inputs) ? metafile.inputs : {};
@@ -364,8 +373,10 @@ export function bundledPackageIds(metafile: unknown): Set<string> {
     const store = /node_modules\/\.pnpm\/([^/]+)\/node_modules\//.exec(posix);
     const prefix = `${name.replace('/', '+')}@`;
     const dir = store?.[1];
-    if (dir?.startsWith(prefix) === true) {
-      ids.add(`${name}@${dir.slice(prefix.length).split('_')[0] ?? ''}`);
+    const version =
+      dir?.startsWith(prefix) === true ? (dir.slice(prefix.length).split('_')[0] ?? '') : '';
+    if (WHOLE_SEMVER.test(version)) {
+      ids.add(`${name}@${version}`);
     } else {
       ids.add(`${name}@*`);
     }

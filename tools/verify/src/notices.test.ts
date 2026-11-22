@@ -253,8 +253,12 @@ describe('notices per platform', () => {
       'node_modules\\.pnpm\\chalk@6.0.1\\node_modules\\chalk\\index.js': {},
       'node_modules/hoisted/index.js': {},
       'packages/daemon/dist/cli.js': {},
+      // A store folder pnpm shortened (60 characters on Windows): the version is cut.
+      'node_modules/.pnpm/@agentclientprotocol+sdk@2._abcdefghijklmnopqrstuvwxyz/node_modules/@agentclientprotocol/sdk/dist/index.js':
+        {},
     };
     expect([...bundledPackageIds({ inputs })].sort()).toEqual([
+      '@agentclientprotocol/sdk@*',
       '@scope/pkg@1.2.3-rc.1',
       'chalk@6.0.1',
       'hoisted@*',
