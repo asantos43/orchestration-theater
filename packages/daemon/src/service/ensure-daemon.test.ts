@@ -108,10 +108,11 @@ describe('ensureDaemon (tui.start_daemon)', () => {
       input({
         service,
         spawned,
-        spawnDaemon: (command) => {
+        spawnDaemon: async (command) => {
           spawned.push(command.args.join(' '));
-          void publish();
-          return Promise.resolve({ ok: true });
+          // Written before the poll starts: the clock of the test is virtual, the file is not.
+          await publish();
+          return { ok: true };
         },
       }),
     );
@@ -130,9 +131,10 @@ describe('ensureDaemon (tui.start_daemon)', () => {
     const outcome = await ensureDaemon(
       input({
         service,
-        spawnDaemon: () => {
-          void publish();
-          return Promise.resolve({ ok: true });
+        spawnDaemon: async () => {
+          // Written before the poll starts: the clock of the test is virtual, the file is not.
+          await publish();
+          return { ok: true };
         },
       }),
     );
@@ -147,9 +149,10 @@ describe('ensureDaemon (tui.start_daemon)', () => {
     const outcome = await ensureDaemon(
       input({
         service: undefined,
-        spawnDaemon: () => {
-          void publish();
-          return Promise.resolve({ ok: true });
+        spawnDaemon: async () => {
+          // Written before the poll starts: the clock of the test is virtual, the file is not.
+          await publish();
+          return { ok: true };
         },
       }),
     );
@@ -163,9 +166,10 @@ describe('ensureDaemon (tui.start_daemon)', () => {
       input({
         mode: 'child',
         service,
-        spawnDaemon: () => {
-          void publish();
-          return Promise.resolve({ ok: true });
+        spawnDaemon: async () => {
+          // Written before the poll starts: the clock of the test is virtual, the file is not.
+          await publish();
+          return { ok: true };
         },
       }),
     );
