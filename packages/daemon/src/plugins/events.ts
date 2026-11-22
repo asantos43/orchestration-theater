@@ -134,6 +134,13 @@ export function recordPluginNotice(situations: SituationSink, notice: PluginNoti
         correlation,
       );
       return;
+    case 'secret_missing':
+      situations.record(
+        'plugin.secret_missing',
+        { plugin, project, secrets: [...notice.secrets] },
+        correlation,
+      );
+      return;
     default:
       return exhaustive(notice);
   }

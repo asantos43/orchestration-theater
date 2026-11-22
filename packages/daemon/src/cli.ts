@@ -84,6 +84,8 @@ export interface CliDeps {
   readonly otLauncher?: OtLauncher | undefined;
   /** Asks a yes or no in the terminal (`ot profile shims path --install`); none without a terminal. */
   readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
+  /** Asks a line in the terminal without echo (`ot plugin secret set`); none without a terminal. */
+  readonly askHidden?: ((question: string) => Promise<string | undefined>) | undefined;
   /** True when the input and the output are a terminal (`ot tui`, and `ot` with no command). */
   readonly interactive?: boolean | undefined;
   /**
@@ -325,7 +327,14 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
         if (!isPluginAction(action)) return usageError(t('usage.unknownPluginAction', { action }));
         return await runPluginCommand(
           context,
-          { env: deps.env, cwd: deps.cwd ?? process.cwd(), confirm: deps.confirm },
+          {
+            env: deps.env,
+            cwd: deps.cwd ?? process.cwd(),
+            confirm: deps.confirm,
+            input: deps.input,
+            askHidden: deps.askHidden,
+            passwordPrompt: deps.passwordPrompt?.(t),
+          },
           action,
           args,
           { project: values.project, yes: values.yes === true, json: values.json === true },
@@ -684,6 +693,9 @@ async function entry(): Promise<void> {
     passwordPrompt: process.stdin.isTTY ? terminalPasswordPrompt : undefined,
     otLauncher: otLauncherOf(),
     confirm: process.stdin.isTTY ? terminalConfirm : undefined,
+    askHidden: process.stdin.isTTY
+      ? (question) => readHidden(question, process.stdin, process.stderr)
+      : undefined,
     interactive: process.stdin.isTTY && process.stdout.isTTY,
   });
   process.exitCode = code;

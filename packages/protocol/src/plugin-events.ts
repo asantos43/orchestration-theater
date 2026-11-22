@@ -145,3 +145,17 @@ export const PluginEventRejectedPayloadSchema = z.strictObject({
   limit: z.int().min(0).optional(),
 });
 export type PluginEventRejectedPayload = z.infer<typeof PluginEventRejectedPayloadSchema>;
+
+/**
+ * `plugin.secret_missing` (P7, N239): a server of the plugin was about to start and a secret its
+ * manifest declares is not in the vault. Only the names go out, never a value. [proposta]
+ */
+export const PluginSecretMissingPayloadSchema = z.strictObject({
+  plugin: pluginId,
+  project: id,
+  secrets: z
+    .array(z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/))
+    .min(1)
+    .max(64),
+});
+export type PluginSecretMissingPayload = z.infer<typeof PluginSecretMissingPayloadSchema>;

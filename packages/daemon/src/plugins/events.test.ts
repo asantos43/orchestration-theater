@@ -88,6 +88,11 @@ describe('recordPluginNotice (the pool and the aggregator)', () => {
       'plugin.tool_rejected',
       { plugin: 'demo', project: 'p1', tool: 'add_note', reason: 'not_allowed', role: 'critic' },
     ],
+    [
+      { kind: 'secret_missing', plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
+      'plugin.secret_missing',
+      { plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
+    ],
   ];
 
   it.each(cases)('%j becomes %s', (notice, type, payload) => {

@@ -132,6 +132,16 @@ export type PluginNotice =
       readonly role: string;
       readonly reason:
         'not_allowed' | 'approval_denied' | 'approval_unavailable' | 'approval_cancelled';
+    }
+  | {
+      /**
+       * The manifest declares secrets that have no value in the vault (Phase 9, P7, N239): the
+       * server does not start in this project. Only the names, never a value. [proposta]
+       */
+      readonly kind: 'secret_missing';
+      readonly plugin: string;
+      readonly project: string;
+      readonly secrets: readonly string[];
     };
 
 /** Where the notices go besides the log. Must not throw: a throw is caught and logged. */
