@@ -30,6 +30,7 @@ import {
   UiInputConfigSchema,
   UiKeyboardConfigSchema,
   UiKeymapConfigSchema,
+  UiLoginConfigSchema,
   UiMouseModeSchema,
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
@@ -2980,6 +2981,8 @@ export const DaemonConfigSchema = z
         newProject: UiNewProjectConfigSchema.prefault({}),
         /** The finished plays in the side bar of the terminal interface (P11 of docs/19). */
         sidebar: UiSidebarConfigSchema.prefault({}),
+        /** Whether the sign-in panel opens the address in the browser: `auto`, `key` or `off`. */
+        login: UiLoginConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

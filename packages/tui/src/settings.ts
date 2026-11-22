@@ -168,6 +168,14 @@ export interface UiSidebarSettings {
   readonly finishedLimit: number;
 }
 
+export const LOGIN_BROWSER_MODES = ['auto', 'key', 'off'] as const;
+export type LoginBrowserMode = (typeof LOGIN_BROWSER_MODES)[number];
+
+/** `ui.login`: whether the sign-in panel opens the address in the browser (`auto`, `key`, `off`). */
+export interface UiLoginSettings {
+  readonly browser: LoginBrowserMode;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -189,6 +197,7 @@ export interface UiSettings {
   readonly setup: UiSetupSettings;
   readonly newProject: UiNewProjectSettings;
   readonly sidebar: UiSidebarSettings;
+  readonly login: UiLoginSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -251,6 +260,8 @@ export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd' };
 
 export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', finishedLimit: 20 };
 
+export const DEFAULT_LOGIN: UiLoginSettings = { browser: 'auto' };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -269,6 +280,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   setup: DEFAULT_SETUP,
   newProject: DEFAULT_NEW_PROJECT,
   sidebar: DEFAULT_SIDEBAR,
+  login: DEFAULT_LOGIN,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -331,6 +343,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const setup = record(field(source, 'setup'));
   const newProject = record(field(source, 'newProject'));
   const sidebar = record(field(source, 'sidebar'));
+  const login = record(field(source, 'login'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -477,6 +490,9 @@ export function parseUiSettings(ui: unknown): UiSettings {
         500,
         DEFAULT_SIDEBAR.finishedLimit,
       ),
+    },
+    login: {
+      browser: oneOf(field(login, 'browser'), LOGIN_BROWSER_MODES, DEFAULT_LOGIN.browser),
     },
   };
 }
