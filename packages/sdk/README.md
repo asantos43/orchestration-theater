@@ -23,7 +23,7 @@ O `servePlugin` anota cada ferramenta a partir dos `effects` do manifesto, e a s
 
 ### A pasta do projeto [proposta]
 
-O daemon sobe **um processo por plugin e por projeto** (N238), e o `cwd` do manifesto é relativo à pasta do plugin (é onde está o `dist/`). Por isso o projeto chega pela variável de ambiente **`OTHEATER_PROJECT_DIR`**, que deve ser um caminho absoluto. Sem a variável, vale o `cwd` do processo (útil à mão); um valor vazio ou relativo é erro. Quem lê é `pluginProjectDirectory()`. O daemon precisa pôr essa variável no ambiente mínimo do plugin (trabalho do P8/P13; o P9 não mexe no daemon).
+O daemon sobe **um processo por plugin e por projeto** (N238), e o `cwd` do manifesto é relativo à pasta do plugin (é onde está o `dist/`). Por isso o projeto chega pela variável de ambiente **`OTHEATER_PROJECT_DIR`**, que deve ser um caminho absoluto. Sem a variável, vale o `cwd` do processo (útil à mão); um valor vazio ou relativo é erro. Quem lê é `pluginProjectDirectory()`. O daemon põe essa variável no ambiente mínimo do plugin com a pasta do cenário (`folder`, que num projeto é o caminho absoluto do repositório), a menos que `plugins.project_dir` seja `off` **[proposta]**. Um segredo com o mesmo nome nunca a substitui.
 
 ## Eventos
 
