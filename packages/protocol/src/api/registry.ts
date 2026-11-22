@@ -25,6 +25,7 @@ import { SETUP_ROUTES } from './setup.js';
 import { TELEMETRY_ROUTES } from './telemetry.js';
 import { TRAJECTORY_ROUTES } from './trajectories.js';
 import { USAGE_ROUTES } from './usage.js';
+import { HEALTH_ROUTES } from './health.js';
 import { UPDATE_ROUTES } from './updates.js';
 
 /**
@@ -60,6 +61,7 @@ export const API_ROUTES = {
   ...ANALYSIS_ROUTES,
   ...TELEMETRY_ROUTES,
   ...UPDATE_ROUTES,
+  ...HEALTH_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;

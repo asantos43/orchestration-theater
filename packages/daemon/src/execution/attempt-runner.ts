@@ -428,6 +428,8 @@ export class AttemptRunner {
   /** The profiles released (P21) and how: a go that would open a session on one does not. */
   readonly #leaving = new Map<string, 'handoff' | 'force'>();
   #stopping = false;
+  /** While set, a new attempt (`run` or `resume`) waits here (Phase 10, P8: the daemon waits to update). */
+  #updateHold: { readonly gate: Promise<void>; readonly open: () => void } | undefined;
 
   constructor(options: AttemptRunnerOptions) {
     this.#options = options;
@@ -436,6 +438,33 @@ export class AttemptRunner {
   /** Attempts in progress. */
   get active(): number {
     return this.#running.size;
+  }
+
+  /**
+   * Holds back new work (Phase 10, P8; `updates.apply_when: idle`): an attempt that has not begun
+   * waits for {@link release} before it creates its worktree; the ones in progress go on to their
+   * end. Idempotent. A stop releases it, and the attempts that were waiting then fail as they
+   * do after any stop.
+   */
+  hold(): void {
+    if (this.#updateHold !== undefined) return;
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    this.#updateHold = { gate, open };
+  }
+
+  /** Lets the attempts that waited for {@link hold} begin. Idempotent. */
+  release(): void {
+    const hold = this.#updateHold;
+    this.#updateHold = undefined;
+    hold?.open();
+  }
+
+  /** True while {@link hold} is on. */
+  get held(): boolean {
+    return this.#updateHold !== undefined;
   }
 
   /**
@@ -605,6 +634,7 @@ export class AttemptRunner {
 
   /** Creates the worktree and the branch of the attempt and runs it to its end. */
   async run(spec: AttemptSpec): Promise<AttemptOutcome> {
+    await this.#updateHold?.gate;
     this.#assertOpen();
     const attemptId = attemptIdOf(spec.playId, spec.demandId, spec.attempt);
     const branch = attemptBranch(spec.playId, spec.demandId, spec.attempt);
@@ -652,6 +682,7 @@ export class AttemptRunner {
    * there is nothing to reload: the attempt is marked and the outcome says it needs a decision.
    */
   async resume(record: AttemptRecord, resolved: ResumeContext): Promise<AttemptOutcome> {
+    await this.#updateHold?.gate;
     this.#assertOpen();
     const waiting = record.state === 'awaiting_resume' && isResetWaitCause(record.cause);
     // P21b: the profile of the session was removed (`force`); its conversation is not loaded again.
@@ -771,6 +802,7 @@ export class AttemptRunner {
    */
   async stop(): Promise<void> {
     this.#stopping = true;
+    this.release();
     const all = [...this.#running.values()];
     for (const { context } of all) context.stop.abort();
     await Promise.allSettled(all.map((entry) => entry.done));

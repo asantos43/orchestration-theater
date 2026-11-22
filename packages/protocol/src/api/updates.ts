@@ -8,8 +8,10 @@ import { defineRoute, defineRoutes } from './route.js';
  * The search for a new version of OTheater over REST (Phase 10, P7; architecture 5.21). [proposta]
  * `GET /v1/updates` says what the daemon knows (the mode in the file and the one it acts in, the
  * channel, the origin, the version found and whether it is stored and ready); `POST
- * /v1/updates/check` makes a search now instead of waiting for the interval. Applying a version is
- * the next step (P8); nothing here replaces an executable file.
+ * /v1/updates/check` makes a search now instead of waiting for the interval. P8 adds how a version
+ * is applied: `apply` in the status says where the daemon is (waiting for a quiet moment, asking the
+ * Producer, applying) and `POST /v1/updates/apply` is the Producer's word ("apply now", "park and
+ * apply", "wait longer").
  */
 
 /** `off` is a value of `updates.mode`; it is not an event mode (it never searches). */
@@ -23,11 +25,10 @@ export const UPDATE_PLATFORMS = ['linux-x64', 'win32-x64', 'darwin-arm64'] as co
 export const UPDATE_KEY_STATES = ['valid', 'placeholder', 'invalid'] as const;
 /**
  * What the daemon says about its own state besides the numbers:
- * - `auto_acts_as_notify`: `auto` downloads and checks but does not apply until P8 exists;
  * - `checkout_install`: this is not the daemon's own executable, so it only announces;
  * - `no_public_key`: no valid public key is embedded, so nothing is checked and nothing is searched.
  */
-export const UPDATE_NOTES = ['auto_acts_as_notify', 'checkout_install', 'no_public_key'] as const;
+export const UPDATE_NOTES = ['checkout_install', 'no_public_key'] as const;
 /** What the last search ended in. */
 export const UPDATE_RESULTS = [
   'up_to_date',
@@ -38,8 +39,49 @@ export const UPDATE_RESULTS = [
   'failed',
 ] as const;
 
+/** `updates.apply_when` (P8): the moment a version that is ready is put in place. */
+export const UPDATE_APPLY_WHEN = ['idle', 'park', 'next_start'] as const;
+/** `updates.rollback` (P8): whether a version that does not come up is taken back by the applier. */
+export const UPDATE_ROLLBACK_MODES = ['auto', 'off'] as const;
+/**
+ * Where the apply step is:
+ * - `none`: nothing is waiting to be applied;
+ * - `waiting`: `idle`, waiting for the attempts to end (no new work starts meanwhile);
+ * - `asked`: the `max_wait` ended and the Producer was asked (park and apply, or wait longer);
+ * - `scheduled`: `next_start`, the version waits for the next start of the daemon;
+ * - `applying`: the applier took over and the daemon is stopping or already gone.
+ */
+export const UPDATE_APPLY_STATES = ['none', 'waiting', 'asked', 'scheduled', 'applying'] as const;
+/** What the last apply ended in. */
+export const UPDATE_APPLY_OUTCOMES = ['applied', 'rolled_back', 'failed'] as const;
+/** The answers of `POST /v1/updates/apply`: follow `updates.apply_when`, park and apply, or wait longer. */
+export const UPDATE_APPLY_HOWS = ['default', 'park', 'wait'] as const;
+
 const UpdateVersionSchema = z.string().min(1).max(64);
 const TimestampSchema = z.iso.datetime({ offset: true });
+
+export const ApiUpdateApplySchema = z.strictObject({
+  /** `updates.apply_when`, as written. */
+  when: z.enum(UPDATE_APPLY_WHEN),
+  rollback: z.enum(UPDATE_ROLLBACK_MODES),
+  state: z.enum(UPDATE_APPLY_STATES),
+  /** The version that waits or is being applied, or `null`. */
+  version: UpdateVersionSchema.nullable(),
+  /** Since when `state` is what it is, or `null` for `none`. */
+  since: TimestampSchema.nullable(),
+  /** When the `max_wait` ends and the Producer is asked (state `waiting`), or `null`. */
+  askAt: TimestampSchema.nullable(),
+  /** The last apply that ended (read from the journal), or `null`. */
+  last: z
+    .strictObject({
+      outcome: z.enum(UPDATE_APPLY_OUTCOMES),
+      version: UpdateVersionSchema,
+      reason: z.enum(UPDATE_REASONS).nullable(),
+      at: TimestampSchema,
+    })
+    .nullable(),
+});
+export type ApiUpdateApply = z.infer<typeof ApiUpdateApplySchema>;
 
 export const ApiUpdateStatusSchema = z.strictObject({
   /** `updates.mode`, as written in the configuration. */
@@ -64,6 +106,8 @@ export const ApiUpdateStatusSchema = z.strictObject({
   ready: UpdateVersionSchema.nullable(),
   /** Why the last search was refused, skipped or failed, or `null`. */
   lastReason: z.enum(UPDATE_REASONS).nullable(),
+  /** P8: the application of the version that is ready. */
+  apply: ApiUpdateApplySchema,
 });
 export type ApiUpdateStatus = z.infer<typeof ApiUpdateStatusSchema>;
 
@@ -88,4 +132,26 @@ export const checkUpdates = defineRoute({
   errors: ['conflict', 'unavailable'],
 });
 
-export const UPDATE_ROUTES = defineRoutes(getUpdateStatus, checkUpdates);
+export const ApplyUpdateBodySchema = z.strictObject({
+  /**
+   * `default` (or nothing) follows `updates.apply_when`; `park` stops the daemon the clean way
+   * (the sessions go `awaiting_resume`) and applies now; `wait` answers "wait longer" to the
+   * question the daemon asked when the `max_wait` ended.
+   */
+  how: z.enum(UPDATE_APPLY_HOWS).default('default'),
+});
+export type ApplyUpdateBody = z.infer<typeof ApplyUpdateBodySchema>;
+
+export const applyUpdate = defineRoute({
+  id: 'applyUpdate',
+  method: 'POST',
+  path: '/v1/updates/apply',
+  summary:
+    'Applies the version that is ready, at the moment `updates.apply_when` says (or `park` or `wait` as the answer to the question of the max_wait); 409 `conflict` when there is none, the mode is `off` or `check`, or this is not the own executable',
+  headers: IdempotencyHeadersSchema,
+  body: ApplyUpdateBodySchema,
+  response: ApiUpdateStatusSchema,
+  errors: ['conflict', 'unavailable'],
+});
+
+export const UPDATE_ROUTES = defineRoutes(getUpdateStatus, checkUpdates, applyUpdate);

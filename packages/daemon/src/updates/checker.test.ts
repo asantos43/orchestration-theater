@@ -400,17 +400,17 @@ describe('the modes', () => {
     });
   });
 
-  it('auto: acts as notify until the step that applies exists, and says so', async () => {
+  it("auto: keeps the mode (the apply is the coordinator's) and has no note", async () => {
     const r = await rig({ settings: { mode: 'auto' } });
     const status = await r.checker.checkNow();
     expect(status).toMatchObject({
       mode: 'auto',
-      effectiveMode: 'notify',
-      notes: ['auto_acts_as_notify'],
+      effectiveMode: 'auto',
+      notes: [],
       ready: NEWER,
     });
     expect(
-      r.updates().every((event) => event.mode === 'auto' && event.effectiveMode === 'notify'),
+      r.updates().every((event) => event.mode === 'auto' && event.effectiveMode === 'auto'),
     ).toBe(true);
   });
 
