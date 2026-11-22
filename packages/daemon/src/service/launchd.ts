@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, posix } from 'node:path';
 import type { CommandResult, CommandRunner } from './command-runner.js';
 import {
   ServiceError,
@@ -11,9 +11,12 @@ import {
   type ServiceStatus,
 } from './types.js';
 
-/** `~/Library/LaunchAgents/<label>.plist`: a LaunchAgent of the user. */
+/**
+ * `~/Library/LaunchAgents/<label>.plist`: a LaunchAgent of the user. launchd exists only on macOS, so
+ * the paths are POSIX on every host (the definitions are also rendered and tested elsewhere).
+ */
 export function launchAgentPath(home: string, id: string): string {
-  return join(home, 'Library', 'LaunchAgents', `${id}.plist`);
+  return posix.join(home, 'Library', 'LaunchAgents', `${id}.plist`);
 }
 
 export function escapeXml(text: string): string {
@@ -27,7 +30,7 @@ export function escapeXml(text: string): string {
 
 /** Where launchd writes what the daemon prints (launchd has no journal). */
 export function launchdLogFile(dataDir: string): string {
-  return join(dataDir, 'logs', 'service.log');
+  return posix.join(dataDir, 'logs', 'service.log');
 }
 
 /**
