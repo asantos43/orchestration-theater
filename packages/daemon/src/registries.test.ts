@@ -138,7 +138,7 @@ describe('RegistryHolder (hot swap of the snapshot, N235 (a))', () => {
     expect(Object.isFrozen(next)).toBe(true);
     // No contributor: the registries are the same frozen object, with the same counts.
     expect(next.registries).toBe(open.registries);
-    expect(next.registries.events.size).toBe(139);
+    expect(next.registries.events.size).toBe(140);
     expect(next.registries.roles.size).toBe(7);
     expect(next.registries.ruleKeys.size).toBe(6);
   });
