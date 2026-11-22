@@ -1657,8 +1657,7 @@ export const DaemonConfigSchema = z
     /**
      * The processes of the plugins and the calls to them (architecture 5.14; Phase 9, P5). A plugin
      * is an MCP server that runs outside the daemon, one process per plugin and project (N238).
-     * Every key here is [proposta]. (The keys of the registry and of the installation, `install.*`,
-     * join this object with P4.)
+     * Every key here is [proposta]. `install` holds the keys of `ot plugin install` (P4).
      * - `idle_timeout`: how long a process with no call lives; `off` keeps it until the daemon stops.
      * - `max_restarts`: failures in a row (a start that fails, or a process that dies) after which
      *   the process stays stopped until the Producer starts it again; `0` stops it at the first one.
@@ -1684,6 +1683,32 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         http: z.enum(['loopback', 'off']).default('loopback'),
+        install: z
+          .strictObject({
+            /**
+             * Where `ot plugin install` may take a plugin from (N236; [proposta] for the key). `path`:
+             * a local folder (kept where it is, only the path and the hash of `plugin.yaml` are
+             * stored); `npm`: `npm:<pkg>@<version>`, installed with `--ignore-scripts`; `git`:
+             * `git:<url>#<ref>`, cloned without hooks and pinned to the commit. Take a mode out of the
+             * list to refuse it; `[]` refuses every install (what is installed keeps working).
+             */
+            sources: z
+              .array(z.enum(PLUGIN_INSTALL_SOURCES))
+              .refine((list) => new Set(list).size === list.length, {
+                message: 'each source can be listed once',
+              })
+              .default([...PLUGIN_INSTALL_SOURCES]),
+            /** The longest an `npm` or `git` command of an install may run before it is stopped ([proposta]). */
+            timeout: DurationSchema.prefault('5m'),
+            /**
+             * How `npm` is started, with no shell ([proposta]). `auto` (default): `npm` from PATH;
+             * on Windows, the `node` of the daemon on the `npm-cli.js` next to it, because Node
+             * will not start `npm.cmd` with no shell. Or the path of an `npm-cli.js` (run on the
+             * daemon's `node`) or of an npm program.
+             */
+            npm: z.string().trim().min(1).default('auto'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
@@ -2659,40 +2684,6 @@ export const DaemonConfigSchema = z
             mode: z.enum(LOG_ROTATE_MODES).default('size'),
             max_mb: z.int().min(1).max(10_240).default(20),
             keep: z.int().min(0).max(100).default(5),
-          })
-          .prefault({}),
-      })
-      .prefault({}),
-    /**
-     * Plugins (Phase 9; architecture 5.14). P4 owns `install`; P5 adds the process keys
-     * (`idle_timeout`, `max_restarts`, `call_timeout`) to this same object.
-     */
-    plugins: z
-      .strictObject({
-        install: z
-          .strictObject({
-            /**
-             * Where `ot plugin install` may take a plugin from (N236; [proposta] for the key). `path`:
-             * a local folder (kept where it is, only the path and the hash of `plugin.yaml` are
-             * stored); `npm`: `npm:<pkg>@<version>`, installed with `--ignore-scripts`; `git`:
-             * `git:<url>#<ref>`, cloned without hooks and pinned to the commit. Take a mode out of the
-             * list to refuse it; `[]` refuses every install (what is installed keeps working).
-             */
-            sources: z
-              .array(z.enum(PLUGIN_INSTALL_SOURCES))
-              .refine((list) => new Set(list).size === list.length, {
-                message: 'each source can be listed once',
-              })
-              .default([...PLUGIN_INSTALL_SOURCES]),
-            /** The longest an `npm` or `git` command of an install may run before it is stopped ([proposta]). */
-            timeout: DurationSchema.prefault('5m'),
-            /**
-             * How `npm` is started, with no shell ([proposta]). `auto` (default): `npm` from PATH;
-             * on Windows, the `node` of the daemon on the `npm-cli.js` next to it, because Node
-             * will not start `npm.cmd` with no shell. Or the path of an `npm-cli.js` (run on the
-             * daemon's `node`) or of an npm program.
-             */
-            npm: z.string().trim().min(1).default('auto'),
           })
           .prefault({}),
       })

@@ -992,6 +992,7 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       start_timeout: 30_000,
       restart_backoff: { initial: 1_000, max: 60_000 },
       http: 'loopback',
+      install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
     });
   });
 

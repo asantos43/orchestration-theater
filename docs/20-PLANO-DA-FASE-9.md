@@ -184,6 +184,7 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - A chamada vai ao processo do plugin, com prazo (`plugins.call_timeout`, padrão `60s`) **[proposta]**.
   - O resultado volta ao Executor como veio.
   - Nada de 1MCP.
+  - **Ligação com o registro do P4** **[proposta]**: o daemon abre o `PluginRegistry` antes do servidor MCP e o usa como fonte dos plugins ativos do agregador (`options.plugins` segue como substituto dos testes). O `watch()` do registro cuida de `plugins.json`; antes de cada sessão tirar o seu retrato dos plugins, o daemon chama `registry.refresh()`, para ver também uma pasta local cujo `plugin.yaml` foi editado. Ao fechar, o servidor MCP para o agregador e os processos antes de o registro parar de observar o arquivo.
 - **`tools/list` do plugin:** o daemon confere o retorno contra o manifesto. Uma ferramenta que o servidor expõe e o manifesto não declara fica de fora, com aviso e evento. Uma declarada que o servidor não expõe fica indisponível.
 - **Aceite**, com um servidor MCP de teste em stdio:
   - a ferramenta declarada aparece para o papel certo e não para os outros;

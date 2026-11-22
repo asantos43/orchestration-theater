@@ -234,6 +234,11 @@ export interface DaemonHandle {
    */
   readonly mcpUrl: string;
   /**
+   * The door of the framework MCP server: `grant` opens a session of an attempt (what the execution
+   * does). Tests use it to see the tools the server hands a role, the plugin ones included.
+   */
+  readonly mcp: McpAccess;
+  /**
    * `http://127.0.0.1:<port>`: where the OTLP receiver of the clients' telemetry listens (Phase 8,
    * P2), with the port it got. `undefined` when `telemetry.enabled` is `off` or it could not start.
    * The token is not here: only the sessions the daemon starts are given it.
@@ -323,6 +328,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let quota: QuotaService | undefined;
   let browserTools: BrowserTools | undefined;
   let telemetry: TelemetryRuntime | undefined;
+  let pluginRegistry: PluginRegistry | undefined;
   // The API server is started inside `run`; a failure after that point stops it from here.
   const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
@@ -426,38 +432,45 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         ? { resourceExtras: traceResourceExtras }
         : {}),
     });
-    const pluginSource = options.plugins;
-    const pluginAggregator =
-      pluginSource === undefined
-        ? undefined
-        : new PluginAggregator({
-            source: pluginSource,
-            pool: new PluginProcessPool({
-              clock: composition.clock,
-              logger: composition.logger,
-              // A getter, so the pool reads the section as it is when it needs it (`plugins` is a section of
-              // the restart, as the others outside the hot ones).
-              runtime: () => pluginRuntimeFromConfig(config.plugins),
-              homeRoot: join(paths.dataDir, 'plugin-homes'),
-              ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
-            }),
-            logger: composition.logger,
-            reservedNames: () => registries.tools.list().map((tool) => tool.name),
-            ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
-          });
+    // Phase 9, P4: the plugins installed with `ot plugin` are read before the MCP server starts, so
+    // the tools of the active ones are in it from the first request. The registry is the source of
+    // the aggregator of P5 unless a test hands in another one.
+    const installedPlugins = await PluginRegistry.open({
+      dataDir: paths.dataDir,
+      clock: composition.clock,
+      logger: composition.logger,
+      frameworkToolNames: registries.tools.list().map((tool) => tool.name),
+    });
+    pluginRegistry = installedPlugins;
+    const pluginSource: ActivePluginSource = options.plugins ?? installedPlugins;
+    const pluginAggregator = new PluginAggregator({
+      source: pluginSource,
+      pool: new PluginProcessPool({
+        clock: composition.clock,
+        logger: composition.logger,
+        // A getter, so the pool reads the section as it is when it needs it (`plugins` is a section of
+        // the restart, as the others outside the hot ones).
+        runtime: () => pluginRuntimeFromConfig(config.plugins),
+        homeRoot: join(paths.dataDir, 'plugin-homes'),
+        ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+      }),
+      logger: composition.logger,
+      reservedNames: () => registries.tools.list().map((tool) => tool.name),
+      ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+    });
     mcp = await FrameworkMcpServer.start({
       registries,
       port: config.mcp.port,
-      ...(pluginAggregator === undefined
-        ? {}
-        : {
-            plugins: pluginAggregator,
-            projectOf: async (input) => {
-              const playId = input.correlation.playId;
-              if (playId === undefined) return undefined;
-              return (await composition?.store.plays.get(playId))?.scenarioId;
-            },
-          }),
+      plugins: pluginAggregator,
+      projectOf: async (input) => {
+        const playId = input.correlation.playId;
+        if (playId === undefined) return undefined;
+        // The registry reads the files again before a session takes its snapshot of the plugins
+        // (a local folder whose `plugin.yaml` was edited is not seen by the watch of `plugins.json`).
+        // It never throws; a source a test handed in is not the registry's to refresh.
+        if (options.plugins === undefined) await installedPlugins.refresh();
+        return (await composition?.store.plays.get(playId))?.scenarioId;
+      },
       // N188: a getter, so `PUT /v1/config` changes it without a restart.
       get submitRetries() {
         return config.limits.submit_retries;
@@ -485,6 +498,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       mcp,
       telemetry,
       browserTools,
+      pluginRegistry: installedPlugins,
       directives,
       quota,
       usage,
@@ -502,6 +516,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     await directives?.stop().catch(() => undefined);
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
+    pluginRegistry?.close();
     await telemetry?.stopExporter().catch(() => undefined);
     await telemetry?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
@@ -519,6 +534,8 @@ interface RunInput {
   readonly mcp: FrameworkMcpServer;
   readonly telemetry: TelemetryRuntime | undefined;
   readonly browserTools: BrowserTools | undefined;
+  /** The installed plugins, opened before the MCP server (its aggregator reads them). */
+  readonly pluginRegistry: PluginRegistry;
   readonly directives: DirectiveService;
   readonly quota: QuotaService;
   readonly usage: UsageService;
@@ -541,6 +558,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcp,
     telemetry,
     browserTools,
+    pluginRegistry: plugins,
     directives,
     quota,
     usage,
@@ -1002,11 +1020,13 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         registryHolder.stop();
         return Promise.resolve();
       });
+      // The MCP server stops the aggregator and the processes of the plugins; only then the registry
+      // they read stops watching `plugins.json`.
+      await attempt('mcp', () => mcp.stop());
       await attempt('plugins', () => {
         plugins.close();
         return Promise.resolve();
       });
-      await attempt('mcp', () => mcp.stop());
       // After the clients ended (`execution`): their last batches have arrived or never will.
       await attempt('telemetry', async () => telemetry?.stop());
       await attempt('browser', async () => browserTools?.close());
@@ -1271,14 +1291,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     direct,
   });
 
-  // Phase 9, P4: the plugins installed with `ot plugin`, and the snapshot of the registries that
-  // follows the ones that are on. Nothing here starts a plugin (that is P5).
-  const plugins = await PluginRegistry.open({
-    dataDir: paths.dataDir,
-    clock,
-    logger,
-    frameworkToolNames: registries.tools.list().map((tool) => tool.name),
-  });
+  // Phase 9, P4: the snapshot of the registries follows the plugins that are on (the registry was
+  // opened with the MCP server, which starts them on a call: that is P5).
   const registryHolder = new RegistryHolder(registries, {
     base: options.registries ?? defaultRegistryEntries(),
     logger,
@@ -1300,6 +1314,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     adapters: composition.adapters,
     execution,
     mcpUrl: mcp.url,
+    mcp,
     telemetryUrl: telemetry?.receiver.url,
     producer: orchestration?.channel,
     analysis: analysisService,
