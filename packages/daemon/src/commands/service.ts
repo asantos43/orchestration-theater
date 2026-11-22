@@ -4,6 +4,7 @@ import { homedir as osHomedir } from 'node:os';
 import { isAbsolute, parse, relative, resolve } from 'node:path';
 import { hasErrorCode } from '@otheater/core';
 import { readDiscovery } from '../api/files.js';
+import type { FindExecutable } from '../clients.js';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from '../commands.js';
 import { DaemonConfigSchema, loadConfig, type DaemonConfig } from '../config.js';
 import { InstanceLock } from '../instance-lock.js';
@@ -320,6 +321,8 @@ export interface ServiceHost {
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
   readonly now?: (() => number) | undefined;
   readonly alive?: ((pid: number) => boolean) | undefined;
+  /** `ot init`: how a command is looked up in `PATH` (default: the file system; a test says what is installed). */
+  readonly find?: FindExecutable | undefined;
 }
 
 /**

@@ -58,7 +58,8 @@ import {
   type ServiceCommandDeps,
   type ServiceHost,
 } from './commands/service.js';
-import { spawnDetachedDaemon } from './service/ensure-daemon.js';
+import { spawnDetachedDaemon, type DaemonSpawn } from './service/ensure-daemon.js';
+import { runInitCommand } from './commands/init.js';
 import { execRunner } from './service/command-runner.js';
 import { createServiceManager } from './service/index.js';
 import { resolveServiceCommand } from './service/self-command.js';
@@ -132,6 +133,10 @@ const launchBuiltTui: TuiRunner = async (run) => {
   return await launchTui({ dataDir: run.dataDir, ui: run.ui, env: run.env });
 };
 
+/** The daemon child of `ot init` when the entry point gave no service host: none is started. */
+const noSpawn: DaemonSpawn = () =>
+  Promise.resolve({ ok: false, detail: 'no way to start a daemon here' });
+
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
@@ -150,6 +155,7 @@ const COMMANDS = [
   'plugin',
   'service',
   'uninstall',
+  'init',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -416,6 +422,20 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           yes: values.yes === true,
         });
       }
+      case 'init': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runInitCommand(
+          context,
+          {
+            ...serviceDeps(),
+            spawnDaemon: deps.serviceHost?.spawnDaemon ?? noSpawn,
+            find: deps.serviceHost?.find,
+            // The interface is only offered in a terminal; `runTui` also checks the daemon again.
+            openTui: deps.interactive === true ? (ui) => runTui(ui) : undefined,
+          },
+          { noTui: values['no-tui'] === true },
+        );
+      }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
@@ -513,6 +533,8 @@ function parseCliArgs(argv: readonly string[]) {
       // The options of `ot service` and `ot uninstall` (`json`, `yes` are shared).
       'no-start': { type: 'boolean' },
       'purge-data': { type: 'boolean' },
+      // The option of `ot init`.
+      'no-tui': { type: 'boolean' },
     },
     allowPositionals: true,
     strict: true,
