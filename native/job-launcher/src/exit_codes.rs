@@ -26,8 +26,15 @@ pub const EXIT_WAIT_FAILED: u32 = LAUNCHER_BLOCK | 0x06;
 /// The program is a `.cmd` or `.bat` script, which goes through `cmd.exe` and is refused.
 pub const EXIT_BATCH_REFUSED: u32 = LAUNCHER_BLOCK | 0x07;
 
+/// `--parent-pid`: the process to watch does not exist (or cannot be opened) at start, so the
+/// Executor was never started.
+pub const EXIT_PARENT_GONE: u32 = LAUNCHER_BLOCK | 0x08;
+/// `--parent-pid`: the watched process ended while the Executor ran; the launcher ended the job
+/// (and with it the whole tree) and left.
+pub const EXIT_PARENT_EXITED: u32 = LAUNCHER_BLOCK | 0x09;
+
 /// Every launcher failure code on Windows, for tests and documentation.
-pub const ALL_WINDOWS: [u32; 7] = [
+pub const ALL_WINDOWS: [u32; 9] = [
     EXIT_USAGE,
     EXIT_JOB_FAILED,
     EXIT_SPAWN_FAILED,
@@ -35,6 +42,8 @@ pub const ALL_WINDOWS: [u32; 7] = [
     EXIT_RESUME_FAILED,
     EXIT_WAIT_FAILED,
     EXIT_BATCH_REFUSED,
+    EXIT_PARENT_GONE,
+    EXIT_PARENT_EXITED,
 ];
 
 /// Non-Windows builds: the binary only reports that it is Windows-only (`EX_CONFIG`).

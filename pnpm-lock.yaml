@@ -199,6 +199,22 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
 
+  packages/adapters/platform-windows:
+    dependencies:
+      '@otheater/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@otheater/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
+
   packages/adapters/prompts-files:
     dependencies:
       '@otheater/core':
@@ -414,6 +430,9 @@ importers:
       '@otheater/adapter-platform-posix':
         specifier: workspace:*
         version: link:../adapters/platform-posix
+      '@otheater/adapter-platform-windows':
+        specifier: workspace:*
+        version: link:../adapters/platform-windows
       '@otheater/adapter-prompts-files':
         specifier: workspace:*
         version: link:../adapters/prompts-files

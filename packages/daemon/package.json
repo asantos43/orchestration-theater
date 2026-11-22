@@ -28,6 +28,7 @@
     "@otheater/adapter-client-opencode": "workspace:*",
     "@otheater/adapter-clock-system": "workspace:*",
     "@otheater/adapter-platform-posix": "workspace:*",
+    "@otheater/adapter-platform-windows": "workspace:*",
     "@otheater/adapter-prompts-files": "workspace:*",
     "@otheater/adapter-sandbox-srt": "workspace:*",
     "@otheater/adapter-session-acp": "workspace:*",
