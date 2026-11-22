@@ -15,6 +15,7 @@ import type { Logger } from '../logger.js';
 import type { RegistryContributor } from '../registries.js';
 import { situationText, type SituationLog, type SituationSink } from '../situations.js';
 import type { ActivePluginSource } from './aggregate.js';
+import type { DroppedEvents, PluginEventLimiter } from './event-rate.js';
 import type { PluginNotice as RegistryNotice } from './registry.js';
 import type {
   PluginEventNotification,
@@ -33,10 +34,11 @@ import type {
  *    protocol. The log line stays; the event is written at the same point. No payload carries what a
  *    plugin says or does, only ids, names, counts and a masked, cut reason. [proposta]
  * 2. {@link createPluginEventHandler} receives the event notifications of the servers
- *    (`notifications/otheater/event`, `{ name, payload }`), checks them (the plugin is active in the
- *    project, the name is in its manifest, the payload is a JSON object within
- *    `plugins.event_max_bytes`) and writes `plugin.<id>.<name>`; what fails any check is refused
- *    with a warning and `plugin.event_rejected`. The daemon trusts no plugin.
+ *    (`notifications/otheater/event`, `{ name, payload }`), checks them (the plugin is within
+ *    `plugins.event_rate`, is active in the project, the name is in its manifest, the payload is a
+ *    JSON object within `plugins.event_max_bytes`) and writes `plugin.<id>.<name>`; what fails any
+ *    check is refused with a warning and `plugin.event_rejected`. The daemon trusts no plugin. What
+ *    passes the rate is dropped and counted ({@link recordEventsDropped} says it once per window).
  * 3. {@link pluginEventContributor} and {@link LiveEventRegistry} make the types `plugin.<id>.<name>`
  *    of the active plugins part of the registry the event log validates against. The log is
  *    composed before the plugins are known, so it holds a live registry that reads the snapshot in
@@ -223,11 +225,42 @@ const eventParamsSchema = z.object({
   payload: z.record(z.string(), z.json()).optional(),
 });
 
+/**
+ * The warning and the `plugin.event_rejected` (`rate_limited`) for a window of `plugins.event_rate`
+ * that dropped events: one of each per window, with the count, written when the window ends.
+ * Never throws.
+ */
+export function recordEventsDropped(
+  situations: SituationSink,
+  logger: Pick<Logger, 'warn'>,
+  summary: DroppedEvents,
+): void {
+  const { plugin, project, dropped, max, windowMs } = summary;
+  logger.warn(
+    { plugin, project, dropped, limit: max, windowMs },
+    'a plugin sent more events than plugins.event_rate allows; the rest of the window was dropped',
+  );
+  const payload: PluginEventRejectedPayload = {
+    plugin,
+    project,
+    reason: 'rate_limited',
+    limit: max,
+    windowMs,
+    dropped,
+  };
+  situations.record('plugin.event_rejected', payload, { scenarioId: project });
+}
+
 export interface PluginEventHandlerOptions {
   /** The plugins active in each project (the registry of P4 or what a test hands in). */
   readonly source: Pick<ActivePluginSource, 'activeFor'>;
   /** A getter, so `plugins.events` and `plugins.event_max_bytes` are read when an event arrives. */
-  readonly runtime: () => Pick<PluginRuntimeConfig, 'events' | 'eventMaxBytes'>;
+  readonly runtime: () => Pick<PluginRuntimeConfig, 'events' | 'eventMaxBytes' | 'eventRate'>;
+  /**
+   * Counts what each plugin sends against `plugins.event_rate`; with none, the rate is not limited.
+   * The daemon hands in the limiter its metric and its summary read.
+   */
+  readonly limiter?: Pick<PluginEventLimiter, 'admit'> | undefined;
   /** Where the events go: the log of the daemon, in order, after `daemon.started`. */
   readonly situations: Pick<SituationLog, 'recordEvent'> & SituationSink;
   readonly logger: Pick<Logger, 'warn'>;
@@ -241,9 +274,14 @@ const REJECTED_NAME_MAX = 128;
  * wrong with a notification is a refusal (a warning and `plugin.event_rejected`), not an error.
  */
 export function createPluginEventHandler(options: PluginEventHandlerOptions): PluginEventSink {
-  const { source, runtime, situations, logger } = options;
+  const { source, runtime, situations, logger, limiter } = options;
   return (notification: PluginEventNotification): void => {
     const { plugin, project, params } = notification;
+    // Before everything else, refusals included: a plugin in a loop that sends garbage is the case.
+    const config = runtime();
+    if (config.eventRate !== null && limiter?.admit(plugin, project, config.eventRate) === false) {
+      return;
+    }
     const parsed = eventParamsSchema.safeParse(params);
     const name = nameOf(params);
 
@@ -265,7 +303,6 @@ export function createPluginEventHandler(options: PluginEventHandlerOptions): Pl
       situations.record('plugin.event_rejected', payload, { scenarioId: project });
     };
 
-    const config = runtime();
     if (config.events === 'off') {
       refuse('off');
       return;

@@ -38,6 +38,22 @@ export const PLUGIN_EVENT_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9
 /** Pattern of a secret: the name of the environment variable the server of the plugin gets. */
 export const PLUGIN_SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
+/**
+ * The variables the daemon sets in the environment of a plugin server, whatever the plugin
+ * declares: `PATH`, `LANG` and `TZ` of the daemon (the {@link PLUGIN_INHERITED_ENV}), a `HOME` of
+ * the plugin's own and `OTHEATER_PROJECT_DIR`. They win over a secret of the same name, which would
+ * lose in silence, so the manifest refuses a secret with one of these names (N243, item 63). The
+ * process pool builds its base environment from these same constants, so the two cannot drift.
+ */
+export const PLUGIN_INHERITED_ENV = ['PATH', 'LANG', 'TZ'] as const;
+export const PLUGIN_HOME_ENV = 'HOME';
+export const PLUGIN_PROJECT_DIR_ENV = 'OTHEATER_PROJECT_DIR';
+export const PLUGIN_BASE_ENV_NAMES: readonly string[] = [
+  ...PLUGIN_INHERITED_ENV,
+  PLUGIN_HOME_ENV,
+  PLUGIN_PROJECT_DIR_ENV,
+];
+
 /** Pattern of an i18n key of the catalog of the plugin (dotted lowercase, `_` and digits). */
 export const PLUGIN_I18N_KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
@@ -290,6 +306,12 @@ function crossRules(manifest: z.output<typeof manifestObject>): RuleIssue[] {
   manifest.secrets.forEach((name, index) => {
     if (manifest.secrets.indexOf(name) !== index) {
       add(['secrets', index], `secret "${name}" is declared twice`);
+    }
+    if (PLUGIN_BASE_ENV_NAMES.includes(name)) {
+      add(
+        ['secrets', index],
+        `secret "${name}" is a variable the daemon always sets in the environment of the server (${PLUGIN_BASE_ENV_NAMES.join(', ')}), so the secret would never reach it: pick another name`,
+      );
     }
   });
 

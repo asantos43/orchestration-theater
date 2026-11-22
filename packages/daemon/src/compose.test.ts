@@ -10,7 +10,13 @@ import {
 } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { checkAdapterRange, compose, composeClock } from './compose.js';
+import {
+  assertRealKeyringAllowed,
+  checkAdapterRange,
+  compose,
+  composeClock,
+  composeVault,
+} from './compose.js';
 import { parseConfig } from './config.js';
 import { buildDaemonRegistries } from './registries.js';
 import { makeTempDataDir } from './test-helpers.js';
@@ -46,6 +52,44 @@ describe('checkAdapterRange', () => {
     const run = (): unknown => checkAdapterRange(adapter('Store', '^0.2.0'), 'Store', '0.1.0');
     expect(run).toThrow(AdapterUnavailable);
     expect(run).toThrow(/Store version 0\.1\.0.*\^0\.2\.0/);
+  });
+});
+
+describe('the guard against the real keyring under the test runner (item 64)', () => {
+  it('refuses the real keyring when VITEST is set and OT_TEST_KEYRING is not 1', () => {
+    for (const env of [{ VITEST: 'true' }, { VITEST: '1', OT_TEST_KEYRING: '0' }]) {
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(InvalidInput);
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(/real keyring.*test runner/);
+      expect(() => {
+        assertRealKeyringAllowed(env);
+      }).toThrow(/OT_TEST_KEYRING=1/);
+    }
+  });
+
+  it('lets it through outside the test runner, and in the run that tests the keyring', () => {
+    expect(() => {
+      assertRealKeyringAllowed({});
+    }).not.toThrow();
+    expect(() => {
+      assertRealKeyringAllowed({ VITEST: '' });
+    }).not.toThrow();
+    expect(() => {
+      assertRealKeyringAllowed({ VITEST: 'true', OT_TEST_KEYRING: '1' });
+    }).not.toThrow();
+  });
+
+  it('composeVault refuses the default (keyring) here, before any keyring is built', () => {
+    // This suite runs under vitest, without OT_TEST_KEYRING: the default config reaches the guard.
+    const config = parseConfig('');
+    expect(config.adapters.vault).toBe('keyring');
+    expect(() => composeVault(config, '/nonexistent-data-dir')).toThrow(/real keyring/);
+    // A vault handed in, as the tests do, never reaches it.
+    const vault = new InMemorySecretVault();
+    expect(composeVault(config, '/nonexistent-data-dir', { vault }).vault).toBe(vault);
   });
 });
 
@@ -141,12 +185,16 @@ describe('compose', () => {
 
   it('names the full key when an adapter section has an unknown or bad value', async () => {
     const tmp = await makeTempDataDir();
+    const vault = new InMemorySecretVault(); // never the real keyring (item 64)
     try {
       await expect(
-        compose(parseConfig('store:\n  bogus: 1\n'), { dataDir: tmp.dir }),
+        compose(parseConfig('store:\n  bogus: 1\n'), { dataDir: tmp.dir, overrides: { vault } }),
       ).rejects.toThrow(/store\.bogus|store\..*bogus/);
       await expect(
-        compose(parseConfig('store:\n  driver: nope\n'), { dataDir: tmp.dir }),
+        compose(parseConfig('store:\n  driver: nope\n'), {
+          dataDir: tmp.dir,
+          overrides: { vault },
+        }),
       ).rejects.toThrow(/store\.driver/);
     } finally {
       await tmp.dispose();

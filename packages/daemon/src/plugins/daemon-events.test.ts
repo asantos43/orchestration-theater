@@ -27,6 +27,7 @@ async function withPlugin(
   configText: string,
   body: (context: {
     daemon: DaemonHandle;
+    clock: FakeClock;
     ot: (...argv: string[]) => Promise<number>;
     logged: (type?: string) => Promise<Logged[]>;
     call: (tool: string, args?: Record<string, unknown>) => Promise<void>;
@@ -129,7 +130,7 @@ async function withPlugin(
         const all = (await daemon.store.events.readFrom(0, 10_000)) as readonly Logged[];
         return all.filter((event) => type === undefined || event.type === type);
       };
-      await body({ daemon, ot, logged, call });
+      await body({ daemon, clock, ot, logged, call });
     } finally {
       await daemon.stop();
     }
@@ -203,6 +204,49 @@ describe('the events of the plugins in a running daemon (P8)', () => {
       expect(await logged('plugin.echoer.build.done')).toEqual([]);
       const reasons = (await logged('plugin.event_rejected')).map((event) => event.payload.reason);
       expect(reasons).toEqual(['off', 'off']);
+    });
+  }, 60_000);
+
+  it('plugins.event_rate drops what a plugin sends past the limit and says it once, with the count (N243 item 67)', async () => {
+    const config = 'plugins:\n  event_rate:\n    max: 2\n    window: 1m\n';
+    await withPlugin(config, async ({ clock, logged, call }) => {
+      // Four events in the window: the first two go through (one declared, one refused), two are dropped.
+      await call('publish_events');
+      await call('publish_events');
+      await vi.waitFor(async () => {
+        expect(await logged('plugin.echoer.build.done')).toHaveLength(1);
+        expect(await logged('plugin.event_rejected')).toHaveLength(1);
+      });
+      // Let the dropped ones arrive before the window ends; nothing is written for each of them.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(await logged('plugin.event_rejected')).toHaveLength(1);
+
+      await clock.advance(60_000);
+      await vi.waitFor(async () => {
+        expect(await logged('plugin.event_rejected')).toHaveLength(2);
+      });
+      const [, summary] = await logged('plugin.event_rejected');
+      expect(summary).toMatchObject({
+        payload: {
+          plugin: 'echoer',
+          project: 'sc1',
+          reason: 'rate_limited',
+          limit: 2,
+          windowMs: 60_000,
+          dropped: 2,
+        },
+        scenarioId: 'sc1',
+      });
+    });
+  }, 60_000);
+
+  it('plugins.event_rate: off lets every event through', async () => {
+    await withPlugin('plugins:\n  event_rate: off\n', async ({ logged, call }) => {
+      for (let i = 0; i < 4; i += 1) await call('publish_events');
+      await vi.waitFor(async () => {
+        expect(await logged('plugin.echoer.build.done')).toHaveLength(4);
+      });
+      expect(await logged('plugin.event_rejected')).toHaveLength(4);
     });
   }, 60_000);
 
