@@ -61,6 +61,12 @@ describe('the sources of the .msi', () => {
     expect(product).not.toMatch(/ProgramFiles|Scope="perMachine"|ALLUSERS/);
   });
 
+  it('gives a fixed GUID to the component with files and a registry key path (WIX0230)', () => {
+    expect(product).toMatch(
+      /<Component Id="OtBinaries" [^>]*Guid="[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"/,
+    );
+  });
+
   it('runs `ot service install` after the files and `ot service uninstall` before they go, as the user', () => {
     const actions = [...product.matchAll(/<CustomAction[\s\S]*?\/>/g)].map((m) => m[0]);
     expect(actions).toHaveLength(2);

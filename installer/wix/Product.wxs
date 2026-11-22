@@ -54,9 +54,10 @@
         A per-user component needs a registry key path (ICE38), and the folders it creates in the
         profile have to be removed on uninstall (ICE64): hence the RegistryValue with KeyPath and the
         RemoveFolder elements. The PATH entry is added at the end of the PATH of the user, and removed
-        with the component.
+        with the component. A component with files and a registry key path cannot have a generated
+        GUID (WIX0230), so it has a fixed one: it never changes while the component keeps these files.
       -->
-      <Component Id="OtBinaries" Directory="INSTALLFOLDER">
+      <Component Id="OtBinaries" Directory="INSTALLFOLDER" Guid="8B82FA50-01FB-4C54-993B-11E0FA18D812">
         <File Id="OtExe" Name="ot.exe" Source="$(OtExe)" />
         <File Id="OtJobLauncher" Name="ot-job-launcher.exe" Source="$(JobLauncher)" />
         <File Id="OtLicense" Name="LICENSE" Source="$(License)" />
