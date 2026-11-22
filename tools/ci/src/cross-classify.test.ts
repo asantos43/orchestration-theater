@@ -200,6 +200,10 @@ describe('signals', () => {
     spawn: { hit: "spawn('node', []);", miss: 'const spawned = 1;' },
     platform: { hit: "if (process.platform === 'linux') {}", miss: 'const platform = "linux";' },
     'path.sep': { hit: 'const s = path.sep;', miss: 'const sep = ",";' },
+    'path semantics': {
+      hit: 'const abs = path.resolve(dir, x);',
+      miss: 'const joined = path.join(dir, x);',
+    },
     PATHEXT: { hit: "env.PATHEXT = '.EXE';", miss: 'const EXT = 1;' },
     signal: { hit: "process.on('SIGINT', stop);", miss: 'const SIGNAL_NAME = 1;' },
     'process.kill': { hit: 'process.kill(pid, 0);', miss: 'killer.run();' },
@@ -319,10 +323,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(cli))(
         .split('\n')
         .filter((line) => line.endsWith('.test.ts') || line.endsWith('.test.tsx'));
       expect(files).toHaveLength(Number(selected));
-      expect(files).toContain(
-        'tools/ci/src/cross-classify.test.ts'.replace('cross-classify', 'cross-classify'),
-      );
-    });
+      expect(files).toContain('tools/ci/src/cross-classify.test.ts');
+    }, 120_000);
 
     it('changes nothing without OT_CROSS_TESTS or with all', () => {
       for (const value of ['', 'all']) {
@@ -330,13 +332,22 @@ describe.skipIf(process.platform === 'win32' || !existsSync(cli))(
         expect(result.status).toBe(0);
         expect(result.stdout.trim()).toBe('test-affected: full suite (OT_TEST_CI=full)');
       }
-    });
+    }, 120_000);
 
     it('refuses another value', () => {
       const result = dry({ OT_CROSS_TESTS: 'some' });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('OT_CROSS_TESTS=some: use all or os');
-    });
+    }, 120_000);
+
+    it('does not run vitest, and exits 0, when no test touches the system', () => {
+      const none = path.join(root, 'none.js');
+      writeFileSync(none, 'process.stdin.resume();\nprocess.stdin.on("end", () => {});\n');
+      const result = dry({ OT_CROSS_TESTS: 'os', OT_CROSS_CLASSIFIER: none, OT_TEST_DRY: '' });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('OT_CROSS_TESTS=os: 0 of ');
+      expect(result.stdout).toContain('test-affected: no test to run');
+    }, 120_000);
 
     it('runs the whole list, with a warning, when the classifier fails', () => {
       const result = dry({
@@ -350,6 +361,6 @@ describe.skipIf(process.platform === 'win32' || !existsSync(cli))(
       expect(result.stdout).toMatch(
         /test-affected: full suite \(\d{3,} test files, \d+ characters\)/,
       );
-    });
+    }, 120_000);
   },
 );

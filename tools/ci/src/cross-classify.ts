@@ -56,6 +56,14 @@ export const SYSTEM_SIGNALS: readonly Signal[] = [
   { name: 'platform', reach: 'direct', pattern: /\bprocess\.platform\b|\bos\.platform\s*\(/ },
   { name: 'path.sep', reach: 'direct', pattern: /\bpath\.(?:win32|posix|sep|delimiter)\b/ },
   { name: 'PATHEXT', reach: 'direct', pattern: /\bPATHEXT\b/ },
+  // A path function whose answer depends on the system (`resolve('/a')` gives `C:\a` on Windows).
+  // `join` and `dirname` alone are not one: tests compare with the same call.
+  {
+    name: 'path semantics',
+    reach: 'direct',
+    pattern:
+      /\bpath\.(?:resolve|relative|isAbsolute|normalize)\s*\(|\{[^}]*\b(?:resolve|relative|isAbsolute|normalize)\b[^}]*\}\s*from\s*['"](?:node:)?path['"]/,
+  },
   // Signals.
   {
     name: 'signal',
