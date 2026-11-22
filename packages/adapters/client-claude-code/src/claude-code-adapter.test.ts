@@ -110,6 +110,25 @@ describe('the process it launches', () => {
     expect(launcher.launched[1]?.options).toMatchObject({ cmd: '/opt/acp', args: ['--x'] });
   });
 
+  it('asks a command given as a function every time a process starts (P13)', async () => {
+    let installed = false;
+    const adapter = build({
+      command: () => {
+        if (!installed) throw new Error('adapter is not installed yet');
+        return { cmd: '/opt/node', args: ['/data/adapters/index.js'] };
+      },
+    });
+    await expect(adapter.openSession(profile, policy, '/work', via)).rejects.toThrow(
+      'not installed yet',
+    );
+    installed = true;
+    await adapter.openSession(profile, policy, '/work', via);
+    expect(launcher.launched.at(-1)?.options).toMatchObject({
+      cmd: '/opt/node',
+      args: ['/data/adapters/index.js'],
+    });
+  });
+
   it('points CLAUDE_CONFIG_DIR at the profile directory', async () => {
     await build({ baseEnv: { PATH: '/usr/bin' } }).openSession(profile, policy, '/work', via);
     expect(launcher.launched[0]?.options.env).toEqual({

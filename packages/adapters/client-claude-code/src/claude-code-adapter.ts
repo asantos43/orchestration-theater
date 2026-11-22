@@ -117,8 +117,14 @@ export interface ClaudeCodeLoginOptions extends LoginOptions {
 export interface ClaudeCodeAdapterOptions extends Omit<ClientAdapterOptions, 'adapterVersion'> {
   /** Default {@link CLAUDE_CODE_ADAPTER_VERSION}. The daemon may add the version of the client it found. */
   readonly adapterVersion?: string;
-  /** What starts the ACP adapter. [proposta] key `clients.claude-code.command`. Default {@link DEFAULT_COMMAND}. */
-  readonly command?: { readonly cmd: string; readonly args?: readonly string[] };
+  /**
+   * What starts the ACP adapter. [proposta] key `clients.claude-code.command`. Default {@link DEFAULT_COMMAND}.
+   * A function is asked every time a process starts, so the daemon can answer with the managed
+   * adapter once it is installed (P13); it may throw (`AdapterUnavailable`) to refuse the start.
+   */
+  readonly command?:
+    | { readonly cmd: string; readonly args?: readonly string[] }
+    | (() => { readonly cmd: string; readonly args?: readonly string[] });
   /** [proposta] key `clients.claude-code.setting_sources`. Default `none`: the profile adds no plugin, skill or MCP. */
   readonly settingSources?: SettingSourcesMode;
   /** [proposta] key `clients.claude-code.utilization_unit`. Default `ignore`: the unit is not confirmed; `auto` is N123. */
@@ -175,7 +181,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
     inputTypes: ['image'],
   };
 
-  readonly #command: { cmd: string; args: string[] };
+  readonly #command: () => { cmd: string; args: string[] };
   readonly #sources: SettingSourcesMode;
   readonly #utilization: UtilizationUnit;
   readonly #quotaStatusline: QuotaStatuslineMode;
@@ -191,9 +197,13 @@ export class ClaudeCodeAdapter extends ClientAdapter {
       adapterVersion: options.adapterVersion ?? CLAUDE_CODE_ADAPTER_VERSION,
       baseEnv: applyAccountEnv(options.baseEnv, options.accountEnv),
     });
-    this.#command = {
-      cmd: options.command?.cmd ?? DEFAULT_COMMAND.cmd,
-      args: [...(options.command?.args ?? DEFAULT_COMMAND.args)],
+    const source = options.command;
+    this.#command = () => {
+      const chosen = typeof source === 'function' ? source() : source;
+      return {
+        cmd: chosen?.cmd ?? DEFAULT_COMMAND.cmd,
+        args: [...(chosen?.args ?? DEFAULT_COMMAND.args)],
+      };
     };
     this.#sources = options.settingSources ?? 'none';
     this.#utilization = options.utilizationUnit ?? 'ignore';
@@ -215,7 +225,7 @@ export class ClaudeCodeAdapter extends ClientAdapter {
 
   /** The same command for both transports: the headless one starts `claude` from `setup.args`. */
   protected command(): { cmd: string; args: string[] } {
-    return { cmd: this.#command.cmd, args: [...this.#command.args] };
+    return this.#command();
   }
 
   /** `bypassPermissions`, `dontAsk` and `auto` ({@link REFUSED_MODES}), on every transport. */

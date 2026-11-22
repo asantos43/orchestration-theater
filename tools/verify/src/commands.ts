@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { checkAdapterLocks, writeAdapterLocks } from './adapter-locks.js';
 import { collectCargoPackages } from './cargo.js';
 import { checkCatalogs, readCatalogs } from './catalogs.js';
 import {
@@ -47,6 +48,7 @@ export const COMMANDS = [
   'credentials',
   'catalogs',
   'deps',
+  'adapter-locks',
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -266,6 +268,13 @@ async function runDeps(ctx: CommandContext): Promise<number> {
   });
 }
 
+function runAdapterLocks(ctx: CommandContext, options: CommandOptions): number {
+  if (options.check)
+    return finish(ctx, 'adapter-locks: managed ACP adapters', checkAdapterLocks(ctx.root));
+  for (const line of writeAdapterLocks(ctx.root)) ctx.write(`adapter-locks: ${line}`);
+  return 0;
+}
+
 export function runCommand(
   name: CommandName,
   ctx: CommandContext,
@@ -284,5 +293,7 @@ export function runCommand(
       return Promise.resolve(runCatalogs(ctx));
     case 'deps':
       return runDeps(ctx);
+    case 'adapter-locks':
+      return Promise.resolve(runAdapterLocks(ctx, options));
   }
 }

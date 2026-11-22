@@ -86,6 +86,8 @@ export interface DataPaths {
    * `ot profile shims path --install`.
    */
   readonly bin: string;
+  /** The ACP adapters OTheater installs (`<adapters>/<id>/<version>`; P13, N254 revised). */
+  readonly adapters: string;
   /** The layout preferences of the interfaces, one file each (`<layout>/<interface>.json`; P12, N170). */
   readonly layout: string;
   /**
@@ -122,6 +124,7 @@ export function dataPaths(
     apiToken: resolve(root, API_TOKEN_FILE),
     daemonId: resolve(root, DAEMON_ID_FILE),
     bin: resolve(root, 'bin'),
+    adapters: resolve(root, 'adapters'),
     layout: resolve(root, 'layout'),
   };
 }

@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { isSeaMode, resolveSelfCommand, seaModeArgument, SEA_MODES } from './self-command.js';
+import {
+  isSeaMode,
+  resolveAdapterCommand,
+  resolveSelfCommand,
+  seaModeArgument,
+  SEA_MODES,
+} from './self-command.js';
 
 const identity = (path: string): string => path;
 
 describe('the internal modes', () => {
-  it('knows the four faces and nothing else', () => {
-    expect([...SEA_MODES]).toEqual(['tui', 'mcp-shim', 'verify-release', 'apply-update']);
+  it('knows the five faces and nothing else', () => {
+    expect([...SEA_MODES]).toEqual([
+      'tui',
+      'mcp-shim',
+      'verify-release',
+      'apply-update',
+      'run-adapter',
+    ]);
     expect(isSeaMode('tui')).toBe(true);
     expect(isSeaMode('cli')).toBe(false);
     expect(seaModeArgument('mcp-shim')).toBe('--ot-internal=mcp-shim');
@@ -75,5 +87,22 @@ describe('resolveSelfCommand in a checkout', () => {
     for (const mode of ['tui', 'verify-release', 'apply-update'] as const) {
       expect(resolveSelfCommand(mode, base)).toBeUndefined();
     }
+  });
+});
+
+describe('resolveAdapterCommand', () => {
+  it('is the executable in run-adapter mode inside the single executable', () => {
+    expect(
+      resolveAdapterCommand('/d/adapters/a/index.js', { sea: true, execPath: '/opt/ot/otheater' }),
+    ).toEqual({
+      command: '/opt/ot/otheater',
+      args: ['--ot-internal=run-adapter', '/d/adapters/a/index.js'],
+    });
+  });
+
+  it('is the Node that runs this plus the script in a checkout', () => {
+    expect(
+      resolveAdapterCommand('/d/adapters/a/index.js', { sea: false, execPath: '/usr/bin/node' }),
+    ).toEqual({ command: '/usr/bin/node', args: ['/d/adapters/a/index.js'] });
   });
 });

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
-import { parseConfig } from './config.js';
+import { DEFAULT_REGISTRY } from './adapters/install.js';
+import { DEFAULT_ADAPTER_REGISTRY, parseConfig } from './config.js';
 
 describe('clients.* and security.* of the config', () => {
   it('gives the defaults of every client when nothing is written', () => {
@@ -16,6 +17,7 @@ describe('clients.* and security.* of the config', () => {
     };
     expect(clients['claude-code']).toEqual({
       ...common,
+      adapter: 'managed',
       setting_sources: 'none',
       utilization_unit: 'ignore',
       quota_statusline: 'file',
@@ -25,6 +27,7 @@ describe('clients.* and security.* of the config', () => {
     });
     expect(clients.codex).toEqual({
       ...common,
+      adapter: 'managed',
       process_model: 'multi-session',
       initial_mode: 'workspace-write',
       modes: ['read-only', 'workspace-write'],
@@ -227,6 +230,63 @@ describe('clients.* and security.* of the config', () => {
     for (const [text, pattern] of cases) {
       expect(() => parseConfig(text, 'config.yaml'), text).toThrow(InvalidInput);
       expect(() => parseConfig(text, 'config.yaml'), text).toThrow(pattern);
+    }
+  });
+});
+
+describe('clients.adapters.* and clients.<id>.adapter (P13, N254 revised)', () => {
+  it('installs by itself, from the npm registry, when nothing is written', () => {
+    expect(parseConfig('').clients.adapters).toEqual({
+      install: 'auto',
+      registry: 'https://registry.npmjs.org',
+    });
+  });
+
+  it("keeps the registry default of the config equal to the installer's", () => {
+    expect(DEFAULT_ADAPTER_REGISTRY).toBe(DEFAULT_REGISTRY);
+  });
+
+  it.each(['auto', 'ask', 'command', 'off'])('accepts install: %s', (install) => {
+    expect(
+      parseConfig(`clients:\n  adapters:\n    install: ${install}\n`).clients.adapters.install,
+    ).toBe(install);
+  });
+
+  it('refuses an unknown install mode, a registry that is not a URL and an unknown key', () => {
+    for (const text of [
+      'clients:\n  adapters:\n    install: sometimes\n',
+      'clients:\n  adapters:\n    registry: not a url\n',
+      'clients:\n  adapters:\n    mirror: x\n',
+    ]) {
+      expect(() => parseConfig(text)).toThrow(InvalidInput);
+    }
+  });
+
+  it('takes a mirror registry', () => {
+    const { adapters } = parseConfig(
+      'clients:\n  adapters:\n    registry: https://npm.example.test/\n',
+    ).clients;
+    expect(adapters.registry).toBe('https://npm.example.test/');
+  });
+
+  it('gives claude-code and codex adapter: managed, and takes path or an absolute path', () => {
+    const { clients } = parseConfig('');
+    expect(clients['claude-code'].adapter).toBe('managed');
+    expect(clients.codex.adapter).toBe('managed');
+    const written = parseConfig(
+      'clients:\n  claude-code:\n    adapter: path\n  codex:\n    adapter: /opt/acp/codex-acp\n',
+    ).clients;
+    expect(written['claude-code'].adapter).toBe('path');
+    expect(written.codex.adapter).toBe('/opt/acp/codex-acp');
+  });
+
+  it('refuses a relative adapter and an empty one; opencode has no adapter key', () => {
+    for (const text of [
+      'clients:\n  codex:\n    adapter: bin/codex-acp\n',
+      "clients:\n  codex:\n    adapter: ''\n",
+      'clients:\n  opencode:\n    adapter: managed\n',
+    ]) {
+      expect(() => parseConfig(text)).toThrow(InvalidInput);
     }
   });
 });

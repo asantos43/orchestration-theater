@@ -36,7 +36,11 @@ async function start(
       launcher,
       transport: new FakeSessionTransport(),
     },
-    clientSearch: { env: { PATH: '/usr/bin' }, findExecutable: find },
+    clientSearch: {
+      env: { PATH: '/usr/bin' },
+      findExecutable: find,
+      adapters: { fetch: () => Promise.reject(new Error('offline')) },
+    },
     logger,
     version: '0.0.0-test',
   });

@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EXIT_NOT_AVAILABLE, EXIT_UNKNOWN_MODE, parseInternalMode, runSeaMain } from './main.js';
+import {
+  EXIT_ADAPTER_FAILED,
+  EXIT_NOT_AVAILABLE,
+  EXIT_UNKNOWN_MODE,
+  parseInternalMode,
+  runAdapterEntry,
+  runSeaMain,
+} from './main.js';
 
 const exitCode = process.exitCode;
 afterEach(() => {
@@ -96,6 +106,24 @@ describe('runSeaMain', () => {
     expect(applyUpdate).toHaveBeenCalledWith(['x']);
   });
 
+  it('hands the adapter script and its arguments to run-adapter', async () => {
+    const { handlers } = harness();
+    const runAdapter = vi.fn(() => Promise.resolve());
+    await runSeaMain(['--ot-internal=run-adapter', '/a/index.js', '--x'], {
+      ...handlers,
+      runAdapter,
+    });
+    expect(runAdapter).toHaveBeenCalledWith(['/a/index.js', '--x']);
+  });
+
+  it('reports a run-adapter that cannot load, with exit code 4', async () => {
+    const { written, handlers } = harness();
+    process.exitCode = undefined;
+    await runSeaMain(['--ot-internal=run-adapter'], handlers);
+    expect(written.join('')).toContain('run-adapter failed: run-adapter needs the entry script');
+    expect(process.exitCode).toBe(EXIT_ADAPTER_FAILED);
+  });
+
   it('refuses an unknown mode with exit code 2', async () => {
     const { calls, written, handlers } = harness();
     process.exitCode = undefined;
@@ -103,5 +131,35 @@ describe('runSeaMain', () => {
     expect(calls).toEqual([]);
     expect(written.join('')).toContain('unknown internal mode "nope"');
     expect(process.exitCode).toBe(EXIT_UNKNOWN_MODE);
+  });
+});
+
+describe('runAdapterEntry', () => {
+  const argv = process.argv;
+  afterEach(() => {
+    process.argv = argv;
+  });
+
+  it('loads the script as an ES module with the arguments the adapter would get from node', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ot-run-adapter-'));
+    try {
+      const script = join(dir, 'index.mjs');
+      writeFileSync(
+        script,
+        'await Promise.resolve();\nglobalThis.__otAdapterArgv = process.argv.slice(1);\n',
+      );
+      await runAdapterEntry([script, '--flag']);
+      expect((globalThis as { __otAdapterArgv?: string[] }).__otAdapterArgv).toEqual([
+        script,
+        '--flag',
+      ]);
+    } finally {
+      delete (globalThis as { __otAdapterArgv?: string[] }).__otAdapterArgv;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a call without the script', async () => {
+    await expect(runAdapterEntry([])).rejects.toThrow('entry script');
   });
 });

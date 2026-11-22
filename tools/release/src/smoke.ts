@@ -55,6 +55,8 @@ export const DAEMON_READY = 'daemon running';
 
 /** Exit code of an unknown internal mode, of a shim with no environment, or of the applier with no journal. [proposta] */
 const EXIT_USAGE = 2;
+/** Exit code of `run-adapter` when the adapter's entry script cannot be loaded (P13). [proposta] */
+const EXIT_ADAPTER_FAILED = 4;
 const ALT_SCREEN = '\u001b[?1049h';
 const MOUSE_ON = '\u001b[?1000h';
 const CTRL_Q = '\u0011';
@@ -418,6 +420,38 @@ async function checkModes(executable: string, sandbox: Sandbox): Promise<string>
   return `unknown mode and apply-update without --journal exit ${String(EXIT_USAGE)}`;
 }
 
+/**
+ * `--ot-internal=run-adapter` (P13, N254 revised): the embedded Node loads the entry script of an ACP
+ * adapter from disk, an ES module with top-level `await` that reads `process.argv`, as the managed
+ * adapters under `<data>/adapters/` are. A stand-in script: the real adapters are not downloaded here.
+ */
+async function checkRunAdapter(executable: string, sandbox: Sandbox): Promise<string> {
+  const entry = path.join(sandbox.root, 'fake-adapter.mjs');
+  writeFileSync(
+    entry,
+    "await Promise.resolve();\nconsole.log('adapter-ok ' + process.argv.slice(2).join(' '));\n",
+  );
+  const ran = await run(
+    executable,
+    ['--ot-internal=run-adapter', entry, 'one', 'two'],
+    sandbox.env,
+    30_000,
+  );
+  if (ran.code !== 0 || !ran.stdout.includes('adapter-ok one two')) {
+    throw new Error(`run-adapter ended with ${String(ran.code)}: ${ran.stderr.trim()}`);
+  }
+  const missing = await run(
+    executable,
+    ['--ot-internal=run-adapter', path.join(sandbox.root, 'nothing.mjs')],
+    sandbox.env,
+    30_000,
+  );
+  if (missing.code !== EXIT_ADAPTER_FAILED) {
+    throw new Error(`run-adapter with no script ended with ${String(missing.code)}`);
+  }
+  return `run-adapter loads an ES module with top-level await and its arguments; a missing script exits ${String(EXIT_ADAPTER_FAILED)}`;
+}
+
 /** Runs the acceptance of the executable and logs one line per step. */
 export async function runSmoke(options: SmokeOptions): Promise<SmokeResult> {
   const platform = options.platform ?? process.platform;
@@ -472,6 +506,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeResult> {
       return 'prints the usage';
     });
     await step('internal modes', () => checkModes(executable, sandbox));
+    await step('run-adapter', () => checkRunAdapter(executable, sandbox));
     await step('mcp shim', () => checkMcpShim(executable, sandbox, platform));
 
     let daemon: RunningDaemon | undefined;

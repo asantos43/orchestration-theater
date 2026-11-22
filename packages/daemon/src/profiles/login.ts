@@ -89,7 +89,10 @@ export class ProfileLoginService {
     }
     const adapter = this.#o.adapters(record.client);
     if (adapter === undefined) {
-      throw new AdapterUnavailable(`The client ${record.client} is not available in this daemon`);
+      // Off when its official client or its ACP adapter was not found (P13): say what to look at.
+      throw new AdapterUnavailable(
+        `The client ${record.client} is not available in this daemon: its official client or its ACP adapter was not found at start. Run "ot adapters status" to see which, and "ot adapters install" to install the adapter, then restart the daemon`,
+      );
     }
     const local = (): StartLoginResult => ({
       status: 'local',

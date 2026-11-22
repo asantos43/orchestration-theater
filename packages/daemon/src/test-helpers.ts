@@ -44,7 +44,11 @@ export async function startNotices(): Promise<
 /** A temporary data directory removed by `dispose()`. Never the real one. */
 export async function makeTempDataDir(): Promise<{ dir: string; dispose: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), 'otheater-daemon-'));
-  return { dir, dispose: () => rm(dir, { recursive: true, force: true }) };
+  // A managed-adapter install that fails offline may still be tidying its temporary files.
+  return {
+    dir,
+    dispose: () => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }),
+  };
 }
 
 /** A profile and a policy of the fake client, for the tests of the execution of sessions. */

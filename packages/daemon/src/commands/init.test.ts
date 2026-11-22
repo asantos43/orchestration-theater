@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readDiscovery } from '../api/files.js';
 import { main, type CliDeps } from '../cli.js';
 import type { FindExecutable } from '../clients.js';
+import {
+  fixtureAdapter,
+  startFakeRegistry,
+  type FakeRegistry,
+} from '../adapters/adapter-fixture.js';
 import { DaemonConfigSchema, parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
@@ -73,6 +79,8 @@ async function ot(
     version: '0.0.0-test',
     otLauncher: LAUNCHER,
     serviceHost: { manager, spawnDaemon: noSpawn, ...host },
+    // Nothing here reaches the npm registry: an install that is tried fails offline.
+    adapters: { fetch: () => Promise.reject(new Error('offline')) },
     ...extra,
   });
   return { code, out, err };
@@ -146,7 +154,7 @@ describe('ot init --no-tui', () => {
     expect(spawned).toEqual([]);
   });
 
-  it('shows what is missing with the npm command, installs nothing and still succeeds', async () => {
+  it('shows the missing clients with the npm command, installs none and still succeeds', async () => {
     const manager = serviceThatStartsTheDaemon();
     const result = await ot(['init', '--no-tui'], manager, {}, { ...real, find: onlyClaude });
     const text = result.out.join('\n');
@@ -155,8 +163,9 @@ describe('ot init --no-tui', () => {
       'found: claude-agent-acp (ACP adapter of claude-code) at /fake/bin/claude-agent-acp',
     );
     expect(text).toContain('found: claude (client claude-code) at /fake/bin/claude');
+    // The adapter of a client that is not there comes with the client: nothing to install yet.
     expect(text).toContain(
-      'MISSING: codex-acp (ACP adapter of codex). To install it, run: npm install -g @agentclientprotocol/codex-acp',
+      'codex-acp (ACP adapter of codex): not installed yet; it comes with codex',
     );
     expect(text).toContain(
       'MISSING: codex (client codex). To install it, run: npm install -g @openai/codex',
@@ -164,7 +173,7 @@ describe('ot init --no-tui', () => {
     expect(text).toContain(
       'MISSING: opencode (client opencode). To install it, run: npm install -g opencode-ai',
     );
-    expect(text).toMatch(/3 command\(s\) missing\. OTheater installs none of them/);
+    expect(text).toMatch(/2 command\(s\) missing\. OTheater never installs a client/);
     expect(spawned).toEqual([]);
   });
 
@@ -197,7 +206,8 @@ describe('ot init --no-tui', () => {
       },
     );
     expect(result.code).toBe(0);
-    expect(looked).toEqual(['claude-agent-acp', 'claude', '/opt/oc/opencode']);
+    // The adapter manager looks for the official client first (it decides the install), then init checks each command.
+    expect(looked).toEqual(['claude', 'claude-agent-acp', 'claude', '/opt/oc/opencode']);
     expect(result.out.join('\n')).toContain('codex: turned off');
   });
 
@@ -206,7 +216,7 @@ describe('ot init --no-tui', () => {
     const { checks, off } = commandChecks(config);
     expect(off).toEqual(['codex']);
     expect(checks.map((check) => `${check.id}:${check.kind}:${check.executable}`)).toEqual([
-      'claude-code:adapter:claude-agent-acp',
+      'claude-code:managed:claude-agent-acp',
       'claude-code:client:claude',
       'opencode:client:opencode',
     ]);
@@ -389,7 +399,149 @@ describe('ot init with the interface', () => {
     );
     expect(result.code).toBe(0);
     expect(result.out.join('\n')).toMatch(
-      /Passo 3 de 3[\s\S]*FALTA: codex-acp[\s\S]*npm install -g/,
+      /Passo 3 de 3[\s\S]*FALTA: codex \(cliente codex\)[\s\S]*npm install -g/,
     );
+  });
+});
+
+describe('ot init --no-tui: the managed ACP adapters (P13)', () => {
+  const LINUX = { os: 'linux', cpu: 'x64', libc: 'glibc' } as const;
+  const onlyClient: FindExecutable = (command) =>
+    command === 'claude' ? '/fake/bin/claude' : undefined;
+  const fixture = fixtureAdapter();
+  let registry: FakeRegistry;
+  beforeEach(async () => {
+    registry = await startFakeRegistry(fixture);
+  });
+  afterEach(async () => {
+    await registry.close();
+  });
+
+  /** The seams that send the install to the fake registry, with the fixture as the pinned lock. */
+  const seams = (): CliDeps['adapters'] => ({
+    lockOf: (id) => ({ ...fixture.lock, id }),
+    platform: LINUX,
+    self: { sea: false, execPath: '/n/node' },
+    installOptions: { retryDelayMs: 0, retries: 0 },
+  });
+  const configure = async (install: string): Promise<void> => {
+    await writeFile(
+      join(data, 'config.yaml'),
+      `clients:\n  codex:\n    enabled: false\n  adapters:\n    install: ${install}\n    registry: ${registry.url}\n`,
+    );
+  };
+  const installedEntry = (): string =>
+    join(
+      dataPaths(data).adapters,
+      'claude-agent-acp',
+      '1.2.3',
+      'node_modules',
+      'fake-acp',
+      'dist',
+      'index.js',
+    );
+
+  it('auto: installs the missing adapter of a client that is in PATH', async () => {
+    await configure('auto');
+    const result = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: onlyClient },
+    );
+    const text = result.out.join('\n');
+    expect(result.code).toBe(0);
+    expect(text).toContain('Installing claude-agent-acp');
+    expect(text).toContain('Installed claude-agent-acp');
+    expect(registry.requests.length).toBeGreaterThan(0);
+    expect(existsSync(installedEntry())).toBe(true);
+    // A second run finds it already there and goes to no registry.
+    const before = registry.requests.length;
+    const again = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: onlyClient },
+    );
+    expect(again.out.join('\n')).toContain('installed by OTheater');
+    expect(registry.requests.length).toBe(before);
+  });
+
+  it('ask: installs after a yes and leaves it after a no', async () => {
+    await configure('ask');
+    const questions: string[] = [];
+    const no = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      {
+        adapters: seams(),
+        confirm: (question) => {
+          questions.push(question);
+          return Promise.resolve(false);
+        },
+      },
+      { ...real, find: onlyClient },
+    );
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toContain(registry.url);
+    expect(no.out.join('\n')).toContain('ot adapters install');
+    expect(registry.requests).toEqual([]);
+    expect(existsSync(installedEntry())).toBe(false);
+
+    const yes = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams(), confirm: () => Promise.resolve(true) },
+      { ...real, find: onlyClient },
+    );
+    expect(yes.out.join('\n')).toContain('Installed claude-agent-acp');
+    expect(existsSync(installedEntry())).toBe(true);
+  });
+
+  it('command: only shows "ot adapters install"; off: says it is off', async () => {
+    await configure('command');
+    const command = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: onlyClient },
+    );
+    expect(command.out.join('\n')).toContain('ot adapters install');
+    await configure('off');
+    const off = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: onlyClient },
+    );
+    expect(off.out.join('\n')).toContain('clients.adapters.install is off');
+    expect(registry.requests).toEqual([]);
+  });
+
+  it('without the official client in PATH it installs nothing and says the adapter comes with it', async () => {
+    await configure('auto');
+    const result = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: nothing },
+    );
+    expect(result.out.join('\n')).toContain('it comes with claude');
+    expect(registry.requests).toEqual([]);
+  });
+
+  it('an install that fails is reported, counted as missing, and init still succeeds', async () => {
+    await configure('auto');
+    registry.failNext(404, 50);
+    const result = await ot(
+      ['init', '--no-tui'],
+      serviceThatStartsTheDaemon(),
+      { adapters: seams() },
+      { ...real, find: onlyClient },
+    );
+    expect(result.code).toBe(0);
+    expect(result.err.join('\n')).toContain('Could not install claude-agent-acp');
+    expect(result.out.join('\n')).toContain('"ot adapters install" tries again');
+    expect(existsSync(installedEntry())).toBe(false);
   });
 });

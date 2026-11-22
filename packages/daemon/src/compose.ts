@@ -112,10 +112,17 @@ import {
   buildClientEnv,
   pathFinder,
   selectClients,
+  type ManagedProbeFn,
   type ClientFactory,
   type ClientFactoryParts,
   type FindExecutable,
 } from './clients.js';
+import {
+  AdapterManager,
+  isManagedClient,
+  type AdapterManagerOptions,
+  type ManagedClientId,
+} from './adapters/manager.js';
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
@@ -1102,6 +1109,14 @@ export interface ProductionClientsOptions {
    * unless `clients.codex.model_catalog` is `none` (then `models.list` of Codex rejects).
    */
   readonly codexConfigSource?: CodexConfigSource;
+  /**
+   * Test seams of the managed ACP adapters (P13): the `fetch` that reaches the registry, the
+   * platform the install is for, how the program starts itself, and the waits of the installer.
+   */
+  readonly adapters?: Pick<
+    AdapterManagerOptions,
+    'fetch' | 'platform' | 'self' | 'installOptions' | 'lockOf'
+  >;
 }
 
 function minLayersOf(security: DaemonConfig['security']): MinLayers {
@@ -1129,6 +1144,7 @@ function commonOptions(
   versioning: ClientVersioning,
   adapterVersionOf: (clientVersion: string) => string,
   client: ClientId,
+  managedEnv: Readonly<Record<string, string>> = {},
 ): ClientAdapterOptions {
   let adapterVersion = adapterVersionOf(versioning.initial.version);
   return {
@@ -1137,7 +1153,8 @@ function commonOptions(
     launcher: parts.launcher,
     // `K` for the use of the adapter without the pool above it: the same value the pool uses.
     sessionsPerProcess: sessionsPerProcessOf(config.pool, client),
-    baseEnv: buildClientEnv(section, env),
+    // `managedEnv` (the official client for the ACP adapter, P13) goes first: the user's own env wins.
+    baseEnv: { ...managedEnv, ...buildClientEnv(section, env) },
     minLayers: minLayersOf(config.security),
     unenforced: config.security.unenforced,
     ...(parts.sandbox === undefined
@@ -1166,6 +1183,7 @@ function claudeCode(
   warnings: ClientWarningLog,
   versioning: ClientVersioning,
   options: ProductionClientsOptions,
+  adapters: AdapterManager,
 ): ClientAdapter {
   const section = config.clients['claude-code'];
   const command = section.command;
@@ -1191,10 +1209,12 @@ function claudeCode(
       (clientVersion) =>
         adapterVersionOf(CLAUDE_CODE_ADAPTER_VERSION, 'claude-code', clientVersion),
       'claude-code',
+      adapters.officialEnv('claude-code'),
     ),
-    ...(command === undefined
-      ? {}
-      : { command: { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args } }),
+    command:
+      command === undefined
+        ? () => adapters.commandFor('claude-code', section.adapter)
+        : { cmd: command.cmd, args: command.args ?? CLAUDE_DEFAULT_COMMAND.args },
     settingSources: section.setting_sources,
     utilizationUnit: section.utilization_unit,
     quotaStatusline: section.quota_statusline,
@@ -1217,6 +1237,7 @@ function codex(
   warnings: ClientWarningLog,
   versioning: ClientVersioning,
   options: ProductionClientsOptions,
+  adapters: AdapterManager,
 ): ClientAdapter {
   const section = config.clients.codex;
   const command = section.command;
@@ -1240,10 +1261,12 @@ function codex(
       versioning,
       (clientVersion) => adapterVersionOf(CODEX_ADAPTER_VERSION, 'codex', clientVersion),
       'codex',
+      adapters.officialEnv('codex'),
     ),
-    ...(command === undefined
-      ? {}
-      : { command: { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args } }),
+    command:
+      command === undefined
+        ? () => adapters.commandFor('codex', section.adapter)
+        : { cmd: command.cmd, args: command.args ?? DEFAULT_CODEX_COMMAND.args },
     processModel: section.process_model,
     initialMode: section.initial_mode,
     allowedModes: section.modes,
@@ -1374,7 +1397,27 @@ export function productionClients(
       parts.logger,
       parts.situations,
     );
-    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find)) {
+    const managed = new AdapterManager({
+      adaptersDir: parts.paths.adapters,
+      install: config.clients.adapters.install,
+      registry: config.clients.adapters.registry,
+      find,
+      logger: parts.logger,
+      situations: parts.situations,
+      ...options.adapters,
+    });
+    const probe: ManagedProbeFn = (id) => {
+      if (!isManagedClient(id)) return undefined;
+      const status = managed.status(id);
+      return {
+        entry: status.entry,
+        installed: status.installed,
+        officialPath: status.officialPath,
+        installsByItself: managed.installsByItself,
+      };
+    };
+    const needing: ManagedClientId[] = [];
+    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find, probe)) {
       const { id, reason, executable } = selection;
       if (reason === 'forced_not_found') {
         parts.logger.warn(
@@ -1389,6 +1432,13 @@ export function productionClients(
       } else {
         parts.logger.info({ client: id, enabled: selection.enabled, reason, executable }, 'client');
       }
+      if (
+        isManagedClient(id) &&
+        config.clients[id].adapter === 'managed' &&
+        reason !== 'disabled'
+      ) {
+        if (selection.enabled || reason === 'adapter_missing') needing.push(id);
+      }
       if (!selection.enabled) continue;
       const section = config.clients[id];
       const versioning = resolveClientVersioning({
@@ -1396,7 +1446,9 @@ export function productionClients(
         written: section.client_version,
         command: executable,
         packages: section.version_packages ?? VERSION_PACKAGES[id],
-        find,
+        // The installed managed adapter is a script that is not in `PATH` (nor executable): its own path.
+        find: (command) =>
+          reason === 'managed_installed' && command === executable ? command : find(command),
       });
       parts.logger.info(
         { client: id, version: versioning.initial.version, source: versioning.initial.source },
@@ -1404,12 +1456,14 @@ export function productionClients(
       );
       adapters.push(
         id === 'claude-code'
-          ? claudeCode(config, env, parts, warnings, versioning, options)
+          ? claudeCode(config, env, parts, warnings, versioning, options, managed)
           : id === 'codex'
-            ? codex(config, env, parts, warnings, versioning, options)
+            ? codex(config, env, parts, warnings, versioning, options, managed)
             : opencode(config, env, parts, warnings, versioning),
       );
     }
+    // P13: the adapter of a client that is on installs in the background (`install: auto`) or is told as missing.
+    managed.prepare(needing);
     return adapters;
   };
 }

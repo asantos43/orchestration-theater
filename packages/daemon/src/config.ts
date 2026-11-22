@@ -320,6 +320,20 @@ export const USAGE_API_GATEWAY_MODES = ['off'] as const;
 export const CLIENT_IDS = ['claude-code', 'codex', 'opencode'] as const;
 export type ClientId = (typeof CLIENT_IDS)[number];
 /**
+ * `clients.adapters.install` (P13, N254 revised) [proposta]: what the daemon does when the official
+ * client is on `PATH` and its ACP adapter is not installed under `<dataDir>/adapters/`.
+ * `auto` installs it without asking (with a warning and an event); `ask` shows what is missing and
+ * installs after a yes (`ot init`, the Settings tab); `command` only through `ot adapters install`;
+ * `off` never installs.
+ */
+export const ADAPTER_INSTALL_MODES = ['auto', 'ask', 'command', 'off'] as const;
+export type AdapterInstallMode = (typeof ADAPTER_INSTALL_MODES)[number];
+/** `clients.adapters.registry` default: where the pinned tarballs are downloaded from. */
+export const DEFAULT_ADAPTER_REGISTRY = 'https://registry.npmjs.org';
+/** `clients.<id>.adapter`: `managed` (the one OTheater installs) or `path` (the one found in `PATH`); else an absolute path. */
+export const ADAPTER_SOURCES = ['managed', 'path'] as const;
+
+/**
  * Values of the keys that mirror an adapter's own list. The daemon imports adapters only in
  * `compose.ts`, so the lists are repeated here; `compose.test.ts` checks them against the adapters.
  */
@@ -1171,6 +1185,33 @@ const ClientCommandSchema = z.strictObject({
 });
 
 /**
+ * `clients.<id>.adapter` of the clients that have a managed ACP adapter (P13): `managed` (default;
+ * the adapter OTheater installs under `<dataDir>/adapters/`, falling back to `PATH` with a warning
+ * when it is off or failed), `path` (the one found in `PATH`), or an absolute path to the adapter's
+ * executable. `command` still wins over all three.
+ */
+const ClientAdapterSourceSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) =>
+      (ADAPTER_SOURCES as readonly string[]).includes(value) ||
+      isAbsolute(value) ||
+      win32Path.isAbsolute(value),
+    { message: 'expected "managed", "path" or an absolute path' },
+  );
+
+/**
+ * `clients.adapters` (P13, N254 revised): how the ACP adapters (`claude-agent-acp`, `codex-acp`) get
+ * installed. It lives beside the clients, which is why it is not a client id.
+ */
+export const ClientAdaptersSchema = z.strictObject({
+  install: z.enum(ADAPTER_INSTALL_MODES).default('auto'),
+  /** The npm registry the pinned tarballs come from (never `resolved` of the lock). */
+  registry: z.url().default(DEFAULT_ADAPTER_REGISTRY),
+});
+
+/**
  * Keys every client has. [proposta] names, `clients.<id>.*` (architecture 5.2).
  *
  * - `enabled`: `auto` turns the client on when its `command` is set or the default executable is
@@ -1205,6 +1246,7 @@ export const ClaudeCodeClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `claude-agent-acp`. */
   command: ClientCommandSchema.optional(),
+  adapter: ClientAdapterSourceSchema.default('managed'),
   setting_sources: z.enum(CLAUDE_SETTING_SOURCES).default('none'),
   utilization_unit: z.enum(CLAUDE_UTILIZATION_UNITS).default('ignore'),
   quota_statusline: z.enum(CLAUDE_QUOTA_STATUSLINES).default('file'),
@@ -1218,6 +1260,7 @@ export const CodexClientSchema = z.strictObject({
   ...clientCommon,
   /** Default `codex-acp`. */
   command: ClientCommandSchema.optional(),
+  adapter: ClientAdapterSourceSchema.default('managed'),
   process_model: z.enum(CODEX_PROCESS_MODELS).default('multi-session'),
   initial_mode: z.string().min(1).default('workspace-write'),
   modes: z.array(z.string().min(1)).min(1).default(['read-only', 'workspace-write']),
@@ -2278,6 +2321,7 @@ export const DaemonConfigSchema = z
      */
     clients: z
       .strictObject({
+        adapters: ClientAdaptersSchema.prefault({}),
         'claude-code': ClaudeCodeClientSchema.prefault({}),
         codex: CodexClientSchema.prefault({}),
         opencode: OpenCodeClientSchema.prefault({}),
