@@ -133,6 +133,9 @@ export function runInstaller(
     child.on('close', (code) => {
       resolve({ code, stdout, stderr });
     });
+    // A script that exits before reading its input (a bad argument) closes the pipe: the write
+    // then fails with EPIPE, which is not an error of the run.
+    child.stdin.on('error', () => undefined);
     child.stdin.end(options.input ?? '');
   });
 }
