@@ -40,6 +40,9 @@ import {
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
+  UPDATE_CHANNELS,
+  UPDATE_MODES,
+  UPDATE_SOURCES,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -103,6 +106,16 @@ import {
 /** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
+
+/** [proposta] What the logon service does when the daemon exits (`service.restart`, Phase 10, P3). */
+export const SERVICE_RESTART_MODES = ['on_failure', 'always', 'never'] as const;
+/** [proposta] When the logon service starts (`service.autostart`, Phase 10, P3). */
+export const SERVICE_AUTOSTART_MODES = ['logon', 'manual'] as const;
+/** [proposta] Whether the Windows task shows a console window (`service.console`, Phase 10, P3). */
+export const SERVICE_CONSOLE_MODES = ['hidden', 'visible'] as const;
+/** [proposta] What `ot tui` does when no daemon is running (`tui.start_daemon`, Phase 10, P3). */
+export const TUI_START_DAEMON_MODES = ['service', 'child', 'off'] as const;
+export type TuiStartDaemonMode = (typeof TUI_START_DAEMON_MODES)[number];
 
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -1424,7 +1437,7 @@ const TelemetryPrometheusConfigSchema = z
   .prefault({});
 
 /** True for a host that is this machine: the only one `http://` may reach with headers. */
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
@@ -1576,6 +1589,85 @@ const TelemetryConfigSchema = z
     }
   })
   .prefault({});
+
+/** The shortest `updates.check_interval`: a search is one call to the origin (GitHub limits them). */
+export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * `updates` (Phase 10, P7; architecture 5.21, N73). The search for a new version of OTheater and,
+ * from the next step (P8), its application. Every key is global (the file of the daemon; a project
+ * has no say in how the daemon updates itself) and is read when the daemon starts. [proposta] The
+ * names and the defaults of the keys below, except the modes and the channels, which the
+ * architecture names.
+ *
+ * - `mode` (default `auto`): `auto` downloads, checks and (from P8) applies when the daemon is
+ *   idle; `notify` downloads and checks, and leaves the version ready for the Producer to apply;
+ *   `check` only says a new version exists (it downloads nothing); `off` never looks. Until P8
+ *   exists, `auto` acts as `notify` and the status and the event say so. A daemon that is not the
+ *   own executable (a checkout run by Node) acts as `check`.
+ * - `channel` (default `stable`): `stable` reads the latest release; `beta` reads the newest
+ *   prerelease. A manifest of another channel is refused.
+ * - `source` (default `github`): `github` reads the releases of the public repository, with no
+ *   credential; `url` reads `<url>/manifest.json`, `<url>/manifest.json.sig` and the files of the
+ *   manifest from a base address of your own (a mirror, a test server).
+ * - `url`: the base address for `source: url`. Required there; `https://`, or `http://` only on the
+ *   loopback; no user, no password, no query.
+ * - `check_interval` (default `6h`): the time between two searches; `off` searches only when asked
+ *   (`POST /v1/updates/check`) and once at start. Not shorter than 5 minutes.
+ *
+ * The public key that checks the manifest is not a key here: it is embedded in the executable
+ * (`tools/release/keys/update-public-key.pem`), so that a changed file cannot choose who signs.
+ */
+export const UpdatesConfigSchema = z
+  .strictObject({
+    mode: z.enum(UPDATE_MODES).default('auto'),
+    channel: z.enum(UPDATE_CHANNELS).default('stable'),
+    source: z.enum(UPDATE_SOURCES).default('github'),
+    url: z.string().min(1).max(2048).optional(),
+    check_interval: z
+      .union([z.literal('off'), DurationSchema])
+      .transform((value) => (value === 'off' ? null : value))
+      .refine((value) => value === null || value >= UPDATES_MIN_CHECK_INTERVAL_MS, {
+        message: 'the shortest interval is 5m (one search is one call to the origin)',
+      })
+      .prefault('6h'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.source === 'url' && value.url === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message: 'updates.source "url" needs updates.url',
+      });
+    }
+    if (value.url === undefined) return;
+    let parsed: URL | undefined;
+    try {
+      parsed = new URL(value.url);
+    } catch {
+      parsed = undefined;
+    }
+    const secure =
+      parsed !== undefined &&
+      (parsed.protocol === 'https:' ||
+        (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)));
+    if (
+      parsed === undefined ||
+      !secure ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message:
+          'updates.url must be https:// (http:// only on the loopback), with no user, password, query or fragment',
+      });
+    }
+  });
+export type UpdatesConfig = z.output<typeof UpdatesConfigSchema>;
 
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
@@ -2801,6 +2893,40 @@ export const DaemonConfigSchema = z
         role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
       })
       .prefault({}),
+    /**
+     * The logon service of the daemon (`ot service`; Phase 10, P3; architecture 5.21, 10). [proposta]
+     * - `restart`: `on_failure` (default) starts the daemon again when it exits with an error, `always`
+     *   also when it exits cleanly, `never` leaves it stopped. The Windows Task Scheduler has no
+     *   restart after a clean exit, so there `always` behaves as `on_failure` (the install says so);
+     *   on macOS, `autostart: manual` writes no restart rule.
+     * - `autostart`: `logon` (default) registers the service and turns its trigger on; `manual`
+     *   registers it without the trigger (`ot service start` or `ot tui` starts it).
+     * - `console`: only on Windows. `hidden` (default) runs the daemon without a console window;
+     *   `visible` runs it directly, so the window shows (and the daemon stops if it is closed).
+     * It is read by `ot service install`: a change applies at the next install.
+     */
+    service: z
+      .strictObject({
+        restart: z.enum(SERVICE_RESTART_MODES).default('on_failure'),
+        autostart: z.enum(SERVICE_AUTOSTART_MODES).default('logon'),
+        console: z.enum(SERVICE_CONSOLE_MODES).default('hidden'),
+      })
+      .prefault({}),
+    /**
+     * What `ot tui` does before it opens when no daemon is running (Phase 10, P3; architecture 10).
+     * [proposta]
+     * - `start_daemon`: `service` (default) starts the logon service, and starts a daemon child of
+     *   the user's own when the service is not installed; `child` always starts the child; `off`
+     *   starts nothing (the interface says there is no daemon, as before).
+     * - `start_timeout`: how long it waits for the daemon to publish its API (default `15s`).
+     * The child is detached: it stays when the interface closes, as the service would.
+     */
+    tui: z
+      .strictObject({
+        start_daemon: z.enum(TUI_START_DAEMON_MODES).default('service'),
+        start_timeout: DurationSchema.prefault('15s'),
+      })
+      .prefault({}),
     log: z
       .strictObject({
         level: z.enum(LOG_LEVELS).default('info'),
@@ -2819,6 +2945,7 @@ export const DaemonConfigSchema = z
           .prefault({}),
       })
       .prefault({}),
+    updates: UpdatesConfigSchema.prefault({}),
   })
   .refine(
     (config) => !(hasSecretPathEntries(config.security) && hasSecretPathEntries(config.browser)),

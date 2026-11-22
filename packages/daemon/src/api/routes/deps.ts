@@ -12,6 +12,7 @@ import type { Logger } from '../../logger.js';
 import type { ProducerChannel } from '../../orchestration/channel.js';
 import type { PlayRunner } from '../../pipeline/runner.js';
 import type { PluginPanelService } from '../../plugins/panel.js';
+import type { UpdateChecker } from '../../updates/checker.js';
 import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
@@ -65,6 +66,8 @@ export interface ReadRouteDeps {
   readonly attempts?: AttemptRunner | undefined;
   /** The plugins (P10 of Phase 9); absent: their routes answer 503 `unavailable`. */
   readonly plugins?: PluginPanelService | undefined;
+  /** The search for updates (P7 of Phase 10); absent: its routes answer 503 `unavailable`. */
+  readonly updates?: UpdateChecker | undefined;
 }
 
 /**
@@ -113,4 +116,6 @@ export interface CommandRouteDeps {
   readonly direct?: DirectSessionService | undefined;
   /** The plugins (P10 of Phase 9); absent: their routes answer 503 `unavailable`. */
   readonly plugins?: PluginPanelService | undefined;
+  /** The search for updates (P7 of Phase 10); absent: its routes answer 503 `unavailable`. */
+  readonly updates?: UpdateChecker | undefined;
 }

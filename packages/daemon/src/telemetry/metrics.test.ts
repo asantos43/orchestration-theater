@@ -222,6 +222,26 @@ describe('MetricsCollector', () => {
     expect(text).toContain('otheater_executor_failures_total{executor="e",kind="crash"} 3');
   });
 
+  it('shows the searches for a new version and the versions refused (P7 of Phase 10)', async () => {
+    const rig = makeRig({
+      updates: () => ({
+        checks: { up_to_date: 3, found: 1, ready: 1, rejected: 2, skipped: 0, failed: 4 },
+        rejected: { signature: 1, sha256: 1 },
+      }),
+    });
+    const text = await rig.collector.render();
+    expect(text).toContain('otheater_updates_checks_total{result="up_to_date"} 3');
+    expect(text).toContain('otheater_updates_checks_total{result="failed"} 4');
+    expect(text).toContain('otheater_updates_rejected_total{reason="signature"} 1');
+    expect(text).toContain('otheater_updates_rejected_total{reason="sha256"} 1');
+  });
+
+  it('leaves the updates out while there is no service', async () => {
+    expect(await makeRig().collector.render()).not.toContain('otheater_updates_');
+    const none = makeRig({ updates: () => undefined });
+    expect(await none.collector.render()).not.toContain('otheater_updates_');
+  });
+
   it('counts what the telemetry base and the exporter dropped', async () => {
     const rig = makeRig({
       telemetry: {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -50,6 +50,18 @@ import {
   type TrajectoryOptions,
 } from './atif/command.js';
 import { runAnalysisCommand, type AnalysisOptions } from './analysis/command.js';
+import {
+  isServiceAction,
+  runServiceCommand,
+  runUninstallCommand,
+  startDaemonForTui,
+  type ServiceCommandDeps,
+  type ServiceHost,
+} from './commands/service.js';
+import { spawnDetachedDaemon } from './service/ensure-daemon.js';
+import { execRunner } from './service/command-runner.js';
+import { createServiceManager } from './service/index.js';
+import { resolveServiceCommand } from './service/self-command.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -95,6 +107,11 @@ export interface CliDeps {
    * loaded only when it is needed, which starts the interface in a process of its own).
    */
   readonly launchTui?: TuiRunner | undefined;
+  /**
+   * The logon service and the daemon child (Phase 10, P3): the manager of the platform and how to
+   * start a detached daemon. Without it `ot service` has no manager and `ot tui` starts no daemon.
+   */
+  readonly serviceHost?: ServiceHost | undefined;
 }
 
 /** What `ot tui` hands to the launcher: the data folder and the `ui` part of the configuration. */
@@ -131,6 +148,8 @@ const COMMANDS = [
   'analysis',
   'tui',
   'plugin',
+  'service',
+  'uninstall',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -193,7 +212,27 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     return EXIT_USAGE;
   };
 
+  const serviceDeps = (): ServiceCommandDeps => ({
+    platform: deps.platform,
+    env: deps.env,
+    service: deps.serviceHost?.manager,
+    // The one place the command of the service comes from: P1 swaps it for `resolveSelfCommand()`.
+    self: resolveServiceCommand(deps.otLauncher),
+    confirm: deps.confirm,
+    homedir: deps.homedir,
+    sleep: deps.serviceHost?.sleep,
+    now: deps.serviceHost?.now,
+    alive: deps.serviceHost?.alive,
+  });
   const runTui = async (ui: unknown): Promise<number> => {
+    if (deps.serviceHost !== undefined) {
+      const tuiConfig = (await readConfig(dataDir))?.tui;
+      await startDaemonForTui(
+        { dataDir, t, err: deps.err },
+        { ...serviceDeps(), spawnDaemon: deps.serviceHost.spawnDaemon },
+        tuiConfig,
+      );
+    }
     try {
       return await (deps.launchTui ?? launchBuiltTui)({ dataDir, ui, env: deps.env });
     } catch (error) {
@@ -359,6 +398,24 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         return await runAnalysisCommand(context, {}, analysisOptions(values));
       }
+      case 'service': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingServiceAction'));
+        if (!isServiceAction(action))
+          return usageError(t('usage.unknownServiceAction', { action }));
+        if (args.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runServiceCommand(context, serviceDeps(), action, {
+          noStart: values['no-start'] === true,
+          json: values.json === true,
+        });
+      }
+      case 'uninstall': {
+        if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runUninstallCommand(context, serviceDeps(), {
+          purgeData: values['purge-data'] === true,
+          yes: values.yes === true,
+        });
+      }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
@@ -453,6 +510,9 @@ function parseCliArgs(argv: readonly string[]) {
       unit: { type: 'string' },
       content: { type: 'string' },
       out: { type: 'string' },
+      // The options of `ot service` and `ot uninstall` (`json`, `yes` are shared).
+      'no-start': { type: 'boolean' },
+      'purge-data': { type: 'boolean' },
     },
     allowPositionals: true,
     strict: true,
@@ -631,6 +691,21 @@ function otLauncherOf(): OtLauncher | undefined {
   return { node: self.command, entry: self.args[0] };
 }
 
+/** The real manager of this platform and the real detached child (Phase 10, P3). */
+function realServiceHost(): ServiceHost {
+  return {
+    manager: createServiceManager({
+      platform: process.platform,
+      env: process.env,
+      homedir: homedir(),
+      uid: process.getuid?.(),
+      run: execRunner,
+      tmpDir: tmpdir(),
+    }),
+    spawnDaemon: spawnDetachedDaemon,
+  };
+}
+
 /** A yes or no on stderr; only `y` or `yes` (or `s`, `sim`) count as yes. */
 async function terminalConfirm(question: string): Promise<boolean> {
   const lines = createInterface({ input: process.stdin, output: process.stderr });
@@ -702,6 +777,7 @@ export async function entry(): Promise<void> {
       ? (question) => readHidden(question, process.stdin, process.stderr)
       : undefined,
     interactive: process.stdin.isTTY && process.stdout.isTTY,
+    serviceHost: realServiceHost(),
   });
   process.exitCode = code;
   process.off('SIGINT', onSignal);

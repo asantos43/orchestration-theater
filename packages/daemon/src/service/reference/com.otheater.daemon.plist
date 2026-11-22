@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Written by "ot service install" (OTheater). A new install rewrites this file. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.otheater.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/node/bin/node</string>
+    <string>/work/ot/dist/cli.js</string>
+    <string>daemon</string>
+    <string>--data-dir</string>
+    <string>/data/ot dir</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/data/ot dir/logs/service.log</string>
+  <key>StandardErrorPath</key>
+  <string>/data/ot dir/logs/service.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin</string>
+  </dict>
+</dict>
+</plist>

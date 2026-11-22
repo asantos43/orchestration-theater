@@ -55,6 +55,10 @@ const detail = z.string().min(1).max(512).nullable();
  *   and the reason). Nothing is removed past the last day the aggregates cover.
  * - `log_rotate_failed` (Phase 8, P8; [proposta]): `daemon.log` could not be rotated (`subject`:
  *   `daemon.log`; `detail`: why). The daemon writes on to the same file and tries again later.
+ * - `update_rejected` (Phase 10, P7; architecture 5.21; [proposta]): a new version was refused
+ *   because it could not be trusted (`subject`: the version, or `none`; `detail`: the reason
+ *   code of `daemon.update`). Nothing of it stays on disk. The same fact is the `daemon.update`
+ *   event with `phase: rejected`; this notice is what reaches the global chat.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -75,6 +79,7 @@ export const DAEMON_NOTICE_KINDS = [
   'telemetry_purge_failed',
   'telemetry_purge_blocked',
   'log_rotate_failed',
+  'update_rejected',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

@@ -25,6 +25,7 @@ import { SETUP_ROUTES } from './setup.js';
 import { TELEMETRY_ROUTES } from './telemetry.js';
 import { TRAJECTORY_ROUTES } from './trajectories.js';
 import { USAGE_ROUTES } from './usage.js';
+import { UPDATE_ROUTES } from './updates.js';
 
 /**
  * Every route of the daemon API, keyed by `id`. A resource keeps its routes in its own file of
@@ -58,6 +59,7 @@ export const API_ROUTES = {
   ...ATIF_ROUTES,
   ...ANALYSIS_ROUTES,
   ...TELEMETRY_ROUTES,
+  ...UPDATE_ROUTES,
 } as const;
 
 export type ApiRouteId = keyof typeof API_ROUTES;
