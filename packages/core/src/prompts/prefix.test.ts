@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import type { DirectiveRecord } from '../ports/directives.js';
-import { OFFICIAL_TOOLS } from '../registries/tools.js';
+import { OFFICIAL_TOOLS, type ToolDefinition } from '../registries/tools.js';
 import { assemblePrefix, type PrefixInput } from './prefix.js';
 
 function order(seq: number, extra: Partial<DirectiveRecord> = {}): DirectiveRecord {
@@ -86,6 +87,20 @@ describe('assemblePrefix', () => {
     const director = assemblePrefix({ ...base, role: 'director' });
     expect(director).toContain('- `open_pr` (acts outside the worktree)');
     expect(director).toContain('- `status`\n');
+  });
+
+  it('notes a network tool as reaching the network, and a read tool with no note', () => {
+    const web: ToolDefinition = {
+      name: 'fetch_page',
+      roles: ['critic'],
+      input: z.strictObject({}),
+      output: z.strictObject({}),
+      effect: 'network',
+      idempotencyKey: 'attempt_step',
+    };
+    const text = assemblePrefix({ ...base, tools: [...OFFICIAL_TOOLS, web] });
+    expect(text).toContain('- `fetch_page` (reaches the network)');
+    expect(text).toContain('- `read_contract`\n');
   });
 
   it('puts only instruction orders that reach the role, global before local, by seq', () => {

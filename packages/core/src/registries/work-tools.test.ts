@@ -73,7 +73,7 @@ describe('the input and output schemas of the work tools', () => {
 
   it('describe the browser tools: reads are plain, clicks and keys are external writes', () => {
     for (const name of ['browser_open', 'browser_read', 'browser_screenshot']) {
-      expect(schemas(name).effect, name).toBe('none');
+      expect(schemas(name).effect, name).toBe('read');
       expect(schemas(name).roles, name).toEqual(['actor', 'consultant']);
     }
     for (const name of ['browser_click', 'browser_fill', 'browser_press_key']) {
