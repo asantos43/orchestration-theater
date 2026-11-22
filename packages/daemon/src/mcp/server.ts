@@ -23,8 +23,9 @@ import {
   type StandardSchemaWithJSON,
 } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
-import { APPROVE_LABEL, DENY_LABEL, isApproval, type AskApproval } from '../browser/approval.js';
+import type { AskApproval } from '../browser/approval.js';
 import type { Logger } from '../logger.js';
+import { approvalDetailOf, askProducerToApprove } from '../plugins/approval.js';
 import type { PluginAggregator, PluginSnapshot, PluginToolBinding } from '../plugins/aggregate.js';
 import {
   allowedPluginTools,
@@ -499,11 +500,7 @@ export class FrameworkMcpServer implements McpAccess {
 
   /** What the card shows of the arguments (`plugins.permissions.approval_detail`). */
   #detailOf(args: Record<string, unknown> | undefined): string {
-    if (args === undefined || Object.keys(args).length === 0) return 'no arguments';
-    if (this.#permissions().approvalDetail === 'values') {
-      return `arguments ${JSON.stringify(args).slice(0, 300)}`;
-    }
-    return `arguments: ${Object.keys(args).join(', ').slice(0, 200)}`;
+    return approvalDetailOf(args, this.#permissions().approvalDetail);
   }
 
   /**
@@ -516,49 +513,22 @@ export class FrameworkMcpServer implements McpAccess {
     binding: PluginToolBinding,
     args: Record<string, unknown> | undefined,
   ): Promise<CallToolResult | undefined> {
-    const ask = this.#options.askApproval;
     await this.#say(record, binding, 'asked');
-    let refused: 'approval_unavailable' | 'approval_cancelled' | 'approval_denied' | undefined;
-    const opened =
-      ask === undefined
-        ? undefined
-        : await ask(binding.project, {
-            questions: [
-              {
-                question:
-                  `Allow the tool ${binding.name} (${binding.tool.effects}, role ${record.input.role})? ` +
-                  this.#detailOf(args),
-                options: [
-                  { label: APPROVE_LABEL, description: 'Run this call; the next call asks again.' },
-                  {
-                    label: DENY_LABEL,
-                    description: 'Do not run it; the agent is told it was refused.',
-                  },
-                ],
-                multi_select: false,
-                open: false,
-                recommended: DENY_LABEL,
-              },
-            ],
-          }).catch(() => undefined);
-    if (opened === undefined) {
-      refused = 'approval_unavailable';
-    } else {
-      try {
-        refused = isApproval(await opened.answer) ? undefined : 'approval_denied';
-      } catch {
-        refused = 'approval_cancelled';
-      }
-    }
-    await this.#say(record, binding, refused === undefined ? 'approved' : 'refused');
-    if (refused === undefined) return undefined;
+    const outcome = await askProducerToApprove(
+      this.#options.askApproval,
+      binding.project,
+      `Allow the tool ${binding.name} (${binding.tool.effects}, role ${record.input.role})? ` +
+        this.#detailOf(args),
+    );
+    await this.#say(record, binding, outcome === 'approved' ? 'approved' : 'refused');
+    if (outcome === 'approved') return undefined;
     const message = {
       approval_unavailable:
         'This tool needs the Producer to approve it and nobody can be asked right now.',
       approval_cancelled: 'The question to the Producer ended without an answer.',
       approval_denied: `The Producer did not approve this call of ${binding.name}. Do not try it again unless the task needs it, and then say why.`,
-    }[refused];
-    return this.#refuse(record, binding, refused, message);
+    }[outcome];
+    return this.#refuse(record, binding, outcome, message);
   }
 
   /** The tool error of a refused call, and the notice of it. The plugin is never called. */

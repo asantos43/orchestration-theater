@@ -221,21 +221,36 @@ export class PluginAggregator {
     args: Record<string, unknown> | undefined,
     signal?: AbortSignal,
   ): Promise<CallToolResult> {
-    const { plugin, project } = binding;
+    return await this.callTool(binding.plugin, binding.project, binding.tool.name, args, signal);
+  }
+
+  /**
+   * The same call, by the name of a tool the manifest declares, with no role: the panel of a
+   * project (P10) reads its blocks and runs its actions this way, for the Producer. It is the same
+   * door as {@link call}, so the answers are the same; who may call, and whether the Producer is
+   * asked, is the caller's to decide (`PluginPanelService`).
+   */
+  async callTool(
+    plugin: ActivePlugin,
+    project: string,
+    toolName: string,
+    args: Record<string, unknown> | undefined,
+    signal?: AbortSignal,
+  ): Promise<CallToolResult> {
     try {
       const started = await this.#options.pool.ensure(plugin, project);
       const reconciled = this.#reconcile(plugin, project, started);
-      if (!reconciled.available.has(binding.tool.name)) {
+      if (!reconciled.available.has(toolName)) {
         return failure(
           'tool_unavailable',
-          `The server of the plugin ${plugin.id} does not expose the tool ${binding.tool.name}.`,
+          `The server of the plugin ${plugin.id} does not expose the tool ${toolName}.`,
         );
       }
-      return await this.#options.pool.call(plugin, project, binding.tool.name, args, signal);
+      return await this.#options.pool.call(plugin, project, toolName, args, signal);
     } catch (error) {
       if (!(error instanceof PluginCallError)) throw error;
       this.#options.logger.warn(
-        { plugin: plugin.id, project, tool: binding.tool.name, code: error.code },
+        { plugin: plugin.id, project, tool: toolName, code: error.code },
         'plugin tool call did not reach a result',
       );
       return failure(`plugin_${error.code}`, error.message, {
