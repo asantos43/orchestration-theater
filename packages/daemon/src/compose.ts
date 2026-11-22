@@ -1070,7 +1070,7 @@ export const DEFAULT_CLIENT_EXECUTABLES: Readonly<Record<ClientId, string>> = {
  * The npm packages `version_source` looks for next to each client's executable (N63):
  * the ACP adapter for Claude Code and Codex, the client itself for OpenCode.
  */
-const VERSION_PACKAGES: Readonly<Record<ClientId, readonly string[]>> = {
+export const VERSION_PACKAGES: Readonly<Record<ClientId, readonly string[]>> = {
   'claude-code': CLAUDE_CODE_ACP_PACKAGES,
   codex: CODEX_ACP_PACKAGES,
   opencode: OPENCODE_PACKAGES,
