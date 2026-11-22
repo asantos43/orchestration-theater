@@ -386,13 +386,20 @@ describe('compose: layer 3 (the sandbox)', () => {
     }
   });
 
-  /** What the daemon wrote as `daemon.notice` after the sink opened (P24, N146). */
+  /**
+   * What the daemon wrote as `daemon.notice` after the sink opened (P24, N146), without the
+   * `windows_launcher_not_found` of a Windows host where `ot-job-launcher.exe` was not built (the
+   * cross job of the CI): that notice is the launcher's, not the sandbox's.
+   */
   async function noticesOf(composition: Awaited<ReturnType<typeof composed>>['composition']) {
     composition.situations.open();
     await composition.situations.idle();
     return (await composition.store.events.readFrom(0, 1000))
       .filter((event) => event.type === 'daemon.notice')
-      .map((event) => event.payload);
+      .map((event) => event.payload)
+      .filter(
+        (payload) => (payload as { subject?: string }).subject !== 'windows_launcher_not_found',
+      );
   }
 
   it('daemon.notice sandbox_unavailable: the missing layer 3 is also an event, with the reason (P24, N146)', async () => {
