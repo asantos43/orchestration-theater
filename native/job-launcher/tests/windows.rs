@@ -11,7 +11,9 @@ use std::process::{Child, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use ot_job_launcher::exit_codes::{EXIT_BATCH_REFUSED, EXIT_SPAWN_FAILED, EXIT_USAGE};
+use ot_job_launcher::exit_codes::{
+    EXIT_BATCH_REFUSED, EXIT_PARENT_EXITED, EXIT_PARENT_GONE, EXIT_SPAWN_FAILED, EXIT_USAGE,
+};
 use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
@@ -304,4 +306,75 @@ fn launcher_failures_use_the_documented_codes() {
         .status()
         .expect("run");
     assert_eq!(code_of(status), EXIT_BATCH_REFUSED);
+}
+
+/// A stand-in for the daemon: a helper that only sleeps, so a test can end it at will.
+fn stand_in_parent() -> Guard {
+    Guard(
+        Command::new(helper())
+            .arg("sleep")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the stand-in parent"),
+    )
+}
+
+#[test]
+fn a_parent_that_is_already_gone_stops_the_launcher_before_the_executor() {
+    let mut parent = stand_in_parent();
+    let pid = parent.0.id();
+    parent.0.kill().expect("end the parent");
+    let _ = parent.0.wait();
+    wait_until_gone(pid);
+
+    let output = launcher()
+        .args(["--parent-pid", &pid.to_string(), "--"])
+        .arg(helper())
+        .args(["echo"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run");
+    assert_eq!(code_of(output.status), EXIT_PARENT_GONE);
+    // The Executor never ran: `echo` would have written "bye" to stderr.
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("bye"));
+}
+
+#[test]
+fn a_parent_that_runs_does_not_disturb_the_executor() {
+    let parent = stand_in_parent();
+    let status = launcher()
+        .args(["--parent-pid", &parent.0.id().to_string(), "--"])
+        .arg(helper())
+        .args(["exit", "7"])
+        .status()
+        .expect("run");
+    assert_eq!(code_of(status), 7);
+}
+
+#[test]
+fn the_whole_tree_dies_with_the_parent() {
+    let mut parent = stand_in_parent();
+    let mut child = launcher()
+        .args(["--parent-pid", &parent.0.id().to_string(), "--"])
+        .arg(helper())
+        .arg("tree")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    let rx = lines(child.stdout.take().expect("stdout"));
+    let mut guard = Guard(child);
+    let line = rx.recv_timeout(CAP).expect("the helper announces its pids");
+    let (executor, grandchild) = (field(&line, "pid"), field(&line, "grandchild"));
+    assert!(is_running(executor) && is_running(grandchild));
+
+    parent.0.kill().expect("end the parent");
+    let _ = parent.0.wait();
+
+    let status = wait_with_cap(&mut guard.0);
+    assert_eq!(code_of(status), EXIT_PARENT_EXITED);
+    wait_until_gone(executor);
+    wait_until_gone(grandchild);
 }

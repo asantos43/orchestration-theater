@@ -11,7 +11,7 @@ License: MPL-2.0. Not published to crates.io (`publish = false`).
 ## Usage
 
 ```text
-ot-job-launcher [--memory-limit-bytes <n>] -- <exe> [args...]
+ot-job-launcher [--memory-limit-bytes <n>] [--parent-pid <pid>] -- <exe> [args...]
 ```
 
 - Everything after the first `--` belongs to the Executor and is never interpreted.
@@ -24,6 +24,28 @@ ot-job-launcher [--memory-limit-bytes <n>] -- <exe> [args...]
 - `.cmd` and `.bat` programs are refused: they run through `cmd.exe`, which expands `%VAR%` and
   re-parses the arguments (argument injection). Pass the real executable, for example `node.exe`
   plus the script path.
+- `--parent-pid <pid>` (optional, [proposta]) ties the launcher to its parent: see below.
+
+### Tied to the parent (`--parent-pid`)
+
+`KILL_ON_JOB_CLOSE` only helps when the launcher itself ends. If the daemon is killed at once (a
+crash, End task, a power cut of its session), the launcher would live on with the Executor. With
+`--parent-pid <pid>` (the daemon passes its own pid, always):
+
+1. Before creating anything, the launcher opens the parent with `SYNCHRONIZE` (the least access
+   that can wait on a process). If the parent does not exist, or has already ended, it exits with
+   `0x4F540008` and **never starts the Executor**.
+2. After the Executor is running inside the job, a thread waits on that handle. When the parent
+   ends, the launcher exits with `0x4F540009`; closing its last job handle makes Windows terminate
+   the Executor and every descendant. When the Executor ends first, nothing changes: its exit
+   code is the launcher's.
+3. The handle is held from before the Executor exists, so a reused pid cannot be mistaken for the
+   parent later. The only window is between the daemon starting the launcher and the launcher
+   opening the parent: a parent that ended and whose pid was reused within it would be watched
+   instead (very unlikely; the daemon is alive while it starts the launcher).
+
+The number is decimal digits only, greater than zero, and given at most once. The option is read
+only before the first `--`.
 
 ### What the job does
 
@@ -53,10 +75,12 @@ a small program code and not an NTSTATUS value:
 | `0x4F540005` | the main thread could not be resumed (the process is terminated) |
 | `0x4F540006` | waiting for the process, or reading its exit code, failed |
 | `0x4F540007` | the program is a `.cmd` or `.bat` script (refused) |
+| `0x4F540008` | `--parent-pid`: the parent does not exist or has already ended (the Executor is not started) |
+| `0x4F540009` | `--parent-pid`: the parent ended, so the launcher ended the job and exited |
 | `78` | not Windows: the binary prints "this program only works on Windows" and exits |
 
 A posix exit code has 8 bits, which is why the non-Windows code is small. The daemon can treat an
-exit code in `0x4F540001..0x4F540007` as "the launcher failed" (an Executor could return it too,
+exit code in `0x4F540001..0x4F540009` as "the launcher failed" (an Executor could return it too,
 but it is a very unlikely value).
 
 ### Command line and quoting
@@ -80,7 +104,8 @@ unit tests (arguments, quoting, exit codes) and checks that the binary exits wit
 
 The **real test runs on Windows CI** (N58): `tests/windows.rs` (job tree dies when the launcher is
 terminated, exit code passes through, stdin/stdout cross, the memory limit stops whoever exceeds
-it) uses `examples/helper.rs` and only runs there. In `.github/workflows/ci.yml` this is the
+it, a parent that is gone stops the launcher before the Executor, and the whole tree dies with the
+parent) uses `examples/helper.rs` and only runs there. In `.github/workflows/ci.yml` this is the
 `windows-launcher` job, started by hand (`workflow_dispatch`).
 
 ## Maintenance
@@ -96,4 +121,8 @@ it) uses `examples/helper.rs` and only runs there. In `.github/workflows/ci.yml`
 - Graceful shutdown (a Ctrl+Break or a stop event before the kill) is not implemented. The
   daemon can already ask the Executor to stop through ACP (`session/cancel`, then close stdin,
   which the Executor owns directly) before ending the launcher.
-- `.cmd` and `.bat` programs are refused, not run through `cmd.exe`.
+- `.cmd` and `.bat` programs are refused, not run through `cmd.exe`. The daemon adapter reads the
+  `.cmd` shims of npm itself and starts `node.exe <script>` instead
+  (`packages/adapters/platform-windows/src/shim.ts`); this crate never sees a `.cmd`.
+- A parent that ends and whose pid is reused before the launcher opens it (see above) is not
+  detected.

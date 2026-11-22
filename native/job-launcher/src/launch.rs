@@ -9,6 +9,13 @@
 //! 3. `AssignProcessToJobObject`, then `ResumeThread`;
 //! 4. `WaitForSingleObject` and `GetExitCodeProcess`; the launcher exits with that code.
 //!
+//! With `--parent-pid <pid>` the launcher also watches that process (the daemon). It opens it with
+//! `SYNCHRONIZE` before anything is created (a parent that is already gone ends the launcher
+//! with `EXIT_PARENT_GONE`, no Executor started) and, once the Executor runs, a thread waits for
+//! it. When the parent ends, the thread exits the launcher with `EXIT_PARENT_EXITED`: the last
+//! handle to the job closes and Windows terminates the whole tree, exactly as when the launcher is
+//! terminated from outside. So the tree does not outlive a daemon that was killed at once.
+//!
 //! No `JOB_OBJECT_LIMIT_BREAKAWAY_OK`: a descendant cannot leave the job. When the launcher ends
 //! for any reason, even `TerminateProcess` from the daemon, the last handle to the job closes and
 //! Windows terminates every process still in it.
@@ -24,7 +31,7 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
-    SetHandleInformation, WAIT_OBJECT_0,
+    SetHandleInformation, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::System::Console::{
     GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
@@ -36,15 +43,16 @@ use windows_sys::Win32::System::JobObjects::{
     SetInformationJobObject,
 };
 use windows_sys::Win32::System::Threading::{
-    CREATE_SUSPENDED, CreateProcessW, GetExitCodeProcess, INFINITE, PROCESS_INFORMATION,
-    ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
+    CREATE_SUSPENDED, CreateProcessW, GetExitCodeProcess, INFINITE, OpenProcess,
+    PROCESS_INFORMATION, PROCESS_SYNCHRONIZE, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOW,
+    TerminateProcess, WaitForSingleObject,
 };
 
 use crate::cli::{self, Config, Parsed};
 use crate::cmdline;
 use crate::exit_codes::{
-    EXIT_ASSIGN_FAILED, EXIT_BATCH_REFUSED, EXIT_JOB_FAILED, EXIT_RESUME_FAILED, EXIT_SPAWN_FAILED,
-    EXIT_USAGE, EXIT_WAIT_FAILED,
+    EXIT_ASSIGN_FAILED, EXIT_BATCH_REFUSED, EXIT_JOB_FAILED, EXIT_PARENT_EXITED, EXIT_PARENT_GONE,
+    EXIT_RESUME_FAILED, EXIT_SPAWN_FAILED, EXIT_USAGE, EXIT_WAIT_FAILED,
 };
 
 /// A Win32 handle closed on drop.
@@ -181,6 +189,54 @@ fn kill(process: &Handle) {
     }
 }
 
+/// Opens the process to watch (`--parent-pid`) with `SYNCHRONIZE` access. It must exist and be
+/// running: a pid whose process already ended (or was recycled by nobody) is `EXIT_PARENT_GONE`.
+fn open_parent(pid: u32) -> Result<Handle, u32> {
+    // SAFETY: plain call, no pointers; a null result is checked.
+    let raw = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+    let Some(parent) = Handle::new(raw) else {
+        return Err(fail(
+            EXIT_PARENT_GONE,
+            &format!("the process of --parent-pid {pid} cannot be opened"),
+        ));
+    };
+    // SAFETY: valid handle with SYNCHRONIZE access; a zero timeout only polls.
+    if unsafe { WaitForSingleObject(parent.0, 0) } != WAIT_TIMEOUT {
+        return Err(refuse(
+            EXIT_PARENT_GONE,
+            &format!("the process of --parent-pid {pid} has already ended"),
+        ));
+    }
+    Ok(parent)
+}
+
+/// Ends the launcher (and, through the job, the tree) when the watched process ends.
+fn watch_parent(parent: Handle) {
+    // A HANDLE is a raw pointer, which is not `Send`: it crosses to the thread as a number, and
+    // the thread keeps it for the life of the process (it is never closed on purpose).
+    let raw = parent.0 as usize;
+    std::mem::forget(parent);
+    std::thread::spawn(move || {
+        let handle = raw as HANDLE;
+        // SAFETY: the handle stays valid and open until this process ends.
+        let waited = unsafe { WaitForSingleObject(handle, INFINITE) };
+        let code = if waited == WAIT_OBJECT_0 {
+            refuse(
+                EXIT_PARENT_EXITED,
+                "the process of --parent-pid ended: ending the job",
+            )
+        } else {
+            // The watch is lost; with no way to tell when the parent ends, ending is the safe side.
+            fail(
+                EXIT_WAIT_FAILED,
+                "waiting for the --parent-pid process failed",
+            )
+        };
+        // The exit closes the last handle to the job: Windows terminates what is still in it.
+        std::process::exit(code as i32);
+    });
+}
+
 /// Runs the Executor and returns the exit code of the launcher.
 #[must_use]
 pub fn run(config: &Config) -> u32 {
@@ -215,6 +271,12 @@ pub fn run(config: &Config) -> u32 {
         Err(error) => return refuse(EXIT_USAGE, &error.to_string()),
     };
 
+    // Before anything is created: a parent that is already gone means no Executor at all.
+    let parent = match config.parent_pid.map(open_parent).transpose() {
+        Ok(parent) => parent,
+        Err(code) => return code,
+    };
+
     let job = match create_job(limit) {
         Ok(job) => job,
         Err(code) => return code,
@@ -237,6 +299,10 @@ pub fn run(config: &Config) -> u32 {
         return code;
     }
     drop(spawned.thread);
+    // The Executor is in the job and running: from here the death of the parent ends everything.
+    if let Some(parent) = parent {
+        watch_parent(parent);
+    }
 
     // SAFETY: valid process handle with SYNCHRONIZE access.
     if unsafe { WaitForSingleObject(spawned.process.0, INFINITE) } != WAIT_OBJECT_0 {

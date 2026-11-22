@@ -15,6 +15,7 @@
     { "path": "packages/adapters/vault-file" },
     { "path": "packages/adapters/vault-keyring" },
     { "path": "packages/adapters/platform-posix" },
+    { "path": "packages/adapters/platform-windows" },
     { "path": "packages/adapters/vcs-git" },
     { "path": "packages/adapters/codehost-github" },
     { "path": "packages/adapters/session-acp" },

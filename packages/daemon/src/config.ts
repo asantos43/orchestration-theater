@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, win32 as win32Path } from 'node:path';
 import {
   COMMON_NAME,
   DEFAULT_DIRECTIVE_TIMEZONE,
@@ -1061,6 +1061,47 @@ export const BrowserConfigSchema = z
   })
   .prefault({});
 export type BrowserConfig = z.infer<typeof BrowserConfigSchema>;
+
+/**
+ * How the daemon starts the process of an Executor on Windows (Phase 10, P2; architecture 5.9,
+ * N58): `auto` uses the Job Object launcher (`ot-job-launcher.exe`) when it finds the file, and
+ * without it falls to `off` with a notice (as it was before the adapter existed: no attempts and
+ * no browser tools); `job_object` refuses to start without the launcher; `off` never uses it.
+ */
+export const WINDOWS_LAUNCHER_MODES = ['auto', 'job_object', 'off'] as const;
+export type WindowsLauncherMode = (typeof WINDOWS_LAUNCHER_MODES)[number];
+
+/**
+ * What the Windows launcher does with a `.cmd` shim of npm (`codex-acp.cmd`), which the launcher
+ * itself refuses: `resolve` reads the shim and runs `node.exe <script>` in its place; `refuse`
+ * fails with a clear error naming the shim.
+ */
+export const WINDOWS_SHIM_MODES = ['resolve', 'refuse'] as const;
+export type WindowsShimMode = (typeof WINDOWS_SHIM_MODES)[number];
+
+/**
+ * `processes` (Phase 10, P2). Only Windows reads it: Linux and macOS always use the process group.
+ * Every key is [proposta]. Needs a restart.
+ */
+export const ProcessesConfigSchema = z
+  .strictObject({
+    /** The Job Object launcher on Windows: `auto` (default), `job_object` or `off`. */
+    windows_launcher: z.enum(WINDOWS_LAUNCHER_MODES).default('auto'),
+    /**
+     * Absolute path of `ot-job-launcher.exe`. Unset, the daemon looks beside its own executable
+     * (where the installer puts both) and then in `native/job-launcher/target/{release,debug}` of
+     * the checkout it runs from. When set, only this path is tried.
+     */
+    windows_launcher_path: z
+      .string()
+      .min(1)
+      .refine((path) => win32Path.isAbsolute(path), 'expected an absolute Windows path')
+      .optional(),
+    /** The `.cmd` shims of npm on Windows: `resolve` (default) or `refuse`. */
+    windows_shims: z.enum(WINDOWS_SHIM_MODES).default('resolve'),
+  })
+  .prefault({});
+export type ProcessesConfig = z.infer<typeof ProcessesConfigSchema>;
 
 /** An Executor as `orchestration.executor` and `orchestration.roles.<role>` write it. */
 export const PlayExecutorSchema = z.strictObject({
@@ -2167,6 +2208,8 @@ export const DaemonConfigSchema = z
       .prefault({}),
     tools: ToolsConfigSchema,
     browser: BrowserConfigSchema,
+    /** How the processes of the Executors are started (Phase 10, P2). */
+    processes: ProcessesConfigSchema,
     /**
      * The API of the daemon (architecture 5.12; Phase 6, P3 of docs/17). [proposta] The names and
      * the defaults below. The API always binds `127.0.0.1` and always asks for the token.

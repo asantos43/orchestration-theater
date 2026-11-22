@@ -29,6 +29,12 @@ import {
   PosixMemoryProbe,
   PosixProcessLauncher,
 } from '@otheater/adapter-platform-posix';
+import {
+  checkoutRoots,
+  locateJobLauncher,
+  WINDOWS_PROCESS_LAUNCHER_ADAPTER,
+  WindowsProcessLauncher,
+} from '@otheater/adapter-platform-windows';
 import { SRT_SANDBOX_ADAPTER, SrtSandbox } from '@otheater/adapter-sandbox-srt';
 import { AcpTransport } from '@otheater/adapter-session-acp';
 import {
@@ -116,6 +122,7 @@ import {
   sessionsPerProcessOf,
   type ClientId,
   type DaemonConfig,
+  type ProcessesConfig,
 } from './config.js';
 import { validateEventsOf, type EventValidation } from './event-validation.js';
 import { createEventHub, type EventHub } from './events/event-hub.js';
@@ -163,8 +170,13 @@ export interface ComposeOverrides {
   readonly vault?: SecretVault;
   /** Version control for the worktrees of the attempts (`GitVcs` by default). */
   readonly vcs?: Vcs;
-  /** Starts the adapter processes (`PosixProcessLauncher` by default; none on Windows yet). */
+  /**
+   * Starts the adapter processes (the process group on Linux and macOS; on Windows the Job Object
+   * launcher chosen by `processes.windows_launcher`, see {@link chooseLauncher}).
+   */
   readonly launcher?: ProcessLauncher;
+  /** The system {@link chooseLauncher} reads, when `launcher` is not given (the tests). */
+  readonly launcherDeps?: LauncherChoiceDeps;
   /** Reads the free RAM for `pool.admission.mode: ram` (`PosixMemoryProbe` by default). */
   readonly memory?: MemoryProbe;
   /**
@@ -423,15 +435,80 @@ export function defaultMemoryProbe(): MemoryProbe {
   return new PosixMemoryProbe();
 }
 
-/** The process launcher of this platform, or `undefined` where there is none yet. */
-export function defaultLauncher(): ProcessLauncher | undefined {
-  if (process.platform === 'win32') return undefined;
+/** What {@link chooseLauncher} may be given in place of the real system (the tests). */
+export interface LauncherChoiceDeps {
+  readonly platform?: NodeJS.Platform;
+  /** The executable of the running program, where the Windows launcher is looked for first. */
+  readonly execPath?: string;
+  /** Folders that hold a checkout's `native/` (default: the one this module runs from, if any). */
+  readonly checkoutRoots?: readonly string[];
+  /** True when a file exists (the search of the Windows launcher). */
+  readonly exists?: (path: string) => boolean;
+  /** Builds the Windows launcher from the path found and `processes.windows_shims`. */
+  readonly createWindows?: (launcherPath: string, shims: 'resolve' | 'refuse') => ProcessLauncher;
+}
+
+/** The launcher of this platform and, when it fell back to none, why (told as a notice by `compose`). */
+export interface LauncherChoice {
+  readonly launcher: ProcessLauncher | undefined;
+  /** Set only when `processes.windows_launcher: auto` found no `ot-job-launcher.exe`. */
+  readonly fallback?: string;
+}
+
+/**
+ * Picks the process launcher (architecture 5.9). Linux and macOS: the process group, always.
+ * Windows (Phase 10, P2; `processes.windows_launcher`): `auto` uses the Job Object launcher when
+ * the file is found and otherwise falls to none, saying why in `fallback`; `job_object` throws
+ * `AdapterUnavailable` without the file (the daemon does not start); `off` is none.
+ */
+export function chooseLauncher(
+  settings: ProcessesConfig,
+  deps: LauncherChoiceDeps = {},
+): LauncherChoice {
+  if ((deps.platform ?? process.platform) !== 'win32') {
+    checkAdapterRange(
+      POSIX_PROCESS_LAUNCHER_ADAPTER,
+      'ProcessLauncher',
+      PROCESS_LAUNCHER_PORT_VERSION,
+    );
+    return { launcher: new PosixProcessLauncher() };
+  }
+  if (settings.windows_launcher === 'off') return { launcher: undefined };
+  const found = locateJobLauncher({
+    configuredPath: settings.windows_launcher_path ?? null,
+    execPath: deps.execPath ?? process.execPath,
+    checkoutRoots: deps.checkoutRoots ?? checkoutRoots(),
+    ...(deps.exists === undefined ? {} : { exists: deps.exists }),
+  });
+  if (!found.found) {
+    const searched = found.searched.join(', ');
+    if (settings.windows_launcher === 'job_object') {
+      throw new AdapterUnavailable(
+        `processes.windows_launcher is job_object and ot-job-launcher.exe was not found (looked at: ${searched})`,
+      );
+    }
+    return {
+      launcher: undefined,
+      fallback: `processes.windows_launcher is auto and ot-job-launcher.exe was not found (looked at: ${searched}); the execution of attempts and the browser tools stay off`,
+    };
+  }
+  const launcher =
+    deps.createWindows?.(found.path, settings.windows_shims) ??
+    new WindowsProcessLauncher({ launcherPath: found.path, shims: settings.windows_shims });
   checkAdapterRange(
-    POSIX_PROCESS_LAUNCHER_ADAPTER,
+    WINDOWS_PROCESS_LAUNCHER_ADAPTER,
     'ProcessLauncher',
     PROCESS_LAUNCHER_PORT_VERSION,
   );
-  return new PosixProcessLauncher();
+  return { launcher };
+}
+
+/** The process launcher of this platform, or `undefined` where there is none (see {@link chooseLauncher}). */
+export function defaultLauncher(
+  settings: ProcessesConfig = { windows_launcher: 'auto', windows_shims: 'resolve' },
+  deps: LauncherChoiceDeps = {},
+): ProcessLauncher | undefined {
+  return chooseLauncher(settings, deps).launcher;
 }
 
 /**
@@ -740,7 +817,11 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     store = chatFeedStore(recordFeedStore(store, logger), logger);
 
     const vcs = overrides.vcs ?? defaultVcs();
-    const launcher = overrides.launcher ?? defaultLauncher();
+    const launcherChoice: LauncherChoice =
+      overrides.launcher === undefined
+        ? chooseLauncher(config.processes, overrides.launcherDeps)
+        : { launcher: overrides.launcher };
+    const { launcher } = launcherChoice;
     const memory = overrides.memory ?? defaultMemoryProbe();
     const transport =
       overrides.transport ??
@@ -757,6 +838,16 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
+    // Phase 10, P2: `processes.windows_launcher: auto` found no `ot-job-launcher.exe`. Daemon.ts tells the
+    // effect (`execution_off`, `no_launcher`); this tells the cause, in the log and as an event.
+    if (launcherChoice.fallback !== undefined) {
+      logger.warn(launcherChoice.fallback);
+      situations.record('daemon.notice', {
+        kind: 'execution_off',
+        subject: 'windows_launcher_not_found',
+        detail: situationText(launcherChoice.fallback),
+      });
+    }
     const sandbox = await composeSandbox(config, paths, overrides, logger, situations);
     const browser =
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
