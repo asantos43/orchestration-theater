@@ -2,6 +2,7 @@
 import { request } from 'node:http';
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import * as nodeSea from 'node:sea';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
@@ -179,7 +180,19 @@ export const STDIO_SHIM_PATH = fileURLToPath(
   new URL('../../dist/mcp/stdio-shim.js', import.meta.url),
 );
 
+/** Local on purpose: this file loads nothing but Node built-ins (see the note on top). */
+function isSea(): boolean {
+  try {
+    return nodeSea.isSea();
+  } catch {
+    return false;
+  }
+}
+
 function invokedDirectly(): boolean {
+  // In the single executable (Phase 10, P1) the shim is a mode of the executable (`runShimMain`);
+  // `argv[1]` there is the executable's own name, never this module.
+  if (isSea()) return false;
   const invoked = process.argv[1];
   if (invoked === undefined) return false;
   try {
@@ -189,7 +202,13 @@ function invokedDirectly(): boolean {
   }
 }
 
-if (invokedDirectly()) {
+/**
+ * The body of the shim process: reads the socket and the authorization from the environment and
+ * bridges stdin and stdout until the client closes them. The exit code is left in `process.exitCode`
+ * (2 when the environment is incomplete). Called by `invokedDirectly` (the checkout, `node
+ * stdio-shim.js`) and by the `mcp-shim` mode of the single executable.
+ */
+export async function runShimMain(): Promise<void> {
   const socketPath = process.env[SHIM_SOCKET_ENV];
   const authorization = process.env[SHIM_AUTHORIZATION_ENV];
   if (socketPath === undefined || authorization === undefined) {
@@ -197,9 +216,14 @@ if (invokedDirectly()) {
       `otheater MCP shim: ${SHIM_SOCKET_ENV} and ${SHIM_AUTHORIZATION_ENV} are required\n`,
     );
     process.exitCode = 2;
-  } else {
-    // A client that closes our stdout first has gone: nothing left to answer.
-    process.stdout.on('error', () => process.exit(0));
-    await runShim({ socketPath, authorization, input: process.stdin, output: process.stdout });
+    return;
   }
+  // A client that closes our stdout first has gone: nothing left to answer.
+  process.stdout.on('error', () => process.exit(0));
+  await runShim({ socketPath, authorization, input: process.stdin, output: process.stdout });
+}
+
+// Not awaited: a top-level `await` cannot be bundled into the one CommonJS file of the executable.
+if (invokedDirectly()) {
+  void runShimMain();
 }

@@ -35,6 +35,7 @@ import {
 } from '../plugins/permissions.js';
 import type { PluginNotice, PluginNoticeSink } from '../plugins/runtime-config.js';
 import type { RecoveryGate } from '../recovery/gate.js';
+import { resolveSelfCommand } from '../sea/self-command.js';
 import type { McpAccess, McpGrant, McpGrantInput, PluginToolsQuery } from './access.js';
 import { producerQuestionErrors, type ProducerQuestionMode } from './ask-producer.js';
 import { notImplemented, ToolFailure, ToolHandlers, ToolWithImage } from './handlers.js';
@@ -255,11 +256,19 @@ export class FrameworkMcpServer implements McpAccess {
       () => this.#url,
       socketPath === undefined
         ? undefined
-        : (authorization) => ({
-            command: process.execPath,
-            args: [STDIO_SHIM_PATH],
-            env: { [SHIM_SOCKET_ENV]: socketPath, [SHIM_AUTHORIZATION_ENV]: authorization },
-          }),
+        : (authorization) => {
+            // Node plus the shim script in a checkout, the executable plus its `mcp-shim` mode in
+            // the single one (Phase 10, P1).
+            const self = resolveSelfCommand('mcp-shim') ?? {
+              command: process.execPath,
+              args: [STDIO_SHIM_PATH],
+            };
+            return {
+              command: self.command,
+              args: [...self.args],
+              env: { [SHIM_SOCKET_ENV]: socketPath, [SHIM_AUTHORIZATION_ENV]: authorization },
+            };
+          },
     );
     this.#mcp = this.#createHandler();
   }

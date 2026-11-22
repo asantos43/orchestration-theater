@@ -19,6 +19,7 @@ import {
   type CommandContext,
 } from './commands.js';
 import type { ComposeOverrides } from './compose.js';
+import { isSeaProcess } from '@otheater/client/node';
 import type { ClientFactory } from './clients.js';
 import { loadConfig } from './config.js';
 import {
@@ -42,6 +43,7 @@ import { isProfileAction, runProfileCommand, type ProfileOptions } from './profi
 import { runProfileExec, type ExecSignals, type ExecSpawn } from './profiles/exec.js';
 import { runProfileShims, type ShimsOptions } from './profiles/shims-command.js';
 import type { OtLauncher } from './profiles/shims.js';
+import { resolveSelfCommand } from './sea/self-command.js';
 import {
   isTrajectoryAction,
   runTrajectoryCommand,
@@ -619,15 +621,14 @@ function terminalPasswordPrompt(t: TFunction): PasswordPrompt {
   };
 }
 
-/** Node and the real path of this entry, for the commands by profile; `undefined` if unknown. */
+/**
+ * What starts `ot` again, for the commands by profile; `undefined` if unknown. Node and the real
+ * path of this entry in a checkout; the executable itself, with no script, in the single one.
+ */
 function otLauncherOf(): OtLauncher | undefined {
-  const invoked = process.argv[1];
-  if (invoked === undefined) return undefined;
-  try {
-    return { node: process.execPath, entry: realpathSync(invoked) };
-  } catch {
-    return undefined;
-  }
+  const self = resolveSelfCommand();
+  if (self === undefined) return undefined;
+  return { node: self.command, entry: self.args[0] };
 }
 
 /** A yes or no on stderr; only `y` or `yes` (or `s`, `sim`) count as yes. */
@@ -662,7 +663,11 @@ export function isProfileExecArgv(argv: readonly string[]): boolean {
   return words[0] === 'profile' && words[1] === 'exec';
 }
 
-async function entry(): Promise<void> {
+/**
+ * The program: reads `process.argv` and sets the exit code. Runs by itself when this file is the
+ * script (`isMainModule`); the single executable calls it from `sea/main.ts`.
+ */
+export async function entry(): Promise<void> {
   const argv = process.argv.slice(2);
   const exec = isProfileExecArgv(argv);
   const controller = new AbortController();
@@ -705,6 +710,8 @@ async function entry(): Promise<void> {
 
 /** Runs only when this file is the program (also through the `ot` symlink the package manager makes). */
 function isMainModule(): boolean {
+  // The single executable starts `entry()` itself, in `sea/main.ts`; its `argv[1]` is not a module.
+  if (isSeaProcess()) return false;
   const invoked = process.argv[1];
   if (invoked === undefined) return false;
   try {
