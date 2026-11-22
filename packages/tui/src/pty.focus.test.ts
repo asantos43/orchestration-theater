@@ -40,6 +40,8 @@ import { sgrReport } from './mouse/sgr.js';
  */
 
 const TUI_MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
+/** What the owner runs: `ot tui`, which starts the TUI as a child of the daemon CLI. */
+const OT_CLI = fileURLToPath(new URL('../../daemon/dist/cli.js', import.meta.url));
 const REQUIRE = process.env.OT_REQUIRE_PTY === '1';
 const TEST_TIMEOUT = 90_000;
 
@@ -146,7 +148,7 @@ async function unavailable(): Promise<string | undefined> {
   if (process.platform === 'win32') return 'there is no pty on Windows';
   if (!(await hasPython())) return 'python3 was not found on the PATH';
   if (NO_LAUNCHER) return 'this platform has no process launcher';
-  const missing = [TUI_MAIN, FAKE_AGENT_CLI].filter((file) => !existsSync(file));
+  const missing = [TUI_MAIN, OT_CLI, FAKE_AGENT_CLI].filter((file) => !existsSync(file));
   if (missing.length > 0)
     return `not built, run "pnpm build" (${String(missing.length)} file(s) missing)`;
   return undefined;
@@ -219,7 +221,13 @@ suite(
       }
     }, 60_000);
 
-    function drive(steps: readonly DriverStep[]): Promise<Record<string, string>> {
+    /** How the TUI is started: the compiled app itself, or `ot tui` (the CLI that spawns it). */
+    type Entry = 'main' | 'ot-tui';
+
+    function drive(
+      steps: readonly DriverStep[],
+      entry: Entry = 'main',
+    ): Promise<Record<string, string>> {
       return new Promise((resolve, reject) => {
         void (async () => {
           if (chat === undefined || home === undefined || scripts === undefined) {
@@ -229,7 +237,10 @@ suite(
           const driver = join(scripts, 'driver.py');
           await writeFile(driver, DRIVER);
           const spec = {
-            argv: [process.execPath, TUI_MAIN, '--data-dir', chat.dataDir],
+            argv:
+              entry === 'main'
+                ? [process.execPath, TUI_MAIN, '--data-dir', chat.dataDir]
+                : [process.execPath, OT_CLI, 'tui'],
             cwd: home,
             // What the desktop app measured: `TERM` and `TERM_PROGRAM`; nothing of the person's.
             env: {
@@ -237,6 +248,7 @@ suite(
               USERPROFILE: home,
               XDG_CONFIG_HOME: join(home, 'config'),
               OT_CLIENT_CONFIG_DIR: join(home, 'client'),
+              ...(entry === 'ot-tui' ? { OT_DATA_DIR: chat.dataDir } : {}),
               LANG: 'en_US.UTF-8',
               LC_ALL: 'en_US.UTF-8',
               PATH: process.env.PATH ?? '',
@@ -260,9 +272,9 @@ suite(
       });
     }
 
-    it(
-      'gives the focus to each area by a click, after the terminal was resized',
-      async () => {
+    it.each(['main', 'ot-tui'] as const)(
+      'gives the focus to each area by a click, after the terminal was resized (%s)',
+      async (entry) => {
         const order = ['sidebar', 'panel', 'chat', 'panel', 'sidebar', 'chat'] as const;
         const steps: DriverStep[] = [
           { resize: [SHOWN.columns, SHOWN.rows] },
@@ -276,7 +288,7 @@ suite(
             ),
           ),
         ];
-        const marks = await drive(steps);
+        const marks = await drive(steps, entry);
         // The layout follows the resize: the panel is drawn at the right of the 213 columns.
         expect(marks.resized).toContain('Overview');
         order.forEach((area, index) => {
