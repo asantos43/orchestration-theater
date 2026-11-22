@@ -222,6 +222,18 @@
         "waiting": "System: the Director's session of {{from}} failed ({{cause}}) and no Executor is available; the queue waits and the Director goes on by itself when one is free{{until}}.",
         "unavailable": "System: the Director's session of {{from}} failed ({{cause}}) and no other Executor can take it; the queue is held until the next prompt tries again."
       },
+      "directorSwitch": {
+        "source": {
+          "override": "your choice",
+          "default": "the default"
+        },
+        "live": "System: the Director now runs {{what}} ({{source}}), changed in the session that was open{{waited}}.",
+        "new_session": "System: the Director moved from {{from}} to {{what}} ({{source}}): a new session opened, and its first prompt carries the role and the state summary{{waited}}.",
+        "baton": "System: the Director went on with {{what}} ({{source}}) in a new session, because the client does not let the open one change it; the first prompt carries the role and the state summary{{waited}}.",
+        "stored": "System: the Director will use {{what}} ({{source}}) the next time its session opens{{waited}}.",
+        "unchanged": "System: the Director already ran {{what}} ({{source}}); nothing changed{{waited}}.",
+        "waited": " (after the turn that was running)"
+      },
       "recovery": {
         "title": "System: the daemon restarted and reconciled this scenario.",
         "resumed": "  Resumed: {{items}}.",

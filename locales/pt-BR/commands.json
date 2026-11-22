@@ -15,8 +15,9 @@
     "new": "Abre um novo cenário de conversa, ou de projeto com \"new project <repo>\"",
     "attach": "Anexa um arquivo ao cenário",
     "export": "Exporta o cenário com as peças e as decisões",
-    "model": "Mostra o modelo do Diretor",
-    "effort": "Mostra o esforço do Diretor",
+    "model": "Mostra o modelo do Diretor, ou o troca",
+    "effort": "Mostra o esforço do Diretor, ou o troca",
+    "director": "Lista os Executores do Diretor, ou o troca (default: volta ao padrão)",
     "profile": "Lista os perfis e o estado de cada um",
     "directives": "Lista as ordens em vigor no cenário",
     "config": "Mostra uma chave da configuração, ou as seções",
@@ -34,6 +35,9 @@
     "config": "[chave]",
     "template": "<texto>",
     "direct": "[executor]",
+    "model": "[modelo]",
+    "effort": "[esforço]",
+    "director": "[executor | número | default]",
     "trajectory": "[peça] [demanda]"
   },
   "confirm": {
@@ -65,6 +69,7 @@
       "noPausedPlay": "nenhuma peça está pausada"
     },
     "unknownKey": "Não há a chave de configuração \"{{key}}\".",
+    "noDirectors": "Este daemon não troca o Diretor: não tem sessões de Diretor.",
     "noDirector": "Nenhum Executor está definido para o Diretor.",
     "noDirect": "Este daemon não mantém sessões diretas: ele não roda peças.",
     "noTrajectory": "Este daemon não tem o serviço de trajetórias.",
@@ -149,6 +154,29 @@
     },
     "effort": {
       "line": "O Diretor trabalha com esforço {{effort}} ({{id}})."
+    },
+    "director": {
+      "header": "O Diretor roda {{what}} ({{source}}).",
+      "source": {
+        "override": "sua escolha",
+        "default": "o padrão"
+      },
+      "row": "{{mark}} {{index}}. {{id}} - {{state}}, cota {{quota}}{{default}}",
+      "valid": "válido",
+      "invalid": "inválido: {{reason}}",
+      "isDefault": " (padrão)",
+      "empty": "O Diretor não tem Executor.",
+      "models": "Modelos que o cliente oferece: {{models}}.",
+      "efforts": "Esforços que o cliente oferece: {{efforts}}.",
+      "usage": "/director <executor | número | default>, /model <modelo>, /effort <esforço>.",
+      "pending": "O Diretor está em um turno: a troca para {{what}} ({{source}}) espera o fim do turno.",
+      "form": {
+        "live": "O Diretor passou a rodar {{what}} ({{source}}), mudado na sessão aberta.",
+        "new_session": "O Diretor passou para {{what}} ({{source}}): abriu uma sessão nova, com o papel e o resumo do estado no primeiro prompt.",
+        "baton": "O Diretor segue com {{what}} ({{source}}) numa sessão nova: o cliente não deixa a aberta mudar.",
+        "stored": "O Diretor vai usar {{what}} ({{source}}) quando a sessão abrir.",
+        "unchanged": "O Diretor já rodava {{what}} ({{source}}); nada mudou."
+      }
     },
     "profile": {
       "line": "{{id}}: {{kind}}, {{state}}",

@@ -67,6 +67,14 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
         cause: notice.cause,
         until: whenOf(t, notice.resetsAt),
       });
+    case 'director_switch':
+      return t(`${ROOT}.directorSwitch.${notice.form}`, {
+        from: notice.fromExecutor ?? '?',
+        what: [notice.toExecutor ?? '?', notice.model, notice.effort]
+          .filter((item): item is string => item !== null)
+          .join(' / '),
+        source: t(`${ROOT}.directorSwitch.${notice.override ? 'override' : 'default'}`),
+      });
     case 'recovery':
       return t(`${ROOT}.recovery`, {
         resumed: notice.resumed.length,

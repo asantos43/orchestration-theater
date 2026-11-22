@@ -312,6 +312,9 @@ export class FakeClientAdapter extends ClientAdapter {
     return {
       model: want.model,
       ...(want.mode === undefined ? {} : { mode: want.mode }),
+      // P14: the fake agent announces an `effort` option, as the real clients do, so a switch of
+      // the effort of the Director can change the open session.
+      ...(want.effort === undefined ? {} : { effort: want.effort }),
     };
   }
 

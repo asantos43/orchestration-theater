@@ -34,6 +34,7 @@ describe('parseUiSettings', () => {
         decisionFocus: 'auto',
         decisionClick: 'answer',
         esc: 'stop',
+        directorFooter: 'on',
         history: 40,
       },
       input: DEFAULT_UI_SETTINGS.input,
@@ -84,8 +85,11 @@ describe('parseUiSettings', () => {
       decisionFocus: 'auto',
       decisionClick: 'select',
       esc: 'off',
+      directorFooter: 'on',
       history: 12,
     });
+    expect(parseUiSettings({ chat: { directorFooter: 'off' } }).chat.directorFooter).toBe('off');
+    expect(parseUiSettings({ chat: { directorFooter: 'maybe' } }).chat.directorFooter).toBe('on');
     expect(parseUiSettings({ chat: { decisionClick: 'double' } }).chat.decisionClick).toBe(
       'answer',
     );

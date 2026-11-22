@@ -40,6 +40,8 @@ interface Rig {
   readonly setDirector: (state: ReturnType<typeof director>) => void;
   readonly interrupted: string[];
   readonly setInterruptible: (value: boolean) => void;
+  /** What reached `switchDirector` (P14). */
+  readonly switches: unknown[];
 }
 
 function director(options: {
@@ -56,6 +58,47 @@ function director(options: {
     ],
     inTurn: options.inTurn ?? false,
     started: options.started ?? true,
+  };
+}
+
+/** The view of the Director the stub answers (P14): two Executors, the first one is the default. */
+function directorView(override: { executor: string } | null) {
+  const executor = (index: number, id: string, current: boolean) => ({
+    index,
+    id,
+    client: 'fake',
+    profile: index === 1 ? 'one' : 'two',
+    model: 'fake-model',
+    effort: null,
+    validity: 'valid',
+    invalidReason: null,
+    quota: 'ok',
+    quotaResetsAt: null,
+    current,
+    isDefault: index === 1,
+  });
+  const running = override?.executor ?? 'fake-model@fake/one';
+  return {
+    scenarioId: 'project-1',
+    session: 'open',
+    inTurn: false,
+    pending: false,
+    current: {
+      executor: running,
+      client: 'fake',
+      profile: running.endsWith('two') ? 'two' : 'one',
+      model: 'fake-model',
+      effort: null,
+    },
+    override,
+    default: 'fake-model@fake/one',
+    executors: [
+      executor(1, 'fake-model@fake/one', running.endsWith('one')),
+      executor(2, 'fake-model@fake/two', running.endsWith('two')),
+    ],
+    models: [{ id: 'fake-model', name: null, efforts: ['low', 'high'] }],
+    efforts: ['low', 'high'],
+    inTurnMode: 'wait',
   };
 }
 
@@ -86,6 +129,7 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
   const openedInputs: { type?: string; name?: string; repo?: string }[] = [];
   let current: ReturnType<typeof director> | undefined;
   const interrupted: string[] = [];
+  const switches: unknown[] = [];
   let interruptible = true;
   const config: DaemonConfig = parseConfig(yaml);
   const service = new SlashCommandService({
@@ -151,6 +195,17 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
         interrupted.push(scenarioId);
         return Promise.resolve(interruptible);
       },
+      view: () => Promise.resolve(directorView(null)),
+      switchDirector: (scenarioId: string, change: { kind: string; executor?: string }) => {
+        switches.push({ scenarioId, change });
+        const override = change.kind === 'default' ? null : { executor: 'fake-model@fake/two' };
+        return Promise.resolve({
+          status: 'applied',
+          form: change.kind === 'default' ? 'new_session' : 'live',
+          override,
+          view: directorView(override),
+        });
+      },
     } as unknown as DirectorSessions,
     pauseMode: () => 'drain',
   });
@@ -169,6 +224,7 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
     setInterruptible: (value) => {
       interruptible = value;
     },
+    switches,
   };
 }
 
@@ -549,6 +605,62 @@ describe('chat.slash_commands and chat.slash_access', () => {
     expect(messages).toEqual(['List the risks of: the release']);
     // a template never takes the name of a command of the daemon
     expect((await service.execute('project-1', { text: '/status' })).command).toBe('status');
+  });
+});
+
+describe('/director, /model and /effort (P14, N242)', () => {
+  it('/director lists the Executors of the role with the one in force and what the client announces', async () => {
+    const { service, switches } = await rig();
+    const result = await service.execute('project-1', { text: '/director' });
+    expect(result.status).toBe('done');
+    expect(result.command).toBe('director');
+    expect(result.text).toContain('fake-model@fake/one');
+    expect(result.text).toContain('fake-model@fake/two');
+    expect((result.data as { director: { executors: unknown[] } }).director.executors).toHaveLength(
+      2,
+    );
+    expect(switches).toEqual([]);
+  });
+
+  it('/director <executor> and /director default switch through the Director sessions', async () => {
+    const { service, switches } = await rig();
+    const set = await service.execute('project-1', { text: '/director 2' });
+    expect(set.data).toMatchObject({
+      status: 'applied',
+      override: { executor: 'fake-model@fake/two' },
+    });
+    const back = await service.execute('project-1', { text: '/director default' });
+    expect(back.data).toMatchObject({ status: 'applied', override: null });
+    expect(switches).toEqual([
+      { scenarioId: 'project-1', change: { kind: 'set', executor: '2' } },
+      { scenarioId: 'project-1', change: { kind: 'default' } },
+    ]);
+  });
+
+  it('/model <m> and /effort <e> switch; without an argument they only read', async () => {
+    const { service, switches } = await rig();
+    await service.execute('project-1', { text: '/model fake-model-2' });
+    await service.execute('project-1', { text: '/effort high' });
+    expect(switches).toEqual([
+      { scenarioId: 'project-1', change: { kind: 'set', model: 'fake-model-2' } },
+      { scenarioId: 'project-1', change: { kind: 'set', effort: 'high' } },
+    ]);
+  });
+
+  it('read_only: the switches are refused and the list still answers', async () => {
+    const { service, switches } = await rig('chat:\n  slash_access: read_only\n');
+    expect((await service.execute('project-1', { text: '/director' })).status).toBe('done');
+    for (const line of ['/director 2', '/director default', '/model m', '/effort high']) {
+      await expect(service.execute('project-1', { text: line }), line).rejects.toBeInstanceOf(
+        PermissionDenied,
+      );
+    }
+    expect(switches).toEqual([]);
+  });
+
+  it('is listed with the commands that apply to a scenario', async () => {
+    const { service } = await rig();
+    expect(idsOf(await service.list({ scenarioId: 'project-1' }))).toContain('director');
   });
 });
 
