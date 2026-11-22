@@ -82,6 +82,7 @@ import {
   ModelsConfigSchema,
   SelectionConfigSchema,
 } from './role-executors-config.js';
+import { FlowsConfigSchema, ScenarioConfigSchema, scenarioFlowProblem } from './flows-config.js';
 import { RolesConfigSchema } from './role-policy-config.js';
 import {
   APP_TERMINAL_MODES,
@@ -1730,6 +1731,15 @@ export const DaemonConfigSchema = z
      */
     roles: RolesConfigSchema.prefault({}),
     /**
+     * The flows of the configuration (architecture 5.4 and 5.18; Phase 9, P12; N133, N241):
+     * `flows.<id>` is the official `play` with the optional steps (`plan_review`, `critique`) on or
+     * off and the limits of each step; `scenario.flow` picks the one a new play runs (default: the
+     * official `play`; a scenario overrides it in its `configOverride`). [proposta] The names of
+     * the keys. See `flows-config.ts`.
+     */
+    flows: FlowsConfigSchema.prefault({}),
+    scenario: ScenarioConfigSchema.prefault({}),
+    /**
      * The Executors and how they join the roles (architecture 5.7; Phase 5, P13): `executors.<id>`
      * (`<model>-<effort>@<client>/<profile>`), `cross_client` (`api_only` default | `off` | `any`)
      * and `on_register` (`ask` default | `preset_only` | `none`). The lists of the roles are under
@@ -2627,7 +2637,12 @@ export const DaemonConfigSchema = z
       message:
         'browser.secret_paths is an alias of security.secret_paths: write the list in one of them, not in both',
     },
-  );
+  )
+  .superRefine((config, ctx) => {
+    const problem = scenarioFlowProblem(config);
+    if (problem !== undefined)
+      ctx.addIssue({ code: 'custom', path: ['scenario', 'flow'], message: problem });
+  });
 
 /** Whether a block with a `secret_paths` key (`security`, `browser`) has an entry in it. */
 function hasSecretPathEntries(block: {
