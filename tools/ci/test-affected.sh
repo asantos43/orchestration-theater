@@ -25,13 +25,76 @@
 #   test of that kind enters it on its own.
 # With nothing to run it prints so and exits 0. OT_TEST_DRY=1 prints the decision and the files
 # instead of running them.
+#
+# OT_CROSS_TESTS picks which of those tests run (owner, 2026-11-22, N162): unset or `all` (all of
+# them, what the job `linux` does) or `os` (the job `cross`, macOS and Windows, on a pull request:
+# only the tests that touch the system, chosen by tools/ci/src/cross-classify.ts, built to
+# tools/ci/dist). The filter applies to the final list, the affected files or the whole suite alike.
+# If the classifier fails the list stays as it was (an error never runs less), with a warning.
+# OT_CROSS_CLASSIFIER names another classifier (a test hook; the default is tools/ci/dist/cross-classify-cli.js).
 set -euo pipefail
 
 base="${1:?usage: tools/ci/test-affected.sh <base-ref>}"
 mode="${OT_TEST_CI:-affected}"
+cross="${OT_CROSS_TESTS:-all}"
+
+case "$cross" in
+  all | os) ;;
+  *)
+    echo "test-affected: OT_CROSS_TESTS=$cross: use all or os" >&2
+    exit 1
+    ;;
+esac
+
+# Every test file of the suite, one per line, as `vitest list` prints them.
+all_tests() {
+  pnpm exec vitest list --filesOnly | sed -nE 's/^\[[^]]*\] //p'
+}
+
+# Runs the test files in $1 (one per line), after the filter of OT_CROSS_TESTS, or prints them when
+# OT_TEST_DRY=1. $2 says where the list comes from.
+run_files() {
+  local files="$1" origin="$2" total count length selected
+  total=$(printf '%s' "$files" | grep -c . || true)
+  if [ "$cross" = os ]; then
+    if selected=$(printf '%s\n' "$files" | node "${OT_CROSS_CLASSIFIER:-tools/ci/dist/cross-classify-cli.js}"); then
+      files=$(printf '%s\n' "$selected" | grep . || true)
+      echo "test-affected: OT_CROSS_TESTS=os: $(printf '%s' "$files" | grep -c . || true) of $total test file(s) touch the system"
+    else
+      echo "::warning::test-affected: the classifier failed: all $total test file(s) of the list run"
+    fi
+  fi
+  count=$(printf '%s' "$files" | grep -c . || true)
+  if [ "$count" -eq 0 ]; then
+    echo "test-affected: no test to run"
+    exit 0
+  fi
+  # A long list of positional filters can pass the command-line limit of Windows: 32 KiB for a
+  # process, but 8191 characters through cmd.exe, which the `.cmd` shim of `pnpm exec` goes through.
+  # So the files go to the entry point of vitest with `node` (no shim), and past this many files or
+  # characters the run is close to the whole suite anyway. With OT_CROSS_TESTS=os the list is already
+  # a part of the suite, so only the characters count.
+  length=$(printf '%s' "$files" | wc -c | tr -d ' ')
+  if [ "$length" -gt 24000 ] || { [ "$cross" != os ] && [ "$count" -gt 250 ]; }; then
+    echo "test-affected: full suite ($count test files, $length characters)"
+    if [ "${OT_TEST_DRY:-}" = 1 ]; then exit 0; fi
+    exec pnpm exec vitest run
+  fi
+  echo "test-affected: $count test file(s) ($origin)"
+  if [ "${OT_TEST_DRY:-}" = 1 ]; then
+    printf '%s\n' "$files"
+    exit 0
+  fi
+  # shellcheck disable=SC2086 # one path per word; the test paths have no spaces.
+  exec node node_modules/vitest/vitest.mjs run $files
+}
 
 full() {
   echo "test-affected: full suite ($1)"
+  # No list (vitest failed): no filter, never a run of nothing.
+  if [ "$cross" = os ] && list=$(all_tests) && [ -n "$list" ]; then
+    run_files "$list" "whole suite"
+  fi
   if [ "${OT_TEST_DRY:-}" = 1 ]; then exit 0; fi
   exec pnpm exec vitest run
 }
@@ -61,25 +124,4 @@ fi
 graph=$(pnpm exec vitest list --changed "$base" --filesOnly | sed -nE 's/^\[[^]]*\] //p')
 dist=$(git grep -lE "['\"/]dist/" -- '*.test.ts' '*.test.tsx' || true)
 files=$(printf '%s\n%s\n' "$graph" "$dist" | grep . | sort -u || true)
-count=$(printf '%s' "$files" | grep -c . || true)
-
-if [ "$count" -eq 0 ]; then
-  echo "test-affected: no test to run"
-  exit 0
-fi
-# A long list of positional filters can pass the command-line limit of Windows: 32 KiB for a
-# process, but 8191 characters through cmd.exe, which the `.cmd` shim of `pnpm exec` goes through.
-# So the files go to the entry point of vitest with `node` (no shim), and past this many files or
-# characters the run is close to the whole suite anyway.
-length=$(printf '%s' "$files" | wc -c | tr -d ' ')
-if [ "$count" -gt 250 ] || [ "$length" -gt 24000 ]; then
-  full "$count affected test files ($length characters)"
-fi
-
-echo "test-affected: $count test file(s) (graph and dist/)"
-if [ "${OT_TEST_DRY:-}" = 1 ]; then
-  printf '%s\n' "$files"
-  exit 0
-fi
-# shellcheck disable=SC2086 # one path per word; the test paths have no spaces.
-exec node node_modules/vitest/vitest.mjs run $files
+run_files "$files" "graph and dist/"

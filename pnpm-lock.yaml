@@ -590,6 +590,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/adapters/store-sqlite
 
+  tools/ci: {}
+
   tools/eslint-rules: {}
 
   tools/release:
