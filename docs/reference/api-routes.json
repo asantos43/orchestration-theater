@@ -3508,6 +3508,54 @@
       }
     },
     {
+      "id": "getHealth",
+      "method": "GET",
+      "path": "/v1/health",
+      "kind": "json",
+      "summary": "Health of the daemon: 200 once the reconciliation of the start-up ended without error; 503 before that or while stopping",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "pid"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "recovering",
+          "unavailable"
+        ]
+      }
+    },
+    {
       "id": "listIdeas",
       "method": "GET",
       "path": "/v1/ideas",
@@ -24874,7 +24922,6 @@
             "items": {
               "type": "string",
               "enum": [
-                "auto_acts_as_notify",
                 "checkout_install",
                 "no_public_key"
               ]
@@ -24954,13 +25001,154 @@
                   "no_public_key",
                   "no_asset",
                   "below_min_version",
-                  "storage"
+                  "storage",
+                  "not_started",
+                  "health",
+                  "unstable",
+                  "swap_failed",
+                  "backup_failed",
+                  "interrupted",
+                  "hash_changed"
                 ]
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "apply": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "park",
+                  "next_start"
+                ]
+              },
+              "rollback": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "off"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "waiting",
+                  "asked",
+                  "scheduled",
+                  "applying"
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "since": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "askAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "applied",
+                          "rolled_back",
+                          "failed"
+                        ]
+                      },
+                      "version": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "signature",
+                              "sha256",
+                              "size",
+                              "version_not_newer",
+                              "wrong_channel",
+                              "bad_manifest",
+                              "no_network",
+                              "bad_response",
+                              "no_public_key",
+                              "no_asset",
+                              "below_min_version",
+                              "storage",
+                              "not_started",
+                              "health",
+                              "unstable",
+                              "swap_failed",
+                              "backup_failed",
+                              "interrupted",
+                              "hash_changed"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "at": {
+                        "$ref": "#/$defs/__schema1"
+                      }
+                    },
+                    "required": [
+                      "outcome",
+                      "version",
+                      "reason",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "when",
+              "rollback",
+              "state",
+              "version",
+              "since",
+              "askAt",
+              "last"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -24978,7 +25166,8 @@
           "lastResult",
           "found",
           "ready",
-          "lastReason"
+          "lastReason",
+          "apply"
         ],
         "additionalProperties": false,
         "$defs": {
@@ -25007,6 +25196,385 @@
         "503": [
           "unavailable"
         ]
+      }
+    },
+    {
+      "id": "applyUpdate",
+      "method": "POST",
+      "path": "/v1/updates/apply",
+      "kind": "json",
+      "summary": "Applies the version that is ready, at the moment `updates.apply_when` says (or `park` or `wait` as the answer to the question of the max_wait); 409 `conflict` when there is none, the mode is `off` or `check`, or this is not the own executable",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "effectiveMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "notify",
+              "check",
+              "off"
+            ]
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "beta"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "url"
+            ]
+          },
+          "installKind": {
+            "type": "string",
+            "enum": [
+              "own",
+              "checkout"
+            ]
+          },
+          "currentVersion": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "keyState": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "placeholder",
+              "invalid"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "checkout_install",
+                "no_public_key"
+              ]
+            }
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextCheckAt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastResult": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "up_to_date",
+                  "found",
+                  "ready",
+                  "rejected",
+                  "skipped",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "found": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "signature",
+                  "sha256",
+                  "size",
+                  "version_not_newer",
+                  "wrong_channel",
+                  "bad_manifest",
+                  "no_network",
+                  "bad_response",
+                  "no_public_key",
+                  "no_asset",
+                  "below_min_version",
+                  "storage",
+                  "not_started",
+                  "health",
+                  "unstable",
+                  "swap_failed",
+                  "backup_failed",
+                  "interrupted",
+                  "hash_changed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "apply": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "park",
+                  "next_start"
+                ]
+              },
+              "rollback": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "off"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "waiting",
+                  "asked",
+                  "scheduled",
+                  "applying"
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "since": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "askAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "applied",
+                          "rolled_back",
+                          "failed"
+                        ]
+                      },
+                      "version": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "signature",
+                              "sha256",
+                              "size",
+                              "version_not_newer",
+                              "wrong_channel",
+                              "bad_manifest",
+                              "no_network",
+                              "bad_response",
+                              "no_public_key",
+                              "no_asset",
+                              "below_min_version",
+                              "storage",
+                              "not_started",
+                              "health",
+                              "unstable",
+                              "swap_failed",
+                              "backup_failed",
+                              "interrupted",
+                              "hash_changed"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "at": {
+                        "$ref": "#/$defs/__schema1"
+                      }
+                    },
+                    "required": [
+                      "outcome",
+                      "version",
+                      "reason",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "when",
+              "rollback",
+              "state",
+              "version",
+              "since",
+              "askAt",
+              "last"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "mode",
+          "effectiveMode",
+          "channel",
+          "source",
+          "installKind",
+          "currentVersion",
+          "platform",
+          "keyState",
+          "notes",
+          "checkedAt",
+          "nextCheckAt",
+          "lastResult",
+          "found",
+          "ready",
+          "lastReason",
+          "apply"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "how": {
+            "default": "default",
+            "type": "string",
+            "enum": [
+              "default",
+              "park",
+              "wait"
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
@@ -25079,7 +25647,6 @@
             "items": {
               "type": "string",
               "enum": [
-                "auto_acts_as_notify",
                 "checkout_install",
                 "no_public_key"
               ]
@@ -25159,13 +25726,154 @@
                   "no_public_key",
                   "no_asset",
                   "below_min_version",
-                  "storage"
+                  "storage",
+                  "not_started",
+                  "health",
+                  "unstable",
+                  "swap_failed",
+                  "backup_failed",
+                  "interrupted",
+                  "hash_changed"
                 ]
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "apply": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "park",
+                  "next_start"
+                ]
+              },
+              "rollback": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "off"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "waiting",
+                  "asked",
+                  "scheduled",
+                  "applying"
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "since": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "askAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "applied",
+                          "rolled_back",
+                          "failed"
+                        ]
+                      },
+                      "version": {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "signature",
+                              "sha256",
+                              "size",
+                              "version_not_newer",
+                              "wrong_channel",
+                              "bad_manifest",
+                              "no_network",
+                              "bad_response",
+                              "no_public_key",
+                              "no_asset",
+                              "below_min_version",
+                              "storage",
+                              "not_started",
+                              "health",
+                              "unstable",
+                              "swap_failed",
+                              "backup_failed",
+                              "interrupted",
+                              "hash_changed"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "at": {
+                        "$ref": "#/$defs/__schema1"
+                      }
+                    },
+                    "required": [
+                      "outcome",
+                      "version",
+                      "reason",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "when",
+              "rollback",
+              "state",
+              "version",
+              "since",
+              "askAt",
+              "last"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -25183,7 +25891,8 @@
           "lastResult",
           "found",
           "ready",
-          "lastReason"
+          "lastReason",
+          "apply"
         ],
         "additionalProperties": false,
         "$defs": {

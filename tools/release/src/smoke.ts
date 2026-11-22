@@ -53,10 +53,8 @@ backup:
 /** What the daemon prints when it is ready. */
 export const DAEMON_READY = 'daemon running';
 
-/** Exit code of an unknown internal mode, or of a shim with no environment. [proposta] */
+/** Exit code of an unknown internal mode, of a shim with no environment, or of the applier with no journal. [proposta] */
 const EXIT_USAGE = 2;
-/** Exit code of an internal mode this build does not have yet. [proposta] */
-const EXIT_NOT_AVAILABLE = 3;
 const ALT_SCREEN = '\u001b[?1049h';
 const MOUSE_ON = '\u001b[?1000h';
 const CTRL_Q = '\u0011';
@@ -413,12 +411,11 @@ async function checkModes(executable: string, sandbox: Sandbox): Promise<string>
     throw new Error(`the shim without its environment ended with ${String(bare.code)}`);
   }
   const apply = await run(executable, ['--ot-internal=apply-update'], sandbox.env, 30_000);
-  if (apply.code !== EXIT_NOT_AVAILABLE) {
-    throw new Error(
-      `apply-update ended with ${String(apply.code)}, not ${String(EXIT_NOT_AVAILABLE)}`,
-    );
+  // The applier (P8) is a real mode: with no `--journal` it is a usage error, like the shim with no environment.
+  if (apply.code !== EXIT_USAGE || !apply.stderr.includes('--journal')) {
+    throw new Error(`apply-update without its journal ended with ${String(apply.code)}`);
   }
-  return `unknown mode exits ${String(EXIT_USAGE)}, apply-update exits ${String(EXIT_NOT_AVAILABLE)} (not available)`;
+  return `unknown mode and apply-update without --journal exit ${String(EXIT_USAGE)}`;
 }
 
 /** Runs the acceptance of the executable and logs one line per step. */

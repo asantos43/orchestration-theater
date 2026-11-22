@@ -161,14 +161,14 @@ describe('updates in a running daemon', () => {
           lastReason: 'signature',
           ready: null,
         });
-        expect(status.notes).toEqual(['auto_acts_as_notify']);
+        expect(status.notes).toEqual([]);
       });
       expect(await readdir(join(r.dir, 'updates', 'staging')).catch(() => [])).toEqual([]);
       const events = await r.events();
       expect(events.find((e) => e.payload.phase === 'rejected')?.payload).toMatchObject({
         reason: 'signature',
         mode: 'auto',
-        effectiveMode: 'notify',
+        effectiveMode: 'auto',
       });
       expect(events.find((e) => e.type === 'daemon.notice')?.payload).toMatchObject({
         kind: 'update_rejected',

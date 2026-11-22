@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { API_ROUTES } from './api/registry.js';
 import {
+  applyUpdate,
   checkUpdates,
   getUpdateStatus,
   UPDATE_ROUTES,
@@ -48,7 +49,7 @@ describe('daemon.update', () => {
 
   it('refuses the strange: a phase, a reason, a channel, an extra field, a long version', () => {
     for (const bad of [
-      { ...found, phase: 'applying' },
+      { ...found, phase: 'swapping' },
       { ...found, reason: 'mood' },
       { ...found, channel: 'nightly' },
       { ...found, extra: true },
@@ -76,6 +77,7 @@ describe('the /v1/updates routes', () => {
     expect(Object.values(UPDATE_ROUTES).map((r) => [r.id, r.method, r.path])).toEqual([
       ['getUpdateStatus', 'GET', '/v1/updates'],
       ['checkUpdates', 'POST', '/v1/updates/check'],
+      ['applyUpdate', 'POST', '/v1/updates/apply'],
     ]);
     expect(Object.values(API_ROUTES)).toContain(getUpdateStatus);
     expect(Object.values(API_ROUTES)).toContain(checkUpdates);
@@ -84,23 +86,74 @@ describe('the /v1/updates routes', () => {
   it('the status is a strict object', () => {
     const status = {
       mode: 'auto',
-      effectiveMode: 'notify',
+      effectiveMode: 'auto',
       channel: 'stable',
       source: 'github',
       installKind: 'own',
       currentVersion: '0.5.0',
       platform: 'linux-x64',
       keyState: 'valid',
-      notes: ['auto_acts_as_notify'],
+      notes: ['no_public_key'],
       checkedAt: null,
       nextCheckAt: null,
       lastResult: null,
       found: null,
       ready: null,
       lastReason: null,
+      apply: {
+        when: 'idle',
+        rollback: 'auto',
+        state: 'none',
+        version: null,
+        since: null,
+        askAt: null,
+        last: null,
+      },
     };
     expect(ApiUpdateStatusSchema.parse(status)).toEqual(status);
     expect(() => ApiUpdateStatusSchema.parse({ ...status, token: 'x' })).toThrow();
     expect(() => ApiUpdateStatusSchema.parse({ ...status, notes: ['other'] })).toThrow();
+    expect(() =>
+      ApiUpdateStatusSchema.parse({ ...status, apply: { ...status.apply, when: 'never' } }),
+    ).toThrow();
+    const last = {
+      outcome: 'rolled_back',
+      version: '0.6.0',
+      reason: 'health',
+      at: '2026-11-22T10:00:00-03:00',
+    };
+    expect(
+      ApiUpdateStatusSchema.parse({ ...status, apply: { ...status.apply, last } }).apply.last,
+    ).toEqual(last);
+  });
+
+  it('applyUpdate takes how (default when absent) and refuses the rest', () => {
+    expect(applyUpdate.body.parse({})).toEqual({ how: 'default' });
+    expect(applyUpdate.body.parse({ how: 'park' })).toEqual({ how: 'park' });
+    expect(() => applyUpdate.body.parse({ how: 'now' })).toThrow();
+    expect(() => applyUpdate.body.parse({ how: 'wait', x: 1 })).toThrow();
+  });
+});
+
+describe('the notices of the application of a version', () => {
+  it('have their own kinds', () => {
+    for (const kind of ['update_applied', 'update_rolled_back', 'update_failed', 'update_ask']) {
+      expect(DAEMON_NOTICE_KINDS).toContain(kind);
+      const notice = { kind, subject: '0.6.0', detail: 'x' };
+      expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);
+    }
+  });
+});
+
+describe('daemon.backup', () => {
+  it('takes the trigger update', () => {
+    const payload = {
+      ok: true,
+      trigger: 'update',
+      path: '/x/backup',
+      removed: [],
+    };
+    expect(validateEventPayload('daemon.backup', 1, payload)).toEqual(payload);
+    expect(() => validateEventPayload('daemon.backup', 1, { ...payload, trigger: 'x' })).toThrow();
   });
 });

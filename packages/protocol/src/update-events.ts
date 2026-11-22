@@ -8,9 +8,9 @@ import { z } from 'zod';
  * the reasons and the fields below; the architecture only asks for "the version found, the download,
  * the check, the application and the return".
  *
- * The apply steps (`applying`, `applied`, `rolled_back`) join the phases in the next step (P8); the
- * schema version stays 1 because a phase is added, and nothing that reads the event today reads a
- * phase it does not know.
+ * The apply steps (`applying`, `applied`, `rolled_back`) joined the phases in P8; the schema version
+ * stays 1 because a phase and some reasons were added, and nothing that reads the event today reads
+ * a phase it does not know.
  */
 
 /** Where the search is. */
@@ -25,8 +25,23 @@ export const UPDATE_PHASES = [
   'rejected',
   /** Nothing was done and nothing is wrong (`reason` says why: no key, no file for this platform). */
   'skipped',
-  /** The search could not be made (`reason`: no network, an answer the origin should not give). */
+  /**
+   * The search could not be made (`reason`: no network, an answer the origin should not give), or
+   * the version could not be applied and `updates.rollback` is `off`, so it was left as it is.
+   */
   'failed',
+  /**
+   * P8: the daemon that runs the old version handed the swap over to the applier and is stopping.
+   * Written before the stop; `version` is the new one.
+   */
+  'applying',
+  /** P8: the new version came up, answered the health check and stayed up. Written by the new daemon. */
+  'applied',
+  /**
+   * P8: the new version did not come up (or failed the health check) and the old one is back;
+   * `reason` says why. Written by the daemon that is running again.
+   */
+  'rolled_back',
 ] as const;
 export type UpdatePhase = (typeof UPDATE_PHASES)[number];
 
@@ -54,6 +69,17 @@ export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
  * - `below_min_version`: the installed version is older than `minVersion`, the direct update is not
  *   supported from it;
  * - `storage`: the file could not be written to (or read from) the staging folder.
+ *
+ * The reasons below are the ones of the apply step (P8; [proposta] the names):
+ * - `not_started`: the new daemon did not come up (no `api.json`, or the process ended);
+ * - `health`: the new daemon came up and `GET /v1/health` did not answer well in
+ *   `updates.health_timeout`;
+ * - `unstable`: it answered, and went down again before the extra 30 s were over;
+ * - `swap_failed`: the executable could not be put in place (a file in use, a full disk);
+ * - `backup_failed`: the backup before a migration could not be made, so nothing was applied;
+ * - `interrupted`: the applier died half-way and the next start of `ot` finished or undid the swap;
+ * - `hash_changed`: the file in the staging folder is not the one that was checked (it changed on
+ *   disk after the download), so nothing was applied.
  */
 export const UPDATE_REASONS = [
   'signature',
@@ -68,6 +94,13 @@ export const UPDATE_REASONS = [
   'no_asset',
   'below_min_version',
   'storage',
+  'not_started',
+  'health',
+  'unstable',
+  'swap_failed',
+  'backup_failed',
+  'interrupted',
+  'hash_changed',
 ] as const;
 export type UpdateReason = (typeof UPDATE_REASONS)[number];
 
@@ -85,11 +118,11 @@ export const DaemonUpdatePayloadSchema = z.strictObject({
   mode: z.enum(UPDATE_EVENT_MODES),
   /**
    * The mode the daemon acted in. It differs from `mode` when the daemon cannot do what the mode
-   * says: `auto` acts as `notify` until the step that applies versions exists, and an installation
-   * that is not the daemon's own (a checkout, run by Node) acts as `check`.
+   * says: an installation that is not the daemon's own (a checkout, run by Node), or a build with
+   * no valid public key, acts as `check`.
    */
   effectiveMode: z.enum(UPDATE_EVENT_MODES),
-  /** For `rejected`, `skipped` and `failed`; `null` for the other phases. */
+  /** For `rejected`, `skipped`, `failed` and `rolled_back`; `null` for the other phases. */
   reason: z.enum(UPDATE_REASONS).nullable(),
 });
 export type DaemonUpdatePayload = z.infer<typeof DaemonUpdatePayloadSchema>;

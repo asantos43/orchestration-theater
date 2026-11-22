@@ -86,6 +86,12 @@ export class UpdateStaging {
     await rm(partial, { force: true }).catch(() => undefined);
   }
 
+  /** Removes a stored version (one that was applied, or that could not be trusted). It never throws. */
+  async drop(version: string): Promise<void> {
+    if (semver.valid(version) !== version) return;
+    await rm(join(this.dir, version), { recursive: true, force: true }).catch(() => undefined);
+  }
+
   /** Deletes what an earlier run left unfinished (a download cut by a stop, a half-stored version). */
   async sweep(): Promise<void> {
     let names: string[];

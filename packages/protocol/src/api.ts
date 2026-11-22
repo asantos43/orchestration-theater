@@ -26,8 +26,8 @@ export type DaemonStatus = z.infer<typeof DaemonStatusSchema>;
 export const BACKUP_CONTENTS = ['store_only', 'without_runs', 'all'] as const;
 export type BackupContent = (typeof BACKUP_CONTENTS)[number];
 
-/** What started a backup. */
-export const BACKUP_TRIGGERS = ['schedule', 'manual'] as const;
+/** What started a backup: the schedule, the Producer, or the update that is about to migrate the store (P8). */
+export const BACKUP_TRIGGERS = ['schedule', 'manual', 'update'] as const;
 export type BackupTrigger = (typeof BACKUP_TRIGGERS)[number];
 
 /** `manifest.json` format version written by this code. */
