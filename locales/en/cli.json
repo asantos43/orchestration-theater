@@ -389,6 +389,17 @@
       "events": "  Events it may emit: {{list}}",
       "eventsNone": "  Events: none",
       "panel": "  Panel: {{count}} block(s), drawn by the interface from data"
+    },
+    "panel": {
+      "error": {
+        "plugin_unavailable": "The plugin server is not available right now.",
+        "plugin_timeout": "The plugin server did not answer in time.",
+        "plugin_failed": "The plugin server failed to answer.",
+        "tool_unavailable": "The plugin server does not offer the tool of this block.",
+        "tool_error": "The plugin answered with an error.",
+        "invalid_result": "The plugin answered data this block cannot draw.",
+        "not_readable": "This block reads from a tool that is not read-only, so it is not called."
+      }
     }
   },
   "setup": {

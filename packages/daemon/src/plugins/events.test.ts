@@ -93,6 +93,28 @@ describe('recordPluginNotice (the pool and the aggregator)', () => {
       'plugin.secret_missing',
       { plugin: 'demo', project: 'p1', secrets: ['PG_URL', 'API_KEY'] },
     ],
+    [
+      {
+        kind: 'panel_truncated',
+        plugin: 'demo',
+        project: 'p1',
+        source: 'list_notes',
+        reason: 'rows',
+        total: 500,
+        kept: 200,
+        limit: 200,
+      },
+      'plugin.panel_truncated',
+      {
+        plugin: 'demo',
+        project: 'p1',
+        source: 'list_notes',
+        reason: 'rows',
+        total: 500,
+        kept: 200,
+        limit: 200,
+      },
+    ],
   ];
 
   it.each(cases)('%j becomes %s', (notice, type, payload) => {

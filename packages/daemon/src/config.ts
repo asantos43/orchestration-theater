@@ -430,6 +430,12 @@ export function resolveMcpBridge(
   return mode;
 }
 
+/** `plugins.panel.max_bytes` (Phase 9, P10, [proposta]): a size above zero, or `off` (no limit, `null`). */
+const PluginPanelMaxBytesSchema = z.union([
+  z.literal('off').transform(() => null),
+  SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero, or off'),
+]);
+
 /** `plugins.events` (Phase 9, P8, [proposta]): whether the events a plugin publishes are written. */
 export const PLUGIN_EVENT_MODES = ['declared', 'off'] as const;
 export type PluginEventMode = (typeof PLUGIN_EVENT_MODES)[number];
@@ -1751,6 +1757,21 @@ export const DaemonConfigSchema = z
          * falls back to the `cwd` of the process (the folder of the plugin). [proposta]
          */
         project_dir: z.enum(PLUGIN_PROJECT_DIR_MODES).default('scenario'),
+        /**
+         * The data of the panel of a plugin (P10, [proposta]). The daemon calls the `source` tools of
+         * the blocks and sends what they answer to the interface; a plugin that answers too much
+         * must not weigh down the daemon or the screen. `max_rows` (default 200): the most rows (items
+         * of the list, entries of a metrics object) of a block; the rest is cut. `max_bytes` (default
+         * `1MB`, or `off`): the most bytes of the JSON of one block, tested after `max_rows`. A cut
+         * block comes with `truncated` in the answer, a warning in the log and
+         * `plugin.panel_truncated`; it never fails.
+         */
+        panel: z
+          .strictObject({
+            max_rows: z.int().min(1).max(100_000).default(200),
+            max_bytes: PluginPanelMaxBytesSchema.prefault('1MB'),
+          })
+          .prefault({}),
         install: z
           .strictObject({
             /**

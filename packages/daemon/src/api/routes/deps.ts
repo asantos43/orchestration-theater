@@ -11,6 +11,7 @@ import type { LayoutPreferencesStore } from '../../layout/preferences.js';
 import type { Logger } from '../../logger.js';
 import type { ProducerChannel } from '../../orchestration/channel.js';
 import type { PlayRunner } from '../../pipeline/runner.js';
+import type { PluginPanelService } from '../../plugins/panel.js';
 import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
 import type { QuotaService } from '../../quota/index.js';
@@ -62,6 +63,8 @@ export interface ReadRouteDeps {
    * model and the pause of the ones in flight. Absent, the list answers from the registry alone.
    */
   readonly attempts?: AttemptRunner | undefined;
+  /** The plugins (P10 of Phase 9); absent: their routes answer 503 `unavailable`. */
+  readonly plugins?: PluginPanelService | undefined;
 }
 
 /**
@@ -108,4 +111,6 @@ export interface CommandRouteDeps {
   readonly setup?: SetupService | undefined;
   /** The direct sessions with an Actor (P19 of Phase 7); absent: their routes answer 503. */
   readonly direct?: DirectSessionService | undefined;
+  /** The plugins (P10 of Phase 9); absent: their routes answer 503 `unavailable`. */
+  readonly plugins?: PluginPanelService | undefined;
 }

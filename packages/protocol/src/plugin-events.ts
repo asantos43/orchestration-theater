@@ -159,3 +159,24 @@ export const PluginSecretMissingPayloadSchema = z.strictObject({
     .max(64),
 });
 export type PluginSecretMissingPayload = z.infer<typeof PluginSecretMissingPayloadSchema>;
+
+/** Why the data of a block of the panel was cut: more rows than `plugins.panel.max_rows`, or more bytes than `plugins.panel.max_bytes`. */
+export const PLUGIN_PANEL_TRUNCATED_REASONS = ['rows', 'bytes'] as const;
+export type PluginPanelTruncatedReason = (typeof PLUGIN_PANEL_TRUNCATED_REASONS)[number];
+
+/**
+ * `plugin.panel_truncated` (P10, [proposta]): the answer of the `source` tool of a block was bigger
+ * than the limit of the panel, so the daemon cut it and said so. `source` is the name of the tool,
+ * `kept` what stayed and `total` what the plugin sent (rows with `reason: rows`, bytes with `bytes`),
+ * `limit` the value of the key. Never the data itself.
+ */
+export const PluginPanelTruncatedPayloadSchema = z.strictObject({
+  plugin: pluginId,
+  project: id,
+  source: z.string().min(1).max(128),
+  reason: z.enum(PLUGIN_PANEL_TRUNCATED_REASONS),
+  total: z.int().min(0),
+  kept: z.int().min(0),
+  limit: z.int().min(0),
+});
+export type PluginPanelTruncatedPayload = z.infer<typeof PluginPanelTruncatedPayloadSchema>;

@@ -141,6 +141,21 @@ export function recordPluginNotice(situations: SituationSink, notice: PluginNoti
         correlation,
       );
       return;
+    case 'panel_truncated':
+      situations.record(
+        'plugin.panel_truncated',
+        {
+          plugin,
+          project,
+          source: notice.source,
+          reason: notice.reason,
+          total: notice.total,
+          kept: notice.kept,
+          limit: notice.limit,
+        },
+        correlation,
+      );
+      return;
     default:
       return exhaustive(notice);
   }
