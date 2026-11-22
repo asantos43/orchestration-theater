@@ -91,6 +91,12 @@ function makeRig(extra: Partial<MetricsSources> = {}): Rig {
       ],
       resumes: () => [{ labels: { executor: 'e', reason: 'quota' }, value: 1 }],
       failures: () => [{ labels: { executor: 'e', kind: 'crash' }, value: 3 }],
+      waits: () => [{ labels: { kind: 'pool_admission', outcome: 'admitted' }, value: 2 }],
+      waitSeconds: () => [{ labels: { kind: 'pool_admission' }, value: 7.5 }],
+      waitsActive: () => [
+        { labels: { kind: 'prompt_queue' }, value: 0 },
+        { labels: { kind: 'pool_admission' }, value: 1 },
+      ],
     },
     cacheTtl: 5000,
     logger: createSilentLogger(),
@@ -252,9 +258,38 @@ describe('MetricsCollector', () => {
       'otheater_resumes_total',
       'otheater_executor_failures_total',
       'otheater_telemetry_dropped_total',
+      'otheater_waits_active',
+      'otheater_waits_total',
+      'otheater_wait_seconds_total',
     ]) {
       expect(text).toContain(`# TYPE ${name} `);
     }
+  });
+
+  it('shows the waits past the threshold: the ones going on, the ones that ended and their seconds', async () => {
+    const text = await makeRig().collector.render();
+    expect(text).toContain('# TYPE otheater_waits_active gauge');
+    expect(text).toContain('# TYPE otheater_waits_total counter');
+    expect(text).toContain('# TYPE otheater_wait_seconds_total counter');
+    expect(text).toContain('otheater_waits_active{kind="pool_admission"} 1');
+    expect(text).toContain('otheater_waits_active{kind="prompt_queue"} 0');
+    expect(text).toContain('otheater_waits_total{kind="pool_admission",outcome="admitted"} 2');
+    expect(text).toContain('otheater_wait_seconds_total{kind="pool_admission"} 7.5');
+  });
+
+  it('shows the batches the receiver refused, one sample for every reason, zero included', async () => {
+    const rig = makeRig({ receiver: () => ({ rejected: { format: 3, size: 0, token: 1 } }) });
+    const text = await rig.collector.render();
+    expect(text).toContain('# TYPE otheater_telemetry_batches_rejected_total counter');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="format"} 3');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="size"} 0');
+    expect(text).toContain('otheater_telemetry_batches_rejected_total{reason="token"} 1');
+  });
+
+  it('leaves the refused batches out while there is no receiver', async () => {
+    expect(await makeRig().collector.render()).not.toContain('batches_rejected');
+    const rig = makeRig({ receiver: () => undefined });
+    expect(await rig.collector.render()).not.toContain('batches_rejected');
   });
 
   it('leaves out the source that fails and keeps the rest', async () => {

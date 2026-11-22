@@ -66,7 +66,7 @@ export function officialRegistryEntries(
  * - a tool names roles that exist; a flow names roles and tools that exist;
  * - a scenario type names flows that exist;
  * - every event type and every rule key has a schema;
- * - an `external_write` tool has an idempotency key.
+ * - a `network` or `external_write` tool has an idempotency key.
  */
 export function validateRegistries(entries: RegistryEntries): readonly RegistryProblem[] {
   const roles = new ProblemCollector('roles');

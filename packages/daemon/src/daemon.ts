@@ -634,6 +634,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       events: eventMetrics,
       telemetry: composition.telemetry,
       exporter: () => telemetry?.exporter?.stats,
+      receiver: () => telemetry?.receiver.stats,
       cacheTtl: config.telemetry.prometheus.cache_ttl,
       logger,
     });

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { EventEnvelope } from '@otheater/core';
+import { WAIT_EVENT_KINDS } from '@otheater/protocol';
 import type { EventHub } from '../events/event-hub.js';
 import type { Logger } from '../logger.js';
 
@@ -15,6 +16,18 @@ import type { Logger } from '../logger.js';
  *   selection was not seen has the role `unknown`;
  * - the memory is bounded: an attempt and a session leave the maps when they end, a play keeps its
  *   newest {@link SELECTIONS_PER_PLAY} selections and the plays kept are capped.
+ *
+ * The waits (Phase 9, P2; N225 (2)) come from the same follow, from `wait.started` and `wait.ended`
+ * only, so there is no source of their own. [proposta] What that means:
+ *
+ * - only a wait that lasted `events.wait_threshold` has the two events, so a shorter wait is in no
+ *   series: the gauge is the waits **past the threshold** that are still going on, and the counters
+ *   are those that ended;
+ * - the wait that ended is counted by the outcome and the seconds of `wait.ended` (`waitedMs`, the
+ *   whole wait from `since`, not only the part after the threshold); one that is still going on is
+ *   in the gauge and not yet in the seconds;
+ * - a `wait.ended` whose `wait.started` this follow did not see (the memory of open waits is capped)
+ *   is counted, and takes nothing from the gauge.
  */
 
 export const SELECTIONS_PER_PLAY = 16;
@@ -22,6 +35,8 @@ export const MAX_PLAYS = 1000;
 export const MAX_OPEN = 10_000;
 
 export const UNKNOWN = 'unknown';
+
+const WAIT_KINDS: ReadonlySet<string> = new Set(WAIT_EVENT_KINDS);
 
 /** How an attempt ended, as `otheater_attempts_total` says it (from the event that ended it). */
 const ATTEMPT_OUTCOMES: Readonly<Record<string, string>> = {
@@ -82,6 +97,11 @@ export class EventMetrics {
   readonly #attempts = new Map<string, EventCount>();
   readonly #resumes = new Map<string, EventCount>();
   readonly #failures = new Map<string, EventCount>();
+  /** `wait.ended` by kind and outcome, and the seconds they waited by kind. */
+  readonly #waits = new Map<string, EventCount>();
+  readonly #waitSeconds = new Map<string, EventCount>();
+  /** The waits past the threshold that have not ended, by `waitId`, with their kind. */
+  readonly #openWaits = new Map<string, string>();
   /** The oldest selection of a play that no session has taken yet, to tell a session's role. */
   readonly #selections = new Map<string, { role: string; executor: string }[]>();
   readonly #sessions = new Map<string, string>();
@@ -96,7 +116,7 @@ export class EventMetrics {
       try {
         for await (const event of hub.follow({
           signal: this.#stop.signal,
-          filter: { typePrefixes: ['attempt.', 'session.', 'executor.selected'] },
+          filter: { typePrefixes: ['attempt.', 'session.', 'executor.selected', 'wait.'] },
         })) {
           this.observe(event);
         }
@@ -134,8 +154,48 @@ export class EventMetrics {
     return [...this.#failures.values()];
   }
 
+  /** `wait.ended` by `kind` and `outcome`. */
+  waits(): readonly EventCount[] {
+    return [...this.#waits.values()];
+  }
+
+  /** The seconds of the waits that ended, by `kind`. */
+  waitSeconds(): readonly EventCount[] {
+    return [...this.#waitSeconds.values()];
+  }
+
+  /** The waits past the threshold that are going on, one count for every kind there is. */
+  waitsActive(): readonly EventCount[] {
+    const open = new Map<string, number>(WAIT_EVENT_KINDS.map((kind) => [kind, 0]));
+    for (const kind of this.#openWaits.values()) open.set(kind, (open.get(kind) ?? 0) + 1);
+    return [...open].map(([kind, value]) => ({ labels: { kind }, value }));
+  }
+
+  #observeWait(event: EventEnvelope): void {
+    const payload = event.payload;
+    const waitId = text(payload.waitId);
+    const kind = text(payload.kind);
+    if (waitId === undefined || kind === undefined || !WAIT_KINDS.has(kind)) return;
+    if (event.type === 'wait.started') {
+      remember(this.#openWaits, waitId, kind);
+      return;
+    }
+    this.#openWaits.delete(waitId);
+    const outcome = text(payload.outcome);
+    const waitedMs = payload.waitedMs;
+    if (outcome === undefined || typeof waitedMs !== 'number' || !(waitedMs >= 0)) return;
+    bump(this.#waits, { kind, outcome });
+    const key = JSON.stringify({ kind });
+    const known = this.#waitSeconds.get(key);
+    this.#waitSeconds.set(key, { labels: { kind }, value: (known?.value ?? 0) + waitedMs / 1000 });
+  }
+
   #observe(event: EventEnvelope): void {
     const payload = event.payload;
+    if (event.type === 'wait.started' || event.type === 'wait.ended') {
+      this.#observeWait(event);
+      return;
+    }
     const playId = event.playId ?? text(payload.playId);
     const attemptId = event.attemptId ?? text(payload.attemptId);
     switch (event.type) {

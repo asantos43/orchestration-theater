@@ -122,10 +122,10 @@ function unique<T>(values: readonly T[]): T[] {
 
 /**
  * The tools of the framework server a role may call (architecture 5.3, "filtrado pelo registro"):
- * the ones the registry gives the role, minus the daemon's shells (effect `worktree`) unless
+ * the ones the registry gives the role, minus the daemon's shells (effect `local_write`) unless
  * `native_shell` is `shells`, minus the tools that open the network unless `network.allow` has a
  * domain, and minus the `browser_*` tools the `browser` key does not give (see {@link BROWSER_TOOLS}).
- * [proposta] That the shells are the tools with effect `worktree` is the reading of the
+ * [proposta] That the shells are the tools with effect `local_write` is the reading of the
  * registry of this step; P3 owns the registry and can change it.
  */
 export function frameworkToolsOf(
@@ -135,7 +135,7 @@ export function frameworkToolsOf(
 ): string[] {
   return tools
     .filter((tool) => tool.roles.includes(role))
-    .filter((tool) => settings.nativeShell === 'shells' || tool.effect !== 'worktree')
+    .filter((tool) => settings.nativeShell === 'shells' || tool.effect !== 'local_write')
     .filter((tool) => settings.network.allow.length > 0 || !NETWORK_TOOLS.has(tool.name))
     .filter((tool) => browserToolAllowed(tool, settings.browser))
     .map((tool) => tool.name);
