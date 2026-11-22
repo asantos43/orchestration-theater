@@ -47,8 +47,8 @@ interface CommandCheck {
 }
 
 /**
- * [N: the names of the packages of the clients' own CLIs are from general knowledge, not checked
- * here; the ACP adapters and `opencode-ai` are the ones the adapters of the daemon name.]
+ * [V: all five package names exist in the npm registry, checked on 2026-11-22; the ACP adapters
+ * and `opencode-ai` are the ones the adapters of the daemon name.]
  */
 const CLIENT_CLI_PACKAGES: Readonly<Record<'claude-code' | 'codex', { cmd: string; pkg: string }>> =
   {
