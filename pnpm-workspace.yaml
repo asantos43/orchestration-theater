@@ -9,3 +9,9 @@ packages:
 # download, no network beyond the registry.
 ignoredBuiltDependencies:
   - better-sqlite3
+  # esbuild (tools/release, the SEA bundler) has an install script that only swaps its JS shim for the
+  # platform binary, as an optimisation. The binary comes from the @esbuild/<platform> optional
+  # package either way (verified: `esbuild --version` runs with the script ignored), so no script of
+  # any package runs. (pnpm 10.33 still lists it in its "Ignored build scripts" warning; the script
+  # does not run.)
+  - esbuild

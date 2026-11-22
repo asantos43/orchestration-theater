@@ -44,3 +44,4 @@ export function createNodeDaemonDirectory(
   });
 }
 export * from './ui-catalog.js';
+export * from './sea.js';

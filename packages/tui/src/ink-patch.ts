@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isSeaProcess } from '@otheater/client/node';
 import type { InkPatchName } from './settings.js';
 
 /**
@@ -52,12 +53,27 @@ export function readInstalledInkVersion(
   }
 }
 
+/**
+ * Set by the build of the single executable (Phase 10, P1) to the version of Ink whose `output.js`
+ * the bundle carries patched (the `define` of esbuild; `tools/release` writes it only after it
+ * checked that version is {@link SUPPORTED_INK_VERSION}). In the checkout it does not exist.
+ */
+declare const __OT_INK_PATCHED_VERSION__: string | undefined;
+
+function bakedInkVersion(): string | undefined {
+  return typeof __OT_INK_PATCHED_VERSION__ === 'string' ? __OT_INK_PATCHED_VERSION__ : undefined;
+}
+
 export const defaultInkPatchDeps: InkPatchDeps = {
-  readInkVersion: () => readInstalledInkVersion(),
+  // In the executable there is no `node_modules` to read and no module hook to register: the patched
+  // `output.js` was swapped in at build time, and only the features (`globalThis.__otInkPatch`, which
+  // that file reads when it loads, after this) are chosen here.
+  readInkVersion: () => (isSeaProcess() ? bakedInkVersion() : readInstalledInkVersion()),
   async registerHook(patches, version) {
     const globals = globalThis as { __otInkPatch?: string; __otInkPatchVersion?: string };
     globals.__otInkPatch = patches.join(',');
     globals.__otInkPatchVersion = version;
+    if (isSeaProcess()) return;
     await import(new URL('../patches/register.mjs', import.meta.url).href);
   },
 };
