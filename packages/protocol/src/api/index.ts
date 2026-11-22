@@ -29,5 +29,6 @@ export * from './trajectories.js';
 export * from './atif.js';
 export * from './analysis.js';
 export * from './telemetry.js';
+export * from './updates.js';
 export * from './registry.js';
 export * from './catalog.js';

@@ -125,6 +125,12 @@ import { announceRecovery } from './recovery/notice.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
+import { UpdateChecker } from './updates/checker.js';
+import { detectInstallKind, updatePlatform, type UpdateInstallKind } from './updates/install.js';
+import { embeddedPublicKeyPem } from './updates/key.js';
+import { createUpdateSource, type FetchFunction } from './updates/source.js';
+import { UpdateStaging } from './updates/staging.js';
+import { parsePublicKey } from './updates/verify.js';
 import { packageVersion } from './version.js';
 
 /** How many times the master password is asked before the daemon gives up. */
@@ -196,6 +202,19 @@ export interface StartDaemonOptions {
   readonly plugins?: ActivePluginSource | undefined;
   /** Where the notices about plugins go besides the log: the point P8 turns into events. */
   readonly pluginNotices?: PluginNoticeSink | undefined;
+  /**
+   * What the search for updates (Phase 10, P7) is given instead of the real thing: the public key
+   * (PEM; without it, the one embedded in the build), the `fetch`, the kind of install and the
+   * platform. Tests hand them in so nothing touches the network or the real key. [proposta]
+   */
+  readonly updates?: UpdatesOptions | undefined;
+}
+
+export interface UpdatesOptions {
+  readonly publicKey?: string | undefined;
+  readonly fetch?: FetchFunction | undefined;
+  readonly installKind?: UpdateInstallKind | undefined;
+  readonly platform?: string | undefined;
 }
 
 export type StopReason = 'signal' | 'shutdown' | 'error';
@@ -773,6 +792,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   await quota.start();
   // P7 (Phase 8, N218): `GET /metrics`, when `telemetry.export` is `prometheus` or `both`. Otherwise the
   // route is a 404 and nothing is counted.
+  // P7 (Phase 10): the search for updates; `/metrics` reads its counters once it exists.
+  let updatesChecker: UpdateChecker | undefined;
   const eventMetrics = exportsPrometheus(config.telemetry.export) ? new EventMetrics() : undefined;
   if (eventMetrics !== undefined) {
     eventMetrics.start(composition.eventHub, logger);
@@ -784,6 +805,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       telemetry: composition.telemetry,
       exporter: () => telemetry?.exporter?.stats,
       receiver: () => telemetry?.receiver.stats,
+      updates: () => updatesChecker?.counters(),
       cacheTtl: config.telemetry.prometheus.cache_ttl,
       logger,
     });
@@ -1093,6 +1115,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('telemetry retention', async () => telemetryRetention?.stop());
+      await attempt('updates', async () => updatesChecker?.stop());
       await attempt('analysis', async () => analysisService?.stop());
       await attempt('registries snapshot', () => {
         registryHolder.stop();
@@ -1223,6 +1246,30 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     });
     telemetryRetention.start();
   }
+  // P7 (Phase 10, N58 and N73): the search for updates. `updates.*` is cold, like `analysis.*`. It
+  // never holds the start-up: the first search runs in the background, and an origin that does not
+  // answer only makes it `failed`. P7 discovers, downloads and checks; applying is P8.
+  {
+    const wanted = options.updates;
+    updatesChecker = new UpdateChecker({
+      settings: config.updates,
+      currentVersion: version,
+      platform: wanted?.platform ?? updatePlatform(),
+      installKind: wanted?.installKind ?? detectInstallKind(),
+      key: parsePublicKey(wanted?.publicKey ?? embeddedPublicKeyPem()),
+      source: createUpdateSource(
+        config.updates.source === 'url' && config.updates.url !== undefined
+          ? { kind: 'url', url: config.updates.url }
+          : { kind: 'github' },
+        { fetch: wanted?.fetch ?? fetch },
+      ),
+      staging: new UpdateStaging(join(paths.dataDir, 'updates', 'staging')),
+      clock,
+      situations: composition.situations,
+      logger,
+    });
+    updatesChecker.start();
+  }
   const slash = new SlashCommandService({
     store,
     clock,
@@ -1314,6 +1361,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     }),
     attempts: execution?.runner,
     plugins: pluginPanel,
+    updates: updatesChecker,
     config,
     quota,
     usage,
@@ -1369,6 +1417,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     setup,
     direct,
     plugins: pluginPanel,
+    updates: updatesChecker,
   });
 
   // Phase 9, P4: the snapshot of the registries follows the plugins that are on (the registry was

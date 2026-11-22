@@ -40,6 +40,9 @@ import {
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
+  UPDATE_CHANNELS,
+  UPDATE_MODES,
+  UPDATE_SOURCES,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
@@ -1411,7 +1414,7 @@ const TelemetryPrometheusConfigSchema = z
   .prefault({});
 
 /** True for a host that is this machine: the only one `http://` may reach with headers. */
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
@@ -1563,6 +1566,85 @@ const TelemetryConfigSchema = z
     }
   })
   .prefault({});
+
+/** The shortest `updates.check_interval`: a search is one call to the origin (GitHub limits them). */
+export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * `updates` (Phase 10, P7; architecture 5.21, N73). The search for a new version of OTheater and,
+ * from the next step (P8), its application. Every key is global (the file of the daemon; a project
+ * has no say in how the daemon updates itself) and is read when the daemon starts. [proposta] The
+ * names and the defaults of the keys below, except the modes and the channels, which the
+ * architecture names.
+ *
+ * - `mode` (default `auto`): `auto` downloads, checks and (from P8) applies when the daemon is
+ *   idle; `notify` downloads and checks, and leaves the version ready for the Producer to apply;
+ *   `check` only says a new version exists (it downloads nothing); `off` never looks. Until P8
+ *   exists, `auto` acts as `notify` and the status and the event say so. A daemon that is not the
+ *   own executable (a checkout run by Node) acts as `check`.
+ * - `channel` (default `stable`): `stable` reads the latest release; `beta` reads the newest
+ *   prerelease. A manifest of another channel is refused.
+ * - `source` (default `github`): `github` reads the releases of the public repository, with no
+ *   credential; `url` reads `<url>/manifest.json`, `<url>/manifest.json.sig` and the files of the
+ *   manifest from a base address of your own (a mirror, a test server).
+ * - `url`: the base address for `source: url`. Required there; `https://`, or `http://` only on the
+ *   loopback; no user, no password, no query.
+ * - `check_interval` (default `6h`): the time between two searches; `off` searches only when asked
+ *   (`POST /v1/updates/check`) and once at start. Not shorter than 5 minutes.
+ *
+ * The public key that checks the manifest is not a key here: it is embedded in the executable
+ * (`tools/release/keys/update-public-key.pem`), so that a changed file cannot choose who signs.
+ */
+export const UpdatesConfigSchema = z
+  .strictObject({
+    mode: z.enum(UPDATE_MODES).default('auto'),
+    channel: z.enum(UPDATE_CHANNELS).default('stable'),
+    source: z.enum(UPDATE_SOURCES).default('github'),
+    url: z.string().min(1).max(2048).optional(),
+    check_interval: z
+      .union([z.literal('off'), DurationSchema])
+      .transform((value) => (value === 'off' ? null : value))
+      .refine((value) => value === null || value >= UPDATES_MIN_CHECK_INTERVAL_MS, {
+        message: 'the shortest interval is 5m (one search is one call to the origin)',
+      })
+      .prefault('6h'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.source === 'url' && value.url === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message: 'updates.source "url" needs updates.url',
+      });
+    }
+    if (value.url === undefined) return;
+    let parsed: URL | undefined;
+    try {
+      parsed = new URL(value.url);
+    } catch {
+      parsed = undefined;
+    }
+    const secure =
+      parsed !== undefined &&
+      (parsed.protocol === 'https:' ||
+        (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)));
+    if (
+      parsed === undefined ||
+      !secure ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message:
+          'updates.url must be https:// (http:// only on the loopback), with no user, password, query or fragment',
+      });
+    }
+  });
+export type UpdatesConfig = z.output<typeof UpdatesConfigSchema>;
 
 /**
  * `<data>/config.yaml` (architecture 5.18 and 5.21; decision N51 for the retention keys). Every
@@ -2793,6 +2875,7 @@ export const DaemonConfigSchema = z
           .prefault({}),
       })
       .prefault({}),
+    updates: UpdatesConfigSchema.prefault({}),
   })
   .refine(
     (config) => !(hasSecretPathEntries(config.security) && hasSecretPathEntries(config.browser)),

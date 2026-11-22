@@ -7,6 +7,7 @@ import { BUDGET_HIT_WINDOW, LIMIT_HIT_WINDOW } from '../quota/state.js';
 import type { EventMetrics } from './metrics-events.js';
 import type { OtlpExporterStats } from './otlp-exporter.js';
 import type { TelemetryReceiverStats } from './receiver.js';
+import type { UpdateCounters } from '../updates/checker.js';
 import { renderPrometheus, type MetricFamily, type MetricSample } from './prometheus.js';
 
 /**
@@ -43,6 +44,8 @@ export interface MetricsSources {
   readonly exporter?: (() => OtlpExporterStats | undefined) | undefined;
   /** What the OTLP receiver took and refused; `undefined` when it is not running. */
   readonly receiver?: (() => Pick<TelemetryReceiverStats, 'rejected'> | undefined) | undefined;
+  /** The searches for updates and the versions refused (P7 of Phase 10); `undefined` when there is no service. */
+  readonly updates?: (() => UpdateCounters | undefined) | undefined;
   /** `telemetry.prometheus.cache_ttl` in ms. */
   readonly cacheTtl: number;
   readonly logger: Pick<Logger, 'debug'>;
@@ -103,6 +106,7 @@ export class MetricsCollector {
       () => this.#waits(),
       () => this.#dropped(),
       () => this.#batches(),
+      () => this.#updates(),
     ]) {
       try {
         families.push(...(await part()));
@@ -229,6 +233,25 @@ export class MetricsCollector {
           labels: { reason },
           value: rejected[reason],
         })),
+      ),
+    ];
+  }
+
+  #updates(): MetricFamily[] {
+    const counters = this.#o.updates?.();
+    if (counters === undefined) return [];
+    return [
+      family(
+        'otheater_updates_checks_total',
+        'Searches for a new version since the daemon started, by result (up_to_date, found, ready, rejected, skipped, failed).',
+        'counter',
+        Object.entries(counters.checks).map(([result, value]) => ({ labels: { result }, value })),
+      ),
+      family(
+        'otheater_updates_rejected_total',
+        'Versions refused since the daemon started, by reason (signature, sha256, size, version_not_newer, wrong_channel, bad_manifest).',
+        'counter',
+        Object.entries(counters.rejected).map(([reason, value]) => ({ labels: { reason }, value })),
       ),
     ];
   }

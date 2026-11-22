@@ -6,6 +6,7 @@ import type { Link } from './data.js';
 import type { ScenarioMark } from './scenario-rows.js';
 import { clip } from './text.js';
 import { COLOR } from './theme.js';
+import type { UpdateHint } from './use-update-status.js';
 
 /** The mark of the product, which is not translated. */
 const BRAND = ' ◆ ot';
@@ -20,6 +21,8 @@ export interface HeaderProps {
   readonly address: string;
   /** The state of the link with the daemon. */
   readonly link: Link;
+  /** A new version the daemon found or already has ready (Phase 10, P7). */
+  readonly update?: UpdateHint | undefined;
 }
 
 const MARK_COLOR: Readonly<Record<ScenarioMark, string>> = {
@@ -61,6 +64,17 @@ export function Header(props: HeaderProps): ReactNode {
             <Text color={COLOR.warn} bold>
               ! {t('layout.header.decisions', { count: props.decisions })}
             </Text>
+          </>
+        )}
+        {props.update !== undefined && (
+          <>
+            {' │ '}
+            <Text color={COLOR.ok}>
+              {t(props.update.ready ? 'layout.header.updateReady' : 'layout.header.updateFound', {
+                version: props.update.version,
+              })}
+            </Text>
+            {props.update.apply && <Text dimColor> [{t('layout.header.updateApply')}]</Text>}
           </>
         )}
       </Text>

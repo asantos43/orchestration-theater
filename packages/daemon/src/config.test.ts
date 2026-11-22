@@ -1844,3 +1844,49 @@ describe('plugins.permissions (Phase 9, P6) [proposta]', () => {
     }
   });
 });
+
+describe('updates (Phase 10, P7) [proposta]', () => {
+  it('has the defaults: auto, stable, GitHub, every 6 hours', () => {
+    expect(parseConfig('').updates).toEqual({
+      mode: 'auto',
+      channel: 'stable',
+      source: 'github',
+      check_interval: 6 * 3_600_000,
+    });
+  });
+
+  it('takes each mode of each key', () => {
+    for (const mode of ['auto', 'notify', 'check', 'off']) {
+      expect(parseConfig(`updates:\n  mode: ${mode}\n`).updates.mode).toBe(mode);
+    }
+    for (const channel of ['stable', 'beta']) {
+      expect(parseConfig(`updates:\n  channel: ${channel}\n`).updates.channel).toBe(channel);
+    }
+    expect(parseConfig('updates:\n  check_interval: 30m\n').updates.check_interval).toBe(1_800_000);
+    expect(parseConfig('updates:\n  check_interval: off\n').updates.check_interval).toBeNull();
+    const own = parseConfig('updates:\n  source: url\n  url: https://updates.example.org/r/\n');
+    expect(own.updates).toMatchObject({ source: 'url', url: 'https://updates.example.org/r/' });
+    expect(
+      parseConfig('updates:\n  source: url\n  url: http://127.0.0.1:8080/r\n').updates.url,
+    ).toBe('http://127.0.0.1:8080/r');
+  });
+
+  it('refuses what is not a mode, an interval under 5 minutes, and an address that is not safe', () => {
+    for (const bad of [
+      'updates:\n  mode: now\n',
+      'updates:\n  channel: nightly\n',
+      'updates:\n  source: ftp\n',
+      'updates:\n  check_interval: 1m\n',
+      'updates:\n  check_interval: never\n',
+      'updates:\n  source: url\n',
+      'updates:\n  source: url\n  url: http://updates.example.org/r\n',
+      'updates:\n  source: url\n  url: https://user:pw@updates.example.org/r\n',
+      'updates:\n  source: url\n  url: https://updates.example.org/r?x=1\n',
+      'updates:\n  source: url\n  url: not a url\n',
+      'updates:\n  key: abc\n',
+      'updates: auto\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
