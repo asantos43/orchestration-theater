@@ -721,6 +721,18 @@ export type ProfileExecEnvInheritMode = (typeof PROFILE_EXEC_ENV_INHERIT_MODES)[
 export const PROFILE_SHIMS_MODES = ['auto', 'manual', 'off'] as const;
 export type ProfileShimsMode = (typeof PROFILE_SHIMS_MODES)[number];
 
+/**
+ * `profiles.add.login` (2026-11-22; owner's request, [proposta] for the name and the modes): what
+ * adding a subscription account (`token_plan`) does about its login, so the account is ready at
+ * once. `ask` (default) asks "log in now?" after the account is made (the terminal interface and
+ * `ot profile add` in a terminal); `auto` logs in straight away; `off` never offers it (the login
+ * stays a step of its own: `L` in the tab Settings, `ot profile exec <id> login`). An API account,
+ * and an account that already has a login, are outside the rule. `ot profile add --login` and
+ * `--no-login` override the mode for that one command.
+ */
+export const PROFILE_ADD_LOGIN_MODES = ['ask', 'auto', 'off'] as const;
+export type ProfileAddLoginMode = (typeof PROFILE_ADD_LOGIN_MODES)[number];
+
 /** `profiles.shims.prefix`: empty by default (owner, N159); letters, digits, `.`, `_` and `-`. */
 export const SHIM_PREFIX = /^[A-Za-z0-9._-]*$/;
 
@@ -2713,6 +2725,12 @@ export const DaemonConfigSchema = z
          */
         commands: commonWordsSchema(0),
         options: commonWordsSchema(1),
+        /** The login that goes with a new subscription account. See {@link PROFILE_ADD_LOGIN_MODES}. */
+        add: z
+          .strictObject({
+            login: z.enum(PROFILE_ADD_LOGIN_MODES).default('ask'),
+          })
+          .prefault({}),
         /** `ot profile exec` (P28a). See {@link PROFILE_EXEC_ENV_INHERIT_MODES}. */
         exec: z
           .strictObject({
@@ -2742,6 +2760,7 @@ export const DaemonConfigSchema = z
         'rotate_on_exhaustion',
         'commands',
         'options',
+        'add',
         'exec',
         'shims',
       ],

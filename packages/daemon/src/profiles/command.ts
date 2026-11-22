@@ -10,12 +10,13 @@ import {
 } from '@otheater/core';
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, type CommandContext } from '../commands.js';
 import { compose, productionClients } from '../compose.js';
-import { loadConfig } from '../config.js';
+import { loadConfig, type ProfileAddLoginMode } from '../config.js';
 import type { ClientFactory } from '../clients.js';
 import { unlockVault, type PasswordPrompt } from '../daemon.js';
 import { InstanceLock, releaseOnFailure } from '../instance-lock.js';
 import { dataPaths, ensureDataDir, type Env } from '../paths.js';
 import { buildDaemonRegistries } from '../registries.js';
+import { runProfileExec, type ExecSignals, type ExecSpawn } from './exec.js';
 import { roleListsOf } from './role-lists.js';
 import { syncAfterProfileChange, type ShimHost } from './shims-command.js';
 import {
@@ -46,6 +47,11 @@ export interface ProfileOptions {
   readonly apiKeyStdin: boolean;
   /** `add`: the second-subscription notice was read and the Producer goes on. */
   readonly acceptNotice: boolean;
+  /**
+   * `add`: `--login` logs in right after the account is made, `--no-login` does not; either one
+   * overrides `profiles.add.login` for this command. Without them the key decides.
+   */
+  readonly login?: boolean | undefined;
   /** `list`: only this client. */
   readonly client?: string | undefined;
   /** `list`: also the removed profiles. */
@@ -69,6 +75,41 @@ export interface ProfileCommandDeps {
    * `<data>/bin` in step when `profiles.shims.mode` is `auto`. Without it (tests), they do not.
    */
   readonly shims?: ShimHost | undefined;
+  /**
+   * The terminal, for the login that goes with `add` (2026-11-22): `interactive` is true when the
+   * input and the output are a terminal (`profiles.add.login: ask` asks only then, and `auto` logs
+   * in only then); `confirm` asks a yes or no. `cwd`, `spawn` and `signals` are those of
+   * `ot profile exec`, which does the login. Tests pass fakes.
+   */
+  readonly interactive?: boolean | undefined;
+  readonly confirm?: ((question: string) => Promise<boolean>) | undefined;
+  readonly cwd?: string | undefined;
+  readonly spawn?: ExecSpawn | undefined;
+  readonly signals?: ExecSignals | undefined;
+}
+
+/**
+ * What `add` decides about the login of the new account, from the flags, the key
+ * `profiles.add.login` and the terminal: `login` goes at once, `ask` waits for the answer of the
+ * person, `none` does nothing. [proposta] An explicit `--login` runs wherever it is typed (the
+ * person asked); the key alone (`ask`, `auto`) never starts a login without a terminal, and never
+ * with `--json`, where the client's own text would break the JSON.
+ */
+export function loginDecision(input: {
+  readonly mode: ProfileAddLoginMode;
+  readonly flag: boolean | undefined;
+  readonly json: boolean;
+  readonly interactive: boolean;
+  readonly canAsk: boolean;
+  /** The account is a subscription one with no login yet (an API account, or one logged in, is not). */
+  readonly needsLogin: boolean;
+}): 'login' | 'ask' | 'none' {
+  if (!input.needsLogin || input.flag === false) return 'none';
+  if (input.flag === true) return 'login';
+  if (input.json || !input.interactive) return 'none';
+  if (input.mode === 'auto') return 'login';
+  if (input.mode === 'ask') return input.canAsk ? 'ask' : 'none';
+  return 'none';
 }
 
 /** [proposta] The provider of an account of a client whose account has only one possible provider. */
@@ -103,6 +144,72 @@ export async function runProfileCommand(
   args: readonly string[],
   options: ProfileOptions,
 ): Promise<number> {
+  const pending: PendingLogin = {};
+  const code = await runProfileAction(context, deps, action, args, options, pending);
+  if (code !== EXIT_OK || pending.profileId === undefined) return code;
+  return await loginAfterAdd(context, deps, pending.profileId, pending.decision === 'ask');
+}
+
+/** The login `add` leaves for after the store is closed and the lock released. */
+interface PendingLogin {
+  profileId?: string;
+  decision?: 'login' | 'ask';
+}
+
+/**
+ * The login of a new account (2026-11-22). [proposta] It is `ot profile exec <id> login`, the
+ * command the terminal interface shows for a login that needs a terminal: the official CLI of the
+ * client, in this terminal, with the environment of the profile. It needs no daemon (`exec` takes
+ * no lock) and works for Claude Code, Codex and OpenCode, whose `login` words the adapters map.
+ * It runs after `add` closed the store, so `exec` opens it as it does alone. The account stays
+ * whatever the login does; a login that did not end well says how to repeat it.
+ */
+async function loginAfterAdd(
+  context: CommandContext,
+  deps: ProfileCommandDeps,
+  profileId: string,
+  ask: boolean,
+): Promise<number> {
+  const { t } = context;
+  if (ask) {
+    const yes =
+      deps.confirm === undefined
+        ? false
+        : await deps.confirm(t('profile.askLogin', { id: profileId }));
+    if (!yes) {
+      context.out(t('profile.loginSkipped', { id: profileId }));
+      return EXIT_OK;
+    }
+  }
+  context.out(t('profile.loginStarting', { id: profileId }));
+  const code = await runProfileExec(
+    context,
+    {
+      clients: deps.clients,
+      env: deps.env,
+      cwd: deps.cwd,
+      passwordPrompt: deps.passwordPrompt,
+      spawn: deps.spawn,
+      signals: deps.signals,
+    },
+    [profileId, 'login'],
+  );
+  if (code === EXIT_OK) {
+    context.out(t('profile.loginDone', { id: profileId }));
+    return EXIT_OK;
+  }
+  context.err(t('profile.loginFailed', { id: profileId, code: String(code) }));
+  return EXIT_FAILED;
+}
+
+async function runProfileAction(
+  context: CommandContext,
+  deps: ProfileCommandDeps,
+  action: ProfileAction,
+  args: readonly string[],
+  options: ProfileOptions,
+  pending: PendingLogin,
+): Promise<number> {
   const { t } = context;
   const usage = (key: string, vars: Record<string, string> = {}): number => {
     context.err(t(key, vars));
@@ -129,6 +236,7 @@ export async function runProfileCommand(
       if (kind === 'api' && keySources === 0) return usage('usage.profileApiNeedsKey');
       if (kind !== 'api' && keySources > 0) return usage('usage.profileKeyOnlyApi');
       if (options.apiKeyStdin && deps.input === undefined) return usage('usage.noInput');
+      if (options.login === true && options.json) return usage('usage.profileLoginJson');
       break;
     }
     case 'drain':
@@ -243,6 +351,20 @@ export async function runProfileCommand(
           acceptNotice: options.acceptNotice,
         });
         const code = reportAdd(context, options, service, result);
+        if (result.status === 'added') {
+          const decision = loginDecision({
+            mode: config.profiles.add.login,
+            flag: options.login,
+            json: options.json,
+            interactive: deps.interactive === true,
+            canAsk: deps.confirm !== undefined,
+            needsLogin: result.profile.kind === 'token_plan' && result.login !== 'logged_in',
+          });
+          if (decision !== 'none') {
+            pending.profileId = result.profile.id;
+            pending.decision = decision;
+          }
+        }
         if (result.status !== 'needs_notice') {
           await syncAfterProfileChange(context, {
             composition,

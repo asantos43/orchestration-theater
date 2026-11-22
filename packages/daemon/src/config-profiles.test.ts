@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DRAIN_DIRECTOR_MODES,
   DRAIN_ON_TIMEOUT_MODES,
+  PROFILE_ADD_LOGIN_MODES,
   PROFILE_EXEC_ENV_INHERIT_MODES,
   REMOVED_DIR_MODES,
   SAME_PROVIDER_NOTICE_MODES,
@@ -24,6 +25,7 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
       rotate_on_exhaustion: { openai: 'off' },
       commands: {},
       options: {},
+      add: { login: 'ask' },
       exec: { env_inherit: 'terminal' },
       shims: { prefix: '', mode: 'auto' },
       entries: {},
@@ -39,6 +41,15 @@ describe('profiles.* of the config (Phase 5, P2; N127 open)', () => {
     }
     expect(() => parseConfig(['profiles:', '  shims:', "    prefix: 'a/b'"].join('\n'))).toThrow();
     expect(() => parseConfig(['profiles:', '  shims:', '    mode: always'].join('\n'))).toThrow();
+  });
+
+  it('[proposta] reads profiles.add.login: every mode, and refuses another', () => {
+    for (const mode of PROFILE_ADD_LOGIN_MODES) {
+      expect(
+        parseConfig(['profiles:', '  add:', `    login: ${mode}`].join('\n')).profiles.add,
+      ).toEqual({ login: mode });
+    }
+    expect(() => parseConfig(['profiles:', '  add:', '    login: always'].join('\n'))).toThrow();
   });
 
   it('reads the common words of profile exec by name and client, and every env_inherit mode (P28a)', () => {
