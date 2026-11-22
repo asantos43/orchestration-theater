@@ -23,12 +23,23 @@ export interface PluginRuntimeConfig {
   readonly events: PluginEventMode;
   /** `plugins.event_max_bytes` (P8): the biggest payload of an event of a plugin, in bytes of JSON. */
   readonly eventMaxBytes: number;
+  /**
+   * `plugins.event_rate` (N243 item 67): the most events and refusals of one plugin in one project
+   * per window; `null` is `off`.
+   */
+  readonly eventRate: PluginEventRate | null;
   /** `plugins.project_dir`: `off` leaves `OTHEATER_PROJECT_DIR` out of the process. */
   readonly projectDir: PluginProjectDirMode;
   /** `plugins.panel.max_rows` (P10): the most rows of one block of the panel. */
   readonly panelMaxRows: number;
   /** `plugins.panel.max_bytes` (P10): the most bytes of the JSON of one block; `null` is `off`. */
   readonly panelMaxBytes: number | null;
+}
+
+/** `plugins.event_rate`: at most `max` events and refusals per `windowMs`, per plugin and project. */
+export interface PluginEventRate {
+  readonly max: number;
+  readonly windowMs: number;
 }
 
 /** The defaults of `plugins.*`, the same the configuration schema gives. */
@@ -41,6 +52,7 @@ export const DEFAULT_PLUGIN_RUNTIME: PluginRuntimeConfig = {
   http: 'loopback',
   events: 'declared',
   eventMaxBytes: 16_384,
+  eventRate: { max: 100, windowMs: 10_000 },
   projectDir: 'scenario',
   panelMaxRows: 200,
   panelMaxBytes: 1_048_576,
@@ -60,6 +72,10 @@ export function pluginRuntimeFromConfig(section: DaemonConfig['plugins']): Plugi
     http: section.http,
     events: section.events,
     eventMaxBytes: section.event_max_bytes,
+    eventRate:
+      section.event_rate === null
+        ? null
+        : { max: section.event_rate.max, windowMs: section.event_rate.window },
     projectDir: section.project_dir,
     panelMaxRows: section.panel.max_rows,
     panelMaxBytes: section.panel.max_bytes,

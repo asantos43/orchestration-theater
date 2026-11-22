@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import type { TelemetrySpan } from '@otheater/core';
-import { FakeClock, InMemoryStore } from '@otheater/core/testing';
+import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { AnalysisReportSchema, type AnalysisReport } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { publishDiscovery } from '../api/files.js';
@@ -110,7 +110,8 @@ function seededOverrides(): NonNullable<CliDeps['overrides']> {
       attempt('a2', 200_000, 20_000),
     ],
   });
-  return { clock, store, telemetry };
+  // A vault of the test: the default (keyring) is refused under vitest (N243 item 64).
+  return { clock, store, telemetry, vault: new InMemorySecretVault() };
 }
 
 async function withConfig(dir: string): Promise<void> {

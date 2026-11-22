@@ -25,6 +25,11 @@ export interface TelemetryRuntime {
    */
   stopExporter(): Promise<void>;
   /**
+   * Reads the vault again for the redaction now, instead of waiting for the next refresh (up to 30
+   * s). The plugins call it before a server with secrets starts (N243, item 60). Never rejects.
+   */
+  refreshVaultValues(): Promise<void>;
+  /**
    * Idempotent: stops the receiver (its last counts are told) and the vault reading. The exporter
    * is not stopped here: it must send the last spans, so {@link stopExporter} comes later.
    */
@@ -98,6 +103,7 @@ export async function startTelemetry(
       clients,
       sessions,
       exporter,
+      refreshVaultValues: () => values.refresh(),
       stopExporter: () =>
         (exporterStopped ??= (async () => {
           if (exporter === undefined) return;

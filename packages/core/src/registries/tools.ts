@@ -326,6 +326,15 @@ function tool(
 const DIRECTOR = ['director'] as const;
 /** The roles that browse: the Actor and the consultant (architecture 5.8 and 5.19). */
 const BROWSER_ROLES = ['actor', 'consultant'] as const;
+/**
+ * `http_get` and the browser reads reach the network (architecture 5.19), so they are `network`,
+ * which carries an idempotency key like `external_write` ({@link IDEMPOTENT_EFFECT_CLASSES}).
+ * Decision of 2026-11-22 (N243, item 7): they were `read` since the renaming of the classes.
+ */
+const NETWORK_READ = {
+  effect: 'network',
+  idempotencyKey: 'attempt_step',
+} as const;
 const BROWSER_WRITE = {
   effect: 'external_write',
   idempotencyKey: 'attempt_step',
@@ -426,10 +435,16 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     effect: 'local_write',
     idempotencyKey: 'attempt_step',
   }),
-  tool('http_get', ['actor', 'consultant'], httpGetInput, httpGetOutput),
-  tool('browser_open', BROWSER_ROLES, browserOpenInput, browserOpenOutput),
-  tool('browser_read', BROWSER_ROLES, browserReadInput, browserReadOutput),
-  tool('browser_screenshot', BROWSER_ROLES, browserScreenshotInput, browserScreenshotOutput),
+  tool('http_get', ['actor', 'consultant'], httpGetInput, httpGetOutput, NETWORK_READ),
+  tool('browser_open', BROWSER_ROLES, browserOpenInput, browserOpenOutput, NETWORK_READ),
+  tool('browser_read', BROWSER_ROLES, browserReadInput, browserReadOutput, NETWORK_READ),
+  tool(
+    'browser_screenshot',
+    BROWSER_ROLES,
+    browserScreenshotInput,
+    browserScreenshotOutput,
+    NETWORK_READ,
+  ),
   tool('browser_click', BROWSER_ROLES, browserClickInput, browserActionOutput, BROWSER_WRITE),
   tool('browser_fill', BROWSER_ROLES, browserFillInput, browserActionOutput, BROWSER_WRITE),
   tool(

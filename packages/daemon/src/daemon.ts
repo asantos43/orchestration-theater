@@ -78,8 +78,10 @@ import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
 import { PluginPanelService } from './plugins/panel.js';
 import { pluginPermissionsFromConfig } from './plugins/permissions.js';
+import { PluginEventLimiter } from './plugins/event-rate.js';
 import {
   createPluginEventHandler,
+  recordEventsDropped,
   LiveEventRegistry,
   pluginEventContributor,
   recordPluginNotice,
@@ -339,6 +341,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   let browserTools: BrowserTools | undefined;
   let telemetry: TelemetryRuntime | undefined;
   let pluginRegistry: PluginRegistry | undefined;
+  let pluginEventLimiter: PluginEventLimiter | undefined;
   // The API server is started inside `run`; a failure after that point stops it from here.
   const apiRef: { server?: ApiServer } = {};
   // Closed until the reconciliation of the start-up ends: calls to the MCP server and to the
@@ -467,6 +470,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     installedPlugins.onNotice((notice) => {
       recordRegistryNotice(pluginSituations, notice);
     });
+    const pluginLogger = composition.logger;
+    const eventLimiter = new PluginEventLimiter(composition.clock, (summary) => {
+      recordEventsDropped(pluginSituations, pluginLogger, summary);
+    });
+    pluginEventLimiter = eventLimiter;
     const pluginAggregator = new PluginAggregator({
       source: pluginSource,
       pool: new PluginProcessPool({
@@ -482,6 +490,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
           vault: composition.vault,
           logger: composition.logger,
           onNotice: pluginNotices,
+          // N243 (item 60): the redaction of the telemetry knows the values before the server runs.
+          refreshRedaction: async () => telemetry?.refreshVaultValues(),
         }),
         // The folder of the project (`plugins.project_dir`), read when a server is about to start:
         // the `folder` of the scenario, which for a project is the absolute path of its repository.
@@ -492,6 +502,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
           runtime: () => pluginRuntimeFromConfig(config.plugins),
           situations: pluginSituations,
           logger: composition.logger,
+          // N243 item 67: `plugins.event_rate`; what it drops is counted for `/metrics` and said once
+          // per window.
+          limiter: eventLimiter,
         }),
       }),
       logger: composition.logger,
@@ -543,6 +556,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       telemetry,
       browserTools,
       pluginRegistry: installedPlugins,
+      pluginEventLimiter: eventLimiter,
       pluginAggregator,
       pluginNotices,
       liveEvents,
@@ -564,6 +578,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     await quota?.stop().catch(() => undefined);
     await mcp?.stop().catch(() => undefined);
     pluginRegistry?.close();
+    pluginEventLimiter?.close();
     await telemetry?.stopExporter().catch(() => undefined);
     await telemetry?.stop().catch(() => undefined);
     await browserTools?.close().catch(() => undefined);
@@ -583,6 +598,8 @@ interface RunInput {
   readonly browserTools: BrowserTools | undefined;
   /** The installed plugins, opened before the MCP server (its aggregator reads them). */
   readonly pluginRegistry: PluginRegistry;
+  /** `plugins.event_rate`: counts what the plugins send; its drops are a metric. */
+  readonly pluginEventLimiter: PluginEventLimiter;
   /** The aggregator of the plugins: the panel (P10) calls the tools of a plugin through it. */
   readonly pluginAggregator: PluginAggregator;
   /** Where the notices about plugins go: the log, an event, and the sink of the options. */
@@ -612,6 +629,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     telemetry,
     browserTools,
     pluginRegistry: plugins,
+    pluginEventLimiter,
     pluginAggregator,
     pluginNotices,
     liveEvents,
@@ -784,6 +802,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       telemetry: composition.telemetry,
       exporter: () => telemetry?.exporter?.stats,
       receiver: () => telemetry?.receiver.stats,
+      pluginEventsDropped: () => pluginEventLimiter.droppedByPlugin(),
       cacheTtl: config.telemetry.prometheus.cache_ttl,
       logger,
     });
@@ -1102,6 +1121,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // they read stops watching `plugins.json`.
       await attempt('mcp', () => mcp.stop());
       await attempt('plugins', () => {
+        pluginEventLimiter.close();
         plugins.close();
         return Promise.resolve();
       });

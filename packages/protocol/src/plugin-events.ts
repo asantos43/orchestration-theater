@@ -120,8 +120,9 @@ export type PluginToolRejectedPayload = z.infer<typeof PluginToolRejectedPayload
 /**
  * Why an event a plugin published was refused: the name is not in its manifest (`not_declared`), the
  * payload is over `plugins.event_max_bytes` (`too_large`), the notification is not a name and a JSON
- * object (`invalid`), the plugin is not active in the project (`inactive`), or `plugins.events` is
- * `off` (`off`).
+ * object (`invalid`), the plugin is not active in the project (`inactive`), `plugins.events` is
+ * `off` (`off`), or the plugin passed `plugins.event_rate` and the daemon dropped what came after the
+ * limit (`rate_limited`, N243 item 67).
  */
 export const PLUGIN_EVENT_REJECTED_REASONS = [
   'not_declared',
@@ -129,12 +130,18 @@ export const PLUGIN_EVENT_REJECTED_REASONS = [
   'invalid',
   'inactive',
   'off',
+  'rate_limited',
 ] as const;
 export type PluginEventRejectedReason = (typeof PLUGIN_EVENT_REJECTED_REASONS)[number];
 
 /**
  * `plugin.event_rejected`. `name` is what the plugin sent (cut; left out when it was not a string),
  * and the payload is never copied. `bytes` and `limit` come with `too_large`.
+ *
+ * With `rate_limited` it is one event per window that had drops, written when the window ends and not
+ * one per event dropped (that would be the flood the limit holds back): there is no `name`; `limit`
+ * is `plugins.event_rate.max`, `windowMs` the window and `dropped` how many events and refusals of
+ * the plugin in this project were dropped in it. [proposta]
  */
 export const PluginEventRejectedPayloadSchema = z.strictObject({
   plugin: pluginId,
@@ -143,6 +150,8 @@ export const PluginEventRejectedPayloadSchema = z.strictObject({
   reason: z.enum(PLUGIN_EVENT_REJECTED_REASONS),
   bytes: z.int().min(0).optional(),
   limit: z.int().min(0).optional(),
+  windowMs: z.int().min(1).optional(),
+  dropped: z.int().min(1).optional(),
 });
 export type PluginEventRejectedPayload = z.infer<typeof PluginEventRejectedPayloadSchema>;
 
