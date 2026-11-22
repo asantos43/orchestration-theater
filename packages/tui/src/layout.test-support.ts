@@ -12,6 +12,7 @@ import {
   type ApiQuotaStatus,
   type ApiScenario,
   type ApiSlashCommand,
+  type SlashCommandResult,
 } from '@otheater/protocol';
 import { FakeChatServer } from './chat/fake-socket.test-support.js';
 import type { ConnectResult, DaemonConnector, LiveDaemon } from './daemon-connection.js';
@@ -64,6 +65,11 @@ export interface FakeOnlineOptions {
   readonly live?: boolean | undefined;
   /** What `GET /v1/commands` answers (P12). Default: none. */
   readonly commands?: readonly ApiSlashCommand[] | undefined;
+  /**
+   * What `POST /v1/scenarios/:id/commands` answers (the footer and the picker of the Director, P14
+   * of Phase 9, read and write through it). Default: it never settles, so no footer shows.
+   */
+  readonly runCommand?: ((line: string) => Promise<SlashCommandResult>) | undefined;
   /** What `readSettings` of the fake daemon answers (the `ui` of its configuration). Default: the defaults. */
   readonly readSettings?: (() => Promise<UiSettings>) | undefined;
 }
@@ -80,10 +86,16 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
   // Only `GET /v1/commands` answers. Any other read (the Usage tab of P13) never settles: the tab
   // stays in its reading state, the same in every frame, instead of a wrong shape or a failure
   // whose moment depends on the machine.
-  fake.call = (route: { readonly path: string }) =>
-    route.path === '/v1/commands'
-      ? Promise.resolve({ commands: options.commands ?? [] })
-      : new Promise<never>(() => undefined);
+  fake.call = (
+    route: { readonly path: string },
+    request?: { readonly body?: { readonly text?: string } },
+  ) => {
+    if (route.path === '/v1/commands') return Promise.resolve({ commands: options.commands ?? [] });
+    if (route.path === '/v1/scenarios/:scenarioId/commands' && options.runCommand !== undefined) {
+      return options.runCommand(request?.body?.text ?? '');
+    }
+    return new Promise<never>(() => undefined);
+  };
   const stores = new DaemonStores(client);
   stores.start = () => Promise.resolve();
   if (options.live !== false) {

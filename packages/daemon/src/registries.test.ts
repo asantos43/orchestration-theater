@@ -14,9 +14,9 @@ import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 const MANUAL = parseConfig('backup:\n  when: manual\n');
 
 describe('the daemon registries', () => {
-  it('are valid with the official entries and hold the 146 daemon and 2 play event types', () => {
+  it('are valid with the official entries and hold the 147 daemon and 2 play event types', () => {
     const registries = buildDaemonRegistries();
-    expect(registries.events.size).toBe(148);
+    expect(registries.events.size).toBe(149);
     expect(registries.events.has('daemon.started')).toBe(true);
     expect(registries.roles.size).toBe(7);
     expect(registries.ruleKeys.size).toBe(6);
@@ -75,7 +75,7 @@ describe('starting the daemon with an invalid registry', () => {
         overrides: { clock, store: inner, vault: new InMemorySecretVault() },
         logger: createSilentLogger(),
       });
-      expect(daemon.registries.events.size).toBe(148);
+      expect(daemon.registries.events.size).toBe(149);
       await daemon.stop();
     } finally {
       await tmp.dispose();
@@ -138,7 +138,7 @@ describe('RegistryHolder (hot swap of the snapshot, N235 (a))', () => {
     expect(Object.isFrozen(next)).toBe(true);
     // No contributor: the registries are the same frozen object, with the same counts.
     expect(next.registries).toBe(open.registries);
-    expect(next.registries.events.size).toBe(148);
+    expect(next.registries.events.size).toBe(149);
     expect(next.registries.roles.size).toBe(7);
     expect(next.registries.ruleKeys.size).toBe(6);
   });

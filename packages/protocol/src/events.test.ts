@@ -82,6 +82,7 @@ describe('daemon event registry', () => {
       'scenario.attachment_added',
       'scenario.director_slept',
       'scenario.director_woke',
+      'scenario.director_switched',
       'scenario.chat_transitioned',
       'scenario.system_message',
       'quota.updated',

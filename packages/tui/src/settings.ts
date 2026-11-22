@@ -101,6 +101,8 @@ export const CHAT_DECISION_FOCUS_MODES = ['auto', 'manual'] as const;
 export type ChatDecisionFocus = (typeof CHAT_DECISION_FOCUS_MODES)[number];
 export const CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
 export type ChatDecisionClick = (typeof CHAT_DECISION_CLICK_MODES)[number];
+export const CHAT_DIRECTOR_FOOTER_MODES = ['on', 'off'] as const;
+export type ChatDirectorFooter = (typeof CHAT_DIRECTOR_FOOTER_MODES)[number];
 export const CHAT_ESC_MODES = ['stop', 'off'] as const;
 export type ChatEscMode = (typeof CHAT_ESC_MODES)[number];
 
@@ -113,6 +115,8 @@ export interface UiChatSettings {
   /** What a click on an option of the decision card does (P14 of docs/19); it needs `ui.mouse: full`. */
   readonly decisionClick: ChatDecisionClick;
   readonly esc: ChatEscMode;
+  /** The footer of the Director under the text box (P14 of Phase 9): `on` or `off`. */
+  readonly directorFooter: ChatDirectorFooter;
   /** How many of the last events of the scenario the chat shows on opening (P26); 0 opens it empty. */
   readonly history: number;
 }
@@ -221,6 +225,7 @@ export const DEFAULT_CHAT: UiChatSettings = {
   decisionFocus: 'auto',
   decisionClick: 'answer',
   esc: 'stop',
+  directorFooter: 'on',
   history: 40,
 };
 
@@ -407,6 +412,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_CHAT.decisionClick,
       ),
       esc: oneOf(field(chat, 'esc'), CHAT_ESC_MODES, DEFAULT_CHAT.esc),
+      directorFooter: oneOf(
+        field(chat, 'directorFooter'),
+        CHAT_DIRECTOR_FOOTER_MODES,
+        DEFAULT_CHAT.directorFooter,
+      ),
       history: integer(field(chat, 'history'), 0, 200, DEFAULT_CHAT.history),
     },
     input: parseInputSettings(field(source, 'input')),

@@ -129,6 +129,7 @@ import {
   ScenarioSystemMessagePayloadSchema,
   ScenarioCreatedPayloadSchema,
   ScenarioDirectorSleptPayloadSchema,
+  ScenarioDirectorSwitchedPayloadSchema,
   ScenarioDirectorWokePayloadSchema,
   PlayNoticePayloadSchema,
 } from './scenario-events.js';
@@ -543,6 +544,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'scenario.director_woke',
     schemaVersion: 1,
     payload: ScenarioDirectorWokePayloadSchema,
+  }),
+  defineEventType({
+    type: 'scenario.director_switched',
+    schemaVersion: 1,
+    payload: ScenarioDirectorSwitchedPayloadSchema,
   }),
   defineEventType({
     type: 'scenario.chat_transitioned',
@@ -1044,6 +1050,7 @@ export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
 export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];
+export type ScenarioDirectorSwitchedPayload = DaemonEventPayloads['scenario.director_switched'];
 export type ScenarioChatTransitionedPayload = DaemonEventPayloads['scenario.chat_transitioned'];
 export type ScenarioSystemMessagePayload = DaemonEventPayloads['scenario.system_message'];
 export type ScenarioRecoveryNotice = Extract<ScenarioSystemMessagePayload, { kind: 'recovery' }>;
@@ -1052,6 +1059,10 @@ export type ScenarioResetWaitNotice = Extract<ScenarioSystemMessagePayload, { ki
 export type ScenarioDirectorFailoverNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'director_failover' }
+>;
+export type ScenarioDirectorSwitchNotice = Extract<
+  ScenarioSystemMessagePayload,
+  { kind: 'director_switch' }
 >;
 export type ScenarioSelectionWaitNotice = Extract<
   ScenarioSystemMessagePayload,
