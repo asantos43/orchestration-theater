@@ -1,6 +1,6 @@
 # 21. Plano da Fase 10
 
-Versão 1, de 2026-11-22. Este documento divide em passos a Fase 10 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 10 — Distribuição"), com o desenho da atualização em §5.21 ("Atualização automática", N73), o `THIRD_PARTY_NOTICES` por plataforma em §6.0 (N72) e o lançador com Job Object em §5.9 (N58). Quando este documento divergir da arquitetura, vale a arquitetura, e este documento é ajustado. As exceções são as decisões do dono de 2026-11-22 (N244 a N249), que mudam o que a §10 e a N73 dizem sobre os canais (ver "Decisões de partida").
+Versão 1, de 2026-11-22. Este documento divide em passos a Fase 10 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 10 — Distribuição"), com o desenho da atualização em §5.21 ("Atualização automática", N73), o `THIRD_PARTY_NOTICES` por plataforma em §6.0 (N72) e o lançador com Job Object em §5.9 (N58). Quando este documento divergir da arquitetura, vale a arquitetura, e este documento é ajustado. As exceções são as decisões do dono de 2026-11-22 (N244 a N249, e as do plano, N250 a N255), que mudam o que a §10 e a N73 dizem sobre os canais (ver "Decisões de partida").
 
 A fase começa depois do fim da Fase 9 (PRs #282 e #283, main em `1f331f9` [V: `git log`]). Pela N245, os PRs desta fase, incluindo o deste plano, mesclam com a CI verde e squash, sem o ok do dono em cada PR. As decisões continuam indo ao dono por múltipla escolha.
 
@@ -112,7 +112,7 @@ Decididas pelo dono em 2026-11-22, por múltipla escolha, e registradas por outr
 
 ### Perguntas novas ao dono
 
-Levadas por múltipla escolha, com a recomendação em primeiro lugar. Os números são os próximos livres depois da N249 **[proposta]**; quem registrar no docs/13 confere a numeração.
+Levadas por múltipla escolha, com a recomendação em primeiro lugar. **Decididas pelo dono em 2026-11-22, todas na opção recomendada (a)** (docs/13, N250 a N255). As alternativas ficam abaixo como registro.
 
 - **N250, as versões fixas das ferramentas (P1, P4):**
   - (a) esbuild 0.28.2, postject 1.0.0-alpha.6 e WiX série 6 com a versão fixada no P4 (**recomendada**): são as ferramentas que a N249 aprovou, nas versões mais novas com mais de duas semanas. O risco do postject é ser uma pré-versão parada desde 2023, mas é a ferramenta que a documentação do Node para SEA nomeia **[N: não relido nesta rodada]**, e o P1 fixa a versão exata e mede;
@@ -431,14 +431,14 @@ Ficam depois da v1 (N244, N247, N248):
 - a assinatura de código com certificado (Windows e macOS) e a notarização: o passo está pronto e desligado (P11);
 - o **modo produto** da distribuição (N2): a decisão depende da resposta da Anthropic;
 - o app desktop (Fase 13), a interface web (Fase 12) e o endurecimento (Fase 11, com os testes de caos de atualização e de queda de energia);
-- `linux-arm64` e `darwin-x64`, se a N255 ficar na (a);
+- `linux-arm64` e `darwin-x64` (fora da v1 pela N255);
 - a publicação do primeiro release, que depende do R1.
 
 ## Decisões deste plano
 
-Estado em 2026-11-22. As decisões de partida (N244 a N249) já estão decididas pelo dono e aparecem na seção "Decisões de partida". As seis perguntas novas abaixo estão **abertas** e vão ao dono por múltipla escolha; a recomendada vem primeiro:
+Estado em 2026-11-22. As decisões de partida (N244 a N249) já estão decididas pelo dono e aparecem na seção "Decisões de partida". As seis perguntas novas abaixo foram **decididas pelo dono em 2026-11-22**, por múltipla escolha, todas na opção recomendada (docs/13):
 
-| Decisão | Recomendada | Alternativas |
+| Decisão | Decidida (2026-11-22) | Alternativas não escolhidas |
 |---|---|---|
 | N250, versões fixas | (a) esbuild 0.28.2, postject 1.0.0-alpha.6, WiX série 6 com a versão fixada no P4 | (b) esbuild 0.28.1; (c) o dono escolhe o WiX antes |
 | N251, origem das versões | (a) o próprio repositório, em GitHub Releases | (b) um repositório só para as versões |
