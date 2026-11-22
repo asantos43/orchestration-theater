@@ -28,10 +28,10 @@ function withoutComments(text: string): string {
 }
 
 describe('the sources of the .msi', () => {
-  it('pins the same WiX version in the script and in the workflow, in series 6', () => {
+  it('pins the same WiX version in the script and in the workflow, in series 5 (MS-RL)', () => {
     const inScript = /\$WixVersion\s*=\s*'([^']+)'/.exec(buildScript)?.[1];
     const inWorkflow = /WIX_VERSION:\s*'([^']+)'/.exec(workflow)?.[1];
-    expect(inScript).toMatch(/^6\.\d+\.\d+$/);
+    expect(inScript).toMatch(/^5\.\d+\.\d+$/);
     expect(inWorkflow).toBe(inScript);
   });
 

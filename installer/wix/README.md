@@ -1,6 +1,6 @@
 # The Windows installer (.msi)
 
-Phase 10, P4. A per-user `.msi` (no administrator) built with the WiX Toolset **6.0.2**.
+Phase 10, P4. A per-user `.msi` (no administrator) built with the WiX Toolset **5.0.2**.
 
 | File | What it is |
 | --- | --- |
@@ -14,12 +14,12 @@ The data folder (`%LOCALAPPDATA%\OTheater`) is not part of the package: install,
 Build on a Windows machine, after `pnpm build`, the SEA (`node tools/release/dist/cli.js build --target win32-x64 --out dist/sea`) and `cargo build --release --locked` in `native/job-launcher`:
 
 ```powershell
-.\installer\wix\build.ps1 -InstallWix   # installs `wix` 6.0.2 as a .NET global tool when it is missing
+.\installer\wix\build.ps1 -InstallWix   # installs `wix` 5.0.2 as a .NET global tool when it is missing
 ```
 
 ## License of WiX and the maintenance fee
 
-WiX is a build tool here and is not part of the package. Its source is MS-RL. Since series 6 the binary release comes under the Open Source Maintenance Fee EULA; the fee applies to who uses it in revenue-generating activities with US$10,000 or more of annual gross revenue. Series 6 does not enforce an acceptance step (WiX 7 does: `wix eula accept wix7`), and neither the script nor the workflow accepts anything. The details and the sources (read on 2026-11-22) are in the header of `build.ps1`.
+WiX is a build tool here (level D) and is not part of the package. The pinned version is 5.0.2, under the MS-RL, with no EULA to accept and no fee (nuspec read on 2026-11-22). The owner chose series 5 on 2026-11-22 because series 6 and later come under the Open Source Maintenance Fee EULA. Neither the script nor the workflow accepts anything. The details are in the header of `build.ps1`.
 
 ## Not covered by the CI
 

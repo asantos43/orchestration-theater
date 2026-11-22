@@ -5,9 +5,9 @@ name: Dist MSI
 # no tag. [proposta] Only a manual dispatch keeps the .msi as a workflow artifact (7 days), for the
 # owner to try it on a real Windows (SmartScreen, logon); the release (P9) is another job.
 #
-# WiX: the pinned version below (6.0.2, the same as installer/wix/build.ps1) is installed as a .NET tool,
-# only on this runner (approved by N249, series 6 only). Series 6 asks for no acceptance command, and
-# none is written here: see the license note in installer/wix/build.ps1 (Open Source Maintenance Fee).
+# WiX: the pinned version below (5.0.2, the same as installer/wix/build.ps1) is installed as a .NET tool,
+# only on this runner (N249; the owner chose series 5, MS-RL, on 2026-11-22). It has no EULA to accept, and
+# no acceptance command is written here: see the license note in installer/wix/build.ps1.
 on:
   # Main runs after each merge that touches the paths below. A pull request is decided by the job
   # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
@@ -34,7 +34,7 @@ concurrency:
 
 env:
   # Keep equal to $WixVersion of installer/wix/build.ps1 (tools/release/src/msi-sources.test.ts checks it).
-  WIX_VERSION: '6.0.2'
+  WIX_VERSION: '5.0.2'
 
 jobs:
   # Decides whether a pull request builds and tests the .msi, by the repository variable OT_DIST_CI, the
@@ -98,7 +98,7 @@ jobs:
         working-directory: native/job-launcher
         run: cargo build --release --locked
       # WiX, pinned: `dotnet tool install` asks for no acceptance. The SDK is the one of the runner
-      # image; the roll-forward lets a tool made for .NET 8 run on a newer runtime [N].
+      # image; the roll-forward lets a tool made for .NET 6 (WiX 5) run on a newer runtime [N].
       - name: Install WiX ${{ env.WIX_VERSION }}
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: '1'

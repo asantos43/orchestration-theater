@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <!--
-  The .msi of OTheater for Windows (Phase 10, P4). WiX 6 (`wix build`), see build.ps1, which passes the
+  The .msi of OTheater for Windows (Phase 10, P4). WiX 5 (`wix build`), see build.ps1, which passes the
   preprocessor variables below with `-d`.
 
   - Per user: no administrator, no UAC. Files in %LOCALAPPDATA%\Programs\OTheater, the registry in

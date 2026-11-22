@@ -9,27 +9,21 @@
   launcher of P2 (native/job-launcher) and the notices. It publishes nothing and signs nothing
   (N247): the .msi is a file in dist/msi.
 
-  THE WIX THIS SCRIPT USES (N249, N250)
-  - Version: 6.0.2 of the `wix` .NET tool, published on NuGet on 2025-08-28 (the latest of series 6;
-    7.0.x exists, and the owner approved series 6 only). Pinned below ($WixVersion) and in
+  THE WIX THIS SCRIPT USES (N249, N250; decision of the owner, 2026-11-22)
+  - Version: 5.0.2 of the `wix` .NET tool (series 5, MS-RL). Pinned below ($WixVersion) and in
     .github/workflows/dist-msi.yml; tools/release/src/msi-sources.test.ts checks that the two agree.
+    The owner chose series 5 on 2026-11-22 because the package of series 6 declares the Open Source
+    Maintenance Fee EULA (OSMFEULA.txt, requireLicenseAcceptance=true) and 7.x requires accepting it.
+  - License [V: nuspecs of wix 5.0.2 and 6.0.2 on NuGet, checked by the coordinator on 2026-11-22]:
+    wix 5.0.2 is MS-RL with requireLicenseAcceptance=false, so there is no EULA to accept, no fee and
+    no acceptance command (`wix eula accept`, `-acceptEula`): none is written in this repository, and
+    the test of msi-sources checks that. Do not move to series 6 or 7 without a new decision.
+  - Level D: a build tool only. The .msi carries no WiX code: with no extension, WiX embeds nothing
+    in it besides the standard Windows Installer tables.
   - Installed only on the Windows runner of the CI, by `dotnet tool install --global wix --version
-    6.0.2`. This script does not install it unless it is given -InstallWix. Nothing of WiX is
-    downloaded on a Linux or macOS machine, and the script does not run there.
-  - License [S: nuspec of wix 6.0.2 on NuGet, LICENSE.TXT of github.com/wixtoolset/wix and the
-    FireGiant docs "Open Source Maintenance Fee", all read on 2026-11-22]: the source code of WiX is
-    MS-RL. The package of series 6 declares the Open Source Maintenance Fee EULA (OSMFEULA.txt,
-    requireLicenseAcceptance=true); series 5 and earlier were MS-RL on NuGet. The fee started with
-    series 6: whoever uses the Binary Release in revenue-generating activities and has an annual
-    gross revenue of US$10,000 or more has to sponsor the wixtoolset organization on GitHub (the
-    EULA text says "at least", the docs say "more than"). Below that, or building WiX from its
-    source, the fee does not apply. The FireGiant page says that the enforcement of the EULA
-    acceptance came only with WiX 7 (the EULA id of series 6 is "N/A"): series 6 asks for no
-    acceptance command (`wix eula accept`, `-acceptEula`) and none is written in this repository.
-    Using the Binary Release still means agreeing to that EULA, so whether the fee applies is a
-    decision of the owner (see the report of P4). WiX is a build tool (level D): the .msi does not
-    carry it; with no extension, WiX embeds nothing in it besides the standard Windows Installer
-    tables.
+    5.0.2`. This script does not install it unless it is given -InstallWix. Nothing of WiX is
+    downloaded on a Linux or macOS machine, and the script does not run there. WiX 5 targets
+    .NET 6: the workflow sets DOTNET_ROLL_FORWARD=Major to run it on the runtime of the runner.
 
   THE VERSION
   The version comes from tools/release/release.config.json (`versionOverride`, the one P1 embeds
@@ -80,7 +74,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # The one WiX this script builds with. Keep it equal to the one of .github/workflows/dist-msi.yml.
-$WixVersion = '6.0.2'
+$WixVersion = '5.0.2'
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Target = 'win32-x64'
@@ -135,7 +129,7 @@ if ($PrintVersionOnly) {
 function Get-InstalledWix {
   $command = Get-Command wix -ErrorAction SilentlyContinue
   if ($null -eq $command) { return $null }
-  # `wix --version` prints `6.0.2+<commit>`.
+  # `wix --version` prints `5.0.2+<commit>`.
   return ((& wix --version) | Select-Object -First 1).ToString().Trim()
 }
 
