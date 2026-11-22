@@ -129,6 +129,43 @@ describe('childEnv', () => {
     const git = childEnv(base, 'git', { GIT_TERMINAL_PROMPT: '0' });
     expect(Object.keys(git).sort()).toEqual(['GIT_TERMINAL_PROMPT', 'HOME', 'PATH']);
   });
+
+  it('on Windows compares the names with no regard to case and writes them as in the list', () => {
+    const windows = {
+      Path: 'C:\\Windows',
+      PathExt: '.EXE;.CMD',
+      systemroot: 'C:\\Windows',
+      ComSpec: 'C:\\Windows\\cmd.exe',
+      Temp: 'C:\\t',
+      UserProfile: 'C:\\Users\\x',
+      openai_api_key: 'sk-secret',
+      OPENAI_API_KEY: 'sk-secret',
+      github_token: 'ghp_secret',
+      Node_Options: '--require ./evil.js',
+      NPM_CONFIG_REGISTRY: 'http://127.0.0.1:1/',
+    };
+    const npm = childEnv(windows, 'npm', {}, 'win32');
+    expect(npm).toEqual({
+      PATH: 'C:\\Windows',
+      PATHEXT: '.EXE;.CMD',
+      SystemRoot: 'C:\\Windows',
+      ComSpec: 'C:\\Windows\\cmd.exe',
+      TEMP: 'C:\\t',
+      USERPROFILE: 'C:\\Users\\x',
+      NPM_CONFIG_REGISTRY: 'http://127.0.0.1:1/',
+    });
+    expect(
+      Object.keys(childEnv(windows, 'git', {}, 'win32')).some((k) => /npm_config/i.test(k)),
+    ).toBe(false);
+    // The same variable in two spellings is written once.
+    expect(childEnv({ Path: 'a', PATH: 'b' }, 'git', {}, 'win32')).toEqual({ PATH: 'a' });
+  });
+
+  it('elsewhere keeps the names exact: a different case is another variable, and out', () => {
+    expect(childEnv({ Path: 'a', PATH: 'b', systemroot: 'c' }, 'npm', {}, 'linux')).toEqual({
+      PATH: 'b',
+    });
+  });
 });
 
 describe('resolveNpmCommand', () => {

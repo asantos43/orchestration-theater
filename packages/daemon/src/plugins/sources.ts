@@ -208,14 +208,23 @@ export function resolveNpmCommand(lookup: NpmLookup = {}): NpmCommand {
   return { file: execPath, prefix: [cli] };
 }
 
-/** The variables a child may see: where to find programs and its own home, proxies and npm's settings. */
-const CHILD_ENV_KEYS = new Set([
+/**
+ * The variables a child may see: where to find programs and its own home, proxies and npm's
+ * settings. The Windows ones (`PATHEXT`, `ComSpec`, `HOMEDRIVE`, `HOMEPATH`) are what npm and git
+ * look for there: the extensions of programs, the command interpreter, and the home when
+ * `USERPROFILE` is not set. They hold no secret, and are not there on other systems.
+ */
+const CHILD_ENV_KEYS = [
   'PATH',
+  'PATHEXT',
   'HOME',
   'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
   'APPDATA',
   'LOCALAPPDATA',
   'SystemRoot',
+  'ComSpec',
   'TMPDIR',
   'TEMP',
   'TMP',
@@ -227,23 +236,37 @@ const CHILD_ENV_KEYS = new Set([
   'http_proxy',
   'https_proxy',
   'no_proxy',
-]);
+] as const;
 
 /**
  * The environment of `npm` and `git`: a short list (above) and, for npm only, its own
  * `npm_config_*` settings (registry, cache...). Nothing else of the daemon's environment goes in,
  * so no key or token in it reaches a package manager, and so no script of it, even though none runs.
+ * On Windows the names do not differ by case (`Path` is `PATH`): they are compared with no regard
+ * to case and written once, as the name in the list (`platform` is given by a test).
  */
 export function childEnv(
   base: Env,
   program: 'npm' | 'git',
   extra: Readonly<Record<string, string>> = {},
+  platform: NodeJS.Platform = process.platform,
 ): Record<string, string> {
+  const windows = platform === 'win32';
+  const canonical = new Map<string, string>();
+  for (const key of CHILD_ENV_KEYS) {
+    if (!windows || !canonical.has(key.toUpperCase())) {
+      canonical.set(windows ? key.toUpperCase() : key, key);
+    }
+  }
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(base)) {
     if (value === undefined) continue;
-    const npmSetting = program === 'npm' && /^npm_config_/i.test(key);
-    if (CHILD_ENV_KEYS.has(key) || npmSetting) env[key] = value;
+    const name = canonical.get(windows ? key.toUpperCase() : key);
+    if (name !== undefined) {
+      if (!(name in env)) env[name] = value;
+    } else if (program === 'npm' && /^npm_config_/i.test(key)) {
+      env[key] = value;
+    }
   }
   return { ...env, ...extra };
 }
