@@ -10,15 +10,24 @@ import { isTargetId, TARGET_IDS, type TargetId } from './targets.js';
  * - `versionOverride`: a version that replaces the one of `packages/daemon/package.json` in the
  *   executable (`--version`, the user agent). `null` keeps the package version. The release (P9) sets it
  *   from the tag; a build for a test sets it to tell the executables apart.
+ * - `notices` (P10): what the build leaves next to the executable as `THIRD_PARTY_NOTICES-<platform>.md`.
+ *   `per_platform` (default) generates the file of the platform from its production graph and the
+ *   bundle (`tools/verify`); `root_only` copies the `THIRD_PARTY_NOTICES.md` of the repository root (the
+ *   Linux one, N72) under the same name, so what consumes the file does not care which mode ran.
  */
 export interface ReleaseConfig {
   readonly targets: readonly TargetId[];
   readonly versionOverride: string | null;
+  readonly notices: NoticesMode;
 }
+
+export const NOTICES_MODES = ['per_platform', 'root_only'] as const;
+export type NoticesMode = (typeof NOTICES_MODES)[number];
 
 export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
   targets: ['linux-x64', 'win32-x64', 'darwin-arm64'],
   versionOverride: null,
+  notices: 'per_platform',
 };
 
 /** A version that is safe to bake into the bundle and to print: dotted numbers, an optional tag. */
@@ -33,7 +42,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Validates a parsed `release.config.json`. A missing key takes its default; a wrong one is an error. */
 export function parseReleaseConfig(raw: unknown): ReleaseConfig {
   if (!isRecord(raw)) throw new ReleaseConfigError('release.config.json must be an object');
-  const unknown = Object.keys(raw).filter((key) => key !== 'targets' && key !== 'versionOverride');
+  const unknown = Object.keys(raw).filter(
+    (key) => key !== 'targets' && key !== 'versionOverride' && key !== 'notices',
+  );
   if (unknown.length > 0) {
     throw new ReleaseConfigError(`release.config.json has unknown keys: ${unknown.join(', ')}`);
   }
@@ -58,7 +69,15 @@ export function parseReleaseConfig(raw: unknown): ReleaseConfig {
     }
     versionOverride = raw.versionOverride;
   }
-  return { targets, versionOverride };
+  let notices: NoticesMode = DEFAULT_RELEASE_CONFIG.notices;
+  if (raw.notices !== undefined) {
+    const mode = raw.notices;
+    if (typeof mode !== 'string' || !(NOTICES_MODES as readonly string[]).includes(mode)) {
+      throw new ReleaseConfigError(`"notices" must be one of: ${NOTICES_MODES.join(', ')}`);
+    }
+    notices = mode as NoticesMode;
+  }
+  return { targets, versionOverride, notices };
 }
 
 export function loadReleaseConfig(file: string): ReleaseConfig {

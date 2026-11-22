@@ -11,6 +11,8 @@ on:
     paths:
       - '.github/workflows/dist-sea.yml'
       - 'tools/release/**'
+      - 'tools/verify/**'
+      - 'native/job-launcher/THIRD_PARTY_NOTICES.md'
       - 'packages/daemon/src/sea/**'
       - 'packages/daemon/src/cli.ts'
       - 'packages/daemon/src/version.ts'
@@ -60,7 +62,7 @@ jobs:
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
-          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-sea\.yml|tools/release/|packages/daemon/src/sea/|packages/daemon/src/(cli|version|i18n)\.ts$|packages/daemon/src/mcp/|packages/daemon/src/profiles/shims\.ts$|packages/tui/src/(launcher|locale|main|run-main|ink-patch)\.ts$|packages/tui/patches/|packages/client/src/node/|packages/adapters/prompts-files/src/|locales/|prompts/|pnpm-lock\.yaml$)'; then
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-sea\.yml|tools/release/|tools/verify/|native/job-launcher/THIRD_PARTY_NOTICES\.md$|packages/daemon/src/sea/|packages/daemon/src/(cli|version|i18n)\.ts$|packages/daemon/src/mcp/|packages/daemon/src/profiles/shims\.ts$|packages/tui/src/(launcher|locale|main|run-main|ink-patch)\.ts$|packages/tui/patches/|packages/client/src/node/|packages/adapters/prompts-files/src/|locales/|prompts/|pnpm-lock\.yaml$)'; then
             touched=true
           else
             touched=false
@@ -109,6 +111,14 @@ jobs:
       # The acceptance of the build: --version, the daemon in a temporary folder and its API, the TUI
       # without a real terminal, the MCP shim by internal mode, and the modes of later steps.
       - run: node tools/release/dist/cli.js smoke dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}
+      # The notices of the platform (P10): the build already generated THIRD_PARTY_NOTICES-<target>.md
+      # next to the executable; this checks it again against the graph of the platform (no package
+      # missing or extra, no build tool) and fails when it is not there.
+      - name: Notices of the platform
+        run: |
+          notices="dist/sea/${{ matrix.target }}/THIRD_PARTY_NOTICES-${{ matrix.target }}.md"
+          node tools/verify/dist/cli.js notices --check --platform ${{ matrix.target }} --metafile dist/sea/${{ matrix.target }}/metafile.json --out "$notices"
+          echo "- ${{ matrix.target }} notices: $(grep -c '^### ' "$notices") packages" >> "$GITHUB_STEP_SUMMARY"
       - name: Size of the executable
         run: |
           exe="dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}"
