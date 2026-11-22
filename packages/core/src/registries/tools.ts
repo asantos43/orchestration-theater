@@ -5,12 +5,23 @@ import { EXECUTOR_ROLE_IDS } from './roles.js';
 import { isZodSchema, reportDuplicates, type ProblemCollector } from './problems.js';
 
 /**
- * What a tool changes (architecture 5.21): `none` reads or only writes the framework's own
- * state, `worktree` writes inside the demand worktree, `external_write` reaches outside it (a
- * pull request, a message, a push).
+ * What a tool changes (architecture 5.14 and 5.21; N237 (a), 2026-11-21: the code uses the
+ * vocabulary of the architecture, renamed one to one from the old `none` and `worktree`):
+ * - `read`: reads, or only writes the framework's own state;
+ * - `local_write`: writes inside the demand worktree;
+ * - `network`: reaches the network without changing anything outside (a page, a download);
+ * - `external_write`: changes something outside the worktree (a pull request, a message, a push).
  */
-export const TOOL_EFFECT_CLASSES = ['none', 'worktree', 'external_write'] as const;
+export const TOOL_EFFECT_CLASSES = ['read', 'local_write', 'network', 'external_write'] as const;
 export type ToolEffectClass = (typeof TOOL_EFFECT_CLASSES)[number];
+
+/**
+ * The classes whose calls need an idempotency key. [proposta] `network` is treated like
+ * `external_write` here, the conservative side (N237 (b) said the same for the manifest): a call
+ * that reaches the network may have already left when the daemon stops, so a retried call has to
+ * hit the same key (architecture 5.16 lists `network` among the effects that carry one).
+ */
+export const IDEMPOTENT_EFFECT_CLASSES: readonly ToolEffectClass[] = ['network', 'external_write'];
 
 /**
  * How the idempotency key of a call is built (architecture 5.16). `attempt_step` is the only
@@ -45,7 +56,7 @@ export interface ToolDefinition {
   readonly input: z.ZodType;
   readonly output: z.ZodType;
   readonly effect: ToolEffectClass;
-  /** Required when `effect` is `external_write`; optional (and used) for `worktree` tools. */
+  /** Required when `effect` is `network` or `external_write`; optional (and used) for `local_write` tools. */
   readonly idempotencyKey?: IdempotencyKeyKind | undefined;
   readonly verifier?: ToolVerifier | undefined;
 }
@@ -307,7 +318,7 @@ function tool(
     roles,
     input,
     output,
-    effect: extra.effect ?? 'none',
+    effect: extra.effect ?? 'read',
     ...(extra.idempotencyKey === undefined ? {} : { idempotencyKey: extra.idempotencyKey }),
   };
 }
@@ -402,17 +413,17 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('submit_script_review', ['author'], reviewOutput, accepted),
 
   // Actor.
-  tool('run_tests', ['actor', 'critic'], runTestsInput, commandOutput, { effect: 'worktree' }),
+  tool('run_tests', ['actor', 'critic'], runTestsInput, commandOutput, { effect: 'local_write' }),
   tool('install_deps', ['actor'], noInput, commandOutput, {
-    effect: 'worktree',
+    effect: 'local_write',
     idempotencyKey: 'attempt_step',
   }),
   tool('git_commit', ['actor'], gitCommitInput, gitCommitOutput, {
-    effect: 'worktree',
+    effect: 'local_write',
     idempotencyKey: 'attempt_step',
   }),
   tool('restricted_shell', ['actor'], restrictedShellInput, commandOutput, {
-    effect: 'worktree',
+    effect: 'local_write',
     idempotencyKey: 'attempt_step',
   }),
   tool('http_get', ['actor', 'consultant'], httpGetInput, httpGetOutput),
@@ -470,13 +481,16 @@ export function validateTools(
       collector.report(
         name,
         'invalid_effect_class',
-        `Tool "${name}" has the effect class ${JSON.stringify(entry.effect)}; use none, worktree or external_write`,
+        `Tool "${name}" has the effect class ${JSON.stringify(entry.effect)}; use read, local_write, network or external_write`,
       );
-    } else if (entry.effect === 'external_write' && entry.idempotencyKey === undefined) {
+    } else if (
+      IDEMPOTENT_EFFECT_CLASSES.includes(entry.effect) &&
+      entry.idempotencyKey === undefined
+    ) {
       collector.report(
         name,
         'missing_idempotency_key',
-        `Tool "${name}" is external_write and has no idempotency key`,
+        `Tool "${name}" is ${entry.effect} and has no idempotency key`,
       );
     }
     if (
