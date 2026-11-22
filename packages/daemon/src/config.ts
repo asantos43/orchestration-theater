@@ -104,6 +104,16 @@ import {
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
 
+/** [proposta] What the logon service does when the daemon exits (`service.restart`, Phase 10, P3). */
+export const SERVICE_RESTART_MODES = ['on_failure', 'always', 'never'] as const;
+/** [proposta] When the logon service starts (`service.autostart`, Phase 10, P3). */
+export const SERVICE_AUTOSTART_MODES = ['logon', 'manual'] as const;
+/** [proposta] Whether the Windows task shows a console window (`service.console`, Phase 10, P3). */
+export const SERVICE_CONSOLE_MODES = ['hidden', 'visible'] as const;
+/** [proposta] What `ot tui` does when no daemon is running (`tui.start_daemon`, Phase 10, P3). */
+export const TUI_START_DAEMON_MODES = ['service', 'child', 'off'] as const;
+export type TuiStartDaemonMode = (typeof TUI_START_DAEMON_MODES)[number];
+
 /** How long a number of time units lasts, for `30m`, `2h`... */
 const UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
@@ -2773,6 +2783,40 @@ export const DaemonConfigSchema = z
          * following the preset.
          */
         role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
+      })
+      .prefault({}),
+    /**
+     * The logon service of the daemon (`ot service`; Phase 10, P3; architecture 5.21, 10). [proposta]
+     * - `restart`: `on_failure` (default) starts the daemon again when it exits with an error, `always`
+     *   also when it exits cleanly, `never` leaves it stopped. The Windows Task Scheduler has no
+     *   restart after a clean exit, so there `always` behaves as `on_failure` (the install says so);
+     *   on macOS, `autostart: manual` writes no restart rule.
+     * - `autostart`: `logon` (default) registers the service and turns its trigger on; `manual`
+     *   registers it without the trigger (`ot service start` or `ot tui` starts it).
+     * - `console`: only on Windows. `hidden` (default) runs the daemon without a console window;
+     *   `visible` runs it directly, so the window shows (and the daemon stops if it is closed).
+     * It is read by `ot service install`: a change applies at the next install.
+     */
+    service: z
+      .strictObject({
+        restart: z.enum(SERVICE_RESTART_MODES).default('on_failure'),
+        autostart: z.enum(SERVICE_AUTOSTART_MODES).default('logon'),
+        console: z.enum(SERVICE_CONSOLE_MODES).default('hidden'),
+      })
+      .prefault({}),
+    /**
+     * What `ot tui` does before it opens when no daemon is running (Phase 10, P3; architecture 10).
+     * [proposta]
+     * - `start_daemon`: `service` (default) starts the logon service, and starts a daemon child of
+     *   the user's own when the service is not installed; `child` always starts the child; `off`
+     *   starts nothing (the interface says there is no daemon, as before).
+     * - `start_timeout`: how long it waits for the daemon to publish its API (default `15s`).
+     * The child is detached: it stays when the interface closes, as the service would.
+     */
+    tui: z
+      .strictObject({
+        start_daemon: z.enum(TUI_START_DAEMON_MODES).default('service'),
+        start_timeout: DurationSchema.prefault('15s'),
       })
       .prefault({}),
     log: z
