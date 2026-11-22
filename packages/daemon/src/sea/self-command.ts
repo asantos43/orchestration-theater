@@ -10,9 +10,17 @@ import { STDIO_SHIM_PATH } from '../mcp/stdio-shim.js';
  * - `tui`: the terminal interface (`@otheater/tui`'s `runTuiMain`);
  * - `mcp-shim`: the stdio shim of the framework MCP server;
  * - `verify-release`: checks a release manifest against the key built into the executable (P7);
- * - `apply-update`: the updater (P8).
+ * - `apply-update`: the updater (P8);
+ * - `run-adapter`: runs an ACP adapter installed under `<dataDir>/adapters/` with the Node embedded
+ *   in the executable; the next argument is the adapter's entry script (P13, N254 revised).
  */
-export const SEA_MODES = ['tui', 'mcp-shim', 'verify-release', 'apply-update'] as const;
+export const SEA_MODES = [
+  'tui',
+  'mcp-shim',
+  'verify-release',
+  'apply-update',
+  'run-adapter',
+] as const;
 export type SeaMode = (typeof SEA_MODES)[number];
 
 export function isSeaMode(value: string): value is SeaMode {
@@ -40,6 +48,17 @@ export interface SelfCommandDeps {
 /** The argument that selects `mode`. */
 export function seaModeArgument(mode: SeaMode): string {
   return `${SEA_INTERNAL_PREFIX}${mode}`;
+}
+
+/**
+ * How to run the JavaScript entry script of a managed ACP adapter (P13) [proposta]: in the single
+ * executable, itself in the `run-adapter` mode (it has no `node` of its own to give); in a checkout,
+ * the Node that runs this. Either way the command is absolute and no `PATH` is consulted.
+ */
+export function resolveAdapterCommand(entry: string, deps: SelfCommandDeps = {}): SelfCommand {
+  const command = deps.execPath ?? process.execPath;
+  const sea = deps.sea ?? isSeaProcess();
+  return { command, args: sea ? [seaModeArgument('run-adapter'), entry] : [entry] };
 }
 
 /**

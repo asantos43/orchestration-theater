@@ -149,6 +149,8 @@ export function buildSandboxWiring(input: SandboxWiringInput): SandboxWiring {
           policy,
           worktree: cwd,
           profileDirs: [profile.dir],
+          // The managed ACP adapters (P13) run from `<data>/adapters`, inside the secret `<data>`.
+          readPaths: [join(dataDir, 'adapters')],
           extraWritePaths,
           secretPaths,
           domains: [...provider, ...extraDomains, ...own],

@@ -57,6 +57,15 @@ describe('filesystemRules', () => {
     ).toEqual(['/data/worktrees/w1', '/data/profiles/claude/a']);
   });
 
+  it('reads again, never writes, a readPaths folder inside a secret path (the managed adapters)', () => {
+    const rules = filesystemRules(
+      request({ readPaths: ['/data/adapters', '/opt/elsewhere'] }),
+      '/tmp/ot',
+    );
+    expect(rules.allowRead).toEqual(['/data/profiles/claude/a', '/data/adapters']);
+    expect(rules.allowWrite).not.toContain('/data/adapters');
+  });
+
   it('does not repeat a path that is listed twice', () => {
     const rules = filesystemRules(request({ extraWritePaths: ['/work/wt', '/tmp/ot'] }), '/tmp/ot');
     expect(rules.allowWrite).toEqual(['/work/wt', '/data/profiles/claude/a', '/tmp/ot']);

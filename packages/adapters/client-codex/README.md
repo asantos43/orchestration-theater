@@ -4,7 +4,9 @@
 ACP adapter `codex-acp` (^2.6.0), which talks to `codex app-server`. It also holds the Codex
 `ModelCatalog`. It starts nothing real in its tests: the command is a constructor option (proposed
 key `clients.codex.command`, default `codex-acp`), and the adapter is never an npm dependency of
-this package (decision N45).
+this package (decision N45). `command` is `{ cmd, args }` or a function that returns it, called at each
+process start: the daemon passes the managed install under `<data>/adapters/` run with its Node, or
+the `PATH` command as a fallback (P13, N254 revised; keys [proposta]).
 
 Facts are marked **[V]** verified here (Phase 0 spikes), **[S]** secondary source (documentation or
 schema), **[N]** unconfirmed. Keys below are **[proposta]**: the owner decides.

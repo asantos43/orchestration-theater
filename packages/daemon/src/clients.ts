@@ -139,6 +139,14 @@ export type ClientSelectionReason =
   | 'command_configured'
   /** The default executable is in `PATH`. */
   | 'found_in_path'
+  /** `clients.<id>.adapter` is an absolute path (P13). */
+  | 'adapter_configured'
+  /** The managed ACP adapter is installed under `<data>/adapters` (P13). */
+  | 'managed_installed'
+  /** The official client is in `PATH` and the managed adapter will be installed in the background (P13, `install: auto`). */
+  | 'managed_pending'
+  /** The official client is in `PATH`, the adapter is nowhere and nothing installs it by itself: off, and `adapter_missing` says why (P13). */
+  | 'adapter_missing'
   /** `enabled: auto` and the default executable is nowhere in `PATH`. */
   | 'not_found'
   /** `enabled: true`, no `command` and the default executable is not in `PATH`: on, and it will fail when it starts. */
@@ -155,15 +163,35 @@ export interface ClientSelection {
 }
 
 /**
+ * What `selectClients` needs to know of a client that has a managed ACP adapter (P13, N254
+ * revised); see {@link ManagedProbeFn}.
+ */
+export interface ManagedProbe {
+  /** The adapter's entry script under `<data>/adapters`, installed or not. */
+  readonly entry: string;
+  readonly installed: boolean;
+  /** The official client (`claude`, `codex`) in `PATH`. */
+  readonly officialPath: string | undefined;
+  /** `clients.adapters.install` is `auto`: the daemon installs the adapter by itself. */
+  readonly installsByItself: boolean;
+}
+
+/** Answers for the clients with a managed adapter (`claude-code`, `codex`); `undefined` for the others. */
+export type ManagedProbeFn = (id: ClientId) => ManagedProbe | undefined;
+
+/**
  * Decides which clients are on (architecture 5.2, [proposta] `clients.<id>.enabled`):
  * `false` is off; `true` is on; `auto` (the default) is on when `command` is set or the default
  * executable is found. `defaults` names the executable each client starts without `command`.
- * Pure: the search is `find`.
+ * With `managed` (P13), a client whose `adapter` is `managed` is also on when its adapter is
+ * installed under `<data>/adapters`, or when the official client is in `PATH` and the adapter is
+ * going to be installed by itself; an absolute `adapter` is on. Pure: the search is `find`.
  */
 export function selectClients(
   config: Pick<DaemonConfig, 'clients'>,
   defaults: Readonly<Record<ClientId, string>>,
   find: FindExecutable,
+  managed?: ManagedProbeFn,
 ): readonly ClientSelection[] {
   return CLIENT_IDS.map((id): ClientSelection => {
     const section = config.clients[id];
@@ -173,9 +201,25 @@ export function selectClients(
     if (configured !== undefined) {
       return { id, enabled: true, reason: 'command_configured', executable };
     }
+    const source = 'adapter' in section ? section.adapter : undefined;
+    if (source !== undefined && source !== 'managed' && source !== 'path') {
+      return { id, enabled: true, reason: 'adapter_configured', executable: source };
+    }
+    const probe = source === 'managed' ? managed?.(id) : undefined;
+    if (probe?.installed === true) {
+      return { id, enabled: true, reason: 'managed_installed', executable: probe.entry };
+    }
     const resolvedPath = find(executable);
     if (resolvedPath !== undefined) {
       return { id, enabled: true, reason: 'found_in_path', executable, resolvedPath };
+    }
+    if (probe?.officialPath !== undefined) {
+      if (probe.installsByItself) {
+        return { id, enabled: true, reason: 'managed_pending', executable: probe.entry };
+      }
+      if (section.enabled !== true) {
+        return { id, enabled: false, reason: 'adapter_missing', executable };
+      }
     }
     return section.enabled === true
       ? { id, enabled: true, reason: 'forced_not_found', executable }

@@ -7,6 +7,8 @@ import { DaemonConfigSchema, loadConfig, type ClientId, type DaemonConfig } from
 import { dataPaths, resolveDataDir } from '../paths.js';
 import { ensureDaemon, type DaemonSpawn } from '../service/ensure-daemon.js';
 import { daemonCommandOf } from '../service/self-command.js';
+import { MANAGED_CLIENTS, isManagedClient } from '../adapters/manager.js';
+import { adapterManagerFor, installAndReport, type AdaptersSeam } from './adapters.js';
 import { runServiceCommand, type ServiceCommandDeps } from './service.js';
 
 /**
@@ -16,8 +18,11 @@ import { runServiceCommand, type ServiceCommandDeps } from './service.js';
  * by itself when no configuration exists (`ui.setup.open`).
  *
  * A step that fails ends the command with the reason and the command that repeats that step; what
- * was done before stays (nothing is undone). Step 3 never installs anything (N254): it shows what
- * is missing and the `npm` command for the user to run.
+ * was done before stays (nothing is undone). Step 3 never installs an official client (N254): it
+ * shows what is missing and the `npm` command for the user to run. The ACP adapters of Claude Code
+ * and Codex are the exception (N254 revised, P13): they are OTheater's to install, per
+ * `clients.adapters.install`: `auto` installs what is missing (the official client is in `PATH`),
+ * `ask` installs after a yes in the terminal, `command` and `off` only say what to do.
  */
 
 export interface InitDeps extends ServiceCommandDeps {
@@ -30,6 +35,8 @@ export interface InitDeps extends ServiceCommandDeps {
    * (the command then says so and ends, the steps 1 to 3 done).
    */
   readonly openTui?: ((ui: DaemonConfig['ui']) => Promise<number>) | undefined;
+  /** The seams of the managed ACP adapters (P13). Tests only. */
+  readonly adapters?: AdaptersSeam | undefined;
 }
 
 export interface InitOptions {
@@ -37,10 +44,14 @@ export interface InitOptions {
   readonly noTui: boolean;
 }
 
-/** One command step 3 looks for. `adapter` is the ACP program; `client` is the client's own CLI. */
-interface CommandCheck {
+/**
+ * One command step 3 looks for. `adapter` is the ACP program found in `PATH` (or at the absolute
+ * path of `clients.<id>.adapter`); `managed` is the ACP adapter OTheater installs (P13); `client` is
+ * the client's own CLI.
+ */
+export interface CommandCheck {
   readonly id: ClientId;
-  readonly kind: 'adapter' | 'client';
+  readonly kind: 'adapter' | 'managed' | 'client';
   readonly executable: string;
   /** The npm package that holds it, for the command the user runs. */
   readonly pkg: string;
@@ -69,11 +80,22 @@ export function commandChecks(config: Pick<DaemonConfig, 'clients'>): {
       off.push(id);
       continue;
     }
-    const executable = section.command?.cmd ?? DEFAULT_CLIENT_EXECUTABLES[id];
+    const source = 'adapter' in section ? section.adapter : undefined;
+    const executable =
+      section.command?.cmd ??
+      (source !== undefined && source !== 'managed' && source !== 'path'
+        ? source
+        : DEFAULT_CLIENT_EXECUTABLES[id]);
     const pkg = VERSION_PACKAGES[id][0];
     if (pkg === undefined) continue;
     // OpenCode is its own ACP program (`opencode acp`): one command, no separate adapter.
-    checks.push({ id, kind: id === 'opencode' ? 'client' : 'adapter', executable, pkg });
+    const managed = source === 'managed' && section.command === undefined;
+    checks.push({
+      id,
+      kind: id === 'opencode' ? 'client' : managed ? 'managed' : 'adapter',
+      executable,
+      pkg,
+    });
     if (id !== 'opencode') {
       const own = CLIENT_CLI_PACKAGES[id];
       checks.push({ id, kind: 'client', executable: own.cmd, pkg: own.pkg });
@@ -180,13 +202,51 @@ export async function runInitCommand(
     }
   }
 
-  // 3. The commands of the Executors: only shown, never installed (N254).
+  // 3. The commands of the Executors: the clients are only shown (N254); the ACP adapters of
+  // Claude Code and Codex are installed per `clients.adapters.install` (N254 revised, P13).
   context.out(t('init.stepClients', { step: 3, total }));
   const find = deps.find ?? pathFinder(deps.env, { platform: deps.platform });
+  const manager = adapterManagerFor(context.dataDir, config, { ...deps, find });
+  const mode = config.clients.adapters.install;
   const { checks, off } = commandChecks(config);
   let missing = 0;
   for (const check of checks) {
-    const name = t(`init.name_${check.kind}`, { id: check.id, command: check.executable });
+    const name = t(`init.name_${check.kind === 'managed' ? 'adapter' : check.kind}`, {
+      id: check.id,
+      command: check.executable,
+    });
+    if (check.kind === 'managed' && isManagedClient(check.id)) {
+      const status = manager.status(check.id);
+      const official = MANAGED_CLIENTS[check.id].official;
+      if (status.installed) {
+        context.out(t('init.adapterManaged', { name, dir: status.dir }));
+      } else if (status.pathAdapter !== undefined) {
+        context.out(t('init.commandFound', { name, path: status.pathAdapter }));
+      } else if (status.officialPath === undefined) {
+        // Nothing to drive yet: the adapter comes with the client (the daemon installs it by itself).
+        context.out(t('init.adapterWaitsClient', { name, client: official }));
+      } else if (mode === 'off') {
+        context.out(t('init.adapterOff', { name, id: check.id }));
+      } else if (
+        mode === 'auto' ||
+        (mode === 'ask' &&
+          deps.confirm !== undefined &&
+          (await deps.confirm(
+            t('init.adapterAsk', { name, registry: config.clients.adapters.registry }),
+          )))
+      ) {
+        if (
+          !(await installAndReport(context, manager, check.id, config.clients.adapters.registry))
+        ) {
+          missing += 1;
+          context.out(t('init.adapterRetry', { name }));
+        }
+      } else {
+        missing += 1;
+        context.out(t('init.commandMissing', { name, command: 'ot adapters install' }));
+      }
+      continue;
+    }
     const found = find(check.executable);
     if (found !== undefined) {
       context.out(t('init.commandFound', { name, path: found }));

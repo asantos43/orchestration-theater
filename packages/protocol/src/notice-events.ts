@@ -67,6 +67,18 @@ const detail = z.string().min(1).max(512).nullable();
  *   state as it is (`detail`: the reason). `update_ask`: the `max_wait` of `idle` ended and the
  *   Producer chooses, by `POST /v1/updates/apply`, between `park` ("estaciona e aplica") and
  *   `wait` ("espera mais") (`detail`: the two options, `park|wait`).
+ * - The managed ACP adapters (Phase 10, P13; N254 revised; [proposta]); `subject` is the adapter
+ *   (`claude-agent-acp`, `codex-acp`) and `detail` says the rest:
+ *   - `adapter_installing`: the official client is on `PATH`, the adapter is not installed and
+ *     `clients.adapters.install` is `auto`, so the download of the pinned version has started
+ *     (`detail`: the version and the registry);
+ *   - `adapter_installed`: the install finished (`detail`: the version and where);
+ *   - `adapter_install_failed`: it did not (`detail`: the code and the reason; nothing is left
+ *     half-installed);
+ *   - `adapter_missing`: the client is on `PATH`, the adapter is not installed, and the mode
+ *     (`ask`, `command` or `off`) does not install it by itself (`detail`: what to run);
+ *   - `adapter_fallback`: `clients.<id>.adapter: managed` could not be used and the one in `PATH`
+ *     runs instead (`detail`: why).
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -92,6 +104,11 @@ export const DAEMON_NOTICE_KINDS = [
   'update_rolled_back',
   'update_failed',
   'update_ask',
+  'adapter_installing',
+  'adapter_installed',
+  'adapter_install_failed',
+  'adapter_missing',
+  'adapter_fallback',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

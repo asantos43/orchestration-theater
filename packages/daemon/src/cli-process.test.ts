@@ -21,9 +21,13 @@ function cleanEnv(home: string): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH ?? '', HOME: home, LANG: 'en_US.UTF-8' };
 }
 
-/** Config that never touches the real keyring: the file vault, cheapest scrypt. */
+/**
+ * Config that never touches the real keyring (the file vault, cheapest scrypt) and never reaches the
+ * npm registry: this process finds the real `claude` and `codex` in `PATH`, and with the managed
+ * adapters on `auto` it would download them (P13).
+ */
 const SAFE_CONFIG =
-  'ui:\n  locale: en\nadapters:\n  vault: encrypted-file\nvault:\n  scrypt: { N: 16384, r: 8, p: 1 }\nbackup:\n  when: manual\n  content: store_only\n';
+  'ui:\n  locale: en\nadapters:\n  vault: encrypted-file\nvault:\n  scrypt: { N: 16384, r: 8, p: 1 }\nbackup:\n  when: manual\n  content: store_only\nclients:\n  adapters:\n    install: off\n';
 
 function run(
   args: string[],

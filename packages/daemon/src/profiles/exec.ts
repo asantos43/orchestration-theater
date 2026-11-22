@@ -277,9 +277,11 @@ export async function runProfileExec(
     })(profile);
 
     const mode = config.profiles.exec.env_inherit;
-    const clientSettings = (config.clients as Readonly<Record<string, ClientEnvSettings>>)[
-      record.client
-    ];
+    const clientSettings = (
+      config.clients as Omit<typeof config.clients, 'adapters'> as Readonly<
+        Record<string, ClientEnvSettings>
+      >
+    )[record.client];
     const env = execEnv(mode, deps.env, clientSettings, cli, secret);
     const command = translated.command ?? 'native';
     composition.situations.record('profile.exec.started', {

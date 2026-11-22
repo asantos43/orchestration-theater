@@ -18,6 +18,8 @@ Commands:
   credentials                forbid credential file names and endpoints (architecture 6.3)
   catalogs                   compare the i18n catalogs of all languages
   deps                       check the dependency rule with dependency-cruiser
+  adapter-locks [--check]    derive the pinned lockfiles of the managed ACP adapters (Phase 10, P13)
+                             from the spikes' npm lockfiles (--check: fail if they are out of date)
 
 Options:
   --root <dir>               repository root (default: derived from this file's location)
@@ -56,7 +58,8 @@ async function main(argv: string[]): Promise<number> {
   if (name === undefined || positionals.length > 1 || !isCommand(name)) {
     throw new UsageError(`expected exactly one command: ${COMMANDS.join(', ')} (see --help)`);
   }
-  if (values.check && name !== 'notices') throw new UsageError('--check only applies to "notices"');
+  if (values.check && name !== 'notices' && name !== 'adapter-locks')
+    throw new UsageError('--check only applies to "notices" and "adapter-locks"');
   if (values.json !== undefined && name !== 'licenses')
     throw new UsageError('--json only applies to "licenses"');
   if (
