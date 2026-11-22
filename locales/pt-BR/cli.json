@@ -218,6 +218,18 @@
         "waiting": "Sistema: a sessão do Diretor em {{from}} falhou ({{cause}}) e não há Executor disponível; a fila espera e o Diretor segue sozinho quando houver um livre{{until}}.",
         "unavailable": "Sistema: a sessão do Diretor em {{from}} falhou ({{cause}}) e nenhum outro Executor pode assumir; a fila fica parada até o próximo prompt tentar de novo."
       },
+      "directorSwitch": {
+        "source": {
+          "override": "sua escolha",
+          "default": "o padrão"
+        },
+        "live": "Sistema: o Diretor passou a rodar {{what}} ({{source}}), mudado na sessão que estava aberta{{waited}}.",
+        "new_session": "Sistema: o Diretor passou de {{from}} para {{what}} ({{source}}): abriu uma sessão nova, e o primeiro prompt dela leva o papel e o resumo do estado{{waited}}.",
+        "baton": "Sistema: o Diretor seguiu com {{what}} ({{source}}) numa sessão nova, porque o cliente não deixa a aberta mudar; o primeiro prompt leva o papel e o resumo do estado{{waited}}.",
+        "stored": "Sistema: o Diretor vai usar {{what}} ({{source}}) na próxima vez que a sessão abrir{{waited}}.",
+        "unchanged": "Sistema: o Diretor já rodava {{what}} ({{source}}); nada mudou{{waited}}.",
+        "waited": " (depois do turno que estava em curso)"
+      },
       "recovery": {
         "title": "Sistema: o daemon reiniciou e reconciliou este cenário.",
         "resumed": "  Retomado: {{items}}.",

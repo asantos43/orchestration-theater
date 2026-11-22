@@ -55,7 +55,8 @@
       "scrollBottom": "Ir ao fim do chat",
       "suggestNext": "Próxima sugestão de comando",
       "suggestPrev": "Sugestão de comando anterior",
-      "stop": "Parar a resposta do Diretor"
+      "stop": "Parar a resposta do Diretor",
+      "director": "Escolher o Executor, o modelo e o esforço do Diretor"
     },
     "edge": {
       "narrow": "Estreitar o chat (borda com o foco)",
@@ -341,6 +342,25 @@
         "turnStop": "Diretor em turno ({{key}} para)",
         "active": "Diretor ativo"
       },
+      "directorFooter": {
+        "line": "Diretor: {{executor}}{{settings}} ({{source}}){{wait}}  {{key}}",
+        "none": "Diretor: ainda não escolhido  {{key}}",
+        "pending": ", troca na fila",
+        "source": {
+          "override": "sua escolha",
+          "default": "padrão"
+        }
+      },
+      "directorPicker": {
+        "title": "Diretor deste cenário",
+        "current": "agora",
+        "isDefault": "padrão",
+        "invalid": "inválido: {{reason}}",
+        "quota": "cota {{state}}",
+        "model": "modelo: {{model}}",
+        "effort": "esforço: {{effort}}",
+        "default": "voltar ao padrão"
+      },
       "waits": "esperando: {{what}}",
       "connection": {
         "connecting": "conectando",
@@ -407,6 +427,15 @@
           "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
           "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
           "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt."
+        },
+        "directorSwitch": {
+          "live": "O Diretor passou a rodar {{what}} ({{source}}).",
+          "new_session": "O Diretor passou de {{from}} para {{what}} ({{source}}): sessão nova.",
+          "baton": "O Diretor seguiu com {{what}} ({{source}}) numa sessão nova.",
+          "stored": "O Diretor vai usar {{what}} ({{source}}) quando a sessão abrir.",
+          "unchanged": "O Diretor já rodava {{what}} ({{source}}).",
+          "override": "sua escolha",
+          "default": "o padrão"
         },
         "recovery": "Depois da reinicialização: {{resumed}} retomadas, {{settled}} resolvidas, {{waiting}} esperando.",
         "generatedNone": "O Diretor respondeu sem nenhuma ação.",

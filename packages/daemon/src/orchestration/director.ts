@@ -3,16 +3,25 @@ import {
   buildDaemonEvent,
   type ChatDirectorSilentPayload,
   type ChatToolCall,
+  type DirectorSwitchForm,
   type InterruptionCause,
   type ScenarioDirectorFailoverNotice,
+  type ScenarioDirectorSwitchedPayload,
+  type ScenarioDirectorSwitchNotice,
 } from '@otheater/protocol';
 import {
   AdapterUnavailable,
   assemblePrefix,
+  Conflict,
+  type ExecutorConfig,
+  InvalidInput,
   mcpToolsOf,
   type Clock,
   type Disposable,
   NotFound,
+  type ResolvedExecutor,
+  type SessionConfigChoice,
+  type SessionConfigOption,
   type NormalizedUpdate,
   type PromptQueueItem,
   type PromptSource,
@@ -30,6 +39,7 @@ import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access
 import type { DataPaths } from '../paths.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { QuotaService } from '../quota/service.js';
+import type { QuotaStatus } from '../quota/state.js';
 import { situationText } from '../situations.js';
 import {
   directorFailureOf,
@@ -38,6 +48,17 @@ import {
   type DirectorFailure,
 } from './director-failover.js';
 import { silentReplyText, TurnTools } from './director-silence.js';
+import {
+  matchExecutor,
+  readDirectorOverride,
+  writeDirectorOverride,
+  type DirectorOverride,
+  type DirectorSwitchChange,
+  type DirectorSwitchResult,
+  type DirectorView,
+  type DirectorViewExecutor,
+  type DirectorViewModel,
+} from './director-switch.js';
 import { resolveRolePolicy } from './role-policy.js';
 import type { RoleSelection, SelectedExecutor } from './role-selection.js';
 
@@ -93,12 +114,14 @@ export interface DirectorSessionsOptions {
    * exhausted profile out (P20). Without it the Executor that failed is excluded by the failover
    * itself until a turn succeeds.
    */
-  readonly quota?: Pick<QuotaService, 'ingestLimitHit'> | undefined;
+  readonly quota?:
+    (Pick<QuotaService, 'ingestLimitHit'> & Partial<Pick<QuotaService, 'statusOf'>>) | undefined;
   /**
    * The `director_failover` notice for the chat of the Producer (P20), called after the
    * `scenario.system_message` event is written. The daemon hands it to the Producer channel.
    */
-  readonly onNotice?: ((notice: ScenarioDirectorFailoverNotice) => void) | undefined;
+  readonly onNotice?:
+    ((notice: ScenarioDirectorFailoverNotice | ScenarioDirectorSwitchNotice) => void) | undefined;
   /**
    * Called for every reply kept for the chat, after it is in memory (P7 of docs/17): the daemon
    * records the `chat.director_reply` event here, the record the chat WebSocket reads and resumes
@@ -171,6 +194,13 @@ interface DirectorSession {
   leaving: boolean;
   /** Settled when the session that was on the leaving profile has let go of its lease. */
   left: Deferred | undefined;
+  /** The settings (model, effort) the open session runs with; `undefined` while it sleeps (P14). */
+  settings: ExecutorConfig | undefined;
+  /**
+   * A manual switch waits for the end of the turn (or of the opening) in course (P14,
+   * `scenarios.director_switch.in_turn`); settled when it was carried out.
+   */
+  pendingSwitch: Deferred | undefined;
   /** The prefix of the role goes into the first prompt of the session. */
   prefixed: boolean;
   /** The session was opened again after a sleep: its first prompt carries the state summary. */
@@ -207,6 +237,16 @@ class TurnTimeoutError extends Error {
   }
 }
 
+/** The choices of the first select option of a category (`model`, `thought_level`), groups flattened. */
+function optionChoices(
+  options: readonly SessionConfigOption[],
+  category: string,
+): readonly SessionConfigChoice[] {
+  const option = options.find((item) => item.category === category && item.type === 'select');
+  if (option?.options === undefined) return [];
+  return option.options.flatMap((entry) => ('options' in entry ? entry.options : [entry]));
+}
+
 function textOf(update: NormalizedUpdate): string {
   return update.kind === 'agent_message_chunk' && update.content.type === 'text'
     ? update.content.text
@@ -238,6 +278,8 @@ export class DirectorSessions {
   readonly #options: DirectorSessionsOptions;
   readonly #sessions = new Map<string, Promise<DirectorSession>>();
   readonly #opened = new Map<string, DirectorSession>();
+  /** One manual switch at a time for each scenario (P14). */
+  readonly #switching = new Map<string, Promise<unknown>>();
 
   constructor(options: DirectorSessionsOptions) {
     this.#options = options;
@@ -476,6 +518,11 @@ export class DirectorSessions {
         session.parked = undefined;
         parked.resolve();
       });
+      // A manual switch that came while the session was opening is carried out once it is open (P14).
+      void session.waking.then(
+        () => this.#applyPendingSwitch(session),
+        () => undefined,
+      );
     }
     const { waking, parked } = session;
     return parked === undefined ? waking : Promise.race([waking, parked.promise]);
@@ -491,7 +538,7 @@ export class DirectorSessions {
     const { store, logger } = this.#options;
     const park = { held: false };
     try {
-      const { lease, grant, picked } = await this.#acquire(session, {
+      const { lease, grant, picked, settings } = await this.#acquire(session, {
         signal: session.abort.signal,
         parked: () => {
           park.held = true;
@@ -502,6 +549,7 @@ export class DirectorSessions {
       session.lease = lease;
       session.grant = grant;
       session.executor = picked.executor.id;
+      session.settings = settings;
       const sleptAt = session.sleptAt ?? null;
       const slept = session.sleptAt !== undefined;
       session.sleptAt = undefined;
@@ -544,6 +592,7 @@ export class DirectorSessions {
   async #pick(
     session: DirectorSession,
     hooks: ParkingHooks | undefined,
+    override: DirectorOverride | null,
   ): Promise<SelectedExecutor> {
     const { selection, config, store } = this.#options;
     const { scenarioId, failedExecutors } = session;
@@ -558,6 +607,8 @@ export class DirectorSessions {
             refuse: (item: { readonly id: string }) =>
               failedExecutors.has(item.id) ? 'director_failed' : null,
           }),
+      // P14 (N242): the Executor the Producer chose goes first; the failover follows the list from it.
+      ...(override === null ? {} : { startAt: override.executor }),
       // P26 (N157): the Executor the failover leaves holds the other accounts of its provider when
       // its account ran out and `profiles.rotate_on_exhaustion.<provider>` is `off`.
       ...(leaving === null ? {} : { earlier: [leaving] }),
@@ -607,12 +658,19 @@ export class DirectorSessions {
   async #acquire(
     session: DirectorSession,
     hooks?: ParkingHooks,
-  ): Promise<{ lease: SessionLease; grant: McpGrant; picked: SelectedExecutor }> {
+  ): Promise<{
+    lease: SessionLease;
+    grant: McpGrant;
+    picked: SelectedExecutor;
+    /** What the session runs with: the settings of the Executor plus the override that was applied. */
+    settings: ExecutorConfig;
+  }> {
     const { store, execution, mcp, config, registries } = this.#options;
     const { scenarioId } = session;
     const scenario = await store.scenarios.get(scenarioId);
     if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
-    const picked = await this.#pick(session, hooks);
+    const override = readDirectorOverride(scenario.configOverride);
+    const picked = await this.#pick(session, hooks, override);
     const repos = await store.scenarioRepos.list(scenarioId);
     const cwd = repos[0]?.path ?? scenario.folder;
     const { profile, settings } = picked;
@@ -642,17 +700,40 @@ export class DirectorSessions {
         telemetry: { scenarioId, attemptId: directorAttemptId(scenarioId) },
         correlation: { scenarioId, attemptId: directorAttemptId(scenarioId), role: DIRECTOR_ROLE },
       });
+      let applied: ExecutorConfig = settings;
       try {
         grant.bind(lease.session.sessionId);
         const adapter = execution.pool.adapterOf(profile.client);
-        for (const [id, value] of Object.entries(adapter.configOptionsFor(settings))) {
+        const base = adapter.configOptionsFor(settings);
+        for (const [id, value] of Object.entries(base)) {
           await lease.session.setConfig(id, value);
+        }
+        // P14 (N242): the model and the effort the Producer chose, for the Executor they were chosen for.
+        if (override?.executor === picked.executor.id) {
+          const wanted: ExecutorConfig = {
+            ...settings,
+            ...(override.model === undefined ? {} : { model: override.model }),
+            ...(override.effort === undefined ? {} : { effort: override.effort }),
+          };
+          try {
+            for (const [id, value] of Object.entries(adapter.configOptionsFor(wanted))) {
+              if (base[id] !== value) await lease.session.setConfig(id, value);
+            }
+            applied = wanted;
+          } catch (error) {
+            // The client does not take what was chosen (the model went away, say): the session runs
+            // with the settings of the list, and the log tells it.
+            this.#options.logger.warn(
+              { err: error, scenarioId, executor: picked.executor.id },
+              'the client refused the model or effort chosen for the Director: using the ones of the list',
+            );
+          }
         }
       } catch (error) {
         await lease.release().catch(() => undefined);
         throw error;
       }
-      return { lease, grant, picked };
+      return { lease, grant, picked, settings: applied };
     } catch (error) {
       grant.revoke();
       throw error;
@@ -686,6 +767,8 @@ export class DirectorSessions {
       failover: undefined,
       leaving: false,
       left: undefined,
+      settings: undefined,
+      pendingSwitch: undefined,
       prefixed: false,
       summaryNeeded: false,
     };
@@ -714,27 +797,39 @@ export class DirectorSessions {
     // A prompt can arrive for a sleeping Director (nobody called `ensure`): it wakes first, and
     // stays here while the Director waits for an Executor (N141).
     await this.#awake(session);
+    // A manual switch (P14) may have taken the session between the wake and here: wait for the new one.
+    await this.#applyPendingSwitch(session);
+    for (let again = 0; again < 3 && session.lease === undefined; again += 1) {
+      await this.#awake(session);
+    }
     session.idleTimer?.abort();
     session.idleTimer = undefined;
     const { lease } = session;
     if (lease === undefined) throw new AdapterUnavailable('The Director session is not open.');
+    // Set before anything awaits, so a switch that arrives now waits for the end of this turn.
+    session.active = true;
     const { text: raw } = item.content as { text?: unknown };
     const body = typeof raw === 'string' ? raw : '';
     let text = body;
-    if (!session.prefixed) {
-      const state = session.summaryNeeded
-        ? `${renderStateSummary(await stateSummaryOf(this.#options.store, session.scenarioId))}\n`
-        : '';
-      text = `${session.prefix}\n${state}${body}`;
+    let startedAt: number | undefined;
+    try {
+      if (!session.prefixed) {
+        const state = session.summaryNeeded
+          ? `${renderStateSummary(await stateSummaryOf(this.#options.store, session.scenarioId))}\n`
+          : '';
+        text = `${session.prefix}\n${state}${body}`;
+      }
+      // Where the log stood when the turn began: a `play.created` after it may be the play it opened.
+      startedAt = await this.#lastEventId();
+    } catch (error) {
+      session.active = false;
+      throw error;
     }
     let reply = '';
     let failure: DirectorFailure | undefined;
     let failedWith: unknown;
     let ended = false;
     const tools = new TurnTools();
-    // Where the log stood when the turn began: a `play.created` after it may be the play it opened.
-    const startedAt = await this.#lastEventId();
-    session.active = true;
     const subscription = lease.session.onUpdate((update) => {
       reply += textOf(update);
       tools.note(update);
@@ -780,6 +875,7 @@ export class DirectorSessions {
       }
       // Whatever came of it, a leave waiting for this turn is not kept waiting.
       if (session.leaving && session.lease === undefined) this.#letGo(session);
+      await this.#applyPendingSwitch(session);
       this.#arm(session);
     }
   }
@@ -1036,6 +1132,445 @@ export class DirectorSessions {
     // Not awaited: the failed turn ends first, so the pump stops and `dispatcher.resume` can start
     // it again once the session is open. A failure of the opening is told by `#settleFailover`.
     this.#wake(session).catch(() => undefined);
+  }
+
+  // ---- the manual switch of the Director (P14, N242) ----
+
+  /** The Executors of the `director` role of the scenario, in the order of the list. */
+  async #directorList(scenarioId: string): Promise<readonly ResolvedExecutor[]> {
+    const { roles } = await this.#options.selection.selectorInputs(scenarioId);
+    const role = (
+      roles as Readonly<
+        Record<string, { readonly executors: readonly ResolvedExecutor[] } | undefined>
+      >
+    )[DIRECTOR_ROLE];
+    return role?.executors ?? [];
+  }
+
+  async #quotaOf(executor: ResolvedExecutor): Promise<QuotaStatus | null> {
+    const { quota, logger } = this.#options;
+    if (quota?.statusOf === undefined) return null;
+    try {
+      return await quota.statusOf(`${executor.entry.client}/${executor.entry.profile}`);
+    } catch (error) {
+      logger.warn({ err: error, executor: executor.id }, 'the quota of an Executor was not read');
+      return null;
+    }
+  }
+
+  /**
+   * The Director of a scenario as the Producer sees it (the footer and the picker of the TUI, and
+   * `/director`): what it runs with, the Executors of its list with validity and quota, and the
+   * models and efforts the open session announced. Opens nothing: a Director that sleeps shows
+   * what it would wake with, and its models are not listed (no session to ask) [proposta].
+   */
+  async view(scenarioId: string): Promise<DirectorView> {
+    const { store, config } = this.#options;
+    const scenario = await store.scenarios.get(scenarioId);
+    if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
+    const list = await this.#directorList(scenarioId);
+    const override = readDirectorOverride(scenario.configOverride);
+    const session = this.#opened.get(scenarioId);
+    const first = list.find((item) => item.validity === 'valid');
+    const pinned =
+      override === null
+        ? undefined
+        : list.find((item) => item.id === override.executor && item.validity === 'valid');
+    const running =
+      session?.lease !== undefined && session.executor !== undefined
+        ? list.find((item) => item.id === session.executor)
+        : undefined;
+    const current = running ?? pinned ?? first;
+    const options = session?.lease?.session.configOptions ?? [];
+    const quotas = await Promise.all(list.map((item) => this.#quotaOf(item)));
+    const settings = running === undefined ? undefined : session?.settings;
+    const model =
+      settings?.model ?? (current === pinned ? override?.model : undefined) ?? current?.entry.model;
+    const effort =
+      settings === undefined
+        ? ((current === pinned ? override?.effort : undefined) ?? current?.entry.effort ?? null)
+        : (settings.effort ?? null);
+    const efforts = optionChoices(options, 'thought_level').map((choice) => choice.value);
+    let state: DirectorView['session'] = 'none';
+    if (session !== undefined) {
+      if (session.lease !== undefined) state = 'open';
+      else state = session.waking !== undefined ? 'opening' : 'asleep';
+    }
+    return {
+      scenarioId,
+      session: state,
+      inTurn: session !== undefined && (session.active || session.waking !== undefined),
+      pending: session?.pendingSwitch !== undefined,
+      current:
+        current === undefined || model === undefined
+          ? null
+          : {
+              executor: current.id,
+              client: current.entry.client,
+              profile: current.entry.profile,
+              model,
+              effort,
+            },
+      override,
+      default: first?.id ?? null,
+      executors: list.map((item, index): DirectorViewExecutor => ({
+        index: index + 1,
+        id: item.id,
+        client: item.entry.client,
+        profile: item.entry.profile,
+        model: item.entry.model,
+        effort: item.entry.effort,
+        validity: item.validity,
+        invalidReason: item.invalidReason ?? null,
+        quota: quotas[index]?.state ?? null,
+        quotaResetsAt: quotas[index]?.untilReset ?? null,
+        current: item.id === current?.id,
+        isDefault: item.id === first?.id,
+      })),
+      models: optionChoices(options, 'model').map((choice): DirectorViewModel => ({
+        id: choice.value,
+        name: choice.name ?? null,
+        efforts,
+      })),
+      efforts,
+      inTurnMode: config.scenarios.director_switch.in_turn,
+    };
+  }
+
+  /**
+   * Switches the Director of the scenario by hand, or takes it back to the default (P14, N242). The
+   * choice is stored in the scenario (it outlives the sleep and the daemon) until the default is
+   * asked for. With the session open and idle the switch is carried out now (`switchForm`); in a
+   * turn it waits for the turn to end (`scenarios.director_switch.in_turn: wait`) or cancels the
+   * turn first (`interrupt`). One switch at a time for each scenario.
+   */
+  async switchDirector(
+    scenarioId: string,
+    change: DirectorSwitchChange,
+  ): Promise<DirectorSwitchResult> {
+    const before = this.#switching.get(scenarioId) ?? Promise.resolve();
+    const run = before.catch(() => undefined).then(() => this.#switch(scenarioId, change));
+    this.#switching.set(scenarioId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#switching.get(scenarioId) === run) this.#switching.delete(scenarioId);
+    }
+  }
+
+  async #switch(scenarioId: string, change: DirectorSwitchChange): Promise<DirectorSwitchResult> {
+    const { store, config } = this.#options;
+    const scenario = await store.scenarios.get(scenarioId);
+    if (scenario === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);
+    if (scenario.state !== 'active') {
+      throw new Conflict(
+        `The scenario "${scenarioId}" is archived: its Director cannot be switched.`,
+      );
+    }
+    const list = await this.#directorList(scenarioId);
+    const session = this.#opened.get(scenarioId);
+    const current = readDirectorOverride(scenario.configOverride);
+    const wanted = this.#wantedOverride(session, list, current, change);
+    await store.scenarios.update(scenarioId, {
+      configOverride: writeDirectorOverride(scenario.configOverride, wanted),
+    });
+    const mode = config.scenarios.director_switch.in_turn;
+    // A session that is open, in a turn or opening: the switch waits for it (or cancels the turn).
+    if (session !== undefined && (session.active || session.waking !== undefined)) {
+      const waiting = session.pendingSwitch ?? deferred();
+      session.pendingSwitch = waiting;
+      if (mode === 'interrupt' && session.active) {
+        await this.interrupt(scenarioId);
+        await waiting.promise;
+        return this.#resultOf(scenarioId, wanted, 'applied');
+      }
+      return this.#resultOf(scenarioId, wanted, 'pending');
+    }
+    const outcome =
+      session?.lease === undefined
+        ? ({ form: 'stored' } as const)
+        : await this.#reconcile(session, list, wanted);
+    if (outcome === 'busy') {
+      // A turn began in the meantime: it ends the wait.
+      const waiting = session?.pendingSwitch ?? deferred();
+      if (session !== undefined) session.pendingSwitch = waiting;
+      return this.#resultOf(scenarioId, wanted, 'pending');
+    }
+    await this.#announceSwitch(
+      scenarioId,
+      session,
+      outcome.form,
+      wanted,
+      outcome.from ?? null,
+      false,
+    );
+    return this.#resultOf(scenarioId, wanted, 'applied', outcome.form);
+  }
+
+  async #resultOf(
+    scenarioId: string,
+    override: DirectorOverride | null,
+    status: DirectorSwitchResult['status'],
+    form: DirectorSwitchForm | null = null,
+  ): Promise<DirectorSwitchResult> {
+    return { status, form, override, view: await this.view(scenarioId) };
+  }
+
+  /** The override a change asks for, checked against the list of the role and what the client announced. */
+  #wantedOverride(
+    session: DirectorSession | undefined,
+    list: readonly ResolvedExecutor[],
+    current: DirectorOverride | null,
+    change: DirectorSwitchChange,
+  ): DirectorOverride | null {
+    if (change.kind === 'default') return null;
+    const first = list.find((item) => item.validity === 'valid');
+    let target: ResolvedExecutor | undefined;
+    if (change.executor !== undefined && change.executor.trim() !== '') {
+      const found = matchExecutor(list, change.executor);
+      if (found === 'ambiguous') {
+        throw new InvalidInput(
+          `More than one Executor of the Director starts with "${change.executor}".`,
+        );
+      }
+      if (found === undefined) {
+        throw new InvalidInput(`"${change.executor}" is not an Executor of the Director list.`);
+      }
+      target = found;
+    } else {
+      const running = session?.lease === undefined ? undefined : session.executor;
+      const id = running ?? current?.executor ?? first?.id;
+      target = list.find((item) => item.id === id);
+      if (target === undefined) throw new InvalidInput('The Director has no Executor to change.');
+    }
+    if (target.validity !== 'valid') {
+      throw new Conflict(
+        `The Executor "${target.id}" is not valid${target.invalidReason === null ? '' : `: ${target.invalidReason}`}.`,
+      );
+    }
+    // The model and the effort of the previous override belong to the Executor it named.
+    const kept = current?.executor === target.id ? current : null;
+    const model = change.model ?? kept?.model;
+    const effort = change.effort ?? kept?.effort;
+    const options = session?.lease?.session.configOptions ?? [];
+    if (change.model !== undefined && session?.executor === target.id) {
+      this.#assertAnnounced(options, 'model', change.model);
+    }
+    if (change.effort !== undefined && session?.executor === target.id) {
+      this.#assertAnnounced(options, 'thought_level', change.effort);
+    }
+    return {
+      executor: target.id,
+      ...(model === undefined ? {} : { model }),
+      ...(effort === undefined ? {} : { effort }),
+    };
+  }
+
+  /** A value the client announced a list for must be on it; with no list there is nothing to check. */
+  #assertAnnounced(options: readonly SessionConfigOption[], category: string, value: string): void {
+    const choices = optionChoices(options, category);
+    if (choices.length > 0 && !choices.some((choice) => choice.value === value)) {
+      throw new InvalidInput(
+        `"${value}" is not one the client offers (${choices.map((choice) => choice.value).join(', ')}).`,
+      );
+    }
+  }
+
+  /**
+   * Brings the open session to the override of the scenario (`null`: the default). Called with
+   * the session open and idle; `busy` when that stopped being true. The Executor and the settings
+   * the session runs with are compared with the target:
+   * - the same, `unchanged`;
+   * - the same Executor with another model or effort that the client lets the session change,
+   *   `live` (the config option of the open session);
+   * - the same Executor with an option the client does not announce, `baton`: a new session of the
+   *   same Executor; another Executor, `new_session`. Either way the first prompt of the new
+   *   session carries the role prefix and the state summary.
+   */
+  async #reconcile(
+    session: DirectorSession,
+    list: readonly ResolvedExecutor[],
+    wanted: DirectorOverride | null,
+  ): Promise<
+    'busy' | { readonly form: DirectorSwitchForm; readonly from?: string | null | undefined }
+  > {
+    const { execution, selection } = this.#options;
+    const target = await this.#targetOf(list, wanted);
+    const { lease } = session;
+    if (session.active || session.waking !== undefined || lease === undefined) {
+      return session.active || session.waking !== undefined ? 'busy' : { form: 'stored' };
+    }
+    if (target === undefined) return { form: 'stored' };
+    const from = session.executor ?? null;
+    const base = selection.sessionOf(DIRECTOR_ROLE, target).settings;
+    const want: ExecutorConfig = {
+      ...base,
+      ...(wanted?.executor === target.id && wanted.model !== undefined
+        ? { model: wanted.model }
+        : {}),
+      ...(wanted?.executor === target.id && wanted.effort !== undefined
+        ? { effort: wanted.effort }
+        : {}),
+    };
+    const have = session.settings;
+    if (target.id === session.executor && have !== undefined) {
+      if (have.model === want.model && have.effort === want.effort)
+        return { form: 'unchanged', from };
+      const adapter = execution.pool.adapterOf(target.entry.client);
+      const now = adapter.configOptionsFor(have);
+      const next = adapter.configOptionsFor(want);
+      const changes = Object.entries(next).filter(([id, value]) => now[id] !== value);
+      const announced = lease.session.configOptions;
+      if (changes.every(([id]) => announced.some((option) => option.id === id))) {
+        try {
+          for (const [id, value] of changes) await lease.session.setConfig(id, value);
+          session.settings = want;
+          return { form: 'live', from };
+        } catch (error) {
+          this.#options.logger.warn(
+            { err: error, scenarioId: session.scenarioId },
+            'the client did not take the new model or effort: passing the baton',
+          );
+          if (this.#inTurn(session) || session.lease !== lease) return 'busy';
+        }
+      }
+      await this.#restart(session);
+      return { form: 'baton', from };
+    }
+    await this.#restart(session);
+    return { form: 'new_session', from };
+  }
+
+  /** The Executor the Director goes by for an override: the chosen one or, for the default, the first one that can take it. */
+  async #targetOf(
+    list: readonly ResolvedExecutor[],
+    wanted: DirectorOverride | null,
+  ): Promise<ResolvedExecutor | undefined> {
+    if (wanted !== null) return list.find((item) => item.id === wanted.executor);
+    for (const item of list) {
+      if (item.validity !== 'valid') continue;
+      const status = await this.#quotaOf(item);
+      // Only an exhausted profile is passed over (as the selection does): an unknown quota can serve.
+      if (status?.state !== 'exhausted') return item;
+    }
+    return undefined;
+  }
+
+  /**
+   * Gives the open session back and opens another one (the sleep, without the sleeping): the new
+   * session reads the override of the scenario, and its first prompt carries the role prefix and
+   * the state summary. Resolves when it is open, or when the opening holds for an Executor.
+   */
+  async #restart(session: DirectorSession): Promise<void> {
+    const { lease, grant } = session;
+    session.idleTimer?.abort();
+    session.idleTimer = undefined;
+    session.lease = undefined;
+    session.grant = undefined;
+    session.executor = undefined;
+    session.settings = undefined;
+    session.prefixed = false;
+    session.summaryNeeded = true;
+    await lease?.release().catch((error: unknown) => {
+      this.#options.logger.warn(
+        { err: error, scenarioId: session.scenarioId },
+        'the lease of the Director did not go',
+      );
+    });
+    grant?.revoke();
+    await this.#wake(session);
+    if (this.#leased(session)) this.#arm(session);
+  }
+
+  /** A turn is running or the session is opening (read again after every await: TS cannot see it change). */
+  #inTurn(session: DirectorSession): boolean {
+    return session.active || session.waking !== undefined;
+  }
+
+  /** The session holds a lease now. */
+  #leased(session: DirectorSession): boolean {
+    return session.lease !== undefined;
+  }
+
+  /** Carries out the switch that waited for the end of a turn or of an opening. Never throws. */
+  async #applyPendingSwitch(session: DirectorSession): Promise<void> {
+    const pending = session.pendingSwitch;
+    if (pending === undefined || session.active || session.waking !== undefined) return;
+    // Taken at once: the end of a turn can call this twice, and the switch is carried out once.
+    session.pendingSwitch = undefined;
+    if (session.abort.signal.aborted) {
+      pending.resolve();
+      return;
+    }
+    const { store, logger } = this.#options;
+    try {
+      const scenario = await store.scenarios.get(session.scenarioId);
+      const wanted = scenario === undefined ? null : readDirectorOverride(scenario.configOverride);
+      const list = await this.#directorList(session.scenarioId);
+      const outcome =
+        session.lease === undefined
+          ? ({ form: 'stored' } as const)
+          : await this.#reconcile(session, list, wanted);
+      if (outcome === 'busy') {
+        // A turn began in the meantime: its end carries the switch out.
+        session.pendingSwitch ??= pending;
+        return;
+      }
+      await this.#announceSwitch(
+        session.scenarioId,
+        session,
+        outcome.form,
+        wanted,
+        outcome.from ?? null,
+        true,
+      );
+      pending.resolve();
+    } catch (error) {
+      logger.error(
+        { err: error, scenarioId: session.scenarioId },
+        'the switch of the Director that waited could not be carried out',
+      );
+      pending.resolve();
+    }
+  }
+
+  /** The `scenario.director_switched` event and the notice of the chat. Never throws. */
+  async #announceSwitch(
+    scenarioId: string,
+    session: DirectorSession | undefined,
+    form: DirectorSwitchForm,
+    wanted: DirectorOverride | null,
+    from: string | null,
+    waited: boolean,
+  ): Promise<void> {
+    const { store, logger, onNotice } = this.#options;
+    const running = session?.lease === undefined ? undefined : session;
+    const payload: ScenarioDirectorSwitchedPayload = {
+      scenarioId,
+      form,
+      fromExecutor: from,
+      toExecutor: running?.executor ?? null,
+      model: running?.settings?.model ?? wanted?.model ?? null,
+      effort: running?.settings?.effort ?? wanted?.effort ?? null,
+      override: wanted !== null,
+      waited,
+    };
+    const notice: ScenarioDirectorSwitchNotice = { ...payload, kind: 'director_switch' };
+    try {
+      await store.transaction(async (tx) => {
+        await tx.events.append({
+          ...buildDaemonEvent('scenario.director_switched', payload),
+          scenarioId,
+        });
+        await tx.events.append({
+          ...buildDaemonEvent('scenario.system_message', notice),
+          scenarioId,
+        });
+      });
+      onNotice?.(notice);
+    } catch (error) {
+      logger.warn({ err: error, scenarioId }, 'the switch notice of the Director was lost');
+    }
   }
 
   /** The `waiting` notice of the failover in course: nobody is free, the queue waits (P16b). */

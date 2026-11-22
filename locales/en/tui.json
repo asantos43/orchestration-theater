@@ -55,7 +55,8 @@
       "scrollBottom": "Go to the end of the chat",
       "suggestNext": "Next command suggestion",
       "suggestPrev": "Previous command suggestion",
-      "stop": "Stop the Director's reply"
+      "stop": "Stop the Director's reply",
+      "director": "Choose the Executor, model and effort of the Director"
     },
     "edge": {
       "narrow": "Make the chat narrower (border focused)",
@@ -341,6 +342,25 @@
         "turnStop": "Director in a turn ({{key}} stops)",
         "active": "Director active"
       },
+      "directorFooter": {
+        "line": "Director: {{executor}}{{settings}} ({{source}}){{wait}}  {{key}}",
+        "none": "Director: not chosen yet  {{key}}",
+        "pending": ", switch queued",
+        "source": {
+          "override": "your choice",
+          "default": "default"
+        }
+      },
+      "directorPicker": {
+        "title": "Director of this scenario",
+        "current": "now",
+        "isDefault": "default",
+        "invalid": "invalid: {{reason}}",
+        "quota": "quota {{state}}",
+        "model": "model: {{model}}",
+        "effort": "effort: {{effort}}",
+        "default": "back to the default"
+      },
       "waits": "waiting: {{what}}",
       "connection": {
         "connecting": "connecting",
@@ -407,6 +427,15 @@
           "switched": "The Director moved from {{from}} to {{to}} ({{cause}}); the work goes on.",
           "waiting": "The Director of {{from}} is waiting ({{cause}}) until {{until}}.",
           "unavailable": "The Director is unavailable ({{cause}}); the queue stops until the next prompt."
+        },
+        "directorSwitch": {
+          "live": "The Director now runs {{what}} ({{source}}).",
+          "new_session": "The Director moved from {{from}} to {{what}} ({{source}}): new session.",
+          "baton": "The Director went on with {{what}} ({{source}}) in a new session.",
+          "stored": "The Director will use {{what}} ({{source}}) when its session opens.",
+          "unchanged": "The Director already ran {{what}} ({{source}}).",
+          "override": "your choice",
+          "default": "the default"
         },
         "recovery": "After the restart: {{resumed}} resumed, {{settled}} settled, {{waiting}} waiting.",
         "generatedNone": "The Director answered with no action.",

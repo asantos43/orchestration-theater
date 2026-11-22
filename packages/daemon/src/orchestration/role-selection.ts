@@ -110,6 +110,12 @@ export interface RoleSelectionRequest {
    * list of the role does not have is ignored.
    */
   readonly earlier?: readonly string[] | undefined;
+  /**
+   * The Executor (complete name) the caller wants first, such as the override of the Director
+   * (P14, N242): it is taken when it is valid and available, and the list goes on from it when it
+   * is not (the items before it come last). An id the list of the role does not have is ignored.
+   */
+  readonly startAt?: string | undefined;
 }
 
 /** What the caller runs the session with. */
@@ -533,8 +539,8 @@ export class RoleSelection {
     const earlier = (request.earlier ?? []).flatMap((id) =>
       role.executors.filter((item) => item.id === id),
     );
-    return selectExecutorFromPorts(ports, {
-      role: { role: role.role, executors, whenExhausted: role.whenExhausted },
+    const input = (list: readonly ResolvedExecutor[]) => ({
+      role: { role: role.role, executors: list, whenExhausted: role.whenExhausted },
       settings: selectionSettingsOf(config),
       promptTokens: request.promptTokens,
       previousExecutor,
@@ -542,6 +548,22 @@ export class RoleSelection {
       roundRobin,
       ...(earlier.length === 0 ? {} : { earlier }),
     });
+    const start =
+      request.startAt === undefined
+        ? -1
+        : executors.findIndex((item) => item.id === request.startAt);
+    const pinned = start < 0 ? undefined : executors[start];
+    if (pinned === undefined) return selectExecutorFromPorts(ports, input(executors));
+    // P14: the Executor the Producer chose goes first; when it cannot take the session, the list
+    // goes on from it (what comes before it comes last), so the failover follows the list from there.
+    if (pinned.validity === 'valid') {
+      const first = await selectExecutorFromPorts(ports, input([pinned]));
+      if (first.selected !== null) return first;
+    }
+    return selectExecutorFromPorts(
+      ports,
+      input([...executors.slice(start), ...executors.slice(0, start)]),
+    );
   }
 
   /**

@@ -95,6 +95,11 @@ export interface SlashAction<Args = unknown> {
   readonly descriptionVars?: Readonly<Record<string, string>>;
   readonly argsKey: string | undefined;
   readonly permission: SlashPermission;
+  /**
+   * For a command that reads without arguments and writes with them (`/model <m>`, P14): whether
+   * the text asked for a change, so `chat.slash_access: read_only` refuses it.
+   */
+  readonly writes?: ((text: string) => boolean) | undefined;
   /** Asks for a confirmation before it runs (`chat.slash_confirm: always`). */
   readonly confirm: boolean;
   readonly appliesTo: SlashApplicability;
