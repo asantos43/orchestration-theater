@@ -1,4 +1,5 @@
 {
   "targets": ["linux-x64", "win32-x64", "darwin-arm64"],
-  "versionOverride": null
+  "versionOverride": null,
+  "notices": "per_platform"
 }

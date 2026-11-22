@@ -10,6 +10,10 @@ const USAGE = `Usage: node tools/verify/dist/cli.js <command> [options]
 Commands:
   licenses [--json <file>]   check the licenses of the installed pnpm tree
   notices [--check]          generate THIRD_PARTY_NOTICES.md (--check: fail if it is out of date)
+  notices --platform <id> [--metafile <file>] [--out <file>] [--check]
+                             the file of one platform (linux-x64, win32-x64, darwin-arm64): its
+                             production graph, crossed with the esbuild metafile of the build when
+                             given (default out: dist/notices/THIRD_PARTY_NOTICES-<id>.md)
   headers                    check SPDX headers of tracked source files
   credentials                forbid credential file names and endpoints (architecture 6.3)
   catalogs                   compare the i18n catalogs of all languages
@@ -33,6 +37,9 @@ async function main(argv: string[]): Promise<number> {
       options: {
         json: { type: 'string' },
         check: { type: 'boolean', default: false },
+        platform: { type: 'string' },
+        metafile: { type: 'string' },
+        out: { type: 'string' },
         root: { type: 'string' },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -52,8 +59,20 @@ async function main(argv: string[]): Promise<number> {
   if (values.check && name !== 'notices') throw new UsageError('--check only applies to "notices"');
   if (values.json !== undefined && name !== 'licenses')
     throw new UsageError('--json only applies to "licenses"');
+  if (
+    (values.platform !== undefined || values.metafile !== undefined || values.out !== undefined) &&
+    name !== 'notices'
+  ) {
+    throw new UsageError('--platform, --metafile and --out only apply to "notices"');
+  }
   const root = path.resolve(values.root ?? path.join(import.meta.dirname, '..', '..', '..'));
-  return runCommand(name, defaultContext(root), { json: values.json, check: values.check });
+  return runCommand(name, defaultContext(root), {
+    json: values.json,
+    check: values.check,
+    platform: values.platform,
+    metafile: values.metafile,
+    out: values.out,
+  });
 }
 
 main(process.argv.slice(2)).then(

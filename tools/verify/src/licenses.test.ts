@@ -336,8 +336,14 @@ describe('pnpm output', () => {
       file: '/opt/pnpm/pnpm',
       prefix: [],
     });
-    expect(resolvePnpmCommand({}, '/node')).toEqual({ file: 'pnpm', prefix: [] });
-    expect(resolvePnpmCommand({ npm_execpath: '/usr/lib/npm/bin/npm-cli.js' }, '/node')).toEqual({
+    expect(resolvePnpmCommand({}, '/node', 'linux')).toEqual({ file: 'pnpm', prefix: [] });
+    expect(resolvePnpmCommand({}, 'node.exe', 'win32')).toEqual({
+      file: 'cmd.exe',
+      prefix: ['/d', '/s', '/c', 'pnpm'],
+    });
+    expect(
+      resolvePnpmCommand({ npm_execpath: '/usr/lib/npm/bin/npm-cli.js' }, '/node', 'linux'),
+    ).toEqual({
       file: 'pnpm',
       prefix: [],
     });

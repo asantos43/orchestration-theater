@@ -68,12 +68,16 @@ export function parsePnpmLicenses(stdout: string): InstalledPackage[] {
 export function resolvePnpmCommand(
   env: Readonly<Record<string, string | undefined>>,
   nodeExecutable: string,
+  platform: NodeJS.Platform = process.platform,
 ): { file: string; prefix: string[] } {
   const execPath = env.npm_execpath;
   if (execPath !== undefined && /pnpm/i.test(execPath)) {
     if (/\.(c|m)?js$/i.test(execPath)) return { file: nodeExecutable, prefix: [execPath] };
     return { file: execPath, prefix: [] };
   }
+  // Not started by pnpm (the release build runs `node tools/release/dist/cli.js`): on Windows the
+  // `pnpm` on the PATH is a .cmd file, which only a shell starts. [N: only the Windows runner proves it]
+  if (platform === 'win32') return { file: 'cmd.exe', prefix: ['/d', '/s', '/c', 'pnpm'] };
   return { file: 'pnpm', prefix: [] };
 }
 

@@ -6,6 +6,7 @@ import { sha256File, type NativeAsset } from './assets.js';
 import { assetFiles, bundle, readBuildVersion } from './bundle.js';
 import type { ReleaseConfig } from './config.js';
 import { createExecutable } from './inject.js';
+import { noticesFileName, writeNotices } from './notices.js';
 import { generateBlob, seaConfig, writeAssetIndex } from './sea-config.js';
 import { hostTarget, targetInfo, type TargetId } from './targets.js';
 
@@ -32,6 +33,8 @@ export interface BuildRecord {
   readonly bundleBytes: number;
   readonly blobBytes: number;
   readonly assetCount: number;
+  /** The notices file next to the executable (`THIRD_PARTY_NOTICES-<target>.md`) and how it was made. */
+  readonly notices: { readonly file: string; readonly mode: ReleaseConfig['notices'] };
   readonly natives: readonly { key: string; name: string; sha256: string; bytes: number }[];
   readonly inkPatchedVersion: string | null;
   readonly warnings: readonly string[];
@@ -96,6 +99,14 @@ export async function buildTarget(options: BuildOptions): Promise<BuildRecord> {
   log('injecting');
   await createExecutable({ nodeBinary, blob, output: executable, target: info });
 
+  log(`notices (${options.config.notices})`);
+  writeNotices({
+    root: options.root,
+    target: options.target,
+    mode: options.config.notices,
+    workDir: work,
+  });
+
   const record: BuildRecord = {
     target: options.target,
     version,
@@ -106,6 +117,7 @@ export async function buildTarget(options: BuildOptions): Promise<BuildRecord> {
     bundleBytes: statSync(bundled.file).size,
     blobBytes: statSync(blob).size,
     assetCount: assets.length + 1,
+    notices: { file: noticesFileName(options.target), mode: options.config.notices },
     natives: bundled.natives.map((native: NativeAsset) => ({
       key: native.key,
       name: native.name,
