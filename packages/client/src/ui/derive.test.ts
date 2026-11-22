@@ -63,6 +63,7 @@ describe('palette, help and bar are derived from the registry and the keymap', (
       'input',
       'settings',
       'setup',
+      'plugins',
       'general',
     ]);
     const layout = help.find((group) => group.id === 'layout');

@@ -29,20 +29,20 @@ describe('interface registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('takes a new tab with one line (the Plugins tab of Phase 9)', () => {
+  it('takes a new tab with one line (the Agenda tab of Phase 9b)', () => {
     const registry = createUiRegistry({
       ...DEFAULT_UI_REGISTRY_DEFINITION,
       tabs: [
         ...DEFAULT_UI_REGISTRY_DEFINITION.tabs,
-        { id: 'plugins', textKey: 'tabs.plugins', order: 70, keys: keys(['F6']) },
+        { id: 'agenda', textKey: 'tabs.agenda', order: 80, keys: keys(['F7']) },
       ],
     });
-    expect(registry.tabs.map((tab) => tab.id)).toContain('plugins');
-    expect(registry.entry('tabs.open.plugins')?.text).toEqual({
+    expect(registry.tabs.map((tab) => tab.id)).toContain('agenda');
+    expect(registry.entry('tabs.open.agenda')?.text).toEqual({
       key: 'actions.tabs.open',
-      params: { tab: { key: 'tabs.plugins' } },
+      params: { tab: { key: 'tabs.agenda' } },
     });
-    expect(registryTextKeys(registry)).toContain('tabs.plugins');
+    expect(registryTextKeys(registry)).toContain('tabs.agenda');
   });
 
   it('refuses a duplicated id', () => {
@@ -57,7 +57,8 @@ describe('interface registry', () => {
     expect(contextsOverlap('global', 'settings')).toBe(true);
     expect(contextsOverlap('chat', 'settings')).toBe(false);
     expect(tabContextOf('settings')).toBe('settings');
-    expect(tabContextOf('plugins')).toBeUndefined();
+    expect(tabContextOf('plugins')).toBe('plugins');
+    expect(tabContextOf('agenda')).toBeUndefined();
     // E is taken by directives.extend and settings.edit, each in its own tab.
     expect(DEFAULT_UI_REGISTRY.entry('directives.extend')?.context).toBe('directives');
     expect(DEFAULT_UI_REGISTRY.entry('settings.edit')?.context).toBe('settings');
