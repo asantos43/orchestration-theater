@@ -46,6 +46,7 @@ import {
   LIMIT_KEYS,
   SECTION_IDS,
   WHEN_EXHAUSTED_CHOICES,
+  addLoginModeOf,
   flatten,
   formatSpan,
   limitEdit,
@@ -434,7 +435,25 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         return;
       }
       say(t('settings.result.added', { profile: result.profile.id }), 'ok');
+      // `profiles.add.login`: a subscription account with no login yet is offered one (or gets it at
+      // once), the same login as the key `L`. Read before the reload, from the config the tab holds.
+      const mode = addLoginModeOf(loadedRef.current?.config.config ?? {});
+      const wantsLogin =
+        result.profile.kind === 'token_plan' && result.login !== 'logged_in' && mode !== 'off';
       await reload();
+      if (!wantsLogin) return;
+      const profileId = result.profile.id;
+      if (mode === 'auto') {
+        await startLogin(profileId);
+        return;
+      }
+      setMode({
+        kind: 'confirm',
+        question: t('settings.prompt.confirmLogin', { profile: profileId }),
+        then: () => {
+          void startLogin(profileId);
+        },
+      });
     } catch (error) {
       failed(error);
     }
@@ -491,8 +510,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     }
   };
 
-  const startLogin = async (profile: ApiProfile): Promise<void> => {
-    const profileId = profile.profile.id;
+  const startLogin = async (profileId: string): Promise<void> => {
     endedLogins.current.delete(profileId);
     try {
       const result = await api.startLogin(profileId);
@@ -708,7 +726,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           say(t('settings.result.noLogin'), 'warn');
           return;
         }
-        void startLogin(profile);
+        void startLogin(profile.profile.id);
       } else if (name === 'remove') {
         const profileId = profile.profile.id;
         setMode({

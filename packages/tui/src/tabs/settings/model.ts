@@ -219,3 +219,21 @@ export function parseAddForm(text: string):
   if (kind !== 'token_plan' && kind !== 'api') return undefined;
   return { client, name, kind, provider };
 }
+
+/**
+ * `profiles.add.login` [proposta] (2026-11-22): what adding a subscription account does about its
+ * login: `ask` (default) asks "log in now?", `auto` logs in at once, `off` never offers it. A value
+ * the tab does not know (an older or newer daemon) is read as the default.
+ */
+export type AddLoginMode = 'ask' | 'auto' | 'off';
+
+export function addLoginModeOf(config: Readonly<Record<string, unknown>>): AddLoginMode {
+  const profiles = config.profiles;
+  const add =
+    typeof profiles === 'object' && profiles !== null
+      ? (profiles as Record<string, unknown>).add
+      : undefined;
+  const login =
+    typeof add === 'object' && add !== null ? (add as Record<string, unknown>).login : undefined;
+  return login === 'auto' || login === 'off' ? login : 'ask';
+}

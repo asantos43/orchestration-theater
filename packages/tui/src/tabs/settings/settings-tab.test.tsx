@@ -133,6 +133,11 @@ class FakeSettingsApi implements SettingsApi {
   };
   rejectEdit: string | undefined;
   noticeFirst = false;
+  /** `profiles.add.login` of the fake daemon; `off` here so the older tests add an account and nothing more. */
+  addLogin: 'ask' | 'auto' | 'off' = 'off';
+  /** What the client says about a new subscription account. */
+  newLogin: 'logged_in' | 'logged_out' | 'unknown' = 'logged_out';
+  loginsStarted: string[] = [];
   onCode: (code: string) => void = () => undefined;
 
   profiles(): Promise<readonly ApiProfile[]> {
@@ -145,7 +150,10 @@ class FakeSettingsApi implements SettingsApi {
     return Promise.resolve(rolesOf(this.order, this.whenExhausted));
   }
   config(): Promise<ApiConfig> {
-    return Promise.resolve({ config: { limits: this.limits }, redactedPaths: [] } as ApiConfig);
+    return Promise.resolve({
+      config: { limits: this.limits, profiles: { add: { login: this.addLogin } } },
+      redactedPaths: [],
+    } as ApiConfig);
   }
   scenarioOverride(): Promise<Readonly<Record<string, unknown>>> {
     return Promise.resolve({ limits: { plan_reviews: 5 } });
@@ -163,6 +171,7 @@ class FakeSettingsApi implements SettingsApi {
     return Promise.resolve({
       status: 'added',
       profile: added.profile,
+      login: body.kind === 'api' ? null : this.newLogin,
     } as unknown as AddProfileResult);
   }
   removeProfile(profileId: string): Promise<RemoveProfileResult> {
@@ -202,7 +211,8 @@ class FakeSettingsApi implements SettingsApi {
       restart: [],
     } as unknown as ConfigEditResult);
   }
-  startLogin(): Promise<StartProfileLoginResult> {
+  startLogin(profileId: string): Promise<StartProfileLoginResult> {
+    this.loginsStarted.push(profileId);
     return Promise.resolve(this.loginAnswer);
   }
   submitLoginCode(_profileId: string, code: string): Promise<void> {
@@ -665,6 +675,118 @@ describe('the tab Settings', () => {
     await key(app, 'y');
     await waitUntil(() => api.removed.length === 1);
     expect(api.removed).toEqual(['claude-code/main']);
+  });
+
+  describe('the login that goes with a new account (profiles.add.login)', () => {
+    const ADD_CODEX = 'codex alt token_plan codex';
+
+    async function addAccount(app: RenderedApp, form = ADD_CODEX): Promise<void> {
+      await key(app, 'a');
+      await type(app, form);
+      await key(app, '\r');
+    }
+
+    it('ask: y after "Account added" starts the login of the new account, the same one as L', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'ask';
+      const { app } = await open(api);
+      await addAccount(app);
+      const frame = await app.waitForText('Log in now?');
+      expect(flat(frame)).toContain('codex/alt was added');
+      expect(api.loginsStarted).toEqual([]);
+      await key(app, 'y');
+      await waitUntil(() => api.loginsStarted.length === 1);
+      expect(api.loginsStarted).toEqual(['codex/alt']);
+      await app.waitForText('https://login.example.test/oauth?state=abc');
+    });
+
+    it('ask: any other key leaves the login for later', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'ask';
+      const { app } = await open(api);
+      await addAccount(app);
+      await app.waitForText('Log in now?');
+      await key(app, 'n');
+      const frame = await app.settle();
+      expect(frame).not.toContain('Log in now?');
+      expect(frame).toContain('codex/alt');
+      expect(api.loginsStarted).toEqual([]);
+    });
+
+    it('ask: with the notice of a second subscription, the question comes after the acceptance', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'ask';
+      api.noticeFirst = true;
+      const { app } = await open(api);
+      await addAccount(app, 'claude-code second token_plan claude');
+      await app.waitForText('claude-code/main');
+      await key(app, 'y');
+      await app.waitForText('Log in now?');
+      await key(app, 'y');
+      await waitUntil(() => api.loginsStarted.length === 1);
+      expect(api.loginsStarted).toEqual(['claude-code/second']);
+    });
+
+    it('auto: starts the login without asking, and a login that stays at the terminal runs there', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'auto';
+      api.loginAnswer = {
+        status: 'local',
+        profileId: 'codex/alt',
+        mode: 'terminal',
+        command: 'fake-cli login --profile alt',
+      };
+      const ran: string[] = [];
+      const { app } = await open(api, {
+        runLocal: (command) => {
+          ran.push(command);
+          return Promise.resolve(0);
+        },
+      });
+      await addAccount(app);
+      await waitUntil(() => ran.length === 1);
+      expect(api.loginsStarted).toEqual(['codex/alt']);
+      expect(ran).toEqual(['fake-cli login --profile alt']);
+      expect(app.frame()).not.toContain('Log in now?');
+    });
+
+    it('off: does not ask and does not start the login', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'off';
+      const { app } = await open(api);
+      await addAccount(app);
+      const frame = await app.waitForText('Account added: codex/alt');
+      expect(frame).not.toContain('Log in now?');
+      expect(api.loginsStarted).toEqual([]);
+    });
+
+    it.each(['ask', 'auto'] as const)(
+      'does nothing for an API account when the mode is %s',
+      async (mode) => {
+        const api = new FakeSettingsApi();
+        api.addLogin = mode;
+        const { app } = await open(api);
+        await addAccount(app, 'opencode zen api openai');
+        await app.waitForText('API key');
+        await type(app, 'sk-fake');
+        await key(app, '\r');
+        await waitUntil(() => api.added.length === 1);
+        await app.waitForText('opencode/zen');
+        expect(app.frame()).not.toContain('Log in now?');
+        expect(api.loginsStarted).toEqual([]);
+      },
+      15_000,
+    );
+
+    it('does nothing for an account that already has a login', async () => {
+      const api = new FakeSettingsApi();
+      api.addLogin = 'auto';
+      api.newLogin = 'logged_in';
+      const { app } = await open(api);
+      await addAccount(app);
+      await app.waitForText('codex/alt');
+      expect(api.loginsStarted).toEqual([]);
+    }, 15_000);
   });
 
   it('asks again with acceptNotice when the daemon wants the notice accepted', async () => {

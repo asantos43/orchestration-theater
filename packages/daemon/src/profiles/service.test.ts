@@ -995,6 +995,7 @@ describe('profileSettingsOf', () => {
             removed_dir: 'keep_backup',
             director: 'wait',
           },
+          add: { login: 'ask' },
           api_key_env: {},
           rotate_on_exhaustion: { openai: 'off' },
           entries: {},

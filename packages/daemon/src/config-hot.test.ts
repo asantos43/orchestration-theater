@@ -26,6 +26,7 @@ describe('hot reload of the configuration (N188)', () => {
     expect(isHotPath('profiles.opencode/minimax.codex_link')).toBe(false);
     expect(isHotPath('profiles.drain.timeout')).toBe(false);
     expect(isHotPath('profiles.shims.mode')).toBe(false);
+    expect(isHotPath('profiles.add.login')).toBe(false);
   });
 
   it('copies the executors and the profile blocks in place, and keeps codex_link and the fixed keys', () => {
