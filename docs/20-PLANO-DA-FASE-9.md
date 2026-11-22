@@ -154,6 +154,7 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - um repositório git (`git:<url>#<ref>` **[proposta]**), clonado sem hooks e fixado no commit que o `<ref>` tinha na instalação, que o registro guarda.
   - Nenhuma origem roda scripts de ciclo de vida (N236, pergunta seguinte): o plugin já vem pronto, com o `dist` incluído.
   - Chave `plugins.install.sources: [path, npm, git]` **[proposta]**, para limitar as origens aceitas.
+  - Chave `plugins.install.npm` (padrão `auto`) **[proposta]**: como o npm é iniciado, sem shell. No Windows o `npm` é `npm.cmd`, que o Node não inicia sem shell (correção de segurança de 2024 [S]); então `auto` roda o `node` do daemon com o `npm-cli.js` que vem junto dele (`<pasta do node>\node_modules\npm\bin\npm-cli.js`, layout do instalador e do zip do Node [S]). A chave aceita o caminho de um `npm-cli.js` ou de um programa npm. Fora do Windows, `auto` é o `npm` do PATH.
   - Atualizar (`ot plugin update <id>` **[proposta]**) é instalar de novo. Se o manifesto mudar, o plugin fica desligado até o Produtor aprovar de novo; isso vale também para a pasta local editada.
 - **Ativação por projeto:** `projects.<p>.plugins: [<id>]`, ou uma lista por projeto no registro **[proposta]**. Ao ativar, o Produtor vê:
   - as ferramentas, com os papéis e os efeitos;
@@ -183,6 +184,7 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - A chamada vai ao processo do plugin, com prazo (`plugins.call_timeout`, padrão `60s`) **[proposta]**.
   - O resultado volta ao Executor como veio.
   - Nada de 1MCP.
+  - **Ligação com o registro do P4** **[proposta]**: o daemon abre o `PluginRegistry` antes do servidor MCP e o usa como fonte dos plugins ativos do agregador (`options.plugins` segue como substituto dos testes). O `watch()` do registro cuida de `plugins.json`; antes de cada sessão tirar o seu retrato dos plugins, o daemon chama `registry.refresh()`, para ver também uma pasta local cujo `plugin.yaml` foi editado. Ao fechar, o servidor MCP para o agregador e os processos antes de o registro parar de observar o arquivo.
 - **`tools/list` do plugin:** o daemon confere o retorno contra o manifesto. Uma ferramenta que o servidor expõe e o manifesto não declara fica de fora, com aviso e evento. Uma declarada que o servidor não expõe fica indisponível.
 - **Aceite**, com um servidor MCP de teste em stdio:
   - a ferramenta declarada aparece para o papel certo e não para os outros;

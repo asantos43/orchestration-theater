@@ -27,6 +27,7 @@ import {
   type DirectivesOptions,
 } from './directives/command.js';
 import { startDaemon, type PasswordPrompt } from './daemon.js';
+import { isPluginAction, runPluginCommand } from './plugins/command.js';
 import { isExecutorAction, runExecutorCommand, type ExecutorOptions } from './executors/command.js';
 import type { TestSession } from './executors/test-session.js';
 import {
@@ -125,6 +126,7 @@ const COMMANDS = [
   'trajectory',
   'analysis',
   'tui',
+  'plugin',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -317,6 +319,18 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
           executorOptions(values),
         );
       }
+      case 'plugin': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingPluginAction'));
+        if (!isPluginAction(action)) return usageError(t('usage.unknownPluginAction', { action }));
+        return await runPluginCommand(
+          context,
+          { env: deps.env, cwd: deps.cwd ?? process.cwd(), confirm: deps.confirm },
+          action,
+          args,
+          { project: values.project, yes: values.yes === true, json: values.json === true },
+        );
+      }
       case 'trajectory': {
         const [action, ...args] = rest;
         if (action === undefined) return usageError(t('usage.missingTrajectoryAction'));
@@ -406,6 +420,8 @@ function parseCliArgs(argv: readonly string[]) {
       uninstall: { type: 'boolean' },
       shell: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
+      // The options of `ot plugin` (`yes`, `json` are shared).
+      project: { type: 'string' },
       // The options of `ot executor` (`role`, `all`, `json` are shared).
       effort: { type: 'string' },
       family: { type: 'string' },
