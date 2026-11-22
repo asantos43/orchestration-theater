@@ -25,6 +25,12 @@ export interface McpGrantInput {
   readonly tools?: readonly string[];
   readonly correlation: McpCorrelation;
   /**
+   * The project the attempt belongs to (the scenario id): the one whose active plugins add their
+   * tools to the server (Phase 9, P5). Absent: the server asks the daemon for it (`projectOf`
+   * option) from the play, and a grant with no project gets no plugin tool.
+   */
+  readonly project?: string;
+  /**
    * The worktree of the attempt: where the work tools (`restricted_shell`, `run_tests`...) run and
    * what they are confined to. A tool that needs it refuses without one.
    */

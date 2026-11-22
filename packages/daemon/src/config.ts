@@ -1287,6 +1287,10 @@ export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 /** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
 export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
 
+/** `telemetry.receiver.reparent` (Phase 9, P1; [proposta]): `session` puts the clients' spans under the daemon's tree; `off` keeps them in their own traces. */
+export const TELEMETRY_REPARENT_MODES = ['session', 'off'] as const;
+export type TelemetryReparentMode = (typeof TELEMETRY_REPARENT_MODES)[number];
+
 const TelemetrySwitch = z.enum(TELEMETRY_SWITCH_MODES);
 
 /**
@@ -1453,7 +1457,13 @@ const TelemetryConfigSchema = z
     /**
      * The OTLP/HTTP receiver of the daemon (P2, N211 to N213), loopback only, JSON only. [proposta]
      * - `port`: `auto` (a free port, each boot) or a fixed one;
-     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413.
+     * - `max_body`: the largest body (after gunzip) a batch may have; a larger one is a 413;
+     * - `reparent` (Phase 9, P1, N230 (2); [proposta]): `session` (default) puts the spans of a
+     *   client under the span of their session (or attempt) in the daemon's trace, so there is one
+     *   tree; the trace and the parent the client used stay in `otheater.client.trace_id` and
+     *   `otheater.client.parent_span_id`. A span of a session the daemon does not know is left as it
+     *   came. `off`: every span stays in the trace of its client, tied by attribute only. It hangs
+     *   from the spans of `telemetry.daemon_spans`: with those `off` there is no parent to find.
      */
     receiver: z
       .strictObject({
@@ -1461,6 +1471,7 @@ const TelemetryConfigSchema = z
         max_body: SizeSchema.refine((bytes) => bytes > 0, 'expected a size above zero').prefault(
           '8MB',
         ),
+        reparent: z.enum(TELEMETRY_REPARENT_MODES).default('session'),
       })
       .prefault({}),
     /**
@@ -1640,6 +1651,38 @@ export const DaemonConfigSchema = z
     mcp: z
       .strictObject({
         port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+      })
+      .prefault({}),
+    /**
+     * The processes of the plugins and the calls to them (architecture 5.14; Phase 9, P5). A plugin
+     * is an MCP server that runs outside the daemon, one process per plugin and project (N238).
+     * Every key here is [proposta]. (The keys of the registry and of the installation, `install.*`,
+     * join this object with P4.)
+     * - `idle_timeout`: how long a process with no call lives; `off` keeps it until the daemon stops.
+     * - `max_restarts`: failures in a row (a start that fails, or a process that dies) after which
+     *   the process stays stopped until the Producer starts it again; `0` stops it at the first one.
+     * - `call_timeout`: the deadline of one call to a tool of a plugin; past it the call ends with a
+     *   tool error and the request is cancelled in the server.
+     * - `start_timeout`: how long the start of a process (spawn, handshake and `tools/list`) may take.
+     * - `restart_backoff`: the wait before a process that failed is started again, doubling from
+     *   `initial` up to `max`.
+     * - `http`: `loopback` (default) lets a manifest with `server.type: http` connect to its
+     *   address, which the manifest already confines to the loopback, with no authentication;
+     *   `off` refuses those plugins (only `stdio` runs).
+     */
+    plugins: z
+      .strictObject({
+        idle_timeout: OffOrDurationSchema.prefault('10m'),
+        max_restarts: z.int().min(0).max(100).default(3),
+        call_timeout: DurationSchema.prefault('60s'),
+        start_timeout: DurationSchema.prefault('30s'),
+        restart_backoff: z
+          .strictObject({
+            initial: DurationSchema.prefault('1s'),
+            max: DurationSchema.prefault('1m'),
+          })
+          .prefault({}),
+        http: z.enum(['loopback', 'off']).default('loopback'),
       })
       .prefault({}),
     /**

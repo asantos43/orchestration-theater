@@ -44,7 +44,7 @@ import { Redactor } from './telemetry/redaction.js';
 import { TelemetryReceiver } from './telemetry/receiver.js';
 import { TelemetrySessions } from './telemetry/sessions.js';
 import { SPAN_NAME } from './telemetry/span-conventions.js';
-import { traceIdForPlay } from './telemetry/span-ids.js';
+import { sessionSpanId, traceIdForPlay } from './telemetry/span-ids.js';
 import { MemoryTelemetryStore } from './telemetry/telemetry-fixture.js';
 
 /**
@@ -312,6 +312,21 @@ describeWithLauncher('the acceptance of Phase 8, one play with everything on', (
             const attemptSpans = daemonSpans.filter((row) => row.name.startsWith('invoke_agent'));
             expect(new Set(attemptSpans.map((row) => row.attempt_id))).toEqual(attemptIds);
 
+            // One tree (Phase 9, P1): the client's span is in the trace of the play, under the span of
+            // its session, and that session span is in the base, made by the daemon.
+            const sessionSpans = new Set(
+              daemonSpans
+                .filter((row) => row.name.startsWith('invoke_agent') && row.session_id !== null)
+                .map((row) => `${row.trace_id}/${row.span_id}`),
+            );
+            for (const row of clientSpans) {
+              expect(row.trace_id, 'the trace of a client span').toBe(traceIdForPlay(playId));
+              expect(row.parent_span_id, 'the parent of a client span').toBe(
+                sessionSpanId(String(row.session_id)),
+              );
+              expect(sessionSpans.has(`${row.trace_id}/${String(row.parent_span_id)}`)).toBe(true);
+            }
+
             // The client's records carry the same ids as the daemon's spans of their attempt.
             expect(new Set(clientSpans.map((row) => row.attempt_id))).toEqual(attemptIds);
             const scenarios = new Set(
@@ -445,6 +460,8 @@ describeWithLauncher('the acceptance of Phase 8, one play with everything on', (
         const trace = sent.filter((span) => span.traceId === traceIdForPlay(playId));
         expect(trace.some((span) => span.name === SPAN_NAME.play)).toBe(true);
         expect(trace.some((span) => span.name === SPAN_NAME.stage)).toBe(true);
+        // The client's spans went out in the same trace as the daemon's (one tree).
+        expect(trace.some((span) => span.name === CLIENT_SPAN)).toBe(true);
         const everything = asJson([
           sent,
           await destination.store.readMetrics(),
