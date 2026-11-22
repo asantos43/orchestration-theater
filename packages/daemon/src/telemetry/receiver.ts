@@ -6,10 +6,12 @@ import { promisify } from 'node:util';
 import { gunzip } from 'node:zlib';
 import { AdapterUnavailable, type TelemetryBatch, type TelemetryStore } from '@otheater/core';
 import type { TelemetryBatchRejectReason } from '@otheater/protocol';
+import type { TelemetryReparentMode } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { SituationSink } from '../situations.js';
 import { decodeOtlp, OtlpDecodeError, type OtlpSignal } from './otlp.js';
 import type { Redactor } from './redaction.js';
+import { reparentLog, reparentSpan } from './reparent.js';
 import type { TelemetrySessions } from './sessions.js';
 
 /**
@@ -29,7 +31,8 @@ import type { TelemetrySessions } from './sessions.js';
  * - The status codes: 401 token, 403 origin or host, 404 path, 405 method, 413 size, 415 format of
  *   the body (type or encoding), 400 a body that is not OTLP/JSON, 200 `{}` accepted.
  *
- * What is accepted is correlated (see `TelemetrySessions`), redacted (see `Redactor`) and handed to
+ * What is accepted is correlated (see `TelemetrySessions`), put under the tree of the daemon (see
+ * `reparent.ts`), redacted (see `Redactor`) and handed to
  * the `TelemetryStore`, whose `write` never throws and never waits for the disk. A refused batch is
  * counted and told in `telemetry.batch_rejected`, once a window per reason and signal, with no body.
  */
@@ -58,6 +61,12 @@ export interface TelemetryReceiverOptions {
   readonly situations?: SituationSink;
   /** The window the rejected and redacted counts are told in. Default one minute. */
   readonly windowMs?: number;
+  /**
+   * `telemetry.receiver.reparent` (Phase 9, P1): `session` (default) puts the spans of a known
+   * session or attempt under the tree of the daemon (see `reparent.ts`); `off` stores them as they
+   * came, in the trace of the client.
+   */
+  readonly reparent?: TelemetryReparentMode;
 }
 
 /**
@@ -319,14 +328,15 @@ export class TelemetryReceiver {
   /** Correlates, redacts and hands the records to the store. */
   #accept(batch: TelemetryBatch): void {
     const { sessions, redactor, store } = this.#options;
+    const reparent = (this.#options.reparent ?? 'session') === 'session';
     const correlated: TelemetryBatch = {
       ...(batch.spans === undefined
         ? {}
         : {
-            spans: batch.spans.map((span) => ({
-              ...span,
-              ...sessions.correlate(span.attributes, span.resource),
-            })),
+            spans: batch.spans.map((span) => {
+              const tied = { ...span, ...sessions.correlate(span.attributes, span.resource) };
+              return reparent ? reparentSpan(tied) : tied;
+            }),
           }),
       ...(batch.metrics === undefined
         ? {}
@@ -339,10 +349,10 @@ export class TelemetryReceiver {
       ...(batch.logs === undefined
         ? {}
         : {
-            logs: batch.logs.map((record) => ({
-              ...record,
-              ...sessions.correlate(record.attributes, record.resource),
-            })),
+            logs: batch.logs.map((record) => {
+              const tied = { ...record, ...sessions.correlate(record.attributes, record.resource) };
+              return reparent ? reparentLog(tied) : tied;
+            }),
           }),
     };
     store.write(redactor.redact(correlated));
