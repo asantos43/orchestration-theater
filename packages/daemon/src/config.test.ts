@@ -1004,6 +1004,39 @@ describe('parseConfig, prompt_queue (P7)', () => {
   });
 });
 
+describe('parseConfig, plugins (Phase 9, P5)', () => {
+  it('defaults to ten minutes idle, three restarts and a minute per call', () => {
+    expect(parseConfig('').plugins).toEqual({
+      idle_timeout: 600_000,
+      max_restarts: 3,
+      call_timeout: 60_000,
+      start_timeout: 30_000,
+      restart_backoff: { initial: 1_000, max: 60_000 },
+      http: 'loopback',
+    });
+  });
+
+  it('takes durations, off for the idle timeout, and each mode of http', () => {
+    const plugins = parseConfig(
+      'plugins:\n  idle_timeout: off\n  call_timeout: 90s\n  max_restarts: 0\n  http: off\n  restart_backoff:\n    initial: 500ms\n    max: 10s\n',
+    ).plugins;
+    expect(plugins.idle_timeout).toBeNull();
+    expect(plugins.call_timeout).toBe(90_000);
+    expect(plugins.max_restarts).toBe(0);
+    expect(plugins.http).toBe('off');
+    expect(plugins.restart_backoff).toEqual({ initial: 500, max: 10_000 });
+    expect(parseConfig('plugins:\n  idle_timeout: 2h\n').plugins.idle_timeout).toBe(7_200_000);
+  });
+
+  it('rejects a bad value and unknown keys', () => {
+    expect(() => parseConfig('plugins:\n  http: any\n')).toThrow(/plugins\.http/);
+    expect(() => parseConfig('plugins:\n  max_restarts: -1\n')).toThrow(/max_restarts/);
+    expect(() => parseConfig('plugins:\n  max_restarts: 1.5\n')).toThrow(/max_restarts/);
+    expect(() => parseConfig('plugins:\n  call_timeout: soon\n')).toThrow(/call_timeout/);
+    expect(() => parseConfig('plugins:\n  pool: 3\n')).toThrow(InvalidInput);
+  });
+});
+
 describe('orchestration', () => {
   it('defaults to no Executor, no role overrides and running the verify steps', () => {
     expect(parseConfig('').orchestration).toEqual({ roles: {}, verify: 'run' });

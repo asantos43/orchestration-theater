@@ -1661,6 +1661,38 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     /**
+     * The processes of the plugins and the calls to them (architecture 5.14; Phase 9, P5). A plugin
+     * is an MCP server that runs outside the daemon, one process per plugin and project (N238).
+     * Every key here is [proposta]. (The keys of the registry and of the installation, `install.*`,
+     * join this object with P4.)
+     * - `idle_timeout`: how long a process with no call lives; `off` keeps it until the daemon stops.
+     * - `max_restarts`: failures in a row (a start that fails, or a process that dies) after which
+     *   the process stays stopped until the Producer starts it again; `0` stops it at the first one.
+     * - `call_timeout`: the deadline of one call to a tool of a plugin; past it the call ends with a
+     *   tool error and the request is cancelled in the server.
+     * - `start_timeout`: how long the start of a process (spawn, handshake and `tools/list`) may take.
+     * - `restart_backoff`: the wait before a process that failed is started again, doubling from
+     *   `initial` up to `max`.
+     * - `http`: `loopback` (default) lets a manifest with `server.type: http` connect to its
+     *   address, which the manifest already confines to the loopback, with no authentication;
+     *   `off` refuses those plugins (only `stdio` runs).
+     */
+    plugins: z
+      .strictObject({
+        idle_timeout: OffOrDurationSchema.prefault('10m'),
+        max_restarts: z.int().min(0).max(100).default(3),
+        call_timeout: DurationSchema.prefault('60s'),
+        start_timeout: DurationSchema.prefault('30s'),
+        restart_backoff: z
+          .strictObject({
+            initial: DurationSchema.prefault('1s'),
+            max: DurationSchema.prefault('1m'),
+          })
+          .prefault({}),
+        http: z.enum(['loopback', 'off']).default('loopback'),
+      })
+      .prefault({}),
+    /**
      * The single prompt queue of the Director (architecture 5.4; P7). `order`: `producer_first`
      * (default) delivers the Producer's message ahead of the notices of the daemon, `fifo` delivers
      * by arrival only. `summary_messages` is how many of the last messages the state summary lists
