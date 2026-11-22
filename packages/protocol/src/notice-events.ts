@@ -59,6 +59,14 @@ const detail = z.string().min(1).max(512).nullable();
  *   because it could not be trusted (`subject`: the version, or `none`; `detail`: the reason
  *   code of `daemon.update`). Nothing of it stays on disk. The same fact is the `daemon.update`
  *   event with `phase: rejected`; this notice is what reaches the global chat.
+ * - `update_applied`, `update_rolled_back`, `update_failed`, `update_ask` (Phase 10, P8;
+ *   [proposta]): what the global chat is told about the application of a version (`subject`: the
+ *   version). `update_applied`: the new version came up and held (`detail`: the previous one).
+ *   `update_rolled_back`: it did not, and the previous one is back (`detail`: the reason code of
+ *   `daemon.update`). `update_failed`: it did not come up and `updates.rollback: off` left the
+ *   state as it is (`detail`: the reason). `update_ask`: the `max_wait` of `idle` ended and the
+ *   Producer chooses, by `POST /v1/updates/apply`, between `park` ("estaciona e aplica") and
+ *   `wait` ("espera mais") (`detail`: the two options, `park|wait`).
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -80,6 +88,10 @@ export const DAEMON_NOTICE_KINDS = [
   'telemetry_purge_blocked',
   'log_rotate_failed',
   'update_rejected',
+  'update_applied',
+  'update_rolled_back',
+  'update_failed',
+  'update_ask',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

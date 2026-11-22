@@ -4,6 +4,7 @@ import { Cancelled, type Clock } from '@otheater/core';
 import {
   UPDATE_REASONS,
   UPDATE_RESULTS,
+  type ApiUpdateApply,
   type ApiUpdateStatus,
   type DaemonUpdatePayload,
   type UpdatePhase,
@@ -40,8 +41,8 @@ import { sha256OfFile, verifySignature, type PublicKeyResult } from './verify.js
  * - `off`: never searches; `POST /v1/updates/check` answers 409;
  * - `check`: reads the manifest and says a newer version exists (`found`); downloads nothing;
  * - `notify`: also downloads, checks and stores the version, and says it is ready;
- * - `auto`: what `notify` does today, and (from P8) it applies the version when the daemon is idle.
- *   Until P8 exists the status and the event say `auto` acts as `notify`;
+ * - `auto`: what `notify` does, and it also applies the version (P8: `updates.apply_when` says when,
+ *   see `apply/coordinator.ts`);
  * - a daemon that is not the own executable (a checkout run by Node) acts as `check`;
  * - a build without a valid public key searches nothing: it cannot check what it would get.
  */
@@ -54,6 +55,17 @@ type EffectiveMode = ActiveMode | 'off';
 export const REJECTION_REASONS: readonly UpdateReason[] = UPDATE_REASONS.filter(
   (reason) => phaseOf(reason) === 'rejected',
 );
+
+/**
+ * What the checker tells the step that applies a version (P8). The checker knows nothing else of
+ * it: no module of the search imports the swap.
+ */
+export interface UpdateApplyHooks {
+  /** The state of the application, for `GET /v1/updates`. */
+  readonly status: () => ApiUpdateApply;
+  /** The version that is ready now (`null`: none); `restored` when found on disk at the start. */
+  readonly ready: (version: string | null, restored: boolean) => void;
+}
 
 /** What `otheater_updates_*` counts. */
 export interface UpdateCounters {
@@ -75,6 +87,8 @@ export interface UpdateCheckerOptions {
   readonly clock: Clock;
   readonly situations: SituationSink;
   readonly logger: Pick<Logger, 'warn' | 'error' | 'info' | 'debug'>;
+  /** The step that applies a ready version (P8); without it the version only waits. */
+  readonly applier?: UpdateApplyHooks | undefined;
 }
 
 interface Context {
@@ -100,7 +114,7 @@ export class UpdateChecker {
   #lastResult: UpdateResult | null = null;
   #lastReason: UpdateReason | null = null;
   #found: string | null = null;
-  #ready: string | null = null;
+  #readyVersion: string | null = null;
 
   constructor(options: UpdateCheckerOptions) {
     this.#o = options;
@@ -118,11 +132,32 @@ export class UpdateChecker {
       return { mode: 'check', notes };
     }
     if (this.#o.key.state !== 'valid') return { mode: 'check', notes };
-    if (asked === 'auto') {
-      notes.push('auto_acts_as_notify');
-      return { mode: 'notify', notes };
-    }
     return { mode: asked, notes };
+  }
+
+  /** The state of the application when nothing applies (no step, or a build that cannot). */
+  #noApply(): ApiUpdateApply {
+    return {
+      when: this.#o.settings.apply_when,
+      rollback: this.#o.settings.rollback,
+      state: 'none',
+      version: null,
+      since: null,
+      askAt: null,
+      last: null,
+    };
+  }
+
+  /** Sets the version that is ready and tells the step that applies it. */
+  #setReady(version: string | null, restored: boolean): void {
+    this.#readyVersion = version;
+    this.#o.applier?.ready(version, restored);
+  }
+
+  /** A version the apply step refused: it is no longer offered. */
+  forget(version: string): void {
+    if (this.#readyVersion === version) this.#setReady(null, false);
+    if (this.#found === version) this.#found = null;
   }
 
   status(): ApiUpdateStatus {
@@ -143,7 +178,8 @@ export class UpdateChecker {
       nextCheckAt: iso(this.#nextAt),
       lastResult: this.#lastResult,
       found: this.#found,
-      ready: this.#ready,
+      ready: this.#readyVersion,
+      apply: this.#o.applier?.status() ?? this.#noApply(),
       lastReason: this.#lastReason,
     };
   }
@@ -191,7 +227,10 @@ export class UpdateChecker {
     await this.#o.staging.sweep();
     if (staged !== undefined && semver.gt(staged.version, this.#current)) {
       this.#found = staged.version;
-      this.#ready = staged.version;
+      this.#setReady(staged.version, true);
+    } else if (staged !== undefined) {
+      // Already installed (or older): nothing waits for it, and it takes up the disk.
+      await this.#o.staging.drop(staged.version);
     }
   }
 
@@ -236,7 +275,7 @@ export class UpdateChecker {
     const files = await source.fetchRelease(settings.channel, this.#abort.signal);
     if (files === undefined) {
       this.#found = null;
-      this.#ready = null;
+      this.#setReady(null, false);
       return 'up_to_date';
     }
     // 2. The signature first; the manifest is not read before it checks.
@@ -255,7 +294,7 @@ export class UpdateChecker {
     }
     if (semver.eq(manifest.version, this.#current)) {
       this.#found = null;
-      this.#ready = null;
+      this.#setReady(null, false);
       return 'up_to_date';
     }
     if (semver.lt(manifest.version, this.#current)) {
@@ -290,7 +329,7 @@ export class UpdateChecker {
       staged.asset.sha256 === asset.sha256 &&
       staged.asset.size === asset.size
     ) {
-      this.#ready = manifest.version;
+      this.#setReady(manifest.version, false);
       return 'ready';
     }
 
@@ -335,7 +374,7 @@ export class UpdateChecker {
       await staging.discard(partial);
       throw error;
     }
-    this.#ready = manifest.version;
+    this.#setReady(manifest.version, false);
     this.#tell('verified', manifest.version, null, mode, `verified:${manifest.version}`, true);
     return 'ready';
   }
@@ -367,7 +406,7 @@ export class UpdateChecker {
     if (phase === 'rejected') {
       this.#rejected[stop.reason] += 1;
       // A version that was refused is not offered, whatever an earlier search found.
-      this.#ready = this.#ready === version ? null : this.#ready;
+      this.#setReady(this.#readyVersion === version ? null : this.#readyVersion, false);
     }
     // A build with no key, run from a checkout, is not a situation: it is how a checkout is.
     const quiet =
@@ -385,7 +424,8 @@ export class UpdateChecker {
         });
       }
     }
-    return phase;
+    // A search never ends in a rollback (that is the apply step's); `failed` is the nearest result.
+    return phase === 'rolled_back' ? 'failed' : phase;
   }
 
   /**

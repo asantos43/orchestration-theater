@@ -1870,6 +1870,38 @@ describe('plugins.permissions (Phase 9, P6) [proposta]', () => {
   });
 });
 
+describe('updates, the application (Phase 10, P8) [proposta]', () => {
+  it('takes each mode of each key', () => {
+    for (const when of ['idle', 'park', 'next_start']) {
+      expect(parseConfig(`updates:\n  apply_when: ${when}\n`).updates.apply_when).toBe(when);
+    }
+    for (const rollback of ['auto', 'off']) {
+      expect(parseConfig(`updates:\n  rollback: ${rollback}\n`).updates.rollback).toBe(rollback);
+    }
+    for (const flag of [true, false]) {
+      expect(
+        parseConfig(`updates:\n  backup_before_migration: ${String(flag)}\n`).updates
+          .backup_before_migration,
+      ).toBe(flag);
+    }
+    expect(parseConfig('updates:\n  max_wait: 2h\n').updates.max_wait).toBe(7_200_000);
+    expect(parseConfig('updates:\n  health_timeout: 90s\n').updates.health_timeout).toBe(90_000);
+  });
+
+  it('refuses what is not a mode and a wait under one second', () => {
+    for (const bad of [
+      'updates:\n  apply_when: now\n',
+      'updates:\n  rollback: maybe\n',
+      'updates:\n  backup_before_migration: sometimes\n',
+      'updates:\n  max_wait: 500ms\n',
+      'updates:\n  max_wait: forever\n',
+      'updates:\n  health_timeout: 0s\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
 describe('updates (Phase 10, P7) [proposta]', () => {
   it('has the defaults: auto, stable, GitHub, every 6 hours', () => {
     expect(parseConfig('').updates).toEqual({
@@ -1877,6 +1909,11 @@ describe('updates (Phase 10, P7) [proposta]', () => {
       channel: 'stable',
       source: 'github',
       check_interval: 6 * 3_600_000,
+      apply_when: 'idle',
+      max_wait: 24 * 3_600_000,
+      rollback: 'auto',
+      backup_before_migration: true,
+      health_timeout: 60_000,
     });
   });
 

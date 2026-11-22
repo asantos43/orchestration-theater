@@ -62,6 +62,7 @@ import { spawnDetachedDaemon } from './service/ensure-daemon.js';
 import { execRunner } from './service/command-runner.js';
 import { createServiceManager } from './service/index.js';
 import { resolveServiceCommand } from './service/self-command.js';
+import { recoverAtStart } from './updates/apply/recover.js';
 import { packageVersion } from './version.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
@@ -745,6 +746,8 @@ export function isProfileExecArgv(argv: readonly string[]): boolean {
 export async function entry(): Promise<void> {
   const argv = process.argv.slice(2);
   const exec = isProfileExecArgv(argv);
+  // A swap whose applier died is finished or undone before anything else (Phase 10, P8).
+  if (isSeaProcess() && !exec) await recoverAtStart({ execPath: process.execPath });
   const controller = new AbortController();
   let signals = 0;
   const onSignal = (): void => {

@@ -29,6 +29,7 @@ import {
   type DaemonStatus,
 } from '@otheater/protocol';
 import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
+import { ApiFailure } from './api/handlers.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
 import { ApiServer } from './api/server.js';
@@ -44,6 +45,7 @@ import { SetupService } from './setup/index.js';
 import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
 import {
   compose,
+  composeOwnSchemas,
   productionClients,
   type ComposeOverrides,
   type Composition,
@@ -127,6 +129,9 @@ import { announceRecovery } from './recovery/notice.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
+import { ApplyCoordinator, type ApplyCoordinatorOptions } from './updates/apply/coordinator.js';
+import { launchApplier } from './updates/apply/launch.js';
+import { layoutOf } from './updates/apply/layout.js';
 import { UpdateChecker } from './updates/checker.js';
 import { detectInstallKind, updatePlatform, type UpdateInstallKind } from './updates/install.js';
 import { embeddedPublicKeyPem } from './updates/key.js';
@@ -213,6 +218,16 @@ export interface StartDaemonOptions {
 }
 
 export interface UpdatesOptions {
+  /** The executable that is replaced (Phase 10, P8); default: this process's, for the `own` install. */
+  readonly exe?: string | undefined;
+  /** Starts the applier; default: the real one (`apply/launch.ts`). Tests give a fake. */
+  readonly launch?: ApplyCoordinatorOptions['launch'] | undefined;
+  /** How the clock of the waits goes (tests): `idle` poll, journal poll, and the stable time. */
+  readonly idlePollMs?: number | undefined;
+  readonly reportPollMs?: number | undefined;
+  readonly stableMs?: number | undefined;
+  readonly releaseBuild?: boolean | undefined;
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
   readonly publicKey?: string | undefined;
   readonly fetch?: FetchFunction | undefined;
   readonly installKind?: UpdateInstallKind | undefined;
@@ -758,6 +773,18 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   });
   apiRef.server = api;
   api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
+  // P8 (Phase 10): what the applier asks of a daemon that has just replaced another. A 200 says the
+  // recovery finished without an error (the state is `running`) and the API answers; it is not held
+  // by the gate (a read), so a daemon still recovering answers 503 `recovering` at once.
+  api.handlers.register('getHealth', () => {
+    if (state !== 'running') {
+      throw new ApiFailure(
+        state === 'stopping' ? 'unavailable' : 'recovering',
+        `The daemon is ${state}`,
+      );
+    }
+    return { status: 'ok' as const, version, pid: process.pid };
+  });
   // P4 (Phase 6): the event stream. It reads the log through the hub and heartbeats on the clock.
   registerEventRoutes({
     handlers: api.handlers,
@@ -812,6 +839,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // route is a 404 and nothing is counted.
   // P7 (Phase 10): the search for updates; `/metrics` reads its counters once it exists.
   let updatesChecker: UpdateChecker | undefined;
+  let updateApply: ApplyCoordinator | undefined;
   const eventMetrics = exportsPrometheus(config.telemetry.export) ? new EventMetrics() : undefined;
   if (eventMetrics !== undefined) {
     eventMetrics.start(composition.eventHub, logger);
@@ -1134,7 +1162,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // After the plays and the effects settle, so the end of a play still reaches the export.
       await attempt('atif export', async () => atifAuto?.stop());
       await attempt('telemetry retention', async () => telemetryRetention?.stop());
-      await attempt('updates', async () => updatesChecker?.stop());
+      await attempt('updates', async () => {
+        await updatesChecker?.stop();
+        await updateApply?.stop();
+      });
       await attempt('analysis', async () => analysisService?.stop());
       await attempt('registries snapshot', () => {
         registryHolder.stop();
@@ -1266,28 +1297,77 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     });
     telemetryRetention.start();
   }
-  // P7 (Phase 10, N58 and N73): the search for updates. `updates.*` is cold, like `analysis.*`. It
-  // never holds the start-up: the first search runs in the background, and an origin that does not
-  // answer only makes it `failed`. P7 discovers, downloads and checks; applying is P8.
+  // P7 and P8 (Phase 10, N58 and N73): the search for updates and the apply of the one that is
+  // ready. `updates.*` is cold, like `analysis.*`. It never holds the start-up: the first search
+  // runs in the background, and an origin that does not answer only makes it `failed`.
   {
     const wanted = options.updates;
+    const installKind = wanted?.installKind ?? detectInstallKind();
+    const key = parsePublicKey(wanted?.publicKey ?? embeddedPublicKeyPem());
+    const staging = new UpdateStaging(join(paths.dataDir, 'updates', 'staging'));
+    const platform = wanted?.platform ?? updatePlatform();
+    const runner = execution?.runner;
+    updateApply = new ApplyCoordinator({
+      settings: config.updates,
+      version,
+      dataDir: paths.dataDir,
+      layout: installKind === 'own' ? layoutOf(wanted?.exe ?? process.execPath) : undefined,
+      key,
+      platform,
+      staging,
+      clock,
+      situations: composition.situations,
+      logger,
+      work:
+        runner === undefined
+          ? undefined
+          : {
+              active: () => runner.active,
+              hold: () => {
+                runner.hold();
+              },
+              release: () => {
+                runner.release();
+              },
+            },
+      backup: storeCanBackUp
+        ? async () => {
+            const made = await service.run('update');
+            return made.ok
+              ? { ok: true, dir: made.created.dir }
+              : { ok: false, detail: made.error.message };
+          }
+        : undefined,
+      ownSchemas: composeOwnSchemas(),
+      launch: wanted?.launch ?? ((layout, exe) => launchApplier(layout, exe)),
+      shutdown: () => stop('shutdown'),
+      effectiveMode: () => updatesChecker?.status().effectiveMode ?? 'off',
+      forget: (forgotten) => updatesChecker?.forget(forgotten),
+      releaseBuild: wanted?.releaseBuild,
+      env: wanted?.env,
+      idlePollMs: wanted?.idlePollMs,
+      reportPollMs: wanted?.reportPollMs,
+      stableMs: wanted?.stableMs,
+    });
     updatesChecker = new UpdateChecker({
       settings: config.updates,
       currentVersion: version,
-      platform: wanted?.platform ?? updatePlatform(),
-      installKind: wanted?.installKind ?? detectInstallKind(),
-      key: parsePublicKey(wanted?.publicKey ?? embeddedPublicKeyPem()),
+      platform,
+      installKind,
+      key,
       source: createUpdateSource(
         config.updates.source === 'url' && config.updates.url !== undefined
           ? { kind: 'url', url: config.updates.url }
           : { kind: 'github' },
         { fetch: wanted?.fetch ?? fetch },
       ),
-      staging: new UpdateStaging(join(paths.dataDir, 'updates', 'staging')),
+      staging,
       clock,
       situations: composition.situations,
       logger,
+      applier: updateApply,
     });
+    updateApply.start();
     updatesChecker.start();
   }
   const slash = new SlashCommandService({
@@ -1438,6 +1518,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     direct,
     plugins: pluginPanel,
     updates: updatesChecker,
+    updateApply,
   });
 
   // Phase 9, P4: the snapshot of the registries follows the plugins that are on (the registry was
