@@ -28,8 +28,17 @@ import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
 import { useRenderControl } from '../../render-control.js';
 import { Section } from '../../layout/section.js';
-import { fit, wrapText } from '../../layout/text.js';
+import { breakLine, cellWidth, fit, wrapText } from '../../layout/text.js';
 import { COLOR, paint } from '../../layout/theme.js';
+import { isRemote } from '../../mouse/clipboard.js';
+import { useCopyToClipboard } from '../../mouse/index.js';
+import {
+  hyperlink,
+  openUrl,
+  runOpenCommand,
+  type OpenOutcome,
+  type OpenPorts,
+} from '../../open-url.js';
 import { useStoreValue } from '../../use-store-value.js';
 import { apiOf, type SettingsApi } from './api.js';
 import { fieldStep } from './field.js';
@@ -92,7 +101,25 @@ export interface SettingsTabOptions {
   readonly runLocal?: LocalRunner | undefined;
   /** The clock of the quota resets; default: the system's. */
   readonly now?: (() => number) | undefined;
+  /** How the sign-in panel opens the address in the browser; default: the command of the system. The tests give a fake `run`. */
+  readonly open?: Partial<OpenPorts> | undefined;
 }
+
+/**
+ * The keys of the sign-in panel [proposta]. The panel reads the keys itself and, when the client
+ * takes a code, the letters go to the field of the code, so these are Ctrl+letter: a terminal sends
+ * them as control characters, which the field never takes as text (and `Ctrl+Y`, `Ctrl+O` are not
+ * used by the field, by the setup or by the global shortcuts, which are off while the panel reads).
+ */
+export const LOGIN_OPEN_KEY = 'Ctrl+O';
+export const LOGIN_COPY_KEY = 'Ctrl+Y';
+
+/** The id that ties the rows of one address into one hyperlink (OSC 8). */
+const LOGIN_LINK_ID = 'otheater-login';
+
+/** What the address shows as: a control character of the client's output is never drawn (it could be a terminal escape). */
+// eslint-disable-next-line no-control-regex
+const printable = (address: string): string => address.replace(/[\x00-\x1f\x7f-\x9f]/g, '?');
 
 type Scope = 'global' | 'project';
 type Tone = 'ok' | 'warn' | 'error';
@@ -177,6 +204,8 @@ interface Line {
   readonly title?: string;
   readonly right?: string;
   readonly text?: string;
+  /** The row is (a piece of) this address: it is drawn as a hyperlink and broken in place, never cut. */
+  readonly link?: string;
   readonly color?: string | undefined;
   readonly dim?: boolean;
   readonly selected?: boolean;
@@ -193,13 +222,23 @@ interface TabProps {
 
 function SettingsTab({ content, options }: TabProps): ReactNode {
   const { t } = useTranslation();
-  const { stores, keymap, capture, openAssistant } = useTabHost();
+  const { stores, keymap, capture, openAssistant, settings } = useTabHost();
+  const copyToClipboard = useCopyToClipboard();
   const scenarioId = content.scenarioId;
   const { suspendTerminal } = useApp();
   const { afterKey } = useRenderControl();
   const api = useMemo(() => options.api ?? apiOf(stores.client), [options.api, stores]);
   const now = options.now ?? Date.now;
   const runLocal = options.runLocal ?? runInTerminal;
+  const openPorts = useMemo(
+    (): OpenPorts => ({
+      run: runOpenCommand,
+      environment: { platform: process.platform, env: process.env },
+      ...options.open,
+    }),
+    [options.open],
+  );
+  const loginBrowser = settings.login.browser;
 
   const [loaded, setLoaded] = useState<Loaded | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
@@ -411,6 +450,47 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     }
   };
 
+  const sayOpened = (outcome: OpenOutcome): void => {
+    if (outcome.ok) {
+      say(t('settings.login.opened', { command: outcome.command }), 'ok');
+    } else {
+      say(
+        t(`settings.login.openFailed.${outcome.reason}`, {
+          command: outcome.command ?? '',
+          copy: LOGIN_COPY_KEY,
+        }),
+        'warn',
+      );
+    }
+  };
+
+  // Opens the address in the browser (`auto` when the sign-in starts, the key after that). `off`
+  // never opens; over SSH the browser would open on the other machine, so it only says so.
+  const openAddress = async (url: string | null, by: 'auto' | 'key'): Promise<void> => {
+    if (url === null) return;
+    if (loginBrowser === 'off') {
+      if (by === 'key') say(t('settings.login.openOff', { copy: LOGIN_COPY_KEY }), 'warn');
+      return;
+    }
+    sayOpened(await openUrl(url, openPorts));
+  };
+
+  const copyAddress = async (url: string | null): Promise<void> => {
+    if (url === null) return;
+    const text = printable(url);
+    const outcome =
+      copyToClipboard === undefined
+        ? ({ ok: false, reason: 'off' } as const)
+        : await copyToClipboard(text);
+    if (outcome.ok) {
+      say(t(`settings.login.copied.${outcome.via}`, { chars: outcome.chars }), 'ok');
+    } else if (outcome.reason === 'empty') {
+      say(t('settings.login.noUrl'), 'warn');
+    } else {
+      say(t(`layout.mouse.copyFailed.${outcome.reason}`), 'warn');
+    }
+  };
+
   const startLogin = async (profile: ApiProfile): Promise<void> => {
     const profileId = profile.profile.id;
     endedLogins.current.delete(profileId);
@@ -444,6 +524,8 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         return;
       }
       setMode({ kind: 'login', profileId, info: result, value: '', sent: false });
+      // `ui.login.browser: auto`: the way the official clients do it, the browser opens on its own, once.
+      if (loginBrowser === 'auto') void openAddress(result.url, 'auto');
     } catch (error) {
       failed(error);
     }
@@ -532,6 +614,14 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     if (current.kind === 'login') {
       if (event.combo === 'Esc') {
         endLogin(current);
+        return;
+      }
+      if (event.combo === LOGIN_OPEN_KEY) {
+        void openAddress(current.info.url, 'key');
+        return;
+      }
+      if (event.combo === LOGIN_COPY_KEY) {
+        void copyAddress(current.info.url);
         return;
       }
       if (!current.info.takesCode) return;
@@ -863,14 +953,28 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       color: COLOR.accent,
     });
     head.push({ key: 'g.mode', kind: 'row', text: t(`settings.login.mode.${mode.info.mode}`) });
-    head.push({
-      key: 'g.url',
-      kind: 'row',
-      text:
-        mode.info.url === null
-          ? t('settings.login.noUrl')
-          : t('settings.login.url', { url: mode.info.url }),
-    });
+    if (mode.info.url === null) {
+      head.push({ key: 'g.url', kind: 'row', text: t('settings.login.noUrl') });
+    } else {
+      head.push({ key: 'g.url', kind: 'row', text: t('settings.login.url') });
+      head.push({
+        key: 'g.link',
+        kind: 'row',
+        text: printable(mode.info.url),
+        link: mode.info.url,
+        color: COLOR.accent,
+      });
+      const canOpen = loginBrowser !== 'off' && !isRemote(openPorts.environment);
+      head.push({
+        key: 'g.keys',
+        kind: 'row',
+        dim: true,
+        text: t(canOpen ? 'settings.login.keys.both' : 'settings.login.keys.copy', {
+          open: LOGIN_OPEN_KEY,
+          copy: LOGIN_COPY_KEY,
+        }),
+      });
+    }
     if (mode.info.code !== null) {
       head.push({
         key: 'g.code',
@@ -936,6 +1040,25 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       continue;
     }
     if (line.selected === true) cursorLine = wrapped.length;
+    if (line.link !== undefined) {
+      // An address: broken exactly at the width (a long one takes several rows, none is cut) and
+      // each row is the same OSC 8 link, so the terminal sees one address. The padding is counted
+      // on the text, since `fit` would count the escape of the link as cells.
+      const room = Math.max(1, width - 1);
+      breakLine(line.text ?? '', room).forEach((piece, index) => {
+        const padding = ' '.repeat(Math.max(0, room - cellWidth(piece)));
+        wrapped.push(
+          <Text
+            key={`${line.key}.${String(index)}`}
+            wrap="truncate"
+            {...paint(line.color, undefined)}
+          >
+            {` ${hyperlink(piece, line.link ?? '', LOGIN_LINK_ID)}${padding}`}
+          </Text>,
+        );
+      });
+      continue;
+    }
     const pieces = wrapText(line.text ?? '', Math.max(1, width - 1));
     pieces.forEach((piece, index) => {
       wrapped.push(
