@@ -1,6 +1,6 @@
 # 20. Plano da Fase 9
 
-Versão 3, de 2026-11-21 (a versão 1 era a mesma data, antes das decisões N232 a N241; a 2 não tinha o P14, da N242). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
+Versão 4, de 2026-11-22 (a versão 1 era de 2026-11-21, antes das decisões N232 a N241; a 2 não tinha o P14, da N242; a 3 era o plano de partida; a 4 registra o que os passos mesclados fizeram, no "Como ficou" de cada um). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
 
 A fase começa depois do fim da Fase 8 (decisões N224 a N231, de 2026-11-21). Pela N231, os PRs desta fase mesclam sem ok por PR, com a CI verde e squash. O que depende do dono fica para o fim da fase.
 
@@ -71,20 +71,20 @@ Dados do registro npm, consultados em 2026-11-21 **[S]**. A regra é a das fases
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano e decisões (este documento) | nada | P1, P2 | em PR |
-| P1 | Árvore única de spans (N230 (2)) | nada | P0, P2, P3 | em curso |
-| P2 | Métricas da espera e dos lotes recusados (N225 (2) e (3)) | nada | P0, P1, P3 | em curso |
-| P3 | Manifesto: schema, validador e JSON Schema gerado (N233, N237) | P0 | P1, P2 | a fazer |
-| P4 | Registro, instalação e ativação por projeto (N235, N236) | P3 | P5, P9, P12 | a fazer |
-| P5 | Cliente MCP, processos dos plugins e agregação (N232, N234, N238) | P3 | P4, P9, P12 | a fazer |
-| P6 | Permissões geradas do manifesto (N237) | P4, P5 | P7, P8 | a fazer |
-| P7 | Segredos do plugin no cofre (N239) | P5 | P6, P8 | a fazer |
-| P8 | Eventos `plugin.<id>.*` e eventos do ciclo dos plugins | P4, P5 | P6, P7 | a fazer |
-| P9 | `@otheater/sdk` para plugins e o plugin de exemplo (N240) | P3 | P4, P5, P12 | a fazer |
-| P10 | Rotas `/v1/plugins`: lista, painel e ação | P6, P8 | P12 | a fazer |
-| P11 | Aba Plugins da TUI (F6) com o painel declarativo | P10 | P12 | a fazer |
-| P12 | Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241) | P3 | P4 a P11 | a fazer |
-| P14 | Troca manual do Diretor pela TUI e por `/director` (N242) | nada | P3 a P12 | a fazer |
+| P0 | Plano e decisões (este documento) | nada | P1, P2 | feito (#263, ce95ab9) |
+| P1 | Árvore única de spans (N230 (2)) | nada | P0, P2, P3 | feito (#265, 99220d9) |
+| P2 | Métricas da espera e dos lotes recusados (N225 (2) e (3)) | nada | P0, P1, P3 | feito (#264, 6fde2b6) |
+| P3 | Manifesto: schema, validador e JSON Schema gerado (N233, N237) | P0 | P1, P2 | feito (#266, bfc6cb1) |
+| P4 | Registro, instalação e ativação por projeto (N235, N236) | P3 | P5, P9, P12 | feito (#272, 4c3460c; #277, 535c1f7) |
+| P5 | Cliente MCP, processos dos plugins e agregação (N232, N234, N238) | P3 | P4, P9, P12 | feito (#273, a064ce1; #278, 6a0fd77) |
+| P6 | Permissões geradas do manifesto (N237) | P4, P5 | P7, P8 | feito (#276, c0a7c7b) |
+| P7 | Segredos do plugin no cofre (N239) | P5 | P6, P8 | feito (#274, 2a87ecb) |
+| P8 | Eventos `plugin.<id>.*` e eventos do ciclo dos plugins | P4, P5 | P6, P7 | feito (#275, d27a3dd) |
+| P9 | `@otheater/sdk` para plugins e o plugin de exemplo (N240) | P3 | P4, P5, P12 | feito (#271, 43908f2) |
+| P10 | Rotas `/v1/plugins`: lista, painel e ação | P6, P8 | P12 | feito (#279, 6b6e0f3) |
+| P11 | Aba Plugins da TUI (F6) com o painel declarativo | P10 | P12 | em curso |
+| P12 | Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241) | P3 | P4 a P11 | feito (#270, ff36aab) |
+| P14 | Troca manual do Diretor pela TUI e por `/director` (N242) | nada | P3 a P12 | feito (#269, 27c1185; plano #268, 303c334) |
 | P13 | Aceite da fase | todos | nada | a fazer |
 
 Ondas **[proposta]**:
@@ -109,6 +109,14 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
 - Chave `telemetry.receiver.reparent: session | off`, com padrão `session` **[proposta]**. Os spans de uma sessão desconhecida ficam como chegaram.
 - **Aceite:** com o `fake-agent`, os spans do cliente aparecem na árvore do daemon, sob a sessão. Com `off`, nada muda. A rota de spans da peça, a exportação OTLP e o ATIF continuam válidos.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-21, PR #265 (99220d9) [S: descrição do PR; a chave foi conferida na main]. Arquivos: `packages/daemon/src/telemetry/reparent.ts` (novo), `receiver.ts` e `daemon.ts`. O receptor reparenta os spans do cliente para o trace do daemon (`traceIdForAttempt`), sob o span da sessão (`sessionSpanId`) ou, sem ele, o da tentativa. Os ids originais ficam em `otheater.client.trace_id` e `otheater.client.parent_span_id` **[proposta]**. Os logs seguem os spans, e `traceResourceExtras` põe `otheater.trace_id` no recurso que o cliente recebe. Chave `telemetry.receiver.reparent: session | off`, padrão `session` [V: `config.ts`]. A rota `GET /v1/plays/:playId/spans` da peça segue só com os spans do daemon; a exportação OTLP e o ATIF não mudaram. Sem evento e sem métrica novos.
+
+**Divergências:**
+- o PR avisa dois limites que o plano não tinha: um pai remoto, que nunca chegou ao daemon, continua órfão; e com `telemetry.daemon_spans` desligado o span pai não existe [S];
+- o aceite foi com o `fake-agent`; um cliente real (Claude Code, Codex, OpenCode) não foi rodado neste passo [N].
+
 ### P2. Métricas da espera e dos lotes recusados (N225 (2) e (3); §5.11)
 
 - A espera vira métrica, derivada dos eventos `wait.started` e `wait.ended`, sem fonte nova. Os nomes seguem o estilo das dez métricas `otheater_*` **[proposta]**:
@@ -119,6 +127,20 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
 - Um contador dos lotes do receptor por motivo de recusa (`format`, `size`, `token`), lido do `stats` do receptor.
 - As séries saem no `/metrics` e na exportação OTLP de métricas.
 - **Aceite:** o `/metrics` mostra as séries novas com valores coerentes com os eventos e com o `stats`. As dez métricas existentes não mudam.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-21, PR #264 (6fde2b6) [S: descrição do PR; os nomes das séries foram conferidos em `metrics.ts`]. Séries novas no `/metrics` [V]:
+- `otheater_waits_active` (gauge, por `kind`);
+- `otheater_waits_total` (contador, por `kind` e `outcome`);
+- `otheater_wait_seconds_total` (contador, por `kind`);
+- `otheater_telemetry_batches_rejected_total` (contador, por `reason`: `format`, `size`, `token`).
+
+As esperas vêm dos eventos `wait.*` (`metrics-events.ts`) e os lotes recusados vêm do `stats` do receptor (fonte `receiver` em `metrics.ts`). Só contam as esperas acima de `events.wait_threshold`, e `waitedMs` é a espera inteira. `MAX_OPEN` limita a memória das esperas abertas. Os contadores zeram ao reiniciar (N225 (4)). Nenhuma chave nova.
+
+**Divergências:**
+- o plano dizia que as séries saíam também na exportação OTLP de métricas. Elas saem só no `/metrics`: a exportação OTLP não usa o `MetricsCollector` [S]. Se o dono quiser as séries no OTLP, é um passo novo;
+- a espera pela escolha do Executor (`demand.waiting` e `scenario.director_waiting`) não é um evento `wait.*` e ficou fora das séries. É pergunta para o dono [S].
 
 ### P3. Manifesto: schema, validador e JSON Schema gerado (N233, N237; §5.14)
 
@@ -146,6 +168,20 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - cada regra tem um teste de recusa, com a mensagem apontando o campo;
   - o JSON Schema gerado bate com o arquivo do repositório.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-21, PR #266 (bfc6cb1) [S: descrição do PR; o script e o arquivo gerado foram conferidos na main]. O validador está em `packages/core/src/plugins/` (`manifest.ts` e `manifest-schema.ts`), com `parsePluginManifest` e `parsePluginManifestText`; este recebe o leitor de YAML por injeção (o daemon passa o `yaml`), para o núcleo não depender dele. Pontos:
+- `manifest_version: 1` **[proposta]**;
+- `id` no padrão `^[a-z][a-z0-9_-]{0,63}$`; `i18n` só é obrigatório quando há painel; `command` é uma lista de argumentos; texto de até 256K;
+- as regras além do schema, cada uma com teste de recusa e mensagem apontando o campo: nome duplicado, evento com o prefixo `plugin.`, `source` que não é uma ferramenta de leitura do plugin, `tool` de `action` fora do plugin, catálogo `en`, `cwd` relativo sem `..`, `http` só em loopback e sem credenciais, e colisão com as ferramentas do framework;
+- vocabulário de efeitos (N237): `TOOL_EFFECT_CLASSES` passou a `read | local_write | network | external_write`. Foi um renomear um a um (`none` virou `read`, `worktree` virou `local_write`) e `network` é novo. O `network` pede chave de idempotência, como o `external_write` **[proposta]**;
+- JSON Schema em `docs/reference/plugin-manifest.schema.json`, gerado por `pnpm plugin:schema` [V: `package.json`] e conferido por teste (`toMatchFileSnapshot`).
+
+**Divergências:**
+- o plano deixava o vocabulário para a N237; o PR renomeou o antigo um a um, em vez de manter dois [S];
+- `http_get` e os `browser_*` do framework seguem `read` no código, enquanto a §5.19 os lista como `network`. É pergunta para o dono [S];
+- ficam para o dono: aceitar a chave de idempotência no manifesto e tornar `manifest_version` obrigatório [S].
+
 ### P4. Registro, instalação e ativação por projeto (N235, N236; §5.14)
 
 - **Comandos** `ot plugin install <origem> | list | remove <id> | enable <id> --project <p> | disable <id> --project <p>`. Pela N236, a origem pode ser:
@@ -169,6 +205,22 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - manifesto inválido recusado com a mensagem do P3;
   - manifesto mudado desliga o plugin;
   - a troca a quente não altera uma sessão aberta.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-21, PR #272 (4c3460c) [S: descrição do PR; as chaves e os arquivos foram conferidos na main]; o PR #277 (535c1f7, 2026-11-22) é parte do passo. Arquivos em `packages/daemon/src/plugins/`: `registry.ts` (`<dados>/plugins.json`, escrita atômica, modo 0600, trava e `fs.watch` com debounce), `install.ts`, `install-sources.ts`, `sources.ts`, `manifest-file.ts`, `activation-text.ts` e `command.ts` (`ot plugin install | list | update | remove | enable | disable`). O `RegistryHolder` (`registries.ts`) troca o retrato congelado por um novo e aceita `contribute()` (usado pelo P8). Pontos:
+- regra central: um plugin só está ativo num projeto enquanto o hash de `plugin.yaml` no disco for igual ao hash aprovado para o projeto. O `enable` aprova o hash mostrado e dá `Conflict` se ele mudar no meio;
+- a interface para o P5: `ActivePlugin {id, version, manifest, dir, manifestHash}`, `registry.activeFor(project)`, `onChange` e `refresh()`;
+- instalação: npm com `--ignore-scripts`, versão exata e ambiente filtrado; git com `core.hooksPath`, `--template=`, `protocol.ext.allow=never`, lista de URLs (https, ssh, scp e `file://`), commit fixado e `.git` removido [S];
+- chaves `plugins.install.sources` (`path`, `npm`, `git`), `plugins.install.timeout` (padrão 5 minutos) e `plugins.install.npm` (padrão `auto`) [V: `config.ts`];
+- #277: o `PluginRegistry` passou a gravar com `writePrivateFileAtomic` (`@otheater/client/node`), que repete o renomear até 5 vezes, com espera dobrada a partir de 10 ms, nos erros `EPERM`, `EACCES` e `EBUSY` do Windows. Corrigiu um teste instável no Windows [S].
+
+Escolhas **[proposta]** do PR, para o dono: a lista de ativação fica em `plugins.json` e não na configuração; instalar um id existente dá `Conflict`; `npm:` exige versão exata e o manifesto tem de trazer a mesma versão do pacote; `git:` sem ref usa o ramo padrão, e `http://`, `git://` ou senha na URL são recusados; `remove` apaga a pasta instalada; `plugins.json` fica fora dos backups; a trava velha vale 60 s e o debounce é de 200 ms; um `plugins.json` corrompido deixa todos os plugins desligados; os comandos funcionam com o daemon no ar; qualquer byte mudado no manifesto pede nova aprovação.
+
+**Divergências:**
+- o corpo do PR não cita a chave `plugins.install.npm`, que o plano previa e o código tem [V];
+- a forma do `update` e as escolhas acima eram **[proposta]** no plano e ficaram assim;
+- o aceite com um pacote com `postinstall` e um repositório com hook foi coberto pelos testes de instalação do PR [S]; nada foi rodado com npm ou git de rede.
 
 ### P5. Cliente MCP, processos dos plugins e agregação (N232, N234, N238; §5.14)
 
@@ -194,6 +246,22 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - o processo para ocioso;
   - o processo não vê o ambiente do daemon.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-21, PR #273 (a064ce1) [S: descrição do PR; as chaves foram conferidas em `config.ts`]; o PR #278 (6a0fd77, 2026-11-22) completou o ambiente do processo. Dependência nova: `@modelcontextprotocol/client` 2.4.0 (transitivas `eventsource` 3.0.7, `eventsource-parser` 3.1.1, `jose` 6.2.18 e `pkce-challenge` 5.0.2; o `THIRD_PARTY_NOTICES.md` foi regenerado). Arquivos em `packages/daemon/src/plugins/`: `mcp-client.ts`, `process-pool.ts`, `aggregate.ts` e `runtime-config.ts`, mais a agregação em `mcp/server.ts` e `mcp/access.ts`. Pontos:
+- ambiente do processo: só `PATH`, `LANG`, `TZ` e um `HOME` próprio (`<dados>/plugin-homes/<plugin>/<projeto>`); `SHELL`, `USER`, `LOGNAME` e `TERM` ficam fora;
+- agregação no servidor `otheater` como `<id>__<ferramenta>`, com o `tools/list` conferido contra o manifesto por avisos (`tool_not_declared`, `tool_not_exposed`, `tool_name_rejected` para nome acima de 64 caracteres);
+- erros de ferramenta: `plugin_timeout`, `plugin_unavailable` (com `retry_in_ms`), `plugin_failed` e `tool_unavailable`;
+- avisos do processo, por `PluginNoticeSink` (`StartDaemonOptions.pluginNotices`): `process_started`, `process_stopped` (ocioso, desligamento, inativo ou trocado), `process_failed` e `process_given_up`; o P8 os transformou em eventos;
+- chaves [V]: `plugins.idle_timeout` (`10m` ou `off`), `plugins.max_restarts` (3, de 0 a 100), `plugins.call_timeout` (`60s`), `plugins.start_timeout` (`30s`), `plugins.restart_backoff.initial` e `.max` (`1s` e `1m`) e `plugins.http` (`loopback` | `off`). `plugins` é seção de reinício: não está em `HOT_CONFIG_SECTIONS`;
+- a chamada que estoura o prazo não conta como falha do processo;
+- #278: o daemon passa a pasta do projeto ao processo em `OTHEATER_PROJECT_DIR` (`PluginPoolOptions.projectDir`, ligado à pasta do cenário; só vale caminho absoluto, e um segredo de mesmo nome nunca a substitui). Chave nova `plugins.project_dir`: `scenario` (padrão) ou `off` **[proposta]** [V]. O SDK lê a variável com `pluginProjectDirectory()` (P9).
+
+**Divergências:**
+- o plano não previa a chave `plugins.project_dir`; ela entrou no #278, depois do P5 e do P9 (o README do SDK dizia que esse trabalho faltava) [S];
+- uma chamada interrompida por uma queda devolve `plugin_failed` e não é repetida; repetir as ferramentas só de leitura seria decisão nova [N];
+- a lista de ferramentas vem da última subida: um plugin que nunca subiu e parou por falhas não lista nenhuma [N].
+
 ### P6. Permissões geradas do manifesto (N237; §5.8, §5.14)
 
 - O daemon gera as camadas 1 e 2 de permissão (§5.8) a partir dos papéis e efeitos do manifesto, para o adaptador de cada cliente, como já faz com as ferramentas do framework.
@@ -208,6 +276,25 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - a aprovação aparece e, recusada, a ferramenta não roda;
   - nenhum manifesto consegue liberar o que a política do papel nega (P3 da arquitetura).
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #276 (c0a7c7b) [S: descrição do PR; as chaves foram conferidas em `config.ts`]. `packages/daemon/src/plugins/permissions.ts` aplica duas regras: o papel está na lista do manifesto (lista vazia quer dizer só painel); e o efeito cabe na política do papel (`read` para qualquer papel listado; `local_write` e `external_write` pedem `edit` ou `write` em `nativeTools`; `network` pede um domínio em `network.allow`). O `AttemptRunner` pergunta ao `McpAccess.pluginTools` e põe os nomes em `mcpTools.otheater`, que o Claude (`allowedMcpRules`), o OpenCode (`opencodePermission`) e o Codex (`decidePermission`, motivos `mcp_tool_of_role` e `mcp_tool_outside_role`) já liam; nenhum ponto do `resolveRolePolicy` mudou. O `mcp/server.ts` bloqueia a chamada direta e o `#callPlugin` recusa também (defesa em duas camadas). O cartão de aprovação usa `openApproval` e os eventos `permission.asked` e `permission.answered` com `rule: plugin:<id>`. Novos `PERMISSION_REASONS`: `plugin_tool_approved` e `plugin_tool_refused` (`core/permission-rules.ts`). Aviso `tool_refused`, com os motivos `not_allowed`, `approval_denied`, `approval_unavailable` e `approval_cancelled`.
+
+Chaves `plugins.permissions.*` [V]:
+
+| Chave | Padrão | Modos |
+|---|---|---|
+| `local_write` | `writes` | `writes`, `shells`, `deny` |
+| `network` | `network_allow` | `network_allow`, `any`, `deny` |
+| `external_write` | `writes` | `writes`, `deny` |
+| `external_write_approval` | `ask` | `ask`, `manifest` |
+| `approval_detail` | `keys` | `keys`, `values` |
+
+**Divergências:**
+- as chaves `plugins.permissions.*` não estavam no plano; todas são **[proposta]**, e o PR levanta sete perguntas para o dono, entre elas o fato de `mcpTools: 'all'` deixar as camadas 1 e 2 abertas [S];
+- o aceite cobre os três adaptadores pela tradução das listas, pela camada 2 do Codex e por um e2e com o `fake-agent`; um cliente real não foi rodado [N];
+- sem evento nem métrica novos além dos motivos do `plugin.tool_rejected` (P8).
+
 ### P7. Segredos do plugin no cofre (N239; §5.14)
 
 - Os segredos ficam na chave `plugin/<id>/<NOME>` do `SecretVault`, com a variante por projeto `plugin/<id>/<projeto>/<NOME>` **[proposta]**, pela N239 (a).
@@ -221,6 +308,16 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - sem o segredo, o plugin não sobe.
 - Os testes usam o cofre em memória, nunca o chaveiro real sem `OT_TEST_KEYRING=1`.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #274 (2a87ecb) [S: descrição do PR; o evento foi conferido na main]. `packages/daemon/src/plugins/secrets.ts` (`pluginSecretKey`, `PluginSecrets` com `set`, `has` e `resolve`, e `pluginExtraEnv`). Chaves do cofre `plugin/<id>/<NOME>` e `plugin/<id>/<projeto>/<NOME>`, e a do projeto vence. `ot plugin secret set <id> <NOME> [--project <p>]` lê o valor da entrada padrão ou de uma pergunta sem eco (`askHidden`, em `cli.ts`), nunca o imprime, recusa valor vazio e confere que o plugin declara o nome. O `composeVault` foi extraído para `compose.ts`. Sem um segredo declarado, o servidor não sobe: a chamada dá `unavailable`, com aviso no log e o aviso `secret_missing` (sem repetição), e isso não conta como falha nem espera crescente. Com o cofre trancado, nenhum aviso. O `maskValues` cobre o stderr do servidor. No cofre em arquivo cifrado, `secret set` é recusado com o daemon no ar; o chaveiro não tem trava.
+
+Limites declarados no PR [S]: o `VaultValues` atualiza a cada 30 s; o resultado da ferramenta não é mascarado; um segredo chamado `PATH`, `HOME`, `LANG` ou `TZ` perde sem aviso.
+
+**Divergências:**
+- o PR diz "nenhum evento novo", mas a main tem o evento `plugin.secret_missing` (`PluginSecretMissingPayloadSchema` em `packages/protocol/src/plugin-events.ts`, registrado em `events.ts`) [V]; a contagem dos registros fecha com ele (137 da base, mais 1 do P14, 9 do P8, 1 do P7 e 1 do P10, 149 no protocolo);
+- a TUI com a mesma edição mascarada continua no P11.
+
 ### P8. Eventos `plugin.<id>.*` e eventos do ciclo dos plugins (§5.14)
 
 - **Eventos do plugin:** o plugin publica só os tipos que declarou no manifesto, como `plugin.<id>.<nome>`, com payload JSON pequeno e limitado (`plugins.event_max_bytes`, padrão 16 KB) **[proposta]**. O meio também é **[proposta]**: uma notificação MCP própria (`notifications/otheater/event`), que o SDK do P9 embrulha. Um tipo não declarado é recusado, com aviso e evento.
@@ -230,6 +327,20 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - `plugin.tool_rejected` (ferramenta fora do manifesto) e `plugin.event_rejected`.
   Os nomes dos eventos do daemon não colidem com os de plugin, porque um id de plugin não pode ser um destes nomes reservados.
 - **Aceite:** o evento declarado entra no log com o prefixo e chega aos assinantes; o não declarado é recusado; as contagens dos registros de eventos sobem.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #275 (d27a3dd) [S: descrição do PR; os nove eventos e as chaves foram conferidos na main]. Nove eventos do daemon [V]: `plugin.installed`, `plugin.removed`, `plugin.enabled`, `plugin.disabled`, `plugin.server_started`, `plugin.server_stopped`, `plugin.server_failed`, `plugin.tool_rejected` e `plugin.event_rejected`. Motivos:
+- `tool_rejected`: `not_declared`, `not_exposed`, `name_too_long`, `name_taken` e, vindos do P6, `not_allowed`, `approval_denied`, `approval_unavailable` e `approval_cancelled`;
+- `event_rejected`: `off`, `invalid`, `inactive`, `not_declared` e `too_large`;
+- `disabled`: `producer` e `needs_approval`.
+
+`plugins/events.ts` transforma cada `PluginNotice` e cada aviso do registro em evento; `broken` fica só no log. Um id de plugin não pode ser um desses nomes (regra cruzada do manifesto e o registro `plugin_prefix`). Os eventos do plugin, `plugin.<id>.<nome>`, chegam pela notificação MCP `notifications/otheater/event` (`params {name, payload?}`), conferida nesta ordem: `plugins.events` ligado, parâmetros válidos, plugin ativo, nome no manifesto e tamanho. O `RegistryContributor` e o `LiveEventRegistry` põem os tipos dinâmicos no retrato, e o `events.unknown_type` continua `reject`. O `SituationLog.recordEvent` registra a situação. O servidor de teste ganhou o modo `--events`. Chaves [V]: `plugins.events` (`declared` | `off`, padrão `declared`) e `plugins.event_max_bytes` (de 1 a 1.048.576, padrão 16.384).
+
+**Divergências:**
+- as contagens do PR (protocolo 137 para 146 e daemon 139 para 148) valem para o PR sozinho; com os passos seguintes a main tem 149 e 151 [V];
+- sem limite de taxa dos eventos do plugin **[proposta]**, e o payload do plugin não é mascarado [S];
+- o `OTHEATER_PROJECT_DIR` não entrou aqui; veio no PR #278 (P5) [S].
 
 ### P9. `@otheater/sdk` para plugins e o plugin de exemplo (N240)
 
@@ -249,6 +360,22 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - o exemplo se instala pelo P4 numa pasta temporária;
   - o README do SDK mostra o exemplo inteiro.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #271 (43908f2) [S: descrição do PR; a estrutura de arquivos foi conferida na main]. Subcaminho `@otheater/sdk/plugin` **[proposta]**, em `packages/sdk/src/plugin/` (`define.ts`, `server.ts`, `events.ts`, `conformance.ts`, `stdio-client.ts`, `environment.ts` e `manifest-file.ts`): `definePlugin`, `servePlugin`, o ajudante de eventos, o `PluginStdioClient` e `describePluginConformance`. O plugin de exemplo está em `examples/plugin-notes`:
+- `list_notes` (leitura, sem papel, painel `table`);
+- `add_note` (`local_write`, papel `actor`);
+- `clear_notes` (`requires_producer_approval`, painel `action`);
+- o evento `note_added` e os catálogos `en` e `pt-BR`;
+- as notas ficam em `<projeto>/.plugin-notes.json` (até 1000 notas de 2000 caracteres), e as anotações MCP vêm dos efeitos.
+
+O limite do payload do evento é o de 16.384 bytes do P8. Dependência nova do SDK: `yaml` 2.9.1, que já estava no lock. O PR tocou arquivos compartilhados: `pnpm-workspace.yaml` (`examples/*`), o `tsconfig.json` da raiz e o `vitest.config.ts`. O #278 (P5) fez o exemplo e o SDK lerem `OTHEATER_PROJECT_DIR` (`pluginProjectDirectory()`).
+
+**Divergências:**
+- o aceite "o exemplo se instala pelo P4 numa pasta temporária" ficou para o P13 [S];
+- o subcaminho `@otheater/sdk/plugin`, em vez de um pacote novo, é **[proposta]**;
+- sem evento, métrica ou chave novos.
+
 ### P10. Rotas `/v1/plugins`: lista, painel e ação
 
 - **Rotas** **[proposta]**, no registro zod como as outras:
@@ -259,6 +386,23 @@ O P14 (N242, pedido do dono em 2026-11-21) não depende dos plugins. Ele mexe no
   - `POST /v1/plugins/:id/actions/:tool` chama a `action` em nome do Produtor, com a mesma permissão, aprovação e evento de qualquer chamada.
 - Os dados do painel passam por um teto de tamanho e de linhas (`plugins.panel.max_rows`, padrão 200) **[proposta]**, e o texto de tela vem do catálogo do plugin no idioma da interface, com o `en` como reserva.
 - **Aceite:** as rotas com o plugin de exemplo; uma `source` sem efeito de leitura é impossível (o P3 já recusa); a `action` com aprovação espera o Produtor; o catálogo da API é regenerado.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #279 (6b6e0f3) [S: descrição do PR; as rotas e a chave foram conferidas na main]. Seis rotas, no registro zod (`packages/protocol/src/api/plugins.ts` e `daemon/src/api/routes/plugins.ts`) [V]:
+- `GET /v1/plugins` (`listPlugins`);
+- `GET /v1/plugins/:pluginId` (`getPlugin`, com `lang`);
+- `POST /v1/plugins/:pluginId/enable` e `/disable` (`enablePlugin` e `disablePlugin`, corpo `{project}`; `manifestHash` é opcional e dá 409 se estiver velho);
+- `GET /v1/plugins/:pluginId/panel?project=` (`getPluginPanel`);
+- `POST /v1/plugins/:pluginId/actions/:tool` (`callPluginAction`).
+
+Contrato dos dados do painel: `table` e `list` recebem um array, `metrics` um objeto; qualquer outra forma dá erro do bloco `invalid_result`, com textos fixos do catálogo (`plugin.panel.error.*`, sete chaves em cada idioma). Chaves [V]: `plugins.panel.max_rows` (padrão 200) e `plugins.panel.max_bytes` (`1MB` ou `off`); o corte é primeiro por linhas e depois por bytes. Evento novo `plugin.panel_truncated` (payload `plugin`, `project`, `source`, `reason` `rows` ou `bytes`, `total`, `kept` e `limit`) [V]. Contagens dos registros de eventos: 149 no protocolo e 151 no daemon [V]. Ação só para ferramentas citadas por um bloco `action` (senão 404); os modos `deny` de `plugins.permissions` valem para o Produtor (403 `forbidden` e `plugin.tool_rejected` `not_allowed`); recusada ou cancelada dá 409; sem canal de aprovação dá 503. `PluginAggregator.callTool` ficou público, e `plugins/approval.ts` é compartilhado com o `mcp/server.ts`. `list` e `detail` chamam `refresh()`. O `api-routes.json` foi regenerado (6 rotas a mais).
+
+**Divergências:**
+- as rotas usam `:pluginId`, e o plano dizia `:id`;
+- o plano só previa `plugins.panel.max_rows`; o `max_bytes` e o evento `plugin.panel_truncated` são acréscimos do passo **[proposta]**;
+- o daemon de teste não tem o ambiente de aprovação (dá 503) [N];
+- perguntas do PR para o dono: `:pluginId` ou `:id`, `manifestHash` opcional, ação só para blocos `action`, `deny` valendo para o Produtor, o padrão de `1MB`, e o fato de uma desconexão não cancelar a aprovação pendente [S].
 
 ### P11. Aba Plugins da TUI (F6) com o painel declarativo (§5.13, §5.14)
 
@@ -302,6 +446,18 @@ O desenho segue a N241 (a) **[proposta]**:
   - o snapshot guarda o fluxo;
   - a troca da configuração não afeta a peça em curso.
 
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #270 (ff36aab) [S: descrição do PR; as etapas, as chaves e o erro `invalid_flow` foram conferidos na main]. Arquivos: `packages/core/src/flows/` (`config.ts`, `schema.ts` e `steps.ts`), `docs/reference/flow-config.schema.json` (gerado por `pnpm flow:schema` [V]), `daemon/src/flows-config.ts`, `pipeline/flow-selection.ts` e `orchestration/open-play.ts`. As etapas, em ordem [V: `steps.ts`]: `planning`, `clarifying`, `plan_review`, `scripting`, `script_review`, `execution`, `integration`, `critique` e `delivery`. Só `plan_review` (papel `reviewer`) e `critique` (papel `critic`) podem ser desligadas; as demais são obrigatórias. Limites por etapa: `plan_review` com `plan_reviews`; `scripting` com `script_validations`; `script_review` com `script_vetoes`; `execution` com `attempts_per_demand`; `integration` com `script_returns`; `critique` com `critic_rejections` e `structural_restarts`. O `limits.submit_retries` continua global **[proposta]**, e o papel de cada etapa tem de ser o fixo dela **[proposta]**.
+
+Chaves `flows` e `scenario.flow`, com `superRefine` que recusa um fluxo inexistente, e override por camada pela `configOverride` do cenário, como a política do papel. O snapshot da peça traz `context.flow = {id, version, hash, skip}`, com o hash sha256 do JSON canônico; os limites do fluxo entram em `context.limits` na criação. Na máquina, sem `plan_review` os eventos `PLAN_SUBMITTED` e `QUESTIONS_ANSWERED` vão direto a `SCRIPTING`; sem `critique`, `INTEGRATED` vai a `DELIVERING`. Um fluxo desconhecido ou inválido ao abrir a peça é recusado com `invalid_flow`, sem volta silenciosa ao `play` **[proposta]** [V]. O `play.created` não carrega o fluxo **[proposta]**, e o snapshot oficial da peça não ganhou campo.
+
+**Divergências:**
+- o plano dizia "papel e limites de cada etapa"; o PR fixou o papel de cada etapa e deixou só os limites configuráveis;
+- sem evento nem métrica novos;
+- a suíte afetada local foi interrompida sob carga, com estouros de prazo em alguns e2e; o veredito é o da CI [N];
+- o item 29 da §12 e as sete escolhas **[proposta]** do PR seguem para o dono no fim da fase.
+
 ### P14. Troca manual do Diretor pela TUI e por `/director` (N242; §5.13, §5.4, §5.16)
 
 Pedido do dono em 2026-11-21: clicar no modelo e no esforço que ficam embaixo da caixa de texto, como no Claude Code, e escolher outro Diretor; um comando `/` serve onde a TUI não der. Hoje o Diretor só troca de Executor no failover, e `/model` e `/effort` só mostram o valor [V].
@@ -323,6 +479,15 @@ O desenho segue a N242:
   - a troca pedida durante um turno espera o fim dele;
   - na TUI, o rodapé aparece, e o clique e o atalho abrem o seletor;
   - o comando e a TUI dão o mesmo resultado.
+
+**Como ficou:**
+
+**Estado:** feito em 2026-11-22, PR #269 (27c1185), com o plano no PR #268 (303c334, 2026-11-21) [S: descrição do PR; os nomes foram conferidos na main]. O override fica em `configOverride.director_override` (`DIRECTOR_OVERRIDE_KEY`, em `orchestration/director-switch.ts`) **[proposta]**, sobrevive ao sono e ao reinício, e só `/director default` o tira; o `RoleSelection.startAt` faz o failover partir do escolhido. Formas da troca: `live`, `baton`, `new_session`, `stored` e `unchanged`. Chave `scenarios.director_switch.in_turn` (`wait`, padrão, ou `interrupt`) [V], com uma troca por vez por cenário. Comandos: `/director` lista, `/director <executor|número|prefixo>` troca, `/director default` volta ao padrão, e `/model <m>` e `/effort <e>` aceitam um valor; `chat.slash_access: read_only` recusa as trocas. A troca gera o aviso `scenario.system_message` com `kind: director_switch` e o evento `scenario.director_switched` [V] (os registros foram de 137 para 138 no protocolo e de 139 para 140 no daemon). Na TUI: rodapé do chat, seletor (`packages/tui/src/chat/director-picker.ts`), atalho `chat.director` (`Alt+M` nos dois presets **[proposta]**, ação em `packages/client/src/ui/default-registry.ts` [V]) e clique com `ui.mouse`. Reusa `POST /v1/scenarios/:id/commands`, sem rota nova. Chave nova `ui.chat.directorFooter` (`on` | `off`, padrão `on`) [V: `protocol/src/ui-config.ts`]. O `FakeClientAdapter` passou a mapear também `effort`. O `api-routes.json` foi regenerado.
+
+**Divergências:**
+- os testes acharam dois erros, já corrigidos no PR: uma troca em espera aplicada duas vezes (agora é tomada uma só vez) e o `/director default` ignorando Executores com cota `unknown` [S];
+- o atalho `Alt+M`, a chave `ui.chat.directorFooter` e o nome da chave do override não estavam no plano;
+- a suíte afetada rodou local (564 arquivos, 8443 testes); o veredito é o da CI [N]; nenhum cliente real foi rodado.
 
 ### P13. Aceite da fase
 
