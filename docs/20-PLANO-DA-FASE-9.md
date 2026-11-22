@@ -1,6 +1,6 @@
 # 20. Plano da Fase 9
 
-Versão 5, de 2026-11-22 (a versão 1 era de 2026-11-21, antes das decisões N232 a N241; a 2 não tinha o P14, da N242; a 3 era o plano de partida; a 4 registrava os passos mesclados até o P14; a 5 traz o P11 e o P13, e fecha a fase). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
+Versão 6, de 2026-11-22 (a versão 1 era de 2026-11-21, antes das decisões N232 a N241; a 2 não tinha o P14, da N242; a 3 era o plano de partida; a 4 registrava os passos mesclados até o P14; a 5 traz o P11 e o P13, e fecha a fase; a 6, de 2026-11-22, registra as respostas do dono ao fim da fase, N243 a N249). Este documento divide em passos a Fase 9 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 9 — Plugins"), com o desenho da §5.14 e o item 29 da §12 (N133). Para cada passo, ele diz o que pode correr em paralelo e qual é o aceite. A arquitetura continua sendo a referência: se este plano divergir dela, vale a arquitetura e o plano é corrigido.
 
 A fase começa depois do fim da Fase 8 (decisões N224 a N231, de 2026-11-21). Pela N231, os PRs desta fase mesclam sem ok por PR, com a CI verde e squash. O que depende do dono fica para o fim da fase.
 
@@ -17,7 +17,7 @@ O plano levantou dez decisões novas, N232 a N241 ([docs/13](13-DECISOES-EM-ABER
 - Cada passo tem uma branch e um PR com título "Fase 9: ...". A branch parte da main. Não há branch sobre branch: o passo que depende de outro só começa depois do merge dele (fila de PRs, 2026-11-21). O PR que conclui um passo também muda o estado dele na tabela de passos.
 - O merge é feito pelo `merge-pr.sh`, com squash, depois da CI verde. Vale a CI do próprio head ou a de uma rodada verde da mesma árvore (`ci-tree.sh`). Nunca se usa `gh pr merge --auto`.
 - Todo passo exige, além do aceite próprio, `build`, `lint`, `format:check`, `test`, `verify` e `deps` verdes na máquina e na CI. Os jobs `cross` e `windows-launcher` rodam nos PRs que mexem em código (N162).
-- O que está marcado **[proposta]** é detalhe deste plano, ainda sem decisão. Todo padrão novo vira uma chave de configuração, com um padrão e os seus modos.
+- O que está marcado **[proposta]** é detalhe deste plano, ainda sem decisão. Nos blocos "Como ficou", as marcas que as 92 pendências do fim da fase cobrem foram trocadas por "decidido (N243)", porque o dono aceitou todas em 2026-11-22; as seis que pedem código dizem "vai ao PR de acertos (N243)", e as poucas que nenhum item cobre claramente seguem **[proposta]**. Todo padrão novo vira uma chave de configuração, com um padrão e os seus modos.
 - Paralelismo:
   - passos sem dependência entre si correm ao mesmo tempo, cada um no seu worktree;
   - dois passos nunca mexem nos mesmos arquivos. As exceções são as das fases anteriores, e em cada uma o passo acrescenta só o seu bloco:
@@ -171,15 +171,15 @@ As esperas vêm dos eventos `wait.*` (`metrics-events.ts`) e os lotes recusados 
 **Como ficou:**
 
 **Estado:** feito em 2026-11-21, PR #266 (bfc6cb1) [S: descrição do PR; o script e o arquivo gerado foram conferidos na main]. O validador está em `packages/core/src/plugins/` (`manifest.ts` e `manifest-schema.ts`), com `parsePluginManifest` e `parsePluginManifestText`; este recebe o leitor de YAML por injeção (o daemon passa o `yaml`), para o núcleo não depender dele. Pontos:
-- `manifest_version: 1` **[proposta]**;
+- `manifest_version: 1` decidido (N243);
 - `id` no padrão `^[a-z][a-z0-9_-]{0,63}$`; `i18n` só é obrigatório quando há painel; `command` é uma lista de argumentos; texto de até 256K;
 - as regras além do schema, cada uma com teste de recusa e mensagem apontando o campo: nome duplicado, evento com o prefixo `plugin.`, `source` que não é uma ferramenta de leitura do plugin, `tool` de `action` fora do plugin, catálogo `en`, `cwd` relativo sem `..`, `http` só em loopback e sem credenciais, e colisão com as ferramentas do framework;
-- vocabulário de efeitos (N237): `TOOL_EFFECT_CLASSES` passou a `read | local_write | network | external_write`. Foi um renomear um a um (`none` virou `read`, `worktree` virou `local_write`) e `network` é novo. O `network` pede chave de idempotência, como o `external_write` **[proposta]**;
+- vocabulário de efeitos (N237): `TOOL_EFFECT_CLASSES` passou a `read | local_write | network | external_write`. Foi um renomear um a um (`none` virou `read`, `worktree` virou `local_write`) e `network` é novo. O `network` pede chave de idempotência, como o `external_write` decidido (N243);
 - JSON Schema em `docs/reference/plugin-manifest.schema.json`, gerado por `pnpm plugin:schema` [V: `package.json`] e conferido por teste (`toMatchFileSnapshot`).
 
 **Divergências:**
 - o plano deixava o vocabulário para a N237; o PR renomeou o antigo um a um, em vez de manter dois [S];
-- `http_get` e os `browser_*` do framework seguem `read` no código, enquanto a §5.19 os lista como `network`. É pergunta para o dono [S];
+- `http_get` e os `browser_*` do framework seguem `read` no código, enquanto a §5.19 os lista como `network`. É pergunta para o dono [S]; vai ao PR de acertos (N243, item 7): passam de `read` para `network`, como na §5.19;
 - ficam para o dono: aceitar a chave de idempotência no manifesto e tornar `manifest_version` obrigatório [S].
 
 ### P4. Registro, instalação e ativação por projeto (N235, N236; §5.14)
@@ -215,11 +215,11 @@ As esperas vêm dos eventos `wait.*` (`metrics-events.ts`) e os lotes recusados 
 - chaves `plugins.install.sources` (`path`, `npm`, `git`), `plugins.install.timeout` (padrão 5 minutos) e `plugins.install.npm` (padrão `auto`) [V: `config.ts`];
 - #277: o `PluginRegistry` passou a gravar com `writePrivateFileAtomic` (`@otheater/client/node`), que repete o renomear até 5 vezes, com espera dobrada a partir de 10 ms, nos erros `EPERM`, `EACCES` e `EBUSY` do Windows. Corrigiu um teste instável no Windows [S].
 
-Escolhas **[proposta]** do PR, para o dono: a lista de ativação fica em `plugins.json` e não na configuração; instalar um id existente dá `Conflict`; `npm:` exige versão exata e o manifesto tem de trazer a mesma versão do pacote; `git:` sem ref usa o ramo padrão, e `http://`, `git://` ou senha na URL são recusados; `remove` apaga a pasta instalada; `plugins.json` fica fora dos backups; a trava velha vale 60 s e o debounce é de 200 ms; um `plugins.json` corrompido deixa todos os plugins desligados; os comandos funcionam com o daemon no ar; qualquer byte mudado no manifesto pede nova aprovação.
+Escolhas do PR, decididas (N243): a lista de ativação fica em `plugins.json` e não na configuração; instalar um id existente dá `Conflict`; `npm:` exige versão exata e o manifesto tem de trazer a mesma versão do pacote; `git:` sem ref usa o ramo padrão, e `http://`, `git://` ou senha na URL são recusados; `remove` apaga a pasta instalada; `plugins.json` fica fora dos backups; a trava velha vale 60 s e o debounce é de 200 ms; um `plugins.json` corrompido deixa todos os plugins desligados; os comandos funcionam com o daemon no ar; qualquer byte mudado no manifesto pede nova aprovação.
 
 **Divergências:**
 - o corpo do PR não cita a chave `plugins.install.npm`, que o plano previa e o código tem [V];
-- a forma do `update` e as escolhas acima eram **[proposta]** no plano e ficaram assim;
+- a forma do `update` e as escolhas acima eram **[proposta]** no plano e ficaram assim, e o dono as decidiu (N243);
 - o aceite com um pacote com `postinstall` e um repositório com hook foi coberto pelos testes de instalação do PR [S]; nada foi rodado com npm ou git de rede.
 
 ### P5. Cliente MCP, processos dos plugins e agregação (N232, N234, N238; §5.14)
@@ -255,7 +255,7 @@ Escolhas **[proposta]** do PR, para o dono: a lista de ativação fica em `plugi
 - avisos do processo, por `PluginNoticeSink` (`StartDaemonOptions.pluginNotices`): `process_started`, `process_stopped` (ocioso, desligamento, inativo ou trocado), `process_failed` e `process_given_up`; o P8 os transformou em eventos;
 - chaves [V]: `plugins.idle_timeout` (`10m` ou `off`), `plugins.max_restarts` (3, de 0 a 100), `plugins.call_timeout` (`60s`), `plugins.start_timeout` (`30s`), `plugins.restart_backoff.initial` e `.max` (`1s` e `1m`) e `plugins.http` (`loopback` | `off`). `plugins` é seção de reinício: não está em `HOT_CONFIG_SECTIONS`;
 - a chamada que estoura o prazo não conta como falha do processo;
-- #278: o daemon passa a pasta do projeto ao processo em `OTHEATER_PROJECT_DIR` (`PluginPoolOptions.projectDir`, ligado à pasta do cenário; só vale caminho absoluto, e um segredo de mesmo nome nunca a substitui). Chave nova `plugins.project_dir`: `scenario` (padrão) ou `off` **[proposta]** [V]. O SDK lê a variável com `pluginProjectDirectory()` (P9).
+- #278: o daemon passa a pasta do projeto ao processo em `OTHEATER_PROJECT_DIR` (`PluginPoolOptions.projectDir`, ligado à pasta do cenário; só vale caminho absoluto, e um segredo de mesmo nome nunca a substitui). Chave nova `plugins.project_dir`: `scenario` (padrão) ou `off` decidido (N243) [V]. O SDK lê a variável com `pluginProjectDirectory()` (P9).
 
 **Divergências:**
 - o plano não previa a chave `plugins.project_dir`; ela entrou no #278, depois do P5 e do P9 (o README do SDK dizia que esse trabalho faltava) [S];
@@ -291,7 +291,7 @@ Chaves `plugins.permissions.*` [V]:
 | `approval_detail` | `keys` | `keys`, `values` |
 
 **Divergências:**
-- as chaves `plugins.permissions.*` não estavam no plano; todas são **[proposta]**, e o PR levanta sete perguntas para o dono, entre elas o fato de `mcpTools: 'all'` deixar as camadas 1 e 2 abertas [S];
+- as chaves `plugins.permissions.*` não estavam no plano; todas foram decididas (N243), e o PR levantava sete perguntas para o dono, entre elas o fato de `mcpTools: 'all'` deixar as camadas 1 e 2 abertas [S];
 - o aceite cobre os três adaptadores pela tradução das listas, pela camada 2 do Codex e por um e2e com o `fake-agent`; um cliente real não foi rodado [N];
 - sem evento nem métrica novos além dos motivos do `plugin.tool_rejected` (P8).
 
@@ -312,7 +312,7 @@ Chaves `plugins.permissions.*` [V]:
 
 **Estado:** feito em 2026-11-22, PR #274 (2a87ecb) [S: descrição do PR; o evento foi conferido na main]. `packages/daemon/src/plugins/secrets.ts` (`pluginSecretKey`, `PluginSecrets` com `set`, `has` e `resolve`, e `pluginExtraEnv`). Chaves do cofre `plugin/<id>/<NOME>` e `plugin/<id>/<projeto>/<NOME>`, e a do projeto vence. `ot plugin secret set <id> <NOME> [--project <p>]` lê o valor da entrada padrão ou de uma pergunta sem eco (`askHidden`, em `cli.ts`), nunca o imprime, recusa valor vazio e confere que o plugin declara o nome. O `composeVault` foi extraído para `compose.ts`. Sem um segredo declarado, o servidor não sobe: a chamada dá `unavailable`, com aviso no log e o aviso `secret_missing` (sem repetição), e isso não conta como falha nem espera crescente. Com o cofre trancado, nenhum aviso. O `maskValues` cobre o stderr do servidor. No cofre em arquivo cifrado, `secret set` é recusado com o daemon no ar; o chaveiro não tem trava.
 
-Limites declarados no PR [S]: o `VaultValues` atualiza a cada 30 s; o resultado da ferramenta não é mascarado; um segredo chamado `PATH`, `HOME`, `LANG` ou `TZ` perde sem aviso.
+Limites declarados no PR [S]: o `VaultValues` atualiza a cada 30 s; o resultado da ferramenta não é mascarado (vai ao PR de acertos, N243, item 61); um segredo chamado `PATH`, `HOME`, `LANG` ou `TZ` perde sem aviso (o manifesto passa a recusá-lo, N243, item 63). O `refresh()` do cofre ao subir um servidor com segredo (item 60) e a trava que recusa o chaveiro real sob o vitest sem `OT_TEST_KEYRING=1` (item 64) também vão ao PR de acertos (N243).
 
 **Divergências:**
 - o PR diz "nenhum evento novo", mas a main tem o evento `plugin.secret_missing` (`PluginSecretMissingPayloadSchema` em `packages/protocol/src/plugin-events.ts`, registrado em `events.ts`) [V]; a contagem dos registros fecha com ele (137 da base, mais 1 do P14, 9 do P8, 1 do P7 e 1 do P10, 149 no protocolo);
@@ -339,7 +339,7 @@ Limites declarados no PR [S]: o `VaultValues` atualiza a cada 30 s; o resultado 
 
 **Divergências:**
 - as contagens do PR (protocolo 137 para 146 e daemon 139 para 148) valem para o PR sozinho; com os passos seguintes a main tem 149 e 151 [V];
-- sem limite de taxa dos eventos do plugin **[proposta]**, e o payload do plugin não é mascarado [S];
+- sem limite de taxa dos eventos do plugin: vai ao PR de acertos (N243, item 67), com a chave `plugins.event_rate` **[proposta]** e um modo `off`, e o payload do plugin não é mascarado [S];
 - o `OTHEATER_PROJECT_DIR` não entrou aqui; veio no PR #278 (P5) [S].
 
 ### P9. `@otheater/sdk` para plugins e o plugin de exemplo (N240)
@@ -362,7 +362,7 @@ Limites declarados no PR [S]: o `VaultValues` atualiza a cada 30 s; o resultado 
 
 **Como ficou:**
 
-**Estado:** feito em 2026-11-22, PR #271 (43908f2) [S: descrição do PR; a estrutura de arquivos foi conferida na main]. Subcaminho `@otheater/sdk/plugin` **[proposta]**, em `packages/sdk/src/plugin/` (`define.ts`, `server.ts`, `events.ts`, `conformance.ts`, `stdio-client.ts`, `environment.ts` e `manifest-file.ts`): `definePlugin`, `servePlugin`, o ajudante de eventos, o `PluginStdioClient` e `describePluginConformance`. O plugin de exemplo está em `examples/plugin-notes`:
+**Estado:** feito em 2026-11-22, PR #271 (43908f2) [S: descrição do PR; a estrutura de arquivos foi conferida na main]. Subcaminho `@otheater/sdk/plugin` decidido (N243), em `packages/sdk/src/plugin/` (`define.ts`, `server.ts`, `events.ts`, `conformance.ts`, `stdio-client.ts`, `environment.ts` e `manifest-file.ts`): `definePlugin`, `servePlugin`, o ajudante de eventos, o `PluginStdioClient` e `describePluginConformance`. O plugin de exemplo está em `examples/plugin-notes`:
 - `list_notes` (leitura, sem papel, painel `table`);
 - `add_note` (`local_write`, papel `actor`);
 - `clear_notes` (`requires_producer_approval`, painel `action`);
@@ -373,7 +373,7 @@ O limite do payload do evento é o de 16.384 bytes do P8. Dependência nova do S
 
 **Divergências:**
 - o aceite "o exemplo se instala pelo P4 numa pasta temporária" ficou para o P13 [S];
-- o subcaminho `@otheater/sdk/plugin`, em vez de um pacote novo, é **[proposta]**;
+- o subcaminho `@otheater/sdk/plugin`, em vez de um pacote novo, foi decidido (N243);
 - sem evento, métrica ou chave novos.
 
 ### P10. Rotas `/v1/plugins`: lista, painel e ação
@@ -400,7 +400,7 @@ Contrato dos dados do painel: `table` e `list` recebem um array, `metrics` um ob
 
 **Divergências:**
 - as rotas usam `:pluginId`, e o plano dizia `:id`;
-- o plano só previa `plugins.panel.max_rows`; o `max_bytes` e o evento `plugin.panel_truncated` são acréscimos do passo **[proposta]**;
+- o plano só previa `plugins.panel.max_rows`; o `max_bytes` e o evento `plugin.panel_truncated` são acréscimos do passo, decididos (N243);
 - o daemon de teste não tem o ambiente de aprovação (dá 503) [N];
 - perguntas do PR para o dono: `:pluginId` ou `:id`, `manifestHash` opcional, ação só para blocos `action`, `deny` valendo para o Produtor, o padrão de `1MB`, e o fato de uma desconexão não cancelar a aprovação pendente [S].
 
@@ -433,7 +433,7 @@ Contrato dos dados do painel: `table` e `list` recebem um array, `metrics` um ob
 
 **Divergências:**
 - a edição mascarada dos segredos não existe, porque não há rota de gravação; a aba só mostra e orienta;
-- escolhas do PR **[proposta]**, para o dono: F6 (o VS Code pode capturar a tecla; o aviso do mapa de teclas já diz "pode"), letras nuas na aba, a confirmação por `y`/`s`, a leitura leniente dos blocos do painel (o envelope segue estrito), a falta de campo de segredo e a ordem 39 do grupo.
+- escolhas do PR, decididas (N243): F6 (o VS Code pode capturar a tecla; o aviso do mapa de teclas já diz "pode"), letras nuas na aba, a confirmação por `y`/`s`, a leitura leniente dos blocos do painel (o envelope segue estrito), a falta de campo de segredo e a ordem 39 do grupo.
 
 ### P12. Fluxos por configuração: `flows.<id>` e `scenario.flow` (N133, N241; §12, item 29)
 
@@ -461,15 +461,15 @@ O desenho segue a N241 (a) **[proposta]**:
 
 **Como ficou:**
 
-**Estado:** feito em 2026-11-22, PR #270 (ff36aab) [S: descrição do PR; as etapas, as chaves e o erro `invalid_flow` foram conferidos na main]. Arquivos: `packages/core/src/flows/` (`config.ts`, `schema.ts` e `steps.ts`), `docs/reference/flow-config.schema.json` (gerado por `pnpm flow:schema` [V]), `daemon/src/flows-config.ts`, `pipeline/flow-selection.ts` e `orchestration/open-play.ts`. As etapas, em ordem [V: `steps.ts`]: `planning`, `clarifying`, `plan_review`, `scripting`, `script_review`, `execution`, `integration`, `critique` e `delivery`. Só `plan_review` (papel `reviewer`) e `critique` (papel `critic`) podem ser desligadas; as demais são obrigatórias. Limites por etapa: `plan_review` com `plan_reviews`; `scripting` com `script_validations`; `script_review` com `script_vetoes`; `execution` com `attempts_per_demand`; `integration` com `script_returns`; `critique` com `critic_rejections` e `structural_restarts`. O `limits.submit_retries` continua global **[proposta]**, e o papel de cada etapa tem de ser o fixo dela **[proposta]**.
+**Estado:** feito em 2026-11-22, PR #270 (ff36aab) [S: descrição do PR; as etapas, as chaves e o erro `invalid_flow` foram conferidos na main]. Arquivos: `packages/core/src/flows/` (`config.ts`, `schema.ts` e `steps.ts`), `docs/reference/flow-config.schema.json` (gerado por `pnpm flow:schema` [V]), `daemon/src/flows-config.ts`, `pipeline/flow-selection.ts` e `orchestration/open-play.ts`. As etapas, em ordem [V: `steps.ts`]: `planning`, `clarifying`, `plan_review`, `scripting`, `script_review`, `execution`, `integration`, `critique` e `delivery`. Só `plan_review` (papel `reviewer`) e `critique` (papel `critic`) podem ser desligadas; as demais são obrigatórias. Limites por etapa: `plan_review` com `plan_reviews`; `scripting` com `script_validations`; `script_review` com `script_vetoes`; `execution` com `attempts_per_demand`; `integration` com `script_returns`; `critique` com `critic_rejections` e `structural_restarts`. O `limits.submit_retries` continua global decidido (N243), e o papel de cada etapa tem de ser o fixo dela decidido (N243).
 
-Chaves `flows` e `scenario.flow`, com `superRefine` que recusa um fluxo inexistente, e override por camada pela `configOverride` do cenário, como a política do papel. O snapshot da peça traz `context.flow = {id, version, hash, skip}`, com o hash sha256 do JSON canônico; os limites do fluxo entram em `context.limits` na criação. Na máquina, sem `plan_review` os eventos `PLAN_SUBMITTED` e `QUESTIONS_ANSWERED` vão direto a `SCRIPTING`; sem `critique`, `INTEGRATED` vai a `DELIVERING`. Um fluxo desconhecido ou inválido ao abrir a peça é recusado com `invalid_flow`, sem volta silenciosa ao `play` **[proposta]** [V]. O `play.created` não carrega o fluxo **[proposta]**, e o snapshot oficial da peça não ganhou campo.
+Chaves `flows` e `scenario.flow`, com `superRefine` que recusa um fluxo inexistente, e override por camada pela `configOverride` do cenário, como a política do papel. O snapshot da peça traz `context.flow = {id, version, hash, skip}`, com o hash sha256 do JSON canônico; os limites do fluxo entram em `context.limits` na criação. Na máquina, sem `plan_review` os eventos `PLAN_SUBMITTED` e `QUESTIONS_ANSWERED` vão direto a `SCRIPTING`; sem `critique`, `INTEGRATED` vai a `DELIVERING`. Um fluxo desconhecido ou inválido ao abrir a peça é recusado com `invalid_flow`, sem volta silenciosa ao `play` decidido (N243) [V]. O `play.created` não carrega o fluxo decidido (N243), e o snapshot oficial da peça não ganhou campo.
 
 **Divergências:**
 - o plano dizia "papel e limites de cada etapa"; o PR fixou o papel de cada etapa e deixou só os limites configuráveis;
 - sem evento nem métrica novos;
 - a suíte afetada local foi interrompida sob carga, com estouros de prazo em alguns e2e; o veredito é o da CI [N];
-- o item 29 da §12 e as sete escolhas **[proposta]** do PR seguem para o dono no fim da fase.
+- as sete escolhas do PR foram decididas (N243, itens 21 a 28); o item 29 da §12 continua como estava.
 
 ### P14. Troca manual do Diretor pela TUI e por `/director` (N242; §5.13, §5.4, §5.16)
 
@@ -495,7 +495,7 @@ O desenho segue a N242:
 
 **Como ficou:**
 
-**Estado:** feito em 2026-11-22, PR #269 (27c1185), com o plano no PR #268 (303c334, 2026-11-21) [S: descrição do PR; os nomes foram conferidos na main]. O override fica em `configOverride.director_override` (`DIRECTOR_OVERRIDE_KEY`, em `orchestration/director-switch.ts`) **[proposta]**, sobrevive ao sono e ao reinício, e só `/director default` o tira; o `RoleSelection.startAt` faz o failover partir do escolhido. Formas da troca: `live`, `baton`, `new_session`, `stored` e `unchanged`. Chave `scenarios.director_switch.in_turn` (`wait`, padrão, ou `interrupt`) [V], com uma troca por vez por cenário. Comandos: `/director` lista, `/director <executor|número|prefixo>` troca, `/director default` volta ao padrão, e `/model <m>` e `/effort <e>` aceitam um valor; `chat.slash_access: read_only` recusa as trocas. A troca gera o aviso `scenario.system_message` com `kind: director_switch` e o evento `scenario.director_switched` [V] (os registros foram de 137 para 138 no protocolo e de 139 para 140 no daemon). Na TUI: rodapé do chat, seletor (`packages/tui/src/chat/director-picker.ts`), atalho `chat.director` (`Alt+M` nos dois presets **[proposta]**, ação em `packages/client/src/ui/default-registry.ts` [V]) e clique com `ui.mouse`. Reusa `POST /v1/scenarios/:id/commands`, sem rota nova. Chave nova `ui.chat.directorFooter` (`on` | `off`, padrão `on`) [V: `protocol/src/ui-config.ts`]. O `FakeClientAdapter` passou a mapear também `effort`. O `api-routes.json` foi regenerado.
+**Estado:** feito em 2026-11-22, PR #269 (27c1185), com o plano no PR #268 (303c334, 2026-11-21) [S: descrição do PR; os nomes foram conferidos na main]. O override fica em `configOverride.director_override` (`DIRECTOR_OVERRIDE_KEY`, em `orchestration/director-switch.ts`) **[proposta]**, sobrevive ao sono e ao reinício, e só `/director default` o tira; o `RoleSelection.startAt` faz o failover partir do escolhido. Formas da troca: `live`, `baton`, `new_session`, `stored` e `unchanged`. Chave `scenarios.director_switch.in_turn` (`wait`, padrão, ou `interrupt`) [V], com uma troca por vez por cenário. Comandos: `/director` lista, `/director <executor|número|prefixo>` troca, `/director default` volta ao padrão, e `/model <m>` e `/effort <e>` aceitam um valor; `chat.slash_access: read_only` recusa as trocas. A troca gera o aviso `scenario.system_message` com `kind: director_switch` e o evento `scenario.director_switched` [V] (os registros foram de 137 para 138 no protocolo e de 139 para 140 no daemon). Na TUI: rodapé do chat, seletor (`packages/tui/src/chat/director-picker.ts`), atalho `chat.director` (`Alt+M` nos dois presets, decidido (N243), ação em `packages/client/src/ui/default-registry.ts` [V]) e clique com `ui.mouse`. Reusa `POST /v1/scenarios/:id/commands`, sem rota nova. Chave nova `ui.chat.directorFooter` (`on` | `off`, padrão `on`) [V: `protocol/src/ui-config.ts`]. O `FakeClientAdapter` passou a mapear também `effort`. O `api-routes.json` foi regenerado.
 
 **Divergências:**
 - os testes acharam dois erros, já corrigidos no PR: uma troca em espera aplicada duas vezes (agora é tomada uma só vez) e o `/director default` ignorando Executores com cota `unknown` [S];
@@ -525,11 +525,11 @@ O desenho segue a N242:
   - o segredo só no ambiente do processo do plugin, sem aparecer em log, evento, resposta de rota nem no ambiente do Executor (P7);
   - o evento `plugin.notes.note_added` no log e a nota no arquivo (P8), e a rota do painel em `en` e `pt-BR` (P10).
 - **TUI:** `packages/tui/src/phase9-acceptance.e2e.test.tsx` desenha a aba Plugins pela rota real `GET /v1/plugins/:pluginId/panel`, com o cliente real, em `en` e `pt-BR`; a ação espera o Produtor. Não usa resposta gravada.
-- **Real** (nível `phase9` do `tools/acceptance/real-acceptance.sh`, teto de 40 min) **[proposta]**: `packages/daemon/src/api/phase9-acceptance.real.test.ts`, ligado por `OT_TEST_REAL_PHASE9`; clientes por `OT_TEST_PHASE9_CLIENTS` (padrão `claude-code`, como a N230). Rodado pelo orquestrador em 2026-11-22 com o Claude Code (haiku) [V: log local]: a peça foi até `DONE` em 99,6 s; grants por papel `actor=1` e zero nos outros; dois eventos `plugin.notes.note_added`; o painel mostrou as duas notas; 16 processos iniciados e nenhum vivo no fim; pico de memória perto de 1,1 GB. O Codex e o OpenCode não rodaram [N].
+- **Real** (nível `phase9` do `tools/acceptance/real-acceptance.sh`, teto de 40 min; decidido, N243, item 92): `packages/daemon/src/api/phase9-acceptance.real.test.ts`, ligado por `OT_TEST_REAL_PHASE9`; clientes por `OT_TEST_PHASE9_CLIENTS` (padrão `claude-code`, como a N230). Rodado pelo orquestrador em 2026-11-22 com o Claude Code (haiku) [V: log local]: a peça foi até `DONE` em 99,6 s; grants por papel `actor=1` e zero nos outros; dois eventos `plugin.notes.note_added`; o painel mostrou as duas notas; 16 processos iniciados e nenhum vivo no fim; pico de memória perto de 1,1 GB. O Codex e o OpenCode não rodaram [N].
 - O critério de aceite da §10 foi cumprido: a ferramenta do plugin aparece só nos papéis declarados, e o painel do exemplo aparece na TUI sem código do plugin [V: testes e rodada real].
 
 **Divergências:**
-- com `plugins.project_dir: scenario`, o `.plugin-notes.json` fica na pasta do cenário, e não na worktree do Ator **[proposta]**, para o dono;
+- com `plugins.project_dir: scenario`, o `.plugin-notes.json` fica na pasta do cenário, e não na worktree do Ator (decidido, N243, item 91);
 - o `e2e-fixture.ts` ganhou um `logger` opcional em `PlayHarnessOptions`; o padrão continua o logger mudo;
 - nenhuma chave de configuração nem evento novos (149 e 151).
 
@@ -561,6 +561,15 @@ Decididas pelo dono em 2026-11-21, por múltipla escolha ([docs/13](13-DECISOES-
 | N240, o exemplo | (a) `examples/plugin-notes` |
 | N241, os fluxos | (a) o `play` oficial com etapas opcionais, em ordem fixa |
 | N242, a troca do Diretor | Executores do papel; override do cenário; sessão viva ou bastão, automático; passo P14 desta fase |
+
+Decididas pelo dono em 2026-11-22, no fim da fase, por múltipla escolha, todas iguais à recomendação ([docs/13](13-DECISOES-EM-ABERTO.md)):
+
+| Decisão | Escolha |
+|---|---|
+| N243, as 92 pendências da fase | aceitar todas; os itens 7, 60, 61, 63, 64 e 67 vão ao PR de acertos (`fase9/acertos`) antes da Fase 10 |
+| N244, o portão do R1 | a Fase 10 constrói e testa sem publicar; a Q4 continua aberta |
+| N245, o merge na Fase 10 | plano e merges sem ok por PR, com a CI verde e squash |
+| N246 a N249 | chave Ed25519 num secret do GitHub Actions; sem assinatura de código na v1; GitHub Releases e `install.sh`, sem npm e winget; esbuild, postject e WiX aprovados |
 
 As opções, como foram apresentadas:
 
