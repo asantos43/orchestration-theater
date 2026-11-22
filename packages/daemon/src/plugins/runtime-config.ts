@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { DaemonConfig, PluginEventMode } from '../config.js';
+import type { DaemonConfig, PluginEventMode, PluginProjectDirMode } from '../config.js';
 
 /**
  * What the processes of the plugins and the calls to them read of the configuration
@@ -23,6 +23,8 @@ export interface PluginRuntimeConfig {
   readonly events: PluginEventMode;
   /** `plugins.event_max_bytes` (P8): the biggest payload of an event of a plugin, in bytes of JSON. */
   readonly eventMaxBytes: number;
+  /** `plugins.project_dir`: `off` leaves `OTHEATER_PROJECT_DIR` out of the process. */
+  readonly projectDir: PluginProjectDirMode;
 }
 
 /** The defaults of `plugins.*`, the same the configuration schema gives. */
@@ -35,6 +37,7 @@ export const DEFAULT_PLUGIN_RUNTIME: PluginRuntimeConfig = {
   http: 'loopback',
   events: 'declared',
   eventMaxBytes: 16_384,
+  projectDir: 'scenario',
 };
 
 /** The runtime values of a parsed `plugins` section. */
@@ -51,6 +54,7 @@ export function pluginRuntimeFromConfig(section: DaemonConfig['plugins']): Plugi
     http: section.http,
     events: section.events,
     eventMaxBytes: section.event_max_bytes,
+    projectDir: section.project_dir,
   };
 }
 

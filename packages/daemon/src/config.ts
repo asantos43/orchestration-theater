@@ -427,6 +427,13 @@ export const PLUGIN_EVENT_MODES = ['declared', 'off'] as const;
 export type PluginEventMode = (typeof PLUGIN_EVENT_MODES)[number];
 
 /**
+ * `plugins.project_dir` (Phase 9, [proposta]): whether the process of a plugin is told the folder of
+ * its project in `OTHEATER_PROJECT_DIR`.
+ */
+export const PLUGIN_PROJECT_DIR_MODES = ['scenario', 'off'] as const;
+export type PluginProjectDirMode = (typeof PLUGIN_PROJECT_DIR_MODES)[number];
+
+/**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
  * whose type is not in the event registry or whose payload fails its schema. `reject` throws
  * and stores nothing; `warn` stores it and logs a warning.
@@ -1703,6 +1710,14 @@ export const DaemonConfigSchema = z
          */
         events: z.enum(PLUGIN_EVENT_MODES).default('declared'),
         event_max_bytes: z.int().min(1).max(1_048_576).default(16_384),
+        /**
+         * The folder of the project the process of a plugin works on (N238 (a): one process per
+         * plugin and project), handed in `OTHEATER_PROJECT_DIR` and read by
+         * `pluginProjectDirectory()` of `@otheater/sdk/plugin`. `scenario` (default): the `folder`
+         * of the scenario, when it is an absolute path; `off`: the variable is not set, and the SDK
+         * falls back to the `cwd` of the process (the folder of the plugin). [proposta]
+         */
+        project_dir: z.enum(PLUGIN_PROJECT_DIR_MODES).default('scenario'),
         install: z
           .strictObject({
             /**

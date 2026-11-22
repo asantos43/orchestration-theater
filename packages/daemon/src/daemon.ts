@@ -457,6 +457,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     // Phase 9, P8: what the pool, the aggregator and the registry tell about the plugins is also an
     // event (the rule "situations become events"); the sink of the options still gets the notice.
     const pluginSituations = composition.situations;
+    const pluginScenarios = composition.store.scenarios;
     const pluginNotices: PluginNoticeSink = (notice) => {
       recordPluginNotice(pluginSituations, notice);
       options.pluginNotices?.(notice);
@@ -480,6 +481,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
           logger: composition.logger,
           onNotice: pluginNotices,
         }),
+        // The folder of the project (`plugins.project_dir`), read when a server is about to start:
+        // the `folder` of the scenario, which for a project is the absolute path of its repository.
+        projectDir: async (project) => (await pluginScenarios.get(project))?.folder,
         onNotice: pluginNotices,
         onEvent: createPluginEventHandler({
           source: pluginSource,

@@ -1016,6 +1016,7 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       http: 'loopback',
       events: 'declared',
       event_max_bytes: 16_384,
+      project_dir: 'scenario',
       install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
     });
   });
@@ -1052,6 +1053,13 @@ describe('parseConfig, plugins events (Phase 9, P8)', () => {
     for (const bad of ['0', '-1', '1.5', '2000000', '"big"']) {
       expect(() => parseConfig(`plugins:\n  event_max_bytes: ${bad}\n`)).toThrow(/event_max_bytes/);
     }
+  });
+});
+
+describe('parseConfig, plugins project_dir', () => {
+  it('takes each mode and rejects an unknown one', () => {
+    expect(parseConfig('plugins:\n  project_dir: off\n').plugins.project_dir).toBe('off');
+    expect(() => parseConfig('plugins:\n  project_dir: repo\n')).toThrow(/project_dir/);
   });
 });
 
