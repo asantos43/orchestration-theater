@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, type DOMElement } from 'ink';
+import { useRef } from 'react';
 import { cleanup, render } from 'ink-testing-library';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_UI_SETTINGS } from '../settings.js';
 import { MouseLayer } from './provider.js';
 import { sgrReport } from './sgr.js';
-import { ClickTarget, MouseModalScope, type ClickTargetProps } from './target.js';
+import { ClickTarget, MouseModalScope, useMouseTarget, type ClickTargetProps } from './target.js';
 import type { LocalPoint } from './registry.js';
 
 /**
@@ -117,5 +118,72 @@ describe('the hit-test', () => {
     await view.settle();
     await view.click(1, 0);
     expect(view.clicks).toEqual([]);
+  });
+});
+
+describe('the press of an area', () => {
+  function Area(props: {
+    readonly onPress: (point: LocalPoint) => void;
+    readonly enabled?: boolean;
+    readonly children?: React.ReactNode;
+  }): React.ReactNode {
+    const ref = useRef<DOMElement>(null);
+    useMouseTarget(ref, { onPress: props.onPress }, { enabled: props.enabled });
+    return (
+      <Box ref={ref} flexDirection="column" width={20} height={4}>
+        {props.children}
+      </Box>
+    );
+  }
+
+  it('is told with the point of the press, and the target inside gets its click anyway', async () => {
+    const presses: LocalPoint[] = [];
+    const view = mount((onClick) => (
+      <Area onPress={(point) => presses.push(point)}>
+        <ClickTarget marginLeft={2} width={6} height={1} onClick={onClick}>
+          <Text>inner</Text>
+        </ClickTarget>
+      </Area>
+    ));
+    await view.settle();
+    await view.click(3, 0);
+    expect(presses).toEqual([{ x: 3, y: 0, col: 3, row: 0 }]);
+    expect(view.clicks).toEqual([{ x: 1, y: 0, col: 3, row: 0 }]);
+    // On the area, outside the inner target: only the press.
+    await view.click(15, 2);
+    expect(presses).toHaveLength(2);
+    expect(view.clicks).toHaveLength(1);
+    // Outside the area: neither.
+    await view.click(30, 2);
+    expect(presses).toHaveLength(2);
+  });
+
+  it('goes to every area that shows the cell, nested ones included', async () => {
+    const order: string[] = [];
+    const view = mount(() => (
+      <Area onPress={() => order.push('outer')}>
+        <Area onPress={() => order.push('inner')} />
+      </Area>
+    ));
+    await view.settle();
+    await view.click(1, 1);
+    expect(order.sort()).toEqual(['inner', 'outer']);
+  });
+
+  it('is not told while an overlay is open, nor when the area is off', async () => {
+    const presses: string[] = [];
+    const view = mount(() => (
+      <Box flexDirection="column">
+        <Area onPress={() => presses.push('off')} enabled={false} />
+        <Area onPress={() => presses.push('behind')} />
+        <MouseModalScope>
+          <Text>overlay</Text>
+        </MouseModalScope>
+      </Box>
+    ));
+    await view.settle();
+    await view.click(1, 5);
+    await view.click(1, 1);
+    expect(presses).toEqual([]);
   });
 });

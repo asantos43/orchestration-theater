@@ -6,6 +6,7 @@ import { App } from './app.js';
 import type { DaemonConnector } from './daemon-connection.js';
 import type { InkPatchOutcome } from './ink-patch.js';
 import type { HistoryStore } from './input/index.js';
+import { kittyKeyboardOption } from './keyboard.js';
 import { MOUSE_DISABLE_SEQUENCE } from './mouse/modes.js';
 import {
   LocaleController,
@@ -80,6 +81,7 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
       mouseTerminal={options.stdout}
     />
   );
+  const kittyKeyboard = kittyKeyboardOption(settings.keyboard.protocol);
   const running: Instance = render(tree, {
     stdin: options.stdin,
     stdout: options.stdout,
@@ -88,6 +90,7 @@ export async function startTuiApp(options: RunTuiOptions): Promise<RunningTui> {
     exitOnCtrlC: false,
     patchConsole: false,
     maxFps: settings.render.maxFps,
+    ...(kittyKeyboard === undefined ? {} : { kittyKeyboard }),
     ...(options.interactive === undefined ? {} : { interactive: options.interactive }),
   });
 
