@@ -59,6 +59,14 @@ const detail = z.string().min(1).max(512).nullable();
  *   because it could not be trusted (`subject`: the version, or `none`; `detail`: the reason
  *   code of `daemon.update`). Nothing of it stays on disk. The same fact is the `daemon.update`
  *   event with `phase: rejected`; this notice is what reaches the global chat.
+ * - `update_applied`, `update_rolled_back`, `update_failed`, `update_ask` (Phase 10, P8;
+ *   [proposta]): what the global chat is told about the application of a version (`subject`: the
+ *   version). `update_applied`: the new version came up and held (`detail`: the previous one).
+ *   `update_rolled_back`: it did not, and the previous one is back (`detail`: the reason code of
+ *   `daemon.update`). `update_failed`: it did not come up and `updates.rollback: off` left the
+ *   state as it is (`detail`: the reason). `update_ask`: the `max_wait` of `idle` ended and the
+ *   Producer chooses, by `POST /v1/updates/apply`, between `park` ("estaciona e aplica") and
+ *   `wait` ("espera mais") (`detail`: the two options, `park|wait`).
  * - The managed ACP adapters (Phase 10, P13; N254 revised; [proposta]); `subject` is the adapter
  *   (`claude-agent-acp`, `codex-acp`) and `detail` says the rest:
  *   - `adapter_installing`: the official client is on `PATH`, the adapter is not installed and
@@ -92,6 +100,10 @@ export const DAEMON_NOTICE_KINDS = [
   'telemetry_purge_blocked',
   'log_rotate_failed',
   'update_rejected',
+  'update_applied',
+  'update_rolled_back',
+  'update_failed',
+  'update_ask',
   'adapter_installing',
   'adapter_installed',
   'adapter_install_failed',

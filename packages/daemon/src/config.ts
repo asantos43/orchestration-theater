@@ -42,7 +42,9 @@ import {
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
   UPDATE_CHANNELS,
+  UPDATE_APPLY_WHEN,
   UPDATE_MODES,
+  UPDATE_ROLLBACK_MODES,
   UPDATE_SOURCES,
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
@@ -1680,16 +1682,16 @@ export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
 
 /**
  * `updates` (Phase 10, P7; architecture 5.21, N73). The search for a new version of OTheater and,
- * from the next step (P8), its application. Every key is global (the file of the daemon; a project
+ * its application (P8). Every key is global (the file of the daemon; a project
  * has no say in how the daemon updates itself) and is read when the daemon starts. [proposta] The
  * names and the defaults of the keys below, except the modes and the channels, which the
  * architecture names.
  *
- * - `mode` (default `auto`): `auto` downloads, checks and (from P8) applies when the daemon is
- *   idle; `notify` downloads and checks, and leaves the version ready for the Producer to apply;
- *   `check` only says a new version exists (it downloads nothing); `off` never looks. Until P8
- *   exists, `auto` acts as `notify` and the status and the event say so. A daemon that is not the
- *   own executable (a checkout run by Node) acts as `check`.
+ * - `mode` (default `auto`): `auto` downloads, checks and applies at the moment `apply_when` says;
+ *   `notify` downloads and checks, and leaves the version ready for the Producer to apply
+ *   (`POST /v1/updates/apply`); `check` only says a new version exists (it downloads nothing);
+ *   `off` never looks. A daemon that is not the own executable (a checkout run by Node) acts as
+ *   `check`.
  * - `channel` (default `stable`): `stable` reads the latest release; `beta` reads the newest
  *   prerelease. A manifest of another channel is refused.
  * - `source` (default `github`): `github` reads the releases of the public repository, with no
@@ -1699,6 +1701,20 @@ export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
  *   loopback; no user, no password, no query.
  * - `check_interval` (default `6h`): the time between two searches; `off` searches only when asked
  *   (`POST /v1/updates/check`) and once at start. Not shorter than 5 minutes.
+ * - `apply_when` (P8; default `idle`): the moment a version that is ready is put in place.
+ *   `idle` waits for no attempt to be running (and holds new work back meanwhile); `park` stops
+ *   the daemon the clean way at once, the sessions go `awaiting_resume` and come back by
+ *   `session/load` (it is a restart of the daemon, so it spends no attempt); `next_start` leaves
+ *   it ready and applies at the next start of the daemon.
+ * - `max_wait` (P8; default `24h`): in `idle`, how long to wait for a quiet moment. After it the
+ *   daemon asks the Producer, in the global chat, to `park` and apply or to wait longer.
+ * - `rollback` (P8; default `auto`): `auto` takes the previous version back when the new one does
+ *   not start or does not hold; `off` leaves the state as it is and only warns.
+ * - `backup_before_migration` (P8; default `true`): when the manifest announces a store or
+ *   telemetry schema newer than the daemon's, make a backup first (the rollback restores it).
+ *   `false` skips it.
+ * - `health_timeout` (P8; default `60s`): how long the applier waits for the new daemon to answer
+ *   `GET /v1/health`; then it watches 30 s more without a drop.
  *
  * The public key that checks the manifest is not a key here: it is embedded in the executable
  * (`tools/release/keys/update-public-key.pem`), so that a changed file cannot choose who signs.
@@ -1716,6 +1732,15 @@ export const UpdatesConfigSchema = z
         message: 'the shortest interval is 5m (one search is one call to the origin)',
       })
       .prefault('6h'),
+    apply_when: z.enum(UPDATE_APPLY_WHEN).default('idle'),
+    max_wait: DurationSchema.refine((value) => value >= 1000, {
+      message: 'the shortest max_wait is 1s',
+    }).prefault('24h'),
+    rollback: z.enum(UPDATE_ROLLBACK_MODES).default('auto'),
+    backup_before_migration: z.boolean().default(true),
+    health_timeout: DurationSchema.refine((value) => value >= 1000, {
+      message: 'the shortest health_timeout is 1s',
+    }).prefault('60s'),
   })
   .superRefine((value, ctx) => {
     if (value.source === 'url' && value.url === undefined) {

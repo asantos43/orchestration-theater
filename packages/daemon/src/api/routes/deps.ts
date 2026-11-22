@@ -12,6 +12,7 @@ import type { Logger } from '../../logger.js';
 import type { ProducerChannel } from '../../orchestration/channel.js';
 import type { PlayRunner } from '../../pipeline/runner.js';
 import type { PluginPanelService } from '../../plugins/panel.js';
+import type { ApplyCoordinator } from '../../updates/apply/coordinator.js';
 import type { UpdateChecker } from '../../updates/checker.js';
 import type { ProfileLoginService } from '../../profiles/login.js';
 import type { ProfileService } from '../../profiles/service.js';
@@ -118,4 +119,6 @@ export interface CommandRouteDeps {
   readonly plugins?: PluginPanelService | undefined;
   /** The search for updates (P7 of Phase 10); absent: its routes answer 503 `unavailable`. */
   readonly updates?: UpdateChecker | undefined;
+  /** The apply of the version that is ready (P8 of Phase 10); absent: its route answers 503. */
+  readonly updateApply?: ApplyCoordinator | undefined;
 }

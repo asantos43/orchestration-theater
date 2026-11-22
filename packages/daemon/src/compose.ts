@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { OwnSchemas } from './updates/apply/coordinator.js';
+import { newestMigration } from './updates/apply/schemas.js';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -39,6 +41,7 @@ import { SRT_SANDBOX_ADAPTER, SrtSandbox } from '@otheater/adapter-sandbox-srt';
 import { AcpTransport } from '@otheater/adapter-session-acp';
 import {
   backupDatabase,
+  MIGRATIONS as STORE_MIGRATIONS,
   parseBackupMethod,
   restoreDatabase,
   SQLITE_STORE_ADAPTER,
@@ -48,6 +51,7 @@ import {
 } from '@otheater/adapter-store-sqlite';
 import {
   backupTelemetryFile,
+  MIGRATIONS as TELEMETRY_MIGRATIONS,
   SQLITE_TELEMETRY_ADAPTER,
   SqliteTelemetryStore,
   type SqliteTelemetryConfigInput,
@@ -1466,3 +1470,16 @@ export function productionClients(
 
 /** Re-exported for the tests of the Executor cadastro (only compose.ts may import adapters, 5.18). */
 export { OpenCodeModelCatalog } from '@otheater/adapter-client-opencode';
+
+/**
+ * The schemas this daemon has, as the manifest of a release says them (`schemas.store`,
+ * `schemas.telemetry`): the number of the newest migration of each base (Phase 10, P8). [proposta]
+ * A new version whose number is larger will migrate the base when it starts, so the backup is made
+ * first. It lives here because only this file may import the adapters.
+ */
+export function composeOwnSchemas(): OwnSchemas {
+  return {
+    store: newestMigration(STORE_MIGRATIONS),
+    telemetry: newestMigration(TELEMETRY_MIGRATIONS),
+  };
+}
