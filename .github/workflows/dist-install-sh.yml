@@ -1,0 +1,138 @@
+name: Dist install.sh
+
+# installer/install.sh (Phase 10, P5) on a runner of each system it supports: it builds the single
+# executable (P1), serves a release signed by a key made in the job from a loopback server, runs the
+# script, checks the files and the real logon service, runs it again with a bad signature and checks
+# that it is refused, then uninstalls. It publishes nothing: no release, no tag, no upload.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dist-install-sh.yml'
+      - 'installer/install.sh'
+      - 'installer/README.md'
+      - 'packages/daemon/src/updates/install-sh*.ts'
+      - 'packages/daemon/src/updates/release-fixture.ts'
+      - 'packages/daemon/src/commands/service.ts'
+      - 'packages/daemon/src/service/**'
+      - 'packages/daemon/src/sea/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-install-sh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides whether a pull request runs the job, by the repository variable OT_DIST_CI [proposta],
+  # the same as in dist-sea.yml: `affected` (default), `full` or `off` (a dispatch still runs).
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_DIST_CI || 'affected' }}
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-install-sh\.yml|installer/(install\.sh|README\.md)$|packages/daemon/src/updates/(install-sh[^/]*\.ts|release-fixture\.ts)$|packages/daemon/src/commands/service\.ts$|packages/daemon/src/service/|packages/daemon/src/sea/)'; then
+            touched=true
+          else
+            touched=false
+          fi
+          case "$MODE" in
+            affected) build=$touched ;;
+            full) build=true ;;
+            off) build=false ;;
+            *) echo "::error::OT_DIST_CI=$MODE: use affected, full or off"; exit 1 ;;
+          esac
+          echo "touched=$touched build=$build (mode $MODE)"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  install-sh:
+    needs: [changes]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true') }}
+    name: install.sh (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          # `macos-latest` is Apple Silicon.
+          - { os: macos-latest, target: darwin-arm64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # The official standalone Node, the one a SEA can be injected into (as in dist-sea.yml).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - run: node tools/release/dist/cli.js build --target ${{ matrix.target }} --out dist/sea
+      - run: node tools/release/dist/cli.js smoke dist/sea/${{ matrix.target }}/otheater
+
+      # [N] A runner has no login session for the user, so `systemd --user` may have no bus. Linger
+      # starts the user manager of the runner user (as in dist-service.yml); where it still does not
+      # answer, the test says so and checks the rest. Only on this disposable runner.
+      - name: Start the user manager (ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER" || true
+          sudo systemctl start "user@$(id -u).service" || true
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+
+      # The LibreSSL of macOS cannot check Ed25519 (`openssl pkeyutl -rawin`), so the script would
+      # fall back to the executable, which has no verify-release mode yet. Homebrew's openssl@3 is
+      # on the runner image [N: not confirmed for every image]; the step says if it is not.
+      - name: openssl 3 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then
+            echo "OT_TEST_OPENSSL=$prefix/bin/openssl" >> "$GITHUB_ENV"
+            "$prefix/bin/openssl" version
+          else
+            echo "::warning::no openssl@3 on this runner: installing it with brew"
+            brew install openssl@3
+            echo "OT_TEST_OPENSSL=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
+          fi
+
+      - name: shellcheck
+        run: |
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck --shell=sh installer/install.sh
+          else
+            echo "::notice::shellcheck is not on this runner: skipped"
+          fi
+
+      # The tests with the fake executable (always) and the real ones: the SEA that was just built,
+      # the real service of the runner, the bad signature and the uninstall.
+      - name: install.sh tests
+        run: pnpm --filter @otheater/daemon exec vitest run src/updates/install-sh
+        env:
+          CI: 'true'
+          OT_TEST_REAL_SERVICE: '1'
+          OT_TEST_INSTALL_EXE: ${{ github.workspace }}/dist/sea/${{ matrix.target }}/otheater
+
+      - name: Clean up (a service left by a failed run)
+        if: always()
+        run: |
+          sh installer/install.sh --uninstall || true
