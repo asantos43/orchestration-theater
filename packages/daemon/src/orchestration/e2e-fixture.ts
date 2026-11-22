@@ -28,7 +28,7 @@ import { testGit } from '@otheater/sdk';
 import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
-import { createSilentLogger } from '../logger.js';
+import { createSilentLogger, type Logger } from '../logger.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import { makeWorkspaceRig, type WorkspaceRig } from '../workspace/workspace-fixture.js';
 import type { ProducerChannel } from './channel.js';
@@ -157,6 +157,8 @@ export interface PlayHarnessOptions {
   readonly conventions?: 'ask' | 'detect' | 'off';
   /** The telemetry store the daemon runs with (P4): the test reads the spans from it. */
   readonly telemetry?: TelemetryStore;
+  /** The logger of the daemon (default: silent): a test that checks what the daemon logs hands in its own. */
+  readonly logger?: Logger;
 }
 
 /**
@@ -213,7 +215,7 @@ ${options.extra ?? ''}
         ),
       ].flat(),
     ],
-    logger: createSilentLogger(),
+    logger: options.logger ?? createSilentLogger(),
     version: '0.0.0-test',
   });
   const rig = await makeWorkspaceRig({ store: daemon.store, codeHost: realHead });
