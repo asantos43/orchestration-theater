@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -201,7 +202,9 @@ describe('the secrets of a plugin in a running daemon (N239)', () => {
           arguments: { name: 'API_TOKEN' },
         });
         expect(JSON.parse(asked.result?.content?.[0]?.text ?? '{}')).toMatchObject({
-          value: TOKEN,
+          // The server got it (the digest), and the daemon masks it on the way back (item 61).
+          value: '[REDACTED]',
+          sha256: createHash('sha256').update(TOKEN).digest('hex'),
         });
       } finally {
         await daemon.stop();

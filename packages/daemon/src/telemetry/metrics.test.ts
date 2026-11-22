@@ -312,6 +312,20 @@ describe('MetricsCollector', () => {
     expect(await rig.collector.render()).not.toContain('batches_rejected');
   });
 
+  it('counts what plugins.event_rate dropped, by plugin, and leaves it out with no source (N243 item 67)', async () => {
+    const rig = makeRig({
+      pluginEventsDropped: () => [
+        { plugin: 'demo', dropped: 7 },
+        { plugin: 'pg', dropped: 0 },
+      ],
+    });
+    const text = await rig.collector.render();
+    expect(text).toContain('# TYPE otheater_plugin_events_dropped_total counter');
+    expect(text).toContain('otheater_plugin_events_dropped_total{plugin="demo"} 7');
+    expect(text).toContain('otheater_plugin_events_dropped_total{plugin="pg"} 0');
+    expect(await makeRig().collector.render()).not.toContain('plugin_events_dropped');
+  });
+
   it('leaves out the source that fails and keeps the rest', async () => {
     const rig = makeRig();
     rig.state.failQuota = true;

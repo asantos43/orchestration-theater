@@ -46,6 +46,12 @@ export interface MetricsSources {
   readonly receiver?: (() => Pick<TelemetryReceiverStats, 'rejected'> | undefined) | undefined;
   /** The searches for updates and the versions refused (P7 of Phase 10); `undefined` when there is no service. */
   readonly updates?: (() => UpdateCounters | undefined) | undefined;
+  /**
+   * What `plugins.event_rate` dropped since the daemon started, by plugin (N243 item 67); `undefined`
+   * leaves the metric out.
+   */
+  readonly pluginEventsDropped?:
+    (() => readonly { readonly plugin: string; readonly dropped: number }[]) | undefined;
   /** `telemetry.prometheus.cache_ttl` in ms. */
   readonly cacheTtl: number;
   readonly logger: Pick<Logger, 'debug'>;
@@ -107,6 +113,7 @@ export class MetricsCollector {
       () => this.#dropped(),
       () => this.#batches(),
       () => this.#updates(),
+      () => this.#pluginEvents(),
     ]) {
       try {
         families.push(...(await part()));
@@ -252,6 +259,19 @@ export class MetricsCollector {
         'Versions refused since the daemon started, by reason (signature, sha256, size, version_not_newer, wrong_channel, bad_manifest).',
         'counter',
         Object.entries(counters.rejected).map(([reason, value]) => ({ labels: { reason }, value })),
+      ),
+    ];
+  }
+
+  #pluginEvents(): MetricFamily[] {
+    const dropped = this.#o.pluginEventsDropped?.();
+    if (dropped === undefined) return [];
+    return [
+      family(
+        'otheater_plugin_events_dropped_total',
+        'Events and refusals of a plugin dropped since the daemon started because the plugin passed plugins.event_rate, by plugin.',
+        'counter',
+        dropped.map((item) => ({ labels: { plugin: item.plugin }, value: item.dropped })),
       ),
     ];
   }
