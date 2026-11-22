@@ -484,6 +484,12 @@ describe('pluginEnvironment', () => {
     expect(env).toEqual({ TOKEN: 'x', PATH: '/bin', HOME: '/h' });
   });
 
+  it('drops an extra variable named like the base even when the daemon has none of that name', () => {
+    // LANG and TZ are not in the environment of the daemon: they stay out of the process too.
+    const env = pluginEnvironment('/h', { TOKEN: 'x', LANG: 'evil', TZ: 'evil' }, {});
+    expect(env).toEqual({ TOKEN: 'x', HOME: '/h' });
+  });
+
   it('sets OTHEATER_PROJECT_DIR from the folder of the project, never from a secret', () => {
     const folder = join(tmpdir(), 'ot-project');
     expect(pluginEnvironment('/h', { OTHEATER_PROJECT_DIR: '/evil' }, {}, folder)).toEqual({

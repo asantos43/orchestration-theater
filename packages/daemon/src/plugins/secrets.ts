@@ -98,6 +98,13 @@ export interface PluginExtraEnvOptions {
   readonly logger: Logger;
   /** Where the `secret_missing` notice goes besides the log (P8 turns it into an event). */
   readonly onNotice?: PluginNoticeSink | undefined;
+  /**
+   * Runs once the secrets of a server are read and all have a value, before they are handed over:
+   * the daemon makes the redaction of the telemetry read the vault again (`VaultValues.refresh`),
+   * so a value set a moment ago is already masked when the server starts, instead of up to 30 s
+   * later (N243, item 60). It must not reject; if it does, the start goes on and the log says so.
+   */
+  readonly refreshRedaction?: (() => Promise<void>) | undefined;
 }
 
 /**
@@ -112,6 +119,8 @@ export interface PluginExtraEnvOptions {
  * - A vault that cannot be read now (locked): the same, with no notice. The daemon already says
  *   the vault is locked.
  * - The warning, the notice and the error carry the names, never a value.
+ * - With all the values in hand, `refreshRedaction` runs before they are returned, so the
+ *   redaction of the telemetry already knows them when the server starts (N243, item 60).
  */
 export function pluginExtraEnv(
   options: PluginExtraEnvOptions,
@@ -140,6 +149,14 @@ export function pluginExtraEnv(
     }
     if (found.missing.length === 0) {
       told.delete(key);
+      try {
+        await options.refreshRedaction?.();
+      } catch (error) {
+        options.logger.warn(
+          { err: error, plugin: plugin.id },
+          'the redaction could not read the vault again before the server started',
+        );
+      }
       return found.env;
     }
     const list = found.missing.join(', ');
