@@ -1014,6 +1014,8 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       start_timeout: 30_000,
       restart_backoff: { initial: 1_000, max: 60_000 },
       http: 'loopback',
+      events: 'declared',
+      event_max_bytes: 16_384,
       install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
     });
   });
@@ -1036,6 +1038,20 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
     expect(() => parseConfig('plugins:\n  max_restarts: 1.5\n')).toThrow(/max_restarts/);
     expect(() => parseConfig('plugins:\n  call_timeout: soon\n')).toThrow(/call_timeout/);
     expect(() => parseConfig('plugins:\n  pool: 3\n')).toThrow(InvalidInput);
+  });
+});
+
+describe('parseConfig, plugins events (Phase 9, P8)', () => {
+  it('takes each mode of events and a size for the payload', () => {
+    expect(parseConfig('plugins:\n  events: off\n').plugins.events).toBe('off');
+    expect(parseConfig('plugins:\n  event_max_bytes: 4096\n').plugins.event_max_bytes).toBe(4096);
+  });
+
+  it('rejects an unknown mode and a size that is not a positive count of bytes', () => {
+    expect(() => parseConfig('plugins:\n  events: any\n')).toThrow(/plugins\.events/);
+    for (const bad of ['0', '-1', '1.5', '2000000', '"big"']) {
+      expect(() => parseConfig(`plugins:\n  event_max_bytes: ${bad}\n`)).toThrow(/event_max_bytes/);
+    }
   });
 });
 

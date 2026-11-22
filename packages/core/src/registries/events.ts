@@ -43,6 +43,28 @@ export function defineEventType<TType extends string, TPayload extends z.ZodType
   return definition;
 }
 
+/**
+ * The names of the events the daemon itself writes about plugins (Phase 9, P8): `plugin.<name>`, two
+ * segments, with no plugin owner. A plugin id cannot be one of them, so `plugin.<id>.<name>` of a
+ * plugin never reads like an event of the daemon (the manifest validator refuses the id). [proposta]
+ */
+export const PLUGIN_DAEMON_EVENT_NAMES = [
+  'installed',
+  'removed',
+  'enabled',
+  'disabled',
+  'server_started',
+  'server_stopped',
+  'server_failed',
+  'tool_rejected',
+  'event_rejected',
+] as const;
+
+/** True when `id` is one of the {@link PLUGIN_DAEMON_EVENT_NAMES}, which no plugin may take as id. */
+export function isReservedPluginId(id: string): boolean {
+  return (PLUGIN_DAEMON_EVENT_NAMES as readonly string[]).includes(id);
+}
+
 /** True when `type` is in the namespace of a plugin. */
 export function isPluginEventType(type: string): boolean {
   return type.startsWith(PLUGIN_EVENT_PREFIX);
@@ -114,6 +136,14 @@ export function createEventRegistry(definitions: readonly EventTypeDefinition[])
   });
 }
 
+/** True for `plugin.<name>` with `<name>` one of the {@link PLUGIN_DAEMON_EVENT_NAMES}. */
+function isDaemonPluginEventType(type: string): boolean {
+  return (
+    type.startsWith(PLUGIN_EVENT_PREFIX) &&
+    isReservedPluginId(type.slice(PLUGIN_EVENT_PREFIX.length))
+  );
+}
+
 /** Pattern of a plugin event type: `plugin.<id>.<name>[.<more>]`. */
 const PLUGIN_EVENT_PATTERN =
   /^plugin\.([a-z0-9][a-z0-9_-]*)\.[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*$/;
@@ -137,7 +167,7 @@ export function validateEventTypes(
       );
     }
     if (definition.plugin === undefined) {
-      if (isPluginEventType(type)) {
+      if (isPluginEventType(type) && !isDaemonPluginEventType(type)) {
         collector.report(
           type,
           'plugin_prefix',
@@ -145,6 +175,13 @@ export function validateEventTypes(
         );
       }
     } else {
+      if (isReservedPluginId(definition.plugin)) {
+        collector.report(
+          type,
+          'plugin_prefix',
+          `Event type "${type}": "${definition.plugin}" is a reserved name of the events of the daemon, not a plugin id`,
+        );
+      }
       const match = PLUGIN_EVENT_PATTERN.exec(type);
       if (match?.[1] !== definition.plugin) {
         collector.report(

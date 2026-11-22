@@ -163,6 +163,18 @@ import {
 } from './browser-events.js';
 import { TerminalOutputPayloadSchema } from './terminal-events.js';
 import { WaitEndedPayloadSchema, WaitStartedPayloadSchema } from './wait-events.js';
+import {
+  PluginDisabledPayloadSchema,
+  PluginEnabledPayloadSchema,
+  PluginEventRejectedPayloadSchema,
+  PluginInstalledPayloadSchema,
+  PluginRemovedPayloadSchema,
+  PluginSecretMissingPayloadSchema,
+  PluginServerFailedPayloadSchema,
+  PluginServerStartedPayloadSchema,
+  PluginServerStoppedPayloadSchema,
+  PluginToolRejectedPayloadSchema,
+} from './plugin-events.js';
 import { ToolCalledPayloadSchema, ToolFinishedPayloadSchema } from './tool-events.js';
 import {
   DeliveryCompletedPayloadSchema,
@@ -907,6 +919,56 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'atif.export_failed',
     schemaVersion: 1,
     payload: AtifExportFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.installed',
+    schemaVersion: 1,
+    payload: PluginInstalledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.removed',
+    schemaVersion: 1,
+    payload: PluginRemovedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.enabled',
+    schemaVersion: 1,
+    payload: PluginEnabledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.disabled',
+    schemaVersion: 1,
+    payload: PluginDisabledPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_started',
+    schemaVersion: 1,
+    payload: PluginServerStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_stopped',
+    schemaVersion: 1,
+    payload: PluginServerStoppedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.server_failed',
+    schemaVersion: 1,
+    payload: PluginServerFailedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.tool_rejected',
+    schemaVersion: 1,
+    payload: PluginToolRejectedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.event_rejected',
+    schemaVersion: 1,
+    payload: PluginEventRejectedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'plugin.secret_missing',
+    schemaVersion: 1,
+    payload: PluginSecretMissingPayloadSchema,
   }),
 ] as const;
 
