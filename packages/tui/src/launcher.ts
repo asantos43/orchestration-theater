@@ -2,6 +2,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { SEA_INTERNAL_PREFIX, isSeaProcess } from '@otheater/client/node';
 import { SIGNAL_EXIT_CODES, EXIT_SIGNALS } from './terminal.js';
 import { parseUiSettings, type UiRuntimeSettings } from './settings.js';
 
@@ -37,16 +38,33 @@ export interface TuiLaunchOptions {
   readonly execPath?: string | undefined;
   /** The file the process runs. Default: `main.js` next to this module. */
   readonly mainFile?: string | undefined;
+  /**
+   * Whether this is the single executable (Phase 10, P1). Default: {@link isSeaProcess}. There the
+   * process is the executable again, in its `tui` internal mode, and the V8 flags travel in
+   * `NODE_OPTIONS`: an argument before the mode would be taken for the person's.
+   */
+  readonly sea?: boolean | undefined;
 }
 
 export interface TuiCommand {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: NodeJS.ProcessEnv;
+  /** The script the process runs; absent in the single executable, where there is none. */
+  readonly mainFile?: string | undefined;
 }
+
+/** The mode of the executable that runs the TUI (`--ot-internal=tui`). */
+export const TUI_INTERNAL_MODE = 'tui';
 
 export function defaultMainFile(): string {
   return fileURLToPath(new URL('./main.js', import.meta.url));
+}
+
+/** `NODE_OPTIONS` with `flags` added to what the environment already had. */
+function withNodeOptions(env: NodeJS.ProcessEnv, flags: readonly string[]): string {
+  const current = env.NODE_OPTIONS;
+  return [...(current === undefined || current === '' ? [] : [current]), ...flags].join(' ');
 }
 
 /** The command line and environment of the TUI process. Pure: nothing is started. */
@@ -54,15 +72,21 @@ export function buildTuiCommand(options: TuiLaunchOptions): TuiCommand {
   const settings = parseUiSettings(options.ui);
   const env: NodeJS.ProcessEnv = { ...(options.env ?? process.env) };
   env[UI_ENV] = JSON.stringify(options.ui ?? {});
+  const flags = runtimeFlags(settings.runtime);
+  if (options.sea ?? isSeaProcess()) {
+    env.NODE_OPTIONS = withNodeOptions(env, flags);
+    return {
+      command: options.execPath ?? process.execPath,
+      args: [`${SEA_INTERNAL_PREFIX}${TUI_INTERNAL_MODE}`, '--data-dir', options.dataDir],
+      env,
+    };
+  }
+  const mainFile = options.mainFile ?? defaultMainFile();
   return {
     command: options.execPath ?? process.execPath,
-    args: [
-      ...runtimeFlags(settings.runtime),
-      options.mainFile ?? defaultMainFile(),
-      '--data-dir',
-      options.dataDir,
-    ],
+    args: [...flags, mainFile, '--data-dir', options.dataDir],
     env,
+    mainFile,
   };
 }
 
@@ -97,8 +121,8 @@ export interface LaunchDeps {
  */
 export async function launchTui(options: TuiLaunchOptions, deps: LaunchDeps = {}): Promise<number> {
   const command = buildTuiCommand(options);
-  const main = command.args.find((arg) => !arg.startsWith('--')) ?? '';
-  if (!(deps.exists ?? existsSync)(main)) throw new TuiNotBuiltError(main);
+  const main = command.mainFile;
+  if (main !== undefined && !(deps.exists ?? existsSync)(main)) throw new TuiNotBuiltError(main);
 
   const host = deps.process ?? process;
   const child = (deps.spawn ?? spawn)(command.command, command.args, {
