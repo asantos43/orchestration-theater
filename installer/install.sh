@@ -91,7 +91,7 @@ fmt() {
       service_off) echo 'Serviço de logon: não registrado (OT_INSTALL_SERVICE=off).' ;;
       service_failed) echo 'AVISO: o serviço de logon não foi registrado. Rode "%s service install" depois de ver o motivo acima.' ;;
       done_title) echo 'Pronto. O que falta:' ;;
-      todo_path) echo '  - %s não está no PATH. Acrescente ao perfil do seu shell: export PATH="%s:$PATH"' ;;
+      todo_path) echo "  - %s não está no PATH. Acrescente ao perfil do seu shell: export PATH=\"%s:\$PATH\"" ;;
       todo_acp) echo '  - adaptador ACP não encontrado no PATH: %s (a v1 não os leva; veja a documentação)' ;;
       todo_client) echo '  - cliente não encontrado no PATH: %s (instale o que você usa)' ;;
       todo_none) echo '  nada.' ;;
@@ -143,7 +143,7 @@ fmt() {
       service_off) echo 'Logon service: not registered (OT_INSTALL_SERVICE=off).' ;;
       service_failed) echo 'WARNING: the logon service was not registered. Run "%s service install" after you see why above.' ;;
       done_title) echo 'Done. What is left:' ;;
-      todo_path) echo '  - %s is not in the PATH. Add to your shell profile: export PATH="%s:$PATH"' ;;
+      todo_path) echo "  - %s is not in the PATH. Add to your shell profile: export PATH=\"%s:\$PATH\"" ;;
       todo_acp) echo '  - ACP adapter not found in the PATH: %s (v1 does not ship them; see the documentation)' ;;
       todo_client) echo '  - client not found in the PATH: %s (install the ones you use)' ;;
       todo_none) echo '  nothing.' ;;
@@ -306,6 +306,7 @@ download() {
 # tag of the first one that is a prerelease and not a draft. [N] The keys of one release are read
 # in the order GitHub writes them (tag_name before draft and prerelease).
 latest_prerelease_tag() {
+  # shellcheck disable=SC2020 # three different characters, each one to a newline, on purpose
   tr ',{}' '\n\n\n' | awk '
     /"tag_name"[ \t]*:/ { tag = $0; sub(/.*"tag_name"[ \t]*:[ \t]*"/, "", tag); sub(/".*/, "", tag); draft = ""; pre = "" }
     /"draft"[ \t]*:/ { draft = ($0 ~ /true/) ? "true" : "false" }

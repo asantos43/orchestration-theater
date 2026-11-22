@@ -4,7 +4,7 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { hostPlatform, runInstaller, startReleaseServer } from './install-sh-fixture.js';
+import { hostPlatform, runInstaller, sha256, startReleaseServer } from './install-sh-fixture.js';
 import { buildRelease, makeKeys } from './release-fixture.js';
 
 /**
@@ -86,7 +86,8 @@ describe.skipIf(!ENABLED)('install.sh with the real executable and service (CI o
       // 4: installed, but this runner has no user service manager (it is said, not hidden).
       if (first.code === 4) console.warn(`no user service manager here: ${first.stderr}`);
       expect([0, 4], first.stderr).toContain(first.code);
-      expect(await readFile(installed)).toEqual(exe);
+      // Compared by hash: `toEqual` on a buffer of tens of MB throws RangeError on the macOS runner.
+      expect(sha256(await readFile(installed))).toBe(sha256(exe));
       const version = run(bin, ['--version'], env);
       expect(version.code, version.stderr).toBe(0);
       expect(version.stdout.trim()).not.toBe('');
@@ -109,7 +110,8 @@ describe.skipIf(!ENABLED)('install.sh with the real executable and service (CI o
       );
       expect(bad.code, bad.stderr).toBe(3);
       expect(bad.stderr).toContain('REFUSED');
-      expect(await readFile(installed)).toEqual(exe);
+      // Compared by hash: `toEqual` on a buffer of tens of MB throws RangeError on the macOS runner.
+      expect(sha256(await readFile(installed))).toBe(sha256(exe));
     } finally {
       const gone = await runInstaller(
         ['--uninstall'],

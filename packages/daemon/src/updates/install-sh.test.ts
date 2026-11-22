@@ -59,6 +59,12 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
   });
 
   const exeName = (): string => `otheater-${PLATFORM ?? 'none'}`;
+  // Where the daemon keeps its data: the app folder on Linux, `Library/Application Support/OTheater`
+  // on macOS (the script follows paths.ts).
+  const dataDir = (): string =>
+    PLATFORM === 'darwin-arm64'
+      ? join(home, 'Library', 'Application Support', 'OTheater')
+      : join(home, '.local', 'share', 'otheater');
   const bin = (): string => join(home, '.local', 'share', 'otheater', 'bin');
   const installed = (): string => join(bin(), 'otheater');
   const link = (): string => join(home, '.local', 'bin', 'ot');
@@ -154,7 +160,7 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
       expect(result.stdout).toContain('is not in the PATH');
       expect(result.stdout).toContain(`export PATH="${join(home, '.local', 'bin')}:$PATH"`);
       expect(result.stdout).toContain('ACP adapter not found in the PATH: claude-agent-acp');
-      expect(result.stdout).toContain(`stays in ${join(home, '.local', 'share', 'otheater')}`);
+      expect(result.stdout).toContain(`stays in ${dataDir()}`);
     });
 
     it('speaks Portuguese when the locale is pt', async () => {
@@ -427,7 +433,8 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
 
   describe('--uninstall', () => {
     async function withData(): Promise<string> {
-      const data = join(home, '.local', 'share', 'otheater');
+      const data = dataDir();
+      await mkdir(data, { recursive: true });
       await writeFile(join(data, 'config.yaml'), 'ui:\n  locale: en\n');
       return data;
     }
