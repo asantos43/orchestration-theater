@@ -6,6 +6,9 @@
 //   --missing         leaves `echo` out, though the manifest declares it
 //   --crash-on-start  exits at once, before `initialize`
 //   --no-exit         `crash` throws an error of the tool instead of ending the process
+//   --events          adds `publish_events`, which publishes one event the manifest declares
+//                     (`build.done`) and one it does not (`not.declared`), and `publish`, which
+//                     publishes the event it is told to (`notifications/otheater/event`, P8)
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -55,6 +58,38 @@ serveStdio(() => {
       return { content: [{ type: 'text', text: 'failed' }], isError: true };
     process.exit(1);
   });
+  if (modes.has('--events')) {
+    const method = 'notifications/otheater/event';
+    server.registerTool('publish_events', { description: 'Publishes two events.' }, async () => {
+      await server.server.notification({
+        method,
+        params: { name: 'build.done', payload: { n: 1 } },
+      });
+      await server.server.notification({ method, params: { name: 'not.declared', payload: {} } });
+      return text('published');
+    });
+    server.registerTool(
+      'publish',
+      {
+        description: 'Publishes the event it is told to; `bytes` pads the payload.',
+        inputSchema: z.object({
+          name: z.string(),
+          payload: z.record(z.string(), z.unknown()).optional(),
+          bytes: z.number().optional(),
+          raw: z.unknown().optional(),
+        }),
+      },
+      async ({ name, payload, bytes, raw }) => {
+        const body = bytes === undefined ? payload : { ...payload, pad: 'x'.repeat(bytes) };
+        await server.server.notification({
+          method,
+          params:
+            raw === undefined ? { name, ...(body === undefined ? {} : { payload: body }) } : raw,
+        } as Parameters<typeof server.server.notification>[0]);
+        return text('published');
+      },
+    );
+  }
   server.registerTool('pid', { description: 'The pid of this process.' }, () => text(process.pid));
   if (modes.has('--extra')) {
     server.registerTool('extra_tool', { description: 'Not in the manifest.' }, () => text('extra'));

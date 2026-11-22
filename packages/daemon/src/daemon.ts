@@ -77,6 +77,13 @@ import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
 import { pluginPermissionsFromConfig } from './plugins/permissions.js';
+import {
+  createPluginEventHandler,
+  LiveEventRegistry,
+  pluginEventContributor,
+  recordPluginNotice,
+  recordRegistryNotice,
+} from './plugins/events.js';
 import { PluginProcessPool } from './plugins/process-pool.js';
 import { pluginRuntimeFromConfig, type PluginNoticeSink } from './plugins/runtime-config.js';
 import { exportsPrometheus } from './telemetry/export-config.js';
@@ -339,12 +346,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const config = options.config ?? (await loadConfig(paths.config));
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
     const registries = buildDaemonRegistries(options.registries);
+    // Phase 9, P8: the event log validates against this one, which follows the snapshot of the
+    // registries (bound in `run`), so the `plugin.<id>.<name>` of the active plugins are known to it.
+    const liveEvents = new LiveEventRegistry(registries.events);
     // P11: a prompt that cites a tool its role cannot call stops the start-up here too.
     const prompts = options.prompts ?? defaultPromptSource(config, paths.dataDir);
     await assertValidPrompts(prompts, registries);
     composition = await compose(config, {
       dataDir: paths.dataDir,
-      events: { registry: registries.events, unknownType: config.events.unknown_type },
+      events: { registry: liveEvents, unknownType: config.events.unknown_type },
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -444,6 +454,16 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     });
     pluginRegistry = installedPlugins;
     const pluginSource: ActivePluginSource = options.plugins ?? installedPlugins;
+    // Phase 9, P8: what the pool, the aggregator and the registry tell about the plugins is also an
+    // event (the rule "situations become events"); the sink of the options still gets the notice.
+    const pluginSituations = composition.situations;
+    const pluginNotices: PluginNoticeSink = (notice) => {
+      recordPluginNotice(pluginSituations, notice);
+      options.pluginNotices?.(notice);
+    };
+    installedPlugins.onNotice((notice) => {
+      recordRegistryNotice(pluginSituations, notice);
+    });
     const pluginAggregator = new PluginAggregator({
       source: pluginSource,
       pool: new PluginProcessPool({
@@ -453,11 +473,17 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         // the restart, as the others outside the hot ones).
         runtime: () => pluginRuntimeFromConfig(config.plugins),
         homeRoot: join(paths.dataDir, 'plugin-homes'),
-        ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+        onNotice: pluginNotices,
+        onEvent: createPluginEventHandler({
+          source: pluginSource,
+          runtime: () => pluginRuntimeFromConfig(config.plugins),
+          situations: pluginSituations,
+          logger: composition.logger,
+        }),
       }),
       logger: composition.logger,
       reservedNames: () => registries.tools.list().map((tool) => tool.name),
-      ...(options.pluginNotices === undefined ? {} : { onNotice: options.pluginNotices }),
+      onNotice: pluginNotices,
     });
     mcp = await FrameworkMcpServer.start({
       registries,
@@ -466,7 +492,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       // Phase 9, P6: the permissions of the plugin tools. A getter, as `plugins` is read when needed.
       pluginPermissions: () => pluginPermissionsFromConfig(config.plugins.permissions),
       askApproval: (scenarioId, input) => orchestrationHandlers.openApproval(scenarioId, input),
-      ...(options.pluginNotices === undefined ? {} : { onPluginNotice: options.pluginNotices }),
+      onPluginNotice: pluginNotices,
       projectOf: async (input) => {
         const playId = input.correlation.playId;
         if (playId === undefined) return undefined;
@@ -504,6 +530,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       telemetry,
       browserTools,
       pluginRegistry: installedPlugins,
+      liveEvents,
       directives,
       quota,
       usage,
@@ -541,6 +568,8 @@ interface RunInput {
   readonly browserTools: BrowserTools | undefined;
   /** The installed plugins, opened before the MCP server (its aggregator reads them). */
   readonly pluginRegistry: PluginRegistry;
+  /** The registry of events the log validates against; `run` binds it to the registry snapshot. */
+  readonly liveEvents: LiveEventRegistry;
   readonly directives: DirectiveService;
   readonly quota: QuotaService;
   readonly usage: UsageService;
@@ -564,6 +593,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     telemetry,
     browserTools,
     pluginRegistry: plugins,
+    liveEvents,
     directives,
     quota,
     usage,
@@ -1302,6 +1332,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     base: options.registries ?? defaultRegistryEntries(),
     logger,
   });
+  // Phase 9, P8: the `plugin.<id>.<name>` of the active plugins join the registry of events, and
+  // the log validates against the snapshot in force.
+  registryHolder.contribute(pluginEventContributor);
+  liveEvents.bind(() => registryHolder.current().registries.events);
   registryHolder.follow(plugins);
   plugins.watch();
 

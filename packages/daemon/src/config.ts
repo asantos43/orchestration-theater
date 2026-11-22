@@ -429,6 +429,10 @@ export function resolveMcpBridge(
   return mode;
 }
 
+/** `plugins.events` (Phase 9, P8, [proposta]): whether the events a plugin publishes are written. */
+export const PLUGIN_EVENT_MODES = ['declared', 'off'] as const;
+export type PluginEventMode = (typeof PLUGIN_EVENT_MODES)[number];
+
 /**
  * `events.unknown_type` (owner's decision N80, 2026-11-17): what `append` does with an event
  * whose type is not in the event registry or whose payload fails its schema. `reject` throws
@@ -1722,6 +1726,15 @@ export const DaemonConfigSchema = z
             approval_detail: z.enum(PLUGIN_APPROVAL_DETAIL_MODES).default('keys'),
           })
           .prefault({}),
+        /**
+         * The events a plugin publishes (P8; `plugin.<id>.<name>`, [proposta]). `declared` (default):
+         * the daemon writes the events whose name the manifest lists, and refuses the others with a
+         * notice and `plugin.event_rejected`; `off`: the plugin publishes nothing (every event it
+         * sends is refused the same way, so the Producer sees it). `event_max_bytes` is the biggest
+         * payload, in bytes of its JSON text (default 16 KB); a bigger one is refused.
+         */
+        events: z.enum(PLUGIN_EVENT_MODES).default('declared'),
+        event_max_bytes: z.int().min(1).max(1_048_576).default(16_384),
         install: z
           .strictObject({
             /**
