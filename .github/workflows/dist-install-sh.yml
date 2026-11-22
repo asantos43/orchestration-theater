@@ -102,7 +102,8 @@ jobs:
 
       # The LibreSSL of macOS cannot check Ed25519 (`openssl pkeyutl -rawin`), so the script would
       # fall back to the executable, which has no verify-release mode yet. Homebrew's openssl@3 is
-      # on the runner image [N: not confirmed for every image]; the step says if it is not.
+      # on the runner image [N: not confirmed for every image]. Installing it is a download the owner
+      # has not approved, so the step fails and says so instead of installing.
       - name: openssl 3 (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -110,9 +111,8 @@ jobs:
             echo "OT_TEST_OPENSSL=$prefix/bin/openssl" >> "$GITHUB_ENV"
             "$prefix/bin/openssl" version
           else
-            echo "::warning::no openssl@3 on this runner: installing it with brew"
-            brew install openssl@3
-            echo "OT_TEST_OPENSSL=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
+            echo "::error::no openssl@3 on this runner image (installing it is not approved)"
+            exit 1
           fi
 
       - name: shellcheck
