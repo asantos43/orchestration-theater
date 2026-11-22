@@ -43,6 +43,12 @@ export interface MetricsSources {
   readonly exporter?: (() => OtlpExporterStats | undefined) | undefined;
   /** What the OTLP receiver took and refused; `undefined` when it is not running. */
   readonly receiver?: (() => Pick<TelemetryReceiverStats, 'rejected'> | undefined) | undefined;
+  /**
+   * What `plugins.event_rate` dropped since the daemon started, by plugin (N243 item 67); `undefined`
+   * leaves the metric out.
+   */
+  readonly pluginEventsDropped?:
+    (() => readonly { readonly plugin: string; readonly dropped: number }[]) | undefined;
   /** `telemetry.prometheus.cache_ttl` in ms. */
   readonly cacheTtl: number;
   readonly logger: Pick<Logger, 'debug'>;
@@ -103,6 +109,7 @@ export class MetricsCollector {
       () => this.#waits(),
       () => this.#dropped(),
       () => this.#batches(),
+      () => this.#pluginEvents(),
     ]) {
       try {
         families.push(...(await part()));
@@ -229,6 +236,19 @@ export class MetricsCollector {
           labels: { reason },
           value: rejected[reason],
         })),
+      ),
+    ];
+  }
+
+  #pluginEvents(): MetricFamily[] {
+    const dropped = this.#o.pluginEventsDropped?.();
+    if (dropped === undefined) return [];
+    return [
+      family(
+        'otheater_plugin_events_dropped_total',
+        'Events and refusals of a plugin dropped since the daemon started because the plugin passed plugins.event_rate, by plugin.',
+        'counter',
+        dropped.map((item) => ({ labels: { plugin: item.plugin }, value: item.dropped })),
       ),
     ];
   }

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 import { type NewEvent } from '@otheater/core';
+import { FakeClock } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from '../registries.js';
 import { captureLogger, RecordingSituations } from '../test-helpers.js';
+import { PluginEventLimiter } from './event-rate.js';
 import {
   createPluginEventHandler,
   LiveEventRegistry,
   pluginEventContributor,
   pluginEventType,
+  recordEventsDropped,
   recordPluginNotice,
   recordRegistryNotice,
 } from './events.js';
@@ -331,6 +334,133 @@ describe('createPluginEventHandler', () => {
     send({ name: 'x'.repeat(500) });
     const [rejected] = situations.of('plugin.event_rejected') as { name: string }[];
     expect(rejected?.name.length).toBeLessThanOrEqual(128);
+  });
+});
+
+describe('plugins.event_rate on the handler (N243 item 67)', () => {
+  function rateSetup(runtime: Partial<typeof DEFAULT_PLUGIN_RUNTIME> = {}) {
+    const clock = new FakeClock();
+    const situations = new Recording();
+    const { logger, lines } = captureLogger();
+    const limiter = new PluginEventLimiter(clock, (summary) => {
+      recordEventsDropped(situations, logger, summary);
+    });
+    const source = new StaticPluginSource({
+      p1: [fixturePlugin({ events: ['tick'] })],
+      p2: [fixturePlugin({ events: ['tick'] })],
+    });
+    const handle = createPluginEventHandler({
+      source,
+      runtime: () => ({
+        ...DEFAULT_PLUGIN_RUNTIME,
+        eventRate: { max: 3, windowMs: 1_000 },
+        ...runtime,
+      }),
+      situations,
+      logger,
+      limiter,
+    });
+    const send = (params: unknown = { name: 'tick' }, project = 'p1', plugin = 'demo'): void => {
+      handle({ plugin, project, params });
+    };
+    return { clock, situations, lines, limiter, send };
+  }
+
+  it('writes up to the limit and drops the rest of the window, without an event per drop', () => {
+    const { situations, lines, send, limiter } = rateSetup();
+    for (let i = 0; i < 10; i += 1) send();
+    expect(situations.events).toHaveLength(3);
+    // Nothing is said while the window runs: no warning and no event per event dropped.
+    expect(situations.recorded).toEqual([]);
+    expect(lines).toEqual([]);
+    expect(limiter.droppedByPlugin()).toEqual([{ plugin: 'demo', dropped: 7 }]);
+  });
+
+  it('counts the refusals too, so a plugin that sends garbage is held back', () => {
+    const { situations, send } = rateSetup();
+    for (let i = 0; i < 6; i += 1) send({ name: 'not.declared' });
+    // Three refusals went through (and are on the log), the other three were dropped.
+    expect(situations.of('plugin.event_rejected')).toHaveLength(3);
+    send({ name: 'tick' });
+    expect(situations.events).toEqual([]);
+  });
+
+  it('says it once when the window ends: one warning and one plugin.event_rejected with the count', async () => {
+    const { clock, situations, lines, send } = rateSetup();
+    for (let i = 0; i < 8; i += 1) send();
+    await clock.advance(999);
+    expect(situations.recorded).toEqual([]);
+    await clock.advance(1);
+    expect(situations.of('plugin.event_rejected')).toEqual([
+      {
+        plugin: 'demo',
+        project: 'p1',
+        reason: 'rate_limited',
+        limit: 3,
+        windowMs: 1_000,
+        dropped: 5,
+      },
+    ]);
+    expect(lines.filter((line) => line.level === 'warn')).toHaveLength(1);
+  });
+
+  it('opens a new window when the old one ends, and says nothing for a window with no drops', async () => {
+    const { clock, situations, send } = rateSetup();
+    for (let i = 0; i < 3; i += 1) send();
+    await clock.advance(1_000);
+    for (let i = 0; i < 3; i += 1) send();
+    expect(situations.events).toHaveLength(6);
+    await clock.advance(5_000);
+    expect(situations.recorded).toEqual([]);
+  });
+
+  it('counts each plugin and each project on its own', () => {
+    const { situations, send } = rateSetup();
+    for (let i = 0; i < 4; i += 1) {
+      send({ name: 'tick' }, 'p1', 'demo');
+      send({ name: 'tick' }, 'p2', 'demo');
+    }
+    expect(situations.events).toHaveLength(6);
+  });
+
+  it('does not limit with plugins.event_rate: off', async () => {
+    const { clock, situations, send, limiter } = rateSetup({ eventRate: null });
+    for (let i = 0; i < 500; i += 1) send();
+    await clock.advance(10_000);
+    expect(situations.events).toHaveLength(500);
+    expect(situations.recorded).toEqual([]);
+    expect(limiter.droppedByPlugin()).toEqual([]);
+  });
+
+  it('reads the limit again at each event, so a change of the configuration applies', () => {
+    let max = 1;
+    const clock = new FakeClock();
+    const situations = new Recording();
+    const { logger } = captureLogger();
+    const limiter = new PluginEventLimiter(clock, () => undefined);
+    const handle = createPluginEventHandler({
+      source: new StaticPluginSource({ p1: [fixturePlugin({ events: ['tick'] })] }),
+      runtime: () => ({ ...DEFAULT_PLUGIN_RUNTIME, eventRate: { max, windowMs: 1_000 } }),
+      situations,
+      logger,
+      limiter,
+    });
+    handle({ plugin: 'demo', project: 'p1', params: { name: 'tick' } });
+    handle({ plugin: 'demo', project: 'p1', params: { name: 'tick' } });
+    expect(situations.events).toHaveLength(1);
+    max = 5;
+    handle({ plugin: 'demo', project: 'p1', params: { name: 'tick' } });
+    expect(situations.events).toHaveLength(2);
+  });
+
+  it('stops the timers on close, and the summary of that window is not told', async () => {
+    const { clock, situations, send, limiter } = rateSetup();
+    for (let i = 0; i < 5; i += 1) send();
+    expect(clock.pendingSleeps).toBe(1);
+    limiter.close();
+    expect(clock.pendingSleeps).toBe(0);
+    await clock.advance(5_000);
+    expect(situations.recorded).toEqual([]);
   });
 });
 
