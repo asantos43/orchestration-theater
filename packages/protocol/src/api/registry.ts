@@ -18,6 +18,7 @@ import { EXECUTOR_ROUTES } from './executors.js';
 import { IDEA_ROUTES } from './ideas.js';
 import { ORDER_ROUTES } from './orders.js';
 import { PLAY_ROUTES } from './plays.js';
+import { PLUGIN_ROUTES } from './plugins.js';
 import { PROFILE_ROUTES } from './profiles.js';
 import { SCENARIO_ROUTES } from './scenarios.js';
 import { SETUP_ROUTES } from './setup.js';
@@ -47,6 +48,7 @@ export const API_ROUTES = {
   ...IDEA_ROUTES,
   ...ORDER_ROUTES,
   ...PLAY_ROUTES,
+  ...PLUGIN_ROUTES,
   ...PROFILE_ROUTES,
   ...SCENARIO_ROUTES,
   ...SETUP_ROUTES,

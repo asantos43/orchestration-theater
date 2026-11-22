@@ -1023,6 +1023,7 @@ describe('parseConfig, plugins (Phase 9, P5)', () => {
       http: 'loopback',
       events: 'declared',
       event_max_bytes: 16_384,
+      panel: { max_rows: 200, max_bytes: 1_048_576 },
       install: { sources: [...PLUGIN_INSTALL_SOURCES], timeout: 300_000, npm: 'auto' },
       permissions: {
         local_write: 'writes',
@@ -1066,6 +1067,27 @@ describe('parseConfig, plugins events (Phase 9, P8)', () => {
     for (const bad of ['0', '-1', '1.5', '2000000', '"big"']) {
       expect(() => parseConfig(`plugins:\n  event_max_bytes: ${bad}\n`)).toThrow(/event_max_bytes/);
     }
+  });
+});
+
+describe('parseConfig, plugins panel (Phase 9, P10)', () => {
+  it('takes a row limit and a size or off for the bytes of a block', () => {
+    expect(parseConfig('plugins:\n  panel:\n    max_rows: 50\n').plugins.panel.max_rows).toBe(50);
+    expect(parseConfig('plugins:\n  panel:\n    max_bytes: 64KB\n').plugins.panel.max_bytes).toBe(
+      65_536,
+    );
+    expect(
+      parseConfig('plugins:\n  panel:\n    max_bytes: off\n').plugins.panel.max_bytes,
+    ).toBeNull();
+  });
+
+  it('rejects a limit that is not a positive count, a size of zero and a key it does not know', () => {
+    for (const bad of ['0', '-1', '1.5', '100001', '"many"']) {
+      expect(() => parseConfig(`plugins:\n  panel:\n    max_rows: ${bad}\n`)).toThrow(/max_rows/);
+    }
+    expect(() => parseConfig('plugins:\n  panel:\n    max_bytes: 0B\n')).toThrow(/max_bytes/);
+    expect(() => parseConfig('plugins:\n  panel:\n    max_bytes: lots\n')).toThrow(/max_bytes/);
+    expect(() => parseConfig('plugins:\n  panel:\n    pages: 3\n')).toThrow(InvalidInput);
   });
 });
 

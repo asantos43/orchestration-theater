@@ -9,6 +9,9 @@
 //   --events          adds `publish_events`, which publishes one event the manifest declares
 //                     (`build.done`) and one it does not (`not.declared`), and `publish`, which
 //                     publishes the event it is told to (`notifications/otheater/event`, P8)
+//   --panel           the tools of the panel of P10: `rows`, `items`, `stats`, `wrong_shape`,
+//                     `boom` (a tool error whose text carries a "secret"), `counter` (how many
+//                     times `clear`, `purge` and `ship` ran) and those three, which change things
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -89,6 +92,37 @@ serveStdio(() => {
         return text('published');
       },
     );
+  }
+  if (modes.has('--panel')) {
+    let changes = 0;
+    const note = 'n'.repeat(40);
+    server.registerTool('rows', { description: 'Five rows.' }, () =>
+      text(
+        Array.from({ length: 5 }, (_, index) => ({
+          id: index + 1,
+          name: `row-${String(index + 1)}`,
+          note,
+        })),
+      ),
+    );
+    server.registerTool('items', { description: 'Three items.' }, () => text(['a', 'b', 'c']));
+    server.registerTool('stats', { description: 'Two numbers.' }, () => text({ open: 2, done: 5 }));
+    server.registerTool('wrong_shape', { description: 'Not an array nor an object.' }, () =>
+      text('"just a string"'),
+    );
+    server.registerTool('boom', { description: 'Fails, saying too much.' }, () => ({
+      content: [{ type: 'text', text: 'failed with token hunter2-SECRET-VALUE' }],
+      isError: true,
+    }));
+    server.registerTool('counter', { description: 'How many changes ran.' }, () =>
+      text(String(changes)),
+    );
+    for (const name of ['clear', 'purge', 'ship']) {
+      server.registerTool(name, { description: `Changes something (${name}).` }, () => {
+        changes += 1;
+        return text(`${name} done`);
+      });
+    }
   }
   server.registerTool('pid', { description: 'The pid of this process.' }, () => text(process.pid));
   if (modes.has('--extra')) {

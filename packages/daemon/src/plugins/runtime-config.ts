@@ -23,6 +23,10 @@ export interface PluginRuntimeConfig {
   readonly events: PluginEventMode;
   /** `plugins.event_max_bytes` (P8): the biggest payload of an event of a plugin, in bytes of JSON. */
   readonly eventMaxBytes: number;
+  /** `plugins.panel.max_rows` (P10): the most rows of one block of the panel. */
+  readonly panelMaxRows: number;
+  /** `plugins.panel.max_bytes` (P10): the most bytes of the JSON of one block; `null` is `off`. */
+  readonly panelMaxBytes: number | null;
 }
 
 /** The defaults of `plugins.*`, the same the configuration schema gives. */
@@ -35,6 +39,8 @@ export const DEFAULT_PLUGIN_RUNTIME: PluginRuntimeConfig = {
   http: 'loopback',
   events: 'declared',
   eventMaxBytes: 16_384,
+  panelMaxRows: 200,
+  panelMaxBytes: 1_048_576,
 };
 
 /** The runtime values of a parsed `plugins` section. */
@@ -51,6 +57,8 @@ export function pluginRuntimeFromConfig(section: DaemonConfig['plugins']): Plugi
     http: section.http,
     events: section.events,
     eventMaxBytes: section.event_max_bytes,
+    panelMaxRows: section.panel.max_rows,
+    panelMaxBytes: section.panel.max_bytes,
   };
 }
 
@@ -142,6 +150,20 @@ export type PluginNotice =
       readonly plugin: string;
       readonly project: string;
       readonly secrets: readonly string[];
+    }
+  | {
+      /**
+       * The answer of the `source` of a panel block was cut (P10, [proposta]): more rows than
+       * `plugins.panel.max_rows` or more bytes than `plugins.panel.max_bytes`. No data in it.
+       */
+      readonly kind: 'panel_truncated';
+      readonly plugin: string;
+      readonly project: string;
+      readonly source: string;
+      readonly reason: 'rows' | 'bytes';
+      readonly total: number;
+      readonly kept: number;
+      readonly limit: number;
     };
 
 /** Where the notices go besides the log. Must not throw: a throw is caught and logged. */

@@ -96,3 +96,88 @@ export class StaticPluginSource implements ActivePluginSource {
     for (const listener of this.#listeners) listener();
   }
 }
+
+/**
+ * The manifest (as a plain object, to be parsed) of the plugin with a panel (P10): the server is
+ * the test server with `--panel`. The panel has two tables (one with columns), a list, metrics, a
+ * block that gets a value of the wrong shape, one whose source fails, and three actions: `clear`
+ * (no approval), `purge` (the manifest asks for it) and `ship` (`external_write`, which the policy
+ * asks for). `pt-BR` leaves `panel.stats` out, to show the fallback to `en`.
+ */
+export function panelManifestInput(id = 'panel-demo'): Record<string, unknown> {
+  return {
+    manifest_version: 1,
+    id,
+    version: '1.0.0',
+    description: 'A plugin with a panel',
+    server: { type: 'stdio', command: [process.execPath, FIXTURE_SERVER_PATH, '--panel'] },
+    tools: [
+      { name: 'rows', roles: [], effects: 'read' },
+      { name: 'items', roles: [], effects: 'read' },
+      { name: 'stats', roles: [], effects: 'read' },
+      { name: 'wrong_shape', roles: [], effects: 'read' },
+      { name: 'boom', roles: [], effects: 'read' },
+      { name: 'counter', roles: [], effects: 'read' },
+      { name: 'clear', roles: [], effects: 'local_write' },
+      { name: 'purge', roles: [], effects: 'local_write', requires_producer_approval: true },
+      { name: 'ship', roles: [], effects: 'external_write' },
+    ],
+    panel: [
+      {
+        type: 'table',
+        title: 'panel.rows',
+        source: 'rows',
+        columns: [
+          { key: 'name', label: 'panel.col.name' },
+          { key: 'id', label: 'panel.col.id' },
+        ],
+      },
+      { type: 'table', title: 'panel.all', source: 'rows' },
+      { type: 'list', title: 'panel.items', source: 'items' },
+      { type: 'metrics', title: 'panel.stats', source: 'stats' },
+      { type: 'list', title: 'panel.wrong', source: 'wrong_shape' },
+      { type: 'list', title: 'panel.broken', source: 'boom' },
+      { type: 'action', label: 'panel.clear', tool: 'clear' },
+      { type: 'action', label: 'panel.purge', tool: 'purge' },
+      { type: 'action', label: 'panel.ship', tool: 'ship' },
+    ],
+    i18n: {
+      en: {
+        'panel.rows': 'Rows',
+        'panel.all': 'All the rows',
+        'panel.items': 'Items',
+        'panel.stats': 'Numbers',
+        'panel.wrong': 'Wrong shape',
+        'panel.broken': 'Broken source',
+        'panel.col.name': 'Name',
+        'panel.col.id': 'Number',
+        'panel.clear': 'Clear',
+        'panel.purge': 'Purge',
+        'panel.ship': 'Ship',
+      },
+      'pt-BR': {
+        'panel.rows': 'Linhas',
+        'panel.all': 'Todas as linhas',
+        'panel.items': 'Itens',
+        'panel.col.name': 'Nome',
+        'panel.col.id': 'Número',
+        'panel.clear': 'Limpar',
+      },
+    },
+  };
+}
+
+/** The plugin of {@link panelManifestInput}, active in the project it is given to. */
+export function panelPlugin(id = 'panel-demo'): ActivePlugin {
+  const result = parsePluginManifest(panelManifestInput(id));
+  if (!result.ok) {
+    throw new Error(`the panel manifest is invalid: ${JSON.stringify(result.problems)}`);
+  }
+  return {
+    id: result.manifest.id,
+    version: result.manifest.version,
+    manifest: result.manifest,
+    dir: dirname(FIXTURE_SERVER_PATH),
+    manifestHash: createHash('sha256').update(JSON.stringify(result.manifest)).digest('hex'),
+  };
+}

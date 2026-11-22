@@ -20,6 +20,7 @@ import { registerLayoutCommands, registerLayoutRoutes } from './layout.js';
 import { registerOrderCommands } from './order-commands.js';
 import { registerOrderRoutes } from './orders.js';
 import { registerPlayCommands } from './play-commands.js';
+import { registerPluginCommands, registerPluginRoutes } from './plugins.js';
 import { registerProfileCommands } from './profile-commands.js';
 import { registerProfileRoutes } from './profiles.js';
 import { registerScenarioCommands } from './scenario-commands.js';
@@ -56,6 +57,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerAtifRoutes(handlers, deps);
   registerAnalysisRoutes(handlers, deps);
   registerTelemetryRoutes(handlers, deps);
+  registerPluginRoutes(handlers, deps);
 }
 
 /**
@@ -79,4 +81,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerSlashCommands(register, deps);
   registerSetupCommands(register, deps);
   registerDirectCommands(register, deps);
+  registerPluginCommands(register, deps);
 }

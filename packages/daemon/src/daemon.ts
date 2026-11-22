@@ -38,7 +38,7 @@ import { AtifAutoExport } from './atif/atif-follower.js';
 import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
-import { detectSystemLocale, resolveLocale } from './i18n.js';
+import { createTranslator, detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
 import { SetupService } from './setup/index.js';
 import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
@@ -76,6 +76,7 @@ import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.j
 import { registerReadTools } from './mcp/read-tools.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
+import { PluginPanelService } from './plugins/panel.js';
 import { pluginPermissionsFromConfig } from './plugins/permissions.js';
 import {
   createPluginEventHandler,
@@ -538,6 +539,8 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       telemetry,
       browserTools,
       pluginRegistry: installedPlugins,
+      pluginAggregator,
+      pluginNotices,
       liveEvents,
       directives,
       quota,
@@ -576,6 +579,10 @@ interface RunInput {
   readonly browserTools: BrowserTools | undefined;
   /** The installed plugins, opened before the MCP server (its aggregator reads them). */
   readonly pluginRegistry: PluginRegistry;
+  /** The aggregator of the plugins: the panel (P10) calls the tools of a plugin through it. */
+  readonly pluginAggregator: PluginAggregator;
+  /** Where the notices about plugins go: the log, an event, and the sink of the options. */
+  readonly pluginNotices: PluginNoticeSink;
   /** The registry of events the log validates against; `run` binds it to the registry snapshot. */
   readonly liveEvents: LiveEventRegistry;
   readonly directives: DirectiveService;
@@ -601,6 +608,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     telemetry,
     browserTools,
     pluginRegistry: plugins,
+    pluginAggregator,
+    pluginNotices,
     liveEvents,
     directives,
     quota,
@@ -613,6 +622,28 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   } = input;
   const { clock, store, vault, logger } = composition;
   const paths = dataPaths(options.dataDir, options.overrides?.profileDir);
+  // Phase 9, P10: what the `/v1/plugins` routes do. The texts of the panel come in the language
+  // asked (the catalogs of the daemon have `en` and `pt-BR`; any other language gets `en`).
+  const pluginTranslators = {
+    en: await createTranslator('en'),
+    'pt-BR': await createTranslator('pt-BR'),
+  };
+  const pluginPanel = new PluginPanelService({
+    registry: plugins,
+    aggregator: pluginAggregator,
+    permissions: () => pluginPermissionsFromConfig(config.plugins.permissions),
+    runtime: () => pluginRuntimeFromConfig(config.plugins),
+    askApproval: (scenarioId, question) =>
+      input.orchestrationHandlers.openApproval(scenarioId, question),
+    situations: composition.situations,
+    onNotice: pluginNotices,
+    logger,
+    translator: (language) =>
+      language.toLowerCase().split('-')[0] === 'pt'
+        ? pluginTranslators['pt-BR']
+        : pluginTranslators.en,
+    language: () => resolveLocale(config.ui.locale, detectSystemLocale(process.env)),
+  });
   const startedAt = clock.now();
   let state: DaemonState = 'starting';
 
@@ -1278,6 +1309,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       exporter: () => telemetry?.exporter?.stats,
     }),
     attempts: execution?.runner,
+    plugins: pluginPanel,
     config,
     quota,
     usage,
@@ -1332,6 +1364,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     slash,
     setup,
     direct,
+    plugins: pluginPanel,
   });
 
   // Phase 9, P4: the snapshot of the registries follows the plugins that are on (the registry was
