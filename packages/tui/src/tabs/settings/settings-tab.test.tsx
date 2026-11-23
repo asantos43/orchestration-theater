@@ -24,6 +24,7 @@ import {
 } from '../../ink.test-support.js';
 import { fakeOnline, seedStores, type FakeOnline } from '../../layout.test-support.js';
 import type { TabContentMap } from '../../layout/tab-content.js';
+import { MOUSE_DISABLE_SEQUENCE, mouseEnableSequence } from '../../mouse/modes.js';
 import type { OpenCommand, OpenPorts } from '../../open-url.js';
 import type { UiSettings } from '../../settings.js';
 import type { SettingsApi } from './api.js';
@@ -580,6 +581,31 @@ describe('the tab Settings', () => {
     await waitUntil(() => ran.length === 1);
     expect(ran).toEqual(['fake-cli login --profile main']);
     await app.waitForText('terminal');
+  });
+
+  it('gives the terminal to the login with the mouse off, and turns the mouse on again after', async () => {
+    const api = new FakeSettingsApi();
+    api.loginAnswer = {
+      status: 'local',
+      profileId: 'claude-code/main',
+      mode: 'terminal',
+      command: 'fake-cli login --profile main',
+    };
+    const mouseWrites: string[] = [];
+    let whileLogin: string[] = [];
+    const { app } = await open(api, {
+      mouseWrites,
+      runLocal: () => {
+        whileLogin = [...mouseWrites];
+        // What a client does when it ends: it turns the mouse reports off.
+        mouseWrites.push(MOUSE_DISABLE_SEQUENCE);
+        return Promise.resolve(0);
+      },
+    });
+    await key(app, 'l');
+    await app.waitForText('terminal');
+    expect(whileLogin.at(-1)).toBe(MOUSE_DISABLE_SEQUENCE);
+    expect(mouseWrites.at(-1)).toBe(mouseEnableSequence('full'));
   });
 
   it('writes the new order of a role when an Executor moves with Shift+Down and Shift+Up', async () => {
