@@ -3693,6 +3693,8 @@ Depende das Fases 5 (sondas de cota e seleção) e 6 (API). Pode andar em parale
 - Revisão das portas (5.18): porta que continua com um só adaptador e sem segundo previsto é candidata a ser simplificada (R16).
 - Documentação, incluindo o guia para escrever adaptadores e plugins.
 
+- **Decidido no plano da Fase 11 (docs/23; 2026-11-22 e 2026-11-23, por múltipla escolha, igual à recomendação; N278 a N286):** a queda de energia é simulada na CI (kill -9 da árvore e store cortado no meio da escrita), e a VM desligada à força fica como roteiro manual opcional do aceite, sem download agora (N278); disco cheio vira a chave `disk.on_full: pause | stop | continue`, padrão `pause` (N279); a revisão de segurança é feita por subagentes, `/security-review` e testes adversariais, sem ferramenta nova (N280); as portas candidatas a simplificar (R16) só são listadas, e a simplificação vira passo depois, com ok do dono (N281); o guia de adaptadores e plugins é um documento novo em `docs/` com exemplo em `examples/` (N282); a fase abre em paralelo com o fim da Fase 10, e só o aceite dela espera a Fase 10 (N283); os PRs mesclam com a CI verde e squash, sem ok por PR (N284); sem o agendador (Fase 9b), o caos cobre o agendamento com os `wakeups` de cota e de orçamento, e o cenário da tarefa agendada fica pulado até a 9b (N285); o caos roda num workflow próprio, nos PRs dos caminhos de recuperação, toda noite e à mão, escolhido por `OT_CHAOS_CI` (N286).
+
 **Critério de aceite:** roteiro de caos sem perda de estado nem processo órfão.
 **Estimativa:** 1,5–2 semanas.
 
