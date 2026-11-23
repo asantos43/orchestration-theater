@@ -64,8 +64,9 @@ describe('the first run', () => {
   it('opens straight in the assistant when the daemon says there is no configuration', async () => {
     const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: true });
     const app = await mount(api, settingsWith('auto'));
-    const frame = await app.waitForText('Setup assistant: first run');
-    expect(frame).toContain('Pick the accounts that take part');
+    // The title is on screen while the assistant still reads the run: wait for the step itself.
+    const frame = await app.waitForText('Pick the accounts that take part');
+    expect(frame).toContain('Setup assistant: first run');
     // The assistant takes the screen: the layout is gone while it is open.
     expect(frame).not.toContain('SCENARIOS');
     expect(api.calls).toEqual(['overview', 'overview', 'start:first_run']);
@@ -129,8 +130,9 @@ describe('ot init (P6 of Phase 10)', () => {
     expect(settings.setup.open).toBe('auto');
     const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: true });
     const app = await mount(api, settings);
-    const frame = await app.waitForText('Setup assistant: first run');
-    expect(frame).toContain('Pick the accounts that take part');
+    // The title is on screen while the assistant still reads the run: wait for the step itself.
+    const frame = await app.waitForText('Pick the accounts that take part');
+    expect(frame).toContain('Setup assistant: first run');
     expect(api.calls).toContain('start:first_run');
   });
 
@@ -174,8 +176,9 @@ describe('the gate waits for the settings of the daemon', () => {
     await app.waitForText('SCENARIOS');
     expect(api.calls).toEqual([]);
     answer(settingsWith('auto', 7000));
-    const frame = await app.waitForText('Setup assistant: first run');
-    expect(frame).toContain('Pick the accounts that take part');
+    // The title is on screen while the assistant still reads the run: wait for the step itself.
+    const frame = await app.waitForText('Pick the accounts that take part');
+    expect(frame).toContain('Setup assistant: first run');
   });
 
   it('when the settings of the daemon cannot be read, the gate goes on with the ones of the process [proposta]', async () => {
@@ -203,8 +206,8 @@ describe('the entries of the Settings tab', () => {
     const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: false });
     const app = await inSettings(api);
     app.press('w');
-    const frame = await app.waitForText('Setup assistant: add an account');
-    expect(frame).toContain('Pick the account to bring into the roles.');
+    const frame = await app.waitForText('Pick the account to bring into the roles.');
+    expect(frame).toContain('Setup assistant: add an account');
     expect(api.calls).toContain('start:add_account');
     app.press(ESC);
     await app.waitForText('SCENARIOS');
@@ -215,8 +218,8 @@ describe('the entries of the Settings tab', () => {
     const api = new FakeSetupApi({ profiles: PROFILES, firstRunNeeded: false, current: 'quality' });
     const app = await inSettings(api);
     app.press('p');
-    const frame = await app.waitForText('Setup assistant: change the preset');
-    expect(frame).toMatch(/›quality/);
+    const frame = await app.waitForText('›quality');
+    expect(frame).toContain('Setup assistant: change the preset');
     expect(api.calls).toContain('start:change_preset');
   });
 
