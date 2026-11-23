@@ -96,6 +96,24 @@ describe('assemble', () => {
     expect(read.assets.some((a) => a.kind === 'notices')).toBe(true);
   });
 
+  it('writes `expires` (now plus the validity) when it has a validity, and none without it', async () => {
+    await writeRelease();
+    const assets = await discoverAssets(dir, VERSION);
+    const base = { version: VERSION, channel: 'stable' as const, assets, now: NOW };
+    const valid = await assembleManifest({ ...base, validityDays: 30 });
+    expect(valid.manifest.expires).toBe('2026-12-22T15:00:00.000Z');
+    expect(parseManifest(valid.bytes).expires).toBe('2026-12-22T15:00:00.000Z');
+    expect(
+      (await assembleManifest({ ...base, validityDays: null })).manifest.expires,
+    ).toBeUndefined();
+    expect((await assembleManifest(base)).manifest.expires).toBeUndefined();
+    for (const days of [0, -3, 1.5]) {
+      await expect(assembleManifest({ ...base, validityDays: days })).rejects.toThrow(
+        ManifestAssemblyError,
+      );
+    }
+  });
+
   it('refuses a release without the executable of a required platform', async () => {
     await writeRelease([executableAssetName('darwin-arm64')]);
     await expect(

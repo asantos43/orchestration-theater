@@ -139,6 +139,23 @@ describe('release.yml: the rehearsal', () => {
     expect(manifest).not.toContain('key-env');
   });
 
+  it('signs both ways and pins the manifest, and no verifier is a requirement of the runner', () => {
+    const manifest = JSON.stringify(jobs.manifest);
+    // `sign` writes the .sig and the .sshsig; `embed-key --manifest` pins the SHA-256 (N288).
+    expect(manifest).toContain('manifest.json.sshsig');
+    expect(manifest).toMatch(/embed-key[^"]*--manifest release\/manifest\.json/);
+    const publish = JSON.stringify(jobs.publish);
+    expect(publish).toMatch(/embed-key[^"]*--manifest release\/manifest\.json/);
+    const check = JSON.stringify(jobs['install-check']);
+    // The three verifiers are run on their own, and none of them needs Homebrew's openssl@3.
+    expect(check).toContain('OT_INSTALL_VERIFIER');
+    expect(check).toContain('ssh-keygen');
+    expect(check).toContain('pinned');
+    expect(check).not.toContain('brew');
+    expect(check).not.toContain('OT_INSTALL_OPENSSL');
+    expect(check).not.toContain('is not approved');
+  });
+
   it('keeps every artifact for one day', () => {
     const uploads: Step[] = [];
     for (const job of Object.values(jobs)) {

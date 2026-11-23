@@ -38,6 +38,11 @@ export interface AssembleOptions {
   /** The schema versions of the store and the telemetry base this release needs (P8 decides the backup). */
   readonly schemas?: { readonly store: number; readonly telemetry: number } | undefined;
   readonly minVersion?: string | undefined;
+  /**
+   * How many days the manifest is valid for (P8a, N288): `expires` is `now` plus that. Absent or
+   * `null`: the manifest has no `expires` (it never expires). The release config says the default.
+   */
+  readonly validityDays?: number | null | undefined;
   /** Default: now. The clock of the tests. */
   readonly now?: Date | undefined;
 }
@@ -123,11 +128,21 @@ export async function assembleManifest(options: AssembleOptions): Promise<Assemb
   if (names.size !== assets.length)
     throw new ManifestAssemblyError('two assets have the same name');
 
+  const now = options.now ?? new Date();
+  const days = options.validityDays;
+  if (days !== undefined && days !== null && (!Number.isInteger(days) || days < 1)) {
+    throw new ManifestAssemblyError(
+      'the validity of the manifest is a whole number of days (1 or more)',
+    );
+  }
   const candidate = {
     schema: 1,
     version: options.version,
     channel: options.channel,
-    publishedAt: (options.now ?? new Date()).toISOString(),
+    publishedAt: now.toISOString(),
+    ...(days === undefined || days === null
+      ? {}
+      : { expires: new Date(now.getTime() + days * 86_400_000).toISOString() }),
     assets,
     ...(options.schemas === undefined ? {} : { schemas: options.schemas }),
     ...(options.minVersion === undefined ? {} : { minVersion: options.minVersion }),
@@ -151,6 +166,7 @@ export async function assembleFromDirectory(options: {
   readonly requiredPlatforms?: readonly TargetId[];
   readonly schemas?: AssembleOptions['schemas'];
   readonly minVersion?: string | undefined;
+  readonly validityDays?: number | null | undefined;
   readonly now?: Date | undefined;
 }): Promise<AssembledManifest> {
   if (!(await stat(options.dir).catch(() => undefined))?.isDirectory()) {

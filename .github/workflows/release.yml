@@ -145,8 +145,11 @@ jobs:
           # The pair lives in the temporary folder of the runner and is not uploaded. It is not the key of
           # production and it is worth nothing outside this run.
           node tools/release/dist/cli.js ephemeral-key --out "$RUNNER_TEMP/ephemeral"
+          # `sign` writes manifest.json.sig (for the daemon and for openssl 3) and manifest.json.sshsig (for
+          # ssh-keygen, the verifier that macOS has). `embed-key --manifest` also pins the SHA-256 of the
+          # manifest in the script, which is the verifier of last resort (OT_INSTALL_VERIFIER=pinned).
           node tools/release/dist/cli.js sign --manifest release/manifest.json --key-file "$RUNNER_TEMP/ephemeral/ephemeral-private.pem"
-          node tools/release/dist/cli.js embed-key --script installer/install.sh --public-key "$RUNNER_TEMP/ephemeral/ephemeral-public.pem" --out release/install.sh
+          node tools/release/dist/cli.js embed-key --script installer/install.sh --public-key "$RUNNER_TEMP/ephemeral/ephemeral-public.pem" --manifest release/manifest.json --out release/install.sh
           cp "$RUNNER_TEMP/ephemeral/ephemeral-public.pem" release/ephemeral-public.pem
       - name: Check the release as the daemon does
         run: node tools/release/dist/cli.js verify --manifest release/manifest.json --public-key release/ephemeral-public.pem --dir release
@@ -189,51 +192,45 @@ jobs:
         with:
           name: rehearsal-release
           path: release
-      # The LibreSSL of macOS cannot check Ed25519, so install.sh needs the openssl@3 of Homebrew
-      # (on the runner image [N: not confirmed for every image]). Installing it is a download the owner
-      # has not approved: the step fails and says so.
-      - name: openssl 3 (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then
-            echo "OT_INSTALL_OPENSSL=$prefix/bin/openssl" >> "$GITHUB_ENV"
-          else
-            echo "::error::no openssl@3 on this runner image (installing it is not approved)"
-            exit 1
-          fi
-      - name: Install from the rehearsal release
+      # The LibreSSL of macOS cannot check Ed25519, and that is no longer a requirement: install.sh
+      # tries openssl 3, then ssh-keygen (the .sshsig of the release) and then the pinned SHA-256 of the
+      # manifest, and refuses (exit 3) when none can. The next step runs each verifier on its own.
+      - name: Install from the rehearsal release (each verifier)
         env:
           VERSION: ${{ inputs.version }}
           CHANNEL: ${{ inputs.channel }}
         run: |
           set -eu
-          export HOME="$RUNNER_TEMP/home"
-          mkdir -p "$HOME"
           python3 -m http.server 8765 --bind 127.0.0.1 --directory release >"$RUNNER_TEMP/server.log" 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
           sleep 2
-          export OT_INSTALL_BASE_URL=http://127.0.0.1:8765
-          export OT_INSTALL_CHANNEL="$CHANNEL"
-          export OT_INSTALL_SERVICE=off
-          sh release/install.sh
-          exe="$HOME/.local/share/otheater/bin/otheater"
-          test -x "$exe"
-          installed=$("$exe" --version | head -n 1)
-          echo "installed: $installed"
-          case "$installed" in
-            *"$VERSION"*) ;;
-            *) echo "::error::the executable says '$installed', and the release is $VERSION"; exit 1 ;;
-          esac
-          test -s "$HOME/.local/share/otheater/THIRD_PARTY_NOTICES.md"
-          echo "- ${{ matrix.target }}: installed $installed from the rehearsal release" >> "$GITHUB_STEP_SUMMARY"
+          # `auto` is what a user runs. `ssh-keygen` and `pinned` prove the two fallbacks on their own.
+          # `openssl` only where the runner has an openssl 3 (the LibreSSL of macOS has no Ed25519).
+          verifiers="auto ssh-keygen pinned"
+          if openssl version 2>/dev/null | grep -q '^OpenSSL 3'; then verifiers="$verifiers openssl"; fi
+          for verifier in $verifiers; do
+            export HOME="$RUNNER_TEMP/home-$verifier"
+            mkdir -p "$HOME"
+            OT_INSTALL_VERIFIER="$verifier" \
+              OT_INSTALL_BASE_URL=http://127.0.0.1:8765 OT_INSTALL_CHANNEL="$CHANNEL" OT_INSTALL_SERVICE=off \
+              sh release/install.sh
+            exe="$HOME/.local/share/otheater/bin/otheater"
+            test -x "$exe"
+            installed=$("$exe" --version | head -n 1)
+            echo "installed ($verifier): $installed"
+            case "$installed" in
+              *"$VERSION"*) ;;
+              *) echo "::error::the executable says '$installed', and the release is $VERSION"; exit 1 ;;
+            esac
+            test -s "$HOME/.local/share/otheater/THIRD_PARTY_NOTICES.md"
+            echo "- ${{ matrix.target }}, verifier $verifier: installed $installed from the rehearsal release" >> "$GITHUB_STEP_SUMMARY"
+          done
       - name: A manifest changed after it was signed is refused
         env:
           CHANNEL: ${{ inputs.channel }}
         run: |
           set -eu
-          export HOME="$RUNNER_TEMP/home2"
-          mkdir -p "$HOME"
           # The same files and the same key, but the manifest differs by one space from what was signed.
           cp -R release tampered
           sed 's/"schema": 1/"schema":  1/' release/manifest.json > tampered/manifest.json
@@ -241,13 +238,19 @@ jobs:
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
           sleep 2
-          status=0
-          OT_INSTALL_BASE_URL=http://127.0.0.1:8766 OT_INSTALL_CHANNEL="$CHANNEL" OT_INSTALL_SERVICE=off sh release/install.sh || status=$?
-          if [ "$status" != 3 ]; then
-            echo "::error::a manifest that does not match its signature must end with exit 3, and it ended with $status"
-            exit 1
-          fi
-          test ! -e "$HOME/.local/share/otheater/bin/otheater"
+          verifiers="ssh-keygen pinned"
+          if openssl version 2>/dev/null | grep -q '^OpenSSL 3'; then verifiers="$verifiers openssl"; fi
+          for verifier in $verifiers; do
+            export HOME="$RUNNER_TEMP/home2-$verifier"
+            mkdir -p "$HOME"
+            status=0
+            OT_INSTALL_VERIFIER="$verifier" OT_INSTALL_BASE_URL=http://127.0.0.1:8766 OT_INSTALL_CHANNEL="$CHANNEL" OT_INSTALL_SERVICE=off sh release/install.sh || status=$?
+            if [ "$status" != 3 ]; then
+              echo "::error::($verifier) a manifest that does not match its signature must end with exit 3, and it ended with $status"
+              exit 1
+            fi
+            test ! -e "$HOME/.local/share/otheater/bin/otheater"
+          done
 
   # The only job that publishes. Both locks are in the `if`: the input and the variable of the
   # repository. It signs with the production key after checking it, and creates the release as a draft.
@@ -301,7 +304,7 @@ jobs:
           $cli assemble --dir release --version "$VERSION" --channel "$CHANNEL" --schemas-from-build
           $cli sign --manifest release/manifest.json --key-env OT_UPDATE_SIGNING_KEY
           $cli verify --manifest release/manifest.json --public-key tools/release/keys/update-public-key.pem --dir release
-          $cli embed-key --script installer/install.sh --public-key tools/release/keys/update-public-key.pem --out release/install.sh
+          $cli embed-key --script installer/install.sh --public-key tools/release/keys/update-public-key.pem --manifest release/manifest.json --out release/install.sh
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}

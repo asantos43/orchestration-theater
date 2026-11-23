@@ -24,7 +24,14 @@ function isAllowlisted(file: string, policy: Policy): boolean {
   );
 }
 
-/** Case-insensitive literal search. Never prints the matching line: only file, line number and which pattern. */
+/**
+ * A lint, not a guarantee. It is a case-insensitive literal search for the file names and endpoints
+ * in {@link FORBIDDEN_PATTERNS}, in the files the policy selects: it catches a careless mention, but
+ * not a path built from pieces, read from the environment or decoded at run time, and not a
+ * credential that is not one of the listed names. That OTheater never reads or copies a client's
+ * credentials is held by the code and its review (architecture 6.3), not by this check.
+ * Never prints the matching line: only file, line number and which pattern.
+ */
 export function checkCredentials(files: readonly SourceFile[], policy: Policy): CheckResult {
   const findings: Finding[] = [];
   const patterns = FORBIDDEN_PATTERNS.map((p) => p.toLowerCase());

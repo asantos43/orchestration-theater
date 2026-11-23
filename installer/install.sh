@@ -6,33 +6,51 @@
 #   install:    sh install.sh
 #   uninstall:  sh install.sh --uninstall [--purge-data] [--yes]
 #
-# It downloads the release (manifest.json, manifest.json.sig and the executable of this platform),
-# checks the Ed25519 signature of the manifest and the SHA-256 of the executable, installs both for
-# the current user and registers the logon service (`ot service install`). No sudo, nothing outside
-# the HOME folder, no download beyond those files. It fails closed: whatever does not check is
-# deleted and the exit code is not zero. See installer/README.md.
+# It downloads the release (manifest.json, its signatures and the executable of this platform),
+# checks the Ed25519 signature of the manifest BEFORE it reads it or runs anything it downloaded, then
+# the SHA-256 of the executable, installs both for the current user and registers the logon service
+# (`ot service install`). No sudo, nothing outside the HOME folder, no download beyond those files.
+# It fails closed: whatever does not check is deleted and the exit code is not zero. See
+# installer/README.md.
+#
+# The manifest is checked by the first of these that can (N288): openssl 3 (`pkeyutl -rawin`, with
+# manifest.json.sig), `ssh-keygen -Y verify` (with manifest.json.sshsig, namespace otheater-release) or
+# the SHA-256 of the manifest pinned in this script by the release job. The executable that was
+# downloaded is never asked to check itself. If none can, nothing is installed (exit code 3).
 #
 # Variables (documented in installer/README.md):
 #   OT_INSTALL_BASE_URL   where the release files are (default: GitHub Releases of the repository)
 #   OT_INSTALL_CHANNEL    stable (default) or beta
 #   OT_INSTALL_SERVICE    auto (default) or off: whether to register the logon service
+#   OT_INSTALL_VERIFIER   auto (default), openssl, ssh-keygen or pinned: with a name, only that verifier
 #   OT_INSTALL_OPENSSL    the openssl to check the signature with (default: the one in the PATH)
-#   OT_INSTALL_PUBLIC_KEY_FILE  a public key (PEM) to check the manifest with, instead of the one
-#                         this script carries; only for tests and mirrors, and it prints a warning
+#   OT_INSTALL_PUBLIC_KEY_FILE  a public key (PEM for openssl, or one "ssh-ed25519 ..." line for
+#                         ssh-keygen) to check the manifest with, instead of the one this script
+#                         carries; only for tests and mirrors
+#   OT_INSTALL_ALLOW_KEY_OVERRIDE  1: required to use OT_INSTALL_PUBLIC_KEY_FILE or OT_INSTALL_OPENSSL
+#                         (without it the script stops, so an environment that leaks in cannot swap the key)
 #
 # Exit codes: 0 done; 1 failed (network, system not supported, the executable does not run); 2 wrong
-# use; 3 the release did not check (signature, SHA-256, size or channel): nothing was installed;
+# use; 3 the release did not check (signature, no verifier, expired, SHA-256, size or channel): nothing
+# was installed;
 # 4 installed, but the service step failed.
 #
 # The whole script is a set of functions and the last line calls `main`, so a download that is cut
 # in the middle (`curl ... | sh`) runs nothing.
 
 # BEGIN embedded public key
-# The release job (P9) replaces the next line with the PEM text of tools/release/keys/update-public-key.pem
-# (the same key the executable embeds). Until the owner makes the key (N246) it is the word PLACEHOLDER,
-# and the signature is then checked only by the executable (see check_signature).
+# The release job (P9) replaces the next two lines with the PEM text of tools/release/keys/update-public-key.pem
+# (the same key the executable embeds) and its "ssh-ed25519 <base64>" line (`embed-key`). Until the owner
+# makes the key (N246) they are the word PLACEHOLDER, and the openssl and ssh-keygen verifiers have no key.
 EMBEDDED_PUBLIC_KEY='PLACEHOLDER'
+EMBEDDED_SSH_KEY='PLACEHOLDER'
 # END embedded public key
+
+# BEGIN embedded manifest hash
+# The release job replaces the next line with the SHA-256 of the manifest.json of this very release
+# (`embed-key --manifest`): the "pinned" verifier accepts only a manifest with that hash. Empty: none.
+EMBEDDED_MANIFEST_SHA256=''
+# END embedded manifest hash
 
 REPOSITORY='asantos43/orchestration-theater'
 EXIT_FAILED=1
@@ -75,10 +93,18 @@ fmt() {
       too_big) echo 'o arquivo %s é maior do que o permitido' ;;
       list_failed) echo 'não achei uma pré-versão (beta) publicada' ;;
       key_env_warn) echo 'AVISO: conferindo com a chave pública de OT_INSTALL_PUBLIC_KEY_FILE, e não com a deste script' ;;
-      sig_bad) echo 'RECUSADO: a assinatura do manifesto não confere. Nada foi instalado.' ;;
-      sig_exe_warn) echo 'AVISO: este sistema não tem um openssl que confira Ed25519 (ou o script não leva a chave pública). A assinatura foi conferida pelo próprio executável baixado, com a chave embutida nele: isso confia no que acabou de ser baixado.' ;;
-      sig_exe_unavailable) echo 'RECUSADO: a assinatura não pôde ser conferida (sem openssl com Ed25519, e o executável rejeitou o manifesto ou não tem o modo verify-release). Nada foi instalado.' ;;
-      sig_ok) echo 'Assinatura do manifesto conferida (Ed25519).' ;;
+      openssl_env_warn) echo 'AVISO: conferindo com o openssl de OT_INSTALL_OPENSSL (%s), e não com o do PATH' ;;
+      override_needs_confirm) echo 'OT_INSTALL_PUBLIC_KEY_FILE e OT_INSTALL_OPENSSL trocam a chave ou o openssl da conferência: só valem com OT_INSTALL_ALLOW_KEY_OVERRIDE=1' ;;
+      bad_verifier) echo 'OT_INSTALL_VERIFIER=%s: use auto, openssl, ssh-keygen ou pinned' ;;
+      sig_missing) echo 'AVISO: não consegui baixar %s; o verificador %s não pode ser usado.' ;;
+      sig_bad) echo 'RECUSADO: a assinatura do manifesto não confere (%s). Nada foi instalado.' ;;
+      pinned_bad) echo 'RECUSADO: o manifesto não é o que este script fixou (SHA-256 diferente). Nada foi instalado.' ;;
+      no_verifier) echo 'RECUSADO: nenhum verificador conseguiu conferir o manifesto (openssl 3 com Ed25519, ssh-keygen com -Y verify ou o SHA-256 fixado neste script). Instale um deles, ou use o install.sh que acompanha a release. Nada foi instalado.' ;;
+      sig_ok) echo 'Assinatura do manifesto conferida (%s).' ;;
+      pinned_ok) echo 'Manifesto conferido pelo SHA-256 fixado neste script.' ;;
+      manifest_expired) echo 'RECUSADO: o manifesto expirou em %s. Nada foi instalado.' ;;
+      manifest_no_expiry) echo 'AVISO: o manifesto não tem prazo de validade (expires); é de uma release antiga.' ;;
+      wget_no_https_warn) echo 'AVISO: este wget não tem --https-only; um redirecionamento para http não seria barrado por ele.' ;;
       manifest_bad) echo 'RECUSADO: o manifesto não tem o que o instalador precisa (%s). Nada foi instalado.' ;;
       channel_mismatch) echo 'RECUSADO: o manifesto é do canal %s, e foi pedido %s. Nada foi instalado.' ;;
       hash_bad) echo 'RECUSADO: o SHA-256 ou o tamanho de %s não confere com o manifesto. Nada foi instalado.' ;;
@@ -127,10 +153,18 @@ fmt() {
       too_big) echo 'the file %s is bigger than allowed' ;;
       list_failed) echo 'no published prerelease (beta) was found' ;;
       key_env_warn) echo 'WARNING: checking with the public key of OT_INSTALL_PUBLIC_KEY_FILE, not the one of this script' ;;
-      sig_bad) echo 'REFUSED: the signature of the manifest does not check. Nothing was installed.' ;;
-      sig_exe_warn) echo 'WARNING: this system has no openssl that checks Ed25519 (or the script carries no public key). The signature was checked by the downloaded executable itself, with the key built into it: that trusts what was just downloaded.' ;;
-      sig_exe_unavailable) echo 'REFUSED: the signature could not be checked (no openssl with Ed25519, and the executable rejected the manifest or has no verify-release mode). Nothing was installed.' ;;
-      sig_ok) echo 'Signature of the manifest checked (Ed25519).' ;;
+      openssl_env_warn) echo 'WARNING: checking with the openssl of OT_INSTALL_OPENSSL (%s), not the one in the PATH' ;;
+      override_needs_confirm) echo 'OT_INSTALL_PUBLIC_KEY_FILE and OT_INSTALL_OPENSSL swap the key or the openssl of the check: they only work with OT_INSTALL_ALLOW_KEY_OVERRIDE=1' ;;
+      bad_verifier) echo 'OT_INSTALL_VERIFIER=%s: use auto, openssl, ssh-keygen or pinned' ;;
+      sig_missing) echo 'WARNING: could not download %s; the %s verifier cannot be used.' ;;
+      sig_bad) echo 'REFUSED: the signature of the manifest does not check (%s). Nothing was installed.' ;;
+      pinned_bad) echo 'REFUSED: the manifest is not the one this script pinned (different SHA-256). Nothing was installed.' ;;
+      no_verifier) echo 'REFUSED: no verifier could check the manifest (openssl 3 with Ed25519, ssh-keygen with -Y verify, or the SHA-256 pinned in this script). Install one of them, or use the install.sh that comes with the release. Nothing was installed.' ;;
+      sig_ok) echo 'Signature of the manifest checked (%s).' ;;
+      pinned_ok) echo 'Manifest checked by the SHA-256 pinned in this script.' ;;
+      manifest_expired) echo 'REFUSED: the manifest expired on %s. Nothing was installed.' ;;
+      manifest_no_expiry) echo 'WARNING: the manifest has no validity limit (expires); it is from an old release.' ;;
+      wget_no_https_warn) echo 'WARNING: this wget has no --https-only; a redirect to http would not be stopped by it.' ;;
       manifest_bad) echo 'REFUSED: the manifest lacks what the installer needs (%s). Nothing was installed.' ;;
       channel_mismatch) echo 'REFUSED: the manifest is of the %s channel, and %s was asked. Nothing was installed.' ;;
       hash_bad) echo 'REFUSED: the SHA-256 or the size of %s does not match the manifest. Nothing was installed.' ;;
@@ -274,10 +308,34 @@ fetch() {
     if [ "$fetch_rc" = 63 ]; then return 2; fi
     [ "$fetch_rc" = 0 ] || return 1
   elif command -v wget >/dev/null 2>&1; then
-    if [ "$BASE_SCHEME" = https ]; then fetch_https=--https-only; else fetch_https=''; fi
-    # shellcheck disable=SC2086 # the empty option must vanish
-    wget -q $fetch_https --max-redirect=5 --tries=1 --timeout=30 --user-agent=otheater-install-sh \
-      -O "$fetch_dest" "$fetch_url" || return 1
+    # No wgetrc (WGETRC points at an empty regular file: GNU wget 1.2x refuses /dev/null, which is not a
+    # regular file; and --no-config where this wget has it), https only where
+    # this wget has --https-only, at most 5 redirects, and the size cap that curl has in --max-filesize:
+    # the body goes through `head -c`, which stops one byte past the cap.
+    fetch_emptyrc="$fetch_dest.wgetrc"
+    : >"$fetch_emptyrc" || return 1
+    fetch_help=$(WGETRC=$fetch_emptyrc wget --help 2>&1) || fetch_help=''
+    set -- -q --tries=1 --timeout=30 --max-redirect=5 --user-agent=otheater-install-sh
+    case $fetch_help in
+      *--no-config*) set -- "$@" --no-config ;;
+    esac
+    if [ "$BASE_SCHEME" = https ]; then
+      case $fetch_help in
+        *--https-only*) set -- "$@" --https-only ;;
+        *) warn wget_no_https_warn ;;
+      esac
+    fi
+    fetch_rcfile="$fetch_dest.rc"
+    {
+      WGETRC=$fetch_emptyrc wget "$@" -O - "$fetch_url"
+      echo $? >"$fetch_rcfile"
+    } | head -c "$((fetch_max + 1))" >"$fetch_dest"
+    # Past the cap wget is cut by the closed pipe, so the size says it before the status does.
+    fetch_size=$(file_size "$fetch_dest")
+    fetch_wget_rc=$(cat "$fetch_rcfile" 2>/dev/null || echo 1)
+    rm -f "$fetch_emptyrc" "$fetch_rcfile"
+    [ "$fetch_size" -le "$fetch_max" ] || return 2
+    [ "$fetch_wget_rc" = 0 ] || return 1
   else
     return 1
   fi
@@ -317,9 +375,8 @@ latest_prerelease_tag() {
 
 # ---------------------------------------------------------------------------------------------
 # Manifest (the JSON of docs/21, "Formato dos artefatos e da assinatura"). It is read only by
-# patterns, because a POSIX shell has no JSON; the file is read AFTER its signature checked, except
-# for the name of the executable when the signature is checked by that executable (see
-# check_signature), and every value is checked against a strict pattern before it is used.
+# patterns, because a POSIX shell has no JSON; the file is read only AFTER its signature checked (see
+# verify_manifest), and every value is checked against a strict pattern before it is used.
 
 manifest_flat() {
   tr -d '\r\n' <"$1"
@@ -389,19 +446,130 @@ check_file() {
   [ "$cf_hash" = "$3" ]
 }
 
-# openssl_check KEYFILE MANIFEST SIGFILE: 0 checks, 1 does not check, 2 no openssl that can.
+# fetch_signature NAME VERIFIER: downloads BASE/NAME into the stage (once). A file that is not there
+# is not an error of the install: that verifier is just not available (return 1).
+fetch_signature() {
+  [ -s "$STAGE/$1" ] && return 0
+  say downloading "$1"
+  if fetch "$BASE/$1" "$STAGE/$1" "$MAX_SIGNATURE_BYTES" 60 && [ -s "$STAGE/$1" ]; then
+    return 0
+  fi
+  : >"$STAGE/$1"
+  warn sig_missing "$1" "$2"
+  return 1
+}
+
+# override_key: the text of OT_INSTALL_PUBLIC_KEY_FILE (checked in main), or nothing.
+override_key() {
+  [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ] || return 0
+  cat "$OT_INSTALL_PUBLIC_KEY_FILE" 2>/dev/null || true
+}
+
+# openssl_check: 0 checks, 1 does not check, 2 this verifier cannot be used here.
 # `openssl pkeyutl -rawin` exists from OpenSSL 3.0; the LibreSSL of macOS does not have it [N].
 openssl_check() {
   oc_ossl=${OT_INSTALL_OPENSSL:-openssl}
   command -v "$oc_ossl" >/dev/null 2>&1 || return 2
   "$oc_ossl" pkeyutl -help 2>&1 | grep -q 'rawin' || return 2
+  # The key: the override (a PEM) or the one this script carries.
+  if [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ]; then
+    case $(override_key) in
+      '-----BEGIN PUBLIC KEY-----'*) oc_key=$OT_INSTALL_PUBLIC_KEY_FILE ;;
+      *) return 2 ;;
+    esac
+  else
+    case $EMBEDDED_PUBLIC_KEY in
+      '-----BEGIN PUBLIC KEY-----'*)
+        printf '%s\n' "$EMBEDDED_PUBLIC_KEY" >"$STAGE/key.pem"
+        oc_key="$STAGE/key.pem"
+        ;;
+      *) return 2 ;;
+    esac
+  fi
+  fetch_signature manifest.json.sig openssl || return 2
   # The signature: base64 of 64 bytes, on one line.
-  oc_b64=$(tr -d ' \t\r\n' <"$3")
+  oc_b64=$(tr -d ' \t\r\n' <"$STAGE/manifest.json.sig")
   printf '%s' "$oc_b64" | grep -Eq '^[A-Za-z0-9+/]{86}==$' || return 1
   printf '%s' "$oc_b64" | "$oc_ossl" base64 -d -A >"$STAGE/signature.bin" 2>/dev/null || return 1
   [ "$(file_size "$STAGE/signature.bin")" = 64 ] || return 1
-  "$oc_ossl" pkeyutl -verify -pubin -inkey "$1" -rawin -in "$2" -sigfile "$STAGE/signature.bin" \
-    >/dev/null 2>&1
+  # Whatever the tool answers when it does not check, it is "does not check" (1), never "unavailable" (2).
+  "$oc_ossl" pkeyutl -verify -pubin -inkey "$oc_key" -rawin -in "$MANIFEST" \
+    -sigfile "$STAGE/signature.bin" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+# ssh_check: the SSHSIG signature (manifest.json.sshsig, namespace otheater-release) with
+# `ssh-keygen -Y verify`: 0 checks, 1 does not check, 2 this verifier cannot be used here.
+ssh_check() {
+  command -v ssh-keygen >/dev/null 2>&1 || return 2
+  # ssh-keygen before OpenSSH 8.0 has no -Y: it answers that the option is invalid.
+  if ssh-keygen -Y verify </dev/null 2>&1 | grep -Eqi 'invalid option|illegal option|unknown option'; then
+    return 2
+  fi
+  if [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ]; then
+    sc_line=$(override_key | head -n 1)
+  else
+    sc_line=$EMBEDDED_SSH_KEY
+  fi
+  # "ssh-ed25519 <base64>" and nothing else (a comment after it is dropped).
+  sc_type=${sc_line%% *}
+  sc_rest=${sc_line#* }
+  sc_blob=${sc_rest%% *}
+  [ "$sc_type" = ssh-ed25519 ] || return 2
+  printf '%s' "$sc_blob" | grep -Eq '^[A-Za-z0-9+/]+={0,2}$' || return 2
+  fetch_signature manifest.json.sshsig ssh-keygen || return 2
+  printf 'otheater namespaces="otheater-release" ssh-ed25519 %s\n' "$sc_blob" >"$STAGE/allowed_signers"
+  # ssh-keygen answers 255 when the signature does not check: that is "does not check" (1), not "unavailable" (2).
+  ssh-keygen -Y verify -f "$STAGE/allowed_signers" -I otheater -n otheater-release \
+    -s "$STAGE/manifest.json.sshsig" <"$MANIFEST" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+# pinned_check: the SHA-256 of the manifest is the one the release job pinned in this script (N288).
+# It is valid for that one manifest. 0 checks, 1 does not, 2 nothing is pinned.
+pinned_check() {
+  printf '%s' "$EMBEDDED_MANIFEST_SHA256" | grep -Eq '^[0-9a-f]{64}$' || return 2
+  pc_hash=$(sha256_of "$MANIFEST") || return 2
+  [ "$pc_hash" = "$EMBEDDED_MANIFEST_SHA256" ] || return 1
+  return 0
+}
+
+# verify_manifest: the signature of the manifest, before anything reads it. OT_INSTALL_VERIFIER
+# names the verifier (auto: the first of openssl, ssh-keygen and pinned that can). A verifier that
+# answers "does not check" refuses the install; one that cannot be used is skipped; if none can, the
+# install is refused too.
+verify_manifest() {
+  for vm_name in openssl ssh-keygen pinned; do
+    [ "$VERIFIER" = auto ] || [ "$VERIFIER" = "$vm_name" ] || continue
+    vm_rc=2
+    case $vm_name in
+      openssl) openssl_check && vm_rc=0 || vm_rc=$? ;;
+      ssh-keygen) ssh_check && vm_rc=0 || vm_rc=$? ;;
+      pinned) pinned_check && vm_rc=0 || vm_rc=$? ;;
+    esac
+    case $vm_rc in
+      0)
+        if [ "$vm_name" = pinned ]; then say pinned_ok; else say sig_ok "$vm_name"; fi
+        return 0
+        ;;
+      1)
+        if [ "$vm_name" = pinned ]; then die "$EXIT_UNVERIFIED" pinned_bad; fi
+        die "$EXIT_UNVERIFIED" sig_bad "$vm_name"
+        ;;
+      *) ;;
+    esac
+  done
+  die "$EXIT_UNVERIFIED" no_verifier
+}
+
+# manifest_expired EXPIRES: succeeds when the moment (UTC, "YYYY-MM-DDTHH:MM:SS[.fff]Z") has passed.
+# Compared as text: the same fixed layout, fraction dropped. It fails closed: only an explicit "no"
+# from awk says the manifest is still valid.
+manifest_expired() {
+  me_now=$(date -u +%Y-%m-%dT%H:%M:%S)
+  me_limit=$(printf '%.19s' "$1")
+  me_answer=$(awk -v now="$me_now" -v limit="$me_limit" 'BEGIN { print (now >= limit) ? "yes" : "no" }' 2>/dev/null)
+  [ "$me_answer" != no ]
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -453,33 +621,11 @@ do_install() {
   fi
 
   MANIFEST="$STAGE/manifest.json"
-  SIGFILE="$STAGE/manifest.json.sig"
   download manifest.json "$BASE/manifest.json" "$MANIFEST" "$MAX_MANIFEST_BYTES" 60
-  download manifest.json.sig "$BASE/manifest.json.sig" "$SIGFILE" "$MAX_SIGNATURE_BYTES" 60
 
-  # 1. The signature, with openssl when there is a key to check with and an openssl that can.
-  KEYFILE=''
-  if [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ]; then
-    warn key_env_warn
-    KEYFILE=$OT_INSTALL_PUBLIC_KEY_FILE
-  else
-    case $EMBEDDED_PUBLIC_KEY in
-      '-----BEGIN PUBLIC KEY-----'*)
-        printf '%s\n' "$EMBEDDED_PUBLIC_KEY" >"$STAGE/key.pem"
-        KEYFILE="$STAGE/key.pem"
-        ;;
-      *) ;;
-    esac
-  fi
-  SIG_BY_EXE=1
-  if [ -n "$KEYFILE" ]; then
-    openssl_check "$KEYFILE" "$MANIFEST" "$SIGFILE"
-    case $? in
-      0) SIG_BY_EXE=0 ;;
-      1) die "$EXIT_UNVERIFIED" sig_bad ;;
-      *) ;;
-    esac
-  fi
+  # 1. The signature of the manifest, before anything reads it and before anything downloaded runs
+  # (N288). The signature files are downloaded by the verifier that needs them.
+  verify_manifest
 
   # 2. What the manifest says.
   version=$(manifest_top version "$MANIFEST")
@@ -487,6 +633,15 @@ do_install() {
   printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]*)?$' ||
     die "$EXIT_UNVERIFIED" manifest_bad version
   [ "$channel" = "$CHANNEL" ] || die "$EXIT_UNVERIFIED" channel_mismatch "${channel:-?}" "$CHANNEL"
+  # The validity limit (N288): absent only in a manifest of an old release, which is accepted with a warning.
+  expires=$(manifest_top expires "$MANIFEST")
+  if [ -z "$expires" ]; then
+    warn manifest_no_expiry
+  else
+    printf '%s' "$expires" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$' ||
+      die "$EXIT_UNVERIFIED" manifest_bad expires
+    if manifest_expired "$expires"; then die "$EXIT_UNVERIFIED" manifest_expired "$expires"; fi
+  fi
   asset=$(find_asset "$MANIFEST" "$PLATFORM" exe '')
   [ -n "$asset" ] || die "$EXIT_UNVERIFIED" manifest_bad "$PLATFORM"
   # shellcheck disable=SC2086 # three words, split on purpose
@@ -501,19 +656,9 @@ do_install() {
   check_file "$STAGE/otheater" "$asset_size" "$asset_sha" || die "$EXIT_UNVERIFIED" hash_bad "$asset_name"
   chmod 755 "$STAGE/otheater"
 
-  # 4. The signature by the executable, when openssl could not do it. [N253] The executable is the
-  # thing that was just downloaded, and the manifest it checks gives the hash that it matches, so this
-  # only proves that the executable and the manifest agree on the key: the warning says it.
-  if [ "$SIG_BY_EXE" = 1 ]; then
-    warn sig_exe_warn
-    "$STAGE/otheater" --ot-internal=verify-release "$MANIFEST" "$SIGFILE" >/dev/null 2>&1 ||
-      die "$EXIT_UNVERIFIED" sig_exe_unavailable
-  else
-    say sig_ok
-  fi
   say hash_ok "$asset_sha"
 
-  # 5. The notices of the licenses of this platform, when the release has them [proposta, P10]: one
+  # 4. The notices of the licenses of this platform, when the release has them [proposta, P10]: one
   # more file of the manifest, checked like the executable.
   notices_name="THIRD_PARTY_NOTICES-$PLATFORM.md"
   have_notices=0
@@ -528,11 +673,11 @@ do_install() {
     fi
   fi
 
-  # 6. It has to run here, and say its version.
+  # 5. It has to run here, and say its version.
   installed_version=$("$STAGE/otheater" --version 2>/dev/null | head -n 1) || installed_version=''
   [ -n "$installed_version" ] || die "$EXIT_FAILED" exe_wont_run
 
-  # 7. Install: one rename over the old file. A daemon from a previous install is asked to stop first.
+  # 6. Install: one rename over the old file. A daemon from a previous install is asked to stop first.
   if [ "$had_previous" = 1 ] && [ "$SERVICE" = auto ]; then
     "$EXE" service stop >/dev/null 2>&1 || true
   fi
@@ -545,7 +690,7 @@ do_install() {
   rm -rf "$STAGE"
   STAGE=''
 
-  # 8. The shortcut `ot`: only where nothing else is.
+  # 7. The shortcut `ot`: only where nothing else is.
   link_note=0
   mkdir -p "$LINK_DIR"
   if [ ! -e "$LINK" ] && [ ! -L "$LINK" ]; then
@@ -558,7 +703,7 @@ do_install() {
     link_note=1
   fi
 
-  # 9. The logon service (P3).
+  # 8. The logon service (P3).
   service_rc=0
   if [ "$SERVICE" = off ]; then
     say service_off
@@ -567,7 +712,7 @@ do_install() {
     [ "$service_rc" = 0 ] || warn service_failed "$EXE"
   fi
 
-  # 10. What is left.
+  # 9. What is left.
   say done_title
   todo=0
   if [ "$link_note" = 0 ]; then
@@ -732,6 +877,18 @@ main() {
     auto | off) ;;
     *) die "$EXIT_USAGE" bad_service "$SERVICE" ;;
   esac
+  VERIFIER=${OT_INSTALL_VERIFIER:-auto}
+  case $VERIFIER in
+    auto | openssl | ssh-keygen | pinned) ;;
+    *) die "$EXIT_USAGE" bad_verifier "$VERIFIER" ;;
+  esac
+  # A key or an openssl from the environment replaces what the check trusts: it needs the second
+  # variable, so a stray one does not do it silently, and it always warns.
+  if [ "$UNINSTALL" = 0 ] && { [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ] || [ -n "${OT_INSTALL_OPENSSL:-}" ]; }; then
+    [ "${OT_INSTALL_ALLOW_KEY_OVERRIDE:-}" = 1 ] || die "$EXIT_USAGE" override_needs_confirm
+    if [ -n "${OT_INSTALL_PUBLIC_KEY_FILE:-}" ]; then warn key_env_warn; fi
+    if [ -n "${OT_INSTALL_OPENSSL:-}" ]; then warn openssl_env_warn "$OT_INSTALL_OPENSSL"; fi
+  fi
   case ${HOME:-} in
     /?*) ;;
     *) die "$EXIT_USAGE" no_home ;;
