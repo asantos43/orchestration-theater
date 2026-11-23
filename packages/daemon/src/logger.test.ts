@@ -57,6 +57,30 @@ describe('createLogger', () => {
     expect(text).toContain('[REDACTED]');
   });
 
+  it('masks the token, the cookies and the Authorization header inside error and request objects', () => {
+    const { stream, lines } = capture();
+    const { logger } = createLogger({
+      level: 'info',
+      destination: 'file',
+      logFile: '/unused',
+      clock: new FakeClock(0),
+      stream,
+    });
+    logger.info(
+      {
+        headers: { authorization: 'Bearer leak-1', cookie: 'sid=leak-2', 'set-cookie': ['sid=leak-3'] },
+        err: { message: 'failed', token: 'leak-4', headers: { Authorization: 'Bearer leak-5' } },
+        request: { headers: { authorization: 'Bearer leak-6', cookie: 'sid=leak-7' } },
+        error: { response: { headers: { 'set-cookie': ['sid=leak-8'] }, accessToken: 'leak-9' } },
+        cookies: { sid: 'leak-10' },
+      },
+      'objects',
+    );
+    const text = JSON.stringify(lines());
+    expect(text).not.toMatch(/leak-\d/);
+    expect(text).toContain('failed');
+  });
+
   it('honours the level', () => {
     const { stream, lines } = capture();
     const { logger } = createLogger({

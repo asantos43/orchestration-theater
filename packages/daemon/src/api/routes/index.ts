@@ -69,7 +69,11 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
  * holds each of them until the reconciliation of the start-up ends (they are commands).
  */
 export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteDeps): void {
-  const cache = new IdempotencyCache({ clock: deps.clock, ttlMs: deps.idempotencyTtlMs });
+  const cache = new IdempotencyCache({
+    clock: deps.clock,
+    ttlMs: deps.idempotencyTtlMs,
+    ...(deps.idempotencyMaxEntries === undefined ? {} : { maxEntries: deps.idempotencyMaxEntries }),
+  });
   const register = commandRegistrar(handlers, cache, deps.logger);
   registerScenarioCommands(register, deps);
   registerDecisionCommands(register, deps);

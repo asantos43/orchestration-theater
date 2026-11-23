@@ -1976,3 +1976,77 @@ describe('updates (Phase 10, P7) [proposta]', () => {
     }
   });
 });
+
+describe('the security review of Phase 11 (P8b) [proposta]', () => {
+  it('has the defaults of the review', () => {
+    const config = parseConfig('');
+    expect(config.security.attachment_roots).toEqual({
+      mode: 'list',
+      defaults: ['project', 'worktrees', 'documents', 'downloads'],
+      add: [],
+    });
+    expect(config.shell.node_inline).toBe('deny');
+    expect(config.shell.http_get.block_private).toBe('on');
+    expect(config.api.idempotency_max_entries).toBe(10_000);
+    expect(config.api.max_json_depth).toBe(64);
+    expect(config.api.chat.max_tickets).toBe(64);
+    expect(config.api.chat.max_sockets).toBe(32);
+    expect(config.api.chat.max_queued_messages).toBe(256);
+  });
+
+  it('takes each mode of each key', () => {
+    for (const mode of ['list', 'any']) {
+      expect(
+        parseConfig(`security:\n  attachment_roots:\n    mode: ${mode}\n`).security.attachment_roots.mode,
+      ).toBe(mode);
+    }
+    expect(
+      parseConfig('security:\n  attachment_roots:\n    defaults: [project, downloads]\n').security
+        .attachment_roots.defaults,
+    ).toEqual(['project', 'downloads']);
+    expect(
+      parseConfig('security:\n  attachment_roots:\n    defaults: []\n').security.attachment_roots
+        .defaults,
+    ).toEqual([]);
+    expect(
+      parseConfig(
+        'security:\n  attachment_roots:\n    add: [/srv/shared, "~/Pictures", "C:\\\\Users\\\\x\\\\Desktop", "\\\\\\\\nas\\\\share"]\n',
+      ).security.attachment_roots.add,
+    ).toEqual(['/srv/shared', '~/Pictures', 'C:\\Users\\x\\Desktop', '\\\\nas\\share']);
+    for (const mode of ['deny', 'allow']) {
+      expect(parseConfig(`shell:\n  node_inline: ${mode}\n`).shell.node_inline).toBe(mode);
+    }
+    for (const mode of ['on', 'off']) {
+      expect(
+        parseConfig(`shell:\n  http_get:\n    block_private: ${mode}\n`).shell.http_get.block_private,
+      ).toBe(mode);
+    }
+    const limits = parseConfig(
+      'api:\n  idempotency_max_entries: 5\n  max_json_depth: 8\n  chat:\n    max_tickets: 2\n    max_sockets: 3\n    max_queued_messages: 4\n',
+    ).api;
+    expect(limits).toMatchObject({ idempotency_max_entries: 5, max_json_depth: 8 });
+    expect(limits.chat).toMatchObject({ max_tickets: 2, max_sockets: 3, max_queued_messages: 4 });
+  });
+
+  it('refuses what is not a mode, a relative root, a ceiling under 1 and unknown keys', () => {
+    for (const bad of [
+      'security:\n  attachment_roots:\n    mode: some\n',
+      'security:\n  attachment_roots:\n    defaults: [desktop]\n',
+      'security:\n  attachment_roots:\n    add: [relative/dir]\n',
+      'security:\n  attachment_roots:\n    add: [""]\n',
+      'security:\n  attachment_roots:\n    add: [~other/x]\n',
+      'security:\n  attachment_roots:\n    extra: 1\n',
+      'shell:\n  node_inline: maybe\n',
+      'shell:\n  http_get:\n    block_private: yes please\n',
+      'shell:\n  other: 1\n',
+      'api:\n  idempotency_max_entries: 0\n',
+      'api:\n  max_json_depth: 0\n',
+      'api:\n  chat:\n    max_tickets: 0\n',
+      'api:\n  chat:\n    max_sockets: -1\n',
+      'api:\n  chat:\n    max_queued_messages: 0\n',
+      'api:\n  chat:\n    max_queued_messages: 1.5\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});

@@ -148,16 +148,74 @@ const FORBIDDEN_FLAGS: Readonly<Record<string, readonly RegExp[]>> = {
   rg: [/^--pre(?:=|$)/, /^--pre-glob(?:=|$)/],
 };
 
-/** Throws `forbidden_flag` when the argv carries a flag of {@link FORBIDDEN_FLAGS}. */
-export function assertNoForbiddenFlags(argv: readonly string[]): void {
-  const patterns = FORBIDDEN_FLAGS[argv[0] ?? ''];
+/** `shell.node_inline` (N290): `deny` refuses the flags of {@link NODE_INLINE_LONG}; `allow` lets them run. */
+export type NodeInlineMode = 'deny' | 'allow';
+
+/**
+ * Long flags of `node` that run code the argv does not show (N290, owner, 2026-11-23): the code of the
+ * flag itself (`--eval`, `--print`), a module loaded before the script (`--require`, `--import`) and a
+ * module of loader hooks (`--loader`, `--experimental-loader`), which is code too. `--input-type`
+ * only has a meaning for `--eval` or for the standard input, so it goes with them. Node reads `_` as
+ * `-` in a flag name, so both spellings are checked.
+ */
+const NODE_INLINE_LONG: ReadonlySet<string> = new Set([
+  '--eval',
+  '--print',
+  '--require',
+  '--import',
+  '--input-type',
+  '--loader',
+  '--experimental-loader',
+]);
+
+/** A short flag of `node` that takes code or a module: `-e`, `-p`, `-r`, in a cluster (`-pe`) or with the value glued on (`-e"1+1"`, `-rmod`). */
+const NODE_INLINE_SHORT = /^-[epr]/;
+
+function isNodeInlineFlag(arg: string): boolean {
+  if (arg.startsWith('--')) {
+    const equals = arg.indexOf('=');
+    const name = (equals < 0 ? arg : arg.slice(0, equals)).replaceAll('_', '-');
+    return NODE_INLINE_LONG.has(name);
+  }
+  return NODE_INLINE_SHORT.test(arg);
+}
+
+export interface ForbiddenFlagsOptions {
+  /** `shell.node_inline`; `deny` when left out. */
+  readonly nodeInline?: NodeInlineMode;
+}
+
+/**
+ * Throws `forbidden_flag` when the argv carries a flag of {@link FORBIDDEN_FLAGS} or, with
+ * `nodeInline: 'deny'` (the default), a flag of `node` that runs code written in the argv itself.
+ * The arguments of `node` are read up to the first `--`: the ones after it belong to the script, so
+ * `node -- script.js -p` is fine and `node script.js -p` is refused (node cannot be asked where the
+ * script starts without knowing every option that takes a separate value).
+ */
+export function assertNoForbiddenFlags(
+  argv: readonly string[],
+  options: ForbiddenFlagsOptions = {},
+): void {
+  const program = argv[0] ?? '';
+  if (program === 'node' && (options.nodeInline ?? 'deny') === 'deny') {
+    for (const arg of argv.slice(1)) {
+      if (arg === '--') break;
+      if (isNodeInlineFlag(arg)) {
+        throw new ShellToolRefusal(
+          'forbidden_flag',
+          `the flag ${arg} is not allowed with node (shell.node_inline: deny): it runs code that is not in a file`,
+        );
+      }
+    }
+  }
+  const patterns = FORBIDDEN_FLAGS[program];
   if (patterns === undefined) return;
   for (const arg of argv.slice(1)) {
     if (arg === '--') return;
     if (patterns.some((pattern) => pattern.test(arg))) {
       throw new ShellToolRefusal(
         'forbidden_flag',
-        `the flag ${arg} is not allowed with ${argv[0] ?? ''}`,
+        `the flag ${arg} is not allowed with ${program}`,
       );
     }
   }

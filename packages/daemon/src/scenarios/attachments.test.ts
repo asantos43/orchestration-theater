@@ -6,6 +6,7 @@ import { InvalidInput, NotFound } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AttachmentService, isImage, mimeOf } from './attachments.js';
+import { ANY_ATTACHMENT_ROOT } from './attachment-roots.js';
 
 const PNG_HEAD = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
@@ -28,6 +29,7 @@ beforeEach(async () => {
   limits = { maxSize: 1024, readMax: 64 };
   service = new AttachmentService({
     store,
+    roots: ANY_ATTACHMENT_ROOT,
     clock,
     scenariosDir: join(root, 'scenarios'),
     limits: () => limits,

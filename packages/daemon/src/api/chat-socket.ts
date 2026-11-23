@@ -41,7 +41,9 @@ import {
 import type { SituationSink } from '../situations.js';
 import type { SlashCommandService } from '../slash/index.js';
 import { ChatTickets } from './chat-tickets.js';
+import { redactDetails, redactPaths } from './error-paths.js';
 import { ApiFailure, type ApiSocketEvents } from './handlers.js';
+import { jsonDepthExceeds } from './json-depth.js';
 import type { ApiServer } from './server.js';
 
 /**
@@ -67,6 +69,12 @@ export interface ChatRoutesOptions {
   readonly now: () => number;
   /** `api.chat.ticket_ttl`. */
   readonly ticketTtlMs: number;
+  /** `api.chat.max_tickets`: tickets that may wait at once. */
+  readonly maxTickets: number;
+  /** `api.chat.max_sockets`: chat sockets open at once. */
+  readonly maxSockets: number;
+  /** `api.chat.max_queued_messages`: messages of one socket received and not yet handled. */
+  readonly maxQueuedMessages: number;
   /** `api.chat.heartbeat`. */
   readonly heartbeatMs: number;
   /** `api.chat.state_interval`. */
@@ -119,6 +127,7 @@ const PROTOCOL_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009]);
 const CLOSE = {
   stop: { code: 1001, reason: 'The daemon is stopping' },
   rotated: { code: 1008, reason: 'The API token was rotated' },
+  overflow: { code: 1008, reason: 'Too many messages are waiting to be handled' },
   feed: { code: 1011, reason: 'The daemon could not read the events' },
 } as const;
 
@@ -128,17 +137,23 @@ const CLOSE = {
  */
 export function registerChatRoutes(options: ChatRoutesOptions): ChatTickets {
   const { api, store } = options;
-  const tickets = new ChatTickets({ ttlMs: options.ticketTtlMs, now: options.now });
+  const tickets = new ChatTickets({
+    ttlMs: options.ticketTtlMs,
+    now: options.now,
+    maxTickets: options.maxTickets,
+    epoch: () => api.tokenEpoch,
+  });
   // A rotation revokes what the old token vouched for: the tickets it issued go with it. The sockets
   // already open close themselves (each session listens too).
   api.onTokenRotated(() => {
     tickets.clear();
   });
-  api.handlers.register('createChatTicket', async ({ body }) => {
+  api.handlers.register('createChatTicket', async ({ body, tokenEpoch }) => {
     if ((await store.scenarios.get(body.scenarioId)) === undefined) {
       throw new NotFound(`There is no scenario "${body.scenarioId}"`);
     }
-    return tickets.issue(body.scenarioId);
+    // The token that asked is checked again here, after the await: a rotation in between is a 401.
+    return tickets.issue(body.scenarioId, tokenEpoch);
   });
   api.handlers.register(
     'openChatSocket',
@@ -146,12 +161,24 @@ export function registerChatRoutes(options: ChatRoutesOptions): ChatTickets {
       if (upgrade === undefined || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         throw new ApiFailure('invalid_input', 'This route opens a WebSocket');
       }
-      // One try: the ticket is spent whatever happens next.
+      // [proposta] A ceiling on the sockets: `ws` counts the ones that are open; the ones in the
+      // middle of the upgrade are bounded by `api.chat.max_tickets` (each needs a ticket).
+      if (api.openSockets.size >= options.maxSockets) {
+        throw new ApiFailure('unavailable', 'Too many chat sockets are open', {
+          details: { maxSockets: options.maxSockets },
+          headers: { 'retry-after': '1' },
+        });
+      }
+      // One try: the ticket is spent whatever happens next. `redeem` only says yes to a ticket that
+      // was asked for with the token that is current, and the epoch read here is that token's.
       if (!tickets.redeem(query.ticket, params.id)) return api.rejectTicket(request);
+      const epoch = api.tokenEpoch;
       if ((await store.scenarios.get(params.id)) === undefined) {
         throw new NotFound(`There is no scenario "${params.id}"`);
       }
-      return upgrade(new ChatSession(options, params.id).events());
+      // A rotation during the await above: the ticket vouched for a token that is gone.
+      if (api.tokenEpoch !== epoch) return api.rejectTicket(request);
+      return upgrade(new ChatSession(options, params.id, epoch).events());
     },
     // A socket is opened with a ticket that a command already waited the gate for.
     { command: false },
@@ -165,6 +192,8 @@ class ChatSession {
   readonly #scenarioId: string;
   readonly #stop = new AbortController();
   readonly #asksSent = new Set<string>();
+  /** The epoch of the token this socket was opened under (`ApiServer.tokenEpoch`). */
+  readonly #epoch: number;
   #ws: WSContext<WebSocket> | undefined;
   #raw: WebSocket | undefined;
   #release: (() => void) | undefined;
@@ -174,13 +203,21 @@ class ChatSession {
   #resumeTimer: NodeJS.Timeout | undefined;
   /** The inbox: messages of the client are handled one at a time, in order. */
   #inbox: Promise<void> = Promise.resolve();
+  /** Messages received and not yet handled, against `api.chat.max_queued_messages`. */
+  #queued = 0;
   /** The feed and the state go out in order, one step at a time. */
   #outbox: Promise<void> = Promise.resolve();
   #started = false;
   /** The feed began because the resume window ended, with no word from the client (P26). */
   #startedByWindow = false;
   #closed = false;
-  #reason: 'daemon_stop' | 'token_rotated' | 'no_pong' | 'feed_failed' | undefined;
+  #reason:
+    | 'daemon_stop'
+    | 'token_rotated'
+    | 'no_pong'
+    | 'feed_failed'
+    | 'protocol_error'
+    | undefined;
   #ponged = true;
   /** The id of the last event of the feed this connection went through (the cursor of its messages). */
   #cursor = 0;
@@ -189,9 +226,10 @@ class ChatSession {
   #waitsSent: string | undefined;
   #busySent: boolean | undefined;
 
-  constructor(options: ChatRoutesOptions, scenarioId: string) {
+  constructor(options: ChatRoutesOptions, scenarioId: string, epoch: number) {
     this.#options = options;
     this.#scenarioId = scenarioId;
+    this.#epoch = epoch;
   }
 
   events(): ApiSocketEvents {
@@ -201,7 +239,20 @@ class ChatSession {
       },
       onMessage: (event) => {
         const data: unknown = event.data;
-        this.#inbox = this.#inbox.then(() => this.#receive(data));
+        // A client that sends faster than the daemon handles does not grow the queue without end.
+        if (this.#queued >= this.#options.maxQueuedMessages) {
+          if (!this.#closed && this.#reason === undefined) {
+            this.#reason = 'protocol_error';
+            this.#options.api.recordMessageRejected();
+            this.#end(CLOSE.overflow);
+          }
+          return;
+        }
+        this.#queued += 1;
+        const done = (): void => {
+          this.#queued -= 1;
+        };
+        this.#inbox = this.#inbox.then(() => this.#receive(data)).then(done, done);
       },
       onClose: (event) => {
         this.#closedBy(event.code);
@@ -245,6 +296,12 @@ class ChatSession {
       this.#reason = 'token_rotated';
       this.#end(CLOSE.rotated);
     });
+    // The token may have been rotated between the ticket and this open: the listener above would
+    // never hear of it, so the epoch says it.
+    if (api.tokenEpoch !== this.#epoch) {
+      this.#reason = 'token_rotated';
+      this.#end(CLOSE.rotated);
+    }
     const stop = (): void => {
       this.#reason = 'daemon_stop';
       this.#end(CLOSE.stop);
@@ -335,6 +392,13 @@ class ChatSession {
   #parse(data: unknown): ChatClientMessage | undefined {
     if (typeof data !== 'string') {
       this.#refuse('invalid_input', 'The chat takes text frames only');
+      return undefined;
+    }
+    const maxDepth = this.#options.api.maxJsonDepth;
+    if (jsonDepthExceeds(data, maxDepth)) {
+      this.#refuse('invalid_input', 'The message is nested too deep', {
+        details: { reason: 'json_too_deep', maxDepth },
+      });
       return undefined;
     }
     let json: unknown;
@@ -439,7 +503,12 @@ class ChatSession {
   }
 
   #sendError(code: ApiErrorCode, message: string, details?: Details): void {
-    this.#send({ type: 'error', eventId: null, error: apiError(code, message, details).error });
+    // No absolute path of the machine goes to the client (the log has the whole text).
+    this.#send({
+      type: 'error',
+      eventId: null,
+      error: apiError(code, redactPaths(message), redactDetails(details)).error,
+    });
   }
 
   #send(message: ChatServerMessage): void {

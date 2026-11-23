@@ -397,6 +397,19 @@ export const OPENCODE_ISOLATED_HOMES = ['data', 'config', 'state', 'cache'] as c
 export const OPENCODE_PROJECT_CONFIG = ['disabled', 'enabled'] as const;
 export const OPENCODE_READ_ONLY_MODES = ['none', 'plan'] as const;
 export const UNENFORCED_MODES = ['refuse', 'warn', 'allow'] as const;
+/**
+ * [proposta, N287] `security.attachment_roots.mode`: `list` (default) takes an attachment by `path`
+ * only from the folders of the list; `any` takes any readable file (the old behaviour).
+ */
+export const ATTACHMENT_ROOT_MODES = ['list', 'any'] as const;
+/** An absolute path (POSIX, drive or UNC) or one that starts at the home folder (`~`, `~/...`). */
+const ABSOLUTE_OR_HOME_PATH = /^(~([\\/]|$)|\/|[A-Za-z]:[\\/]|\\\\)/;
+/** [proposta, N287] The folders `security.attachment_roots` adds by itself in `list` mode. */
+export const ATTACHMENT_ROOT_DEFAULTS = ['project', 'worktrees', 'documents', 'downloads'] as const;
+/** [proposta, N290] `shell.node_inline`: `deny` (default) refuses `node -e`, `-p`, `-r`, `--import`...; `allow` lets them run. */
+export const SHELL_NODE_INLINE_MODES = ['deny', 'allow'] as const;
+/** [proposta, N280] `shell.http_get.block_private`: `on` (default) refuses private, loopback, link-local and metadata addresses. */
+export const SHELL_HTTP_PRIVATE_MODES = ['on', 'off'] as const;
 /** `security.catalog_probe`: whether the session that only reads a catalog skips `unenforced`. */
 export const CATALOG_PROBE_MODES = ['allow', 'refuse'] as const;
 /**
@@ -2388,6 +2401,58 @@ export const DaemonConfigSchema = z
             remove: z.array(z.string().min(1)).default([]),
           })
           .prefault({}),
+        /**
+         * Where an attachment taken BY PATH (`/attach`, `addAttachment` with `path`) may come from
+         * (N287, owner, 2026-11-23). `list` (default): only from the roots; `any`: any readable file.
+         * In `list` mode the roots are `defaults` (the project, the worktrees of its plays, the Documents
+         * folder and the Downloads folder of the user, resolved for the platform) plus `add`. The path is
+         * resolved with `realpath` before the check, so a symlink out of a root does not pass. An attachment
+         * sent as content (`data`) has no path and is not subject to this.
+         */
+        attachment_roots: z
+          .strictObject({
+            mode: z.enum(ATTACHMENT_ROOT_MODES).default('list'),
+            defaults: z
+              .array(z.enum(ATTACHMENT_ROOT_DEFAULTS))
+              .default([...ATTACHMENT_ROOT_DEFAULTS]),
+            /** Absolute folders (or `~/...`) the user adds to the roots. */
+            add: z
+              .array(
+                z
+                  .string()
+                  .regex(
+                    ABSOLUTE_OR_HOME_PATH,
+                    'must be an absolute path (/..., C:\\..., \\\\server\\share) or start with ~',
+                  ),
+              )
+              .default([]),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The shell tools of the Actors (`run_command` and the like, `http_get`), global only: a scenario or
+     * a project cannot widen these, so they are not under `tools` (which scenarios override).
+     */
+    shell: z
+      .strictObject({
+        /**
+         * N290 (owner, 2026-11-23): `deny` (default) refuses the flags of `node` that run code the argv does
+         * not show (`-e`, `--eval`, `-p`, `--print`, `-r`, `--require`, `--import`, `--input-type`, in the
+         * `--flag=value` and glued forms too); `allow` lets them run. Either way `node` and the project
+         * scripts still depend on the sandbox (docs/09).
+         */
+        node_inline: z.enum(SHELL_NODE_INLINE_MODES).default('deny'),
+        http_get: z
+          .strictObject({
+            /**
+             * [proposta] `on` (default): `http_get` resolves the host and refuses it when an address is
+             * loopback, private, link-local or the cloud metadata address (169.254.169.254), and does the
+             * same at every redirect. `off`: only the allowlist of hosts counts.
+             */
+            block_private: z.enum(SHELL_HTTP_PRIVATE_MODES).default('on'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
@@ -2500,10 +2565,32 @@ export const DaemonConfigSchema = z
          * command is deduplicated. The memory is the daemon's own and does not survive a restart.
          */
         idempotency_ttl: DurationSchema.or(z.literal(0)).prefault('24h'),
+        /**
+         * [proposta: 10000] Answers (kept and running) the idempotency memory holds. Past it the oldest
+         * answers are dropped, so a client that keeps sending new keys cannot grow the memory of the daemon.
+         */
+        idempotency_max_entries: z.int().min(1).default(10_000),
+        /**
+         * [proposta: 64] The deepest nesting of arrays and objects a JSON body may have (REST body and chat
+         * message). A deeper one is `400 invalid_input`, never a stack overflow of the parser.
+         */
+        max_json_depth: z.int().min(1).default(64),
         chat: z
           .strictObject({
             /** [proposta: 30s] How long a chat ticket (`POST /v1/chat-tickets`) is good for, and no longer. */
             ticket_ttl: DurationSchema.prefault('30s'),
+            /**
+             * [proposta: 64] Chat tickets (`POST /v1/chat-tickets`) that may be waiting at once. Past it the
+             * expired ones are dropped and, if it is still full, the request is `503 unavailable`.
+             */
+            max_tickets: z.int().min(1).default(64),
+            /** [proposta: 32] Chat sockets open at once (and tickets taken but not yet open). Past it the upgrade is `503 unavailable`. */
+            max_sockets: z.int().min(1).default(32),
+            /**
+             * [proposta: 256] Messages a chat socket may have received and not yet handled. A client that
+             * floods past it has the socket closed with `protocol_error`.
+             */
+            max_queued_messages: z.int().min(1).default(256),
             /**
              * [proposta: 30s] Interval of the protocol ping of the chat socket; a socket that did not
              * answer the previous ping with a pong by the next one is closed (`no_pong`).

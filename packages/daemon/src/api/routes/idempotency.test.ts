@@ -142,4 +142,37 @@ describe('IdempotencyCache', () => {
     expect(runs()).toBe(2);
     expect(cache.size).toBe(0);
   });
+
+  it('holds at most api.idempotency_max_entries answers: the oldest go first, and a run that is going is never dropped', async () => {
+    const clock = new FakeClock();
+    let max = 3;
+    const cache = new IdempotencyCache({ clock, ttlMs: () => 24 * HOUR, maxEntries: () => max });
+    let runs = 0;
+    const run = (key: string) =>
+      cache.run(request({ key }), () => {
+        runs += 1;
+        return Promise.resolve({ run: runs });
+      });
+    for (const key of ['a', 'b', 'c', 'd', 'e']) await run(key);
+    expect(cache.size).toBeLessThanOrEqual(3);
+    // 'a' was the oldest and went: it runs again; 'e' is the newest and is still replayed.
+    expect((await run('e')).replayed).toBe(true);
+    expect((await run('a')).replayed).toBe(false);
+    // A cap that is lowered at run time (the getter) applies to the next call.
+    max = 1;
+    await run('z');
+    expect(cache.size).toBeLessThanOrEqual(1);
+
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = cache.run(request({ key: 'slow' }), async () => {
+      await gate;
+      return { slow: true };
+    });
+    await run('after-slow');
+    release?.();
+    expect((await slow).replayed).toBe(false);
+  });
 });
