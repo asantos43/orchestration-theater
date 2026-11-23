@@ -54,14 +54,17 @@ interface Opened {
   readonly writes: string[];
 }
 
-async function open(settings = DEFAULT_UI_SETTINGS): Promise<Opened> {
+async function open(
+  settings = DEFAULT_UI_SETTINGS,
+  size = { columns: 140, rows: 30 },
+): Promise<Opened> {
   const online = fakeOnline();
   seedStores(online.stores);
   const writes: string[] = [];
   const app = await renderApp({
     connector: online.connector,
     settings,
-    size: { columns: 140, rows: 30 },
+    size,
     tabContent,
     mouseWrites: writes,
   });
@@ -107,6 +110,16 @@ async function send(app: RenderedApp, bytes: string): Promise<string> {
 
 async function click(app: RenderedApp, at: Point): Promise<string> {
   await send(app, sgrReport({ action: 'press', button: 'left', ...at }));
+  return send(app, sgrReport({ action: 'release', button: 'left', ...at }));
+}
+
+/**
+ * A click as the terminal of the Claude desktop reports it (measured, 2026-11-22): the press, then a
+ * move with the button down on the SAME cell, then the release, each as a chunk of its own.
+ */
+async function clickWithDrag(app: RenderedApp, at: Point): Promise<string> {
+  await send(app, sgrReport({ action: 'press', button: 'left', ...at }));
+  await send(app, sgrReport({ action: 'drag', button: 'left', ...at }));
   return send(app, sgrReport({ action: 'release', button: 'left', ...at }));
 }
 
@@ -303,5 +316,53 @@ describe('the focus by a press', () => {
     const { app } = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'wheel' });
     const frame = await click(app, locate(app.frame(), 'panel row 3'));
     expect(bar(frame)).toContain('PageUp  Scroll');
+  });
+});
+
+describe('the clicks of the terminal of the Claude desktop', () => {
+  // The panel appears after the TUI started: the size goes from 120x30 to 213x83 by a resize.
+  async function openResized(): Promise<Opened> {
+    const opened = await open(DEFAULT_UI_SETTINGS, { columns: 120, rows: 30 });
+    opened.app.resize(213, 83);
+    await opened.app.settle();
+    return opened;
+  }
+
+  it('give the focus to each area, with the press, the move on the same cell and the release', async () => {
+    const { app } = await openResized();
+    expect(bar(app.frame())).toContain('PageUp  Scroll');
+    let frame = await clickWithDrag(app, locate(app.frame(), 'panel row 3'));
+    expect(bar(frame)).toContain('Enter  Fold');
+    frame = await clickWithDrag(app, locate(frame, 'codex-work'));
+    expect(bar(frame)).toContain('Enter  Open');
+    frame = await clickWithDrag(app, locate(frame, 'message number 25'));
+    expect(bar(frame)).toContain('PageUp  Scroll');
+    // The cells that the frames of the areas draw count too, not only the text inside them.
+    frame = await clickWithDrag(app, { col: 3, row: 1 });
+    expect(bar(frame)).toContain('Enter  Open');
+    frame = await clickWithDrag(app, { col: 211, row: 81 });
+    expect(bar(frame)).toContain('Enter  Fold');
+  });
+
+  it('count as a click for what is inside the area: a move that stays on the cell is not a drag', async () => {
+    const { app } = await openResized();
+    let frame = await clickWithDrag(app, locate(app.frame(), '⚙ Settings'));
+    expect(frame).toContain('First section');
+    frame = await clickWithDrag(app, locate(frame, 'First section'));
+    expect(frame).not.toContain('first body');
+    frame = await clickWithDrag(app, locate(frame, 'First section'));
+    expect(frame).toContain('first body');
+  });
+
+  it('still select when the move leaves the cell', async () => {
+    const { app, writes } = await openResized();
+    const spot = locate(app.frame(), 'message number 25');
+    const end = { col: spot.col + 'message number 25'.length - 1, row: spot.row };
+    await send(app, sgrReport({ action: 'press', button: 'left', ...spot }));
+    await send(app, sgrReport({ action: 'drag', button: 'left', ...spot }));
+    await send(app, sgrReport({ action: 'drag', button: 'left', ...end }));
+    await send(app, sgrReport({ action: 'release', button: 'left', ...end }));
+    const base64 = Buffer.from('message number 25', 'utf8').toString('base64');
+    expect(writes).toContain(`\x1b]52;c;${base64}\x07`);
   });
 });

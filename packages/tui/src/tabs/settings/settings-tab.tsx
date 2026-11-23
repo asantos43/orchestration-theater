@@ -9,7 +9,7 @@ import type {
   ConfigEditBody,
   StartProfileLoginResult,
 } from '@otheater/protocol';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text } from 'ink';
 import { spawn } from 'node:child_process';
 import {
   createElement,
@@ -31,7 +31,7 @@ import { Section } from '../../layout/section.js';
 import { breakLine, cellWidth, fit, wrapText } from '../../layout/text.js';
 import { COLOR, paint } from '../../layout/theme.js';
 import { isRemote } from '../../mouse/clipboard.js';
-import { useCopyToClipboard } from '../../mouse/index.js';
+import { useCopyToClipboard, useSuspendTerminal } from '../../mouse/index.js';
 import {
   hyperlink,
   openUrl,
@@ -226,7 +226,9 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const { stores, keymap, capture, openAssistant, settings } = useTabHost();
   const copyToClipboard = useCopyToClipboard();
   const scenarioId = content.scenarioId;
-  const { suspendTerminal } = useApp();
+  // The login of the client takes the terminal: the mouse reports go off while it runs and on again
+  // after, since a client may turn them off when it ends (only the keys would answer otherwise).
+  const suspendTerminal = useSuspendTerminal();
   const { afterKey } = useRenderControl();
   const api = useMemo(() => options.api ?? apiOf(stores.client), [options.api, stores]);
   const now = options.now ?? Date.now;
