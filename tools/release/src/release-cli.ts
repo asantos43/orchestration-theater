@@ -13,7 +13,14 @@ import {
   type ReleaseChannel,
 } from './manifest.js';
 import { repoRoot } from './resolve.js';
-import { checkProductionKey, generateEphemeralKey, signManifest, SigningKeyError } from './sign.js';
+import {
+  checkProductionKey,
+  generateEphemeralKey,
+  signManifest,
+  signManifestSshsig,
+  SigningKeyError,
+  SSHSIG_NAMESPACE,
+} from './sign.js';
 import { ReleaseVerifyError, verifyRelease } from './verify.js';
 
 /**
@@ -26,19 +33,24 @@ import { ReleaseVerifyError, verifyRelease } from './verify.js';
 export const RELEASE_USAGE = `  ephemeral-key --out <dir>
       Makes an Ed25519 pair for the rehearsal: ephemeral-private.pem (mode 0600) and ephemeral-public.pem.
   assemble --dir <dir> --version <x.y.z> --channel <stable|beta> [--out <file>] [--config <file>]
-           [--schemas-from-build] [--min-version <x.y.z>]
+           [--schemas-from-build] [--min-version <x.y.z>] [--valid-days <n|none>]
       Writes manifest.json (default <dir>/manifest.json) from the files in <dir>: otheater-<platform>[.exe],
       THIRD_PARTY_NOTICES-<platform>.md and OTheater-<version>-win32-x64.msi. Every platform of the config
       needs its executable. --schemas-from-build reads the schema versions from the built daemon.
-  sign --manifest <file> (--key-file <pem> | --key-env <NAME>) [--out <file>]
-      Writes the Ed25519 signature (base64) of the exact bytes of the manifest (default <manifest>.sig).
+      --valid-days sets how long the manifest is valid ("expires"; default manifestValidityDays of the
+      config, 365; "none" writes no expiry).
+  sign --manifest <file> (--key-file <pem> | --key-env <NAME>) [--out <file>] [--sshsig-out <file>]
+      Writes the Ed25519 signature (base64) of the exact bytes of the manifest (default <manifest>.sig)
+      and the SSHSIG signature of the same bytes with the same key (default <manifest>.sshsig, namespace
+      ${SSHSIG_NAMESPACE}), which \`ssh-keygen -Y verify\` reads (N288).
   verify --manifest <file> --public-key <pem> [--sig <file>] [--dir <dir>]
       Checks the signature and the manifest as the daemon does and, with --dir, every file it lists.
   check-key --key-env <NAME> --public-key <pem>
       The checks before a production signature: the secret exists, its public key is the one of the
       repository, and the file is not the PLACEHOLDER.
-  embed-key --script <install.sh> --public-key <pem> --out <file>
-      Writes install.sh with the public key embedded.
+  embed-key --script <install.sh> --public-key <pem> --out <file> [--manifest <file>]
+      Writes install.sh with the public key embedded (and its ssh-ed25519 line). With --manifest the
+      SHA-256 of that manifest is pinned in the script too (the "pinned" verifier of N288).
 `;
 
 export const RELEASE_COMMANDS = [
@@ -143,6 +155,7 @@ async function run(
         config: { type: 'string' },
         'schemas-from-build': { type: 'boolean' },
         'min-version': { type: 'string' },
+        'valid-days': { type: 'string' },
       },
       strict: true,
     });
@@ -157,6 +170,16 @@ async function run(
     const schemas: AssembleOptions['schemas'] =
       values['schemas-from-build'] === true ? await readOwnSchemas(root) : undefined;
     const out = path.resolve(values.out ?? path.join(dir, 'manifest.json'));
+    let validityDays: number | null = config.manifestValidityDays;
+    if (values['valid-days'] !== undefined) {
+      if (values['valid-days'] === 'none') {
+        validityDays = null;
+      } else if (/^[1-9][0-9]{0,3}$/u.test(values['valid-days'])) {
+        validityDays = Number(values['valid-days']);
+      } else {
+        throw new UsageError('--valid-days must be a whole number of days or "none"');
+      }
+    }
     const { manifest } = await assembleFromDirectory({
       dir,
       out,
@@ -165,9 +188,10 @@ async function run(
       requiredPlatforms: config.targets,
       schemas,
       minVersion: values['min-version'],
+      validityDays,
     });
     log(
-      `${out}: ${manifest.version} (${manifest.channel}), ${String(manifest.assets.length)} assets`,
+      `${out}: ${manifest.version} (${manifest.channel}), ${String(manifest.assets.length)} assets, ${manifest.expires === undefined ? 'no expiry' : `expires ${manifest.expires}`}`,
     );
     for (const asset of manifest.assets)
       log(`  ${asset.platform} ${asset.kind} ${asset.name} ${String(asset.size)} bytes`);
@@ -181,6 +205,7 @@ async function run(
         'key-file': { type: 'string' },
         'key-env': { type: 'string' },
         out: { type: 'string' },
+        'sshsig-out': { type: 'string' },
       },
       strict: true,
     });
@@ -189,8 +214,11 @@ async function run(
     if (privatePem === undefined || privatePem.trim() === '')
       throw new UsageError('the signing key is empty or missing');
     const out = path.resolve(values.out ?? `${manifest}.sig`);
-    await writeFile(out, signManifest(await readFile(manifest), privatePem));
-    log(`signed ${manifest} -> ${out}`);
+    const sshsigOut = path.resolve(values['sshsig-out'] ?? `${manifest}.sshsig`);
+    const bytes = await readFile(manifest);
+    await writeFile(out, signManifest(bytes, privatePem));
+    await writeFile(sshsigOut, signManifestSshsig(bytes, privatePem));
+    log(`signed ${manifest} -> ${out} and ${sshsigOut}`);
     return 0;
   }
   if (command === 'verify') {
@@ -248,6 +276,7 @@ async function run(
         script: { type: 'string' },
         'public-key': { type: 'string' },
         out: { type: 'string' },
+        manifest: { type: 'string' },
       },
       strict: true,
     });
@@ -255,9 +284,12 @@ async function run(
     await embedPublicKeyInFile({
       script: path.resolve(need(values.script, '--script')),
       publicKeyFile: path.resolve(need(values['public-key'], '--public-key')),
+      manifestFile: values.manifest === undefined ? undefined : path.resolve(values.manifest),
       out,
     });
-    log(`public key embedded in ${out}`);
+    log(
+      `public key embedded in ${out}${values.manifest === undefined ? '' : ' (manifest hash pinned)'}`,
+    );
     return 0;
   }
   throw new UsageError(`unknown command ${command}`);

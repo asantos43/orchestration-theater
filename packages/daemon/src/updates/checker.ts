@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { KeyObject } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { Cancelled, type Clock } from '@otheater/core';
 import {
@@ -16,9 +17,16 @@ import type { Logger } from '../logger.js';
 import { situationSubject, type SituationSink } from '../situations.js';
 import { phaseOf, UpdateStop } from './errors.js';
 import type { UpdateInstallKind } from './install.js';
-import { assetFor, parseManifest } from './manifest.js';
+import { assetFor, parseManifest, type UpdateManifest } from './manifest.js';
+import {
+  checkChannel,
+  checkExpiry,
+  checkManifestPolicy,
+  checkMinVersion,
+  type ManifestPolicy,
+} from './policy.js';
 import type { UpdateSource } from './source.js';
-import type { UpdateStaging } from './staging.js';
+import type { StagedUpdate, UpdateStaging } from './staging.js';
 import { sha256OfFile, verifySignature, type PublicKeyResult } from './verify.js';
 
 /**
@@ -30,7 +38,8 @@ import { sha256OfFile, verifySignature, type PublicKeyResult } from './verify.js
  * 1. the manifest and its signature come from the origin;
  * 2. the signature is checked with the embedded key; only then is the manifest read;
  * 3. the channel must be the one asked for;
- * 4. a version that is not newer than the installed one is refused (a replayed manifest);
+ * 4. a version that is not newer than the installed one is refused (a replayed manifest); a newer
+ *    one must also be in date (`expires`, P8a) and within `minVersion`;
  * 5. the executable of the platform is downloaded to a name no one reads;
  * 6. its size and its SHA-256 must be the ones of the manifest (which the signature covers);
  * 7. only then is it stored, as `ready`.
@@ -221,17 +230,88 @@ export class UpdateChecker {
     this.#nextAt = null;
   }
 
-  /** A version stored by an earlier run is `ready` again, if it is still newer than this one. */
+  /**
+   * A version stored by an earlier run is `ready` again, if it is still newer than this one and
+   * still passes what a new one must: the signature, and the channel, the minimum version and the
+   * expiry against the configuration and the clock of now (P8a). The stored files are not trusted
+   * for having passed once: the channel may have been changed, or the manifest may have aged. A
+   * version that does not pass is dropped and told like any refusal.
+   */
   async #restore(): Promise<void> {
     const staged = await this.#o.staging.ready();
     await this.#o.staging.sweep();
-    if (staged !== undefined && semver.gt(staged.version, this.#current)) {
-      this.#found = staged.version;
-      this.#setReady(staged.version, true);
-    } else if (staged !== undefined) {
+    if (staged === undefined) return;
+    if (!semver.gt(staged.version, this.#current)) {
       // Already installed (or older): nothing waits for it, and it takes up the disk.
       await this.#o.staging.drop(staged.version);
+      return;
     }
+    const { mode } = this.#effective();
+    // Without a key nothing can be checked: it is not offered, and it stays for a build that has one.
+    if (mode === 'off' || this.#o.key.state !== 'valid') return;
+    try {
+      await this.#checkStaged(staged, this.#o.key.key);
+    } catch (error) {
+      await this.#o.staging.drop(staged.version);
+      this.#stopped(error, mode, { manual: false, version: staged.version });
+      return;
+    }
+    this.#found = staged.version;
+    this.#setReady(staged.version, true);
+  }
+
+  async #checkStaged(staged: StagedUpdate, key: KeyObject): Promise<void> {
+    const { bytes, signature } = await this.#o.staging.readManifest(staged.version);
+    if (!verifySignature(bytes, signature, key)) {
+      throw new UpdateStop(
+        'signature',
+        'the stored manifest does not check any more',
+        staged.version,
+      );
+    }
+    const manifest = parseManifest(bytes);
+    if (manifest.version !== staged.version) {
+      throw new UpdateStop(
+        'bad_manifest',
+        'the stored manifest is not the version',
+        staged.version,
+      );
+    }
+    const asset = assetFor(manifest, this.#o.platform);
+    if (asset?.sha256 !== staged.asset.sha256 || asset.size !== staged.asset.size) {
+      throw new UpdateStop(
+        'sha256',
+        'the stored file is not the one of the manifest',
+        staged.version,
+      );
+    }
+    this.#noticeNoExpiry(manifest, checkManifestPolicy(manifest, this.#policy()));
+  }
+
+  /** The policy of now (the configuration and the clock). */
+  #policy(): ManifestPolicy {
+    return {
+      channel: this.#o.settings.channel,
+      current: this.#current,
+      expiry: this.#o.settings.manifest_expiry,
+      now: this.#o.clock.now(),
+    };
+  }
+
+  /** `update_no_expiry`: told once per version, so a manifest that never expires is a visible fact and not a nag. */
+  #noticeNoExpiry(manifest: UpdateManifest, result: { readonly noExpiry: boolean }): void {
+    if (!result.noExpiry) return;
+    this.#o.logger.warn(
+      { version: manifest.version },
+      'the manifest has no expires: it never runs out (updates.manifest_expiry: enforce)',
+    );
+    if (this.#told.has(`no_expiry:${manifest.version}`)) return;
+    this.#told.add(`no_expiry:${manifest.version}`);
+    this.#o.situations.record('daemon.notice', {
+      kind: 'update_no_expiry',
+      subject: situationSubject(manifest.version),
+      detail: this.#o.settings.manifest_expiry,
+    });
   }
 
   /** A search now, at the request of the Producer. A search already going on is the answer. */
@@ -285,13 +365,7 @@ export class UpdateChecker {
     const manifest = parseManifest(files.manifest);
     context.version = manifest.version;
     // 3. 4. The channel, and no downgrade or replay.
-    if (manifest.channel !== settings.channel) {
-      throw new UpdateStop(
-        'wrong_channel',
-        `the manifest is of channel ${manifest.channel}`,
-        manifest.version,
-      );
-    }
+    checkChannel(manifest, this.#policy());
     if (semver.eq(manifest.version, this.#current)) {
       this.#found = null;
       this.#setReady(null, false);
@@ -304,13 +378,10 @@ export class UpdateChecker {
         manifest.version,
       );
     }
-    if (manifest.minVersion !== undefined && semver.lt(this.#current, manifest.minVersion)) {
-      throw new UpdateStop(
-        'below_min_version',
-        `${manifest.version} needs at least ${manifest.minVersion}`,
-        manifest.version,
-      );
-    }
+    // Only a manifest that would be acted on has to be in date: a daemon that is up to date does not
+    // go on refusing the latest release every day after its `expires`.
+    checkMinVersion(manifest, this.#policy());
+    this.#noticeNoExpiry(manifest, checkExpiry(manifest, this.#policy()));
     this.#found = manifest.version;
     this.#tell('found', manifest.version, null, mode, `found:${manifest.version}`, context.manual);
     if (mode === 'check') return 'found';

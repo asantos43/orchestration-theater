@@ -45,6 +45,7 @@ import {
   UiTuiMouseConfigSchema,
   UPDATE_CHANNELS,
   UPDATE_APPLY_WHEN,
+  UPDATE_MANIFEST_EXPIRY_MODES,
   UPDATE_MODES,
   UPDATE_ROLLBACK_MODES,
   UPDATE_SOURCES,
@@ -340,6 +341,17 @@ export const ADAPTER_INSTALL_MODES = ['auto', 'ask', 'command', 'off'] as const;
 export type AdapterInstallMode = (typeof ADAPTER_INSTALL_MODES)[number];
 /** `clients.adapters.registry` default: where the pinned tarballs are downloaded from. */
 export const DEFAULT_ADAPTER_REGISTRY = 'https://registry.npmjs.org';
+/** `clients.adapters.redirect_max` default. */
+export const DEFAULT_ADAPTER_REDIRECT_MAX = 3;
+/** `clients.adapters.tar_max_entries` default. */
+export const DEFAULT_ADAPTER_TAR_MAX_ENTRIES = 20_000;
+/** `clients.adapters.redirect_hosts`: a bare host name, no scheme, port, path or wildcard. */
+const HostnameSchema = z
+  .string()
+  .regex(
+    /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/u,
+    'expected a lower-case host name (no scheme, port, path or wildcard)',
+  );
 /** `clients.<id>.adapter`: `managed` (the one OTheater installs) or `path` (the one found in `PATH`); else an absolute path. */
 export const ADAPTER_SOURCES = ['managed', 'path'] as const;
 
@@ -1231,6 +1243,22 @@ export const ClientAdaptersSchema = z.strictObject({
   install: z.enum(ADAPTER_INSTALL_MODES).default('auto'),
   /** The npm registry the pinned tarballs come from (never `resolved` of the lock). */
   registry: z.url().default(DEFAULT_ADAPTER_REGISTRY),
+  /**
+   * [proposta] Host names a tarball download may be redirected to, besides the registry's own host
+   * (which is always allowed). Default none: the npm registry serves its tarballs itself, so a
+   * redirect to another host is refused. A mirror that hands the files to a CDN lists the CDN here.
+   * Every hop must still be `https` (or `http` on the loopback), and the `sha512` of the lock is
+   * checked at the end whatever the path was.
+   */
+  redirect_hosts: z.array(HostnameSchema).default([]),
+  /** [proposta] Most redirects one download follows. Default 3. `0` refuses every redirect. */
+  redirect_max: z.number().int().min(0).max(10).default(DEFAULT_ADAPTER_REDIRECT_MAX),
+  /**
+   * [proposta] Most entries (files, directories and the rest) one tarball may hold. Default 20000;
+   * a tarball with more is refused as `archive` before anything is written. `0` is not a mode: the
+   * smallest limit is 1.
+   */
+  tar_max_entries: z.number().int().min(1).max(1_000_000).default(DEFAULT_ADAPTER_TAR_MAX_ENTRIES),
 });
 
 /**
@@ -1735,6 +1763,12 @@ export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
  * - `backup_before_migration` (P8; default `true`): when the manifest announces a store or
  *   telemetry schema newer than the daemon's, make a backup first (the rollback restores it).
  *   `false` skips it.
+ * - `manifest_expiry` (Phase 11, P8a; default `enforce`): what to do with the `expires` of the signed
+ *   manifest (the release tool writes it; the validity is `manifestValidityDays` of the release
+ *   config). `enforce` refuses an expired manifest (`bad_manifest`) and accepts one with no
+ *   `expires` (a release made before the field) with a notice, `update_no_expiry`; `require`
+ *   refuses one with no `expires` too; `off` ignores it. Only a manifest that would be acted on
+ *   is checked, so a daemon that is up to date does not complain when the latest release ages.
  * - `health_timeout` (P8; default `60s`): how long the applier waits for the new daemon to answer
  *   `GET /v1/health`; then it watches 30 s more without a drop.
  *
@@ -1760,6 +1794,7 @@ export const UpdatesConfigSchema = z
     }).prefault('24h'),
     rollback: z.enum(UPDATE_ROLLBACK_MODES).default('auto'),
     backup_before_migration: z.boolean().default(true),
+    manifest_expiry: z.enum(UPDATE_MANIFEST_EXPIRY_MODES).default('enforce'),
     health_timeout: DurationSchema.refine((value) => value >= 1000, {
       message: 'the shortest health_timeout is 1s',
     }).prefault('60s'),

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { sha256File, type NativeAsset } from './assets.js';
-import { assetFiles, bundle, readBuildVersion } from './bundle.js';
+import { assetFiles, bundle, readBuildVersion, readUpdatePublicKey } from './bundle.js';
 import type { ReleaseConfig } from './config.js';
 import { createExecutable } from './inject.js';
 import { noticesFileName, writeNotices } from './notices.js';
@@ -19,6 +19,8 @@ export interface BuildOptions {
   /** The Node binary to inject into. Default: `OT_SEA_NODE`, else the one running the build. */
   readonly nodeBinary?: string | undefined;
   readonly minify?: boolean | undefined;
+  /** The public key file to embed. Default `<root>/tools/release/keys/update-public-key.pem`. */
+  readonly publicKeyFile?: string | undefined;
   readonly log?: ((line: string) => void) | undefined;
 }
 
@@ -70,6 +72,11 @@ export async function buildTarget(options: BuildOptions): Promise<BuildRecord> {
   const nodeBinary = options.nodeBinary ?? process.env.OT_SEA_NODE ?? process.execPath;
   const node = nodeVersionOf(nodeBinary);
   const version = readBuildVersion(options.root, options.config.versionOverride);
+  // Before anything is written: a build with no usable key file fails here, with no fallback.
+  const updatePublicKey = readUpdatePublicKey(
+    options.publicKeyFile ??
+      path.join(options.root, 'tools', 'release', 'keys', 'update-public-key.pem'),
+  );
   const work = path.join(options.outDir, options.target);
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
@@ -82,6 +89,7 @@ export async function buildTarget(options: BuildOptions): Promise<BuildRecord> {
     version,
     supportedInk: readSupportedInk(options.root),
     minify: options.minify,
+    updatePublicKey,
   });
 
   const assets = assetFiles(options.root, bundled.natives);

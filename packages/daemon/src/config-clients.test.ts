@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_REGISTRY } from './adapters/install.js';
-import { DEFAULT_ADAPTER_REGISTRY, parseConfig } from './config.js';
+import {
+  DEFAULT_REDIRECT_MAX,
+  DEFAULT_REGISTRY,
+  DEFAULT_TAR_MAX_ENTRIES,
+} from './adapters/install.js';
+import {
+  DEFAULT_ADAPTER_REDIRECT_MAX,
+  DEFAULT_ADAPTER_REGISTRY,
+  DEFAULT_ADAPTER_TAR_MAX_ENTRIES,
+  parseConfig,
+} from './config.js';
 
 describe('clients.* and security.* of the config', () => {
   it('gives the defaults of every client when nothing is written', () => {
@@ -239,7 +248,41 @@ describe('clients.adapters.* and clients.<id>.adapter (P13, N254 revised)', () =
     expect(parseConfig('').clients.adapters).toEqual({
       install: 'auto',
       registry: 'https://registry.npmjs.org',
+      redirect_hosts: [],
+      redirect_max: 3,
+      tar_max_entries: 20_000,
     });
+  });
+
+  it("keeps the redirect and archive defaults of the config equal to the installer's", () => {
+    expect(DEFAULT_ADAPTER_REDIRECT_MAX).toBe(DEFAULT_REDIRECT_MAX);
+    expect(DEFAULT_ADAPTER_TAR_MAX_ENTRIES).toBe(DEFAULT_TAR_MAX_ENTRIES);
+  });
+
+  it('takes redirect_hosts, redirect_max (0 refuses every redirect) and tar_max_entries', () => {
+    const { adapters } = parseConfig(
+      'clients:\n  adapters:\n    redirect_hosts: [cdn.example.test, files.example.test]\n    redirect_max: 0\n    tar_max_entries: 500\n',
+    ).clients;
+    expect(adapters.redirect_hosts).toEqual(['cdn.example.test', 'files.example.test']);
+    expect(adapters.redirect_max).toBe(0);
+    expect(adapters.tar_max_entries).toBe(500);
+  });
+
+  it('refuses a redirect host with a scheme, a port, a path, a wildcard or upper case, and limits out of range', () => {
+    for (const text of [
+      'clients:\n  adapters:\n    redirect_hosts: ["https://cdn.example.test"]\n',
+      'clients:\n  adapters:\n    redirect_hosts: ["cdn.example.test:8443"]\n',
+      'clients:\n  adapters:\n    redirect_hosts: ["cdn.example.test/x"]\n',
+      'clients:\n  adapters:\n    redirect_hosts: ["*.example.test"]\n',
+      'clients:\n  adapters:\n    redirect_hosts: ["CDN.example.test"]\n',
+      'clients:\n  adapters:\n    redirect_max: -1\n',
+      'clients:\n  adapters:\n    redirect_max: 11\n',
+      'clients:\n  adapters:\n    redirect_max: 1.5\n',
+      'clients:\n  adapters:\n    tar_max_entries: 0\n',
+      'clients:\n  adapters:\n    tar_max_entries: 1000001\n',
+    ]) {
+      expect(() => parseConfig(text), text).toThrow(InvalidInput);
+    }
   });
 
   it("keeps the registry default of the config equal to the installer's", () => {

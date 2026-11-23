@@ -67,6 +67,15 @@ const detail = z.string().min(1).max(512).nullable();
  *   state as it is (`detail`: the reason). `update_ask`: the `max_wait` of `idle` ended and the
  *   Producer chooses, by `POST /v1/updates/apply`, between `park` ("estaciona e aplica") and
  *   `wait` ("espera mais") (`detail`: the two options, `park|wait`).
+ * - `update_no_expiry` (Phase 11, P8a; [proposta]): the manifest of the version that was acted on has
+ *   no `expires` (a release made before the field existed), so it never runs out (`subject`: the
+ *   version; `detail`: `updates.manifest_expiry`). With `require` it is refused instead
+ *   (`update_rejected`, reason `bad_manifest`).
+ * - `update_untrusted_journal` (Phase 11, P8a; [proposta]): the journal of an update, the file the
+ *   applier and the daemon share, did not pass the checks (owner, permissions, a manifest signed by
+ *   the embedded key that names the executable it points to), so nothing was done with it
+ *   (`subject`: the version it names, or `none`; `detail`: the reason, `file`, `no_proof`,
+ *   `proof_mismatch`, `bad_signature`, ...).
  * - The managed ACP adapters (Phase 10, P13; N254 revised; [proposta]); `subject` is the adapter
  *   (`claude-agent-acp`, `codex-acp`) and `detail` says the rest:
  *   - `adapter_installing`: the official client is on `PATH`, the adapter is not installed and
@@ -110,6 +119,8 @@ export const DAEMON_NOTICE_KINDS = [
   'update_rolled_back',
   'update_failed',
   'update_ask',
+  'update_no_expiry',
+  'update_untrusted_journal',
   'adapter_installing',
   'adapter_installed',
   'adapter_install_failed',
