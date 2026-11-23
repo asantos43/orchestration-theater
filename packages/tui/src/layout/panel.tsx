@@ -3,6 +3,7 @@ import { Box, type DOMElement } from 'ink';
 import { useRef, type ReactNode } from 'react';
 import { Text } from './themed-text.js';
 import { useMouseTarget } from '../mouse/index.js';
+import { edgeMargin, frameInner, useDensity } from './density-context.js';
 import { Frame } from './frame.js';
 import { Hints, type Hint } from './shortcut-bar.js';
 import { layoutTabBar, type TabLabel } from './tab-bar.js';
@@ -10,9 +11,16 @@ import { panelBarRight, tabBarHit, type TabBarHit } from './tab-bar-hit.js';
 import { cellWidth } from './text.js';
 import { TOKEN, paint } from './theme.js';
 
-/** Cells and rows left to the content of a panel of this size: the frame, the tab bar and the footer take the rest. */
-export function panelContentSize(width: number, height: number): { width: number; height: number } {
-  return { width: Math.max(0, width - 2), height: Math.max(0, height - 5) };
+/**
+ * Cells and rows left to the content of a panel of this size: the frame (with its margin, `pad`
+ * columns on each side), the tab bar and the footer take the rest.
+ */
+export function panelContentSize(
+  width: number,
+  height: number,
+  pad = 0,
+): { width: number; height: number } {
+  return { width: frameInner(width, pad), height: Math.max(0, height - 5) };
 }
 
 export interface PanelProps {
@@ -35,18 +43,21 @@ export interface PanelProps {
 
 /** The panel of tabs: the bar with its tabs, a line under it, the content of the active tab and a footer of hints. */
 export function Panel(props: PanelProps): ReactNode {
+  const { pad } = useDensity();
+  // The bar and the line under it go from border to border (`inner`); the tabs start after the margin.
   const inner = Math.max(0, props.width - 2);
   const right = panelBarRight(props.keys);
-  const left = Math.max(0, inner - cellWidth(right));
+  const left = Math.max(0, inner - pad - cellWidth(right));
   const bar = layoutTabBar(props.tabs, props.active, left);
   const used = bar.segments.reduce((total, segment) => total + cellWidth(segment.text), 0);
-  const gap = Math.max(0, inner - used - cellWidth(right));
-  const content = panelContentSize(props.width, props.height);
+  const gap = Math.max(0, inner - pad - used - cellWidth(right));
+  const content = panelContentSize(props.width, props.height, pad);
   const barRef = useRef<DOMElement>(null);
   const bodyRef = useRef<DOMElement>(null);
   useMouseTarget(barRef, {
     onClick: (point) => {
-      const hit = tabBarHit(props.tabs, props.active, props.keys, inner, point.x);
+      // The bar is counted from the border; the tabs start after the margin.
+      const hit = tabBarHit(props.tabs, props.active, props.keys, inner - pad, point.x - pad);
       if (hit !== undefined) props.onBarClick?.(hit);
     },
   });
@@ -56,9 +67,16 @@ export function Panel(props: PanelProps): ReactNode {
     },
   });
   return (
-    <Frame width={props.width} height={props.height} active={props.focused} onPress={props.onFocus}>
-      <Box ref={barRef} width={inner} height={1}>
+    <Frame
+      width={props.width}
+      height={props.height}
+      active={props.focused}
+      pad={pad}
+      onPress={props.onFocus}
+    >
+      <Box ref={barRef} width={inner} height={1} {...edgeMargin(pad)}>
         <Text wrap="truncate">
+          {' '.repeat(pad)}
           {bar.segments.map((segment) =>
             segment.id.startsWith('sep-') ? (
               <Text key={segment.id} dimColor>
@@ -82,12 +100,15 @@ export function Panel(props: PanelProps): ReactNode {
           <Text color={TOKEN.accent}>{right}</Text>
         </Text>
       </Box>
-      <Text color={props.focused ? TOKEN.borderActive : TOKEN.border} wrap="truncate">
-        {(bar.underline + '─'.repeat(Math.max(0, inner - cellWidth(bar.underline)))).slice(
-          0,
-          inner,
-        )}
-      </Text>
+      <Box {...edgeMargin(pad)}>
+        <Text color={props.focused ? TOKEN.borderActive : TOKEN.border} wrap="truncate">
+          {(
+            '─'.repeat(pad) +
+            bar.underline +
+            '─'.repeat(Math.max(0, inner - pad - cellWidth(bar.underline)))
+          ).slice(0, inner)}
+        </Text>
+      </Box>
       <Box
         ref={bodyRef}
         width={content.width}
@@ -97,7 +118,7 @@ export function Panel(props: PanelProps): ReactNode {
       >
         {props.children}
       </Box>
-      <Hints width={inner} hints={props.footer} />
+      <Hints width={content.width} hints={props.footer} bare={pad > 0} />
     </Frame>
   );
 }

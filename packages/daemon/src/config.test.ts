@@ -121,6 +121,7 @@ describe('parseConfig', () => {
       minPanelWidth: 30,
       chatStep: 2,
       scrollStep: 'half',
+      density: 'comfortable',
     });
   });
 

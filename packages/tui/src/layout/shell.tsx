@@ -56,6 +56,7 @@ import { computeGeometry, steppedChatWidth } from './geometry.js';
 import { Header } from './header.js';
 import { initialRepo, NewProjectPrompt } from './new-project.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
+import { DensityProvider, frameInner, useDensity } from './density-context.js';
 import { Panel, panelContentSize } from './panel.js';
 import type { TabBarHit } from './tab-bar-hit.js';
 import { scrollStepLines } from './scroll.js';
@@ -132,7 +133,16 @@ export type SetupGate = UiSetupSettings | 'pending';
 
 /** The screen of the TUI once the daemon answered: header, side bar, chat, panel of tabs and the bar of shortcuts. */
 export function Shell(props: ShellProps): ReactNode {
+  return (
+    <DensityProvider mode={props.tuning.density}>
+      <ShellBody {...props} />
+    </DensityProvider>
+  );
+}
+
+function ShellBody(props: ShellProps): ReactNode {
   const { stores, layout: layoutStore, keymap: tuiKeymap, tuning } = props;
+  const { pad } = useDensity();
   const { t } = useTranslation();
   const ut = useUiTranslate();
   const { exit } = useApp();
@@ -298,7 +308,7 @@ export function Shell(props: ShellProps): ReactNode {
     config: props.chat,
     scenarioId: selectedRow?.id,
     keymap: tuiKeymap,
-    width: Math.max(1, geometry.chat.width - 2),
+    width: Math.max(1, frameInner(geometry.chat.width, pad)),
     height: geometry.bodyHeight,
     active:
       focus === 'chat' &&
@@ -655,7 +665,7 @@ export function Shell(props: ShellProps): ReactNode {
     [stores, props.client, tuiKeymap, settings, props.now, setupApi],
   );
   const content =
-    geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height);
+    geometry.panel === undefined ? undefined : panelContentSize(geometry.panel.width, height, pad);
 
   if (assistant !== undefined && setupApi !== undefined) {
     return (
