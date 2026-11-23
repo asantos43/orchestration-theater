@@ -338,10 +338,34 @@ export class ChaosRig {
     return { how: 'point', crash, signal: exit.signal, census: this.census() };
   }
 
-  /** Starts a daemon and sends it `SIGKILL` `delayMs` after it said `STARTED`. */
-  async killAfter(delayMs: number, mode: StartOptions['mode'] = 'first'): Promise<KillResult> {
-    const child = this.start({ mode });
+  /**
+   * Starts a daemon and sends it `SIGKILL` `delayMs` after it said `STARTED`, a plain wall-clock
+   * instant. With `hold` the instant is measured from a signal instead: the fixture's test gate
+   * (`OT_CHILD_HOLD_LAUNCH`) lets the first `hold.allow` client launches through (the Producer's)
+   * and holds the next one, writing a `.held` marker; the kill comes `delayMs` after that marker.
+   * No client is spawned between the marker and the kill, so the outcome does not depend on how
+   * fast the machine is.
+   */
+  async killAfter(
+    delayMs: number,
+    mode: StartOptions['mode'] = 'first',
+    hold?: { readonly allow: number },
+  ): Promise<KillResult> {
+    const gate = join(this.runDir, 'hold-launch');
+    const child = this.start({
+      mode,
+      ...(hold === undefined
+        ? {}
+        : { env: { OT_CHILD_HOLD_LAUNCH: gate, OT_CHILD_HOLD_AFTER: String(hold.allow) } }),
+    });
     await child.line('STARTED', this.#lineTimeoutMs);
+    if (hold !== undefined) {
+      const deadline = Date.now() + this.#lineTimeoutMs;
+      while (!existsSync(`${gate}.held`)) {
+        if (Date.now() > deadline) throw new Error('The test gate never held a client launch.');
+        await sleep(10);
+      }
+    }
     await sleep(delayMs);
     child.process.kill('SIGKILL');
     const exit = await child.exited;

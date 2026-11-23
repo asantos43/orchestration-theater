@@ -78,13 +78,16 @@ async function killAtPointAndRecover(seed: number): Promise<Outcome> {
 }
 
 async function killAtInstantAndRecover(seed: number): Promise<Outcome> {
-  // The range is where the outcome is stable (docs/23, P1 "Como ficou"): from about 1.2 s on, a
-  // client may be spawned and the daemon killed before its `sessions` row is committed, and the
-  // restart cannot find that orphan. The finding is recorded there; it is not this test's to fix.
-  const { delayMs } = planInstant(seed, { minMs: 600, maxMs: 1000 });
+  // The instant is measured from a signal, not from the start: the Producer's client (the first
+  // launch) goes through and the fixture's test gate holds the next one (the Executor's), so the
+  // kill comes a random time after the gate holds it, and no new client exists at any instant of
+  // the window, on a slow or a fast machine. A wall-clock window cannot promise that: from the
+  // moment a client is spawned until its `sessions` row is committed the restart cannot find it,
+  // a known defect (docs/23, P1 "Como ficou") for P3 to fix, not this test.
+  const { delayMs } = planInstant(seed, { minMs: 100, maxMs: 1500 });
   const rig = await ChaosRig.create();
   try {
-    const killed = await rig.killAfter(delayMs);
+    const killed = await rig.killAfter(delayMs, 'first', { allow: 1 });
     expect(killed.signal).toBe('SIGKILL');
     // The kill came at a random instant: whatever the daemon had done, the next start settles it.
     const report = await rig.restart();

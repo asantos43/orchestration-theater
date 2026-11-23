@@ -10,6 +10,11 @@
  * - `OT_CHILD_DATA_DIR`, `OT_CHILD_REPO`, `OT_CHILD_JOURNAL`, `OT_CHILD_STATE_DIR`: the folders;
  * - `OT_CHILD_LEDGER`: the file where it writes, with `fsync`, the id of every event and side effect
  *   it has seen committed (the ledger of I2 and I8);
+ * - `OT_CHILD_HOLD_LAUNCH`, `OT_CHILD_HOLD_AFTER`: a test gate on the client launches (read here and
+ *   never by the daemon). The first `OT_CHILD_HOLD_AFTER` launches (default 0) go through; each later
+ *   one writes `<OT_CHILD_HOLD_LAUNCH>.held` and waits until the file `OT_CHILD_HOLD_LAUNCH` exists
+ *   (the harness never creates it). The `.held` file is the signal a random kill is measured from, so
+ *   the kill lands before the client exists whatever the speed of the machine;
  * - `OT_CHILD_INJECT`: the value of `faults.inject` (default `env`; a test sets `off` to prove nothing fires);
  * - `OT_CHILD_DAEMON_DIST`, `OT_CHILD_CORE_TESTING`, `OT_CHILD_FAKE_AGENT`: where the compiled code is;
  * - `OT_TEST_CRASH_AT=<point>[:<detail>][#n]`: with `faults.inject: env` in its config (the one key
@@ -38,6 +43,33 @@ const { setCrashDescriber } = await import(pathToFileURL(dist + '/chaos/crash-po
 
 const fake = new testing.FakeCodeHost();
 let daemon;
+
+/**
+ * The launcher of the platform, with a test gate in front of launch (see OT_CHILD_HOLD_LAUNCH above).
+ * Everything else (the orphan kill included) is the real one.
+ */
+function gated(launcher) {
+  const gate = env.OT_CHILD_HOLD_LAUNCH;
+  if (launcher === undefined || gate === undefined || gate === '') return launcher;
+  let allowed = Number(env.OT_CHILD_HOLD_AFTER ?? '0');
+  return new Proxy(launcher, {
+    get(target, prop) {
+      if (prop === 'launch') {
+        return async (opts) => {
+          if (allowed > 0) {
+            allowed -= 1;
+          } else {
+            appendFileSync(gate + '.held', '');
+            while (!existsSync(gate)) await sleep(20);
+          }
+          return target.launch(opts);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
 
 function journal(entry) {
   appendFileSync(env.OT_CHILD_JOURNAL, JSON.stringify(entry) + '\n');
@@ -117,7 +149,7 @@ daemon = await startDaemon({
   overrides: {
     clock: new testing.FakeClock(),
     vault: new testing.InMemorySecretVault(),
-    launcher: defaultLauncher(),
+    launcher: gated(defaultLauncher()),
     codeHost,
   },
   clients: (parts) => [
