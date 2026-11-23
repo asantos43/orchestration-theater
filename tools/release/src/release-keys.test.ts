@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   checkProductionKey,
   generateEphemeralKey,
   publicPemOf,
   signManifest,
+  signManifestSshsig,
   SigningKeyError,
+  SSHSIG_NAMESPACE,
+  sshPublicKeyLine,
 } from './sign.js';
 
 // Every key here is made by the test, at run time: no key, not even a test one, is in the repository.
@@ -97,5 +104,76 @@ describe('checkProductionKey', () => {
       expect(result.message).not.toContain('BEGIN');
       expect(result.message).not.toContain(secret.privatePem.split('\n')[1] ?? 'x');
     }
+  });
+});
+
+// N288: the SSHSIG of the manifest is checked by the real `ssh-keygen -Y verify`, the way install.sh
+// does. Without ssh-keygen (or one without -Y) these tests do not run, and say why.
+const sshKeygen = spawnSync('ssh-keygen', ['-Y', 'verify'], { encoding: 'utf8', timeout: 20_000 });
+const SSH_KEYGEN_VERIFIES =
+  sshKeygen.error === undefined &&
+  !/invalid option|illegal option|unknown option/iu.test(`${sshKeygen.stdout}${sshKeygen.stderr}`);
+
+describe('the SSHSIG signature', () => {
+  it('is armored as ssh-keygen writes it, and the ssh-ed25519 line has the same key', () => {
+    const { privatePem, publicPem } = generateEphemeralKey();
+    const armored = signManifestSshsig(Buffer.from('{}'), privatePem);
+    expect(armored).toMatch(
+      /^-----BEGIN SSH SIGNATURE-----\n([A-Za-z0-9+/=]{1,70}\n)+-----END SSH SIGNATURE-----\n$/u,
+    );
+    expect(sshPublicKeyLine(publicPem)).toMatch(/^ssh-ed25519 [A-Za-z0-9+/]+=*$/u);
+    expect(() => sshPublicKeyLine('not a key')).toThrow(SigningKeyError);
+  });
+
+  describe.skipIf(!SSH_KEYGEN_VERIFIES)('with ssh-keygen -Y verify', () => {
+    const verify = async (
+      manifest: Uint8Array,
+      sshsig: string,
+      ssh: string,
+      namespace: string = SSHSIG_NAMESPACE,
+    ): Promise<number | null> => {
+      const dir = await mkdtemp(path.join(tmpdir(), 'ot-sshsig-'));
+      try {
+        const signers = path.join(dir, 'allowed_signers');
+        const sigFile = path.join(dir, 'manifest.json.sshsig');
+        await writeFile(signers, `otheater namespaces="${SSHSIG_NAMESPACE}" ${ssh}\n`);
+        await writeFile(sigFile, sshsig);
+        return spawnSync(
+          'ssh-keygen',
+          ['-Y', 'verify', '-f', signers, '-I', 'otheater', '-n', namespace, '-s', sigFile],
+          { input: manifest, timeout: 20_000 },
+        ).status;
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    };
+
+    it('accepts the signature of the manifest it signed', async () => {
+      const { privatePem, publicPem } = generateEphemeralKey();
+      const manifest = Buffer.from('{"schema": 1}\n');
+      const sshsig = signManifestSshsig(manifest, privatePem);
+      expect(await verify(manifest, sshsig, sshPublicKeyLine(publicPem))).toBe(0);
+    });
+
+    it('rejects a manifest changed after it was signed', async () => {
+      const { privatePem, publicPem } = generateEphemeralKey();
+      const sshsig = signManifestSshsig(Buffer.from('{"schema": 1}\n'), privatePem);
+      const status = await verify(
+        Buffer.from('{"schema":  1}\n'),
+        sshsig,
+        sshPublicKeyLine(publicPem),
+      );
+      expect(status).not.toBe(0);
+    });
+
+    it('rejects another key and another namespace', async () => {
+      const mine = generateEphemeralKey();
+      const other = generateEphemeralKey();
+      const manifest = Buffer.from('{}');
+      const sshsig = signManifestSshsig(manifest, mine.privatePem);
+      expect(await verify(manifest, sshsig, sshPublicKeyLine(other.publicPem))).not.toBe(0);
+      const wrong = signManifestSshsig(manifest, mine.privatePem, 'file');
+      expect(await verify(manifest, wrong, sshPublicKeyLine(mine.publicPem))).not.toBe(0);
+    });
   });
 });

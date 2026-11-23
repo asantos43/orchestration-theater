@@ -44,6 +44,13 @@ export const UPDATE_APPLY_WHEN = ['idle', 'park', 'next_start'] as const;
 /** `updates.rollback` (P8): whether a version that does not come up is taken back by the applier. */
 export const UPDATE_ROLLBACK_MODES = ['auto', 'off'] as const;
 /**
+ * `updates.manifest_expiry` (Phase 11, P8a; [proposta]): what the daemon does with the optional
+ * `expires` of the signed manifest. `enforce`: an expired manifest is refused, one with no `expires`
+ * is accepted with a notice; `require`: one with no `expires` is refused too; `off`: `expires` is
+ * ignored.
+ */
+export const UPDATE_MANIFEST_EXPIRY_MODES = ['enforce', 'require', 'off'] as const;
+/**
  * Where the apply step is:
  * - `none`: nothing is waiting to be applied;
  * - `waiting`: `idle`, waiting for the attempts to end (no new work starts meanwhile);

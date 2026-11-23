@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { chmod, copyFile, mkdir, readFile, rm } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Cancelled, type Clock } from '@otheater/core';
 import type {
@@ -14,10 +14,12 @@ import { situationSubject, type SituationSink } from '../../situations.js';
 import { phaseOf, UpdateStop } from '../errors.js';
 import { assetFor, parseManifest, type UpdateManifest } from '../manifest.js';
 import type { StagedUpdate, UpdateStaging } from '../staging.js';
-import { sha256OfFile, verifySignature, type PublicKeyResult } from '../verify.js';
+import { sha256Hex, sha256OfFile, verifySignature, type PublicKeyResult } from '../verify.js';
+import { checkManifestPolicy } from '../policy.js';
 import { FINAL_STEPS, readJournal, writeJournal, type UpdateJournal } from './journal.js';
 import type { InstallLayout } from './layout.js';
 import { migrationTestHook } from './test-migration.js';
+import { checkJournalTrust, PROOF_MANIFEST, PROOF_SIGNATURE, type JournalTrust } from './trust.js';
 
 /**
  * Applying the version that is ready (Phase 10, P8; architecture 5.21, N73). The checker (P7) says
@@ -361,9 +363,12 @@ export class ApplyCoordinator {
   }
 
   /** The staged version, checked again: it sat on disk since the search, and the apply trusts nothing. */
-  async #verifyStaged(
-    version: string,
-  ): Promise<{ staged: StagedUpdate; manifest: UpdateManifest }> {
+  async #verifyStaged(version: string): Promise<{
+    staged: StagedUpdate;
+    manifest: UpdateManifest;
+    manifestBytes: Buffer;
+    signature: string;
+  }> {
     const staged = await this.#o.staging.ready();
     if (staged?.version !== version) {
       throw new UpdateStop('storage', 'the stored version is gone', version);
@@ -388,13 +393,20 @@ export class ApplyCoordinator {
     if (manifest.version !== version || asset === undefined) {
       throw new UpdateStop('bad_manifest', 'the stored manifest is not the version', version);
     }
+    // The channel, the minimum version and the expiry of now: the stored version has sat on disk (P8a).
+    checkManifestPolicy(manifest, {
+      channel: this.#o.settings.channel,
+      current: this.#o.version,
+      expiry: this.#o.settings.manifest_expiry,
+      now: this.#o.clock.now(),
+    });
     if (asset.sha256 !== staged.asset.sha256 || asset.size !== staged.asset.size) {
       throw new UpdateStop('sha256', 'the stored file is not the one of the manifest', version);
     }
     if ((await sha256OfFile(staged.file)) !== asset.sha256) {
       throw new UpdateStop('sha256', 'the stored file changed on disk', version);
     }
-    return { staged, manifest };
+    return { staged, manifest, manifestBytes, signature };
   }
 
   /** Whether the new version may need a database this one cannot read back (so a backup is made). */
@@ -422,15 +434,18 @@ export class ApplyCoordinator {
     let applierExe: string;
     try {
       const busy = await readJournal(layout.journal);
+      // Only a journal that is backed by a signed manifest can hold the way: a forged one with a
+      // live pid would otherwise stop every update for good.
       if (
         busy.kind === 'ok' &&
         !FINAL_STEPS.includes(busy.journal.step) &&
         busy.journal.applierPid > 0 &&
-        isAlive(busy.journal.applierPid)
+        isAlive(busy.journal.applierPid) &&
+        (await this.#trust(layout, busy.journal)).ok
       ) {
         throw new UpdateStop('swap_failed', 'another swap is under way', version);
       }
-      const { staged, manifest } = await this.#verifyStaged(version);
+      const { staged, manifest, manifestBytes, signature } = await this.#verifyStaged(version);
       applierExe = staged.file;
       let backup: string | null = null;
       if (this.#needsBackup(manifest)) {
@@ -448,6 +463,9 @@ export class ApplyCoordinator {
       await mkdir(layout.stagingDir, { recursive: true, mode: 0o755 });
       await copyFile(staged.file, layout.stagingExe);
       await chmod(layout.stagingExe, 0o755);
+      // The proof the journal is backed by (P8a): the manifest and its signature, beside the executable.
+      await writeFile(join(layout.stagingDir, PROOF_MANIFEST), manifestBytes);
+      await writeFile(join(layout.stagingDir, PROOF_SIGNATURE), signature);
       if ((await sha256OfFile(layout.stagingExe)) !== staged.asset.sha256) {
         throw new UpdateStop('sha256', 'the copy next to the executable does not match', version);
       }
@@ -457,6 +475,7 @@ export class ApplyCoordinator {
         from: this.#o.version,
         to: version,
         sha256: staged.asset.sha256,
+        manifestSha256: sha256Hex(manifestBytes),
         step: 'waiting',
         oldPid: this.#o.pid ?? process.pid,
         applierPid: 0,
@@ -587,8 +606,34 @@ export class ApplyCoordinator {
       }
       // A swap is under way: this is the new daemon (or the old one that is about to go away).
       if (this.#state === 'applying') return;
+      // A journal that asks for something is backed by a signed manifest, or it is not believed (P8a).
+      const trust = await this.#trust(layout, journal);
+      if (!trust.ok) {
+        // The applier may have committed (and cleared the proof) since the journal was read: look again.
+        const again = await readJournal(layout.journal);
+        if (again.kind === 'ok' && again.journal.updatedAt !== journal.updatedAt) continue;
+        this.#o.logger.warn(
+          { step: journal.step, to: journal.to, detail: trust.detail },
+          'update: the journal of a swap is not backed by a signed manifest; it is not followed',
+        );
+        this.#o.situations.record('daemon.notice', {
+          kind: 'update_untrusted_journal',
+          subject: situationSubject(journal.to),
+          detail: trust.detail,
+        });
+        return;
+      }
       await this.#o.clock.sleep(this.#o.reportPollMs ?? REPORT_POLL_MS, this.#abort.signal);
     }
+  }
+
+  async #trust(layout: InstallLayout, journal: UpdateJournal): Promise<JournalTrust> {
+    return await checkJournalTrust({
+      layout,
+      journal,
+      key: this.#o.key,
+      platform: this.#o.platform,
+    });
   }
 
   /** Whether this daemon is the one the journal's end is about (the other one is not here to tell). */

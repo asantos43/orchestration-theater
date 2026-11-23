@@ -27,28 +27,19 @@ export function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-export type VerifyBehaviour = 'accept' | 'reject' | 'absent';
-
 /**
  * A fake `ot`. `--version` answers; `service ...` and `uninstall` append their arguments to
- * `$HOME/fake-ot-calls.log`; `--ot-internal=verify-release <manifest> <signature>` is what the
- * script falls back to when openssl cannot check Ed25519 (the real handler comes with the P7 and P9
- * wiring), and the fake accepts, rejects or is "not available" (exit 3, the answer of a build
- * without the mode).
+ * `$HOME/fake-ot-calls.log`. Every run, whatever the arguments, is also written to
+ * `$HOME/fake-ot-runs.log`: the installer never runs the downloaded executable to check the manifest
+ * (N288), so a test that refuses a release can prove the executable did not run at all.
  */
-export function fakeExe(verify: VerifyBehaviour = 'accept', marker = 'a'): Buffer {
-  const verifyBody = {
-    accept:
-      'if [ -s "$2" ] && [ -s "$3" ]; then echo "verify-release ok" >> "$HOME/fake-ot-calls.log"; exit 0; fi; exit 1',
-    reject: 'exit 1',
-    absent: 'echo "not available in this build" >&2; exit 3',
-  }[verify];
+export function fakeExe(marker = 'a'): Buffer {
   return Buffer.from(
     `#!/bin/sh
 # fake ot, build ${marker}
+echo "$*" >> "$HOME/fake-ot-runs.log"
 case "$1" in
   --version) echo "otheater 1.2.3" ;;
-  --ot-internal=verify-release) ${verifyBody} ;;
   service | uninstall) echo "$*" >> "$HOME/fake-ot-calls.log" ;;
 esac
 exit 0
@@ -111,7 +102,12 @@ export interface RunResult {
 export function runInstaller(
   args: readonly string[],
   env: Record<string, string | undefined>,
-  options: { readonly input?: string; readonly timeoutMs?: number } = {},
+  options: {
+    readonly input?: string;
+    readonly timeoutMs?: number;
+    /** A copy of the script to run instead of `installer/install.sh` (the tests that embed a key in it). */
+    readonly script?: string;
+  } = {},
 ): Promise<RunResult> {
   const clean: Record<string, string> = { LANG: 'en_US.UTF-8' };
   if (process.env.PATH !== undefined) clean.PATH = process.env.PATH;
@@ -119,7 +115,7 @@ export function runInstaller(
     if (value !== undefined) clean[key] = value;
   }
   return new Promise((resolve, reject) => {
-    const child = spawn('sh', [INSTALL_SH, ...args], {
+    const child = spawn('sh', [options.script ?? INSTALL_SH, ...args], {
       env: clean,
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe'],

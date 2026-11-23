@@ -17,6 +17,7 @@ describe('release.config.json', () => {
     expect(config.targets).toEqual(['linux-x64', 'win32-x64', 'darwin-arm64']);
     expect(config.versionOverride).toBeNull();
     expect(config.notices).toBe('per_platform');
+    expect(config.manifestValidityDays).toBe(365);
   });
 
   it('an empty object takes the defaults', () => {
@@ -32,7 +33,18 @@ describe('release.config.json', () => {
       targets: ['linux-x64'],
       versionOverride: '1.2.3-rc.1',
       notices: 'per_platform',
+      manifestValidityDays: 365,
     });
+  });
+
+  it('takes the manifest validity: days, or null for a manifest that never expires', () => {
+    expect(parseReleaseConfig({}).manifestValidityDays).toBe(365);
+    expect(parseReleaseConfig({ manifestValidityDays: 30 }).manifestValidityDays).toBe(30);
+    expect(parseReleaseConfig({ manifestValidityDays: null }).manifestValidityDays).toBeNull();
+  });
+
+  it.each([0, -1, 1.5, 3651, '30', true])('rejects the manifest validity %s', (days) => {
+    expect(() => parseReleaseConfig({ manifestValidityDays: days })).toThrow(ReleaseConfigError);
   });
 
   it('takes the notices mode', () => {
