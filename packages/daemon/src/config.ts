@@ -92,6 +92,7 @@ import {
   TELEMETRY_RETENTION_MODES,
 } from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { DEFAULT_FAULT_PLAN_FILE, FAULT_INJECT_MODES } from './chaos/faults.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
   ExecutorsConfigSchema,
@@ -3086,6 +3087,20 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     updates: UpdatesConfigSchema.prefault({}),
+    /**
+     * The faults of the chaos tests (Phase 11, P1; docs/23). [proposta]
+     * - `inject`: `off` (default) makes every crash point and fail point do nothing; `env` reads
+     *   `OT_TEST_CRASH_AT` and `OT_TEST_FAULT`; `plan` reads the JSON file `plan_file`. In the
+     *   release build the value is ignored and the points always do nothing (as `OT_TEST_MIGRATION`).
+     * - `plan_file`: the plan of `inject: plan`, relative to the data directory (or absolute).
+     * It exists for the tests and for the manual roteiro of the owner; a normal install never sets it.
+     */
+    faults: z
+      .strictObject({
+        inject: z.enum(FAULT_INJECT_MODES).default('off'),
+        plan_file: z.string().min(1).default(DEFAULT_FAULT_PLAN_FILE),
+      })
+      .prefault({}),
   })
   .refine(
     (config) => !(hasSecretPathEntries(config.security) && hasSecretPathEntries(config.browser)),

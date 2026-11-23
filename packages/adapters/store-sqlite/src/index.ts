@@ -9,7 +9,12 @@ export {
   type SqliteStoreConfigInput,
   type SqliteSynchronousMode,
 } from './config.js';
-export { SqliteStore, writerPragmas, type SqliteStoreDiagnostics } from './store.js';
+export {
+  SqliteStore,
+  writerPragmas,
+  type SqliteStoreDiagnostics,
+  type StoreCommitHooks,
+} from './store.js';
 export {
   ALL_PAGES_IN_ONE_STEP,
   BACKUP_METHODS,

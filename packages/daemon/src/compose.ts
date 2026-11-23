@@ -123,6 +123,7 @@ import {
   type AdapterManagerOptions,
   type ManagedClientId,
 } from './adapters/manager.js';
+import { storeCommitHooks } from './chaos/crash-points.js';
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
@@ -370,6 +371,16 @@ const SqliteSectionSchema = SqliteStoreConfigSchema.omit({ path: true });
 function storeSection(config: DaemonConfig, paths: DataPaths): SqliteStoreConfig {
   const section = parseSection('store', SqliteSectionSchema, config.store);
   return { ...section, path: paths.store };
+}
+
+/**
+ * Opens the SQLite store the way the composition does. Phase 11, P1: with `faults.inject` armed, the
+ * store tells the chaos points about each commit (`store.before_commit`, `store.after_commit`);
+ * with nothing armed it gets no hook at all. Exported so the test of those points goes through the
+ * same call (adapters are imported here only, by `daemon-adapters-only-in-compose`).
+ */
+export function openComposedStore(section: SqliteStoreConfig, clock: Clock): Promise<SqliteStore> {
+  return SqliteStore.open(section, clock, storeCommitHooks());
 }
 
 /** Where the telemetry base lives: `telemetry.file`, relative to the data folder or absolute. */
@@ -828,7 +839,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       adapters.push(overrideRecord('Store', STORE_PORT_VERSION));
     } else {
       adapters.push(checkAdapterRange(SQLITE_STORE_ADAPTER, 'Store', STORE_PORT_VERSION));
-      store = await SqliteStore.open(storeSection(config, paths), clock);
+      store = await openComposedStore(storeSection(config, paths), clock);
     }
 
     // Phase 6, P2: the hub is the innermost decorator, so every `append` that reaches the adapter
