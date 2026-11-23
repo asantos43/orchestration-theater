@@ -1,0 +1,114 @@
+name: Chaos
+
+# The chaos tests of Phase 11 (P1; docs/23, N286): the daemon runs as a process, is killed at a named
+# point or at a random instant, starts again, and the invariants I1 to I8 are checked. They kill
+# processes and take longer than the common tests, so they live outside the common suite
+# (`pnpm test:chaos`, files named *.chaos.test.ts) and have a workflow of their own. They use the
+# fake agent and the fake code host: no secret, no client, no network, and nothing is published. [proposta]
+#
+# When it runs, by the repository variable OT_CHAOS_CI (the style of OT_TEST_CI and OT_CROSS_CI):
+# - `paths` (default): on a pull request that touches the paths below, on a dispatch, and every night;
+# - `nightly`: on a dispatch and every night, never on a pull request;
+# - `off`: on a dispatch only (the nightly run is skipped too).
+on:
+  # Main runs after each merge that touches the paths below. A pull request is decided by the job
+  # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/chaos.yml'
+      - 'vitest.chaos.config.ts'
+      - 'packages/daemon/src/chaos/**'
+      - 'packages/daemon/src/recovery/**'
+      - 'packages/daemon/src/updates/**'
+      - 'packages/daemon/src/workspace/effects*'
+      - 'packages/adapters/store-sqlite/src/store.ts'
+      - 'packages/fake-agent/**'
+  pull_request:
+  schedule:
+    # 06:00 UTC, 03:00 in São Paulo.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chaos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides whether a pull request runs the chaos tests. On a pull request the checkout is the merge
+  # commit, so HEAD^1 is the tip of the base branch.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_CHAOS_CI || 'paths' }}
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/chaos\.yml|vitest\.chaos\.config\.ts|packages/daemon/src/(chaos|recovery|updates)/|packages/daemon/src/workspace/effects|packages/adapters/store-sqlite/src/store\.ts|packages/fake-agent/)'; then
+            touched=true
+          else
+            touched=false
+          fi
+          case "$MODE" in
+            paths) run=$touched ;;
+            nightly|off) run=false ;;
+            *) echo "::error::OT_CHAOS_CI=$MODE: use paths, nightly or off"; exit 1 ;;
+          esac
+          echo "touched=$touched run=$run (mode $MODE)"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  # Decides whether a push or a schedule runs. A dispatch always runs.
+  mode:
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - id: decide
+        env:
+          MODE: ${{ vars.OT_CHAOS_CI || 'paths' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$MODE" in
+            paths) run=true ;;
+            nightly) if [ "$EVENT" = schedule ]; then run=true; else run=false; fi ;;
+            off) run=false ;;
+            *) echo "::error::OT_CHAOS_CI=$MODE: use paths, nightly or off"; exit 1 ;;
+          esac
+          echo "event=$EVENT run=$run (mode $MODE)"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  chaos:
+    needs: [changes, mode]
+    # `!cancelled()`: only one of the two jobs above runs for an event, and a skipped need would skip this one.
+    if: >-
+      ${{ !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && needs.changes.outputs.run == 'true') ||
+        ((github.event_name == 'push' || github.event_name == 'schedule') && needs.mode.outputs.run == 'true')
+      ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The child daemon runs the build output (packages/daemon/dist/).
+      - run: pnpm -s build
+      # The harness prints its seed to stderr; a failed run is repeated with OT_CHAOS_SEED=<seed>.
+      - run: pnpm test:chaos

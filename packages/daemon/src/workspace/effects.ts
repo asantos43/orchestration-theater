@@ -6,6 +6,7 @@ import {
   type SideEffectRecord,
   type SideEffectRegistry,
 } from '@otheater/core';
+import { crashPoint } from '../chaos/crash-points.js';
 
 /**
  * What a verifier concludes about an effect that has an "intent" and no "after" (architecture
@@ -85,6 +86,11 @@ export function effectKey(key: string, n: number): string {
  * - `failed` or `not_done`: a new key for a new run.
  *
  * [proposta] A verifier that throws counts as `ambiguous`: the effect is never assumed missing.
+ *
+ * The chaos points of Phase 11 (`effects.*`, with the effect type as detail) sit on the three
+ * boundaries: before `intend`, between `intend` and `execute` (`after_intend`), between `execute` and
+ * `resolve` (`after_execute`), after `resolve`, and between a verdict `done` and its `resolve`
+ * (`after_verify`). They do nothing unless `faults.inject` armed a plan.
  */
 export async function runEffect(
   registry: SideEffectRegistry,
@@ -100,6 +106,7 @@ export async function runEffect(
     if (record.state === 'pending' || record.state === 'ambiguous') {
       const verdict = await verifySafely(spec, record);
       if (verdict.verdict === 'done') {
+        await crashPoint('effects.after_verify', spec.type);
         await registry.resolve(key, {
           state: 'done',
           result: verdict.result,
@@ -134,7 +141,9 @@ async function intendAndExecute(
     params: spec.params,
     ...(spec.attemptId === undefined ? {} : { attemptId: spec.attemptId }),
   };
+  await crashPoint('effects.before_intend', spec.type);
   await registry.intend(input);
+  await crashPoint('effects.after_intend', spec.type);
   let result: JsonObject;
   try {
     result = await spec.execute(key);
@@ -151,7 +160,9 @@ async function intendAndExecute(
     }
     throw error;
   }
+  await crashPoint('effects.after_execute', spec.type);
   await registry.resolve(key, { state: 'done', result });
+  await crashPoint('effects.after_resolve', spec.type);
   return { kind: 'done', key, result, origin: 'executed' };
 }
 
