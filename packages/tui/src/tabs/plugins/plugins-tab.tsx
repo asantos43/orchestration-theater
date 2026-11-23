@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Text } from '../../layout/themed-text.js';
 import { keyLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
+import { useDensity } from '../../layout/density-context.js';
 import { Section } from '../../layout/section.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
@@ -153,6 +154,7 @@ interface TabProps {
 function PluginsTab({ content, options }: TabProps): ReactNode {
   const { t, i18n } = useTranslation();
   const { stores, keymap, capture } = useTabHost();
+  const spaced = useDensity().sections;
   const { afterKey } = useRenderControl();
   const scenarioId = content.scenarioId;
   const api = useMemo(() => options.api ?? apiOf(stores.client), [options.api, stores]);
@@ -763,6 +765,8 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
   let cursorLine = 0;
   for (const line of [...head, ...visible]) {
     if (line.kind === 'header') {
+      // The mockup's sections: a blank row before each one but the first.
+      if (spaced && wrapped.length > 0) wrapped.push(<Text key={`gap.${line.key}`}> </Text>);
       wrapped.push(
         <Section
           key={line.key}
@@ -776,7 +780,9 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
       continue;
     }
     if (line.selected === true) cursorLine = wrapped.length;
-    const pieces = wrapText(line.text ?? '', Math.max(1, width - 1));
+    // In the mockup the content of a section is indented by 2 (the cursor mark takes the first column).
+    const lead = spaced ? ' ' : '';
+    const pieces = wrapText(line.text ?? '', Math.max(1, width - 1 - lead.length));
     pieces.forEach((piece, index) => {
       wrapped.push(
         <Text
@@ -789,7 +795,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
             line.selected === true && content.focused ? TOKEN.selected : undefined,
           )}
         >
-          {fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, width)}
+          {fit(`${line.selected === true && index === 0 ? '›' : ' '}${lead}${piece}`, width)}
         </Text>,
       );
     });
