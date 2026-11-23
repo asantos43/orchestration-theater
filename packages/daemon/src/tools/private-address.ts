@@ -58,7 +58,9 @@ function parseIPv6(text: string): number[] | undefined {
   if (halves.length > 2) return undefined;
   const groupsOf = (part: string): number[] | undefined => {
     if (part === '') return [];
-    const groups = part.split(':').map((group) => (/^[0-9a-f]{1,4}$/i.test(group) ? parseInt(group, 16) : Number.NaN));
+    const groups = part
+      .split(':')
+      .map((group) => (/^[0-9a-f]{1,4}$/i.test(group) ? parseInt(group, 16) : Number.NaN));
     return groups.some((group) => Number.isNaN(group)) ? undefined : groups;
   };
   const head = groupsOf(halves[0] ?? '');

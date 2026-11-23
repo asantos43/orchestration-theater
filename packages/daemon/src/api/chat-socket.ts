@@ -212,12 +212,7 @@ class ChatSession {
   #startedByWindow = false;
   #closed = false;
   #reason:
-    | 'daemon_stop'
-    | 'token_rotated'
-    | 'no_pong'
-    | 'feed_failed'
-    | 'protocol_error'
-    | undefined;
+    'daemon_stop' | 'token_rotated' | 'no_pong' | 'feed_failed' | 'protocol_error' | undefined;
   #ponged = true;
   /** The id of the last event of the feed this connection went through (the cursor of its messages). */
   #cursor = 0;

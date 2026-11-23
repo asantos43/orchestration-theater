@@ -68,7 +68,11 @@ describe('createLogger', () => {
     });
     logger.info(
       {
-        headers: { authorization: 'Bearer leak-1', cookie: 'sid=leak-2', 'set-cookie': ['sid=leak-3'] },
+        headers: {
+          authorization: 'Bearer leak-1',
+          cookie: 'sid=leak-2',
+          'set-cookie': ['sid=leak-3'],
+        },
         err: { message: 'failed', token: 'leak-4', headers: { Authorization: 'Bearer leak-5' } },
         request: { headers: { authorization: 'Bearer leak-6', cookie: 'sid=leak-7' } },
         error: { response: { headers: { 'set-cookie': ['sid=leak-8'] }, accessToken: 'leak-9' } },

@@ -1997,7 +1997,8 @@ describe('the security review of Phase 11 (P8b) [proposta]', () => {
   it('takes each mode of each key', () => {
     for (const mode of ['list', 'any']) {
       expect(
-        parseConfig(`security:\n  attachment_roots:\n    mode: ${mode}\n`).security.attachment_roots.mode,
+        parseConfig(`security:\n  attachment_roots:\n    mode: ${mode}\n`).security.attachment_roots
+          .mode,
       ).toBe(mode);
     }
     expect(
@@ -2018,7 +2019,8 @@ describe('the security review of Phase 11 (P8b) [proposta]', () => {
     }
     for (const mode of ['on', 'off']) {
       expect(
-        parseConfig(`shell:\n  http_get:\n    block_private: ${mode}\n`).shell.http_get.block_private,
+        parseConfig(`shell:\n  http_get:\n    block_private: ${mode}\n`).shell.http_get
+          .block_private,
       ).toBe(mode);
     }
     const limits = parseConfig(

@@ -13,7 +13,8 @@ export function jsonDepthExceeds(text: string, max: number): boolean {
   for (let at = 0; at < text.length; at += 1) {
     const char = text.charCodeAt(at);
     if (inString) {
-      if (char === 0x5c) at += 1; // a backslash: the next character is escaped
+      if (char === 0x5c)
+        at += 1; // a backslash: the next character is escaped
       else if (char === 0x22) inString = false;
     } else if (char === 0x22) {
       inString = true;

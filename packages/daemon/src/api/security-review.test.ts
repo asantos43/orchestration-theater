@@ -149,7 +149,9 @@ describe('the attachment by path stays inside the roots (N287)', () => {
   it('refuses a `..` that leaves a root', async () => {
     await put(join(outside, 'secret.txt'));
     const path = join(project, '..', 'elsewhere', 'secret.txt');
-    await expect(service.addFile('s1', { path })).rejects.toMatchObject({ name: 'PermissionDenied' });
+    await expect(service.addFile('s1', { path })).rejects.toMatchObject({
+      name: 'PermissionDenied',
+    });
   });
 
   it.skipIf(!POSIX)('refuses a symlink inside a root that points out of it', async () => {
@@ -168,7 +170,9 @@ describe('the attachment by path stays inside the roots (N287)', () => {
 
   it('takes the folders the user adds, with `~` expanded, and any file in `any` mode', async () => {
     const path = await put(join(outside, 'listed.txt'));
-    await expect(service.addFile('s1', { path })).rejects.toMatchObject({ name: 'PermissionDenied' });
+    await expect(service.addFile('s1', { path })).rejects.toMatchObject({
+      name: 'PermissionDenied',
+    });
     config = { ...config, add: [outside] };
     await expect(service.addFile('s1', { path })).resolves.toBeDefined();
     const inHome = await put(join(home, 'extra', 'x.txt'));
@@ -186,7 +190,9 @@ describe('the attachment by path stays inside the roots (N287)', () => {
   it('drops a default the user took out of `defaults`', async () => {
     const path = await put(join(home, 'Docs', 'b.txt'));
     config = { ...config, defaults: ['project'] };
-    await expect(service.addFile('s1', { path })).rejects.toMatchObject({ name: 'PermissionDenied' });
+    await expect(service.addFile('s1', { path })).rejects.toMatchObject({
+      name: 'PermissionDenied',
+    });
   });
 
   it('reads a reference again under the roots: a record that points out of them is not served', async () => {
@@ -209,9 +215,9 @@ describe('the attachment by path stays inside the roots (N287)', () => {
     expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Papers'));
     expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Grabs'));
     // ... then ~/Documents and ~/Downloads.
-    expect(await userFolder('documents', { ...base, env: { HOME: home, XDG_CONFIG_HOME: outside } })).toBe(
-      join(home, 'Documents'),
-    );
+    expect(
+      await userFolder('documents', { ...base, env: { HOME: home, XDG_CONFIG_HOME: outside } }),
+    ).toBe(join(home, 'Documents'));
     // A folder that is the home itself (what `xdg-user-dirs` writes for one that does not exist) or the
     // root of the disk is not a folder of its own: it would make the whole home a root.
     await put(
@@ -223,9 +229,9 @@ describe('the attachment by path stays inside the roots (N287)', () => {
     expect(
       await userFolder('documents', { ...base, env: { ...bare, XDG_DOCUMENTS_DIR: home } }),
     ).toBe(join(home, 'Documents'));
-    expect(await userFolder('downloads', { homedir: '/Users/x', platform: 'darwin', env: {} })).toBe(
-      '/Users/x/Downloads',
-    );
+    expect(
+      await userFolder('downloads', { homedir: '/Users/x', platform: 'darwin', env: {} }),
+    ).toBe('/Users/x/Downloads');
     expect(
       await userFolder('documents', {
         homedir: 'C:\\Users\\x',
@@ -264,7 +270,9 @@ describeWithLauncher('the attachment by path through the API', { timeout: 120_00
     await withHarness({ attachmentRoots: 'any' }, async ({ harness, call }) => {
       const scenarioId = await harness.openGenericChat('talk');
       const missing = join(tmp.dir, 'does-not-exist.txt');
-      const answer = await call('POST', `/v1/scenarios/${scenarioId}/attachments`, { path: missing });
+      const answer = await call('POST', `/v1/scenarios/${scenarioId}/attachments`, {
+        path: missing,
+      });
       expect(answer.status).toBe(400);
       expect(answer.text).not.toContain(tmp.dir);
       expect(answer.text).toContain('<path>');
@@ -289,7 +297,12 @@ describe('a JSON nested too deep is a 400, not a 500', () => {
 
   it('answers 400 invalid_input with a typed reason, and a flat body is not taken for a deep one', async () => {
     await withDaemon('api:\n  max_json_depth: 8\n', async ({ call }) => {
-      const deep = await call('POST', '/v1/scenarios', undefined, `{"text":${'['.repeat(9)}${']'.repeat(9)}}`);
+      const deep = await call(
+        'POST',
+        '/v1/scenarios',
+        undefined,
+        `{"text":${'['.repeat(9)}${']'.repeat(9)}}`,
+      );
       expect(deep.status).toBe(400);
       expect(deep.json()).toMatchObject({
         error: { code: 'invalid_input', details: { reason: 'json_too_deep', maxDepth: 8 } },
@@ -300,7 +313,12 @@ describe('a JSON nested too deep is a 400, not a 500', () => {
       const flat = await call('POST', '/v1/scenarios', undefined, '{"text":[[1]]}');
       expect(flat.text).not.toContain('json_too_deep');
       // At the limit (8 levels) the depth check lets it through to the schema.
-      const edge = await call('POST', '/v1/scenarios', undefined, `{"x":${'['.repeat(7)}${']'.repeat(7)}}`);
+      const edge = await call(
+        'POST',
+        '/v1/scenarios',
+        undefined,
+        `{"x":${'['.repeat(7)}${']'.repeat(7)}}`,
+      );
       expect(edge.text).not.toContain('json_too_deep');
     });
   });
@@ -314,75 +332,87 @@ describe('a JSON nested too deep is a 400, not a 500', () => {
 // The chat socket: tickets, sockets and the queue
 // ---------------------------------------------------------------------------------------------
 
-describeWithLauncher('the chat tickets, sockets and queue have a ceiling', { timeout: 120_000 }, () => {
-  const CHAT = 'api:\n  chat:\n    max_tickets: 2\n    max_sockets: 1\n    max_queued_messages: 2\n';
+describeWithLauncher(
+  'the chat tickets, sockets and queue have a ceiling',
+  { timeout: 120_000 },
+  () => {
+    const CHAT =
+      'api:\n  chat:\n    max_tickets: 2\n    max_sockets: 1\n    max_queued_messages: 2\n';
 
-  it('answers 503 unavailable for a ticket past api.chat.max_tickets, with a Retry-After', async () => {
-    await withHarness({ extra: CHAT }, async ({ harness, call }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      expect((await call('POST', '/v1/chat-tickets', { scenarioId })).status).toBe(200);
-      expect((await call('POST', '/v1/chat-tickets', { scenarioId })).status).toBe(200);
-      const third = await call('POST', '/v1/chat-tickets', { scenarioId });
-      expect(third.status).toBe(503);
-      expect(third.json()).toMatchObject({
-        error: { code: 'unavailable', details: { maxTickets: 2 } },
+    it('answers 503 unavailable for a ticket past api.chat.max_tickets, with a Retry-After', async () => {
+      await withHarness({ extra: CHAT }, async ({ harness, call }) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        expect((await call('POST', '/v1/chat-tickets', { scenarioId })).status).toBe(200);
+        expect((await call('POST', '/v1/chat-tickets', { scenarioId })).status).toBe(200);
+        const third = await call('POST', '/v1/chat-tickets', { scenarioId });
+        expect(third.status).toBe(503);
+        expect(third.json()).toMatchObject({
+          error: { code: 'unavailable', details: { maxTickets: 2 } },
+        });
+        expect(third.headers.get('retry-after')).toMatch(/^\d+$/);
       });
-      expect(third.headers.get('retry-after')).toMatch(/^\d+$/);
     });
-  });
 
-  it('refuses a socket past api.chat.max_sockets and takes one again when it closes', async () => {
-    await withHarness({ extra: CHAT }, async ({ harness, call, url }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      const first = await openSocket(call, url, scenarioId);
-      expect(await handshakeStatus(await ticketUrl(call, url, scenarioId))).toBe(503);
-      first.close();
-      await closed(first);
-      await until(async () =>
-        (await handshakeStatus(await ticketUrl(call, url, scenarioId))) === 101 ? true : undefined,
+    it('refuses a socket past api.chat.max_sockets and takes one again when it closes', async () => {
+      await withHarness({ extra: CHAT }, async ({ harness, call, url }) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        const first = await openSocket(call, url, scenarioId);
+        expect(await handshakeStatus(await ticketUrl(call, url, scenarioId))).toBe(503);
+        first.close();
+        await closed(first);
+        await until(async () =>
+          (await handshakeStatus(await ticketUrl(call, url, scenarioId))) === 101
+            ? true
+            : undefined,
+        );
+      });
+    });
+
+    it('closes a socket whose client floods it past api.chat.max_queued_messages', async () => {
+      await withHarness({ extra: CHAT }, async ({ harness, call, url }) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        const socket = await openSocket(call, url, scenarioId);
+        const code = closed(socket);
+        // Every frame is a message the daemon has to handle (an answer to a decision that is not there).
+        const frame = JSON.stringify({ type: 'answer', decisionId: 'nope', answer: {} });
+        for (let i = 0; i < 400; i += 1) socket.send(frame);
+        expect(await code).toBe(1008);
+      });
+    });
+
+    it('refuses a JSON nested too deep in a message with an error frame, and keeps the socket', async () => {
+      await withHarness(
+        { extra: 'api:\n  max_json_depth: 8\n' },
+        async ({ harness, call, url }) => {
+          const scenarioId = await harness.openGenericChat('talk');
+          const socket = await openSocket(call, url, scenarioId);
+          const frames: string[] = [];
+          socket.addEventListener('message', (event) => {
+            frames.push(String(event.data));
+          });
+          socket.send(`{"type":"message","text":"x","deep":${'['.repeat(500)}${']'.repeat(500)}}`);
+          await until(() =>
+            Promise.resolve(frames.some((f) => f.includes('json_too_deep')) ? true : undefined),
+          );
+          expect(socket.readyState).toBe(WebSocket.OPEN);
+          socket.close();
+        },
       );
     });
-  });
 
-  it('closes a socket whose client floods it past api.chat.max_queued_messages', async () => {
-    await withHarness({ extra: CHAT }, async ({ harness, call, url }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      const socket = await openSocket(call, url, scenarioId);
-      const code = closed(socket);
-      // Every frame is a message the daemon has to handle (an answer to a decision that is not there).
-      const frame = JSON.stringify({ type: 'answer', decisionId: 'nope', answer: {} });
-      for (let i = 0; i < 400; i += 1) socket.send(frame);
-      expect(await code).toBe(1008);
-    });
-  });
-
-  it('refuses a JSON nested too deep in a message with an error frame, and keeps the socket', async () => {
-    await withHarness({ extra: 'api:\n  max_json_depth: 8\n' }, async ({ harness, call, url }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      const socket = await openSocket(call, url, scenarioId);
-      const frames: string[] = [];
-      socket.addEventListener('message', (event) => {
-        frames.push(String(event.data));
+    it('closes an open socket when the token is rotated, and refuses a ticket bought before', async () => {
+      await withHarness({}, async ({ harness, call, url }) => {
+        const scenarioId = await harness.openGenericChat('talk');
+        const socket = await openSocket(call, url, scenarioId);
+        const code = closed(socket);
+        const stale = await ticketUrl(call, url, scenarioId);
+        await harness.daemon.api.rotateToken();
+        expect(await code).toBe(1008);
+        expect(await handshakeStatus(stale)).toBe(401);
       });
-      socket.send(`{"type":"message","text":"x","deep":${'['.repeat(500)}${']'.repeat(500)}}`);
-      await until(() => Promise.resolve(frames.some((f) => f.includes('json_too_deep')) ? true : undefined));
-      expect(socket.readyState).toBe(WebSocket.OPEN);
-      socket.close();
     });
-  });
-
-  it('closes an open socket when the token is rotated, and refuses a ticket bought before', async () => {
-    await withHarness({}, async ({ harness, call, url }) => {
-      const scenarioId = await harness.openGenericChat('talk');
-      const socket = await openSocket(call, url, scenarioId);
-      const code = closed(socket);
-      const stale = await ticketUrl(call, url, scenarioId);
-      await harness.daemon.api.rotateToken();
-      expect(await code).toBe(1008);
-      expect(await handshakeStatus(stale)).toBe(401);
-    });
-  });
-});
+  },
+);
 
 // ---------------------------------------------------------------------------------------------
 // The rotation of the token against a request in flight
@@ -471,25 +501,31 @@ describe('an error answer holds no absolute path', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('the private files of the data folder', () => {
-  it.skipIf(!POSIX)('writes with mode 0600 through a temporary name nobody can guess, and leaves none', async () => {
-    const path = join(tmp.dir, 'secret');
-    await writeFile(path, 'old', { mode: 0o644 });
-    await writePrivateFile(path, 'new');
-    expect(await readFile(path, 'utf8')).toBe('new');
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect((await readdir(tmp.dir)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
-  });
+  it.skipIf(!POSIX)(
+    'writes with mode 0600 through a temporary name nobody can guess, and leaves none',
+    async () => {
+      const path = join(tmp.dir, 'secret');
+      await writeFile(path, 'old', { mode: 0o644 });
+      await writePrivateFile(path, 'new');
+      expect(await readFile(path, 'utf8')).toBe('new');
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      expect((await readdir(tmp.dir)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    },
+  );
 
-  it.skipIf(!POSIX)('does not write through a link planted where the old temporary name was', async () => {
-    const path = join(tmp.dir, 'api-token');
-    const victim = join(tmp.dir, 'victim');
-    await writeFile(victim, 'untouched');
-    // What the old code would have written to: `<path>.<pid>.tmp`.
-    await symlink(victim, `${path}.${String(process.pid)}.tmp`);
-    await writePrivateFile(path, 'token');
-    expect(await readFile(victim, 'utf8')).toBe('untouched');
-    expect(await readFile(path, 'utf8')).toBe('token');
-  });
+  it.skipIf(!POSIX)(
+    'does not write through a link planted where the old temporary name was',
+    async () => {
+      const path = join(tmp.dir, 'api-token');
+      const victim = join(tmp.dir, 'victim');
+      await writeFile(victim, 'untouched');
+      // What the old code would have written to: `<path>.<pid>.tmp`.
+      await symlink(victim, `${path}.${String(process.pid)}.tmp`);
+      await writePrivateFile(path, 'token');
+      expect(await readFile(victim, 'utf8')).toBe('untouched');
+      expect(await readFile(path, 'utf8')).toBe('token');
+    },
+  );
 
   it.skipIf(!POSIX)('replaces a link at the target instead of following it', async () => {
     const path = join(tmp.dir, 'api-token');
@@ -502,34 +538,40 @@ describe('the private files of the data folder', () => {
     expect(await readFile(path, 'utf8')).toBe('token');
   });
 
-  it.skipIf(!POSIX)('does not reuse a token that others could read, or one behind a link', async () => {
-    const path = join(tmp.dir, 'api-token');
-    const loose = generateApiToken();
-    await writeFile(path, `${loose}\n`, { mode: 0o644 });
-    const fresh = await loadOrCreateApiToken(path, 'persistent');
-    expect(fresh).not.toBe(loose);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
-    // Now it is private: it is reused.
-    expect(await loadOrCreateApiToken(path, 'persistent')).toBe(fresh);
+  it.skipIf(!POSIX)(
+    'does not reuse a token that others could read, or one behind a link',
+    async () => {
+      const path = join(tmp.dir, 'api-token');
+      const loose = generateApiToken();
+      await writeFile(path, `${loose}\n`, { mode: 0o644 });
+      const fresh = await loadOrCreateApiToken(path, 'persistent');
+      expect(fresh).not.toBe(loose);
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      // Now it is private: it is reused.
+      expect(await loadOrCreateApiToken(path, 'persistent')).toBe(fresh);
 
-    const real = join(tmp.dir, 'real-token');
-    const linked = generateApiToken();
-    await writeFile(real, `${linked}\n`, { mode: 0o600 });
-    const link = join(tmp.dir, 'linked-token');
-    await symlink(real, link);
-    const other = await loadOrCreateApiToken(link, 'persistent');
-    expect(other).not.toBe(linked);
-    expect(await readFile(real, 'utf8')).toBe(`${linked}\n`);
-  });
+      const real = join(tmp.dir, 'real-token');
+      const linked = generateApiToken();
+      await writeFile(real, `${linked}\n`, { mode: 0o600 });
+      const link = join(tmp.dir, 'linked-token');
+      await symlink(real, link);
+      const other = await loadOrCreateApiToken(link, 'persistent');
+      expect(other).not.toBe(linked);
+      expect(await readFile(real, 'utf8')).toBe(`${linked}\n`);
+    },
+  );
 
-  it.skipIf(!POSIX)('closes an existing data folder to group and others, and leaves the owner bits', async () => {
-    const dir = join(tmp.dir, 'data');
-    await mkdir(dir, { mode: 0o755 });
-    await ensureDataDir(dir);
-    expect((await stat(dir)).mode & 0o777).toBe(0o700);
-    await ensureDataDir(join(tmp.dir, 'fresh', 'deeper'));
-    expect((await stat(join(tmp.dir, 'fresh', 'deeper'))).mode & 0o777).toBe(0o700);
-  });
+  it.skipIf(!POSIX)(
+    'closes an existing data folder to group and others, and leaves the owner bits',
+    async () => {
+      const dir = join(tmp.dir, 'data');
+      await mkdir(dir, { mode: 0o755 });
+      await ensureDataDir(dir);
+      expect((await stat(dir)).mode & 0o777).toBe(0o700);
+      await ensureDataDir(join(tmp.dir, 'fresh', 'deeper'));
+      expect((await stat(join(tmp.dir, 'fresh', 'deeper'))).mode & 0o777).toBe(0o700);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -621,7 +663,11 @@ async function ticketUrl(call: Running['call'], url: string, scenarioId: string)
   return `${url.replace('http', 'ws')}/v1/scenarios/${scenarioId}/chat?ticket=${ticket}`;
 }
 
-async function openSocket(call: Running['call'], url: string, scenarioId: string): Promise<WebSocket> {
+async function openSocket(
+  call: Running['call'],
+  url: string,
+  scenarioId: string,
+): Promise<WebSocket> {
   const socket = new WebSocket(await ticketUrl(call, url, scenarioId));
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => {

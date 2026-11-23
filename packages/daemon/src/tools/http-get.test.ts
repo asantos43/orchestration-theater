@@ -17,10 +17,13 @@ const servers: Server[] = [];
 
 async function rigOf(options: ToolsRigOptions = {}): Promise<ToolsRig> {
   // These tests reach a server on 127.0.0.1, which `shell.http_get.block_private` refuses by default.
-  const rig = await makeToolsRig({ shell: '  http_get:\n    block_private: off', ...options }, {
-    store: new InMemoryStore({ clock: realClock }),
-    clock: realClock,
-  });
+  const rig = await makeToolsRig(
+    { shell: '  http_get:\n    block_private: off', ...options },
+    {
+      store: new InMemoryStore({ clock: realClock }),
+      clock: realClock,
+    },
+  );
   rigs.push(rig);
   return rig;
 }
@@ -299,7 +302,9 @@ describe('http_get with shell.http_get.block_private (P8 of Phase 11)', () => {
   });
 
   it('refuses a local name even when the allowlist names it', async () => {
-    const rig = await guarded(['localhost', '*.localhost'], () => Promise.resolve(['93.184.216.34']));
+    const rig = await guarded(['localhost', '*.localhost'], () =>
+      Promise.resolve(['93.184.216.34']),
+    );
     expect((await rig.fail('http_get', { url: 'http://localhost:8080/' })).code).toBe(
       'private_address',
     );

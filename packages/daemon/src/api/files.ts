@@ -39,7 +39,10 @@ const TOKEN_FORMAT = /^[A-Za-z0-9_-]{32,}$/;
 export async function writePrivateFile(path: string, text: string): Promise<void> {
   const temporary = `${path}.${String(process.pid)}.${randomBytes(8).toString('hex')}.tmp`;
   const flags =
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW as number | undefined ?? 0);
+    constants.O_WRONLY |
+    constants.O_CREAT |
+    constants.O_EXCL |
+    ((constants.O_NOFOLLOW as number | undefined) ?? 0);
   const handle = await open(temporary, flags, FILE_MODE);
   try {
     try {
