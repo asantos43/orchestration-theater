@@ -116,7 +116,7 @@ export function fakeOnline(options: FakeOnlineOptions = {}): FakeOnline {
     address: options.address ?? '127.0.0.1:7777',
     client,
     stores,
-    readSettings: options.readSettings ?? (() => Promise.resolve(DEFAULT_UI_SETTINGS)),
+    readSettings: options.readSettings ?? (() => Promise.resolve(settingsWith({}))),
     openLayout: async () => {
       const layout = new LayoutStore({
         interface: 'tui',
@@ -206,6 +206,14 @@ export function seedStores(stores: DaemonStores): { scenarios: ApiScenario[] } {
   return { scenarios };
 }
 
+/**
+ * The settings of the tests: `ui.tuiLayout.density` is `compact` (the screen without the margins of
+ * the mockup), so the tests that compare an exact screen keep what they compare; a test of the
+ * margins asks for `density: 'comfortable'`.
+ */
 export function settingsWith(layout: Partial<UiSettings['tuiLayout']>): UiSettings {
-  return { ...DEFAULT_UI_SETTINGS, tuiLayout: { ...DEFAULT_UI_SETTINGS.tuiLayout, ...layout } };
+  return {
+    ...DEFAULT_UI_SETTINGS,
+    tuiLayout: { ...DEFAULT_UI_SETTINGS.tuiLayout, density: 'compact', ...layout },
+  };
 }
