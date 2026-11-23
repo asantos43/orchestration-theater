@@ -55,6 +55,17 @@ describe('the staging folder', () => {
     }
   });
 
+  it('gives back the manifest and the signature as they were stored', async () => {
+    const s = await staging();
+    await store(s, '1.0.0');
+    const read = await s.readManifest('1.0.0');
+    expect(read.bytes.toString()).toBe('{}');
+    expect(read.signature).toBe('sig');
+    await expect(s.readManifest('2.0.0')).rejects.toMatchObject({ reason: 'bad_manifest' });
+    // A name that is not a version never reaches the file system.
+    await expect(s.readManifest('../x')).rejects.toMatchObject({ reason: 'bad_manifest' });
+  });
+
   it('a newer version replaces the older', async () => {
     const s = await staging();
     await store(s, '1.0.0');

@@ -27,6 +27,8 @@ import {
 } from './coordinator.js';
 import { readJournal, writeJournal, type UpdateJournal } from './journal.js';
 import { layoutOf, type InstallLayout } from './layout.js';
+import { checkJournalTrust } from './trust.js';
+import { writeProof } from './trust-fixture.js';
 
 /**
  * Deciding when to apply (P8): the three moments of `apply_when`, the wait of `idle` and its
@@ -101,6 +103,7 @@ async function rig(
     buildRelease(keys, {
       version: NEWER,
       exe: NEW_BODY,
+      expires: '2999-01-01T00:00:00.000Z',
       ...(options.manifest === undefined ? {} : { manifest: options.manifest }),
     }),
   );
@@ -243,6 +246,17 @@ describe('park: applies at once', () => {
       reported: false,
     });
     expect(journal?.sha256).toBe(await sha256OfFile(r.layout.stagingExe));
+    // The journal rests on the signed manifest the daemon left beside the executable (P8a).
+    expect(
+      journal === undefined
+        ? undefined
+        : await checkJournalTrust({
+            layout: r.layout,
+            journal,
+            key: parsePublicKey(r.keys.publicPem),
+            platform: 'linux-x64',
+          }),
+    ).toEqual({ ok: true });
     expect(phases(r)).toEqual(['found', 'downloaded', 'verified', 'applying']);
     expect(r.state()).toBe('applying');
     expect(r.work.holds).toBe(0);
@@ -575,13 +589,58 @@ describe('what stops an apply before anything moves', () => {
   it('a swap under way (applier alive) is not started over', async () => {
     const r = await rig({ settings: { apply_when: 'park', mode: 'notify' } });
     await r.checker.checkNow();
+    const manifestSha256 = await writeProof(r.layout, r.keys, {
+      version: NEWER,
+      sha256: 'a'.repeat(64),
+    });
+    await writeJournal(
+      r.layout.journal,
+      journalOf(r, { step: 'checking', applierPid: process.pid, manifestSha256 }),
+    );
+    r.coordinator.request('park');
+    await vi.waitFor(() => {
+      expect(r.updates().at(-1)).toMatchObject({ phase: 'rolled_back', reason: 'swap_failed' });
+    });
+    expect(r.launched).toEqual([]);
+  });
+
+  it('a journal that no signed manifest backs does not hold the way, whatever pid it names (P8a)', async () => {
+    const r = await rig({ settings: { apply_when: 'park', mode: 'notify' } });
+    await r.checker.checkNow();
     await writeJournal(
       r.layout.journal,
       journalOf(r, { step: 'checking', applierPid: process.pid }),
     );
     r.coordinator.request('park');
     await vi.waitFor(() => {
-      expect(r.updates().at(-1)).toMatchObject({ phase: 'rolled_back', reason: 'swap_failed' });
+      expect(r.launched).toHaveLength(1);
+    });
+  });
+
+  it('a manifest that expired while it waited in the store is refused at the apply (P8a)', async () => {
+    const soon = new Date(Date.UTC(2026, 0, 1) + HOUR).toISOString();
+    const r = await rig({
+      settings: { apply_when: 'park', mode: 'notify' },
+      manifest: { expires: soon },
+    });
+    expect((await r.checker.checkNow()).lastResult).toBe('ready');
+    await r.clock.advance(2 * HOUR);
+    r.coordinator.request('park');
+    await vi.waitFor(() => {
+      expect(r.updates().at(-1)).toMatchObject({ phase: 'rejected', reason: 'bad_manifest' });
+    });
+    expect(r.launched).toEqual([]);
+    expect(await exists(r.layout.journal)).toBe(false);
+  });
+
+  it('a stored version of another channel than the configured one is refused at the apply (P8a)', async () => {
+    const r = await rig({ settings: { apply_when: 'park', mode: 'notify' } });
+    await r.checker.checkNow();
+    // The channel is changed after the version was stored: the stored manifest is of the other one.
+    (r.options().settings as { channel: string }).channel = 'beta';
+    r.coordinator.request('park');
+    await vi.waitFor(() => {
+      expect(r.updates().at(-1)).toMatchObject({ phase: 'rejected', reason: 'wrong_channel' });
     });
     expect(r.launched).toEqual([]);
   });
@@ -593,6 +652,7 @@ function journalOf(r: Rig, over: Partial<UpdateJournal> = {}): UpdateJournal {
     from: INSTALLED,
     to: NEWER,
     sha256: 'a'.repeat(64),
+    manifestSha256: 'b'.repeat(64),
     step: 'committed',
     oldPid: 1,
     applierPid: 0,
@@ -654,6 +714,17 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     });
     expect(r.notices()).toEqual([{ kind: 'update_failed', subject: NEWER, detail: 'not_started' }]);
     await back.stop();
+  });
+
+  it('a swap under way that no signed manifest backs is told as untrusted, once (P8a)', async () => {
+    const r = await rig();
+    await writeJournal(r.layout.journal, journalOf(r, { step: 'checking' }));
+    r.coordinator.start();
+    await vi.waitFor(() => {
+      expect(r.notices().map((notice) => notice.kind)).toEqual(['update_untrusted_journal']);
+    });
+    expect(r.notices()[0]).toMatchObject({ subject: NEWER });
+    await r.coordinator.stop();
   });
 
   it('tells it once: a journal that was reported is only read', async () => {

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { executableAssetName, msiAssetName, noticesAssetName } from './manifest.js';
 import { runReleaseCommand } from './release-cli.js';
+import { repoRoot } from './resolve.js';
 import { TARGET_IDS } from './targets.js';
 
 let dir: string;
@@ -67,6 +69,92 @@ describe('the release commands, as the workflow runs them', () => {
     await writeFile(path.join(dir, executableAssetName('linux-x64')), 'EXE linux-x64');
     expect(await verify()).toBe(1);
     expect(lines.at(-1)).toMatch(/^REFUSED: /);
+  });
+
+  it('writes the .sshsig next to the .sig, and --valid-days sets (or drops) the expiry', async () => {
+    const keys = path.join(dir, 'keys');
+    await run('ephemeral-key', '--out', keys);
+    const manifest = path.join(dir, 'manifest.json');
+    expect(
+      await run(
+        'assemble',
+        '--dir',
+        dir,
+        '--version',
+        '1.2.3',
+        '--channel',
+        'stable',
+        '--valid-days',
+        '10',
+      ),
+    ).toBe(0);
+    const expires = (JSON.parse(await readFile(manifest, 'utf8')) as { expires?: string }).expires;
+    const days = (Date.parse(expires ?? '') - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(9.9);
+    expect(days).toBeLessThan(10.1);
+    expect(
+      await run(
+        'sign',
+        '--manifest',
+        manifest,
+        '--key-file',
+        path.join(keys, 'ephemeral-private.pem'),
+      ),
+    ).toBe(0);
+    expect(await readFile(`${manifest}.sig`, 'utf8')).toMatch(/^[A-Za-z0-9+/]+=*\n$/u);
+    expect(await readFile(`${manifest}.sshsig`, 'utf8')).toMatch(/^-----BEGIN SSH SIGNATURE-----/u);
+
+    expect(
+      await run(
+        'assemble',
+        '--dir',
+        dir,
+        '--version',
+        '1.2.3',
+        '--channel',
+        'stable',
+        '--valid-days',
+        'none',
+      ),
+    ).toBe(0);
+    expect(JSON.parse(await readFile(manifest, 'utf8'))).not.toHaveProperty('expires');
+    expect(
+      await run(
+        'assemble',
+        '--dir',
+        dir,
+        '--version',
+        '1.2.3',
+        '--channel',
+        'stable',
+        '--valid-days',
+        '0',
+      ),
+    ).not.toBe(0);
+  });
+
+  it('embed-key pins the key and, with --manifest, the hash of the manifest', async () => {
+    const keys = path.join(dir, 'keys');
+    await run('ephemeral-key', '--out', keys);
+    const manifest = path.join(dir, 'manifest.json');
+    await run('assemble', '--dir', dir, '--version', '1.2.3', '--channel', 'stable');
+    const out = path.join(dir, 'install-out.sh');
+    const args = [
+      'embed-key',
+      '--script',
+      path.join(repoRoot(), 'installer', 'install.sh'),
+      '--public-key',
+      path.join(keys, 'ephemeral-public.pem'),
+      '--out',
+      out,
+    ];
+    expect(await run(args[0] ?? '', ...args.slice(1))).toBe(0);
+    expect(await readFile(out, 'utf8')).toContain("EMBEDDED_MANIFEST_SHA256=''");
+    expect(await run(...(args as [string, ...string[]]), '--manifest', manifest)).toBe(0);
+    const hash = createHash('sha256')
+      .update(await readFile(manifest))
+      .digest('hex');
+    expect(await readFile(out, 'utf8')).toContain(`EMBEDDED_MANIFEST_SHA256='${hash}'`);
   });
 
   it('never prints a private key, and reads the production one from the environment', async () => {
