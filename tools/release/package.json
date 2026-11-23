@@ -8,7 +8,9 @@
     "otheater-release": "./dist/cli.js"
   },
   "devDependencies": {
+    "@otheater/daemon": "workspace:*",
     "esbuild": "0.28.2",
-    "postject": "1.0.0-alpha.6"
+    "postject": "1.0.0-alpha.6",
+    "yaml": "2.9.1"
   }
 }
