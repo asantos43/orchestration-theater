@@ -1350,7 +1350,7 @@ api:
 ### 5.13 Interfaces
 
 **Mockups de referência** (valores ilustrativos):
-- `mockup/tui.html`: TUI (interface principal), gerada por `mockup/tui-render.js` (`node tui-render.js`);
+- `mockup/tui.html`: TUI (interface principal), gerada por `mockup/tui-render.cjs` (`node tui-render.cjs`);
 - `mockup/app.html`: web e desktop (Fases 12 e 13);
 - `mockup/mobile.html`: app Android, celular e tablet em paisagem e retrato (Fase 14).
 
