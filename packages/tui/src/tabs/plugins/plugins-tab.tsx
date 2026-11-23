@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiPlugin, ApiPluginDetail, ApiPluginPanel } from '@otheater/protocol';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import {
   createElement,
   useCallback,
@@ -12,13 +12,14 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { keyLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { Section } from '../../layout/section.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
 import { fit, wrapText } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { useRenderControl } from '../../render-control.js';
 import { errorText } from '../settings/settings-tab.js';
 import { apiOf, type PluginsApi } from './api.js';
@@ -93,25 +94,25 @@ type Mode =
 const IDLE: Mode = { kind: 'idle' };
 
 const TONE_COLOR: Readonly<Record<Tone, string>> = {
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
 };
 
 const STATE_COLOR: Readonly<Record<PluginViewState, string | undefined>> = {
-  active: COLOR.ok,
-  needs_approval: COLOR.warn,
-  broken: COLOR.error,
+  active: TOKEN.ok,
+  needs_approval: TOKEN.warn,
+  broken: TOKEN.error,
   off: undefined,
 };
 
 const PANEL_COLOR: Readonly<Record<PanelTone, string | undefined>> = {
-  title: COLOR.accent,
+  title: TOKEN.accent,
   head: undefined,
   text: undefined,
   dim: undefined,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
   action: undefined,
 };
 
@@ -543,7 +544,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
     head.push({
       key: 'e.q',
       kind: 'row',
-      color: COLOR.accent,
+      color: TOKEN.accent,
       text: t(mode.again ? 'plugins.enable.again' : 'plugins.enable.question', {
         plugin: mode.plugin.id,
         version: mode.detail.version,
@@ -558,7 +559,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
     head.push({
       key: 'd.q',
       kind: 'row',
-      color: COLOR.warn,
+      color: TOKEN.warn,
       text: t('plugins.disable.question', { plugin: mode.plugin.id, project: mode.projectName }),
     });
     head.push({ key: 'd.hint', kind: 'row', dim: true, text: t('plugins.disable.hint') });
@@ -567,7 +568,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
     head.push({
       key: 'run',
       kind: 'row',
-      color: COLOR.accent,
+      color: TOKEN.accent,
       text:
         running.approval === 'none'
           ? t('plugins.action.running', { action: running.label })
@@ -589,7 +590,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
       key: 'load',
       kind: 'row',
       dim: loadError === undefined,
-      color: loadError === undefined ? undefined : COLOR.error,
+      color: loadError === undefined ? undefined : TOKEN.error,
       text:
         loadError === undefined
           ? t('plugins.loading')
@@ -644,18 +645,18 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
       if (selected.description !== null) row('desc', safeText(selected.description));
       if (selected.problem !== null) {
         row('problem', t('plugins.detail.problem', { problem: safeText(selected.problem) }), {
-          color: COLOR.error,
+          color: TOKEN.error,
         });
       }
       const pair = pairKey(selected.id, scenarioId);
       if (failed[pair] === true) {
-        row('failed', t('plugins.detail.serverFailed'), { color: COLOR.warn });
+        row('failed', t('plugins.detail.serverFailed'), { color: TOKEN.warn });
       }
       if (shown === undefined) {
         row('loading', t('plugins.detail.loading'), { dim: true });
       } else if (shown.detailError !== undefined) {
         row('err', t('plugins.detail.failed', { message: shown.detailError }), {
-          color: COLOR.error,
+          color: TOKEN.error,
         });
       } else if (shown.detail !== undefined) {
         row('asks', t('plugins.detail.asks'), { dim: true });
@@ -670,7 +671,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
           row(
             `s.${secret.name}`,
             `  ${secret.name}${secret.missing ? `  ${t('plugins.secrets.missing')}` : ''}`,
-            { color: secret.missing ? COLOR.warn : undefined },
+            { color: secret.missing ? TOKEN.warn : undefined },
           );
         }
         row('secrets.hint', t('plugins.secrets.hint'), { dim: true });
@@ -701,7 +702,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
           panelRow('loading', t('plugins.panel.loading'), { dim: true });
         } else if (shown.panelError !== undefined) {
           panelRow('err', t('plugins.panel.failed', { message: shown.panelError }), {
-            color: COLOR.error,
+            color: TOKEN.error,
           });
         } else if (panel !== undefined) {
           panel.lines.forEach((line, index) => {
@@ -736,10 +737,10 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
         }
       } else if (selectedState === 'needs_approval') {
         panelRow('needs', t('plugins.panel.needsApproval', { key: keyOf('enable') }), {
-          color: COLOR.warn,
+          color: TOKEN.warn,
         });
       } else if (selectedState === 'broken') {
-        panelRow('broken', t('plugins.panel.broken'), { color: COLOR.error });
+        panelRow('broken', t('plugins.panel.broken'), { color: TOKEN.error });
       } else {
         panelRow(
           'off',
@@ -785,7 +786,7 @@ function PluginsTab({ content, options }: TabProps): ReactNode {
           dimColor={line.dim === true}
           {...paint(
             line.color,
-            line.selected === true && content.focused ? COLOR.selected : undefined,
+            line.selected === true && content.focused ? TOKEN.selected : undefined,
           )}
         >
           {fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, width)}

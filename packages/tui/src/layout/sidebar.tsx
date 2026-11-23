@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from './themed-text.js';
 import { ClickTarget } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import {
@@ -12,7 +13,7 @@ import {
   type ScenarioRow,
 } from './scenario-rows.js';
 import { cellWidth, fit, fitRight } from './text.js';
-import { COLOR, paint } from './theme.js';
+import { TOKEN, paint } from './theme.js';
 
 /**
  * The sections of the side bar. `scenarios` and `subscriptions` fold through the `LayoutStore`;
@@ -75,9 +76,9 @@ const MARK_GLYPH: Readonly<Record<ScenarioMark, string>> = {
 };
 
 const MARK_COLOR: Readonly<Record<ScenarioMark, string | undefined>> = {
-  decision: COLOR.warn,
-  running: COLOR.ok,
-  done: COLOR.ok,
+  decision: TOKEN.warn,
+  running: TOKEN.ok,
+  done: TOKEN.ok,
   idle: undefined,
 };
 
@@ -115,9 +116,9 @@ export interface SidebarProps {
 }
 
 function quotaColor(row: QuotaRow): string {
-  if (row.state === 'exhausted') return COLOR.error;
-  if (row.state === 'near_limit') return COLOR.warn;
-  return COLOR.ok;
+  if (row.state === 'exhausted') return TOKEN.error;
+  if (row.state === 'near_limit') return TOKEN.warn;
+  return TOKEN.ok;
 }
 
 function ExpandedQuota(props: { readonly row: QuotaRow; readonly inner: number }): ReactNode {
@@ -162,8 +163,8 @@ function ScenarioLine(props: {
   const nameWidth = Math.max(1, inner - 4 - cellWidth(state) - 1);
   return (
     <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
-      <Text wrap="truncate" {...paint(undefined, props.cursor ? COLOR.selected : undefined)}>
-        <Text color={COLOR.accent}>{props.selected ? '▸ ' : '  '}</Text>
+      <Text wrap="truncate" {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}>
+        <Text color={TOKEN.accent}>{props.selected ? '▸ ' : '  '}</Text>
         <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>{' '}
         {fit(row.name, nameWidth)} <Text dimColor>{state}</Text>
       </Text>
@@ -183,10 +184,10 @@ function FinishedLine(props: {
   const need = fit(row.need, Math.max(1, inner - 4 - cellWidth(state) - 1));
   return (
     <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
-      <Text wrap="truncate" {...paint(undefined, props.cursor ? COLOR.selected : undefined)}>
+      <Text wrap="truncate" {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}>
         {'  '}
         <Text
-          {...paint(row.outcome === 'done' ? COLOR.ok : undefined)}
+          {...paint(row.outcome === 'done' ? TOKEN.ok : undefined)}
           dimColor={row.outcome !== 'done'}
         >
           {row.outcome === 'done' ? '✓' : '✗'}
@@ -221,7 +222,7 @@ function SectionHead(props: {
       <Text
         bold
         dimColor={!props.cursor}
-        {...paint(undefined, props.cursor ? COLOR.selected : undefined)}
+        {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}
         wrap="truncate"
       >
         {fit(line, props.inner)}
@@ -325,13 +326,13 @@ function Expanded(props: SidebarProps): ReactNode {
       <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
         <Text wrap="truncate">
           {fit(`⚙ ${settings}`, Math.max(1, inner - (props.keys.settings?.length ?? 0) - 1))}{' '}
-          <Text color={COLOR.key}>
+          <Text color={TOKEN.key}>
             {fitRight(props.keys.settings ?? '', (props.keys.settings ?? '').length)}
           </Text>
         </Text>
       </ClickTarget>
       <Text wrap="truncate">
-        <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text>{' '}
+        <Text color={props.live ? TOKEN.ok : TOKEN.warn}>●</Text>{' '}
         {fit(daemon, Math.max(1, inner - 2))}
       </Text>
     </>
@@ -356,11 +357,11 @@ function Rail(props: SidebarProps): ReactNode {
               wrap="truncate"
               {...paint(
                 undefined,
-                props.focused && props.cursor === row.id ? COLOR.selected : undefined,
+                props.focused && props.cursor === row.id ? TOKEN.selected : undefined,
               )}
             >
               <Text
-                {...paint(props.selectedId === row.id ? COLOR.accent : undefined)}
+                {...paint(props.selectedId === row.id ? TOKEN.accent : undefined)}
                 bold={props.selectedId === row.id}
               >
                 {fit(Array.from(row.name)[0]?.toUpperCase() ?? ' ', 1)}
@@ -385,7 +386,7 @@ function Rail(props: SidebarProps): ReactNode {
       <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
         <Text>⚙</Text>
       </ClickTarget>
-      <Text color={props.live ? COLOR.ok : COLOR.warn}>●</Text>
+      <Text color={props.live ? TOKEN.ok : TOKEN.warn}>●</Text>
     </>
   );
 }

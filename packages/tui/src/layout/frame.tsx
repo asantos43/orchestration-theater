@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, type DOMElement } from 'ink';
+import { Box, type DOMElement } from 'ink';
 import { useRef, type ReactNode, type Ref } from 'react';
+import { useTheme } from './theme-context.js';
+import { Text } from './themed-text.js';
 import { useMouseTarget } from '../mouse/index.js';
 import { cellWidth, clip, fit } from './text.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 
 /**
  * A rounded frame whose top and bottom lines are drawn here, so each can carry a title and a label
@@ -38,13 +40,13 @@ export interface FrameProps {
   readonly children: ReactNode;
 }
 
-/** `╭─ title ───── right ─╮` in exactly `width` cells. */
-export function frameLine(
+/** The three parts of the top line: what comes before the title, the title (with its spaces) and the rest. */
+export function frameLineParts(
   width: number,
   corners: readonly [string, string],
   left: string | undefined,
   right: string | undefined,
-): string {
+): { readonly before: string; readonly title: string; readonly after: string } {
   const [first, last] = corners;
   const available = Math.max(0, width - 4);
   let leftText = left === undefined || left === '' ? '' : ` ${left} `;
@@ -55,7 +57,22 @@ export function frameLine(
     rightText = clip(rightText, Math.max(0, available - cellWidth(leftText)));
   }
   const filler = Math.max(0, available - cellWidth(leftText) - cellWidth(rightText));
-  return fit(`${first}─${leftText}${'─'.repeat(filler)}${rightText}─${last}`, width);
+  return {
+    before: `${first}─`,
+    title: leftText,
+    after: `${'─'.repeat(filler)}${rightText}─${last}`,
+  };
+}
+
+/** `╭─ title ───── right ─╮` in exactly `width` cells. */
+export function frameLine(
+  width: number,
+  corners: readonly [string, string],
+  left: string | undefined,
+  right: string | undefined,
+): string {
+  const parts = frameLineParts(width, corners, left, right);
+  return fit(`${parts.before}${parts.title}${parts.after}`, width);
 }
 
 function column(glyph: string, rows: number): string {
@@ -75,7 +92,8 @@ export function Frame(props: FrameProps): ReactNode {
     },
     { enabled: onPress !== undefined },
   );
-  const color = active ? COLOR.borderActive : COLOR.border;
+  const palette = useTheme();
+  const color = active ? TOKEN.borderActive : TOKEN.border;
   const inner = Math.max(0, height - 2);
   const top = frameLine(width, ['╭', '╮'], props.title, props.titleRight);
   const bottom = frameLine(width, ['╰', '╯'], undefined, props.bottomLabel);
@@ -85,9 +103,18 @@ export function Frame(props: FrameProps): ReactNode {
   const after = Math.max(0, inner - before - handleRows);
   return (
     <Box ref={rootRef} flexDirection="column" width={width} height={height}>
-      <Text color={color} bold={active}>
-        {top}
-      </Text>
+      {palette.paintsDim && props.title !== undefined && props.title !== '' && width >= 6 ? (
+        <TitledTop
+          parts={frameLineParts(width, ['╭', '╮'], props.title, props.titleRight)}
+          width={width}
+          active={active}
+          color={color}
+        />
+      ) : (
+        <Text color={color} bold={active}>
+          {top}
+        </Text>
+      )}
       <Box height={inner}>
         <Box width={1} flexDirection="column">
           <Text color={color}>{column('│', inner)}</Text>
@@ -98,7 +125,7 @@ export function Frame(props: FrameProps): ReactNode {
         <Box ref={props.edgeRef} width={1} flexDirection="column">
           {before > 0 && <Text color={color}>{column('│', before)}</Text>}
           {handle !== undefined && handleRows > 0 && (
-            <Text color={handle.active ? COLOR.borderActive : COLOR.border} bold={handle.active}>
+            <Text color={handle.active ? TOKEN.borderActive : TOKEN.border} bold={handle.active}>
               {column('┃', handleRows)}
             </Text>
           )}
@@ -107,5 +134,28 @@ export function Frame(props: FrameProps): ReactNode {
       </Box>
       <Text color={color}>{bottom}</Text>
     </Box>
+  );
+}
+
+/**
+ * The top line of the frame in `otheater`: the border in its colour and the title in its own (bold,
+ * lighter when the frame has the focus), as in the mockup.
+ */
+function TitledTop(props: {
+  readonly parts: ReturnType<typeof frameLineParts>;
+  readonly width: number;
+  readonly active: boolean;
+  readonly color: string;
+}): ReactNode {
+  const { parts, width, active, color } = props;
+  const used = cellWidth(parts.before) + cellWidth(parts.title);
+  return (
+    <Text wrap="truncate">
+      <Text color={color}>{parts.before}</Text>
+      <Text color={active ? TOKEN.titleActive : TOKEN.title} bold>
+        {parts.title}
+      </Text>
+      <Text color={color}>{fit(parts.after, Math.max(0, width - used))}</Text>
+    </Text>
   );
 }

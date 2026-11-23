@@ -1501,6 +1501,7 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.keymap.overrides` | `{}` | id da ação para uma combinação, uma lista ou `[]` (sem atalho) |
 | `ui.clipboard.copy` | `osc52` | `osc52`, `system`, `auto` **[proposta]**, `off` |
 | `ui.mouse` | `full` | `full`, `wheel` (só a roda, e o terminal continua capturado), `off` (devolve a seleção do terminal) |
+| `ui.theme` | `otheater` | `otheater` (paleta do mockup em hex, truecolor; sem truecolor o chalk do Ink reduz para 256 ou 16 cores), `terminal` (as 16 cores nomeadas do terminal e o SGR `dim`, como antes); lida na partida (N257, 2026-11-22) |
 | `ui.tuiMouse.wheelLines` **[proposta]** | 3 | inteiro de 1 a 50 |
 | `ui.tuiMouse.copyMaxBytes` **[proposta]** | 100.000 | inteiro de 1 a 10.000.000 |
 | `ui.render.keyRender` | `flush` | `flush`, `throttle` |

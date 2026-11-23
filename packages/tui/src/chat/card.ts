@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { clip, wrapText } from '../layout/text.js';
+import { TOKEN } from '../layout/theme.js';
 import type { PendingAsk } from './model.js';
 import { SHELL_KEEP_LABEL, SHELL_SEND_LABEL, type ShellAsk } from './shell.js';
 
@@ -576,7 +577,7 @@ export function cardLines(
   if (state.typing) {
     const typed = `${view.typingPrompt}${state.text}`;
     const shown = wrapText(`${typed}█`, width);
-    for (const line of shown.slice(-2)) tail.push({ text: line, color: 'cyan' });
+    for (const line of shown.slice(-2)) tail.push({ text: line, color: TOKEN.info });
   }
   const options: CardLine[][] = step.options.map((option, index) => {
     const here = !state.typing && index === state.cursor;

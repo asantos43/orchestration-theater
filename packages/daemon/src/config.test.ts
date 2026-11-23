@@ -99,6 +99,7 @@ describe('parseConfig', () => {
     expect(ui.keymap).toEqual({ preset: 'agents', environment: 'auto', overrides: {} });
     expect(ui.clipboard).toEqual({ copy: 'osc52' });
     expect(ui.mouse).toBe('full');
+    expect(ui.theme).toBe('otheater');
     expect(ui.render).toEqual({
       keyRender: 'flush',
       maxFps: 30,
@@ -152,6 +153,12 @@ describe('parseConfig', () => {
       /ui\.sidebar\.finishedLimit/,
     );
     expect(() => parseConfig('ui:\n  sidebar:\n    other: 1\n')).toThrow();
+  });
+
+  it('has the default of ui.theme, takes its other mode and refuses bad values', () => {
+    expect(parseConfig('').ui.theme).toBe('otheater');
+    expect(parseConfig('ui:\n  theme: terminal\n').ui.theme).toBe('terminal');
+    expect(() => parseConfig('ui:\n  theme: neon\n')).toThrow(/ui\.theme/);
   });
 
   it('has the default of ui.login, takes its modes and refuses bad values', () => {

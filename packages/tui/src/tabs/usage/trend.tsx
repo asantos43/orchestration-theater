@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { formatTokens, formatUsd } from '@otheater/client';
 import type { AnalysisReport, AnalysisSummary } from '@otheater/protocol';
-import { Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { Section, type SectionControl } from '../../layout/section.js';
 import { fit } from '../../layout/text.js';
-import { COLOR } from '../../layout/theme.js';
+import { TOKEN } from '../../layout/theme.js';
 import { formatClock } from '../use-now.js';
 import { formatFraction, GAP, trendRows } from './panels-model.js';
 import { shownOf, SourceNotice } from './source-notice.js';
@@ -97,7 +97,7 @@ export function TrendSection(props: {
             )}
           </Text>
           {report.missingDays > 0 && (
-            <Text color={COLOR.warn} wrap="truncate">
+            <Text color={TOKEN.warn} wrap="truncate">
               {fit(t('usage.trend.missing', { count: report.missingDays }), width)}
             </Text>
           )}

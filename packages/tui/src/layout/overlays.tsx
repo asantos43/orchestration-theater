@@ -7,14 +7,16 @@ import {
   type UiTranslate,
 } from '@otheater/client';
 import { Select, TextInput } from '@inkjs/ui';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from './theme-context.js';
+import { Text } from './themed-text.js';
 import { MouseModalScope } from '../mouse/index.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
 import { fit } from './text.js';
 import { useUiTranslate } from './use-ui-translate.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 
 /**
  * The three overlays: the palette (every command, filtered as the person types), the help (the
@@ -51,6 +53,7 @@ function OverlayBox(props: {
   readonly title: string;
   readonly children: ReactNode;
 }): ReactNode {
+  const palette = useTheme();
   const rect = overlayRect(props.screen, props);
   return (
     <Box
@@ -60,12 +63,12 @@ function OverlayBox(props: {
       width={rect.width}
       height={rect.height}
       borderStyle="round"
-      borderColor={COLOR.borderActive}
-      backgroundColor={COLOR.overlay}
+      borderColor={palette.resolve(TOKEN.borderActive)}
+      backgroundColor={palette.resolve(TOKEN.overlay)}
       flexDirection="column"
       paddingX={1}
     >
-      <Text bold color={COLOR.accent} wrap="truncate">
+      <Text bold color={TOKEN.accent} wrap="truncate">
         {props.title}
       </Text>
       <MouseModalScope>{props.children}</MouseModalScope>
@@ -120,7 +123,7 @@ export function PaletteOverlay(props: PaletteProps): ReactNode {
       title={t('layout.palette.title')}
     >
       <Box>
-        <Text color={COLOR.accent}>{'› '}</Text>
+        <Text color={TOKEN.accent}>{'› '}</Text>
         <TextInput placeholder={t('layout.palette.placeholder')} onChange={setQuery} />
       </Box>
       <Box flexDirection="column" height={visible} marginTop={1}>
@@ -155,7 +158,7 @@ export function helpLines(
   const keysWidth = Math.min(28, Math.floor(width / 2));
   for (const group of groups) {
     if (lines.length > 0) lines.push({ text: '' });
-    lines.push({ text: t(group.textKey), bold: true, color: COLOR.accent });
+    lines.push({ text: t(group.textKey), bold: true, color: TOKEN.accent });
     for (const row of group.rows) {
       const keys = row.labels.length === 0 ? t('layout.help.paletteOnly') : row.labels.join(' / ');
       lines.push({

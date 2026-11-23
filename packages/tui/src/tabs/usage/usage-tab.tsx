@@ -7,9 +7,10 @@ import {
   type UsageRow,
   type UsageView,
 } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { keyLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { fillBar } from '../../layout/scenario-rows.js';
@@ -17,7 +18,7 @@ import { Section } from '../../layout/section.js';
 import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import { cellWidth, fit } from '../../layout/text.js';
-import { COLOR } from '../../layout/theme.js';
+import { TOKEN } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
 import { DEFAULT_USAGE_SETTINGS, type UsageSectionName } from '../settings.js';
 import { followedSubject } from '../trajectories/model.js';
@@ -68,7 +69,7 @@ function TotalsLines(props: { readonly usage: UsageView; readonly width: number 
         )}
       </Text>
       {!totals.complete && (
-        <Text color={COLOR.warn} wrap="truncate">
+        <Text color={TOKEN.warn} wrap="truncate">
           {fit(t('usage.totals.incomplete', { count: totals.unknownCostTurns }), props.width)}
         </Text>
       )}
@@ -91,7 +92,7 @@ function GroupLine(props: { readonly row: UsageRow; readonly width: number }): R
 function CapLines(props: { readonly cap: CapRow; readonly width: number }): ReactNode {
   const { t } = useTranslation();
   const { cap, width } = props;
-  const color = cap.exceeded ? COLOR.error : cap.percent >= 80 ? COLOR.warn : COLOR.ok;
+  const color = cap.exceeded ? TOKEN.error : cap.percent >= 80 ? TOKEN.warn : TOKEN.ok;
   const name = `${t(`usage.budget.scope.${cap.scope}`)}${cap.id === undefined ? '' : ` ${cap.id}`} · ${t(`usage.budget.period.${cap.period}`)}`;
   const spent = `${formatUsd(cap.spentUsd)} / ${formatUsd(cap.limitUsd)}`;
   const notes: string[] = [];
@@ -129,7 +130,7 @@ function BudgetLines(props: { readonly budget: BudgetView; readonly width: numbe
         <CapLines key={`${cap.scope}/${cap.id ?? ''}/${cap.period}`} cap={cap} width={width} />
       ))}
       {budget.exceeded.map((item) => (
-        <Text key={item.profile} color={COLOR.error} wrap="truncate">
+        <Text key={item.profile} color={TOKEN.error} wrap="truncate">
           {fit(
             t('usage.budget.profileExceeded', {
               profile: item.profile,
@@ -225,7 +226,7 @@ function UsageTab(props: TabContentProps): ReactNode {
     );
   } else if (load.status === 'error') {
     notice = (
-      <Text color={COLOR.error} wrap="truncate">
+      <Text color={TOKEN.error} wrap="truncate">
         {fit(
           t(`usage.failed.${load.code}`, {
             defaultValue: t('usage.failed.other', { code: load.code }),
