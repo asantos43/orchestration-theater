@@ -184,6 +184,12 @@ export interface ChatDaemonOptions {
    * puts what is in it into the running daemon, so a test of those must start with the two equal.
    */
   readonly persistConfig?: boolean;
+  /**
+   * Runs the daemon on its own real clock instead of the fake one in `fakes.clock` (the manual
+   * script of the terminals: a person uses the TUI for as long as the roteiro takes, so the timers
+   * of the daemon must fire). A real client always has the real clock (`real`), whatever this says.
+   */
+  readonly realClock?: boolean;
 }
 
 /** Polls `read` until it returns something, or fails after `timeoutMs` of real time. */
@@ -293,7 +299,12 @@ ${options.extra ?? ''}
     config,
     overrides:
       real === undefined
-        ? { clock: fakes.clock, vault: fakes.vault, launcher, codeHost: realHead }
+        ? {
+            ...(options.realClock === true ? {} : { clock: fakes.clock }),
+            vault: fakes.vault,
+            launcher,
+            codeHost: realHead,
+          }
         : {
             vault: fakes.vault,
             launcher: real.wrapLauncher?.(launcher) ?? launcher,
