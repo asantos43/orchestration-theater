@@ -1,4 +1,5 @@
-// Gerador do mockup da TUI. Rode: node tui-render.js  → reescreve tui.html (telas pré-renderizadas, funcionam sem JavaScript).
+// Gerador do mockup da TUI. Rode: node tui-render.cjs  → reescreve tui.html (telas pré-renderizadas, funcionam sem JavaScript).
+// É .cjs porque o package.json da raiz tem "type": "module" (como .js, o require falha).
 // Mesmo layout do app: chat em altura total com largura ajustável, lateral retrátil, painel de abas que abrem e fecham, seções recolhíveis.
 const fs = require('fs');
 const path = require('path');
@@ -325,7 +326,7 @@ const page = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OTheater · TUI</title>
-<!-- Gerado por tui-render.js. Não edite à mão: altere o gerador e rode "node tui-render.js". -->
+<!-- Gerado por tui-render.cjs. Não edite à mão: altere o gerador e rode "node tui-render.cjs". -->
 <style>
 :root{--bg:#eef0f3;--text:#1b1f24;--muted:#5d6672;--line:#d3d8df;--panel:#fff;--accent:#4a5bd4}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0d10;--text:#e6e8ec;--muted:#9aa3af;--line:#2a303a;--panel:#14171d;--accent:#8190ff}}
@@ -350,7 +351,8 @@ html.js .screen .desc{display:block}
 .chrome{background:#2b2f37;padding:7px 12px;display:flex;gap:7px;align-items:center;border-radius:10px 10px 0 0;min-width:max-content}
 .chrome i{width:11px;height:11px;border-radius:50%;display:inline-block}
 .chrome span{color:#aeb4bf;font:12px "Segoe UI",sans-serif;margin-left:10px}
-pre.term{margin:0;background:#11141a;color:#c9ced6;font:12.5px/1.32 "Cascadia Mono","Cascadia Code","JetBrains Mono",Consolas,ui-monospace,monospace;padding:10px 12px;min-width:max-content;border-radius:0 0 10px 10px}
+/* A fonte do painel de terminal do Claude desktop (xterm.js: Menlo, Monaco, "Courier New", monospace; 13 px; altura da linha da própria fonte), para comparar com a TUI de verdade. */
+pre.term{margin:0;background:#11141a;color:#c9ced6;font:13px/normal Menlo,Monaco,"Courier New",monospace;padding:10px 12px;min-width:max-content;border-radius:0 0 10px 10px}
 .b{color:#3a4150}.b-on{color:#7d8cff}.ti{color:#e6e8ec;font-weight:700}.ti-on{color:#aab4ff;font-weight:700}
 .dim{color:#6b7380}.wk{opacity:.6}.acc{color:#8f9cff}.ok{color:#4fc98f}.warn{color:#e8a948}.err{color:#ef6b6b}.sys{color:#b4a6ff}
 .you{color:#7cc4ff;font-weight:700}.bold{color:#e6e8ec;font-weight:700}
@@ -373,7 +375,7 @@ pre.term{margin:0;background:#11141a;color:#c9ced6;font:12.5px/1.32 "Cascadia Mo
   </div>
 </header>
 ${sections}
-<p class="note">Atalhos da TUI: <code>Alt+S</code> recolhe a lateral · <code>Alt+J</code> abre/fecha o painel · <code>Ctrl+Shift+←/→</code> ajusta a largura do chat (lembrada entre sessões) · <code>Alt+A</code>/<code>Alt+W</code> abrem e fecham abas · <code>Alt+K</code> ou <code>F1</code> abre a paleta (atalhos da v0.33, N35) · <code>Enter</code> no título recolhe uma seção · <code>F5</code> abre Configurações como aba. Telas pré-renderizadas (aparecem mesmo sem JavaScript); para alterá-las, edite <code>tui-render.js</code> e rode <code>node tui-render.js</code>. Valores ilustrativos, os mesmos do mockup do app. Baseado em <code>arquitetura.md</code> v0.4.</p>
+<p class="note">Atalhos da TUI: <code>Alt+S</code> recolhe a lateral · <code>Alt+J</code> abre/fecha o painel · <code>Ctrl+Shift+←/→</code> ajusta a largura do chat (lembrada entre sessões) · <code>Alt+A</code>/<code>Alt+W</code> abrem e fecham abas · <code>Alt+K</code> ou <code>F1</code> abre a paleta (atalhos da v0.33, N35) · <code>Enter</code> no título recolhe uma seção · <code>F5</code> abre Configurações como aba. Telas pré-renderizadas (aparecem mesmo sem JavaScript); para alterá-las, edite <code>tui-render.cjs</code> e rode <code>node tui-render.cjs</code>. Valores ilustrativos, os mesmos do mockup do app. Baseado em <code>arquitetura.md</code> v0.4.</p>
 <script>
 (function(){
   const root=document.documentElement;root.classList.add("js");
