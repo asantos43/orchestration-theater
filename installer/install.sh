@@ -308,10 +308,13 @@ fetch() {
     if [ "$fetch_rc" = 63 ]; then return 2; fi
     [ "$fetch_rc" = 0 ] || return 1
   elif command -v wget >/dev/null 2>&1; then
-    # No wgetrc (WGETRC points at nothing, and --no-config where this wget has it), https only where
+    # No wgetrc (WGETRC points at an empty regular file: GNU wget 1.2x refuses /dev/null, which is not a
+    # regular file; and --no-config where this wget has it), https only where
     # this wget has --https-only, at most 5 redirects, and the size cap that curl has in --max-filesize:
     # the body goes through `head -c`, which stops one byte past the cap.
-    fetch_help=$(WGETRC=/dev/null wget --help 2>&1) || fetch_help=''
+    fetch_emptyrc="$fetch_dest.wgetrc"
+    : >"$fetch_emptyrc" || return 1
+    fetch_help=$(WGETRC=$fetch_emptyrc wget --help 2>&1) || fetch_help=''
     set -- -q --tries=1 --timeout=30 --max-redirect=5 --user-agent=otheater-install-sh
     case $fetch_help in
       *--no-config*) set -- "$@" --no-config ;;
@@ -324,12 +327,13 @@ fetch() {
     fi
     fetch_rcfile="$fetch_dest.rc"
     {
-      WGETRC=/dev/null wget "$@" -O - "$fetch_url"
+      WGETRC=$fetch_emptyrc wget "$@" -O - "$fetch_url"
       echo $? >"$fetch_rcfile"
     } | head -c "$((fetch_max + 1))" >"$fetch_dest"
     # Past the cap wget is cut by the closed pipe, so the size says it before the status does.
     fetch_size=$(file_size "$fetch_dest")
     fetch_wget_rc=$(cat "$fetch_rcfile" 2>/dev/null || echo 1)
+    rm -f "$fetch_emptyrc" "$fetch_rcfile"
     [ "$fetch_size" -le "$fetch_max" ] || return 2
     [ "$fetch_wget_rc" = 0 ] || return 1
   else
