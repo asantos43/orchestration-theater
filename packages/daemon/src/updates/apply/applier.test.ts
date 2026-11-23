@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { recoverInterrupted, runApply, type ApplyPorts } from './applier.js';
+import type { JournalTrust } from './trust.js';
 import type { HealthReading } from './health.js';
 import { readJournal, writeJournal, type JournalStep, type UpdateJournal } from './journal.js';
 import { layoutOf, type InstallLayout } from './layout.js';
@@ -19,6 +20,9 @@ const run = promisify(execFile);
  * clock are fakes. Scripts do not run on Windows, so the file is skipped there.
  */
 const posix = process.platform !== 'win32';
+
+const TRUSTED = (): Promise<JournalTrust> => Promise.resolve({ ok: true });
+const UNTRUSTED = (): Promise<JournalTrust> => Promise.resolve({ ok: false, detail: 'forged' });
 
 const OLD_DAEMON = '#!/bin/sh\necho ok\n';
 const NEW_OK = '#!/bin/sh\necho ok\n# new\n';
@@ -118,6 +122,7 @@ async function rig(
     from: '0.5.0',
     to: '0.6.0',
     sha256: await sha256OfFile(layout.stagingExe),
+    manifestSha256: 'b'.repeat(64),
     step: 'waiting',
     oldPid: options.oldPid ?? 0,
     applierPid: 0,
@@ -289,10 +294,22 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
     });
   }
 
+  it('a journal that no signed manifest backs moves nothing and starts nothing (P8a)', async () => {
+    const r = await rig();
+    await stoppedAt(r, 'placed', { previous: true, newInPlace: true });
+    const before = await sha256OfFile(r.layout.exe);
+    const result = await recoverInterrupted(r.layout, r.ports, true, UNTRUSTED);
+    expect(result).toEqual({ kind: 'untrusted', detail: 'forged' });
+    expect(await step(r.layout)).toBe('placed');
+    expect(await sha256OfFile(r.layout.exe)).toBe(before);
+    expect(r.started).toEqual([]);
+    expect(r.calls).toEqual([]);
+  });
+
   it('waiting: nothing was moved, the link is undone', async () => {
     const r = await rig();
     await stoppedAt(r, 'waiting', { previous: true });
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result).toEqual({
       kind: 'finished',
       outcome: { kind: 'rolled_back', reason: 'interrupted' },
@@ -305,7 +322,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
   it('linked, the new executable not yet in place: the link is undone', async () => {
     const r = await rig();
     await stoppedAt(r, 'linked', { previous: true });
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result).toEqual({
       kind: 'finished',
       outcome: { kind: 'rolled_back', reason: 'interrupted' },
@@ -317,7 +334,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
     const r = await rig();
     await stoppedAt(r, 'linked', { previous: true, newInPlace: true });
     r.state.current = 'ok';
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result).toEqual({ kind: 'finished', outcome: { kind: 'committed' } });
     expect(await readFile(r.layout.exe, 'utf8')).toBe(NEW_OK);
   });
@@ -328,7 +345,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
       const r = await rig();
       await stoppedAt(r, name, { previous: true, newInPlace: true });
       r.state.current = 'none';
-      const result = await recoverInterrupted(r.layout, r.ports, false);
+      const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
       expect(result).toEqual({
         kind: 'finished',
         outcome: { kind: 'rolled_back', reason: 'interrupted' },
@@ -343,7 +360,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
     const r = await rig();
     await stoppedAt(r, 'placed', { previous: true, newInPlace: true });
     r.state.current = 'ok';
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result).toEqual({ kind: 'finished', outcome: { kind: 'committed' } });
     expect(await step(r.layout)).toBe('committed');
   });
@@ -351,7 +368,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
   it('rolling_back: finishes the rollback and the backup too', async () => {
     const r = await rig({ backup: '/backups/y' });
     await stoppedAt(r, 'rolling_back', { previous: true, newInPlace: true });
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result.kind).toBe('finished');
     expect(await readFile(r.layout.exe, 'utf8')).toBe(OLD_DAEMON);
     expect(r.calls).toEqual(['stop', 'restore:/backups/y']);
@@ -361,7 +378,7 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
     const r = await rig({ rollback: 'off' });
     await stoppedAt(r, 'checking', { previous: true, newInPlace: true });
     r.state.current = 'none';
-    const result = await recoverInterrupted(r.layout, r.ports, false);
+    const result = await recoverInterrupted(r.layout, r.ports, false, TRUSTED);
     expect(result).toEqual({
       kind: 'finished',
       outcome: { kind: 'failed', reason: 'interrupted' },
@@ -373,18 +390,22 @@ describe.skipIf(!posix)('an applier that died half way (the journal)', () => {
     const r = await rig();
     await stoppedAt(r, 'checking', { previous: true, newInPlace: true });
     r.alive.add(999_999);
-    expect(await recoverInterrupted(r.layout, r.ports, false)).toEqual({ kind: 'running' });
+    expect(await recoverInterrupted(r.layout, r.ports, false, TRUSTED)).toEqual({
+      kind: 'running',
+    });
     expect(await step(r.layout)).toBe('checking');
   });
 
   it('does nothing with a swap that ended, with no journal, or with a journal it cannot read', async () => {
     const r = await rig();
     await stoppedAt(r, 'committed', {});
-    expect(await recoverInterrupted(r.layout, r.ports, false)).toEqual({ kind: 'none' });
+    expect(await recoverInterrupted(r.layout, r.ports, false, TRUSTED)).toEqual({ kind: 'none' });
     await rm(r.layout.journal);
-    expect(await recoverInterrupted(r.layout, r.ports, false)).toEqual({ kind: 'none' });
+    expect(await recoverInterrupted(r.layout, r.ports, false, TRUSTED)).toEqual({ kind: 'none' });
     await writeFile(r.layout.journal, '{not json');
-    expect(await recoverInterrupted(r.layout, r.ports, false)).toEqual({ kind: 'corrupt' });
+    expect(await recoverInterrupted(r.layout, r.ports, false, TRUSTED)).toEqual({
+      kind: 'corrupt',
+    });
     expect(await readFile(r.layout.journal, 'utf8')).toBe('{not json');
   });
 });

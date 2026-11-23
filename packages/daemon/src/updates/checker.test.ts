@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeClock } from '@otheater/core/testing';
@@ -32,6 +32,9 @@ import { parsePublicKey } from './verify.js';
 const INSTALLED = '0.5.0';
 const NEWER = '0.6.0';
 const HOUR = 3_600_000;
+// The FakeClock starts in 2026; one date is long after it and the other long before.
+const IN_DATE = '2999-01-01T00:00:00.000Z';
+const EXPIRED = '2001-01-01T00:00:00.000Z';
 
 interface Rig {
   readonly checker: UpdateChecker;
@@ -116,11 +119,45 @@ async function rig(
   };
 }
 
+/** A checker of another run: the same staging folder and clock, the settings and the version of its own. */
+function restarted(
+  r: Rig,
+  settings: Record<string, unknown>,
+  version = INSTALLED,
+): { checker: UpdateChecker; situations: RecordingSituations } {
+  const situations = new RecordingSituations();
+  const checker = new UpdateChecker({
+    settings: UpdatesConfigSchema.parse({
+      mode: 'notify',
+      source: 'url',
+      url: TEST_ORIGIN,
+      check_interval: 'off',
+      ...settings,
+    }),
+    currentVersion: version,
+    platform: 'linux-x64',
+    installKind: 'own',
+    key: parsePublicKey(r.keys.publicPem),
+    source: createUpdateSource(
+      { kind: 'url', url: TEST_ORIGIN },
+      { fetch: () => Promise.reject(new TypeError('down')) },
+    ),
+    staging: r.staging,
+    clock: r.clock,
+    situations,
+    logger: createSilentLogger(),
+  });
+  return { checker, situations };
+}
+
 const phases = (r: Rig): unknown[] => r.updates().map((event) => event.phase);
 
 describe('a good version', () => {
   it('is downloaded, checked and stored, and nothing else is touched', async () => {
-    const r = await rig({ settings: { mode: 'notify' } });
+    const r = await rig({
+      settings: { mode: 'notify' },
+      release: { version: NEWER, expires: IN_DATE },
+    });
     const status = await r.checker.checkNow();
     expect(status).toMatchObject({
       lastResult: 'ready',
@@ -301,6 +338,138 @@ describe('what is refused', () => {
   it('a name in the manifest that is a path is a bad manifest', async () => {
     const r = await rig({ settings: { mode: 'notify' }, release: { version: NEWER, name: '..' } });
     expect((await r.checker.checkNow()).lastReason).toBe('bad_manifest');
+  });
+});
+
+describe('the expiry of a manifest', () => {
+  it('an expired manifest is refused before anything is downloaded', async () => {
+    const r = await rig({ release: { version: NEWER, expires: EXPIRED } });
+    await r.checker.checkNow();
+    expect(r.checker.status()).toMatchObject({
+      lastResult: 'rejected',
+      lastReason: 'bad_manifest',
+    });
+    expect(r.exeAsked()).toBe(false);
+    expect(await r.leftovers()).toEqual([]);
+  });
+
+  it('manifest_expiry off ignores it', async () => {
+    const r = await rig({
+      settings: { manifest_expiry: 'off' },
+      release: { version: NEWER, expires: EXPIRED },
+    });
+    expect((await r.checker.checkNow()).lastResult).toBe('ready');
+    expect(r.situations.of('daemon.notice')).toEqual([]);
+  });
+
+  it('a manifest with no expires is accepted by enforce, with one notice per version', async () => {
+    const r = await rig();
+    expect((await r.checker.checkNow()).lastResult).toBe('ready');
+    await r.checker.checkNow();
+    expect(r.situations.of('daemon.notice')).toEqual([
+      expect.objectContaining({ kind: 'update_no_expiry', subject: NEWER, detail: 'enforce' }),
+    ]);
+  });
+
+  it('a manifest with no expires is refused by require', async () => {
+    const r = await rig({ settings: { manifest_expiry: 'require' } });
+    await r.checker.checkNow();
+    expect(r.checker.status()).toMatchObject({
+      lastResult: 'rejected',
+      lastReason: 'bad_manifest',
+    });
+    expect(r.exeAsked()).toBe(false);
+  });
+
+  it('an up to date daemon is not refused for the expiry of the release it already has', async () => {
+    const r = await rig({ release: { version: INSTALLED, expires: EXPIRED } });
+    expect((await r.checker.checkNow()).lastResult).toBe('up_to_date');
+  });
+});
+
+describe('a version stored by an earlier run is checked again', () => {
+  /** The reasons the restore told, in the events of the restarted checker. */
+  const refusals = (again: { situations: RecordingSituations }): unknown[] =>
+    (again.situations.of('daemon.update') as Record<string, unknown>[]).map((e) => e.reason);
+
+  async function stored(): Promise<Rig> {
+    const r = await rig({
+      settings: { mode: 'notify' },
+      release: { version: NEWER, expires: IN_DATE },
+    });
+    await r.checker.checkNow();
+    expect(r.checker.status().ready).toBe(NEWER);
+    return r;
+  }
+
+  it('is offered again when it still passes', async () => {
+    const r = await stored();
+    const again = restarted(r, {});
+    again.checker.start();
+    await vi.waitFor(() => {
+      expect(again.checker.status().ready).toBe(NEWER);
+    });
+    await again.checker.stop();
+  });
+
+  it('is dropped when the channel was changed since', async () => {
+    const r = await stored();
+    const again = restarted(r, { channel: 'beta' });
+    again.checker.start();
+    await vi.waitFor(() => {
+      expect(refusals(again)[0]).toBe('wrong_channel');
+    });
+    expect(again.checker.status().ready).toBeNull();
+    expect(await r.leftovers()).toEqual([]);
+    expect(again.situations.of('daemon.update')[0]).toMatchObject({
+      phase: 'rejected',
+      version: NEWER,
+    });
+    await again.checker.stop();
+  });
+
+  it('is dropped when it has expired since', async () => {
+    const r = await stored();
+    const late = new FakeClock(Date.parse(IN_DATE) + 1);
+    const again = restarted({ ...r, clock: late }, {});
+    again.checker.start();
+    await vi.waitFor(() => {
+      expect(refusals(again)[0]).toBe('bad_manifest');
+    });
+    expect(again.checker.status().ready).toBeNull();
+    expect(await r.leftovers()).toEqual([]);
+    await again.checker.stop();
+  });
+
+  it('is skipped and dropped when the installed version is below its minVersion', async () => {
+    const r = await rig({
+      settings: { mode: 'notify' },
+      release: { version: NEWER, expires: IN_DATE, minVersion: '0.4.0' },
+    });
+    await r.checker.checkNow();
+    // The installed version of the next run is older than the minimum asked.
+    const again = restarted(r, {}, '0.3.0');
+    again.checker.start();
+    await vi.waitFor(() => {
+      expect(refusals(again)[0]).toBe('below_min_version');
+    });
+    expect(again.checker.status().ready).toBeNull();
+    expect(await r.leftovers()).toEqual([]);
+    await again.checker.stop();
+  });
+
+  it('is dropped when the stored manifest was changed on disk', async () => {
+    const r = await stored();
+    const file = join(r.dir, 'staging', NEWER, 'manifest.json');
+    const bytes = await readFile(file, 'utf8');
+    await writeFile(file, bytes.replace(IN_DATE, '2999-01-02T00:00:00.000Z'));
+    const again = restarted(r, {});
+    again.checker.start();
+    await vi.waitFor(() => {
+      expect(refusals(again)[0]).toBe('signature');
+    });
+    expect(again.checker.status().ready).toBeNull();
+    await again.checker.stop();
   });
 });
 

@@ -2,9 +2,41 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { makeTar, makeTarball } from './adapter-fixture.js';
-import { readTarGz, safeArchivePath, TarError } from './tar.js';
+import { DEFAULT_MAX_ENTRIES, readTarGz, safeArchivePath, TarError } from './tar.js';
 
 const LONG = `deep/${'folder/'.repeat(20)}file.js`;
+
+describe('readTarGz: duplicates and the entry limit', () => {
+  it('refuses a path that appears twice, and one that differs only in case', () => {
+    for (const second of ['a.js', 'A.js']) {
+      expect(() =>
+        readTarGz(
+          makeTarball([
+            { path: 'a.js', content: '1' },
+            { path: second, content: '2' },
+          ]),
+        ),
+      ).toThrow(/twice/u);
+    }
+  });
+
+  it('counts every entry but the pax and long-name headers against maxEntries', () => {
+    const archive = makeTarball([{ path: LONG, content: 'x' }], {
+      longNames: 'pax',
+      extra: [{ name: 'package/link', type: '2' }],
+    });
+    // The directory `package/`, the file and the link: three entries.
+    expect(readTarGz(archive, { maxEntries: 3 })).toHaveLength(1);
+    expect(() => readTarGz(archive, { maxEntries: 2 })).toThrow(TarError);
+    expect(() => readTarGz(archive, { maxEntries: 2 })).toThrow(/more than 2 entries/u);
+  });
+
+  it('has a default limit that a normal package is far from', () => {
+    const files = Array.from({ length: 200 }, (_, i) => ({ path: `f${String(i)}`, content: '' }));
+    expect(readTarGz(makeTarball(files))).toHaveLength(200);
+    expect(DEFAULT_MAX_ENTRIES).toBe(20_000);
+  });
+});
 
 describe('readTarGz', () => {
   it('reads the files of an npm tarball and drops the first component', () => {

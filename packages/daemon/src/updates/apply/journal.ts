@@ -39,6 +39,11 @@ export const JournalSchema = z.strictObject({
   to: version,
   /** SHA-256 of the new executable (the one the manifest signs). */
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  /**
+   * SHA-256 of the signed manifest the daemon copied into `staging/` with its signature: the proof
+   * that this journal asks for what the owner signed ({@link checkJournalTrust}, Phase 11 P8a).
+   */
+  manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
   step: z.enum(JOURNAL_STEPS),
   /** The daemon that went away (0: none was running). */
   oldPid: z.int().min(0),

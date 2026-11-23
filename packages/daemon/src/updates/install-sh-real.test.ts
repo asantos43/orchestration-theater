@@ -59,19 +59,25 @@ describe.skipIf(!ENABLED)('install.sh with the real executable and service (CI o
     }
     const keys = makeKeys();
     const keyFile = join(scratch, 'public-key.pem');
-    await writeFile(keyFile, keys.publicPem);
+    // Where openssl has `-rawin` (OpenSSL 3) the override is the PEM and the openssl verifier decides;
+    // elsewhere (the LibreSSL of macOS) it is the `ssh-ed25519` line and ssh-keygen decides.
+    const help = spawnSync(OPENSSL, ['pkeyutl', '-help'], { encoding: 'utf8', timeout: 20_000 });
+    const opensslChecks = `${help.stdout}${help.stderr}`.includes('rawin');
+    await writeFile(keyFile, opensslChecks ? keys.publicPem : `${keys.sshLine}\n`);
     const exe = await readFile(SEA);
     const name = `otheater-${platform}`;
     const server = await startReleaseServer();
     const release = buildRelease(keys, { version: '1.0.0', platform, name, exe });
     server.files.set('manifest.json', release.manifestBytes);
     server.files.set('manifest.json.sig', release.signature);
+    server.files.set('manifest.json.sshsig', release.sshsig);
     server.files.set(name, exe);
     const env: Record<string, string> = {
       HOME: home,
       OT_INSTALL_BASE_URL: server.base,
       OT_INSTALL_PUBLIC_KEY_FILE: keyFile,
       OT_INSTALL_OPENSSL: OPENSSL,
+      OT_INSTALL_ALLOW_KEY_OVERRIDE: '1',
     };
     for (const key of ['XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'USER']) {
       const value = process.env[key];
@@ -103,6 +109,7 @@ describe.skipIf(!ENABLED)('install.sh with the real executable and service (CI o
       const forged = buildRelease(other, { version: '1.0.1', platform, name, exe });
       server.files.set('manifest.json', forged.manifestBytes);
       server.files.set('manifest.json.sig', forged.signature);
+      server.files.set('manifest.json.sshsig', forged.sshsig);
       const bad = await runInstaller(
         [],
         { ...env, OT_INSTALL_SERVICE: 'auto' },

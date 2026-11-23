@@ -15,11 +15,14 @@ const USAGE = `Usage: otheater-release <command> [options]
 
 Commands:
   build [--target <id>] [--out <dir>] [--config <file>] [--node <binary>] [--minify] [--version <x.y.z>]
+      [--public-key <file>]
       Builds the single executable (Node SEA) of the platform this machine is. --target names it
       (${TARGET_IDS.join(', ')}); a target other than the host's is refused. Without --target, the first
       target of the config that is the host's. --node is the Node binary to inject into (default:
       $OT_SEA_NODE, else the running one; it has to be a standalone build). --version bakes that
       version into the executable instead of the one of the package (the release sets it).
+      --public-key is the file of the update public key to embed (default
+      tools/release/keys/update-public-key.pem); a missing or invalid file stops the build.
   smoke <executable> [--version <x.y.z>]
       Runs the executable as the acceptance of the build does: --version, the daemon in a temporary
       folder and its API, the TUI without a terminal, the MCP shim and the modes not yet available.
@@ -43,6 +46,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         node: { type: 'string' },
         minify: { type: 'boolean' },
         version: { type: 'string' },
+        'public-key': { type: 'string' },
       },
       strict: true,
     });
@@ -75,6 +79,8 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (target === undefined) fail('no target to build on this machine');
     const record = await buildTarget({
       root,
+      publicKeyFile:
+        values['public-key'] === undefined ? undefined : path.resolve(values['public-key']),
       target,
       config,
       outDir: path.resolve(values.out ?? path.join(root, 'dist', 'sea')),

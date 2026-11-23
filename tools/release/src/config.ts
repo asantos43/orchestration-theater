@@ -14,12 +14,20 @@ import { isTargetId, TARGET_IDS, type TargetId } from './targets.js';
  *   `per_platform` (default) generates the file of the platform from its production graph and the
  *   bundle (`tools/verify`); `root_only` copies the `THIRD_PARTY_NOTICES.md` of the repository root (the
  *   Linux one, N72) under the same name, so what consumes the file does not care which mode ran.
+ * - `manifestValidityDays` (P8a, N288) [proposta]: how long the signed manifest is valid, in days from
+ *   `assemble`; the manifest carries it as `expires` and the daemon and `install.sh` refuse a manifest
+ *   after it. Default 365. `null` writes no `expires` (the manifest never expires). The command
+ *   line (`assemble --valid-days <n|none>`) overrides it.
  */
 export interface ReleaseConfig {
   readonly targets: readonly TargetId[];
   readonly versionOverride: string | null;
   readonly notices: NoticesMode;
+  readonly manifestValidityDays: number | null;
 }
+
+/** The longest validity `manifestValidityDays` takes (ten years). */
+export const MAX_MANIFEST_VALIDITY_DAYS = 3650;
 
 export const NOTICES_MODES = ['per_platform', 'root_only'] as const;
 export type NoticesMode = (typeof NOTICES_MODES)[number];
@@ -28,6 +36,7 @@ export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
   targets: ['linux-x64', 'win32-x64', 'darwin-arm64'],
   versionOverride: null,
   notices: 'per_platform',
+  manifestValidityDays: 365,
 };
 
 /** A version that is safe to bake into the bundle and to print: dotted numbers, an optional tag. */
@@ -43,7 +52,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseReleaseConfig(raw: unknown): ReleaseConfig {
   if (!isRecord(raw)) throw new ReleaseConfigError('release.config.json must be an object');
   const unknown = Object.keys(raw).filter(
-    (key) => key !== 'targets' && key !== 'versionOverride' && key !== 'notices',
+    (key) =>
+      key !== 'targets' &&
+      key !== 'versionOverride' &&
+      key !== 'notices' &&
+      key !== 'manifestValidityDays',
   );
   if (unknown.length > 0) {
     throw new ReleaseConfigError(`release.config.json has unknown keys: ${unknown.join(', ')}`);
@@ -77,7 +90,25 @@ export function parseReleaseConfig(raw: unknown): ReleaseConfig {
     }
     notices = mode as NoticesMode;
   }
-  return { targets, versionOverride, notices };
+  let manifestValidityDays: number | null = DEFAULT_RELEASE_CONFIG.manifestValidityDays;
+  if (raw.manifestValidityDays !== undefined) {
+    const days = raw.manifestValidityDays;
+    if (days === null) {
+      manifestValidityDays = null;
+    } else if (
+      typeof days !== 'number' ||
+      !Number.isInteger(days) ||
+      days < 1 ||
+      days > MAX_MANIFEST_VALIDITY_DAYS
+    ) {
+      throw new ReleaseConfigError(
+        `"manifestValidityDays" must be null or a whole number of days from 1 to ${String(MAX_MANIFEST_VALIDITY_DAYS)}`,
+      );
+    } else {
+      manifestValidityDays = days;
+    }
+  }
+  return { targets, versionOverride, notices, manifestValidityDays };
 }
 
 export function loadReleaseConfig(file: string): ReleaseConfig {

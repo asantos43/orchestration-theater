@@ -1908,6 +1908,11 @@ describe('updates, the application (Phase 10, P8) [proposta]', () => {
           .backup_before_migration,
       ).toBe(flag);
     }
+    for (const expiry of ['enforce', 'require', 'off']) {
+      expect(parseConfig(`updates:\n  manifest_expiry: ${expiry}\n`).updates.manifest_expiry).toBe(
+        expiry,
+      );
+    }
     expect(parseConfig('updates:\n  max_wait: 2h\n').updates.max_wait).toBe(7_200_000);
     expect(parseConfig('updates:\n  health_timeout: 90s\n').updates.health_timeout).toBe(90_000);
   });
@@ -1920,6 +1925,8 @@ describe('updates, the application (Phase 10, P8) [proposta]', () => {
       'updates:\n  max_wait: 500ms\n',
       'updates:\n  max_wait: forever\n',
       'updates:\n  health_timeout: 0s\n',
+      'updates:\n  manifest_expiry: sometimes\n',
+      'updates:\n  manifest_expiry: true\n',
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }
@@ -1937,6 +1944,7 @@ describe('updates (Phase 10, P7) [proposta]', () => {
       max_wait: 24 * 3_600_000,
       rollback: 'auto',
       backup_before_migration: true,
+      manifest_expiry: 'enforce',
       health_timeout: 60_000,
     });
   });
