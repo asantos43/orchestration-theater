@@ -5,7 +5,14 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts", "src/**/*-fixture.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/test-helpers.ts",
+    "src/**/*-fixture.ts",
+    "src/chaos/harness.ts",
+    "src/chaos/census.ts",
+    "src/chaos/invariants.ts"
+  ],
   "references": [
     { "path": "../core/tsconfig.src.json" },
     { "path": "../protocol/tsconfig.src.json" },

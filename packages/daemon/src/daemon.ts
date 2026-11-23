@@ -126,6 +126,8 @@ import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from '.
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
 import { RecoveryGate } from './recovery/gate.js';
 import { announceRecovery } from './recovery/notice.js';
+import { armFaults, disarmFaults } from './chaos/crash-points.js';
+import { faultPlanPath, resolveFaultPlan } from './chaos/faults.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
@@ -383,6 +385,14 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
   const gate = new RecoveryGate();
   try {
     const config = options.config ?? (await loadConfig(paths.config));
+    // Phase 11, P1: the plan of faults of the chaos tests; empty with `faults.inject: off` and in the release build.
+    armFaults(
+      await resolveFaultPlan({
+        mode: config.faults.inject,
+        env: process.env,
+        planFile: faultPlanPath(paths.dataDir, config.faults.plan_file),
+      }),
+    );
     // Registries first, before the store is opened: an invalid entry stops the start-up here.
     const registries = buildDaemonRegistries(options.registries);
     // Phase 9, P8: the event log validates against this one, which follows the snapshot of the
@@ -606,6 +616,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       apiRef,
     });
   } catch (error) {
+    disarmFaults();
     gate.open();
     await apiRef.server?.stop().catch(() => undefined);
     await directives?.stop().catch(() => undefined);
@@ -1201,6 +1212,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       );
       await attempt('composition', () => composition.close());
       await attempt('lock', () => lock.release());
+      disarmFaults();
       markStopped();
     })());
 

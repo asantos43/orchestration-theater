@@ -24,6 +24,7 @@ import {
   SLASH_CONFIRM_MODES,
   VERIFY_MODES,
 } from './config.js';
+import { FAULT_INJECT_MODES } from './chaos/faults.js';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
   PLUGIN_APPROVAL_DETAIL_MODES,
@@ -648,6 +649,19 @@ describe('parseConfig, execution keys', () => {
       /short_output_roles/,
     );
     expect(() => parseConfig('resume:\n  package:\n    max_chars: 10\n')).toThrow(/max_chars/);
+  });
+
+  it('faults: off by default, takes env and plan, and refuses the rest (Phase 11, P1)', () => {
+    expect(parseConfig('').faults).toEqual({ inject: 'off', plan_file: 'fault-plan.json' });
+    for (const inject of FAULT_INJECT_MODES) {
+      expect(parseConfig(`faults:\n  inject: ${inject}\n`).faults.inject).toBe(inject);
+    }
+    expect(parseConfig('faults:\n  plan_file: plans/one.json\n').faults.plan_file).toBe(
+      'plans/one.json',
+    );
+    expect(() => parseConfig('faults:\n  inject: always\n')).toThrow(/inject/);
+    expect(() => parseConfig('faults:\n  plan_file: ""\n')).toThrow(/plan_file/);
+    expect(() => parseConfig('faults:\n  crash_at: x\n')).toThrow(/crash_at/);
   });
 
   it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {

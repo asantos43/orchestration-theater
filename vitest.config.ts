@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 
 // Tests import workspace packages by name. Pointing them at the sources lets `vitest run` work on
 // a fresh checkout, without a previous `tsc -b` (the build output is only for `exports`).
-const alias = {
+export const alias = {
   '@otheater/core/testing': `${import.meta.dirname}/packages/core/src/testing/index.ts`,
   '@otheater/core': `${import.meta.dirname}/packages/core/src/index.ts`,
   '@otheater/sdk/plugin': `${import.meta.dirname}/packages/sdk/src/plugin/index.ts`,
@@ -42,8 +42,8 @@ const alias = {
 const fromEnv = Number(process.env.OT_TEST_TIMEOUT_MS);
 const override = Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : undefined;
 const windows = process.platform === 'win32';
-const testTimeout = override ?? (windows ? 30_000 : 5_000);
-const hookTimeout = override ?? (windows ? 60_000 : 10_000);
+export const testTimeout = override ?? (windows ? 30_000 : 5_000);
+export const hookTimeout = override ?? (windows ? 60_000 : 10_000);
 
 export default defineConfig({
   test: {
@@ -57,7 +57,8 @@ export default defineConfig({
             'tools/**/src/**/*.test.ts',
             'examples/**/src/**/*.test.ts',
           ],
-          exclude: ['**/node_modules/**', '**/dist/**', 'spikes/**'],
+          // `*.chaos.test.ts` is the chaos suite (Phase 11, P1): `pnpm test:chaos`, vitest.chaos.config.ts.
+          exclude: ['**/node_modules/**', '**/dist/**', 'spikes/**', '**/*.chaos.test.ts'],
           testTimeout,
           hookTimeout,
         },

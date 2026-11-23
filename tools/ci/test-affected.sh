@@ -22,7 +22,8 @@
 #   vitest.config.ts send every @otheater/* import to its sources, so the graph crosses packages);
 # - the tests that run the build output (they name a dist/ path): the graph stops at the sources,
 #   so a change to any source can change what they run. The list comes from `git grep`, so a new
-#   test of that kind enters it on its own.
+#   test of that kind enters it on its own. The chaos tests (`*.chaos.test.ts`, `pnpm test:chaos`,
+#   workflow chaos.yml) are not in the suite and stay out of the list.
 # With nothing to run it prints so and exits 0. OT_TEST_DRY=1 prints the decision and the files
 # instead of running them.
 #
@@ -122,6 +123,6 @@ if [ -n "$trigger" ]; then
 fi
 
 graph=$(pnpm exec vitest list --changed "$base" --filesOnly | sed -nE 's/^\[[^]]*\] //p')
-dist=$(git grep -lE "['\"/]dist/" -- '*.test.ts' '*.test.tsx' || true)
+dist=$(git grep -lE "['\"/]dist/" -- '*.test.ts' '*.test.tsx' ':!*.chaos.test.ts' || true)
 files=$(printf '%s\n%s\n' "$graph" "$dist" | grep . | sort -u || true)
 run_files "$files" "graph and dist/"
