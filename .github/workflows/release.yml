@@ -1,0 +1,317 @@
+name: Release
+
+# The release job of Phase 10 (P9, N244, N246) and the gate of R1. Only a manual dispatch starts it: there
+# is no `push` (a tag pushed by mistake publishes nothing) and no `schedule`.
+#
+# THE REHEARSAL always runs, with the gate closed or open: the executables of the three platforms
+# (dist-sea.yml), the .msi (dist-msi.yml), the notices, the manifest, the signature with an EPHEMERAL key
+# made in the job (never the production one), and the install tests against those very files. Its
+# artifacts live one day and hold no secret (the ephemeral private key never leaves the runner).
+#
+# THE GATE has two locks, and the job `publish` exists only when both are open:
+#   1. the input `publish` is true (the intent, run by run);
+#   2. the repository variable OT_RELEASE_GATE is `open` (only the owner creates it, after the
+#      confirmation from Anthropic; absent or any other value, the gate is closed).
+# With the gate closed nothing is published and the summary of the run says why. Even with both open,
+# the release is created as a DRAFT: the owner publishes it in the GitHub interface (a second action).
+#
+# The production signature (the secret OT_UPDATE_SIGNING_KEY) is read only by the job `publish`, which
+# is also the only job with `contents: write`. No job but `publish` calls `gh release`
+# (tools/release/src/release-workflow.test.ts reads this file and checks it).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to build, like 1.2.3 or 1.2.3-rc.1 (no leading v)'
+        type: string
+        required: true
+      channel:
+        description: 'The channel of the release'
+        type: choice
+        options: [stable, beta]
+        default: stable
+        required: true
+      publish:
+        description: 'Create the draft release (it also needs the repository variable OT_RELEASE_GATE=open)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # What was asked, checked before anything is built. The values reach the shell only through the
+  # environment.
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the version and the channel
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::version '$VERSION' is not like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+          case "$CHANNEL" in
+            stable | beta) ;;
+            *) echo "::error::channel '$CHANNEL': use stable or beta"; exit 1 ;;
+          esac
+          echo "version=$VERSION channel=$CHANNEL"
+
+  # The state of the gate, in the summary of the run. It decides nothing: the lock is the `if` of the
+  # job `publish`.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say what the gate is
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          GATE: ${{ vars.OT_RELEASE_GATE }}
+        run: |
+          {
+            if [ "$PUBLISH" != "true" ]; then
+              echo "### portão do R1 fechado: ensaio, nada publicado"
+              echo
+              echo "O input \`publish\` é \`$PUBLISH\`: nenhum release é criado, só o ensaio roda."
+            elif [ "$GATE" != "open" ]; then
+              echo "### portão do R1 fechado: ensaio, nada publicado"
+              echo
+              if [ -z "$GATE" ]; then
+                echo "A variável de repositório \`OT_RELEASE_GATE\` não existe. Só o dono a cria, com o valor \`open\`, depois da confirmação da Anthropic."
+              else
+                echo "A variável de repositório \`OT_RELEASE_GATE\` vale \`$GATE\`, e só \`open\` abre o portão."
+              fi
+            else
+              echo "### portão do R1 aberto: o job \`publish\` cria um release em rascunho (draft)"
+              echo
+              echo "O rascunho só fica público quando o dono o publica pela interface do GitHub."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The executables, the notices (dist-sea.yml) and the .msi (dist-msi.yml), as the workflows of P1, P4 and
+  # P10 build and test them. `upload` keeps the files as artifacts of this run (one day).
+  sea:
+    needs: [plan]
+    uses: ./.github/workflows/dist-sea.yml
+    with:
+      version: ${{ inputs.version }}
+      upload: true
+
+  msi:
+    needs: [plan]
+    uses: ./.github/workflows/dist-msi.yml
+    with:
+      version: ${{ inputs.version }}
+      upload: true
+
+  # The manifest, signed with a key that exists only in this job (the rehearsal), and the checks of the
+  # result as the daemon makes them (tools/release `verify` runs the code of daemon/src/updates).
+  manifest:
+    needs: [plan, sea, msi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sea-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: msi-win32-x64
+          path: release
+      - name: Assemble the manifest
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: node tools/release/dist/cli.js assemble --dir release --version "$VERSION" --channel "$CHANNEL" --schemas-from-build
+      - name: Sign with an ephemeral key
+        run: |
+          # The pair lives in the temporary folder of the runner and is not uploaded. It is not the key of
+          # production and it is worth nothing outside this run.
+          node tools/release/dist/cli.js ephemeral-key --out "$RUNNER_TEMP/ephemeral"
+          node tools/release/dist/cli.js sign --manifest release/manifest.json --key-file "$RUNNER_TEMP/ephemeral/ephemeral-private.pem"
+          node tools/release/dist/cli.js embed-key --script installer/install.sh --public-key "$RUNNER_TEMP/ephemeral/ephemeral-public.pem" --out release/install.sh
+          cp "$RUNNER_TEMP/ephemeral/ephemeral-public.pem" release/ephemeral-public.pem
+      - name: Check the release as the daemon does
+        run: node tools/release/dist/cli.js verify --manifest release/manifest.json --public-key release/ephemeral-public.pem --dir release
+      - name: Summary
+        run: |
+          {
+            echo "### Ensaio: release assinado com chave efêmera"
+            echo
+            echo '```'
+            ls -l release
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-release
+          path: release
+          if-no-files-found: error
+          retention-days: 1
+
+  # The install tests against the files of the rehearsal: install.sh with the ephemeral key embedded,
+  # served from a loopback server, on the two systems it supports. The .msi of the rehearsal has
+  # already been installed and removed on Windows by dist-msi.yml.
+  install-check:
+    needs: [plan, manifest]
+    name: install.sh (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          # `macos-latest` is Apple Silicon.
+          - { os: macos-latest, target: darwin-arm64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rehearsal-release
+          path: release
+      # The LibreSSL of macOS cannot check Ed25519, so install.sh needs the openssl@3 of Homebrew
+      # (on the runner image [N: not confirmed for every image]). Installing it is a download the owner
+      # has not approved: the step fails and says so.
+      - name: openssl 3 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then
+            echo "OT_INSTALL_OPENSSL=$prefix/bin/openssl" >> "$GITHUB_ENV"
+          else
+            echo "::error::no openssl@3 on this runner image (installing it is not approved)"
+            exit 1
+          fi
+      - name: Install from the rehearsal release
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME"
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory release >"$RUNNER_TEMP/server.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          sleep 2
+          export OT_INSTALL_BASE_URL=http://127.0.0.1:8765
+          export OT_INSTALL_CHANNEL="$CHANNEL"
+          export OT_INSTALL_SERVICE=off
+          sh release/install.sh
+          exe="$HOME/.local/share/otheater/bin/otheater"
+          test -x "$exe"
+          installed=$("$exe" --version | head -n 1)
+          echo "installed: $installed"
+          case "$installed" in
+            *"$VERSION"*) ;;
+            *) echo "::error::the executable says '$installed', and the release is $VERSION"; exit 1 ;;
+          esac
+          test -s "$HOME/.local/share/otheater/THIRD_PARTY_NOTICES.md"
+          echo "- ${{ matrix.target }}: installed $installed from the rehearsal release" >> "$GITHUB_STEP_SUMMARY"
+      - name: A manifest changed after it was signed is refused
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home2"
+          mkdir -p "$HOME"
+          # The same files and the same key, but the manifest differs by one space from what was signed.
+          cp -R release tampered
+          sed 's/"schema": 1/"schema":  1/' release/manifest.json > tampered/manifest.json
+          python3 -m http.server 8766 --bind 127.0.0.1 --directory tampered >"$RUNNER_TEMP/server2.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          sleep 2
+          status=0
+          OT_INSTALL_BASE_URL=http://127.0.0.1:8766 OT_INSTALL_CHANNEL="$CHANNEL" OT_INSTALL_SERVICE=off sh release/install.sh || status=$?
+          if [ "$status" != 3 ]; then
+            echo "::error::a manifest that does not match its signature must end with exit 3, and it ended with $status"
+            exit 1
+          fi
+          test ! -e "$HOME/.local/share/otheater/bin/otheater"
+
+  # The only job that publishes. Both locks are in the `if`: the input and the variable of the
+  # repository. It signs with the production key after checking it, and creates the release as a draft.
+  publish:
+    needs: [plan, sea, msi, manifest, install-check]
+    if: inputs.publish == true && vars.OT_RELEASE_GATE == 'open'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # [proposta] A release comes from main: the executables embed the public key of this very tree.
+      - name: Only from main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::a release is made from refs/heads/main, and this run is on $GITHUB_REF"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      # The three checks before signing (docs/21, P9). The secret is read here and in the next step only.
+      - name: Check the production key
+        env:
+          OT_UPDATE_SIGNING_KEY: ${{ secrets.OT_UPDATE_SIGNING_KEY }}
+        run: node tools/release/dist/cli.js check-key --key-env OT_UPDATE_SIGNING_KEY --public-key tools/release/keys/update-public-key.pem
+      # The files of the rehearsal, without the manifest and the rest that carry the ephemeral key.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sea-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: msi-win32-x64
+          path: release
+      - name: Assemble, sign with the production key and check
+        env:
+          OT_UPDATE_SIGNING_KEY: ${{ secrets.OT_UPDATE_SIGNING_KEY }}
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -eu
+          cli="node tools/release/dist/cli.js"
+          $cli assemble --dir release --version "$VERSION" --channel "$CHANNEL" --schemas-from-build
+          $cli sign --manifest release/manifest.json --key-env OT_UPDATE_SIGNING_KEY
+          $cli verify --manifest release/manifest.json --public-key tools/release/keys/update-public-key.pem --dir release
+          $cli embed-key --script installer/install.sh --public-key tools/release/keys/update-public-key.pem --out release/install.sh
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -eu
+          flags=(--draft --target "$GITHUB_SHA" --title "v$VERSION" --notes "Draft: the owner publishes it.")
+          if [ "$CHANNEL" = beta ]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" "${flags[@]}" release/*
+          echo "### Release v$VERSION criado em rascunho (draft)" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "Só o dono o publica, pela interface do GitHub." >> "$GITHUB_STEP_SUMMARY"

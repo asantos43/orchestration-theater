@@ -72,19 +72,19 @@ Os passos P1 a P11 seguem a lista do pedido do dono (executável, lançador, `.m
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | em andamento |
-| P1 | Executável único (SEA): esbuild, postject, nativos e arquivos como assets | P0 | P2, P3, P7 | a fazer |
-| P2 | Lançador com Job Object no Windows: adaptador `platform-windows` | P0 | P1, P3, P7 | a fazer |
-| P3 | Serviço de logon: `ot service` com Tarefa Agendada, launchd e `systemd --user` | P0 | P1, P2, P7 | a fazer |
-| P4 | `.msi` do Windows (WiX): instalar, serviço e desinstalar | P1, P2, P3 | P5, P6, P8, P10 | a fazer |
-| P5 | `install.sh` para macOS e Linux | P1, P3 | P4, P6, P8, P10 | a fazer |
-| P6 | `ot init` | P3 | P4, P5, P8, P10 | a fazer |
-| P7 | `updates.*` (1/2): origem, manifesto, SHA-256, Ed25519, canais, `check`, `notify` e `off` | P0 | P1, P2, P3 | a fazer |
-| P8 | `updates.*` (2/2): aplicar com `apply_when` e `max_wait`, volta automática e backup antes das migrações | P1, P7 | P4, P5, P6, P10 | a fazer |
-| P9 | Job de release na CI e o portão do R1 | P1, P4, P5, P7, P10 | nada | a fazer |
-| P10 | `THIRD_PARTY_NOTICES` por plataforma | P1 | P4, P5, P6, P8 | a fazer |
+| P1 | Executável único (SEA): esbuild, postject, nativos e arquivos como assets | P0 | P2, P3, P7 | feito (#290) |
+| P2 | Lançador com Job Object no Windows: adaptador `platform-windows` | P0 | P1, P3, P7 | feito (#289) |
+| P3 | Serviço de logon: `ot service` com Tarefa Agendada, launchd e `systemd --user` | P0 | P1, P2, P7 | feito (#287) |
+| P4 | `.msi` do Windows (WiX): instalar, serviço e desinstalar | P1, P2, P3 | P5, P6, P8, P10 | feito (#293) |
+| P5 | `install.sh` para macOS e Linux | P1, P3 | P4, P6, P8, P10 | feito (#295) |
+| P6 | `ot init` | P3 | P4, P5, P8, P10 | feito (#296) |
+| P7 | `updates.*` (1/2): origem, manifesto, SHA-256, Ed25519, canais, `check`, `notify` e `off` | P0 | P1, P2, P3 | feito (#288) |
+| P8 | `updates.*` (2/2): aplicar com `apply_when` e `max_wait`, volta automática e backup antes das migrações | P1, P7 | P4, P5, P6, P10 | feito (#297) |
+| P9 | Job de release na CI e o portão do R1 | P1, P4, P5, P7, P10 | nada | feito neste PR |
+| P10 | `THIRD_PARTY_NOTICES` por plataforma | P1 | P4, P5, P6, P8 | feito (#294) |
 | P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | a fazer |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
-| P13 | Adaptadores ACP gerenciados (N254 revista) | P1, P6 | P9, P11 | feito, falta a CI |
+| P13 | Adaptadores ACP gerenciados (N254 revista) | P1, P6 | P9, P11 | feito (#298) |
 
 Ondas **[proposta]**:
 - onda 1, logo depois do merge deste plano: **P1, P2, P3 e P7**, em paralelo, cada um nos seus arquivos;
@@ -363,11 +363,17 @@ Definido aqui para que os passos em paralelo (P5, P7, P8 e P9) concordem **[prop
 - **`tools/release`:** `assemble-manifest`, `sign-manifest` (Ed25519 pelo `crypto` do Node) e `verify-manifest` (o mesmo código de `daemon/src/updates/verify.ts`, importado, não copiado), com testes de unidade.
 - **Testes:** o `tools/release` tem testes de unidade (assinar e conferir; recusar a chave errada); um teste de forma lê o YAML do workflow e confere que o job `publish` só existe com as duas travas e que **nenhum outro job** tem `contents: write` nem chama `gh release`. O ensaio roda no PR **[proposta]** só com `workflow_dispatch` (não em todo PR, pelo custo).
 
-**Arquivos:** `.github/workflows/release.yml` (novo), `tools/release/src/{manifest,sign,verify}.ts` e os testes (novos).
+**Arquivos:** `.github/workflows/release.yml` (novo), `.github/workflows/dist-{sea,msi}.yml` (o `workflow_call`), `tools/release/src/{manifest,sign,verify,install-script,release-cli}.ts` e os testes, inclusive o de forma `release-workflow.test.ts` (novos), `tools/release/src/cli.ts` (o `--version` e os comandos novos), `daemon/src/updates/manifest.ts` (o ativo `notices`).
 
 **Aceite:** um disparo com `publish=true` e **sem** a variável não cria release e diz o porquê; um disparo com a variável e `publish=false`, idem; o ensaio termina verde com os artefatos assinados com a chave efêmera, e o `install.sh` e o `.msi` da CI os aceitam. **Não se publica nada nesta fase.**
 
-**Como ficou:** a preencher quando o passo for mesclado.
+**Como ficou:** (2026-11-22)
+- **O workflow `.github/workflows/release.yml` [V: lido por um teste de forma]:** só `workflow_dispatch` (sem `push`, sem `schedule`), com `version`, `channel` e `publish` (padrão `false`). O ensaio sempre roda: `plan` (confere versão e canal), `gate` (diz o estado do portão no resumo), `sea` e `msi` (chamam o `dist-sea.yml` e o `dist-msi.yml` por `workflow_call`), `manifest` (monta, assina com chave efêmera, confere como o daemon e guarda os arquivos por 1 dia) e `install-check` (roda o `install.sh` com a chave efêmera embutida, de um servidor em `127.0.0.1`, no Linux e no macOS, e confere que um manifesto alterado sai com código 3).
+- **O portão [V: teste de forma]:** o job `publish` tem `if: inputs.publish == true && vars.OT_RELEASE_GATE == 'open'`, é o único com `contents: write` e o único que lê `OT_UPDATE_SIGNING_KEY` e chama `gh release`. Antes de assinar, `check-key` confere o secret, a chave pública derivada (igual à de `tools/release/keys/update-public-key.pem`) e que o arquivo não é o `PLACEHOLDER`; o release sai como `--draft`. Com o portão fechado, o resumo diz "portão do R1 fechado: ensaio, nada publicado" e o motivo (`publish=false`, variável ausente ou com outro valor).
+- **`tools/release` [V: testado aqui, com chaves geradas na hora, nenhuma no repositório]:** `manifest.ts` (monta o manifesto dos arquivos de uma pasta, validado pelo `UpdateManifestSchema` do daemon), `sign.ts` (Ed25519 pelo `crypto`; chave efêmera; `checkProductionKey`), `verify.ts` (importa `parseManifest`, `verifySignature`, `parsePublicKey` e `sha256OfFile` do daemon, não os copia; confere também tamanho e SHA-256 dos arquivos), `install-script.ts` (embute a chave no `install.sh`, entre os marcadores do P5) e `release-cli.ts` (os comandos `ephemeral-key`, `assemble`, `sign`, `verify`, `check-key` e `embed-key`; `build` ganhou `--version`). Cobertos: assinar e conferir, chave errada, `PLACEHOLDER`, manifesto adulterado, arquivo trocado, de outro tamanho e ausente, plataforma sem executável, e `sh -n` do `install.sh` com a chave embutida.
+- **Acertos no que já existia [V]:** o daemon recusava `kind: 'notices'`, que o `install.sh` (P5) e o P10 já usam; `UPDATE_ASSET_KINDS` ganhou `notices`, com teste. `dist-sea.yml` e `dist-msi.yml` ganharam `workflow_call` com `version` e `upload` opcionais (vazios nos outros eventos, então push, PR e dispatch não mudam) e o grupo de `concurrency` com `github.workflow`. O daemon exporta `updates/manifest` e `updates/verify` para o `tools/release` importá-los; o `yaml` vira devDependency do `tools/release` (só o teste de forma o usa).
+- **[N: não verificado, só a CI mostra]:** o ensaio de verdade (um `workflow_dispatch` nunca foi disparado; não se dispara nada nesta fase), o `workflow_call` com a matriz de `dist-sea.yml` e o `upload-artifact`/`download-artifact` entre os jobs, o `install-check` no macOS (depende do `openssl@3` da imagem) e a sintaxe do YAML pelo GitHub (`actionlint` não está nesta máquina; o YAML foi lido por um parser e pelo teste de forma). O `.msi` de P4 não confere assinatura: o que a CI aceita no Windows é a instalação e a remoção; o manifesto assinado é conferido por `verify` e pelo `install.sh`.
+- **Para o dono decidir ([proposta]):** (a) o `publish` exige `refs/heads/main` (um passo a mais, fora do plano); (b) o *environment* `release` com revisor, opcional no plano, **não** foi acrescentado (ele pede configuração do dono no GitHub); (c) o executável de `win32-x64` do release vem do job `sea` e o de dentro do `.msi`, do job `msi`: são duas compilações do mesmo commit e da mesma versão, e os bytes podem diferir; (d) o `publish` refaz o manifesto e a assinatura com a chave de produção sobre os mesmos arquivos do ensaio (a `publishedAt` muda) e embute a chave de produção no `install.sh`; (e) o P5 (`install.sh`) entra pelo job `install-check`, e não por `workflow_call` em `dist-install-sh.yml`, que continua testando o serviço de verdade nos PRs.
 
 ### P10. `THIRD_PARTY_NOTICES` por plataforma (§6.0, N72)
 

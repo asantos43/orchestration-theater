@@ -596,12 +596,18 @@ importers:
 
   tools/release:
     devDependencies:
+      '@otheater/daemon':
+        specifier: workspace:*
+        version: link:../../packages/daemon
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
       postject:
         specifier: 1.0.0-alpha.6
         version: 1.0.0-alpha.6
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
   tools/verify:
     devDependencies:

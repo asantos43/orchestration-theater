@@ -53,6 +53,28 @@ describe('the manifest', () => {
     expect(reason({ assets: [{ ...asset, name: 'ok' }] })).toBeUndefined();
   });
 
+  it('accepts the notices of a platform as an asset, and they are not an update either', () => {
+    const manifest = parse({
+      assets: [
+        {
+          platform: 'linux-x64',
+          kind: 'exe',
+          name: 'otheater-linux-x64',
+          size: 9,
+          sha256: 'a'.repeat(64),
+        },
+        {
+          platform: 'linux-x64',
+          kind: 'notices',
+          name: 'THIRD_PARTY_NOTICES-linux-x64.md',
+          size: 5,
+          sha256: 'c'.repeat(64),
+        },
+      ],
+    });
+    expect(assetFor(manifest, 'linux-x64')?.name).toBe('otheater-linux-x64');
+  });
+
   it('the installer is not an update', () => {
     const manifest = parse({
       assets: [

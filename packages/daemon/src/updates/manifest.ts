@@ -23,7 +23,12 @@ export const MAX_ASSET_BYTES = 1024 ** 3;
 export const MAX_MANIFEST_BYTES = 256 * 1024;
 export const MAX_SIGNATURE_BYTES = 4 * 1024;
 
-export const UPDATE_ASSET_KINDS = ['exe', 'msi'] as const;
+/**
+ * `exe` is the executable an update swaps in, `msi` the Windows installer, `notices` the third-party
+ * notices of a platform (`THIRD_PARTY_NOTICES-<platform>.md`, which `install.sh` reads from the signed
+ * manifest; P9 lists them, so the schema has to accept the kind).
+ */
+export const UPDATE_ASSET_KINDS = ['exe', 'msi', 'notices'] as const;
 
 /** A file name of an asset: one segment, never a path. */
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
