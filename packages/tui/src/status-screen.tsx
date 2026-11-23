@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { DaemonStores, SyncStatus } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TOKEN } from './layout/theme.js';
+import { Text } from './layout/themed-text.js';
 import { useRenderControl } from './render-control.js';
 import type { DaemonView } from './use-daemon.js';
 import { useStoreValue } from './use-store-value.js';
@@ -59,9 +61,9 @@ export function StatusScreen(props: { readonly view: DaemonView }): ReactNode {
     <Box flexDirection="column">
       <Text bold>{t('status.heading')}</Text>
       {view.kind === 'connecting' && <Text>{t('status.connecting')}</Text>}
-      {view.kind === 'offline' && <Text color="yellow">{t('status.offline')}</Text>}
+      {view.kind === 'offline' && <Text color={TOKEN.warn}>{t('status.offline')}</Text>}
       {view.kind === 'failed' && (
-        <Text color="red">{t('status.failed', { message: view.message })}</Text>
+        <Text color={TOKEN.error}>{t('status.failed', { message: view.message })}</Text>
       )}
       {view.kind === 'online' && (
         <>

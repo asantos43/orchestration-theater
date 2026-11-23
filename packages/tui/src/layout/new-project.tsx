@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { useEffect, useRef, useState, type RefObject, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from './theme-context.js';
+import { Text } from './themed-text.js';
 import { useRawKeys, type KeyEvent } from '../keys/use-keymap.js';
 import { MouseModalScope } from '../mouse/index.js';
 import type { NewProjectRepoMode } from '../settings.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { overlayRect, type OverlayFrame } from './overlays.js';
 import { clipStart } from './text.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 
 /**
  * "New project" (P22 of Phase 7, N208 item 1): the prompt that asks for the repository and opens
@@ -137,6 +139,7 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     }
   });
 
+  const palette = useTheme();
   const rect = overlayRect(props.screen, { width: 72, height: 10 });
   const inner = Math.max(1, rect.width - 4);
   return (
@@ -147,12 +150,12 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       width={rect.width}
       height={rect.height}
       borderStyle="round"
-      borderColor={COLOR.borderActive}
-      backgroundColor={COLOR.overlay}
+      borderColor={palette.resolve(TOKEN.borderActive)}
+      backgroundColor={palette.resolve(TOKEN.overlay)}
       flexDirection="column"
       paddingX={1}
     >
-      <Text bold color={COLOR.accent} wrap="truncate">
+      <Text bold color={TOKEN.accent} wrap="truncate">
         {t('layout.newProject.title')}
       </Text>
       <MouseModalScope>
@@ -160,17 +163,17 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
           {t('layout.newProject.label')}
         </Text>
         <Text wrap="truncate">
-          <Text color={COLOR.accent}>{'> '}</Text>
+          <Text color={TOKEN.accent}>{'> '}</Text>
           {clipStart(value, Math.max(1, inner - 3))}
-          {busy ? '' : <Text inverse> </Text>}
+          {busy ? '' : <Text caret> </Text>}
         </Text>
         {busy && (
-          <Text color={COLOR.warn} wrap="truncate">
+          <Text color={TOKEN.warn} wrap="truncate">
             {t('layout.newProject.opening')}
           </Text>
         )}
         {error !== undefined && (
-          <Text color={COLOR.error} wrap="wrap">
+          <Text color={TOKEN.error} wrap="wrap">
             {error}
           </Text>
         )}

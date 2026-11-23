@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
-import { COLOR } from '../layout/theme.js';
+import { TOKEN } from '../layout/theme.js';
 import { stepNumber, type Draft } from './model.js';
 
 /** One row of the setup screen, before it is cut to the width. */
@@ -64,7 +64,7 @@ function detectLines(
     });
   }
   if (draft.rows.length === 0) {
-    lines.push({ key: 'none', text: t('setup.detect.none'), color: COLOR.warn });
+    lines.push({ key: 'none', text: t('setup.detect.none'), color: TOKEN.warn });
     return lines;
   }
   let order = 0;
@@ -80,7 +80,7 @@ function detectLines(
     lines.push({
       key: `d.${row.profileId}`,
       text: `${row.on ? '[x]' : '[ ]'} ${row.on ? t('setup.detect.order', { n: order }) : '   '}${parts.join('  ')}`,
-      color: profile?.usable === false ? COLOR.warn : undefined,
+      color: profile?.usable === false ? TOKEN.warn : undefined,
       selected: index === draft.cursor,
     });
   });
@@ -93,7 +93,7 @@ function accountLines(
   t: TFunction,
 ): SetupLine[] {
   if (prompt.profiles.length === 0) {
-    return [{ key: 'none', text: t('setup.detect.none'), color: COLOR.warn }];
+    return [{ key: 'none', text: t('setup.detect.none'), color: TOKEN.warn }];
   }
   return prompt.profiles.map((profile, index) => ({
     key: `a.${profile.profileId}`,
@@ -102,7 +102,7 @@ function accountLines(
       profile.kind,
       t(profile.usable ? 'setup.detect.usable' : 'setup.detect.unusable'),
     ].join('  '),
-    color: profile.usable ? undefined : COLOR.warn,
+    color: profile.usable ? undefined : TOKEN.warn,
     selected: index === draft.cursor,
   }));
 }
@@ -127,7 +127,7 @@ function executorsLines(
   t: TFunction,
 ): SetupLine[] {
   const lines: SetupLine[] = [
-    { key: 'h.list', text: t('setup.executors.listTitle'), color: COLOR.accent, bold: true },
+    { key: 'h.list', text: t('setup.executors.listTitle'), color: TOKEN.accent, bold: true },
   ];
   if (draft.executors.length === 0) {
     lines.push({ key: 'e.none', text: t('setup.executors.none'), dim: true });
@@ -149,7 +149,7 @@ function executorsLines(
   lines.push({
     key: 'h.budget',
     text: t('setup.executors.budgetTitle'),
-    color: COLOR.accent,
+    color: TOKEN.accent,
     bold: true,
   });
   if (prompt.apiProfiles.length === 0) {
@@ -187,7 +187,7 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
           : t('setup.review.preset', { preset: plan.preset }),
       bold: true,
     },
-    { key: 'h.roles', text: t('setup.review.roles'), color: COLOR.accent, bold: true },
+    { key: 'h.roles', text: t('setup.review.roles'), color: TOKEN.accent, bold: true },
   ];
   for (const role of plan.roles) {
     lines.push({
@@ -204,7 +204,7 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
     lines.push({
       key: 'h.exec',
       text: t('setup.review.executors'),
-      color: COLOR.accent,
+      color: TOKEN.accent,
       bold: true,
     });
     for (const executor of plan.executors) {
@@ -223,7 +223,7 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
     lines.push({
       key: 'h.budgets',
       text: t('setup.review.budgets'),
-      color: COLOR.accent,
+      color: TOKEN.accent,
       bold: true,
     });
     for (const budget of plan.budgets) {
@@ -237,15 +237,15 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
       });
     }
   }
-  lines.push({ key: 'h.writes', text: t('setup.review.writes'), color: COLOR.accent, bold: true });
+  lines.push({ key: 'h.writes', text: t('setup.review.writes'), color: TOKEN.accent, bold: true });
   lines.push({ key: 'writes', text: list(plan.writes, t), dim: true });
   if (plan.notes.length > 0) {
-    lines.push({ key: 'h.notes', text: t('setup.review.notes'), color: COLOR.accent, bold: true });
+    lines.push({ key: 'h.notes', text: t('setup.review.notes'), color: TOKEN.accent, bold: true });
     plan.notes.forEach((note, index) => {
       lines.push({
         key: `n.${String(index)}`,
         text: `[${t(`setup.review.${note.severity}`)}] ${note.message}`,
-        color: note.severity === 'warning' ? COLOR.warn : undefined,
+        color: note.severity === 'warning' ? TOKEN.warn : undefined,
         dim: note.severity === 'info',
       });
     });
@@ -256,9 +256,9 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
 function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): SetupLine[] {
   const lines: SetupLine[] = [];
   if (run.state === 'cancelled') {
-    lines.push({ key: 'cancelled', text: t('setup.done.cancelled'), color: COLOR.warn });
+    lines.push({ key: 'cancelled', text: t('setup.done.cancelled'), color: TOKEN.warn });
   } else {
-    lines.push({ key: 'confirmed', text: t('setup.done.confirmed'), color: COLOR.ok, bold: true });
+    lines.push({ key: 'confirmed', text: t('setup.done.confirmed'), color: TOKEN.ok, bold: true });
     const result = run.result;
     if (result?.preset !== null && result?.preset !== undefined) {
       lines.push({ key: 'preset', text: t('setup.done.preset', { preset: result.preset }) });

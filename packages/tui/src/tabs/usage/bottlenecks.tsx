@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AnalysisBottleneck, AnalysisReport } from '@otheater/protocol';
-import { Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { Section, type SectionControl } from '../../layout/section.js';
 import { fit } from '../../layout/text.js';
-import { COLOR } from '../../layout/theme.js';
+import { TOKEN } from '../../layout/theme.js';
 import { formatDuration, formatFraction, formatMaybeDuration } from './panels-model.js';
 import { shownOf, SourceNotice } from './source-notice.js';
 import type { SourceLoad } from './use-panels.js';
@@ -105,7 +105,7 @@ export function BottlenecksSection(props: {
             )}
           </Text>
           {report.percentilesApproximate && (
-            <Text color={COLOR.warn} wrap="truncate">
+            <Text color={TOKEN.warn} wrap="truncate">
               {fit(t('usage.bottlenecks.approximate'), width)}
             </Text>
           )}

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import { formatTokens } from '@otheater/client';
 import type { TelemetryStatus } from '@otheater/protocol';
-import { Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { Section, type SectionControl } from '../../layout/section.js';
 import { fit } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { formatClock } from '../use-now.js';
 import { shownOf, SourceNotice } from './source-notice.js';
 import type { SourceLoad } from './use-panels.js';
@@ -45,7 +45,7 @@ export function TelemetrySection(props: {
         <>
           <Text
             wrap="truncate"
-            {...paint(status.state === 'on' || status.state === 'off' ? undefined : COLOR.warn)}
+            {...paint(status.state === 'on' || status.state === 'off' ? undefined : TOKEN.warn)}
           >
             {line(`usage.telemetry.state.${status.state}`, { port: status.receiver?.port ?? 0 })}
           </Text>
@@ -61,7 +61,7 @@ export function TelemetrySection(props: {
               <Text
                 wrap="truncate"
                 {...(total(status.receiver.rejected) > 0
-                  ? { color: COLOR.warn }
+                  ? { color: TOKEN.warn }
                   : { dimColor: true })}
               >
                 {line('usage.telemetry.rejected', {
@@ -76,7 +76,7 @@ export function TelemetrySection(props: {
             {line(`usage.telemetry.daemonSpans.${status.daemonSpans ? 'on' : 'off'}`)}
           </Text>
           {status.base !== null && (
-            <Text wrap="truncate" {...(status.base.state === 'ok' ? {} : { color: COLOR.warn })}>
+            <Text wrap="truncate" {...(status.base.state === 'ok' ? {} : { color: TOKEN.warn })}>
               {line('usage.telemetry.base', {
                 state: t(`usage.telemetry.baseState.${status.base.state}`),
                 written: formatTokens(status.base.written),
@@ -100,7 +100,7 @@ export function TelemetrySection(props: {
                 })}
               </Text>
               {total(status.export.otlp.dropped) > 0 && (
-                <Text color={COLOR.warn} wrap="truncate">
+                <Text color={TOKEN.warn} wrap="truncate">
                   {line('usage.telemetry.dropped', {
                     count: total(status.export.otlp.dropped),
                     reasons: Object.entries(status.export.otlp.dropped)

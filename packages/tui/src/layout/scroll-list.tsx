@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, type DOMElement } from 'ink';
+import { Box, type DOMElement } from 'ink';
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Text } from './themed-text.js';
 import { useMouseTarget } from '../mouse/index.js';
 import { isEmptySelection, rowSpan, selectionRange } from '../mouse/selection.js';
 import { scrollWindow } from './scroll.js';

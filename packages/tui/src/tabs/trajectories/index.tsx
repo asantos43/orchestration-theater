@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { DemandDiffState } from '@otheater/client';
 import type { Trajectory, TrajectoryAttempt, TrajectoryTurn } from '@otheater/protocol';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { useEffect, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { Section } from '../../layout/section.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import { fit } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
 import {
   attemptSectionId,
@@ -38,15 +39,15 @@ import {
 const TONE_COLOR: Readonly<Record<EntryLine['tone'], string | undefined>> = {
   normal: undefined,
   dim: undefined,
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
 };
 
 const DIFF_COLOR = {
-  add: COLOR.ok,
-  remove: COLOR.error,
-  hunk: COLOR.accent,
+  add: TOKEN.ok,
+  remove: TOKEN.error,
+  hunk: TOKEN.accent,
   meta: undefined,
   context: undefined,
 } as const;
@@ -127,7 +128,7 @@ function DiffView(props: {
     );
   } else if (state.load === 'failed' || state.value === undefined) {
     body = (
-      <Text color={COLOR.error} wrap="truncate">
+      <Text color={TOKEN.error} wrap="truncate">
         {fit(say('trajectories.diffFailed', { error: state.error ?? '' }), width - 2)}
       </Text>
     );
@@ -163,7 +164,7 @@ function DiffView(props: {
           </Text>
         )}
         {state.value.truncated && (
-          <Text color={COLOR.warn} wrap="truncate">
+          <Text color={TOKEN.warn} wrap="truncate">
             {fit(say('trajectories.diffCut'), width - 2)}
           </Text>
         )}
@@ -324,7 +325,7 @@ function TrajectoriesTab(props: TabContentProps): ReactNode {
     return (
       <Box flexDirection="column" width={width}>
         {header}
-        <Text color={COLOR.error} wrap="truncate">
+        <Text color={TOKEN.error} wrap="truncate">
           {fit(say('trajectories.failed', { error: held.error ?? '' }), width)}
         </Text>
       </Box>
@@ -339,12 +340,12 @@ function TrajectoriesTab(props: TabContentProps): ReactNode {
     <Box flexDirection="column" width={width}>
       {header}
       {held.dropped > 0 && (
-        <Text color={COLOR.warn} wrap="truncate">
+        <Text color={TOKEN.warn} wrap="truncate">
           {fit(say('trajectories.dropped', { count: held.dropped }), width)}
         </Text>
       )}
       {held.load === 'failed' && (
-        <Text color={COLOR.warn} wrap="truncate">
+        <Text color={TOKEN.warn} wrap="truncate">
           {fit(say('trajectories.stale', { error: held.error ?? '' }), width)}
         </Text>
       )}

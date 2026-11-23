@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-/** The colours of the layout, in one place. Names are Ink's (the terminal's own palette), plus the header's blue. */
+export { TOKEN } from './palette.js';
+
+/**
+ * The colours the layout had before `ui.theme`: Ink's names (the terminal's own palette), plus the
+ * header's blue. Use `TOKEN` and the themed `Text` instead; this one is left for the tab Settings,
+ * which moves to the theme in its own step.
+ */
 export const COLOR = {
   border: 'gray',
   borderActive: 'blueBright',

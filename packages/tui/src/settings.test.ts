@@ -48,6 +48,7 @@ describe('parseUiSettings', () => {
         spanRows: 40,
       },
       mouse: 'full',
+      theme: 'otheater',
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
       setup: { open: 'auto', readTimeoutMs: 5000 },
@@ -156,6 +157,7 @@ describe('parseUiSettings', () => {
       overview: DEFAULT_UI_SETTINGS.overview,
       usage: DEFAULT_UI_SETTINGS.usage,
       mouse: DEFAULT_UI_SETTINGS.mouse,
+      theme: DEFAULT_UI_SETTINGS.theme,
       clipboardCopy: DEFAULT_UI_SETTINGS.clipboardCopy,
       tuiMouse: DEFAULT_UI_SETTINGS.tuiMouse,
       setup: DEFAULT_UI_SETTINGS.setup,
@@ -217,6 +219,14 @@ describe('parseUiSettings', () => {
       parseUiSettings({ sidebar: { finishedPlays: 'always', finishedLimit: 0 } }).sidebar,
     ).toEqual(DEFAULT_UI_SETTINGS.sidebar);
     expect(parseUiSettings({ sidebar: 3 }).sidebar).toEqual(DEFAULT_UI_SETTINGS.sidebar);
+  });
+
+  it('reads ui.theme and falls back to otheater', () => {
+    expect(parseUiSettings({}).theme).toBe('otheater');
+    expect(parseUiSettings({ theme: 'terminal' }).theme).toBe('terminal');
+    expect(parseUiSettings({ theme: 'otheater' }).theme).toBe('otheater');
+    expect(parseUiSettings({ theme: 'solarized' }).theme).toBe('otheater');
+    expect(parseUiSettings({ theme: 3 }).theme).toBe('otheater');
   });
 
   it('reads ui.login and falls back to auto', () => {
