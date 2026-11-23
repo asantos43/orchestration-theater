@@ -70,6 +70,9 @@ export type KeymapEnvironmentSetting = (typeof KEYMAP_ENVIRONMENTS)[number];
 export const SCROLL_STEPS = ['page', 'half', 'line'] as const;
 export type ScrollStep = (typeof SCROLL_STEPS)[number];
 
+export const DENSITIES = ['comfortable', 'compact'] as const;
+export type Density = (typeof DENSITIES)[number];
+
 /** `ui.keymap`: the preset, whether to follow the environment, and the person's own shortcuts. */
 export interface UiKeymapSettings {
   readonly preset: KeymapPresetName;
@@ -86,6 +89,8 @@ export interface UiTuiLayoutSettings {
   readonly minPanelWidth: number;
   readonly chatStep: number;
   readonly scrollStep: ScrollStep;
+  /** `density` (N258): `comfortable` draws the margins of the mockup, `compact` the screen without them. */
+  readonly density: Density;
 }
 
 export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
@@ -235,6 +240,7 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   minPanelWidth: 30,
   chatStep: 2,
   scrollStep: 'half',
+  density: 'comfortable',
 };
 
 export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
@@ -417,6 +423,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
         SCROLL_STEPS,
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
+      density: oneOf(field(tuiLayout, 'density'), DENSITIES, DEFAULT_TUI_LAYOUT.density),
     },
     trajectories: {
       open: oneOf(field(trajectories, 'open'), TRAJECTORY_OPEN_MODES, DEFAULT_TRAJECTORIES.open),
