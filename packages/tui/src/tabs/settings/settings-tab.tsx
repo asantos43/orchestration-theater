@@ -9,7 +9,7 @@ import type {
   ConfigEditBody,
   StartProfileLoginResult,
 } from '@otheater/protocol';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { spawn } from 'node:child_process';
 import {
   createElement,
@@ -29,7 +29,8 @@ import type { TabContentProps } from '../../layout/tab-types.js';
 import { useRenderControl } from '../../render-control.js';
 import { Section } from '../../layout/section.js';
 import { breakLine, cellWidth, fit, wrapText } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { paint, TOKEN } from '../../layout/theme.js';
+import { Text } from '../../layout/themed-text.js';
 import { isRemote } from '../../mouse/clipboard.js';
 import { useCopyToClipboard, useSuspendTerminal } from '../../mouse/index.js';
 import {
@@ -167,15 +168,15 @@ type Mode =
 const IDLE: Mode = { kind: 'idle' };
 
 const TONE_COLOR: Readonly<Record<Tone, string>> = {
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
 };
 
 const QUOTA_COLOR = {
-  ok: COLOR.ok,
-  near_limit: COLOR.warn,
-  exhausted: COLOR.error,
+  ok: TOKEN.ok,
+  near_limit: TOKEN.warn,
+  exhausted: TOKEN.error,
   unknown: undefined,
 } as const;
 
@@ -870,7 +871,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         kind: 'row',
         section: 'settings.executors',
         text: parts.join('  '),
-        color: executor.validity === 'invalid' ? COLOR.warn : undefined,
+        color: executor.validity === 'invalid' ? TOKEN.warn : undefined,
         selected: onCursor('settings.executors', index),
       });
     });
@@ -910,7 +911,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         kind: 'row',
         section: 'settings.roles',
         text: `  ${String(item.index + 1)}. ${executor.id}${blocked}`,
-        color: executor.blockedBy === null ? undefined : COLOR.warn,
+        color: executor.blockedBy === null ? undefined : TOKEN.warn,
         selected,
       });
     });
@@ -955,7 +956,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
             }),
   });
   if (mode.kind === 'prompt') {
-    head.push({ key: 'p.label', kind: 'row', text: mode.label, color: COLOR.accent });
+    head.push({ key: 'p.label', kind: 'row', text: mode.label, color: TOKEN.accent });
     head.push({
       key: 'p.value',
       kind: 'row',
@@ -963,14 +964,14 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     });
     head.push({ key: 'p.hint', kind: 'row', text: t('settings.prompt.hintEnter'), dim: true });
   } else if (mode.kind === 'confirm') {
-    head.push({ key: 'c.q', kind: 'row', text: mode.question, color: COLOR.warn });
+    head.push({ key: 'c.q', kind: 'row', text: mode.question, color: TOKEN.warn });
     head.push({ key: 'c.hint', kind: 'row', text: t('settings.prompt.hintConfirm'), dim: true });
   } else if (mode.kind === 'login') {
     head.push({
       key: 'g.title',
       kind: 'row',
       text: t('settings.login.title', { profile: mode.profileId }),
-      color: COLOR.accent,
+      color: TOKEN.accent,
     });
     head.push({ key: 'g.mode', kind: 'row', text: t(`settings.login.mode.${mode.info.mode}`) });
     if (mode.info.url === null) {
@@ -982,7 +983,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         kind: 'row',
         text: printable(mode.info.url),
         link: mode.info.url,
-        color: COLOR.accent,
+        color: TOKEN.accent,
       });
       const canOpen = loginBrowser !== 'off' && !isRemote(openPorts.environment);
       head.push({
@@ -1000,7 +1001,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         key: 'g.code',
         kind: 'row',
         text: t('settings.login.code', { code: mode.info.code }),
-        color: COLOR.warn,
+        color: TOKEN.warn,
       });
     }
     if (mode.info.takesCode) {
@@ -1019,7 +1020,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       key: 'load',
       kind: 'row',
       dim: loadError === undefined,
-      color: loadError === undefined ? undefined : COLOR.error,
+      color: loadError === undefined ? undefined : TOKEN.error,
       text:
         loadError === undefined
           ? t('settings.loading')
@@ -1086,7 +1087,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           key={`${line.key}.${String(index)}`}
           wrap="truncate"
           dimColor={line.dim === true}
-          {...paint(line.color, line.selected === true ? COLOR.selected : undefined)}
+          {...paint(line.color, line.selected === true ? TOKEN.selected : undefined)}
         >
           {fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, width)}
         </Text>,
