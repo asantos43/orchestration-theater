@@ -32,7 +32,7 @@ import {
   type WorkspaceIntegratedPayload,
   type WorkspaceIntegrationFailedPayload,
 } from '@otheater/protocol';
-import { type EffectOutcome, runEffect } from './effects.js';
+import { runEffect } from './effects.js';
 import {
   type DeliveryDecision,
   type DeliveryMode,
@@ -288,7 +288,6 @@ export class Workspace {
     const worktree = await this.#integrationWorktree(input.repo, input.playId);
 
     const merged: IntegratedAttempt[] = [];
-    let replayedOnly = true;
     for (const { demandId, attempt } of ordered) {
       const source = attemptBranch(input.playId, demandId, attempt);
       const sourceSha = await this.#vcs.resolveRef(input.repo, source);
@@ -314,7 +313,6 @@ export class Workspace {
       if (outcome.kind === 'ambiguous') {
         return { kind: 'ambiguous', demandId, attempt, key: outcome.key, reason: outcome.reason };
       }
-      if (outcome.origin !== 'replayed') replayedOnly = false;
 
       if (outcome.result.outcome === 'conflict') {
         const failure = {
@@ -327,8 +325,11 @@ export class Workspace {
           conflictFiles: stringList(outcome.result.files),
           mergedSoFar: merged.map((entry) => entry.demandId),
         } as const;
-        if (!replayedOnly) {
-          await this.#emit(input.playId, input.scenarioId, 'workspace.integration_failed', {
+        await this.#emitOnce(
+          input.playId,
+          input.scenarioId,
+          'workspace.integration_failed',
+          {
             playId: input.playId,
             scenarioId: input.scenarioId,
             branch,
@@ -337,8 +338,9 @@ export class Workspace {
             attempt,
             conflictFiles: [...failure.conflictFiles],
             mergedSoFar: [...failure.mergedSoFar],
-          } satisfies WorkspaceIntegrationFailedPayload);
-        }
+          } satisfies WorkspaceIntegrationFailedPayload,
+          ['branch', 'cause', 'demandId', 'attempt', 'conflictFiles', 'mergedSoFar'],
+        );
         return failure;
       }
       merged.push({
@@ -351,8 +353,11 @@ export class Workspace {
     }
 
     const head = await this.#vcs.headOf(worktree);
-    if (!replayedOnly) {
-      await this.#emit(input.playId, input.scenarioId, 'workspace.integrated', {
+    await this.#emitOnce(
+      input.playId,
+      input.scenarioId,
+      'workspace.integrated',
+      {
         playId: input.playId,
         scenarioId: input.scenarioId,
         branch,
@@ -363,8 +368,9 @@ export class Workspace {
           branch: from,
           sha,
         })),
-      } satisfies WorkspaceIntegratedPayload);
-    }
+      } satisfies WorkspaceIntegratedPayload,
+      ['branch', 'head'],
+    );
     return { kind: 'integrated', branch, worktree, head, merged };
   }
 
@@ -514,7 +520,6 @@ export class Workspace {
     const pushedSha = requireText(pushed.result, 'sha');
 
     const common = { repo, branch, base, remote };
-    let final: Extract<EffectOutcome, { kind: 'done' }>;
     let pullRequest: { number: number; url: string } | undefined;
     let mergeSha: string | undefined;
     if (decision.mode === 'direct_merge') {
@@ -537,7 +542,6 @@ export class Workspace {
         verify: (record) => verifyMergeBase(this.#deps(), record),
       });
       if (merged.kind === 'ambiguous') return ambiguous('merge', merged);
-      final = merged;
       mergeSha = requireText(merged.result, 'sha');
     } else {
       const opened = await runEffect(this.#store.sideEffects, {
@@ -549,16 +553,20 @@ export class Workspace {
         verify: (record) => verifyOpenPr(this.#deps(), record),
       });
       if (opened.kind === 'ambiguous') return ambiguous('pull_request', opened);
-      final = opened;
       pullRequest = {
         number: requireNumber(opened.result, 'number'),
         url: requireText(opened.result, 'url'),
       };
     }
 
-    // The event says the delivery happened; a repetition that only replays records says nothing.
-    if (final.origin !== 'replayed' || pushed.origin !== 'replayed') {
-      await this.#emit(playId, input.scenarioId, 'delivery.completed', {
+    // The event says the delivery happened. It is written once: a repetition (or a resume after a
+    // crash between the last `resolve` and this line, when every record is already `done`) finds it
+    // in the log and says nothing more.
+    await this.#emitOnce(
+      playId,
+      input.scenarioId,
+      'delivery.completed',
+      {
         playId,
         scenarioId: input.scenarioId,
         mode: decision.mode,
@@ -574,8 +582,9 @@ export class Workspace {
         ...(input.warnings === undefined || input.warnings.length === 0
           ? {}
           : { warnings: [...input.warnings] }),
-      } satisfies DeliveryCompletedPayload);
-    }
+      } satisfies DeliveryCompletedPayload,
+      ['branch', 'base', 'pushedSha'],
+    );
     return {
       kind: 'delivered',
       mode: decision.mode,
@@ -692,13 +701,58 @@ export class Workspace {
     return { vcs: this.#vcs, codeHost: this.#codeHost };
   }
 
-  async #emit<
+  /**
+   * Writes the event unless the log already has one of the same `type` and play whose `same`
+   * fields are equal. The events come after the last `resolve` of the effects, so a crash in
+   * between would otherwise lose them for good (every record is `done`, a resume only replays).
+   * Looking at the log makes the write idempotent without a second record: a resume writes it, a
+   * repetition does not. Two callers at once are serialized, so the check and the write are one
+   * step. [proposta] The scan reads the whole log once per call (`integrate`, `deliver`).
+   */
+  async #emitOnce<
     T extends 'workspace.integrated' | 'workspace.integration_failed' | 'delivery.completed',
-  >(playId: string, scenarioId: string, type: T, payload: DaemonEventPayloads[T]): Promise<void> {
-    // N172: `scenarioId` is also in the envelope, which is what the SSE filter `scenario` reads.
-    await this.#store.events.append({ ...buildDaemonEvent(type, payload), playId, scenarioId });
+  >(
+    playId: string,
+    scenarioId: string,
+    type: T,
+    payload: DaemonEventPayloads[T],
+    same: readonly string[],
+  ): Promise<void> {
+    const log = this.#store.events;
+    const previous = emitQueues.get(log) ?? Promise.resolve();
+    const run = previous.then(async () => {
+      const wanted = payload as Record<string, unknown>;
+      let cursor = 0;
+      for (;;) {
+        const page = await log.readFrom(cursor, EVENT_SCAN_PAGE);
+        for (const event of page) {
+          if (event.type !== type || event.playId !== playId) continue;
+          const found = event.payload as Record<string, unknown>;
+          if (
+            same.every((field) => JSON.stringify(found[field]) === JSON.stringify(wanted[field]))
+          ) {
+            return;
+          }
+        }
+        const last = page[page.length - 1];
+        if (last === undefined) break;
+        cursor = last.id;
+      }
+      // N172: `scenarioId` is also in the envelope, which is what the SSE filter `scenario` reads.
+      await log.append({ ...buildDaemonEvent(type, payload), playId, scenarioId });
+    });
+    emitQueues.set(
+      log,
+      run.catch(() => undefined),
+    );
+    await run;
   }
 }
+
+const EVENT_SCAN_PAGE = 500;
+
+/** The writes of `#emitOnce` that are running, per event log (a restarted Workspace shares it). */
+const emitQueues = new WeakMap<object, Promise<void>>();
 
 /** The approved attempts in the order of the script's layers; rejects what makes no sense. */
 function orderApproved(
