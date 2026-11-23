@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { PlaySpan, PlaySpans } from '@otheater/protocol';
-import { Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { Section, type SectionControl } from '../../layout/section.js';
 import { cellWidth, fit } from '../../layout/text.js';
-import { COLOR } from '../../layout/theme.js';
+import { TOKEN } from '../../layout/theme.js';
 import { formatDuration } from './panels-model.js';
 import { shownOf, SourceNotice } from './source-notice.js';
 import type { SourceLoad } from './use-panels.js';
@@ -40,7 +40,7 @@ function Line(props: { readonly span: PlaySpan; readonly width: number }): React
   return (
     <Text wrap="truncate">
       {fit(left, room)}
-      {failed === '' ? null : <Text color={COLOR.error}>{failed}</Text>}{' '}
+      {failed === '' ? null : <Text color={TOKEN.error}>{failed}</Text>}{' '}
       <Text dimColor>{duration}</Text>
     </Text>
   );
@@ -91,7 +91,7 @@ export function PlaySection(props: {
           </Text>
         )}
         {tree?.truncated === true && (
-          <Text color={COLOR.warn} wrap="truncate">
+          <Text color={TOKEN.warn} wrap="truncate">
             {fit(t('usage.play.truncated'), width)}
           </Text>
         )}

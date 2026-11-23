@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, useApp, useWindowSize } from 'ink';
+import { Box, useApp, useWindowSize } from 'ink';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
+import { ThemeProvider } from './layout/theme-context.js';
+import { TOKEN } from './layout/theme.js';
+import { Text } from './layout/themed-text.js';
 import type { DaemonConnector } from './daemon-connection.js';
 import { SUPPORTED_INK_VERSION, type InkPatchOutcome } from './ink-patch.js';
 import {
@@ -139,13 +142,13 @@ function Screen(props: AppProps): ReactNode {
   }
   return (
     <Box flexDirection="column" width={columns} height={rows} borderStyle="round" paddingX={1}>
-      <Text bold color="cyan">
+      <Text bold color={TOKEN.info}>
         {t('app.title')}
       </Text>
       <StatusScreen view={view} />
       {warning !== undefined && (
         <Box marginTop={1}>
-          <Text color="yellow">
+          <Text color={TOKEN.warn}>
             {t(warning, { version: props.patch?.version ?? '?', supported: SUPPORTED_INK_VERSION })}
           </Text>
         </Box>
@@ -171,17 +174,19 @@ export function App(props: AppProps): ReactNode {
   return (
     <I18nextProvider i18n={props.i18n}>
       <RenderControlProvider value={control}>
-        <MouseLayer
-          mode={props.settings.mouse}
-          copy={props.settings.clipboardCopy}
-          tuning={props.settings.tuiMouse}
-          terminal={props.mouseTerminal}
-          clipboard={props.mouseClipboard}
-        >
-          <KeyFeedProvider>
-            <Screen {...props} />
-          </KeyFeedProvider>
-        </MouseLayer>
+        <ThemeProvider mode={props.settings.theme}>
+          <MouseLayer
+            mode={props.settings.mouse}
+            copy={props.settings.clipboardCopy}
+            tuning={props.settings.tuiMouse}
+            terminal={props.mouseTerminal}
+            clipboard={props.mouseClipboard}
+          >
+            <KeyFeedProvider>
+              <Screen {...props} />
+            </KeyFeedProvider>
+          </MouseLayer>
+        </ThemeProvider>
       </RenderControlProvider>
     </I18nextProvider>
   );

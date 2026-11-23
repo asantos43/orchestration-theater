@@ -6,9 +6,11 @@ import {
   type UiRegistry,
   type UiTranslate,
 } from '@otheater/client';
-import { Box, Text, usePaste } from 'ink';
+import { Box, usePaste } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TOKEN } from '../layout/theme.js';
+import { Text } from '../layout/themed-text.js';
 import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { type ProducerMessage, draftsInText } from './attachments.js';
@@ -65,9 +67,9 @@ export interface TextBoxProps {
   readonly isActive?: boolean | undefined;
 }
 
-function styleOf(segment: Segment): { inverse?: boolean; color?: string } {
-  if (segment.kind === 'cursor') return { inverse: true };
-  if (segment.kind === 'marker') return { color: 'cyan' };
+function styleOf(segment: Segment): { caret?: boolean; color?: string } {
+  if (segment.kind === 'cursor') return { caret: true };
+  if (segment.kind === 'marker') return { color: TOKEN.info };
   return {};
 }
 
@@ -262,7 +264,7 @@ export function TextBox(props: TextBoxProps): ReactNode {
     <Box flexDirection="column">
       {layout.above > 0 && <Text dimColor>{t('input.moreAbove', { count: layout.above })}</Text>}
       {state.search !== undefined && (
-        <Text color="yellow">
+        <Text color={TOKEN.warn}>
           {t('input.search.prompt', { query: state.search.query })}
           {state.search.matches === 0 ? ` (${t('input.search.none')})` : ''}
         </Text>
@@ -284,7 +286,7 @@ export function TextBox(props: TextBoxProps): ReactNode {
         <Text dimColor>{t('input.attachments', { list: attached.join(' ') })}</Text>
       )}
       {state.status !== undefined && (
-        <Text color="yellow">{translateUiText(translate, state.status)}</Text>
+        <Text color={TOKEN.warn}>{translateUiText(translate, state.status)}</Text>
       )}
     </Box>
   );

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { API_ROUTES, type ApiSlashCommand } from '@otheater/protocol';
 import type { ApiClient, DaemonStores } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { randomUUID } from 'node:crypto';
 import {
   Fragment,
@@ -14,6 +14,8 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TOKEN } from '../layout/theme.js';
+import { Text } from '../layout/themed-text.js';
 import { bindAttachments, TextBox, type HistoryStore, type InputSettings } from '../input/index.js';
 import type { KeyEvent, TuiKeymap } from '../keys/use-keymap.js';
 import { keyLabel } from '../keys/labels.js';
@@ -656,7 +658,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
             wrap="truncate"
             bold={line.bold === true}
             dimColor={line.dim === true}
-            inverse={line.inverse === true}
+            selection={line.inverse === true}
             {...(line.color === undefined ? {} : { color: line.color })}
           >
             {line.text === '' ? ' ' : line.text}
@@ -679,18 +681,18 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         );
       })}
       {hint !== undefined && (
-        <Text wrap="truncate" color="yellow">
+        <Text wrap="truncate" color={TOKEN.warn}>
           {hint}
         </Text>
       )}
       {confirmLine !== undefined && (
-        <Text wrap="truncate" color="yellow">
+        <Text wrap="truncate" color={TOKEN.warn}>
           {confirmLine}
         </Text>
       )}
       {visible &&
         suggestions.map((command, index) => (
-          <Text key={command.id} wrap="truncate" inverse={index === at}>
+          <Text key={command.id} wrap="truncate" selection={index === at}>
             {clip(
               `${command.name}${command.args === '' ? '' : ` ${command.args}`}${
                 command.description === '' ? '' : `  ${command.description}`

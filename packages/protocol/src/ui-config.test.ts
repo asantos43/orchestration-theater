@@ -12,6 +12,7 @@ import {
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
+  UiThemeModeSchema,
   UiTuiLayoutConfigSchema,
   UI_USAGE_SECTIONS,
   UiUsageConfigSchema,
@@ -182,5 +183,11 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiLoginConfigSchema.parse({ browser: 'off' }).browser).toBe('off');
     expect(UiLoginConfigSchema.safeParse({ browser: 'always' }).success).toBe(false);
     expect(UiLoginConfigSchema.safeParse({ open: true }).success).toBe(false);
+  });
+
+  it('has the modes of ui.theme and refuses an unknown one', () => {
+    expect(UiThemeModeSchema.parse('otheater')).toBe('otheater');
+    expect(UiThemeModeSchema.parse('terminal')).toBe('terminal');
+    expect(UiThemeModeSchema.safeParse('dark').success).toBe(false);
   });
 });

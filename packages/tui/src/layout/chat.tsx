@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, type DOMElement } from 'ink';
+import { Box, type DOMElement } from 'ink';
 import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from './themed-text.js';
 import { useMouseTarget, type DragInfo } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
 import { breakLine, wrapText } from './text.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 
 /** A line under the output of a command: how it ended, what was left out, what became of it. */
 export interface ChatTerminalNote {
@@ -63,9 +64,9 @@ export interface ChatProps {
 export const INPUT_ROWS = 2;
 
 const NOTE_COLOR: Readonly<Record<ChatTerminalNote['tone'], string | undefined>> = {
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
   dim: undefined,
 };
 
@@ -74,7 +75,7 @@ export function terminalLines(terminal: ChatTerminal, width: number): readonly L
   const bar = '│ ';
   const room = Math.max(1, width - bar.length);
   return [
-    ...wrapText(terminal.header, width).map((text) => ({ text, bold: true, color: COLOR.accent })),
+    ...wrapText(terminal.header, width).map((text) => ({ text, bold: true, color: TOKEN.accent })),
     ...terminal.output.flatMap((line) =>
       breakLine(line, room).map((text) => ({ text: `${bar}${text}` })),
     ),
@@ -89,9 +90,9 @@ export function terminalLines(terminal: ChatTerminal, width: number): readonly L
 }
 
 const WHO_COLOR: Readonly<Record<ChatMessage['who'], string>> = {
-  you: 'cyanBright',
-  director: COLOR.accent,
-  system: 'magenta',
+  you: TOKEN.you,
+  director: TOKEN.accent,
+  system: TOKEN.sys,
 };
 
 /** Rows left to the messages in a chat of `height` rows. */

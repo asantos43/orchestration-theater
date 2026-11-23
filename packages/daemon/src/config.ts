@@ -38,6 +38,7 @@ import {
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
   UiSidebarConfigSchema,
+  UiThemeModeSchema,
   UiTuiLayoutConfigSchema,
   UiTrajectoriesConfigSchema,
   UiUsageConfigSchema,
@@ -2974,6 +2975,8 @@ export const DaemonConfigSchema = z
         clipboard: UiClipboardConfigSchema.prefault({}),
         /** The mouse of the terminal interface (N34): `full`, `wheel` or `off`. */
         mouse: UiMouseModeSchema.default('full'),
+        /** The colours of the terminal interface: `otheater` (the palette of the mockup) or `terminal`. */
+        theme: UiThemeModeSchema.default('otheater'),
         /** The rendering of the terminal interface (N37). */
         render: UiRenderConfigSchema.prefault({}),
         /** The Node runtime of the terminal interface (N37). */

@@ -132,6 +132,9 @@ export interface UiChatSettings {
 export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export type MouseMode = (typeof MOUSE_MODES)[number];
 
+export const THEME_MODES = ['otheater', 'terminal'] as const;
+export type ThemeMode = (typeof THEME_MODES)[number];
+
 export const CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as const;
 export type ClipboardCopyMode = (typeof CLIPBOARD_COPY_MODES)[number];
 
@@ -191,6 +194,8 @@ export interface UiSettings {
   readonly usage: UsageSettings;
   /** `ui.mouse` (N34). */
   readonly mouse: MouseMode;
+  /** `ui.theme`: the colours of the screen, the palette of the mockup or the terminal's own 16. */
+  readonly theme: ThemeMode;
   /** `ui.clipboard.copy` (N36). */
   readonly clipboardCopy: ClipboardCopyMode;
   readonly tuiMouse: UiTuiMouseSettings;
@@ -275,6 +280,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   overview: DEFAULT_OVERVIEW_SETTINGS,
   usage: DEFAULT_USAGE_SETTINGS,
   mouse: 'full',
+  theme: 'otheater',
   clipboardCopy: 'osc52',
   tuiMouse: DEFAULT_TUI_MOUSE,
   setup: DEFAULT_SETUP,
@@ -452,6 +458,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
     overview: parseOverviewSettings(field(source, 'overview')),
     usage: parseUsageSettings(field(source, 'usage')),
     mouse: oneOf(field(source, 'mouse'), MOUSE_MODES, DEFAULT_UI_SETTINGS.mouse),
+    theme: oneOf(field(source, 'theme'), THEME_MODES, DEFAULT_UI_SETTINGS.theme),
     clipboardCopy: oneOf(
       field(clipboard, 'copy'),
       CLIPBOARD_COPY_MODES,

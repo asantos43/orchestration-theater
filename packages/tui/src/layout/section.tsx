@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, type DOMElement } from 'ink';
+import { Box, type DOMElement } from 'ink';
 import { useRef, type ReactNode } from 'react';
+import { Text } from './themed-text.js';
 import { useMouseTarget } from '../mouse/index.js';
 import { fit, fitRight } from './text.js';
-import { COLOR, paint } from './theme.js';
+import { TOKEN, paint } from './theme.js';
 
 /**
  * What a tab of the panel is given to fold its sections. `folded` is the set the `LayoutStore`
@@ -54,8 +55,8 @@ export function Section(props: SectionProps): ReactNode {
       <Box ref={headRef} width={width} height={1}>
         <Text
           bold
-          inverse={onCursor}
-          {...paint(onCursor ? COLOR.accent : undefined)}
+          selection={onCursor}
+          {...paint(onCursor ? TOKEN.accent : undefined)}
           wrap="truncate"
         >
           {fit(line, width)}
