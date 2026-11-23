@@ -7,7 +7,7 @@ import type { JsonValue } from '@otheater/core';
  * not part of what the daemon tells. The logs keep the whole message.
  *
  * - POSIX: a `/` that starts a word (not `a/b`, not the path of a URL, not `text/plain`), then its
- *   segments;
+ *   segments; a path after `=` or `:` (`cwd=/x`, `error:/x`) is redacted as well;
  * - Windows: a drive (`C:\` or `C:/`) or a UNC share (`\\server\share`);
  * - `file://` URLs, which hold a path of either kind.
  *
@@ -16,7 +16,7 @@ import type { JsonValue } from '@otheater/core';
 const FILE_URL = /file:\/\/[^\s"'`<>|*?]+/gi;
 const WINDOWS_PATH = /(?<![\w])[A-Za-z]:[\\/][^\s"'`<>|*?]*/g;
 const UNC_PATH = /\\\\[^\s"'`<>|*?\\]+(?:\\[^\s"'`<>|*?\\]*)*/g;
-const POSIX_PATH = /(?<![\w.~:/@%+=-])\/(?:[\w.@%+=~-]+\/)*[\w.@%+=~-]+/g;
+const POSIX_PATH = /(?<![\w.~/@%+-])\/(?:[\w.@%+=~-]+\/)*[\w.@%+=~-]+/g;
 
 /** What an absolute path becomes in an answer. */
 export const REDACTED_PATH = '<path>';

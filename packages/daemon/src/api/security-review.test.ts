@@ -212,6 +212,17 @@ describe('the attachment by path stays inside the roots (N287)', () => {
     expect(await userFolder('documents', { ...base, env: { HOME: home, XDG_CONFIG_HOME: outside } })).toBe(
       join(home, 'Documents'),
     );
+    // A folder that is the home itself (what `xdg-user-dirs` writes for one that does not exist) or the
+    // root of the disk is not a folder of its own: it would make the whole home a root.
+    await put(
+      join(home, '.config', 'user-dirs.dirs'),
+      'XDG_DOCUMENTS_DIR="$HOME/"\nXDG_DOWNLOAD_DIR="/"\n',
+    );
+    expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Documents'));
+    expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Downloads'));
+    expect(
+      await userFolder('documents', { ...base, env: { ...bare, XDG_DOCUMENTS_DIR: home } }),
+    ).toBe(join(home, 'Documents'));
     expect(await userFolder('downloads', { homedir: '/Users/x', platform: 'darwin', env: {} })).toBe(
       '/Users/x/Downloads',
     );
@@ -441,6 +452,7 @@ describe('an error answer holds no absolute path', () => {
     expect(redactPaths('"/var/lib/x/y.txt" is not a file')).toBe('"<path>" is not a file');
     expect(redactPaths('C:\\Users\\x\\a.txt and D:/data/b')).toBe('<path> and <path>');
     expect(redactPaths('\\\\server\\share\\dir\\f')).toBe('<path>');
+    expect(redactPaths('cwd=/home/u/x and error:/srv/data/y')).toBe('cwd=<path> and error:<path>');
     expect(redactPaths('see file:///home/u/a%20b.txt now')).toBe('see <path> now');
     expect(redactPaths('text/plain, a/b/c, https://host/x/y, ./rel, ~/home')).toBe(
       'text/plain, a/b/c, https://host/x/y, ./rel, ~/home',

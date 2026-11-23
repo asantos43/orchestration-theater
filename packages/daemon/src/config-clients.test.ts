@@ -58,6 +58,11 @@ describe('clients.* and security.* of the config', () => {
       catalog_probe: 'allow',
       catalog_probe_log: 'once',
       secret_paths: { add: [], remove: [] },
+      attachment_roots: {
+        mode: 'list',
+        defaults: ['project', 'worktrees', 'documents', 'downloads'],
+        add: [],
+      },
     });
   });
 
@@ -170,6 +175,11 @@ describe('clients.* and security.* of the config', () => {
       catalog_probe: 'allow',
       catalog_probe_log: 'once',
       secret_paths: { add: [], remove: [] },
+      attachment_roots: {
+        mode: 'list',
+        defaults: ['project', 'worktrees', 'documents', 'downloads'],
+        add: [],
+      },
     });
   });
 

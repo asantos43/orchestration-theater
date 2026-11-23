@@ -84,7 +84,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 | P5 | Disco cheio: a política `disk.*`, o erro tipado e o caos | P1, D2 | P3, P4, P6, P7, P10 | a fazer |
 | P6 | Caos C: atualização de adaptador e atualização do aplicativo, com processos mortos de verdade | P1 | P3, P4, P5, P7, P10 | a fazer |
 | P7 | Idempotência de integração e de PR: queda em cada fronteira do efeito | P1, P2 | P3, P4, P5, P6, P10 | a fazer |
-| P8 | Revisão de segurança da API e das cascas (D3) | P0 | P1, P2, P9 | a fazer |
+| P8 | Revisão de segurança da API e das cascas (D3) | P0 | P1, P2, P9 | feito |
 | P9 | Revisão das portas (R16) (D4) | P0 | P1, P2, P8 | a fazer |
 | P10 | Documentação: o guia de adaptadores e plugins (D5), com exemplo que roda | P9 | P3 a P7 | a fazer |
 | P11 | Roteiro de caos do dono (nível manual) e, se a D1 mandar, a VM | P3, P4, P5, P6, P7 | P12 (a parte automática) | a fazer |
@@ -239,7 +239,7 @@ O resultado é a seção "Revisão da Fase 11" no [docs/09](09-ISOLAMENTO-E-SEGU
 
 **Aceite:** relatório entregue; todo achado alto e médio reproduzido tem teste e conserto, ou uma decisão para o dono; nenhum achado fica sem marca.
 
-**Como ficou:** a preencher.
+**Como ficou:** (2026-11-23; o P8 foi dividido em P8a, a cadeia de suprimento, e P8b, a API e as cascas). O P8b consertou 11 achados, todos reproduzidos por teste (a tabela está no [docs/09](09-ISOLAMENTO-E-SEGURANCA.md), "Revisão da Fase 11"): anexo por caminho preso a raízes (N287), época do token na rotação, teto de tickets, soquetes e fila do chat, profundidade do JSON, caminhos redigidos nos erros, arquivos privados (token e pasta de dados), teto da idempotência, redator do log, `confineArgv` com a opção curta colada, `node -e` e parentes (N290) e `http_get` recusando endereço privado. As chaves novas, todas de reinício: `security.attachment_roots` (`list`/`any`, padrão `list`), `shell.node_inline` (`deny`/`allow`, `deny`), `shell.http_get.block_private` (`on`/`off`, `on`), `api.max_json_depth` (64), `api.chat.max_tickets` (64), `api.chat.max_sockets` (32), `api.chat.max_queued_messages` (256) e `api.idempotency_max_entries` (10000); testes em `config.test.ts`. A `/security-review` não achou nada acima do corte; três observações abaixo dele, duas consertadas. [N] ficaram: o DNS rebinding no `http_get`, o agrupamento de opções curtas, o Windows (ACL e pastas realocadas), e o servidor MCP, o OTLP e o ambiente dos plugins, que não foram revisados a fundo. As linhas das decisões N287 e N290 do `docs/13` ficam com quem registra. Os achados do P8a (cadeia de suprimento) estão na mesma tabela do docs/09, com o teste no PR dele.
 
 ### P9. Revisão das portas
 

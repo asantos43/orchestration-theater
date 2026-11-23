@@ -94,7 +94,7 @@ export async function userFolder(
   if (platform === 'darwin') return posix.join(homedir, name);
   const key = which === 'documents' ? 'XDG_DOCUMENTS_DIR' : 'XDG_DOWNLOAD_DIR';
   const fromEnv = env[key];
-  if (fromEnv !== undefined && posix.isAbsolute(fromEnv)) return fromEnv;
+  if (fromEnv !== undefined && isUsableFolder(fromEnv, homedir)) return fromEnv;
   const config = env.XDG_CONFIG_HOME;
   const configHome =
     config !== undefined && posix.isAbsolute(config) ? config : posix.join(homedir, '.config');
@@ -105,13 +105,24 @@ export async function userFolder(
   return listed ?? posix.join(homedir, name);
 }
 
+/**
+ * An absolute folder that is a place of its own: not the home folder, and not the root of the disk.
+ * `xdg-user-dirs` writes `"$HOME/"` for a folder that does not exist, and taking that as the Documents
+ * folder would make the whole home (`~/.ssh` included) a root of attachments.
+ */
+function isUsableFolder(value: string, homedir: string): boolean {
+  if (!posix.isAbsolute(value)) return false;
+  const clean = posix.normalize(value).replace(/\/+$/, '');
+  return clean !== '' && clean !== posix.normalize(homedir).replace(/\/+$/, '');
+}
+
 /** The value of `KEY="$HOME/Documents"` in a `user-dirs.dirs`, with `$HOME` expanded; absolute only. */
 function userDirOf(text: string, key: string, homedir: string): string | undefined {
   for (const line of text.split('\n')) {
     const match = /^\s*([A-Z_]+)\s*=\s*"([^"]*)"\s*$/.exec(line);
     if (match?.[1] !== key || match[2] === undefined) continue;
     const value = match[2].replace(/^\$HOME(?=\/|$)/, homedir);
-    return posix.isAbsolute(value) ? value : undefined;
+    return isUsableFolder(value, homedir) ? value : undefined;
   }
   return undefined;
 }
