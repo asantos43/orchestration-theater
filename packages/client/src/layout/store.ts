@@ -230,7 +230,8 @@ export class LayoutStore {
     next.chatWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(next.chatWidth)));
     // The width of the side bar is optional: `undefined` takes it away (the setting of the interface applies again).
     if (next.sidebarWidth === undefined) delete next.sidebarWidth;
-    else next.sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(next.sidebarWidth)));
+    else
+      next.sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(next.sidebarWidth)));
     next.openTabs = tail([...new Set(next.openTabs)], 32);
     next.collapsedSections = tail([...new Set(next.collapsedSections)], 128);
     const parsed = LayoutPreferencesSchema.safeParse(next);

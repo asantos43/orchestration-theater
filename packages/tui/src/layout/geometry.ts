@@ -83,19 +83,6 @@ export function computeGeometry(input: GeometryInput): Geometry {
     mode = 'hidden';
     sidebarWidth = 0;
   }
-  let sidebarRange = { min: sidebarWidth, max: sidebarWidth };
-  if (mode === 'expanded') {
-    // With the panel open the side bar leaves room for the chat and for the panel at their minimums,
-    // as long as the screen has room for both beside the narrowest side bar; if not, there is no panel to keep.
-    const keepsPanel =
-      input.panelOpen && columns - SIDEBAR_MIN_WIDTH >= tuning.minChatWidth + tuning.minPanelWidth;
-    const most = Math.min(
-      SIDEBAR_MAX_WIDTH,
-      columns - tuning.minChatWidth - (keepsPanel ? tuning.minPanelWidth : 0),
-    );
-    sidebarRange = { min: SIDEBAR_MIN_WIDTH, max: Math.max(SIDEBAR_MIN_WIDTH, most) };
-    sidebarWidth = Math.min(sidebarRange.max, sidebarWidth);
-  }
   const available = columns - sidebarWidth;
   const panelFits = available >= tuning.minChatWidth + tuning.minPanelWidth;
   const showPanel = input.panelOpen && panelFits;
@@ -104,6 +91,21 @@ export function computeGeometry(input: GeometryInput): Geometry {
   const chatWidth = showPanel
     ? Math.min(maxChat, Math.max(minChat, Math.round(input.chatWidth)))
     : available;
+  // The side bar the person chose is kept (the panel gives way when it does not fit, as it always did);
+  // dragging it never takes the minimum of the chat, nor the one of the panel that is on the screen.
+  const sidebarRange =
+    mode === 'expanded'
+      ? {
+          min: SIDEBAR_MIN_WIDTH,
+          max: Math.max(
+            sidebarWidth,
+            Math.min(
+              SIDEBAR_MAX_WIDTH,
+              columns - tuning.minChatWidth - (showPanel ? tuning.minPanelWidth : 0),
+            ),
+          ),
+        }
+      : { min: sidebarWidth, max: sidebarWidth };
   return {
     columns,
     rows,

@@ -162,7 +162,8 @@ describe('readLayout: what a record of any age becomes', () => {
   });
 
   it('migrates a version 1 record: every field is kept, the width of the side bar stays absent', () => {
-    const { version: _version, ...fields } = good;
+    const { version, ...fields } = good;
+    expect(version).toBe(LAYOUT_VERSION);
     const old = { version: 1, ...fields };
     const reading = readLayout('tui', old);
     expect(reading).toEqual({
@@ -178,7 +179,8 @@ describe('readLayout: what a record of any age becomes', () => {
   });
 
   it('migrates a version 1 record that is not valid to the default, as old_version', () => {
-    const { version: _version, ...fields } = good;
+    const { version, ...fields } = good;
+    expect(version).toBe(LAYOUT_VERSION);
     expect(readLayout('tui', { version: 1, ...fields, chatWidth: 0 })).toEqual({
       outcome: 'replaced',
       layout: defaultLayout('tui'),
