@@ -59,6 +59,8 @@ jobs:
       # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
       # OT_REQUIRE_TMUX=1 [proposta]: the same for the smoke test of the TUI, which fails, not skips,
       # if tmux or the build is missing.
+      # OT_REQUIRE_PTY=1 (owner, N271): the click test in a real pty (pty.focus.test.ts) fails, not
+      # skips, if Python 3 or the build is missing. Only here: on macOS it failed with no known cause.
       # `pnpm check` in steps, so that the tests can run only where the change reaches (OT_TEST_CI).
       - run: pnpm build && pnpm lint && pnpm format:check
         env:
@@ -73,6 +75,7 @@ jobs:
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
           OT_REQUIRE_SANDBOX: '1'
           OT_REQUIRE_TMUX: '1'
+          OT_REQUIRE_PTY: '1'
       - run: pnpm verify
       - run: cargo fmt --check
         working-directory: native/job-launcher
