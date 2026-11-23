@@ -2,7 +2,7 @@
 
 Versão 1, de 2026-11-22. Este documento divide em passos a Fase 11 da [arquitetura](framework-ideas/arquitetura.md) (§10, "Fase 11 — Endurecimento"), com o desenho da recuperação em §5.21, as portas em §5.18 e os riscos R16 e R19. Segue o formato do [docs/21](21-PLANO-DA-FASE-10.md).
 
-A Fase 10 ainda não terminou: os passos P1 a P8, P10 e P13 estão na main, e faltam P9, P11 e P12 (a tabela do docs/21 está desatualizada; o `git log` mostra os PRs #287 a #298 [V]). Quando a Fase 11 abre é a decisão D6. Os PRs desta fase, incluindo o deste plano, só mesclam depois do ok do dono ou da autorização da D7: a N245 vale para a Fase 10, não para esta.
+A Fase 10 ainda não terminou: os passos P1 a P8, P10 e P13 estão na main, e faltam P9, P11 e P12 (a tabela do docs/21 está desatualizada; o `git log` mostra os PRs #287 a #298 [V]). Pela D6 (N283), a Fase 11 abre já, em paralelo com o que falta da Fase 10, e só o P12 desta fase espera o fim dela. Pela D7 (N284), os PRs desta fase, incluindo o deste plano, mesclam com a CI verde e squash, sem o ok do dono em cada PR.
 
 **Regra central da fase:** o aceite é um **roteiro de caos sem perda de estado nem processo órfão**. "Sem perda de estado" e "sem órfão" viram invariantes verificáveis por código (seção "Invariantes e o censo de processos"), e não uma leitura a olho.
 
@@ -76,7 +76,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
-| P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | em andamento |
+| P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito |
 | P1 | Harness de caos: `faults.inject`, pontos de queda, censo de processos, invariantes e o workflow de caos | P0 | P2, P8, P9 | a fazer |
 | P2 | `fake-agent`: modos de falha (morrer, travar, ignorar `SIGTERM`, deixar neto, erros tipados, lentidão) | P0 | P1, P8, P9 | a fazer |
 | P3 | Caos A: daemon morto no meio da peça e queda de energia simulada (processos e store rasgado) | P1, P2, D8 | P4, P5, P6, P7, P10 | a fazer |
@@ -286,7 +286,7 @@ O resultado é a seção "Revisão da Fase 11" no [docs/09](09-ISOLAMENTO-E-SEGU
 
 ## Perguntas novas ao dono
 
-Ids provisórios (D1 a D9); viram `N` no [docs/13](13-DECISOES-EM-ABERTO.md) quando o chamador registrar. Levadas por múltipla escolha, com a recomendação em primeiro lugar. **Todas em aberto.**
+Levadas ao dono por múltipla escolha, com a recomendação em primeiro lugar. **Todas decididas igual à recomendação**, a opção (a) de cada uma: D1 a D8 em 2026-11-22 e D9 em 2026-11-23. Viraram N278 a N286 no [docs/13](13-DECISOES-EM-ABERTO.md).
 
 - **D1, a queda de energia: VM ou só simulação (P3, P11):**
   - (a) **(Recomendado)** simulação no CI agora (níveis i e ii), e a VM só como roteiro manual **opcional** no aceite (P12), sem download agora. O porquê: matar processos e rasgar o store testa a recuperação, mas só uma VM desligada à força testa se o `fsync` chega ao disco; esse ponto é caro (QEMU e uma imagem) e pode esperar para depois de saber o que a simulação já achou;
@@ -336,19 +336,19 @@ Ids provisórios (D1 a D9); viram `N` no [docs/13](13-DECISOES-EM-ABERTO.md) qua
 
 ## Decisões deste plano
 
-Estado em 2026-11-22: **nenhuma decidida.** As nove perguntas acima, com a recomendação em primeiro lugar:
+Estado em 2026-11-23: **todas decididas**, por múltipla escolha, igual à recomendação (a coluna "Recomendada" é a escolhida):
 
-| Decisão | Recomendada | Alternativas |
-|---|---|---|
-| D1, queda de energia | (a) simulação no CI agora; VM só opcional no aceite | (b) VM obrigatória, com download; (c) só simulação |
-| D2, disco cheio | (a) `pause` | (b) `stop`; (c) `continue` |
-| D3, revisão de segurança | (a) subagentes, `/security-review` e testes adversariais | (b) ferramenta externa; (c) as duas |
-| D4, portas candidatas | (a) listar e recomendar; simplificar depois, com ok | (b) simplificar na fase; (c) só as sem falso, sem previsto e sem suíte |
-| D5, onde mora o guia | (a) documento novo em `docs/`, com exemplo em `examples/` | (b) ampliar o `sdk/README.md`; (c) pasta `docs/guia/` |
-| D6, quando abre | (a) já, menos o P12 desta fase | (b) esperar a Fase 10; (c) só a onda 1 agora |
-| D7, merge | (a) CI verde e squash, sem ok por PR | (b) ok do dono por PR |
-| D8, tarefa agendada | (a) `wakeups` agora, cenário pulado até a 9b | (b) construir a 9b antes; (c) passar ao aceite da 10b |
-| D9, caos na CI | (a) `chaos.yml` por caminho, toda noite e à mão | (b) em todo PR; (c) só à noite e à mão |
+| Decisão | N | Recomendada (escolhida) | Alternativas não escolhidas |
+|---|---|---|---|
+| D1, queda de energia | N278 | (a) simulação no CI agora; VM só opcional no aceite | (b) VM obrigatória, com download; (c) só simulação |
+| D2, disco cheio | N279 | (a) `pause` | (b) `stop`; (c) `continue` |
+| D3, revisão de segurança | N280 | (a) subagentes, `/security-review` e testes adversariais | (b) ferramenta externa; (c) as duas |
+| D4, portas candidatas | N281 | (a) listar e recomendar; simplificar depois, com ok | (b) simplificar na fase; (c) só as sem falso, sem previsto e sem suíte |
+| D5, onde mora o guia | N282 | (a) documento novo em `docs/`, com exemplo em `examples/` | (b) ampliar o `sdk/README.md`; (c) pasta `docs/guia/` |
+| D6, quando abre | N283 | (a) já, menos o P12 desta fase | (b) esperar a Fase 10; (c) só a onda 1 agora |
+| D7, merge | N284 | (a) CI verde e squash, sem ok por PR | (b) ok do dono por PR |
+| D8, tarefa agendada | N285 | (a) `wakeups` agora, cenário pulado até a 9b | (b) construir a 9b antes; (c) passar ao aceite da 10b |
+| D9, caos na CI | N286 | (a) `chaos.yml` por caminho, toda noite e à mão | (b) em todo PR; (c) só à noite e à mão |
 
 Detalhes marcados **[proposta]** que **não** viraram pergunta (escolhidos pelo mais conservador, para o dono rever): o nome `faults.inject` e os seus três modos; o nome e o formato dos pontos de queda (`<área>.<ponto>`); os invariantes I1 a I8 como definição do aceite; o censo por diretório temporário único em vez de `pgrep -f`; a semente de aleatoriedade impressa e fixa por teste; Linux como único sistema do nível automático; o nome `*.chaos.test.ts` e o script `pnpm test:chaos`; o `recovery.orphans` como chave só se ainda não for; a interpretação de "atualização de adaptador" como as duas coisas (o adaptador ACP gerenciado e o aplicativo).
 
